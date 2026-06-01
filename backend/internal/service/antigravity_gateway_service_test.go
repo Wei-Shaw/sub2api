@@ -42,6 +42,15 @@ func newAntigravityTestService(cfg *config.Config) *AntigravityGatewayService {
 REDACTED
 REDACTED
 
+func TestAntigravityUpstreamErrorBodyReadLimit_RespectsDiagnosticLimit(t *testing.T) {
+	svc := newAntigravityTestService(&config.Config{Gateway: config.GatewayConfig{
+		LogUpstreamErrorBody:         true,
+		LogUpstreamErrorBodyMaxBytes: int(gatewayUpstreamErrorBodyReadLimit) + 1024,
+REDACTEDREDACTED)
+
+	require.Equal(t, int64(svc.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes), svc.upstreamErrorBodyReadLimit())
+REDACTED
+
 func TestStripSignatureSensitiveBlocksFromClaudeRequest(t *testing.T) {
 	req := &antigravity.ClaudeRequest{
 		Model: "claude-sonnet-4-5",

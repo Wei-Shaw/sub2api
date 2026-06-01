@@ -46,11 +46,11 @@ const (
 	// codex_cli_only 拒绝时单个请求头日志长度上限（字符）
 	codexCLIOnlyHeaderValueMaxBytes = 256
 
-	// OpenAIParsedRequestBodyKey 缓存 handler 侧已解析的请求体，避免重复解析。
-	OpenAIParsedRequestBodyKey = "openai_parsed_request_body"
 	// OpenAI WS Mode 失败后的重连次数上限（不含首次尝试）。
 	// 与 Codex 客户端保持一致：失败后最多重连 5 次。
 	openAIWSReconnectRetryLimit = 5
+	// 上游错误体只需要提取错误 JSON/日志摘要，默认 512KiB 避免错误风暴叠加大请求体。
+	openAIUpstreamErrorBodyReadLimit int64 = 512 << 10
 	// OpenAI WS Mode 重连退避默认值（可由配置覆盖）。
 	openAIWSRetryBackoffInitialDefault = 120 * time.Millisecond
 	openAIWSRetryBackoffMaxDefault     = 2 * time.Second
@@ -2284,8 +2284,42 @@ REDACTED
 	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
 REDACTED
 
+func marshalOpenAIUpstreamJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+REDACTED
+	out := buf.Bytes()
+	if len(out) > 0 && out[len(out)-1] == '\n' {
+		out = out[:len(out)-1]
+REDACTED
+	return out, nil
+REDACTED
+
+func openAIUpstreamErrorBodyReadLimitForConfig(cfg *config.Config) int64 {
+	limit := openAIUpstreamErrorBodyReadLimit
+	if cfg != nil && cfg.Gateway.LogUpstreamErrorBody && cfg.Gateway.LogUpstreamErrorBodyMaxBytes > int(limit) {
+		limit = int64(cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+REDACTED
+	return limit
+REDACTED
+
+func (s *OpenAIGatewayService) readUpstreamErrorBody(resp *http.Response) []byte {
+	if resp == nil || resp.Body == nil {
+		return nil
+REDACTED
+	cfg := (*config.Config)(nil)
+	if s != nil {
+		cfg = s.cfg
+REDACTED
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, openAIUpstreamErrorBodyReadLimitForConfig(cfg)))
+	return body
+REDACTED
+
 func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account, requestedModel ...string) {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body := s.readUpstreamErrorBody(resp)
 	if len(requestedModel) > 0 {
 		s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, requestedModel[0])
 		return
@@ -2312,7 +2346,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 REDACTED
 
 	originalBody := body
-	reqModel, reqStream, promptCacheKey := extractOpenAIRequestMetaFromBody(body)
+	requestView := newOpenAIRequestView(body)
+	reqModel, reqStream, promptCacheKey := requestView.Model, requestView.Stream, requestView.PromptCacheKey
 	originalModel := reqModel
 
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
@@ -2362,172 +2397,83 @@ REDACTED
 		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime)
 REDACTED
 
-	reqBody, err := getOpenAIRequestBodyMap(c, body)
-	if err != nil {
-		return nil, err
+	bodyModified := false
+	var reqBody map[string]any
+	ensureReqBody := func() (map[string]any, error) {
+		if requestView.HasPatches() {
+			patchedBody, patchErr := requestView.ApplyPatches()
+			if patchErr != nil {
+				return nil, patchErr
+		REDACTED
+			body = patchedBody
+			requestView = newOpenAIRequestView(body)
+			reqBody = nil
+			bodyModified = false
+	REDACTED
+		if reqBody != nil {
+			return reqBody, nil
+	REDACTED
+		decoded, decodeErr := requestView.Decode(c)
+		if decodeErr != nil {
+			return nil, decodeErr
+	REDACTED
+		reqBody = decoded
+		return reqBody, nil
+REDACTED
+	markPatchSet := func(path string, value any) {
+		bodyModified = true
+		if requestView.patchesDisabled {
+			if reqBody != nil {
+				setOpenAIRequestMapPath(reqBody, path, value)
+		REDACTED
+			return
+	REDACTED
+		requestView.MarkPatchSet(path, value)
+REDACTED
+	markPatchDelete := func(path string) {
+		bodyModified = true
+		if requestView.patchesDisabled {
+			if reqBody != nil {
+				deleteOpenAIRequestMapPath(reqBody, path)
+		REDACTED
+			return
+	REDACTED
+		requestView.MarkPatchDelete(path)
+REDACTED
+	disablePatch := func() {
+		requestView.DisablePatches()
+REDACTED
+	markDecodedModified := func() {
+		bodyModified = true
+		disablePatch()
 REDACTED
 
-	if v, ok := reqBody["model"].(string); ok {
-		reqModel = v
-		originalModel = reqModel
-REDACTED
-	if v, ok := reqBody["stream"].(bool); ok {
-		reqStream = v
-REDACTED
-	if promptCacheKey == "" {
-		if v, ok := reqBody["prompt_cache_key"].(string); ok {
-			promptCacheKey = strings.TrimSpace(v)
-	REDACTED
-REDACTED
 	apiKey := getAPIKeyFromContext(c)
 	imageGenerationAllowed := GroupAllowsImageGeneration(nil)
 	if apiKey != nil {
 		imageGenerationAllowed = GroupAllowsImageGeneration(apiKey.Group)
 REDACTED
 	codexImageGenerationBridgeEnabled := isCodexCLI && imageGenerationAllowed && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
-	if IsImageGenerationIntentMap(openAIResponsesEndpoint, reqModel, reqBody) && !imageGenerationAllowed {
+	imageIntent := IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body)
+	if imageIntent && !imageGenerationAllowed {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": gin.H{
-				"type":    "permission_error",
-				"message": ImageGenerationPermissionMessage(),
-		REDACTED,
-	REDACTED)
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"type": "permission_error", "message": ImageGenerationPermissionMessage()REDACTEDREDACTED)
 		return nil, errors.New("image generation disabled for group")
 REDACTED
 
-	// Track if body needs re-serialization
-	bodyModified := false
-	// 单字段补丁快速路径：只要整个变更集最终可归约为同一路径的 set/delete，就避免全量 Marshal。
-	patchDisabled := false
-	patchHasOp := false
-	patchDelete := false
-	patchPath := ""
-	var patchValue any
-	markPatchSet := func(path string, value any) {
-		if strings.TrimSpace(path) == "" {
-			patchDisabled = true
-			return
-	REDACTED
-		if patchDisabled {
-			return
-	REDACTED
-		if !patchHasOp {
-			patchHasOp = true
-			patchDelete = false
-			patchPath = path
-			patchValue = value
-			return
-	REDACTED
-		if patchDelete || patchPath != path {
-			patchDisabled = true
-			return
-	REDACTED
-		patchValue = value
-REDACTED
-	markPatchDelete := func(path string) {
-		if strings.TrimSpace(path) == "" {
-			patchDisabled = true
-			return
-	REDACTED
-		if patchDisabled {
-			return
-	REDACTED
-		if !patchHasOp {
-			patchHasOp = true
-			patchDelete = true
-			patchPath = path
-			return
-	REDACTED
-		if !patchDelete || patchPath != path {
-			patchDisabled = true
-	REDACTED
-REDACTED
-	disablePatch := func() {
-		patchDisabled = true
-REDACTED
-
-	// 非透传模式下，instructions 为空时注入默认指令。
-	if isInstructionsEmpty(reqBody) && !compatMessagesBridge {
-		reqBody["instructions"] = "You are a helpful coding assistant."
-		bodyModified = true
+	instructions := gjson.GetBytes(body, "instructions")
+	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
+	if instructionsEmpty && !compatMessagesBridge {
 		markPatchSet("instructions", "You are a helpful coding assistant.")
 REDACTED
 
-	if codexImageGenerationBridgeEnabled && ensureOpenAIResponsesImageGenerationTool(reqBody) {
-		bodyModified = true
-		disablePatch()
-		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Injected /responses image_generation tool for Codex client")
-REDACTED
-
-	if normalizeOpenAIResponsesImageGenerationTools(reqBody) {
-		bodyModified = true
-		disablePatch()
-		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized /responses image_generation tool payload")
-REDACTED
-	if codexImageGenerationBridgeEnabled && applyCodexImageGenerationBridgeInstructions(reqBody) {
-		bodyModified = true
-		disablePatch()
-		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Added Codex image_generation bridge instructions")
-REDACTED
-
-	// 对所有请求执行模型映射（包含 Codex CLI）。
 	billingModel := account.GetMappedModel(reqModel)
 	if billingModel != reqModel {
 		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", reqModel, billingModel, account.Name, isCodexCLI)
-		reqBody["model"] = billingModel
-		bodyModified = true
+		reqModel = billingModel
 		markPatchSet("model", billingModel)
 REDACTED
 	upstreamModel := billingModel
-	if imageGenerationAllowed && normalizeOpenAIResponsesImageOnlyModel(reqBody) {
-		bodyModified = true
-		disablePatch()
-		if model, ok := reqBody["model"].(string); ok {
-			upstreamModel = strings.TrimSpace(model)
-	REDACTED
-		logger.LegacyPrintf(
-			"service.openai_gateway",
-			"[OpenAI] Normalized /responses image-only model request inbound_model=%s image_model=%s upstream_model=%s",
-			reqModel,
-			billingModel,
-			upstreamModel,
-		)
-REDACTED
-	if err := validateOpenAIResponsesImageModel(reqBody, upstreamModel); err != nil {
-		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": gin.H{
-				"type":    "invalid_request_error",
-				"message": err.Error(),
-				"param":   "model",
-		REDACTED,
-	REDACTED)
-		return nil, err
-REDACTED
-	if hasOpenAIImageGenerationTool(reqBody) {
-		logger.LegacyPrintf(
-			"service.openai_gateway",
-			"[OpenAI] /responses image_generation request inbound_model=%s mapped_model=%s account_type=%s",
-			reqModel,
-			upstreamModel,
-			account.Type,
-		)
-REDACTED
-	if err := validateCodexSparkInput(reqBody, upstreamModel); err != nil {
-		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": gin.H{
-				"type":    "invalid_request_error",
-				"message": err.Error(),
-				"param":   "input",
-		REDACTED,
-	REDACTED)
-		return nil, err
-REDACTED
-
-	// Compact-only model 映射：仅在 /responses/compact 路径生效，且优先级高于
-	// OAuth 模型规范化（避免 OAuth 规范化覆盖 compact-only 自定义模型）。
 	isCompactRequest := isOpenAIResponsesCompactPath(c)
 	compactMapped := false
 	if isCompactRequest {
@@ -2535,65 +2481,100 @@ REDACTED
 		if compactMappedModel != "" && compactMappedModel != billingModel {
 			compactMapped = true
 			upstreamModel = compactMappedModel
-			reqBody["model"] = compactMappedModel
-			bodyModified = true
+			reqModel = compactMappedModel
 			markPatchSet("model", compactMappedModel)
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Compact model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", billingModel, compactMappedModel, account.Name, isCodexCLI)
 	REDACTED
 REDACTED
-
-	// OpenAI OAuth 账号走 ChatGPT internal Codex endpoint，需要将模型名规范化为
-	// 上游可识别的 Codex/GPT 系列。API Key 账号则应保留原始/映射后的模型名，
-	// 以兼容自定义 base_url 的 OpenAI-compatible 上游。
-	if model, ok := reqBody["model"].(string); ok {
-		if !compactMapped {
-			upstreamModel = normalizeOpenAIModelForUpstream(account, model)
-			if upstreamModel != "" && upstreamModel != model {
-				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Upstream model resolved: %s -> %s (account: %s, type: %s, isCodexCLI: %v)",
-					model, upstreamModel, account.Name, account.Type, isCodexCLI)
-				reqBody["model"] = upstreamModel
-				bodyModified = true
-				markPatchSet("model", upstreamModel)
-		REDACTED
+	if !compactMapped {
+		modelForNormalize := reqModel
+		if modelForNormalize == "" {
+			modelForNormalize = requestView.Model
 	REDACTED
-
-		// 移除 gpt-5.2-codex 以下的版本 verbosity 参数
-		// 确保高版本模型向低版本模型映射不报错
-		if !SupportsVerbosity(upstreamModel) {
-			if text, ok := reqBody["text"].(map[string]any); ok {
-				delete(text, "verbosity")
-		REDACTED
+		upstreamModel = normalizeOpenAIModelForUpstream(account, modelForNormalize)
+		if upstreamModel != "" && upstreamModel != modelForNormalize {
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Upstream model resolved: %s -> %s (account: %s, type: %s, isCodexCLI: %v)", modelForNormalize, upstreamModel, account.Name, account.Type, isCodexCLI)
+			reqModel = upstreamModel
+			markPatchSet("model", upstreamModel)
 	REDACTED
 REDACTED
+	if strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String()) == "minimal" {
+		markPatchSet("reasoning.effort", "none")
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)
+REDACTED
 
-	// 规范化 reasoning.effort 参数（minimal -> none），与上游允许值对齐。
-	if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
-		if effort, ok := reasoning["effort"].(string); ok && effort == "minimal" {
-			reasoning["effort"] = "none"
-			bodyModified = true
-			markPatchSet("reasoning.effort", "none")
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)
+	imageIntent = imageIntent || IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, nil) || isOpenAIImageGenerationModel(upstreamModel)
+	if imageIntent && !imageGenerationAllowed {
+		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"type": "permission_error", "message": ImageGenerationPermissionMessage()REDACTEDREDACTED)
+		return nil, errors.New("image generation disabled for group")
+REDACTED
+
+	if imageGenerationAllowed && (codexImageGenerationBridgeEnabled || isOpenAIImageGenerationModel(requestView.Model) || openAIRequestBodyImageGenerationToolNeedsNormalization(body) || isOpenAIImageGenerationModel(upstreamModel)) {
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr != nil {
+			return nil, decodeErr
+	REDACTED
+		if codexImageGenerationBridgeEnabled && ensureOpenAIResponsesImageGenerationTool(decoded) {
+			markDecodedModified()
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Injected /responses image_generation tool for Codex client")
+	REDACTED
+		if normalizeOpenAIResponsesImageGenerationTools(decoded) {
+			markDecodedModified()
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized /responses image_generation tool payload")
+	REDACTED
+		if normalizeOpenAIResponsesImageOnlyModel(decoded) {
+			markDecodedModified()
+			if model, ok := decoded["model"].(string); ok {
+				upstreamModel = strings.TrimSpace(model)
+		REDACTED
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized /responses image-only model request inbound_model=%s image_model=%s upstream_model=%s", requestView.Model, billingModel, upstreamModel)
+	REDACTED
+		if err := validateOpenAIResponsesImageModel(decoded, upstreamModel); err != nil {
+			setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": err.Error(), "param": "model"REDACTEDREDACTED)
+			return nil, err
+	REDACTED
+		if hasOpenAIImageGenerationTool(decoded) {
+			imageIntent = true
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] /responses image_generation request inbound_model=%s mapped_model=%s account_type=%s", requestView.Model, upstreamModel, account.Type)
+	REDACTED
+		if codexImageGenerationBridgeEnabled && applyCodexImageGenerationBridgeInstructions(decoded) {
+			markDecodedModified()
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Added Codex image_generation bridge instructions")
+	REDACTED
+REDACTED else if imageGenerationAllowed && imageIntent && openAIRequestBodyHasImageGenerationTool(body) {
+		// 完整 image_generation tool 只做 raw 计费读取，校验/桥接/旧字段迁移命中时才展开大 input map。
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] /responses image_generation request inbound_model=%s mapped_model=%s account_type=%s", requestView.Model, upstreamModel, account.Type)
+REDACTED
+
+	if isCodexSparkModel(upstreamModel) && openAIRequestBodyMayContainImageInput(body) {
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr != nil {
+			return nil, decodeErr
+	REDACTED
+		if err := validateCodexSparkInput(decoded, upstreamModel); err != nil {
+			setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": err.Error(), "param": "input"REDACTEDREDACTED)
+			return nil, err
 	REDACTED
 REDACTED
 
 	if account.Type == AccountTypeOAuth {
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr != nil {
+			return nil, decodeErr
+	REDACTED
 		codexResult := codexTransformResult{REDACTED
 		if compatMessagesBridge {
-			codexResult = applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
-				IsCodexCLI:              isCodexCLI,
-				IsCompact:               isCompactRequest,
-				SkipDefaultInstructions: true,
-				PreserveToolCallIDs:     true,
-		REDACTED)
-			ensureCodexOAuthInstructionsField(reqBody)
-			bodyModified = true
-			disablePatch()
+			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{IsCodexCLI: isCodexCLI, IsCompact: isCompactRequest, SkipDefaultInstructions: true, PreserveToolCallIDs: trueREDACTED)
+			ensureCodexOAuthInstructionsField(decoded)
+			markDecodedModified()
 	REDACTED else {
-			codexResult = applyCodexOAuthTransform(reqBody, isCodexCLI, isCompactRequest)
+			codexResult = applyCodexOAuthTransform(decoded, isCodexCLI, isCompactRequest)
 	REDACTED
 		if codexResult.Modified {
-			bodyModified = true
-			disablePatch()
+			markDecodedModified()
 	REDACTED
 		if codexResult.NormalizedModel != "" {
 			upstreamModel = codexResult.NormalizedModel
@@ -2603,90 +2584,57 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// Handle max_output_tokens based on platform and account type
+	if !SupportsVerbosity(upstreamModel) && gjson.GetBytes(body, "text.verbosity").Exists() {
+		markPatchDelete("text.verbosity")
+REDACTED
+
 	if !isCodexCLI {
-		if maxOutputTokens, hasMaxOutputTokens := reqBody["max_output_tokens"]; hasMaxOutputTokens {
+		maxOutputTokens := gjson.GetBytes(body, "max_output_tokens")
+		if maxOutputTokens.Exists() {
 			switch account.Platform {
 			case PlatformOpenAI:
-				// For OpenAI API Key, remove max_output_tokens (not supported)
-				// For OpenAI OAuth (Responses API), keep it (supported)
 				if account.Type == AccountTypeAPIKey {
-					delete(reqBody, "max_output_tokens")
-					bodyModified = true
 					markPatchDelete("max_output_tokens")
 			REDACTED
 			case PlatformAnthropic:
-				// For Anthropic (Claude), convert to max_tokens
-				delete(reqBody, "max_output_tokens")
-				markPatchDelete("max_output_tokens")
-				if _, hasMaxTokens := reqBody["max_tokens"]; !hasMaxTokens {
-					reqBody["max_tokens"] = maxOutputTokens
-					disablePatch()
+				decoded, decodeErr := ensureReqBody()
+				if decodeErr != nil {
+					return nil, decodeErr
 			REDACTED
-				bodyModified = true
+				delete(decoded, "max_output_tokens")
+				if _, hasMaxTokens := decoded["max_tokens"]; !hasMaxTokens {
+					decoded["max_tokens"] = maxOutputTokens.Value()
+			REDACTED
+				markDecodedModified()
 			case PlatformGemini:
-				// For Gemini, remove (will be handled by Gemini-specific transform)
-				delete(reqBody, "max_output_tokens")
-				bodyModified = true
 				markPatchDelete("max_output_tokens")
 			default:
-				// For unknown platforms, remove to be safe
-				delete(reqBody, "max_output_tokens")
-				bodyModified = true
 				markPatchDelete("max_output_tokens")
 		REDACTED
 	REDACTED
-
-		// Also handle max_completion_tokens (similar logic)
-		if _, hasMaxCompletionTokens := reqBody["max_completion_tokens"]; hasMaxCompletionTokens {
-			if account.Type == AccountTypeAPIKey || account.Platform != PlatformOpenAI {
-				delete(reqBody, "max_completion_tokens")
-				bodyModified = true
-				markPatchDelete("max_completion_tokens")
-		REDACTED
+		if gjson.GetBytes(body, "max_completion_tokens").Exists() && (account.Type == AccountTypeAPIKey || account.Platform != PlatformOpenAI) {
+			markPatchDelete("max_completion_tokens")
 	REDACTED
-
-		// Remove unsupported fields (not supported by upstream OpenAI API)
-		unsupportedFields := []string{"prompt_cache_retention", "safety_identifier"REDACTED
-		for _, unsupportedField := range unsupportedFields {
-			if _, has := reqBody[unsupportedField]; has {
-				delete(reqBody, unsupportedField)
-				bodyModified = true
+		for _, unsupportedField := range []string{"prompt_cache_retention", "safety_identifier"REDACTED {
+			if gjson.GetBytes(body, unsupportedField).Exists() {
 				markPatchDelete(unsupportedField)
 		REDACTED
 	REDACTED
 REDACTED
-
-	// 仅在 WSv2 模式保留 previous_response_id，其他模式（HTTP/WSv1）统一过滤。
-	// 注意：该规则同样适用于 Codex CLI 请求，避免 WSv1 向上游透传不支持字段。
-	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
-		if _, has := reqBody["previous_response_id"]; has {
-			delete(reqBody, "previous_response_id")
-			bodyModified = true
-			markPatchDelete("previous_response_id")
+	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 && gjson.GetBytes(body, "previous_response_id").Exists() {
+		markPatchDelete("previous_response_id")
+REDACTED
+	if openAIRequestBodyMayContainEmptyBase64InputImage(body) {
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr != nil {
+			return nil, decodeErr
+	REDACTED
+		if sanitizeEmptyBase64InputImagesInOpenAIRequestBodyMap(decoded) {
+			markDecodedModified()
 	REDACTED
 REDACTED
 
-	if sanitizeEmptyBase64InputImagesInOpenAIRequestBodyMap(reqBody) {
-		bodyModified = true
-		disablePatch()
-REDACTED
-
-	// Apply OpenAI fast policy (参照 Claude BetaPolicy 的 fast-mode 过滤)：
-	// 针对 body 的 service_tier 字段（"priority" 即 fast，"flex"），按策略
-	// 执行 filter（删除字段）或 block（拒绝请求）。对 gpt-5.5 等模型屏蔽
-	// fast 时在此生效。
-	//
-	// 注意：
-	//   1. 此处统一使用 upstreamModel（已经过 GetMappedModel +
-	//      normalizeOpenAIModelForUpstream + Codex OAuth normalize），与
-	//      chat-completions / messages 入口保持一致，避免不同入口因为模型
-	//      维度不同而出现 whitelist 命中差异。
-	//   2. action=pass 时也要把 raw "fast" 归一化为 "priority" 写回 body，
-	//      否则 native /responses 入口透传 "fast" 给上游会被拒。chat-
-	//      completions 入口由 normalizeResponsesBodyServiceTier 完成同一
-	//      行为，这里手工实现等效逻辑。
-	if rawTier, ok := reqBody["service_tier"].(string); ok {
+	if rawTier := requestView.ServiceTier; rawTier != "" {
 		if normTier := normalizedOpenAIServiceTierValue(rawTier); normTier != "" {
 			action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
 			switch action {
@@ -2699,74 +2647,56 @@ REDACTED
 				writeOpenAIFastPolicyBlockedResponse(c, blocked)
 				return nil, blocked
 			case BetaPolicyActionFilter:
-				delete(reqBody, "service_tier")
-				bodyModified = true
-				disablePatch()
+				markPatchDelete("service_tier")
 			default:
-				// pass：若客户端传的是别名 "fast"，归一化为 "priority"
-				// 后写回 body，确保上游收到的是其能识别的规范值。
 				if normTier != rawTier {
-					reqBody["service_tier"] = normTier
-					bodyModified = true
 					markPatchSet("service_tier", normTier)
 			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
 
-	if IsImageGenerationIntentMap(openAIResponsesEndpoint, reqModel, reqBody) && !imageGenerationAllowed {
-		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": gin.H{
-				"type":    "permission_error",
-				"message": ImageGenerationPermissionMessage(),
-		REDACTED,
-	REDACTED)
-		return nil, errors.New("image generation disabled for group")
+	if bodyModified {
+		if requestView.HasPatches() {
+			if patchedBody, patchErr := requestView.ApplyPatches(); patchErr == nil {
+				body = patchedBody
+				requestView = newOpenAIRequestView(body)
+				reqBody = nil
+				bodyModified = false
+		REDACTED
+	REDACTED
+		if bodyModified {
+			decoded, decodeErr := ensureReqBody()
+			if decodeErr != nil {
+				return nil, decodeErr
+		REDACTED
+			var marshalErr error
+			body, marshalErr = marshalOpenAIUpstreamJSON(decoded)
+			if marshalErr != nil {
+				return nil, fmt.Errorf("serialize request body: %w", marshalErr)
+		REDACTED
+			requestView = newOpenAIRequestView(body)
+	REDACTED
 REDACTED
 	imageBillingModel := ""
 	imageSizeTier := ""
 	imageInputSize := ""
-	if IsImageGenerationIntentMap(openAIResponsesEndpoint, reqModel, reqBody) {
+	if imageIntent {
+		var imageCfg OpenAIResponsesImageBillingConfig
 		var imageCfgErr error
-		imageCfg, imageCfgErr := resolveOpenAIResponsesImageBillingConfigDetailed(reqBody, billingModel)
+		if reqBody != nil {
+			imageCfg, imageCfgErr = resolveOpenAIResponsesImageBillingConfigDetailed(reqBody, billingModel)
+	REDACTED else {
+			imageCfg, imageCfgErr = resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body, billingModel)
+	REDACTED
 		if imageCfgErr != nil {
 			setOpsUpstreamError(c, http.StatusBadRequest, imageCfgErr.Error(), "")
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": gin.H{
-					"type":    "invalid_request_error",
-					"message": imageCfgErr.Error(),
-					"param":   "size",
-			REDACTED,
-		REDACTED)
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": imageCfgErr.Error(), "param": "size"REDACTEDREDACTED)
 			return nil, imageCfgErr
 	REDACTED
 		imageBillingModel = imageCfg.Model
 		imageSizeTier = imageCfg.SizeTier
 		imageInputSize = imageCfg.InputSize
-REDACTED
-
-	// Re-serialize body only if modified
-	if bodyModified {
-		serializedByPatch := false
-		if !patchDisabled && patchHasOp {
-			var patchErr error
-			if patchDelete {
-				body, patchErr = sjson.DeleteBytes(body, patchPath)
-		REDACTED else {
-				body, patchErr = sjson.SetBytes(body, patchPath, patchValue)
-		REDACTED
-			if patchErr == nil {
-				serializedByPatch = true
-		REDACTED
-	REDACTED
-		if !serializedByPatch {
-			var marshalErr error
-			body, marshalErr = json.Marshal(reqBody)
-			if marshalErr != nil {
-				return nil, fmt.Errorf("serialize request body: %w", marshalErr)
-		REDACTED
-	REDACTED
 REDACTED
 
 	// Get access token
@@ -2777,12 +2707,10 @@ REDACTED
 
 	// 命中 WS 时仅走 WebSocket Mode；不再自动回退 HTTP。
 	if wsDecision.Transport == OpenAIUpstreamTransportResponsesWebsocketV2 {
-		wsReqBody := reqBody
-		if len(reqBody) > 0 {
-			wsReqBody = make(map[string]any, len(reqBody))
-			for k, v := range reqBody {
-				wsReqBody[k] = v
-		REDACTED
+		// WS 分支需要结构化 payload 与重连恢复，命中后再触发 full-map decode。
+		wsReqBody, err := ensureReqBody()
+		if err != nil {
+			return nil, err
 	REDACTED
 		_, hasPreviousResponseID := wsReqBody["previous_response_id"]
 		logOpenAIWSModeDebug(
@@ -3034,7 +2962,7 @@ REDACTED
 
 		// Handle error response
 		if resp.StatusCode >= 400 {
-			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
@@ -3042,8 +2970,12 @@ REDACTED
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 			upstreamCode := extractUpstreamErrorCode(respBody)
 			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
-				if trimOpenAIEncryptedReasoningItems(reqBody) {
-					body, err = json.Marshal(reqBody)
+				decoded, decodeErr := ensureReqBody()
+				if decodeErr != nil {
+					return nil, decodeErr
+			REDACTED
+				if trimOpenAIEncryptedReasoningItems(decoded) {
+					body, err = marshalOpenAIUpstreamJSON(decoded)
 					if err != nil {
 						return nil, fmt.Errorf("serialize invalid_encrypted_content retry body: %w", err)
 				REDACTED
@@ -3084,9 +3016,10 @@ REDACTED
 	REDACTED
 		defer func() { _ = resp.Body.Close() REDACTED()
 
-		reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
-		serviceTier := extractOpenAIServiceTier(reqBody)
-		releaseOpenAIParsedRequestBody(c)
+		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, originalModel)
+		serviceTier := extractOpenAIServiceTierFromBody(body)
+		// 上游接受后只保留计费需要的标量，避免响应处理期间继续保活完整 input/tools map。
+		reqBody = nil
 
 		// Handle normal response
 		var usage *OpenAIUsage
@@ -3551,7 +3484,7 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	account *Account,
 	requestBody []byte,
 ) error {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body := s.readUpstreamErrorBody(resp)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -3593,7 +3526,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	account *Account,
 	requestBody []byte,
 ) error {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body := s.readUpstreamErrorBody(resp)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -4286,7 +4219,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	requestBody []byte,
 	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body := s.readUpstreamErrorBody(resp)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -4447,7 +4380,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	writeError compatErrorWriter,
 	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body := s.readUpstreamErrorBody(resp)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	if upstreamMsg == "" {
@@ -6240,15 +6173,163 @@ REDACTED
 	return normalizeOpenAIReasoningEffort(parts[len(parts)-1])
 REDACTED
 
-func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, promptCacheKey string) {
-	if len(body) == 0 {
-		return "", false, ""
+type openAIRequestView struct {
+	body               []byte
+	Model              string
+	Stream             bool
+	PromptCacheKey     string
+	PreviousResponseID string
+	ServiceTier        string
+	ReasoningEffort    string
+	patches            []openAIRequestPatch
+	patchesDisabled    bool
 REDACTED
 
-	model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
-	stream = gjson.GetBytes(body, "stream").Bool()
-	promptCacheKey = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
-	return model, stream, promptCacheKey
+type openAIRequestPatch struct {
+	path   string
+	delete bool
+	value  any
+REDACTED
+
+func newOpenAIRequestView(body []byte) openAIRequestView {
+	if len(body) == 0 {
+		return openAIRequestView{REDACTED
+REDACTED
+	return openAIRequestView{
+		body:               body,
+		Model:              strings.TrimSpace(gjson.GetBytes(body, "model").String()),
+		Stream:             gjson.GetBytes(body, "stream").Bool(),
+		PromptCacheKey:     strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String()),
+		PreviousResponseID: strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()),
+		ServiceTier:        strings.TrimSpace(gjson.GetBytes(body, "service_tier").String()),
+		ReasoningEffort:    strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String()),
+REDACTED
+REDACTED
+
+// Decode 保留阶段一既有 full-map 行为；后续阶段会把调用点下沉到复杂分支。
+func (v openAIRequestView) Decode(c *gin.Context) (map[string]any, error) {
+	return getOpenAIRequestBodyMap(c, v.body)
+REDACTED
+
+func (v *openAIRequestView) MarkPatchSet(path string, value any) {
+	if v == nil || v.patchesDisabled {
+		return
+REDACTED
+	path = strings.TrimSpace(path)
+	if !isSimpleOpenAIRequestPatchPath(path) {
+		v.DisablePatches()
+		return
+REDACTED
+	v.patches = append(v.patches, openAIRequestPatch{path: path, value: valueREDACTED)
+REDACTED
+
+func (v *openAIRequestView) MarkPatchDelete(path string) {
+	if v == nil || v.patchesDisabled {
+		return
+REDACTED
+	path = strings.TrimSpace(path)
+	if !isSimpleOpenAIRequestPatchPath(path) {
+		v.DisablePatches()
+		return
+REDACTED
+	v.patches = append(v.patches, openAIRequestPatch{path: path, delete: trueREDACTED)
+REDACTED
+
+func isSimpleOpenAIRequestPatchPath(path string) bool {
+	if path == "" || strings.ContainsRune(path, '\\') {
+		return false
+REDACTED
+	for _, part := range strings.Split(path, ".") {
+		if strings.TrimSpace(part) == "" {
+			return false
+	REDACTED
+REDACTED
+	return true
+REDACTED
+
+func (v *openAIRequestView) DisablePatches() {
+	if v == nil {
+		return
+REDACTED
+	v.patchesDisabled = true
+	v.patches = nil
+REDACTED
+
+func (v openAIRequestView) HasPatches() bool {
+	return !v.patchesDisabled && len(v.patches) > 0
+REDACTED
+
+func (v openAIRequestView) ApplyPatches() ([]byte, error) {
+	if v.patchesDisabled || len(v.patches) == 0 {
+		return nil, errors.New("openai request patches disabled")
+REDACTED
+	body := v.body
+	for _, patch := range v.patches {
+		var err error
+		if patch.delete {
+			body, err = sjson.DeleteBytes(body, patch.path)
+	REDACTED else {
+			body, err = sjson.SetBytes(body, patch.path, patch.value)
+	REDACTED
+		if err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	return body, nil
+REDACTED
+
+func setOpenAIRequestMapPath(reqBody map[string]any, path string, value any) {
+	path = strings.TrimSpace(path)
+	if reqBody == nil || path == "" {
+		return
+REDACTED
+	parts := strings.Split(path, ".")
+	current := reqBody
+	for _, part := range parts[:len(parts)-1] {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return
+	REDACTED
+		next, _ := current[part].(map[string]any)
+		if next == nil {
+			next = map[string]any{REDACTED
+			current[part] = next
+	REDACTED
+		current = next
+REDACTED
+	last := strings.TrimSpace(parts[len(parts)-1])
+	if last != "" {
+		current[last] = value
+REDACTED
+REDACTED
+
+func deleteOpenAIRequestMapPath(reqBody map[string]any, path string) {
+	path = strings.TrimSpace(path)
+	if reqBody == nil || path == "" {
+		return
+REDACTED
+	parts := strings.Split(path, ".")
+	current := reqBody
+	for _, part := range parts[:len(parts)-1] {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return
+	REDACTED
+		next, _ := current[part].(map[string]any)
+		if next == nil {
+			return
+	REDACTED
+		current = next
+REDACTED
+	last := strings.TrimSpace(parts[len(parts)-1])
+	if last != "" {
+		delete(current, last)
+REDACTED
+REDACTED
+
+func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, promptCacheKey string) {
+	view := newOpenAIRequestView(body)
+	return view.Model, view.Stream, view.PromptCacheKey
 REDACTED
 
 // normalizeOpenAIPassthroughOAuthBody 将透传 OAuth 请求体收敛为旧链路关键行为：
@@ -6699,8 +6780,84 @@ REDACTED
 	return payload
 REDACTED
 
+func openAIRequestBodyMayContainImageInput(body []byte) bool {
+	if len(body) == 0 {
+		return false
+REDACTED
+	input := gjson.GetBytes(body, "input")
+	messages := gjson.GetBytes(body, "messages.#-1")
+	return openAIJSONValueMayContainImageInput(input) || openAIJSONValueMayContainImageInput(messages)
+REDACTED
+
+func openAIJSONValueMayContainImageInput(value gjson.Result) bool {
+	if !value.Exists() {
+		return false
+REDACTED
+	if value.IsArray() {
+		found := false
+		value.ForEach(func(_, item gjson.Result) bool {
+			if openAIJSONValueMayContainImageInput(item) {
+				found = true
+				return false
+		REDACTED
+			return true
+	REDACTED)
+		return found
+REDACTED
+	if value.IsObject() {
+		if strings.TrimSpace(value.Get("type").String()) == "input_image" || value.Get("image_url").Exists() {
+			return true
+	REDACTED
+		return openAIJSONValueMayContainImageInput(value.Get("content"))
+REDACTED
+	return false
+REDACTED
+
+func openAIRequestBodyMayContainEmptyBase64InputImage(body []byte) bool {
+	if len(body) == 0 || !openAIRequestBodyMayContainInputImageToken(body) {
+		return false
+REDACTED
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() {
+		return false
+REDACTED
+	return openAIJSONValueMayContainEmptyBase64InputImage(input)
+REDACTED
+
+func openAIRequestBodyMayContainInputImageToken(body []byte) bool {
+	if bytes.Contains(body, []byte("input_image")) {
+		return true
+REDACTED
+	// JSON 字符串任意字符都可能被 unicode escape，遇到 \u 时交给 gjson 解码后的结构扫描兜底。
+	return bytes.Contains(body, []byte("\\u"))
+REDACTED
+
+func openAIJSONValueMayContainEmptyBase64InputImage(value gjson.Result) bool {
+	if !value.Exists() {
+		return false
+REDACTED
+	if value.IsArray() {
+		found := false
+		value.ForEach(func(_, item gjson.Result) bool {
+			if openAIJSONValueMayContainEmptyBase64InputImage(item) {
+				found = true
+				return false
+		REDACTED
+			return true
+	REDACTED)
+		return found
+REDACTED
+	if value.IsObject() {
+		if strings.TrimSpace(value.Get("type").String()) == "input_image" && isEmptyBase64DataURI(value.Get("image_url").String()) {
+			return true
+	REDACTED
+		return openAIJSONValueMayContainEmptyBase64InputImage(value.Get("content"))
+REDACTED
+	return false
+REDACTED
+
 func sanitizeEmptyBase64InputImagesInOpenAIBody(body []byte) ([]byte, bool, error) {
-	if len(body) == 0 || !bytes.Contains(body, []byte(`"image_url"`)) || !bytes.Contains(body, []byte(`base64,`)) {
+	if !openAIRequestBodyMayContainEmptyBase64InputImage(body) {
 		return body, false, nil
 REDACTED
 
@@ -6711,7 +6868,7 @@ REDACTED
 	if !sanitizeEmptyBase64InputImagesInOpenAIRequestBodyMap(reqBody) {
 		return body, false, nil
 REDACTED
-	normalized, err := json.Marshal(reqBody)
+	normalized, err := marshalOpenAIUpstreamJSON(reqBody)
 	if err != nil {
 		return body, false, fmt.Errorf("serialize sanitized request body: %w", err)
 REDACTED
@@ -6816,30 +6973,12 @@ REDACTED
 	return strings.TrimSpace(strings.TrimPrefix(rest, "base64,")) == ""
 REDACTED
 
-func getOpenAIRequestBodyMap(c *gin.Context, body []byte) (map[string]any, error) {
-	if c != nil {
-		if cached, ok := c.Get(OpenAIParsedRequestBodyKey); ok {
-			if reqBody, ok := cached.(map[string]any); ok && reqBody != nil {
-				return reqBody, nil
-		REDACTED
-	REDACTED
-REDACTED
-
+func getOpenAIRequestBodyMap(_ *gin.Context, body []byte) (map[string]any, error) {
 	var reqBody map[string]any
 	if err := json.Unmarshal(body, &reqBody); err != nil {
 		return nil, fmt.Errorf("parse request: %w", err)
 REDACTED
-	if c != nil {
-		c.Set(OpenAIParsedRequestBodyKey, reqBody)
-REDACTED
 	return reqBody, nil
-REDACTED
-
-func releaseOpenAIParsedRequestBody(c *gin.Context) {
-	if c == nil {
-		return
-REDACTED
-	delete(c.Keys, OpenAIParsedRequestBodyKey)
 REDACTED
 
 func extractOpenAIReasoningEffort(reqBody map[string]any, requestedModel string) *string {

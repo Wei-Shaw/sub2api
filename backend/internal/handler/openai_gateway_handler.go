@@ -948,19 +948,12 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 		return true
 REDACTED
 
-	var reqBody map[string]any
-	if err := json.Unmarshal(body, &reqBody); err != nil {
-		// 保持原有容错语义：解析失败时跳过预校验，沿用后续上游校验结果。
-		return true
-REDACTED
-
-	c.Set(service.OpenAIParsedRequestBodyKey, reqBody)
-	validation := service.ValidateFunctionCallOutputContext(reqBody)
+	validation := service.ValidateFunctionCallOutputContextBytes(body)
 	if !validation.HasFunctionCallOutput {
 		return true
 REDACTED
 
-	previousResponseID, _ := reqBody["previous_response_id"].(string)
+	previousResponseID := gjson.GetBytes(body, "previous_response_id").String()
 	if strings.TrimSpace(previousResponseID) != "" || validation.HasToolCallContext {
 		return true
 REDACTED
@@ -1379,6 +1372,7 @@ REDACTED
 			zap.Int("candidate_count", scheduleDecision.CandidateCount),
 		)
 
+		var requestPayloadHash string
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
@@ -1464,7 +1458,7 @@ REDACTED
 						UpstreamEndpoint:   upstreamEndpoint,
 						UserAgent:          userAgent,
 						IPAddress:          clientIP,
-						RequestPayloadHash: service.HashUsageRequestPayload(firstMessage),
+						RequestPayloadHash: requestPayloadHash,
 						APIKeyService:      h.apiKeyService,
 						ChannelUsageFields: channelMappingWS.ToUsageFields(reqModel, result.UpstreamModel),
 				REDACTED); err != nil {
@@ -1483,6 +1477,9 @@ REDACTED
 		if channelMappingWS.Mapped {
 			wsFirstMessage = h.gatewayService.ReplaceModelInBody(firstMessage, channelMappingWS.MappedModel)
 	REDACTED
+
+		// WebSocket 首包可能很大，hash 必须在 hooks 外算成字符串，避免 AfterTurn 闭包保活请求体。
+		requestPayloadHash = service.HashUsageRequestPayload(wsFirstMessage)
 
 		if err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks); err != nil {
 			var failoverErr *service.UpstreamFailoverError

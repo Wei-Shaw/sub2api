@@ -151,7 +151,7 @@ REDACTED
 	REDACTED
 
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
-			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusForbidden && isGeminiInsufficientScope(resp.Header, respBody) {
 				resp = &http.Response{
@@ -207,7 +207,7 @@ REDACTED
 	reasoningEffort := extractCCReasoningEffortFromBody(originalChatBody)
 
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		respBody := s.readUpstreamErrorBody(resp)
 		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 		evBody := unwrapIfNeeded(account.Type == AccountTypeOAuth, respBody)
 

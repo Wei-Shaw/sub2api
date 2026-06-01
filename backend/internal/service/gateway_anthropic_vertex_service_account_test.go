@@ -35,7 +35,7 @@ REDACTED
 	body := []byte(`{"model":"claude-sonnet-4-5","stream":false,"max_tokens":32,"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
 
 	svc := &GatewayService{REDACTED
-	req, err := svc.buildUpstreamRequest(
+	req, _, err := svc.buildUpstreamRequest(
 		context.Background(),
 		c,
 		account,
@@ -87,7 +87,7 @@ REDACTED
 	body := []byte(`{"model":"claude-haiku-4-5","context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"REDACTED]REDACTED,"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
 
 	svc := &GatewayService{REDACTED
-	req, err := svc.buildUpstreamRequest(
+	req, _, err := svc.buildUpstreamRequest(
 		context.Background(), c, account, body,
 		"vertex-token", "service_account", "claude-haiku-4-5@20251001", false, false,
 	)
@@ -117,7 +117,7 @@ REDACTED
 	body := []byte(`{"model":"claude-sonnet-4-6","context_management":{"edits":[{"type":"clear_thinking_20251015"REDACTED]REDACTED,"messages":[]REDACTED`)
 
 	svc := &GatewayService{REDACTED
-	req, err := svc.buildUpstreamRequest(
+	req, _, err := svc.buildUpstreamRequest(
 		context.Background(), c, account, body,
 		"vertex-token", "service_account", "claude-sonnet-4-6@20260218", false, false,
 	)

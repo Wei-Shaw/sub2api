@@ -84,6 +84,17 @@ REDACTED
 	require.Equal(t, "2K", imageSize)
 REDACTED
 
+func TestResolveOpenAIResponsesImageBillingConfigFromBodyIgnoresUnrelatedLargeInput(t *testing.T) {
+	cfg, err := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(
+		[]byte(`{"model":"mapped-text-model","tools":[{"type":"image_generation","model":"gpt-image-2","size":"2048x1152"REDACTED],"input":[{"type":"message","content":[{"type":"input_text","text":"hi","nonce":1e1000000REDACTED]REDACTED]REDACTED`),
+		"requested-model",
+	)
+REDACTED
+	require.Equal(t, "gpt-image-2", cfg.Model)
+	require.Equal(t, "2K", cfg.SizeTier)
+	require.Equal(t, "2048x1152", cfg.InputSize)
+REDACTED
+
 func TestResolveOpenAIResponsesImageBillingConfigSupportsOfficialAndCustomSizes(t *testing.T) {
 	tests := []struct {
 		name     string

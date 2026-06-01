@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/json"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -91,13 +90,43 @@ func openAIJSONToolsContainImageGeneration(tools gjson.Result) bool {
 REDACTED
 	found := false
 	tools.ForEach(func(_, item gjson.Result) bool {
-		if strings.TrimSpace(item.Get("type").String()) == "image_generation" {
+		if openAIJSONString(item.Get("type")) == "image_generation" {
 			found = true
 			return false
 	REDACTED
 		return true
 REDACTED)
 	return found
+REDACTED
+
+func openAIRequestBodyHasImageGenerationTool(body []byte) bool {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+REDACTED
+	return openAIJSONToolsContainImageGeneration(gjson.GetBytes(body, "tools"))
+REDACTED
+
+func openAIRequestBodyImageGenerationToolNeedsNormalization(body []byte) bool {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+REDACTED
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.IsArray() {
+		return false
+REDACTED
+	needsNormalization := false
+	tools.ForEach(func(_, item gjson.Result) bool {
+		if openAIJSONString(item.Get("type")) != "image_generation" {
+			return true
+	REDACTED
+		// 只有旧字段需要迁移时才进入 map 修改，纯计费读取保持 raw 路径。
+		if item.Get("format").Exists() || item.Get("compression").Exists() {
+			needsNormalization = true
+			return false
+	REDACTED
+		return true
+REDACTED)
+	return needsNormalization
 REDACTED
 
 func openAIJSONToolChoiceSelectsImageGeneration(choice gjson.Result) bool {
@@ -159,17 +188,6 @@ REDACTED
 	return apiKey.Group
 REDACTED
 
-func cloneRequestMapForImageIntent(body []byte) map[string]any {
-	if len(body) == 0 {
-		return nil
-REDACTED
-	var out map[string]any
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil
-REDACTED
-	return out
-REDACTED
-
 type OpenAIResponsesImageBillingConfig struct {
 	Model     string
 	SizeTier  string
@@ -225,8 +243,43 @@ REDACTED
 REDACTED
 
 func resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body []byte, fallbackModel string) (OpenAIResponsesImageBillingConfig, error) {
-	reqBody := cloneRequestMapForImageIntent(body)
-	return resolveOpenAIResponsesImageBillingConfigDetailed(reqBody, fallbackModel)
+	imageModel := ""
+	imageSize := ""
+	hasImageTool := false
+	if len(body) > 0 && gjson.ValidBytes(body) {
+		tools := gjson.GetBytes(body, "tools")
+		if tools.IsArray() {
+			tools.ForEach(func(_, item gjson.Result) bool {
+				if openAIJSONString(item.Get("type")) != "image_generation" {
+					return true
+			REDACTED
+				hasImageTool = true
+				imageModel = openAIJSONString(item.Get("model"))
+				imageSize = openAIJSONString(item.Get("size"))
+				return false
+		REDACTED)
+	REDACTED
+		if imageSize == "" {
+			imageSize = openAIJSONString(gjson.GetBytes(body, "size"))
+	REDACTED
+		if imageModel == "" {
+			bodyModel := openAIJSONString(gjson.GetBytes(body, "model"))
+			if isOpenAIImageBillingModelAlias(bodyModel) || !hasImageTool {
+				imageModel = bodyModel
+		REDACTED
+	REDACTED
+REDACTED
+	if imageModel == "" && hasImageTool {
+		imageModel = "gpt-image-2"
+REDACTED
+	if imageModel == "" {
+		imageModel = strings.TrimSpace(fallbackModel)
+REDACTED
+	return OpenAIResponsesImageBillingConfig{
+		Model:     imageModel,
+		SizeTier:  normalizeOpenAIImageSizeTier(imageSize),
+		InputSize: imageSize,
+REDACTED, nil
 REDACTED
 
 func isOpenAIImageBillingModelAlias(model string) bool {
@@ -235,4 +288,11 @@ func isOpenAIImageBillingModelAlias(model string) bool {
 		return false
 REDACTED
 	return isOpenAIImageGenerationModel(normalized) || strings.Contains(normalized, "image")
+REDACTED
+
+func openAIJSONString(value gjson.Result) string {
+	if value.Type != gjson.String {
+		return ""
+REDACTED
+	return strings.TrimSpace(value.String())
 REDACTED

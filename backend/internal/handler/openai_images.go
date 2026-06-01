@@ -73,9 +73,10 @@ REDACTED
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 REDACTED
+	requestModel := parsed.Model
 
 	reqLog = reqLog.With(
-		zap.String("model", parsed.Model),
+		zap.String("model", requestModel),
 		zap.Bool("stream", parsed.Stream),
 		zap.Bool("multipart", parsed.Multipart),
 		zap.String("capability", string(parsed.RequiredCapability)),
@@ -85,7 +86,7 @@ REDACTED
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 REDACTED
-	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, parsed.Model, parsed.ModerationBody()); decision != nil && decision.Blocked {
+	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, requestModel, parsed.ModerationBody()); decision != nil && decision.Blocked {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 REDACTED
@@ -98,13 +99,13 @@ REDACTED
 REDACTED
 
 	if parsed.Multipart {
-		setOpsRequestContext(c, parsed.Model, parsed.Stream)
+		setOpsRequestContext(c, requestModel, parsed.Stream)
 REDACTED else {
-		setOpsRequestContext(c, parsed.Model, parsed.Stream)
+		setOpsRequestContext(c, requestModel, parsed.Stream)
 REDACTED
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsed.Stream, false)))
 
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, parsed.Model)
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, requestModel)
 
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
@@ -147,7 +148,7 @@ REDACTED
 			c.Request.Context(),
 			apiKey.GroupID,
 			sessionHash,
-			parsed.Model,
+			requestModel,
 			failedAccountIDs,
 			parsed.RequiredCapability,
 		)
@@ -324,14 +325,14 @@ REDACTED
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
-				ChannelUsageFields: channelMapping.ToUsageFields(parsed.Model, upstreamModel),
+				ChannelUsageFields: channelMapping.ToUsageFields(requestModel, upstreamModel),
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.images"),
 					zap.Int64("user_id", subject.UserID),
 					zap.Int64("api_key_id", apiKey.ID),
 					zap.Any("group_id", apiKey.GroupID),
-					zap.String("model", parsed.Model),
+					zap.String("model", requestModel),
 					zap.Int64("account_id", account.ID),
 				).Error("openai.images.record_usage_failed", zap.Error(err))
 		REDACTED
