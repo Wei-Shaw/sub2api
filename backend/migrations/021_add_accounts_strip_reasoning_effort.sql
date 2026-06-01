@@ -1,0 +1,2 @@
+ALTER TABLE accounts
+    ADD COLUMN IF NOT EXISTS strip_reasoning_effort_on_cc BOOLEAN NOT NULL DEFAULT FALSE;

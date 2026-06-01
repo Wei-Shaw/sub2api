@@ -4439,6 +4439,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return s.handleWebSearchEmulation(ctx, c, account, parsed)
 	}
 
+	// apikey-chat-completions：客户端 /v1/messages → Anthropic↔CC 协议转换 → 上游 OpenAI 兼容 CC 端点。
+	// 必须在 Anthropic API key passthrough / Bedrock 等分支之前，因为 IsAnthropicAPIKeyPassthroughEnabled
+	// 只看类型 + 配置，可能错误命中此账号类型。
+	if account != nil && account.IsOpenAIChatCompletionsUpstream() {
+		return s.ForwardAnthropicAsChatCompletions(ctx, c, account, parsed)
+	}
+
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body.Bytes()
 		passthroughModel := parsed.Model

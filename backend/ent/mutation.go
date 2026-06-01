@@ -2274,52 +2274,53 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 // AccountMutation represents an operation that mutates the Account nodes in the graph.
 type AccountMutation struct {
 	config
-	op                        Op
-	typ                       string
-	id                        *int64
-	created_at                *time.Time
-	updated_at                *time.Time
-	deleted_at                *time.Time
-	name                      *string
-	notes                     *string
-	platform                  *string
-	_type                     *string
-	credentials               *map[string]interface{}
-	extra                     *map[string]interface{}
-	concurrency               *int
-	addconcurrency            *int
-	load_factor               *int
-	addload_factor            *int
-	priority                  *int
-	addpriority               *int
-	rate_multiplier           *float64
-	addrate_multiplier        *float64
-	status                    *string
-	error_message             *string
-	last_used_at              *time.Time
-	expires_at                *time.Time
-	auto_pause_on_expired     *bool
-	schedulable               *bool
-	rate_limited_at           *time.Time
-	rate_limit_reset_at       *time.Time
-	overload_until            *time.Time
-	temp_unschedulable_until  *time.Time
-	temp_unschedulable_reason *string
-	session_window_start      *time.Time
-	session_window_end        *time.Time
-	session_window_status     *string
-	clearedFields             map[string]struct{}
-	groups                    map[int64]struct{}
-	removedgroups             map[int64]struct{}
-	clearedgroups             bool
-	proxy                     *int64
-	clearedproxy              bool
-	usage_logs                map[int64]struct{}
-	removedusage_logs         map[int64]struct{}
-	clearedusage_logs         bool
-	done                      bool
-	oldValue                  func(context.Context) (*Account, error)
-	predicates                []predicate.Account
+	op                           Op
+	typ                          string
+	id                           *int64
+	created_at                   *time.Time
+	updated_at                   *time.Time
+	deleted_at                   *time.Time
+	name                         *string
+	notes                        *string
+	platform                     *string
+	_type                        *string
+	credentials                  *map[string]interface{}
+	extra                        *map[string]interface{}
+	concurrency                  *int
+	addconcurrency               *int
+	load_factor                  *int
+	addload_factor               *int
+	priority                     *int
+	addpriority                  *int
+	rate_multiplier              *float64
+	addrate_multiplier           *float64
+	status                       *string
+	error_message                *string
+	last_used_at                 *time.Time
+	expires_at                   *time.Time
+	auto_pause_on_expired        *bool
+	strip_reasoning_effort_on_cc *bool
+	schedulable                  *bool
+	rate_limited_at              *time.Time
+	rate_limit_reset_at          *time.Time
+	overload_until               *time.Time
+	temp_unschedulable_until     *time.Time
+	temp_unschedulable_reason    *string
+	session_window_start         *time.Time
+	session_window_end           *time.Time
+	session_window_status        *string
+	clearedFields                map[string]struct{}
+	groups                       map[int64]struct{}
+	removedgroups                map[int64]struct{}
+	clearedgroups                bool
+	proxy                        *int64
+	clearedproxy                 bool
+	usage_logs                   map[int64]struct{}
+	removedusage_logs            map[int64]struct{}
+	clearedusage_logs            bool
+	done                         bool
+	oldValue                     func(context.Context) (*Account, error)
+	predicates                   []predicate.Account
 }
 
 var _ ent.Mutation = (*AccountMutation)(nil)
@@ -3276,6 +3277,42 @@ func (m *AccountMutation) ResetAutoPauseOnExpired() {
 	m.auto_pause_on_expired = nil
 }
 
+// SetStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field.
+func (m *AccountMutation) SetStripReasoningEffortOnCc(b bool) {
+	m.strip_reasoning_effort_on_cc = &b
+}
+
+// StripReasoningEffortOnCc returns the value of the "strip_reasoning_effort_on_cc" field in the mutation.
+func (m *AccountMutation) StripReasoningEffortOnCc() (r bool, exists bool) {
+	v := m.strip_reasoning_effort_on_cc
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStripReasoningEffortOnCc returns the old "strip_reasoning_effort_on_cc" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldStripReasoningEffortOnCc(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStripReasoningEffortOnCc is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStripReasoningEffortOnCc requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStripReasoningEffortOnCc: %w", err)
+	}
+	return oldValue.StripReasoningEffortOnCc, nil
+}
+
+// ResetStripReasoningEffortOnCc resets all changes to the "strip_reasoning_effort_on_cc" field.
+func (m *AccountMutation) ResetStripReasoningEffortOnCc() {
+	m.strip_reasoning_effort_on_cc = nil
+}
+
 // SetSchedulable sets the "schedulable" field.
 func (m *AccountMutation) SetSchedulable(b bool) {
 	m.schedulable = &b
@@ -3873,7 +3910,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 28)
+	fields := make([]string, 0, 29)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -3930,6 +3967,9 @@ func (m *AccountMutation) Fields() []string {
 	}
 	if m.auto_pause_on_expired != nil {
 		fields = append(fields, account.FieldAutoPauseOnExpired)
+	}
+	if m.strip_reasoning_effort_on_cc != nil {
+		fields = append(fields, account.FieldStripReasoningEffortOnCc)
 	}
 	if m.schedulable != nil {
 		fields = append(fields, account.FieldSchedulable)
@@ -4004,6 +4044,8 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.ExpiresAt()
 	case account.FieldAutoPauseOnExpired:
 		return m.AutoPauseOnExpired()
+	case account.FieldStripReasoningEffortOnCc:
+		return m.StripReasoningEffortOnCc()
 	case account.FieldSchedulable:
 		return m.Schedulable()
 	case account.FieldRateLimitedAt:
@@ -4069,6 +4111,8 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldExpiresAt(ctx)
 	case account.FieldAutoPauseOnExpired:
 		return m.OldAutoPauseOnExpired(ctx)
+	case account.FieldStripReasoningEffortOnCc:
+		return m.OldStripReasoningEffortOnCc(ctx)
 	case account.FieldSchedulable:
 		return m.OldSchedulable(ctx)
 	case account.FieldRateLimitedAt:
@@ -4228,6 +4272,13 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAutoPauseOnExpired(v)
+		return nil
+	case account.FieldStripReasoningEffortOnCc:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStripReasoningEffortOnCc(v)
 		return nil
 	case account.FieldSchedulable:
 		v, ok := value.(bool)
@@ -4541,6 +4592,9 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldAutoPauseOnExpired:
 		m.ResetAutoPauseOnExpired()
+		return nil
+	case account.FieldStripReasoningEffortOnCc:
+		m.ResetStripReasoningEffortOnCc()
 		return nil
 	case account.FieldSchedulable:
 		m.ResetSchedulable()

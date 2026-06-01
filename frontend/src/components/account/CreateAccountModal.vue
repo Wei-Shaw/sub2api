@@ -174,7 +174,7 @@
             >
               <Icon name="sparkles" size="sm" />
             </div>
-            <div>
+            <div class="min-w-0">
               <span class="block text-sm font-medium text-gray-900 dark:text-white">{{
                 t('admin.accounts.claudeCode')
               }}</span>
@@ -204,7 +204,7 @@
             >
               <Icon name="key" size="sm" />
             </div>
-            <div>
+            <div class="min-w-0">
               <span class="block text-sm font-medium text-gray-900 dark:text-white">{{
                 t('admin.accounts.claudeConsole')
               }}</span>
@@ -234,7 +234,7 @@
             >
               <Icon name="cloud" size="sm" />
             </div>
-            <div>
+            <div class="min-w-0">
               <span class="block text-sm font-medium text-gray-900 dark:text-white">{{
                 t('admin.accounts.bedrockLabel')
               }}</span>
@@ -264,9 +264,35 @@
             >
               <Icon name="cloud" size="sm" />
             </div>
-            <div>
+            <div class="min-w-0">
               <span class="block text-sm font-medium text-gray-900 dark:text-white">Vertex</span>
               <span class="text-xs text-gray-500 dark:text-gray-400">Service Account</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            @click="accountCategory = 'apikey-chat-completions'"
+            :class="[
+              'col-span-2 flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all sm:col-span-4',
+              accountCategory === 'apikey-chat-completions'
+                ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
+                : 'border-gray-200 hover:border-orange-300 dark:border-dark-600 dark:hover:border-orange-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'apikey-chat-completions'
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="key" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.types.apikeyChatCompletions') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.apikeyChatCompletionsDesc') }}</span>
             </div>
           </button>
 
@@ -278,12 +304,18 @@
         >
           <p>{{ t('admin.accounts.vertexAnthropicHint') }}</p>
         </div>
+        <div
+          v-if="accountCategory === 'apikey-chat-completions'"
+          class="mt-3 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800 dark:border-orange-800/40 dark:bg-orange-900/20 dark:text-orange-200"
+        >
+          <p>{{ t('admin.accounts.types.apikeyChatCompletionsAnthropicHint') }}</p>
+        </div>
       </div>
 
       <!-- Account Type Selection (OpenAI) -->
       <div v-if="form.platform === 'openai'">
         <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
-        <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3" data-tour="account-form-type">
           <button
             type="button"
             @click="accountCategory = 'oauth-based'"
@@ -333,6 +365,32 @@
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.responsesApi') }}</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            @click="accountCategory = 'apikey-chat-completions'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'apikey-chat-completions'
+                ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
+                : 'border-gray-200 hover:border-orange-300 dark:border-dark-600 dark:hover:border-orange-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'apikey-chat-completions'
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="key" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block break-words text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.types.apikeyChatCompletions') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.apikeyChatCompletionsDesc') }}</span>
             </div>
           </button>
 
@@ -1005,6 +1063,148 @@
               t('admin.accounts.setupTokenLongLived')
             }}</span>
           </label>
+        </div>
+      </div>
+
+      <!-- Chat Completions Upstream input (only for apikey-chat-completions type) -->
+      <div v-if="form.type === 'apikey-chat-completions'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.types.chatCompletionsUrl') }}</label>
+          <input
+            v-model="chatCompletionsUrl"
+            type="text"
+            required
+            class="input"
+            :placeholder="t('admin.accounts.types.chatCompletionsUrlPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.types.chatCompletionsUrlHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.types.chatCompletionsApiKey') }}</label>
+          <input
+            v-model="chatCompletionsApiKey"
+            type="password"
+            required
+            class="input font-mono"
+            autocomplete="new-password"
+            :placeholder="t('admin.accounts.types.chatCompletionsApiKeyPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.types.chatCompletionsApiKeyHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.types.chatCompletionsAuthHeader') }}</label>
+          <select v-model="chatCompletionsAuthHeader" class="input">
+            <option value="Authorization">Authorization: Bearer &lt;API Key&gt;</option>
+            <option value="api-key">api-key: &lt;API Key&gt;</option>
+            <option value="x-api-key">x-api-key: &lt;API Key&gt;</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.types.chatCompletionsAuthHeaderHint') }}</p>
+        </div>
+
+        <!-- Model Restriction Section -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+
+          <!-- Mode Toggle -->
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              <svg class="mr-1.5 inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {{ t('admin.accounts.modelWhitelist') }}
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              <svg class="mr-1.5 inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+              {{ t('admin.accounts.modelMapping') }}
+            </button>
+          </div>
+
+          <!-- Whitelist Mode -->
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
+            </p>
+          </div>
+
+          <!-- Mapping Mode -->
+          <div v-else>
+            <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+              <p class="text-xs text-purple-700 dark:text-purple-400">
+                <svg class="mr-1 inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {{ t('admin.accounts.mapRequestModels') }}
+              </p>
+            </div>
+
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+              <div
+                v-for="(mapping, index) in modelMappings"
+                :key="getModelMappingKey(mapping)"
+                class="flex items-center gap-2"
+              >
+                <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.requestModel')" />
+                <svg class="h-4 w-4 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+                <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.actualModel')" />
+                <button
+                  type="button"
+                  @click="removeModelMapping(index)"
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              @click="addModelMapping"
+              class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+            >
+              <svg class="mr-1 inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+              {{ t('admin.accounts.addMapping') }}
+            </button>
+
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in presetMappings"
+                :key="preset.label"
+                type="button"
+                @click="addPresetMapping(preset.from, preset.to)"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+              >
+                + {{ preset.label }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2780,6 +2980,34 @@
         </div>
       </div>
 
+      <div v-if="form.type === 'apikey-chat-completions'">
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{
+              t('admin.accounts.stripReasoningEffortOnCC')
+            }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.stripReasoningEffortOnCCDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="stripReasoningEffortOnCC = !stripReasoningEffortOnCC"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              stripReasoningEffortOnCC ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                stripReasoningEffortOnCC ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <!-- Mixed Scheduling (only for antigravity accounts) -->
         <div v-if="form.platform === 'antigravity'" class="flex items-center gap-2">
@@ -3357,7 +3585,12 @@ interface TempUnschedRuleForm {
 // State
 const step = ref(1)
 const submitting = ref(false)
-const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
+type ChatCompletionsAuthHeader = 'Authorization' | 'api-key' | 'x-api-key'
+
+const accountCategory = ref<'oauth-based' | 'apikey' | 'apikey-chat-completions' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
+const chatCompletionsUrl = ref('')
+const chatCompletionsApiKey = ref('')
+const chatCompletionsAuthHeader = ref<ChatCompletionsAuthHeader>('Authorization')
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
@@ -3413,6 +3646,7 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
+const stripReasoningEffortOnCC = ref(false)
 const openaiPassthroughEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
@@ -3781,6 +4015,8 @@ watch(
       form.type = 'service_account' as AccountType
     } else if (category === 'oauth-based') {
       form.type = method as AccountType // 'oauth' or 'setup-token'
+    } else if (category === 'apikey-chat-completions') {
+      form.type = 'apikey-chat-completions' as AccountType
     } else {
       form.type = 'apikey'
     }
@@ -3821,6 +4057,9 @@ watch(
       accountCategory.value = 'oauth-based'
     }
     if (newPlatform !== 'anthropic' && accountCategory.value === 'bedrock') {
+      accountCategory.value = 'oauth-based'
+    }
+    if (newPlatform !== 'openai' && newPlatform !== 'anthropic' && accountCategory.value === 'apikey-chat-completions') {
       accountCategory.value = 'oauth-based'
     }
     // Reset Bedrock fields when switching platforms
@@ -4213,6 +4452,9 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  chatCompletionsUrl.value = ''
+  chatCompletionsApiKey.value = ''
+  chatCompletionsAuthHeader.value = 'Authorization'
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -4240,6 +4482,7 @@ const resetForm = () => {
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
+  stripReasoningEffortOnCC.value = false
   openaiPassthroughEnabled.value = false
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
@@ -4605,6 +4848,27 @@ const handleSubmit = async () => {
     return
   }
 
+  // For apikey-chat-completions type, create directly
+  if (form.type === 'apikey-chat-completions') {
+    if (!chatCompletionsUrl.value.trim()) {
+      appStore.showError(t('admin.accounts.types.chatCompletionsUrlPlaceholder'))
+      return
+    }
+    if (!chatCompletionsApiKey.value.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
+      return
+    }
+    const credentials: Record<string, unknown> = {
+      chat_completions_url: chatCompletionsUrl.value.trim(),
+      api_key: chatCompletionsApiKey.value.trim(),
+      auth_header: chatCompletionsAuthHeader.value
+    }
+    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    if (modelMapping) credentials.model_mapping = modelMapping
+    await createAccountAndFinish(form.platform, 'apikey-chat-completions' as AccountType, credentials)
+    return
+  }
+
   // For apikey type, create directly
   if (!apiKeyValue.value.trim()) {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
@@ -4783,7 +5047,8 @@ const createAccountAndFinish = async (
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
     expires_at: form.expires_at,
-    auto_pause_on_expired: autoPauseOnExpired.value
+    auto_pause_on_expired: autoPauseOnExpired.value,
+    ...(type === 'apikey-chat-completions' ? { strip_reasoning_effort_on_cc: stripReasoningEffortOnCC.value } : {})
   })
 }
 

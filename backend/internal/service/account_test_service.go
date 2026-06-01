@@ -179,6 +179,30 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
 
+	// apikey-chat-completions accounts use the same CC endpoint test regardless of platform
+	// (the upstream is an arbitrary OpenAI-compatible CC endpoint, not platform-bound).
+	if account.Type == AccountTypeAPIKeyChatCompletions {
+		testModelID := modelID
+		if testModelID == "" {
+			testModelID = openai.DefaultTestModel
+		}
+		testModelID = account.GetMappedModel(testModelID)
+		authToken := account.GetUpstreamAPIKey()
+		if authToken == "" {
+			return s.sendErrorAndEnd(c, "No API key available")
+		}
+		ccURL := account.GetOpenAIChatCompletionsURL()
+		if ccURL == "" {
+			return s.sendErrorAndEnd(c, "No chat_completions_url configured for this account")
+		}
+		chatCompletionsURL, err := s.validateUpstreamBaseURL(ccURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid chat_completions_url: %s", err.Error()))
+		}
+		return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, chatCompletionsURL, authToken)
+
+	}
+
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
@@ -510,6 +534,24 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
 
+	// apikey-chat-completions accounts use the CC endpoint directly
+	if account.Type == AccountTypeAPIKeyChatCompletions {
+		authToken := account.GetUpstreamAPIKey()
+		if authToken == "" {
+			return s.sendErrorAndEnd(c, "No API key available")
+		}
+		ccURL := account.GetOpenAIChatCompletionsURL()
+		if ccURL == "" {
+			return s.sendErrorAndEnd(c, "No chat_completions_url configured for this account")
+		}
+		chatCompletionsURL, err := s.validateUpstreamBaseURL(ccURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid chat_completions_url: %s", err.Error()))
+		}
+		return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, chatCompletionsURL, authToken)
+
+	}
+
 	// Route to image generation test if an image model is selected
 	if isOpenAIImageModel(testModelID) {
 		imagePrompt := strings.TrimSpace(prompt)
@@ -555,7 +597,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
 		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
-			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
+			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, buildOpenAIChatCompletionsURL(normalizedBaseURL), authToken)
 		}
 		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
 	} else {
@@ -638,11 +680,11 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	account *Account,
 	testModelID string,
 	prompt string,
-	normalizedBaseURL string,
+	chatCompletionsURL string,
 	authToken string,
 ) error {
 	ctx := c.Request.Context()
-	apiURL := buildOpenAIChatCompletionsURL(normalizedBaseURL)
+	apiURL := strings.TrimSpace(chatCompletionsURL)
 
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -663,7 +705,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("Authorization", "Bearer "+authToken)
+	applyOpenAICompatibleAPIKeyAuth(req, account, authToken)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

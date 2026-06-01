@@ -689,7 +689,14 @@ export interface UpdateGroupRequest {
 // ==================== Account & Proxy Types ====================
 
 export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
-export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
+export type AccountType =
+  | 'oauth'
+  | 'setup-token'
+  | 'apikey'
+  | 'apikey-chat-completions'
+  | 'upstream'
+  | 'bedrock'
+  | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
 
@@ -839,6 +846,7 @@ export interface Account {
   last_used_at: string | null
   expires_at: number | null
   auto_pause_on_expired: boolean
+  strip_reasoning_effort_on_cc: boolean
   created_at: string
   updated_at: string
   proxy?: Proxy
@@ -1028,6 +1036,7 @@ export interface CreateAccountRequest {
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  strip_reasoning_effort_on_cc?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 
@@ -1047,6 +1056,7 @@ export interface UpdateAccountRequest {
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  strip_reasoning_effort_on_cc?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 
@@ -1121,6 +1131,7 @@ export interface AdminDataAccount {
   rate_multiplier?: number | null
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  strip_reasoning_effort_on_cc?: boolean
 }
 
 export interface AdminDataImportError {

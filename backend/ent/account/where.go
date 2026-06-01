@@ -140,6 +140,11 @@ func AutoPauseOnExpired(v bool) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldAutoPauseOnExpired, v))
 }
 
+// StripReasoningEffortOnCc applies equality check predicate on the "strip_reasoning_effort_on_cc" field. It's identical to StripReasoningEffortOnCcEQ.
+func StripReasoningEffortOnCc(v bool) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldStripReasoningEffortOnCc, v))
+}
+
 // Schedulable applies equality check predicate on the "schedulable" field. It's identical to SchedulableEQ.
 func Schedulable(v bool) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldSchedulable, v))
@@ -1033,6 +1038,16 @@ func AutoPauseOnExpiredEQ(v bool) predicate.Account {
 // AutoPauseOnExpiredNEQ applies the NEQ predicate on the "auto_pause_on_expired" field.
 func AutoPauseOnExpiredNEQ(v bool) predicate.Account {
 	return predicate.Account(sql.FieldNEQ(FieldAutoPauseOnExpired, v))
+}
+
+// StripReasoningEffortOnCcEQ applies the EQ predicate on the "strip_reasoning_effort_on_cc" field.
+func StripReasoningEffortOnCcEQ(v bool) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldStripReasoningEffortOnCc, v))
+}
+
+// StripReasoningEffortOnCcNEQ applies the NEQ predicate on the "strip_reasoning_effort_on_cc" field.
+func StripReasoningEffortOnCcNEQ(v bool) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldStripReasoningEffortOnCc, v))
 }
 
 // SchedulableEQ applies the EQ predicate on the "schedulable" field.

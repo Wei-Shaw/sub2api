@@ -329,6 +329,20 @@ func (_u *AccountUpdate) SetNillableAutoPauseOnExpired(v *bool) *AccountUpdate {
 	return _u
 }
 
+// SetStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field.
+func (_u *AccountUpdate) SetStripReasoningEffortOnCc(v bool) *AccountUpdate {
+	_u.mutation.SetStripReasoningEffortOnCc(v)
+	return _u
+}
+
+// SetNillableStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableStripReasoningEffortOnCc(v *bool) *AccountUpdate {
+	if v != nil {
+		_u.SetStripReasoningEffortOnCc(*v)
+	}
+	return _u
+}
+
 // SetSchedulable sets the "schedulable" field.
 func (_u *AccountUpdate) SetSchedulable(v bool) *AccountUpdate {
 	_u.mutation.SetSchedulable(v)
@@ -755,6 +769,9 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AutoPauseOnExpired(); ok {
 		_spec.SetField(account.FieldAutoPauseOnExpired, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.StripReasoningEffortOnCc(); ok {
+		_spec.SetField(account.FieldStripReasoningEffortOnCc, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Schedulable(); ok {
 		_spec.SetField(account.FieldSchedulable, field.TypeBool, value)
@@ -1256,6 +1273,20 @@ func (_u *AccountUpdateOne) SetNillableAutoPauseOnExpired(v *bool) *AccountUpdat
 	return _u
 }
 
+// SetStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field.
+func (_u *AccountUpdateOne) SetStripReasoningEffortOnCc(v bool) *AccountUpdateOne {
+	_u.mutation.SetStripReasoningEffortOnCc(v)
+	return _u
+}
+
+// SetNillableStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableStripReasoningEffortOnCc(v *bool) *AccountUpdateOne {
+	if v != nil {
+		_u.SetStripReasoningEffortOnCc(*v)
+	}
+	return _u
+}
+
 // SetSchedulable sets the "schedulable" field.
 func (_u *AccountUpdateOne) SetSchedulable(v bool) *AccountUpdateOne {
 	_u.mutation.SetSchedulable(v)
@@ -1712,6 +1743,9 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if value, ok := _u.mutation.AutoPauseOnExpired(); ok {
 		_spec.SetField(account.FieldAutoPauseOnExpired, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.StripReasoningEffortOnCc(); ok {
+		_spec.SetField(account.FieldStripReasoningEffortOnCc, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Schedulable(); ok {
 		_spec.SetField(account.FieldSchedulable, field.TypeBool, value)

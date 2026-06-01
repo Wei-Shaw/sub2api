@@ -3249,6 +3249,21 @@ export default {
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游',
+        apikeyChatCompletions: 'OpenAI Chat Completions 上游',
+        apikeyChatCompletionsDesc:
+          '通过完整 URL + API Key 对接任意 OpenAI 兼容的 /v1/chat/completions 端点',
+        apikeyChatCompletionsAnthropicHint:
+          'Anthropic 平台下，网关会自动把 /v1/messages 请求转换为 OpenAI Chat Completions 发给上游，再将响应翻译回 Messages 协议；/v1/chat/completions 走原样透传。',
+        chatCompletionsUrl: 'Chat Completions URL',
+        chatCompletionsUrlPlaceholder:
+          '完整端点 URL，例如 https://api.deepseek.com/v1/chat/completions',
+        chatCompletionsUrlHint: '上游服务的 /v1/chat/completions 完整端点 URL',
+        chatCompletionsApiKey: 'API Key',
+        chatCompletionsApiKeyPlaceholder: '上游服务的 API Key',
+        chatCompletionsApiKeyHint: '用于鉴权上游服务的 API Key',
+        chatCompletionsAuthHeader: '鉴权 Header',
+        chatCompletionsAuthHeaderHint:
+          '选择上游接口要求的 API Key Header。多数 OpenAI 兼容接口使用 Authorization: Bearer；部分接口使用 api-key 或 x-api-key。',
         api_key: 'API Key',
         cookie: 'Cookie'
       },
@@ -3614,12 +3629,15 @@ export default {
       interceptWarmupRequestsDesc: '启用后，标题生成等预热请求将返回 mock 响应，不消耗上游 token',
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
-	  autoPause5hThreshold: '5h 用量阈值(%)',
-	  autoPause7dThreshold: '7d 用量阈值(%)',
-	  autoPauseThresholdHint: '留空或填 0 表示使用全局默认阈值（在运维设置中配置）；填具体值则覆盖全局默认。达到阈值后仅在调度时跳过账号，不修改 schedulable。',
-	  autoPause5hDisabled: '禁用 5h 自动暂停',
-	  autoPause7dDisabled: '禁用 7d 自动暂停',
-	  autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
+stripReasoningEffortOnCC: '剥离 reasoning_effort（Chat Completions）',
+      stripReasoningEffortOnCCDesc: '当 /responses 请求被转换为 /v1/chat/completions 转发时丢弃 reasoning_effort。适用于拒绝该组合的上游，例如 b.ai。',
+      autoPause5hThreshold: '5h 用量阈值(%)',
+      autoPause7dThreshold: '7d 用量阈值(%)',
+      autoPauseThresholdHint: '留空或填 0 表示使用全局默认阈值（在运维设置中配置）；填具体值则覆盖全局默认。达到阈值后仅在调度时跳过账号，不修改 schedulable。',
+      autoPause5hDisabled: '禁用 5h 自动暂停',
+      autoPause7dDisabled: '禁用 7d 自动暂停',
+      autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
+
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',

@@ -29,15 +29,16 @@ type Account struct {
 	Priority    int
 	// RateMultiplier 账号计费倍率（>=0，允许 0 表示该账号计费为 0）。
 	// 使用指针用于兼容旧版本调度缓存（Redis）中缺字段的情况：nil 表示按 1.0 处理。
-	RateMultiplier     *float64
-	LoadFactor         *int // 调度负载因子；nil 表示使用 Concurrency
-	Status             string
-	ErrorMessage       string
-	LastUsedAt         *time.Time
-	ExpiresAt          *time.Time
-	AutoPauseOnExpired bool
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	RateMultiplier           *float64
+	LoadFactor               *int // 调度负载因子；nil 表示使用 Concurrency
+	Status                   string
+	ErrorMessage             string
+	LastUsedAt               *time.Time
+	ExpiresAt                *time.Time
+	AutoPauseOnExpired       bool
+	StripReasoningEffortOnCC bool
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
 
 	Schedulable bool
 
@@ -829,7 +830,7 @@ func matchWildcardMappingResult(mapping map[string]string, requestedModel string
 }
 
 func (a *Account) IsCustomErrorCodesEnabled() bool {
-	if a.Type != AccountTypeAPIKey || a.Credentials == nil {
+	if (a.Type != AccountTypeAPIKey && a.Type != AccountTypeAPIKeyChatCompletions) || a.Credentials == nil {
 		return false
 	}
 	if v, ok := a.Credentials["custom_error_codes_enabled"]; ok {
@@ -1043,7 +1044,7 @@ func (a *Account) IsBedrockAPIKey() bool {
 
 // IsAPIKeyOrBedrock 返回账号类型是否支持配额和池模式等特性
 func (a *Account) IsAPIKeyOrBedrock() bool {
-	return a.Type == AccountTypeAPIKey || a.Type == AccountTypeBedrock
+	return a.Type == AccountTypeAPIKey || a.Type == AccountTypeAPIKeyChatCompletions || a.Type == AccountTypeBedrock
 }
 
 func (a *Account) IsOpenAI() bool {
@@ -1059,14 +1060,90 @@ func (a *Account) IsOpenAIOAuth() bool {
 }
 
 func (a *Account) IsOpenAIApiKey() bool {
-	return a.IsOpenAI() && a.Type == AccountTypeAPIKey
+	return a.IsOpenAI() && (a.Type == AccountTypeAPIKey || a.Type == AccountTypeAPIKeyChatCompletions)
+}
+
+// IsOpenAIChatCompletionsUpstream 返回账号是否为 OpenAI 兼容 Chat Completions 上游账号。
+//
+// 平台无关：只要账号类型是 AccountTypeAPIKeyChatCompletions 即视为该上游形态。
+// 适用场景包括：
+//   - Platform=openai：客户端调 /v1/chat/completions 走 raw 透传；调 /v1/responses 走
+//     Responses↔CC 协议转换（参见 OpenAIGatewayService.ForwardResponsesAsChatCompletions）。
+//   - Platform=anthropic：客户端调 /v1/messages 走 Anthropic↔CC 协议转换
+//     （参见 GatewayService.ForwardAnthropicAsChatCompletions）；调 /v1/chat/completions
+//     走 raw 透传（参见 GatewayService.ForwardClaudeChatCompletionsRaw）。
+func (a *Account) IsOpenAIChatCompletionsUpstream() bool {
+	return a.Type == AccountTypeAPIKeyChatCompletions
+}
+
+// GetOpenAIChatCompletionsURL 返回 OpenAI 兼容 Chat Completions 上游的完整 endpoint URL。
+// credentials.chat_completions_url 应存储完整 URL（如 https://api.deepseek.com/v1/chat/completions）。
+func (a *Account) GetOpenAIChatCompletionsURL() string {
+	if a.Credentials == nil {
+		return ""
+	}
+	if v, ok := a.Credentials["chat_completions_url"]; ok {
+		if s, ok := v.(string); ok {
+			return strings.TrimSpace(s)
+		}
+	}
+	return ""
+}
+
+// GetUpstreamAPIKey 返回 credentials.api_key，适用于 apikey-chat-completions 等
+// 不受 GetOpenAIApiKey 类型限制约束的上游账号。
+func (a *Account) GetUpstreamAPIKey() string {
+	if a.Credentials == nil {
+		return ""
+	}
+	if v, ok := a.Credentials["api_key"]; ok {
+		if s, ok := v.(string); ok {
+			return strings.TrimSpace(s)
+		}
+	}
+	return ""
+}
+
+const (
+	OpenAICompatibleAuthHeaderAuthorization = "Authorization"
+	OpenAICompatibleAuthHeaderAPIKey        = "api-key"
+	OpenAICompatibleAuthHeaderXAPIKey       = "x-api-key"
+)
+
+func NormalizeOpenAICompatibleAuthHeader(value string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return OpenAICompatibleAuthHeaderAuthorization, true
+	case strings.ToLower(OpenAICompatibleAuthHeaderAuthorization):
+		return OpenAICompatibleAuthHeaderAuthorization, true
+	case OpenAICompatibleAuthHeaderAPIKey:
+		return OpenAICompatibleAuthHeaderAPIKey, true
+	case OpenAICompatibleAuthHeaderXAPIKey:
+		return OpenAICompatibleAuthHeaderXAPIKey, true
+	default:
+		return "", false
+	}
+}
+
+func (a *Account) OpenAICompatibleAuthHeader() string {
+	if a == nil || a.Credentials == nil || !a.IsOpenAIChatCompletionsUpstream() {
+		return OpenAICompatibleAuthHeaderAuthorization
+	}
+	if v, ok := a.Credentials["auth_header"]; ok {
+		if s, ok := v.(string); ok {
+			if header, valid := NormalizeOpenAICompatibleAuthHeader(s); valid {
+				return header
+			}
+		}
+	}
+	return OpenAICompatibleAuthHeaderAuthorization
 }
 
 func (a *Account) GetOpenAIBaseURL() string {
 	if !a.IsOpenAI() {
 		return ""
 	}
-	if a.Type == AccountTypeAPIKey {
+	if a.Type == AccountTypeAPIKey || a.Type == AccountTypeAPIKeyChatCompletions {
 		baseURL := a.GetCredential("base_url")
 		if baseURL != "" {
 			return baseURL
@@ -1211,7 +1288,7 @@ func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapabilit
 	}
 	switch capability {
 	case OpenAIImagesCapabilityBasic, OpenAIImagesCapabilityNative:
-		return a.Type == AccountTypeOAuth || a.Type == AccountTypeAPIKey
+		return a.Type == AccountTypeOAuth || a.Type == AccountTypeAPIKey || a.Type == AccountTypeAPIKeyChatCompletions
 	default:
 		return true
 	}

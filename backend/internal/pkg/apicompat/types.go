@@ -195,7 +195,16 @@ type ResponsesRequest struct {
 	MaxOutputTokens    *int                `json:"max_output_tokens,omitempty"`
 	Temperature        *float64            `json:"temperature,omitempty"`
 	TopP               *float64            `json:"top_p,omitempty"`
+	Stop               json.RawMessage     `json:"stop,omitempty"` // string or []string
+	User               string              `json:"user,omitempty"`
+	Metadata           json.RawMessage     `json:"metadata,omitempty"`
+	Seed               *int                `json:"seed,omitempty"`
+	PresencePenalty    *float64            `json:"presence_penalty,omitempty"`
+	FrequencyPenalty   *float64            `json:"frequency_penalty,omitempty"`
+	Logprobs           *bool               `json:"logprobs,omitempty"`
+	TopLogprobs        *int                `json:"top_logprobs,omitempty"`
 	Stream             bool                `json:"stream,omitempty"`
+	StreamOptions      *ChatStreamOptions  `json:"stream_options,omitempty"`
 	Tools              []ResponsesTool     `json:"tools,omitempty"`
 	Include            []string            `json:"include,omitempty"`
 	Store              *bool               `json:"store,omitempty"`
@@ -237,6 +246,49 @@ type ResponsesInputItem struct {
 
 	// type=function_call_output
 	Output string `json:"output,omitempty"`
+}
+
+// UnmarshalJSON accepts Responses function_call_output.output in both the
+// official string form and the object/array forms commonly emitted by gateway
+// clients. Object/array values are compacted into a JSON string so existing
+// conversion code can keep treating Output as Chat Completions tool message
+// content.
+func (it *ResponsesInputItem) UnmarshalJSON(data []byte) error {
+	type responsesInputItemAlias ResponsesInputItem
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	output := fields["output"]
+	delete(fields, "output")
+	withoutOutput, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	var alias responsesInputItemAlias
+	if err := json.Unmarshal(withoutOutput, &alias); err != nil {
+		return err
+	}
+	*it = ResponsesInputItem(alias)
+	it.Output = decodeResponsesFunctionOutput(output)
+	return nil
+}
+
+func decodeResponsesFunctionOutput(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err == nil {
+		if b, err := json.Marshal(v); err == nil {
+			return string(b)
+		}
+	}
+	return string(raw)
 }
 
 // ResponsesContentPart is a typed content part in a Responses message.
@@ -390,6 +442,9 @@ type ResponsesStreamEvent struct {
 	// response.output_item.added / response.output_item.done
 	Item *ResponsesOutput `json:"item,omitempty"`
 
+	// response.content_part.added / response.content_part.done
+	Part *ResponsesContentPart `json:"part,omitempty"`
+
 	// response.output_text.delta / response.output_text.done
 	OutputIndex  int    `json:"output_index,omitempty"`
 	ContentIndex int    `json:"content_index,omitempty"`
@@ -427,13 +482,21 @@ type ChatCompletionsRequest struct {
 	MaxCompletionTokens *int               `json:"max_completion_tokens,omitempty"`
 	Temperature         *float64           `json:"temperature,omitempty"`
 	TopP                *float64           `json:"top_p,omitempty"`
+	Stop                json.RawMessage    `json:"stop,omitempty"` // string or []string
+	User                string             `json:"user,omitempty"`
+	Metadata            json.RawMessage    `json:"metadata,omitempty"`
+	Seed                *int               `json:"seed,omitempty"`
+	PresencePenalty     *float64           `json:"presence_penalty,omitempty"`
+	FrequencyPenalty    *float64           `json:"frequency_penalty,omitempty"`
+	Logprobs            *bool              `json:"logprobs,omitempty"`
+	TopLogprobs         *int               `json:"top_logprobs,omitempty"`
 	Stream              bool               `json:"stream,omitempty"`
 	StreamOptions       *ChatStreamOptions `json:"stream_options,omitempty"`
 	Tools               []ChatTool         `json:"tools,omitempty"`
 	ToolChoice          json.RawMessage    `json:"tool_choice,omitempty"`
 	ReasoningEffort     string             `json:"reasoning_effort,omitempty"` // "low" | "medium" | "high" | "xhigh"
 	ServiceTier         string             `json:"service_tier,omitempty"`
-	Stop                json.RawMessage    `json:"stop,omitempty"` // string or []string
+	ParallelToolCalls   *bool              `json:"parallel_tool_calls,omitempty"`
 
 	// Legacy function calling (deprecated but still supported)
 	Functions    []ChatFunction  `json:"functions,omitempty"`
@@ -521,11 +584,11 @@ type ChatChoice struct {
 
 // ChatUsage holds token counts in Chat Completions format.
 type ChatUsage struct {
-	PromptTokens            int               `json:"prompt_tokens"`
-	CompletionTokens        int               `json:"completion_tokens"`
-	TotalTokens             int               `json:"total_tokens"`
-	PromptTokensDetails     *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
-	CompletionTokensDetails *ChatTokenDetails `json:"completion_tokens_details,omitempty"`
+	PromptTokens            int                         `json:"prompt_tokens"`
+	CompletionTokens        int                         `json:"completion_tokens"`
+	TotalTokens             int                         `json:"total_tokens"`
+	PromptTokensDetails     *ChatTokenDetails           `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails *ChatCompletionTokenDetails `json:"completion_tokens_details,omitempty"`
 }
 
 // ChatTokenDetails provides a breakdown of token usage. The same type is
@@ -537,9 +600,15 @@ type ChatUsage struct {
 //   - completion_tokens_details: reasoning_tokens, audio_tokens,
 //     accepted_prediction_tokens, rejected_prediction_tokens
 type ChatTokenDetails struct {
-	CachedTokens             int `json:"cached_tokens,omitempty"`
-	AudioTokens              int `json:"audio_tokens,omitempty"`
-	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
+	CachedTokens int `json:"cached_tokens,omitempty"`
+	AudioTokens  int `json:"audio_tokens,omitempty"`
+}
+
+// ChatCompletionTokenDetails provides completion-side token breakdowns.
+type ChatCompletionTokenDetails struct {
+	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+	AudioTokens     int `json:"audio_tokens,omitempty"`
+
 	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
 	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
 }

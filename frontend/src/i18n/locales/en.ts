@@ -3061,7 +3061,22 @@ export default {
         antigravityOauth: 'Antigravity OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
-        upstreamDesc: 'Connect via Base URL + API Key'
+        upstreamDesc: 'Connect via Base URL + API Key',
+        apikeyChatCompletions: 'OpenAI Chat Completions Upstream',
+        apikeyChatCompletionsDesc:
+          'Connect to any OpenAI-compatible /v1/chat/completions endpoint via full URL + API Key',
+        apikeyChatCompletionsAnthropicHint:
+          'On the Anthropic platform, the gateway automatically converts /v1/messages requests to OpenAI Chat Completions and translates the upstream response back. The /v1/chat/completions endpoint passes through unchanged.',
+        chatCompletionsUrl: 'Chat Completions URL',
+        chatCompletionsUrlPlaceholder:
+          'Full endpoint URL, e.g. https://api.deepseek.com/v1/chat/completions',
+        chatCompletionsUrlHint: 'Full /v1/chat/completions endpoint URL of the upstream service',
+        chatCompletionsApiKey: 'API Key',
+        chatCompletionsApiKeyPlaceholder: 'API Key for the upstream service',
+        chatCompletionsApiKeyHint: 'API Key used to authenticate against the upstream',
+        chatCompletionsAuthHeader: 'Auth Header',
+        chatCompletionsAuthHeaderHint:
+          'Select the API Key header required by the upstream. Most OpenAI-compatible APIs use Authorization: Bearer; some use api-key or x-api-key.'
       },
       status: {
         active: 'Active',
@@ -3476,12 +3491,15 @@ export default {
         'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
-	  autoPause5hThreshold: '5h Usage Threshold (%)',
-	  autoPause7dThreshold: '7d Usage Threshold (%)',
-	  autoPauseThresholdHint: 'Leave empty or set 0 to use the global default threshold (configured in Ops settings); set a value to override the global default. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',
-	  autoPause5hDisabled: 'Disable 5h auto-pause',
-	  autoPause7dDisabled: 'Disable 7d auto-pause',
-	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
+stripReasoningEffortOnCC: 'Strip reasoning_effort (Chat Completions)',
+      stripReasoningEffortOnCCDesc: 'Drop reasoning_effort when forwarding /responses traffic as /v1/chat/completions. Enable for upstreams that reject this combination, e.g. b.ai.',
+      autoPause5hThreshold: '5h Usage Threshold (%)',
+      autoPause7dThreshold: '7d Usage Threshold (%)',
+      autoPauseThresholdHint: 'Leave empty or set 0 to use the global default threshold (configured in Ops settings); set a value to override the global default. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',
+      autoPause5hDisabled: 'Disable 5h auto-pause',
+      autoPause7dDisabled: 'Disable 7d auto-pause',
+      autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
+
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',

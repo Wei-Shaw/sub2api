@@ -93,7 +93,8 @@ func (r *accountRepository) Create(ctx context.Context, account *service.Account
 		SetStatus(account.Status).
 		SetErrorMessage(account.ErrorMessage).
 		SetSchedulable(account.Schedulable).
-		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
+		SetAutoPauseOnExpired(account.AutoPauseOnExpired).
+		SetStripReasoningEffortOnCc(account.StripReasoningEffortOnCC)
 
 	if account.RateMultiplier != nil {
 		builder.SetRateMultiplier(*account.RateMultiplier)
@@ -334,7 +335,8 @@ func (r *accountRepository) Update(ctx context.Context, account *service.Account
 		SetStatus(account.Status).
 		SetErrorMessage(account.ErrorMessage).
 		SetSchedulable(schedulable).
-		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
+		SetAutoPauseOnExpired(account.AutoPauseOnExpired).
+		SetStripReasoningEffortOnCc(account.StripReasoningEffortOnCC)
 
 	if account.RateMultiplier != nil {
 		builder.SetRateMultiplier(*account.RateMultiplier)
@@ -1743,34 +1745,35 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 	rateMultiplier := m.RateMultiplier
 
 	return &service.Account{
-		ID:                      m.ID,
-		Name:                    m.Name,
-		Notes:                   m.Notes,
-		Platform:                m.Platform,
-		Type:                    m.Type,
-		Credentials:             copyJSONMap(m.Credentials),
-		Extra:                   copyJSONMap(m.Extra),
-		ProxyID:                 m.ProxyID,
-		Concurrency:             m.Concurrency,
-		Priority:                m.Priority,
-		RateMultiplier:          &rateMultiplier,
-		LoadFactor:              m.LoadFactor,
-		Status:                  m.Status,
-		ErrorMessage:            derefString(m.ErrorMessage),
-		LastUsedAt:              m.LastUsedAt,
-		ExpiresAt:               m.ExpiresAt,
-		AutoPauseOnExpired:      m.AutoPauseOnExpired,
-		CreatedAt:               m.CreatedAt,
-		UpdatedAt:               m.UpdatedAt,
-		Schedulable:             m.Schedulable,
-		RateLimitedAt:           m.RateLimitedAt,
-		RateLimitResetAt:        m.RateLimitResetAt,
-		OverloadUntil:           m.OverloadUntil,
-		TempUnschedulableUntil:  m.TempUnschedulableUntil,
-		TempUnschedulableReason: derefString(m.TempUnschedulableReason),
-		SessionWindowStart:      m.SessionWindowStart,
-		SessionWindowEnd:        m.SessionWindowEnd,
-		SessionWindowStatus:     derefString(m.SessionWindowStatus),
+		ID:                       m.ID,
+		Name:                     m.Name,
+		Notes:                    m.Notes,
+		Platform:                 m.Platform,
+		Type:                     m.Type,
+		Credentials:              copyJSONMap(m.Credentials),
+		Extra:                    copyJSONMap(m.Extra),
+		ProxyID:                  m.ProxyID,
+		Concurrency:              m.Concurrency,
+		Priority:                 m.Priority,
+		RateMultiplier:           &rateMultiplier,
+		LoadFactor:               m.LoadFactor,
+		Status:                   m.Status,
+		ErrorMessage:             derefString(m.ErrorMessage),
+		LastUsedAt:               m.LastUsedAt,
+		ExpiresAt:                m.ExpiresAt,
+		AutoPauseOnExpired:       m.AutoPauseOnExpired,
+		StripReasoningEffortOnCC: m.StripReasoningEffortOnCc,
+		CreatedAt:                m.CreatedAt,
+		UpdatedAt:                m.UpdatedAt,
+		Schedulable:              m.Schedulable,
+		RateLimitedAt:            m.RateLimitedAt,
+		RateLimitResetAt:         m.RateLimitResetAt,
+		OverloadUntil:            m.OverloadUntil,
+		TempUnschedulableUntil:   m.TempUnschedulableUntil,
+		TempUnschedulableReason:  derefString(m.TempUnschedulableReason),
+		SessionWindowStart:       m.SessionWindowStart,
+		SessionWindowEnd:         m.SessionWindowEnd,
+		SessionWindowStatus:      derefString(m.SessionWindowStatus),
 	}
 }
 

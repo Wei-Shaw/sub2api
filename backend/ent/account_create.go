@@ -251,6 +251,20 @@ func (_c *AccountCreate) SetNillableAutoPauseOnExpired(v *bool) *AccountCreate {
 	return _c
 }
 
+// SetStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field.
+func (_c *AccountCreate) SetStripReasoningEffortOnCc(v bool) *AccountCreate {
+	_c.mutation.SetStripReasoningEffortOnCc(v)
+	return _c
+}
+
+// SetNillableStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableStripReasoningEffortOnCc(v *bool) *AccountCreate {
+	if v != nil {
+		_c.SetStripReasoningEffortOnCc(*v)
+	}
+	return _c
+}
+
 // SetSchedulable sets the "schedulable" field.
 func (_c *AccountCreate) SetSchedulable(v bool) *AccountCreate {
 	_c.mutation.SetSchedulable(v)
@@ -497,6 +511,10 @@ func (_c *AccountCreate) defaults() error {
 		v := account.DefaultAutoPauseOnExpired
 		_c.mutation.SetAutoPauseOnExpired(v)
 	}
+	if _, ok := _c.mutation.StripReasoningEffortOnCc(); !ok {
+		v := account.DefaultStripReasoningEffortOnCc
+		_c.mutation.SetStripReasoningEffortOnCc(v)
+	}
 	if _, ok := _c.mutation.Schedulable(); !ok {
 		v := account.DefaultSchedulable
 		_c.mutation.SetSchedulable(v)
@@ -561,6 +579,9 @@ func (_c *AccountCreate) check() error {
 	}
 	if _, ok := _c.mutation.AutoPauseOnExpired(); !ok {
 		return &ValidationError{Name: "auto_pause_on_expired", err: errors.New(`ent: missing required field "Account.auto_pause_on_expired"`)}
+	}
+	if _, ok := _c.mutation.StripReasoningEffortOnCc(); !ok {
+		return &ValidationError{Name: "strip_reasoning_effort_on_cc", err: errors.New(`ent: missing required field "Account.strip_reasoning_effort_on_cc"`)}
 	}
 	if _, ok := _c.mutation.Schedulable(); !ok {
 		return &ValidationError{Name: "schedulable", err: errors.New(`ent: missing required field "Account.schedulable"`)}
@@ -668,6 +689,10 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AutoPauseOnExpired(); ok {
 		_spec.SetField(account.FieldAutoPauseOnExpired, field.TypeBool, value)
 		_node.AutoPauseOnExpired = value
+	}
+	if value, ok := _c.mutation.StripReasoningEffortOnCc(); ok {
+		_spec.SetField(account.FieldStripReasoningEffortOnCc, field.TypeBool, value)
+		_node.StripReasoningEffortOnCc = value
 	}
 	if value, ok := _c.mutation.Schedulable(); ok {
 		_spec.SetField(account.FieldSchedulable, field.TypeBool, value)
@@ -1089,6 +1114,18 @@ func (u *AccountUpsert) SetAutoPauseOnExpired(v bool) *AccountUpsert {
 // UpdateAutoPauseOnExpired sets the "auto_pause_on_expired" field to the value that was provided on create.
 func (u *AccountUpsert) UpdateAutoPauseOnExpired() *AccountUpsert {
 	u.SetExcluded(account.FieldAutoPauseOnExpired)
+	return u
+}
+
+// SetStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field.
+func (u *AccountUpsert) SetStripReasoningEffortOnCc(v bool) *AccountUpsert {
+	u.Set(account.FieldStripReasoningEffortOnCc, v)
+	return u
+}
+
+// UpdateStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateStripReasoningEffortOnCc() *AccountUpsert {
+	u.SetExcluded(account.FieldStripReasoningEffortOnCc)
 	return u
 }
 
@@ -1619,6 +1656,20 @@ func (u *AccountUpsertOne) SetAutoPauseOnExpired(v bool) *AccountUpsertOne {
 func (u *AccountUpsertOne) UpdateAutoPauseOnExpired() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateAutoPauseOnExpired()
+	})
+}
+
+// SetStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field.
+func (u *AccountUpsertOne) SetStripReasoningEffortOnCc(v bool) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetStripReasoningEffortOnCc(v)
+	})
+}
+
+// UpdateStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateStripReasoningEffortOnCc() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateStripReasoningEffortOnCc()
 	})
 }
 
@@ -2341,6 +2392,20 @@ func (u *AccountUpsertBulk) SetAutoPauseOnExpired(v bool) *AccountUpsertBulk {
 func (u *AccountUpsertBulk) UpdateAutoPauseOnExpired() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateAutoPauseOnExpired()
+	})
+}
+
+// SetStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field.
+func (u *AccountUpsertBulk) SetStripReasoningEffortOnCc(v bool) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetStripReasoningEffortOnCc(v)
+	})
+}
+
+// UpdateStripReasoningEffortOnCc sets the "strip_reasoning_effort_on_cc" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateStripReasoningEffortOnCc() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateStripReasoningEffortOnCc()
 	})
 }
 

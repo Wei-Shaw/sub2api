@@ -68,7 +68,7 @@ func (Account) Fields() []ent.Field {
 		// type: 认证类型，如 "api_key", "oauth", "cookie" 等
 		// 不同类型决定了 credentials 中存储的数据结构
 		field.String("type").
-			MaxLen(20).
+			MaxLen(40).
 			NotEmpty(),
 
 		// credentials: 认证凭证，以 JSONB 格式存储
@@ -136,6 +136,10 @@ func (Account) Fields() []ent.Field {
 		field.Bool("auto_pause_on_expired").
 			Default(true).
 			Comment("Auto pause scheduling when account expires."),
+		// strip_reasoning_effort_on_cc: 转换 Responses→ChatCompletions 时剥离 reasoning_effort
+		field.Bool("strip_reasoning_effort_on_cc").
+			Default(false).
+			Comment("Strip reasoning_effort when converting Responses→ChatCompletions for upstreams that reject it (e.g. b.ai)."),
 
 		// ========== 调度和速率限制相关字段 ==========
 		// 这些字段在 migrations/005_schema_parity.sql 中添加

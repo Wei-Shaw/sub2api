@@ -1160,6 +1160,34 @@ func TestChatChunkToSSE(t *testing.T) {
 	assert.True(t, len(sse) > 10)
 }
 
+func TestConvertChatCompletionsSSEChunkToResponsesEvents_TextContentPartLifecycle(t *testing.T) {
+	state := NewCCStreamState()
+	state.Model = "gpt-4o"
+
+	content := "hello"
+	events, err := ConvertChatCompletionsSSEChunkToResponsesEvents([]byte(`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","created":1,"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}`), state)
+	require.NoError(t, err)
+	require.Len(t, events, 4)
+	assert.Contains(t, string(events[0]), "event: response.created")
+	assert.Contains(t, string(events[1]), "event: response.output_item.added")
+	assert.Contains(t, string(events[2]), "event: response.content_part.added")
+	assert.Contains(t, string(events[2]), `"type":"output_text"`)
+	assert.Contains(t, string(events[3]), "event: response.output_text.delta")
+	assert.Contains(t, string(events[3]), content)
+
+	events, err = ConvertChatCompletionsSSEChunkToResponsesEvents([]byte(`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","created":1,"model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`), state)
+	require.NoError(t, err)
+	require.Len(t, events, 4)
+	assert.Contains(t, string(events[0]), "event: response.output_text.done")
+	assert.Contains(t, string(events[0]), content)
+	assert.Contains(t, string(events[1]), "event: response.content_part.done")
+	assert.Contains(t, string(events[1]), content)
+	assert.Contains(t, string(events[2]), "event: response.output_item.done")
+	assert.Contains(t, string(events[2]), content)
+	assert.Contains(t, string(events[3]), "event: response.completed")
+	assert.Contains(t, string(events[3]), content)
+}
+
 // ---------------------------------------------------------------------------
 // Stream round-trip test
 // ---------------------------------------------------------------------------

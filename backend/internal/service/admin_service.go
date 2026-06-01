@@ -283,7 +283,8 @@ type CreateAccountInput struct {
 	LoadFactor         *int
 	GroupIDs           []int64
 	ExpiresAt          *int64
-	AutoPauseOnExpired *bool
+	AutoPauseOnExpired      *bool
+	StripReasoningEffortOnCC *bool
 	// SkipDefaultGroupBind prevents auto-binding to platform default group when GroupIDs is empty.
 	SkipDefaultGroupBind bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
@@ -305,8 +306,9 @@ type UpdateAccountInput struct {
 	Status                string
 	GroupIDs              *[]int64
 	ExpiresAt             *int64
-	AutoPauseOnExpired    *bool
-	SkipMixedChannelCheck bool // 跳过混合渠道检查（用户已确认风险）
+	AutoPauseOnExpired      *bool
+	StripReasoningEffortOnCC *bool
+	SkipMixedChannelCheck   bool // 跳过混合渠道检查（用户已确认风险）
 }
 
 // BulkUpdateAccountsInput describes the payload for bulk updating accounts.
@@ -2501,6 +2503,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	} else {
 		account.AutoPauseOnExpired = true
 	}
+	if input.StripReasoningEffortOnCC != nil {
+		account.StripReasoningEffortOnCC = *input.StripReasoningEffortOnCC
+	}
 	if input.RateMultiplier != nil {
 		if *input.RateMultiplier < 0 {
 			return nil, errors.New("rate_multiplier must be >= 0")
@@ -2645,6 +2650,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	if input.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *input.AutoPauseOnExpired
+	}
+	if input.StripReasoningEffortOnCC != nil {
+		account.StripReasoningEffortOnCC = *input.StripReasoningEffortOnCC
 	}
 
 	// 先验证分组是否存在（在任何写操作之前）

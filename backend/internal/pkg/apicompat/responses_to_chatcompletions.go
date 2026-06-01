@@ -355,7 +355,7 @@ func promptDetailsFromResponses(src *ResponsesInputTokensDetails) *ChatTokenDeta
 // official CompletionUsage schema: reasoning_tokens, audio_tokens, and
 // the predicted-outputs accepted/rejected counts. Returns nil when nothing
 // would be emitted so non-reasoning, non-audio responses stay clean.
-func completionDetailsFromResponses(src *ResponsesOutputTokensDetails) *ChatTokenDetails {
+func completionDetailsFromResponses(src *ResponsesOutputTokensDetails) *ChatCompletionTokenDetails {
 	if src == nil {
 		return nil
 	}
@@ -363,7 +363,7 @@ func completionDetailsFromResponses(src *ResponsesOutputTokensDetails) *ChatToke
 		src.AcceptedPredictionTokens == 0 && src.RejectedPredictionTokens == 0 {
 		return nil
 	}
-	return &ChatTokenDetails{
+	return &ChatCompletionTokenDetails{
 		ReasoningTokens:          src.ReasoningTokens,
 		AudioTokens:              src.AudioTokens,
 		AcceptedPredictionTokens: src.AcceptedPredictionTokens,

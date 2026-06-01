@@ -103,8 +103,9 @@ type CreateAccountRequest struct {
 	Concurrency        int            `json:"concurrency"`
 	Priority           int            `json:"priority"`
 	GroupIDs           []int64        `json:"group_ids"`
-	ExpiresAt          *time.Time     `json:"expires_at"`
-	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
+	ExpiresAt               *time.Time `json:"expires_at"`
+	AutoPauseOnExpired      *bool      `json:"auto_pause_on_expired"`
+	StripReasoningEffortOnCC *bool     `json:"strip_reasoning_effort_on_cc"`
 }
 
 // UpdateAccountRequest 更新账号请求
@@ -118,8 +119,9 @@ type UpdateAccountRequest struct {
 	Priority           *int            `json:"priority"`
 	Status             *string         `json:"status"`
 	GroupIDs           *[]int64        `json:"group_ids"`
-	ExpiresAt          *time.Time      `json:"expires_at"`
-	AutoPauseOnExpired *bool           `json:"auto_pause_on_expired"`
+	ExpiresAt               *time.Time `json:"expires_at"`
+	AutoPauseOnExpired      *bool      `json:"auto_pause_on_expired"`
+	StripReasoningEffortOnCC *bool     `json:"strip_reasoning_effort_on_cc"`
 }
 
 // AccountService 账号管理服务
@@ -167,6 +169,9 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
 	} else {
 		account.AutoPauseOnExpired = true
+	}
+	if req.StripReasoningEffortOnCC != nil {
+		account.StripReasoningEffortOnCC = *req.StripReasoningEffortOnCC
 	}
 
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -275,6 +280,9 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
+	}
+	if req.StripReasoningEffortOnCC != nil {
+		account.StripReasoningEffortOnCC = *req.StripReasoningEffortOnCC
 	}
 
 	// 先验证分组是否存在（在任何写操作之前）

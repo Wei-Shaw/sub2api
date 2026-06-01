@@ -389,6 +389,107 @@ func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsP
 	require.NotContains(t, body, "当前测试接口仅支持 Responses API 路径")
 }
 
+func TestAccountTestService_APIKeyChatCompletionsUsesConfiguredAuthHeaderAndExactURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"pong"},"finish_reason":null}]}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          95,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKeyChatCompletions,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":              "sk-test",
+			"auth_header":          "api-key",
+			"chat_completions_url": "https://compat-upstream.example/custom/chat?tenant=abc",
+		},
+	}
+
+	err := svc.testOpenAIChatCompletionsConnection(ctx, account, "gpt-5.4", "hello", account.GetOpenAIChatCompletionsURL(), account.GetUpstreamAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://compat-upstream.example/custom/chat?tenant=abc", upstream.lastReq.URL.String())
+	require.Equal(t, "sk-test", upstream.lastReq.Header.Get("api-key"))
+	require.Empty(t, upstream.lastReq.Header.Get("Authorization"))
+}
+
+func TestAccountTestService_APIKeyChatCompletionsDefaultsToAuthorizationBearer(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          96,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKeyChatCompletions,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":              "sk-test",
+			"chat_completions_url": "https://compat-upstream.example/v1/chat/completions",
+		},
+	}
+
+	err := svc.testOpenAIChatCompletionsConnection(ctx, account, "gpt-5.4", "hello", account.GetOpenAIChatCompletionsURL(), account.GetUpstreamAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("api-key"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-api-key"))
+}
+
+func TestAccountTestService_APIKeyChatCompletionsSupportsXAPIKeyHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          97,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKeyChatCompletions,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":              "sk-test",
+			"auth_header":          "x-api-key",
+			"chat_completions_url": "https://compat-upstream.example/v1/chat/completions",
+		},
+	}
+
+	err := svc.testOpenAIChatCompletionsConnection(ctx, account, "gpt-5.4", "hello", account.GetOpenAIChatCompletionsURL(), account.GetUpstreamAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, "sk-test", upstream.lastReq.Header.Get("x-api-key"))
+	require.Empty(t, upstream.lastReq.Header.Get("Authorization"))
+}
+
 func TestAccountTestService_OpenAIChatCompletionsPathReturns4xx(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()

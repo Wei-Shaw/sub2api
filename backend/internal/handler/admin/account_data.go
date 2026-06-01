@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -47,18 +48,19 @@ type DataProxy struct {
 // Credentials 原文返回。这是"管理员备份"这一显式行为的一部分；如未来需要导出脱敏版本，
 // 应新增独立结构而非修改这里。
 type DataAccount struct {
-	Name               string         `json:"name"`
-	Notes              *string        `json:"notes,omitempty"`
-	Platform           string         `json:"platform"`
-	Type               string         `json:"type"`
-	Credentials        map[string]any `json:"credentials"`
-	Extra              map[string]any `json:"extra,omitempty"`
-	ProxyKey           *string        `json:"proxy_key,omitempty"`
-	Concurrency        int            `json:"concurrency"`
-	Priority           int            `json:"priority"`
-	RateMultiplier     *float64       `json:"rate_multiplier,omitempty"`
-	ExpiresAt          *int64         `json:"expires_at,omitempty"`
-	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired,omitempty"`
+	Name                     string         `json:"name"`
+	Notes                    *string        `json:"notes,omitempty"`
+	Platform                 string         `json:"platform"`
+	Type                     string         `json:"type"`
+	Credentials              map[string]any `json:"credentials"`
+	Extra                    map[string]any `json:"extra,omitempty"`
+	ProxyKey                 *string        `json:"proxy_key,omitempty"`
+	Concurrency              int            `json:"concurrency"`
+	Priority                 int            `json:"priority"`
+	RateMultiplier           *float64       `json:"rate_multiplier,omitempty"`
+	ExpiresAt                *int64         `json:"expires_at,omitempty"`
+	AutoPauseOnExpired       *bool          `json:"auto_pause_on_expired,omitempty"`
+	StripReasoningEffortOnCC *bool          `json:"strip_reasoning_effort_on_cc,omitempty"`
 }
 
 type DataImportRequest struct {
@@ -151,18 +153,19 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			expiresAt = &v
 		}
 		dataAccounts = append(dataAccounts, DataAccount{
-			Name:               acc.Name,
-			Notes:              acc.Notes,
-			Platform:           acc.Platform,
-			Type:               acc.Type,
-			Credentials:        acc.Credentials,
-			Extra:              acc.Extra,
-			ProxyKey:           proxyKey,
-			Concurrency:        acc.Concurrency,
-			Priority:           acc.Priority,
-			RateMultiplier:     acc.RateMultiplier,
-			ExpiresAt:          expiresAt,
-			AutoPauseOnExpired: &acc.AutoPauseOnExpired,
+			Name:                     acc.Name,
+			Notes:                    acc.Notes,
+			Platform:                 acc.Platform,
+			Type:                     acc.Type,
+			Credentials:              acc.Credentials,
+			Extra:                    acc.Extra,
+			ProxyKey:                 proxyKey,
+			Concurrency:              acc.Concurrency,
+			Priority:                 acc.Priority,
+			RateMultiplier:           acc.RateMultiplier,
+			ExpiresAt:                expiresAt,
+			AutoPauseOnExpired:       &acc.AutoPauseOnExpired,
+			StripReasoningEffortOnCC: &acc.StripReasoningEffortOnCC,
 		})
 	}
 
@@ -305,20 +308,21 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		enrichCredentialsFromIDToken(&item)
 
 		accountInput := &service.CreateAccountInput{
-			Name:                 item.Name,
-			Notes:                item.Notes,
-			Platform:             item.Platform,
-			Type:                 item.Type,
-			Credentials:          item.Credentials,
-			Extra:                item.Extra,
-			ProxyID:              proxyID,
-			Concurrency:          item.Concurrency,
-			Priority:             item.Priority,
-			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
-			ExpiresAt:            item.ExpiresAt,
-			AutoPauseOnExpired:   item.AutoPauseOnExpired,
-			SkipDefaultGroupBind: skipDefaultGroupBind,
+			Name:                     item.Name,
+			Notes:                    item.Notes,
+			Platform:                 item.Platform,
+			Type:                     item.Type,
+			Credentials:              item.Credentials,
+			Extra:                    item.Extra,
+			ProxyID:                  proxyID,
+			Concurrency:              item.Concurrency,
+			Priority:                 item.Priority,
+			RateMultiplier:           item.RateMultiplier,
+			GroupIDs:                 nil,
+			ExpiresAt:                item.ExpiresAt,
+			AutoPauseOnExpired:       item.AutoPauseOnExpired,
+			StripReasoningEffortOnCC: item.StripReasoningEffortOnCC,
+			SkipDefaultGroupBind:     skipDefaultGroupBind,
 		}
 
 		created, err := h.adminService.CreateAccount(ctx, accountInput)
@@ -564,6 +568,10 @@ func validateDataAccount(item DataAccount) error {
 	}
 	switch item.Type {
 	case service.AccountTypeOAuth, service.AccountTypeSetupToken, service.AccountTypeAPIKey, service.AccountTypeUpstream:
+	case service.AccountTypeAPIKeyChatCompletions:
+		if err := validateAPIKeyChatCompletionsCredentials(item.Credentials); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("account type is invalid: %s", item.Type)
 	}
@@ -575,6 +583,57 @@ func validateDataAccount(item DataAccount) error {
 	}
 	if item.Priority < 0 {
 		return errors.New("priority must be >= 0")
+	}
+	return nil
+}
+
+// validateAPIKeyChatCompletionsCredentials checks that an
+// AccountTypeAPIKeyChatCompletions account carries the minimum set of
+// credentials required by the upstream Chat Completions integration:
+// a valid http(s) chat_completions_url plus a non-empty api_key.
+func validateAPIKeyChatCompletionsCredentials(creds map[string]any) error {
+	if creds == nil {
+		return errors.New("credentials are required for apikey-chat-completions accounts")
+	}
+
+	rawURL, _ := creds["chat_completions_url"].(string)
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return errors.New("chat_completions_url is required for apikey-chat-completions accounts")
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("chat_completions_url is invalid: %w", err)
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("chat_completions_url must use http or https scheme, got %q", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return errors.New("chat_completions_url must include a host")
+	}
+
+	apiKey, _ := creds["api_key"].(string)
+	if strings.TrimSpace(apiKey) == "" {
+		return errors.New("api_key is required for apikey-chat-completions accounts")
+	}
+
+	return validateOpenAICompatibleAuthHeaderCredential(creds)
+}
+
+func validateAPIKeyChatCompletionsCredentialsUpdate(creds map[string]any) error {
+	if creds == nil {
+		return nil
+	}
+	return validateOpenAICompatibleAuthHeaderCredential(creds)
+}
+
+func validateOpenAICompatibleAuthHeaderCredential(creds map[string]any) error {
+	if rawAuthHeader, ok := creds["auth_header"]; ok {
+		authHeader, _ := rawAuthHeader.(string)
+		if _, valid := service.NormalizeOpenAICompatibleAuthHeader(authHeader); !valid {
+			return fmt.Errorf("auth_header must be one of %q, %q, or %q", service.OpenAICompatibleAuthHeaderAuthorization, service.OpenAICompatibleAuthHeaderAPIKey, service.OpenAICompatibleAuthHeaderXAPIKey)
+		}
 	}
 	return nil
 }
