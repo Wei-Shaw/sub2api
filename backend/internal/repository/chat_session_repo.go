@@ -167,7 +167,8 @@ func (r *chatSessionRepository) ensureSession(
 					http_status_code = CASE WHEN $14 > 0 THEN $14 ELSE http_status_code END,
 					user_preview = COALESCE($15, user_preview),
 					assistant_preview = COALESCE($16, assistant_preview),
-					message_count = message_count + $17
+					message_count = message_count + $17,
+					created_at = GREATEST(created_at, $18)
 				WHERE id = $1
 			`,
 				existingID,
@@ -187,6 +188,7 @@ func (r *chatSessionRepository) ensureSession(
 				nullableString(userPreview),
 				nullableString(assistantPreview),
 				len(input.Messages),
+				input.CreatedAt,
 			)
 			return existingID, updateErr
 		}

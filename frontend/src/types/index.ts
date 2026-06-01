@@ -619,6 +619,7 @@ export interface UpdateApiKeyRequest {
 
 export interface ChatSession {
   id: number
+  session_key?: string | null
   request_id?: string | null
   user_id: number
   api_key_id: number

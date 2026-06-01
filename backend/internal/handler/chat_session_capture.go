@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/tidwall/gjson"
+	"go.uber.org/zap"
 )
 
 func recordChatSessionAsync(
@@ -44,7 +46,19 @@ func recordChatSessionAsync(
 	go func(payload *service.ChatSessionRecordInput) {
 		taskCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = recorder.RecordSession(taskCtx, payload)
+		if err := recorder.RecordSession(taskCtx, payload); err != nil {
+			fields := []zap.Field{
+				zap.Int64("user_id", payload.UserID),
+				zap.Int64("api_key_id", payload.APIKeyID),
+				zap.String("session_key", payload.SessionKey),
+				zap.String("request_id", payload.RequestID),
+				zap.Error(err),
+			}
+			if payload.AccountID != nil {
+				fields = append(fields, zap.Int64("account_id", *payload.AccountID))
+			}
+			logger.L().Warn("chat_session.record_failed", fields...)
+		}
 	}(input)
 }
 
