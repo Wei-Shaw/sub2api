@@ -5311,6 +5311,7 @@ export default {
           accountRateLimitedCount: '限流账号数',
           accountErrorCount: '错误账号数（不含临时不可调度）',
           accountErrorRatio: '错误账号比例 (%)',
+          accountTempUnscheduledCount: '临时不可调度账号数',
           overloadAccountCount: '过载账号数'
         },
         metricDescriptions: {
@@ -5328,6 +5329,7 @@ export default {
           accountRateLimitedCount: '统计窗口内被限流的账号数量。',
           accountErrorCount: '统计窗口内产生错误的账号数量（不含临时不可调度）。',
           accountErrorRatio: '统计窗口内错误账号占比（0~100）。',
+          accountTempUnscheduledCount: '当前处于临时不可调度状态的账号数量（如代理/凭据故障被自动摘除）。',
           overloadAccountCount: '统计窗口内过载账号数量。'
         },
         hints: {
