@@ -1560,6 +1560,38 @@ REDACTED
 	return false
 REDACTED
 
+func openAIWSRawItemsHaveToolCallContextForOutputs(items []json.RawMessage) bool {
+	if len(items) == 0 {
+		return false
+REDACTED
+	contextCallIDs := make(map[string]struct{REDACTED)
+	outputCallIDs := make(map[string]struct{REDACTED)
+	for _, item := range items {
+		itemType := gjson.GetBytes(item, "type").String()
+		callID := strings.TrimSpace(gjson.GetBytes(item, "call_id").String())
+		switch {
+		case isCodexToolCallContextItemType(itemType):
+			if callID != "" {
+				contextCallIDs[callID] = struct{REDACTED{REDACTED
+		REDACTED
+		case isCodexToolCallOutputItemType(itemType):
+			if callID == "" {
+				return false
+		REDACTED
+			outputCallIDs[callID] = struct{REDACTED{REDACTED
+	REDACTED
+REDACTED
+	if len(outputCallIDs) == 0 || len(contextCallIDs) == 0 {
+		return false
+REDACTED
+	for callID := range outputCallIDs {
+		if _, ok := contextCallIDs[callID]; !ok {
+			return false
+	REDACTED
+REDACTED
+	return true
+REDACTED
+
 func openAIWSRawPayloadHasToolCallOutput(payload []byte) bool {
 	if len(payload) == 0 {
 		return false
@@ -2664,6 +2696,27 @@ REDACTED
 	REDACTED, nil
 REDACTED
 
+	writeClientMessage := func(message []byte) error {
+		writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+		defer cancel()
+		return clientConn.Write(writeCtx, coderws.MessageText, message)
+REDACTED
+
+	readClientMessage := func() ([]byte, error) {
+		msgType, payload, readErr := clientConn.Read(ctx)
+		if readErr != nil {
+			return nil, readErr
+	REDACTED
+		if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
+			return nil, NewOpenAIWSClientCloseError(
+				coderws.StatusPolicyViolation,
+				fmt.Sprintf("unsupported websocket client message type: %s", msgType.String()),
+				nil,
+			)
+	REDACTED
+		return payload, nil
+REDACTED
+
 	firstPayload, err := parseClientPayload(firstClientMessage)
 	if err != nil {
 		return err
@@ -2672,25 +2725,152 @@ REDACTED
 	turnState := strings.TrimSpace(c.GetHeader(openAIWSTurnStateHeader))
 	stateStore := s.getOpenAIWSStateStore()
 	groupID := getOpenAIGroupIDFromContext(c)
-	sessionHash := s.GenerateSessionHash(c, firstPayload.rawForHash)
-	if turnState == "" && stateStore != nil && sessionHash != "" {
-		if savedTurnState, ok := stateStore.GetSessionTurnState(groupID, sessionHash); ok {
-			turnState = savedTurnState
-	REDACTED
-REDACTED
-
-	preferredConnID := ""
-	if stateStore != nil && firstPayload.previousResponseID != "" {
-		if connID, ok := stateStore.GetResponseConn(firstPayload.previousResponseID); ok {
-			preferredConnID = connID
-	REDACTED
-REDACTED
-
-	storeDisabled := s.isOpenAIWSStoreDisabledInRequestRaw(firstPayload.payloadRaw, account)
 	storeDisabledConnMode := s.openAIWSStoreDisabledConnMode()
-	if stateStore != nil && storeDisabled && firstPayload.previousResponseID == "" && sessionHash != "" {
-		if connID, ok := stateStore.GetSessionConn(groupID, sessionHash); ok {
-			preferredConnID = connID
+	sessionHash := ""
+	preferredConnID := ""
+	storeDisabled := false
+	refreshIngressRouteState := func(payload openAIWSClientPayload) {
+		sessionHash = s.GenerateSessionHash(c, payload.rawForHash)
+		if turnState == "" && stateStore != nil && sessionHash != "" {
+			if savedTurnState, ok := stateStore.GetSessionTurnState(groupID, sessionHash); ok {
+				turnState = savedTurnState
+		REDACTED
+	REDACTED
+
+		preferredConnID = ""
+		if stateStore != nil && payload.previousResponseID != "" {
+			if connID, ok := stateStore.GetResponseConn(payload.previousResponseID); ok {
+				preferredConnID = connID
+		REDACTED
+	REDACTED
+
+		storeDisabled = s.isOpenAIWSStoreDisabledInRequestRaw(payload.payloadRaw, account)
+		if stateStore != nil && storeDisabled && payload.previousResponseID == "" && sessionHash != "" {
+			if connID, ok := stateStore.GetSessionConn(groupID, sessionHash); ok {
+				preferredConnID = connID
+		REDACTED
+	REDACTED
+REDACTED
+	refreshIngressRouteState(firstPayload)
+
+	if s.shouldBridgeOpenAIWSHTTP(firstPayload.payloadBytes, firstPayload.previousResponseID) {
+		logOpenAIWSModeInfo(
+			"ingress_ws_http_bridge_start account_id=%d account_type=%s payload_bytes=%d threshold_bytes=%d has_session_hash=%v store_disabled=%v",
+			account.ID,
+			account.Type,
+			firstPayload.payloadBytes,
+			s.openAIWSHTTPBridgeThresholdBytes(),
+			sessionHash != "",
+			storeDisabled,
+		)
+		currentBridgePayload := firstPayload
+		var bridgeReplayInput []json.RawMessage
+		bridgeReplayInputExists := false
+		for turn := 1; ; turn++ {
+			if turn > 1 && hooks != nil && hooks.BeforeRequest != nil {
+				if err := hooks.BeforeRequest(turn, currentBridgePayload.payloadRaw, currentBridgePayload.originalModel); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			if hooks != nil && hooks.BeforeTurn != nil {
+				if err := hooks.BeforeTurn(turn); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			if turnState != "" && c != nil && c.Request != nil {
+				c.Request.Header.Set(openAIWSTurnStateHeader, turnState)
+		REDACTED
+			bridgePayloadRaw := currentBridgePayload.payloadRaw
+			bridgePayloadBytes := currentBridgePayload.payloadBytes
+			needsBridgeReplay := currentBridgePayload.previousResponseID != "" || openAIWSRawPayloadHasToolCallOutput(currentBridgePayload.payloadRaw)
+			turnReplayInput, turnReplayInputExists, replayInputErr := buildOpenAIWSReplayInputSequence(
+				bridgeReplayInput,
+				bridgeReplayInputExists,
+				currentBridgePayload.payloadRaw,
+				needsBridgeReplay,
+			)
+			if replayInputErr != nil {
+				return fmt.Errorf("build websocket http bridge replay input: %w", replayInputErr)
+		REDACTED
+			if needsBridgeReplay && turnReplayInputExists {
+				updatedPayload, setInputErr := setOpenAIWSPayloadInputSequence(
+					currentBridgePayload.payloadRaw,
+					turnReplayInput,
+					true,
+				)
+				if setInputErr != nil {
+					return fmt.Errorf("set websocket http bridge replay input: %w", setInputErr)
+			REDACTED
+				bridgePayloadRaw = updatedPayload
+				bridgePayloadBytes = len(updatedPayload)
+				logOpenAIWSModeInfo(
+					"ingress_ws_http_bridge_replay_input account_id=%d turn=%d input_items=%d previous_response_id_present=%v has_tool_output=%v",
+					account.ID,
+					turn,
+					len(turnReplayInput),
+					currentBridgePayload.previousResponseID != "",
+					openAIWSRawPayloadHasToolCallOutput(currentBridgePayload.payloadRaw),
+				)
+		REDACTED
+			result, bridgeErr := s.proxyOpenAIWSHTTPBridgeTurn(
+				ctx,
+				c,
+				account,
+				token,
+				bridgePayloadRaw,
+				bridgePayloadBytes,
+				currentBridgePayload.originalModel,
+				currentBridgePayload.imageBillingModel,
+				currentBridgePayload.imageSizeTier,
+				currentBridgePayload.imageInputSize,
+				turn,
+				writeClientMessage,
+			)
+			if hooks != nil && hooks.AfterTurn != nil {
+				hooks.AfterTurn(turn, result, bridgeErr)
+		REDACTED
+			if bridgeErr != nil {
+				return bridgeErr
+		REDACTED
+			if result == nil {
+				return errors.New("websocket http bridge turn result is nil")
+		REDACTED
+			bridgeReplayInput = cloneOpenAIWSRawMessages(turnReplayInput)
+			bridgeReplayInputExists = turnReplayInputExists
+			if result.wsReplayInputExists {
+				bridgeReplayInput = append(bridgeReplayInput, cloneOpenAIWSRawMessages(result.wsReplayInput)...)
+				bridgeReplayInputExists = true
+		REDACTED
+			if bridgeTurnState := strings.TrimSpace(result.ResponseHeaders.Get(openAIWSTurnStateHeader)); bridgeTurnState != "" {
+				turnState = bridgeTurnState
+				if stateStore != nil && sessionHash != "" {
+					stateStore.BindSessionTurnState(groupID, sessionHash, bridgeTurnState, s.openAIWSSessionStickyTTL())
+			REDACTED
+		REDACTED
+			responseID := strings.TrimSpace(result.RequestID)
+			if responseID != "" && stateStore != nil {
+				ttl := s.openAIWSResponseStickyTTL()
+				logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, stateStore.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
+		REDACTED
+			nextClientMessage, readErr := readClientMessage()
+			if readErr != nil {
+				if isOpenAIWSClientDisconnectError(readErr) {
+					closeStatus, closeReason := summarizeOpenAIWSReadCloseError(readErr)
+					logOpenAIWSModeInfo(
+						"ingress_ws_http_bridge_client_closed account_id=%d close_status=%s close_reason=%s",
+						account.ID,
+						closeStatus,
+						truncateOpenAIWSLogValue(closeReason, openAIWSHeaderValueMaxLen),
+					)
+					return nil
+			REDACTED
+				return fmt.Errorf("read client websocket request: %w", readErr)
+		REDACTED
+			nextPayload, parseErr := parseClientPayload(nextClientMessage)
+			if parseErr != nil {
+				return parseErr
+		REDACTED
+			currentBridgePayload = nextPayload
 	REDACTED
 REDACTED
 
@@ -2844,27 +3024,6 @@ REDACTED
 		return lease, nil
 REDACTED
 
-	writeClientMessage := func(message []byte) error {
-		writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
-		defer cancel()
-		return clientConn.Write(writeCtx, coderws.MessageText, message)
-REDACTED
-
-	readClientMessage := func() ([]byte, error) {
-		msgType, payload, readErr := clientConn.Read(ctx)
-		if readErr != nil {
-			return nil, readErr
-	REDACTED
-		if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
-			return nil, NewOpenAIWSClientCloseError(
-				coderws.StatusPolicyViolation,
-				fmt.Sprintf("unsupported websocket client message type: %s", msgType.String()),
-				nil,
-			)
-	REDACTED
-		return payload, nil
-REDACTED
-
 	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, imageBillingModel string, imageSizeTier string, imageInputSize string) (*OpenAIForwardResult, error) {
 		if lease == nil {
 			return nil, errors.New("upstream websocket lease is nil")
@@ -2901,6 +3060,7 @@ REDACTED
 		eventCount := 0
 		tokenEventCount := 0
 		terminalEventCount := 0
+		replayCollector := &openAIWSToolCallReplayCollector{REDACTED
 		firstEventType := ""
 		lastEventType := ""
 		needModelReplace := false
@@ -3031,6 +3191,7 @@ REDACTED
 						upstreamMessage = corrected
 				REDACTED
 			REDACTED
+				replayCollector.AddEvent(eventType, upstreamMessage)
 				if err := writeClientMessage(upstreamMessage); err != nil {
 					if isOpenAIWSClientDisconnectError(err) {
 						clientDisconnected = true
@@ -3093,6 +3254,10 @@ REDACTED
 					ResponseHeaders: lease.HandshakeHeaders(),
 					Duration:        time.Since(turnStart),
 					FirstTokenMs:    firstTokenMs,
+			REDACTED
+				if replayInput := replayCollector.Items(); len(replayInput) > 0 {
+					result.wsReplayInput = replayInput
+					result.wsReplayInputExists = true
 			REDACTED
 				if imageCount > 0 {
 					result.ImageCount = imageCount
@@ -3487,9 +3652,12 @@ REDACTED
 				if forcePreferredConn {
 					// 携带 function_call_output 的请求不能丢弃 previous_response_id：
 					// 上游 API 需要 response chain 来匹配 tool_result 与之前的 tool_use，
-					// 丢弃后会导致 "No tool call found for function call output" 400 错误。
+					// 除非 replay input 已经包含与每个 tool_result 匹配的 tool_use 上下文。
 					hasFCOutput := hasFunctionCallOutput
-					if !turnPrevRecoveryTried && currentPreviousResponseID != "" && !hasFCOutput {
+					hasReplayToolContext := hasFCOutput &&
+						currentTurnReplayInputExists &&
+						openAIWSRawItemsHaveToolCallContextForOutputs(currentTurnReplayInput)
+					if !turnPrevRecoveryTried && currentPreviousResponseID != "" && (!hasFCOutput || hasReplayToolContext) {
 						updatedPayload, removed, dropErr := dropPreviousResponseIDFromRawPayload(currentPayload)
 						if dropErr != nil || !removed {
 							reason := "not_removed"
@@ -3521,11 +3689,13 @@ REDACTED
 								)
 						REDACTED else {
 								logOpenAIWSModeInfo(
-									"ingress_ws_preflight_ping_recovery account_id=%d turn=%d conn_id=%s action=drop_previous_response_id_retry previous_response_id=%s",
+									"ingress_ws_preflight_ping_recovery account_id=%d turn=%d conn_id=%s action=drop_previous_response_id_retry previous_response_id=%s has_function_call_output=%v has_replay_tool_context=%v",
 									account.ID,
 									turn,
 									truncateOpenAIWSLogValue(sessionConnID, openAIWSIDValueMaxLen),
 									truncateOpenAIWSLogValue(currentPreviousResponseID, openAIWSIDValueMaxLen),
+									hasFCOutput,
+									hasReplayToolContext,
 								)
 								turnPrevRecoveryTried = true
 								currentPayload = updatedWithInput
@@ -3537,12 +3707,18 @@ REDACTED
 					REDACTED
 				REDACTED
 					if hasFCOutput && currentPreviousResponseID != "" {
+						reason := "function_call_output_missing_replay_context"
+						if hasReplayToolContext {
+							reason = "function_call_output_replay_not_applied"
+					REDACTED
 						logOpenAIWSModeInfo(
-							"ingress_ws_preflight_ping_recovery_skip account_id=%d turn=%d conn_id=%s reason=function_call_output action=fail_close previous_response_id=%s",
+							"ingress_ws_preflight_ping_recovery_skip account_id=%d turn=%d conn_id=%s reason=%s action=fail_close previous_response_id=%s has_replay_tool_context=%v",
 							account.ID,
 							turn,
 							truncateOpenAIWSLogValue(sessionConnID, openAIWSIDValueMaxLen),
+							reason,
 							truncateOpenAIWSLogValue(currentPreviousResponseID, openAIWSIDValueMaxLen),
+							hasReplayToolContext,
 						)
 				REDACTED
 					resetSessionLease(true)
@@ -3622,6 +3798,10 @@ REDACTED
 		lastTurnPayload = cloneOpenAIWSPayloadBytes(currentPayload)
 		lastTurnReplayInput = cloneOpenAIWSRawMessages(currentTurnReplayInput)
 		lastTurnReplayInputExists = currentTurnReplayInputExists
+		if result.wsReplayInputExists {
+			lastTurnReplayInput = append(lastTurnReplayInput, cloneOpenAIWSRawMessages(result.wsReplayInput)...)
+			lastTurnReplayInputExists = true
+	REDACTED
 		nextStrictState, strictStateErr := buildOpenAIWSIngressPreviousTurnStrictState(currentPayload)
 		if strictStateErr != nil {
 			lastTurnStrictState = nil
