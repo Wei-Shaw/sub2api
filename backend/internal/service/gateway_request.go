@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -663,6 +664,69 @@ func removeThinkingDependentContextStrategies(body []byte) []byte {
 		return b
 	}
 	return body
+}
+
+// anthropicBetaContextManagementToken 是 context_management 字段受的 beta token。
+// 与 claude.BetaContextManagement 保持一致；在本文件本地定义以避免震荡
+// claude package 的该常量含义。
+const anthropicBetaContextManagementToken = "context-management-2025-06-27"
+
+// sanitizeAnthropicBodyForBetaTokens 是对 Anthropic 直连路径上 body↔beta header
+// **能力维度**对称约束的统一实现，与 Bedrock 路径的
+// `sanitizeBedrockFieldsForBetaTokens` 对称。
+//
+// 问题场景：
+//   - context_management 是 Claude Code CLI 2.1.87+ 默认携带的 beta 字段
+//     （含 clear_thinking_20251015 等清理策略）
+//   - 其被 Anthropic 上游接受的前提是 anthropic-beta header 含
+//     `context-management-2025-06-27`
+//   - 若两侧不一致上游 Pydantic schema 拒收：
+//     "context_management: Extra inputs are not permitted"
+//
+// 本函数按最终发送的 anthropic-beta header 决定是否保留 body 中的
+// context_management 字段：缺 beta token → strip。这将限制完全建立在
+// "能力维度" 上，与 model 名 / token type / mimicry 子路径无关。
+//
+// 调用约束：必须在 CCH 签名之前调用，否则签名 hash 与最终 body
+// 不一致，上游会以 third-party 拒收。
+//
+// 返回 (sanitized, changed)：changed 表示是否发生实际删除，供调用方决定
+// 是否重用原 body 引用。
+func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string) ([]byte, bool) {
+	if len(body) == 0 {
+		return body, false
+	}
+	if !gjson.GetBytes(body, "context_management").Exists() {
+		return body, false
+	}
+	if anthropicBetaTokensContains(anthropicBetaHeader, anthropicBetaContextManagementToken) {
+		return body, false
+	}
+	if b, err := sjson.DeleteBytes(body, "context_management"); err == nil {
+		return b, true
+	} else {
+		// 不应发生：gjson 刚验证过字段存在 + body 是合法 JSON。如果 sjson 仍报错，
+		// 调用方会拿到 (body, false)，但此前 computeFinalAnthropicBeta 已按“strip 后”
+		// 计算了 finalBeta——两侧会不一致。记录 warning 最小限度提醒运维。
+		logger.LegacyPrintf("service.gateway",
+			"[CtxMgmtSanitize] sjson.DeleteBytes failed unexpectedly: %v (body len=%d). "+
+				"body and final anthropic-beta header may be out of sync.", err, len(body))
+	}
+	return body, false
+}
+
+// anthropicBetaTokensContains 检测逗号分隔的 anthropic-beta header 是否含指定 token。
+// 宋体空格宽容；区分大小写（Anthropic beta token 始终是小写）。
+func anthropicBetaTokensContains(header, token string) bool {
+	if header == "" || token == "" {
+		return false
+	}
+	for _, part := range strings.Split(header, ",") {
+		if strings.TrimSpace(part) == token {
+			return true
+		}
+	}
+	return false
 }
 
 // FilterSignatureSensitiveBlocksForRetry is a stronger retry filter for cases where upstream errors indicate

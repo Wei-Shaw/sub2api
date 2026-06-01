@@ -192,6 +192,7 @@ SELECT COUNT(*)
 FROM content_moderation_logs
 WHERE user_id = $1
   AND flagged = TRUE
+  AND action <> 'hash_block'
   AND created_at >= $2
   AND created_at > COALESCE((SELECT at FROM last_auto_ban), '-infinity'::timestamptz)
 `, userID, since).Scan(&count)
@@ -246,7 +247,7 @@ func buildContentModerationLogWhere(filter service.ContentModerationLogFilter) (
 	case "hit", "flagged":
 		where = append(where, "l.flagged = TRUE")
 	case "blocked", "block":
-		where = append(where, "l.action = 'block'")
+		where = append(where, "l.action IN ('block', 'keyword_block', 'hash_block')")
 	case "pass", "allow":
 		where = append(where, "l.flagged = FALSE AND l.error = ''")
 	case "error":

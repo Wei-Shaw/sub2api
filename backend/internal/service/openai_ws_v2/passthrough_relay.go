@@ -25,6 +25,7 @@ type Usage struct {
 	OutputTokens             int
 	CacheCreationInputTokens int
 	CacheReadInputTokens     int
+	ImageOutputTokens        int
 }
 
 type RelayResult struct {
@@ -756,8 +757,21 @@ func parseUsageAndAccumulate(
 	}
 
 	inputResult := gjson.GetBytes(message, "response.usage.input_tokens")
+	if !inputResult.Exists() {
+		inputResult = gjson.GetBytes(message, "response.usage.prompt_tokens")
+	}
 	outputResult := gjson.GetBytes(message, "response.usage.output_tokens")
+	if !outputResult.Exists() {
+		outputResult = gjson.GetBytes(message, "response.usage.completion_tokens")
+	}
 	cachedResult := gjson.GetBytes(message, "response.usage.input_tokens_details.cached_tokens")
+	if !cachedResult.Exists() {
+		cachedResult = gjson.GetBytes(message, "response.usage.prompt_tokens_details.cached_tokens")
+	}
+	imageTokens := usageResult.Get("output_tokens_details.image_tokens").Int()
+	if imageTokens == 0 {
+		imageTokens = usageResult.Get("completion_tokens_details.image_tokens").Int()
+	}
 
 	inputTokens, inputOK := parseUsageIntField(inputResult, true)
 	outputTokens, outputOK := parseUsageIntField(outputResult, true)
@@ -771,14 +785,18 @@ func parseUsageAndAccumulate(
 		return Usage{}
 	}
 	parsedUsage := Usage{
-		InputTokens:          inputTokens,
-		OutputTokens:         outputTokens,
-		CacheReadInputTokens: cachedTokens,
+		InputTokens:              inputTokens,
+		OutputTokens:             outputTokens,
+		CacheCreationInputTokens: int(usageResult.Get("cache_creation_input_tokens").Int()),
+		CacheReadInputTokens:     cachedTokens,
+		ImageOutputTokens:        int(imageTokens),
 	}
 
 	state.usage.InputTokens += parsedUsage.InputTokens
 	state.usage.OutputTokens += parsedUsage.OutputTokens
+	state.usage.CacheCreationInputTokens += parsedUsage.CacheCreationInputTokens
 	state.usage.CacheReadInputTokens += parsedUsage.CacheReadInputTokens
+	state.usage.ImageOutputTokens += parsedUsage.ImageOutputTokens
 	return parsedUsage
 }
 
@@ -840,7 +858,7 @@ func isTerminalEvent(eventType string) bool {
 
 func shouldParseUsage(eventType string) bool {
 	switch eventType {
-	case "response.completed", "response.done", "response.failed":
+	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
 		return true
 	default:
 		return false

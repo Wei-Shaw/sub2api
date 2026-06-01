@@ -778,9 +778,15 @@ export interface OpsAlertRuntimeSettings {
   thresholds: OpsMetricThresholds // 指标阈值配置
 }
 
+export interface OpsOpenAIAccountQuotaAutoPauseSettings {
+  default_threshold_5h: number // 0~1，0 表示不启用全局默认 5h 阈值
+  default_threshold_7d: number // 0~1，0 表示不启用全局默认 7d 阈值
+}
+
 export interface OpsAdvancedSettings {
   data_retention: OpsDataRetentionSettings
   aggregation: OpsAggregationSettings
+  openai_account_quota_auto_pause: OpsOpenAIAccountQuotaAutoPauseSettings
   ignore_count_tokens_errors: boolean
   ignore_context_canceled: boolean
   ignore_no_available_accounts: boolean

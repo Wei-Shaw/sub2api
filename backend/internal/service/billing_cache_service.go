@@ -689,7 +689,8 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 	defer cancel()
 	ttl := time.Duration(s.cfg.Billing.UserPlatformQuotaCacheTTLSeconds) * time.Second
-	if err := s.cache.IncrUserPlatformQuotaUsageCache(ctx, userID, platform, cost, ttl); err != nil {
+	markDirty := s.cfg.Database.UserPlatformQuotaFlusherEnabled
+	if err := s.cache.IncrUserPlatformQuotaUsageCache(ctx, userID, platform, cost, ttl, markDirty); err != nil {
 		logger.LegacyPrintf("service.billing_cache",
 			"ALERT: incr user platform quota cache failed user=%d platform=%s cost=%f: %v",
 			userID, platform, cost, err)
@@ -1096,7 +1097,12 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 		// 超时 50ms:覆盖正常路径与可接受抖动;Redis 异常时 hot path 不阻塞超过此值。
 		// 用 context.Background()+短超时,避免请求 ctx 取消导致刷新丢失。
 		// 显式 setCancel()(而非 defer):缩短 context 生命周期,避免 defer 延迟到函数返回。
-		if windowExpired && s.cache != nil {
+		// isSentinel 判定「该 entry 无任何 limit」,涵盖两类,跨窗口命中时都跳过 refresh:
+		//   1) A3 回填的 sentinel(DB 无行,短 TTL):refresh 会把短 TTL 误升级为 86400s,有害;
+		//   2) DB 有行但三 limit 全未配置的用户(TTL 86400s):refresh 纯属无意义(TTL 升级本身无害)。
+		// 两类的 enforcement(下方 limit!=nil 比较)都因 limit 全 nil 永远放行,跳过 refresh 均正确。
+		isSentinel := entry.DailyLimitUSD == nil && entry.WeeklyLimitUSD == nil && entry.MonthlyLimitUSD == nil
+		if windowExpired && s.cache != nil && !isSentinel {
 			refreshed := &UserPlatformQuotaCacheEntry{
 				DailyUsageUSD:      dailyUsage,
 				WeeklyUsageUSD:     weeklyUsage,
@@ -1159,6 +1165,33 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 	}
 	rec, _ := v.(*UserPlatformQuotaRecord)
 	if rec == nil {
+		// 仅在 cache 可用且本次 GET 未出错时回填 sentinel:Redis GET 故障(cacheErr!=nil)
+		// 时不回填,与下方 line ~1201 "Redis 故障时 fail-open:不回填" 保持一致,
+		// 避免在 Redis 异常期做一次注定失败的 SET。
+		if s.cache != nil && cacheErr == nil {
+			now := time.Now()
+			startOfDay := timezone.StartOfDay(now)
+			startOfWeek := timezone.StartOfWeek(now)
+			sentinel := &UserPlatformQuotaCacheEntry{
+				SchemaVersion:      UserPlatformQuotaCacheSchemaV1,
+				DailyWindowStart:   &startOfDay,
+				WeeklyWindowStart:  &startOfWeek,
+				MonthlyWindowStart: &now,
+				// limits 全 nil, usage 全 0(零值)
+			}
+			sentinelTTL := time.Duration(s.cfg.Billing.UserPlatformQuotaSentinelTTLSeconds) * time.Second
+			if sentinelTTL <= 0 {
+				// 防御:TTL<=0 时 Redis EXPIRE 会立即删除整个 key(见 billing_cache.go 的 pipe.Expire),
+				// sentinel 不持久化 → 每请求击穿 DB。配置缺失/误配为 0 时 fallback 到 1h。
+				sentinelTTL = time.Hour
+			}
+			setCtx, setCancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			if setErr := s.cache.SetUserPlatformQuotaCache(setCtx, userID, platform, sentinel, sentinelTTL); setErr != nil {
+				userPlatformQuotaSentinelSetCacheErrorTotal.Add(1)
+				logger.LegacyPrintf("service.billing_cache", "Warning: set sentinel quota cache failed user=%d platform=%s: %v", userID, platform, setErr)
+			}
+			setCancel()
+		}
 		return nil
 	}
 
@@ -1277,4 +1310,21 @@ func monthlyQuotaWindowExpired(start *time.Time, now time.Time) bool {
 		return true
 	}
 	return now.Sub(*start) >= 30*24*time.Hour
+}
+
+// HasUserPlatformQuotaLimit 判断该 user×platform 是否设了任一非 nil limit。
+// 写入点守卫:无 limit 直接跳过 Redis 写 + 脏集标记,消除无谓写入。
+// fail-safe:任何不确定(simple 模式除外)都返回 true 维持写入。
+func (s *BillingCacheService) HasUserPlatformQuotaLimit(ctx context.Context, userID int64, platform string) bool {
+	if s.cfg.RunMode == config.RunModeSimple {
+		return false
+	}
+	if s.cache == nil {
+		return true
+	}
+	entry, ok, err := s.cache.GetUserPlatformQuotaCache(ctx, userID, platform)
+	if err != nil || !ok || entry == nil {
+		return true
+	}
+	return entry.DailyLimitUSD != nil || entry.WeeklyLimitUSD != nil || entry.MonthlyLimitUSD != nil
 }

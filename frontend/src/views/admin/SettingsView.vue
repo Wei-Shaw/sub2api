@@ -3948,6 +3948,19 @@
                   }}
                 </p>
               </div>
+
+              <!-- 是否允许在 Claude Code 中使用 Codex 插件（全局开关） -->
+              <div class="flex items-center justify-between">
+                <div class="pr-4">
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPlugin") }}
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPluginDesc") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.openai_allow_claude_code_codex_plugin" />
+              </div>
             </div>
           </div>
           <!-- Web Search Emulation -->
@@ -7162,6 +7175,7 @@ const form = reactive<SettingsForm>({
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
+  openai_allow_claude_code_codex_plugin: false,
   // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -8267,6 +8281,7 @@ async function saveSettings() {
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
+      openai_allow_claude_code_codex_plugin: form.openai_allow_claude_code_codex_plugin,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,
