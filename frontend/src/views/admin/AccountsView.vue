@@ -419,6 +419,11 @@ import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
+import {
+  parseOpenAIQuotaFullStatus,
+  parseOpenAIQuotaUsedRangeStatus,
+  type OpenAIQuotaStatusWindow
+} from '@/components/admin/account/accountStatusFilter'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
@@ -1413,19 +1418,79 @@ const buildAccountQueryFilters = () => ({
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
 })
+const parseRuntimeTime = (value: string | null | undefined): number => {
+  const timestamp = value ? new Date(value).getTime() : Number.NaN
+  return Number.isFinite(timestamp) ? timestamp : Number.NaN
+}
+const getOpenAIQuotaUsedPercent = (account: Account, window: OpenAIQuotaStatusWindow, now: number): number | null => {
+  if (account.platform !== 'openai' || account.type !== 'oauth') return null
+  const usedKey = window === '5h' ? 'codex_5h_used_percent' : 'codex_7d_used_percent'
+  const resetAtKey = window === '5h' ? 'codex_5h_reset_at' : 'codex_7d_reset_at'
+  const resetAfterKey = window === '5h' ? 'codex_5h_reset_after_seconds' : 'codex_7d_reset_after_seconds'
+  const rawUsed = account.extra?.[usedKey]
+  const used = Number(rawUsed)
+  if (!Number.isFinite(used)) return null
+  let resetAt = parseRuntimeTime(typeof account.extra?.[resetAtKey] === 'string' ? account.extra[resetAtKey] : null)
+  if (!Number.isFinite(resetAt)) {
+    const resetAfterSeconds = Number(account.extra?.[resetAfterKey])
+    if (Number.isFinite(resetAfterSeconds) && resetAfterSeconds > 0) {
+      const updatedAt = parseRuntimeTime(typeof account.extra?.codex_usage_updated_at === 'string' ? account.extra.codex_usage_updated_at : null)
+      const base = Number.isFinite(updatedAt) ? updatedAt : now
+      resetAt = base + resetAfterSeconds * 1000
+    }
+  }
+  if (Number.isFinite(resetAt) && resetAt <= now) return 0
+  return Math.max(0, used)
+}
+const isOpenAIQuotaStrategySchedulable = (account: Account, now: number): boolean => {
+  if (account.platform !== 'openai' || account.type !== 'oauth') return true
+  const strategy = typeof account.extra?.openai_quota_strategy === 'string' ? account.extra.openai_quota_strategy : ''
+  const window = strategy === 'prefer_5h' ? '5h' : strategy === 'prefer_7d' ? '7d' : null
+  if (!window) return true
+  const used = getOpenAIQuotaUsedPercent(account, window, now)
+  if (used === null) return true
+  const rawThreshold = Number(account.extra?.openai_quota_stop_threshold_percent)
+  const threshold = !Number.isFinite(rawThreshold) || rawThreshold <= 0 ? 10 : Math.min(100, rawThreshold)
+  const remaining = 100 - Math.min(100, used)
+  return remaining >= threshold
+}
+const matchesActiveAccountStatusFilter = (account: Account, now: number, excludeQuotaStopped: boolean): boolean => {
+  const rateLimitResetAt = parseRuntimeTime(account.rate_limit_reset_at)
+  const isRateLimited = Number.isFinite(rateLimitResetAt) && rateLimitResetAt > now
+  const tempUnschedUntil = parseRuntimeTime(account.temp_unschedulable_until)
+  const isTempUnschedulable = Number.isFinite(tempUnschedUntil) && tempUnschedUntil > now
+  if (account.status !== 'active' || isRateLimited || isTempUnschedulable || !account.schedulable) return false
+  if (excludeQuotaStopped && !isOpenAIQuotaStrategySchedulable(account, now)) return false
+  return true
+}
 const accountMatchesCurrentFilters = (account: Account) => {
   const filters = buildAccountQueryFilters()
   if (filters.platform && account.platform !== filters.platform) return false
   if (filters.type && account.type !== filters.type) return false
   if (filters.status) {
     const now = Date.now()
-    const rateLimitResetAt = account.rate_limit_reset_at ? new Date(account.rate_limit_reset_at).getTime() : Number.NaN
+    const rateLimitResetAt = parseRuntimeTime(account.rate_limit_reset_at)
     const isRateLimited = Number.isFinite(rateLimitResetAt) && rateLimitResetAt > now
-    const tempUnschedUntil = account.temp_unschedulable_until ? new Date(account.temp_unschedulable_until).getTime() : Number.NaN
+    const tempUnschedUntil = parseRuntimeTime(account.temp_unschedulable_until)
     const isTempUnschedulable = Number.isFinite(tempUnschedUntil) && tempUnschedUntil > now
+    const quotaRangeFilter = parseOpenAIQuotaUsedRangeStatus(String(filters.status))
+    const quotaFullWindow = parseOpenAIQuotaFullStatus(String(filters.status))
 
     if (filters.status === 'active') {
-      if (account.status !== 'active' || isRateLimited || isTempUnschedulable || !account.schedulable) return false
+      if (!matchesActiveAccountStatusFilter(account, now, false)) return false
+    } else if (filters.status === 'active_excluding_quota_stopped') {
+      if (!matchesActiveAccountStatusFilter(account, now, true)) return false
+    } else if (filters.status === 'openai_5h_used_zero') {
+      if (getOpenAIQuotaUsedPercent(account, '5h', now) !== 0) return false
+    } else if (filters.status === 'openai_7d_used_zero') {
+      if (getOpenAIQuotaUsedPercent(account, '7d', now) !== 0) return false
+    } else if (quotaRangeFilter) {
+      if (!matchesActiveAccountStatusFilter(account, now, true)) return false
+      const used = getOpenAIQuotaUsedPercent(account, quotaRangeFilter.window, now)
+      if (used === null || used < quotaRangeFilter.min || used > quotaRangeFilter.max) return false
+    } else if (quotaFullWindow) {
+      const used = getOpenAIQuotaUsedPercent(account, quotaFullWindow, now)
+      if (used === null || used < 100) return false
     } else if (filters.status === 'rate_limited') {
       if (account.status !== 'active' || !isRateLimited || isTempUnschedulable) return false
     } else if (filters.status === 'temp_unschedulable') {

@@ -467,6 +467,8 @@ func (r *accountRepository) List(ctx context.Context, params pagination.Paginati
 
 func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
 	q := r.client.Account.Query()
+	now := time.Now()
+	inMemoryStatusFilter := service.IsAccountListStatusFilterRequiringInMemory(status)
 
 	if platform != "" {
 		q = q.Where(dbaccount.PlatformEQ(platform))
@@ -475,14 +477,38 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		q = q.Where(dbaccount.TypeEQ(accountType))
 	}
 	if status != "" {
-		switch status {
-		case service.StatusActive:
+		switch {
+		case inMemoryStatusFilter:
+			if service.IsOpenAIQuotaStatusFilter(status) {
+				q = q.Where(
+					dbaccount.PlatformEQ(service.PlatformOpenAI),
+					dbaccount.TypeEQ(service.AccountTypeOAuth),
+				)
+			}
+			if status == service.AccountStatusFilterActiveExcludingQuotaStopped {
+				q = q.Where(
+					dbaccount.StatusEQ(service.StatusActive),
+					dbaccount.SchedulableEQ(true),
+					dbaccount.Or(
+						dbaccount.RateLimitResetAtIsNil(),
+						dbaccount.RateLimitResetAtLTE(now),
+					),
+					dbpredicate.Account(func(s *entsql.Selector) {
+						col := s.C("temp_unschedulable_until")
+						s.Where(entsql.Or(
+							entsql.IsNull(col),
+							entsql.LTE(col, entsql.Expr("NOW()")),
+						))
+					}),
+				)
+			}
+		case status == service.StatusActive:
 			q = q.Where(
 				dbaccount.StatusEQ(status),
 				dbaccount.SchedulableEQ(true),
 				dbaccount.Or(
 					dbaccount.RateLimitResetAtIsNil(),
-					dbaccount.RateLimitResetAtLTE(time.Now()),
+					dbaccount.RateLimitResetAtLTE(now),
 				),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					col := s.C("temp_unschedulable_until")
@@ -492,10 +518,10 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 					))
 				}),
 			)
-		case "rate_limited":
+		case status == "rate_limited":
 			q = q.Where(
 				dbaccount.StatusEQ(service.StatusActive),
-				dbaccount.RateLimitResetAtGT(time.Now()),
+				dbaccount.RateLimitResetAtGT(now),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					col := s.C("temp_unschedulable_until")
 					s.Where(entsql.Or(
@@ -504,7 +530,7 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 					))
 				}),
 			)
-		case "temp_unschedulable":
+		case status == "temp_unschedulable":
 			q = q.Where(
 				dbaccount.StatusEQ(service.StatusActive),
 				dbpredicate.Account(func(s *entsql.Selector) {
@@ -515,13 +541,13 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 					))
 				}),
 			)
-		case "unschedulable":
+		case status == "unschedulable":
 			q = q.Where(
 				dbaccount.StatusEQ(service.StatusActive),
 				dbaccount.SchedulableEQ(false),
 				dbaccount.Or(
 					dbaccount.RateLimitResetAtIsNil(),
-					dbaccount.RateLimitResetAtLTE(time.Now()),
+					dbaccount.RateLimitResetAtLTE(now),
 				),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					col := s.C("temp_unschedulable_until")
@@ -556,6 +582,41 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 				s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, privacyMode, path))
 			}
 		}))
+	}
+
+	if inMemoryStatusFilter {
+		accountsQuery := q
+		for _, order := range accountListOrder(params) {
+			accountsQuery = accountsQuery.Order(order)
+		}
+
+		accounts, err := accountsQuery.All(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		outAccounts, err := r.accountsToService(ctx, accounts)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		filtered := make([]service.Account, 0, len(outAccounts))
+		for i := range outAccounts {
+			if service.MatchesAccountListStatusFilter(&outAccounts[i], status, now) {
+				filtered = append(filtered, outAccounts[i])
+			}
+		}
+
+		total := len(filtered)
+		start := params.Offset()
+		if start > total {
+			start = total
+		}
+		end := start + params.Limit()
+		if end > total {
+			end = total
+		}
+		return filtered[start:end], paginationResultFromTotal(int64(total), params), nil
 	}
 
 	total, err := q.Count(ctx)

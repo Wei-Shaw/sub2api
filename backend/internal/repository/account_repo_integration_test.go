@@ -381,6 +381,129 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 			},
 		},
 		{
+			name: "filter_by_status_active_excluding_quota_stopped",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:        "quota-ok",
+					Platform:    service.PlatformOpenAI,
+					Type:        service.AccountTypeOAuth,
+					Status:      service.StatusActive,
+					Schedulable: true,
+					Extra: map[string]any{
+						"openai_quota_strategy":               "prefer_7d",
+						"openai_quota_stop_threshold_percent": 10,
+						"codex_7d_used_percent":               42.0,
+					},
+				})
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:        "quota-stopped",
+					Platform:    service.PlatformOpenAI,
+					Type:        service.AccountTypeOAuth,
+					Status:      service.StatusActive,
+					Schedulable: true,
+					Extra: map[string]any{
+						"openai_quota_strategy":               "prefer_7d",
+						"openai_quota_stop_threshold_percent": 10,
+						"codex_7d_used_percent":               95.0,
+					},
+				})
+			},
+			status:    service.AccountStatusFilterActiveExcludingQuotaStopped,
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("quota-ok", accounts[0].Name)
+			},
+		},
+		{
+			name: "filter_by_status_openai_7d_used_zero_counts_expired_window",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:     "quota-expired-zero",
+					Platform: service.PlatformOpenAI,
+					Type:     service.AccountTypeOAuth,
+					Extra: map[string]any{
+						"codex_7d_used_percent": 88.0,
+						"codex_7d_reset_at":     time.Now().Add(-time.Hour).Format(time.RFC3339),
+					},
+				})
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:     "quota-non-zero",
+					Platform: service.PlatformOpenAI,
+					Type:     service.AccountTypeOAuth,
+					Extra: map[string]any{
+						"codex_7d_used_percent": 12.0,
+					},
+				})
+			},
+			status:    service.AccountStatusFilterOpenAI7DUsedZero,
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("quota-expired-zero", accounts[0].Name)
+			},
+		},
+		{
+			name: "filter_by_status_openai_quota_used_range",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:        "quota-range-hit",
+					Platform:    service.PlatformOpenAI,
+					Type:        service.AccountTypeOAuth,
+					Status:      service.StatusActive,
+					Schedulable: true,
+					Extra: map[string]any{
+						"openai_quota_strategy":               "prefer_7d",
+						"openai_quota_stop_threshold_percent": 10,
+						"codex_7d_used_percent":               42.0,
+					},
+				})
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:        "quota-range-stopped",
+					Platform:    service.PlatformOpenAI,
+					Type:        service.AccountTypeOAuth,
+					Status:      service.StatusActive,
+					Schedulable: true,
+					Extra: map[string]any{
+						"openai_quota_strategy":               "prefer_7d",
+						"openai_quota_stop_threshold_percent": 10,
+						"codex_7d_used_percent":               95.0,
+					},
+				})
+			},
+			status:    "openai_quota_used_range:7d:40:45",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("quota-range-hit", accounts[0].Name)
+			},
+		},
+		{
+			name: "filter_by_status_openai_quota_full_includes_all_statuses",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:     "quota-full-error",
+					Platform: service.PlatformOpenAI,
+					Type:     service.AccountTypeOAuth,
+					Status:   service.StatusError,
+					Extra: map[string]any{
+						"codex_5h_used_percent": 100.0,
+					},
+				})
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:     "quota-not-full",
+					Platform: service.PlatformOpenAI,
+					Type:     service.AccountTypeOAuth,
+					Status:   service.StatusActive,
+					Extra: map[string]any{
+						"codex_5h_used_percent": 99.0,
+					},
+				})
+			},
+			status:    "openai_quota_full:5h",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("quota-full-error", accounts[0].Name)
+			},
+		},
+		{
 			name: "filter_by_search",
 			setup: func(client *dbent.Client) {
 				mustCreateAccount(s.T(), client, &service.Account{Name: "alpha-account"})
