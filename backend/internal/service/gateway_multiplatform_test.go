@@ -1985,6 +1985,7 @@ type mockConcurrencyCache struct {
 	loadBatchErr        error
 	loadMap             map[int64]*AccountLoadInfo
 	waitCounts          map[int64]int
+	waitErr             error
 	skipDefaultLoad     bool
 }
 
@@ -2033,6 +2034,9 @@ func (m *mockConcurrencyCache) DecrementAccountWaitCount(ctx context.Context, ac
 }
 
 func (m *mockConcurrencyCache) GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error) {
+	if m.waitErr != nil {
+		return 0, m.waitErr
+	}
 	if m.waitCounts != nil {
 		if count, ok := m.waitCounts[accountID]; ok {
 			return count, nil

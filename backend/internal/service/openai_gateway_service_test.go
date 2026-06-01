@@ -85,6 +85,7 @@ type stubConcurrencyCache struct {
 	loadMap         map[int64]*AccountLoadInfo
 	acquireResults  map[int64]bool
 	waitCounts      map[int64]int
+	waitErr         error
 	skipDefaultLoad bool
 }
 
@@ -339,6 +340,9 @@ func TestOpenAIGatewayService_GenerateSessionHash_EmptyBodyStillEmpty(t *testing
 }
 
 func (c stubConcurrencyCache) GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error) {
+	if c.waitErr != nil {
+		return 0, c.waitErr
+	}
 	if c.waitCounts != nil {
 		if count, ok := c.waitCounts[accountID]; ok {
 			return count, nil
@@ -860,6 +864,39 @@ func TestOpenAISelectAccountWithLoadAwareness_AllQueuesFullReturnsNoAvailable(t 
 	svc := &OpenAIGatewayService{
 		accountRepo:        repo,
 		cache:              cache,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				Scheduling: config.GatewaySchedulingConfig{
+					FallbackMaxWaiting: 1,
+					LoadBatchEnabled:   true,
+				},
+			},
+		},
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gpt-4", nil)
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.Nil(t, selection)
+}
+
+func TestOpenAISelectAccountWithLoadAwareness_WaitingCountErrorReturnsNoAvailable(t *testing.T) {
+	groupID := int64(1)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
+		},
+	}
+	concurrencyCache := stubConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			1: {AccountID: 1, LoadRate: 100},
+		},
+		waitErr: errors.New("waiting count unavailable"),
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        repo,
+		cache:              &stubGatewayCache{},
 		concurrencyService: NewConcurrencyService(concurrencyCache),
 		cfg: &config.Config{
 			Gateway: config.GatewayConfig{

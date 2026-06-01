@@ -1840,7 +1840,14 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				return s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
 			}
 			if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
-				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
+				waitingCount, waitErr := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
+				if waitErr != nil {
+					if localExcluded == nil {
+						localExcluded = make(map[int64]struct{})
+					}
+					localExcluded[account.ID] = struct{}{}
+					continue
+				}
 				if waitingCount < cfg.StickySessionMaxWaiting {
 					return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 						AccountID:      account.ID,
@@ -1851,7 +1858,17 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				}
 			}
 			if s.concurrencyService != nil {
-				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
+				waitingCount, waitErr := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
+				if waitErr != nil {
+					if localExcluded == nil {
+						localExcluded = make(map[int64]struct{})
+					}
+					if _, exists := localExcluded[account.ID]; exists {
+						return nil, ErrNoAvailableAccounts
+					}
+					localExcluded[account.ID] = struct{}{}
+					continue
+				}
 				if cfg.FallbackMaxWaiting > 0 && waitingCount >= cfg.FallbackMaxWaiting {
 					if localExcluded == nil {
 						localExcluded = make(map[int64]struct{})
@@ -2118,7 +2135,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 			continue
 		}
-		waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, fresh.ID)
+		waitingCount, waitErr := s.concurrencyService.GetAccountWaitingCount(ctx, fresh.ID)
+		if waitErr != nil {
+			continue
+		}
 		if cfg.FallbackMaxWaiting > 0 && waitingCount >= cfg.FallbackMaxWaiting {
 			continue
 		}

@@ -63,6 +63,7 @@ type schedulerTestConcurrencyCache struct {
 	loadMap         map[int64]*AccountLoadInfo
 	acquireResults  map[int64]bool
 	waitCounts      map[int64]int
+	waitErr         error
 	skipDefaultLoad bool
 }
 
@@ -105,6 +106,9 @@ func (c schedulerTestConcurrencyCache) GetAccountsLoadBatch(ctx context.Context,
 }
 
 func (c schedulerTestConcurrencyCache) GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error) {
+	if c.waitErr != nil {
+		return 0, c.waitErr
+	}
 	if c.waitCounts != nil {
 		if count, ok := c.waitCounts[accountID]; ok {
 			return count, nil
@@ -1212,6 +1216,55 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsS
 	require.Equal(t, int64(21001), selection.WaitPlan.AccountID)
 	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
 	require.True(t, decision.StickySessionHit)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_WaitingCountErrorReturnsNoAvailable(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10101)
+	repo := schedulerTestOpenAIAccountRepo{
+		accounts: []Account{
+			{ID: 22001, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.Scheduling.FallbackMaxWaiting = 1
+
+	concurrencyCache := schedulerTestConcurrencyCache{
+		acquireResults: map[int64]bool{
+			22001: false,
+		},
+		loadMap: map[int64]*AccountLoadInfo{
+			22001: {AccountID: 22001, LoadRate: 100},
+		},
+		waitErr: errors.New("waiting count unavailable"),
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        repo,
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		false,
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no available OpenAI accounts")
+	require.Nil(t, selection)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionSticky_ForceHTTP(t *testing.T) {
