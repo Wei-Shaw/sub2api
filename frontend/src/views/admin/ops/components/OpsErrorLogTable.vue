@@ -129,22 +129,47 @@
 
               <!-- User / Account -->
               <td class="px-4 py-2">
-                <template v-if="isUpstreamRow(log)">
-                  <el-tooltip v-if="log.account_id" :content="t('admin.ops.errorLog.accountId') + ' ' + log.account_id" placement="top" :show-after="500">
-                    <span class="max-w-[100px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
-                      {{ log.account_name || '-' }}
+                <div class="max-w-[140px] space-y-0.5">
+                  <template v-if="prefersAccountDisplay(log)">
+                    <el-tooltip v-if="log.account_id" :content="t('admin.ops.errorLog.accountId') + ' ' + log.account_id" placement="top" :show-after="500">
+                      <span class="block truncate text-xs font-medium text-gray-900 dark:text-gray-200">
+                        {{ formatAccountLabel(log) }}
+                      </span>
+                    </el-tooltip>
+                    <span v-else-if="formatAccountLabel(log)" class="block truncate text-xs font-medium text-gray-900 dark:text-gray-200">
+                      {{ formatAccountLabel(log) }}
+                    </span>
+                    <span v-else class="text-xs text-gray-400">-</span>
+                  </template>
+                  <template v-else>
+                    <el-tooltip v-if="log.user_id" :content="t('admin.ops.errorLog.userId') + ' ' + log.user_id" placement="top" :show-after="500">
+                      <span class="block truncate text-xs font-medium text-gray-900 dark:text-gray-200">
+                        {{ formatUserLabel(log) }}
+                      </span>
+                    </el-tooltip>
+                    <span v-else-if="formatUserLabel(log)" class="block truncate text-xs font-medium text-gray-900 dark:text-gray-200">
+                      {{ formatUserLabel(log) }}
+                    </span>
+                    <span v-else class="text-xs text-gray-400">-</span>
+                  </template>
+
+                  <el-tooltip
+                    v-if="!prefersAccountDisplay(log) && formatAccountLabel(log) && log.account_id"
+                    :content="t('admin.ops.errorLog.accountId') + ' ' + log.account_id"
+                    placement="top"
+                    :show-after="500"
+                  >
+                    <span class="block truncate text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                      {{ t('admin.ops.errorLog.acc') }} {{ formatAccountLabel(log) }}
                     </span>
                   </el-tooltip>
-                  <span v-else class="text-xs text-gray-400">-</span>
-                </template>
-                <template v-else>
-                  <el-tooltip v-if="log.user_id" :content="t('admin.ops.errorLog.userId') + ' ' + log.user_id" placement="top" :show-after="500">
-                    <span class="max-w-[100px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
-                      {{ log.user_email || '-' }}
-                    </span>
-                  </el-tooltip>
-                  <span v-else class="text-xs text-gray-400">-</span>
-                </template>
+                  <span
+                    v-else-if="!prefersAccountDisplay(log) && formatAccountLabel(log)"
+                    class="block truncate text-[10px] font-medium text-gray-500 dark:text-gray-400"
+                  >
+                    {{ t('admin.ops.errorLog.acc') }} {{ formatAccountLabel(log) }}
+                  </span>
+                </div>
               </td>
 
               <!-- Status -->
@@ -222,6 +247,24 @@ function isUpstreamRow(log: OpsErrorLog): boolean {
   const phase = String(log.phase || '').toLowerCase()
   const owner = String(log.error_owner || '').toLowerCase()
   return phase === 'upstream' && owner === 'provider'
+}
+
+function formatAccountLabel(log: OpsErrorLog): string {
+  const accountName = String(log.account_name || '').trim()
+  if (accountName) return accountName
+  if (log.account_id != null) return String(log.account_id)
+  return ''
+}
+
+function formatUserLabel(log: OpsErrorLog): string {
+  const userEmail = String(log.user_email || '').trim()
+  if (userEmail) return userEmail
+  if (log.user_id != null) return String(log.user_id)
+  return ''
+}
+
+function prefersAccountDisplay(log: OpsErrorLog): boolean {
+  return isUpstreamRow(log) || (!!formatAccountLabel(log) && !formatUserLabel(log))
 }
 
 function formatEndpointTooltip(log: OpsErrorLog): string {

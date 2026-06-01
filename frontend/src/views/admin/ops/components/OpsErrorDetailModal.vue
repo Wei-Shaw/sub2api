@@ -30,15 +30,29 @@
 
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
           <div class="text-xs font-bold uppercase tracking-wider text-gray-400">
-            {{ isUpstreamError(detail) ? t('admin.ops.errorDetail.account') : t('admin.ops.errorDetail.user') }}
+            {{ prefersAccountSummary(detail) ? t('admin.ops.errorDetail.account') : t('admin.ops.errorDetail.user') }}
           </div>
-          <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-            <template v-if="isUpstreamError(detail)">
-              {{ detail.account_name || (detail.account_id != null ? String(detail.account_id) : '—') }}
-            </template>
-            <template v-else>
-              {{ detail.user_email || (detail.user_id != null ? String(detail.user_id) : '—') }}
-            </template>
+          <div class="mt-1 space-y-1 text-sm font-medium text-gray-900 dark:text-white">
+            <div>
+              <template v-if="prefersAccountSummary(detail)">
+                {{ formatAccountIdentity(detail) || '—' }}
+              </template>
+              <template v-else>
+                {{ formatUserIdentity(detail) || '—' }}
+              </template>
+            </div>
+            <div
+              v-if="showSecondaryAccountSummary(detail)"
+              class="text-xs font-medium text-gray-500 dark:text-gray-400"
+            >
+              {{ t('admin.ops.errorDetail.account') }}: {{ formatAccountIdentity(detail) }}
+            </div>
+            <div
+              v-else-if="showSecondaryUserSummary(detail)"
+              class="text-xs font-medium text-gray-500 dark:text-gray-400"
+            >
+              {{ t('admin.ops.errorDetail.user') }}: {{ formatUserIdentity(detail) }}
+            </div>
           </div>
         </div>
 
@@ -163,7 +177,11 @@
               </div>
             </div>
 
-            <div class="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
+            <div class="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-3">
+              <div>
+                <span class="text-gray-400">{{ t('admin.ops.errorDetail.upstreamEvent.account') }}:</span>
+                <span class="ml-1 font-medium">{{ formatAccountIdentity(ev) || '—' }}</span>
+              </div>
               <div>
                 <span class="text-gray-400">{{ t('admin.ops.errorDetail.upstreamEvent.status') }}:</span>
                 <span class="ml-1 font-mono">{{ ev.status_code ?? '—' }}</span>
@@ -239,6 +257,34 @@ function isUpstreamError(d: OpsErrorDetail | null): boolean {
   const phase = String(d.phase || '').toLowerCase()
   const owner = String(d.error_owner || '').toLowerCase()
   return phase === 'upstream' && owner === 'provider'
+}
+
+function formatAccountIdentity(d: OpsErrorDetail | null): string {
+  if (!d) return ''
+  const accountName = String(d.account_name || '').trim()
+  if (accountName) return accountName
+  if (d.account_id != null) return String(d.account_id)
+  return ''
+}
+
+function formatUserIdentity(d: OpsErrorDetail | null): string {
+  if (!d) return ''
+  const userEmail = String(d.user_email || '').trim()
+  if (userEmail) return userEmail
+  if (d.user_id != null) return String(d.user_id)
+  return ''
+}
+
+function prefersAccountSummary(d: OpsErrorDetail | null): boolean {
+  return !!formatAccountIdentity(d) && (isUpstreamError(d) || !formatUserIdentity(d))
+}
+
+function showSecondaryAccountSummary(d: OpsErrorDetail | null): boolean {
+  return !prefersAccountSummary(d) && !!formatAccountIdentity(d)
+}
+
+function showSecondaryUserSummary(d: OpsErrorDetail | null): boolean {
+  return prefersAccountSummary(d) && !isUpstreamError(d) && !!formatUserIdentity(d)
 }
 
 function formatRequestTypeLabel(type: number | null | undefined): string {
