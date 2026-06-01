@@ -973,17 +973,18 @@ export interface AccountUsageInfo {
 
 // OpenAI Codex usage snapshot (from response headers)
 export interface CodexUsageSnapshot {
-  // Legacy fields (kept for backwards compatibility)
-  // NOTE: The naming is ambiguous - actual window type is determined by window_minutes value
+  // Current fields (prefer these; actual window is determined by window_minutes)
   codex_primary_used_percent?: number // Usage percentage (check window_minutes for actual window type)
   codex_primary_reset_after_seconds?: number // Seconds until reset
+  codex_primary_reset_at?: string // Absolute reset time (RFC3339)
   codex_primary_window_minutes?: number // Window in minutes
   codex_secondary_used_percent?: number // Usage percentage (check window_minutes for actual window type)
   codex_secondary_reset_after_seconds?: number // Seconds until reset
+  codex_secondary_reset_at?: string // Absolute reset time (RFC3339)
   codex_secondary_window_minutes?: number // Window in minutes
   codex_primary_over_secondary_percent?: number // Overflow ratio
 
-  // Canonical fields (normalized by backend, use these preferentially)
+  // Legacy fields (kept as fallback for older account snapshots)
   codex_5h_used_percent?: number // 5-hour window usage percentage
   codex_5h_reset_after_seconds?: number // Seconds until 5h window reset
   codex_5h_reset_at?: string // 5-hour window absolute reset time (RFC3339)

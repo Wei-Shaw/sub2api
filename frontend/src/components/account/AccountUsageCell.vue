@@ -105,26 +105,18 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
-    <!-- OpenAI OAuth accounts: single source from /usage API -->
+    <!-- OpenAI OAuth accounts: Codex usage snapshot from account.extra, with /usage stats fallback -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
-          v-if="usageInfo?.five_hour"
-          label="5h"
-          :utilization="usageInfo.five_hour.utilization"
-          :resets-at="usageInfo.five_hour.resets_at"
-          :window-stats="usageInfo.five_hour.window_stats"
+          v-for="bar in openAIUsageBars"
+          :key="bar.key"
+          :label="bar.label"
+          :utilization="bar.utilization"
+          :resets-at="bar.resetsAt"
+          :window-stats="bar.windowStats"
           :show-now-when-idle="true"
-          color="indigo"
-        />
-        <UsageProgressBar
-          v-if="usageInfo?.seven_day"
-          label="7d"
-          :utilization="usageInfo.seven_day.utilization"
-          :resets-at="usageInfo.seven_day.resets_at"
-          :window-stats="usageInfo.seven_day.window_stats"
-          :show-now-when-idle="true"
-          color="emerald"
+          :color="bar.color"
         />
         <div class="flex items-center gap-1.5 mt-0.5">
           <button
@@ -584,10 +576,207 @@ const geminiUsageAvailable = computed(() => {
 
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
-  return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
+  return openAIUsageBars.value.length > 0
 })
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
+
+type OpenAIUsageColor = 'indigo' | 'emerald'
+
+interface OpenAIUsageBarInfo {
+  key: string
+  label: string
+  utilization: number
+  resetsAt: string | null
+  windowStats?: WindowStats | null
+  color: OpenAIUsageColor
+}
+
+const hasExtraKey = (extra: Record<string, unknown> | undefined, key: string): boolean => {
+  return !!extra && Object.prototype.hasOwnProperty.call(extra, key)
+}
+
+const readExtraNumber = (extra: Record<string, unknown> | undefined, key: string): number | null => {
+  if (!hasExtraKey(extra, key)) return null
+  const value = extra?.[key]
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+const readExtraString = (extra: Record<string, unknown> | undefined, key: string): string | null => {
+  if (!hasExtraKey(extra, key)) return null
+  const value = extra?.[key]
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed === '' ? null : trimmed
+}
+
+const readPreferredNumber = (
+  extra: Record<string, unknown> | undefined,
+  preferredKey: string,
+  fallbackKey: string
+): number | null => {
+  return hasExtraKey(extra, preferredKey)
+    ? readExtraNumber(extra, preferredKey)
+    : readExtraNumber(extra, fallbackKey)
+}
+
+const readPreferredString = (
+  extra: Record<string, unknown> | undefined,
+  preferredKey: string,
+  fallbackKey: string
+): string | null => {
+  return hasExtraKey(extra, preferredKey)
+    ? readExtraString(extra, preferredKey)
+    : readExtraString(extra, fallbackKey)
+}
+
+const formatOpenAIUsageWindowLabel = (windowMinutes: number | null, fallbackLabel: string): string => {
+  if (windowMinutes == null || windowMinutes <= 0) return fallbackLabel
+  if (windowMinutes === 300) return '5h'
+  if (windowMinutes === 10080) return '7d'
+  if (windowMinutes % 1440 === 0) return `${windowMinutes / 1440}d`
+  if (windowMinutes % 60 === 0) return `${windowMinutes / 60}h`
+  return `${windowMinutes}m`
+}
+
+const buildResetAtFromSnapshot = (
+  extra: Record<string, unknown> | undefined,
+  resetAt: string | null,
+  resetAfterSeconds: number | null
+): string | null => {
+  if (resetAt) return resetAt
+  if (resetAfterSeconds == null || resetAfterSeconds <= 0) return null
+
+  const updatedAt = readExtraString(extra, 'codex_usage_updated_at')
+  const baseTime = updatedAt ? new Date(updatedAt) : new Date()
+  const baseMs = Number.isFinite(baseTime.getTime()) ? baseTime.getTime() : Date.now()
+  return new Date(baseMs + resetAfterSeconds * 1000).toISOString()
+}
+
+const isExpiredResetAt = (resetAt: string | null): boolean => {
+  if (!resetAt) return false
+  const resetMs = new Date(resetAt).getTime()
+  return Number.isFinite(resetMs) && resetMs <= Date.now()
+}
+
+const openAIExtraHasCodexUsageSnapshot = (extra: Record<string, unknown> | undefined): boolean => {
+  if (!extra) return false
+  if (hasExtraKey(extra, 'codex_usage_updated_at')) return true
+  return [
+    'codex_primary_reset_at',
+    'codex_primary_reset_after_seconds',
+    'codex_primary_window_minutes',
+    'codex_secondary_reset_at',
+    'codex_secondary_reset_after_seconds',
+    'codex_secondary_window_minutes',
+    'codex_5h_reset_at',
+    'codex_5h_reset_after_seconds',
+    'codex_5h_window_minutes',
+    'codex_7d_reset_at',
+    'codex_7d_reset_after_seconds',
+    'codex_7d_window_minutes'
+  ].some((key) => hasExtraKey(extra, key))
+}
+
+const buildOpenAICodexUsageBar = (
+  extra: Record<string, unknown> | undefined,
+  keys: {
+    prefix: 'primary' | 'secondary'
+    fallbackPrefix: '5h' | '7d'
+    fallbackLabel: string
+    color: OpenAIUsageColor
+    windowStats?: WindowStats | null
+  }
+): OpenAIUsageBarInfo | null => {
+  const usedPercent = readPreferredNumber(
+    extra,
+    `codex_${keys.prefix}_used_percent`,
+    `codex_${keys.fallbackPrefix}_used_percent`
+  )
+  if (usedPercent == null) return null
+
+  const windowMinutes = readPreferredNumber(
+    extra,
+    `codex_${keys.prefix}_window_minutes`,
+    `codex_${keys.fallbackPrefix}_window_minutes`
+  )
+  const resetAt = readPreferredString(
+    extra,
+    `codex_${keys.prefix}_reset_at`,
+    `codex_${keys.fallbackPrefix}_reset_at`
+  )
+  const resetAfterSeconds = readPreferredNumber(
+    extra,
+    `codex_${keys.prefix}_reset_after_seconds`,
+    `codex_${keys.fallbackPrefix}_reset_after_seconds`
+  )
+  const computedResetAt = buildResetAtFromSnapshot(extra, resetAt, resetAfterSeconds)
+  if (isExpiredResetAt(computedResetAt)) return null
+
+  return {
+    key: keys.prefix,
+    label: formatOpenAIUsageWindowLabel(windowMinutes, keys.fallbackLabel),
+    utilization: usedPercent,
+    resetsAt: computedResetAt,
+    windowStats: keys.windowStats,
+    color: keys.color
+  }
+}
+
+const openAIUsageBars = computed<OpenAIUsageBarInfo[]>(() => {
+  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return []
+
+  const extra = props.account.extra as Record<string, unknown> | undefined
+  if (openAIExtraHasCodexUsageSnapshot(extra)) {
+    const snapshotBars = [
+      buildOpenAICodexUsageBar(extra, {
+        prefix: 'primary',
+        fallbackPrefix: '5h',
+        fallbackLabel: '5h',
+        color: 'indigo',
+        windowStats: usageInfo.value?.five_hour?.window_stats
+      }),
+      buildOpenAICodexUsageBar(extra, {
+        prefix: 'secondary',
+        fallbackPrefix: '7d',
+        fallbackLabel: '7d',
+        color: 'emerald',
+        windowStats: usageInfo.value?.seven_day?.window_stats
+      })
+    ].filter((bar): bar is OpenAIUsageBarInfo => !!bar)
+    if (snapshotBars.length > 0) return snapshotBars
+  }
+
+  const bars: OpenAIUsageBarInfo[] = []
+  const fiveHour = usageInfo.value?.five_hour
+  if (fiveHour) {
+    bars.push({
+      key: 'five_hour',
+      label: '5h',
+      utilization: fiveHour.utilization,
+      resetsAt: fiveHour.resets_at,
+      windowStats: fiveHour.window_stats,
+      color: 'indigo'
+    })
+  }
+  const sevenDay = usageInfo.value?.seven_day
+  if (sevenDay) {
+    bars.push({
+      key: 'seven_day',
+      label: '7d',
+      utilization: sevenDay.utilization,
+      resetsAt: sevenDay.resets_at,
+      windowStats: sevenDay.window_stats,
+      color: 'emerald'
+    })
+  }
+  return bars
+})
 
 const shouldAutoLoadUsageOnMount = computed(() => {
   return shouldFetchUsage.value
@@ -1213,6 +1402,7 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
+  _usageCache.delete(props.account.id)
   requestAutoLoad()
 })
 

@@ -206,15 +206,15 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2000)
+    expect(getUsage).toHaveBeenCalledWith(2000, undefined)
     expect(wrapper.text()).toContain('5h|15|300')
     expect(wrapper.text()).toContain('7d|77|300')
   })
 
-  it('OpenAI OAuth 有 codex 快照时仍然使用 /usage API 数据渲染', async () => {
+  it('OpenAI OAuth 新旧 Codex 字段同时存在时优先显示 primary/secondary 快照', async () => {
     getUsage.mockResolvedValue({
       five_hour: {
-        utilization: 18,
+        utilization: 100,
         resets_at: '2099-03-07T12:00:00Z',
         remaining_seconds: 3600,
         window_stats: {
@@ -226,7 +226,7 @@ describe('AccountUsageCell', () => {
         }
       },
       seven_day: {
-        utilization: 36,
+        utilization: 99,
         resets_at: '2099-03-13T12:00:00Z',
         remaining_seconds: 3600,
         window_stats: {
@@ -247,9 +247,15 @@ describe('AccountUsageCell', () => {
           type: 'oauth',
           extra: {
             codex_usage_updated_at: '2099-03-07T10:00:00Z',
-            codex_5h_used_percent: 12,
+            codex_primary_used_percent: 0,
+            codex_primary_reset_after_seconds: 7200,
+            codex_primary_window_minutes: 300,
+            codex_secondary_used_percent: 2,
+            codex_secondary_reset_after_seconds: 604800,
+            codex_secondary_window_minutes: 10080,
+            codex_5h_used_percent: 100,
             codex_5h_reset_at: '2099-03-07T12:00:00Z',
-            codex_7d_used_percent: 34,
+            codex_7d_used_percent: 99,
             codex_7d_reset_at: '2099-03-13T12:00:00Z'
           }
         })
@@ -267,13 +273,12 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2001)
-    // 单一数据源：始终使用 /usage API 返回值，忽略 codex 快照
-    expect(wrapper.text()).toContain('5h|18|900')
-    expect(wrapper.text()).toContain('7d|36|900')
+    expect(getUsage).toHaveBeenCalledWith(2001, undefined)
+    expect(wrapper.text()).toContain('5h|0|900')
+    expect(wrapper.text()).toContain('7d|2|900')
   })
 
-  it('OpenAI OAuth 有现成快照时，手动刷新信号会触发 usage 重拉', async () => {
+  it('OpenAI OAuth 新字段缺失时 fallback 到旧 codex_5h/codex_7d 快照', async () => {
     getUsage.mockResolvedValue({
       five_hour: {
         utilization: 18,
@@ -332,15 +337,16 @@ describe('AccountUsageCell', () => {
     await flushPromises()
     // mount 时已经拉取一次
     expect(getUsage).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('5h|12|900')
+    expect(wrapper.text()).toContain('7d|34|900')
 
     await wrapper.setProps({ manualRefreshToken: 1 })
     await flushPromises()
 
     // 手动刷新再拉一次
     expect(getUsage).toHaveBeenCalledTimes(2)
-    expect(getUsage).toHaveBeenCalledWith(2010)
-    // 单一数据源：始终使用 /usage API 值
-    expect(wrapper.text()).toContain('5h|18|900')
+    expect(getUsage).toHaveBeenCalledWith(2010, undefined)
+    expect(wrapper.text()).toContain('5h|12|900')
   })
 
   it('OpenAI OAuth 在无 codex 快照时会回退显示 usage 接口窗口', async () => {
@@ -393,7 +399,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-	expect(getUsage).toHaveBeenCalledWith(2002)
+	expect(getUsage).toHaveBeenCalledWith(2002, undefined)
 	expect(wrapper.text()).toContain('5h|0|27700')
 	expect(wrapper.text()).toContain('7d|0|27700')
   })
@@ -525,7 +531,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-  expect(getUsage).toHaveBeenCalledWith(2004)
+  expect(getUsage).toHaveBeenCalledWith(2004, undefined)
   expect(wrapper.text()).toContain('5h|100|106540000')
   expect(wrapper.text()).toContain('7d|100|106540000')
   })
