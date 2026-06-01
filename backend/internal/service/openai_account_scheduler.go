@@ -943,6 +943,12 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			compactBlocked = true
 			continue
 		}
+		if s.service.concurrencyService != nil {
+			waitingCount, _ := s.service.concurrencyService.GetAccountWaitingCount(ctx, fresh.ID)
+			if waitingCount >= cfg.FallbackMaxWaiting {
+				continue
+			}
+		}
 		return &AccountSelectionResult{
 			Account: fresh,
 			WaitPlan: &AccountWaitPlan{
