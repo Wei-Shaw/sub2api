@@ -30,7 +30,7 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 		ServiceTier:         req.ServiceTier,
 	}
 	if req.Reasoning != nil {
-		out.ReasoningEffort = req.Reasoning.Effort
+		out.ReasoningEffort = normalizeChatReasoningEffort(req.Reasoning.Effort)
 	}
 	if len(req.Tools) > 0 {
 		out.Tools = responsesToolsToChatTools(req.Tools)
@@ -93,7 +93,7 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 		itemType := rawString(item["type"])
 		switch itemType {
 		case "function_call":
-			arguments := rawString(item["arguments"])
+			arguments := responsesArgumentsToChatString(item["arguments"])
 			if strings.TrimSpace(arguments) == "" {
 				arguments = "{}"
 			}
@@ -110,7 +110,7 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 			})
 			continue
 		case "function_call_output":
-			content, _ := json.Marshal(rawString(item["output"]))
+			content, _ := json.Marshal(extractResponsesOutputText(item["output"]))
 			messages = append(messages, ChatMessage{
 				Role:       "tool",
 				ToolCallID: rawString(item["call_id"]),
@@ -490,7 +490,12 @@ func ChatCompletionsChunkToResponsesEvents(
 	events = append(events, ensureChatToResponsesCreated(state)...)
 
 	for _, choice := range chunk.Choices {
-		if choice.Delta.Content != nil {
+		// Skip empty-string content deltas. Some upstreams emit a
+		// leading {"content":""} chunk; it is non-nil but carries no text, and
+		// emitting it produces a response.output_text.delta with an empty delta
+		// (omitempty drops the field entirely) plus a premature message item —
+		// codex then shows "thinking" with no visible output.
+		if choice.Delta.Content != nil && *choice.Delta.Content != "" {
 			events = append(events, ensureChatToResponsesMessageItem(state)...)
 			_, _ = state.Text.WriteString(*choice.Delta.Content)
 			events = append(events, chatToResponsesEvent(state, "response.output_text.delta", &ResponsesStreamEvent{
@@ -500,7 +505,7 @@ func ChatCompletionsChunkToResponsesEvents(
 				ItemID:       state.MessageItemID,
 			}))
 		}
-		if choice.Delta.ReasoningContent != nil {
+		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
 			_, _ = state.Reasoning.WriteString(*choice.Delta.ReasoningContent)
 			events = append(events, chatToResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
 				OutputIndex:  0,
@@ -520,6 +525,10 @@ func ChatCompletionsChunkToResponsesEvents(
 					copyCall.ID = generateItemID()
 				}
 				copyCall.Type = "function"
+				// Arguments are accumulated below (line: stored.Function.Arguments
+				// += ...). Clear them here so the first chunk's arguments are not
+				// counted twice (which produced duplicated JSON like `{...}{...}`).
+				copyCall.Function.Arguments = ""
 				state.ToolCalls[idx] = &copyCall
 				stored = &copyCall
 				events = append(events, chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
@@ -572,6 +581,16 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 			Text:         state.Text.String(),
 			ItemID:       state.MessageItemID,
 		}))
+		// content_part.done mirrors content_part.added from ensureChatToResponsesMessageItem.
+		events = append(events, chatToResponsesEvent(state, "response.content_part.done", &ResponsesStreamEvent{
+			OutputIndex:  0,
+			ContentIndex: 0,
+			ItemID:       state.MessageItemID,
+			Part: &ResponsesContentPart{
+				Type: "output_text",
+				Text: state.Text.String(),
+			},
+		}))
 		events = append(events, chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
 			OutputIndex: 0,
 			Item: &ResponsesOutput{
@@ -579,6 +598,12 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 				ID:     state.MessageItemID,
 				Role:   "assistant",
 				Status: "completed",
+				// codex collects final text from OutputItemDone items, so the
+				// message item must carry its full content, not just status.
+				Content: []ResponsesContentPart{{
+					Type: "output_text",
+					Text: state.Text.String(),
+				}},
 			},
 		}))
 	}
@@ -588,6 +613,39 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 	if state.FinishReason == "length" {
 		status = "incomplete"
 		incompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
+	}
+
+	// Finalize streamed tool calls. The streaming loop emits
+	// output_item.added + function_call_arguments.delta per tool call but never
+	// their terminal events; without function_call_arguments.done and
+	// output_item.done (carrying call_id/name/arguments) codex receives an
+	// unterminated tool call, cannot execute it, and renders nothing.
+	for i := 0; i < len(state.ToolCalls); i++ {
+		toolCall, ok := state.ToolCalls[i]
+		if !ok || toolCall == nil {
+			continue
+		}
+		arguments := toolCall.Function.Arguments
+		if strings.TrimSpace(arguments) == "" {
+			arguments = "{}"
+		}
+		events = append(events, chatToResponsesEvent(state, "response.function_call_arguments.done", &ResponsesStreamEvent{
+			OutputIndex: i + 1,
+			CallID:      toolCall.ID,
+			Name:        toolCall.Function.Name,
+			Arguments:   arguments,
+		}))
+		events = append(events, chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+			OutputIndex: i + 1,
+			Item: &ResponsesOutput{
+				Type:      "function_call",
+				ID:        generateItemID(),
+				CallID:    toolCall.ID,
+				Name:      toolCall.Function.Name,
+				Arguments: arguments,
+				Status:    "completed",
+			},
+		}))
 	}
 
 	state.CompletedSent = true
@@ -626,15 +684,28 @@ func ensureChatToResponsesMessageItem(state *ChatCompletionsToResponsesStreamSta
 		return nil
 	}
 	state.MessageItemID = generateItemID()
-	return []ResponsesStreamEvent{chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
-		OutputIndex: 0,
-		Item: &ResponsesOutput{
-			Type:   "message",
-			ID:     state.MessageItemID,
-			Role:   "assistant",
-			Status: "in_progress",
-		},
-	})}
+	return []ResponsesStreamEvent{
+		chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
+			OutputIndex: 0,
+			Item: &ResponsesOutput{
+				Type:   "message",
+				ID:     state.MessageItemID,
+				Role:   "assistant",
+				Status: "in_progress",
+			},
+		}),
+		// content_part.added must precede output_text.delta or strict clients
+		// (codex) have no part to attach text to and render nothing.
+		chatToResponsesEvent(state, "response.content_part.added", &ResponsesStreamEvent{
+			OutputIndex:  0,
+			ContentIndex: 0,
+			ItemID:       state.MessageItemID,
+			Part: &ResponsesContentPart{
+				Type: "output_text",
+				Text: "",
+			},
+		}),
+	}
 }
 
 func (state *ChatCompletionsToResponsesStreamState) chatOutput() []ResponsesOutput {
@@ -693,6 +764,45 @@ func chatToResponsesEvent(
 	evt.Type = eventType
 	evt.SequenceNumber = seq
 	return evt
+}
+
+// normalizeChatReasoningEffort maps a Responses reasoning effort to a value the
+// Chat Completions protocol accepts. The Responses API allows "xhigh" (codex's
+// highest tier for gpt-5.5 etc.), but chat/completions upstreams (and the
+// OpenAI chat/completions schema) only accept low/medium/high and 400 on
+// "xhigh". Map xhigh→high; pass through known values; drop unknown/empty.
+func normalizeChatReasoningEffort(effort string) string {
+	switch strings.ToLower(strings.TrimSpace(effort)) {
+	case "xhigh", "extrahigh", "max", "high":
+		return "high"
+	case "medium":
+		return "medium"
+	case "low", "minimal", "none":
+		return "low"
+	default:
+		return "" // omit unknown/empty so the upstream uses its default
+	}
+}
+
+// responsesArgumentsToChatString converts a Responses function_call.arguments
+// field into the stringified-JSON form required by Chat Completions
+// (ChatFunctionCall.Arguments is a string).
+//
+//   - stringified JSON: "{\"x\":1}" → use the inner string as-is
+//   - raw JSON object:   {"x":1}     → serialize to its string form
+//   - empty/absent                   → ""
+func responsesArgumentsToChatString(raw json.RawMessage) string {
+	trimmed := json.RawMessage(strings.TrimSpace(string(raw)))
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return ""
+	}
+	// Already a JSON string — return the inner value verbatim.
+	var s string
+	if err := json.Unmarshal(trimmed, &s); err == nil {
+		return s
+	}
+	// Object/array/other JSON — serialize to its compact string form.
+	return string(trimmed)
 }
 
 func rawString(raw json.RawMessage) string {
