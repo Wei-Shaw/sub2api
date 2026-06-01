@@ -5045,7 +5045,11 @@ export default {
         suggestRequest: '⚠️ 客户端请求错误，建议：联系客户修正请求参数 / 手动标记已解决',
         suggestAuth: '⚠️ 认证失败，建议：检查 API Key 是否有效 / 联系客户更新凭证',
         suggestPlatform: '🚨 平台错误，建议立即排查修复',
-        suggestGeneric: '查看详情了解更多信息'
+        suggestGeneric: '查看详情了解更多信息',
+        apiKeyPrefix: 'Key 前缀',
+        attemptedKeyPrefix: '尝试的 Key 前缀',
+        deletedKeyOwner: '已删除 Key 所有者',
+        keyDeletedBadge: 'Key 已删除'
       },
       requestDetails: {
         title: '请求明细',

@@ -941,6 +941,15 @@ export interface OpsErrorDetail extends OpsErrorLog {
   time_to_first_token_ms?: number | null
 
   is_business_limited: boolean
+
+  // Deleted key owner info (INVALID_API_KEY attribution)
+  attempted_key_prefix?: string | null
+  deleted_key_owner_user_id?: number | null
+  deleted_key_owner_email?: string | null
+  deleted_key_name?: string | null
+
+  // Bound (non-deleted) key prefix, snapshotted at error time
+  api_key_prefix?: string | null
 }
 
 export type OpsErrorLogsResponse = PaginatedResponse<OpsErrorLog>

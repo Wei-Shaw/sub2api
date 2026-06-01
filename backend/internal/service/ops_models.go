@@ -87,6 +87,15 @@ type OpsErrorLogDetail struct {
 
 	// vNext metric semantics
 	IsBusinessLimited bool `json:"is_business_limited"`
+
+	// Deleted key owner info (populated when INVALID_API_KEY and key was previously deleted)
+	AttemptedKeyPrefix    string `json:"attempted_key_prefix,omitempty"`
+	DeletedKeyOwnerUserID *int64 `json:"deleted_key_owner_user_id,omitempty"`
+	DeletedKeyOwnerEmail  string `json:"deleted_key_owner_email,omitempty"`
+	DeletedKeyName        string `json:"deleted_key_name,omitempty"`
+
+	// Bound (non-deleted) key prefix, snapshotted at error time; mutually exclusive with AttemptedKeyPrefix.
+	APIKeyPrefix string `json:"api_key_prefix,omitempty"`
 }
 
 type OpsErrorLogFilter struct {

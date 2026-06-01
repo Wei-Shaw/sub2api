@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -54,9 +55,13 @@ INSERT INTO ops_error_logs (
   upstream_latency_ms,
   response_latency_ms,
   time_to_first_token_ms,
-  created_at
+  created_at,
+  attempted_key_prefix,
+  deleted_key_owner_user_id,
+  deleted_key_name,
+  api_key_prefix
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41
 )`
 
 func NewOpsRepository(db *sql.DB) service.OpsRepository {
@@ -165,6 +170,10 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		opsNullInt64(input.ResponseLatencyMs),
 		opsNullInt64(input.TimeToFirstTokenMs),
 		input.CreatedAt,
+		opsNullString(input.AttemptedKeyPrefix),
+		opsNullInt64(input.DeletedKeyOwnerUserID),
+		opsNullString(input.DeletedKeyName),
+		opsNullString(input.APIKeyPrefix),
 	}
 }
 
@@ -402,11 +411,17 @@ SELECT
   e.routing_latency_ms,
   e.upstream_latency_ms,
   e.response_latency_ms,
-  e.time_to_first_token_ms
+  e.time_to_first_token_ms,
+  COALESCE(e.attempted_key_prefix, ''),
+  e.deleted_key_owner_user_id,
+  COALESCE(du.email, ''),
+  COALESCE(e.deleted_key_name, ''),
+  COALESCE(e.api_key_prefix, '')
 FROM ops_error_logs e
 LEFT JOIN users u ON e.user_id = u.id
 LEFT JOIN accounts a ON e.account_id = a.id
 LEFT JOIN groups g ON e.group_id = g.id
+LEFT JOIN users du ON e.deleted_key_owner_user_id = du.id
 WHERE e.id = $1
 LIMIT 1`
 
@@ -426,6 +441,7 @@ LIMIT 1`
 	var responseLatency sql.NullInt64
 	var ttft sql.NullInt64
 	var requestType sql.NullInt64
+	var deletedKeyOwnerUserID sql.NullInt64
 
 	err := r.db.QueryRowContext(ctx, q, id).Scan(
 		&out.ID,
@@ -471,6 +487,11 @@ LIMIT 1`
 		&upstreamLatency,
 		&responseLatency,
 		&ttft,
+		&out.AttemptedKeyPrefix,
+		&deletedKeyOwnerUserID,
+		&out.DeletedKeyOwnerEmail,
+		&out.DeletedKeyName,
+		&out.APIKeyPrefix,
 	)
 	if err != nil {
 		return nil, err
@@ -533,6 +554,10 @@ LIMIT 1`
 		v := int16(requestType.Int64)
 		out.RequestType = &v
 	}
+	if deletedKeyOwnerUserID.Valid {
+		v := deletedKeyOwnerUserID.Int64
+		out.DeletedKeyOwnerUserID = &v
+	}
 
 	// Normalize upstream_errors to empty string when stored as JSON null.
 	out.UpstreamErrors = strings.TrimSpace(out.UpstreamErrors)
@@ -541,6 +566,26 @@ LIMIT 1`
 	}
 
 	return &out, nil
+}
+
+// LookupDeletedKeyAudit 按明文 key 反查最近一条已删除 key 审计。
+// 同一 key 可能有多条历史(反复创建/删除),取 deleted_at 最近一条(id 作同毫秒 tiebreaker)。
+// 未命中返回 (nil, nil)。
+func (r *opsRepository) LookupDeletedKeyAudit(ctx context.Context, key string) (*service.DeletedKeyAuditResult, error) {
+	var res service.DeletedKeyAuditResult
+	err := r.db.QueryRowContext(ctx, `
+		SELECT user_id, key_name
+		FROM deleted_api_key_audits
+		WHERE key = $1
+		ORDER BY deleted_at DESC, id DESC
+		LIMIT 1`, key).Scan(&res.UserID, &res.KeyName)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &res, nil
 }
 
 func (r *opsRepository) UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedAt *time.Time) error {

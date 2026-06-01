@@ -419,6 +419,138 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 	}
 }
 
+func TestAPIKeyAuthSetsOpsFallbackKeyOnEarlyAbort(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(101)
+	user := &service.User{
+		ID:          7,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     10,
+		Concurrency: 3,
+	}
+	apiKey := &service.APIKey{
+		ID:      100,
+		UserID:  user.ID,
+		GroupID: &groupID,
+		Key:     "test-key",
+		Status:  service.StatusActive,
+		User:    user,
+		Group: &service.Group{
+			ID:       groupID,
+			Name:     "disabled",
+			Status:   service.StatusDisabled,
+			Platform: service.PlatformAnthropic,
+			Hydrated: true,
+		},
+	}
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return &clone, nil
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+
+	router := gin.New()
+	var fallback *service.APIKey
+	var fallbackOK bool
+	router.Use(func(c *gin.Context) {
+		c.Next()
+		fallback, fallbackOK = GetOpsFallbackAPIKey(c)
+	})
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.GET("/t", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	// 分组停用 → 早退中断，但 ops fallback key 仍应写入，含 user/group/platform。
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "GROUP_DISABLED")
+	require.True(t, fallbackOK, "鉴权早退时也应写入 ops fallback api key")
+	require.NotNil(t, fallback)
+	require.Equal(t, apiKey.ID, fallback.ID)
+	require.NotNil(t, fallback.User)
+	require.Equal(t, user.ID, fallback.User.ID)
+	require.NotNil(t, fallback.GroupID)
+	require.Equal(t, groupID, *fallback.GroupID)
+	require.NotNil(t, fallback.Group)
+	require.Equal(t, service.PlatformAnthropic, fallback.Group.Platform)
+}
+
+func TestAPIKeyAuthGoogleSetsOpsFallbackKeyOnEarlyAbort(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(202)
+	user := &service.User{
+		ID:          9,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     10,
+		Concurrency: 3,
+	}
+	apiKey := &service.APIKey{
+		ID:      200,
+		UserID:  user.ID,
+		GroupID: &groupID,
+		Key:     "g-key",
+		Status:  service.StatusActive,
+		User:    user,
+		Group: &service.Group{
+			ID:       groupID,
+			Name:     "disabled",
+			Status:   service.StatusDisabled,
+			Platform: service.PlatformGemini,
+			Hydrated: true,
+		},
+	}
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return &clone, nil
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+
+	router := gin.New()
+	var fallback *service.APIKey
+	var fallbackOK bool
+	router.Use(func(c *gin.Context) {
+		c.Next()
+		fallback, fallbackOK = GetOpsFallbackAPIKey(c)
+	})
+	router.Use(gin.HandlerFunc(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg)))
+	router.GET("/t", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-goog-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.True(t, fallbackOK, "Google 鉴权早退时也应写入 ops fallback api key")
+	require.NotNil(t, fallback)
+	require.Equal(t, apiKey.ID, fallback.ID)
+	require.NotNil(t, fallback.User)
+	require.Equal(t, user.ID, fallback.User.ID)
+}
+
 func TestRequireGroupAssignmentMarksUngroupedKeyBusinessLimited(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -758,6 +890,10 @@ func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.APIKey) error 
 }
 
 func (r *stubApiKeyRepo) Delete(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+}
+
+func (r *stubApiKeyRepo) DeleteWithAudit(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 }
 
