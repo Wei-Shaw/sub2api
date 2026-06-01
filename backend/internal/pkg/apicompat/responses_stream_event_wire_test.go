@@ -43,7 +43,8 @@ func TestWire_FunctionCallItemAlwaysComplete(t *testing.T) {
 		OutputIndex: 1,
 		Item:        &ResponsesOutput{Type: "function_call", ID: "fc_1", CallID: "call_a", Name: "exec", Status: "in_progress"REDACTED,
 REDACTED)
-	item := added["item"].(map[string]any)
+	item, ok := added["item"].(map[string]any)
+	require.True(t, ok, "item must be an object")
 	for _, k := range []string{"call_id", "name", "arguments"REDACTED {
 		require.Containsf(t, item, k, "function_call item missing %q", k)
 REDACTED
@@ -57,9 +58,10 @@ func TestWire_MessageItemContentAlwaysArray(t *testing.T) {
 		OutputIndex: 0,
 		Item:        &ResponsesOutput{Type: "message", ID: "msg_1", Role: "assistant", Status: "in_progress"REDACTED,
 REDACTED)
-	item := m["item"].(map[string]any)
+	item, ok := m["item"].(map[string]any)
+	require.True(t, ok, "item must be an object")
 	require.Contains(t, item, "content")
-	_, ok := item["content"].([]any)
+	_, ok = item["content"].([]any)
 	require.True(t, ok, "content must be an array")
 REDACTED
 
@@ -70,9 +72,10 @@ func TestWire_ReasoningItemSummaryAlwaysArray(t *testing.T) {
 		OutputIndex: 0,
 		Item:        &ResponsesOutput{Type: "reasoning", ID: "rs_1", Status: "in_progress"REDACTED,
 REDACTED)
-	item := m["item"].(map[string]any)
+	item, ok := m["item"].(map[string]any)
+	require.True(t, ok, "item must be an object")
 	require.Contains(t, item, "summary")
-	_, ok := item["summary"].([]any)
+	_, ok = item["summary"].([]any)
 	require.True(t, ok, "summary must be an array")
 REDACTED
 
@@ -82,7 +85,8 @@ func TestWire_ContentPartCarriesAnnotationsLogprobs(t *testing.T) {
 		Type: "response.content_part.added", OutputIndex: 0, ContentIndex: 0, ItemID: "msg_1",
 		Part: &ResponsesContentPart{Type: "output_text", Text: ""REDACTED,
 REDACTED)
-	part := m["part"].(map[string]any)
+	part, ok := m["part"].(map[string]any)
+	require.True(t, ok, "part must be an object")
 	require.Equal(t, "output_text", part["type"])
 	require.Contains(t, part, "text")
 	require.Contains(t, part, "annotations")
