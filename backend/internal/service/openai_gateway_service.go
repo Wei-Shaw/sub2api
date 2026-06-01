@@ -256,6 +256,9 @@ type OpenAIForwardResult struct {
 	ImageOutputSizes   []string
 	ImageSizeSource    string
 	ImageSizeBreakdown map[string]int
+
+	wsReplayInput       []json.RawMessage
+	wsReplayInputExists bool
 REDACTED
 
 type OpenAIWSRetryMetricsSnapshot struct {

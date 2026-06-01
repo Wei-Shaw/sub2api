@@ -1167,7 +1167,7 @@ REDACTED
 	defer func() {
 		_ = wsConn.CloseNow()
 REDACTED()
-	wsConn.SetReadLimit(16 * 1024 * 1024)
+	wsConn.SetReadLimit(service.ResolveOpenAIWSClientReadLimitBytes(h.cfg))
 
 	ctx := c.Request.Context()
 	readCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
