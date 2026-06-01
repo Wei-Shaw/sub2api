@@ -152,6 +152,10 @@ func (c stubConcurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts
 	return out, nil
 }
 
+func (c stubConcurrencyCache) GetAccountsLoadBatchFresh(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
+	return c.GetAccountsLoadBatch(ctx, accounts)
+}
+
 func TestOpenAIGatewayService_GenerateSessionHash_Priority(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -831,6 +835,45 @@ func TestOpenAISelectAccountWithLoadAwareness_NoCandidates(t *testing.T) {
 	if selection != nil {
 		t.Fatalf("expected nil selection")
 	}
+}
+
+func TestOpenAISelectAccountWithLoadAwareness_AllQueuesFullReturnsNoAvailable(t *testing.T) {
+	groupID := int64(1)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
+			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 2},
+		},
+	}
+	cache := &stubGatewayCache{}
+	concurrencyCache := stubConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			1: {AccountID: 1, LoadRate: 100},
+			2: {AccountID: 2, LoadRate: 100},
+		},
+		waitCounts: map[int64]int{
+			1: 1,
+			2: 1,
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        repo,
+		cache:              cache,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				Scheduling: config.GatewaySchedulingConfig{
+					FallbackMaxWaiting: 1,
+					LoadBatchEnabled:   true,
+				},
+			},
+		},
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gpt-4", nil)
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.Nil(t, selection)
 }
 
 func TestOpenAISelectAccountWithLoadAwareness_AllFullWaitPlan(t *testing.T) {
