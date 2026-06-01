@@ -1852,7 +1852,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			}
 			if s.concurrencyService != nil {
 				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
-				if waitingCount >= cfg.FallbackMaxWaiting {
+				if cfg.FallbackMaxWaiting > 0 && waitingCount >= cfg.FallbackMaxWaiting {
 					if localExcluded == nil {
 						localExcluded = make(map[int64]struct{})
 					}
@@ -2119,7 +2119,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			continue
 		}
 		waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, fresh.ID)
-		if waitingCount >= cfg.FallbackMaxWaiting {
+		if cfg.FallbackMaxWaiting > 0 && waitingCount >= cfg.FallbackMaxWaiting {
 			continue
 		}
 		return s.newSelectionResult(ctx, fresh, false, nil, &AccountWaitPlan{

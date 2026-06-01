@@ -1578,15 +1578,14 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 			}
 
-			// 对于等待计划的情况，也需要先检查会话限制
-			if !s.checkAndRegisterSession(ctx, account, sessionHash) {
-				localExcluded[account.ID] = struct{}{}
-				continue
-			}
-
 			if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
 				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
 				if waitingCount < cfg.StickySessionMaxWaiting {
+					// 对于等待计划的情况，也需要先检查会话限制
+					if !s.checkAndRegisterSession(ctx, account, sessionHash) {
+						localExcluded[account.ID] = struct{}{}
+						continue
+					}
 					return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 						AccountID:      account.ID,
 						MaxConcurrency: account.Concurrency,
@@ -1597,10 +1596,16 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 			if s.concurrencyService != nil {
 				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
-				if waitingCount >= cfg.FallbackMaxWaiting {
+				if cfg.FallbackMaxWaiting > 0 && waitingCount >= cfg.FallbackMaxWaiting {
 					localExcluded[account.ID] = struct{}{}
 					continue
 				}
+			}
+			// 对于等待计划的情况，也需要先检查会话限制。注意必须在确认 fallback
+			// queue 有容量之后再注册，避免跳过满队列时留下 phantom session。
+			if !s.checkAndRegisterSession(ctx, account, sessionHash) {
+				localExcluded[account.ID] = struct{}{}
+				continue
 			}
 			return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 				AccountID:      account.ID,
@@ -2138,13 +2143,14 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	// ============ Layer 3: 兜底排队 ============
 	s.sortCandidatesForFallback(candidates, preferOAuth, cfg.FallbackSelectionMode)
 	for _, acc := range candidates {
-		// 会话数量限制检查（等待计划也需要占用会话配额）
+		waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, acc.ID)
+		if cfg.FallbackMaxWaiting > 0 && waitingCount >= cfg.FallbackMaxWaiting {
+			continue
+		}
+		// 会话数量限制检查（等待计划也需要占用会话配额）。必须放在满队列检查之后，
+		// 否则跳过 full fallback queue 时会留下 phantom session，直到 idle timeout 才释放。
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
 			continue // 会话限制已满，尝试下一个账号
-		}
-		waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, acc.ID)
-		if waitingCount >= cfg.FallbackMaxWaiting {
-			continue
 		}
 		return s.newSelectionResult(ctx, acc, false, nil, &AccountWaitPlan{
 			AccountID:      acc.ID,

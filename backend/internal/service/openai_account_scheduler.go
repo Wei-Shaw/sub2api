@@ -945,7 +945,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 		if s.service.concurrencyService != nil {
 			waitingCount, _ := s.service.concurrencyService.GetAccountWaitingCount(ctx, fresh.ID)
-			if waitingCount >= cfg.FallbackMaxWaiting {
+			if cfg.FallbackMaxWaiting > 0 && waitingCount >= cfg.FallbackMaxWaiting {
 				continue
 			}
 		}

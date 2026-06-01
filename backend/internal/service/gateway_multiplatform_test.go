@@ -1988,6 +1988,16 @@ type mockConcurrencyCache struct {
 	skipDefaultLoad     bool
 }
 
+type mockSessionLimitCacheForPlatform struct {
+	SessionLimitCache
+	registered []string
+}
+
+func (m *mockSessionLimitCacheForPlatform) RegisterSession(ctx context.Context, accountID int64, sessionUUID string, maxSessions int, idleTimeout time.Duration) (bool, error) {
+	m.registered = append(m.registered, sessionUUID)
+	return true, nil
+}
+
 func (m *mockConcurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
 	m.acquireAccountCalls++
 	if m.acquireResults != nil {
@@ -2873,6 +2883,43 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 		require.NotNil(t, result.Account)
 		require.Equal(t, int64(3), result.Account.ID)
 		require.Equal(t, int64(3), cache.sessionBindings["fallback"])
+	})
+
+	t.Run("兜底等待-满队列跳过前不注册会话", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeSetupToken, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 1, Extra: map[string]any{"max_sessions": 1}},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+		cfg.Gateway.Scheduling.FallbackMaxWaiting = 1
+
+		concurrencyCache := &mockConcurrencyCache{
+			acquireResults: map[int64]bool{1: false},
+			loadMap: map[int64]*AccountLoadInfo{
+				1: {AccountID: 1, LoadRate: 100},
+			},
+			waitCounts: map[int64]int{1: 1},
+		}
+		sessionLimitCache := &mockSessionLimitCacheForPlatform{}
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              &mockGatewayCacheForPlatform{},
+			cfg:                cfg,
+			concurrencyService: NewConcurrencyService(concurrencyCache),
+			sessionLimitCache:  sessionLimitCache,
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "phantom-session", "claude-3-5-sonnet-20241022", nil, "", int64(0))
+		require.ErrorIs(t, err, ErrNoAvailableAccounts)
+		require.Nil(t, result)
+		require.Empty(t, sessionLimitCache.registered, "should not register a session when the fallback wait queue is already full")
 	})
 
 	t.Run("负载批量失败且无法获取-兜底等待", func(t *testing.T) {
