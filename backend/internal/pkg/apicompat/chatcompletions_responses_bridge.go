@@ -93,10 +93,7 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 		itemType := rawString(item["type"])
 		switch itemType {
 		case "function_call":
-			arguments := rawString(item["arguments"])
-			if strings.TrimSpace(arguments) == "" {
-				arguments = "{}"
-			}
+			arguments := responsesToolArgumentsForChat(item["arguments"])
 			messages = append(messages, ChatMessage{
 				Role: "assistant",
 				ToolCalls: []ChatToolCall{{
@@ -110,7 +107,7 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 			})
 			continue
 		case "function_call_output":
-			content, _ := json.Marshal(rawString(item["output"]))
+			content, _ := json.Marshal(responsesToolOutputText(item["output"]))
 			messages = append(messages, ChatMessage{
 				Role:       "tool",
 				ToolCallID: rawString(item["call_id"]),

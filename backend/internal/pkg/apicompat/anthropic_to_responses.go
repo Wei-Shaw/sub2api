@@ -211,8 +211,8 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 	var toolResultImageParts []ResponsesContentPart
 
 	// Extract tool_result blocks → function_call_output items.
-	// Images inside tool_results are extracted separately because the
-	// Responses API function_call_output.output only accepts strings.
+	// Images inside tool_results are extracted separately so existing
+	// Responses input wire output remains a plain string.
 	for _, b := range blocks {
 		if b.Type != "tool_result" {
 			continue
@@ -221,7 +221,7 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 		out = append(out, ResponsesInputItem{
 			Type:   "function_call_output",
 			CallID: toResponsesCallID(b.ToolUseID),
-			Output: outputText,
+			Output: jsonStringRawMessage(outputText),
 		})
 		toolResultImageParts = append(toolResultImageParts, imageParts...)
 	}
@@ -302,7 +302,7 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 			Type:      "function_call",
 			CallID:    fcID,
 			Name:      b.Name,
-			Arguments: args,
+			Arguments: jsonStringRawMessage(args),
 		})
 	}
 

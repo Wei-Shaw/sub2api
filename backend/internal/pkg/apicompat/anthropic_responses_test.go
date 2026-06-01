@@ -143,7 +143,7 @@ func TestAnthropicToResponses_ToolUse(t *testing.T) {
 	assert.Empty(t, items[2].ID)
 	assert.Equal(t, "function_call_output", items[3].Type)
 	assert.Equal(t, "call_1", items[3].CallID)
-	assert.Equal(t, "Sunny, 72°F", items[3].Output)
+	assert.Equal(t, "Sunny, 72°F", requireRawJSONString(t, items[3].Output))
 }
 
 func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
@@ -1340,7 +1340,7 @@ func TestAnthropicToResponses_ToolResultWithImage(t *testing.T) {
 	// function_call_output should have text-only output (no image).
 	assert.Equal(t, "function_call_output", items[2].Type)
 	assert.Equal(t, "toolu_1", items[2].CallID)
-	assert.Equal(t, "(empty)", items[2].Output)
+	assert.Equal(t, "(empty)", requireRawJSONString(t, items[2].Output))
 
 	// Image should be in a separate user message.
 	assert.Equal(t, "user", items[3].Role)
@@ -1377,7 +1377,7 @@ func TestAnthropicToResponses_ToolResultMixed(t *testing.T) {
 
 	// function_call_output should have text-only output.
 	assert.Equal(t, "function_call_output", items[2].Type)
-	assert.Equal(t, "File metadata: 800x600 PNG", items[2].Output)
+	assert.Equal(t, "File metadata: 800x600 PNG", requireRawJSONString(t, items[2].Output))
 
 	// Image should be in a separate user message.
 	assert.Equal(t, "user", items[3].Role)
@@ -1412,7 +1412,59 @@ func TestAnthropicToResponses_TextOnlyToolResultBackwardCompat(t *testing.T) {
 	require.Len(t, items, 3)
 
 	// Text-only tool_result should produce a plain string.
-	assert.Equal(t, "Sunny, 72°F", items[2].Output)
+	assert.Equal(t, "Sunny, 72°F", requireRawJSONString(t, items[2].Output))
+}
+
+func TestConvertResponsesInputToAnthropic_ToolCallObjectArgumentsAndArrayOutput(t *testing.T) {
+	input := json.RawMessage(`[
+		{"role":"user","content":[{"type":"input_text","text":"hi"}]},
+		{"type":"function_call","call_id":"c1","name":"foo","arguments":{"x":1}},
+		{"type":"function_call_output","call_id":"c1","output":[{"type":"output_text","text":"result"}]}
+	]`)
+
+	system, messages, err := convertResponsesInputToAnthropic(input)
+	require.NoError(t, err)
+	assert.Empty(t, system)
+	require.Len(t, messages, 3)
+
+	var toolUse []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(messages[1].Content, &toolUse))
+	require.Len(t, toolUse, 1)
+	assert.Equal(t, "tool_use", toolUse[0].Type)
+	assert.Equal(t, "toolu_c1", toolUse[0].ID)
+	assert.Equal(t, "foo", toolUse[0].Name)
+	assert.JSONEq(t, `{"x":1}`, string(toolUse[0].Input))
+
+	var toolResult []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(messages[2].Content, &toolResult))
+	require.Len(t, toolResult, 1)
+	assert.Equal(t, "tool_result", toolResult[0].Type)
+	assert.Equal(t, "toolu_c1", toolResult[0].ToolUseID)
+
+	var output string
+	require.NoError(t, json.Unmarshal(toolResult[0].Content, &output))
+	assert.Equal(t, "result", output)
+}
+
+func TestConvertResponsesInputToAnthropic_ToolCallStringArgumentsAndStringOutput(t *testing.T) {
+	input := json.RawMessage(`[
+		{"type":"function_call","call_id":"c1","name":"foo","arguments":"{\"x\":1}"},
+		{"type":"function_call_output","call_id":"c1","output":"result"}
+	]`)
+
+	_, messages, err := convertResponsesInputToAnthropic(input)
+	require.NoError(t, err)
+	require.Len(t, messages, 2)
+
+	var toolUse []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(messages[0].Content, &toolUse))
+	assert.JSONEq(t, `{"x":1}`, string(toolUse[0].Input))
+
+	var toolResult []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(messages[1].Content, &toolResult))
+	var output string
+	require.NoError(t, json.Unmarshal(toolResult[0].Content, &output))
+	assert.Equal(t, "result", output)
 }
 
 func TestAnthropicToResponses_ImageEmptyMediaType(t *testing.T) {

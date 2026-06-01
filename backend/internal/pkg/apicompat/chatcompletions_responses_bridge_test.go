@@ -53,6 +53,41 @@ func TestResponsesInputToChatMessages_DeveloperRoleTrimAndCaseInsensitive(t *tes
 	assert.Equal(t, []string{"system", "system"}, chatMessageRoles(messages))
 }
 
+func TestResponsesInputToChatMessages_ToolCallObjectArgumentsAndArrayOutput(t *testing.T) {
+	input := json.RawMessage(`[
+		{"role":"user","content":[{"type":"input_text","text":"hi"}]},
+		{"type":"function_call","call_id":"c1","name":"foo","arguments":{"x":1}},
+		{"type":"function_call_output","call_id":"c1","output":[{"type":"output_text","text":"result"}]}
+	]`)
+
+	messages, err := responsesInputToChatMessages("", input)
+	require.NoError(t, err)
+	require.Len(t, messages, 3)
+
+	require.Len(t, messages[1].ToolCalls, 1)
+	assert.Equal(t, "c1", messages[1].ToolCalls[0].ID)
+	assert.Equal(t, "foo", messages[1].ToolCalls[0].Function.Name)
+	assert.JSONEq(t, `{"x":1}`, messages[1].ToolCalls[0].Function.Arguments)
+
+	assert.Equal(t, "tool", messages[2].Role)
+	assert.Equal(t, "c1", messages[2].ToolCallID)
+	assert.JSONEq(t, `"result"`, string(messages[2].Content))
+}
+
+func TestResponsesInputToChatMessages_ToolCallStringArgumentsAndStringOutput(t *testing.T) {
+	input := json.RawMessage(`[
+		{"type":"function_call","call_id":"c1","name":"foo","arguments":"{\"x\":1}"},
+		{"type":"function_call_output","call_id":"c1","output":"result"}
+	]`)
+
+	messages, err := responsesInputToChatMessages("", input)
+	require.NoError(t, err)
+	require.Len(t, messages, 2)
+
+	assert.JSONEq(t, `{"x":1}`, messages[0].ToolCalls[0].Function.Arguments)
+	assert.JSONEq(t, `"result"`, string(messages[1].Content))
+}
+
 func TestResponsesToChatCompletionsRequest_InstructionsAndInputDeveloperRole(t *testing.T) {
 	req := &ResponsesRequest{
 		Model:        "gpt-4o",
