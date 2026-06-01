@@ -1092,9 +1092,10 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 	}
 	defer releaseWait()
 
-	accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
+	accountReleaseFunc, err := h.concurrencyHelper.AcquireOpenAIAccountSlotWithWaitTimeout(
 		c,
-		account.ID,
+		h.gatewayService,
+		account,
 		selection.WaitPlan.MaxConcurrency,
 		selection.WaitPlan.Timeout,
 		reqStream,

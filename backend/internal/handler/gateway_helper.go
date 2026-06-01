@@ -118,9 +118,13 @@ const (
 type ConcurrencyError struct {
 	SlotType  string
 	IsTimeout bool
+	IsBlocked bool
 }
 
 func (e *ConcurrencyError) Error() string {
+	if e.IsBlocked {
+		return fmt.Sprintf("%s scheduling blocked", e.SlotType)
+	}
 	if e.IsTimeout {
 		return fmt.Sprintf("timeout waiting for %s concurrency slot", e.SlotType)
 	}
@@ -259,11 +263,11 @@ func (h *ConcurrencyHelper) AcquireAccountSlotWithWait(c *gin.Context, accountID
 // waitForSlotWithPing waits for a concurrency slot, sending ping events for streaming requests.
 // streamStarted pointer is updated when streaming begins (for proper error handling by caller).
 func (h *ConcurrencyHelper) waitForSlotWithPing(c *gin.Context, slotType string, id int64, maxConcurrency int, isStream bool, streamStarted *bool) (func(), error) {
-	return h.waitForSlotWithPingTimeout(c, slotType, id, maxConcurrency, maxConcurrencyWait, isStream, streamStarted, false)
+	return h.waitForSlotWithPingTimeout(c, slotType, id, maxConcurrency, maxConcurrencyWait, isStream, streamStarted, false, nil)
 }
 
 // waitForSlotWithPingTimeout waits for a concurrency slot with a custom timeout.
-func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType string, id int64, maxConcurrency int, timeout time.Duration, isStream bool, streamStarted *bool, tryImmediate bool) (func(), error) {
+func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType string, id int64, maxConcurrency int, timeout time.Duration, isStream bool, streamStarted *bool, tryImmediate bool, shouldStopWaiting func() bool) (func(), error) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
 
@@ -275,6 +279,9 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 	}
 
 	if tryImmediate {
+		if shouldStopWaiting != nil && shouldStopWaiting() {
+			return nil, &ConcurrencyError{SlotType: slotType, IsBlocked: true}
+		}
 		result, err := acquireSlot()
 		if err != nil {
 			return nil, err
@@ -334,6 +341,9 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 			flusher.Flush()
 
 		case <-timer.C:
+			if shouldStopWaiting != nil && shouldStopWaiting() {
+				return nil, &ConcurrencyError{SlotType: slotType, IsBlocked: true}
+			}
 			// Try to acquire slot
 			result, err := acquireSlot()
 			if err != nil {
@@ -351,7 +361,24 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 
 // AcquireAccountSlotWithWaitTimeout acquires an account slot with a custom timeout (keeps SSE ping).
 func (h *ConcurrencyHelper) AcquireAccountSlotWithWaitTimeout(c *gin.Context, accountID int64, maxConcurrency int, timeout time.Duration, isStream bool, streamStarted *bool) (func(), error) {
-	return h.waitForSlotWithPingTimeout(c, "account", accountID, maxConcurrency, timeout, isStream, streamStarted, true)
+	return h.waitForSlotWithPingTimeout(c, "account", accountID, maxConcurrency, timeout, isStream, streamStarted, true, nil)
+}
+
+func (h *ConcurrencyHelper) AcquireOpenAIAccountSlotWithWaitTimeout(
+	c *gin.Context,
+	gatewayService *service.OpenAIGatewayService,
+	account *service.Account,
+	maxConcurrency int,
+	timeout time.Duration,
+	isStream bool,
+	streamStarted *bool,
+) (func(), error) {
+	if gatewayService != nil && gatewayService.IsAccountSchedulingBlocked(account) {
+		return nil, &ConcurrencyError{SlotType: "account", IsBlocked: true}
+	}
+	return h.waitForSlotWithPingTimeout(c, "account", account.ID, maxConcurrency, timeout, isStream, streamStarted, true, func() bool {
+		return gatewayService != nil && gatewayService.IsAccountSchedulingBlocked(account)
+	})
 }
 
 // nextBackoff 计算下一次退避时间

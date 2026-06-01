@@ -135,6 +135,10 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 	return false
 }
 
+func (s *OpenAIGatewayService) IsAccountSchedulingBlocked(account *Account) bool {
+	return s.isOpenAIAccountRuntimeBlocked(account)
+}
+
 func (s *OpenAIGatewayService) recordOpenAIOAuth429() {
 	if s == nil {
 		return
