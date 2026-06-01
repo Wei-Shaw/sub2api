@@ -153,7 +153,7 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
-func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) (shouldDisable bool) {
+func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
@@ -167,6 +167,10 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	if !account.ShouldHandleErrorCode(statusCode) {
 		slog.Info("account_error_code_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
+	}
+
+	if len(requestedModel) > 0 && s.HandleUpstreamModelNotFound(ctx, account, requestedModel[0], statusCode, responseBody) {
+		return true
 	}
 
 	// 先尝试临时不可调度规则（401除外）
@@ -244,17 +248,15 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 				shouldDisable = true
 				break
 			}
-			// 2. 设置 expires_at 为当前时间，强制下次请求刷新 token
-			if account.Credentials == nil {
-				account.Credentials = make(map[string]any)
-			}
-			account.Credentials["expires_at"] = time.Now().Format(time.RFC3339)
-			if err := persistAccountCredentials(ctx, s.accountRepo, account, account.Credentials); err != nil {
-				slog.Warn("oauth_401_force_refresh_update_failed", "account_id", account.ID, "error", err)
-			} else {
-				slog.Info("oauth_401_force_refresh_set", "account_id", account.ID, "platform", account.Platform)
-			}
-			// 3. 临时不可调度，替代 SetError（保持 status=active 让刷新服务能拾取）
+			// 2. 临时不可调度，替代 SetError（保持 status=active 让刷新服务能拾取）
+			// 注意：此处不再写回 account.Credentials/expires_at。
+			// 原实现使用请求开始时的 account 快照整列覆盖 credentials JSONB（见
+			// persistAccountCredentials → accountRepository.UpdateCredentials → SetCredentials），
+			// 在另一个 worker 刚刷新完 refresh_token 的窄窗口内会把新 refresh_token 回滚为旧值，
+			// 导致下一周期用旧 refresh_token 调上游拿到 invalid_grant 后，
+			// tryRecoverFromRefreshRace 重读 DB 发现 currentRT == usedRT 也救不回来，账号被错误 disable。
+			// 这里仅依赖 InvalidateToken + SetTempUnschedulable 让账号在冷却期内不被调度，
+			// 冷却结束后由 token_provider 的 NeedsRefresh / token_refresh_service 走带分布式锁的正路刷新。
 			msg := "Authentication failed (401): invalid or expired credentials"
 			if upstreamMsg != "" {
 				msg = "OAuth 401: " + upstreamMsg
@@ -1616,8 +1618,50 @@ func (s *RateLimitService) HandleTempUnschedulable(ctx context.Context, account 
 	return s.tryTempUnschedulable(ctx, account, statusCode, responseBody)
 }
 
+const upstreamModelNotFoundCooldown = 30 * time.Minute
+const upstreamModelNotFoundReason = "upstream_404_model_not_found"
 const tempUnschedBodyMaxBytes = 64 << 10
 const tempUnschedMessageMaxBytes = 2048
+
+func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, account *Account, requestedModel string, statusCode int, responseBody []byte) bool {
+	if s == nil || account == nil || s.accountRepo == nil {
+		return false
+	}
+	if !account.ShouldHandleErrorCode(statusCode) {
+		return false
+	}
+	if !isUpstreamModelNotFoundError(statusCode, responseBody) {
+		return false
+	}
+	modelKey := modelRateLimitKeyForUpstreamModelNotFound(ctx, account, requestedModel)
+	if modelKey == "" {
+		return false
+	}
+	resetAt := time.Now().Add(upstreamModelNotFoundCooldown)
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, resetAt, upstreamModelNotFoundReason); err != nil {
+		slog.Warn("upstream_model_not_found_set_model_rate_limit_failed", "account_id", account.ID, "model", modelKey, "error", err)
+		return true
+	}
+	slog.Info("upstream_model_not_found_model_rate_limited", "account_id", account.ID, "model", modelKey, "reset_at", resetAt)
+	return true
+}
+
+func modelRateLimitKeyForUpstreamModelNotFound(ctx context.Context, account *Account, requestedModel string) string {
+	modelKey := strings.TrimSpace(requestedModel)
+	if account == nil || modelKey == "" {
+		return modelKey
+	}
+	if account.Platform == PlatformAntigravity {
+		if resolved := strings.TrimSpace(resolveFinalAntigravityModelKey(ctx, account, modelKey)); resolved != "" {
+			return resolved
+		}
+		return modelKey
+	}
+	if mapped := strings.TrimSpace(account.GetMappedModel(modelKey)); mapped != "" {
+		return mapped
+	}
+	return modelKey
+}
 
 func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
 	if account == nil {

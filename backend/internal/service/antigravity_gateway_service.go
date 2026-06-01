@@ -662,7 +662,7 @@ urlFallbackLoop:
 
 			// 统一处理错误响应
 			if resp.StatusCode >= 400 {
-				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+				respBody := s.readUpstreamErrorBody(resp)
 				_ = resp.Body.Close()
 
 				if overagesInjected && shouldMarkCreditsExhausted(resp, respBody, nil) {
@@ -873,6 +873,22 @@ type AntigravityGatewayService struct {
 	cache             GatewayCache // 用于模型级限流时清除粘性会话绑定
 	schedulerSnapshot *SchedulerSnapshotService
 	internal500Cache  Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
+}
+
+func (s *AntigravityGatewayService) upstreamErrorBodyReadLimit() int64 {
+	limit := gatewayUpstreamErrorBodyReadLimit
+	if s != nil && s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > int(limit) {
+		limit = int64(s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+	}
+	return limit
+}
+
+func (s *AntigravityGatewayService) readUpstreamErrorBody(resp *http.Response) []byte {
+	if resp == nil || resp.Body == nil {
+		return nil
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, s.upstreamErrorBodyReadLimit()))
+	return body
 }
 
 func NewAntigravityGatewayService(
@@ -1090,7 +1106,7 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 	}
 	defer func() { _ = result.resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(io.LimitReader(result.resp.Body, 2<<20))
+	respBody, err := io.ReadAll(io.LimitReader(result.resp.Body, s.upstreamErrorBodyReadLimit()))
 	if err != nil {
 		return nil, fmt.Errorf("读取响应失败: %w", err)
 	}
@@ -1312,22 +1328,6 @@ func (s *AntigravityGatewayService) unwrapV1InternalResponse(body []byte) ([]byt
 	return body, nil
 }
 
-// isModelNotFoundError 检测是否为模型不存在的 404 错误
-func isModelNotFoundError(statusCode int, body []byte) bool {
-	if statusCode != 404 {
-		return false
-	}
-
-	bodyStr := strings.ToLower(string(body))
-	keywords := []string{"model not found", "unknown model", "not found"}
-	for _, keyword := range keywords {
-		if strings.Contains(bodyStr, keyword) {
-			return true
-		}
-	}
-	return true // 404 without specific message also treated as model not found
-}
-
 // Forward 转发 Claude 协议请求（Claude → Gemini 转换）
 //
 // 限流处理流程:
@@ -1443,7 +1443,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		respBody := s.readUpstreamErrorBody(resp)
 
 		// 优先检测 thinking block 的 signature 相关错误（400）并重试一次：
 		// Antigravity /v1internal 链路在部分场景会对 thought/thinking signature 做严格校验，
@@ -1638,7 +1638,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 								resp = retryResp
 								respBody = nil
 							} else {
-								retryBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+								retryBody := s.readUpstreamErrorBody(retryResp)
 								_ = retryResp.Body.Close()
 								respBody = retryBody
 								resp = &http.Response{
@@ -2205,7 +2205,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 
 	// 处理错误响应
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		respBody := s.readUpstreamErrorBody(resp)
 		contentType := resp.Header.Get("Content-Type")
 		// 尽早关闭原始响应体，释放连接；后续逻辑仍可能需要读取 body，因此用内存副本重新包装。
 		_ = resp.Body.Close()
@@ -2286,7 +2286,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 					if retryResp.StatusCode < 400 {
 						resp = retryResp
 					} else {
-						retryRespBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+						retryRespBody := s.readUpstreamErrorBody(retryResp)
 						_ = retryResp.Body.Close()
 						retryOpsBody := retryRespBody
 						if retryUnwrapped, unwrapErr := s.unwrapV1InternalResponse(retryRespBody); unwrapErr == nil && len(retryUnwrapped) > 0 {
@@ -4225,6 +4225,14 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	// 构建上游请求 URL
 	upstreamURL := baseURL + "/v1/messages"
 
+	// 能力维度 sanitize：Anthropic-compatible 上游透传路径也需要保证 body↔beta header
+	// 对称。客户端 anthropic-beta header 不含 context-management-2025-06-27 但 body 带
+	// context_management 时 strip，与 Anthropic 直连 / Bedrock / Vertex 路径保持一致。
+	clientBeta := c.GetHeader("anthropic-beta")
+	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
+		body = sanitized
+	}
+
 	// 创建请求
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
 	if err != nil {
@@ -4240,7 +4248,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	if v := c.GetHeader("anthropic-version"); v != "" {
 		req.Header.Set("anthropic-version", v)
 	}
-	if v := c.GetHeader("anthropic-beta"); v != "" {
+	if v := clientBeta; v != "" {
 		req.Header.Set("anthropic-beta", v)
 	}
 
@@ -4260,7 +4268,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 
 	// 处理错误响应
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		respBody := s.readUpstreamErrorBody(resp)
 
 		// 429 错误时标记账号限流
 		if resp.StatusCode == http.StatusTooManyRequests {
@@ -4463,6 +4471,14 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 }
 
 // extractSSEUsage 从 SSE data 行中提取 Claude usage（用于流式透传场景）
+//
+// Anthropic streaming 的 usage 字段分布在两类事件中：
+//   - message_start：嵌套在 event.message.usage（input_tokens、cache_creation_input_tokens、
+//     cache_read_input_tokens 等输入侧字段）
+//   - message_delta：位于顶层 event.usage（流结束时的最终 output_tokens）
+//
+// 仅读取顶层 event.usage 会漏掉 message_start 的输入侧字段，导致流式透传请求落库的
+// usage_logs 记录 input_tokens=0。
 func (s *AntigravityGatewayService) extractSSEUsage(line string, usage *ClaudeUsage) {
 	if !strings.HasPrefix(line, "data: ") {
 		return
@@ -4472,8 +4488,15 @@ func (s *AntigravityGatewayService) extractSSEUsage(line string, usage *ClaudeUs
 	if json.Unmarshal([]byte(dataStr), &event) != nil {
 		return
 	}
-	u, ok := event["usage"].(map[string]any)
-	if !ok {
+	var u map[string]any
+	if eventType, _ := event["type"].(string); eventType == "message_start" {
+		if msg, ok := event["message"].(map[string]any); ok {
+			u, _ = msg["usage"].(map[string]any)
+		}
+	} else {
+		u, _ = event["usage"].(map[string]any)
+	}
+	if u == nil {
 		return
 	}
 	if v, ok := u["input_tokens"].(float64); ok && int(v) > 0 {

@@ -312,6 +312,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	// goroutine）和 OnTurnComplete / final result（runUpstreamToClient
 	// goroutine）之间同步当前 turn 的 usage metadata。
 	usageMeta.initFromFirstFrame(firstClientMessage)
+	promptCacheKey := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "prompt_cache_key").String())
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
 	if err != nil {
@@ -338,7 +339,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		isCodexCLI = true
 	}
-	headers, _ := s.buildOpenAIWSHeaders(c, account, token, wsDecision, isCodexCLI, "", "", "")
+	turnState := ""
+	turnMetadata := ""
+	if c != nil {
+		turnState = strings.TrimSpace(c.GetHeader(openAIWSTurnStateHeader))
+		turnMetadata = strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader))
+	}
+	headers, _ := s.buildOpenAIWSHeaders(c, account, token, wsDecision, isCodexCLI, turnState, turnMetadata, promptCacheKey)
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
@@ -359,6 +366,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			statusCode,
 			truncateOpenAIWSLogValue(err.Error(), openAIWSLogValueMaxLen),
 		)
+		if statusCode == http.StatusTooManyRequests {
+			s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()))
+			return &UpstreamFailoverError{
+				StatusCode:      http.StatusTooManyRequests,
+				ResponseHeaders: cloneHeader(handshakeHeaders),
+			}
+		}
 		return s.mapOpenAIWSPassthroughDialError(err, statusCode, handshakeHeaders)
 	}
 	defer func() {
@@ -456,15 +470,46 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			cancel()
 		},
 	}
+	upstreamFirstMessageSent := false
+	firstWriteCtx, cancelFirstWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+	firstWriteErr := upstreamFrameConn.WriteFrame(firstWriteCtx, coderws.MessageText, firstClientMessage)
+	cancelFirstWrite()
+	if firstWriteErr != nil {
+		return wrapOpenAIWSIngressTurnError(
+			"write_upstream",
+			fmt.Errorf("write first upstream websocket request: %w", firstWriteErr),
+			false,
+		)
+	}
+	upstreamFirstMessageSent = true
+
+	readNextClientFrame := func(readCtx context.Context, conn openaiwsv2.FrameConn) (coderws.MessageType, []byte, error) {
+		for {
+			msgType, payload, readErr := conn.ReadFrame(readCtx)
+			if readErr != nil {
+				return msgType, payload, readErr
+			}
+			if msgType == coderws.MessageText && strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
+				return msgType, payload, nil
+			}
+			if writeErr := upstreamFrameConn.WriteFrame(readCtx, msgType, payload); writeErr != nil {
+				return msgType, payload, writeErr
+			}
+		}
+	}
+
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
 		ClientConn:         policyClientConn,
 		UpstreamConn:       upstreamFrameConn,
 		FirstClientMessage: firstClientMessage,
 		Options: openaiwsv2.RelayOptions{
-			WriteTimeout:     s.openAIWSWriteTimeout(),
-			IdleTimeout:      s.openAIWSPassthroughIdleTimeout(),
-			FirstMessageType: coderws.MessageText,
+			WriteTimeout:                    s.openAIWSWriteTimeout(),
+			IdleTimeout:                     s.openAIWSPassthroughIdleTimeout(),
+			FirstMessageType:                coderws.MessageText,
+			FirstMessageSent:                upstreamFirstMessageSent,
+			StartClientAfterFirstDownstream: true,
+			ReadClientFrame:                 readNextClientFrame,
 			OnUsageParseFailure: func(eventType string, usageRaw string) {
 				logOpenAIWSV2Passthrough(
 					"usage_parse_failed event_type=%s usage_raw=%s",
@@ -481,6 +526,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 						OutputTokens:             turn.Usage.OutputTokens,
 						CacheCreationInputTokens: turn.Usage.CacheCreationInputTokens,
 						CacheReadInputTokens:     turn.Usage.CacheReadInputTokens,
+						ImageOutputTokens:        turn.Usage.ImageOutputTokens,
 					},
 					Model:           turn.RequestModel,
 					ServiceTier:     usageMeta.serviceTier.Load(),
@@ -507,6 +553,31 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					hooks.AfterTurn(turnNo, turnResult, nil)
 				}
 			},
+			BeforeWriteClient: func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error {
+				if msgType != coderws.MessageText || wroteDownstream {
+					return nil
+				}
+				if eventType, _, _ := parseOpenAIWSEventEnvelope(payload); eventType != "error" {
+					return nil
+				}
+				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
+				if !isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+					return nil
+				}
+				s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, payload, errCodeRaw, errTypeRaw, errMsgRaw)
+				logOpenAIWSV2Passthrough(
+					"relay_rate_limit_failover account_id=%d err_code=%s err_type=%s err_message=%s",
+					account.ID,
+					truncateOpenAIWSLogValue(errCodeRaw, openAIWSLogValueMaxLen),
+					truncateOpenAIWSLogValue(errTypeRaw, openAIWSLogValueMaxLen),
+					truncateOpenAIWSLogValue(errMsgRaw, openAIWSLogValueMaxLen),
+				)
+				return &UpstreamFailoverError{
+					StatusCode:      http.StatusTooManyRequests,
+					ResponseBody:    append([]byte(nil), payload...),
+					ResponseHeaders: cloneHeader(handshakeHeaders),
+				}
+			},
 			OnTrace: func(event openaiwsv2.RelayTraceEvent) {
 				logOpenAIWSV2Passthrough(
 					"relay_trace account_id=%d stage=%s direction=%s msg_type=%s bytes=%d graceful=%v wrote_downstream=%v err=%s",
@@ -530,6 +601,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			OutputTokens:             relayResult.Usage.OutputTokens,
 			CacheCreationInputTokens: relayResult.Usage.CacheCreationInputTokens,
 			CacheReadInputTokens:     relayResult.Usage.CacheReadInputTokens,
+			ImageOutputTokens:        relayResult.Usage.ImageOutputTokens,
 		},
 		Model:           relayResult.RequestModel,
 		ServiceTier:     usageMeta.serviceTier.Load(),

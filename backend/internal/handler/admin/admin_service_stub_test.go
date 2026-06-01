@@ -160,6 +160,10 @@ func (s *stubAdminService) GetUser(ctx context.Context, id int64) (*service.User
 	return &user, nil
 }
 
+func (s *stubAdminService) GetUserIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
+	return s.GetUser(ctx, id)
+}
+
 func (s *stubAdminService) CreateUser(ctx context.Context, input *service.CreateUserInput) (*service.User, error) {
 	user := service.User{ID: 100, Email: input.Email, Status: service.StatusActive}
 	return &user, nil
@@ -263,6 +267,13 @@ func (s *stubAdminService) GetAllGroupsByPlatform(ctx context.Context, platform 
 func (s *stubAdminService) GetGroup(ctx context.Context, id int64) (*service.Group, error) {
 	group := service.Group{ID: id, Name: "group", Status: service.StatusActive}
 	return &group, nil
+}
+
+func (s *stubAdminService) GetGroupModelsListCandidates(ctx context.Context, id int64, platform string) ([]string, error) {
+	if platform == service.PlatformOpenAI {
+		return []string{"gpt-5.5", "gpt-5.4"}, nil
+	}
+	return []string{"claude-sonnet-4-6"}, nil
 }
 
 func (s *stubAdminService) CreateGroup(ctx context.Context, input *service.CreateGroupInput) (*service.Group, error) {
