@@ -315,6 +315,25 @@ func TestTokenRefreshService_RefreshWithRetry_UsesCredentialsUpdater(t *testing.
 	require.WithinDuration(t, resetAt, *account.RateLimitResetAt, time.Second)
 }
 
+func TestTokenRefreshService_PostRefreshActions_ClearsExpiredTempUnschedulableCache(t *testing.T) {
+	repo := &tokenRefreshAccountRepo{}
+	cache := &tempUnschedCacheStub{}
+	cfg := &config.Config{}
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, cache)
+	expiredAt := time.Now().Add(-5 * time.Minute)
+	account := &Account{
+		ID:                     18,
+		Platform:               PlatformOpenAI,
+		Type:                   AccountTypeOAuth,
+		TempUnschedulableUntil: &expiredAt,
+	}
+
+	service.postRefreshActions(context.Background(), account)
+
+	require.Equal(t, 1, repo.clearTempCalls)
+	require.Equal(t, 1, cache.deleteCalls)
+}
+
 // TestTokenRefreshService_RefreshWithRetry_UpdateFailed 测试更新失败的情况
 func TestTokenRefreshService_RefreshWithRetry_UpdateFailed(t *testing.T) {
 	repo := &tokenRefreshAccountRepo{updateErr: errors.New("update failed")}

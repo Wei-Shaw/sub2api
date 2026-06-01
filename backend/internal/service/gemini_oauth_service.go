@@ -339,19 +339,19 @@ func inferGoogleOneTier(storageBytes int64) string {
 	}
 
 	if storageBytes > StorageTierUnlimited {
-		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - > %d bytes (100TB), returning UNLIMITED", StorageTierUnlimited)
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - > %d bytes (100TB), returning UNLIMITED", int64(StorageTierUnlimited))
 		return GeminiTierGoogleAIUltra
 	}
 	if storageBytes >= StorageTierAIPremium {
-		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - >= %d bytes (2TB), returning google_ai_pro", StorageTierAIPremium)
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - >= %d bytes (2TB), returning google_ai_pro", int64(StorageTierAIPremium))
 		return GeminiTierGoogleAIPro
 	}
 	if storageBytes >= StorageTierFree {
-		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - >= %d bytes (15GB), returning FREE", StorageTierFree)
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - >= %d bytes (15GB), returning FREE", int64(StorageTierFree))
 		return GeminiTierGoogleOneFree
 	}
 
-	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - < %d bytes (15GB), returning UNKNOWN", StorageTierFree)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - < %d bytes (15GB), returning UNKNOWN", int64(StorageTierFree))
 	return GeminiTierGoogleOneUnknown
 }
 
