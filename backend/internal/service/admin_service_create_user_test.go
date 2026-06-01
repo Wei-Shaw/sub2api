@@ -14,13 +14,14 @@ import (
 func TestAdminService_CreateUser_Success(t *testing.T) {
 	repo := &userRepoStub{nextID: 10REDACTED
 	svc := &adminServiceImpl{userRepo: repoREDACTED
+	balance := 12.5
 
 	input := &CreateUserInput{
 		Email:         "user@test.com",
 		Password:      "strong-pass",
 		Username:      "tester",
 		Notes:         "note",
-		Balance:       12.5,
+		Balance:       &balance,
 		Concurrency:   7,
 		AllowedGroups: []int64{3, 5REDACTED,
 REDACTED
@@ -32,7 +33,7 @@ REDACTED
 	require.Equal(t, input.Email, user.Email)
 	require.Equal(t, input.Username, user.Username)
 	require.Equal(t, input.Notes, user.Notes)
-	require.Equal(t, input.Balance, user.Balance)
+	require.Equal(t, balance, user.Balance)
 	require.Equal(t, input.Concurrency, user.Concurrency)
 	require.Equal(t, input.AllowedGroups, user.AllowedGroups)
 	require.Equal(t, RoleUser, user.Role)
@@ -40,6 +41,56 @@ REDACTED
 	require.True(t, user.CheckPassword(input.Password))
 	require.Len(t, repo.created, 1)
 	require.Equal(t, user, repo.created[0])
+REDACTED
+
+func TestAdminService_CreateUser_UsesDefaultBalanceWhenBalanceOmitted(t *testing.T) {
+	repo := &userRepoStub{nextID: 11REDACTED
+	cfg := &config.Config{
+		Default: config.DefaultConfig{
+			UserBalance: 0,
+	REDACTED,
+REDACTED
+	settingService := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyDefaultBalance: "0.02",
+REDACTEDREDACTED, cfg)
+	svc := &adminServiceImpl{userRepo: repo, settingService: settingServiceREDACTED
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:    "default-balance@test.com",
+		Password: "strong-pass",
+REDACTED)
+
+REDACTED
+	require.NotNil(t, user)
+	require.Equal(t, 0.02, user.Balance)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, 0.02, repo.created[0].Balance)
+REDACTED
+
+func TestAdminService_CreateUser_ExplicitZeroBalanceOverridesDefault(t *testing.T) {
+	repo := &userRepoStub{nextID: 12REDACTED
+	cfg := &config.Config{
+		Default: config.DefaultConfig{
+			UserBalance: 0,
+	REDACTED,
+REDACTED
+	settingService := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyDefaultBalance: "0.02",
+REDACTEDREDACTED, cfg)
+	svc := &adminServiceImpl{userRepo: repo, settingService: settingServiceREDACTED
+	balance := 0.0
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:    "zero-balance@test.com",
+		Password: "strong-pass",
+		Balance:  &balance,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, user)
+	require.Equal(t, 0.0, user.Balance)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, 0.0, repo.created[0].Balance)
 REDACTED
 
 func TestAdminService_CreateUser_EmailExists(t *testing.T) {

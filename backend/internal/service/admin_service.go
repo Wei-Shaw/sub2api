@@ -129,7 +129,7 @@ type CreateUserInput struct {
 	Password      string
 	Username      string
 	Notes         string
-	Balance       float64
+	Balance       *float64
 	Concurrency   int
 	RPMLimit      int
 	AllowedGroups []int64
@@ -680,12 +680,19 @@ func (s *adminServiceImpl) GetUserIncludeDeleted(ctx context.Context, id int64) 
 REDACTED
 
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
+	balance := 0.0
+	if input.Balance != nil {
+		balance = *input.Balance
+REDACTED else if s.settingService != nil {
+		balance = s.settingService.GetDefaultBalance(ctx)
+REDACTED
+
 	user := &User{
 		Email:         input.Email,
 		Username:      input.Username,
 		Notes:         input.Notes,
 		Role:          RoleUser, // Always create as regular user, never admin
-		Balance:       input.Balance,
+		Balance:       balance,
 		Concurrency:   input.Concurrency,
 		RPMLimit:      input.RPMLimit,
 		Status:        StatusActive,

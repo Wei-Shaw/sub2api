@@ -28,7 +28,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="input-label">{{ t('admin.users.columns.balance') REDACTEDREDACTED</label>
-          <input v-model.number="form.balance" type="number" step="any" class="input" />
+          <input v-model="form.balance" type="number" step="any" class="input" />
         </div>
         <div>
           <label class="input-label">{{ t('admin.users.columns.concurrency') REDACTEDREDACTED</label>
@@ -69,18 +69,24 @@ import Icon from '@/components/icons/Icon.vue'
 const props = defineProps<{ show: boolean REDACTED>()
 const emit = defineEmits(['close', 'success']); const { t REDACTED = useI18n()
 
-const form = reactive({ email: '', password: '', username: '', notes: '', balance: 0, concurrency: 1, rpm_limit: 0 REDACTED)
+const form = reactive({ email: '', password: '', username: '', notes: '', balance: '', concurrency: 1, rpm_limit: 0 REDACTED)
 
 const { loading, submit REDACTED = useForm({
   form,
   submitFn: async (data) => {
-    await adminAPI.users.create(data)
+    const { balance: rawBalance, ...rest REDACTED = data
+    const balance = String(rawBalance).trim()
+    const payload: typeof rest & { balance?: number REDACTED = { ...rest REDACTED
+    if (balance !== '') {
+      payload.balance = Number(balance)
+    REDACTED
+    await adminAPI.users.create(payload)
     emit('success'); emit('close')
   REDACTED,
   successMsg: t('admin.users.userCreated')
 REDACTED)
 
-watch(() => props.show, (v) => { if(v) Object.assign(form, { email: '', password: '', username: '', notes: '', balance: 0, concurrency: 1, rpm_limit: 0 REDACTED) REDACTED)
+watch(() => props.show, (v) => { if(v) Object.assign(form, { email: '', password: '', username: '', notes: '', balance: '', concurrency: 1, rpm_limit: 0 REDACTED) REDACTED)
 
 const generateRandomPassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*'
