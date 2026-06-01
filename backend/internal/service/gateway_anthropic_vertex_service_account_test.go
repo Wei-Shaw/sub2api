@@ -35,7 +35,7 @@ func TestGatewayService_BuildAnthropicVertexServiceAccountRequest(t *testing.T) 
 	body := []byte(`{"model":"claude-sonnet-4-5","stream":false,"max_tokens":32,"messages":[{"role":"user","content":"hello"}]}`)
 
 	svc := &GatewayService{}
-	req, err := svc.buildUpstreamRequest(
+	req, _, err := svc.buildUpstreamRequest(
 		context.Background(),
 		c,
 		account,
@@ -87,7 +87,7 @@ func TestGatewayService_BuildAnthropicVertexServiceAccount_StripsContextManageme
 	body := []byte(`{"model":"claude-haiku-4-5","context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]},"messages":[{"role":"user","content":"hi"}]}`)
 
 	svc := &GatewayService{}
-	req, err := svc.buildUpstreamRequest(
+	req, _, err := svc.buildUpstreamRequest(
 		context.Background(), c, account, body,
 		"vertex-token", "service_account", "claude-haiku-4-5@20251001", false, false,
 	)
@@ -117,7 +117,7 @@ func TestGatewayService_BuildAnthropicVertexServiceAccount_PreservesContextManag
 	body := []byte(`{"model":"claude-sonnet-4-6","context_management":{"edits":[{"type":"clear_thinking_20251015"}]},"messages":[]}`)
 
 	svc := &GatewayService{}
-	req, err := svc.buildUpstreamRequest(
+	req, _, err := svc.buildUpstreamRequest(
 		context.Background(), c, account, body,
 		"vertex-token", "service_account", "claude-sonnet-4-6@20260218", false, false,
 	)

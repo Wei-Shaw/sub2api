@@ -51,6 +51,164 @@ type SessionContext struct {
 	APIKeyID  int64
 }
 
+type jsonRange struct {
+	start int        // 原始请求体中的起始偏移（闭区间）
+	end   int        // 原始请求体中的结束偏移（开区间）
+	kind  gjson.Type // JSON 值类型，用于调用方做轻量分支
+}
+
+type RequestBodyRef struct {
+	data []byte
+}
+
+func NewRequestBodyRef(data []byte) *RequestBodyRef {
+	return &RequestBodyRef{data: data}
+}
+
+func (b *RequestBodyRef) Bytes() []byte {
+	if b == nil {
+		return nil
+	}
+	return b.data
+}
+
+func (b *RequestBodyRef) Len() int {
+	if b == nil {
+		return 0
+	}
+	return len(b.data)
+}
+
+func (b *RequestBodyRef) Replace(data []byte) {
+	if b == nil {
+		return
+	}
+	b.data = data
+}
+
+func missingJSONRange() jsonRange {
+	return jsonRange{start: -1, end: -1}
+}
+
+func rangeFromResult(r gjson.Result) jsonRange {
+	if r.Raw == "" || r.Index <= 0 {
+		return missingJSONRange()
+	}
+	end := r.Index + len(r.Raw)
+	if end < r.Index {
+		return missingJSONRange()
+	}
+	return jsonRange{start: r.Index, end: end, kind: r.Type}
+}
+
+func (r jsonRange) exists() bool {
+	return r.start >= 0 && r.end >= r.start
+}
+
+// clearGatewayRequestDerivedState 清空绑定当前 body 的轻量派生字段，防止 ReplaceBody 后读到旧值。
+func clearGatewayRequestDerivedState(parsed *ParsedRequest) {
+	if parsed == nil {
+		return
+	}
+	parsed.Model = ""
+	parsed.Stream = false
+	parsed.MetadataUserID = ""
+	parsed.HasSystem = false
+	parsed.ThinkingEnabled = false
+	parsed.OutputEffort = ""
+	parsed.MaxTokens = 0
+	parsed.systemRange = missingJSONRange()
+	parsed.messagesRange = missingJSONRange()
+}
+
+func clearGatewayRequestRanges(parsed *ParsedRequest) {
+	if parsed == nil {
+		return
+	}
+	parsed.HasSystem = false
+	parsed.systemRange = missingJSONRange()
+	parsed.messagesRange = missingJSONRange()
+}
+
+func setGatewayRequestRanges(parsed *ParsedRequest, protocol string, jsonStr string) {
+	if parsed == nil {
+		return
+	}
+	switch protocol {
+	case domain.PlatformGemini:
+		if sysParts := gjson.Get(jsonStr, "systemInstruction.parts"); sysParts.Exists() && sysParts.IsArray() {
+			parsed.systemRange = rangeFromResult(sysParts)
+		}
+		if contents := gjson.Get(jsonStr, "contents"); contents.Exists() && contents.IsArray() {
+			parsed.messagesRange = rangeFromResult(contents)
+		}
+	default:
+		if sys := gjson.Get(jsonStr, "system"); sys.Exists() {
+			parsed.HasSystem = true
+			parsed.systemRange = rangeFromResult(sys)
+		}
+		if msgs := gjson.Get(jsonStr, "messages"); msgs.Exists() && msgs.IsArray() {
+			parsed.messagesRange = rangeFromResult(msgs)
+		}
+	}
+}
+
+// parseGatewayRequestCurrentBody 只做标量和 raw range 轻量解析，不恢复 system/messages 对象图。
+func parseGatewayRequestCurrentBody(parsed *ParsedRequest, protocol string) error {
+	if parsed == nil || parsed.Body == nil {
+		return fmt.Errorf("empty request body")
+	}
+
+	bodyBytes := parsed.Body.Bytes()
+	if !gjson.ValidBytes(bodyBytes) {
+		return fmt.Errorf("invalid json")
+	}
+
+	// 只在当前函数内零拷贝读取 JSON 字段；ReplaceBody 后必须重新进入本函数刷新派生状态。
+	jsonStr := *(*string)(unsafe.Pointer(&bodyBytes))
+	clearGatewayRequestDerivedState(parsed)
+	parsed.protocol = protocol
+
+	modelResult := gjson.Get(jsonStr, "model")
+	if modelResult.Exists() {
+		if modelResult.Type != gjson.String {
+			return fmt.Errorf("invalid model field type")
+		}
+		parsed.Model = modelResult.String()
+	}
+
+	streamResult := gjson.Get(jsonStr, "stream")
+	if streamResult.Exists() {
+		if streamResult.Type != gjson.True && streamResult.Type != gjson.False {
+			return fmt.Errorf("invalid stream field type")
+		}
+		parsed.Stream = streamResult.Bool()
+	}
+
+	parsed.MetadataUserID = gjson.Get(jsonStr, "metadata.user_id").String()
+
+	thinkingType := gjson.Get(jsonStr, "thinking.type").String()
+	parsed.ThinkingEnabled = thinkingType == "enabled" || thinkingType == "adaptive"
+
+	parsed.OutputEffort = strings.TrimSpace(gjson.Get(jsonStr, "output_config.effort").String())
+
+	maxTokensResult := gjson.Get(jsonStr, "max_tokens")
+	if maxTokensResult.Exists() && maxTokensResult.Type == gjson.Number {
+		f := maxTokensResult.Float()
+		if !math.IsNaN(f) && !math.IsInf(f, 0) && f == math.Trunc(f) &&
+			f <= float64(math.MaxInt) && f >= float64(math.MinInt) {
+			parsed.MaxTokens = int(f)
+		}
+	}
+
+	setGatewayRequestRanges(parsed, protocol, jsonStr)
+	return nil
+}
+
+func refreshGatewayRequestRanges(parsed *ParsedRequest, protocol string) error {
+	return parseGatewayRequestCurrentBody(parsed, protocol)
+}
+
 // ParsedRequest 保存网关请求的预解析结果
 //
 // 性能优化说明：
@@ -64,17 +222,19 @@ type SessionContext struct {
 // 2. 将解析结果 ParsedRequest 传递给 Service 层
 // 3. 避免重复 json.Unmarshal，减少 CPU 和内存开销
 type ParsedRequest struct {
-	Body            []byte          // 原始请求体（保留用于转发）
+	Body            *RequestBodyRef // 原始请求体引用（保留用于转发）；替换内容请走 ReplaceBody
 	Model           string          // 请求的模型名称
 	Stream          bool            // 是否为流式请求
 	MetadataUserID  string          // metadata.user_id（用于会话亲和）
-	System          any             // system 字段内容
-	Messages        []any           // messages 数组
 	HasSystem       bool            // 是否包含 system 字段（包含 null 也视为显式传入）
 	ThinkingEnabled bool            // 是否开启 thinking（部分平台会影响最终模型名）
 	OutputEffort    string          // output_config.effort（Claude API 的推理强度控制）
 	MaxTokens       int             // max_tokens 值（用于探测请求拦截）
 	SessionContext  *SessionContext // 可选：请求上下文区分因子（nil 时行为不变）
+
+	protocol      string    // 当前 Body 的协议格式，用于 Body 替换后刷新 raw range
+	systemRange   jsonRange // system/systemInstruction.parts 的 raw JSON 范围，绑定 Body 当前内容
+	messagesRange jsonRange // messages/contents 的 raw JSON 范围，绑定 Body 当前内容
 
 	// GroupID 请求所属分组 ID（来自 API Key）
 	GroupID *int64
@@ -130,117 +290,90 @@ func normalizeSessionUserAgentFallback(raw string) string {
 // ParseGatewayRequest 解析网关请求体并返回结构化结果。
 // protocol 指定请求协议格式（domain.PlatformAnthropic / domain.PlatformGemini），
 // 不同协议使用不同的 system/messages 字段名。
-func ParseGatewayRequest(body []byte, protocol string) (*ParsedRequest, error) {
-	// 保持与旧实现一致：请求体必须是合法 JSON。
-	// 注意：gjson.GetBytes 对非法 JSON 不会报错，因此需要显式校验。
-	if !gjson.ValidBytes(body) {
-		return nil, fmt.Errorf("invalid json")
+func ParseGatewayRequest(body *RequestBodyRef, protocol string) (*ParsedRequest, error) {
+	parsed := &ParsedRequest{Body: body}
+	if err := parseGatewayRequestCurrentBody(parsed, protocol); err != nil {
+		return nil, err
 	}
-
-	// 性能：
-	// - gjson.GetBytes 会把匹配的 Raw/Str 安全复制成 string（对于巨大 messages 会产生额外拷贝）。
-	// - 这里将 body 通过 unsafe 零拷贝视为 string，仅在本函数内使用，且 body 不会被修改。
-	jsonStr := *(*string)(unsafe.Pointer(&body))
-
-	parsed := &ParsedRequest{
-		Body: body,
-	}
-
-	// --- gjson 提取简单字段（避免完整 Unmarshal） ---
-
-	// model: 需要严格类型校验，非 string 返回错误
-	modelResult := gjson.Get(jsonStr, "model")
-	if modelResult.Exists() {
-		if modelResult.Type != gjson.String {
-			return nil, fmt.Errorf("invalid model field type")
-		}
-		parsed.Model = modelResult.String()
-	}
-
-	// stream: 需要严格类型校验，非 bool 返回错误
-	streamResult := gjson.Get(jsonStr, "stream")
-	if streamResult.Exists() {
-		if streamResult.Type != gjson.True && streamResult.Type != gjson.False {
-			return nil, fmt.Errorf("invalid stream field type")
-		}
-		parsed.Stream = streamResult.Bool()
-	}
-
-	// metadata.user_id: 直接路径提取，不需要严格类型校验
-	parsed.MetadataUserID = gjson.Get(jsonStr, "metadata.user_id").String()
-
-	// thinking.type: enabled/adaptive 都视为开启
-	thinkingType := gjson.Get(jsonStr, "thinking.type").String()
-	if thinkingType == "enabled" || thinkingType == "adaptive" {
-		parsed.ThinkingEnabled = true
-	}
-
-	// output_config.effort: Claude API 的推理强度控制参数
-	parsed.OutputEffort = strings.TrimSpace(gjson.Get(jsonStr, "output_config.effort").String())
-
-	// max_tokens: 仅接受整数值
-	maxTokensResult := gjson.Get(jsonStr, "max_tokens")
-	if maxTokensResult.Exists() && maxTokensResult.Type == gjson.Number {
-		f := maxTokensResult.Float()
-		if !math.IsNaN(f) && !math.IsInf(f, 0) && f == math.Trunc(f) &&
-			f <= float64(math.MaxInt) && f >= float64(math.MinInt) {
-			parsed.MaxTokens = int(f)
-		}
-	}
-
-	// --- system/messages 提取 ---
-	// 避免把整个 body Unmarshal 到 map（会产生大量 map/接口分配）。
-	// 使用 gjson 抽取目标字段的 Raw，再对该子树进行 Unmarshal。
-
-	switch protocol {
-	case domain.PlatformGemini:
-		// Gemini 原生格式: systemInstruction.parts / contents
-		if sysParts := gjson.Get(jsonStr, "systemInstruction.parts"); sysParts.Exists() && sysParts.IsArray() {
-			var parts []any
-			if err := json.Unmarshal(sliceRawFromBody(body, sysParts), &parts); err != nil {
-				return nil, err
-			}
-			parsed.System = parts
-		}
-
-		if contents := gjson.Get(jsonStr, "contents"); contents.Exists() && contents.IsArray() {
-			var msgs []any
-			if err := json.Unmarshal(sliceRawFromBody(body, contents), &msgs); err != nil {
-				return nil, err
-			}
-			parsed.Messages = msgs
-		}
-	default:
-		// Anthropic / OpenAI 格式: system / messages
-		// system 字段只要存在就视为显式提供（即使为 null），
-		// 以避免客户端传 null 时被默认 system 误注入。
-		if sys := gjson.Get(jsonStr, "system"); sys.Exists() {
-			parsed.HasSystem = true
-			switch sys.Type {
-			case gjson.Null:
-				parsed.System = nil
-			case gjson.String:
-				// 与 encoding/json 的 Unmarshal 行为一致：返回解码后的字符串。
-				parsed.System = sys.String()
-			default:
-				var system any
-				if err := json.Unmarshal(sliceRawFromBody(body, sys), &system); err != nil {
-					return nil, err
-				}
-				parsed.System = system
-			}
-		}
-
-		if msgs := gjson.Get(jsonStr, "messages"); msgs.Exists() && msgs.IsArray() {
-			var messages []any
-			if err := json.Unmarshal(sliceRawFromBody(body, msgs), &messages); err != nil {
-				return nil, err
-			}
-			parsed.Messages = messages
-		}
-	}
-
 	return parsed, nil
+}
+
+func (p *ParsedRequest) raw(r jsonRange) []byte {
+	if p == nil || p.Body == nil || !r.exists() {
+		return nil
+	}
+	body := p.Body.Bytes()
+	if r.end > len(body) {
+		return nil
+	}
+	return body[r.start:r.end]
+}
+
+func (p *ParsedRequest) SystemRaw() []byte {
+	return p.raw(p.systemRange)
+}
+
+func (p *ParsedRequest) MessagesRaw() []byte {
+	return p.raw(p.messagesRange)
+}
+
+func (p *ParsedRequest) DecodeSystem(dst any) error {
+	raw := p.SystemRaw()
+	if len(raw) == 0 {
+		return nil
+	}
+	return json.Unmarshal(raw, dst)
+}
+
+func (p *ParsedRequest) DecodeMessages(dst any) error {
+	raw := p.MessagesRaw()
+	if len(raw) == 0 {
+		return nil
+	}
+	return json.Unmarshal(raw, dst)
+}
+
+func (p *ParsedRequest) SystemValue() (any, bool) {
+	raw := p.SystemRaw()
+	if len(raw) == 0 {
+		return nil, false
+	}
+	var system any
+	if err := json.Unmarshal(raw, &system); err != nil {
+		return nil, false
+	}
+	return system, true
+}
+
+// CloneForBody 为单次账号尝试创建独立 body 视图，避免 failover 复用已改写的 ParsedRequest。
+func (p *ParsedRequest) CloneForBody(body []byte) (*ParsedRequest, error) {
+	if p == nil {
+		return nil, fmt.Errorf("parse request: empty request")
+	}
+	clone := *p
+	clone.Body = NewRequestBodyRef(body)
+	clone.OnUpstreamAccepted = nil
+	if err := refreshGatewayRequestRanges(&clone, clone.protocol); err != nil {
+		return nil, err
+	}
+	return &clone, nil
+}
+
+// ReplaceBody 统一刷新当前 body 和 raw range，保证后续 helper 读取的是最新请求体。
+func (p *ParsedRequest) ReplaceBody(data []byte) error {
+	if p == nil {
+		return fmt.Errorf("parse request: empty request")
+	}
+	if p.Body == nil {
+		p.Body = NewRequestBodyRef(data)
+	} else {
+		p.Body.Replace(data)
+	}
+	if err := refreshGatewayRequestRanges(p, p.protocol); err != nil {
+		clearGatewayRequestRanges(p)
+		return err
+	}
+	return nil
 }
 
 // sliceRawFromBody 返回 Result.Raw 对应的原始字节切片。

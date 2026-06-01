@@ -41,6 +41,7 @@ func newAuthServiceWithRefreshTokenCache(
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 }
 

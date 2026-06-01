@@ -1,6 +1,10 @@
 package service
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/tidwall/gjson"
+)
 
 // ToolContinuationSignals 聚合工具续链相关信号，避免重复遍历 input。
 type ToolContinuationSignals struct {
@@ -148,6 +152,67 @@ func AnalyzeToolContinuationSignals(reqBody map[string]any) ToolContinuationSign
 	}
 	signals.HasItemReferenceForAllCallIDs = allReferenced
 	return signals
+}
+
+// ValidateFunctionCallOutputContextBytes 基于 raw JSON 校验工具输出续链，避免 handler 预校验阶段全量解码大 input。
+func ValidateFunctionCallOutputContextBytes(body []byte) FunctionCallOutputValidation {
+	result := FunctionCallOutputValidation{}
+	if len(body) == 0 {
+		return result
+	}
+	// handler 热路径只读扫描 input，避免 GetBytes 为大 Responses body 复制整段 JSON。
+	input := parseRawJSONView(body).Get("input")
+	if !input.IsArray() {
+		return result
+	}
+
+	var callIDs map[string]struct{}
+	var referenceIDs map[string]struct{}
+	input.ForEach(func(_, item gjson.Result) bool {
+		if !item.IsObject() {
+			return true
+		}
+		itemType := item.Get("type").String()
+		switch {
+		case isCodexToolCallOutputItemType(itemType):
+			result.HasFunctionCallOutput = true
+			callID := strings.TrimSpace(item.Get("call_id").String())
+			if callID == "" {
+				result.HasFunctionCallOutputMissingCallID = true
+				return true
+			}
+			if callIDs == nil {
+				callIDs = make(map[string]struct{})
+			}
+			callIDs[callID] = struct{}{}
+		case isCodexToolCallContextItemType(itemType):
+			if strings.TrimSpace(item.Get("call_id").String()) != "" {
+				result.HasToolCallContext = true
+			}
+		case itemType == "item_reference":
+			idValue := strings.TrimSpace(item.Get("id").String())
+			if idValue == "" {
+				return true
+			}
+			if referenceIDs == nil {
+				referenceIDs = make(map[string]struct{})
+			}
+			referenceIDs[idValue] = struct{}{}
+		}
+		return !result.HasFunctionCallOutput || !result.HasToolCallContext
+	})
+	if !result.HasFunctionCallOutput || result.HasToolCallContext || len(callIDs) == 0 || len(referenceIDs) == 0 {
+		return result
+	}
+	allReferenced := true
+	for callID := range callIDs {
+		if _, ok := referenceIDs[callID]; !ok {
+			allReferenced = false
+			break
+		}
+	}
+	result.HasItemReferenceForAllCallIDs = allReferenced
+	return result
 }
 
 // ValidateFunctionCallOutputContext 为 handler 提供低开销校验结果：

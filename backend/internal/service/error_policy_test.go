@@ -389,6 +389,60 @@ func TestApplyErrorPolicy(t *testing.T) {
 	}
 }
 
+func TestApplyErrorPolicy_GeminiRateLimitBypassesCustomSkip(t *testing.T) {
+	repo := &stubAntigravityAccountRepo{}
+	cache := &stubSmartRetryCache{}
+	rlSvc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc := &AntigravityGatewayService{
+		rateLimitService: rlSvc,
+		accountRepo:      repo,
+		cache:            cache,
+	}
+
+	account := &Account{
+		ID:       31,
+		Type:     AccountTypeAPIKey,
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			"custom_error_codes_enabled": true,
+			"custom_error_codes":         []any{float64(500)},
+		},
+	}
+	body := []byte(`{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"}, "reason": "RATE_LIMIT_EXCEEDED"},
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "15s"}
+			]
+		}
+	}`)
+	p := antigravityRetryLoopParams{
+		ctx:         context.Background(),
+		prefix:      "[test]",
+		account:     account,
+		accountRepo: repo,
+		groupID:     42,
+		sessionHash: "gemini:sticky",
+		handleError: func(context.Context, string, *Account, int, http.Header, []byte, string, int64, string, bool) *handleModelRateLimitResult {
+			t.Fatal("model rate limit should be handled before custom error fallback")
+			return nil
+		},
+	}
+
+	handled, outStatus, retErr := svc.applyErrorPolicy(p, http.StatusTooManyRequests, http.Header{}, body)
+
+	require.True(t, handled)
+	require.Equal(t, http.StatusTooManyRequests, outStatus)
+	require.NoError(t, retErr)
+	require.Len(t, repo.modelRateLimitCalls, 2)
+	require.Equal(t, "gemini-3-flash", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, antigravityGeminiModelRateLimitKey, repo.modelRateLimitCalls[1].modelKey)
+	require.Len(t, cache.deleteCalls, 1)
+	require.Equal(t, int64(42), cache.deleteCalls[0].groupID)
+	require.Equal(t, "gemini:sticky", cache.deleteCalls[0].sessionHash)
+}
+
 // ---------------------------------------------------------------------------
 // errorPolicyRepoStub — minimal AccountRepository stub for error policy tests
 // ---------------------------------------------------------------------------
