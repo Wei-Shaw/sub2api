@@ -82,6 +82,45 @@ func TestCalculateCostUnified_TokenModeAppliesRateMultiplierToImageTokens(t *tes
 	require.InDelta(t, imageOutput, cost.ImageOutputCost, 1e-10)
 }
 
+func TestCalculateCostUnified_BalanceTokenPricePerMillionOverridesProviderCost(t *testing.T) {
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, bs)
+	tokenPricePerMillion := 7.5
+
+	// Cache-heavy OpenAI/Claude-style traffic can have a very low provider/base
+	// cost per million tokens. Balance groups with token_price_per_million must
+	// still burn wallet credit by the user-facing token price, not by provider
+	// cost * rate_multiplier.
+	tokens := UsageTokens{InputTokens: 1000, CacheReadTokens: 999000}
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx:                  context.Background(),
+		Model:                "claude-sonnet-4",
+		Tokens:               tokens,
+		RateMultiplier:       1.0,
+		TokenPricePerMillion: &tokenPricePerMillion,
+		Resolver:             resolver,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cost)
+
+	require.InDelta(t, 0.3027, cost.TotalCost, 1e-10, "provider/base cost remains available for margin reporting")
+	require.InDelta(t, 7.5, cost.ActualCost, 1e-10, "1M balance tokens at $7.5/M must burn $7.5")
+	require.Equal(t, string(BillingModeToken), cost.BillingMode)
+}
+
+func TestUsageTokensTotalBillableTokensUsesDetailedCacheCreationWhenPresent(t *testing.T) {
+	tokens := UsageTokens{
+		InputTokens:           10,
+		OutputTokens:          20,
+		CacheCreationTokens:   0,
+		CacheCreation5mTokens: 30,
+		CacheCreation1hTokens: 40,
+		CacheReadTokens:       50,
+	}
+
+	require.Equal(t, 150, tokens.TotalBillableTokens())
+}
+
 func TestCalculateCostUnified_PerRequestMode(t *testing.T) {
 	// Set up a ChannelService with a per-request pricing channel
 	cs := newTestChannelServiceWithCache(t, &channelCache{
