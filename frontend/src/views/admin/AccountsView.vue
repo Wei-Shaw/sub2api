@@ -273,6 +273,12 @@
           <template #cell-groups="{ row REDACTED">
             <AccountGroupsCell :groups="row.groups" :max-display="4" />
           </template>
+          <template #header-usage="{ column REDACTED">
+            <div class="flex items-center">
+              <span>{{ column.label REDACTEDREDACTED</span>
+              <HelpTooltip :content="t('admin.accounts.usageWindowsHint')" width-class="w-72" />
+            </div>
+          </template>
           <template #cell-usage="{ row REDACTED">
             <AccountUsageCell
               :account="row"
@@ -390,6 +396,7 @@ import { useTableSelection REDACTED from '@/composables/useTableSelection'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, TempUnschedStatusModal REDACTED from '@/components/account'
