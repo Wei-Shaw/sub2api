@@ -16,13 +16,55 @@ export interface DefaultSubscriptionSetting {
   validity_days: number;
 }
 
+// ── 平台限额类型 ──────────────────────────────────────────────────
+export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity"
+export type QuotaWindowType = "daily" | "weekly" | "monthly"
+
+/** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
+export interface PlatformQuotaLimits {
+  daily:   number | null
+  weekly:  number | null
+  monthly: number | null
+}
+
+/** 全平台默认限额 map（key = PlatformType） */
+export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>>
+
+const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity"]
+
+/** 归一化为全 4 平台 × 3 窗口（缺失填 null），供模板非空绑定 */
+export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
+  const result: DefaultPlatformQuotasMap = {}
+  for (const p of PLATFORMS) {
+    const src = input?.[p]
+    result[p] = {
+      daily:   typeof src?.daily === "number" ? src.daily : null,
+      weekly:  typeof src?.weekly === "number" ? src.weekly : null,
+      monthly: typeof src?.monthly === "number" ? src.monthly : null,
+    }
+  }
+  return result
+}
+
+/** 提交前清洗：非有限数/负数/空字符串 → null（保留 0 = 显式禁用），返回全 4 平台嵌套 map */
+export function sanitizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
+  const clean = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null)
+  const result: DefaultPlatformQuotasMap = {}
+  for (const p of PLATFORMS) {
+    const src = input?.[p]
+    result[p] = { daily: clean(src?.daily), weekly: clean(src?.weekly), monthly: clean(src?.monthly) }
+  }
+  return result
+}
+
 export type AuthSourceType =
   | "email"
   | "linuxdo"
   | "oidc"
   | "wechat"
   | "github"
-  | "google";
+  | "google"
+  | "dingtalk";
 
 export interface AuthSourceDefaultsValue {
   balance: number;
@@ -30,6 +72,8 @@ export interface AuthSourceDefaultsValue {
   subscriptions: DefaultSubscriptionSetting[];
   grant_on_signup: boolean;
   grant_on_first_bind: boolean;
+  // ★ 新增：平台限额覆盖（key = PlatformType）
+  platform_quotas: DefaultPlatformQuotasMap;
 }
 
 export type AuthSourceDefaultsState = Record<
@@ -64,6 +108,7 @@ const AUTH_SOURCE_TYPES: AuthSourceType[] = [
   "wechat",
   "github",
   "google",
+  "dingtalk",
 ];
 const AUTH_SOURCE_DEFAULT_BALANCE = 0;
 const AUTH_SOURCE_DEFAULT_CONCURRENCY = 5;
@@ -191,6 +236,7 @@ export function buildAuthSourceDefaultsState(
         raw[`auth_source_default_${source}_grant_on_signup`] === true,
       grant_on_first_bind:
         raw[`auth_source_default_${source}_grant_on_first_bind`] === true,
+      platform_quotas: normalizePlatformQuotasMap(raw[`auth_source_default_${source}_platform_quotas`] as DefaultPlatformQuotasMap | undefined),
     };
     return acc;
   }, {} as AuthSourceDefaultsState);
@@ -218,6 +264,7 @@ export function appendAuthSourceDefaultsToUpdateRequest(
       current.grant_on_signup;
     target[`auth_source_default_${source}_grant_on_first_bind`] =
       current.grant_on_first_bind;
+    target[`auth_source_default_${source}_platform_quotas`] = sanitizePlatformQuotasMap(current.platform_quotas)
   }
 
   return payload;
@@ -352,6 +399,11 @@ export interface SystemSettings {
   auth_source_default_wechat_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_wechat_grant_on_signup?: boolean;
   auth_source_default_wechat_grant_on_first_bind?: boolean;
+  auth_source_default_dingtalk_balance?: number;
+  auth_source_default_dingtalk_concurrency?: number;
+  auth_source_default_dingtalk_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_dingtalk_grant_on_signup?: boolean;
+  auth_source_default_dingtalk_grant_on_first_bind?: boolean;
   auth_source_default_github_balance?: number;
   auth_source_default_github_concurrency?: number;
   auth_source_default_github_subscriptions?: DefaultSubscriptionSetting[];
@@ -363,6 +415,15 @@ export interface SystemSettings {
   auth_source_default_google_grant_on_signup?: boolean;
   auth_source_default_google_grant_on_first_bind?: boolean;
   force_email_on_third_party_signup?: boolean;
+  // ── 平台限额（嵌套 JSON，系统层 + 7 auth-source 层）────────────────────────────────
+  default_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_email_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_linuxdo_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_oidc_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_wechat_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_github_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_google_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_dingtalk_platform_quotas?: DefaultPlatformQuotasMap;
   // OEM settings
   site_name: string;
   site_logo: string;
@@ -389,12 +450,31 @@ export interface SystemSettings {
   turnstile_enabled: boolean;
   turnstile_site_key: string;
   turnstile_secret_key_configured: boolean;
+  api_key_acl_trust_forwarded_ip: boolean;
 
   // LinuxDo Connect OAuth settings
   linuxdo_connect_enabled: boolean;
   linuxdo_connect_client_id: string;
   linuxdo_connect_client_secret_configured: boolean;
   linuxdo_connect_redirect_url: string;
+
+  // DingTalk Connect OAuth settings
+  dingtalk_connect_enabled: boolean;
+  dingtalk_connect_client_id: string;
+  dingtalk_connect_client_secret_configured: boolean;
+  dingtalk_connect_redirect_url: string;
+  dingtalk_connect_corp_restriction_policy: string;
+  dingtalk_connect_internal_corp_id: string;
+  dingtalk_connect_bypass_registration: boolean;
+  dingtalk_connect_sync_corp_email: boolean;
+  dingtalk_connect_sync_display_name: boolean;
+  dingtalk_connect_sync_dept: boolean;
+  dingtalk_connect_sync_corp_email_attr_key: string;
+  dingtalk_connect_sync_display_name_attr_key: string;
+  dingtalk_connect_sync_dept_attr_key: string;
+  dingtalk_connect_sync_corp_email_attr_name: string;
+  dingtalk_connect_sync_display_name_attr_name: string;
+  dingtalk_connect_sync_dept_attr_name: string;
 
   // WeChat Connect OAuth settings
   wechat_connect_enabled: boolean;
@@ -479,6 +559,8 @@ export interface SystemSettings {
   enable_anthropic_cache_ttl_1h_injection: boolean;
   rewrite_message_cache_control: boolean;
   antigravity_user_agent_version: string;
+  openai_codex_user_agent: string;
+  openai_allow_claude_code_codex_plugin: boolean;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -503,16 +585,18 @@ export interface SystemSettings {
   payment_cancel_rate_limit_window: number;
   payment_cancel_rate_limit_unit: string;
   payment_cancel_rate_limit_window_mode: string;
+  payment_alipay_force_qrcode?: boolean;
   payment_visible_method_alipay_source?: string;
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
   payment_visible_method_wxpay_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
 
-  // Balance & quota notification
+  // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: boolean;
   balance_low_notify_threshold: number;
   balance_low_notify_recharge_url: string;
+  subscription_expiry_notify_enabled: boolean;
   account_quota_notify_enabled: boolean;
   account_quota_notify_emails: NotifyEmailEntry[];
 
@@ -571,6 +655,11 @@ export interface UpdateSettingsRequest {
   auth_source_default_wechat_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_wechat_grant_on_signup?: boolean;
   auth_source_default_wechat_grant_on_first_bind?: boolean;
+  auth_source_default_dingtalk_balance?: number;
+  auth_source_default_dingtalk_concurrency?: number;
+  auth_source_default_dingtalk_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_dingtalk_grant_on_signup?: boolean;
+  auth_source_default_dingtalk_grant_on_first_bind?: boolean;
   auth_source_default_github_balance?: number;
   auth_source_default_github_concurrency?: number;
   auth_source_default_github_subscriptions?: DefaultSubscriptionSetting[];
@@ -582,6 +671,15 @@ export interface UpdateSettingsRequest {
   auth_source_default_google_grant_on_signup?: boolean;
   auth_source_default_google_grant_on_first_bind?: boolean;
   force_email_on_third_party_signup?: boolean;
+  // ── 平台限额（嵌套 JSON，系统层 + 7 auth-source 层）────────────────────────────────
+  default_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_email_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_linuxdo_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_oidc_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_wechat_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_github_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_google_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_dingtalk_platform_quotas?: DefaultPlatformQuotasMap;
   site_name?: string;
   site_logo?: string;
   site_subtitle?: string;
@@ -605,10 +703,27 @@ export interface UpdateSettingsRequest {
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;
+  api_key_acl_trust_forwarded_ip?: boolean;
   linuxdo_connect_enabled?: boolean;
   linuxdo_connect_client_id?: string;
   linuxdo_connect_client_secret?: string;
   linuxdo_connect_redirect_url?: string;
+  dingtalk_connect_enabled?: boolean;
+  dingtalk_connect_client_id?: string;
+  dingtalk_connect_client_secret?: string;
+  dingtalk_connect_redirect_url?: string;
+  dingtalk_connect_corp_restriction_policy?: string;
+  dingtalk_connect_internal_corp_id?: string;
+  dingtalk_connect_bypass_registration?: boolean;
+  dingtalk_connect_sync_corp_email?: boolean;
+  dingtalk_connect_sync_display_name?: boolean;
+  dingtalk_connect_sync_dept?: boolean;
+  dingtalk_connect_sync_corp_email_attr_key?: string;
+  dingtalk_connect_sync_display_name_attr_key?: string;
+  dingtalk_connect_sync_dept_attr_key?: string;
+  dingtalk_connect_sync_corp_email_attr_name?: string;
+  dingtalk_connect_sync_display_name_attr_name?: string;
+  dingtalk_connect_sync_dept_attr_name?: string;
   wechat_connect_enabled?: boolean;
   wechat_connect_app_id?: string;
   wechat_connect_app_secret?: string;
@@ -677,6 +792,8 @@ export interface UpdateSettingsRequest {
   enable_anthropic_cache_ttl_1h_injection?: boolean;
   rewrite_message_cache_control?: boolean;
   antigravity_user_agent_version?: string;
+  openai_codex_user_agent?: string;
+  openai_allow_claude_code_codex_plugin?: boolean;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;
@@ -699,15 +816,17 @@ export interface UpdateSettingsRequest {
   payment_cancel_rate_limit_window?: number;
   payment_cancel_rate_limit_unit?: string;
   payment_cancel_rate_limit_window_mode?: string;
+  payment_alipay_force_qrcode?: boolean;
   payment_visible_method_alipay_source?: string;
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
   payment_visible_method_wxpay_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
-  // Balance & quota notification
+  // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled?: boolean;
   balance_low_notify_threshold?: number;
   balance_low_notify_recharge_url?: string;
+  subscription_expiry_notify_enabled?: boolean;
   account_quota_notify_enabled?: boolean;
   account_quota_notify_emails?: NotifyEmailEntry[];
 
@@ -799,6 +918,107 @@ export async function sendTestEmail(
 ): Promise<{ message: string }> {
   const { data } = await apiClient.post<{ message: string }>(
     "/admin/settings/send-test-email",
+    request,
+  );
+  return data;
+}
+
+// ==================== Email Template Settings ====================
+
+export interface EmailTemplateOption {
+  value: string;
+  label?: string;
+  description?: string;
+  category?: string;
+  optional?: boolean;
+}
+
+export type EmailTemplateEventOption = string | EmailTemplateOption;
+
+export interface EmailTemplateSummary {
+  event: string;
+  locale: string;
+  subject: string;
+  is_custom?: boolean;
+  updated_at?: string;
+}
+
+export interface EmailTemplateListResponse {
+  events: EmailTemplateEventOption[];
+  locales: string[];
+  templates?: EmailTemplateSummary[];
+  placeholders?: string[];
+}
+
+export interface EmailTemplateDetail {
+  event: string;
+  locale: string;
+  subject: string;
+  html: string;
+  is_custom?: boolean;
+  updated_at?: string;
+  placeholders?: string[];
+}
+
+export interface UpdateEmailTemplateRequest {
+  subject: string;
+  html: string;
+}
+
+export interface PreviewEmailTemplateRequest extends UpdateEmailTemplateRequest {
+  event: string;
+  locale: string;
+}
+
+export interface EmailTemplatePreviewResponse {
+  subject: string;
+  html: string;
+}
+
+export async function getEmailTemplates(): Promise<EmailTemplateListResponse> {
+  const { data } = await apiClient.get<EmailTemplateListResponse>(
+    "/admin/settings/email-templates",
+  );
+  return data;
+}
+
+export async function getEmailTemplate(
+  event: string,
+  locale: string,
+): Promise<EmailTemplateDetail> {
+  const { data } = await apiClient.get<EmailTemplateDetail>(
+    `/admin/settings/email-templates/${encodeURIComponent(event)}/${encodeURIComponent(locale)}`,
+  );
+  return data;
+}
+
+export async function updateEmailTemplate(
+  event: string,
+  locale: string,
+  request: UpdateEmailTemplateRequest,
+): Promise<EmailTemplateDetail> {
+  const { data } = await apiClient.put<EmailTemplateDetail>(
+    `/admin/settings/email-templates/${encodeURIComponent(event)}/${encodeURIComponent(locale)}`,
+    request,
+  );
+  return data;
+}
+
+export async function restoreOfficialEmailTemplate(
+  event: string,
+  locale: string,
+): Promise<EmailTemplateDetail> {
+  const { data } = await apiClient.post<EmailTemplateDetail>(
+    `/admin/settings/email-templates/${encodeURIComponent(event)}/${encodeURIComponent(locale)}/restore-official`,
+  );
+  return data;
+}
+
+export async function previewEmailTemplate(
+  request: PreviewEmailTemplateRequest,
+): Promise<EmailTemplatePreviewResponse> {
+  const { data } = await apiClient.post<EmailTemplatePreviewResponse>(
+    "/admin/settings/email-template-preview",
     request,
   );
   return data;
@@ -1110,6 +1330,11 @@ export const settingsAPI = {
   updateSettings,
   testSmtpConnection,
   sendTestEmail,
+  getEmailTemplates,
+  getEmailTemplate,
+  updateEmailTemplate,
+  restoreOfficialEmailTemplate,
+  previewEmailTemplate,
   getAdminApiKey,
   regenerateAdminApiKey,
   deleteAdminApiKey,

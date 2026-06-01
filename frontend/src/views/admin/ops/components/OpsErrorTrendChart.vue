@@ -45,9 +45,7 @@ const colors = computed(() => ({
   text: isDarkMode.value ? '#9ca3af' : '#6b7280'
 }))
 
-const totalRequestErrors = computed(() =>
-  sumNumbers(props.points.map((p) => (p.error_count_sla ?? 0) + (p.business_limited_count ?? 0)))
-)
+const totalRequestErrors = computed(() => sumNumbers(props.points.map((p) => p.error_count_sla ?? 0)))
 
 const totalUpstreamErrors = computed(() =>
   sumNumbers(

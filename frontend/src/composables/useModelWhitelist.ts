@@ -29,6 +29,7 @@ export const claudeModels = [
   'claude-opus-4-5-20251101',
   'claude-opus-4-6',
   'claude-opus-4-7',
+  'claude-opus-4-8',
   'claude-sonnet-4-6'
 ]
 
@@ -41,6 +42,7 @@ const geminiModels = [
   'gemini-2.0-flash',
   'gemini-2.5-flash',
   'gemini-2.5-pro',
+  'gemini-3.5-flash',
   'gemini-3-flash-preview',
   'gemini-3-pro-preview'
 ]
@@ -52,6 +54,7 @@ const antigravityModels = [
   'claude-opus-4-6',
   'claude-opus-4-6-thinking',
   'claude-opus-4-7',
+  'claude-opus-4-8',
   'claude-opus-4-5-thinking',
   'claude-sonnet-4-6',
   'claude-sonnet-4-5',
@@ -237,6 +240,7 @@ const anthropicPresetMappings = [
   { label: 'Opus 4.5', from: 'claude-opus-4-5-20251101', to: 'claude-opus-4-5-20251101', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
   { label: 'Opus 4.6', from: 'claude-opus-4-6', to: 'claude-opus-4-6', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
   { label: 'Opus 4.7', from: 'claude-opus-4-7', to: 'claude-opus-4-7', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'Opus 4.8', from: 'claude-opus-4-8', to: 'claude-opus-4-8', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
   { label: 'Haiku 3.5', from: 'claude-3-5-haiku-20241022', to: 'claude-3-5-haiku-20241022', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' },
   { label: 'Haiku 4.5', from: 'claude-haiku-4-5-20251001', to: 'claude-haiku-4-5-20251001', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
   { label: 'Opus->Sonnet', from: 'claude-opus-4-6', to: 'claude-sonnet-4-5-20250929', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
@@ -262,6 +266,7 @@ const geminiPresetMappings = [
   { label: '2.5 Flash', from: 'gemini-2.5-flash', to: 'gemini-2.5-flash', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
   { label: '2.5 Image', from: 'gemini-2.5-flash-image', to: 'gemini-2.5-flash-image', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
   { label: '2.5 Pro', from: 'gemini-2.5-pro', to: 'gemini-2.5-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: '3.5 Flash', from: 'gemini-3.5-flash', to: 'gemini-3.5-flash', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' },
   { label: '3.1 Image', from: 'gemini-3.1-flash-image', to: 'gemini-3.1-flash-image', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' }
 ]
 
@@ -295,13 +300,15 @@ const antigravityPresetMappings = [
   { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5', to: 'claude-sonnet-4-5', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
   { label: 'Opus 4.6', from: 'claude-opus-4-6', to: 'claude-opus-4-6-thinking', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
   { label: 'Opus 4.6-thinking', from: 'claude-opus-4-6-thinking', to: 'claude-opus-4-6-thinking', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
-  { label: 'Opus 4.7', from: 'claude-opus-4-7', to: 'claude-opus-4-7', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' }
+  { label: 'Opus 4.7', from: 'claude-opus-4-7', to: 'claude-opus-4-7', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
+  { label: 'Opus 4.8', from: 'claude-opus-4-8', to: 'claude-opus-4-8', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' }
 ]
 
 // Bedrock 预设映射（与后端 DefaultBedrockModelMapping 保持一致）
 const bedrockPresetMappings = [
   { label: 'Opus 4.6', from: 'claude-opus-4-6', to: 'us.anthropic.claude-opus-4-6-v1', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
   { label: 'Opus 4.7', from: 'claude-opus-4-7', to: 'us.anthropic.claude-opus-4-7-v1', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
+  { label: 'Opus 4.8', from: 'claude-opus-4-8', to: 'us.anthropic.claude-opus-4-8-v1', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
   { label: 'Sonnet 4.6', from: 'claude-sonnet-4-6', to: 'us.anthropic.claude-sonnet-4-6', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
   { label: 'Opus 4.5', from: 'claude-opus-4-5-thinking', to: 'us.anthropic.claude-opus-4-5-20251101-v1:0', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
   { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5', to: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
@@ -395,23 +402,60 @@ export function isValidWildcardPattern(pattern: string): boolean {
   return starIndex === pattern.length - 1 && pattern.lastIndexOf('*') === starIndex
 }
 
+export type ModelRestrictionMode = 'whitelist' | 'mapping' | 'combined'
+
+export interface ModelMappingEntry {
+  from: string
+  to: string
+}
+
+export function splitModelMappingObject(
+  modelMapping?: Record<string, unknown> | null
+): { allowedModels: string[]; modelMappings: ModelMappingEntry[] } {
+  const allowedModels: string[] = []
+  const modelMappings: ModelMappingEntry[] = []
+
+  if (!modelMapping || typeof modelMapping !== 'object') {
+    return { allowedModels, modelMappings }
+  }
+
+  for (const [rawFrom, rawTo] of Object.entries(modelMapping)) {
+    if (typeof rawTo !== 'string') continue
+    const from = rawFrom.trim()
+    const to = rawTo.trim()
+    if (!from || !to) continue
+
+    if (from === to) {
+      allowedModels.push(from)
+    } else {
+      modelMappings.push({ from, to })
+    }
+  }
+
+  return { allowedModels, modelMappings }
+}
+
 export function buildModelMappingObject(
-  mode: 'whitelist' | 'mapping',
+  mode: ModelRestrictionMode,
   allowedModels: string[],
-  modelMappings: { from: string; to: string }[]
+  modelMappings: ModelMappingEntry[]
 ): Record<string, string> | null {
   const mapping: Record<string, string> = {}
 
-  if (mode === 'whitelist') {
+  if (mode === 'whitelist' || mode === 'combined') {
     for (const model of allowedModels) {
+      const normalizedModel = model.trim()
+      if (!normalizedModel) continue
       // whitelist 模式的本意是"精确模型列表"，如果用户输入了通配符（如 claude-*），
       // 写入 model_mapping 会导致 GetMappedModel() 把真实模型映射成 "claude-*"，从而转发失败。
       // 因此这里跳过包含通配符的条目。
-      if (!model.includes('*')) {
-        mapping[model] = model
+      if (!normalizedModel.includes('*')) {
+        mapping[normalizedModel] = normalizedModel
       }
     }
-  } else {
+  }
+
+  if (mode === 'mapping' || mode === 'combined') {
     for (const m of modelMappings) {
       const from = m.from.trim()
       const to = m.to.trim()

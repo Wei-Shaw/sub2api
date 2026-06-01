@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -901,6 +902,24 @@ func (s *PricingService) getPricingFilePath() string {
 // getHashFilePath 获取哈希文件路径
 func (s *PricingService) getHashFilePath() string {
 	return filepath.Join(s.cfg.Pricing.DataDir, "model_pricing.sha256")
+}
+
+// ListModelNamesByProvider returns all model names in the catalog whose
+// LiteLLMProvider matches the given provider string (case-insensitive).
+// The returned slice is sorted alphabetically.
+func (s *PricingService) ListModelNamesByProvider(provider string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	names := make([]string, 0)
+	for name, p := range s.pricingData {
+		if strings.ToLower(p.LiteLLMProvider) == provider {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // isNumeric 检查字符串是否为纯数字

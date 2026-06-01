@@ -156,7 +156,7 @@ func (m *mockAccountRepoForPlatform) ListSchedulableUngroupedByPlatforms(ctx con
 func (m *mockAccountRepoForPlatform) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	return nil
 }
-func (m *mockAccountRepoForPlatform) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
+func (m *mockAccountRepoForPlatform) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
 	return nil
 }
 func (m *mockAccountRepoForPlatform) SetOverloaded(ctx context.Context, id int64, until time.Time) error {
@@ -1227,6 +1227,106 @@ func TestGatewayService_selectAccountWithMixedScheduling(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, acc)
 		require.Equal(t, int64(2), acc.ID, "应选择优先级最高的账户（包含启用混合调度的antigravity）")
+	})
+
+	t.Run("混合调度-Gemini家族限流后跳过Antigravity账户", func(t *testing.T) {
+		resetAt := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID:          1,
+					Platform:    PlatformAntigravity,
+					Priority:    1,
+					Status:      StatusActive,
+					Schedulable: true,
+					Extra: map[string]any{
+						"mixed_scheduling": true,
+						modelRateLimitsKey: map[string]any{
+							antigravityGeminiModelRateLimitKey: map[string]any{
+								"rate_limit_reset_at": resetAt,
+							},
+						},
+					},
+				},
+				{
+					ID:          2,
+					Platform:    PlatformAntigravity,
+					Priority:    1,
+					Status:      StatusActive,
+					Schedulable: true,
+					Extra: map[string]any{
+						"mixed_scheduling": true,
+						modelRateLimitsKey: map[string]any{
+							antigravityGeminiModelRateLimitKey: map[string]any{
+								"rate_limit_reset_at": resetAt,
+							},
+						},
+					},
+				},
+				{
+					ID:          3,
+					Platform:    PlatformAntigravity,
+					Priority:    2,
+					Status:      StatusActive,
+					Schedulable: true,
+					Extra:       map[string]any{"mixed_scheduling": true},
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		svc := &GatewayService{
+			accountRepo: repo,
+			cache:       &mockGatewayCacheForPlatform{},
+			cfg:         testConfig(),
+		}
+
+		acc, err := svc.selectAccountWithMixedScheduling(ctx, nil, "", "gemini-3-pro-preview", nil, PlatformGemini)
+		require.NoError(t, err)
+		require.NotNil(t, acc)
+		require.Equal(t, int64(3), acc.ID)
+	})
+
+	t.Run("混合调度-Gemini家族限流不影响Claude调度", func(t *testing.T) {
+		resetAt := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID:          1,
+					Platform:    PlatformAntigravity,
+					Priority:    1,
+					Status:      StatusActive,
+					Schedulable: true,
+					Extra: map[string]any{
+						"mixed_scheduling": true,
+						modelRateLimitsKey: map[string]any{
+							antigravityGeminiModelRateLimitKey: map[string]any{
+								"rate_limit_reset_at": resetAt,
+							},
+						},
+					},
+				},
+				{ID: 2, Platform: PlatformAnthropic, Priority: 2, Status: StatusActive, Schedulable: true},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		svc := &GatewayService{
+			accountRepo: repo,
+			cache:       &mockGatewayCacheForPlatform{},
+			cfg:         testConfig(),
+		}
+
+		acc, err := svc.selectAccountWithMixedScheduling(ctx, nil, "", "claude-sonnet-4-5", nil, PlatformAnthropic)
+		require.NoError(t, err)
+		require.NotNil(t, acc)
+		require.Equal(t, int64(1), acc.ID)
 	})
 
 	t.Run("混合调度-路由优先选择路由账号", func(t *testing.T) {

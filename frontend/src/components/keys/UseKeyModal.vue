@@ -531,20 +531,21 @@ function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
 
   // config.toml content
   const configContent = `model_provider = "OpenAI"
-model = "gpt-5.4"
-review_model = "gpt-5.4"
+model = "gpt-5.5"
+review_model = "gpt-5.5"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
-model_context_window = 1000000
-model_auto_compact_token_limit = 900000
 
 [model_providers.OpenAI]
 name = "OpenAI"
 base_url = "${baseUrl}"
 wire_api = "responses"
-requires_openai_auth = true`
+requires_openai_auth = true
+
+[features]
+goals = true`
 
   // auth.json content
   const authContent = `{
@@ -570,14 +571,12 @@ function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
 
   // config.toml content with WebSocket v2
   const configContent = `model_provider = "OpenAI"
-model = "gpt-5.4"
-review_model = "gpt-5.4"
+model = "gpt-5.5"
+review_model = "gpt-5.5"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
-model_context_window = 1000000
-model_auto_compact_token_limit = 900000
 
 [model_providers.OpenAI]
 name = "OpenAI"
@@ -587,7 +586,8 @@ supports_websockets = true
 requires_openai_auth = true
 
 [features]
-responses_websockets_v2 = true`
+responses_websockets_v2 = true
+goals = true`
 
   // auth.json content
   const authContent = `{
@@ -767,6 +767,17 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
           budgetTokens: 24576,
           type: 'enabled'
         }
+      }
+    },
+    'gemini-3.5-flash': {
+      name: 'Gemini 3.5 Flash',
+      limit: {
+        context: 1048576,
+        output: 65536
+      },
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
       }
     },
     'gemini-3-flash-preview': {

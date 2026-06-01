@@ -60,7 +60,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	setOpsRequestContext(c, "", false, body)
+	setOpsRequestContext(c, "", false)
 
 	// Validate JSON
 	if !gjson.ValidBytes(body) {
@@ -78,7 +78,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
-	setOpsRequestContext(c, reqModel, reqStream, body)
+	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
 	// 解析渠道级模型映射
@@ -145,7 +145,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// 2. Re-check billing
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("gateway.responses.billing_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -156,9 +156,10 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// Parse request for session hash
-	parsedReq, _ := service.ParseGatewayRequest(body, "responses")
+	bodyRef := service.NewRequestBodyRef(body)
+	parsedReq, _ := service.ParseGatewayRequest(bodyRef, "responses")
 	if parsedReq == nil {
-		parsedReq = &service.ParsedRequest{Model: reqModel, Stream: reqStream, Body: body}
+		parsedReq = &service.ParsedRequest{Model: reqModel, Stream: reqStream, Body: bodyRef}
 	}
 	parsedReq.SessionContext = &service.SessionContext{
 		ClientIP:  ip.GetClientIP(c),
@@ -174,6 +175,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
+				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error())
 				return
 			}
@@ -199,6 +201,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		accountReleaseFunc := selection.ReleaseFunc
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
+				markOpsRoutingCapacityLimited(c)
 				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
 				return
 			}
@@ -264,9 +267,11 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
-		h.submitUsageRecordTask(func(ctx context.Context) {
+		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 				Result:             result,
+				QuotaPlatform:      quotaPlatform,
 				APIKey:             apiKey,
 				User:               apiKey.User,
 				Account:            account,
@@ -307,6 +312,11 @@ func (h *GatewayHandler) handleResponsesFailoverExhausted(c *gin.Context, lastEr
 	statusCode := http.StatusBadGateway
 	if lastErr != nil && lastErr.StatusCode > 0 {
 		statusCode = lastErr.StatusCode
+	}
+	if lastErr != nil && service.IsOpenAISilentRefusalErrorBody(lastErr.ResponseBody) {
+		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
+		h.responsesErrorResponse(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage())
+		return
 	}
 	h.responsesErrorResponse(c, statusCode, "server_error", "All available accounts exhausted")
 }

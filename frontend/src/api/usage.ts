@@ -15,6 +15,16 @@ import type {
 
 // ==================== Dashboard Types ====================
 
+export interface PlatformDashboardStats {
+  platform: string
+  total_requests: number
+  total_tokens: number
+  total_actual_cost: number
+  today_requests: number
+  today_tokens: number
+  today_actual_cost: number
+}
+
 export interface UserDashboardStats {
   total_api_keys: number
   active_api_keys: number
@@ -37,6 +47,7 @@ export interface UserDashboardStats {
   average_duration_ms: number
   rpm: number // 近5分钟平均每分钟请求数
   tpm: number // 近5分钟平均每分钟Token数
+  by_platform?: PlatformDashboardStats[]
 }
 
 export interface TrendParams {
@@ -54,6 +65,25 @@ export interface TrendResponse {
 
 export interface ModelStatsResponse {
   models: ModelStat[]
+  start_date: string
+  end_date: string
+}
+
+export interface ApiKeyDailyUsagePoint {
+  date: string
+  requests: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  total_tokens: number
+  cost: number
+  actual_cost: number
+}
+
+export interface ApiKeyDailyUsageResponse {
+  items: ApiKeyDailyUsagePoint[]
+  days: number
   start_date: string
   end_date: string
 }
@@ -223,6 +253,23 @@ export async function getDashboardModels(params?: {
   return data
 }
 
+/**
+ * Get daily usage details for one API key owned by the current user.
+ * @param apiKeyId - API key ID
+ * @param days - Number of days to include (1-90)
+ * @returns Daily usage detail rows
+ */
+export async function getMyApiKeyDailyUsage(
+  apiKeyId: number,
+  days: number = 30
+): Promise<ApiKeyDailyUsageResponse> {
+  const { data } = await apiClient.get<ApiKeyDailyUsageResponse>(
+    `/user/api-keys/${apiKeyId}/usage/daily`,
+    { params: { days } }
+  )
+  return data
+}
+
 export interface BatchApiKeyUsageStats {
   api_key_id: number
   today_actual_cost: number
@@ -268,6 +315,7 @@ export const usageAPI = {
   getDashboardStats,
   getDashboardTrend,
   getDashboardModels,
+  getMyApiKeyDailyUsage,
   getDashboardApiKeysUsage
 }
 

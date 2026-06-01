@@ -1124,7 +1124,7 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" />
+              <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" :sync-credentials="syncPreviewCredentials" />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0">{{
@@ -1288,6 +1288,18 @@
                   max: MAX_POOL_MODE_RETRY_COUNT
                 })
               }}
+            </p>
+          </div>
+          <div v-if="poolModeEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.poolModeRetryStatusCodes') }}</label>
+            <input
+              v-model="poolModeRetryStatusCodesInput"
+              type="text"
+              class="input"
+              :placeholder="DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ')"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.poolModeRetryStatusCodesHint', { default: DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ') }) }}
             </p>
           </div>
         </div>
@@ -1550,7 +1562,7 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
+            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" :sync-credentials="syncPreviewCredentials" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
@@ -1633,6 +1645,18 @@
                   max: MAX_POOL_MODE_RETRY_COUNT
                 })
               }}
+            </p>
+          </div>
+          <div v-if="poolModeEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.poolModeRetryStatusCodes') }}</label>
+            <input
+              v-model="poolModeRetryStatusCodesInput"
+              type="text"
+              class="input"
+              :placeholder="DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ')"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.poolModeRetryStatusCodesHint', { default: DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ') }) }}
             </p>
           </div>
         </div>
@@ -1789,7 +1813,7 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" />
+            <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" :sync-credentials="syncPreviewCredentials" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0">{{
@@ -2439,7 +2463,10 @@
       </div>
 
       <div>
-        <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
+        <div class="mb-1 flex items-center gap-2">
+          <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
+          <ProxyAdBanner />
+        </div>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
@@ -2608,6 +2635,32 @@
             />
           </button>
         </div>
+        <div
+          v-if="codexCLIOnlyEnabled"
+          class="mt-4 flex items-center justify-between border-l-2 border-gray-200 pl-4 dark:border-dark-600"
+        >
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexCLIOnlyAllowClaudeCode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.codexCLIOnlyAllowClaudeCodeDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="codexCLIOnlyAllowClaudeCodeEnabled = !codexCLIOnlyAllowClaudeCodeEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              codexCLIOnlyAllowClaudeCodeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                codexCLIOnlyAllowClaudeCodeEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
       </div>
 
       <!-- OpenAI Compact 能力配置 -->
@@ -2646,6 +2699,56 @@
           <button type="button" @click="addOpenAICompactModelMapping" class="btn btn-secondary text-sm">
             + {{ t('admin.accounts.addMapping') }}
           </button>
+        </div>
+      </div>
+
+      <!-- OpenAI APIKey Responses API support mode -->
+      <div
+        v-if="form.platform === 'openai' && accountCategory === 'apikey'"
+        class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.responsesMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.responsesModeDesc') }}
+            </p>
+          </div>
+          <div class="w-56">
+            <Select
+              v-model="openAIResponsesMode"
+              :options="openAIResponsesModeOptions"
+              :disabled="!openAITextGenerationCapabilityEnabled"
+              data-testid="openai-responses-mode-select"
+            />
+          </div>
+        </div>
+        <p
+          v-if="!openAITextGenerationCapabilityEnabled"
+          class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+          data-testid="openai-responses-mode-not-applicable"
+        >
+          {{ t('admin.accounts.openai.responsesModeTextDisabledHint') }}
+        </p>
+        <div>
+          <label class="input-label mb-2 block">{{ t('admin.accounts.openai.endpointCapabilities') }}</label>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label
+              v-for="option in openAIEndpointCapabilityOptions"
+              :key="option.value"
+              class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+            >
+              <input
+                type="checkbox"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+                :data-testid="`openai-endpoint-capability-${option.value}`"
+                :checked="openAIEndpointCapabilities.includes(option.value)"
+                @change="toggleOpenAIEndpointCapability(option.value, $event)"
+              />
+              <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
+            </label>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.openai.endpointCapabilitiesDesc') }}</p>
         </div>
       </div>
 
@@ -3122,13 +3225,16 @@ import type {
   CheckMixedChannelResponse,
   CreateAccountRequest,
   CodexSessionImportMessage,
-  OpenAICompactMode
+  OpenAICompactMode,
+  OpenAIResponsesMode,
+  OpenAIEndpointCapability
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
+import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
@@ -3255,6 +3361,17 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+
+const syncPreviewCredentials = computed(() => {
+  if (!apiKeyValue.value) return undefined
+  return {
+    platform: form.platform,
+    type: form.type,
+    base_url: apiKeyBaseUrl.value || undefined,
+    api_key: apiKeyValue.value
+  }
+})
+
 const editQuotaLimit = ref<number | null>(null)
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)
@@ -3270,8 +3387,27 @@ const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
+const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
 const poolModeEnabled = ref(false)
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
+const poolModeRetryStatusCodesInput = ref('')
+
+function parsePoolModeRetryStatusCodes(input: string): number[] {
+  if (!input || !input.trim()) return []
+  const seen = new Set<number>()
+  const out: number[] = []
+  for (const token of input.split(/[,\s]+/)) {
+    const trimmed = token.trim()
+    if (!trimmed) continue
+    const n = Number(trimmed)
+    if (!Number.isFinite(n) || !Number.isInteger(n)) continue
+    if (n < 100 || n > 599) continue
+    if (seen.has(n)) continue
+    seen.add(n)
+    out.push(n)
+  }
+  return out.sort((a, b) => a - b)
+}
 const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
@@ -3279,9 +3415,12 @@ const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
+const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
+const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
+const codexCLIOnlyAllowClaudeCodeEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
@@ -3336,6 +3475,63 @@ const openAICompactModeOptions = computed(() => [
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
   { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
 ])
+const openAIResponsesModeOptions = computed(() => [
+  { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },
+  { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
+  { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
+])
+const openAITextEndpointCapabilityLabel = computed(() => {
+  if (openAIResponsesMode.value === 'force_responses') {
+    return t('admin.accounts.openai.capabilityResponses')
+  }
+  if (openAIResponsesMode.value === 'force_chat_completions') {
+    return t('admin.accounts.openai.capabilityChatCompletions')
+  }
+  return t('admin.accounts.openai.capabilityTextAuto')
+})
+const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
+  { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
+  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') }
+])
+const openAITextGenerationCapabilityEnabled = computed(() =>
+  openAIEndpointCapabilities.value.includes('chat_completions')
+)
+
+const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings']
+  const selected = allowed.filter((value) => values.includes(value))
+  return selected.length > 0 ? selected : allowed
+}
+
+const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, event?: Event) => {
+  if (openAIEndpointCapabilities.value.includes(capability)) {
+    if (openAIEndpointCapabilities.value.length <= 1) {
+      const input = event?.target as HTMLInputElement | null
+      if (input) input.checked = true
+      return
+    }
+    openAIEndpointCapabilities.value = openAIEndpointCapabilities.value.filter(
+      (value) => value !== capability
+    )
+    if (!openAITextGenerationCapabilityEnabled.value) {
+      openAIResponsesMode.value = 'auto'
+    }
+    return
+  }
+  openAIEndpointCapabilities.value = normalizeOpenAIEndpointCapabilities([
+    ...openAIEndpointCapabilities.value,
+    capability
+  ])
+}
+
+const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) => {
+  const capabilities = normalizeOpenAIEndpointCapabilities(openAIEndpointCapabilities.value)
+  if (capabilities.length === 2) {
+    delete credentials.openai_capabilities
+    return
+  }
+  credentials.openai_capabilities = capabilities
+}
 
 function buildAntigravityExtra(): Record<string, unknown> | undefined {
   const extra: Record<string, unknown> = {}
@@ -3645,9 +3841,11 @@ watch(
     }
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
+      openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
+      codexCLIOnlyAllowClaudeCodeEnabled.value = false
     }
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
@@ -3668,6 +3866,7 @@ watch(
   ([category, platform]) => {
     if (platform === 'openai' && category !== 'oauth-based') {
       codexCLIOnlyEnabled.value = false
+      codexCLIOnlyAllowClaudeCodeEnabled.value = false
     }
     if (platform !== 'anthropic' || category !== 'apikey') {
       anthropicPassthroughEnabled.value = false
@@ -4035,6 +4234,7 @@ const resetForm = () => {
   })
   poolModeEnabled.value = false
   poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
+  poolModeRetryStatusCodesInput.value = ''
   customErrorCodesEnabled.value = false
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null
@@ -4042,9 +4242,12 @@ const resetForm = () => {
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
   openAICompactMode.value = 'auto'
+  openAIResponsesMode.value = 'auto'
+  openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
+  codexCLIOnlyAllowClaudeCodeEnabled.value = false
   anthropicPassthroughEnabled.value = false
   webSearchEmulationMode.value = 'default'
   // Reset quota control state
@@ -4123,10 +4326,29 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   } else {
     delete extra.codex_cli_only
   }
+  if (
+    accountCategory.value === 'oauth-based' &&
+    codexCLIOnlyEnabled.value &&
+    codexCLIOnlyAllowClaudeCodeEnabled.value
+  ) {
+    extra.codex_cli_only_allowed_clients = ['claude_code']
+  } else {
+    delete extra.codex_cli_only_allowed_clients
+  }
   if (openAICompactMode.value !== 'auto') {
     extra.openai_compact_mode = openAICompactMode.value
   } else {
     delete extra.openai_compact_mode
+  }
+
+  if (
+    accountCategory.value === 'apikey' &&
+    openAITextGenerationCapabilityEnabled.value &&
+    openAIResponsesMode.value !== 'auto'
+  ) {
+    extra.openai_responses_mode = openAIResponsesMode.value
+  } else {
+    delete extra.openai_responses_mode
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
@@ -4310,6 +4532,10 @@ const handleSubmit = async () => {
     if (poolModeEnabled.value) {
       credentials.pool_mode = true
       credentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
+      const parsedRetryStatusCodes = parsePoolModeRetryStatusCodes(poolModeRetryStatusCodesInput.value)
+      if (parsedRetryStatusCodes.length > 0) {
+        credentials.pool_mode_retry_status_codes = parsedRetryStatusCodes
+      }
     }
 
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
@@ -4410,6 +4636,7 @@ const handleSubmit = async () => {
     }
   }
   if (form.platform === 'openai') {
+    applyOpenAIEndpointCapabilities(credentials)
     const compactModelMapping = buildOpenAICompactModelMapping()
     if (compactModelMapping) {
       credentials.compact_model_mapping = compactModelMapping
@@ -4420,6 +4647,10 @@ const handleSubmit = async () => {
   if (poolModeEnabled.value) {
     credentials.pool_mode = true
     credentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
+    const parsedRetryStatusCodes = parsePoolModeRetryStatusCodes(poolModeRetryStatusCodesInput.value)
+    if (parsedRetryStatusCodes.length > 0) {
+      credentials.pool_mode_retry_status_codes = parsedRetryStatusCodes
+    }
   }
 
   // Add custom error codes if enabled
@@ -4528,6 +4759,9 @@ const createAccountAndFinish = async (
     }
   }
   if (platform === 'openai') {
+    if (type === 'apikey') {
+      applyOpenAIEndpointCapabilities(credentials)
+    }
     const compactModelMapping = buildOpenAICompactModelMapping()
     if (compactModelMapping) {
       credentials.compact_model_mapping = compactModelMapping

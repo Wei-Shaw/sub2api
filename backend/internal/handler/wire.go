@@ -80,8 +80,17 @@ func ProvideSystemHandler(updateService *service.UpdateService, lockService *ser
 }
 
 // ProvideSettingHandler creates SettingHandler with version from BuildInfo
-func ProvideSettingHandler(settingService *service.SettingService, buildInfo BuildInfo) *SettingHandler {
-	return NewSettingHandler(settingService, buildInfo.Version)
+func ProvideSettingHandler(settingService *service.SettingService, buildInfo BuildInfo, notificationEmailService *service.NotificationEmailService) *SettingHandler {
+	h := NewSettingHandler(settingService, buildInfo.Version)
+	h.SetNotificationEmailService(notificationEmailService)
+	return h
+}
+
+// ProvideAdminSettingHandler creates admin.SettingHandler with notification template APIs.
+func ProvideAdminSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService, notificationEmailService *service.NotificationEmailService) *admin.SettingHandler {
+	h := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, paymentConfigService, paymentService, userAttributeService)
+	h.SetNotificationEmailService(notificationEmailService)
+	return h
 }
 
 // ProvideHandlers creates the Handlers struct
@@ -159,7 +168,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewProxyHandler,
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
-	admin.NewSettingHandler,
+	ProvideAdminSettingHandler,
 	admin.NewOpsHandler,
 	ProvideSystemHandler,
 	admin.NewSubscriptionHandler,

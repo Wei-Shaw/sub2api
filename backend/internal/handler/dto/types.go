@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"bytes"
+	"encoding/json"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -18,6 +20,7 @@ type User struct {
 	LastActiveAt  *time.Time `json:"last_active_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	DeletedAt     *time.Time `json:"deleted_at,omitempty"`
 
 	// 余额不足通知
 	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`
@@ -136,6 +139,7 @@ type AdminGroup struct {
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	DefaultMappedModel          string                                   `json:"default_mapped_model"`
 	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
+	ModelsListConfig            domain.GroupModelsListConfig             `json:"models_list_config"`
 
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes    []string       `json:"supported_model_scopes"`
@@ -149,25 +153,28 @@ type AdminGroup struct {
 }
 
 type Account struct {
-	ID                 int64          `json:"id"`
-	Name               string         `json:"name"`
-	Notes              *string        `json:"notes"`
-	Platform           string         `json:"platform"`
-	Type               string         `json:"type"`
-	Credentials        map[string]any `json:"credentials"`
-	Extra              map[string]any `json:"extra"`
-	ProxyID            *int64         `json:"proxy_id"`
-	Concurrency        int            `json:"concurrency"`
-	LoadFactor         *int           `json:"load_factor,omitempty"`
-	Priority           int            `json:"priority"`
-	RateMultiplier     float64        `json:"rate_multiplier"`
-	Status             string         `json:"status"`
-	ErrorMessage       string         `json:"error_message"`
-	LastUsedAt         *time.Time     `json:"last_used_at"`
-	ExpiresAt          *int64         `json:"expires_at"`
-	AutoPauseOnExpired bool           `json:"auto_pause_on_expired"`
-	CreatedAt          time.Time      `json:"created_at"`
-	UpdatedAt          time.Time      `json:"updated_at"`
+	ID       int64   `json:"id"`
+	Name     string  `json:"name"`
+	Notes    *string `json:"notes"`
+	Platform string  `json:"platform"`
+	Type     string  `json:"type"`
+	// Credentials 经 RedactCredentials 处理后只含非敏感子键；敏感 token / api_key / 私钥
+	// 的存在性通过 CredentialsStatus（has_<key>）暴露，原始值不返回前端。
+	Credentials        map[string]any  `json:"credentials"`
+	CredentialsStatus  map[string]bool `json:"credentials_status,omitempty"`
+	Extra              map[string]any  `json:"extra"`
+	ProxyID            *int64          `json:"proxy_id"`
+	Concurrency        int             `json:"concurrency"`
+	LoadFactor         *int            `json:"load_factor,omitempty"`
+	Priority           int             `json:"priority"`
+	RateMultiplier     float64         `json:"rate_multiplier"`
+	Status             string          `json:"status"`
+	ErrorMessage       string          `json:"error_message"`
+	LastUsedAt         *time.Time      `json:"last_used_at"`
+	ExpiresAt          *int64          `json:"expires_at"`
+	AutoPauseOnExpired bool            `json:"auto_pause_on_expired"`
+	CreatedAt          time.Time       `json:"created_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
 
 	Schedulable bool `json:"schedulable"`
 
@@ -335,6 +342,7 @@ type RedeemCode struct {
 	UsedBy    *int64     `json:"used_by"`
 	UsedAt    *time.Time `json:"used_at"`
 	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 
 	GroupID      *int64 `json:"group_id"`
 	ValidityDays int    `json:"validity_days"`
@@ -353,6 +361,59 @@ type AdminRedeemCode struct {
 	RedeemCode
 
 	Notes string `json:"notes"`
+}
+
+type NullableTimeField struct {
+	Set   bool
+	Value *time.Time
+}
+
+func (f *NullableTimeField) UnmarshalJSON(data []byte) error {
+	f.Set = true
+	if bytes.Equal(data, []byte("null")) {
+		f.Value = nil
+		return nil
+	}
+	var value time.Time
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	f.Value = &value
+	return nil
+}
+
+type NullableInt64Field struct {
+	Set   bool
+	Value *int64
+}
+
+func (f *NullableInt64Field) UnmarshalJSON(data []byte) error {
+	f.Set = true
+	if bytes.Equal(data, []byte("null")) {
+		f.Value = nil
+		return nil
+	}
+	var value int64
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	f.Value = &value
+	return nil
+}
+
+type BatchUpdateRedeemCodeFields struct {
+	Status    *string            `json:"status,omitempty"`
+	ExpiresAt NullableTimeField  `json:"expires_at,omitempty"`
+	Notes     *string            `json:"notes,omitempty"`
+	GroupID   NullableInt64Field `json:"group_id,omitempty"`
+
+	Type  *string  `json:"type,omitempty"`
+	Value *float64 `json:"value,omitempty"`
+}
+
+type BatchUpdateRedeemCodesRequest struct {
+	IDs    []int64                     `json:"ids" binding:"required,min=1"`
+	Fields BatchUpdateRedeemCodeFields `json:"fields" binding:"required"`
 }
 
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。
@@ -400,9 +461,13 @@ type UsageLog struct {
 	FirstTokenMs *int   `json:"first_token_ms"`
 
 	// 图片生成字段
-	ImageCount int     `json:"image_count"`
-	ImageSize  *string `json:"image_size"`
-	MediaType  *string `json:"media_type"`
+	ImageCount         int            `json:"image_count"`
+	ImageSize          *string        `json:"image_size"`
+	ImageInputSize     *string        `json:"image_input_size"`
+	ImageOutputSize    *string        `json:"image_output_size"`
+	ImageSizeSource    *string        `json:"image_size_source"`
+	ImageSizeBreakdown map[string]int `json:"image_size_breakdown"`
+	MediaType          *string        `json:"media_type"`
 
 	// User-Agent
 	UserAgent *string `json:"user_agent"`

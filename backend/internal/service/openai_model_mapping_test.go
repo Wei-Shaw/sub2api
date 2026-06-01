@@ -262,6 +262,12 @@ func TestNormalizeOpenAIModelForUpstream(t *testing.T) {
 			want:    "gpt-5.4",
 		},
 		{
+			name:    "oauth preserves codex auto review model",
+			account: &Account{Type: AccountTypeOAuth},
+			model:   "codex-auto-review",
+			want:    "codex-auto-review",
+		},
+		{
 			name:    "apikey preserves custom compatible model",
 			account: &Account{Type: AccountTypeAPIKey},
 			model:   "gemini-3-flash-preview",
@@ -281,5 +287,19 @@ func TestNormalizeOpenAIModelForUpstream(t *testing.T) {
 				t.Fatalf("normalizeOpenAIModelForUpstream(...) = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestUsageBillingModelCandidatesPreserveCodexAutoReviewModel(t *testing.T) {
+	candidates := usageBillingModelCandidates("codex-auto-review")
+
+	expected := []string{"codex-auto-review"}
+	if len(candidates) != len(expected) {
+		t.Fatalf("usageBillingModelCandidates(codex-auto-review) = %#v, want %#v", candidates, expected)
+	}
+	for i := range expected {
+		if candidates[i] != expected[i] {
+			t.Fatalf("usageBillingModelCandidates(codex-auto-review) = %#v, want %#v", candidates, expected)
+		}
 	}
 }
