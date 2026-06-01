@@ -840,7 +840,7 @@ func TestGatewayService_AnthropicOAuth_ForwardSanitizesInvalidThinkingForClaudeC
 	gin.SetMode(gin.TestMode)
 
 	body := []byte(`{"model":"claude-opus-4-7","stream":false,"metadata":{"user_id":"user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account_550e8400-e29b-41d4-a716-446655440000_session_123e4567-e89b-12d3-a456-426614174000"},"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":[{"type":"thinking","signature":"sig_x"},{"type":"text","text":"hello"}]}]}`)
-	parsed, err := ParseGatewayRequest(body, PlatformAnthropic)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
