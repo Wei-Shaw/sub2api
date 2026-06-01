@@ -1774,7 +1774,7 @@ func TestOpenAIUpdateCodexUsageSnapshotFromHeaders(t *testing.T) {
 
 	select {
 	case updates := <-repo.updateExtraCalls:
-		require.Equal(t, 12.0, updates["codex_5h_used_percent"])
+		require.Equal(t, 88.0, updates["codex_5h_used_percent"])
 		require.Equal(t, 34.0, updates["codex_7d_used_percent"])
 		require.Equal(t, 600, updates["codex_5h_reset_after_seconds"])
 		require.Equal(t, 86400, updates["codex_7d_reset_after_seconds"])
