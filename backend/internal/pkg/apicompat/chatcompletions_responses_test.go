@@ -864,6 +864,47 @@ func TestChatCompletionsToResponsesEvents_TextStreamingIncludesContentPartLifecy
 	assert.Equal(t, events[2].ItemID, done[1].ItemID)
 }
 
+func TestChatCompletionsToResponsesEvents_ReasoningStreamingCreatesMessageItemBeforeDelta(t *testing.T) {
+	state := NewChatCompletionsToResponsesStreamState("deepseek-v4-pro")
+	emptyReasoning := ""
+
+	emptyChunk := &ChatCompletionsChunk{
+		ID:    "chatcmpl_reasoning",
+		Model: "deepseek-v4-pro",
+		Choices: []ChatChunkChoice{
+			{
+				Delta: ChatDelta{ReasoningContent: &emptyReasoning},
+			},
+		},
+	}
+
+	events := ChatCompletionsChunkToResponsesEvents(emptyChunk, state)
+	require.Len(t, events, 1)
+	assert.Equal(t, "response.created", events[0].Type)
+
+	reasoning := "internal plan"
+	reasoningChunk := &ChatCompletionsChunk{
+		ID:    "chatcmpl_reasoning",
+		Model: "deepseek-v4-pro",
+		Choices: []ChatChunkChoice{
+			{
+				Delta: ChatDelta{ReasoningContent: &reasoning},
+			},
+		},
+	}
+
+	events = ChatCompletionsChunkToResponsesEvents(reasoningChunk, state)
+	require.Len(t, events, 2)
+	assert.Equal(t, "response.output_item.added", events[0].Type)
+	assert.Equal(t, "response.reasoning_summary_text.delta", events[1].Type)
+	require.NotNil(t, events[0].Item)
+	assert.Equal(t, "message", events[0].Item.Type)
+	assert.Equal(t, 0, events[1].OutputIndex)
+	assert.Equal(t, 0, events[1].SummaryIndex)
+	assert.Equal(t, "internal plan", events[1].Delta)
+	assert.Equal(t, events[0].Item.ID, state.MessageItemID)
+}
+
 func TestResponsesEventToChatChunks_ToolCallDelta(t *testing.T) {
 	state := NewResponsesEventToChatState()
 	state.Model = "gpt-4o"

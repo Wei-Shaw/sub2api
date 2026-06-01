@@ -502,7 +502,8 @@ func ChatCompletionsChunkToResponsesEvents(
 				ItemID:       state.MessageItemID,
 			}))
 		}
-		if choice.Delta.ReasoningContent != nil {
+		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
+			events = append(events, ensureChatToResponsesMessageItem(state)...)
 			_, _ = state.Reasoning.WriteString(*choice.Delta.ReasoningContent)
 			events = append(events, chatToResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
 				OutputIndex:  0,
