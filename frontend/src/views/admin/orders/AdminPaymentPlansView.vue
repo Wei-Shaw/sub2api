@@ -28,9 +28,10 @@
           <span v-else class="text-sm text-gray-400">-</span>
         </template>
         <template #cell-price="{ value, row }">
+          <!-- Plan price is CNY-native (backend PlazaCurrencyMetaDTO.PlanNative = "CNY"). -->
           <div class="text-sm">
-            <span class="font-medium text-gray-900 dark:text-white">${{ (value ?? 0).toFixed(2) }}</span>
-            <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">${{ row.original_price.toFixed(2) }}</span>
+            <span class="font-medium text-gray-900 dark:text-white">¥{{ (value ?? 0).toFixed(2) }}</span>
+            <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">¥{{ row.original_price.toFixed(2) }}</span>
           </div>
         </template>
         <template #cell-validity_days="{ value, row }">

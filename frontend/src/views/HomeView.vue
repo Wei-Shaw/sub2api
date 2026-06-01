@@ -48,6 +48,14 @@
 
         <!-- Nav Actions -->
         <div class="flex items-center gap-3">
+          <!-- Pricing Plaza link (anonymous-friendly) -->
+          <router-link
+            to="/plaza/models"
+            class="hidden text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-dark-300 dark:hover:text-white sm:inline"
+          >
+            {{ t('plaza.title') }}
+          </router-link>
+
           <!-- Language Switcher -->
           <LocaleSwitcher />
 

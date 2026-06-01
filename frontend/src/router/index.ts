@@ -174,6 +174,31 @@ const routes: RouteRecordRaw[] = [
       title: 'Legal Document'
     }
   },
+  {
+    // Default plaza tab redirects to the model plaza.
+    path: '/plaza',
+    redirect: '/plaza/models'
+  },
+  {
+    path: '/plaza/models',
+    name: 'PlazaModels',
+    component: () => import('@/views/public/PlazaModelsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Pricing Plaza',
+      titleKey: 'plaza.title'
+    }
+  },
+  {
+    path: '/plaza/plans',
+    name: 'PlazaPlans',
+    component: () => import('@/views/public/PlazaPlansView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Pricing Plaza',
+      titleKey: 'plaza.title'
+    }
+  },
 
   // ==================== User Routes ====================
   {
@@ -689,7 +714,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal', '/plaza']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',

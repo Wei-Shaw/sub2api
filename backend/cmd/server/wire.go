@@ -54,6 +54,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 		// Application struct
 		wire.Struct(new(Application), "Server", "Cleanup"),
+
+		// Cross-package interface bindings.
+		// AccountRepository is provided by repository.ProviderSet but used as a
+		// narrowed interface (PlazaAccountSource) inside service.ProviderSet.
+		wire.Bind(new(service.PlazaAccountSource), new(service.AccountRepository)),
 	)
 	return nil, nil
 }
