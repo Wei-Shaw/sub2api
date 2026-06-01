@@ -318,6 +318,40 @@ export async function getCapacitySummary(): Promise<
   return data
 }
 
+export interface GroupQuotaBucket {
+  used_percent: number
+  account_count: number
+}
+
+export interface GroupQuotaRefreshCount {
+  date: string
+  date_label: string
+  days_from_now: number
+  account_count: number
+}
+
+export type GroupQuotaWindow = '5h' | '7d' | 'refresh'
+
+export interface GroupQuotaTabSummary {
+  window: GroupQuotaWindow
+  bucket_counts: GroupQuotaBucket[]
+  refresh_counts?: GroupQuotaRefreshCount[]
+  matched_account_count: number
+  skipped_account_count: number
+}
+
+export interface GroupQuotaSummaryResponse {
+  group_id: number
+  platform: GroupPlatform
+  supported: boolean
+  tabs: GroupQuotaTabSummary[]
+}
+
+export async function getQuotaSummary(id: number): Promise<GroupQuotaSummaryResponse> {
+  const { data } = await apiClient.get<GroupQuotaSummaryResponse>(`/admin/groups/${id}/quota-summary`)
+  return data
+}
+
 export const groupsAPI = {
   list,
   getAll,
@@ -338,7 +372,8 @@ export const groupsAPI = {
   batchSetGroupRPMOverrides,
   updateSortOrder,
   getUsageSummary,
-  getCapacitySummary
+  getCapacitySummary,
+  getQuotaSummary
 }
 
 export default groupsAPI

@@ -636,6 +636,14 @@ func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]s
 	return accounts, nil
 }
 
+func (r *accountRepository) ListByGroupAllStatuses(ctx context.Context, groupID int64) ([]service.Account, error) {
+	accounts, err := r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return accounts, nil
+}
+
 func (r *accountRepository) ListActive(ctx context.Context) ([]service.Account, error) {
 	accounts, err := r.client.Account.Query().
 		Where(dbaccount.StatusEQ(service.StatusActive)).

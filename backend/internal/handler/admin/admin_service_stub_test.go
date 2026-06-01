@@ -17,6 +17,7 @@ type stubAdminService struct {
 	proxies              []service.Proxy
 	proxyCounts          []service.ProxyWithAccountCount
 	redeems              []service.RedeemCode
+	groupQuotaSummary    *service.GroupQuotaSummary
 	boundAuthIdentity    *service.AdminBindAuthIdentityInput
 	boundAuthIdentityFor int64
 	createdAccounts      []*service.CreateAccountInput
@@ -292,6 +293,13 @@ func (s *stubAdminService) DeleteGroup(ctx context.Context, id int64) error {
 
 func (s *stubAdminService) GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]service.APIKey, int64, error) {
 	return s.apiKeys, int64(len(s.apiKeys)), nil
+}
+
+func (s *stubAdminService) GetGroupQuotaSummary(_ context.Context, groupID int64) (*service.GroupQuotaSummary, error) {
+	if s.groupQuotaSummary != nil {
+		return s.groupQuotaSummary, nil
+	}
+	return &service.GroupQuotaSummary{GroupID: groupID}, nil
 }
 
 func (s *stubAdminService) GetGroupRateMultipliers(_ context.Context, _ int64) ([]service.UserGroupRateEntry, error) {

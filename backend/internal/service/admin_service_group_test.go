@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -990,4 +991,175 @@ func TestAdminService_UpdateGroup_InvalidRequestFallbackAllowsAntigravity(t *tes
 	require.NotNil(t, group)
 	require.NotNil(t, repo.updated)
 	require.Equal(t, fallbackID, *repo.updated.FallbackGroupIDOnInvalidRequest)
+}
+
+type accountRepoStubForGroupQuota struct {
+	accountRepoStub
+	listByGroupData            map[int64][]Account
+	listByGroupAllStatusesData map[int64][]Account
+	listByGroupErr             map[int64]error
+}
+
+func (s *accountRepoStubForGroupQuota) ListByGroup(_ context.Context, groupID int64) ([]Account, error) {
+	if err, ok := s.listByGroupErr[groupID]; ok {
+		return nil, err
+	}
+	if rows, ok := s.listByGroupData[groupID]; ok {
+		return rows, nil
+	}
+	return nil, nil
+}
+
+func (s *accountRepoStubForGroupQuota) ListByGroupAllStatuses(_ context.Context, groupID int64) ([]Account, error) {
+	if err, ok := s.listByGroupErr[groupID]; ok {
+		return nil, err
+	}
+	if rows, ok := s.listByGroupAllStatusesData[groupID]; ok {
+		return rows, nil
+	}
+	if rows, ok := s.listByGroupData[groupID]; ok {
+		return rows, nil
+	}
+	return nil, nil
+}
+
+func TestAdminService_GetGroupQuotaSummary_OpenAIBuckets(t *testing.T) {
+	groupID := int64(1)
+	repo := &accountRepoStubForGroupQuota{
+		listByGroupData: map[int64][]Account{
+			groupID: {
+				{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"openai_quota_strategy": "prefer_5h", "codex_5h_used_percent": 100}},
+				{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"openai_quota_strategy": "prefer_5h", "codex_5h_used_percent": 96}},
+				{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"openai_quota_strategy": "prefer_5h", "codex_5h_used_percent": 91}},
+				{ID: 4, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"openai_quota_strategy": "prefer_5h"}},
+				{ID: 5, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"openai_quota_strategy": "prefer_7d", "codex_7d_used_percent": 78}},
+				{ID: 6, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"openai_quota_strategy": "prefer_7d", "codex_7d_used_percent": 4}},
+				{ID: 7, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"openai_quota_strategy": "prefer_7d"}},
+			},
+		},
+	}
+	svc := &adminServiceImpl{
+		groupRepo:   &groupRepoStubForAdmin{getByID: &Group{ID: groupID, Platform: PlatformOpenAI, Name: "OpenAI Group", Status: StatusActive}},
+		accountRepo: repo,
+	}
+
+	summary, err := svc.GetGroupQuotaSummary(context.Background(), groupID)
+	require.NoError(t, err)
+	require.NotNil(t, summary)
+	require.Equal(t, groupID, summary.GroupID)
+	require.Equal(t, PlatformOpenAI, summary.Platform)
+	require.True(t, summary.Supported)
+	require.Len(t, summary.Tabs, 3)
+
+	require.Equal(t, GroupQuotaTabSummary{
+		Window: "5h",
+		BucketCounts: []GroupQuotaBucket{
+			{UsedPercent: 100, AccountCount: 1},
+			{UsedPercent: 90, AccountCount: 2},
+		},
+		MatchedAccountCount: 3,
+		SkippedAccountCount: 1,
+	}, summary.Tabs[0])
+
+	require.Equal(t, GroupQuotaTabSummary{
+		Window: "7d",
+		BucketCounts: []GroupQuotaBucket{
+			{UsedPercent: 70, AccountCount: 1},
+			{UsedPercent: 0, AccountCount: 1},
+		},
+		MatchedAccountCount: 2,
+		SkippedAccountCount: 1,
+	}, summary.Tabs[1])
+
+	require.Equal(t, "refresh", summary.Tabs[2].Window)
+	require.Len(t, summary.Tabs[2].RefreshCounts, 8)
+}
+
+func TestAdminService_GetGroupQuotaSummary_IncludesSnapshotAccountsAcrossStatuses(t *testing.T) {
+	groupID := int64(9)
+	repo := &accountRepoStubForGroupQuota{
+		listByGroupAllStatusesData: map[int64][]Account{
+			groupID: {
+				{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusError, Extra: map[string]any{"codex_5h_used_percent": 0, "codex_7d_used_percent": 0}},
+				{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusDisabled, Extra: map[string]any{"codex_5h_used_percent": 105, "codex_7d_used_percent": -2}},
+				{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Extra: map[string]any{"openai_quota_strategy": "prefer_5h"}},
+				{ID: 4, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Extra: map[string]any{"openai_quota_strategy": "prefer_7d"}},
+			},
+		},
+	}
+	svc := &adminServiceImpl{
+		groupRepo:   &groupRepoStubForAdmin{getByID: &Group{ID: groupID, Platform: PlatformOpenAI, Name: "OpenAI Group", Status: StatusActive}},
+		accountRepo: repo,
+	}
+
+	summary, err := svc.GetGroupQuotaSummary(context.Background(), groupID)
+	require.NoError(t, err)
+	require.Len(t, summary.Tabs, 3)
+
+	require.Equal(t, GroupQuotaTabSummary{
+		Window: "5h",
+		BucketCounts: []GroupQuotaBucket{
+			{UsedPercent: 100, AccountCount: 1},
+			{UsedPercent: 0, AccountCount: 1},
+		},
+		MatchedAccountCount: 2,
+		SkippedAccountCount: 1,
+	}, summary.Tabs[0])
+
+	require.Equal(t, GroupQuotaTabSummary{
+		Window: "7d",
+		BucketCounts: []GroupQuotaBucket{
+			{UsedPercent: 0, AccountCount: 2},
+		},
+		MatchedAccountCount: 2,
+		SkippedAccountCount: 1,
+	}, summary.Tabs[1])
+
+	require.Equal(t, "refresh", summary.Tabs[2].Window)
+	require.Len(t, summary.Tabs[2].RefreshCounts, 8)
+}
+
+func TestBuildGroupQuotaRefreshTabSummary_BeijingDateBuckets(t *testing.T) {
+	beijing := time.FixedZone("Asia/Shanghai", 8*60*60)
+	now := time.Date(2026, 5, 10, 10, 0, 0, 0, beijing)
+	accounts := []Account{
+		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_7d_reset_at": "2026-05-10T15:00:00+08:00"}},
+		{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_7d_reset_at": "2026-05-11T00:30:00+08:00"}},
+		{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_7d_reset_after_seconds": 49 * 60 * 60}},
+		{ID: 4, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_5h_reset_at": "2026-05-10T12:00:00+08:00"}},
+		{ID: 5, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_7d_reset_at": "2026-05-18T00:00:00+08:00"}},
+		{ID: 6, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: nil},
+	}
+
+	tab := buildGroupQuotaRefreshTabSummary(accounts, now)
+
+	require.Equal(t, "refresh", tab.Window)
+	require.Equal(t, 3, tab.MatchedAccountCount)
+	require.Equal(t, 3, tab.SkippedAccountCount)
+	require.Equal(t, []GroupQuotaRefreshCount{
+		{Date: "2026-05-10", DateLabel: "2026年5月10日", DaysFromNow: 0, AccountCount: 1},
+		{Date: "2026-05-11", DateLabel: "2026年5月11日", DaysFromNow: 1, AccountCount: 1},
+		{Date: "2026-05-12", DateLabel: "2026年5月12日", DaysFromNow: 2, AccountCount: 1},
+		{Date: "2026-05-13", DateLabel: "2026年5月13日", DaysFromNow: 3, AccountCount: 0},
+		{Date: "2026-05-14", DateLabel: "2026年5月14日", DaysFromNow: 4, AccountCount: 0},
+		{Date: "2026-05-15", DateLabel: "2026年5月15日", DaysFromNow: 5, AccountCount: 0},
+		{Date: "2026-05-16", DateLabel: "2026年5月16日", DaysFromNow: 6, AccountCount: 0},
+		{Date: "2026-05-17", DateLabel: "2026年5月17日", DaysFromNow: 7, AccountCount: 0},
+	}, tab.RefreshCounts)
+}
+
+func TestAdminService_GetGroupQuotaSummary_UnsupportedPlatform(t *testing.T) {
+	groupID := int64(2)
+	svc := &adminServiceImpl{
+		groupRepo:   &groupRepoStubForAdmin{getByID: &Group{ID: groupID, Platform: PlatformAnthropic, Name: "Anthropic Group", Status: StatusActive}},
+		accountRepo: &accountRepoStubForGroupQuota{},
+	}
+
+	summary, err := svc.GetGroupQuotaSummary(context.Background(), groupID)
+	require.NoError(t, err)
+	require.NotNil(t, summary)
+	require.Equal(t, groupID, summary.GroupID)
+	require.Equal(t, PlatformAnthropic, summary.Platform)
+	require.False(t, summary.Supported)
+	require.Empty(t, summary.Tabs)
 }

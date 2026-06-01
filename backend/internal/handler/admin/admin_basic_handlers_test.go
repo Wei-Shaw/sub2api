@@ -9,6 +9,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 func setupAdminRouter() (*gin.Engine, *stubAdminService) {
@@ -40,6 +42,7 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 	router.DELETE("/api/v1/admin/groups/:id", groupHandler.Delete)
 	router.GET("/api/v1/admin/groups/:id/stats", groupHandler.GetStats)
 	router.GET("/api/v1/admin/groups/:id/api-keys", groupHandler.GetGroupAPIKeys)
+	router.GET("/api/v1/admin/groups/:id/quota-summary", groupHandler.GetQuotaSummary)
 
 	router.GET("/api/v1/admin/proxies", proxyHandler.List)
 	router.GET("/api/v1/admin/proxies/all", proxyHandler.GetAll)
@@ -212,6 +215,51 @@ func TestGroupHandlerEndpoints(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups/2/api-keys", nil)
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestGroupHandlerQuotaSummaryResponse(t *testing.T) {
+	router, adminSvc := setupAdminRouter()
+	adminSvc.groupQuotaSummary = &service.GroupQuotaSummary{
+		GroupID:   2,
+		Platform:  service.PlatformOpenAI,
+		Supported: true,
+		Tabs: []service.GroupQuotaTabSummary{
+			{
+				Window:              "5h",
+				BucketCounts:        []service.GroupQuotaBucket{{UsedPercent: 100, AccountCount: 1}},
+				MatchedAccountCount: 1,
+				SkippedAccountCount: 0,
+			},
+			{
+				Window: "refresh",
+				RefreshCounts: []service.GroupQuotaRefreshCount{
+					{Date: "2026-05-10", DateLabel: "2026年5月10日", DaysFromNow: 0, AccountCount: 2},
+				},
+				MatchedAccountCount: 2,
+				SkippedAccountCount: 0,
+			},
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups/2/quota-summary", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var payload struct {
+		Code int                       `json:"code"`
+		Data service.GroupQuotaSummary `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Equal(t, 0, payload.Code)
+	require.Equal(t, int64(2), payload.Data.GroupID)
+	require.True(t, payload.Data.Supported)
+	require.Len(t, payload.Data.Tabs, 2)
+	require.Equal(t, "5h", payload.Data.Tabs[0].Window)
+	require.Equal(t, 100, payload.Data.Tabs[0].BucketCounts[0].UsedPercent)
+	require.Equal(t, "refresh", payload.Data.Tabs[1].Window)
+	require.Equal(t, "2026-05-10", payload.Data.Tabs[1].RefreshCounts[0].Date)
+	require.Equal(t, 2, payload.Data.Tabs[1].RefreshCounts[0].AccountCount)
 }
 
 func TestProxyHandlerEndpoints(t *testing.T) {
