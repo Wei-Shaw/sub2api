@@ -230,6 +230,12 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			// 耗尽。改为临时不可调度，冷却结束后让刷新服务重新拾取。
 			msg := "Extra usage required (400): " + upstreamMsg
 			shouldDisable = s.handleExtraUsage(ctx, account, msg)
+		} else if strings.Contains(strings.ToLower(upstreamMsg), "consumer terms") ||
+			strings.Contains(strings.ToLower(upstreamMsg), "privacy policy") {
+			// Anthropic 更新条款/隐私政策，需要人工登录 claude.ai 接受
+			msg := "Terms acceptance required (400): " + upstreamMsg
+			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
 		}
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
 	case 401:
