@@ -212,7 +212,7 @@ func TestForwardAsChatCompletions_KiroCooldownPropagatesFailover(t *testing.T) {
 		},
 	}
 
-	result, err := svc.ForwardAsChatCompletions(c.Request.Context(), c, account, body, &ParsedRequest{Model: "claude-opus-4-7", Stream: true, Body: body})
+	result, err := svc.ForwardAsChatCompletions(c.Request.Context(), c, account, body, &ParsedRequest{Model: "claude-opus-4-7", Stream: true, Body: NewRequestBodyRef(body)})
 	require.Nil(t, result)
 	var failoverErr *UpstreamFailoverError
 	require.True(t, errors.As(err, &failoverErr))
