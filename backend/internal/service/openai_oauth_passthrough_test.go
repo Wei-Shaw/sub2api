@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,6 +36,7 @@ type httpUpstreamRecorder struct {
 	resp      *http.Response
 	responses []*http.Response
 	err       error
+	delay     time.Duration
 }
 
 type passthroughErrReadCloser struct {
@@ -65,6 +67,9 @@ func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID 
 	u.requests = append(u.requests, req)
 	if u.err != nil {
 		return nil, u.err
+	}
+	if u.delay > 0 {
+		time.Sleep(u.delay)
 	}
 	if len(u.responses) > 0 {
 		resp := u.responses[0]
@@ -663,6 +668,182 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactUsesJSONAndKeepsNonStreami
 	require.Equal(t, "chatgpt.com", upstream.lastReq.Host)
 	require.Equal(t, "chatgpt-acc", upstream.lastReq.Header.Get("chatgpt-account-id"))
 	require.Contains(t, rec.Body.String(), `"id":"cmp_123"`)
+}
+
+func TestOpenAIGatewayService_OAuthPassthrough_CompactNonstreamKeepaliveWritesLeadingNewline(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	originalBody := []byte(`{"model":"gpt-5.1-codex","stream":true,"store":true,"instructions":"local-test-instructions","input":[{"type":"text","text":"compact me"}]}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-compact-keepalive"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"cmp_keepalive","usage":{"input_tokens":11,"output_tokens":22}}`)),
+	}
+	upstream := &httpUpstreamRecorder{resp: resp, delay: 1200 * time.Millisecond}
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			ForceCodexCLI:                           false,
+			OpenAICompactNonstreamKeepaliveInterval: 1,
+		}},
+		httpUpstream: upstream,
+	}
+	account := newOpenAICompactPassthroughTestAccount()
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	body := rec.Body.Bytes()
+	require.True(t, bytes.HasPrefix(body, []byte("\n")), "compact keepalive should write a leading blank line")
+	require.True(t, json.Valid(bytes.TrimSpace(body)))
+	require.Contains(t, string(body), `"id":"cmp_keepalive"`)
+}
+
+func TestOpenAIGatewayService_OAuthPassthrough_CompactNonstreamKeepaliveDisabledHasNoLeadingWhitespace(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	originalBody := []byte(`{"model":"gpt-5.1-codex","stream":true,"store":true,"instructions":"local-test-instructions","input":[{"type":"text","text":"compact me"}]}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-compact-no-keepalive"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"cmp_no_keepalive","usage":{"input_tokens":11,"output_tokens":22}}`)),
+	}
+	upstream := &httpUpstreamRecorder{resp: resp}
+
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+		httpUpstream: upstream,
+	}
+	account := newOpenAICompactPassthroughTestAccount()
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	body := rec.Body.Bytes()
+	require.False(t, bytes.HasPrefix(body, []byte("\n")), "disabled compact keepalive should not prepend whitespace")
+	require.True(t, json.Valid(bytes.TrimSpace(body)))
+	require.Contains(t, string(body), `"id":"cmp_no_keepalive"`)
+}
+
+func TestOpenAIGatewayService_OAuthPassthrough_CompactNonstreamKeepalive400BeforeTickUsesExistingErrorHandling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	originalBody := []byte(`{"model":"gpt-5.1-codex","stream":true,"instructions":"local-test-instructions","input":[{"type":"text","text":"compact me"}]}`)
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-compact-400-before"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"bad compact request"}}`)),
+	}
+	upstream := &httpUpstreamRecorder{resp: resp}
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			ForceCodexCLI:                           false,
+			OpenAICompactNonstreamKeepaliveInterval: 1,
+		}},
+		httpUpstream: upstream,
+	}
+	account := newOpenAICompactPassthroughTestAccount()
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+	require.Error(t, err)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.False(t, bytes.HasPrefix(rec.Body.Bytes(), []byte("\n")))
+	require.Contains(t, rec.Body.String(), "bad compact request")
+}
+
+func TestOpenAIGatewayService_OAuthPassthrough_CompactNonstreamKeepaliveCommittedErrorDoesNotFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logSink, restore := captureStructuredLog(t)
+	defer restore()
+
+	testCases := []struct {
+		name       string
+		statusCode int
+		message    string
+	}{
+		{
+			name:       "400_proxy_error_body",
+			statusCode: http.StatusBadRequest,
+			message:    "bad compact request after keepalive",
+		},
+		{
+			name:       "429_suppress_failover",
+			statusCode: http.StatusTooManyRequests,
+			message:    "rate limited after keepalive",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+			c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			originalBody := []byte(`{"model":"gpt-5.1-codex","stream":true,"instructions":"local-test-instructions","input":[{"type":"text","text":"compact me"}]}`)
+			resp := &http.Response{
+				StatusCode: tc.statusCode,
+				Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-compact-committed"}},
+				Body:       io.NopCloser(strings.NewReader(fmt.Sprintf(`{"error":{"type":"upstream_error","message":%q}}`, tc.message))),
+			}
+			upstream := &httpUpstreamRecorder{resp: resp, delay: 1200 * time.Millisecond}
+
+			svc := &OpenAIGatewayService{
+				cfg: &config.Config{Gateway: config.GatewayConfig{
+					ForceCodexCLI:                           false,
+					OpenAICompactNonstreamKeepaliveInterval: 1,
+				}},
+				httpUpstream: upstream,
+			}
+			account := newOpenAICompactPassthroughTestAccount()
+
+			result, err := svc.Forward(context.Background(), c, account, originalBody)
+			require.Error(t, err)
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.False(t, errors.As(err, &failoverErr), "committed compact keepalive must suppress passthrough failover")
+			require.True(t, bytes.HasPrefix(rec.Body.Bytes(), []byte("\n")))
+			require.Contains(t, rec.Body.String(), tc.message)
+			require.True(t, logSink.ContainsFieldValue("compact_keepalive_committed", "true"))
+		})
+	}
+}
+
+func newOpenAICompactPassthroughTestAccount() *Account {
+	return &Account{
+		ID:             123,
+		Name:           "acc",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeOAuth,
+		Concurrency:    1,
+		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Extra:          map[string]any{"openai_passthrough": true},
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+	}
 }
 
 func TestOpenAIGatewayService_OAuthPassthrough_UpstreamRequestIgnoresClientCancel(t *testing.T) {

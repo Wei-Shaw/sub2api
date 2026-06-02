@@ -268,6 +268,31 @@ func TestLoadImageNonstreamKeepaliveFromEnv(t *testing.T) {
 	require.Equal(t, 15, cfg.Gateway.ImageNonstreamKeepaliveInterval)
 }
 
+func TestLoadDefaultOpenAICompactNonstreamKeepaliveDisabled(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 0, cfg.Gateway.OpenAICompactNonstreamKeepaliveInterval)
+}
+
+func TestLoadOpenAICompactNonstreamKeepaliveFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_COMPACT_NONSTREAM_KEEPALIVE_INTERVAL", "5")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 5, cfg.Gateway.OpenAICompactNonstreamKeepaliveInterval)
+}
+
+func TestLoadOpenAICompactNonstreamKeepaliveRejectsOutOfRange(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_COMPACT_NONSTREAM_KEEPALIVE_INTERVAL", "1")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "gateway.openai_compact_nonstream_keepalive_interval must be 0 or between 5-60 seconds")
+}
+
 func TestLoadOpenAIWSStickyTTLCompatibility(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_OPENAI_WS_STICKY_RESPONSE_ID_TTL_SECONDS", "0")
