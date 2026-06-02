@@ -205,6 +205,7 @@ func (e *EasyPay) resolveURLs(req payment.CreatePaymentRequest) (string, string)
 }
 
 func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
+
 	params := map[string]string{
 		"act": "order", "pid": e.config["pid"],
 		"key": e.config["pkey"], "out_trade_no": tradeNo,
@@ -213,20 +214,48 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 	if err != nil {
 		return nil, fmt.Errorf("easypay query: %w", err)
 	}
-	var resp struct {
-		Code   int    `json:"code"`
-		Msg    string `json:"msg"`
-		Status int    `json:"status"`
-		Money  string `json:"money"`
+
+	// Some EasyPay implementations wrap the response in a "data" field
+	var rawResp struct {
+		Code        int             `json:"code"`
+		Msg         string          `json:"msg"`
+		Status      int             `json:"status"`
+		Money       string          `json:"money"`
+		TradeStatus string          `json:"trade_status"`
+		Data        json.RawMessage `json:"data"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := json.Unmarshal(body, &rawResp); err != nil {
 		return nil, fmt.Errorf("easypay parse query: %w", err)
 	}
+
+	// If response is wrapped in "data", attempt to unwrap it
+	if rawResp.Data != nil {
+		var dataResp struct {
+			Code        int    `json:"code"`
+			Msg         string `json:"msg"`
+			Status      int    `json:"status"`
+			Money       string `json:"money"`
+			TradeStatus string `json:"trade_status"`
+		}
+		if err := json.Unmarshal(rawResp.Data, &dataResp); err == nil {
+			rawResp.Code = dataResp.Code
+			rawResp.Status = dataResp.Status
+			rawResp.Money = dataResp.Money
+			if dataResp.TradeStatus != "" {
+				rawResp.TradeStatus = dataResp.TradeStatus
+			}
+		}
+	}
+
+	// Determine payment status: prefer trade_status, fall back to status code
 	status := payment.ProviderStatusPending
-	if resp.Status == easypayStatusPaid {
+	if rawResp.TradeStatus == tradeStatusSuccess {
+		status = payment.ProviderStatusPaid
+	} else if rawResp.Status == easypayStatusPaid {
 		status = payment.ProviderStatusPaid
 	}
-	amount, _ := strconv.ParseFloat(resp.Money, 64)
+
+	amount, _ := strconv.ParseFloat(rawResp.Money, 64)
 	return &payment.QueryOrderResponse{
 		TradeNo:  tradeNo,
 		Status:   status,
