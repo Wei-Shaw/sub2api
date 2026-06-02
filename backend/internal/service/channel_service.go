@@ -50,6 +50,7 @@ type ChannelRepository interface {
 	UpdateModelPricing(ctx context.Context, pricing *ChannelModelPricing) error
 	DeleteModelPricing(ctx context.Context, id int64) error
 	ReplaceModelPricing(ctx context.Context, channelID int64, pricingList []ChannelModelPricing) error
+	ReplaceBillingMultiplierRules(ctx context.Context, channelID int64, rules []ChannelBillingMultiplierRule) error
 }
 
 // channelModelKey 渠道缓存复合键（显式包含 platform 防止跨平台同名模型冲突）
@@ -692,6 +693,7 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		FeaturesConfig:             input.FeaturesConfig,
 		ApplyPricingToAccountStats: input.ApplyPricingToAccountStats,
 		AccountStatsPricingRules:   input.AccountStatsPricingRules,
+		BillingMultiplierRules:     input.BillingMultiplierRules,
 	}
 	channel.normalizeBillingModelSource()
 
@@ -702,6 +704,9 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		if err := validatePricingEntries(rule.Pricing); err != nil {
 			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
 		}
+	}
+	if err := validateBillingMultiplierRules(channel.BillingMultiplierRules); err != nil {
+		return nil, err
 	}
 
 	if err := s.repo.Create(ctx, channel); err != nil {
@@ -746,6 +751,9 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 		if err := validatePricingEntries(rule.Pricing); err != nil {
 			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
 		}
+	}
+	if err := validateBillingMultiplierRules(channel.BillingMultiplierRules); err != nil {
+		return nil, err
 	}
 
 	oldGroupIDs := s.getOldGroupIDs(ctx, id)
@@ -812,6 +820,27 @@ func (s *ChannelService) applyUpdateInput(ctx context.Context, channel *Channel,
 	}
 	if input.AccountStatsPricingRules != nil {
 		channel.AccountStatsPricingRules = *input.AccountStatsPricingRules
+	}
+	if input.BillingMultiplierRules != nil {
+		channel.BillingMultiplierRules = *input.BillingMultiplierRules
+	}
+	return nil
+}
+
+func validateBillingMultiplierRules(rules []ChannelBillingMultiplierRule) error {
+	for i, rule := range rules {
+		if len(rule.GroupIDs) == 0 {
+			return infraerrors.BadRequest(
+				"BILLING_MULTIPLIER_RULE_EMPTY_GROUPS",
+				fmt.Sprintf("billing multiplier rule #%d must have at least one group", i+1),
+			)
+		}
+		if rule.RateMultiplier < 0 {
+			return infraerrors.BadRequest(
+				"BILLING_MULTIPLIER_RULE_NEGATIVE_RATE",
+				fmt.Sprintf("billing multiplier rule #%d rate_multiplier must be >= 0", i+1),
+			)
+		}
 	}
 	return nil
 }
@@ -991,6 +1020,7 @@ type CreateChannelInput struct {
 	FeaturesConfig             map[string]any
 	ApplyPricingToAccountStats bool
 	AccountStatsPricingRules   []AccountStatsPricingRule
+	BillingMultiplierRules     []ChannelBillingMultiplierRule
 }
 
 // UpdateChannelInput 更新渠道输入
@@ -1007,4 +1037,5 @@ type UpdateChannelInput struct {
 	FeaturesConfig             map[string]any
 	ApplyPricingToAccountStats *bool
 	AccountStatsPricingRules   *[]AccountStatsPricingRule
+	BillingMultiplierRules     *[]ChannelBillingMultiplierRule
 }

@@ -453,6 +453,120 @@
               </div>
             </div>
 
+            <!-- Billing Multiplier Rules (per-platform, actual user billing) -->
+            <div class="mt-4 border-t border-gray-200 pt-4 dark:border-dark-700 space-y-3">
+              <div class="flex items-center justify-between">
+                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.channels.form.billingMultiplierRules', '计费倍率规则') }}
+                </h4>
+                <button
+                  type="button"
+                  @click="addBillingMultiplierRule(sIdx)"
+                  class="rounded-lg border border-primary-300 px-3 py-1 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:border-primary-600 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                >
+                  + {{ t('admin.channels.form.addRule', '添加规则') }}
+                </button>
+              </div>
+
+              <p
+                v-if="section.billing_multiplier_rules.length === 0"
+                class="text-xs italic text-gray-400 dark:text-gray-500"
+              >
+                {{ t('admin.channels.form.noRulesConfigured', 'No rules configured') }}
+              </p>
+
+              <div
+                v-for="(rule, ruleIndex) in section.billing_multiplier_rules"
+                :key="ruleIndex"
+                class="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+              >
+                <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px_auto] sm:items-center">
+                  <input
+                    v-model="rule.name"
+                    :placeholder="t('admin.channels.form.ruleName', '规则名称')"
+                    class="input text-sm"
+                  />
+                  <input
+                    v-model.number="rule.rate_multiplier"
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    class="input text-sm"
+                    :placeholder="t('admin.channels.form.rateMultiplier', '倍率')"
+                  />
+                  <button type="button" @click="removeBillingMultiplierRule(sIdx, ruleIndex)" class="text-xs text-red-500 hover:text-red-700">
+                    {{ t('common.delete', 'Delete') }}
+                  </button>
+                </div>
+
+                <div>
+                  <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channels.form.ruleGroups', '匹配分组') }}</label>
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    <label
+                      v-for="gid in section.group_ids"
+                      :key="gid"
+                      class="inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors"
+                      :class="rule.group_ids.includes(gid)
+                        ? 'border-primary-300 bg-primary-50 dark:border-primary-700 dark:bg-primary-900/20'
+                        : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700'"
+                    >
+                      <input type="checkbox" :checked="rule.group_ids.includes(gid)" class="h-3 w-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="toggleBillingMultiplierRuleGroup(rule, gid)" />
+                      <span :class="['font-medium', platformTextClass(section.platform)]">{{ getGroupNameById(gid) }}</span>
+                    </label>
+                  </div>
+                  <p v-if="section.group_ids.length === 0" class="mt-1 text-xs text-gray-400">
+                    {{ t('admin.channels.form.noGroupsInChannel', 'No groups in this channel') }}
+                  </p>
+                </div>
+
+                <div>
+                  <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channels.form.ruleAccounts', '匹配账号') }}</label>
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    <span
+                      v-for="accountId in rule.account_ids"
+                      :key="accountId"
+                      class="inline-flex items-center gap-1 rounded-md border border-primary-300 bg-primary-50 px-2 py-0.5 text-xs dark:border-primary-700 dark:bg-primary-900/20"
+                    >
+                      <span :class="['font-medium', platformTextClass(section.platform)]">{{ getRuleAccountLabel(accountId) }}</span>
+                      <button type="button" @click="removeRuleAccount(rule, accountId)" class="text-gray-400 hover:text-red-500">
+                        <Icon name="x" size="xs" />
+                      </button>
+                    </span>
+                  </div>
+                  <div class="relative mt-1 rule-account-search-container">
+                    <input
+                      v-model="ruleAccountSearchKeyword[ruleAccountSearchKey('billing', section.platform, ruleIndex)]"
+                      type="text"
+                      class="input text-sm"
+                      :placeholder="t('admin.channels.form.searchAccountPlaceholder', 'Search accounts')"
+                      @input="onRuleAccountSearchInput('billing', section.platform, ruleIndex)"
+                      @focus="onRuleAccountSearchFocus('billing', section.platform, ruleIndex)"
+                    />
+                    <div
+                      v-if="showRuleAccountDropdown[ruleAccountSearchKey('billing', section.platform, ruleIndex)] && (ruleAccountSearchResults[ruleAccountSearchKey('billing', section.platform, ruleIndex)]?.length ?? 0) > 0"
+                      class="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                    >
+                      <button
+                        v-for="account in ruleAccountSearchResults[ruleAccountSearchKey('billing', section.platform, ruleIndex)]"
+                        :key="account.id"
+                        type="button"
+                        @click="selectRuleAccount(rule, account, 'billing', section.platform, ruleIndex)"
+                        class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-700"
+                        :class="{ 'opacity-50': rule.account_ids.includes(account.id) }"
+                        :disabled="rule.account_ids.includes(account.id)"
+                      >
+                        <span :class="platformTextClass(account.platform)">{{ account.name }}</span>
+                        <span class="ml-2 text-xs text-gray-400">#{{ account.id }}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t('admin.channels.form.billingMultiplierAccountsHint', '留空则该分组下所有账号使用该倍率；填写账号后需同时匹配分组和账号') }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <!-- Account Stats Pricing Rules (per-platform, always visible) -->
             <div class="mt-4 border-t border-gray-200 pt-4 dark:border-dark-700 space-y-3">
               <div class="flex items-center justify-between">
@@ -530,23 +644,23 @@
                   <!-- Account search input -->
                   <div class="relative mt-1 rule-account-search-container">
                     <input
-                      v-model="ruleAccountSearchKeyword[`${section.platform}-${ruleIndex}`]"
+                      v-model="ruleAccountSearchKeyword[ruleAccountSearchKey('stats', section.platform, ruleIndex)]"
                       type="text"
                       class="input text-sm"
                       :placeholder="t('admin.channels.form.searchAccountPlaceholder')"
-                      @input="onRuleAccountSearchInput(section.platform, ruleIndex)"
-                      @focus="onRuleAccountSearchFocus(section.platform, ruleIndex)"
+                      @input="onRuleAccountSearchInput('stats', section.platform, ruleIndex)"
+                      @focus="onRuleAccountSearchFocus('stats', section.platform, ruleIndex)"
                     />
                     <!-- Search results dropdown -->
                     <div
-                      v-if="showRuleAccountDropdown[`${section.platform}-${ruleIndex}`] && (ruleAccountSearchResults[`${section.platform}-${ruleIndex}`]?.length ?? 0) > 0"
+                      v-if="showRuleAccountDropdown[ruleAccountSearchKey('stats', section.platform, ruleIndex)] && (ruleAccountSearchResults[ruleAccountSearchKey('stats', section.platform, ruleIndex)]?.length ?? 0) > 0"
                       class="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
                     >
                       <button
-                        v-for="account in ruleAccountSearchResults[`${section.platform}-${ruleIndex}`]"
+                        v-for="account in ruleAccountSearchResults[ruleAccountSearchKey('stats', section.platform, ruleIndex)]"
                         :key="account.id"
                         type="button"
-                        @click="selectRuleAccount(rule, account, section.platform, ruleIndex)"
+                        @click="selectRuleAccount(rule, account, 'stats', section.platform, ruleIndex)"
                         class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-700"
                         :class="{ 'opacity-50': rule.account_ids.includes(account.id) }"
                         :disabled="rule.account_ids.includes(account.id)"
@@ -630,7 +744,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
-import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
+import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule, BillingMultiplierRule } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
@@ -674,6 +788,13 @@ interface FormPricingRule {
   pricing: PricingFormEntry[]
 }
 
+interface FormBillingMultiplierRule {
+  name: string
+  group_ids: number[]
+  account_ids: number[]
+  rate_multiplier: number | null
+}
+
 // ── Platform Section type ──
 interface PlatformSection {
   platform: GroupPlatform
@@ -686,6 +807,7 @@ interface PlatformSection {
   codex_image_generation_bridge: boolean
   bedrock_cc_compat: boolean
   account_stats_pricing_rules: FormPricingRule[]
+  billing_multiplier_rules: FormBillingMultiplierRule[]
 }
 
 // ── Table columns ──
@@ -783,6 +905,7 @@ function addPlatformSection(platform: GroupPlatform) {
     codex_image_generation_bridge: false,
     bedrock_cc_compat: false,
     account_stats_pricing_rules: [],
+    billing_multiplier_rules: [],
   })
 }
 
@@ -933,6 +1056,31 @@ function renameMappingKey(sectionIdx: number, oldKey: string, newKey: string) {
   mapping[newKey] = value
 }
 
+// ── Billing Multiplier helpers ──
+function addBillingMultiplierRule(sectionIdx: number) {
+  form.platforms[sectionIdx].billing_multiplier_rules.push({
+    name: '',
+    group_ids: [],
+    account_ids: [],
+    rate_multiplier: 1
+  })
+}
+
+function removeBillingMultiplierRule(sectionIdx: number, ruleIndex: number) {
+  form.platforms[sectionIdx].billing_multiplier_rules.splice(ruleIndex, 1)
+  ruleAccountSearchRunner.clearAll()
+  clearAllRuleAccountSearchState()
+}
+
+function toggleBillingMultiplierRuleGroup(rule: FormBillingMultiplierRule, groupId: number) {
+  const idx = rule.group_ids.indexOf(groupId)
+  if (idx >= 0) {
+    rule.group_ids.splice(idx, 1)
+  } else {
+    rule.group_ids.push(groupId)
+  }
+}
+
 // ── Account Stats Pricing helpers ──
 function addAccountStatsRule(sectionIdx: number) {
   form.platforms[sectionIdx].account_stats_pricing_rules.push({
@@ -985,7 +1133,8 @@ const ruleAccountNameCache = ref<Record<number, string>>({})
 const ruleAccountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
   delay: 300,
   search: async (keyword, { key, signal }) => {
-    const platform = key.split('-')[0]
+    const parts = key.split('-')
+    const platform = parts.length >= 3 ? parts[1] : parts[0]
     const res = await adminAPI.accounts.list(1, 20, { platform, search: keyword }, { signal })
     return res.items.map(a => ({ id: a.id, name: a.name, platform: a.platform }))
   },
@@ -993,14 +1142,20 @@ const ruleAccountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
   onError: (key) => { ruleAccountSearchResults.value[key] = [] },
 })
 
-function onRuleAccountSearchInput(platform: string, ruleIndex: number) {
-  const key = `${platform}-${ruleIndex}`
+type RuleAccountSearchScope = 'billing' | 'stats'
+
+function ruleAccountSearchKey(scope: RuleAccountSearchScope, platform: string, ruleIndex: number): string {
+  return `${scope}-${platform}-${ruleIndex}`
+}
+
+function onRuleAccountSearchInput(scope: RuleAccountSearchScope, platform: string, ruleIndex: number) {
+  const key = ruleAccountSearchKey(scope, platform, ruleIndex)
   showRuleAccountDropdown.value[key] = true
   ruleAccountSearchRunner.trigger(key, ruleAccountSearchKeyword.value[key] || '')
 }
 
-function onRuleAccountSearchFocus(platform: string, ruleIndex: number) {
-  const key = `${platform}-${ruleIndex}`
+function onRuleAccountSearchFocus(scope: RuleAccountSearchScope, platform: string, ruleIndex: number) {
+  const key = ruleAccountSearchKey(scope, platform, ruleIndex)
   showRuleAccountDropdown.value[key] = true
   if (!ruleAccountSearchResults.value[key]?.length) {
     ruleAccountSearchRunner.trigger(key, ruleAccountSearchKeyword.value[key] || '')
@@ -1010,6 +1165,7 @@ function onRuleAccountSearchFocus(platform: string, ruleIndex: number) {
 function selectRuleAccount(
   rule: { account_ids: number[] },
   account: SimpleAccount,
+  scope: RuleAccountSearchScope,
   platform: string,
   ruleIndex: number,
 ) {
@@ -1017,7 +1173,7 @@ function selectRuleAccount(
     rule.account_ids.push(account.id)
     ruleAccountNameCache.value[account.id] = account.name
   }
-  const key = `${platform}-${ruleIndex}`
+  const key = ruleAccountSearchKey(scope, platform, ruleIndex)
   ruleAccountSearchKeyword.value[key] = ''
   showRuleAccountDropdown.value[key] = false
 }
@@ -1070,6 +1226,22 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
             per_request_price: p.per_request_price != null && p.per_request_price !== '' ? Number(p.per_request_price) : null,
             intervals: formIntervalsToAPI(p.intervals || [])
           }))
+      })
+    }
+  }
+  return rules
+}
+
+function billingMultiplierRulesToAPI(): BillingMultiplierRule[] {
+  const rules: BillingMultiplierRule[] = []
+  for (const section of form.platforms) {
+    if (!section.enabled) continue
+    for (const rule of section.billing_multiplier_rules) {
+      rules.push({
+        name: rule.name,
+        group_ids: rule.group_ids,
+        account_ids: rule.account_ids,
+        rate_multiplier: rule.rate_multiplier == null ? 1 : Number(rule.rate_multiplier)
       })
     }
   }
@@ -1177,6 +1349,18 @@ function apiToForm(channel: Channel): PlatformSection[] {
   for (const p of Object.keys(channel.model_mapping || {})) {
     if (platformOrder.includes(p as GroupPlatform)) activePlatforms.add(p as GroupPlatform)
   }
+  for (const rule of channel.billing_multiplier_rules || []) {
+    for (const gid of rule.group_ids || []) {
+      const p = groupPlatformMap.get(gid)
+      if (p) activePlatforms.add(p)
+    }
+  }
+  for (const rule of channel.account_stats_pricing_rules || []) {
+    for (const gid of rule.group_ids || []) {
+      const p = groupPlatformMap.get(gid)
+      if (p) activePlatforms.add(p)
+    }
+  }
 
   // Build sections in platform order
   const sections: PlatformSection[] = []
@@ -1219,6 +1403,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
       codex_image_generation_bridge: codexImageGenerationBridgeEnabled,
       bedrock_cc_compat: bedrockCCCompatEnabled,
       account_stats_pricing_rules: [],
+      billing_multiplier_rules: [],
     })
   }
 
@@ -1338,12 +1523,41 @@ async function openEditDialog(channel: Channel) {
   form.platforms = apiToForm(channel)
 
   // Distribute channel-level rules into per-platform sections
+  distributeBillingMultiplierRulesToPlatforms(channel.billing_multiplier_rules || [])
   distributeRulesToPlatforms(channel.account_stats_pricing_rules || [])
 
   // Populate ruleAccountNameCache for existing rule accounts
   await populateRuleAccountNameCache()
 
   showDialog.value = true
+}
+
+/** Distribute flat channel-level billing multiplier rules into the matching platform section based on group_ids */
+function distributeBillingMultiplierRulesToPlatforms(apiRules: BillingMultiplierRule[]) {
+  const groupPlatformMap = new Map<number, GroupPlatform>()
+  for (const g of allGroups.value) {
+    groupPlatformMap.set(g.id, g.platform)
+  }
+
+  for (const apiRule of apiRules) {
+    const platforms = new Set<GroupPlatform>()
+    for (const gid of apiRule.group_ids || []) {
+      const p = groupPlatformMap.get(gid)
+      if (p) platforms.add(p)
+    }
+    const targetPlatform = platforms.size >= 1 ? [...platforms][0] : null
+    if (!targetPlatform) continue
+
+    const section = form.platforms.find(s => s.platform === targetPlatform)
+    if (!section) continue
+
+    section.billing_multiplier_rules.push({
+      name: apiRule.name || '',
+      group_ids: [...(apiRule.group_ids || [])],
+      account_ids: [...(apiRule.account_ids || [])],
+      rate_multiplier: apiRule.rate_multiplier
+    })
+  }
 }
 
 /** Distribute flat channel-level rules into the matching platform section based on group_ids */
@@ -1396,6 +1610,11 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
 async function populateRuleAccountNameCache() {
   const allAccountIds = new Set<number>()
   for (const section of form.platforms) {
+    for (const rule of section.billing_multiplier_rules) {
+      for (const id of rule.account_ids) {
+        allAccountIds.add(id)
+      }
+    }
     for (const rule of section.account_stats_pricing_rules) {
       for (const id of rule.account_ids) {
         allAccountIds.add(id)
@@ -1443,6 +1662,20 @@ async function handleSubmit() {
       if (entry.models.length === 0) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
         appStore.showError(t('admin.channels.emptyModelsInPricing', { platform: platformLabel }, `${platformLabel} 平台下有定价条目未添加模型，请添加模型或删除该条目`))
+        activeTab.value = section.platform
+        return
+      }
+    }
+    for (const rule of section.billing_multiplier_rules) {
+      if (rule.group_ids.length === 0) {
+        const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+        appStore.showError(t('admin.channels.billingMultiplierRuleGroupsRequired', { platform: platformLabel }, `${platformLabel} 平台下有计费倍率规则未选择分组`))
+        activeTab.value = section.platform
+        return
+      }
+      if (rule.rate_multiplier == null || Number(rule.rate_multiplier) < 0) {
+        const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+        appStore.showError(t('admin.channels.billingMultiplierRateInvalid', { platform: platformLabel }, `${platformLabel} 平台下计费倍率必须大于或等于 0`))
         activeTab.value = section.platform
         return
       }
@@ -1526,7 +1759,8 @@ async function handleSubmit() {
         restrict_models: form.restrict_models,
         features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
-        account_stats_pricing_rules: accountStatsRulesToAPI()
+        account_stats_pricing_rules: accountStatsRulesToAPI(),
+        billing_multiplier_rules: billingMultiplierRulesToAPI()
       }
       await adminAPI.channels.update(editingChannel.value.id, req)
       appStore.showSuccess(t('admin.channels.updateSuccess', 'Channel updated'))
@@ -1541,7 +1775,8 @@ async function handleSubmit() {
         restrict_models: form.restrict_models,
         features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
-        account_stats_pricing_rules: accountStatsRulesToAPI()
+        account_stats_pricing_rules: accountStatsRulesToAPI(),
+        billing_multiplier_rules: billingMultiplierRulesToAPI()
       }
       await adminAPI.channels.create(req)
       appStore.showSuccess(t('admin.channels.createSuccess', 'Channel created'))

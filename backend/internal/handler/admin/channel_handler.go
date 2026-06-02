@@ -39,6 +39,7 @@ type createChannelRequest struct {
 	FeaturesConfig             map[string]any                   `json:"features_config"`
 	ApplyPricingToAccountStats bool                             `json:"apply_pricing_to_account_stats"`
 	AccountStatsPricingRules   []accountStatsPricingRuleRequest `json:"account_stats_pricing_rules"`
+	BillingMultiplierRules     []billingMultiplierRuleRequest   `json:"billing_multiplier_rules"`
 }
 
 type updateChannelRequest struct {
@@ -54,6 +55,7 @@ type updateChannelRequest struct {
 	FeaturesConfig             map[string]any                    `json:"features_config"`
 	ApplyPricingToAccountStats *bool                             `json:"apply_pricing_to_account_stats"`
 	AccountStatsPricingRules   *[]accountStatsPricingRuleRequest `json:"account_stats_pricing_rules"`
+	BillingMultiplierRules     *[]billingMultiplierRuleRequest   `json:"billing_multiplier_rules"`
 }
 
 type channelModelPricingRequest struct {
@@ -88,6 +90,13 @@ type accountStatsPricingRuleRequest struct {
 	Pricing    []channelModelPricingRequest `json:"pricing"`
 }
 
+type billingMultiplierRuleRequest struct {
+	Name           string  `json:"name"`
+	GroupIDs       []int64 `json:"group_ids"`
+	AccountIDs     []int64 `json:"account_ids"`
+	RateMultiplier float64 `json:"rate_multiplier"`
+}
+
 type channelResponse struct {
 	ID                         int64                             `json:"id"`
 	Name                       string                            `json:"name"`
@@ -102,6 +111,7 @@ type channelResponse struct {
 	ModelMapping               map[string]map[string]string      `json:"model_mapping"`
 	ApplyPricingToAccountStats bool                              `json:"apply_pricing_to_account_stats"`
 	AccountStatsPricingRules   []accountStatsPricingRuleResponse `json:"account_stats_pricing_rules"`
+	BillingMultiplierRules     []billingMultiplierRuleResponse   `json:"billing_multiplier_rules"`
 	CreatedAt                  string                            `json:"created_at"`
 	UpdatedAt                  string                            `json:"updated_at"`
 }
@@ -139,6 +149,14 @@ type accountStatsPricingRuleResponse struct {
 	GroupIDs   []int64                       `json:"group_ids"`
 	AccountIDs []int64                       `json:"account_ids"`
 	Pricing    []channelModelPricingResponse `json:"pricing"`
+}
+
+type billingMultiplierRuleResponse struct {
+	ID             int64   `json:"id"`
+	Name           string  `json:"name"`
+	GroupIDs       []int64 `json:"group_ids"`
+	AccountIDs     []int64 `json:"account_ids"`
+	RateMultiplier float64 `json:"rate_multiplier"`
 }
 
 func channelToResponse(ch *service.Channel) *channelResponse {
@@ -191,6 +209,24 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 			ruleResp.Pricing = append(ruleResp.Pricing, pricingToResponse(&rule.Pricing[i]))
 		}
 		resp.AccountStatsPricingRules = append(resp.AccountStatsPricingRules, ruleResp)
+	}
+
+	resp.BillingMultiplierRules = make([]billingMultiplierRuleResponse, 0, len(ch.BillingMultiplierRules))
+	for _, rule := range ch.BillingMultiplierRules {
+		ruleResp := billingMultiplierRuleResponse{
+			ID:             rule.ID,
+			Name:           rule.Name,
+			GroupIDs:       rule.GroupIDs,
+			AccountIDs:     rule.AccountIDs,
+			RateMultiplier: rule.RateMultiplier,
+		}
+		if ruleResp.GroupIDs == nil {
+			ruleResp.GroupIDs = []int64{}
+		}
+		if ruleResp.AccountIDs == nil {
+			ruleResp.AccountIDs = []int64{}
+		}
+		resp.BillingMultiplierRules = append(resp.BillingMultiplierRules, ruleResp)
 	}
 
 	return resp
@@ -290,6 +326,15 @@ func accountStatsPricingRuleRequestToService(r accountStatsPricingRuleRequest) s
 	}
 }
 
+func billingMultiplierRuleRequestToService(r billingMultiplierRuleRequest) service.ChannelBillingMultiplierRule {
+	return service.ChannelBillingMultiplierRule{
+		Name:           r.Name,
+		GroupIDs:       r.GroupIDs,
+		AccountIDs:     r.AccountIDs,
+		RateMultiplier: r.RateMultiplier,
+	}
+}
+
 // --- Handlers ---
 
 // List handles listing channels with pagination
@@ -372,6 +417,23 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 		statsRules = append(statsRules, rule)
 	}
 
+	billingMultiplierRules := make([]service.ChannelBillingMultiplierRule, 0, len(req.BillingMultiplierRules))
+	for i, r := range req.BillingMultiplierRules {
+		if len(r.GroupIDs) == 0 {
+			response.ErrorFrom(c, infraerrors.BadRequest("BILLING_MULTIPLIER_RULE_EMPTY_GROUPS",
+				fmt.Sprintf("billing multiplier rule #%d must have at least one group", i+1)))
+			return
+		}
+		if r.RateMultiplier < 0 {
+			response.ErrorFrom(c, infraerrors.BadRequest("BILLING_MULTIPLIER_RULE_NEGATIVE_RATE",
+				fmt.Sprintf("billing multiplier rule #%d rate_multiplier must be >= 0", i+1)))
+			return
+		}
+		rule := billingMultiplierRuleRequestToService(r)
+		rule.SortOrder = i
+		billingMultiplierRules = append(billingMultiplierRules, rule)
+	}
+
 	channel, err := h.channelService.Create(c.Request.Context(), &service.CreateChannelInput{
 		Name:                       req.Name,
 		Description:                req.Description,
@@ -384,6 +446,7 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 		FeaturesConfig:             req.FeaturesConfig,
 		ApplyPricingToAccountStats: req.ApplyPricingToAccountStats,
 		AccountStatsPricingRules:   statsRules,
+		BillingMultiplierRules:     billingMultiplierRules,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -447,6 +510,25 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 			statsRules = append(statsRules, rule)
 		}
 		input.AccountStatsPricingRules = &statsRules
+	}
+	if req.BillingMultiplierRules != nil {
+		billingMultiplierRules := make([]service.ChannelBillingMultiplierRule, 0, len(*req.BillingMultiplierRules))
+		for i, r := range *req.BillingMultiplierRules {
+			if len(r.GroupIDs) == 0 {
+				response.ErrorFrom(c, infraerrors.BadRequest("BILLING_MULTIPLIER_RULE_EMPTY_GROUPS",
+					fmt.Sprintf("billing multiplier rule #%d must have at least one group", i+1)))
+				return
+			}
+			if r.RateMultiplier < 0 {
+				response.ErrorFrom(c, infraerrors.BadRequest("BILLING_MULTIPLIER_RULE_NEGATIVE_RATE",
+					fmt.Sprintf("billing multiplier rule #%d rate_multiplier must be >= 0", i+1)))
+				return
+			}
+			rule := billingMultiplierRuleRequestToService(r)
+			rule.SortOrder = i
+			billingMultiplierRules = append(billingMultiplierRules, rule)
+		}
+		input.BillingMultiplierRules = &billingMultiplierRules
 	}
 
 	channel, err := h.channelService.Update(c.Request.Context(), id, input)

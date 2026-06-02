@@ -34,6 +34,7 @@ type mockChannelRepository struct {
 	updateModelPricingFn       func(ctx context.Context, pricing *ChannelModelPricing) error
 	deleteModelPricingFn       func(ctx context.Context, id int64) error
 	replaceModelPricingFn      func(ctx context.Context, channelID int64, pricingList []ChannelModelPricing) error
+	replaceBillingMultiplierFn func(ctx context.Context, channelID int64, rules []ChannelBillingMultiplierRule) error
 }
 
 func (m *mockChannelRepository) Create(ctx context.Context, channel *Channel) error {
@@ -158,6 +159,13 @@ func (m *mockChannelRepository) DeleteModelPricing(ctx context.Context, id int64
 func (m *mockChannelRepository) ReplaceModelPricing(ctx context.Context, channelID int64, pricingList []ChannelModelPricing) error {
 	if m.replaceModelPricingFn != nil {
 		return m.replaceModelPricingFn(ctx, channelID, pricingList)
+	}
+	return nil
+}
+
+func (m *mockChannelRepository) ReplaceBillingMultiplierRules(ctx context.Context, channelID int64, rules []ChannelBillingMultiplierRule) error {
+	if m.replaceBillingMultiplierFn != nil {
+		return m.replaceBillingMultiplierFn(ctx, channelID, rules)
 	}
 	return nil
 }
