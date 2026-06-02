@@ -27,7 +27,7 @@ set -e
 # =============================================================================
 GITHUB_REPO="qiangweihewu/sub2api"
 # Last-resort branch when env / flags / existing checkout don't set it (see apply_default_deploy_branch).
-DEFAULT_GITHUB_DEPLOY_BRANCH="i18n-seo"
+DEFAULT_GITHUB_DEPLOY_BRANCH="main"
 INSTALL_DIR="/opt/sub2api"
 IMAGE_NAME="sub2api-custom"
 COMPOSE_PROJECT="sub2api"
