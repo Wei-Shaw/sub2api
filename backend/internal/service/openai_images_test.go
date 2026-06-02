@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
+	"github.com/imroc/req/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -398,9 +400,36 @@ func TestCollectOpenAIImagePointers_RecognizesDirectAssets(t *testing.T) {
 func TestResolveOpenAIImageBytes_PrefersInlineBase64(t *testing.T) {
 	data, err := resolveOpenAIImageBytes(context.Background(), nil, nil, "", openAIImagePointerInfo{
 		B64JSON: "data:image/png;base64,QUJD",
-	})
+	}, openAIUpstreamErrorBodyReadLimit)
 	require.NoError(t, err)
 	require.Equal(t, []byte("ABC"), data)
+}
+
+func TestNewOpenAIImageStatusError_UsesProvidedReadLimit(t *testing.T) {
+	padding := strings.Repeat("x", int(openAIUpstreamErrorBodyReadLimit)+1024)
+	body := fmt.Sprintf(`{"error":{"padding":"%s","message":"diagnostic-marker"}}`, padding)
+	resp := &req.Response{Response: &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}}
+
+	err := newOpenAIImageStatusError(resp, "download image bytes failed", int64(len(body)))
+	require.Error(t, err)
+	require.Equal(t, "diagnostic-marker", err.Error())
+
+	var statusErr *openAIImageStatusError
+	require.ErrorAs(t, err, &statusErr)
+	require.Len(t, statusErr.ResponseBody, len(body))
+}
+
+func TestOpenAIUpstreamErrorBodyReadLimitForConfig_RespectsDiagnosticLimit(t *testing.T) {
+	cfg := &config.Config{Gateway: config.GatewayConfig{
+		LogUpstreamErrorBody:         true,
+		LogUpstreamErrorBodyMaxBytes: int(openAIUpstreamErrorBodyReadLimit) + 1024,
+	}}
+
+	require.Equal(t, int64(cfg.Gateway.LogUpstreamErrorBodyMaxBytes), openAIUpstreamErrorBodyReadLimitForConfig(cfg))
 }
 
 func TestAccountSupportsOpenAIImageCapability_OAuthSupportsNative(t *testing.T) {
