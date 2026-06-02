@@ -207,6 +207,10 @@ func (s *accountRepoStub) ResetQuotaUsed(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (s *accountRepoStub) RevertProxyFallback(ctx context.Context, accountID int64) error {
+	panic("unexpected RevertProxyFallback call")
+}
+
 // TestAccountService_Delete_NotFound 测试删除不存在的账号时返回正确的错误。
 // 预期行为：
 //   - ExistsByID 返回 false（账号不存在）

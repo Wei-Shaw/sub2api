@@ -153,6 +153,9 @@ func (m *sessionWindowMockRepo) IncrementQuotaUsed(context.Context, int64, float
 	panic("unexpected")
 }
 func (m *sessionWindowMockRepo) ResetQuotaUsed(context.Context, int64) error { panic("unexpected") }
+func (m *sessionWindowMockRepo) RevertProxyFallback(context.Context, int64) error {
+	panic("unexpected")
+}
 
 // newRateLimitServiceForTest creates a RateLimitService with the given mock repo.
 func newRateLimitServiceForTest(repo AccountRepository) *RateLimitService {
