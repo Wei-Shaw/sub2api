@@ -67,6 +67,12 @@ type BillingCache interface {
 	UpdateAPIKeyRateLimitUsage(ctx context.Context, keyID int64, cost float64) error
 	InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error
 
+	// Per-model USD quota operations (independent rolling windows per pattern).
+	// patternHash is the application-side hash of the configured pattern.
+	GetModelQuotaUsage(ctx context.Context, keyID int64, patternHash string) (*ModelQuotaUsage, error)
+	UpdateModelQuotaUsage(ctx context.Context, keyID int64, patternHash string, cost float64) error
+	InvalidateModelQuotaUsage(ctx context.Context, keyID int64) error
+
 	// user × platform quota 缓存
 	GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*UserPlatformQuotaCacheEntry, bool, error)
 	SetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string, entry *UserPlatformQuotaCacheEntry, ttl time.Duration) error

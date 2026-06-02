@@ -69,6 +69,8 @@ type Group struct {
 	ModelRouting map[string][]int64 `json:"model_routing,omitempty"`
 	// 是否启用模型路由配置
 	ModelRoutingEnabled bool `json:"model_routing_enabled,omitempty"`
+	// 分组级按模型 USD 配额默认规则；API Key 未配置 model_rate_limits 时继承
+	DefaultModelRateLimits domain.ModelRateLimits `json:"default_model_rate_limits,omitempty"`
 	// 是否注入 MCP XML 调用协议提示词（仅 antigravity 平台）
 	McpXMLInject bool `json:"mcp_xml_inject,omitempty"`
 	// 支持的模型系列：claude, gemini_text, gemini_image
@@ -203,7 +205,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
+		case group.FieldModelRouting, group.FieldDefaultModelRateLimits, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
 			values[i] = new([]byte)
 		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
@@ -397,6 +399,14 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field model_routing_enabled", values[i])
 			} else if value.Valid {
 				_m.ModelRoutingEnabled = value.Bool
+			}
+		case group.FieldDefaultModelRateLimits:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field default_model_rate_limits", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.DefaultModelRateLimits); err != nil {
+					return fmt.Errorf("unmarshal field default_model_rate_limits: %w", err)
+				}
 			}
 		case group.FieldMcpXMLInject:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -658,6 +668,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("model_routing_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ModelRoutingEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("default_model_rate_limits=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DefaultModelRateLimits))
 	builder.WriteString(", ")
 	builder.WriteString("mcp_xml_inject=")
 	builder.WriteString(fmt.Sprintf("%v", _m.McpXMLInject))

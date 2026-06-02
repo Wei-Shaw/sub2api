@@ -121,6 +121,12 @@ func (Group) Fields() []ent.Field {
 			Default(false).
 			Comment("是否启用模型路由配置"),
 
+		// 分组级按模型默认配额（API Key 未配置时继承此值）
+		field.JSON("default_model_rate_limits", domain.ModelRateLimits{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("分组级按模型 USD 配额默认规则；API Key 未配置 model_rate_limits 时继承"),
+
 		// MCP XML 协议注入开关 (added by migration 042)
 		field.Bool("mcp_xml_inject").
 			Default(true).

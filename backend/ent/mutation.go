@@ -102,52 +102,54 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	cache_strategy     *string
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                      Op
+	typ                     string
+	id                      *int64
+	created_at              *time.Time
+	updated_at              *time.Time
+	deleted_at              *time.Time
+	key                     *string
+	name                    *string
+	status                  *string
+	last_used_at            *time.Time
+	ip_whitelist            *[]string
+	appendip_whitelist      []string
+	ip_blacklist            *[]string
+	appendip_blacklist      []string
+	quota                   *float64
+	addquota                *float64
+	quota_used              *float64
+	addquota_used           *float64
+	expires_at              *time.Time
+	rate_limit_5h           *float64
+	addrate_limit_5h        *float64
+	rate_limit_1d           *float64
+	addrate_limit_1d        *float64
+	rate_limit_7d           *float64
+	addrate_limit_7d        *float64
+	usage_5h                *float64
+	addusage_5h             *float64
+	usage_1d                *float64
+	addusage_1d             *float64
+	usage_7d                *float64
+	addusage_7d             *float64
+	window_5h_start         *time.Time
+	window_1d_start         *time.Time
+	window_7d_start         *time.Time
+	cache_strategy          *string
+	model_rate_limits       *domain.ModelRateLimits
+	appendmodel_rate_limits domain.ModelRateLimits
+	clearedFields           map[string]struct{}
+	user                    *int64
+	cleareduser             bool
+	group                   *int64
+	clearedgroup            bool
+	usage_logs              map[int64]struct{}
+	removedusage_logs       map[int64]struct{}
+	clearedusage_logs       bool
+	done                    bool
+	oldValue                func(context.Context) (*APIKey, error)
+	predicates              []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -1421,6 +1423,71 @@ func (m *APIKeyMutation) ResetCacheStrategy() {
 	m.cache_strategy = nil
 }
 
+// SetModelRateLimits sets the "model_rate_limits" field.
+func (m *APIKeyMutation) SetModelRateLimits(drl domain.ModelRateLimits) {
+	m.model_rate_limits = &drl
+	m.appendmodel_rate_limits = nil
+}
+
+// ModelRateLimits returns the value of the "model_rate_limits" field in the mutation.
+func (m *APIKeyMutation) ModelRateLimits() (r domain.ModelRateLimits, exists bool) {
+	v := m.model_rate_limits
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModelRateLimits returns the old "model_rate_limits" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldModelRateLimits(ctx context.Context) (v domain.ModelRateLimits, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelRateLimits is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelRateLimits requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelRateLimits: %w", err)
+	}
+	return oldValue.ModelRateLimits, nil
+}
+
+// AppendModelRateLimits adds drl to the "model_rate_limits" field.
+func (m *APIKeyMutation) AppendModelRateLimits(drl domain.ModelRateLimits) {
+	m.appendmodel_rate_limits = append(m.appendmodel_rate_limits, drl...)
+}
+
+// AppendedModelRateLimits returns the list of values that were appended to the "model_rate_limits" field in this mutation.
+func (m *APIKeyMutation) AppendedModelRateLimits() (domain.ModelRateLimits, bool) {
+	if len(m.appendmodel_rate_limits) == 0 {
+		return nil, false
+	}
+	return m.appendmodel_rate_limits, true
+}
+
+// ClearModelRateLimits clears the value of the "model_rate_limits" field.
+func (m *APIKeyMutation) ClearModelRateLimits() {
+	m.model_rate_limits = nil
+	m.appendmodel_rate_limits = nil
+	m.clearedFields[apikey.FieldModelRateLimits] = struct{}{}
+}
+
+// ModelRateLimitsCleared returns if the "model_rate_limits" field was cleared in this mutation.
+func (m *APIKeyMutation) ModelRateLimitsCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldModelRateLimits]
+	return ok
+}
+
+// ResetModelRateLimits resets all changes to the "model_rate_limits" field.
+func (m *APIKeyMutation) ResetModelRateLimits() {
+	m.model_rate_limits = nil
+	m.appendmodel_rate_limits = nil
+	delete(m.clearedFields, apikey.FieldModelRateLimits)
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *APIKeyMutation) ClearUser() {
 	m.cleareduser = true
@@ -1563,7 +1630,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 25)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1636,6 +1703,9 @@ func (m *APIKeyMutation) Fields() []string {
 	if m.cache_strategy != nil {
 		fields = append(fields, apikey.FieldCacheStrategy)
 	}
+	if m.model_rate_limits != nil {
+		fields = append(fields, apikey.FieldModelRateLimits)
+	}
 	return fields
 }
 
@@ -1692,6 +1762,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Window7dStart()
 	case apikey.FieldCacheStrategy:
 		return m.CacheStrategy()
+	case apikey.FieldModelRateLimits:
+		return m.ModelRateLimits()
 	}
 	return nil, false
 }
@@ -1749,6 +1821,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldWindow7dStart(ctx)
 	case apikey.FieldCacheStrategy:
 		return m.OldCacheStrategy(ctx)
+	case apikey.FieldModelRateLimits:
+		return m.OldModelRateLimits(ctx)
 	}
 	return nil, fmt.Errorf("unknown APIKey field %s", name)
 }
@@ -1926,6 +2000,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCacheStrategy(v)
 		return nil
+	case apikey.FieldModelRateLimits:
+		v, ok := value.(domain.ModelRateLimits)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModelRateLimits(v)
+		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
 }
@@ -2082,6 +2163,9 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldWindow7dStart) {
 		fields = append(fields, apikey.FieldWindow7dStart)
 	}
+	if m.FieldCleared(apikey.FieldModelRateLimits) {
+		fields = append(fields, apikey.FieldModelRateLimits)
+	}
 	return fields
 }
 
@@ -2122,6 +2206,9 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldWindow7dStart:
 		m.ClearWindow7dStart()
+		return nil
+	case apikey.FieldModelRateLimits:
+		m.ClearModelRateLimits()
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey nullable field %s", name)
@@ -2202,6 +2289,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldCacheStrategy:
 		m.ResetCacheStrategy()
+		return nil
+	case apikey.FieldModelRateLimits:
+		m.ResetModelRateLimits()
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
@@ -15127,6 +15217,8 @@ type GroupMutation struct {
 	addfallback_group_id_on_invalid_request *int64
 	model_routing                           *map[string][]int64
 	model_routing_enabled                   *bool
+	default_model_rate_limits               *domain.ModelRateLimits
+	appenddefault_model_rate_limits         domain.ModelRateLimits
 	mcp_xml_inject                          *bool
 	supported_model_scopes                  *[]string
 	appendsupported_model_scopes            []string
@@ -16540,6 +16632,71 @@ func (m *GroupMutation) ResetModelRoutingEnabled() {
 	m.model_routing_enabled = nil
 }
 
+// SetDefaultModelRateLimits sets the "default_model_rate_limits" field.
+func (m *GroupMutation) SetDefaultModelRateLimits(drl domain.ModelRateLimits) {
+	m.default_model_rate_limits = &drl
+	m.appenddefault_model_rate_limits = nil
+}
+
+// DefaultModelRateLimits returns the value of the "default_model_rate_limits" field in the mutation.
+func (m *GroupMutation) DefaultModelRateLimits() (r domain.ModelRateLimits, exists bool) {
+	v := m.default_model_rate_limits
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDefaultModelRateLimits returns the old "default_model_rate_limits" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldDefaultModelRateLimits(ctx context.Context) (v domain.ModelRateLimits, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDefaultModelRateLimits is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDefaultModelRateLimits requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDefaultModelRateLimits: %w", err)
+	}
+	return oldValue.DefaultModelRateLimits, nil
+}
+
+// AppendDefaultModelRateLimits adds drl to the "default_model_rate_limits" field.
+func (m *GroupMutation) AppendDefaultModelRateLimits(drl domain.ModelRateLimits) {
+	m.appenddefault_model_rate_limits = append(m.appenddefault_model_rate_limits, drl...)
+}
+
+// AppendedDefaultModelRateLimits returns the list of values that were appended to the "default_model_rate_limits" field in this mutation.
+func (m *GroupMutation) AppendedDefaultModelRateLimits() (domain.ModelRateLimits, bool) {
+	if len(m.appenddefault_model_rate_limits) == 0 {
+		return nil, false
+	}
+	return m.appenddefault_model_rate_limits, true
+}
+
+// ClearDefaultModelRateLimits clears the value of the "default_model_rate_limits" field.
+func (m *GroupMutation) ClearDefaultModelRateLimits() {
+	m.default_model_rate_limits = nil
+	m.appenddefault_model_rate_limits = nil
+	m.clearedFields[group.FieldDefaultModelRateLimits] = struct{}{}
+}
+
+// DefaultModelRateLimitsCleared returns if the "default_model_rate_limits" field was cleared in this mutation.
+func (m *GroupMutation) DefaultModelRateLimitsCleared() bool {
+	_, ok := m.clearedFields[group.FieldDefaultModelRateLimits]
+	return ok
+}
+
+// ResetDefaultModelRateLimits resets all changes to the "default_model_rate_limits" field.
+func (m *GroupMutation) ResetDefaultModelRateLimits() {
+	m.default_model_rate_limits = nil
+	m.appenddefault_model_rate_limits = nil
+	delete(m.clearedFields, group.FieldDefaultModelRateLimits)
+}
+
 // SetMcpXMLInject sets the "mcp_xml_inject" field.
 func (m *GroupMutation) SetMcpXMLInject(b bool) {
 	m.mcp_xml_inject = &b
@@ -17517,7 +17674,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 39)
+	fields := make([]string, 0, 40)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -17592,6 +17749,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.model_routing_enabled != nil {
 		fields = append(fields, group.FieldModelRoutingEnabled)
+	}
+	if m.default_model_rate_limits != nil {
+		fields = append(fields, group.FieldDefaultModelRateLimits)
 	}
 	if m.mcp_xml_inject != nil {
 		fields = append(fields, group.FieldMcpXMLInject)
@@ -17693,6 +17853,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelRouting()
 	case group.FieldModelRoutingEnabled:
 		return m.ModelRoutingEnabled()
+	case group.FieldDefaultModelRateLimits:
+		return m.DefaultModelRateLimits()
 	case group.FieldMcpXMLInject:
 		return m.McpXMLInject()
 	case group.FieldSupportedModelScopes:
@@ -17780,6 +17942,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldModelRouting(ctx)
 	case group.FieldModelRoutingEnabled:
 		return m.OldModelRoutingEnabled(ctx)
+	case group.FieldDefaultModelRateLimits:
+		return m.OldDefaultModelRateLimits(ctx)
 	case group.FieldMcpXMLInject:
 		return m.OldMcpXMLInject(ctx)
 	case group.FieldSupportedModelScopes:
@@ -17991,6 +18155,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModelRoutingEnabled(v)
+		return nil
+	case group.FieldDefaultModelRateLimits:
+		v, ok := value.(domain.ModelRateLimits)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDefaultModelRateLimits(v)
 		return nil
 	case group.FieldMcpXMLInject:
 		v, ok := value.(bool)
@@ -18348,6 +18519,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldModelRouting) {
 		fields = append(fields, group.FieldModelRouting)
 	}
+	if m.FieldCleared(group.FieldDefaultModelRateLimits) {
+		fields = append(fields, group.FieldDefaultModelRateLimits)
+	}
 	return fields
 }
 
@@ -18394,6 +18568,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldModelRouting:
 		m.ClearModelRouting()
+		return nil
+	case group.FieldDefaultModelRateLimits:
+		m.ClearDefaultModelRateLimits()
 		return nil
 	}
 	return fmt.Errorf("unknown Group nullable field %s", name)
@@ -18477,6 +18654,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldModelRoutingEnabled:
 		m.ResetModelRoutingEnabled()
+		return nil
+	case group.FieldDefaultModelRateLimits:
+		m.ResetDefaultModelRateLimits()
 		return nil
 	case group.FieldMcpXMLInject:
 		m.ResetMcpXMLInject()

@@ -65,6 +65,10 @@ type APIKey struct {
 	// 时生效；否则该值被忽略（前端也会禁用对应控件）。
 	// 合法取值：CacheStrategyAuto / CacheStrategyCostPriority / CacheStrategyLatencyPriority。
 	CacheStrategy string
+
+	// Per-model USD rate limits. Non-empty fully overrides the bound group's
+	// DefaultModelRateLimits (replace, not merge). Empty/nil → inherit group.
+	ModelRateLimits ModelRateLimits
 }
 
 // Cache strategy enum constants — see APIKey.CacheStrategy.

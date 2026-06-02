@@ -57,6 +57,7 @@ const (
 	cacheWriteUpdateSubscriptionUsage
 	cacheWriteDeductBalance
 	cacheWriteUpdateRateLimitUsage
+	cacheWriteUpdateModelQuotaUsage
 )
 
 // 异步缓存写入工作池配置
@@ -88,6 +89,7 @@ type cacheWriteTask struct {
 	apiKeyID         int64
 	balance          float64
 	amount           float64
+	patternHash      string
 	subscriptionData *subscriptionCacheData
 }
 
@@ -235,6 +237,12 @@ func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 					logger.LegacyPrintf("service.billing_cache", "Warning: update rate limit usage cache failed for api key %d: %v", task.apiKeyID, err)
 				}
 			}
+		case cacheWriteUpdateModelQuotaUsage:
+			if s.cache != nil {
+				if err := s.cache.UpdateModelQuotaUsage(ctx, task.apiKeyID, task.patternHash, task.amount); err != nil {
+					logger.LegacyPrintf("service.billing_cache", "Warning: update model quota cache failed for api key %d pattern %s: %v", task.apiKeyID, task.patternHash, err)
+				}
+			}
 		}
 		cancel()
 	}
@@ -253,6 +261,8 @@ func cacheWriteKindName(kind cacheWriteKind) string {
 		return "deduct_balance"
 	case cacheWriteUpdateRateLimitUsage:
 		return "update_rate_limit_usage"
+	case cacheWriteUpdateModelQuotaUsage:
+		return "update_model_quota_usage"
 	default:
 		return "unknown"
 	}
@@ -537,6 +547,82 @@ func (s *BillingCacheService) InvalidateAPIKeyRateLimit(ctx context.Context, key
 	return nil
 }
 
+// InvalidateModelQuotaUsage drops every per-model quota bucket for an API key.
+// Called when admin rewrites the key's per-model config so removed patterns
+// don't keep their old usage forever.
+func (s *BillingCacheService) InvalidateModelQuotaUsage(ctx context.Context, keyID int64) error {
+	if s.cache == nil {
+		return nil
+	}
+	if err := s.cache.InvalidateModelQuotaUsage(ctx, keyID); err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: invalidate model quota cache failed for key %d: %v", keyID, err)
+		return err
+	}
+	return nil
+}
+
+// checkAPIKeyModelRateLimits enforces per-model USD quotas for the API key.
+//
+// Resolves the effective rule set (key override → group default), matches the
+// requested model against each pattern, and rejects with a 429 if any matched
+// window is exhausted. Windows that have rolled over are treated as fresh
+// (usage = 0); the Lua-side update script handles persistence on the next
+// post-billing write.
+//
+// On Redis errors the function fails OPEN — same conservative behaviour as
+// the integer rate-limit check — to avoid wedging traffic on a transient
+// cache outage. The cost is tracked downstream regardless.
+func (s *BillingCacheService) checkAPIKeyModelRateLimits(ctx context.Context, apiKey *APIKey, group *Group, requestedModel string) error {
+	if s == nil || s.cache == nil || apiKey == nil || requestedModel == "" {
+		return nil
+	}
+	rules := EffectiveModelRateLimits(apiKey, group)
+	if len(rules) == 0 {
+		return nil
+	}
+	matched := MatchModelRateLimits(rules, requestedModel)
+	if len(matched) == 0 {
+		return nil
+	}
+	now := time.Now()
+	for _, rule := range matched {
+		if !rule.HasAnyLimit() {
+			continue
+		}
+		hash := HashModelPattern(rule.Pattern)
+		usage, err := s.cache.GetModelQuotaUsage(ctx, apiKey.ID, hash)
+		if err != nil {
+			// Cache miss = nothing accumulated yet, no quota to enforce.
+			// Real Redis errors are also tolerated (fail-open).
+			continue
+		}
+		if usage == nil {
+			continue
+		}
+		// Reset expired windows in-memory (cache cleanup happens lazily on next write).
+		u5, u1, u7 := usage.Usage5h, usage.Usage1d, usage.Usage7d
+		if usage.Window5h == 0 || now.Unix()-usage.Window5h >= int64(RateLimitWindow5h.Seconds()) {
+			u5 = 0
+		}
+		if usage.Window1d == 0 || now.Unix()-usage.Window1d >= int64(RateLimitWindow1d.Seconds()) {
+			u1 = 0
+		}
+		if usage.Window7d == 0 || now.Unix()-usage.Window7d >= int64(RateLimitWindow7d.Seconds()) {
+			u7 = 0
+		}
+		if rule.Limit5h > 0 && u5 >= rule.Limit5h {
+			return ErrModelRateLimit5hExceeded
+		}
+		if rule.Limit1d > 0 && u1 >= rule.Limit1d {
+			return ErrModelRateLimit1dExceeded
+		}
+		if rule.Limit7d > 0 && u7 >= rule.Limit7d {
+			return ErrModelRateLimit7dExceeded
+		}
+	}
+	return nil
+}
+
 // ============================================
 // API Key 限速缓存方法
 // ============================================
@@ -672,6 +758,32 @@ func (s *BillingCacheService) QueueUpdateAPIKeyRateLimitUsage(apiKeyID int64, co
 	})
 }
 
+// QueueUpdateModelQuotaUsage asynchronously accumulates per-model USD usage
+// against every rule pattern that matched the requested model. A request can
+// match multiple patterns (e.g. exact rule + wildcard); each is an independent
+// quota pool and gets the full cost added.
+func (s *BillingCacheService) QueueUpdateModelQuotaUsage(apiKey *APIKey, group *Group, requestedModel string, cost float64) {
+	if s == nil || s.cache == nil || apiKey == nil || requestedModel == "" || cost <= 0 {
+		return
+	}
+	rules := EffectiveModelRateLimits(apiKey, group)
+	if len(rules) == 0 {
+		return
+	}
+	matched := MatchModelRateLimits(rules, requestedModel)
+	for _, rule := range matched {
+		if !rule.HasAnyLimit() {
+			continue
+		}
+		s.enqueueCacheWrite(cacheWriteTask{
+			kind:        cacheWriteUpdateModelQuotaUsage,
+			apiKeyID:    apiKey.ID,
+			amount:      cost,
+			patternHash: HashModelPattern(rule.Pattern),
+		})
+	}
+}
+
 // IncrementUserPlatformQuotaUsage 同步累加 user × platform usage 到 Redis 缓存。
 //
 // 设计：同步写入而非异步入队。同步写确保下次 preflight 立即看到最新 usage，
@@ -704,7 +816,9 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // 余额模式：检查缓存余额 > 0
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
-func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
+// requestedModel 用于按模型 USD 配额检查（来自分组默认或 API Key 覆盖规则），
+// 传空串 "" 时跳过该项检查（适用于无法在准入阶段获取模型名的端点）。
+func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string, requestedModel string) error {
 	// 简易模式：跳过所有计费检查
 	if s.cfg.RunMode == config.RunModeSimple {
 		return nil
@@ -736,6 +850,14 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	// Check API Key rate limits (applies to both billing modes)
 	if apiKey != nil && apiKey.HasRateLimits() {
 		if err := s.checkAPIKeyRateLimits(ctx, apiKey); err != nil {
+			return err
+		}
+	}
+
+	// Per-model USD quota (independent of integer rate_limit_*).
+	// Only meaningful when caller knows the request's target model.
+	if apiKey != nil && requestedModel != "" {
+		if err := s.checkAPIKeyModelRateLimits(ctx, apiKey, group, requestedModel); err != nil {
 			return err
 		}
 	}

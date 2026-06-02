@@ -806,6 +806,19 @@
           </div>
         </div>
 
+        <!-- Per-model USD quota (overrides group default; empty = inherit) -->
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('modelQuota.keyTitle') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('modelQuota.keyHint') }}
+            </p>
+          </div>
+          <ModelQuotaEditor v-model="formData.model_rate_limits" />
+        </div>
+
         <!-- Expiration Section -->
         <div class="space-y-3">
           <div class="flex items-center justify-between">
@@ -1107,7 +1120,8 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, ApiKeyCacheStrategy, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
+	import type { ApiKey, ApiKeyCacheStrategy, Group, PublicSettings, SubscriptionType, GroupPlatform, ModelRateLimits } from '@/types'
+	import ModelQuotaEditor from '@/components/common/ModelQuotaEditor.vue'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1227,7 +1241,8 @@ const formData = ref({
   enable_expiration: false,
   expiration_preset: '30' as '7' | '30' | '90' | 'custom',
   expiration_date: '',
-  cache_strategy: 'auto' as ApiKeyCacheStrategy
+  cache_strategy: 'auto' as ApiKeyCacheStrategy,
+  model_rate_limits: [] as ModelRateLimits,
 })
 
 // 自定义Key验证
@@ -1449,7 +1464,10 @@ const editKey = (key: ApiKey) => {
     enable_expiration: hasExpiration,
     expiration_preset: 'custom',
     expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : '',
-    cache_strategy: key.cache_strategy || 'auto'
+    cache_strategy: key.cache_strategy || 'auto',
+    model_rate_limits: Array.isArray(key.model_rate_limits)
+      ? key.model_rate_limits.map((r) => ({ ...r }))
+      : []
   }
   showEditModal.value = true
 }
@@ -1580,6 +1598,16 @@ const handleSubmit = async () => {
     rate_limit_7d: formData.value.rate_limit_7d && formData.value.rate_limit_7d > 0 ? formData.value.rate_limit_7d : 0,
   } : { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }
 
+  // Sanitize per-model quota rules: trim pattern, drop empty/all-zero rows.
+  const modelRateLimits: ModelRateLimits = (formData.value.model_rate_limits || [])
+    .map((r) => ({
+      pattern: (r.pattern || '').trim(),
+      limit_5h: Number(r.limit_5h) > 0 ? Number(r.limit_5h) : 0,
+      limit_1d: Number(r.limit_1d) > 0 ? Number(r.limit_1d) : 0,
+      limit_7d: Number(r.limit_7d) > 0 ? Number(r.limit_7d) : 0,
+    }))
+    .filter((r) => r.pattern && (r.limit_5h > 0 || r.limit_1d > 0 || r.limit_7d > 0))
+
   submitting.value = true
   try {
     if (showEditModal.value && selectedKey.value) {
@@ -1595,6 +1623,7 @@ const handleSubmit = async () => {
         rate_limit_1d: rateLimitData.rate_limit_1d,
         rate_limit_7d: rateLimitData.rate_limit_7d,
         cache_strategy: formData.value.cache_strategy,
+        model_rate_limits: modelRateLimits,
       })
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
@@ -1608,7 +1637,8 @@ const handleSubmit = async () => {
         quota,
         expiresInDays,
         rateLimitData,
-        formData.value.cache_strategy
+        formData.value.cache_strategy,
+        modelRateLimits
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1669,7 +1699,8 @@ const closeModals = () => {
     enable_expiration: false,
     expiration_preset: '30',
     expiration_date: '',
-    cache_strategy: 'auto'
+    cache_strategy: 'auto',
+    model_rate_limits: []
   }
 }
 

@@ -844,61 +844,61 @@ func init() {
 	// group.DefaultModelRoutingEnabled holds the default value on creation for the model_routing_enabled field.
 	group.DefaultModelRoutingEnabled = groupDescModelRoutingEnabled.Default.(bool)
 	// groupDescMcpXMLInject is the schema descriptor for mcp_xml_inject field.
-	groupDescMcpXMLInject := groupFields[22].Descriptor()
+	groupDescMcpXMLInject := groupFields[23].Descriptor()
 	// group.DefaultMcpXMLInject holds the default value on creation for the mcp_xml_inject field.
 	group.DefaultMcpXMLInject = groupDescMcpXMLInject.Default.(bool)
 	// groupDescSupportedModelScopes is the schema descriptor for supported_model_scopes field.
-	groupDescSupportedModelScopes := groupFields[23].Descriptor()
+	groupDescSupportedModelScopes := groupFields[24].Descriptor()
 	// group.DefaultSupportedModelScopes holds the default value on creation for the supported_model_scopes field.
 	group.DefaultSupportedModelScopes = groupDescSupportedModelScopes.Default.([]string)
 	// groupDescSortOrder is the schema descriptor for sort_order field.
-	groupDescSortOrder := groupFields[24].Descriptor()
+	groupDescSortOrder := groupFields[25].Descriptor()
 	// group.DefaultSortOrder holds the default value on creation for the sort_order field.
 	group.DefaultSortOrder = groupDescSortOrder.Default.(int)
 	// groupDescAllowMessagesDispatch is the schema descriptor for allow_messages_dispatch field.
-	groupDescAllowMessagesDispatch := groupFields[25].Descriptor()
+	groupDescAllowMessagesDispatch := groupFields[26].Descriptor()
 	// group.DefaultAllowMessagesDispatch holds the default value on creation for the allow_messages_dispatch field.
 	group.DefaultAllowMessagesDispatch = groupDescAllowMessagesDispatch.Default.(bool)
 	// groupDescRequireOauthOnly is the schema descriptor for require_oauth_only field.
-	groupDescRequireOauthOnly := groupFields[26].Descriptor()
+	groupDescRequireOauthOnly := groupFields[27].Descriptor()
 	// group.DefaultRequireOauthOnly holds the default value on creation for the require_oauth_only field.
 	group.DefaultRequireOauthOnly = groupDescRequireOauthOnly.Default.(bool)
 	// groupDescRequirePrivacySet is the schema descriptor for require_privacy_set field.
-	groupDescRequirePrivacySet := groupFields[27].Descriptor()
+	groupDescRequirePrivacySet := groupFields[28].Descriptor()
 	// group.DefaultRequirePrivacySet holds the default value on creation for the require_privacy_set field.
 	group.DefaultRequirePrivacySet = groupDescRequirePrivacySet.Default.(bool)
 	// groupDescDefaultMappedModel is the schema descriptor for default_mapped_model field.
-	groupDescDefaultMappedModel := groupFields[28].Descriptor()
+	groupDescDefaultMappedModel := groupFields[29].Descriptor()
 	// group.DefaultDefaultMappedModel holds the default value on creation for the default_mapped_model field.
 	group.DefaultDefaultMappedModel = groupDescDefaultMappedModel.Default.(string)
 	// group.DefaultMappedModelValidator is a validator for the "default_mapped_model" field. It is called by the builders before save.
 	group.DefaultMappedModelValidator = groupDescDefaultMappedModel.Validators[0].(func(string) error)
 	// groupDescMessagesDispatchModelConfig is the schema descriptor for messages_dispatch_model_config field.
-	groupDescMessagesDispatchModelConfig := groupFields[29].Descriptor()
+	groupDescMessagesDispatchModelConfig := groupFields[30].Descriptor()
 	// group.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	group.DefaultMessagesDispatchModelConfig = groupDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
 	// groupDescModelsListConfig is the schema descriptor for models_list_config field.
-	groupDescModelsListConfig := groupFields[30].Descriptor()
+	groupDescModelsListConfig := groupFields[31].Descriptor()
 	// group.DefaultModelsListConfig holds the default value on creation for the models_list_config field.
 	group.DefaultModelsListConfig = groupDescModelsListConfig.Default.(domain.GroupModelsListConfig)
 	// groupDescRpmLimit is the schema descriptor for rpm_limit field.
-	groupDescRpmLimit := groupFields[31].Descriptor()
+	groupDescRpmLimit := groupFields[32].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
 	// groupDescDefaultAccountConcurrency is the schema descriptor for default_account_concurrency field.
-	groupDescDefaultAccountConcurrency := groupFields[32].Descriptor()
+	groupDescDefaultAccountConcurrency := groupFields[33].Descriptor()
 	// group.DefaultDefaultAccountConcurrency holds the default value on creation for the default_account_concurrency field.
 	group.DefaultDefaultAccountConcurrency = groupDescDefaultAccountConcurrency.Default.(int)
 	// groupDescDefaultAccountRpm is the schema descriptor for default_account_rpm field.
-	groupDescDefaultAccountRpm := groupFields[33].Descriptor()
+	groupDescDefaultAccountRpm := groupFields[34].Descriptor()
 	// group.DefaultDefaultAccountRpm holds the default value on creation for the default_account_rpm field.
 	group.DefaultDefaultAccountRpm = groupDescDefaultAccountRpm.Default.(int)
 	// groupDescDefaultPassthroughProfile is the schema descriptor for default_passthrough_profile field.
-	groupDescDefaultPassthroughProfile := groupFields[34].Descriptor()
+	groupDescDefaultPassthroughProfile := groupFields[35].Descriptor()
 	// group.DefaultDefaultPassthroughProfile holds the default value on creation for the default_passthrough_profile field.
 	group.DefaultDefaultPassthroughProfile = groupDescDefaultPassthroughProfile.Default.(string)
 	// groupDescDefault429CooldownSec is the schema descriptor for default_429_cooldown_sec field.
-	groupDescDefault429CooldownSec := groupFields[35].Descriptor()
+	groupDescDefault429CooldownSec := groupFields[36].Descriptor()
 	// group.DefaultDefault429CooldownSec holds the default value on creation for the default_429_cooldown_sec field.
 	group.DefaultDefault429CooldownSec = groupDescDefault429CooldownSec.Default.(int)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()

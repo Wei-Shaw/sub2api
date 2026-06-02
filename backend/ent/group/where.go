@@ -1275,6 +1275,16 @@ func ModelRoutingEnabledNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldModelRoutingEnabled, v))
 }
 
+// DefaultModelRateLimitsIsNil applies the IsNil predicate on the "default_model_rate_limits" field.
+func DefaultModelRateLimitsIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldDefaultModelRateLimits))
+}
+
+// DefaultModelRateLimitsNotNil applies the NotNil predicate on the "default_model_rate_limits" field.
+func DefaultModelRateLimitsNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldDefaultModelRateLimits))
+}
+
 // McpXMLInjectEQ applies the EQ predicate on the "mcp_xml_inject" field.
 func McpXMLInjectEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldMcpXMLInject, v))

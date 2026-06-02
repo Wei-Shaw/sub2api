@@ -46,6 +46,10 @@ type Group struct {
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled bool
 
+	// DefaultModelRateLimits 分组级按模型 USD 配额默认规则；API Key 未配置
+	// ModelRateLimits 时继承此值。
+	DefaultModelRateLimits ModelRateLimits
+
 	// MCP XML 协议注入开关（仅 antigravity 平台使用）
 	MCPXMLInject bool
 

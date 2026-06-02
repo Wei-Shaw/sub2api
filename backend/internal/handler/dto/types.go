@@ -81,6 +81,9 @@ type APIKey struct {
 	// 仅在绑定账号支持缓存策略时（Account.SupportsCachePolicy）才生效。
 	CacheStrategy string `json:"cache_strategy"`
 
+	// ModelRateLimits 每模型独立 USD 限额（5h/1d/7d）。非空则完全覆盖分组默认。
+	ModelRateLimits domain.ModelRateLimits `json:"model_rate_limits,omitempty"`
+
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`
 }
@@ -141,6 +144,9 @@ type AdminGroup struct {
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
+
+	// DefaultModelRateLimits 分组默认每模型 USD 限额；仅当 API key 自身未配置时生效。
+	DefaultModelRateLimits domain.ModelRateLimits `json:"default_model_rate_limits,omitempty"`
 
 	// MCP XML 协议注入（仅 antigravity 平台使用）
 	MCPXMLInject bool `json:"mcp_xml_inject"`

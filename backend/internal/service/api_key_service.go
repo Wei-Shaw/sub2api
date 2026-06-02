@@ -36,6 +36,11 @@ var (
 	ErrAPIKeyRateLimit5hExceeded = infraerrors.TooManyRequests("API_KEY_RATE_5H_EXCEEDED", "api key 5小时限额已用完")
 	ErrAPIKeyRateLimit1dExceeded = infraerrors.TooManyRequests("API_KEY_RATE_1D_EXCEEDED", "api key 日限额已用完")
 	ErrAPIKeyRateLimit7dExceeded = infraerrors.TooManyRequests("API_KEY_RATE_7D_EXCEEDED", "api key 7天限额已用完")
+
+	// Per-model rate limit errors (independent quota pool per configured pattern).
+	ErrModelRateLimit5hExceeded = infraerrors.TooManyRequests("MODEL_RATE_5H_EXCEEDED", "该模型 5 小时限额已用完")
+	ErrModelRateLimit1dExceeded = infraerrors.TooManyRequests("MODEL_RATE_1D_EXCEEDED", "该模型日限额已用完")
+	ErrModelRateLimit7dExceeded = infraerrors.TooManyRequests("MODEL_RATE_7D_EXCEEDED", "该模型 7 天限额已用完")
 )
 
 const (
@@ -167,6 +172,10 @@ type CreateAPIKeyRequest struct {
 	// CacheStrategy 用户级缓存 TTL 偏好（auto / cost_priority / latency_priority）。
 	// 空字符串 == auto。
 	CacheStrategy string `json:"cache_strategy"`
+
+	// ModelRateLimits 每模型独立 USD 限额；nil/空切片表示沿用分组默认。
+	// 非空时完全覆盖分组配置（无合并）。
+	ModelRateLimits ModelRateLimits `json:"model_rate_limits"`
 }
 
 // UpdateAPIKeyRequest 更新API Key请求
@@ -192,12 +201,23 @@ type UpdateAPIKeyRequest struct {
 	// CacheStrategy 用户级缓存 TTL 偏好。nil = 不修改；显式字符串 = 设置为该值
 	// （未识别值会被 NormalizeCacheStrategy 兜底为 "auto"）。
 	CacheStrategy *string `json:"cache_strategy"`
+
+	// ModelRateLimits per-model USD limits.
+	// nil = 不修改；非 nil = 覆盖（空切片 = 清空，恢复为继承分组默认）。
+	ModelRateLimits *ModelRateLimits `json:"model_rate_limits"`
 }
 
 // APIKeyService API Key服务
 // RateLimitCacheInvalidator invalidates rate limit cache entries on manual reset.
 type RateLimitCacheInvalidator interface {
 	InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error
+}
+
+// ModelQuotaCacheInvalidator invalidates per-model USD quota cache entries when
+// admin rewrites the key's per-model config, so stale buckets for removed
+// patterns don't linger.
+type ModelQuotaCacheInvalidator interface {
+	InvalidateModelQuotaUsage(ctx context.Context, keyID int64) error
 }
 
 type APIKeyService struct {
@@ -208,6 +228,7 @@ type APIKeyService struct {
 	userGroupRateRepo     UserGroupRateRepository
 	cache                 APIKeyCache
 	rateLimitCacheInvalid RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
+	modelQuotaCacheInvalid ModelQuotaCacheInvalidator // optional: invalidate per-model USD quota cache
 	cfg                   *config.Config
 	authCacheL1           *ristretto.Cache
 	authCfg               apiKeyAuthCacheConfig
@@ -243,6 +264,11 @@ func NewAPIKeyService(
 // Called after construction (e.g. in wire) to avoid circular dependencies.
 func (s *APIKeyService) SetRateLimitCacheInvalidator(inv RateLimitCacheInvalidator) {
 	s.rateLimitCacheInvalid = inv
+}
+
+// SetModelQuotaCacheInvalidator sets the optional per-model quota cache invalidator.
+func (s *APIKeyService) SetModelQuotaCacheInvalidator(inv ModelQuotaCacheInvalidator) {
+	s.modelQuotaCacheInvalid = inv
 }
 
 func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {
@@ -418,6 +444,7 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		RateLimit1d: req.RateLimit1d,
 		RateLimit7d: req.RateLimit7d,
 		CacheStrategy: NormalizeCacheStrategy(req.CacheStrategy),
+		ModelRateLimits: SanitizeModelRateLimits(req.ModelRateLimits),
 	}
 
 	// Set expiration time if specified
@@ -623,6 +650,11 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	if req.CacheStrategy != nil {
 		apiKey.CacheStrategy = NormalizeCacheStrategy(*req.CacheStrategy)
 	}
+	modelLimitsChanged := false
+	if req.ModelRateLimits != nil {
+		apiKey.ModelRateLimits = SanitizeModelRateLimits(*req.ModelRateLimits)
+		modelLimitsChanged = true
+	}
 	resetRateLimit := req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage
 	if resetRateLimit {
 		apiKey.Usage5h = 0
@@ -643,6 +675,12 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	// Invalidate Redis rate limit cache so reset takes effect immediately
 	if resetRateLimit && s.rateLimitCacheInvalid != nil {
 		_ = s.rateLimitCacheInvalid.InvalidateAPIKeyRateLimit(ctx, apiKey.ID)
+	}
+
+	// Drop stale per-model quota buckets when admin rewrites the per-model config:
+	// patterns that were removed would otherwise keep their old usage forever.
+	if modelLimitsChanged && s.modelQuotaCacheInvalid != nil {
+		_ = s.modelQuotaCacheInvalid.InvalidateModelQuotaUsage(ctx, apiKey.ID)
 	}
 
 	return apiKey, nil

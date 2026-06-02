@@ -102,6 +102,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		Window1dStart: k.Window1dStart,
 		Window7dStart: k.Window7dStart,
 		CacheStrategy: k.EffectiveCacheStrategy(),
+		ModelRateLimits: k.ModelRateLimits,
 		User:          UserFromServiceShallow(k.User),
 		Group:         GroupFromServiceShallow(k.Group),
 	}
@@ -145,6 +146,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		Group:                       groupFromServiceBase(g),
 		ModelRouting:                g.ModelRouting,
 		ModelRoutingEnabled:         g.ModelRoutingEnabled,
+		DefaultModelRateLimits:      g.DefaultModelRateLimits,
 		MCPXMLInject:                g.MCPXMLInject,
 		DefaultMappedModel:          g.DefaultMappedModel,
 		MessagesDispatchModelConfig: g.MessagesDispatchModelConfig,

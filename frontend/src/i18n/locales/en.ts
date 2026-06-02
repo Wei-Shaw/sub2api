@@ -7203,4 +7203,18 @@ export default {
     },
   },
 
+  modelQuota: {
+    keyTitle: 'Per-model USD quota',
+    keyHint: 'Set independent 5h/1d/7d USD limits for specific models. Leave empty to inherit the group default.',
+    groupDefaultTitle: 'Group default per-model USD quota',
+    groupDefaultHint: 'Default per-model USD quotas inherited by all API keys in this group that have no per-key override.',
+    pattern: 'Model pattern',
+    patternPlaceholder: 'e.g. claude-opus-4-7 or claude-opus-*',
+    limit5h: '5h USD',
+    limit1d: '1d USD',
+    limit7d: '7d USD',
+    addRule: 'Add rule',
+    remove: 'Remove',
+    emptyHint: 'No rules. Click below to add a per-model USD quota limit.',
+  },
 }

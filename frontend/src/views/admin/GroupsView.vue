@@ -1652,6 +1652,19 @@
             {{ t("admin.groups.modelRouting.addRule") }}
           </button>
         </div>
+
+        <!-- 分组默认按模型 USD 配额 -->
+        <div class="border-t pt-4">
+          <div class="mb-1.5">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("modelQuota.groupDefaultTitle") }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("modelQuota.groupDefaultHint") }}
+            </p>
+          </div>
+          <ModelQuotaEditor v-model="createForm.default_model_rate_limits" />
+        </div>
       </form>
 
       <template #footer>
@@ -2991,6 +3004,19 @@
             {{ t("admin.groups.modelRouting.addRule") }}
           </button>
         </div>
+
+        <!-- 分组默认按模型 USD 配额 -->
+        <div class="border-t pt-4">
+          <div class="mb-1.5">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("modelQuota.groupDefaultTitle") }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("modelQuota.groupDefaultHint") }}
+            </p>
+          </div>
+          <ModelQuotaEditor v-model="editForm.default_model_rate_limits" />
+        </div>
       </form>
 
       <template #footer>
@@ -3161,7 +3187,7 @@ import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
-import type { AdminGroup, GroupPlatform, SubscriptionType } from "@/types";
+import type { AdminGroup, GroupPlatform, SubscriptionType, ModelRateLimits } from "@/types";
 import type { Column } from "@/components/common/types";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import TablePageLayout from "@/components/layout/TablePageLayout.vue";
@@ -3173,6 +3199,7 @@ import EmptyState from "@/components/common/EmptyState.vue";
 import Select from "@/components/common/Select.vue";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
+import ModelQuotaEditor from "@/components/common/ModelQuotaEditor.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
@@ -3489,6 +3516,8 @@ const createForm = reactive({
   default_account_rpm: 0 as number,
   default_passthrough_profile: '' as string,
   default_429_cooldown_sec: 0 as number,
+  // 分组级默认按模型配额
+  default_model_rate_limits: [] as ModelRateLimits,
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -3826,6 +3855,8 @@ const editForm = reactive({
   default_account_rpm: 0 as number,
   default_passthrough_profile: '' as string,
   default_429_cooldown_sec: 0 as number,
+  // 分组级默认按模型配额
+  default_model_rate_limits: [] as ModelRateLimits,
 });
 
 type ImagePricingFormState = {
@@ -4063,6 +4094,7 @@ const closeCreateModal = () => {
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
   createForm.rpm_limit = 0;
+  createForm.default_model_rate_limits = [];
   resetModelsListState(createModelsListState);
   createModelRoutingRules.value = [];
 };
@@ -4084,6 +4116,25 @@ const normalizeOptionalLimit = (
   }
 
   return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+/**
+ * Strip empty patterns / clamp negatives / drop fully-zero rows.
+ * Backend re-sanitises, but we send a clean payload to keep the wire stable.
+ */
+const sanitizeModelRateLimits = (rules: ModelRateLimits | null | undefined): ModelRateLimits => {
+  if (!Array.isArray(rules)) return [];
+  const out: ModelRateLimits = [];
+  for (const r of rules) {
+    const pattern = (r?.pattern ?? "").trim();
+    if (!pattern) continue;
+    const l5 = Number(r?.limit_5h) > 0 ? Number(r.limit_5h) : 0;
+    const l1 = Number(r?.limit_1d) > 0 ? Number(r.limit_1d) : 0;
+    const l7 = Number(r?.limit_7d) > 0 ? Number(r.limit_7d) : 0;
+    if (l5 === 0 && l1 === 0 && l7 === 0) continue;
+    out.push({ pattern, limit_5h: l5, limit_1d: l1, limit_7d: l7 });
+  }
+  return out;
 };
 
 const normalizeImageRateMultiplier = (
@@ -4117,6 +4168,9 @@ const handleCreateGroup = async () => {
       ),
       model_routing: convertRoutingRulesToApiFormat(
         createModelRoutingRules.value,
+      ),
+      default_model_rate_limits: sanitizeModelRateLimits(
+        createForm.default_model_rate_limits,
       ),
       models_list_config: buildModelsListConfig(createModelsListState),
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
@@ -4209,6 +4263,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.default_account_rpm = group.default_account_rpm ?? 0;
   editForm.default_passthrough_profile = group.default_passthrough_profile ?? '';
   editForm.default_429_cooldown_sec = group.default_429_cooldown_sec ?? 0;
+  editForm.default_model_rate_limits = Array.isArray(group.default_model_rate_limits)
+    ? group.default_model_rate_limits.map((r) => ({ ...r }))
+    : [];
   resetModelsListState(editModelsListState, group.models_list_config);
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
@@ -4227,6 +4284,7 @@ const closeEditModal = () => {
   editingGroup.value = null;
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
+  editForm.default_model_rate_limits = [];
   resetMessagesDispatchFormState(editForm);
   resetModelsListState(editModelsListState);
 };
@@ -4260,6 +4318,9 @@ const handleUpdateGroup = async () => {
           : editForm.fallback_group_id_on_invalid_request,
       model_routing: convertRoutingRulesToApiFormat(
         editModelRoutingRules.value,
+      ),
+      default_model_rate_limits: sanitizeModelRateLimits(
+        editForm.default_model_rate_limits,
       ),
       models_list_config: buildModelsListConfig(editModelsListState),
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(

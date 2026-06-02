@@ -125,6 +125,16 @@ func (APIKey) Fields() []ent.Field {
 			MaxLen(32).
 			Default("auto").
 			Comment("User-level cache TTL preference: auto / cost_priority / latency_priority"),
+
+		// ========== Per-model rate limits ==========
+		// JSON array of {pattern, limit_5h, limit_1d, limit_7d}.
+		// Non-nil → fully overrides the group's default_model_rate_limits (replace, not merge).
+		// Nil/empty → inherits group defaults.
+		// See backend/internal/domain/model_rate_limit.go.
+		field.JSON("model_rate_limits", domain.ModelRateLimits{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Per-model USD rate limits; non-nil overrides group defaults"),
 	}
 }
 

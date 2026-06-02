@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -105,6 +106,8 @@ type CreateGroupRequest struct {
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
+	// DefaultModelRateLimits 分组默认每模型 USD 限额（API key 未自配时生效）
+	DefaultModelRateLimits domain.ModelRateLimits `json:"default_model_rate_limits"`
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string `json:"supported_model_scopes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
@@ -151,6 +154,8 @@ type UpdateGroupRequest struct {
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled *bool              `json:"model_routing_enabled"`
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
+	// DefaultModelRateLimits nil=不修改；非 nil=覆盖（空切片 = 清空）
+	DefaultModelRateLimits *domain.ModelRateLimits `json:"default_model_rate_limits"`
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string `json:"supported_model_scopes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
@@ -303,6 +308,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ModelRouting:                    req.ModelRouting,
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,
 		MCPXMLInject:                    req.MCPXMLInject,
+		DefaultModelRateLimits:          req.DefaultModelRateLimits,
 		SupportedModelScopes:            req.SupportedModelScopes,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
@@ -361,6 +367,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ModelRouting:                    req.ModelRouting,
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,
 		MCPXMLInject:                    req.MCPXMLInject,
+		DefaultModelRateLimits:          req.DefaultModelRateLimits,
 		SupportedModelScopes:            req.SupportedModelScopes,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
 		RequireOAuthOnly:                req.RequireOAuthOnly,

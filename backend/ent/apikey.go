@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKey is the model entity for the APIKey schema.
@@ -68,6 +69,8 @@ type APIKey struct {
 	Window7dStart *time.Time `json:"window_7d_start,omitempty"`
 	// User-level cache TTL preference: auto / cost_priority / latency_priority
 	CacheStrategy string `json:"cache_strategy,omitempty"`
+	// Per-model USD rate limits; non-nil overrides group defaults
+	ModelRateLimits domain.ModelRateLimits `json:"model_rate_limits,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the APIKeyQuery when eager-loading is set.
 	Edges        APIKeyEdges `json:"edges"`
@@ -123,7 +126,7 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
+		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist, apikey.FieldModelRateLimits:
 			values[i] = new([]byte)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
@@ -309,6 +312,14 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CacheStrategy = value.String
 			}
+		case apikey.FieldModelRateLimits:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field model_rate_limits", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ModelRateLimits); err != nil {
+					return fmt.Errorf("unmarshal field model_rate_limits: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -445,6 +456,9 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("cache_strategy=")
 	builder.WriteString(_m.CacheStrategy)
+	builder.WriteString(", ")
+	builder.WriteString("model_rate_limits=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ModelRateLimits))
 	builder.WriteByte(')')
 	return builder.String()
 }

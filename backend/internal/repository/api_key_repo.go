@@ -59,6 +59,9 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 	if len(key.IPBlacklist) > 0 {
 		builder.SetIPBlacklist(key.IPBlacklist)
 	}
+	if len(key.ModelRateLimits) > 0 {
+		builder.SetModelRateLimits(key.ModelRateLimits)
+	}
 
 	created, err := builder.Save(ctx)
 	if err == nil {
@@ -264,6 +267,13 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		builder.SetIPBlacklist(key.IPBlacklist)
 	} else {
 		builder.ClearIPBlacklist()
+	}
+
+	// 按模型 USD 配额：非空则全量替换；空/nil 则清除（=继承分组默认）
+	if len(key.ModelRateLimits) > 0 {
+		builder.SetModelRateLimits(key.ModelRateLimits)
+	} else {
+		builder.ClearModelRateLimits()
 	}
 
 	affected, err := builder.Save(ctx)
@@ -647,8 +657,9 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		Usage7d:       m.Usage7d,
 		Window5hStart: m.Window5hStart,
 		Window1dStart: m.Window1dStart,
-		Window7dStart: m.Window7dStart,
-		CacheStrategy: m.CacheStrategy,
+		Window7dStart:   m.Window7dStart,
+		CacheStrategy:   m.CacheStrategy,
+		ModelRateLimits: m.ModelRateLimits,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
@@ -723,6 +734,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
 		ModelRouting:                    g.ModelRouting,
 		ModelRoutingEnabled:             g.ModelRoutingEnabled,
+		DefaultModelRateLimits:          g.DefaultModelRateLimits,
 		MCPXMLInject:                    g.McpXMLInject,
 		SupportedModelScopes:            g.SupportedModelScopes,
 		SortOrder:                       g.SortOrder,

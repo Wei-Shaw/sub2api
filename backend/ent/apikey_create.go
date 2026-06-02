@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKeyCreate is the builder for creating a APIKey entity.
@@ -321,6 +322,12 @@ func (_c *APIKeyCreate) SetNillableCacheStrategy(v *string) *APIKeyCreate {
 	return _c
 }
 
+// SetModelRateLimits sets the "model_rate_limits" field.
+func (_c *APIKeyCreate) SetModelRateLimits(v domain.ModelRateLimits) *APIKeyCreate {
+	_c.mutation.SetModelRateLimits(v)
+	return _c
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *APIKeyCreate) SetUser(v *User) *APIKeyCreate {
 	return _c.SetUserID(v.ID)
@@ -624,6 +631,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheStrategy(); ok {
 		_spec.SetField(apikey.FieldCacheStrategy, field.TypeString, value)
 		_node.CacheStrategy = value
+	}
+	if value, ok := _c.mutation.ModelRateLimits(); ok {
+		_spec.SetField(apikey.FieldModelRateLimits, field.TypeJSON, value)
+		_node.ModelRateLimits = value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1102,6 +1113,24 @@ func (u *APIKeyUpsert) SetCacheStrategy(v string) *APIKeyUpsert {
 // UpdateCacheStrategy sets the "cache_strategy" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateCacheStrategy() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldCacheStrategy)
+	return u
+}
+
+// SetModelRateLimits sets the "model_rate_limits" field.
+func (u *APIKeyUpsert) SetModelRateLimits(v domain.ModelRateLimits) *APIKeyUpsert {
+	u.Set(apikey.FieldModelRateLimits, v)
+	return u
+}
+
+// UpdateModelRateLimits sets the "model_rate_limits" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateModelRateLimits() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldModelRateLimits)
+	return u
+}
+
+// ClearModelRateLimits clears the value of the "model_rate_limits" field.
+func (u *APIKeyUpsert) ClearModelRateLimits() *APIKeyUpsert {
+	u.SetNull(apikey.FieldModelRateLimits)
 	return u
 }
 
@@ -1588,6 +1617,27 @@ func (u *APIKeyUpsertOne) SetCacheStrategy(v string) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateCacheStrategy() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateCacheStrategy()
+	})
+}
+
+// SetModelRateLimits sets the "model_rate_limits" field.
+func (u *APIKeyUpsertOne) SetModelRateLimits(v domain.ModelRateLimits) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetModelRateLimits(v)
+	})
+}
+
+// UpdateModelRateLimits sets the "model_rate_limits" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateModelRateLimits() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateModelRateLimits()
+	})
+}
+
+// ClearModelRateLimits clears the value of the "model_rate_limits" field.
+func (u *APIKeyUpsertOne) ClearModelRateLimits() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearModelRateLimits()
 	})
 }
 
@@ -2240,6 +2290,27 @@ func (u *APIKeyUpsertBulk) SetCacheStrategy(v string) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateCacheStrategy() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateCacheStrategy()
+	})
+}
+
+// SetModelRateLimits sets the "model_rate_limits" field.
+func (u *APIKeyUpsertBulk) SetModelRateLimits(v domain.ModelRateLimits) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetModelRateLimits(v)
+	})
+}
+
+// UpdateModelRateLimits sets the "model_rate_limits" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateModelRateLimits() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateModelRateLimits()
+	})
+}
+
+// ClearModelRateLimits clears the value of the "model_rate_limits" field.
+func (u *APIKeyUpsertBulk) ClearModelRateLimits() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearModelRateLimits()
 	})
 }
 

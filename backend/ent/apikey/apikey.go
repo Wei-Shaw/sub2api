@@ -63,6 +63,8 @@ const (
 	FieldWindow7dStart = "window_7d_start"
 	// FieldCacheStrategy holds the string denoting the cache_strategy field in the database.
 	FieldCacheStrategy = "cache_strategy"
+	// FieldModelRateLimits holds the string denoting the model_rate_limits field in the database.
+	FieldModelRateLimits = "model_rate_limits"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
@@ -121,6 +123,7 @@ var Columns = []string{
 	FieldWindow1dStart,
 	FieldWindow7dStart,
 	FieldCacheStrategy,
+	FieldModelRateLimits,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).

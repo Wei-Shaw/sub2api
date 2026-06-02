@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -46,6 +47,9 @@ type CreateAPIKeyRequest struct {
 	// CacheStrategy: "auto" | "cost_priority" | "latency_priority". Unrecognised
 	// values are normalised to "auto" by the service layer.
 	CacheStrategy *string `json:"cache_strategy" binding:"omitempty,oneof=auto cost_priority latency_priority"`
+
+	// ModelRateLimits per-pattern USD limits. nil/empty = inherit group default.
+	ModelRateLimits domain.ModelRateLimits `json:"model_rate_limits"`
 }
 
 // UpdateAPIKeyRequest represents the update API key request payload
@@ -67,6 +71,10 @@ type UpdateAPIKeyRequest struct {
 
 	// CacheStrategy: pass to change; omit to leave unchanged.
 	CacheStrategy *string `json:"cache_strategy" binding:"omitempty,oneof=auto cost_priority latency_priority"`
+
+	// ModelRateLimits per-pattern USD limits. nil = no change; non-nil = replace
+	// (empty array clears and reverts to group default).
+	ModelRateLimits *domain.ModelRateLimits `json:"model_rate_limits"`
 }
 
 // List handles listing user's API keys with pagination
@@ -183,6 +191,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	if req.CacheStrategy != nil {
 		svcReq.CacheStrategy = *req.CacheStrategy
 	}
+	svcReq.ModelRateLimits = req.ModelRateLimits
 
 	executeUserIdempotentJSON(c, "user.api_keys.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		key, err := h.apiKeyService.Create(ctx, subject.UserID, svcReq)
@@ -224,6 +233,7 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		RateLimit7d:         req.RateLimit7d,
 		ResetRateLimitUsage: req.ResetRateLimitUsage,
 		CacheStrategy:       req.CacheStrategy,
+		ModelRateLimits:     req.ModelRateLimits,
 	}
 	if req.Name != "" {
 		svcReq.Name = &req.Name

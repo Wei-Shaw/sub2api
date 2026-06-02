@@ -9914,6 +9914,7 @@ type postUsageBillingParams struct {
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	RequestedModel        string // 客户端请求的模型名，用于按模型 USD 配额累加
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -10153,6 +10154,11 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 
 	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {
 		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
+	}
+
+	// 按模型 USD 配额：与全局 rate_limit 独立累加；规则来自 Key 覆盖或 Group 默认。
+	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.RequestedModel != "" {
+		deps.billingCacheService.QueueUpdateModelQuotaUsage(p.APIKey, p.APIKey.Group, p.RequestedModel, p.Cost.ActualCost)
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
@@ -10559,6 +10565,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		AccountRateMultiplier: accountRateMultiplier,
 		APIKeyService:         input.APIKeyService,
 		Platform:              quotaPlatform,
+		RequestedModel:        usageLog.Model,
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {

@@ -78,6 +78,11 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetModelRouting(groupIn.ModelRouting)
 	}
 
+	// 按模型 USD 配额默认规则：非空才写入；空/nil 保持 NULL = 无限额
+	if len(groupIn.DefaultModelRateLimits) > 0 {
+		builder = builder.SetDefaultModelRateLimits(groupIn.DefaultModelRateLimits)
+	}
+
 	// 设置支持的模型系列（始终设置，空数组表示不限制）
 	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
 
@@ -203,6 +208,13 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetModelRouting(groupIn.ModelRouting)
 	} else {
 		builder = builder.ClearModelRouting()
+	}
+
+	// 处理 DefaultModelRateLimits：空时清除，否则全量替换
+	if len(groupIn.DefaultModelRateLimits) > 0 {
+		builder = builder.SetDefaultModelRateLimits(groupIn.DefaultModelRateLimits)
+	} else {
+		builder = builder.ClearDefaultModelRateLimits()
 	}
 
 	// 处理 SupportedModelScopes（始终设置，空数组表示不限制）

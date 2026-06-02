@@ -539,6 +539,9 @@ export interface AdminGroup extends Group {
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
 
+  /** 分组默认按模型 USD 配额规则；继承到未自定义该字段的 API key。 */
+  default_model_rate_limits?: ModelRateLimits | null
+
   // MCP XML 协议注入（仅 antigravity 平台使用）
   mcp_xml_inject: boolean
 
@@ -565,6 +568,21 @@ export interface ModelsListConfig {
 }
 
 export type ApiKeyCacheStrategy = 'auto' | 'cost_priority' | 'latency_priority'
+
+/**
+ * 单条按模型计费配额规则。
+ * - pattern: 精确模型名或末尾通配 (e.g. `claude-opus-4-7`, `claude-opus-*`)。
+ * - limit_*: 对应窗口的 USD 上限；0 表示不限制。
+ * 仅当任一窗口 > 0 时该条规则才会被保存。
+ */
+export interface ModelRateLimit {
+  pattern: string
+  limit_5h: number
+  limit_1d: number
+  limit_7d: number
+}
+
+export type ModelRateLimits = ModelRateLimit[]
 
 export interface ApiKey {
   id: number
@@ -596,6 +614,8 @@ export interface ApiKey {
   reset_7d_at: string | null
   /** User-level cache TTL preference (C3/C4). 'auto' = inherit account/global. */
   cache_strategy: ApiKeyCacheStrategy
+  /** 按模型 USD 配额规则。null/空 = 继承分组默认。 */
+  model_rate_limits?: ModelRateLimits | null
 }
 
 export interface CreateApiKeyRequest {
@@ -610,6 +630,8 @@ export interface CreateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   cache_strategy?: ApiKeyCacheStrategy
+  /** 按模型 USD 配额规则；不传或空 = 继承分组默认。 */
+  model_rate_limits?: ModelRateLimits
 }
 
 export interface UpdateApiKeyRequest {
@@ -626,6 +648,12 @@ export interface UpdateApiKeyRequest {
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
   cache_strategy?: ApiKeyCacheStrategy
+  /**
+   * 按模型 USD 配额规则。
+   * - 未传字段 = 不修改
+   * - 空数组 = 清空（重新继承分组默认）
+   */
+  model_rate_limits?: ModelRateLimits
 }
 
 export interface CreateGroupRequest {
@@ -655,6 +683,8 @@ export interface CreateGroupRequest {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_routing?: Record<string, number[]> | null
   model_routing_enabled?: boolean
+  /** 分组默认按模型 USD 配额规则；不传或空 = 无默认。 */
+  default_model_rate_limits?: ModelRateLimits
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean
@@ -690,6 +720,8 @@ export interface UpdateGroupRequest {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_routing?: Record<string, number[]> | null
   model_routing_enabled?: boolean
+  /** 分组默认按模型 USD 配额规则；不传 = 不修改，空数组 = 清空。 */
+  default_model_rate_limits?: ModelRateLimits
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean

@@ -67,6 +67,18 @@ func (s *billingCacheMissStub) InvalidateAPIKeyRateLimit(ctx context.Context, ke
 	return nil
 }
 
+func (s *billingCacheMissStub) GetModelQuotaUsage(ctx context.Context, keyID int64, patternHash string) (*ModelQuotaUsage, error) {
+	return nil, nil
+}
+
+func (s *billingCacheMissStub) UpdateModelQuotaUsage(ctx context.Context, keyID int64, patternHash string, cost float64) error {
+	return nil
+}
+
+func (s *billingCacheMissStub) InvalidateModelQuotaUsage(ctx context.Context, keyID int64) error {
+	return nil
+}
+
 func (s *billingCacheMissStub) GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*UserPlatformQuotaCacheEntry, bool, error) {
 	return nil, false, nil
 }

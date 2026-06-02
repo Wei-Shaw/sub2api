@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from './client'
-import type { ApiKey, ApiKeyCacheStrategy, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
+import type { ApiKey, ApiKeyCacheStrategy, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse, ModelRateLimits } from '@/types'
 
 /**
  * List all API keys for current user
@@ -66,7 +66,8 @@ export async function create(
   quota?: number,
   expiresInDays?: number,
   rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number },
-  cacheStrategy?: ApiKeyCacheStrategy
+  cacheStrategy?: ApiKeyCacheStrategy,
+  modelRateLimits?: ModelRateLimits
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name }
   if (groupId !== undefined) {
@@ -100,6 +101,9 @@ export async function create(
   // explicit value is sent only when the user actively opts in.
   if (cacheStrategy && cacheStrategy !== 'auto') {
     payload.cache_strategy = cacheStrategy
+  }
+  if (modelRateLimits && modelRateLimits.length > 0) {
+    payload.model_rate_limits = modelRateLimits
   }
 
   const { data } = await apiClient.post<ApiKey>('/keys', payload)

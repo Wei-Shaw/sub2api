@@ -499,6 +499,24 @@ func (_u *GroupUpdate) SetNillableModelRoutingEnabled(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetDefaultModelRateLimits sets the "default_model_rate_limits" field.
+func (_u *GroupUpdate) SetDefaultModelRateLimits(v domain.ModelRateLimits) *GroupUpdate {
+	_u.mutation.SetDefaultModelRateLimits(v)
+	return _u
+}
+
+// AppendDefaultModelRateLimits appends value to the "default_model_rate_limits" field.
+func (_u *GroupUpdate) AppendDefaultModelRateLimits(v domain.ModelRateLimits) *GroupUpdate {
+	_u.mutation.AppendDefaultModelRateLimits(v)
+	return _u
+}
+
+// ClearDefaultModelRateLimits clears the value of the "default_model_rate_limits" field.
+func (_u *GroupUpdate) ClearDefaultModelRateLimits() *GroupUpdate {
+	_u.mutation.ClearDefaultModelRateLimits()
+	return _u
+}
+
 // SetMcpXMLInject sets the "mcp_xml_inject" field.
 func (_u *GroupUpdate) SetMcpXMLInject(v bool) *GroupUpdate {
 	_u.mutation.SetMcpXMLInject(v)
@@ -1170,6 +1188,17 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ModelRoutingEnabled(); ok {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.DefaultModelRateLimits(); ok {
+		_spec.SetField(group.FieldDefaultModelRateLimits, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDefaultModelRateLimits(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldDefaultModelRateLimits, value)
+		})
+	}
+	if _u.mutation.DefaultModelRateLimitsCleared() {
+		_spec.ClearField(group.FieldDefaultModelRateLimits, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.McpXMLInject(); ok {
 		_spec.SetField(group.FieldMcpXMLInject, field.TypeBool, value)
@@ -2010,6 +2039,24 @@ func (_u *GroupUpdateOne) SetNillableModelRoutingEnabled(v *bool) *GroupUpdateOn
 	return _u
 }
 
+// SetDefaultModelRateLimits sets the "default_model_rate_limits" field.
+func (_u *GroupUpdateOne) SetDefaultModelRateLimits(v domain.ModelRateLimits) *GroupUpdateOne {
+	_u.mutation.SetDefaultModelRateLimits(v)
+	return _u
+}
+
+// AppendDefaultModelRateLimits appends value to the "default_model_rate_limits" field.
+func (_u *GroupUpdateOne) AppendDefaultModelRateLimits(v domain.ModelRateLimits) *GroupUpdateOne {
+	_u.mutation.AppendDefaultModelRateLimits(v)
+	return _u
+}
+
+// ClearDefaultModelRateLimits clears the value of the "default_model_rate_limits" field.
+func (_u *GroupUpdateOne) ClearDefaultModelRateLimits() *GroupUpdateOne {
+	_u.mutation.ClearDefaultModelRateLimits()
+	return _u
+}
+
 // SetMcpXMLInject sets the "mcp_xml_inject" field.
 func (_u *GroupUpdateOne) SetMcpXMLInject(v bool) *GroupUpdateOne {
 	_u.mutation.SetMcpXMLInject(v)
@@ -2711,6 +2758,17 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ModelRoutingEnabled(); ok {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.DefaultModelRateLimits(); ok {
+		_spec.SetField(group.FieldDefaultModelRateLimits, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDefaultModelRateLimits(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldDefaultModelRateLimits, value)
+		})
+	}
+	if _u.mutation.DefaultModelRateLimitsCleared() {
+		_spec.ClearField(group.FieldDefaultModelRateLimits, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.McpXMLInject(); ok {
 		_spec.SetField(group.FieldMcpXMLInject, field.TypeBool, value)

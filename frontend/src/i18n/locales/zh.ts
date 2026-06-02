@@ -7370,4 +7370,18 @@ export default {
     },
   },
 
+  modelQuota: {
+    keyTitle: '按模型 USD 配额',
+    keyHint: '为指定模型设置独立的 5h/1d/7d USD 配额。留空则继承分组默认配置。',
+    groupDefaultTitle: '分组默认按模型 USD 配额',
+    groupDefaultHint: '为该分组下所有未自定义此配置的 API Key 提供按模型 USD 配额默认值。',
+    pattern: '模型模式',
+    patternPlaceholder: '例如 claude-opus-4-7 或 claude-opus-*',
+    limit5h: '5 小时 USD',
+    limit1d: '1 天 USD',
+    limit7d: '7 天 USD',
+    addRule: '添加规则',
+    remove: '删除',
+    emptyHint: '暂无规则。点击下方按钮添加一条按模型 USD 配额限制。',
+  },
 }

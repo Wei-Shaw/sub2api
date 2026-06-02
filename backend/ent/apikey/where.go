@@ -1195,6 +1195,16 @@ func CacheStrategyContainsFold(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldContainsFold(FieldCacheStrategy, v))
 }
 
+// ModelRateLimitsIsNil applies the IsNil predicate on the "model_rate_limits" field.
+func ModelRateLimitsIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldModelRateLimits))
+}
+
+// ModelRateLimitsNotNil applies the NotNil predicate on the "model_rate_limits" field.
+func ModelRateLimitsNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldModelRateLimits))
+}
+
 // HasUser applies the HasEdge predicate on the "user" edge.
 func HasUser() predicate.APIKey {
 	return predicate.APIKey(func(s *sql.Selector) {

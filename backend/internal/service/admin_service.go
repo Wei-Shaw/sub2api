@@ -212,6 +212,8 @@ type CreateGroupInput struct {
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled bool // 是否启用模型路由
 	MCPXMLInject        *bool
+	// DefaultModelRateLimits 分组默认每模型 USD 限额
+	DefaultModelRateLimits ModelRateLimits
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
@@ -258,6 +260,8 @@ type UpdateGroupInput struct {
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled *bool // 是否启用模型路由
 	MCPXMLInject        *bool
+	// DefaultModelRateLimits nil=不修改；非 nil=覆盖（空切片清空）
+	DefaultModelRateLimits *ModelRateLimits
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
@@ -1785,6 +1789,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
 		ModelRouting:                    input.ModelRouting,
 		MCPXMLInject:                    mcpXMLInject,
+		DefaultModelRateLimits:          SanitizeModelRateLimits(input.DefaultModelRateLimits),
 		SupportedModelScopes:            input.SupportedModelScopes,
 		AllowMessagesDispatch:           input.AllowMessagesDispatch,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
@@ -2020,6 +2025,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.MCPXMLInject != nil {
 		group.MCPXMLInject = *input.MCPXMLInject
+	}
+	if input.DefaultModelRateLimits != nil {
+		group.DefaultModelRateLimits = SanitizeModelRateLimits(*input.DefaultModelRateLimits)
 	}
 
 	// 支持的模型系列（仅 antigravity 平台使用）

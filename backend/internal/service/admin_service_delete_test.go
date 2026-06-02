@@ -459,6 +459,16 @@ func (s *billingCacheStub) InvalidateAPIKeyRateLimit(ctx context.Context, keyID 
 	panic("unexpected InvalidateAPIKeyRateLimit call")
 }
 
+func (s *billingCacheStub) GetModelQuotaUsage(ctx context.Context, keyID int64, patternHash string) (*ModelQuotaUsage, error) {
+	panic("unexpected GetModelQuotaUsage call")
+}
+func (s *billingCacheStub) UpdateModelQuotaUsage(ctx context.Context, keyID int64, patternHash string, cost float64) error {
+	panic("unexpected UpdateModelQuotaUsage call")
+}
+func (s *billingCacheStub) InvalidateModelQuotaUsage(ctx context.Context, keyID int64) error {
+	panic("unexpected InvalidateModelQuotaUsage call")
+}
+
 func (s *billingCacheStub) GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*UserPlatformQuotaCacheEntry, bool, error) {
 	panic("unexpected GetUserPlatformQuotaCache call")
 }

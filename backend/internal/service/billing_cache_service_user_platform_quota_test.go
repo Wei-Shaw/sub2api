@@ -506,7 +506,7 @@ func TestCheckBillingEligibility_SubscriptionMode_BypassesPlatformQuota(t *testi
 	sub := &UserSubscription{Status: "active"}
 	user := &User{ID: 42}
 
-	err := s.CheckBillingEligibility(context.Background(), user, nil, subGroup, sub, "anthropic")
+	err := s.CheckBillingEligibility(context.Background(), user, nil, subGroup, sub, "anthropic", "")
 	// 订阅模式下不应收到任何 user×platform quota 错误
 	if errors.Is(err, ErrUserPlatformDailyQuotaExhausted) ||
 		errors.Is(err, ErrUserPlatformWeeklyQuotaExhausted) ||

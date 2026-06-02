@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKeyUpdate is the builder for updating APIKey entities.
@@ -452,6 +453,24 @@ func (_u *APIKeyUpdate) SetNillableCacheStrategy(v *string) *APIKeyUpdate {
 	return _u
 }
 
+// SetModelRateLimits sets the "model_rate_limits" field.
+func (_u *APIKeyUpdate) SetModelRateLimits(v domain.ModelRateLimits) *APIKeyUpdate {
+	_u.mutation.SetModelRateLimits(v)
+	return _u
+}
+
+// AppendModelRateLimits appends value to the "model_rate_limits" field.
+func (_u *APIKeyUpdate) AppendModelRateLimits(v domain.ModelRateLimits) *APIKeyUpdate {
+	_u.mutation.AppendModelRateLimits(v)
+	return _u
+}
+
+// ClearModelRateLimits clears the value of the "model_rate_limits" field.
+func (_u *APIKeyUpdate) ClearModelRateLimits() *APIKeyUpdate {
+	_u.mutation.ClearModelRateLimits()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdate) SetUser(v *User) *APIKeyUpdate {
 	return _u.SetUserID(v.ID)
@@ -717,6 +736,17 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CacheStrategy(); ok {
 		_spec.SetField(apikey.FieldCacheStrategy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ModelRateLimits(); ok {
+		_spec.SetField(apikey.FieldModelRateLimits, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedModelRateLimits(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, apikey.FieldModelRateLimits, value)
+		})
+	}
+	if _u.mutation.ModelRateLimitsCleared() {
+		_spec.ClearField(apikey.FieldModelRateLimits, field.TypeJSON)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1261,6 +1291,24 @@ func (_u *APIKeyUpdateOne) SetNillableCacheStrategy(v *string) *APIKeyUpdateOne 
 	return _u
 }
 
+// SetModelRateLimits sets the "model_rate_limits" field.
+func (_u *APIKeyUpdateOne) SetModelRateLimits(v domain.ModelRateLimits) *APIKeyUpdateOne {
+	_u.mutation.SetModelRateLimits(v)
+	return _u
+}
+
+// AppendModelRateLimits appends value to the "model_rate_limits" field.
+func (_u *APIKeyUpdateOne) AppendModelRateLimits(v domain.ModelRateLimits) *APIKeyUpdateOne {
+	_u.mutation.AppendModelRateLimits(v)
+	return _u
+}
+
+// ClearModelRateLimits clears the value of the "model_rate_limits" field.
+func (_u *APIKeyUpdateOne) ClearModelRateLimits() *APIKeyUpdateOne {
+	_u.mutation.ClearModelRateLimits()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdateOne) SetUser(v *User) *APIKeyUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -1556,6 +1604,17 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.CacheStrategy(); ok {
 		_spec.SetField(apikey.FieldCacheStrategy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ModelRateLimits(); ok {
+		_spec.SetField(apikey.FieldModelRateLimits, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedModelRateLimits(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, apikey.FieldModelRateLimits, value)
+		})
+	}
+	if _u.mutation.ModelRateLimitsCleared() {
+		_spec.ClearField(apikey.FieldModelRateLimits, field.TypeJSON)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
