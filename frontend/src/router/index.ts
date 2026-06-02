@@ -9,6 +9,7 @@ import { useAppStore } from '@/stores/app'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
+import { setLocale } from '@/i18n'
 import { resolveDocumentTitle } from './title'
 
 /**
@@ -31,9 +32,24 @@ const routes: RouteRecordRaw[] = [
     path: '/home',
     name: 'Home',
     component: () => import('@/views/HomeView.vue'),
+    beforeEnter: async () => {
+      await setLocale('zh')
+    },
     meta: {
       requiresAuth: false,
-      title: 'Home'
+      title: '统一 AI API 网关'
+    }
+  },
+  {
+    path: '/en',
+    name: 'HomeEn',
+    component: () => import('@/views/HomeView.vue'),
+    beforeEnter: async () => {
+      await setLocale('en')
+    },
+    meta: {
+      requiresAuth: false,
+      title: 'Unified AI API Gateway'
     }
   },
   {
@@ -668,7 +684,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/home', '/en', '/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',

@@ -44,10 +44,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/icons/Icon.vue'
 import { setLocale, availableLocales } from '@/i18n'
 
 const { locale } = useI18n()
+const router = useRouter()
+const route = useRoute()
 
 const isOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
@@ -68,6 +71,9 @@ async function selectLocale(code: string) {
   switching.value = true
   try {
     await setLocale(code)
+    if (route.path === '/' || route.path === '/home' || route.path === '/en') {
+      await router.replace(code === 'en' ? '/en' : '/home')
+    }
     isOpen.value = false
   } finally {
     switching.value = false

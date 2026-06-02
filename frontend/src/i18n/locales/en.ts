@@ -1,6 +1,7 @@
 export default {
   // Home Page
   home: {
+    title: 'Unified AI API Gateway',
     viewOnGithub: 'View on GitHub',
     viewDocs: 'View Documentation',
     docs: 'Docs',
