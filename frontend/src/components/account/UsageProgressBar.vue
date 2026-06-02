@@ -39,11 +39,12 @@
         <div
           :class="['h-full transition-all duration-300', barClass]"
           :style="{ width: barWidth }"
+          :title="barTitle"
         ></div>
       </div>
 
       <!-- Percentage -->
-      <span :class="['w-[32px] shrink-0 text-right text-[10px] font-medium', textClass]">
+      <span :class="['w-[36px] shrink-0 text-right text-[10px] font-medium', textClass]" :title="barTitle">
         {{ displayPercent }}
       </span>
 
@@ -64,11 +65,12 @@ import { formatCompactNumber } from '@/utils/format'
 
 const props = defineProps<{
   label: string
-  utilization: number // Percentage (0-100+)
+  utilization: number // Used percentage (0-100+)
   resetsAt?: string | null
   color: 'indigo' | 'emerald' | 'purple' | 'amber'
   windowStats?: WindowStats | null
   showNowWhenIdle?: boolean
+  displayMode?: 'used' | 'remaining' | 'remaining-from-used'
 }>()
 
 const { t } = useI18n()
@@ -96,6 +98,13 @@ watch(
   },
 )
 
+const usagePercent = computed(() => Math.max(0, props.utilization || 0))
+const remainingPercent = computed(() => Math.max(0, 100 - Math.min(usagePercent.value, 100)))
+const explicitRemainingPercent = computed(() => Math.max(0, Math.min(usagePercent.value, 100)))
+const shownRemainingPercent = computed(() => props.displayMode === 'remaining' ? explicitRemainingPercent.value : remainingPercent.value)
+const showsRemaining = computed(() => props.displayMode === 'remaining' || props.displayMode === 'remaining-from-used')
+const displayValue = computed(() => showsRemaining.value ? shownRemainingPercent.value : usagePercent.value)
+
 // Label background colors
 const labelClass = computed(() => {
   const colors = {
@@ -107,48 +116,64 @@ const labelClass = computed(() => {
   return colors[props.color]
 })
 
-// Progress bar color based on utilization
-const barClass = computed(() => {
-  if (props.utilization >= 100) {
-    return 'bg-red-500'
-  } else if (props.utilization >= 80) {
-    return 'bg-amber-500'
-  } else {
-    return 'bg-green-500'
-  }
+const remainingHealthClass = computed(() => {
+  if (shownRemainingPercent.value <= 10) return 'critical'
+  if (shownRemainingPercent.value <= 25) return 'warning'
+  return 'healthy'
 })
 
-// Text color based on utilization
-const textClass = computed(() => {
-  if (props.utilization >= 100) {
-    return 'text-red-600 dark:text-red-400'
-  } else if (props.utilization >= 80) {
-    return 'text-amber-600 dark:text-amber-400'
-  } else {
-    return 'text-gray-600 dark:text-gray-400'
+// Progress bar color. Remaining mode uses health semantics: green when plenty remains, red when low.
+const barClass = computed(() => {
+  if (showsRemaining.value) {
+    if (remainingHealthClass.value === 'critical') return 'bg-red-500'
+    if (remainingHealthClass.value === 'warning') return 'bg-amber-500'
+    return 'bg-green-500'
   }
+  if (usagePercent.value >= 100) return 'bg-red-500'
+  if (usagePercent.value >= 80) return 'bg-amber-500'
+  return 'bg-green-500'
+})
+
+// Text color follows the same semantics as the bar.
+const textClass = computed(() => {
+  if (showsRemaining.value) {
+    if (remainingHealthClass.value === 'critical') return 'text-red-600 dark:text-red-400'
+    if (remainingHealthClass.value === 'warning') return 'text-amber-600 dark:text-amber-400'
+    return 'text-green-600 dark:text-green-400'
+  }
+  if (usagePercent.value >= 100) return 'text-red-600 dark:text-red-400'
+  if (usagePercent.value >= 80) return 'text-amber-600 dark:text-amber-400'
+  return 'text-gray-600 dark:text-gray-400'
 })
 
 // Bar width (capped at 100%)
-const barWidth = computed(() => {
-  return `${Math.min(props.utilization, 100)}%`
-})
+const barWidth = computed(() => `${Math.min(displayValue.value, 100)}%`)
 
 // Display percentage (cap at 999% for readability)
 const displayPercent = computed(() => {
-  const percent = Math.round(props.utilization)
-  return percent > 999 ? '>999%' : `${percent}%`
+  const percent = Math.round(displayValue.value)
+  const value = percent > 999 ? '>999%' : `${percent}%`
+  return showsRemaining.value ? `余${value}` : value
+})
+
+const barTitle = computed(() => {
+  if (showsRemaining.value) {
+    const remaining = Math.round(shownRemainingPercent.value)
+    const used = props.displayMode === 'remaining' ? Math.max(0, 100 - remaining) : Math.round(usagePercent.value)
+    return `剩余 ${remaining}%，已用 ${used}%`
+  }
+  return `已用 ${Math.round(usagePercent.value)}%`
 })
 
 const shouldShowResetTime = computed(() => {
   if (props.resetsAt) return true
-  return Boolean(props.showNowWhenIdle && props.utilization <= 0)
+  return Boolean(props.showNowWhenIdle && usagePercent.value <= 0)
 })
 
 // Format reset time
 const formatResetTime = computed(() => {
   // For rolling windows, when utilization is 0%, treat as immediately available.
-  if (props.showNowWhenIdle && props.utilization <= 0) {
+  if (props.showNowWhenIdle && usagePercent.value <= 0) {
     return '现在'
   }
 

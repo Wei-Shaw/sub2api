@@ -139,6 +139,20 @@ func (_c *APIKeyCreate) SetIPBlacklist(v []string) *APIKeyCreate {
 	return _c
 }
 
+// SetCodexResponsesStreamCompat sets the "codex_responses_stream_compat" field.
+func (_c *APIKeyCreate) SetCodexResponsesStreamCompat(v bool) *APIKeyCreate {
+	_c.mutation.SetCodexResponsesStreamCompat(v)
+	return _c
+}
+
+// SetNillableCodexResponsesStreamCompat sets the "codex_responses_stream_compat" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableCodexResponsesStreamCompat(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetCodexResponsesStreamCompat(*v)
+	}
+	return _c
+}
+
 // SetQuota sets the "quota" field.
 func (_c *APIKeyCreate) SetQuota(v float64) *APIKeyCreate {
 	_c.mutation.SetQuota(v)
@@ -387,6 +401,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.CodexResponsesStreamCompat(); !ok {
+		v := apikey.DefaultCodexResponsesStreamCompat
+		_c.mutation.SetCodexResponsesStreamCompat(v)
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -456,6 +474,9 @@ func (_c *APIKeyCreate) check() error {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.CodexResponsesStreamCompat(); !ok {
+		return &ValidationError{Name: "codex_responses_stream_compat", err: errors.New(`ent: missing required field "APIKey.codex_responses_stream_compat"`)}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		return &ValidationError{Name: "quota", err: errors.New(`ent: missing required field "APIKey.quota"`)}
@@ -546,6 +567,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.IPBlacklist(); ok {
 		_spec.SetField(apikey.FieldIPBlacklist, field.TypeJSON, value)
 		_node.IPBlacklist = value
+	}
+	if value, ok := _c.mutation.CodexResponsesStreamCompat(); ok {
+		_spec.SetField(apikey.FieldCodexResponsesStreamCompat, field.TypeBool, value)
+		_node.CodexResponsesStreamCompat = value
 	}
 	if value, ok := _c.mutation.Quota(); ok {
 		_spec.SetField(apikey.FieldQuota, field.TypeFloat64, value)
@@ -844,6 +869,18 @@ func (u *APIKeyUpsert) UpdateIPBlacklist() *APIKeyUpsert {
 // ClearIPBlacklist clears the value of the "ip_blacklist" field.
 func (u *APIKeyUpsert) ClearIPBlacklist() *APIKeyUpsert {
 	u.SetNull(apikey.FieldIPBlacklist)
+	return u
+}
+
+// SetCodexResponsesStreamCompat sets the "codex_responses_stream_compat" field.
+func (u *APIKeyUpsert) SetCodexResponsesStreamCompat(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldCodexResponsesStreamCompat, v)
+	return u
+}
+
+// UpdateCodexResponsesStreamCompat sets the "codex_responses_stream_compat" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateCodexResponsesStreamCompat() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldCodexResponsesStreamCompat)
 	return u
 }
 
@@ -1280,6 +1317,20 @@ func (u *APIKeyUpsertOne) UpdateIPBlacklist() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearIPBlacklist() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearIPBlacklist()
+	})
+}
+
+// SetCodexResponsesStreamCompat sets the "codex_responses_stream_compat" field.
+func (u *APIKeyUpsertOne) SetCodexResponsesStreamCompat(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetCodexResponsesStreamCompat(v)
+	})
+}
+
+// UpdateCodexResponsesStreamCompat sets the "codex_responses_stream_compat" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateCodexResponsesStreamCompat() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateCodexResponsesStreamCompat()
 	})
 }
 
@@ -1918,6 +1969,20 @@ func (u *APIKeyUpsertBulk) UpdateIPBlacklist() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearIPBlacklist() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearIPBlacklist()
+	})
+}
+
+// SetCodexResponsesStreamCompat sets the "codex_responses_stream_compat" field.
+func (u *APIKeyUpsertBulk) SetCodexResponsesStreamCompat(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetCodexResponsesStreamCompat(v)
+	})
+}
+
+// UpdateCodexResponsesStreamCompat sets the "codex_responses_stream_compat" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateCodexResponsesStreamCompat() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateCodexResponsesStreamCompat()
 	})
 }
 

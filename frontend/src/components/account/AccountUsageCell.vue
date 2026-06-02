@@ -115,6 +115,7 @@
           :resets-at="usageInfo.five_hour.resets_at"
           :window-stats="usageInfo.five_hour.window_stats"
           :show-now-when-idle="true"
+          display-mode="remaining"
           color="indigo"
         />
         <UsageProgressBar
@@ -124,6 +125,7 @@
           :resets-at="usageInfo.seven_day.resets_at"
           :window-stats="usageInfo.seven_day.window_stats"
           :show-now-when-idle="true"
+          display-mode="remaining-from-used"
           color="emerald"
         />
         <div class="flex items-center gap-1.5 mt-0.5">

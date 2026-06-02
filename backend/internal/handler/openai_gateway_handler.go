@@ -123,6 +123,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
+	if apiKey.CodexResponsesStreamCompat {
+		c.Request = c.Request.WithContext(service.WithCodexResponsesStreamCompat(c.Request.Context(), true))
+		service.MarkCodexResponsesStreamCompat(c)
+	}
 
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {

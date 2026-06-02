@@ -710,6 +710,8 @@ export default {
     selectGroup: 'Select a group',
     statusLabel: 'Status',
     selectStatus: 'Select status',
+    codexResponsesStreamCompat: 'Codex stream compatibility',
+    codexResponsesStreamCompatHint: 'When enabled, only /v1/responses streaming responses made with this key are normalized for the Codex CLI event lifecycle.',
     saving: 'Saving...',
     noKeysYet: 'No API keys yet',
     createFirstKey: 'Create your first API key to get started with the API.',

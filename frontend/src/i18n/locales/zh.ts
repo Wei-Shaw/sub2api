@@ -709,6 +709,8 @@ export default {
     selectGroup: '选择分组',
     statusLabel: '状态',
     selectStatus: '选择状态',
+    codexResponsesStreamCompat: 'Codex 流兼容模式',
+    codexResponsesStreamCompatHint: '开启后，仅对使用此密钥的 /v1/responses 流式响应补齐 Codex CLI 需要的事件生命周期。',
     saving: '保存中...',
     noKeysYet: '暂无 API 密钥',
     createFirstKey: '创建您的第一个 API 密钥以开始使用 API。',

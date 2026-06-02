@@ -37,6 +37,8 @@ const (
 	FieldIPWhitelist = "ip_whitelist"
 	// FieldIPBlacklist holds the string denoting the ip_blacklist field in the database.
 	FieldIPBlacklist = "ip_blacklist"
+	// FieldCodexResponsesStreamCompat holds the string denoting the codex_responses_stream_compat field in the database.
+	FieldCodexResponsesStreamCompat = "codex_responses_stream_compat"
 	// FieldQuota holds the string denoting the quota field in the database.
 	FieldQuota = "quota"
 	// FieldQuotaUsed holds the string denoting the quota_used field in the database.
@@ -106,6 +108,7 @@ var Columns = []string{
 	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
+	FieldCodexResponsesStreamCompat,
 	FieldQuota,
 	FieldQuotaUsed,
 	FieldExpiresAt,
@@ -152,6 +155,8 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultCodexResponsesStreamCompat holds the default value on creation for the "codex_responses_stream_compat" field.
+	DefaultCodexResponsesStreamCompat bool
 	// DefaultQuota holds the default value on creation for the "quota" field.
 	DefaultQuota float64
 	// DefaultQuotaUsed holds the default value on creation for the "quota_used" field.
@@ -221,6 +226,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByLastUsedAt orders the results by the last_used_at field.
 func ByLastUsedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastUsedAt, opts...).ToFunc()
+}
+
+// ByCodexResponsesStreamCompat orders the results by the codex_responses_stream_compat field.
+func ByCodexResponsesStreamCompat(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCodexResponsesStreamCompat, opts...).ToFunc()
 }
 
 // ByQuota orders the results by the quota field.

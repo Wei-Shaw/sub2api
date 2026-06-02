@@ -295,6 +295,8 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawDone := false
+	codexStreamCompat := codexResponsesStreamCompatEnabledForGin(c)
+	codexStreamNormalizer := newOpenAICodexResponsesStreamNormalizer()
 
 	writeEvents := func(events []apicompat.ResponsesStreamEvent) {
 		if clientDisconnected || len(events) == 0 {
@@ -309,6 +311,12 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 					zap.String("request_id", requestID),
 				)
 				continue
+			}
+			if codexStreamCompat {
+				sse = normalizeOpenAICodexResponsesSSEBlock(codexStreamNormalizer, sse)
+				if sse == "" {
+					continue
+				}
 			}
 			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 				clientDisconnected = true

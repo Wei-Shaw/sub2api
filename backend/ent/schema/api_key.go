@@ -57,6 +57,9 @@ func (APIKey) Fields() []ent.Field {
 		field.JSON("ip_blacklist", []string{}).
 			Optional().
 			Comment("Blocked IPs/CIDRs"),
+		field.Bool("codex_responses_stream_compat").
+			Default(false).
+			Comment("Normalize OpenAI Responses SSE streams for Codex CLI compatibility"),
 
 		// ========== Quota fields ==========
 		// Quota limit in USD (0 = unlimited)
