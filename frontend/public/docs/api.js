@@ -235,8 +235,44 @@
     return value === "home_header" || value === "both" ? value : "sidebar";
   }
 
+  function normalizeLinkOpenMode(value) {
+    return value === "external" ? "external" : "internal";
+  }
+
+  function isCustomPageMenu(item) {
+    return Boolean(item?.page_slug) || String(item?.url || "").trim().startsWith("md:");
+  }
+
+  function escapeAttr(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
   function buildCustomMenuHref(item) {
+    if (!isCustomPageMenu(item)) {
+      const rawUrl = String(item?.url || "").trim();
+      if (rawUrl) {
+        return rawUrl;
+      }
+    }
     return `/custom/${encodeURIComponent(item.id)}`;
+  }
+
+  function buildCustomMenuTargetAttrs(item) {
+    if (normalizeLinkOpenMode(item?.link_open_mode) === "external") {
+      return ' target="_blank" rel="noopener noreferrer"';
+    }
+    return "";
   }
 
   function hostCardTemplate(item) {
@@ -323,7 +359,7 @@
         const icon = item.icon_svg
           ? `<span style="display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;">${item.icon_svg}</span>`
           : "";
-        return `<a class="header-link" href="${buildCustomMenuHref(item)}">${icon}<span>${item.label || ""}</span></a>`;
+        return `<a class="header-link" href="${escapeAttr(buildCustomMenuHref(item))}"${buildCustomMenuTargetAttrs(item)}>${icon}<span>${escapeHtml(item.label || "")}</span></a>`;
       })
       .join("");
   }
@@ -543,6 +579,37 @@
     replaceNodeContent("#gemini-cli .section-desc", text.gemini?.descHtml || "", "html");
     replaceNodeContent("#codex-cli h2", text.codex?.title || "", "text");
     replaceNodeContent("#codex-cli .section-desc", text.codex?.descHtml || "", "html");
+    replaceNodeContent("#codexplusplus h2", text.codexplusplus?.title || "", "text");
+    replaceNodeContent("#codexplusplus .section-desc", text.codexplusplus?.descHtml || "", "html");
+    replaceAllText(
+      "#codexplusplus .grid-2 .card h3",
+      [
+        text.codexplusplus?.features?.title || "",
+        text.codexplusplus?.setup?.title || "",
+      ],
+    );
+    replaceAllHtml(
+      "#codexplusplus .grid-2 .card:nth-child(1) .plain-list li",
+      text.codexplusplus?.features?.items || [],
+    );
+    replaceAllText(
+      "#codexplusplus .grid-2 .card:nth-child(1) .meta-row a",
+      text.codexplusplus?.features?.actions || [],
+    );
+    replaceAllHtml(
+      "#codexplusplus .grid-2 .card:nth-child(2) .plain-list li",
+      text.codexplusplus?.setup?.items || [],
+    );
+    replaceNodeContent(
+      "#codexplusplus .grid-2 .card:nth-child(2) .note",
+      text.codexplusplus?.setup?.warningHtml || "",
+      "html",
+    );
+    replaceNodeContent(
+      "#codexplusplus > .note",
+      text.codexplusplus?.noteHtml || "",
+      "html",
+    );
     replaceNodeContent("#opencode h2", text.opencode?.title || "", "text");
     replaceNodeContent("#opencode .section-desc", text.opencode?.descHtml || "", "html");
     replaceNodeContent("#openclaw h2", text.openclaw?.title || "", "text");

@@ -54,6 +54,7 @@
           "OpenCode",
           "OpenClaw",
           "Hermes",
+          "如何开启 Codex 插件",
           "常见问题",
         ],
       },
@@ -225,6 +226,35 @@
         descHtml:
           '站内 <code>使用密钥</code> 页面给 Codex CLI 生成的是 <code>~/.codex/config.toml</code> 与 <code>auth.json</code> 两个文件。以下格式与站内模板一致。',
       },
+      codexplusplus: {
+        title: "如何开启 Codex 插件（Codex++）",
+        descHtml:
+          "如果你使用第三方 API 或本站中转，不想只依赖官方 ChatGPT 登录态，可以用 Codex++ 给 Codex App 开启增强插件和中转 Provider。Codex++ 是外部启动器，不改 Codex App 安装文件，而是通过 Chromium DevTools Protocol 注入增强脚本。",
+        features: {
+          title: "它能做什么",
+          items: [
+            "开启 Codex App 的插件入口、特殊插件安装、会话删除、Markdown 导出、项目移动、Timeline 等增强能力。",
+            "通过“中转注入”写入 <code>CodexPlusPlus</code> Provider，让 Codex App 使用第三方 API Base URL 与 API Key。",
+            "支持多个中转配置，并可在增强 Provider 与官方 ChatGPT 登录态之间切换。",
+            "独立管理用户脚本，启动 Codex 时自动注入自定义脚本。",
+          ],
+          actions: ["打开 Codex++ 仓库", "下载 Releases"],
+        },
+        setup: {
+          title: "第三方 API 开启步骤",
+          items: [
+            "先安装官方 Codex App，再从 Codex++ Releases 下载并安装对应系统版本。",
+            "进入本站 <code>/keys</code> 创建或复制 API Key。",
+            "打开 <code>Codex++ 管理工具</code>，进入中转注入 / Relay 配置。",
+            "新增一个配置：Base URL 填 <code><span data-default-host-text>https://re.94xy.cn</span>/v1</code>，API Key 填本站 Key，模型按可用权限填写，例如 <code>gpt-5.4</code>。",
+            "保存后用 <code>Codex++</code> 或管理工具启动 Codex App，确认当前 Provider 为 <code>CodexPlusPlus</code>。",
+          ],
+          warningHtml:
+            "Codex++ README 的中转注入示例使用 OpenAI Responses 兼容地址，通常应填写 <code>HOST/v1</code>。如果你的 Codex++ 版本界面明确提示只填根地址，再按界面提示填写 <code>HOST</code>。",
+        },
+        noteHtml:
+          "如果启动后没有看到插件或 Provider，先在 Codex++ 管理工具里运行检查 / 修复，再确认 Codex App 版本更新后是否需要等待 Codex++ 适配。",
+      },
       opencode: {
         title: "OpenCode",
         descHtml:
@@ -388,6 +418,7 @@
           "OpenCode",
           "OpenClaw",
           "Hermes",
+          "Enable Codex Plugins",
           "FAQ",
         ],
       },
@@ -558,6 +589,35 @@
         title: "Codex CLI",
         descHtml:
           'The <code>Use Key</code> page on this site generates two files for Codex CLI: <code>~/.codex/config.toml</code> and <code>auth.json</code>. The format below matches that template.',
+      },
+      codexplusplus: {
+        title: "Enable Codex Plugins (Codex++)",
+        descHtml:
+          "If you use a third-party API or this site's relay and do not want to rely only on the official ChatGPT login state, Codex++ can enable enhanced plugins and a relay provider for Codex App. Codex++ is an external launcher: it does not modify the Codex App installation, and injects enhancement scripts through Chromium DevTools Protocol.",
+        features: {
+          title: "What it does",
+          items: [
+            "Enables the Codex App plugin entry, special plugin installation, session deletion, Markdown export, project moving, Timeline, and other enhancements.",
+            "Writes a <code>CodexPlusPlus</code> provider through relay injection, so Codex App can use a third-party API Base URL and API key.",
+            "Supports multiple relay configs and switching between the enhanced provider and the official ChatGPT login mode.",
+            "Manages user scripts independently and injects custom scripts when Codex starts.",
+          ],
+          actions: ["Open Codex++ repo", "Download Releases"],
+        },
+        setup: {
+          title: "Third-party API setup",
+          items: [
+            "Install the official Codex App first, then download and install the matching Codex++ build from Releases.",
+            "Open <code>/keys</code> on this site and create or copy an API key.",
+            "Open <code>Codex++ Manager</code>, then go to relay injection / Relay settings.",
+            "Add a config: set Base URL to <code><span data-default-host-text>https://re.94xy.cn</span>/v1</code>, paste this site's API key, and choose a model you can access, such as <code>gpt-5.4</code>.",
+            "Save it, launch Codex App through <code>Codex++</code> or the manager, and confirm the current provider is <code>CodexPlusPlus</code>.",
+          ],
+          warningHtml:
+            "The Codex++ README relay injection example uses an OpenAI Responses-compatible endpoint, so <code>HOST/v1</code> is usually the right value. If your Codex++ version explicitly asks for only the root host, follow its UI and use <code>HOST</code>.",
+        },
+        noteHtml:
+          "If plugins or the provider do not appear after launch, run check / repair in Codex++ Manager first, then verify whether a Codex App update needs a matching Codex++ update.",
       },
       opencode: {
         title: "OpenCode",
