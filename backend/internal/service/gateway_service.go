@@ -4578,13 +4578,10 @@ func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode i
 }
 
 // shouldFailoverUpstreamError determines whether an upstream error should trigger account failover.
+// Any 4xx/5xx triggers failover — if it's a genuine client error it will fail on all accounts
+// and be returned after MaxSwitches is exhausted; if it's account-specific, failover helps.
 func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
-	switch statusCode {
-	case 400, 401, 403, 429, 529:
-		return true
-	default:
-		return statusCode >= 500
-	}
+	return statusCode >= 400
 }
 
 func retryBackoffDelay(attempt int) time.Duration {
