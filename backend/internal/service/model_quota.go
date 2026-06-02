@@ -43,17 +43,125 @@ type ModelQuotaUsage struct {
 	Window7d int64
 }
 
-// EffectiveModelRateLimits returns the rules that actually apply to the given
-// API key, honoring the "key overrides group" semantics: any non-empty
-// per-key configuration fully replaces the group default (no merging).
+// MergedModelRateLimits returns the union of group and key rules. When both
+// sides define the same pattern, each window limit is the minimum of the two
+// (group acts as ceiling). Patterns present in only one side pass through
+// unchanged. This ensures admin-set group limits can never be exceeded by
+// user-level key configuration.
+func MergedModelRateLimits(apiKey *APIKey, group *Group) ModelRateLimits {
+	var keyRules ModelRateLimits
+	if apiKey != nil {
+		keyRules = apiKey.ModelRateLimits
+	}
+	var groupRules ModelRateLimits
+	if group != nil {
+		groupRules = group.DefaultModelRateLimits
+	}
+
+	if len(groupRules) == 0 {
+		return keyRules
+	}
+	if len(keyRules) == 0 {
+		return groupRules
+	}
+
+	// Index key rules by pattern for O(n+m) merge.
+	keyByPattern := make(map[string]ModelRateLimit, len(keyRules))
+	for _, r := range keyRules {
+		keyByPattern[r.Pattern] = r
+	}
+
+	merged := make(ModelRateLimits, 0, len(groupRules)+len(keyRules))
+	seen := make(map[string]bool, len(groupRules)+len(keyRules))
+
+	// Group rules first — they always appear; cap with key if present.
+	for _, gr := range groupRules {
+		seen[gr.Pattern] = true
+		if kr, ok := keyByPattern[gr.Pattern]; ok {
+			merged = append(merged, minLimits(gr, kr))
+		} else {
+			merged = append(merged, gr)
+		}
+	}
+	// Key-only rules (no matching group pattern).
+	for _, kr := range keyRules {
+		if !seen[kr.Pattern] {
+			merged = append(merged, kr)
+		}
+	}
+	return merged
+}
+
+// EffectiveModelRateLimits is kept as an alias for MergedModelRateLimits so
+// that any remaining callers continue to compile.
 func EffectiveModelRateLimits(apiKey *APIKey, group *Group) ModelRateLimits {
-	if apiKey != nil && len(apiKey.ModelRateLimits) > 0 {
-		return apiKey.ModelRateLimits
+	return MergedModelRateLimits(apiKey, group)
+}
+
+// minLimits returns a rule with the pattern from a and the per-window minimum
+// of both sides. A zero limit means "no cap for this window" — so a non-zero
+// limit from the other side wins outright (it's more restrictive than infinity).
+func minLimits(a, b ModelRateLimit) ModelRateLimit {
+	return ModelRateLimit{
+		Pattern: a.Pattern,
+		Limit5h: pickMin(a.Limit5h, b.Limit5h),
+		Limit1d: pickMin(a.Limit1d, b.Limit1d),
+		Limit7d: pickMin(a.Limit7d, b.Limit7d),
 	}
-	if group != nil && len(group.DefaultModelRateLimits) > 0 {
-		return group.DefaultModelRateLimits
+}
+
+// pickMin returns the effective minimum of two limits where 0 means "unlimited".
+func pickMin(a, b float64) float64 {
+	if a == 0 {
+		return b
 	}
-	return nil
+	if b == 0 {
+		return a
+	}
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// CapLimitsByGroup enforces group limits as a ceiling on user-supplied rules.
+// For each user rule, if the group defines a matching pattern (exact match),
+// each window is capped at the group's value. Rules with patterns not present
+// in the group pass through unchanged.
+func CapLimitsByGroup(userLimits, groupLimits ModelRateLimits) ModelRateLimits {
+	if len(groupLimits) == 0 || len(userLimits) == 0 {
+		return userLimits
+	}
+	groupByPattern := make(map[string]ModelRateLimit, len(groupLimits))
+	for _, g := range groupLimits {
+		groupByPattern[g.Pattern] = g
+	}
+	out := make(ModelRateLimits, 0, len(userLimits))
+	for _, u := range userLimits {
+		if g, ok := groupByPattern[u.Pattern]; ok {
+			out = append(out, ModelRateLimit{
+				Pattern: u.Pattern,
+				Limit5h: capWindow(u.Limit5h, g.Limit5h),
+				Limit1d: capWindow(u.Limit1d, g.Limit1d),
+				Limit7d: capWindow(u.Limit7d, g.Limit7d),
+			})
+		} else {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+// capWindow caps a user value at the group ceiling. A zero group value means
+// "no ceiling for this window" and the user value passes through.
+func capWindow(user, ceiling float64) float64 {
+	if ceiling == 0 {
+		return user
+	}
+	if user == 0 || user > ceiling {
+		return ceiling
+	}
+	return user
 }
 
 // MatchModelRateLimits returns the subset of rules whose pattern matches the
@@ -107,4 +215,12 @@ func SanitizeModelRateLimits(rules ModelRateLimits) ModelRateLimits {
 		return nil
 	}
 	return out
+}
+
+// groupDefaultModelRateLimits is a nil-safe accessor for group's DefaultModelRateLimits.
+func groupDefaultModelRateLimits(group *Group) ModelRateLimits {
+	if group == nil {
+		return nil
+	}
+	return group.DefaultModelRateLimits
 }

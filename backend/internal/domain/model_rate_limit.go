@@ -14,9 +14,8 @@ type ModelRateLimit struct {
 
 // ModelRateLimits is the JSON-encoded slice persisted on api_keys and groups.
 //
-// On an API key, a non-nil slice fully overrides the inherited group defaults
-// (replace, not merge) so admins can reason about exactly which rules apply
-// to a key without having to mentally union two sources.
+// At runtime, both key-level and group-level rules are merged: group rules act
+// as a ceiling, and matching patterns use min(key, group) per window.
 type ModelRateLimits []ModelRateLimit
 
 // HasAnyLimit returns true if at least one window has a non-zero limit.
