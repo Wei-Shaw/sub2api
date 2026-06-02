@@ -180,13 +180,23 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		writerSizeBeforeForward := c.Writer.Size()
-		result, err := func() (*service.OpenAIForwardResult, error) {
+		var result *service.OpenAIForwardResult
+		var anthropicResult *service.ForwardResult
+		err = func() error {
 			defer func() {
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
+			if account.Platform == service.PlatformAnthropic {
+				if h.anthropicGatewayService == nil {
+					return errors.New("anthropic gateway service unavailable")
+				}
+				anthropicResult, err = h.anthropicGatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, nil)
+				return err
+			}
+			result, err = h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
+			return err
 		}()
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -196,8 +206,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			responseLatencyMs = forwardDurationMs - upstreamLatencyMs
 		}
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
-		if err == nil && result != nil && result.FirstTokenMs != nil {
-			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
+		if err == nil {
+			if result != nil && result.FirstTokenMs != nil {
+				service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
+			} else if anthropicResult != nil && anthropicResult.FirstTokenMs != nil {
+				service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*anthropicResult.FirstTokenMs))
+			}
 		}
 		if err != nil {
 			if result != nil && result.ImageCount > 0 {
@@ -263,16 +277,57 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				return
 			}
 		}
+		var firstTokenMs *int
 		if result != nil {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
-		} else {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
+			firstTokenMs = result.FirstTokenMs
+		} else if anthropicResult != nil {
+			firstTokenMs = anthropicResult.FirstTokenMs
 		}
+		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, firstTokenMs)
 
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveRawCCUpstreamEndpoint(c, account)
+		if anthropicResult != nil {
+			upstreamEndpoint = GetUpstreamEndpoint(c, account.Platform)
+		}
+
+		if anthropicResult != nil {
+			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+			requestPayloadHash := service.HashUsageRequestPayload(body)
+			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+				if err := h.anthropicGatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+					Result:             anthropicResult,
+					QuotaPlatform:      quotaPlatform,
+					APIKey:             apiKey,
+					User:               apiKey.User,
+					Account:            account,
+					Subscription:       subscription,
+					InboundEndpoint:    inboundEndpoint,
+					UpstreamEndpoint:   upstreamEndpoint,
+					UserAgent:          userAgent,
+					IPAddress:          clientIP,
+					RequestPayloadHash: requestPayloadHash,
+					APIKeyService:      h.apiKeyService,
+					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, anthropicResult.UpstreamModel),
+				}); err != nil {
+					logger.L().With(
+						zap.String("component", "handler.openai_gateway.chat_completions"),
+						zap.Int64("user_id", subject.UserID),
+						zap.Int64("api_key_id", apiKey.ID),
+						zap.Any("group_id", apiKey.GroupID),
+						zap.String("model", reqModel),
+						zap.Int64("account_id", account.ID),
+					).Error("openai_chat_completions.anthropic_record_usage_failed", zap.Error(err))
+				}
+			})
+			reqLog.Debug("openai_chat_completions.request_completed", zap.Int64("account_id", account.ID), zap.Int("switch_count", switchCount))
+			return
+		}
+		if result == nil {
+			return
+		}
 
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{

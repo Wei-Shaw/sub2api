@@ -29,6 +29,7 @@ import (
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
 	gatewayService           *service.OpenAIGatewayService
+	anthropicGatewayService  *service.GatewayService
 	billingCacheService      *service.BillingCacheService
 	apiKeyService            *service.APIKeyService
 	usageRecordWorkerPool    *service.UsageRecordWorkerPool
@@ -75,6 +76,7 @@ func wrapUsageRecordTaskContext(parent context.Context, task service.UsageRecord
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
+	anthropicGatewayService *service.GatewayService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
 	apiKeyService *service.APIKeyService,
@@ -93,6 +95,7 @@ func NewOpenAIGatewayHandler(
 	}
 	return &OpenAIGatewayHandler{
 		gatewayService:           gatewayService,
+		anthropicGatewayService:  anthropicGatewayService,
 		billingCacheService:      billingCacheService,
 		apiKeyService:            apiKeyService,
 		usageRecordWorkerPool:    usageRecordWorkerPool,
@@ -360,13 +363,23 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		writerSizeBeforeForward := c.Writer.Size()
-		result, err := func() (*service.OpenAIForwardResult, error) {
+		var result *service.OpenAIForwardResult
+		var anthropicResult *service.ForwardResult
+		err = func() error {
 			defer func() {
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
+			if account.Platform == service.PlatformAnthropic {
+				if h.anthropicGatewayService == nil {
+					return fmt.Errorf("anthropic gateway service unavailable")
+				}
+				anthropicResult, err = h.anthropicGatewayService.ForwardAsResponses(c.Request.Context(), c, account, forwardBody, nil)
+				return err
+			}
+			result, err = h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
+			return err
 		}()
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
@@ -375,8 +388,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			responseLatencyMs = forwardDurationMs - upstreamLatencyMs
 		}
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
-		if err == nil && result != nil && result.FirstTokenMs != nil {
-			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
+		if err == nil {
+			if result != nil && result.FirstTokenMs != nil {
+				service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
+			} else if anthropicResult != nil && anthropicResult.FirstTokenMs != nil {
+				service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*anthropicResult.FirstTokenMs))
+			}
 		}
 		if err != nil {
 			if result != nil && result.ImageCount > 0 {
@@ -447,14 +464,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				return
 			}
 		}
+		var firstTokenMs *int
 		if result != nil {
 			if account.Type == service.AccountTypeOAuth {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
-		} else {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
+			firstTokenMs = result.FirstTokenMs
+		} else if anthropicResult != nil {
+			firstTokenMs = anthropicResult.FirstTokenMs
 		}
+		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, firstTokenMs)
 
 		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 		userAgent := c.GetHeader("User-Agent")
@@ -462,6 +481,41 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+
+		if anthropicResult != nil {
+			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+				if err := h.anthropicGatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+					Result:             anthropicResult,
+					QuotaPlatform:      quotaPlatform,
+					APIKey:             apiKey,
+					User:               apiKey.User,
+					Account:            account,
+					Subscription:       subscription,
+					InboundEndpoint:    inboundEndpoint,
+					UpstreamEndpoint:   upstreamEndpoint,
+					UserAgent:          userAgent,
+					IPAddress:          clientIP,
+					RequestPayloadHash: requestPayloadHash,
+					APIKeyService:      h.apiKeyService,
+					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, anthropicResult.UpstreamModel),
+				}); err != nil {
+					logger.L().With(
+						zap.String("component", "handler.openai_gateway.responses"),
+						zap.Int64("user_id", subject.UserID),
+						zap.Int64("api_key_id", apiKey.ID),
+						zap.Any("group_id", apiKey.GroupID),
+						zap.String("model", reqModel),
+						zap.Int64("account_id", account.ID),
+					).Error("openai.responses_anthropic_record_usage_failed", zap.Error(err))
+				}
+			})
+			reqLog.Debug("openai.request_completed", zap.Int64("account_id", account.ID), zap.Int("switch_count", switchCount))
+			return
+		}
+		if result == nil {
+			return
+		}
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
@@ -758,13 +812,36 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		if channelMappingMsg.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMappingMsg.MappedModel)
 		}
-		result, err := func() (*service.OpenAIForwardResult, error) {
+		var result *service.OpenAIForwardResult
+		var anthropicResult *service.ForwardResult
+		var anthropicParsedReq *service.ParsedRequest
+		err = func() error {
 			defer func() {
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
+			if account.Platform == service.PlatformAnthropic {
+				if h.anthropicGatewayService == nil {
+					return errors.New("anthropic gateway service unavailable")
+				}
+				parsedReq, parseErr := service.ParseGatewayRequest(service.NewRequestBodyRef(forwardBody), service.PlatformAnthropic)
+				if parseErr != nil {
+					return parseErr
+				}
+				parsedReq.GroupID = apiKey.GroupID
+				parsedReq.SessionContext = &service.SessionContext{
+					ClientIP:  ip.GetClientIP(c),
+					UserAgent: c.GetHeader("User-Agent"),
+					APIKeyID:  apiKey.ID,
+				}
+				anthropicParsedReq = parsedReq
+				c.Set("parsed_request", parsedReq)
+				anthropicResult, err = h.anthropicGatewayService.Forward(c.Request.Context(), c, account, parsedReq)
+				return err
+			}
+			result, err = h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
+			return err
 		}()
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -774,8 +851,12 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			responseLatencyMs = forwardDurationMs - upstreamLatencyMs
 		}
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
-		if err == nil && result != nil && result.FirstTokenMs != nil {
-			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
+		if err == nil {
+			if result != nil && result.FirstTokenMs != nil {
+				service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
+			} else if anthropicResult != nil && anthropicResult.FirstTokenMs != nil {
+				service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*anthropicResult.FirstTokenMs))
+			}
 		}
 		if err != nil {
 			if result != nil && result.ImageCount > 0 {
@@ -837,17 +918,57 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				return
 			}
 		}
+		var firstTokenMs *int
 		if result != nil {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
-		} else {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
+			firstTokenMs = result.FirstTokenMs
+		} else if anthropicResult != nil {
+			firstTokenMs = anthropicResult.FirstTokenMs
 		}
+		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, firstTokenMs)
 
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+
+		if anthropicResult != nil {
+			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+			if anthropicParsedReq != nil && anthropicParsedReq.Body != nil {
+				requestPayloadHash = service.HashUsageRequestPayload(anthropicParsedReq.Body.Bytes())
+			}
+			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+				if err := h.anthropicGatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+					Result:             anthropicResult,
+					QuotaPlatform:      quotaPlatform,
+					APIKey:             apiKey,
+					User:               apiKey.User,
+					Account:            account,
+					Subscription:       subscription,
+					InboundEndpoint:    inboundEndpoint,
+					UpstreamEndpoint:   upstreamEndpoint,
+					UserAgent:          userAgent,
+					IPAddress:          clientIP,
+					RequestPayloadHash: requestPayloadHash,
+					APIKeyService:      h.apiKeyService,
+					ChannelUsageFields: channelMappingMsg.ToUsageFields(reqModel, anthropicResult.UpstreamModel),
+				}); err != nil {
+					logger.L().With(
+						zap.String("component", "handler.openai_gateway.messages"),
+						zap.Int64("user_id", subject.UserID),
+						zap.Int64("api_key_id", apiKey.ID),
+						zap.Any("group_id", apiKey.GroupID),
+						zap.String("model", reqModel),
+						zap.Int64("account_id", account.ID),
+					).Error("openai_messages.anthropic_record_usage_failed", zap.Error(err))
+				}
+			})
+			reqLog.Debug("openai_messages.request_completed", zap.Int64("account_id", account.ID), zap.Int("switch_count", switchCount))
+			return
+		}
+		if result == nil {
+			return
+		}
 
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{

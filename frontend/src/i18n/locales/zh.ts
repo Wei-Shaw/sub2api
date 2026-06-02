@@ -3718,6 +3718,9 @@ export default {
       expiresAt: '过期时间',
       expiresAtHint: '留空表示不过期',
       higherPriorityFirst: '数值越小优先级越高',
+      crossPlatformScheduling: '跨平台调度',
+      crossPlatformSchedulingTooltip:
+        '允许该账号被 Anthropic/OpenAI 另一协议分组作为候选账号使用。',
       mixedScheduling: '在 /v1/messages 中使用',
       mixedSchedulingHint: '启用后可参与 Anthropic/Gemini 分组的调度',
       mixedSchedulingTooltip:

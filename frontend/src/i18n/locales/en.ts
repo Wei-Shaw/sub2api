@@ -3580,6 +3580,9 @@ export default {
       expiresAt: 'Expires At',
       expiresAtHint: 'Leave empty for no expiration',
       higherPriorityFirst: 'Lower value means higher priority',
+      crossPlatformScheduling: 'Cross-platform scheduling',
+      crossPlatformSchedulingTooltip:
+        'Allow this account to be used as a candidate by Anthropic/OpenAI groups using the other protocol.',
       mixedScheduling: 'Use in /v1/messages',
       mixedSchedulingHint: 'Enable to participate in Anthropic/Gemini group scheduling',
       mixedSchedulingTooltip:

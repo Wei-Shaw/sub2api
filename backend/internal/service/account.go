@@ -1263,6 +1263,20 @@ func (a *Account) IsMixedSchedulingEnabled() bool {
 	return false
 }
 
+// IsCrossPlatformSchedulingEnabled checks whether an OpenAI/Anthropic account
+// can be scheduled by the opposite protocol group. Only a real JSON bool true
+// enables the behavior; missing or string values stay disabled.
+func (a *Account) IsCrossPlatformSchedulingEnabled() bool {
+	if a == nil || (a.Platform != PlatformAnthropic && a.Platform != PlatformOpenAI) {
+		return false
+	}
+	if a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["cross_platform_scheduling"].(bool)
+	return ok && enabled
+}
+
 // IsOveragesEnabled 检查 Antigravity 账号是否启用 AI Credits 超量请求。
 func (a *Account) IsOveragesEnabled() bool {
 	if a.Platform != PlatformAntigravity {

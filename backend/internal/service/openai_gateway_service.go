@@ -1340,30 +1340,45 @@ func openAICompactSupportTier(account *Account) int {
 // isOpenAIAccountEligibleForRequest centralises the schedulable / OpenAI / model /
 // compact-support checks used during account selection.
 func isOpenAIAccountEligibleForRequest(ctx context.Context, account *Account, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
-	if account == nil || !account.IsOpenAI() || !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+	if account == nil || !isOpenAIProtocolAccountEligible(account, requiredCapability, OpenAIUpstreamTransportAny) || !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
 		return false
 	}
-	if paused, reason := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
-		// Debug level: this fires per-candidate on the scheduling hot path, so Info
-		// would amplify into log spam once several accounts cross the threshold.
-		slog.Debug("account_auto_paused_by_quota",
-			"account_id", account.ID,
-			"window", reason.window,
-			"threshold", reason.threshold,
-			"utilization", reason.utilization,
-		)
-		return false
+	if account.IsOpenAI() {
+		if paused, reason := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
+			slog.Debug("account_auto_paused_by_quota",
+				"account_id", account.ID,
+				"window", reason.window,
+				"threshold", reason.threshold,
+				"utilization", reason.utilization,
+			)
+			return false
+		}
 	}
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
 		return false
 	}
-	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
+	if account.IsOpenAI() && !account.SupportsOpenAIEndpointCapability(requiredCapability) {
 		return false
 	}
 	if requireCompact && openAICompactSupportTier(account) == 0 {
 		return false
 	}
 	return true
+}
+
+func isOpenAIProtocolAccountEligible(account *Account, requiredCapability OpenAIEndpointCapability, requiredTransport OpenAIUpstreamTransport) bool {
+	if account == nil {
+		return false
+	}
+	if account.IsOpenAI() {
+		return true
+	}
+	if requiredTransport != "" && requiredTransport != OpenAIUpstreamTransportAny && requiredTransport != OpenAIUpstreamTransportHTTPSSE {
+		return false
+	}
+	return requiredCapability == OpenAIEndpointCapabilityChatCompletions &&
+		account.Platform == PlatformAnthropic &&
+		account.IsCrossPlatformSchedulingEnabled()
 }
 
 type openAIQuotaAutoPauseDecision struct {
@@ -2121,19 +2136,31 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, PlatformOpenAI, false)
 		return accounts, err
 	}
-	var accounts []Account
-	var err error
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformOpenAI)
-	} else if groupID != nil {
-		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
-	} else {
-		accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
+	platforms := mixedSchedulingPlatformsFor(PlatformOpenAI)
+	accounts := make([]Account, 0)
+	for _, platform := range platforms {
+		var platformAccounts []Account
+		var err error
+		if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+			platformAccounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
+		} else if groupID != nil {
+			platformAccounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
+		} else {
+			platformAccounts, err = s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, platform)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("query accounts failed: %w", err)
+		}
+		accounts = append(accounts, platformAccounts...)
 	}
-	if err != nil {
-		return nil, fmt.Errorf("query accounts failed: %w", err)
+	filtered := make([]Account, 0, len(accounts))
+	for _, acc := range accounts {
+		if !isAccountAllowedInMixedScheduling(&acc, PlatformOpenAI) {
+			continue
+		}
+		filtered = append(filtered, acc)
 	}
-	return accounts, nil
+	return filtered, nil
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {

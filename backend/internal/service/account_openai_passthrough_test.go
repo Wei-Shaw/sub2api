@@ -313,3 +313,84 @@ func TestAccount_OpenAIWSExtraFlags(t *testing.T) {
 	}
 	require.False(t, nonOpenAI.IsOpenAIWSAllowStoreRecoveryEnabled())
 }
+
+func TestAccount_IsCrossPlatformSchedulingEnabled(t *testing.T) {
+	var nilAccount *Account
+	require.False(t, nilAccount.IsCrossPlatformSchedulingEnabled())
+
+	tests := []struct {
+		name     string
+		account  Account
+		expected bool
+	}{
+		{
+			name:     "openai true",
+			account:  Account{Platform: PlatformOpenAI, Extra: map[string]any{"cross_platform_scheduling": true}},
+			expected: true,
+		},
+		{
+			name:     "anthropic true",
+			account:  Account{Platform: PlatformAnthropic, Extra: map[string]any{"cross_platform_scheduling": true}},
+			expected: true,
+		},
+		{
+			name:     "explicit false",
+			account:  Account{Platform: PlatformOpenAI, Extra: map[string]any{"cross_platform_scheduling": false}},
+			expected: false,
+		},
+		{
+			name:     "missing defaults false",
+			account:  Account{Platform: PlatformOpenAI, Extra: map[string]any{}},
+			expected: false,
+		},
+		{
+			name:     "string true ignored",
+			account:  Account{Platform: PlatformOpenAI, Extra: map[string]any{"cross_platform_scheduling": "true"}},
+			expected: false,
+		},
+		{
+			name:     "non openai anthropic ignored",
+			account:  Account{Platform: PlatformGemini, Extra: map[string]any{"cross_platform_scheduling": true}},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.account.IsCrossPlatformSchedulingEnabled())
+		})
+	}
+}
+
+func TestIsAccountAllowedInMixedScheduling_CrossPlatform(t *testing.T) {
+	require.True(t, isAccountAllowedInMixedScheduling(&Account{Platform: PlatformAnthropic}, PlatformAnthropic))
+	require.True(t, isAccountAllowedInMixedScheduling(&Account{Platform: PlatformOpenAI, Extra: map[string]any{"cross_platform_scheduling": true}}, PlatformAnthropic))
+	require.False(t, isAccountAllowedInMixedScheduling(&Account{Platform: PlatformOpenAI}, PlatformAnthropic))
+	require.True(t, isAccountAllowedInMixedScheduling(&Account{Platform: PlatformAntigravity, Extra: map[string]any{"mixed_scheduling": true}}, PlatformAnthropic))
+	require.False(t, isAccountAllowedInMixedScheduling(&Account{Platform: PlatformAntigravity}, PlatformAnthropic))
+
+	require.True(t, isAccountAllowedInMixedScheduling(&Account{Platform: PlatformOpenAI}, PlatformOpenAI))
+	require.True(t, isAccountAllowedInMixedScheduling(&Account{Platform: PlatformAnthropic, Extra: map[string]any{"cross_platform_scheduling": true}}, PlatformOpenAI))
+	require.False(t, isAccountAllowedInMixedScheduling(&Account{Platform: PlatformAnthropic}, PlatformOpenAI))
+	require.False(t, isAccountAllowedInMixedScheduling(&Account{Platform: PlatformOpenAI, Extra: map[string]any{"cross_platform_scheduling": true}}, PlatformGemini))
+}
+
+func TestIsOpenAIProtocolAccountEligible_CrossPlatformAnthropic(t *testing.T) {
+	nativeOpenAI := &Account{Platform: PlatformOpenAI}
+	require.True(t, isOpenAIProtocolAccountEligible(nativeOpenAI, OpenAIEndpointCapabilityEmbeddings, OpenAIUpstreamTransportResponsesWebsocketV2))
+
+	anthropicCross := &Account{Platform: PlatformAnthropic, Extra: map[string]any{"cross_platform_scheduling": true}}
+	require.True(t, isOpenAIProtocolAccountEligible(anthropicCross, OpenAIEndpointCapabilityChatCompletions, OpenAIUpstreamTransportAny))
+	require.True(t, isOpenAIProtocolAccountEligible(anthropicCross, OpenAIEndpointCapabilityChatCompletions, OpenAIUpstreamTransportHTTPSSE))
+	require.False(t, isOpenAIProtocolAccountEligible(anthropicCross, OpenAIEndpointCapabilityEmbeddings, OpenAIUpstreamTransportAny))
+	require.False(t, isOpenAIProtocolAccountEligible(anthropicCross, OpenAIEndpointCapabilityChatCompletions, OpenAIUpstreamTransportResponsesWebsocketV2))
+	require.False(t, isOpenAIProtocolAccountEligible(&Account{Platform: PlatformAnthropic}, OpenAIEndpointCapabilityChatCompletions, OpenAIUpstreamTransportAny))
+}
+
+func TestAccountSupportsOpenAICapabilities_CrossPlatformAnthropic(t *testing.T) {
+	anthropicCross := &Account{Platform: PlatformAnthropic, Extra: map[string]any{"cross_platform_scheduling": true}}
+	require.True(t, accountSupportsOpenAICapabilities(anthropicCross, OpenAIEndpointCapabilityChatCompletions, ""))
+	require.False(t, accountSupportsOpenAICapabilities(anthropicCross, OpenAIEndpointCapabilityEmbeddings, ""))
+	require.False(t, accountSupportsOpenAICapabilities(anthropicCross, OpenAIEndpointCapabilityChatCompletions, OpenAIImagesCapabilityBasic))
+	require.False(t, accountSupportsOpenAICapabilities(&Account{Platform: PlatformAnthropic}, OpenAIEndpointCapabilityChatCompletions, ""))
+}
