@@ -34,6 +34,7 @@ return 1
 
 // Lua 脚本：原子释放锁 + 记录完成时间（使用 Redis TIME 避免时钟偏差）
 var releaseLockScript = redis.NewScript(`
+redis.replicate_commands()
 local cur = redis.call('GET', KEYS[1])
 if cur == ARGV[1] then
     redis.call('DEL', KEYS[1])

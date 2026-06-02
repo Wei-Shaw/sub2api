@@ -44,6 +44,7 @@ var (
 	// ARGV[2] = TTL（秒）
 	// ARGV[3] = requestID
 	acquireScript = redis.NewScript(`
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local maxConcurrency = tonumber(ARGV[1])
 		local ttl = tonumber(ARGV[2])
@@ -81,6 +82,7 @@ var (
 	// KEYS[1] = 有序集合键
 	// ARGV[1] = TTL（秒）
 	getCountScript = redis.NewScript(`
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local ttl = tonumber(ARGV[1])
 
@@ -151,6 +153,7 @@ var (
 	// KEYS[1] = 有序集合键
 	// ARGV[1] = TTL（秒）
 	cleanupExpiredSlotsScript = redis.NewScript(`
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local ttl = tonumber(ARGV[1])
 		local timeResult = redis.call('TIME')
