@@ -45,14 +45,16 @@ describe('useModelWhitelist', () => {
     })
   })
 
-  it('minimax 模型列表包含 M2.7 系列且排在前面', () => {
+  it('minimax 模型列表包含 M3 系列且 M3 排在最前', () => {
     const models = getModelsByPlatform('minimax')
 
+    expect(models).toContain('MiniMax-M3')
     expect(models).toContain('MiniMax-M2.7')
     expect(models).toContain('MiniMax-M2.7-highspeed')
-    expect(models).toContain('abab6.5-chat')
-    expect(models.indexOf('MiniMax-M2.7')).toBeLessThan(models.indexOf('abab6.5-chat'))
-    expect(models.indexOf('MiniMax-M2.7-highspeed')).toBeLessThan(models.indexOf('abab6.5-chat'))
+    expect(models[0]).toBe('MiniMax-M3')
+    expect(models.indexOf('MiniMax-M3')).toBeLessThan(models.indexOf('MiniMax-M2.7'))
+    expect(models).not.toContain('MiniMax-M2.5')
+    expect(models).not.toContain('abab6.5-chat')
   })
 
   it('whitelist 模式会保留 GPT-5.4 官方快照的精确映射', () => {
