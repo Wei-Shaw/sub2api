@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -458,4 +459,169 @@ func TestOpenAIWSHTTPBridgeKeepsContinuationFramesOnHTTPWithoutPreviousResponseI
 	require.Equal(t, "call_bridge_1", secondInput[2].Get("call_id").String())
 	require.Equal(t, 0, captureDialer.DialCount())
 	require.Empty(t, captureConn.writes)
+}
+
+func TestPruneOpenAIWSUnansweredToolCallContextItems(t *testing.T) {
+	items := []json.RawMessage{
+		json.RawMessage(`{"type":"message","role":"user","content":"first"}`),
+		json.RawMessage(`{"type":"function_call","id":"fc_stale","call_id":"call_stale","name":"shell","arguments":"{}"}`),
+		json.RawMessage(`{"type":"function_call","id":"fc_keep","call_id":"call_keep","name":"shell","arguments":"{}"}`),
+		json.RawMessage(`{"type":"function_call_output","call_id":"call_keep","output":"ok"}`),
+	}
+
+	pruned := pruneOpenAIWSUnansweredToolCallContextItems(items)
+	require.Len(t, pruned, 3)
+	joined := string([]byte("[" + strings.Join([]string{
+		string(pruned[0]),
+		string(pruned[1]),
+		string(pruned[2]),
+	}, ",") + "]"))
+	require.False(t, strings.Contains(joined, "call_stale"))
+	require.True(t, strings.Contains(joined, "call_keep"))
+}
+
+func TestOpenAIWSHTTPBridgeHandoffWhenLaterFrameExceedsThreshold(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	secondSSEBody := strings.Join([]string{
+		`data: {"type":"response.completed","response":{"id":"resp_bridge_second","model":"gpt-5.1","usage":{"input_tokens":2,"output_tokens":1}}}`,
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+			},
+			Body: io.NopCloser(strings.NewReader(secondSSEBody)),
+		},
+	}}
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.HTTPBridgeEnabled = true
+	cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes = 512
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 8
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	captureConn := &openAIWSCaptureConn{events: [][]byte{
+		[]byte(`{"type":"response.completed","response":{"id":"resp_ws_first","model":"gpt-5.1","output":[{"type":"function_call","id":"fc_ws_1","call_id":"call_ws_1","name":"shell","arguments":"{}"}],"usage":{"input_tokens":1,"output_tokens":1}}}`),
+	}}
+	captureDialer := &openAIWSCaptureDialer{conn: captureConn}
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(captureDialer)
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     upstream,
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+		openaiWSPool:     pool,
+	}
+	account := &Account{
+		ID:          21,
+		Name:        "api-key-later-bridge",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-upstream"},
+		Extra: map[string]any{
+			"responses_websockets_v2_enabled": true,
+		},
+		Concurrency: 1,
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	errCh := make(chan error, 1)
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+
+		readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
+		msgType, firstMessage, err := conn.Read(readCtx)
+		cancelRead()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
+			errCh <- NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "unexpected client websocket message type", nil)
+			return
+		}
+
+		rec := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(rec)
+		req := r.Clone(r.Context())
+		req.Header = req.Header.Clone()
+		req.Header.Set("User-Agent", "codex_cli_rs/0.135.0")
+		ginCtx.Request = req
+
+		errCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, nil)
+	}))
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	writeMessage := func(payload string) {
+		writeCtx, cancelWrite := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelWrite()
+		require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(payload)))
+	}
+	readMessage := func() []byte {
+		readCtx, cancelRead := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelRead()
+		msgType, event, readErr := clientConn.Read(readCtx)
+		require.NoError(t, readErr)
+		require.Equal(t, coderws.MessageText, msgType)
+		return event
+	}
+
+	writeMessage(`{"type":"response.create","model":"gpt-5.1","stream":true,"input":"first"}`)
+	firstTurnEvent := readMessage()
+	require.Equal(t, "response.completed", gjson.GetBytes(firstTurnEvent, "type").String())
+	require.Equal(t, "resp_ws_first", gjson.GetBytes(firstTurnEvent, "response.id").String())
+
+	largeToolOutput := strings.Repeat("x", 1024)
+	writeMessage(`{"type":"response.create","model":"gpt-5.1","stream":true,"previous_response_id":"resp_ws_first","input":[{"type":"function_call_output","call_id":"call_ws_1","output":"` + largeToolOutput + `"}]}`)
+	secondTurnEvent := readMessage()
+	require.Equal(t, "response.completed", gjson.GetBytes(secondTurnEvent, "type").String())
+	require.Equal(t, "resp_bridge_second", gjson.GetBytes(secondTurnEvent, "response.id").String())
+
+	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
+	select {
+	case proxyErr := <-errCh:
+		require.NoError(t, proxyErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for websocket bridge proxy to finish")
+	}
+
+	require.Equal(t, 1, captureDialer.DialCount())
+	require.Len(t, captureConn.writes, 1, "second oversized turn must not be sent to upstream websocket")
+	require.Len(t, upstream.bodies, 1)
+	require.False(t, gjson.GetBytes(upstream.bodies[0], "previous_response_id").Exists())
+	bridgeInput := gjson.GetBytes(upstream.bodies[0], "input").Array()
+	require.Len(t, bridgeInput, 3)
+	require.Equal(t, "first", bridgeInput[0].String())
+	require.Equal(t, "function_call", bridgeInput[1].Get("type").String())
+	require.Equal(t, "call_ws_1", bridgeInput[1].Get("call_id").String())
+	require.Equal(t, "function_call_output", bridgeInput[2].Get("type").String())
+	require.Equal(t, "call_ws_1", bridgeInput[2].Get("call_id").String())
 }

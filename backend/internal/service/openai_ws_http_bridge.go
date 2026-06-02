@@ -51,6 +51,14 @@ func (s *OpenAIGatewayService) shouldBridgeOpenAIWSHTTP(payloadBytes int, previo
 	return threshold > 0 && int64(payloadBytes) >= threshold
 }
 
+func (s *OpenAIGatewayService) shouldBridgeOpenAIWSHTTPPayload(payloadBytes int) bool {
+	if !s.openAIWSHTTPBridgeEnabled() {
+		return false
+	}
+	threshold := s.openAIWSHTTPBridgeThresholdBytes()
+	return threshold > 0 && int64(payloadBytes) >= threshold
+}
+
 func prepareOpenAIWSHTTPBridgeBody(payload []byte) ([]byte, error) {
 	var body map[string]any
 	if err := json.Unmarshal(payload, &body); err != nil {
@@ -64,6 +72,42 @@ func prepareOpenAIWSHTTPBridgeBody(payload []byte) ([]byte, error) {
 	delete(body, "previous_response_id")
 	body["stream"] = true
 	return json.Marshal(body)
+}
+
+func pruneOpenAIWSUnansweredToolCallContextItems(items []json.RawMessage) []json.RawMessage {
+	if len(items) == 0 {
+		return cloneOpenAIWSRawMessages(items)
+	}
+	outputCallIDs := make(map[string]struct{})
+	for _, raw := range items {
+		item := gjson.ParseBytes(raw)
+		if !isCodexToolCallOutputItemType(item.Get("type").String()) {
+			continue
+		}
+		callID := strings.TrimSpace(item.Get("call_id").String())
+		if callID != "" {
+			outputCallIDs[callID] = struct{}{}
+		}
+	}
+	pruned := make([]json.RawMessage, 0, len(items))
+	changed := false
+	for _, raw := range items {
+		item := gjson.ParseBytes(raw)
+		if isCodexToolCallContextItemType(item.Get("type").String()) {
+			callID := strings.TrimSpace(item.Get("call_id").String())
+			if callID != "" {
+				if _, ok := outputCallIDs[callID]; !ok {
+					changed = true
+					continue
+				}
+			}
+		}
+		pruned = append(pruned, json.RawMessage(append([]byte(nil), raw...)))
+	}
+	if !changed {
+		return cloneOpenAIWSRawMessages(items)
+	}
+	return pruned
 }
 
 type openAIWSToolCallReplayCollector struct {
