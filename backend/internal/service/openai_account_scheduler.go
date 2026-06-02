@@ -179,16 +179,18 @@ func (s *openAIAccountRuntimeStats) report(accountID int64, success bool, firstT
 	if s == nil || accountID <= 0 {
 		return
 	}
-	const alpha = 0.2
 	stat := s.loadOrCreate(accountID)
 
 	errorSample := 1.0
 	if success {
 		errorSample = 0.0
 	}
-	updateEWMAAtomic(&stat.errorRateEWMABits, errorSample, alpha)
+	// Use higher alpha for errors so broken accounts are penalized faster.
+	const errorAlpha = 0.4
+	updateEWMAAtomic(&stat.errorRateEWMABits, errorSample, errorAlpha)
 
 	if firstTokenMs != nil && *firstTokenMs > 0 {
+		const ttftAlpha = 0.2
 		ttft := float64(*firstTokenMs)
 		ttftBits := math.Float64bits(ttft)
 		for {
@@ -200,7 +202,7 @@ func (s *openAIAccountRuntimeStats) report(accountID int64, success bool, firstT
 				}
 				continue
 			}
-			newValue := alpha*ttft + (1-alpha)*oldValue
+			newValue := ttftAlpha*ttft + (1-ttftAlpha)*oldValue
 			if stat.ttftEWMABits.CompareAndSwap(oldBits, math.Float64bits(newValue)) {
 				break
 			}
@@ -560,8 +562,10 @@ func buildOpenAIWeightedSelectionOrder(
 		}
 	}
 	for i := range pool {
-		// 将 top-K 分值平移到正区间，避免“单一最高分账号”长期垄断。
-		weight := (pool[i].score - minScore) + 1.0
+		// Exponential weighting amplifies score differences so that the scheduler
+		// maintains discrimination even when top-K candidates have similar scores.
+		// Without this, near-uniform scores degenerate to uniform random selection.
+		weight := math.Exp(2.5 * (pool[i].score - minScore))
 		if math.IsNaN(weight) || math.IsInf(weight, 0) || weight <= 0 {
 			weight = 1.0
 		}
@@ -998,6 +1002,9 @@ func (s *defaultOpenAIAccountScheduler) ReportResult(accountID int64, success bo
 		return
 	}
 	s.stats.report(accountID, success, firstTokenMs)
+	if !success && s.service != nil && s.service.concurrencyService != nil {
+		s.service.concurrencyService.InvalidateAccountLoadCache()
+	}
 }
 
 func (s *defaultOpenAIAccountScheduler) ReportSwitch() {
@@ -1324,7 +1331,7 @@ func (s *OpenAIGatewayService) openAIWSSchedulerWeights() GatewayOpenAIWSSchedul
 		}
 	}
 	return GatewayOpenAIWSSchedulerScoreWeightsView{
-		Priority:  1.0,
+		Priority:  1.5,
 		Load:      1.0,
 		Queue:     0.7,
 		ErrorRate: 0.8,

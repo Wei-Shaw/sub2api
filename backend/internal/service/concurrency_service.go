@@ -86,7 +86,7 @@ const (
 	// 默认等待队列额外槽位
 	defaultExtraWaitSlots = 20
 
-	defaultAccountLoadBatchCacheTTL = 200 * time.Millisecond
+	defaultAccountLoadBatchCacheTTL = 100 * time.Millisecond
 	accountLoadBatchFetchTimeout    = 3 * time.Second
 	maxAccountLoadBatchCacheEntries = 256
 )
@@ -127,6 +127,18 @@ func (s *ConcurrencyService) SetAccountLoadBatchCacheTTL(ttl time.Duration) {
 		s.accountLoadCache = make(map[string]cachedAccountLoadBatch)
 		s.accountLoadCacheMu.Unlock()
 	}
+}
+
+// InvalidateAccountLoadCache flushes all cached load snapshots, forcing the
+// next selection to fetch fresh data. Called on error reports so that failing
+// accounts are not masked by stale cache entries.
+func (s *ConcurrencyService) InvalidateAccountLoadCache() {
+	if s == nil {
+		return
+	}
+	s.accountLoadCacheMu.Lock()
+	s.accountLoadCache = make(map[string]cachedAccountLoadBatch)
+	s.accountLoadCacheMu.Unlock()
 }
 
 // AcquireResult represents the result of acquiring a concurrency slot
