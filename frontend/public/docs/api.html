@@ -911,6 +911,7 @@
           <a href="#opencode">OpenCode</a>
           <a href="#openclaw">OpenClaw</a>
           <a href="#hermes">Hermes</a>
+          <a href="#codexplusplus">如何开启 Codex 插件</a>
           <a href="#faq">常见问题</a>
         </aside>
 
@@ -1273,6 +1274,44 @@ requires_openai_auth = true</code></pre>
   "OPENAI_API_KEY": "YOUR_API_KEY"
 }</code></pre>
               </div>
+            </div>
+          </section>
+
+          <section id="codexplusplus">
+            <h2>如何开启 Codex 插件（Codex++）</h2>
+            <p class="section-desc">
+              如果你使用第三方 API 或本站中转，不想只依赖官方 ChatGPT 登录态，可以用 Codex++ 给 Codex App 开启增强插件和中转 Provider。Codex++ 是外部启动器，不改 Codex App 安装文件，而是通过 Chromium DevTools Protocol 注入增强脚本。
+            </p>
+            <div class="grid-2">
+              <div class="card">
+                <h3>它能做什么</h3>
+                <ul class="plain-list">
+                  <li>开启 Codex App 的插件入口、特殊插件安装、会话删除、Markdown 导出、项目移动、Timeline 等增强能力。</li>
+                  <li>通过“中转注入”写入 <code>CodexPlusPlus</code> Provider，让 Codex App 使用第三方 API Base URL 与 API Key。</li>
+                  <li>支持多个中转配置，并可在增强 Provider 与官方 ChatGPT 登录态之间切换。</li>
+                  <li>独立管理用户脚本，启动 Codex 时自动注入自定义脚本。</li>
+                </ul>
+                <div class="meta-row">
+                  <a class="tiny-btn" href="https://github.com/BigPizzaV3/CodexPlusPlus" target="_blank" rel="noopener noreferrer">打开 Codex++ 仓库</a>
+                  <a class="tiny-btn" href="https://github.com/BigPizzaV3/CodexPlusPlus/releases" target="_blank" rel="noopener noreferrer">下载 Releases</a>
+                </div>
+              </div>
+              <div class="card">
+                <h3>第三方 API 开启步骤</h3>
+                <ol class="plain-list">
+                  <li>先安装官方 Codex App，再从 Codex++ Releases 下载并安装对应系统版本。</li>
+                  <li>进入本站 <code>/keys</code> 创建或复制 API Key。</li>
+                  <li>打开 <code>Codex++ 管理工具</code>，进入中转注入 / Relay 配置。</li>
+                  <li>新增一个配置：Base URL 填 <code><span data-default-host-text>https://re.94xy.cn</span>/v1</code>，API Key 填本站 Key，模型按可用权限填写，例如 <code>gpt-5.4</code>。</li>
+                  <li>保存后用 <code>Codex++</code> 或管理工具启动 Codex App，确认当前 Provider 为 <code>CodexPlusPlus</code>。</li>
+                </ol>
+                <div class="note warning" style="margin-top: 12px;">
+                  Codex++ README 的中转注入示例使用 OpenAI Responses 兼容地址，通常应填写 <code>HOST/v1</code>。如果你的 Codex++ 版本界面明确提示只填根地址，再按界面提示填写 <code>HOST</code>。
+                </div>
+              </div>
+            </div>
+            <div class="note" style="margin-top: 16px;">
+              如果启动后没有看到插件或 Provider，先在 Codex++ 管理工具里运行检查 / 修复，再确认 Codex App 版本更新后是否需要等待 Codex++ 适配。
             </div>
           </section>
 
