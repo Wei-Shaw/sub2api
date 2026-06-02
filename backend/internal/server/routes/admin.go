@@ -123,6 +123,9 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+
+		// Bot-sales B2B fulfillment
+		registerBotSalesFulfillmentRoutes(admin, h)
 	}
 }
 
@@ -149,6 +152,13 @@ func registerAuditLogRoutes(admin *gin.RouterGroup, h *handler.Handlers, _ middl
 		auditLogs.GET("/:id", h.Admin.AuditLog.Get)
 		// 清空需现场 TOTP 校验（在 handler 内强制），不复用 step-up sudo 窗口
 		auditLogs.POST("/clear", h.Admin.AuditLog.Clear)
+	}
+}
+
+func registerBotSalesFulfillmentRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	botSales := admin.Group("/bot-sales")
+	{
+		botSales.POST("/token-fulfillments", h.Admin.BotSalesFulfillment.Create)
 	}
 }
 
