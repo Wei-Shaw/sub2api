@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 )
 
@@ -89,6 +90,17 @@ func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	settings, err := svc.GetPublicSettings(context.Background())
 	require.NoError(t, err)
 	require.True(t, settings.ForceEmailOnThirdPartySignup)
+}
+
+func TestSettingService_GetPublicSettings_ExposesServerTimezone(t *testing.T) {
+	require.NoError(t, timezone.Init("Asia/Shanghai"))
+	t.Cleanup(func() { _ = timezone.Init("UTC") })
+
+	svc := NewSettingService(&settingPublicRepoStub{}, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "Asia/Shanghai", settings.ServerTimezone)
 }
 
 func TestSettingService_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {

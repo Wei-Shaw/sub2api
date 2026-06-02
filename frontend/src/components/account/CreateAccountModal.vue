@@ -2027,7 +2027,9 @@
                       {{ t('admin.accounts.tempUnschedulable.resetAtMidnightShortcut') }}
                     </button>
                   </div>
-                  <p class="input-hint">{{ t('admin.accounts.tempUnschedulable.resetAtTimeHint') }}</p>
+                  <p class="input-hint">
+                    {{ t('admin.accounts.tempUnschedulable.resetAtTimeHint', { timezone: effectiveServerTimezone }) }}
+                  </p>
                 </div>
                 <div class="sm:col-span-2">
                   <label class="input-label">{{ t('admin.accounts.tempUnschedulable.keywords') }}</label>
@@ -3326,6 +3328,9 @@ const emit = defineEmits<{
 }>()
 
 const appStore = useAppStore()
+const effectiveServerTimezone = computed(
+  () => appStore.serverTimezone || t('admin.accounts.tempUnschedulable.serverTimezoneUnknown')
+)
 
 // OAuth composables
 const oauth = useAccountOAuth() // For Anthropic OAuth
