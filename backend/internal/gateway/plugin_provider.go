@@ -341,7 +341,7 @@ func (p *PluginGatewayProvider) consumeStream(
 
 		case *pb.GatewayForwardChunk_Done:
 			result = p.doneToForwardResult(c.Done)
-			if upstreamErr := p.doneToUpstreamError(c.Done); upstreamErr != nil {
+			if upstreamErr := p.doneToUpstreamError(c.Done, req.Model); upstreamErr != nil {
 				return result, upstreamErr
 			}
 			if c.Done.GetError() != "" {
@@ -409,9 +409,11 @@ func (p *PluginGatewayProvider) doneToForwardResult(done *pb.GatewayResponseDone
 }
 
 // doneToUpstreamError converts the plugin's structured upstream error
-// into a host-side UpstreamFailoverError. Returns nil when the done
-// message carries no upstream error information.
-func (p *PluginGatewayProvider) doneToUpstreamError(done *pb.GatewayResponseDone) error {
+// into a host-side UpstreamFailoverError. requestedModel is propagated
+// so HandlePipelineUpstreamError can trigger per-model rate limiting
+// (e.g. model-not-found cooldown). Returns nil when the done message
+// carries no upstream error information.
+func (p *PluginGatewayProvider) doneToUpstreamError(done *pb.GatewayResponseDone, requestedModel string) error {
 	if done == nil || done.GetResult() == nil {
 		return nil
 	}
@@ -425,6 +427,7 @@ func (p *PluginGatewayProvider) doneToUpstreamError(done *pb.GatewayResponseDone
 		ResponseHeaders:        protoMapToHTTPHeader(ue.GetResponseHeaders()),
 		ForceCacheBilling:      ue.GetForceCacheBilling(),
 		RetryableOnSameAccount: ue.GetRetryOnSameAccount(),
+		RequestedModel:         requestedModel,
 	}
 }
 

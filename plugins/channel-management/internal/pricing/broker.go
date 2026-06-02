@@ -50,10 +50,15 @@ type Broker struct {
 	closed bool
 }
 
-// subscriber is one active Watch stream. ch is buffered; closeOnce
+// subscriber is one active Watch stream. ch is buffered.
+//
+// mu serialises send and close so a concurrent unsubscribe (which closes
+// ch) cannot race with Publish's non-blocking send. closeOnce still
 // guards against double-close from concurrent unsubscribe + drop paths.
 type subscriber struct {
+	mu        sync.Mutex
 	ch        chan *pb.PricingOverrideEvent
+	closed    bool
 	closeOnce sync.Once
 }
 
@@ -85,7 +90,7 @@ func (b *Broker) Subscribe() (<-chan *pb.PricingOverrideEvent, func()) {
 	b.mu.Lock()
 	if b.closed {
 		b.mu.Unlock()
-		sub.closeOnce.Do(func() { close(sub.ch) })
+		sub.close()
 		return sub.ch, func() {}
 	}
 	b.subs[sub] = struct{}{}
@@ -94,12 +99,43 @@ func (b *Broker) Subscribe() (<-chan *pb.PricingOverrideEvent, func()) {
 }
 
 // unsubscribe removes sub from the registry and closes its channel.
-// Idempotent — repeated calls are safe.
+// Idempotent — repeated calls are safe. The subscriber's own mutex
+// serialises close against any in-flight Publish send so we never
+// send on a closed channel.
 func (b *Broker) unsubscribe(sub *subscriber) {
 	b.mu.Lock()
 	delete(b.subs, sub)
 	b.mu.Unlock()
-	sub.closeOnce.Do(func() { close(sub.ch) })
+	sub.close()
+}
+
+// close marks the subscriber as closed and closes the channel. The
+// subscriber mutex serialises against trySend so a concurrent Publish
+// cannot send on a closed channel.
+func (s *subscriber) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closeOnce.Do(func() {
+		s.closed = true
+		close(s.ch)
+	})
+}
+
+// trySend attempts a non-blocking send on the subscriber's channel.
+// Returns true if the event was delivered, false if the buffer was full
+// or the subscriber is already closed.
+func (s *subscriber) trySend(evt *pb.PricingOverrideEvent) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false
+	}
+	select {
+	case s.ch <- evt:
+		return true
+	default:
+		return false
+	}
 }
 
 // Publish fans evt out to every subscriber. Subscribers whose buffered
@@ -123,11 +159,11 @@ func (b *Broker) Publish(evt *pb.PricingOverrideEvent) {
 	}
 	b.mu.Unlock()
 
+	// trySend is safe against concurrent unsubscribe: each subscriber's
+	// own mutex serialises the non-blocking send with close.
 	var dropped []*subscriber
 	for _, s := range snapshot {
-		select {
-		case s.ch <- evt:
-		default:
+		if !s.trySend(evt) {
 			dropped = append(dropped, s)
 		}
 	}
@@ -144,7 +180,7 @@ func (b *Broker) Publish(evt *pb.PricingOverrideEvent) {
 	}
 	b.mu.Unlock()
 	for _, s := range dropped {
-		s.closeOnce.Do(func() { close(s.ch) })
+		s.close()
 	}
 	slog.Warn("pricing broker: dropped slow subscribers",
 		"count", len(dropped))
@@ -164,7 +200,7 @@ func (b *Broker) Close() {
 	b.subs = nil
 	b.mu.Unlock()
 	for s := range subs {
-		s.closeOnce.Do(func() { close(s.ch) })
+		s.close()
 	}
 }
 

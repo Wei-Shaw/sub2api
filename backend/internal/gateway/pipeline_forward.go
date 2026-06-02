@@ -333,6 +333,13 @@ func (p *GatewayPipeline) handleForwardError(
 		return p.handleNonFailoverError(ctx, req, fs, err)
 	}
 
+	// Ensure RequestedModel is populated so HandlePipelineUpstreamError can
+	// trigger per-model rate limiting (e.g. model-not-found cooldown).
+	// Providers may or may not set it; the pipeline always knows the model.
+	if failoverErr.RequestedModel == "" {
+		failoverErr.RequestedModel = req.Model
+	}
+
 	fs.lastFailoverErr = failoverErr
 	p.gatewayService.HandlePipelineUpstreamError(ctx, req.Account, failoverErr)
 	if failoverErr.ForceCacheBilling {

@@ -146,6 +146,64 @@ func TestBroker_CloseTearsDownSubscribers(t *testing.T) {
 	b.Publish(&pb.PricingOverrideEvent{Op: pb.PricingOverrideEvent_UPSERT})
 }
 
+// TestBroker_PublishUnsubscribeRace hammers Publish and unsubscribe in
+// parallel to verify that the per-subscriber mutex prevents the
+// send-on-closed-channel panic that existed before the fix (§7.6).
+func TestBroker_PublishUnsubscribeRace(t *testing.T) {
+	b := NewBroker()
+	defer b.Close()
+
+	const iterations = 1000
+	var wg sync.WaitGroup
+	for i := 0; i < iterations; i++ {
+		ch, unsub := b.Subscribe()
+		wg.Add(2)
+		// Goroutine 1: publish an event targeting this subscriber.
+		go func() {
+			defer wg.Done()
+			b.Publish(&pb.PricingOverrideEvent{
+				Op:      pb.PricingOverrideEvent_UPSERT,
+				Version: "race",
+			})
+		}()
+		// Goroutine 2: concurrently unsubscribe (closes the channel).
+		go func() {
+			defer wg.Done()
+			unsub()
+		}()
+		// Drain to prevent slow-consumer drop accumulating.
+		go func() {
+			for range ch { //nolint:revive // drain
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// TestBroker_ClosePublishRace verifies that Close and Publish racing
+// concurrently do not panic.
+func TestBroker_ClosePublishRace(t *testing.T) {
+	const iterations = 1000
+	for i := 0; i < iterations; i++ {
+		b := NewBroker()
+		b.Subscribe() //nolint:errcheck // subscriber intentionally leaked for race coverage
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			b.Publish(&pb.PricingOverrideEvent{
+				Op:      pb.PricingOverrideEvent_UPSERT,
+				Version: "race-close",
+			})
+		}()
+		go func() {
+			defer wg.Done()
+			b.Close()
+		}()
+		wg.Wait()
+	}
+}
+
 func TestBroker_ConcurrentPublishSubscribe(t *testing.T) {
 	b := NewBroker()
 	defer b.Close()

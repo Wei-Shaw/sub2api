@@ -45,9 +45,14 @@ func (s *GatewayService) HandlePipelineUpstreamError(
 	if s == nil || failoverErr == nil || account == nil || s.rateLimitService == nil {
 		return
 	}
+	var requestedModelArg []string
+	if failoverErr.RequestedModel != "" {
+		requestedModelArg = []string{failoverErr.RequestedModel}
+	}
 	s.rateLimitService.HandleUpstreamError(
 		ctx, account, failoverErr.StatusCode,
 		failoverErr.ResponseHeaders, failoverErr.ResponseBody,
+		requestedModelArg...,
 	)
 	s.applyInternal500PenaltyIfMatched(ctx, account, failoverErr)
 }

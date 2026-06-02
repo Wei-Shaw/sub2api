@@ -471,6 +471,7 @@ type UpstreamFailoverError struct {
 	ResponseHeaders        http.Header // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
 	ForceCacheBilling      bool        // Antigravity 粘性会话切换时设为 true
 	RetryableOnSameAccount bool        // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
+	RequestedModel         string      // 请求的模型名称，用于 HandleUpstreamModelNotFound 按模型限流
 }
 
 func (e *UpstreamFailoverError) Error() string {
