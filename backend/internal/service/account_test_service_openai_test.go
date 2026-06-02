@@ -132,7 +132,7 @@ func TestAccountTestService_OpenAISuccessPersistsSnapshotFromHeaders(t *testing.
 	require.Len(t, upstream.requests, 1)
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.requests[0].Context()))
 	require.NotEmpty(t, repo.updatedExtra)
-	require.Equal(t, 58.0, repo.updatedExtra["codex_5h_used_percent"])
+	require.Equal(t, 42.0, repo.updatedExtra["codex_5h_used_percent"])
 	require.Equal(t, 88.0, repo.updatedExtra["codex_7d_used_percent"])
 	require.Contains(t, recorder.Body.String(), "test_complete")
 }
@@ -170,7 +170,7 @@ func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimitState(t *testin
 	resp.Header.Set("x-codex-primary-used-percent", "100")
 	resp.Header.Set("x-codex-primary-reset-after-seconds", "604800")
 	resp.Header.Set("x-codex-primary-window-minutes", "10080")
-	resp.Header.Set("x-codex-secondary-used-percent", "0")
+	resp.Header.Set("x-codex-secondary-used-percent", "100")
 	resp.Header.Set("x-codex-secondary-reset-after-seconds", "18000")
 	resp.Header.Set("x-codex-secondary-window-minutes", "300")
 

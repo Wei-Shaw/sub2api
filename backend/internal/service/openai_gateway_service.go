@@ -126,15 +126,16 @@ type NormalizedCodexLimits struct {
 	Window7dMinutes *int
 }
 
-func normalizeCodexFiveHourUsedPercent(raw *float64) *float64 {
+func normalizeCodexUsedPercent(raw *float64) *float64 {
 	if raw == nil {
 		return nil
 	}
-	// OpenAI's 5h Codex quota header is remaining%, despite the upstream header
-	// name saying "used"; the canonical codex_5h_used_percent field stores used%.
-	used := 100 - *raw
+	used := *raw
 	if used < 0 {
 		used = 0
+	}
+	if used > 100 {
+		used = 100
 	}
 	return &used
 }
@@ -197,17 +198,17 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 
 	// Assign values
 	if use5hFromPrimary {
-		result.Used5hPercent = normalizeCodexFiveHourUsedPercent(s.PrimaryUsedPercent)
+		result.Used5hPercent = normalizeCodexUsedPercent(s.PrimaryUsedPercent)
 		result.Reset5hSeconds = s.PrimaryResetAfterSeconds
 		result.Window5hMinutes = s.PrimaryWindowMinutes
-		result.Used7dPercent = s.SecondaryUsedPercent
+		result.Used7dPercent = normalizeCodexUsedPercent(s.SecondaryUsedPercent)
 		result.Reset7dSeconds = s.SecondaryResetAfterSeconds
 		result.Window7dMinutes = s.SecondaryWindowMinutes
 	} else if use7dFromPrimary {
-		result.Used7dPercent = s.PrimaryUsedPercent
+		result.Used7dPercent = normalizeCodexUsedPercent(s.PrimaryUsedPercent)
 		result.Reset7dSeconds = s.PrimaryResetAfterSeconds
 		result.Window7dMinutes = s.PrimaryWindowMinutes
-		result.Used5hPercent = normalizeCodexFiveHourUsedPercent(s.SecondaryUsedPercent)
+		result.Used5hPercent = normalizeCodexUsedPercent(s.SecondaryUsedPercent)
 		result.Reset5hSeconds = s.SecondaryResetAfterSeconds
 		result.Window5hMinutes = s.SecondaryWindowMinutes
 	}

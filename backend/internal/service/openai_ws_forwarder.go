@@ -2782,26 +2782,25 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 	refreshIngressRouteState(firstPayload)
 
-	if s.shouldBridgeOpenAIWSHTTP(firstPayload.payloadBytes, firstPayload.previousResponseID) {
+	runHTTPBridge := func(currentBridgePayload openAIWSClientPayload, bridgeReplayInput []json.RawMessage, bridgeReplayInputExists bool, firstBridgeTurn int, skipFirstTurnHooks bool) error {
 		logOpenAIWSModeInfo(
 			"ingress_ws_http_bridge_start account_id=%d account_type=%s payload_bytes=%d threshold_bytes=%d has_session_hash=%v store_disabled=%v",
 			account.ID,
 			account.Type,
-			firstPayload.payloadBytes,
+			currentBridgePayload.payloadBytes,
 			s.openAIWSHTTPBridgeThresholdBytes(),
 			sessionHash != "",
 			storeDisabled,
 		)
-		currentBridgePayload := firstPayload
-		var bridgeReplayInput []json.RawMessage
-		bridgeReplayInputExists := false
-		for turn := 1; ; turn++ {
-			if turn > 1 && hooks != nil && hooks.BeforeRequest != nil {
+		bridgeReplayInput = cloneOpenAIWSRawMessages(bridgeReplayInput)
+		for turn := firstBridgeTurn; ; turn++ {
+			isFirstBridgeTurn := turn == firstBridgeTurn
+			if !isFirstBridgeTurn && hooks != nil && hooks.BeforeRequest != nil {
 				if err := hooks.BeforeRequest(turn, currentBridgePayload.payloadRaw, currentBridgePayload.originalModel); err != nil {
 					return err
 				}
 			}
-			if hooks != nil && hooks.BeforeTurn != nil {
+			if !(skipFirstTurnHooks && isFirstBridgeTurn) && hooks != nil && hooks.BeforeTurn != nil {
 				if err := hooks.BeforeTurn(turn); err != nil {
 					return err
 				}
@@ -2822,6 +2821,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				return fmt.Errorf("build websocket http bridge replay input: %w", replayInputErr)
 			}
 			if needsBridgeReplay && turnReplayInputExists {
+				turnReplayInput = pruneOpenAIWSUnansweredToolCallContextItems(turnReplayInput)
 				updatedPayload, setInputErr := setOpenAIWSPayloadInputSequence(
 					currentBridgePayload.payloadRaw,
 					turnReplayInput,
@@ -2901,6 +2901,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			currentBridgePayload = nextPayload
 		}
+	}
+
+	if s.shouldBridgeOpenAIWSHTTP(firstPayload.payloadBytes, firstPayload.previousResponseID) {
+		return runHTTPBridge(firstPayload, nil, false, 1, false)
 	}
 
 	wsHeaders, _ := s.buildOpenAIWSHeaders(c, account, token, wsDecision, isCodexCLI, turnState, strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader)), firstPayload.promptCacheKey)
@@ -3647,6 +3651,30 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					}
 				}
 			}
+		}
+		if s.shouldBridgeOpenAIWSHTTPPayload(currentPayloadBytes) {
+			logOpenAIWSModeInfo(
+				"ingress_ws_http_bridge_handoff account_id=%d turn=%d payload_bytes=%d threshold_bytes=%d has_previous_response_id=%v has_function_call_output=%v",
+				account.ID,
+				turn,
+				currentPayloadBytes,
+				s.openAIWSHTTPBridgeThresholdBytes(),
+				strings.TrimSpace(currentPreviousResponseID) != "",
+				hasFunctionCallOutput,
+			)
+			resetSessionLease(false)
+			currentBridgePayload := openAIWSClientPayload{
+				payloadRaw:         currentPayload,
+				rawForHash:         currentPayload,
+				promptCacheKey:     openAIWSPayloadStringFromRaw(currentPayload, "prompt_cache_key"),
+				previousResponseID: currentPreviousResponseID,
+				originalModel:      currentOriginalModel,
+				imageBillingModel:  currentImageBillingModel,
+				imageSizeTier:      currentImageSizeTier,
+				imageInputSize:     currentImageInputSize,
+				payloadBytes:       currentPayloadBytes,
+			}
+			return runHTTPBridge(currentBridgePayload, lastTurnReplayInput, lastTurnReplayInputExists, turn, true)
 		}
 		forcePreferredConn := isStrictAffinityTurn(currentPayload)
 		if sessionLease == nil {
