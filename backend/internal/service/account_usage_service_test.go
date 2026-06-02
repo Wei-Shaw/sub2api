@@ -73,7 +73,7 @@ func TestExtractOpenAICodexProbeUpdatesAccepts429WithCodexHeaders(t *testing.T) 
 	headers.Set("x-codex-primary-used-percent", "100")
 	headers.Set("x-codex-primary-reset-after-seconds", "604800")
 	headers.Set("x-codex-primary-window-minutes", "10080")
-	headers.Set("x-codex-secondary-used-percent", "0")
+	headers.Set("x-codex-secondary-used-percent", "100")
 	headers.Set("x-codex-secondary-reset-after-seconds", "18000")
 	headers.Set("x-codex-secondary-window-minutes", "300")
 
@@ -96,7 +96,7 @@ func TestBuildCodexUsageProgressFromExtra_UsesCanonicalUsedPercent(t *testing.T)
 	t.Parallel()
 	now := time.Date(2026, 5, 30, 7, 4, 9, 0, time.UTC)
 	extra := map[string]any{
-		"codex_5h_used_percent": 94.0,
+		"codex_5h_used_percent": 6.0,
 		"codex_5h_reset_at":     now.Add(2 * time.Hour).Format(time.RFC3339),
 		"codex_7d_used_percent": 93.0,
 		"codex_7d_reset_at":     now.Add(5 * 24 * time.Hour).Format(time.RFC3339),
@@ -106,8 +106,8 @@ func TestBuildCodexUsageProgressFromExtra_UsesCanonicalUsedPercent(t *testing.T)
 	if fiveHour == nil {
 		t.Fatal("expected non-nil 5h progress")
 	}
-	if fiveHour.Utilization != 94.0 {
-		t.Fatalf("5h Utilization = %v, want 94", fiveHour.Utilization)
+	if fiveHour.Utilization != 6.0 {
+		t.Fatalf("5h Utilization = %v, want 6", fiveHour.Utilization)
 	}
 
 	sevenDay := buildCodexUsageProgressFromExtra(extra, "7d", now)
