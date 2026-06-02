@@ -240,3 +240,21 @@ func TestMigration173AllowsCyberBlockedUsageRequestType(t *testing.T) {
 	require.Contains(t, sql, "ADD CONSTRAINT usage_logs_request_type_check")
 	require.Contains(t, sql, "CHECK (request_type IN (0, 1, 2, 3, 4)) NOT VALID")
 }
+
+func TestLocalMigrationRepairsStaleBalancePackageActualCredits(t *testing.T) {
+	content, err := LocalFS.ReadFile("local/local_0017_recalculate_vclaw_balance_actual_credits.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "payment_orders")
+	require.Contains(t, sql, "balance_packages")
+	require.Contains(t, sql, "token_price_per_million")
+	require.Contains(t, sql, "rate_multiplier = 1")
+	require.Contains(t, sql, "(14, 'standard',   202.50::numeric, 27::numeric)")
+	require.Contains(t, sql, "currency_overrides = jsonb_build_object")
+	require.Contains(t, sql, "'USD', CASE c.code")
+	require.Contains(t, sql, "ledger_amount / g.rate_multiplier / NULLIF(g.token_price_per_million, 0)")
+	require.Contains(t, sql, "actual_credits = (c.token_millions * 1000000)::bigint")
+	require.NotContains(t, sql, "actual_credits IS NULL")
+	require.NotContains(t, sql, "/ g.rate_multiplier * 1000000")
+}

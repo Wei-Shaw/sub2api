@@ -43,7 +43,7 @@ func (Group) Fields() []ent.Field {
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.Float("rate_multiplier").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(1.0),
 		// 高峰时段倍率（added by migration 158）
 		field.Bool("peak_rate_enabled").
