@@ -3300,6 +3300,11 @@ export default {
       recoverStateHint: 'Used to recover error, rate-limit, and temporary unschedulable runtime state.',
       recoverStateSuccess: 'Account state recovered successfully',
       recoverStateFailed: 'Failed to recover account state',
+      fallbackActive: 'Fallback',
+      fallbackActiveTip: 'Origin proxy {originREDACTED expired',
+      revertProxy: 'Revert proxy',
+      revertProxySuccess: 'Successfully reverted to original proxy',
+      revertProxyFailed: 'Failed to revert proxy',
       resetStatus: 'Reset Status',
       statusReset: 'Account status reset successfully',
       failedToResetStatus: 'Failed to reset account status',
@@ -4176,6 +4181,8 @@ export default {
         status: 'Status',
         accounts: 'Accounts',
         latency: 'Latency',
+        expiry: 'Validity',
+        createdAt: 'Created',
         actions: 'Actions'
       REDACTED,
       testConnection: 'Test Connection',
@@ -4273,7 +4280,21 @@ export default {
       hostRequired: 'Please enter host address',
       portInvalid: 'Port must be between 1-65535',
       deleteConfirm:
-        "Are you sure you want to delete '{nameREDACTED'? Accounts using this proxy will have their proxy removed."
+        "Are you sure you want to delete '{nameREDACTED'? Accounts using this proxy will have their proxy removed.",
+      neverExpires: 'Never',
+      expired: 'Expired',
+      overdueDays: 'Overdue {daysREDACTEDd',
+      expiringInDays: 'Expires in {daysREDACTEDd',
+      remainingDays: '{daysREDACTEDd left',
+      expiresAt: 'Validity',
+      nDays: '{daysREDACTEDd',
+      expiryDaysPlaceholder: 'Custom days, empty = never',
+      expiryWarnDays: 'Expiry warning (days)',
+      fallbackMode: 'Failure fallback',
+      fallbackNone: 'No fallback',
+      fallbackProxy: 'Backup proxy',
+      fallbackDirect: 'Direct connection',
+      backupProxy: 'Backup proxy',
     REDACTED,
 
     // Redeem Codes

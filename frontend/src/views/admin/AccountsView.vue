@@ -288,13 +288,25 @@
             />
           </template>
           <template #cell-proxy="{ row REDACTED">
-            <div v-if="row.proxy" class="flex items-center gap-2">
-              <span class="text-sm text-gray-700 dark:text-gray-300">{{ row.proxy.name REDACTEDREDACTED</span>
-              <span v-if="row.proxy.country_code" class="text-xs text-gray-500 dark:text-gray-400">
-                ({{ row.proxy.country_code REDACTEDREDACTED)
-              </span>
+            <div class="flex flex-col gap-1">
+              <div v-if="row.proxy" class="flex items-center gap-2">
+                <span class="text-sm text-gray-700 dark:text-gray-300">{{ row.proxy.name REDACTEDREDACTED</span>
+                <span v-if="row.proxy.country_code" class="text-xs text-gray-500 dark:text-gray-400">
+                  ({{ row.proxy.country_code REDACTEDREDACTED)
+                </span>
+              </div>
+              <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+              <div v-if="row.proxy && row.proxy.expires_at" class="flex items-center gap-2 text-xs">
+                <span class="text-gray-600 dark:text-gray-300">{{ formatDateTime(row.proxy.expires_at) REDACTEDREDACTED</span>
+                <span :class="proxyExpiryBadge(row.proxy)">{{ proxyExpiryText(row.proxy) REDACTEDREDACTED</span>
+              </div>
+              <div v-if="row.proxy_fallback_origin_id" class="flex items-center gap-1">
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200" :title="t('admin.accounts.fallbackActiveTip', { origin: row.proxy_fallback_origin_name REDACTED)">
+                  {{ t('admin.accounts.fallbackActive') REDACTEDREDACTED
+                </span>
+                <button class="text-xs px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700" @click="onRevertFallback(row)">{{ t('admin.accounts.revertProxy') REDACTEDREDACTED</button>
+              </div>
             </div>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-rate_multiplier="{ row REDACTED">
             <span class="text-sm font-mono text-gray-700 dark:text-gray-300">
@@ -421,6 +433,7 @@ import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRules
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey REDACTED from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
+import { proxyExpiryBadgeClass, proxyExpiryLabelKey REDACTED from '@/utils/proxyExpiry'
 import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel REDACTED from '@/types'
 
 const { t REDACTED = useI18n()
@@ -1597,6 +1610,16 @@ const handleSetPrivacy = async (a: Account) => {
     appStore.showError(error?.response?.data?.message || t('admin.accounts.privacyFailed'))
   REDACTED
 REDACTED
+const onRevertFallback = async (a: Account) => {
+  try {
+    await adminAPI.accounts.revertProxyFallback(a.id)
+    appStore.showSuccess(t('admin.accounts.revertProxySuccess'))
+    reload()
+  REDACTED catch (error: any) {
+    console.error('Failed to revert proxy fallback:', error)
+    appStore.showError(error?.response?.data?.message || t('admin.accounts.revertProxyFailed'))
+  REDACTED
+REDACTED
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true REDACTED
 const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() REDACTED catch (error) { console.error('Failed to delete account:', error) REDACTED REDACTED
 const handleToggleSchedulable = async (a: Account) => {
@@ -1638,6 +1661,12 @@ REDACTED
 const isExpired = (value: number | null) => {
   if (!value) return false
   return value * 1000 <= Date.now()
+REDACTED
+// 所绑定代理的有效期(逻辑同 /admin/proxies,见 utils/proxyExpiry)
+const proxyExpiryBadge = (p: AccountProxy): string => proxyExpiryBadgeClass(p.expires_at, p.status)
+const proxyExpiryText = (p: AccountProxy): string => {
+  const { key, params REDACTED = proxyExpiryLabelKey(p.expires_at, p.status)
+  return params ? t(key, params) : t(key)
 REDACTED
 
 // 滚动时关闭操作菜单（不关闭列设置下拉菜单）

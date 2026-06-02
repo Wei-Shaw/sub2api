@@ -172,6 +172,81 @@ REDACTED
 	return _u
 REDACTED
 
+// SetExpiresAt sets the "expires_at" field.
+func (_u *ProxyUpdate) SetExpiresAt(v time.Time) *ProxyUpdate {
+	_u.mutation.SetExpiresAt(v)
+	return _u
+REDACTED
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillableExpiresAt(v *time.Time) *ProxyUpdate {
+	if v != nil {
+		_u.SetExpiresAt(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *ProxyUpdate) ClearExpiresAt() *ProxyUpdate {
+	_u.mutation.ClearExpiresAt()
+	return _u
+REDACTED
+
+// SetFallbackMode sets the "fallback_mode" field.
+func (_u *ProxyUpdate) SetFallbackMode(v string) *ProxyUpdate {
+	_u.mutation.SetFallbackMode(v)
+	return _u
+REDACTED
+
+// SetNillableFallbackMode sets the "fallback_mode" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillableFallbackMode(v *string) *ProxyUpdate {
+	if v != nil {
+		_u.SetFallbackMode(*v)
+REDACTED
+	return _u
+REDACTED
+
+// SetBackupProxyID sets the "backup_proxy_id" field.
+func (_u *ProxyUpdate) SetBackupProxyID(v int64) *ProxyUpdate {
+	_u.mutation.SetBackupProxyID(v)
+	return _u
+REDACTED
+
+// SetNillableBackupProxyID sets the "backup_proxy_id" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillableBackupProxyID(v *int64) *ProxyUpdate {
+	if v != nil {
+		_u.SetBackupProxyID(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearBackupProxyID clears the value of the "backup_proxy_id" field.
+func (_u *ProxyUpdate) ClearBackupProxyID() *ProxyUpdate {
+	_u.mutation.ClearBackupProxyID()
+	return _u
+REDACTED
+
+// SetExpiryWarnDays sets the "expiry_warn_days" field.
+func (_u *ProxyUpdate) SetExpiryWarnDays(v int) *ProxyUpdate {
+	_u.mutation.ResetExpiryWarnDays()
+	_u.mutation.SetExpiryWarnDays(v)
+	return _u
+REDACTED
+
+// SetNillableExpiryWarnDays sets the "expiry_warn_days" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillableExpiryWarnDays(v *int) *ProxyUpdate {
+	if v != nil {
+		_u.SetExpiryWarnDays(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddExpiryWarnDays adds value to the "expiry_warn_days" field.
+func (_u *ProxyUpdate) AddExpiryWarnDays(v int) *ProxyUpdate {
+	_u.mutation.AddExpiryWarnDays(v)
+	return _u
+REDACTED
+
 // AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
 func (_u *ProxyUpdate) AddAccountIDs(ids ...int64) *ProxyUpdate {
 	_u.mutation.AddAccountIDs(ids...)
@@ -185,6 +260,11 @@ func (_u *ProxyUpdate) AddAccounts(v ...*Account) *ProxyUpdate {
 		ids[i] = v[i].ID
 REDACTED
 	return _u.AddAccountIDs(ids...)
+REDACTED
+
+// SetBackupProxy sets the "backup_proxy" edge to the Proxy entity.
+func (_u *ProxyUpdate) SetBackupProxy(v *Proxy) *ProxyUpdate {
+	return _u.SetBackupProxyID(v.ID)
 REDACTED
 
 // Mutation returns the ProxyMutation object of the builder.
@@ -211,6 +291,12 @@ func (_u *ProxyUpdate) RemoveAccounts(v ...*Account) *ProxyUpdate {
 		ids[i] = v[i].ID
 REDACTED
 	return _u.RemoveAccountIDs(ids...)
+REDACTED
+
+// ClearBackupProxy clears the "backup_proxy" edge to the Proxy entity.
+func (_u *ProxyUpdate) ClearBackupProxy() *ProxyUpdate {
+	_u.mutation.ClearBackupProxy()
+	return _u
 REDACTED
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -287,6 +373,11 @@ REDACTED
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Proxy.status": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _u.mutation.FallbackMode(); ok {
+		if err := proxy.FallbackModeValidator(v); err != nil {
+			return &ValidationError{Name: "fallback_mode", err: fmt.Errorf(`ent: validator failed for field "Proxy.fallback_mode": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	return nil
 REDACTED
 
@@ -341,6 +432,21 @@ REDACTED
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
 REDACTED
+	if value, ok := _u.mutation.ExpiresAt(); ok {
+		_spec.SetField(proxy.FieldExpiresAt, field.TypeTime, value)
+REDACTED
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(proxy.FieldExpiresAt, field.TypeTime)
+REDACTED
+	if value, ok := _u.mutation.FallbackMode(); ok {
+		_spec.SetField(proxy.FieldFallbackMode, field.TypeString, value)
+REDACTED
+	if value, ok := _u.mutation.ExpiryWarnDays(); ok {
+		_spec.SetField(proxy.FieldExpiryWarnDays, field.TypeInt, value)
+REDACTED
+	if value, ok := _u.mutation.AddedExpiryWarnDays(); ok {
+		_spec.AddField(proxy.FieldExpiryWarnDays, field.TypeInt, value)
+REDACTED
 	if _u.mutation.AccountsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -379,6 +485,35 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.BackupProxyCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   proxy.BackupProxyTable,
+			Columns: []string{proxy.BackupProxyColumnREDACTED,
+			Bidi:    true,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.BackupProxyIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   proxy.BackupProxyTable,
+			Columns: []string{proxy.BackupProxyColumnREDACTED,
+			Bidi:    true,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {
@@ -549,6 +684,81 @@ REDACTED
 	return _u
 REDACTED
 
+// SetExpiresAt sets the "expires_at" field.
+func (_u *ProxyUpdateOne) SetExpiresAt(v time.Time) *ProxyUpdateOne {
+	_u.mutation.SetExpiresAt(v)
+	return _u
+REDACTED
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillableExpiresAt(v *time.Time) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetExpiresAt(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *ProxyUpdateOne) ClearExpiresAt() *ProxyUpdateOne {
+	_u.mutation.ClearExpiresAt()
+	return _u
+REDACTED
+
+// SetFallbackMode sets the "fallback_mode" field.
+func (_u *ProxyUpdateOne) SetFallbackMode(v string) *ProxyUpdateOne {
+	_u.mutation.SetFallbackMode(v)
+	return _u
+REDACTED
+
+// SetNillableFallbackMode sets the "fallback_mode" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillableFallbackMode(v *string) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetFallbackMode(*v)
+REDACTED
+	return _u
+REDACTED
+
+// SetBackupProxyID sets the "backup_proxy_id" field.
+func (_u *ProxyUpdateOne) SetBackupProxyID(v int64) *ProxyUpdateOne {
+	_u.mutation.SetBackupProxyID(v)
+	return _u
+REDACTED
+
+// SetNillableBackupProxyID sets the "backup_proxy_id" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillableBackupProxyID(v *int64) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetBackupProxyID(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearBackupProxyID clears the value of the "backup_proxy_id" field.
+func (_u *ProxyUpdateOne) ClearBackupProxyID() *ProxyUpdateOne {
+	_u.mutation.ClearBackupProxyID()
+	return _u
+REDACTED
+
+// SetExpiryWarnDays sets the "expiry_warn_days" field.
+func (_u *ProxyUpdateOne) SetExpiryWarnDays(v int) *ProxyUpdateOne {
+	_u.mutation.ResetExpiryWarnDays()
+	_u.mutation.SetExpiryWarnDays(v)
+	return _u
+REDACTED
+
+// SetNillableExpiryWarnDays sets the "expiry_warn_days" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillableExpiryWarnDays(v *int) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetExpiryWarnDays(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddExpiryWarnDays adds value to the "expiry_warn_days" field.
+func (_u *ProxyUpdateOne) AddExpiryWarnDays(v int) *ProxyUpdateOne {
+	_u.mutation.AddExpiryWarnDays(v)
+	return _u
+REDACTED
+
 // AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
 func (_u *ProxyUpdateOne) AddAccountIDs(ids ...int64) *ProxyUpdateOne {
 	_u.mutation.AddAccountIDs(ids...)
@@ -562,6 +772,11 @@ func (_u *ProxyUpdateOne) AddAccounts(v ...*Account) *ProxyUpdateOne {
 		ids[i] = v[i].ID
 REDACTED
 	return _u.AddAccountIDs(ids...)
+REDACTED
+
+// SetBackupProxy sets the "backup_proxy" edge to the Proxy entity.
+func (_u *ProxyUpdateOne) SetBackupProxy(v *Proxy) *ProxyUpdateOne {
+	return _u.SetBackupProxyID(v.ID)
 REDACTED
 
 // Mutation returns the ProxyMutation object of the builder.
@@ -588,6 +803,12 @@ func (_u *ProxyUpdateOne) RemoveAccounts(v ...*Account) *ProxyUpdateOne {
 		ids[i] = v[i].ID
 REDACTED
 	return _u.RemoveAccountIDs(ids...)
+REDACTED
+
+// ClearBackupProxy clears the "backup_proxy" edge to the Proxy entity.
+func (_u *ProxyUpdateOne) ClearBackupProxy() *ProxyUpdateOne {
+	_u.mutation.ClearBackupProxy()
+	return _u
 REDACTED
 
 // Where appends a list predicates to the ProxyUpdate builder.
@@ -677,6 +898,11 @@ REDACTED
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Proxy.status": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _u.mutation.FallbackMode(); ok {
+		if err := proxy.FallbackModeValidator(v); err != nil {
+			return &ValidationError{Name: "fallback_mode", err: fmt.Errorf(`ent: validator failed for field "Proxy.fallback_mode": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	return nil
 REDACTED
 
@@ -748,6 +974,21 @@ REDACTED
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
 REDACTED
+	if value, ok := _u.mutation.ExpiresAt(); ok {
+		_spec.SetField(proxy.FieldExpiresAt, field.TypeTime, value)
+REDACTED
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(proxy.FieldExpiresAt, field.TypeTime)
+REDACTED
+	if value, ok := _u.mutation.FallbackMode(); ok {
+		_spec.SetField(proxy.FieldFallbackMode, field.TypeString, value)
+REDACTED
+	if value, ok := _u.mutation.ExpiryWarnDays(); ok {
+		_spec.SetField(proxy.FieldExpiryWarnDays, field.TypeInt, value)
+REDACTED
+	if value, ok := _u.mutation.AddedExpiryWarnDays(); ok {
+		_spec.AddField(proxy.FieldExpiryWarnDays, field.TypeInt, value)
+REDACTED
 	if _u.mutation.AccountsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -786,6 +1027,35 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.BackupProxyCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   proxy.BackupProxyTable,
+			Columns: []string{proxy.BackupProxyColumnREDACTED,
+			Bidi:    true,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.BackupProxyIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   proxy.BackupProxyTable,
+			Columns: []string{proxy.BackupProxyColumnREDACTED,
+			Bidi:    true,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {

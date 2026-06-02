@@ -125,6 +125,20 @@ REDACTED
 	return _c
 REDACTED
 
+// SetProxyFallbackOriginID sets the "proxy_fallback_origin_id" field.
+func (_c *AccountCreate) SetProxyFallbackOriginID(v int64) *AccountCreate {
+	_c.mutation.SetProxyFallbackOriginID(v)
+	return _c
+REDACTED
+
+// SetNillableProxyFallbackOriginID sets the "proxy_fallback_origin_id" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableProxyFallbackOriginID(v *int64) *AccountCreate {
+	if v != nil {
+		_c.SetProxyFallbackOriginID(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetConcurrency sets the "concurrency" field.
 func (_c *AccountCreate) SetConcurrency(v int) *AccountCreate {
 	_c.mutation.SetConcurrency(v)
@@ -633,6 +647,10 @@ REDACTED
 		_spec.SetField(account.FieldExtra, field.TypeJSON, value)
 		_node.Extra = value
 REDACTED
+	if value, ok := _c.mutation.ProxyFallbackOriginID(); ok {
+		_spec.SetField(account.FieldProxyFallbackOriginID, field.TypeInt64, value)
+		_node.ProxyFallbackOriginID = &value
+REDACTED
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(account.FieldConcurrency, field.TypeInt, value)
 		_node.Concurrency = value
@@ -933,6 +951,30 @@ REDACTED
 // ClearProxyID clears the value of the "proxy_id" field.
 func (u *AccountUpsert) ClearProxyID() *AccountUpsert {
 	u.SetNull(account.FieldProxyID)
+	return u
+REDACTED
+
+// SetProxyFallbackOriginID sets the "proxy_fallback_origin_id" field.
+func (u *AccountUpsert) SetProxyFallbackOriginID(v int64) *AccountUpsert {
+	u.Set(account.FieldProxyFallbackOriginID, v)
+	return u
+REDACTED
+
+// UpdateProxyFallbackOriginID sets the "proxy_fallback_origin_id" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateProxyFallbackOriginID() *AccountUpsert {
+	u.SetExcluded(account.FieldProxyFallbackOriginID)
+	return u
+REDACTED
+
+// AddProxyFallbackOriginID adds v to the "proxy_fallback_origin_id" field.
+func (u *AccountUpsert) AddProxyFallbackOriginID(v int64) *AccountUpsert {
+	u.Add(account.FieldProxyFallbackOriginID, v)
+	return u
+REDACTED
+
+// ClearProxyFallbackOriginID clears the value of the "proxy_fallback_origin_id" field.
+func (u *AccountUpsert) ClearProxyFallbackOriginID() *AccountUpsert {
+	u.SetNull(account.FieldProxyFallbackOriginID)
 	return u
 REDACTED
 
@@ -1437,6 +1479,34 @@ REDACTED
 func (u *AccountUpsertOne) ClearProxyID() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearProxyID()
+REDACTED)
+REDACTED
+
+// SetProxyFallbackOriginID sets the "proxy_fallback_origin_id" field.
+func (u *AccountUpsertOne) SetProxyFallbackOriginID(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetProxyFallbackOriginID(v)
+REDACTED)
+REDACTED
+
+// AddProxyFallbackOriginID adds v to the "proxy_fallback_origin_id" field.
+func (u *AccountUpsertOne) AddProxyFallbackOriginID(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddProxyFallbackOriginID(v)
+REDACTED)
+REDACTED
+
+// UpdateProxyFallbackOriginID sets the "proxy_fallback_origin_id" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateProxyFallbackOriginID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateProxyFallbackOriginID()
+REDACTED)
+REDACTED
+
+// ClearProxyFallbackOriginID clears the value of the "proxy_fallback_origin_id" field.
+func (u *AccountUpsertOne) ClearProxyFallbackOriginID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearProxyFallbackOriginID()
 REDACTED)
 REDACTED
 
@@ -2159,6 +2229,34 @@ REDACTED
 func (u *AccountUpsertBulk) ClearProxyID() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearProxyID()
+REDACTED)
+REDACTED
+
+// SetProxyFallbackOriginID sets the "proxy_fallback_origin_id" field.
+func (u *AccountUpsertBulk) SetProxyFallbackOriginID(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetProxyFallbackOriginID(v)
+REDACTED)
+REDACTED
+
+// AddProxyFallbackOriginID adds v to the "proxy_fallback_origin_id" field.
+func (u *AccountUpsertBulk) AddProxyFallbackOriginID(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddProxyFallbackOriginID(v)
+REDACTED)
+REDACTED
+
+// UpdateProxyFallbackOriginID sets the "proxy_fallback_origin_id" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateProxyFallbackOriginID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateProxyFallbackOriginID()
+REDACTED)
+REDACTED
+
+// ClearProxyFallbackOriginID clears the value of the "proxy_fallback_origin_id" field.
+func (u *AccountUpsertBulk) ClearProxyFallbackOriginID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearProxyFallbackOriginID()
 REDACTED)
 REDACTED
 
