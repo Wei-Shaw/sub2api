@@ -256,11 +256,6 @@ func (s *httpUpstreamService) DoWithTLSOptions(req *http.Request, proxyURL strin
 	return resp, nil
 }
 
-// acquireClientWithTLS 获取或创建带 TLS 指纹的客户端
-func (s *httpUpstreamService) acquireClientWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile) (*upstreamClientEntry, error) {
-	return s.acquireClientWithTLSOptions(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, service.HTTPUpstreamOptions{})
-}
-
 func (s *httpUpstreamService) acquireClientWithTLSOptions(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, opts service.HTTPUpstreamOptions) (*upstreamClientEntry, error) {
 	return s.getClientEntryWithTLSOptions(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, opts, true, true)
 }
