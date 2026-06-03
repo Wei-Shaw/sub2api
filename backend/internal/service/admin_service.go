@@ -2498,6 +2498,7 @@ REDACTED
 			return nil, err
 	REDACTED
 		ComputeQuotaResetAt(account.Extra)
+		NormalizeFixedQuotaWindows(account.Extra)
 REDACTED
 	if input.ExpiresAt != nil && *input.ExpiresAt > 0 {
 		expiresAt := time.Unix(*input.ExpiresAt, 0)
@@ -2606,6 +2607,7 @@ REDACTED
 			return nil, err
 	REDACTED
 		ComputeQuotaResetAt(account.Extra)
+		NormalizeFixedQuotaWindows(account.Extra)
 REDACTED
 	if input.ProxyID != nil {
 		// 0 表示清除代理（前端发送 0 而不是 null 来表达清除意图）
