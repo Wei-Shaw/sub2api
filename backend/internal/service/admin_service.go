@@ -103,6 +103,7 @@ type AdminService interface {
 	GetAllProxies(ctx context.Context) ([]Proxy, error)
 	GetAllProxiesWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error)
 	GetProxy(ctx context.Context, id int64) (*Proxy, error)
+	GetProxyWithAccountCount(ctx context.Context, id int64) (*ProxyWithAccountCount, error)
 	GetProxiesByIDs(ctx context.Context, ids []int64) ([]Proxy, error)
 	CreateProxy(ctx context.Context, input *CreateProxyInput) (*Proxy, error)
 	UpdateProxy(ctx context.Context, id int64, input *UpdateProxyInput) (*Proxy, error)
@@ -2959,6 +2960,24 @@ func (s *adminServiceImpl) GetAllProxiesWithAccountCount(ctx context.Context) ([
 
 func (s *adminServiceImpl) GetProxy(ctx context.Context, id int64) (*Proxy, error) {
 	return s.proxyRepo.GetByID(ctx, id)
+}
+
+func (s *adminServiceImpl) GetProxyWithAccountCount(ctx context.Context, id int64) (*ProxyWithAccountCount, error) {
+	proxy, err := s.proxyRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	count, err := s.proxyRepo.CountAccountsByProxyID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out := &ProxyWithAccountCount{
+		Proxy:        *proxy,
+		AccountCount: count,
+	}
+	proxies := []ProxyWithAccountCount{*out}
+	s.attachProxyLatency(ctx, proxies)
+	return &proxies[0], nil
 }
 
 func (s *adminServiceImpl) GetProxiesByIDs(ctx context.Context, ids []int64) ([]Proxy, error) {

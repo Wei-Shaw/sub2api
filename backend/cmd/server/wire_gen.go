@@ -176,7 +176,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	crsSyncService := service.NewCRSSyncService(accountRepository, proxyRepository, oAuthService, openAIOAuthService, geminiOAuthService, configConfig)
 	accountHandler := admin.NewAccountHandler(adminService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, rateLimitService, accountUsageService, accountTestService, concurrencyService, crsSyncService, sessionLimitCache, rpmCache, compositeTokenCacheInvalidator)
 	expandAccountService := repository.NewExpandAccountService(db)
-	expandAccountHandler := admin.NewExpandAccountHandler(expandAccountService)
+	expandAccountHandler := admin.NewExpandAccountHandler(expandAccountService, adminService)
 	adminAnnouncementHandler := admin.NewAnnouncementHandler(announcementService)
 	dataManagementService := service.NewDataManagementService()
 	dataManagementHandler := admin.NewDataManagementHandler(dataManagementService)

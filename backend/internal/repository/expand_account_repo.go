@@ -13,10 +13,11 @@ import (
 )
 
 var (
-	errExpandAccountNotFound = infraerrors.NotFound("EXPAND_ACCOUNT_NOT_FOUND", "expand account not found")
-	errExpandAccountExists   = infraerrors.Conflict("EXPAND_ACCOUNT_EXISTS", "expand account already exists")
-	errExpandAccountUsed     = infraerrors.Conflict("EXPAND_ACCOUNT_ALREADY_USED", "expand account already marked as used")
-	errExpandInvalidProxy    = infraerrors.BadRequest("INVALID_PROXY_INFO", "invalid proxy_info")
+	errExpandAccountNotFound    = infraerrors.NotFound("EXPAND_ACCOUNT_NOT_FOUND", "expand account not found")
+	errExpandAccountExists      = infraerrors.Conflict("EXPAND_ACCOUNT_EXISTS", "expand account already exists")
+	errExpandAccountUsed        = infraerrors.Conflict("EXPAND_ACCOUNT_ALREADY_USED", "expand account already marked as used")
+	errExpandInvalidProxy       = infraerrors.BadRequest("INVALID_PROXY_INFO", "invalid proxy_info")
+	errExpandAccountUnavailable = infraerrors.NotFound("EXPAND_ACCOUNT_UNAVAILABLE", "no unused expand account available")
 )
 
 type expandAccountRepository struct {
@@ -213,6 +214,33 @@ RETURNING id, email, platform, subscription_type, country, session_key, proxy_id
 		return nil, errExpandAccountUsed
 	}
 	return nil, errExpandAccountNotFound
+}
+
+func (r *expandAccountRepository) GetAndMarkExpandAccountByPlatform(ctx context.Context, platform string) (*service.ExpandAccount, error) {
+	const query = `
+WITH picked AS (
+	SELECT id
+	FROM expand_accounts
+	WHERE used = false
+	  AND LOWER(platform) = LOWER($1)
+	ORDER BY id ASC
+	FOR UPDATE SKIP LOCKED
+	LIMIT 1
+)
+UPDATE expand_accounts ea
+SET used = true, updated_at = NOW()
+FROM picked
+WHERE ea.id = picked.id
+RETURNING ea.id, ea.email, ea.platform, ea.subscription_type, ea.country, ea.session_key, ea.proxy_id, ea.proxy_info, ea.used, ea.created_at, ea.updated_at`
+
+	item, err := scanExpandAccount(r.db.QueryRowContext(ctx, query, strings.TrimSpace(platform)))
+	if err == nil {
+		return item, nil
+	}
+	if err == sql.ErrNoRows {
+		return nil, errExpandAccountUnavailable.WithCause(err)
+	}
+	return nil, err
 }
 
 func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, error) {

@@ -2,7 +2,9 @@ package admin
 
 import (
 	"strings"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -10,11 +12,12 @@ import (
 )
 
 type ExpandAccountHandler struct {
-	service service.ExpandAccountService
+	service      service.ExpandAccountService
+	adminService service.AdminService
 }
 
-func NewExpandAccountHandler(service service.ExpandAccountService) *ExpandAccountHandler {
-	return &ExpandAccountHandler{service: service}
+func NewExpandAccountHandler(service service.ExpandAccountService, adminService service.AdminService) *ExpandAccountHandler {
+	return &ExpandAccountHandler{service: service, adminService: adminService}
 }
 
 type createExpandAccountRequest struct {
@@ -42,6 +45,24 @@ type callbackExpandAccountRequest struct {
 	Country          string                                 `json:"country" binding:"required"`
 	SessionKey       string                                 `json:"session_key" binding:"required"`
 	ProxyInfo        *callbackExpandAccountProxyInfoRequest `json:"proxy_info" binding:"required"`
+}
+
+type getExpandAccountRequest struct {
+	Platform string `json:"platform" binding:"required"`
+}
+
+type getExpandAccountResponse struct {
+	ID               int64                           `json:"id"`
+	Email            string                          `json:"email"`
+	Platform         string                          `json:"platform"`
+	SubscriptionType string                          `json:"subscription_type"`
+	Country          string                          `json:"country"`
+	SessionKey       string                          `json:"session_key"`
+	ProxyID          *int64                          `json:"proxy_id,omitempty"`
+	ProxyInfo        *service.ProxyInfo              `json:"proxy_info,omitempty"`
+	Proxy            *dto.AdminProxyWithAccountCount `json:"proxy,omitempty"`
+	CreatedAt        string                          `json:"created_at"`
+	UpdatedAt        string                          `json:"updated_at"`
 }
 
 type updateExpandAccountRequest struct {
@@ -131,6 +152,46 @@ func (h *ExpandAccountHandler) Callback(c *gin.Context) {
 		return
 	}
 	response.Success(c, nil)
+}
+
+func (h *ExpandAccountHandler) GetByPlatform(c *gin.Context) {
+	var req getExpandAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_REQUEST", "invalid request body").WithCause(err))
+		return
+	}
+
+	item, err := h.service.GetAndMarkExpandAccountByPlatform(c.Request.Context(), strings.TrimSpace(req.Platform))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	resp := &getExpandAccountResponse{
+		ID:               item.ID,
+		Email:            item.Email,
+		Platform:         item.Platform,
+		SubscriptionType: item.SubscriptionType,
+		Country:          item.Country,
+		SessionKey:       item.SessionKey,
+		ProxyID:          item.ProxyID,
+		ProxyInfo:        item.ProxyInfo,
+		CreatedAt:        item.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:        item.UpdatedAt.Format(time.RFC3339),
+	}
+
+	if item.ProxyID != nil {
+		proxy, err := h.adminService.GetProxyWithAccountCount(c.Request.Context(), *item.ProxyID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if proxy != nil {
+			resp.Proxy = dto.ProxyWithAccountCountFromServiceAdmin(proxy)
+		}
+	}
+
+	response.Success(c, resp)
 }
 
 func (h *ExpandAccountHandler) Update(c *gin.Context) {

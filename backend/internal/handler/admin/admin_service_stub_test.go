@@ -452,6 +452,22 @@ func (s *stubAdminService) GetProxy(ctx context.Context, id int64) (*service.Pro
 	return &proxy, nil
 }
 
+func (s *stubAdminService) GetProxyWithAccountCount(ctx context.Context, id int64) (*service.ProxyWithAccountCount, error) {
+	for i := range s.proxyCounts {
+		proxy := s.proxyCounts[i]
+		if proxy.ID == id {
+			return &proxy, nil
+		}
+	}
+	for i := range s.proxies {
+		proxy := s.proxies[i]
+		if proxy.ID == id {
+			return &service.ProxyWithAccountCount{Proxy: proxy}, nil
+		}
+	}
+	return &service.ProxyWithAccountCount{Proxy: service.Proxy{ID: id, Name: "proxy", Status: service.StatusActive}}, nil
+}
+
 func (s *stubAdminService) GetProxiesByIDs(ctx context.Context, ids []int64) ([]service.Proxy, error) {
 	if len(ids) == 0 {
 		return []service.Proxy{}, nil

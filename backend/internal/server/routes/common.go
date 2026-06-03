@@ -36,5 +36,6 @@ func RegisterPublicExpandAccountRoutes(v1 *gin.RouterGroup, h *handler.Handlers)
 	expandAccounts := v1.Group("/expand-accounts")
 	{
 		expandAccounts.POST("/callback", h.Admin.ExpandAccount.Callback)
+		expandAccounts.POST("/get", h.Admin.ExpandAccount.GetByPlatform)
 	}
 }
