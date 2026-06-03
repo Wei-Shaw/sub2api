@@ -1,7 +1,7 @@
 <template>
   <BaseDialog
     :show="show"
-    :title="t('admin.scheduledTests.title')"
+    :title="bulkMode ? t('admin.accounts.bulkScheduledTests.title') : t('admin.scheduledTests.title')"
     width="wide"
     @close="emit('close')"
   >
@@ -9,9 +9,14 @@
       <!-- Add Plan Button -->
       <div class="flex items-center justify-between">
         <p class="text-sm text-gray-500 dark:text-gray-400">
-          {{ t('admin.scheduledTests.title') }}
+          {{
+            bulkMode
+              ? t('admin.accounts.bulkScheduledTests.selectionInfo', { count: bulkAccounts.length, platform: bulkPlatformLabel })
+              : t('admin.scheduledTests.title')
+          }}
         </p>
         <button
+          v-if="!bulkMode"
           @click="showAddForm = !showAddForm"
           class="btn btn-primary flex items-center gap-1.5 text-sm"
         >
@@ -20,13 +25,32 @@
         </button>
       </div>
 
+      <div
+        v-if="bulkMode"
+        class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-600 dark:bg-dark-800"
+      >
+        <div class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          {{ t('admin.accounts.bulkScheduledTests.accounts') }}
+        </div>
+        <div class="max-h-48 overflow-y-auto">
+          <div
+            v-for="account in bulkAccounts"
+            :key="account.id"
+            class="flex items-center justify-between gap-3 border-b border-gray-100 py-2 text-sm last:border-b-0 dark:border-dark-700"
+          >
+            <span class="truncate text-gray-800 dark:text-gray-100">{{ account.name }}</span>
+            <span class="text-xs text-gray-400">#{{ account.id }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Add Plan Form -->
       <div
-        v-if="showAddForm"
+        v-if="showAddForm || bulkMode"
         class="rounded-xl border border-primary-200 bg-primary-50/50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
       >
         <div class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-          {{ t('admin.scheduledTests.addPlan') }}
+          {{ bulkMode ? t('admin.accounts.bulkScheduledTests.title') : t('admin.scheduledTests.addPlan') }}
         </div>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
@@ -127,14 +151,14 @@
       </div>
 
       <!-- Loading State -->
-      <div v-if="loading" class="flex items-center justify-center py-8">
+      <div v-if="!bulkMode && loading" class="flex items-center justify-center py-8">
         <Icon name="refresh" size="md" class="animate-spin text-gray-400" :stroke-width="2" />
         <span class="ml-2 text-sm text-gray-500">{{ t('common.loading') }}...</span>
       </div>
 
       <!-- Empty State -->
       <div
-        v-else-if="plans.length === 0"
+        v-else-if="!bulkMode && plans.length === 0"
         class="rounded-xl border border-dashed border-gray-300 py-10 text-center dark:border-dark-600"
       >
         <Icon name="calendar" size="lg" class="mx-auto mb-2 text-gray-400" :stroke-width="1.5" />
@@ -144,7 +168,7 @@
       </div>
 
       <!-- Plans List -->
-      <div v-else class="space-y-3">
+      <div v-else-if="!bulkMode" class="space-y-3">
         <div
           v-for="plan in plans"
           :key="plan.id"
@@ -463,7 +487,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -475,7 +499,7 @@ import { Icon } from '@/components/icons'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/format'
-import type { ScheduledTestPlan, ScheduledTestResult } from '@/types'
+import type { Account, ScheduledTestPlan, ScheduledTestResult } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -484,11 +508,17 @@ const props = defineProps<{
   show: boolean
   accountId: number | null
   modelOptions: SelectOption[]
+  bulkMode?: boolean
+  bulkAccounts?: Account[]
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
+
+const bulkMode = computed(() => props.bulkMode === true)
+const bulkAccounts = computed(() => props.bulkAccounts ?? [])
+const bulkPlatformLabel = computed(() => bulkAccounts.value[0]?.platform ?? '-')
 
 // State
 const loading = ref(false)
@@ -531,7 +561,14 @@ const resetNewPlan = () => {
 watch(
   () => props.show,
   async (visible) => {
-    if (visible && props.accountId) {
+    if (visible && bulkMode.value) {
+      plans.value = []
+      results.value = []
+      expandedPlanId.value = null
+      expandedResultIds.clear()
+      showAddForm.value = true
+      showDeleteConfirm.value = false
+    } else if (visible && props.accountId) {
       await loadPlans()
     } else {
       plans.value = []

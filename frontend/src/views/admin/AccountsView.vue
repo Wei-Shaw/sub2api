@@ -182,6 +182,7 @@
           @clear="clearSelection"
           @select-page="selectPage"
           @toggle-schedulable="handleBulkToggleSchedulable"
+          @schedule-selected="openBulkScheduleSelected"
         />
         <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable
@@ -356,6 +357,13 @@
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
+    <BulkScheduledTestsModal
+      :show="showBulkScheduleModal"
+      :accounts="bulkScheduleAccounts"
+      :model-options="scheduleModelOptions"
+      @close="closeBulkScheduleModal"
+      @saved="handleBulkScheduledSaved"
+    />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
@@ -404,6 +412,7 @@ import AccountTableActions from '@/components/admin/account/AccountTableActions.
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import BulkScheduledTestsModal from '@/components/admin/account/BulkScheduledTestsModal.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
@@ -492,8 +501,10 @@ const reAuthAcc = ref<Account | null>(null)
 const testingAcc = ref<Account | null>(null)
 const statsAcc = ref<Account | null>(null)
 const showSchedulePanel = ref(false)
+const showBulkScheduleModal = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
+const bulkScheduleAccounts = ref<Account[]>([])
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
@@ -1370,6 +1381,39 @@ const collectSelectionMetadata = (rows: Account[]) => {
   return { selectedPlatforms, selectedTypes }
 }
 
+const resolveSelectedAccounts = async (): Promise<Account[]> => {
+  const selectedIds = [...selIds.value]
+  if (selectedIds.length === 0) return []
+
+  const currentPageMap = new Map(
+    accounts.value
+      .filter(account => selectedIds.includes(account.id))
+      .map(account => [account.id, account] as const)
+  )
+
+  const missingIds = selectedIds.filter(id => !currentPageMap.has(id))
+  if (missingIds.length > 0) {
+    const fetchedAccounts = await Promise.all(missingIds.map(id => adminAPI.accounts.getById(id)))
+    fetchedAccounts.forEach(account => {
+      currentPageMap.set(account.id, account)
+    })
+  }
+
+  return selectedIds
+    .map(id => currentPageMap.get(id))
+    .filter((account): account is Account => Boolean(account))
+}
+
+const loadScheduleModelOptions = async (accountId: number) => {
+  scheduleModelOptions.value = []
+  try {
+    const models = await adminAPI.accounts.getAvailableModels(accountId)
+    scheduleModelOptions.value = models.map((m: ClaudeModel) => ({ value: m.id, label: m.display_name || m.id }))
+  } catch {
+    scheduleModelOptions.value = []
+  }
+}
+
 const openBulkEditSelected = () => {
   bulkEditTarget.value = {
     mode: 'selected',
@@ -1545,16 +1589,39 @@ const handleTest = (a: Account) => { testingAcc.value = a; showTest.value = true
 const handleViewStats = (a: Account) => { statsAcc.value = a; showStats.value = true }
 const handleSchedule = async (a: Account) => {
   scheduleAcc.value = a
-  scheduleModelOptions.value = []
   showSchedulePanel.value = true
-  try {
-    const models = await adminAPI.accounts.getAvailableModels(a.id)
-    scheduleModelOptions.value = models.map((m: ClaudeModel) => ({ value: m.id, label: m.display_name || m.id }))
-  } catch {
-    scheduleModelOptions.value = []
-  }
+  await loadScheduleModelOptions(a.id)
 }
 const closeSchedulePanel = () => { showSchedulePanel.value = false; scheduleAcc.value = null; scheduleModelOptions.value = [] }
+const closeBulkScheduleModal = () => {
+  showBulkScheduleModal.value = false
+  bulkScheduleAccounts.value = []
+  scheduleModelOptions.value = []
+}
+const handleBulkScheduledSaved = () => {
+  clearSelection()
+}
+const openBulkScheduleSelected = async () => {
+  if (selIds.value.length === 0) {
+    appStore.showError(t('admin.accounts.bulkScheduledTests.noSelection'))
+    return
+  }
+
+  try {
+    const selectedAccounts = await resolveSelectedAccounts()
+    const platforms = Array.from(new Set(selectedAccounts.map(account => account.platform)))
+    if (platforms.length !== 1) {
+      appStore.showError(t('admin.accounts.bulkScheduledTests.platformMismatch'))
+      return
+    }
+    bulkScheduleAccounts.value = selectedAccounts
+    showBulkScheduleModal.value = true
+    await loadScheduleModelOptions(selectedAccounts[0].id)
+  } catch (error: any) {
+    console.error('Failed to prepare bulk scheduled tests:', error)
+    appStore.showError(error?.message || t('admin.accounts.bulkScheduledTests.loadFailed'))
+  }
+}
 const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true }
 const handleRefresh = async (a: Account) => {
   try {

@@ -3391,6 +3391,7 @@ export default {
         clear: '清除选择',
         edit: '批量编辑账号',
         delete: '批量删除',
+        scheduleTest: '批量定时测试',
         enableScheduling: '批量启用调度',
         disableScheduling: '批量停止调度',
         resetStatus: '批量重置状态',
@@ -3412,6 +3413,17 @@ export default {
         noSelection: '请选择要编辑的账号',
         noFieldsSelected: '请至少选择一个要更新的字段',
         mixedPlatformWarning: '所选账号跨越多个平台（{platforms}）。显示的模型映射预设为合并结果——请确保映射对每个平台都适用。'
+      },
+      bulkScheduledTests: {
+        title: '批量定时测试',
+        selectionInfo: '已选择 {count} 个账号，当前平台：{platform}。将为这些账号批量创建相同的定时测试计划。',
+        accounts: '目标账号',
+        noSelection: '请选择要批量设置定时测试的账号',
+        platformMismatch: '勾选账号的平台必须一致，才能批量设置定时测试',
+        loadFailed: '加载批量定时测试信息失败',
+        success: '已为 {count} 个账号创建定时测试计划',
+        partialSuccess: '批量定时测试部分成功：成功 {success} 个，失败 {failed} 个',
+        failed: '批量定时测试失败'
       },
       bulkDeleteTitle: '批量删除账号',
       bulkDeleteConfirm: '确定要删除选中的 {count} 个账号吗？此操作无法撤销。',

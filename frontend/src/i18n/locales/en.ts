@@ -3244,6 +3244,7 @@ export default {
         clear: 'Clear selection',
         edit: 'Bulk Edit',
         delete: 'Bulk Delete',
+        scheduleTest: 'Bulk Scheduled Test',
         enableScheduling: 'Enable Scheduling',
         disableScheduling: 'Disable Scheduling',
         resetStatus: 'Reset Status',
@@ -3266,6 +3267,18 @@ export default {
         noSelection: 'Please select accounts to edit',
         noFieldsSelected: 'Select at least one field to update',
         mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.'
+      },
+      bulkScheduledTests: {
+        title: 'Bulk Scheduled Test',
+        selectionInfo:
+          '{count} account(s) selected. Current platform: {platform}. The same scheduled test plan will be created for all selected accounts.',
+        accounts: 'Target Accounts',
+        noSelection: 'Please select accounts to configure scheduled tests',
+        platformMismatch: 'Selected accounts must belong to the same platform for bulk scheduled tests',
+        loadFailed: 'Failed to load bulk scheduled test data',
+        success: 'Created scheduled test plans for {count} account(s)',
+        partialSuccess: 'Bulk scheduled test completed partially: {success} succeeded, {failed} failed',
+        failed: 'Bulk scheduled test failed'
       },
       bulkDeleteTitle: 'Bulk Delete Accounts',
       bulkDeleteConfirm: 'Delete the selected {count} account(s)? This action cannot be undone.',
