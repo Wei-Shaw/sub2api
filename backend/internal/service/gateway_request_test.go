@@ -10,24 +10,25 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestParseGatewayRequest(t *testing.T) {
 	body := []byte(`{"model":"claude-3-7-sonnet","stream":true,"metadata":{"user_id":"session_123e4567-e89b-12d3-a456-426614174000"},"system":[{"type":"text","text":"hello","cache_control":{"type":"ephemeral"}}],"messages":[{"content":"hi"}]}`)
-	parsed, err := ParseGatewayRequest(body, "")
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
 	require.NoError(t, err)
 	require.Equal(t, "claude-3-7-sonnet", parsed.Model)
 	require.True(t, parsed.Stream)
 	require.Equal(t, "session_123e4567-e89b-12d3-a456-426614174000", parsed.MetadataUserID)
 	require.True(t, parsed.HasSystem)
-	require.NotNil(t, parsed.System)
-	require.Len(t, parsed.Messages, 1)
+	require.NotEmpty(t, parsed.SystemRaw())
+	require.NotEmpty(t, parsed.MessagesRaw())
 	require.False(t, parsed.ThinkingEnabled)
 }
 
 func TestParseGatewayRequest_ThinkingEnabled(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-5","thinking":{"type":"enabled"},"messages":[{"content":"hi"}]}`)
-	parsed, err := ParseGatewayRequest(body, "")
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
 	require.NoError(t, err)
 	require.Equal(t, "claude-sonnet-4-5", parsed.Model)
 	require.True(t, parsed.ThinkingEnabled)
@@ -35,7 +36,7 @@ func TestParseGatewayRequest_ThinkingEnabled(t *testing.T) {
 
 func TestParseGatewayRequest_ThinkingAdaptiveEnabled(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-5","thinking":{"type":"adaptive"},"messages":[{"content":"hi"}]}`)
-	parsed, err := ParseGatewayRequest(body, "")
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
 	require.NoError(t, err)
 	require.Equal(t, "claude-sonnet-4-5", parsed.Model)
 	require.True(t, parsed.ThinkingEnabled)
@@ -43,36 +44,36 @@ func TestParseGatewayRequest_ThinkingAdaptiveEnabled(t *testing.T) {
 
 func TestParseGatewayRequest_MaxTokens(t *testing.T) {
 	body := []byte(`{"model":"claude-haiku-4-5","max_tokens":1}`)
-	parsed, err := ParseGatewayRequest(body, "")
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
 	require.NoError(t, err)
 	require.Equal(t, 1, parsed.MaxTokens)
 }
 
 func TestParseGatewayRequest_MaxTokensNonIntegralIgnored(t *testing.T) {
 	body := []byte(`{"model":"claude-haiku-4-5","max_tokens":1.5}`)
-	parsed, err := ParseGatewayRequest(body, "")
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
 	require.NoError(t, err)
 	require.Equal(t, 0, parsed.MaxTokens)
 }
 
 func TestParseGatewayRequest_SystemNull(t *testing.T) {
 	body := []byte(`{"model":"claude-3","system":null}`)
-	parsed, err := ParseGatewayRequest(body, "")
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
 	require.NoError(t, err)
 	// 显式传入 system:null 也应视为“字段已存在”，避免默认 system 被注入。
 	require.True(t, parsed.HasSystem)
-	require.Nil(t, parsed.System)
+	require.Equal(t, []byte("null"), parsed.SystemRaw())
 }
 
 func TestParseGatewayRequest_InvalidModelType(t *testing.T) {
 	body := []byte(`{"model":123}`)
-	_, err := ParseGatewayRequest(body, "")
+	_, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
 	require.Error(t, err)
 }
 
 func TestParseGatewayRequest_InvalidStreamType(t *testing.T) {
 	body := []byte(`{"stream":"true"}`)
-	_, err := ParseGatewayRequest(body, "")
+	_, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
 	require.Error(t, err)
 }
 
@@ -86,11 +87,11 @@ func TestParseGatewayRequest_GeminiContents(t *testing.T) {
 			{"role": "user", "parts": [{"text": "How are you?"}]}
 		]
 	}`)
-	parsed, err := ParseGatewayRequest(body, domain.PlatformGemini)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 	require.NoError(t, err)
-	require.Len(t, parsed.Messages, 3, "should parse contents as Messages")
+	require.Len(t, gjson.ParseBytes(parsed.MessagesRaw()).Array(), 3, "should parse contents as Messages")
 	require.False(t, parsed.HasSystem, "Gemini format should not set HasSystem")
-	require.Nil(t, parsed.System, "no systemInstruction means nil System")
+	require.Nil(t, parsed.SystemRaw(), "no systemInstruction means nil System")
 }
 
 func TestParseGatewayRequest_GeminiSystemInstruction(t *testing.T) {
@@ -102,16 +103,13 @@ func TestParseGatewayRequest_GeminiSystemInstruction(t *testing.T) {
 			{"role": "user", "parts": [{"text": "Hello"}]}
 		]
 	}`)
-	parsed, err := ParseGatewayRequest(body, domain.PlatformGemini)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 	require.NoError(t, err)
-	require.NotNil(t, parsed.System, "should parse systemInstruction.parts as System")
-	parts, ok := parsed.System.([]any)
-	require.True(t, ok)
-	require.Len(t, parts, 1)
-	partMap, ok := parts[0].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, "You are a helpful assistant.", partMap["text"])
-	require.Len(t, parsed.Messages, 1)
+	system := gjson.ParseBytes(parsed.SystemRaw())
+	require.True(t, system.IsArray(), "should parse systemInstruction.parts as System")
+	require.Len(t, system.Array(), 1)
+	require.Equal(t, "You are a helpful assistant.", system.Get("0.text").String())
+	require.Len(t, gjson.ParseBytes(parsed.MessagesRaw()).Array(), 1)
 }
 
 func TestParseGatewayRequest_GeminiWithModel(t *testing.T) {
@@ -119,10 +117,10 @@ func TestParseGatewayRequest_GeminiWithModel(t *testing.T) {
 		"model": "gemini-2.5-pro",
 		"contents": [{"role": "user", "parts": [{"text": "test"}]}]
 	}`)
-	parsed, err := ParseGatewayRequest(body, domain.PlatformGemini)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 	require.NoError(t, err)
 	require.Equal(t, "gemini-2.5-pro", parsed.Model)
-	require.Len(t, parsed.Messages, 1)
+	require.Len(t, gjson.ParseBytes(parsed.MessagesRaw()).Array(), 1)
 }
 
 func TestParseGatewayRequest_GeminiIgnoresAnthropicFields(t *testing.T) {
@@ -132,25 +130,25 @@ func TestParseGatewayRequest_GeminiIgnoresAnthropicFields(t *testing.T) {
 		"messages": [{"role": "user", "content": "ignored"}],
 		"contents": [{"role": "user", "parts": [{"text": "real content"}]}]
 	}`)
-	parsed, err := ParseGatewayRequest(body, domain.PlatformGemini)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 	require.NoError(t, err)
 	require.False(t, parsed.HasSystem, "Gemini protocol should not parse Anthropic system field")
-	require.Nil(t, parsed.System, "no systemInstruction = nil System")
-	require.Len(t, parsed.Messages, 1, "should use contents, not messages")
+	require.Nil(t, parsed.SystemRaw(), "no systemInstruction = nil System")
+	require.Len(t, gjson.ParseBytes(parsed.MessagesRaw()).Array(), 1, "should use contents, not messages")
 }
 
 func TestParseGatewayRequest_GeminiEmptyContents(t *testing.T) {
 	body := []byte(`{"contents": []}`)
-	parsed, err := ParseGatewayRequest(body, domain.PlatformGemini)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 	require.NoError(t, err)
-	require.Empty(t, parsed.Messages)
+	require.Empty(t, gjson.ParseBytes(parsed.MessagesRaw()).Array())
 }
 
 func TestParseGatewayRequest_GeminiNoContents(t *testing.T) {
 	body := []byte(`{"model": "gemini-2.5-flash"}`)
-	parsed, err := ParseGatewayRequest(body, domain.PlatformGemini)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 	require.NoError(t, err)
-	require.Nil(t, parsed.Messages)
+	require.Nil(t, parsed.MessagesRaw())
 	require.Equal(t, "gemini-2.5-flash", parsed.Model)
 }
 
@@ -162,14 +160,13 @@ func TestParseGatewayRequest_AnthropicIgnoresGeminiFields(t *testing.T) {
 		"contents": [{"role": "user", "parts": [{"text": "ignored"}]}],
 		"systemInstruction": {"parts": [{"text": "ignored"}]}
 	}`)
-	parsed, err := ParseGatewayRequest(body, domain.PlatformAnthropic)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformAnthropic)
 	require.NoError(t, err)
 	require.True(t, parsed.HasSystem)
-	require.Equal(t, "real system", parsed.System)
-	require.Len(t, parsed.Messages, 1)
-	msg, ok := parsed.Messages[0].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, "real content", msg["content"])
+	require.Equal(t, "real system", gjson.ParseBytes(parsed.SystemRaw()).String())
+	messages := gjson.ParseBytes(parsed.MessagesRaw()).Array()
+	require.Len(t, messages, 1)
+	require.Equal(t, "real content", messages[0].Get("content").String())
 }
 
 func TestFilterThinkingBlocks(t *testing.T) {
@@ -897,7 +894,7 @@ func TestParseGatewayRequest_TypeValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := ParseGatewayRequest([]byte(tt.body), "")
+			_, err := ParseGatewayRequest(NewRequestBodyRef([]byte(tt.body)), "")
 			if tt.wantErr {
 				require.Error(t, err)
 				if tt.errSubstr != "" {
@@ -959,7 +956,7 @@ func TestParseGatewayRequest_OptionalFieldsMissing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parsed, err := ParseGatewayRequest([]byte(tt.body), "")
+			parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(tt.body)), "")
 			require.NoError(t, err)
 
 			require.Equal(t, tt.wantModel, parsed.Model)
@@ -970,10 +967,10 @@ func TestParseGatewayRequest_OptionalFieldsMissing(t *testing.T) {
 			require.Equal(t, tt.wantMaxTokens, parsed.MaxTokens)
 
 			if tt.wantMessagesNil {
-				require.Nil(t, parsed.Messages)
+				require.Nil(t, parsed.MessagesRaw())
 			}
 			if tt.wantMessagesLen > 0 {
-				require.Len(t, parsed.Messages, tt.wantMessagesLen)
+				require.Len(t, gjson.ParseBytes(parsed.MessagesRaw()).Array(), tt.wantMessagesLen)
 			}
 		})
 	}
@@ -1023,7 +1020,7 @@ func TestParseGatewayRequest_MaxTokensBoundary(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parsed, err := ParseGatewayRequest([]byte(tt.body), "")
+			parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(tt.body)), "")
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -1040,7 +1037,7 @@ func TestParseGatewayRequest_MaxTokensBoundary(t *testing.T) {
 // 核心路径：先 Unmarshal 到 map[string]any，再逐字段提取。
 func parseGatewayRequestOld(body []byte, protocol string) (*ParsedRequest, error) {
 	parsed := &ParsedRequest{
-		Body: body,
+		Body: NewRequestBodyRef(body),
 	}
 
 	var req map[string]any
@@ -1087,25 +1084,8 @@ func parseGatewayRequestOld(body []byte, protocol string) (*ParsedRequest, error
 		}
 	}
 
-	// system / messages（按协议分支）
-	switch protocol {
-	case domain.PlatformGemini:
-		if sysInst, ok := req["systemInstruction"].(map[string]any); ok {
-			if parts, ok := sysInst["parts"].([]any); ok {
-				parsed.System = parts
-			}
-		}
-		if contents, ok := req["contents"].([]any); ok {
-			parsed.Messages = contents
-		}
-	default:
-		if system, ok := req["system"]; ok {
-			parsed.HasSystem = true
-			parsed.System = system
-		}
-		if messages, ok := req["messages"].([]any); ok {
-			parsed.Messages = messages
-		}
+	if err := refreshGatewayRequestRanges(parsed, protocol); err != nil {
+		return nil, err
 	}
 
 	return parsed, nil
@@ -1151,7 +1131,7 @@ func BenchmarkParseGatewayRequest_New_Small(b *testing.B) {
 	b.SetBytes(int64(len(data)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = ParseGatewayRequest(data, "")
+		_, _ = ParseGatewayRequest(NewRequestBodyRef(data), "")
 	}
 }
 
@@ -1203,7 +1183,7 @@ func TestParseGatewayRequest_OutputEffort(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parsed, err := ParseGatewayRequest([]byte(tt.body), "")
+			parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(tt.body)), "")
 			require.NoError(t, err)
 			require.Equal(t, tt.wantEffort, parsed.OutputEffort)
 		})
@@ -1245,6 +1225,6 @@ func BenchmarkParseGatewayRequest_New_Large(b *testing.B) {
 	b.SetBytes(int64(len(data)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = ParseGatewayRequest(data, "")
+		_, _ = ParseGatewayRequest(NewRequestBodyRef(data), "")
 	}
 }

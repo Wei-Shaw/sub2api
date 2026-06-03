@@ -14,8 +14,6 @@ func TestBuildOAuthMetadataUserID_FallbackWithoutAccountUUID(t *testing.T) {
 		Model:          "claude-sonnet-4-5",
 		Stream:         true,
 		MetadataUserID: "",
-		System:         nil,
-		Messages:       nil,
 	}
 
 	account := &Account{

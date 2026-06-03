@@ -278,9 +278,27 @@ func (s *OpenAIOAuthService) enrichTokenInfo(ctx context.Context, tokenInfo *Ope
 			tokenInfo.Email = info.Email
 		}
 	}
+	if strings.TrimSpace(tokenInfo.SubscriptionExpiresAt) == "" {
+		if expiresAt := fetchChatGPTSubscriptionExpiresAt(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL, resolveChatGPTSubscriptionAccountID(tokenInfo, orgID)); expiresAt != "" {
+			tokenInfo.SubscriptionExpiresAt = expiresAt
+		}
+	}
 
 	// 尝试设置隐私（关闭训练数据共享），best-effort
 	tokenInfo.PrivacyMode = disableOpenAITraining(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL)
+}
+
+func resolveChatGPTSubscriptionAccountID(tokenInfo *OpenAITokenInfo, orgID string) string {
+	for _, candidate := range []string{
+		tokenInfo.ChatGPTAccountID,
+		tokenInfo.OrganizationID,
+		orgID,
+	} {
+		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 // RefreshAccountToken refreshes token for an OpenAI OAuth account
@@ -292,36 +310,38 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_INVALID_ACCOUNT_TYPE", "account is not an OAuth account")
 	}
 
-	refreshToken := account.GetCredential("refresh_token")
-	if refreshToken == "" {
-		accessToken := account.GetCredential("access_token")
-		if accessToken != "" {
-			tokenInfo := &OpenAITokenInfo{
-				AccessToken:      accessToken,
-				RefreshToken:     "",
-				IDToken:          account.GetCredential("id_token"),
-				ClientID:         account.GetCredential("client_id"),
-				Email:            account.GetCredential("email"),
-				ChatGPTAccountID: account.GetCredential("chatgpt_account_id"),
-				ChatGPTUserID:    account.GetCredential("chatgpt_user_id"),
-				OrganizationID:   account.GetCredential("organization_id"),
-				PlanType:         account.GetCredential("plan_type"),
-			}
-			if expiresAt := account.GetCredentialAsTime("expires_at"); expiresAt != nil {
-				tokenInfo.ExpiresAt = expiresAt.Unix()
-				tokenInfo.ExpiresIn = int64(time.Until(*expiresAt).Seconds())
-			}
-			return tokenInfo, nil
-		}
-		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_NO_REFRESH_TOKEN", "no refresh token available")
-	}
-
 	var proxyURL string
 	if account.ProxyID != nil {
 		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
 		if err == nil && proxy != nil {
 			proxyURL = proxy.URL()
 		}
+	}
+
+	refreshToken := account.GetCredential("refresh_token")
+	if refreshToken == "" {
+		accessToken := account.GetCredential("access_token")
+		if accessToken != "" {
+			tokenInfo := &OpenAITokenInfo{
+				AccessToken:           accessToken,
+				RefreshToken:          "",
+				IDToken:               account.GetCredential("id_token"),
+				ClientID:              account.GetCredential("client_id"),
+				Email:                 account.GetCredential("email"),
+				ChatGPTAccountID:      account.GetCredential("chatgpt_account_id"),
+				ChatGPTUserID:         account.GetCredential("chatgpt_user_id"),
+				OrganizationID:        account.GetCredential("organization_id"),
+				PlanType:              account.GetCredential("plan_type"),
+				SubscriptionExpiresAt: account.GetCredential("subscription_expires_at"),
+			}
+			if expiresAt := account.GetCredentialAsTime("expires_at"); expiresAt != nil {
+				tokenInfo.ExpiresAt = expiresAt.Unix()
+				tokenInfo.ExpiresIn = int64(time.Until(*expiresAt).Seconds())
+			}
+			s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+			return tokenInfo, nil
+		}
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_NO_REFRESH_TOKEN", "no refresh token available")
 	}
 
 	clientID := account.GetCredential("client_id")

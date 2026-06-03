@@ -56,7 +56,7 @@ func NewClaudeCodeValidator() *ClaudeCodeValidator {
 // 采用与 claude-relay-service 完全一致的验证策略：
 //
 //	Step 1: User-Agent 检查 (必需) - 必须是 claude-cli/x.x.x
-//	Step 2: 对于非 messages 路径，只要 UA 匹配就通过
+//	Step 2: 对于非 messages 路径和 /messages/count_tokens，只要 UA 匹配就通过
 //	Step 3: 检查 max_tokens=1 + haiku 探测请求绕过（UA 已验证）
 //	Step 4: 对于 messages 路径，进行严格验证：
 //	        - System prompt 相似度检查
@@ -71,9 +71,14 @@ func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) boo
 		return false
 	}
 
-	// Step 2: 非 messages 路径，只要 UA 匹配就通过
+	// Step 2: 非 messages 路径只要 UA 匹配就通过
 	path := r.URL.Path
 	if !strings.Contains(path, "messages") {
+		return true
+	}
+
+	// count_tokens 是 Claude Code 官方辅助请求，通常不携带完整 messages system prompt。
+	if isMessagesCountTokensPath(path) {
 		return true
 	}
 
@@ -126,6 +131,10 @@ func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) boo
 	}
 
 	return true
+}
+
+func isMessagesCountTokensPath(path string) bool {
+	return strings.HasSuffix(path, "/messages/count_tokens")
 }
 
 // hasClaudeCodeSystemPrompt 检查请求是否包含 Claude Code 系统提示词
