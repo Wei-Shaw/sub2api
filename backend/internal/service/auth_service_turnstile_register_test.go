@@ -68,9 +68,23 @@ func TestAuthService_VerifyTurnstileForRegister_SkipWhenEmailVerifyCodeProvided(
 		SettingKeyRegistrationEnabled: "true",
 	}, verifier)
 
-	err := service.VerifyTurnstileForRegister(context.Background(), "", "127.0.0.1", "123456")
+	err := service.VerifyTurnstileForRegister(context.Background(), "", "127.0.0.1", "user@example.com", "123456")
 	require.NoError(t, err)
 	require.Equal(t, 0, verifier.called)
+}
+
+func TestAuthService_VerifyTurnstileForRegister_NoSkipWhenPhoneVerifyCodeProvided(t *testing.T) {
+	verifier := &turnstileVerifierSpy{}
+	service := newAuthServiceForRegisterTurnstileTest(map[string]string{
+		SettingKeyEmailVerifyEnabled:  "true",
+		SettingKeyTurnstileEnabled:    "true",
+		SettingKeyTurnstileSecretKey:  "secret",
+		SettingKeyRegistrationEnabled: "true",
+	}, verifier)
+
+	err := service.VerifyTurnstileForRegister(context.Background(), "turnstile-token", "127.0.0.1", "13800138000", "123456")
+	require.NoError(t, err)
+	require.Equal(t, 1, verifier.called)
 }
 
 func TestAuthService_VerifyTurnstileForRegister_RequireWhenVerifyCodeMissing(t *testing.T) {
@@ -81,7 +95,7 @@ func TestAuthService_VerifyTurnstileForRegister_RequireWhenVerifyCodeMissing(t *
 		SettingKeyTurnstileSecretKey: "secret",
 	}, verifier)
 
-	err := service.VerifyTurnstileForRegister(context.Background(), "", "127.0.0.1", "")
+	err := service.VerifyTurnstileForRegister(context.Background(), "", "127.0.0.1", "user@example.com", "")
 	require.ErrorIs(t, err, ErrTurnstileVerificationFailed)
 }
 
@@ -93,7 +107,7 @@ func TestAuthService_VerifyTurnstileForRegister_NoSkipWhenEmailVerifyDisabled(t 
 		SettingKeyTurnstileSecretKey: "secret",
 	}, verifier)
 
-	err := service.VerifyTurnstileForRegister(context.Background(), "turnstile-token", "127.0.0.1", "123456")
+	err := service.VerifyTurnstileForRegister(context.Background(), "turnstile-token", "127.0.0.1", "user@example.com", "123456")
 	require.NoError(t, err)
 	require.Equal(t, 1, verifier.called)
 	require.Equal(t, "turnstile-token", verifier.lastToken)

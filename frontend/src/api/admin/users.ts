@@ -249,6 +249,27 @@ export interface BalanceHistoryResponse extends PaginatedResponse<BalanceHistory
   total_recharged: number
 }
 
+export interface UserUsageOverride {
+  user_id: number
+  today_requests?: number | null
+  today_tokens?: number | null
+  today_actual_cost?: number | null
+  total_tokens?: number | null
+  total_actual_cost?: number | null
+  notes?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface UpdateUserUsageOverrideRequest {
+  today_requests?: number | null
+  today_tokens?: number | null
+  today_actual_cost?: number | null
+  total_tokens?: number | null
+  total_actual_cost?: number | null
+  notes?: string | null
+}
+
 /**
  * Get user's balance/concurrency change history
  * @param id - User ID
@@ -269,6 +290,27 @@ export async function getUserBalanceHistory(
     `/admin/users/${id}/balance-history`,
     { params }
   )
+  return data
+}
+
+export async function getUserUsageOverride(id: number): Promise<UserUsageOverride> {
+  const { data } = await apiClient.get<UserUsageOverride>(`/admin/users/${id}/usage-override`)
+  return data
+}
+
+export async function updateUserUsageOverride(
+  id: number,
+  input: UpdateUserUsageOverrideRequest
+): Promise<UserUsageOverride> {
+  const { data } = await apiClient.put<UserUsageOverride>(
+    `/admin/users/${id}/usage-override`,
+    input
+  )
+  return data
+}
+
+export async function deleteUserUsageOverride(id: number): Promise<{ user_id: number }> {
+  const { data } = await apiClient.delete<{ user_id: number }>(`/admin/users/${id}/usage-override`)
   return data
 }
 
@@ -386,6 +428,9 @@ export const usersAPI = {
   getUserApiKeys,
   getUserUsageStats,
   getUserBalanceHistory,
+  getUserUsageOverride,
+  updateUserUsageOverride,
+  deleteUserUsageOverride,
   replaceGroup,
   bindUserAuthIdentity,
   getPlatformQuotas,

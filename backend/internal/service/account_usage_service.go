@@ -59,6 +59,9 @@ type UsageLogRepository interface {
 
 	// User dashboard stats
 	GetUserDashboardStats(ctx context.Context, userID int64) (*usagestats.UserDashboardStats, error)
+	GetUserUsageOverride(ctx context.Context, userID int64) (*usagestats.UserUsageOverride, error)
+	UpsertUserUsageOverride(ctx context.Context, userID int64, input usagestats.UpdateUserUsageOverrideInput) (*usagestats.UserUsageOverride, error)
+	DeleteUserUsageOverride(ctx context.Context, userID int64) error
 	GetAPIKeyDashboardStats(ctx context.Context, apiKeyID int64) (*usagestats.UserDashboardStats, error)
 	GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) ([]usagestats.TrendDataPoint, error)
 	GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error)

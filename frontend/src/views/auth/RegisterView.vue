@@ -28,10 +28,10 @@
 
       <!-- Registration Form -->
       <form v-else @submit.prevent="handleRegister" class="space-y-5">
-        <!-- Email Input -->
+        <!-- Account Input -->
         <div>
           <label for="email" class="input-label">
-            {{ t('auth.emailLabel') }}
+            {{ t('auth.accountIdentifierLabel') }}
           </label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
@@ -40,14 +40,14 @@
             <input
               id="email"
               v-model="formData.email"
-              type="email"
+              type="text"
               required
               autofocus
-              autocomplete="email"
+              autocomplete="username"
               :disabled="registrationActionDisabled"
               class="input pl-11"
               :class="{ 'input-error': errors.email }"
-              :placeholder="t('auth.emailPlaceholder')"
+              :placeholder="t('auth.accountIdentifierPlaceholder')"
             />
           </div>
         </div>
@@ -235,7 +235,7 @@
           {{
             isLoading
               ? t('auth.processing')
-              : emailVerifyEnabled
+              : emailVerifyEnabled && isEmailIdentifier(formData.email)
                 ? t('auth.continue')
                 : t('auth.createAccount')
           }}
@@ -312,24 +312,26 @@ import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import {
   getPublicSettings,
+  sendVerifyCode,
   isWeChatWebOAuthEnabled,
   validatePromoCode,
   validateInvitationCode
 } from '@/api/auth'
 import { buildAuthErrorMessage } from '@/utils/authError'
-import {
-  formatRegistrationEmailSuffixWhitelistForMessage,
-  isRegistrationEmailSuffixAllowed,
-  normalizeRegistrationEmailSuffixWhitelist
-} from '@/utils/registrationEmailPolicy'
+import { isAccountIdentifier, isEmailIdentifier } from '@/utils/accountIdentifier'
 import {
   clearAffiliateReferralCode,
   loadAffiliateReferralCode,
   resolveAffiliateReferralCode
 } from '@/utils/oauthAffiliate'
+import {
+  clearRegisterFlowStorage,
+  getRegisterFlowStorage,
+  patchRegisterFlowStorage
+} from '@/utils/registerFlowStorage'
 import type { LoginAgreementDocument } from '@/types'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
 
 // ==================== Router & Stores ====================
@@ -360,7 +362,6 @@ const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
 const githubOAuthEnabled = ref<boolean>(false)
 const googleOAuthEnabled = ref<boolean>(false)
-const registrationEmailSuffixWhitelist = ref<string[]>([])
 const loginAgreementEnabled = ref<boolean>(false)
 const loginAgreementMode = ref<'modal' | 'checkbox' | string>('modal')
 const loginAgreementUpdatedAt = ref<string>('')
@@ -368,7 +369,6 @@ const loginAgreementRevision = ref<string>('')
 const loginAgreementDocuments = ref<LoginAgreementDocument[]>([])
 const agreementAccepted = ref<boolean>(false)
 const showAgreementModal = ref<boolean>(false)
-
 // Turnstile
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const turnstileToken = ref<string>('')
@@ -440,6 +440,21 @@ watch(validationToastMessage, (value, previousValue) => {
   }
 })
 
+function restoreRegisterDraft(): void {
+  const registerData = getRegisterFlowStorage()
+  if (!registerData) {
+    return
+  }
+
+  formData.email = typeof registerData.email === 'string' ? registerData.email : ''
+  formData.password = typeof registerData.password === 'string' ? registerData.password : ''
+  formData.promo_code = typeof registerData.promo_code === 'string' ? registerData.promo_code : ''
+  formData.invitation_code = typeof registerData.invitation_code === 'string'
+    ? registerData.invitation_code
+    : ''
+  formData.aff_code = typeof registerData.aff_code === 'string' ? registerData.aff_code : ''
+}
+
 function syncAffiliateReferralCode(): string {
   const code = resolveAffiliateReferralCode(route.query.aff, route.query.aff_code)
   if (code) {
@@ -448,9 +463,15 @@ function syncAffiliateReferralCode(): string {
   return code
 }
 
+function showFlowError(message: string): void {
+  errorMessage.value = message
+  appStore.showError(message)
+}
+
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
+  restoreRegisterDraft()
   syncAffiliateReferralCode()
 
   try {
@@ -468,9 +489,6 @@ onMounted(async () => {
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
     githubOAuthEnabled.value = settings.github_oauth_enabled
     googleOAuthEnabled.value = settings.google_oauth_enabled
-    registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
-      settings.registration_email_suffix_whitelist || []
-    )
     applyLoginAgreementSettings(settings)
 
     // Read promo code from URL parameter only if promo code is enabled
@@ -480,8 +498,15 @@ onMounted(async () => {
         formData.promo_code = promoParam
         // Validate the promo code from URL
         await validatePromoCodeDebounced(promoParam)
+      } else if (formData.promo_code.trim()) {
+        await validatePromoCodeDebounced(formData.promo_code.trim())
       }
     }
+
+    if (invitationCodeEnabled.value && formData.invitation_code.trim()) {
+      await validateInvitationCodeDebounced(formData.invitation_code.trim())
+    }
+
     syncAffiliateReferralCode()
   } catch (error) {
     console.error('Failed to load public settings:', error)
@@ -726,27 +751,6 @@ function onTurnstileError(): void {
 
 // ==================== Validation ====================
 
-function validateEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}
-
-function buildEmailSuffixNotAllowedMessage(): string {
-  const normalizedWhitelist = normalizeRegistrationEmailSuffixWhitelist(
-    registrationEmailSuffixWhitelist.value
-  )
-  if (normalizedWhitelist.length === 0) {
-    return t('auth.emailSuffixNotAllowed')
-  }
-  const separator = String(locale.value || '').toLowerCase().startsWith('zh') ? '、' : ', '
-  return t('auth.emailSuffixNotAllowedWithAllowed', {
-    suffixes: formatRegistrationEmailSuffixWhitelistForMessage(normalizedWhitelist, {
-      separator,
-      more: (count) => t('auth.emailSuffixAllowedMore', { count })
-    })
-  })
-}
-
 function validateForm(): boolean {
   // Reset errors
   errors.email = ''
@@ -764,17 +768,12 @@ function validateForm(): boolean {
     return false
   }
 
-  // Email validation
+  // Account validation
   if (!formData.email.trim()) {
-    errors.email = t('auth.emailRequired')
+    errors.email = t('auth.accountIdentifierRequired')
     isValid = false
-  } else if (!validateEmail(formData.email)) {
-    errors.email = t('auth.invalidEmail')
-    isValid = false
-  } else if (
-    !isRegistrationEmailSuffixAllowed(formData.email, registrationEmailSuffixWhitelist.value)
-  ) {
-    errors.email = buildEmailSuffixNotAllowedMessage()
+  } else if (!isAccountIdentifier(formData.email)) {
+    errors.email = t('auth.invalidAccountIdentifier')
     isValid = false
   }
 
@@ -819,12 +818,12 @@ async function handleRegister(): Promise<void> {
   if (formData.promo_code.trim()) {
     // If promo code is being validated, wait
     if (promoValidating.value) {
-      errorMessage.value = t('auth.promoCodeValidating')
+      showFlowError(t('auth.promoCodeValidating'))
       return
     }
     // If promo code is invalid, block submission
     if (promoValidation.invalid) {
-      errorMessage.value = t('auth.promoCodeInvalidCannotRegister')
+      showFlowError(t('auth.promoCodeInvalidCannotRegister'))
       return
     }
   }
@@ -833,21 +832,21 @@ async function handleRegister(): Promise<void> {
   if (invitationCodeEnabled.value) {
     // If still validating, wait
     if (invitationValidating.value) {
-      errorMessage.value = t('auth.invitationCodeValidating')
+      showFlowError(t('auth.invitationCodeValidating'))
       return
     }
     // If invitation code is invalid, block submission
     if (invitationValidation.invalid) {
-      errorMessage.value = t('auth.invitationCodeInvalidCannotRegister')
+      showFlowError(t('auth.invitationCodeInvalidCannotRegister'))
       return
     }
     // If invitation code is required but not validated yet
     if (formData.invitation_code.trim() && !invitationValidation.valid) {
-      errorMessage.value = t('auth.invitationCodeValidating')
+      showFlowError(t('auth.invitationCodeValidating'))
       // Trigger validation
       await validateInvitationCodeDebounced(formData.invitation_code.trim())
       if (!invitationValidation.valid) {
-        errorMessage.value = t('auth.invitationCodeInvalidCannotRegister')
+        showFlowError(t('auth.invitationCodeInvalidCannotRegister'))
         return
       }
     }
@@ -861,20 +860,34 @@ async function handleRegister(): Promise<void> {
       formData.aff_code = affCode
     }
 
+    patchRegisterFlowStorage({
+      email: formData.email,
+      password: formData.password,
+      promo_code: formData.promo_code || undefined,
+      invitation_code: formData.invitation_code || undefined,
+      aff_code: affCode || undefined,
+      turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
+      email_verify_sent_at: undefined,
+      email_verify_countdown: undefined,
+    })
+
     // If email verification is enabled, redirect to verification page
-    if (emailVerifyEnabled.value) {
-      // Store registration data in sessionStorage
-      sessionStorage.setItem(
-        'register_data',
-        JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-          turnstile_token: turnstileToken.value,
-          promo_code: formData.promo_code || undefined,
-          invitation_code: formData.invitation_code || undefined,
-          ...(affCode ? { aff_code: affCode } : {})
-        })
-      )
+    if (emailVerifyEnabled.value && isEmailIdentifier(formData.email)) {
+      const response = await sendVerifyCode({
+        email: formData.email,
+        turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined
+      })
+
+      patchRegisterFlowStorage({
+        email: formData.email,
+        password: formData.password,
+        promo_code: formData.promo_code || undefined,
+        invitation_code: formData.invitation_code || undefined,
+        aff_code: affCode || undefined,
+        turnstile_token: '',
+        email_verify_sent_at: Date.now(),
+        email_verify_countdown: response.countdown,
+      })
 
       // Navigate to email verification page
       await router.push('/email-verify')
@@ -890,6 +903,7 @@ async function handleRegister(): Promise<void> {
       invitation_code: formData.invitation_code || undefined,
       ...(affCode ? { aff_code: affCode } : {})
     })
+    clearRegisterFlowStorage()
     clearAffiliateReferralCode()
 
     // Show success toast
@@ -906,7 +920,9 @@ async function handleRegister(): Promise<void> {
 
     // Handle registration error
     errorMessage.value = buildAuthErrorMessage(error, {
-      fallback: t('auth.registrationFailed')
+      fallback: emailVerifyEnabled.value && isEmailIdentifier(formData.email)
+        ? t('auth.sendCodeFailed')
+        : t('auth.registrationFailed')
     })
 
     // Also show error toast

@@ -436,6 +436,14 @@ func (s *APIKeyService) List(ctx context.Context, userID int64, params paginatio
 	return keys, pagination, nil
 }
 
+func (s *APIKeyService) CountByUserID(ctx context.Context, userID int64) (int64, error) {
+	count, err := s.apiKeyRepo.CountByUserID(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("count api keys by user: %w", err)
+	}
+	return count, nil
+}
+
 func (s *APIKeyService) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
 	if len(apiKeyIDs) == 0 {
 		return []int64{}, nil

@@ -173,6 +173,13 @@ import {
   loadAffiliateReferralCode,
   oauthAffiliatePayload
 } from '@/utils/oauthAffiliate'
+import {
+  clearRegisterFlowStorage,
+  getRegisterFlowStorage,
+  getRegisterFlowVerifyCountdownRemaining,
+  patchRegisterFlowStorage,
+  type PendingAuthTokenField,
+} from '@/utils/registerFlowStorage'
 
 const { t, locale } = useI18n()
 
@@ -192,8 +199,6 @@ const verifyCode = ref<string>('')
 const countdown = ref<number>(0)
 let countdownTimer: ReturnType<typeof setInterval> | null = null
 
-// Registration data from sessionStorage
-type PendingAuthTokenField = 'pending_auth_token' | 'pending_oauth_token'
 type PendingAuthSessionSummary = {
   token: string
   token_field: PendingAuthTokenField
@@ -256,31 +261,39 @@ watch(validationToastMessage, (value, previousValue) => {
 
 onMounted(async () => {
   const activePendingSession = authStore.pendingAuthSession as PendingAuthSessionSummary | null
+  let shouldSendCodeOnMount = false
 
   // Load registration data from sessionStorage
-  const registerDataStr = sessionStorage.getItem('register_data')
-  if (registerDataStr) {
-    try {
-      const registerData = JSON.parse(registerDataStr)
-      email.value = registerData.email || ''
-      password.value = registerData.password || ''
-      initialTurnstileToken.value = registerData.turnstile_token || ''
-      promoCode.value = registerData.promo_code || ''
-      invitationCode.value = registerData.invitation_code || ''
-      affCode.value = registerData.aff_code || loadAffiliateReferralCode()
-      pendingAuthToken.value = registerData.pending_auth_token || activePendingSession?.token || ''
-      pendingAuthTokenField.value = registerData.pending_auth_token_field || activePendingSession?.token_field || 'pending_auth_token'
-      pendingProvider.value = registerData.pending_provider || activePendingSession?.provider || ''
-      pendingRedirect.value = registerData.pending_redirect || activePendingSession?.redirect || ''
-      pendingAdoptionDecision.value = registerData.pending_adoption_decision
-        ? {
-            adoptDisplayName: registerData.pending_adoption_decision.adopt_display_name === true,
-            adoptAvatar: registerData.pending_adoption_decision.adopt_avatar === true
-          }
-        : null
-      hasRegisterData.value = !!(email.value && password.value)
-    } catch {
-      hasRegisterData.value = false
+  const registerData = getRegisterFlowStorage()
+  if (registerData) {
+    email.value = registerData.email || ''
+    password.value = registerData.password || ''
+    initialTurnstileToken.value = registerData.turnstile_token || ''
+    promoCode.value = registerData.promo_code || ''
+    invitationCode.value = registerData.invitation_code || ''
+    affCode.value = registerData.aff_code || loadAffiliateReferralCode()
+    pendingAuthToken.value = registerData.pending_auth_token || activePendingSession?.token || ''
+    pendingAuthTokenField.value = registerData.pending_auth_token_field || activePendingSession?.token_field || 'pending_auth_token'
+    pendingProvider.value = registerData.pending_provider || activePendingSession?.provider || ''
+    pendingRedirect.value = registerData.pending_redirect || activePendingSession?.redirect || ''
+    pendingAdoptionDecision.value = registerData.pending_adoption_decision
+      ? {
+          adoptDisplayName: registerData.pending_adoption_decision.adopt_display_name === true,
+          adoptAvatar: registerData.pending_adoption_decision.adopt_avatar === true
+        }
+      : null
+    hasRegisterData.value = !!(email.value && password.value)
+
+    const remainingCountdown = getRegisterFlowVerifyCountdownRemaining()
+    if (hasRegisterData.value && remainingCountdown > 0) {
+      codeSent.value = true
+      startCountdown(remainingCountdown)
+      initialTurnstileToken.value = ''
+      patchRegisterFlowStorage({
+        turnstile_token: '',
+      })
+    } else if (hasRegisterData.value && !registerData.email_verify_sent_at) {
+      shouldSendCodeOnMount = true
     }
   } else if (activePendingSession) {
     pendingAuthToken.value = activePendingSession.token
@@ -303,7 +316,7 @@ onMounted(async () => {
   }
 
   // Auto-send verification code if we have valid data
-  if (hasRegisterData.value) {
+  if (hasRegisterData.value && shouldSendCodeOnMount) {
     await sendCode()
   }
 })
@@ -420,7 +433,7 @@ async function sendCode(): Promise<void> {
       ? getPendingOAuthSendCodeSessionResponse(response as PendingOAuthSendVerifyCodeResponse)
       : null
     if (pendingSendCodeSession) {
-      sessionStorage.removeItem('register_data')
+      clearRegisterFlowStorage()
       persistPendingOAuthSession(
         pendingSendCodeSession.provider || pendingProvider.value,
         pendingSendCodeSession.redirect,
@@ -433,6 +446,11 @@ async function sendCode(): Promise<void> {
 
     codeSent.value = true
     startCountdown(response.countdown)
+    patchRegisterFlowStorage({
+      turnstile_token: '',
+      email_verify_sent_at: Date.now(),
+      email_verify_countdown: response.countdown,
+    })
 
     // Reset turnstile state（token 已使用，清除以避免重复使用）
     initialTurnstileToken.value = ''
@@ -513,7 +531,7 @@ async function handleVerify(): Promise<void> {
         }
       )
       if (isPendingOAuthSessionResponse(data)) {
-        sessionStorage.removeItem('register_data')
+        clearRegisterFlowStorage()
         persistPendingOAuthSession(data.provider || pendingProvider.value, data.redirect)
         await router.push(resolvePendingOAuthCallbackRoute(data.provider || pendingProvider.value))
         return
@@ -539,7 +557,7 @@ async function handleVerify(): Promise<void> {
     }
 
     // Clear session data
-    sessionStorage.removeItem('register_data')
+    clearRegisterFlowStorage()
     clearAllAffiliateReferralCodes()
 
     // Show success toast
@@ -559,10 +577,6 @@ async function handleVerify(): Promise<void> {
 }
 
 function handleBack(): void {
-  // Clear session data
-  sessionStorage.removeItem('register_data')
-
-  // Go back to registration
   router.push('/register')
 }
 

@@ -253,7 +253,16 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	var stats *service.UsageStats
 	var err error
 	if apiKeyID > 0 {
-		stats, err = h.usageService.GetStatsByAPIKey(c.Request.Context(), apiKeyID, startTime, endTime)
+		applyUserOverride := false
+		apiKeyCount, countErr := h.apiKeyService.CountByUserID(c.Request.Context(), subject.UserID)
+		if countErr != nil {
+			response.ErrorFrom(c, countErr)
+			return
+		}
+		if apiKeyCount == 1 {
+			applyUserOverride = true
+		}
+		stats, err = h.usageService.GetStatsByAPIKeyForUser(c.Request.Context(), subject.UserID, apiKeyID, startTime, endTime, applyUserOverride)
 	} else {
 		stats, err = h.usageService.GetStatsByUser(c.Request.Context(), subject.UserID, startTime, endTime)
 	}
@@ -435,6 +444,16 @@ func (h *UsageHandler) DashboardAPIKeysUsage(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	if len(validAPIKeyIDs) == 1 {
+		apiKeyCount, err := h.apiKeyService.CountByUserID(c.Request.Context(), subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if apiKeyCount == 1 {
+			h.usageService.ApplyUserUsageOverrideToSingleAPIKeyStats(c.Request.Context(), subject.UserID, stats[validAPIKeyIDs[0]])
+		}
 	}
 
 	response.Success(c, gin.H{"stats": stats})

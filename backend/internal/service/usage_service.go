@@ -9,6 +9,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
@@ -51,6 +52,25 @@ type UsageStats struct {
 	TotalActualCost   float64 `json:"total_actual_cost"`
 	AverageDurationMs float64 `json:"average_duration_ms"`
 }
+
+type UserUsageSummary struct {
+	Period            string  `json:"period"`
+	TotalRequests     int64   `json:"total_requests"`
+	TotalInputTokens  int64   `json:"total_input_tokens"`
+	TotalOutputTokens int64   `json:"total_output_tokens"`
+	TotalCacheTokens  int64   `json:"total_cache_tokens"`
+	TotalTokens       int64   `json:"total_tokens"`
+	TotalCost         float64 `json:"total_cost"`
+	TotalActualCost   float64 `json:"total_actual_cost"`
+	TodayRequests     int64   `json:"today_requests"`
+	TodayTokens       int64   `json:"today_tokens"`
+	TodayActualCost   float64 `json:"today_actual_cost"`
+	UsageOverridden   bool    `json:"usage_overridden,omitempty"`
+	AverageDurationMs float64 `json:"avg_duration_ms"`
+}
+
+type UserUsageOverride = usagestats.UserUsageOverride
+type UpdateUserUsageOverrideInput = usagestats.UpdateUserUsageOverrideInput
 
 // UsageService 使用统计服务
 type UsageService struct {
@@ -184,12 +204,49 @@ func (s *UsageService) ListByAccount(ctx context.Context, accountID int64, param
 
 // GetStatsByUser 获取用户的使用统计
 func (s *UsageService) GetStatsByUser(ctx context.Context, userID int64, startTime, endTime time.Time) (*UsageStats, error) {
-	stats, err := s.usageRepo.GetUserStatsAggregated(ctx, userID, startTime, endTime)
+	if endTime.IsZero() {
+		endTime = timezone.Now()
+	}
+	rangeStats, err := s.usageRepo.GetUserStatsAggregated(ctx, userID, startTime, endTime)
 	if err != nil {
 		return nil, fmt.Errorf("get user stats: %w", err)
 	}
 
-	return &UsageStats{
+	out := &UsageStats{
+		TotalRequests:     rangeStats.TotalRequests,
+		TotalInputTokens:  rangeStats.TotalInputTokens,
+		TotalOutputTokens: rangeStats.TotalOutputTokens,
+		TotalCacheTokens:  rangeStats.TotalCacheTokens,
+		TotalTokens:       rangeStats.TotalTokens,
+		TotalCost:         rangeStats.TotalCost,
+		TotalActualCost:   rangeStats.TotalActualCost,
+		AverageDurationMs: rangeStats.AverageDurationMs,
+	}
+	override := s.loadUserUsageOverrideBestEffort(ctx, userID)
+	if hasUserUsageTodayOverride(override) {
+		todayStart, todayEnd, ok := usageTodayWindow(startTime, endTime)
+		if ok {
+			todayStats, todayErr := s.usageRepo.GetUserStatsAggregated(ctx, userID, todayStart, todayEnd)
+			if todayErr != nil {
+				return nil, fmt.Errorf("get user today stats: %w", todayErr)
+			}
+			applyUsageStatsRangeTodayOverride(out, usageStatsFromAggregate(todayStats), override)
+		}
+	}
+	if usageRangeIncludesAllTime(startTime, endTime) {
+		applyUsageStatsExplicitTotalOverride(out, override)
+	}
+	return out, nil
+}
+
+func (s *UsageService) GetUserUsageSummary(ctx context.Context, userID int64, period string, startTime, endTime time.Time) (*UserUsageSummary, error) {
+	stats, err := s.GetStatsByUser(ctx, userID, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+
+	summary := &UserUsageSummary{
+		Period:            period,
 		TotalRequests:     stats.TotalRequests,
 		TotalInputTokens:  stats.TotalInputTokens,
 		TotalOutputTokens: stats.TotalOutputTokens,
@@ -198,7 +255,23 @@ func (s *UsageService) GetStatsByUser(ctx context.Context, userID int64, startTi
 		TotalCost:         stats.TotalCost,
 		TotalActualCost:   stats.TotalActualCost,
 		AverageDurationMs: stats.AverageDurationMs,
-	}, nil
+	}
+
+	if batchStats, err := s.usageRepo.GetBatchUserUsageStats(ctx, []int64{userID}, time.Time{}, time.Time{}); err == nil {
+		if userStats := batchStats[userID]; userStats != nil {
+			summary.TodayRequests = userStats.TodayRequests
+			summary.TodayTokens = userStats.TodayTokens
+			summary.TodayActualCost = userStats.TodayActualCost
+			if usageRangeIncludesAllTime(startTime, endTime) {
+				summary.TotalTokens = userStats.TotalTokens
+				summary.TotalActualCost = userStats.TotalActualCost
+				summary.TotalCost = userStats.TotalActualCost
+			}
+			summary.UsageOverridden = userStats.UsageOverridden
+		}
+	}
+
+	return summary, nil
 }
 
 // GetStatsByAPIKey 获取API Key的使用统计
@@ -218,6 +291,31 @@ func (s *UsageService) GetStatsByAPIKey(ctx context.Context, apiKeyID int64, sta
 		TotalActualCost:   stats.TotalActualCost,
 		AverageDurationMs: stats.AverageDurationMs,
 	}, nil
+}
+
+func (s *UsageService) GetStatsByAPIKeyForUser(ctx context.Context, userID int64, apiKeyID int64, startTime, endTime time.Time, applyUserOverride bool) (*UsageStats, error) {
+	stats, err := s.GetStatsByAPIKey(ctx, apiKeyID, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	if !applyUserOverride {
+		return stats, nil
+	}
+	override := s.loadUserUsageOverrideBestEffort(ctx, userID)
+	if hasUserUsageTodayOverride(override) {
+		todayStart, todayEnd, ok := usageTodayWindow(startTime, endTime)
+		if ok {
+			todayStats, todayErr := s.usageRepo.GetAPIKeyStatsAggregated(ctx, apiKeyID, todayStart, todayEnd)
+			if todayErr != nil {
+				return nil, fmt.Errorf("get api key today stats: %w", todayErr)
+			}
+			applyUsageStatsRangeTodayOverride(stats, usageStatsFromAggregate(todayStats), override)
+		}
+	}
+	if usageRangeIncludesAllTime(startTime, endTime) {
+		applyUsageStatsExplicitTotalOverride(stats, override)
+	}
+	return stats, nil
 }
 
 // GetStatsByAccount 获取账号的使用统计
@@ -288,11 +386,240 @@ func (s *UsageService) GetUserDashboardStats(ctx context.Context, userID int64) 
 	return stats, nil
 }
 
+func (s *UsageService) GetUserUsageOverride(ctx context.Context, userID int64) (*UserUsageOverride, error) {
+	override, err := s.usageRepo.GetUserUsageOverride(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user usage override: %w", err)
+	}
+	return override, nil
+}
+
+func (s *UsageService) UpsertUserUsageOverride(ctx context.Context, userID int64, input UpdateUserUsageOverrideInput) (*UserUsageOverride, error) {
+	override, err := s.usageRepo.UpsertUserUsageOverride(ctx, userID, input)
+	if err != nil {
+		return nil, fmt.Errorf("upsert user usage override: %w", err)
+	}
+	return override, nil
+}
+
+func (s *UsageService) DeleteUserUsageOverride(ctx context.Context, userID int64) error {
+	if err := s.usageRepo.DeleteUserUsageOverride(ctx, userID); err != nil {
+		return fmt.Errorf("delete user usage override: %w", err)
+	}
+	return nil
+}
+
+func (s *UsageService) loadUserUsageOverrideBestEffort(ctx context.Context, userID int64) *usagestats.UserUsageOverride {
+	if s == nil || s.usageRepo == nil || userID <= 0 {
+		return nil
+	}
+	override, err := s.usageRepo.GetUserUsageOverride(ctx, userID)
+	if err != nil {
+		return nil
+	}
+	return override
+}
+
+func usageStatsFromAggregate(stats *usagestats.UsageStats) *UsageStats {
+	if stats == nil {
+		return nil
+	}
+	return &UsageStats{
+		TotalRequests:     stats.TotalRequests,
+		TotalInputTokens:  stats.TotalInputTokens,
+		TotalOutputTokens: stats.TotalOutputTokens,
+		TotalCacheTokens:  stats.TotalCacheTokens,
+		TotalTokens:       stats.TotalTokens,
+		TotalCost:         stats.TotalCost,
+		TotalActualCost:   stats.TotalActualCost,
+		AverageDurationMs: stats.AverageDurationMs,
+	}
+}
+
+func hasUserUsageTodayOverride(override *usagestats.UserUsageOverride) bool {
+	return override != nil && (override.TodayRequests != nil || override.TodayTokens != nil || override.TodayActualCost != nil)
+}
+
+func applyUsageStatsTodayOverride(stats *UsageStats, override *usagestats.UserUsageOverride) {
+	if stats == nil || override == nil {
+		return
+	}
+	if override.TodayRequests != nil {
+		stats.TotalRequests = *override.TodayRequests
+	}
+	if override.TodayTokens != nil {
+		stats.TotalTokens = *override.TodayTokens
+	}
+	if override.TodayActualCost != nil {
+		stats.TotalActualCost = *override.TodayActualCost
+		stats.TotalCost = *override.TodayActualCost
+	}
+}
+
+func applyUsageStatsRangeTodayOverride(stats *UsageStats, todayStats *UsageStats, override *usagestats.UserUsageOverride) {
+	if stats == nil || override == nil {
+		return
+	}
+	if todayStats == nil {
+		return
+	}
+	if override.TodayRequests != nil {
+		stats.TotalRequests += *override.TodayRequests - todayStats.TotalRequests
+	}
+	if override.TodayTokens != nil {
+		stats.TotalTokens += *override.TodayTokens - todayStats.TotalTokens
+	}
+	if override.TodayActualCost != nil {
+		delta := *override.TodayActualCost - todayStats.TotalActualCost
+		stats.TotalActualCost += delta
+		stats.TotalCost += delta
+	}
+}
+
+func applyUsageStatsTotalOverride(stats *UsageStats, override *usagestats.UserUsageOverride) {
+	applyUsageStatsExplicitTotalOverride(stats, override)
+}
+
+func applyUsageStatsExplicitTotalOverride(stats *UsageStats, override *usagestats.UserUsageOverride) {
+	if stats == nil || override == nil {
+		return
+	}
+	if override.TotalTokens != nil {
+		stats.TotalTokens = *override.TotalTokens
+	}
+	if override.TotalActualCost != nil {
+		stats.TotalActualCost = *override.TotalActualCost
+		stats.TotalCost = *override.TotalActualCost
+	}
+}
+
+func applyUserDashboardStatsOverride(stats *usagestats.UserDashboardStats, override *usagestats.UserUsageOverride) {
+	if stats == nil || override == nil {
+		return
+	}
+	if override.TodayRequests != nil {
+		delta := *override.TodayRequests - stats.TodayRequests
+		stats.TodayRequests = *override.TodayRequests
+		stats.TotalRequests += delta
+		stats.UsageOverridden = true
+	}
+	if override.TodayTokens != nil {
+		delta := *override.TodayTokens - stats.TodayTokens
+		stats.TodayTokens = *override.TodayTokens
+		if override.TotalTokens == nil {
+			stats.TotalTokens += delta
+		}
+		stats.UsageOverridden = true
+	}
+	if override.TodayActualCost != nil {
+		delta := *override.TodayActualCost - stats.TodayActualCost
+		stats.TodayActualCost = *override.TodayActualCost
+		stats.TodayCost = *override.TodayActualCost
+		if override.TotalActualCost == nil {
+			stats.TotalActualCost += delta
+			stats.TotalCost += delta
+		}
+		stats.UsageOverridden = true
+	}
+	if override.TotalTokens != nil {
+		stats.TotalTokens = *override.TotalTokens
+		stats.UsageOverridden = true
+	}
+	if override.TotalActualCost != nil {
+		stats.TotalActualCost = *override.TotalActualCost
+		stats.TotalCost = *override.TotalActualCost
+		stats.UsageOverridden = true
+	}
+}
+
+func applyAPIKeyUsageStatsUserOverride(stats *usagestats.BatchAPIKeyUsageStats, override *usagestats.UserUsageOverride) {
+	if stats == nil || override == nil {
+		return
+	}
+	if override.TodayActualCost != nil {
+		delta := *override.TodayActualCost - stats.TodayActualCost
+		stats.TodayActualCost = *override.TodayActualCost
+		if override.TotalActualCost == nil {
+			stats.TotalActualCost += delta
+		}
+		stats.UsageOverridden = true
+	}
+	if override.TotalActualCost != nil {
+		stats.TotalActualCost = *override.TotalActualCost
+		stats.UsageOverridden = true
+	}
+}
+
+func usageRangeIncludesAllTime(startTime, endTime time.Time) bool {
+	return startTime.IsZero()
+}
+
+func usageRangeLocation(startTime, endTime time.Time) *time.Location {
+	if !startTime.IsZero() && startTime.Location() != nil {
+		return startTime.Location()
+	}
+	if !endTime.IsZero() && endTime.Location() != nil {
+		return endTime.Location()
+	}
+	return timezone.Now().Location()
+}
+
+func usageTodayWindow(startTime, endTime time.Time) (time.Time, time.Time, bool) {
+	loc := usageRangeLocation(startTime, endTime)
+	now := timezone.Now().In(loc)
+	rangeEnd := endTime
+	if rangeEnd.IsZero() {
+		rangeEnd = now
+	}
+
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	todayEnd := todayStart.AddDate(0, 0, 1)
+	effectiveStart := todayStart
+	if !startTime.IsZero() && startTime.After(effectiveStart) {
+		effectiveStart = startTime
+	}
+	effectiveEnd := rangeEnd
+	if effectiveEnd.After(todayEnd) {
+		effectiveEnd = todayEnd
+	}
+	if !effectiveEnd.After(todayStart) || !effectiveEnd.After(effectiveStart) {
+		return time.Time{}, time.Time{}, false
+	}
+	return effectiveStart, effectiveEnd, true
+}
+
+func usageRangeCoversToday(startTime, endTime time.Time) bool {
+	if startTime.IsZero() {
+		return false
+	}
+	loc := usageRangeLocation(startTime, endTime)
+	now := timezone.Now().In(loc)
+	expectedTodayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	if !startTime.Equal(expectedTodayStart) {
+		return false
+	}
+	if endTime.IsZero() {
+		return true
+	}
+	return endTime.After(now.Add(-time.Second))
+}
+
 // GetAPIKeyDashboardStats returns dashboard summary stats filtered by API Key.
 func (s *UsageService) GetAPIKeyDashboardStats(ctx context.Context, apiKeyID int64) (*usagestats.UserDashboardStats, error) {
 	stats, err := s.usageRepo.GetAPIKeyDashboardStats(ctx, apiKeyID)
 	if err != nil {
 		return nil, fmt.Errorf("get api key dashboard stats: %w", err)
+	}
+	return stats, nil
+}
+
+func (s *UsageService) GetAPIKeyDashboardStatsForUser(ctx context.Context, userID int64, apiKeyID int64, applyUserOverride bool) (*usagestats.UserDashboardStats, error) {
+	stats, err := s.GetAPIKeyDashboardStats(ctx, apiKeyID)
+	if err != nil {
+		return nil, err
+	}
+	if applyUserOverride {
+		applyUserDashboardStatsOverride(stats, s.loadUserUsageOverrideBestEffort(ctx, userID))
 	}
 	return stats, nil
 }
@@ -355,6 +682,10 @@ func (s *UsageService) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs [
 		return nil, fmt.Errorf("get batch api key usage stats: %w", err)
 	}
 	return stats, nil
+}
+
+func (s *UsageService) ApplyUserUsageOverrideToSingleAPIKeyStats(ctx context.Context, userID int64, stats *usagestats.BatchAPIKeyUsageStats) {
+	applyAPIKeyUsageStatsUserOverride(stats, s.loadUserUsageOverrideBestEffort(ctx, userID))
 }
 
 // ListWithFilters lists usage logs with admin filters.

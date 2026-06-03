@@ -346,8 +346,8 @@ func replaceEmailAuthIdentityWithClient(ctx context.Context, client *dbent.Clien
 }
 
 func normalizeEmailAuthIdentitySubject(email string) string {
-	normalized := strings.ToLower(strings.TrimSpace(email))
-	if normalized == "" {
+	normalized, err := service.NormalizeEmailAccountIdentifier(email)
+	if err != nil {
 		return ""
 	}
 	if strings.HasSuffix(normalized, service.LinuxDoConnectSyntheticEmailDomain) ||

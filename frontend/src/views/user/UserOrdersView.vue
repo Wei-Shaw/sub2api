@@ -58,7 +58,7 @@
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
           <div class="flex justify-between text-sm">
             <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
-            <span class="font-mono text-gray-900 dark:text-white">#{{ refundTarget.id }}</span>
+            <span class="font-mono text-gray-900 dark:text-white">#{{ refundTarget.display_id ?? refundTarget.id }}</span>
           </div>
           <div class="mt-2 flex justify-between text-sm">
             <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
@@ -125,8 +125,12 @@ async function fetchOrders() {
       page_size: pagination.page_size,
       status: currentFilter.value || undefined,
     })
-    orders.value = res.data.items || []
-    pagination.total = res.data.total || 0
+    const total = res.data.total || 0
+    orders.value = (res.data.items || []).map((order, index) => ({
+      ...order,
+      display_id: total - ((pagination.page - 1) * pagination.page_size + index),
+    }))
+    pagination.total = total
   } catch (err: unknown) {
     appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   } finally {

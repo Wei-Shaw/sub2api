@@ -693,6 +693,15 @@
                 {{ t('admin.users.platformQuota.menuItem') }}
               </button>
 
+              <!-- Usage Override -->
+              <button
+                @click="handleUsageOverride(user); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <Icon name="edit" size="sm" class="text-gray-400" :stroke-width="2" />
+                {{ t('admin.users.usageOverride.menuItem') }}
+              </button>
+
               <!-- Balance History -->
               <button
                 @click="handleBalanceHistory(user); closeActionMenu()"
@@ -727,6 +736,13 @@
       :user="platformQuotaUser"
       @close="closePlatformQuotaModal"
       @success="loadUsers"
+    />
+    <UserUsageOverrideModal
+      :show="showUsageOverrideModal"
+      :user="usageOverrideUser"
+      :current-usage="usageOverrideUser ? usageStats[usageOverrideUser.id] : null"
+      @close="closeUsageOverrideModal"
+      @success="handleUsageOverrideSuccess"
     />
     <UserApiKeysModal :show="showApiKeysModal" :user="viewingUser" @close="closeApiKeysModal" />
     <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="loadUsers" />
@@ -767,6 +783,7 @@ import UserPlatformQuotaCell from '@/components/user/UserPlatformQuotaCell.vue'
 import UserCreateModal from '@/components/admin/user/UserCreateModal.vue'
 import UserEditModal from '@/components/admin/user/UserEditModal.vue'
 import UserPlatformQuotaModal from '@/components/admin/user/UserPlatformQuotaModal.vue'
+import UserUsageOverrideModal from '@/components/admin/user/UserUsageOverrideModal.vue'
 import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
 import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsModal.vue'
 import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
@@ -1235,10 +1252,12 @@ const showDeleteDialog = ref(false)
 const showApiKeysModal = ref(false)
 const showAttributesModal = ref(false)
 const showPlatformQuotaModal = ref(false)
+const showUsageOverrideModal = ref(false)
 const editingUser = ref<AdminUser | null>(null)
 const deletingUser = ref<AdminUser | null>(null)
 const viewingUser = ref<AdminUser | null>(null)
 const platformQuotaUser = ref<AdminUser | null>(null)
+const usageOverrideUser = ref<AdminUser | null>(null)
 
 const handlePlatformQuota = (user: AdminUser) => {
   platformQuotaUser.value = user
@@ -1248,6 +1267,21 @@ const handlePlatformQuota = (user: AdminUser) => {
 const closePlatformQuotaModal = () => {
   showPlatformQuotaModal.value = false
   platformQuotaUser.value = null
+}
+
+const handleUsageOverride = (user: AdminUser) => {
+  usageOverrideUser.value = user
+  showUsageOverrideModal.value = true
+}
+
+const closeUsageOverrideModal = () => {
+  showUsageOverrideModal.value = false
+  usageOverrideUser.value = null
+}
+
+const handleUsageOverrideSuccess = () => {
+  loadUsers()
+  refreshCurrentPageSecondaryData()
 }
 let abortController: AbortController | null = null
 let secondaryDataSeq = 0

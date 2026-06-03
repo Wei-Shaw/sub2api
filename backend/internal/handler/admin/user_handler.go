@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/handler/quotaview"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -29,6 +30,7 @@ type UserHandler struct {
 	concurrencyService    *service.ConcurrencyService
 	userPlatformQuotaRepo service.UserPlatformQuotaRepository // T13 admin quota view
 	billingCache          service.BillingCache                // T17/T18 缓存失效（PUT/POST 路径）
+	usageService          *service.UsageService
 }
 
 // NewUserHandler creates a new admin user handler
@@ -37,12 +39,14 @@ func NewUserHandler(
 	concurrencyService *service.ConcurrencyService,
 	userPlatformQuotaRepo service.UserPlatformQuotaRepository,
 	billingCache service.BillingCache,
+	usageService *service.UsageService,
 ) *UserHandler {
 	return &UserHandler{
 		adminService:          adminService,
 		concurrencyService:    concurrencyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 		billingCache:          billingCache,
+		usageService:          usageService,
 	}
 }
 
@@ -77,9 +81,19 @@ type UpdateUserRequest struct {
 
 // UpdateBalanceRequest represents balance update request
 type UpdateBalanceRequest struct {
-	Balance   float64 `json:"balance" binding:"required,gt=0"`
+	Balance   float64 `json:"balance" binding:"required,gte=0"`
 	Operation string  `json:"operation" binding:"required,oneof=set add subtract"`
 	Notes     string  `json:"notes"`
+}
+
+// UpdateUserUsageOverrideRequest represents admin-managed usage summary overrides.
+type UpdateUserUsageOverrideRequest struct {
+	TodayRequests   *int64   `json:"today_requests"`
+	TodayTokens     *int64   `json:"today_tokens"`
+	TodayActualCost *float64 `json:"today_actual_cost"`
+	TotalTokens     *int64   `json:"total_tokens"`
+	TotalActualCost *float64 `json:"total_actual_cost"`
+	Notes           *string  `json:"notes"`
 }
 
 type BindUserAuthIdentityRequest struct {
@@ -396,6 +410,16 @@ func (h *UserHandler) GetUserUsage(c *gin.Context) {
 	}
 
 	period := c.DefaultQuery("period", "month")
+	if h.usageService != nil {
+		startTime, endTime := adminUserUsagePeriodRange(period)
+		stats, err := h.usageService.GetUserUsageSummary(c.Request.Context(), userID, period, startTime, endTime)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, stats)
+		return
+	}
 
 	stats, err := h.adminService.GetUserUsageStats(c.Request.Context(), userID, period)
 	if err != nil {
@@ -404,6 +428,24 @@ func (h *UserHandler) GetUserUsage(c *gin.Context) {
 	}
 
 	response.Success(c, stats)
+}
+
+func adminUserUsagePeriodRange(period string) (time.Time, time.Time) {
+	now := timezone.Now()
+	switch strings.ToLower(strings.TrimSpace(period)) {
+	case "today":
+		return timezone.StartOfDay(now), now
+	case "week":
+		return now.AddDate(0, 0, -7), now
+	case "month":
+		return now.AddDate(0, -1, 0), now
+	case "year":
+		return now.AddDate(-1, 0, 0), now
+	case "all", "total", "lifetime":
+		return time.Time{}, now
+	default:
+		return now.AddDate(0, -1, 0), now
+	}
 }
 
 // GetBalanceHistory handles getting user's balance/concurrency change history
@@ -846,4 +888,115 @@ func (h *UserHandler) ResetUserPlatformQuotaWindow(c *gin.Context) {
 		out = append(out, quotaview.LazyZeroQuotaForResponse(records[i], now, true))
 	}
 	response.Success(c, map[string]any{"platform_quotas": out})
+}
+
+func (h *UserHandler) ensureUsageOverrideReady(c *gin.Context, userID int64) bool {
+	if h.usageService == nil {
+		response.InternalError(c, "Usage service unavailable")
+		return false
+	}
+	if _, err := h.adminService.GetUser(c.Request.Context(), userID); err != nil {
+		response.ErrorFrom(c, err)
+		return false
+	}
+	return true
+}
+
+// GetUserUsageOverride handles getting admin-managed usage overrides.
+// GET /api/v1/admin/users/:id/usage-override
+func (h *UserHandler) GetUserUsageOverride(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	if !h.ensureUsageOverrideReady(c, userID) {
+		return
+	}
+
+	override, err := h.usageService.GetUserUsageOverride(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, override)
+}
+
+// UpdateUserUsageOverride handles replacing admin-managed usage overrides.
+// PUT /api/v1/admin/users/:id/usage-override
+func (h *UserHandler) UpdateUserUsageOverride(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	var req UpdateUserUsageOverrideRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if !validateUsageOverrideRequest(c, req) {
+		return
+	}
+	if !h.ensureUsageOverrideReady(c, userID) {
+		return
+	}
+	input := service.UpdateUserUsageOverrideInput{
+		TodayRequests:   req.TodayRequests,
+		TodayTokens:     req.TodayTokens,
+		TodayActualCost: req.TodayActualCost,
+		TotalTokens:     req.TotalTokens,
+		TotalActualCost: req.TotalActualCost,
+		Notes:           req.Notes,
+	}
+
+	override, err := h.usageService.UpsertUserUsageOverride(c.Request.Context(), userID, input)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, override)
+}
+
+// DeleteUserUsageOverride clears admin-managed usage overrides.
+// DELETE /api/v1/admin/users/:id/usage-override
+func (h *UserHandler) DeleteUserUsageOverride(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	if !h.ensureUsageOverrideReady(c, userID) {
+		return
+	}
+	if err := h.usageService.DeleteUserUsageOverride(c.Request.Context(), userID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"user_id": userID})
+}
+
+func validateUsageOverrideRequest(c *gin.Context, req UpdateUserUsageOverrideRequest) bool {
+	if req.TodayRequests != nil && *req.TodayRequests < 0 {
+		response.BadRequest(c, "today_requests must be >= 0")
+		return false
+	}
+	if req.TodayTokens != nil && *req.TodayTokens < 0 {
+		response.BadRequest(c, "today_tokens must be >= 0")
+		return false
+	}
+	if req.TodayActualCost != nil && *req.TodayActualCost < 0 {
+		response.BadRequest(c, "today_actual_cost must be >= 0")
+		return false
+	}
+	if req.TotalTokens != nil && *req.TotalTokens < 0 {
+		response.BadRequest(c, "total_tokens must be >= 0")
+		return false
+	}
+	if req.TotalActualCost != nil && *req.TotalActualCost < 0 {
+		response.BadRequest(c, "total_actual_cost must be >= 0")
+		return false
+	}
+	return true
 }

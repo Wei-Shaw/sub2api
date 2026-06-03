@@ -24,25 +24,27 @@ import (
 )
 
 var (
-	ErrInvalidCredentials      = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
-	ErrUserNotActive           = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
-	ErrEmailExists             = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
-	ErrEmailReserved           = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
-	ErrInvalidToken            = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
-	ErrTokenExpired            = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
-	ErrAccessTokenExpired      = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
-	ErrTokenTooLarge           = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
-	ErrTokenRevoked            = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
-	ErrRefreshTokenInvalid     = infraerrors.Unauthorized("REFRESH_TOKEN_INVALID", "invalid refresh token")
-	ErrRefreshTokenExpired     = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
-	ErrRefreshTokenReused      = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
-	ErrEmailVerifyRequired     = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
-	ErrEmailSuffixNotAllowed   = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
-	ErrRegDisabled             = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
-	ErrServiceUnavailable      = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
-	ErrInvitationCodeRequired  = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
-	ErrInvitationCodeInvalid   = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
-	ErrOAuthInvitationRequired = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
+	ErrInvalidCredentials       = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid account or password")
+	ErrUserNotActive            = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
+	ErrEmailExists              = infraerrors.Conflict("EMAIL_EXISTS", "account already exists")
+	ErrEmailReserved            = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
+	ErrInvalidAccountIdentifier = infraerrors.BadRequest("INVALID_ACCOUNT_IDENTIFIER", "invalid email or phone number")
+	ErrInvalidEmail             = infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+	ErrInvalidToken             = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
+	ErrTokenExpired             = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
+	ErrAccessTokenExpired       = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
+	ErrTokenTooLarge            = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
+	ErrTokenRevoked             = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
+	ErrRefreshTokenInvalid      = infraerrors.Unauthorized("REFRESH_TOKEN_INVALID", "invalid refresh token")
+	ErrRefreshTokenExpired      = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
+	ErrRefreshTokenReused       = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
+	ErrEmailVerifyRequired      = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
+	ErrEmailSuffixNotAllowed    = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
+	ErrRegDisabled              = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
+	ErrServiceUnavailable       = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
+	ErrInvitationCodeRequired   = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
+	ErrInvitationCodeInvalid    = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
+	ErrOAuthInvitationRequired  = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
 )
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
@@ -140,12 +142,15 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		return "", nil, ErrRegDisabled
 	}
 
+	accountIdentifier, identifierKind, err := NormalizeAccountIdentifier(email)
+	if err != nil {
+		return "", nil, err
+	}
+	email = accountIdentifier
+
 	// 防止用户注册 LinuxDo OAuth 合成邮箱，避免第三方登录与本地账号发生碰撞。
 	if isReservedEmail(email) {
 		return "", nil, ErrEmailReserved
-	}
-	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
-		return "", nil, err
 	}
 
 	// 检查是否需要邀请码
@@ -169,7 +174,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 
 	// 检查是否需要邮件验证
-	if s.settingService != nil && s.settingService.IsEmailVerifyEnabled(ctx) {
+	if identifierKind == AccountIdentifierEmail && s.settingService != nil && s.settingService.IsEmailVerifyEnabled(ctx) {
 		// 如果邮件验证已开启但邮件服务未配置，拒绝注册
 		// 这是一个配置错误，不应该允许绕过验证
 		if s.emailService == nil {
@@ -285,11 +290,14 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 		return ErrRegDisabled
 	}
 
+	normalizedEmail, err := NormalizeEmailAccountIdentifier(email)
+	if err != nil {
+		return err
+	}
+	email = normalizedEmail
+
 	if isReservedEmail(email) {
 		return ErrEmailReserved
-	}
-	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
-		return err
 	}
 
 	// 检查邮箱是否已存在
@@ -326,11 +334,14 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 		return nil, ErrRegDisabled
 	}
 
+	normalizedEmail, err := NormalizeEmailAccountIdentifier(email)
+	if err != nil {
+		return nil, err
+	}
+	email = normalizedEmail
+
 	if isReservedEmail(email) {
 		return nil, ErrEmailReserved
-	}
-	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
-		return nil, err
 	}
 
 	// 检查邮箱是否已存在
@@ -372,8 +383,8 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 // VerifyTurnstileForRegister 在注册场景下验证 Turnstile。
 // 当邮箱验证开启且已提交验证码时，说明验证码发送阶段已完成 Turnstile 校验，
 // 此处跳过二次校验，避免一次性 token 在注册提交时重复使用导致误报失败。
-func (s *AuthService) VerifyTurnstileForRegister(ctx context.Context, token, remoteIP, verifyCode string) error {
-	if s.IsEmailVerifyEnabled(ctx) && strings.TrimSpace(verifyCode) != "" {
+func (s *AuthService) VerifyTurnstileForRegister(ctx context.Context, token, remoteIP, accountIdentifier, verifyCode string) error {
+	if s.IsEmailVerifyEnabled(ctx) && strings.TrimSpace(verifyCode) != "" && IsEmailAccountIdentifier(accountIdentifier) {
 		logger.LegacyPrintf("service.auth", "%s", "[Auth] Email verify flow detected, skip duplicate Turnstile check on register")
 		return nil
 	}
@@ -438,6 +449,12 @@ func (s *AuthService) IsEmailVerifyEnabled(ctx context.Context) bool {
 
 // Login 用户登录，返回JWT token
 func (s *AuthService) Login(ctx context.Context, email, password string) (string, *User, error) {
+	normalizedIdentifier, _, err := NormalizeAccountIdentifier(email)
+	if err != nil {
+		return "", nil, ErrInvalidCredentials
+	}
+	email = normalizedIdentifier
+
 	// 查找用户
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
@@ -975,8 +992,8 @@ func (s *AuthService) ensureEmailAuthIdentity(ctx context.Context, user *User, s
 		return nil, false
 	}
 
-	email := strings.ToLower(strings.TrimSpace(user.Email))
-	if email == "" || isReservedEmail(email) {
+	email, err := NormalizeEmailAccountIdentifier(user.Email)
+	if err != nil || isReservedEmail(email) {
 		return nil, false
 	}
 	if strings.TrimSpace(source) == "" {

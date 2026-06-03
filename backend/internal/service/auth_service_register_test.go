@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -385,21 +384,18 @@ func TestAuthService_Register_ReservedEmail(t *testing.T) {
 	require.ErrorIs(t, err, ErrEmailReserved)
 }
 
-func TestAuthService_Register_EmailSuffixNotAllowed(t *testing.T) {
-	repo := &userRepoStub{}
+func TestAuthService_Register_IgnoresEmailSuffixWhitelist(t *testing.T) {
+	repo := &userRepoStub{nextID: 7}
 	service := newAuthService(repo, map[string]string{
 		SettingKeyRegistrationEnabled:              "true",
 		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com","@company.com"]`,
 	}, nil, nil)
 
-	_, _, err := service.Register(context.Background(), "user@other.com", "password")
-	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
-	appErr := infraerrors.FromError(err)
-	require.Contains(t, appErr.Message, "@example.com")
-	require.Contains(t, appErr.Message, "@company.com")
-	require.Equal(t, "EMAIL_SUFFIX_NOT_ALLOWED", appErr.Reason)
-	require.Equal(t, "2", appErr.Metadata["allowed_suffix_count"])
-	require.Equal(t, "@example.com,@company.com", appErr.Metadata["allowed_suffixes"])
+	_, user, err := service.Register(context.Background(), "User@Other.com", "password")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, int64(7), user.ID)
+	require.Equal(t, "user@other.com", user.Email)
 }
 
 func TestAuthService_Register_EmailSuffixAllowed(t *testing.T) {
@@ -415,7 +411,31 @@ func TestAuthService_Register_EmailSuffixAllowed(t *testing.T) {
 	require.Equal(t, int64(8), user.ID)
 }
 
-func TestAuthService_SendVerifyCode_EmailSuffixNotAllowed(t *testing.T) {
+func TestAuthService_Register_PhoneIdentifier(t *testing.T) {
+	repo := &userRepoStub{nextID: 9}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:              "true",
+		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+	}, nil, nil)
+
+	_, user, err := service.Register(context.Background(), "+86 138-0013-8000", "password")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, int64(9), user.ID)
+	require.Equal(t, "+8613800138000", user.Email)
+}
+
+func TestAuthService_Register_InvalidAccountIdentifier(t *testing.T) {
+	repo := &userRepoStub{}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, nil, nil)
+
+	_, _, err := service.Register(context.Background(), "bad<script>", "password")
+	require.ErrorIs(t, err, ErrInvalidAccountIdentifier)
+}
+
+func TestAuthService_SendVerifyCode_IgnoresEmailSuffixWhitelist(t *testing.T) {
 	repo := &userRepoStub{}
 	service := newAuthService(repo, map[string]string{
 		SettingKeyRegistrationEnabled:              "true",
@@ -423,11 +443,18 @@ func TestAuthService_SendVerifyCode_EmailSuffixNotAllowed(t *testing.T) {
 	}, nil, nil)
 
 	err := service.SendVerifyCode(context.Background(), "user@other.com")
-	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
-	appErr := infraerrors.FromError(err)
-	require.Contains(t, appErr.Message, "@example.com")
-	require.Contains(t, appErr.Message, "@company.com")
-	require.Equal(t, "2", appErr.Metadata["allowed_suffix_count"])
+	require.ErrorContains(t, err, "email service not configured")
+}
+
+func TestAuthService_SendVerifyCode_RejectsPhoneIdentifier(t *testing.T) {
+	repo := &userRepoStub{}
+	cache := &emailCacheStub{}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, cache, nil)
+
+	err := service.SendVerifyCode(context.Background(), "13800138000")
+	require.ErrorIs(t, err, ErrInvalidEmail)
 }
 
 func TestAuthService_Register_CreateError(t *testing.T) {

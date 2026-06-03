@@ -1,7 +1,7 @@
 <template>
   <DataTable :columns="columns" :data="orders" :loading="loading">
-    <template #cell-id="{ value }">
-      <span class="font-mono text-sm">#{{ value }}</span>
+    <template #cell-id="{ value, row }">
+      <span class="font-mono text-sm">#{{ row.display_id ?? value }}</span>
     </template>
     <template #cell-out_trade_no="{ value }">
       <span class="text-sm text-gray-900 dark:text-white">{{ value }}</span>

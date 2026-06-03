@@ -245,7 +245,8 @@ type UserDashboardStats struct {
 	Tpm int64 `json:"tpm"` // 近5分钟平均每分钟Token数
 
 	// 按"有效平台"维度拆分（与 ops 路径口径一致：group.platform 优先，否则 account.platform）
-	ByPlatform []PlatformDashboardStats `json:"by_platform,omitempty"`
+	ByPlatform      []PlatformDashboardStats `json:"by_platform,omitempty"`
+	UsageOverridden bool                     `json:"usage_overridden,omitempty"`
 }
 
 // PlatformDashboardStats 单个平台的用量明细。
@@ -257,6 +258,30 @@ type PlatformDashboardStats struct {
 	TodayRequests   int64   `json:"today_requests"`
 	TodayTokens     int64   `json:"today_tokens"`
 	TodayActualCost float64 `json:"today_actual_cost"`
+}
+
+// UserUsageOverride stores optional admin-managed absolute display overrides.
+// Nil fields mean "use the value calculated from usage_logs".
+type UserUsageOverride struct {
+	UserID          int64     `json:"user_id"`
+	TodayRequests   *int64    `json:"today_requests"`
+	TodayTokens     *int64    `json:"today_tokens"`
+	TodayActualCost *float64  `json:"today_actual_cost"`
+	TotalTokens     *int64    `json:"total_tokens"`
+	TotalActualCost *float64  `json:"total_actual_cost"`
+	Notes           string    `json:"notes"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// UpdateUserUsageOverrideInput is a full replacement payload for override values.
+type UpdateUserUsageOverrideInput struct {
+	TodayRequests   *int64
+	TodayTokens     *int64
+	TodayActualCost *float64
+	TotalTokens     *int64
+	TotalActualCost *float64
+	Notes           *string
 }
 
 // UsageLogFilters represents filters for usage log queries
@@ -303,9 +328,13 @@ type PlatformUsage struct {
 // BatchUserUsageStats represents usage stats for a single user
 type BatchUserUsageStats struct {
 	UserID          int64           `json:"user_id"`
+	TodayRequests   int64           `json:"today_requests"`
+	TodayTokens     int64           `json:"today_tokens"`
 	TodayActualCost float64         `json:"today_actual_cost"`
+	TotalTokens     int64           `json:"total_tokens"`
 	TotalActualCost float64         `json:"total_actual_cost"`
 	ByPlatform      []PlatformUsage `json:"by_platform,omitempty"`
+	UsageOverridden bool            `json:"usage_overridden,omitempty"`
 }
 
 // BatchAPIKeyUsageStats represents usage stats for a single API key
@@ -313,6 +342,7 @@ type BatchAPIKeyUsageStats struct {
 	APIKeyID        int64   `json:"api_key_id"`
 	TodayActualCost float64 `json:"today_actual_cost"`
 	TotalActualCost float64 `json:"total_actual_cost"`
+	UsageOverridden bool    `json:"usage_overridden,omitempty"`
 }
 
 // AccountUsageHistory represents daily usage history for an account

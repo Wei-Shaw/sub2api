@@ -2581,6 +2581,12 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 		return nil, err
 	}
 
+	overrides, err := r.getUserUsageOverrides(ctx, []int64{userID})
+	if err != nil {
+		return nil, err
+	}
+	applyUserUsageOverrideToDashboard(stats, overrides[userID])
+
 	return stats, nil
 }
 
@@ -2863,8 +2869,256 @@ func normalizePositiveInt64IDs(ids []int64) []int64 {
 	return out
 }
 
-// GetBatchUserUsageStats gets today and total actual_cost for multiple users within a time range.
-// If startTime is zero, defaults to 30 days ago.
+func scanUserUsageOverride(rows interface {
+	Scan(dest ...any) error
+}) (*usagestats.UserUsageOverride, error) {
+	override := &usagestats.UserUsageOverride{}
+	var todayRequests sql.NullInt64
+	var todayTokens sql.NullInt64
+	var todayActualCost sql.NullFloat64
+	var totalTokens sql.NullInt64
+	var totalActualCost sql.NullFloat64
+	if err := rows.Scan(
+		&override.UserID,
+		&todayRequests,
+		&todayTokens,
+		&todayActualCost,
+		&totalTokens,
+		&totalActualCost,
+		&override.Notes,
+		&override.CreatedAt,
+		&override.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	if todayRequests.Valid {
+		override.TodayRequests = &todayRequests.Int64
+	}
+	if todayTokens.Valid {
+		override.TodayTokens = &todayTokens.Int64
+	}
+	if todayActualCost.Valid {
+		override.TodayActualCost = &todayActualCost.Float64
+	}
+	if totalTokens.Valid {
+		override.TotalTokens = &totalTokens.Int64
+	}
+	if totalActualCost.Valid {
+		override.TotalActualCost = &totalActualCost.Float64
+	}
+	return override, nil
+}
+
+func (r *usageLogRepository) getUserUsageOverrides(ctx context.Context, userIDs []int64) (map[int64]*usagestats.UserUsageOverride, error) {
+	result := make(map[int64]*usagestats.UserUsageOverride)
+	normalizedUserIDs := normalizePositiveInt64IDs(userIDs)
+	if len(normalizedUserIDs) == 0 {
+		return result, nil
+	}
+
+	query := `
+		SELECT
+			user_id,
+			today_requests,
+			today_tokens,
+			today_actual_cost,
+			total_tokens,
+			total_actual_cost,
+			notes,
+			created_at,
+			updated_at
+		FROM user_usage_overrides
+		WHERE user_id = ANY($1)
+	`
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedUserIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		override, err := scanUserUsageOverride(rows)
+		if err != nil {
+			return nil, err
+		}
+		result[override.UserID] = override
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func applyUserUsageOverrideToBatch(stats *BatchUserUsageStats, override *usagestats.UserUsageOverride) {
+	if stats == nil || override == nil {
+		return
+	}
+	if override.TodayRequests != nil {
+		stats.TodayRequests = *override.TodayRequests
+		stats.UsageOverridden = true
+	}
+	if override.TodayTokens != nil {
+		delta := *override.TodayTokens - stats.TodayTokens
+		stats.TodayTokens = *override.TodayTokens
+		if override.TotalTokens == nil {
+			stats.TotalTokens += delta
+		}
+		stats.UsageOverridden = true
+	}
+	if override.TodayActualCost != nil {
+		delta := *override.TodayActualCost - stats.TodayActualCost
+		stats.TodayActualCost = *override.TodayActualCost
+		if override.TotalActualCost == nil {
+			stats.TotalActualCost += delta
+		}
+		stats.UsageOverridden = true
+	}
+	if override.TotalTokens != nil {
+		stats.TotalTokens = *override.TotalTokens
+		stats.UsageOverridden = true
+	}
+	if override.TotalActualCost != nil {
+		stats.TotalActualCost = *override.TotalActualCost
+		stats.UsageOverridden = true
+	}
+}
+
+func applyUserUsageOverrideToDashboard(stats *UserDashboardStats, override *usagestats.UserUsageOverride) {
+	if stats == nil || override == nil {
+		return
+	}
+	if override.TodayRequests != nil {
+		delta := *override.TodayRequests - stats.TodayRequests
+		stats.TodayRequests = *override.TodayRequests
+		stats.TotalRequests += delta
+		stats.UsageOverridden = true
+	}
+	if override.TodayTokens != nil {
+		delta := *override.TodayTokens - stats.TodayTokens
+		stats.TodayTokens = *override.TodayTokens
+		if override.TotalTokens == nil {
+			stats.TotalTokens += delta
+		}
+		stats.UsageOverridden = true
+	}
+	if override.TodayActualCost != nil {
+		delta := *override.TodayActualCost - stats.TodayActualCost
+		stats.TodayActualCost = *override.TodayActualCost
+		stats.TodayCost = *override.TodayActualCost
+		if override.TotalActualCost == nil {
+			stats.TotalActualCost += delta
+			stats.TotalCost += delta
+		}
+		stats.UsageOverridden = true
+	}
+	if override.TotalTokens != nil {
+		stats.TotalTokens = *override.TotalTokens
+		stats.UsageOverridden = true
+	}
+	if override.TotalActualCost != nil {
+		stats.TotalActualCost = *override.TotalActualCost
+		stats.TotalCost = *override.TotalActualCost
+		stats.UsageOverridden = true
+	}
+}
+
+func (r *usageLogRepository) GetUserUsageOverride(ctx context.Context, userID int64) (*usagestats.UserUsageOverride, error) {
+	if userID <= 0 {
+		return &usagestats.UserUsageOverride{UserID: userID}, nil
+	}
+	overrides, err := r.getUserUsageOverrides(ctx, []int64{userID})
+	if err != nil {
+		return nil, err
+	}
+	if override := overrides[userID]; override != nil {
+		return override, nil
+	}
+	return &usagestats.UserUsageOverride{UserID: userID}, nil
+}
+
+func nullableInt64(value *int64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func nullableFloat64(value *float64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func (r *usageLogRepository) UpsertUserUsageOverride(ctx context.Context, userID int64, input usagestats.UpdateUserUsageOverrideInput) (*usagestats.UserUsageOverride, error) {
+	notes := ""
+	if input.Notes != nil {
+		notes = strings.TrimSpace(*input.Notes)
+	}
+	query := `
+		INSERT INTO user_usage_overrides (
+			user_id,
+			today_requests,
+			today_tokens,
+			today_actual_cost,
+			total_tokens,
+			total_actual_cost,
+			notes
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (user_id) DO UPDATE SET
+			today_requests = EXCLUDED.today_requests,
+			today_tokens = EXCLUDED.today_tokens,
+			today_actual_cost = EXCLUDED.today_actual_cost,
+			total_tokens = EXCLUDED.total_tokens,
+			total_actual_cost = EXCLUDED.total_actual_cost,
+			notes = EXCLUDED.notes,
+			updated_at = NOW()
+		RETURNING
+			user_id,
+			today_requests,
+			today_tokens,
+			today_actual_cost,
+			total_tokens,
+			total_actual_cost,
+			notes,
+			created_at,
+			updated_at
+	`
+	rows, err := r.sql.QueryContext(
+		ctx,
+		query,
+		userID,
+		nullableInt64(input.TodayRequests),
+		nullableInt64(input.TodayTokens),
+		nullableFloat64(input.TodayActualCost),
+		nullableInt64(input.TotalTokens),
+		nullableFloat64(input.TotalActualCost),
+		notes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		override, err := scanUserUsageOverride(rows)
+		if err != nil {
+			return nil, err
+		}
+		return override, nil
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &usagestats.UserUsageOverride{UserID: userID, Notes: notes}, nil
+}
+
+func (r *usageLogRepository) DeleteUserUsageOverride(ctx context.Context, userID int64) error {
+	_, err := r.sql.ExecContext(ctx, "DELETE FROM user_usage_overrides WHERE user_id = $1", userID)
+	return err
+}
+
+// GetBatchUserUsageStats gets today and cumulative usage summaries for multiple users.
+// startTime/endTime are retained for interface compatibility; cumulative fields intentionally ignore them.
 func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]*BatchUserUsageStats, error) {
 	result := make(map[int64]*BatchUserUsageStats)
 	normalizedUserIDs := normalizePositiveInt64IDs(userIDs)
@@ -2872,10 +3126,6 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 		return result, nil
 	}
 
-	// 默认最近 30 天
-	if startTime.IsZero() {
-		startTime = time.Now().AddDate(0, 0, -30)
-	}
 	if endTime.IsZero() {
 		endTime = time.Now()
 	}
@@ -2884,47 +3134,81 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 		result[id] = &BatchUserUsageStats{UserID: id}
 	}
 
-	// GROUP BY (user_id, effective_platform) 一次查询同时得到总值与按平台拆分。
-	// 应用层把同一 user_id 的多行累加为总值，并把非空 platform 行收集到 ByPlatform。
 	query := `
 		SELECT
-			ul.user_id,
-			` + usageLogEffectivePlatformExpr + ` as platform,
-			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3), 0) as total_cost,
-			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $4), 0) as today_cost
-		FROM usage_logs ul
-		LEFT JOIN groups g ON g.id = ul.group_id
-		LEFT JOIN accounts a ON a.id = ul.account_id
-		WHERE ul.user_id = ANY($1)
-		  AND ul.created_at >= LEAST($2, $4)
-		  AND ` + usageLogSuccessFilterUL + `
-		GROUP BY ul.user_id, ` + usageLogEffectivePlatformExpr + `
+			user_id,
+			COUNT(*) FILTER (WHERE created_at >= $2 AND created_at < $3) as today_requests,
+			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) FILTER (WHERE created_at >= $2 AND created_at < $3), 0) as today_tokens,
+			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $2 AND created_at < $3), 0) as today_cost,
+			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as total_tokens,
+			COALESCE(SUM(actual_cost), 0) as total_cost
+		FROM usage_logs
+		WHERE user_id = ANY($1)
+		GROUP BY user_id
 	`
 	today := timezone.Today()
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedUserIDs), startTime, endTime, today)
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedUserIDs), today, endTime)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var userID int64
-		var platform sql.NullString
-		var total float64
+		var todayRequests int64
+		var todayTokens int64
 		var todayTotal float64
-		if err := rows.Scan(&userID, &platform, &total, &todayTotal); err != nil {
+		var totalTokens int64
+		var total float64
+		if err := rows.Scan(&userID, &todayRequests, &todayTokens, &todayTotal, &totalTokens, &total); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
-		stats, ok := result[userID]
-		if !ok {
-			continue
+		if stats, ok := result[userID]; ok {
+			stats.TodayRequests = todayRequests
+			stats.TodayTokens = todayTokens
+			stats.TodayActualCost = todayTotal
+			stats.TotalTokens = totalTokens
+			stats.TotalActualCost = total
 		}
-		stats.TotalActualCost += total
-		stats.TodayActualCost += todayTotal
-		if platform.Valid && platform.String != "" {
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	platformQuery := `
+		SELECT
+			ul.user_id,
+			` + usageLogEffectivePlatformExpr + ` as platform,
+			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3), 0) as today_cost,
+			COALESCE(SUM(ul.actual_cost), 0) as total_cost
+		FROM usage_logs ul
+		LEFT JOIN groups g ON g.id = ul.group_id
+		LEFT JOIN accounts a ON a.id = ul.account_id
+		WHERE ul.user_id = ANY($1)
+		  AND ` + usageLogSuccessFilterUL + `
+		GROUP BY ul.user_id, ` + usageLogEffectivePlatformExpr + `
+		HAVING ` + usageLogEffectivePlatformExpr + ` IS NOT NULL AND ` + usageLogEffectivePlatformExpr + ` <> ''
+	`
+	rows, err = r.sql.QueryContext(ctx, platformQuery, pq.Array(normalizedUserIDs), today, endTime)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var userID int64
+		var platform string
+		var todayTotal float64
+		var total float64
+		if err := rows.Scan(&userID, &platform, &todayTotal, &total); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		if stats, ok := result[userID]; ok {
 			stats.ByPlatform = append(stats.ByPlatform, PlatformUsage{
-				Platform:        platform.String,
-				TotalActualCost: total,
+				Platform:        platform,
 				TodayActualCost: todayTotal,
+				TotalActualCost: total,
 			})
 		}
 	}
@@ -2935,6 +3219,14 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 		return nil, err
 	}
 
+	overrides, err := r.getUserUsageOverrides(ctx, normalizedUserIDs)
+	if err != nil {
+		return nil, err
+	}
+	for userID, override := range overrides {
+		applyUserUsageOverrideToBatch(result[userID], override)
+	}
+
 	return result, nil
 }
 
@@ -2942,7 +3234,7 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 type BatchAPIKeyUsageStats = usagestats.BatchAPIKeyUsageStats
 
 // GetBatchAPIKeyUsageStats gets today and total actual_cost for multiple API keys within a time range.
-// If startTime is zero, defaults to 30 days ago.
+// If startTime is zero, total actual cost is cumulative.
 func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64, startTime, endTime time.Time) (map[int64]*BatchAPIKeyUsageStats, error) {
 	result := make(map[int64]*BatchAPIKeyUsageStats)
 	normalizedAPIKeyIDs := normalizePositiveInt64IDs(apiKeyIDs)
@@ -2950,10 +3242,6 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 		return result, nil
 	}
 
-	// 默认最近 30 天
-	if startTime.IsZero() {
-		startTime = time.Now().AddDate(0, 0, -30)
-	}
 	if endTime.IsZero() {
 		endTime = time.Now()
 	}
@@ -2965,15 +3253,19 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 	query := `
 		SELECT
 			api_key_id,
-			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $2 AND created_at < $3), 0) as total_cost,
-			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $4), 0) as today_cost
+			COALESCE(SUM(actual_cost) FILTER (WHERE ($2::timestamptz IS NULL OR created_at >= $2::timestamptz) AND created_at < $3::timestamptz), 0) as total_cost,
+			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $4::timestamptz), 0) as today_cost
 		FROM usage_logs
 		WHERE api_key_id = ANY($1)
-		  AND created_at >= LEAST($2, $4)
+		  AND ($2::timestamptz IS NULL OR created_at >= LEAST($2::timestamptz, $4::timestamptz))
 		GROUP BY api_key_id
 	`
 	today := timezone.Today()
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedAPIKeyIDs), startTime, endTime, today)
+	var startArg any
+	if !startTime.IsZero() {
+		startArg = startTime
+	}
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedAPIKeyIDs), startArg, endTime, today)
 	if err != nil {
 		return nil, err
 	}
