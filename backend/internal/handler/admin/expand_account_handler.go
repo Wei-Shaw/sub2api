@@ -18,21 +18,40 @@ func NewExpandAccountHandler(service service.ExpandAccountService) *ExpandAccoun
 }
 
 type createExpandAccountRequest struct {
-	Email            string `json:"email" binding:"required"`
-	Platform         string `json:"platform" binding:"required"`
-	SubscriptionType string `json:"subscription_type" binding:"required"`
-	Country          string `json:"country" binding:"required"`
-	SessionKey       string `json:"session_key" binding:"required"`
-	Used             *bool  `json:"used"`
+	Email            string             `json:"email" binding:"required"`
+	Platform         string             `json:"platform" binding:"required"`
+	SubscriptionType string             `json:"subscription_type" binding:"required"`
+	Country          string             `json:"country" binding:"required"`
+	SessionKey       string             `json:"session_key" binding:"required"`
+	ProxyInfo        *service.ProxyInfo `json:"proxy_info"`
+	Used             *bool              `json:"used"`
+}
+
+type callbackExpandAccountProxyInfoRequest struct {
+	Protocol string `json:"protocol" binding:"required"`
+	Host     string `json:"host" binding:"required"`
+	Port     int    `json:"port" binding:"required,gt=0"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type callbackExpandAccountRequest struct {
+	Email            string                                 `json:"email" binding:"required"`
+	Platform         string                                 `json:"platform" binding:"required"`
+	SubscriptionType string                                 `json:"subscription_type" binding:"required"`
+	Country          string                                 `json:"country" binding:"required"`
+	SessionKey       string                                 `json:"session_key" binding:"required"`
+	ProxyInfo        *callbackExpandAccountProxyInfoRequest `json:"proxy_info" binding:"required"`
 }
 
 type updateExpandAccountRequest struct {
-	Email            string `json:"email" binding:"required"`
-	Platform         string `json:"platform" binding:"required"`
-	SubscriptionType string `json:"subscription_type" binding:"required"`
-	Country          string `json:"country" binding:"required"`
-	SessionKey       string `json:"session_key" binding:"required"`
-	Used             *bool  `json:"used"`
+	Email            string             `json:"email" binding:"required"`
+	Platform         string             `json:"platform" binding:"required"`
+	SubscriptionType string             `json:"subscription_type" binding:"required"`
+	Country          string             `json:"country" binding:"required"`
+	SessionKey       string             `json:"session_key" binding:"required"`
+	ProxyInfo        *service.ProxyInfo `json:"proxy_info"`
+	Used             *bool              `json:"used"`
 }
 
 func (h *ExpandAccountHandler) createFromRequest(c *gin.Context, req createExpandAccountRequest) {
@@ -42,6 +61,7 @@ func (h *ExpandAccountHandler) createFromRequest(c *gin.Context, req createExpan
 		SubscriptionType: strings.TrimSpace(req.SubscriptionType),
 		Country:          strings.TrimSpace(req.Country),
 		SessionKey:       strings.TrimSpace(req.SessionKey),
+		ProxyInfo:        req.ProxyInfo,
 		Used:             req.Used,
 	})
 	if err != nil {
@@ -87,12 +107,30 @@ func (h *ExpandAccountHandler) Create(c *gin.Context) {
 }
 
 func (h *ExpandAccountHandler) Callback(c *gin.Context) {
-	var req createExpandAccountRequest
+	var req callbackExpandAccountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_REQUEST", "invalid request body").WithCause(err))
 		return
 	}
-	h.createFromRequest(c, req)
+	_, err := h.service.CreateExpandAccount(c.Request.Context(), &service.ExpandAccountCreateInput{
+		Email:            strings.TrimSpace(req.Email),
+		Platform:         strings.TrimSpace(req.Platform),
+		SubscriptionType: strings.TrimSpace(req.SubscriptionType),
+		Country:          strings.TrimSpace(req.Country),
+		SessionKey:       strings.TrimSpace(req.SessionKey),
+		ProxyInfo: &service.ProxyInfo{
+			Protocol: req.ProxyInfo.Protocol,
+			Host:     req.ProxyInfo.Host,
+			Port:     req.ProxyInfo.Port,
+			Username: req.ProxyInfo.Username,
+			Password: req.ProxyInfo.Password,
+		},
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, nil)
 }
 
 func (h *ExpandAccountHandler) Update(c *gin.Context) {
@@ -113,6 +151,7 @@ func (h *ExpandAccountHandler) Update(c *gin.Context) {
 		SubscriptionType: strings.TrimSpace(req.SubscriptionType),
 		Country:          strings.TrimSpace(req.Country),
 		SessionKey:       strings.TrimSpace(req.SessionKey),
+		ProxyInfo:        req.ProxyInfo,
 		Used:             req.Used,
 	})
 	if err != nil {

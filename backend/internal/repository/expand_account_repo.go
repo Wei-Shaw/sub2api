@@ -3,6 +3,9 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
+	"hash/fnv"
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -13,10 +16,15 @@ var (
 	errExpandAccountNotFound = infraerrors.NotFound("EXPAND_ACCOUNT_NOT_FOUND", "expand account not found")
 	errExpandAccountExists   = infraerrors.Conflict("EXPAND_ACCOUNT_EXISTS", "expand account already exists")
 	errExpandAccountUsed     = infraerrors.Conflict("EXPAND_ACCOUNT_ALREADY_USED", "expand account already marked as used")
+	errExpandInvalidProxy    = infraerrors.BadRequest("INVALID_PROXY_INFO", "invalid proxy_info")
 )
 
 type expandAccountRepository struct {
 	db *sql.DB
+}
+
+type expandAccountScanner interface {
+	Scan(dest ...any) error
 }
 
 func NewExpandAccountService(db *sql.DB) service.ExpandAccountService {
@@ -35,7 +43,7 @@ func (r *expandAccountRepository) ListExpandAccounts(ctx context.Context, page, 
 	offset := (page - 1) * pageSize
 	listArgs := append(append([]any{}, args...), pageSize, offset)
 	query := `
-SELECT id, email, platform, subscription_type, country, session_key, used, created_at, updated_at
+SELECT id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, created_at, updated_at
 FROM expand_accounts` + whereClause + `
 ORDER BY created_at DESC, id DESC
 LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
@@ -48,21 +56,11 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 
 	items := make([]service.ExpandAccount, 0, pageSize)
 	for rows.Next() {
-		var item service.ExpandAccount
-		if err := rows.Scan(
-			&item.ID,
-			&item.Email,
-			&item.Platform,
-			&item.SubscriptionType,
-			&item.Country,
-			&item.SessionKey,
-			&item.Used,
-			&item.CreatedAt,
-			&item.UpdatedAt,
-		); err != nil {
+		item, err := scanExpandAccount(rows)
+		if err != nil {
 			return nil, 0, err
 		}
-		items = append(items, item)
+		items = append(items, *item)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
@@ -73,39 +71,38 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 
 func (r *expandAccountRepository) GetExpandAccount(ctx context.Context, id int64) (*service.ExpandAccount, error) {
 	const query = `
-SELECT id, email, platform, subscription_type, country, session_key, used, created_at, updated_at
+SELECT id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, created_at, updated_at
 FROM expand_accounts
 WHERE id = $1`
 
-	var item service.ExpandAccount
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&item.ID,
-		&item.Email,
-		&item.Platform,
-		&item.SubscriptionType,
-		&item.Country,
-		&item.SessionKey,
-		&item.Used,
-		&item.CreatedAt,
-		&item.UpdatedAt,
-	)
+	item, err := scanExpandAccount(r.db.QueryRowContext(ctx, query, id))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errExpandAccountNotFound.WithCause(err)
 		}
 		return nil, err
 	}
-	return &item, nil
+	return item, nil
 }
 
 func (r *expandAccountRepository) CreateExpandAccount(ctx context.Context, input *service.ExpandAccountCreateInput) (*service.ExpandAccount, error) {
-	const query = `
-INSERT INTO expand_accounts (email, platform, subscription_type, country, session_key, used)
-VALUES ($1, $2, $3, $4, $5, COALESCE($6, false))
-RETURNING id, email, platform, subscription_type, country, session_key, used, created_at, updated_at`
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
 
-	var item service.ExpandAccount
-	err := r.db.QueryRowContext(
+	proxyID, proxyInfoJSON, err := resolveExpandAccountProxyTx(ctx, tx, input.ProxyInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	const query = `
+INSERT INTO expand_accounts (email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used)
+VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, false))
+RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, created_at, updated_at`
+
+	item, err := scanExpandAccount(tx.QueryRowContext(
 		ctx,
 		query,
 		input.Email,
@@ -113,25 +110,31 @@ RETURNING id, email, platform, subscription_type, country, session_key, used, cr
 		input.SubscriptionType,
 		input.Country,
 		input.SessionKey,
+		proxyID,
+		proxyInfoJSON,
 		input.Used,
-	).Scan(
-		&item.ID,
-		&item.Email,
-		&item.Platform,
-		&item.SubscriptionType,
-		&item.Country,
-		&item.SessionKey,
-		&item.Used,
-		&item.CreatedAt,
-		&item.UpdatedAt,
-	)
+	))
 	if err != nil {
 		return nil, translatePersistenceError(err, nil, errExpandAccountExists)
 	}
-	return &item, nil
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 func (r *expandAccountRepository) UpdateExpandAccount(ctx context.Context, id int64, input *service.ExpandAccountUpdateInput) (*service.ExpandAccount, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	proxyID, proxyInfoJSON, err := resolveExpandAccountProxyTx(ctx, tx, input.ProxyInfo)
+	if err != nil {
+		return nil, err
+	}
+
 	const query = `
 UPDATE expand_accounts
 SET
@@ -140,13 +143,14 @@ SET
 	subscription_type = $4,
 	country = $5,
 	session_key = $6,
-	used = COALESCE($7, used),
+	proxy_id = COALESCE($7, proxy_id),
+	proxy_info = COALESCE($8::jsonb, proxy_info),
+	used = COALESCE($9, used),
 	updated_at = NOW()
 WHERE id = $1
-RETURNING id, email, platform, subscription_type, country, session_key, used, created_at, updated_at`
+RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, created_at, updated_at`
 
-	var item service.ExpandAccount
-	err := r.db.QueryRowContext(
+	item, err := scanExpandAccount(tx.QueryRowContext(
 		ctx,
 		query,
 		id,
@@ -155,25 +159,20 @@ RETURNING id, email, platform, subscription_type, country, session_key, used, cr
 		input.SubscriptionType,
 		input.Country,
 		input.SessionKey,
+		proxyID,
+		proxyInfoJSON,
 		input.Used,
-	).Scan(
-		&item.ID,
-		&item.Email,
-		&item.Platform,
-		&item.SubscriptionType,
-		&item.Country,
-		&item.SessionKey,
-		&item.Used,
-		&item.CreatedAt,
-		&item.UpdatedAt,
-	)
+	))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errExpandAccountNotFound.WithCause(err)
 		}
 		return nil, translatePersistenceError(err, nil, errExpandAccountExists)
 	}
-	return &item, nil
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 func (r *expandAccountRepository) DeleteExpandAccount(ctx context.Context, id int64) error {
@@ -196,22 +195,11 @@ func (r *expandAccountRepository) MarkExpandAccountUsed(ctx context.Context, id 
 UPDATE expand_accounts
 SET used = true, updated_at = NOW()
 WHERE id = $1 AND used = false
-RETURNING id, email, platform, subscription_type, country, session_key, used, created_at, updated_at`
+RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, created_at, updated_at`
 
-	var item service.ExpandAccount
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&item.ID,
-		&item.Email,
-		&item.Platform,
-		&item.SubscriptionType,
-		&item.Country,
-		&item.SessionKey,
-		&item.Used,
-		&item.CreatedAt,
-		&item.UpdatedAt,
-	)
+	item, err := scanExpandAccount(r.db.QueryRowContext(ctx, query, id))
 	if err == nil {
-		return &item, nil
+		return item, nil
 	}
 	if err != sql.ErrNoRows {
 		return nil, err
@@ -225,6 +213,151 @@ RETURNING id, email, platform, subscription_type, country, session_key, used, cr
 		return nil, errExpandAccountUsed
 	}
 	return nil, errExpandAccountNotFound
+}
+
+func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, error) {
+	var (
+		item          service.ExpandAccount
+		proxyID       sql.NullInt64
+		proxyInfoJSON []byte
+	)
+	err := scanner.Scan(
+		&item.ID,
+		&item.Email,
+		&item.Platform,
+		&item.SubscriptionType,
+		&item.Country,
+		&item.SessionKey,
+		&proxyID,
+		&proxyInfoJSON,
+		&item.Used,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if proxyID.Valid {
+		item.ProxyID = &proxyID.Int64
+	}
+	if len(proxyInfoJSON) > 0 {
+		var proxyInfo service.ProxyInfo
+		if err := json.Unmarshal(proxyInfoJSON, &proxyInfo); err != nil {
+			return nil, fmt.Errorf("unmarshal expand account proxy_info: %w", err)
+		}
+		item.ProxyInfo = &proxyInfo
+	}
+	return &item, nil
+}
+
+func resolveExpandAccountProxyTx(ctx context.Context, tx *sql.Tx, input *service.ProxyInfo) (any, any, error) {
+	if input == nil {
+		return nil, nil, nil
+	}
+
+	normalized, err := normalizeExpandProxyInfo(input)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal proxy_info: %w", err)
+	}
+
+	rows, err := tx.QueryContext(ctx, "SELECT pg_advisory_xact_lock($1)", expandAccountProxyLockHash(expandProxyLockKey(normalized)))
+	if err != nil {
+		return nil, nil, fmt.Errorf("lock proxy_info: %w", err)
+	}
+	_ = rows.Close()
+
+	var proxyID int64
+	err = tx.QueryRowContext(ctx, `
+SELECT id
+FROM proxies
+WHERE deleted_at IS NULL
+  AND protocol = $1
+  AND host = $2
+  AND port = $3
+  AND (($4 = '' AND (username IS NULL OR username = '')) OR username = $4)
+  AND (($5 = '' AND (password IS NULL OR password = '')) OR password = $5)
+ORDER BY id ASC
+LIMIT 1`,
+		normalized.Protocol,
+		normalized.Host,
+		normalized.Port,
+		normalized.Username,
+		normalized.Password,
+	).Scan(&proxyID)
+	switch {
+	case err == nil:
+		return proxyID, payload, nil
+	case err != sql.ErrNoRows:
+		return nil, nil, err
+	}
+
+	var username any
+	if normalized.Username != "" {
+		username = normalized.Username
+	}
+	var password any
+	if normalized.Password != "" {
+		password = normalized.Password
+	}
+
+	name := buildExpandAccountProxyName(normalized)
+	if err := tx.QueryRowContext(ctx, `
+INSERT INTO proxies (name, protocol, host, port, username, password, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id`,
+		name,
+		normalized.Protocol,
+		normalized.Host,
+		normalized.Port,
+		username,
+		password,
+		service.StatusActive,
+	).Scan(&proxyID); err != nil {
+		return nil, nil, err
+	}
+
+	return proxyID, payload, nil
+}
+
+func normalizeExpandProxyInfo(input *service.ProxyInfo) (*service.ProxyInfo, error) {
+	if input == nil {
+		return nil, nil
+	}
+
+	normalized := &service.ProxyInfo{
+		Protocol: strings.ToLower(strings.TrimSpace(input.Protocol)),
+		Host:     strings.ToLower(strings.TrimSpace(input.Host)),
+		Port:     input.Port,
+		Username: strings.TrimSpace(input.Username),
+		Password: strings.TrimSpace(input.Password),
+	}
+	if normalized.Protocol == "" || normalized.Host == "" || normalized.Port <= 0 {
+		return nil, errExpandInvalidProxy
+	}
+	return normalized, nil
+}
+
+func buildExpandAccountProxyName(proxyInfo *service.ProxyInfo) string {
+	base := fmt.Sprintf("%s://%s:%d", proxyInfo.Protocol, proxyInfo.Host, proxyInfo.Port)
+	if proxyInfo.Username == "" {
+		return base
+	}
+	return base + "#" + proxyInfo.Username
+}
+
+func expandProxyLockKey(proxyInfo *service.ProxyInfo) string {
+	return fmt.Sprintf("%s|%s|%d|%s|%s", proxyInfo.Protocol, proxyInfo.Host, proxyInfo.Port, proxyInfo.Username, proxyInfo.Password)
+}
+
+func expandAccountProxyLockHash(key string) int64 {
+	hasher := fnv.New64a()
+	_, _ = hasher.Write([]byte(key))
+	return int64(hasher.Sum64())
 }
 
 func buildExpandAccountListWhere(filters service.ExpandAccountListFilters) (string, []any) {

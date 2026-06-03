@@ -6,15 +6,25 @@ import (
 )
 
 type ExpandAccount struct {
-	ID               int64     `json:"id"`
-	Email            string    `json:"email"`
-	Platform         string    `json:"platform"`
-	SubscriptionType string    `json:"subscription_type"`
-	Country          string    `json:"country"`
-	SessionKey       string    `json:"session_key"`
-	Used             bool      `json:"used"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               int64      `json:"id"`
+	Email            string     `json:"email"`
+	Platform         string     `json:"platform"`
+	SubscriptionType string     `json:"subscription_type"`
+	Country          string     `json:"country"`
+	SessionKey       string     `json:"session_key"`
+	ProxyID          *int64     `json:"proxy_id,omitempty"`
+	ProxyInfo        *ProxyInfo `json:"proxy_info,omitempty"`
+	Used             bool       `json:"used"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
+type ProxyInfo struct {
+	Protocol string `json:"protocol"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
 }
 
 type ExpandAccountListFilters struct {
@@ -28,6 +38,7 @@ type ExpandAccountCreateInput struct {
 	SubscriptionType string
 	Country          string
 	SessionKey       string
+	ProxyInfo        *ProxyInfo
 	Used             *bool
 }
 
@@ -37,6 +48,7 @@ type ExpandAccountUpdateInput struct {
 	SubscriptionType string
 	Country          string
 	SessionKey       string
+	ProxyInfo        *ProxyInfo
 	Used             *bool
 }
 
