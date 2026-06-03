@@ -373,6 +373,7 @@ export default {
     darkMode: '深色模式',
     collapse: '收起',
     expand: '展开',
+    goHome: '返回首页',
     logout: '退出登录',
     github: 'GitHub',
     mySubscriptions: '我的订阅',
