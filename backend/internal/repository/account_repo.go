@@ -1141,6 +1141,7 @@ REDACTED
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue overload failed: account=%d err=%v", id, err)
 REDACTED
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 REDACTED
 
@@ -1179,6 +1180,7 @@ REDACTED
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear temp unschedulable failed: account=%d err=%v", id, err)
 REDACTED
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 REDACTED
 
@@ -1244,6 +1246,7 @@ REDACTED
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear model rate limit failed: account=%d err=%v", id, err)
 REDACTED
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 REDACTED
 
