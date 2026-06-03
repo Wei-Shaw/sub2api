@@ -1524,6 +1524,157 @@ func TestAPIKeyAuthQuotaErrorKeepsLegacyFormatOutsideResponses(t *testing.T) {
 	requireAPIKeyAuthError(t, w, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
 }
 
+func TestAPIKeyAuthAutoSwitchesBalanceKeyToActiveSubscriptionWhenBalanceEmpty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	monthlyLimit := 50.0
+	balanceGroup := &service.Group{
+		ID:               41,
+		Name:             "balance-credit",
+		Status:           service.StatusActive,
+		Platform:         service.PlatformOpenAI,
+		Hydrated:         true,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	subscriptionGroup := &service.Group{
+		ID:               42,
+		Name:             "sub-plan",
+		Status:           service.StatusActive,
+		Platform:         service.PlatformOpenAI,
+		Hydrated:         true,
+		SubscriptionType: service.SubscriptionTypeSubscription,
+		MonthlyLimitUSD:  &monthlyLimit,
+	}
+	user := &service.User{
+		ID:          7,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     0,
+		Concurrency: 3,
+	}
+	keyStore := map[int64]*service.APIKey{}
+	currentKey := &service.APIKey{
+		ID:      100,
+		UserID:  user.ID,
+		Key:     "balance-key",
+		Status:  service.StatusActive,
+		User:    user,
+		GroupID: &balanceGroup.ID,
+		Group:   balanceGroup,
+	}
+	keyStore[currentKey.ID] = currentKey
+
+	cloneStoredKey := func(key *service.APIKey) *service.APIKey {
+		if key == nil {
+			return nil
+		}
+		clone := *key
+		if key.GroupID != nil {
+			groupID := *key.GroupID
+			clone.GroupID = &groupID
+		}
+		return &clone
+	}
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != currentKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			return cloneStoredKey(keyStore[currentKey.ID]), nil
+		},
+		getByID: func(ctx context.Context, id int64) (*service.APIKey, error) {
+			key := keyStore[id]
+			if key == nil {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			return cloneStoredKey(key), nil
+		},
+		listByUserID: func(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+			require.Equal(t, user.ID, userID)
+			clone := cloneStoredKey(keyStore[currentKey.ID])
+			return []service.APIKey{*clone}, &pagination.PaginationResult{Total: 1, Page: 1, PageSize: 1000}, nil
+		},
+	}
+	now := time.Now()
+	subscription := service.UserSubscription{
+		ID:                 55,
+		UserID:             user.ID,
+		GroupID:            subscriptionGroup.ID,
+		Status:             service.SubscriptionStatusActive,
+		StartsAt:           now.Add(-24 * time.Hour),
+		ExpiresAt:          now.Add(24 * time.Hour),
+		MonthlyWindowStart: &now,
+		MonthlyUsageUSD:    10,
+	}
+	subscriptionRepo := &stubUserSubscriptionRepo{
+		getActive: func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+			if userID != subscription.UserID || groupID != subscription.GroupID {
+				return nil, service.ErrSubscriptionNotFound
+			}
+			clone := subscription
+			return &clone, nil
+		},
+		listByUserID: func(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
+			require.Equal(t, user.ID, userID)
+			return []service.UserSubscription{subscription}, nil
+		},
+		updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil },
+		activateWindow: func(ctx context.Context, id int64, start time.Time) error { return nil },
+		resetDaily:     func(ctx context.Context, id int64, start time.Time) error { return nil },
+		resetWeekly:    func(ctx context.Context, id int64, start time.Time) error { return nil },
+		resetMonthly:   func(ctx context.Context, id int64, start time.Time) error { return nil },
+	}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeStandard})
+	subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, &config.Config{RunMode: config.RunModeStandard})
+
+	groups := map[int64]*service.Group{
+		balanceGroup.ID:      balanceGroup,
+		subscriptionGroup.ID: subscriptionGroup,
+	}
+	entitlementService := service.NewEntitlementService(
+		&stubEntitlementUserRepo{user: user},
+		&stubEntitlementGroupRepo{groups: groups},
+		&stubEntitlementAPIKeyUpdater{update: func(ctx context.Context, id, userID int64, req service.UpdateAPIKeyRequest) (*service.APIKey, error) {
+			require.Equal(t, currentKey.ID, id)
+			require.Equal(t, user.ID, userID)
+			require.NotNil(t, req.GroupID)
+			require.Equal(t, subscriptionGroup.ID, *req.GroupID)
+			stored := keyStore[id]
+			stored.GroupID = req.GroupID
+			stored.Group = subscriptionGroup
+			return cloneStoredKey(stored), nil
+		}},
+		apiKeyRepo,
+		subscriptionRepo,
+	)
+
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddlewareWithEntitlements(apiKeyService, subscriptionService, entitlementService, &config.Config{RunMode: config.RunModeStandard})))
+	router.GET("/t", func(c *gin.Context) {
+		keyFromCtx, ok := GetAPIKeyFromContext(c)
+		require.True(t, ok)
+		require.NotNil(t, keyFromCtx.GroupID)
+		require.Equal(t, subscriptionGroup.ID, *keyFromCtx.GroupID)
+		require.Equal(t, subscriptionGroup.ID, c.Request.Context().Value(ctxkey.Group).(*service.Group).ID)
+		subFromCtx, hasSubscription := GetSubscriptionFromContext(c)
+		require.True(t, hasSubscription, "switched subscription group must set subscription context for billing")
+		require.Equal(t, subscription.ID, subFromCtx.ID)
+		c.JSON(http.StatusOK, gin.H{"api_key_id": keyFromCtx.ID, "group_id": *keyFromCtx.GroupID, "subscription_id": subFromCtx.ID})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", currentKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "true", w.Header().Get("X-Sub2API-Auto-Switched"))
+	require.Equal(t, service.EntitlementSwitchActionGroup, w.Header().Get("X-Sub2API-Auto-Switch-Action"))
+	require.Equal(t, subscriptionGroup.Name, w.Header().Get("X-Sub2API-Auto-Switch-Target-Group"))
+	require.Contains(t, w.Body.String(), `"group_id":42`)
+	require.Contains(t, w.Body.String(), `"subscription_id":55`)
+}
+
 func TestAPIKeyAuthAutoSwitchesSubscriptionLimitToFallbackGroup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

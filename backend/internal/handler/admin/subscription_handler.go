@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -30,6 +31,7 @@ func toResponsePagination(p *pagination.PaginationResult) *response.PaginationRe
 type SubscriptionHandler struct {
 	subscriptionService *service.SubscriptionService
 	adminService        service.AdminService
+	entitlementBinder   service.PaymentEntitlementBinder
 }
 
 // NewSubscriptionHandler creates a new admin subscription handler
@@ -37,6 +39,21 @@ func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, ad
 	return &SubscriptionHandler{
 		subscriptionService: subscriptionService,
 		adminService:        adminService,
+	}
+}
+
+// SetEntitlementBinder attaches the entitlement binder used to keep hidden API keys
+// aligned when admins manually grant/extend subscriptions.
+func (h *SubscriptionHandler) SetEntitlementBinder(binder service.PaymentEntitlementBinder) {
+	h.entitlementBinder = binder
+}
+
+func (h *SubscriptionHandler) bindEntitlementAfterManualSubscription(ctx context.Context, userID, groupID int64, source string) {
+	if h == nil || h.entitlementBinder == nil || userID <= 0 || groupID <= 0 {
+		return
+	}
+	if _, err := h.entitlementBinder.BindUserToGroupAfterPayment(ctx, userID, groupID); err != nil {
+		slog.Warn("failed to bind entitlement after admin subscription change", "source", source, "userID", userID, "groupID", groupID, "error", err)
 	}
 }
 
@@ -178,6 +195,7 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.bindEntitlementAfterManualSubscription(c.Request.Context(), subscription.UserID, subscription.GroupID, "admin_assign")
 
 	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
 }
@@ -210,6 +228,10 @@ func (h *SubscriptionHandler) BulkAssign(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	for i := range result.Subscriptions {
+		sub := result.Subscriptions[i]
+		h.bindEntitlementAfterManualSubscription(c.Request.Context(), sub.UserID, sub.GroupID, "admin_bulk_assign")
 	}
 
 	response.Success(c, dto.BulkAssignResultFromService(result))
@@ -250,6 +272,9 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 		subscription, execErr := h.subscriptionService.ExtendSubscription(ctx, subscriptionID, req.Days)
 		if execErr != nil {
 			return nil, execErr
+		}
+		if req.Days > 0 && subscription != nil {
+			h.bindEntitlementAfterManualSubscription(ctx, subscription.UserID, subscription.GroupID, "admin_extend")
 		}
 		return dto.UserSubscriptionFromServiceAdmin(subscription), nil
 	})

@@ -169,6 +169,14 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 	return h
 }
 
+// ProvideAdminSubscriptionHandler creates admin.SubscriptionHandler with the
+// entitlement binder used by manual subscription grant flows.
+func ProvideAdminSubscriptionHandler(subscriptionService *service.SubscriptionService, adminService service.AdminService, entitlementService *service.EntitlementService) *admin.SubscriptionHandler {
+	h := admin.NewSubscriptionHandler(subscriptionService, adminService)
+	h.SetEntitlementBinder(entitlementService)
+	return h
+}
+
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
 	authHandler *AuthHandler,
@@ -270,7 +278,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAdminSettingHandler,
 	admin.NewOpsHandler,
 	ProvideSystemHandler,
-	admin.NewSubscriptionHandler,
+	ProvideAdminSubscriptionHandler,
 	admin.NewUsageHandler,
 	admin.NewUserAttributeHandler,
 	admin.NewErrorPassthroughHandler,

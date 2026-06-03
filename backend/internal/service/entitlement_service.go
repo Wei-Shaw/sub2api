@@ -693,40 +693,53 @@ func targetGroupFromSwitchTarget(target EntitlementSwitchTarget) *EntitlementTar
 }
 
 func (s *EntitlementService) buildSwitchTargets(ctx context.Context, user *User, keys []APIKey, currentKey *APIKey, items []EntitlementItem, req AutoSwitchEntitlementRequest) []EntitlementSwitchTarget {
-	if user == nil || user.Balance <= 0 {
+	if user == nil {
 		return nil
 	}
 	var targets []EntitlementSwitchTarget
-	if currentKey != nil && currentKey.GroupID != nil {
-		for _, item := range items {
-			if item.GroupID != *currentKey.GroupID || item.FallbackGroupID == nil {
-				continue
+
+	// When the current key is on balance/credit mode and the wallet is empty, keep the
+	// same hidden API key alive by binding it to an active subscription group for the
+	// same provider/platform. V-Claw users do not manage API keys directly, so this is
+	// the server-side continuity path for manual/admin subscription grants.
+	if user.Balance <= 0 || strings.EqualFold(req.Reason, "balance_insufficient") || strings.EqualFold(req.ErrorCode, "INSUFFICIENT_BALANCE") {
+		if subscriptionTargets := s.subscriptionSwitchTargets(ctx, keys, currentKey, items, req); len(subscriptionTargets) > 0 {
+			targets = append(targets, subscriptionTargets...)
+		}
+	}
+
+	if user.Balance > 0 {
+		if currentKey != nil && currentKey.GroupID != nil {
+			for _, item := range items {
+				if item.GroupID != *currentKey.GroupID || item.FallbackGroupID == nil {
+					continue
+				}
+				if target, ok := s.switchTargetForGroup(ctx, user, keys, currentKey, *item.FallbackGroupID, req, "subscription_fallback_group", 100); ok {
+					target.EstimatedBalanceUSD = user.Balance
+					targets = append(targets, target)
+				}
 			}
-			if target, ok := s.switchTargetForGroup(ctx, user, keys, currentKey, *item.FallbackGroupID, req, "subscription_fallback_group", 100); ok {
+		}
+		if len(targets) == 0 {
+			for _, key := range keys {
+				if key.GroupID == nil {
+					continue
+				}
+				if currentKey != nil && key.ID == currentKey.ID && !isUsableAPIKeyForSwitch(key) {
+					continue
+				}
+				if target, ok := s.switchTargetForGroup(ctx, user, keys, &key, *key.GroupID, req, "active_balance_api_key", 50); ok {
+					target.EstimatedBalanceUSD = user.Balance
+					targets = append(targets, target)
+					break
+				}
+			}
+		}
+		if len(targets) == 0 {
+			if target, ok := s.defaultBalanceGroupSwitchTarget(ctx, user, keys, currentKey, items, req); ok {
 				target.EstimatedBalanceUSD = user.Balance
 				targets = append(targets, target)
 			}
-		}
-	}
-	if len(targets) == 0 {
-		for _, key := range keys {
-			if key.GroupID == nil {
-				continue
-			}
-			if currentKey != nil && key.ID == currentKey.ID && !isUsableAPIKeyForSwitch(key) {
-				continue
-			}
-			if target, ok := s.switchTargetForGroup(ctx, user, keys, &key, *key.GroupID, req, "active_balance_api_key", 50); ok {
-				target.EstimatedBalanceUSD = user.Balance
-				targets = append(targets, target)
-				break
-			}
-		}
-	}
-	if len(targets) == 0 {
-		if target, ok := s.defaultBalanceGroupSwitchTarget(ctx, user, keys, currentKey, items, req); ok {
-			target.EstimatedBalanceUSD = user.Balance
-			targets = append(targets, target)
 		}
 	}
 	sort.SliceStable(targets, func(i, j int) bool {
@@ -736,6 +749,58 @@ func (s *EntitlementService) buildSwitchTargets(ctx context.Context, user *User,
 		return targets[i].APIKeyID < targets[j].APIKeyID
 	})
 	return targets
+}
+
+func (s *EntitlementService) subscriptionSwitchTargets(ctx context.Context, keys []APIKey, currentKey *APIKey, items []EntitlementItem, req AutoSwitchEntitlementRequest) []EntitlementSwitchTarget {
+	key := currentKey
+	if key == nil || !isUsableAPIKeyForSwitch(*key) {
+		if !req.AllowAPIKeyChange {
+			return nil
+		}
+		key = firstUsableAPIKey(keys)
+	}
+	if key == nil || key.GroupID == nil {
+		return nil
+	}
+	if currentGroup, err := s.groupRepo.GetByID(ctx, *key.GroupID); err == nil && currentGroup != nil && currentGroup.IsSubscriptionType() {
+		return nil
+	}
+
+	var targets []EntitlementSwitchTarget
+	for _, item := range items {
+		if item.Mode != EntitlementModeSubscription || !item.Switchable || item.GroupID == *key.GroupID {
+			continue
+		}
+		group, err := s.groupRepo.GetByID(ctx, item.GroupID)
+		if err != nil || group == nil || !group.IsSubscriptionType() || !group.IsActive() {
+			continue
+		}
+		if req.ProviderID != "" && providerIDForPlatform(group.Platform) != req.ProviderID && !req.AllowProviderChange {
+			continue
+		}
+		targets = append(targets, EntitlementSwitchTarget{
+			Mode:                 EntitlementModeSubscription,
+			APIKeyID:             key.ID,
+			GroupID:              group.ID,
+			GroupName:            group.Name,
+			GroupPlatform:        group.Platform,
+			ProviderID:           providerIDForPlatform(group.Platform),
+			Priority:             90,
+			Reason:               "active_subscription_group",
+			Switchable:           true,
+			SupportedModelScopes: append([]string(nil), group.SupportedModelScopes...),
+		})
+	}
+	return targets
+}
+
+func firstUsableAPIKey(keys []APIKey) *APIKey {
+	for i := range keys {
+		if isUsableAPIKeyForSwitch(keys[i]) {
+			return &keys[i]
+		}
+	}
+	return nil
 }
 
 func (s *EntitlementService) defaultBalanceGroupSwitchTarget(ctx context.Context, user *User, keys []APIKey, currentKey *APIKey, items []EntitlementItem, req AutoSwitchEntitlementRequest) (EntitlementSwitchTarget, bool) {
@@ -957,6 +1022,23 @@ func entitlementItemFromBalanceGroup(group Group) EntitlementItem {
 	}
 }
 
+func subscriptionEntitlementSwitchable(sub UserSubscription, group *Group) bool {
+	if !sub.IsActive() || group == nil || !group.IsSubscriptionType() || !group.IsActive() {
+		return false
+	}
+	effective := sub
+	if effective.NeedsDailyReset() {
+		effective.DailyUsageUSD = 0
+	}
+	if effective.NeedsWeeklyReset() {
+		effective.WeeklyUsageUSD = 0
+	}
+	if effective.NeedsMonthlyReset() {
+		effective.MonthlyUsageUSD = 0
+	}
+	return effective.CheckDailyLimit(group, 0) && effective.CheckWeeklyLimit(group, 0) && effective.CheckMonthlyLimit(group, 0)
+}
+
 func entitlementItemFromSubscription(sub UserSubscription, group *Group) EntitlementItem {
 	mode := EntitlementModeSubscription
 	name := ""
@@ -1000,7 +1082,7 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 		RateMultiplier:       rateMultiplier,
 		TokenPricePerMillion: tokenPricePerMillion,
 		SupportedModelScopes: modelScopes,
-		Switchable:           sub.IsActive(),
+		Switchable:           subscriptionEntitlementSwitchable(sub, group),
 		SubscriptionID:       &subID,
 		FallbackGroupID:      fallbackGroupID,
 		CreditQuota:          buildSubscriptionCreditQuota(sub, group),
