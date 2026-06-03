@@ -4,17 +4,20 @@
 
 This document defines the backend contract V-Claw should consume after a user buys a subscription-backed package. sub2api owns the real entitlement primitives: subscription group, payment plan, API-key/group binding, usage/quota burn, refresh/switch APIs, balance fallback metadata, and checkout `plan.pricing` metadata. V-Claw's pricing UI must render `plan.pricing` as a formula/spec against the user's selected payment currency and must not expose raw `rate_multiplier` values to users.
 
-## Current production snapshot checked
+## Subscription pricing source of truth
 
-Production DB was inspected on the token.v-claw.org host. Credentials/connection details are intentionally not recorded here.
+`local/local_0018_recalculate_vclaw_subscription_passes.sql` is the repo-side correction for V-Claw monthly subscription pass economics. It repairs stale rows that were previously seeded/calculated from the wrong benchmark and hides the old Enterprise subscription plan.
 
-Current notable rows are **not** yet the target pricing table:
+Current subscription pass target:
 
-| group_id | name | platform | subscription_type | rate_multiplier | daily_limit_usd | weekly_limit_usd | monthly_limit_usd |
-|---:|---|---|---|---:|---:|---:|---:|
-| 8 | OpenAI-Subcription | openai | subscription | 0.1000 | 5 | 10 | 0 |
+| Plan | Monthly price / monthly_limit_usd | Target token-equivalent quota | Raw value ledger | rate_multiplier |
+|---|---:|---:|---:|---:|
+| V-Claw Basic Pass | $14.68 | 85M | $637.50 | 0.02302745 |
+| V-Claw Super Pass | $36.71 | 220M | $1,650.00 | 0.02224848 |
+| V-Claw Ultra Pass | $73.42 | 450M | $3,375.00 | 0.02175407 |
+| V-Claw God(神) Pass | $146.84 | 1000M | $7,500.00 | 0.01957867 |
 
-Implication: production currently has only one sellable-style subscription group discovered for OpenAI subscription usage, and it uses daily/weekly limits rather than the desired five-tier monthly quota table.
+`V-Claw Enterprise` is not a monthly subscription pass in this table. It belongs to balance top-up packages and must be hidden/archived from `subscription_plans`.
 
 ## Billing/rate model verified in code
 
@@ -27,44 +30,33 @@ actual_subscription_usage_usd = raw_model_cost_usd * rate_multiplier
 `actual_subscription_usage_usd` is what burns subscription quota (`daily_usage_usd`, `weekly_usage_usd`, `monthly_usage_usd`). Therefore:
 
 - lower `rate_multiplier` = quota burns slower = user receives more raw model usage/tokens;
-- `monthly_limit_usd` should be the ledger quota for that tier;
+- `monthly_limit_usd` should be the plan checkout price / monthly quota ledger;
 - `price` in `subscription_plans` is checkout price;
-- `original_price` in `subscription_plans` can store the raw benchmark value used to display savings;
-- CNY/VND/KRW are payment/display currencies only; USD remains the ledger/quota base.
+- `original_price` stores the raw benchmark value for savings display;
+- payment currencies are display/payment currencies only; USD remains the ledger/quota base.
 
 ## Pricing table calculation
 
-The provided pricing screenshot implies a raw benchmark of about **17.50 USD / 1M tokens** (about **119.18 CNY / 1M tokens** at 6.81 CNY/USD). For each tier:
+Subscription pass multiplier is derived from the advertised token-equivalent quota and the GPT-5.5 weighted token price baseline:
 
 ```text
-raw_value_usd = target_token_millions * 17.50
-rate_multiplier = monthly_limit_usd / raw_value_usd
-monthly_limit_usd = checkout_price_usd
+token_price_per_million = 7.50
+raw_value_usd = target_token_millions * token_price_per_million
+rate_multiplier = monthly_price_usd / raw_value_usd
+monthly_limit_usd = monthly_price_usd
 ```
 
-Recommended entitlement config matching the screenshot:
-
-| Tier | Price CNY reference | Price USD / monthly_limit_usd | Target tokens | Raw value CNY reference | Raw value USD | rate_multiplier | Display saving |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Standard | 149 | 21.88 | 27M | 3,217 | 472.39 | 0.0463 | 95.4% |
-| Pro | 199 | 29.22 | 63M | 7,508 | 1,102.50 | 0.0265 | 97.3% |
-| Expert | 299 | 43.91 | 130M | 15,493 | 2,275.04 | 0.0193 | 98.1% |
-| Business | 599 | 87.96 | 340M | 40,521 | 5,950.22 | 0.0148 | 98.5% |
-| Enterprise | 1,099 | 161.38 | 700M | 83,426 | 12,250.51 | 0.0132 | 98.7% |
-
-The CNY columns are **reference output**, not values to hardcode in `plan.pricing`. Store the formula inputs in ledger currency and let V-Claw convert to the selected payment currency using checkout FX metadata.
-
-`plan.pricing` should look like this after backend parsing:
+Example `plan.pricing` metadata for Basic Pass:
 
 ```json
 {
   "version": "ledger_v1",
   "formula": "convert_ledger_amounts",
   "currency_source": "selected_payment_currency",
-  "token_price_ledger": 17.5,
-  "total_price_ledger": 21.88,
-  "raw_value_ledger": 472.39,
-  "token_quantity_millions": 27,
+  "token_price_ledger": 7.5,
+  "total_price_ledger": 14.68,
+  "raw_value_ledger": 637.5,
+  "token_quantity_millions": 85,
   "savings_formula": "1 - total_price_ledger / raw_value_ledger"
 }
 ```
@@ -79,7 +71,7 @@ display_saving_percent = (1 - total_price_ledger / raw_value_ledger) * 100
 display_token_quantity = token_quantity_millions + localized million-token label
 ```
 
-Do **not** keep `rate_multiplier = 1` for these subscription tiers. That would make `monthly_limit_usd` burn at raw model price and would not produce the marketed token-equivalent quota.
+Do **not** use the old `17.50` token-price benchmark for these subscription passes. Do **not** keep the stale Enterprise subscription row sellable.
 
 ## Backend setup model
 
@@ -89,134 +81,30 @@ Use one `subscription_plans` row per sellable package because plan rows control 
 
 ### Recommended group semantics
 
-For each tier group:
+For each subscription pass group:
 
 - `platform = 'openai'` for the OpenAI-backed package table shown here;
 - `subscription_type = 'subscription'`;
 - `rate_multiplier` = tier multiplier from the table above;
 - `monthly_limit_usd` = USD checkout price from the table above;
-- `daily_limit_usd = NULL` and `weekly_limit_usd = NULL` initially, unless product explicitly wants daily/weekly throttles;
+- `daily_limit_usd = NULL` and `weekly_limit_usd = NULL` unless product explicitly wants daily/weekly throttles;
 - `default_validity_days = 30`;
-- `status = 'active'`;
-- `supported_model_scopes` should match the route/model family V-Claw needs. For OpenAI groups this can be `['openai']` or the repo's existing OpenAI model-scope convention.
+- `status = 'active'` for the 4 pass groups;
+- `token_price_per_million = 7.50`;
+- `pricing_reference_model = 'gpt-5.5'`;
+- `input_output_ratio = 0.90`.
 
-### Safe SQL template — review before production apply
+### Implemented local migration
 
-This is an operator template, not yet applied by this document.
+`backend/migrations/local/local_0018_recalculate_vclaw_subscription_passes.sql` performs the repair idempotently:
 
-```sql
--- 1) Create/ensure one entitlement group per tier.
--- Adjust supported_model_scopes / routing fields to match existing OpenAI group conventions before running.
-WITH tier_groups(name, description, rate_multiplier, monthly_limit_usd, sort_order) AS (
-  VALUES
-    ('V-Claw Standard',   'V-Claw 27M token-equivalent monthly package', 0.0463::numeric,  21.88::numeric, 10),
-    ('V-Claw Pro',        'V-Claw 63M token-equivalent monthly package', 0.0265::numeric,  29.22::numeric, 20),
-    ('V-Claw Expert',     'V-Claw 130M token-equivalent monthly package',0.0193::numeric,  43.91::numeric, 30),
-    ('V-Claw Business',   'V-Claw 340M token-equivalent monthly package',0.0148::numeric,  87.96::numeric, 40),
-    ('V-Claw Enterprise', 'V-Claw 700M token-equivalent monthly package',0.0132::numeric, 161.38::numeric, 50)
-)
-INSERT INTO groups (
-  name,
-  description,
-  platform,
-  subscription_type,
-  rate_multiplier,
-  daily_limit_usd,
-  weekly_limit_usd,
-  monthly_limit_usd,
-  default_validity_days,
-  status,
-  sort_order,
-  supported_model_scopes
-)
-SELECT
-  name,
-  description,
-  'openai',
-  'subscription',
-  rate_multiplier,
-  NULL,
-  NULL,
-  monthly_limit_usd,
-  30,
-  'active',
-  sort_order,
-  '["openai"]'::jsonb
-FROM tier_groups
-ON CONFLICT (name) DO UPDATE SET
-  description = EXCLUDED.description,
-  platform = EXCLUDED.platform,
-  subscription_type = EXCLUDED.subscription_type,
-  rate_multiplier = EXCLUDED.rate_multiplier,
-  daily_limit_usd = EXCLUDED.daily_limit_usd,
-  weekly_limit_usd = EXCLUDED.weekly_limit_usd,
-  monthly_limit_usd = EXCLUDED.monthly_limit_usd,
-  default_validity_days = EXCLUDED.default_validity_days,
-  status = EXCLUDED.status,
-  sort_order = EXCLUDED.sort_order,
-  supported_model_scopes = EXCLUDED.supported_model_scopes,
-  updated_at = NOW();
+1. updates plan IDs `3..6` and their linked groups to Basic/Super/Ultra/God pass values;
+2. sets `rate_multiplier = ROUND(price_usd / (token_millions * 7.50), 8)`;
+3. sets `monthly_limit_usd = price_usd`, clears daily/weekly limits;
+4. rewrites `features` pricing metadata with `pricing.token_price_ledger=7.50`;
+5. sets plan ID `7` / Enterprise `for_sale=false` and linked group `status='inactive'`.
 
--- 2) Create/ensure one sellable plan per group.
-WITH tier_plans(plan_name, product_name, group_name, price, original_price, token_millions, sort_order) AS (
-  VALUES
-    ('Standard',   'V-Claw Standard',   'V-Claw Standard',    21.88::numeric,   472.39::numeric,  27::numeric, 10),
-    ('Pro',        'V-Claw Pro',        'V-Claw Pro',         29.22::numeric,  1102.50::numeric,  63::numeric, 20),
-    ('Expert',     'V-Claw Expert',     'V-Claw Expert',      43.91::numeric,  2275.04::numeric, 130::numeric, 30),
-    ('Business',   'V-Claw Business',   'V-Claw Business',    87.96::numeric,  5950.22::numeric, 340::numeric, 40),
-    ('Enterprise', 'V-Claw Enterprise', 'V-Claw Enterprise', 161.38::numeric, 12250.51::numeric, 700::numeric, 50)
-)
-INSERT INTO subscription_plans (
-  group_id,
-  name,
-  description,
-  price,
-  original_price,
-  validity_days,
-  validity_unit,
-  features,
-  product_name,
-  for_sale,
-  sort_order
-)
-SELECT
-  g.id,
-  p.plan_name,
-  format('%s package; 30-day token-equivalent subscription quota.', p.product_name),
-  p.price,
-  p.original_price,
-  30,
-  'day',
-  concat_ws(E'\n',
-    'pricing.version=ledger_v1',
-    'pricing.formula=convert_ledger_amounts',
-    'pricing.currency_source=selected_payment_currency',
-    'pricing.token_price_ledger=17.50',
-    format('pricing.total_price_ledger=%s', p.price),
-    format('pricing.raw_value_ledger=%s', p.original_price),
-    format('pricing.token_quantity_millions=%s', p.token_millions),
-    'pricing.savings_formula=1 - total_price_ledger / raw_value_ledger'
-  ),
-  p.product_name,
-  TRUE,
-  p.sort_order
-FROM tier_plans p
-JOIN groups g ON g.name = p.group_name
-ON CONFLICT (name) DO UPDATE SET
-  group_id = EXCLUDED.group_id,
-  description = EXCLUDED.description,
-  price = EXCLUDED.price,
-  original_price = EXCLUDED.original_price,
-  validity_days = EXCLUDED.validity_days,
-  validity_unit = EXCLUDED.validity_unit,
-  features = EXCLUDED.features,
-  product_name = EXCLUDED.product_name,
-  for_sale = EXCLUDED.for_sale,
-  sort_order = EXCLUDED.sort_order,
-  updated_at = NOW();
-```
-
-Before running, verify whether production has a partial unique index on `groups.name` because soft-delete migrations may make plain `ON CONFLICT (name)` invalid. If so, use explicit update-then-insert logic or the admin UI instead.
+Before any production config mutation, inspect current live rows and apply the migration/update only after explicit approval and target predicate confirmation.
 
 ## Implemented backend endpoints
 
@@ -239,12 +127,12 @@ Important response fields:
   "current": {
     "api_key_id": 100,
     "group_id": 8,
-    "group_name": "V-Claw Standard",
+    "group_name": "V-Claw Basic Pass",
     "group_platform": "openai",
     "mode": "subscription",
-    "rate_multiplier": 0.0463,
+    "rate_multiplier": 0.02302745,
     "supported_model_scopes": ["openai"],
-    "monthly_limit_usd": 21.88,
+    "monthly_limit_usd": 14.68,
     "monthly_usage_usd": 1.25
   },
   "api_key": {
@@ -255,7 +143,7 @@ Important response fields:
   "entitlements": [
     {
       "group_id": 8,
-      "group_name": "V-Claw Standard",
+      "group_name": "V-Claw Basic Pass",
       "group_platform": "openai",
       "mode": "subscription",
       "status": "active",
@@ -264,12 +152,12 @@ Important response fields:
       "daily_usage_usd": 0,
       "weekly_usage_usd": 0,
       "monthly_usage_usd": 1.25,
-      "monthly_limit_usd": 21.88,
-      "rate_multiplier": 0.0463,
+      "monthly_limit_usd": 14.68,
+      "rate_multiplier": 0.02302745,
       "supported_model_scopes": ["openai"],
       "switchable": true,
       "current": true,
-      "subscription_id": 7,
+      "subscription_id": 101,
       "fallback_group_id": 2
     }
   ],

@@ -11,48 +11,23 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-// getGroupTokenPricePerMillion returns the effective token price per million for a group.
-// Priority: group.TokenPricePerMillion (cached/admin override) > 0 (fallback: not computed here).
-// Returns 0 if no pricing is available — caller must handle this case.
-func getGroupTokenPricePerMillion(grp *dbent.Group) float64 {
-	if grp == nil {
+// normalizeBalancePackageActualCredits keeps actual_credits as package/admin
+// metadata. Balance packages credit amount_ledger to the user's wallet; runtime
+// burn follows upstream provider/model TotalCost × rate_multiplier and must not
+// use token_price_per_million or derive synthetic credits from $/rate.
+func normalizeBalancePackageActualCredits(actualCredits int64) int64 {
+	if actualCredits < 0 {
 		return 0
 	}
-	if grp.TokenPricePerMillion != nil && *grp.TokenPricePerMillion > 0 {
-		return *grp.TokenPricePerMillion
-	}
-	return 0
+	return actualCredits
 }
 
-// computeActualCreditsFromLedger derives token credit entitlement from a ledger amount
-// and the group's rate_multiplier + token_price_per_million:
-//
-//	actual_credits = amount_ledger / rate_multiplier / token_price_per_million × 1,000,000
-func computeActualCreditsFromLedger(amountLedger float64, grp *dbent.Group) int64 {
-	if amountLedger <= 0 || grp == nil || grp.RateMultiplier <= 0 {
-		return 0
-	}
-	tokenPrice := getGroupTokenPricePerMillion(grp)
-	if tokenPrice <= 0 {
-		return 0
-	}
-	return computeActualCreditsFromParams(amountLedger, grp.RateMultiplier, tokenPrice)
-}
-
-// computeActualCreditsFromParams derives token credit entitlement from explicit parameters.
-func computeActualCreditsFromParams(amountLedger, rateMultiplier, tokenPricePerMillion float64) int64 {
+func computeDisplayCreditsFromLedgerPrice(amountLedger, rateMultiplier, tokenPricePerMillion float64) int64 {
 	if amountLedger <= 0 || rateMultiplier <= 0 || tokenPricePerMillion <= 0 {
 		return 0
 	}
 	credits := amountLedger / rateMultiplier / tokenPricePerMillion * 1_000_000
 	return int64(math.Round(credits))
-}
-
-// computeActualCreditsFromRateMultiplier derives token credit entitlement from a ledger
-// amount and a rate_multiplier value directly (without requiring a *dbent.Group).
-// Uses the group's token_price_per_million if provided, otherwise returns 0.
-func computeActualCreditsFromRateMultiplier(amountLedger float64, rateMultiplier float64, tokenPricePerMillion float64) int64 {
-	return computeActualCreditsFromParams(amountLedger, rateMultiplier, tokenPricePerMillion)
 }
 
 func validateBalancePackageRequired(code, label string, amountLedger float64) error {
@@ -138,16 +113,11 @@ func (s *PaymentConfigService) CreateBalancePackage(ctx context.Context, req Cre
 		return nil, err
 	}
 	groupID := balancePackageGroupID(req.BalanceGroupID, req.GroupID)
-	grp, err := s.loadBalancePackageGroup(ctx, groupID)
-	if err != nil {
+	if _, err := s.loadBalancePackageGroup(ctx, groupID); err != nil {
 		return nil, err
 	}
 	amount := roundLedgerAmountForCredit(req.AmountLedger, defaultLedgerCurrency)
-	actualCredits := req.ActualCredits
-	if actualCredits == 0 && grp != nil {
-		// Auto-compute from amount_ledger + group rate_multiplier
-		actualCredits = computeActualCreditsFromLedger(amount, grp)
-	}
+	actualCredits := normalizeBalancePackageActualCredits(req.ActualCredits)
 	b := s.entClient.BalancePackage.Create().
 		SetCode(strings.TrimSpace(req.Code)).
 		SetLabel(strings.TrimSpace(req.Label)).
@@ -177,19 +147,12 @@ func (s *PaymentConfigService) UpdateBalancePackage(ctx context.Context, id int6
 		return nil, err
 	}
 	groupID := balancePackageGroupID(req.BalanceGroupID, req.GroupID)
-	grp, err := s.loadBalancePackageGroup(ctx, groupID)
-	if err != nil {
+	if _, err := s.loadBalancePackageGroup(ctx, groupID); err != nil {
 		return nil, err
 	}
 	existing, err := s.entClient.BalancePackage.Get(ctx, id)
 	if err != nil {
 		return nil, infraerrors.NotFound("BALANCE_PACKAGE_NOT_FOUND", "balance package not found")
-	}
-	if groupID == nil && existing.GroupID != nil {
-		grp, err = s.loadBalancePackageGroup(ctx, existing.GroupID)
-		if err != nil {
-			return nil, err
-		}
 	}
 	amount := existing.AmountLedger
 	if req.AmountLedger != nil {
@@ -199,10 +162,7 @@ func (s *PaymentConfigService) UpdateBalancePackage(ctx context.Context, id int6
 	u := s.entClient.BalancePackage.UpdateOneID(id).
 		SetAmountLedger(amount)
 	if req.ActualCredits != nil {
-		u.SetActualCredits(*req.ActualCredits)
-	} else if req.AmountLedger != nil && grp != nil {
-		// Amount changed but no explicit actual_credits override — recompute
-		u.SetActualCredits(computeActualCreditsFromLedger(amount, grp))
+		u.SetActualCredits(normalizeBalancePackageActualCredits(*req.ActualCredits))
 	}
 	if req.Code != nil {
 		u.SetCode(strings.TrimSpace(*req.Code))

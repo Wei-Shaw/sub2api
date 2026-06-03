@@ -425,7 +425,7 @@ func buildCurrentBalanceCreditQuota(balanceLedgerAmount, creditUnitScale float64
 	if group == nil || group.IsSubscriptionType() || balanceLedgerAmount <= 0 || group.RateMultiplier <= 0 || group.TokenPricePerMillion == nil || *group.TokenPricePerMillion <= 0 {
 		return nil
 	}
-	credits := float64(computeActualCreditsFromRateMultiplier(balanceLedgerAmount, group.RateMultiplier, *group.TokenPricePerMillion))
+	credits := float64(computeDisplayCreditsFromLedgerPrice(balanceLedgerAmount, group.RateMultiplier, *group.TokenPricePerMillion))
 	if credits <= 0 {
 		return nil
 	}

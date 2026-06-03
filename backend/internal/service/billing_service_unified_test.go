@@ -82,29 +82,25 @@ func TestCalculateCostUnified_TokenModeAppliesRateMultiplierToImageTokens(t *tes
 	require.InDelta(t, imageOutput, cost.ImageOutputCost, 1e-10)
 }
 
-func TestCalculateCostUnified_BalanceTokenPricePerMillionOverridesProviderCost(t *testing.T) {
+func TestCalculateCostUnified_BalanceModeFollowsProviderCostLikeUpstream(t *testing.T) {
 	bs := newTestBillingService()
 	resolver := NewModelPricingResolver(nil, bs)
-	tokenPricePerMillion := 7.5
 
-	// Cache-heavy OpenAI/Claude-style traffic can have a very low provider/base
-	// cost per million tokens. Balance groups with token_price_per_million must
-	// still burn wallet credit by the user-facing token price, not by provider
-	// cost * rate_multiplier.
+	// Regression: balance packages are preset wallet top-ups. Runtime burn must
+	// follow upstream provider/model pricing, not a package token benchmark.
 	tokens := UsageTokens{InputTokens: 1000, CacheReadTokens: 999000}
 	cost, err := bs.CalculateCostUnified(CostInput{
-		Ctx:                  context.Background(),
-		Model:                "claude-sonnet-4",
-		Tokens:               tokens,
-		RateMultiplier:       1.0,
-		TokenPricePerMillion: &tokenPricePerMillion,
-		Resolver:             resolver,
+		Ctx:            context.Background(),
+		Model:          "claude-sonnet-4",
+		Tokens:         tokens,
+		RateMultiplier: 1.0,
+		Resolver:       resolver,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, cost)
 
-	require.InDelta(t, 0.3027, cost.TotalCost, 1e-10, "provider/base cost remains available for margin reporting")
-	require.InDelta(t, 7.5, cost.ActualCost, 1e-10, "1M balance tokens at $7.5/M must burn $7.5")
+	require.InDelta(t, 0.3027, cost.TotalCost, 1e-10)
+	require.InDelta(t, cost.TotalCost, cost.ActualCost, 1e-10)
 	require.Equal(t, string(BillingModeToken), cost.BillingMode)
 }
 

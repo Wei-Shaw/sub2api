@@ -1,43 +1,85 @@
 package service
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
-func TestComputeActualCreditsFromParamsUsesTokenPriceDenominator(t *testing.T) {
-	credits := computeActualCreditsFromParams(4, 1, 7.50)
-	if credits != 533_333 {
-		t.Fatalf("credits = %d, want 533333", credits)
+func TestNormalizeBalancePackageActualCreditsUsesExplicitMetadata(t *testing.T) {
+	if got := normalizeBalancePackageActualCredits(27_000_000); got != 27_000_000 {
+		t.Fatalf("credits = %d, want explicit package metadata", got)
 	}
-
-	legacyDiscountCredits := computeActualCreditsFromParams(4, 0.036247, 7.50)
-	if legacyDiscountCredits != 14_713_861 {
-		t.Fatalf("legacy discount credits = %d, want 14713861", legacyDiscountCredits)
+	if got := normalizeBalancePackageActualCredits(0); got != 0 {
+		t.Fatalf("credits = %d, want no synthetic credits when package omits metadata", got)
 	}
-
-	wrongWithoutTokenPrice := computeActualCreditsFromParams(4, 0.036247, 1)
-	if legacyDiscountCredits >= wrongWithoutTokenPrice/2 {
-		t.Fatalf("credits = %d looks like missing token_price_per_million denominator; wrong formula would be about %d", legacyDiscountCredits, wrongWithoutTokenPrice)
+	if got := normalizeBalancePackageActualCredits(-1); got != 0 {
+		t.Fatalf("credits = %d, want negative metadata clamped to 0", got)
 	}
 }
 
-func TestComputeActualCreditsFromParamsMatchesApprovedBalancePackageTargetsAtRateOne(t *testing.T) {
-	cases := []struct {
-		name         string
-		amountLedger float64
-		want         int64
-	}{
-		{name: "standard", amountLedger: 202.50, want: 27_000_000},
-		{name: "pro", amountLedger: 472.50, want: 63_000_000},
-		{name: "expert", amountLedger: 975.00, want: 130_000_000},
-		{name: "business", amountLedger: 2550.00, want: 340_000_000},
-		{name: "enterprise", amountLedger: 5250.00, want: 700_000_000},
+func TestComputeDisplayCreditsFromLedgerPriceIsDisplayOnly(t *testing.T) {
+	got := computeDisplayCreditsFromLedgerPrice(202.50, 1, 7.50)
+	if got != 27_000_000 {
+		t.Fatalf("display credits = %d, want 27000000", got)
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := computeActualCreditsFromParams(tc.amountLedger, 1, 7.50)
-			if got != tc.want {
-				t.Fatalf("credits = %d, want %d", got, tc.want)
-			}
-		})
+	wrongBurnCredits := computeDisplayCreditsFromLedgerPrice(4, 0.036247, 7.50)
+	if wrongBurnCredits == 110_353_960 {
+		t.Fatalf("display helper must not reproduce $4/rate synthetic burn credits")
+	}
+}
+
+func TestCreateBalancePackageDoesNotSynthesizeCreditsFromGroupRate(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	group, err := client.Group.Create().
+		SetName("OpenAI Standard Balance").
+		SetPlatform(PlatformOpenAI).
+		SetStatus(StatusActive).
+		SetSubscriptionType(SubscriptionTypeStandard).
+		SetRateMultiplier(0.036247).
+		SetTokenPricePerMillion(7.50).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create balance group: %v", err)
+	}
+	groupID := group.ID
+	svc := &PaymentConfigService{entClient: client}
+
+	pkg, err := svc.CreateBalancePackage(ctx, CreateBalancePackageRequest{
+		Code:           "standard-topup",
+		Label:          "Standard top-up",
+		AmountLedger:   4.00,
+		BalanceGroupID: &groupID,
+		CreditUnit:     "tokens",
+		ForSale:        true,
+	})
+	if err != nil {
+		t.Fatalf("CreateBalancePackage returned error: %v", err)
+	}
+	if pkg.AmountLedger != 4.00 {
+		t.Fatalf("amount_ledger = %v, want fixed wallet credit 4.00", pkg.AmountLedger)
+	}
+	if pkg.ActualCredits != 0 {
+		t.Fatalf("actual_credits = %d, want 0 when admin did not configure package metadata", pkg.ActualCredits)
+	}
+
+	amount := 8.00
+	pkg, err = svc.UpdateBalancePackage(ctx, pkg.ID, UpdateBalancePackageRequest{AmountLedger: &amount})
+	if err != nil {
+		t.Fatalf("UpdateBalancePackage amount returned error: %v", err)
+	}
+	if pkg.ActualCredits != 0 {
+		t.Fatalf("actual_credits after amount update = %d, want still 0", pkg.ActualCredits)
+	}
+
+	explicitCredits := int64(27_000_000)
+	pkg, err = svc.UpdateBalancePackage(ctx, pkg.ID, UpdateBalancePackageRequest{ActualCredits: &explicitCredits})
+	if err != nil {
+		t.Fatalf("UpdateBalancePackage credits returned error: %v", err)
+	}
+	if pkg.ActualCredits != explicitCredits {
+		t.Fatalf("actual_credits = %d, want explicit package metadata %d", pkg.ActualCredits, explicitCredits)
 	}
 }

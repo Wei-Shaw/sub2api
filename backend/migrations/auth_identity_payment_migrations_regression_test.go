@@ -258,3 +258,27 @@ func TestLocalMigrationRepairsStaleBalancePackageActualCredits(t *testing.T) {
 	require.NotContains(t, sql, "actual_credits IS NULL")
 	require.NotContains(t, sql, "/ g.rate_multiplier * 1000000")
 }
+
+func TestLocalMigrationRepairsVClawSubscriptionPassMultipliers(t *testing.T) {
+	content, err := LocalFS.ReadFile("local/local_0018_recalculate_vclaw_subscription_passes.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "V-Claw Basic Pass")
+	require.Contains(t, sql, "V-Claw Super Pass")
+	require.Contains(t, sql, "V-Claw Ultra Pass")
+	require.Contains(t, sql, "V-Claw God(神) Pass")
+	require.Contains(t, sql, "(3, 'V-Claw Basic Pass', 14.68::numeric, 85::numeric, 10)")
+	require.Contains(t, sql, "(4, 'V-Claw Super Pass', 36.71::numeric, 220::numeric, 20)")
+	require.Contains(t, sql, "(5, 'V-Claw Ultra Pass', 73.42::numeric, 450::numeric, 30)")
+	require.Contains(t, sql, "(6, 'V-Claw God(神) Pass', 146.84::numeric, 1000::numeric, 40)")
+	require.Contains(t, sql, "price_usd / (token_millions * 7.50)")
+	require.Contains(t, sql, "monthly_limit_usd = ROUND(fp.price_usd, 2)")
+	require.Contains(t, sql, "pricing.token_price_ledger=7.50")
+	require.Contains(t, sql, "pricing.token_quantity_millions=")
+	require.Contains(t, sql, "WHERE sp.id = 7")
+	require.Contains(t, sql, "for_sale = false")
+	require.Contains(t, sql, "status = 'inactive'")
+	require.NotContains(t, sql, "17.50")
+	require.NotContains(t, sql, "161.38::numeric")
+}
