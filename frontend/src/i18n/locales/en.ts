@@ -9,7 +9,7 @@ export default {
     dashboard: 'Dashboard',
     login: 'Login',
     getStarted: 'Get Started',
-    goToDashboard: 'Go to Dashboard',
+    goToDashboard: 'Get Started',
     cta_view_pricing: 'View model pricing',
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
