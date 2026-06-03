@@ -72,7 +72,7 @@ REDACTED
 	require.Equal(t, http.StatusOK, item.HTTPStatus)
 REDACTED
 
-func TestRunProxyQualityTarget_AllowedStatusWarnForUnauthorized(t *testing.T) {
+func TestRunProxyQualityTarget_AllowedStatusPassForUnauthorized(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":"unauthorized"REDACTED`))
@@ -89,7 +89,7 @@ REDACTED))
 REDACTED
 
 	item := runProxyQualityTarget(context.Background(), server.Client(), target)
-	require.Equal(t, "warn", item.Status)
+	require.Equal(t, "pass", item.Status)
 	require.Equal(t, http.StatusUnauthorized, item.HTTPStatus)
 	require.Contains(t, item.Message, "目标可达")
 REDACTED
