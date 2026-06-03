@@ -3,6 +3,7 @@ package routes
 import (
 	"net/http"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,4 +30,11 @@ func RegisterCommonRoutes(r *gin.Engine) {
 			},
 		})
 	})
+}
+
+func RegisterPublicExpandAccountRoutes(v1 *gin.RouterGroup, h *handler.Handlers) {
+	expandAccounts := v1.Group("/expand-accounts")
+	{
+		expandAccounts.POST("/callback", h.Admin.ExpandAccount.Callback)
+	}
 }

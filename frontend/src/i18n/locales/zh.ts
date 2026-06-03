@@ -388,6 +388,7 @@ export default {
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
+    expandAccounts: '扩展账号',
   },
 
   // Auth
@@ -4148,6 +4149,36 @@ export default {
         usageTrend: '30天费用与请求趋势',
         noData: '该账号暂无使用数据'
       }
+    },
+    
+    expandAccounts: {
+      title: '扩展账号',
+      description: '管理扩展账号库存',
+      searchPlaceholder: '搜索邮箱、平台、国家',
+      create: '新增',
+      edit: '编辑',
+      platform: '平台',
+      subscriptionType: '订阅类型',
+      country: '国家',
+      sessionKey: 'Session Key',
+      used: '已使用',
+      unused: '未使用',
+      alreadyUsed: '已使用',
+      markUsed: '标记为已使用',
+      createdAt: '创建时间',
+      updatedAt: '更新时间',
+      deleteTitle: '删除扩展账号',
+      deleteConfirm: '确定要删除这个扩展账号吗？',
+      loadFailed: '加载扩展账号失败',
+      requiredFields: '请完整填写必填项',
+      updated: '扩展账号已更新',
+      created: '扩展账号已创建',
+      saveFailed: '保存扩展账号失败',
+      deleted: '扩展账号已删除',
+      deleteFailed: '删除扩展账号失败',
+      markUsedSuccess: '已标记为已使用',
+      markUsedFailed: '标记为已使用失败',
+      sessionKeyCopied: 'Session Key 已复制'
     },
 
     // Scheduled Tests
