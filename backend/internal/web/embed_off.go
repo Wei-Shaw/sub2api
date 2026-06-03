@@ -17,11 +17,18 @@ type PublicSettingsProvider interface {
 	GetPublicSettingsForInjection(ctx context.Context) (any, error)
 }
 
+// ThemeCSSProvider provides the active theme's CSS injection info
+// This stub is needed for compilation when frontend is not embedded
+type ThemeCSSProvider interface {
+	GetActiveThemeShort(ctx context.Context) string
+	GetThemeConfigCSS(ctx context.Context) string
+}
+
 // FrontendServer is a stub for non-embed builds
 type FrontendServer struct{}
 
 // NewFrontendServer returns an error when frontend is not embedded
-func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer, error) {
+func NewFrontendServer(settingsProvider PublicSettingsProvider, themeCSSProvider ThemeCSSProvider) (*FrontendServer, error) {
 	return nil, errors.New("frontend not embedded")
 }
 

@@ -30,6 +30,7 @@ func SetupRouter(
 	subscriptionService *service.SubscriptionService,
 	opsService *service.OpsService,
 	settingService *service.SettingService,
+	themeService *service.ThemeService,
 	cfg *config.Config,
 	redisClient *redis.Client,
 ) *gin.Engine {
@@ -63,7 +64,7 @@ func SetupRouter(
 
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {
-		frontendServer, err := web.NewFrontendServer(settingService)
+		frontendServer, err := web.NewFrontendServer(settingService, themeService)
 		if err != nil {
 			log.Printf("Warning: Failed to create frontend server with settings injection: %v, using legacy mode", err)
 			r.Use(web.ServeEmbeddedFrontend())
@@ -74,11 +75,20 @@ func SetupRouter(
 				frontendServer.InvalidateCache()
 				refreshFrameOrigins()
 			})
+			// Register theme service callback to invalidate HTML cache when active theme changes
+			if themeService != nil {
+				themeService.SetOnUpdateCallback(func() {
+					frontendServer.InvalidateCache()
+				})
+			}
 			r.Use(frontendServer.Middleware())
 		}
 	} else {
 		settingService.SetOnUpdateCallback(refreshFrameOrigins)
 	}
+
+	// 注册主题资源路由（公开，无需认证）
+	routes.RegisterThemeAssetRoute(r, handlers.ThemeAsset)
 
 	// 注册路由
 	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)

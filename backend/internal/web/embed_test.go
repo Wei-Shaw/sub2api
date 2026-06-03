@@ -165,11 +165,11 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 			settings: map[string]string{"key": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		settingsJSON := []byte(`{"test":"data"}`)
-		result := server.injectSettings(settingsJSON)
+		result := server.injectSettings(settingsJSON, "", "")
 
 		// Should contain the script with nonce placeholder
 		assert.Contains(t, string(result), `<script nonce="__CSP_NONCE_VALUE__">`)
@@ -182,11 +182,11 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 			settings: map[string]string{"key": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		settingsJSON := []byte(`{}`)
-		result := server.injectSettings(settingsJSON)
+		result := server.injectSettings(settingsJSON, "", "")
 
 		// Script should be injected before </head>
 		headCloseIndex := bytes.Index(result, []byte("</head>"))
@@ -204,11 +204,11 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 			},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		settingsJSON := []byte(`{"nested":{"array":[1,2,3]},"special":"<>&"}`)
-		result := server.injectSettings(settingsJSON)
+		result := server.injectSettings(settingsJSON, "", "")
 
 		assert.Contains(t, string(result), `window.__APP_CONFIG__={"nested":{"array":[1,2,3]},"special":"<>&"};`)
 	})
@@ -220,7 +220,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		// Create a gin context with nonce
@@ -248,7 +248,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		// First request
@@ -279,7 +279,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
@@ -300,7 +300,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		// Use a real router for proper 304 handling
@@ -333,7 +333,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
@@ -351,7 +351,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 			err: context.DeadlineExceeded,
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		// Invalidate cache to force settings fetch
@@ -376,7 +376,7 @@ func TestFrontendServer_InvalidateCache(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		// First request to populate cache
@@ -427,7 +427,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		apiPaths := []string{
@@ -467,7 +467,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		router := gin.New()
@@ -493,7 +493,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		router := gin.New()
@@ -527,7 +527,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		router := gin.New()
@@ -549,7 +549,7 @@ func TestNewFrontendServer(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 
 		require.NoError(t, err)
 		assert.NotNil(t, server)
@@ -565,7 +565,7 @@ func TestNewFrontendServer(t *testing.T) {
 			settings: map[string]string{"test": "value"},
 		}
 
-		server, err := NewFrontendServer(provider)
+		server, err := NewFrontendServer(provider, nil)
 		require.NoError(t, err)
 
 		assert.NotEmpty(t, server.baseHTML)
@@ -750,7 +750,7 @@ func BenchmarkFrontendServerServeIndexHTML(b *testing.B) {
 		settings: map[string]string{"test": "value"},
 	}
 
-	server, _ := NewFrontendServer(provider)
+	server, _ := NewFrontendServer(provider, nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

@@ -86,6 +86,9 @@ func RegisterAdminRoutes(
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
 
+		// 主题管理
+		registerThemeRoutes(admin, h)
+
 		// 渠道管理
 		registerChannelRoutes(admin, h)
 
@@ -646,5 +649,20 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			users.PUT("/:user_id", h.Admin.Affiliate.UpdateUserSettings)
 			users.DELETE("/:user_id", h.Admin.Affiliate.ClearUserSettings)
 		}
+	}
+}
+
+func registerThemeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	themes := admin.Group("/themes")
+	{
+		themes.GET("", h.Admin.Theme.List)
+		themes.GET("/active", h.Admin.Theme.GetActive)
+		themes.POST("/install", h.Admin.Theme.Install)
+		themes.POST("/install-github", h.Admin.Theme.InstallFromGitHub)
+		themes.POST("/deactivate", h.Admin.Theme.Deactivate)
+		themes.GET("/:short", h.Admin.Theme.Get)
+		themes.POST("/:short/activate", h.Admin.Theme.Activate)
+		themes.DELETE("/:short", h.Admin.Theme.Delete)
+		themes.PUT("/:short/config", h.Admin.Theme.UpdateConfig)
 	}
 }
