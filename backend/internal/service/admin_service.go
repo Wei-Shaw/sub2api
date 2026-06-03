@@ -3339,12 +3339,13 @@ func runProxyQualityTarget(ctx context.Context, client *http.Client, target prox
 	}
 
 	if _, ok := target.AllowedStatuses[resp.StatusCode]; ok {
+		// 白名单内的状态码均代表目标可达：2xx 表示接口直接可用，
+		// 401/405 等是无鉴权探测的预期结果，同样视为连通正常，不再扣分。
+		item.Status = "pass"
 		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
-			item.Status = "pass"
 			item.Message = fmt.Sprintf("HTTP %d", resp.StatusCode)
 		} else {
-			item.Status = "warn"
-			item.Message = fmt.Sprintf("HTTP %d（目标可达，但鉴权或方法受限）", resp.StatusCode)
+			item.Message = fmt.Sprintf("HTTP %d（目标可达）", resp.StatusCode)
 		}
 		return item
 	}
