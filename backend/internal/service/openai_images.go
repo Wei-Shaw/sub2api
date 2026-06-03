@@ -645,7 +645,7 @@ REDACTED
 				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 		REDACTED
 	REDACTED
-		return s.handleErrorResponse(upstreamCtx, resp, c, account, forwardBody)
+		return s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, upstreamModel)
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
