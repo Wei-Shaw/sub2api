@@ -10,6 +10,7 @@ export default {
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
+    cta_view_pricing: 'View model pricing',
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
@@ -7111,6 +7112,8 @@ export default {
       empty: 'No models match the current filters.',
       in: 'in',
       out: 'out',
+      cache_write: 'Cache write',
+      cache_read: 'Cache read',
       rechargeRatio: 'Recharge ratio',
       rechargeNote: '1 CNY recharge = {usd} USD site balance',
       rechargeHint: 'Base price is the upstream USD quote (fixed); site price follows the currency toggle',
@@ -7127,6 +7130,7 @@ export default {
         sitePrice: 'Site price',
         multiplier: 'Multiplier',
         discount: 'Discount',
+        action: 'Action',
       },
     },
     plans: {
@@ -7137,6 +7141,8 @@ export default {
       includedModels: 'Included models',
       more: 'more',
     },
+    use_group: 'Use this group →',
+    buy_now: 'Buy now',
   },
 
 }

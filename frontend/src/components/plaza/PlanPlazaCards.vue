@@ -94,15 +94,32 @@
             </span>
           </div>
         </div>
+
+        <!--
+          Buy CTA — rendered only when payments are globally enabled. We deliberately
+          omit (rather than disable) the button when `payment_enabled === false` to
+          keep marketing cards uncluttered.
+        -->
+        <button
+          v-if="paymentEnabled"
+          type="button"
+          class="btn btn-primary mt-4 w-full justify-center"
+          @click="onBuyNow(card)"
+        >
+          {{ t('plaza.buy_now') }}
+        </button>
       </article>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PlazaPlanCard } from '@/api/plaza'
 import type { PlazaCurrency } from '@/composables/useCurrencyToggle'
+import { useAuthRedirect } from '@/composables/useAuthRedirect'
+import { useAppStore } from '@/stores/app'
 import CurrencyToggle from './CurrencyToggle.vue'
 
 const props = defineProps<{
@@ -118,6 +135,24 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const appStore = useAppStore()
+const { gotoOrLogin } = useAuthRedirect()
+
+/**
+ * Hide the Buy CTA entirely when payments are globally disabled.
+ * Reads from the cached public settings populated for anonymous visitors,
+ * so this works without an auth round-trip.
+ */
+const paymentEnabled = computed(
+  () => appStore.cachedPublicSettings?.payment_enabled === true,
+)
+
+function onBuyNow(card: PlazaPlanCard) {
+  void gotoOrLogin({
+    path: '/purchase',
+    query: { plan_id: String(card.id) },
+  })
+}
 
 const VISIBLE_MODELS = 10
 

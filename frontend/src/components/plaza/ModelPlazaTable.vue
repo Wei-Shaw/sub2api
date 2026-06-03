@@ -68,16 +68,23 @@
             </th>
             <th class="px-4 py-3 text-left font-medium">{{ t('plaza.models.col.sitePrice') }}</th>
             <th class="px-4 py-3 text-left font-medium">{{ t('plaza.models.col.multiplier') }}</th>
+            <!--
+              Per-row "Use this group" CTA column. Placed at the end of the
+              row so the price columns above are the visual anchor. The
+              header label is intentionally short ("操作" / "Action") so it
+              doesn't compete with pricing data for attention.
+            -->
+            <th class="px-4 py-3 text-right font-medium">{{ t('plaza.models.col.action') }}</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-900">
           <tr v-if="loading">
-            <td colspan="7" class="px-4 py-12 text-center text-sm text-gray-500 dark:text-dark-400">
+            <td colspan="8" class="px-4 py-12 text-center text-sm text-gray-500 dark:text-dark-400">
               {{ t('common.loading') }}
             </td>
           </tr>
           <tr v-else-if="filteredRows.length === 0">
-            <td colspan="7" class="px-4 py-12 text-center text-sm text-gray-500 dark:text-dark-400">
+            <td colspan="8" class="px-4 py-12 text-center text-sm text-gray-500 dark:text-dark-400">
               {{ t('plaza.models.empty') }}
             </td>
           </tr>
@@ -106,7 +113,7 @@
             </td>
 
             <!-- Base price -->
-            <td class="px-4 py-3 text-gray-700 dark:text-dark-200">
+            <td class="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-dark-200">
               <template v-if="row.type === 'token'">
                 <div class="space-y-0.5 text-xs">
                   <div>
@@ -116,6 +123,14 @@
                   <div>
                     <span class="text-gray-400">{{ t('plaza.models.out') }}</span>
                     {{ formatTokenBase(row.output_price_per_mtok) }}
+                  </div>
+                  <div>
+                    <span class="text-gray-400">{{ t('plaza.models.cache_write') }}</span>
+                    {{ formatTokenBase(row.cache_write_price_per_mtok) }}
+                  </div>
+                  <div>
+                    <span class="text-gray-400">{{ t('plaza.models.cache_read') }}</span>
+                    {{ formatTokenBase(row.cache_read_price_per_mtok) }}
                   </div>
                 </div>
               </template>
@@ -138,7 +153,7 @@
             </td>
 
             <!-- Site price -->
-            <td class="px-4 py-3 text-gray-700 dark:text-dark-200">
+            <td class="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-dark-200">
               <template v-if="row.type === 'token'">
                 <div class="space-y-0.5 text-xs">
                   <div>
@@ -148,6 +163,14 @@
                   <div>
                     <span class="text-gray-400">{{ t('plaza.models.out') }}</span>
                     {{ formatTokenPrice(row.site_output_price_per_mtok) }}
+                  </div>
+                  <div>
+                    <span class="text-gray-400">{{ t('plaza.models.cache_write') }}</span>
+                    {{ formatTokenPrice(row.site_cache_write_price_per_mtok) }}
+                  </div>
+                  <div>
+                    <span class="text-gray-400">{{ t('plaza.models.cache_read') }}</span>
+                    {{ formatTokenPrice(row.site_cache_read_price_per_mtok) }}
                   </div>
                 </div>
               </template>
@@ -171,6 +194,23 @@
 
             <td class="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-dark-200">
               ×{{ row.multiplier.toFixed(2) }}
+            </td>
+
+            <!--
+              Per-row "Use this group" CTA. Emits the group id upward so the
+              parent (`PlazaModelsView`) can run the auth-aware redirect into
+              the create-key modal. Each model row points at exactly one
+              group, so we send `row.group_id` directly.
+            -->
+            <td class="whitespace-nowrap px-4 py-3 text-right">
+              <button
+                type="button"
+                class="rounded-md border border-primary-500/30 bg-primary-500/10 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-500/20 dark:border-primary-400/30 dark:text-primary-200"
+                :title="t('plaza.use_group')"
+                @click="emit('use-group', row.group_id)"
+              >
+                {{ t('plaza.use_group') }}
+              </button>
             </td>
           </tr>
         </tbody>
@@ -236,6 +276,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'update:filter', f: { groupId?: number; platform?: string; q?: string }): void
   (e: 'currency-change', c: PlazaCurrency): void
+  /** "Use this group" per-row CTA. Parent decides routing/auth. */
+  (e: 'use-group', groupId: number): void
 }>()
 
 const { t } = useI18n()
@@ -298,10 +340,17 @@ function resetFilters() {
   platform.value = ''
 }
 
+/**
+ * Verbose, industry-standard suffix for per-million-token prices. Centralised so
+ * a future tweak (e.g. swapping to "/M tok" or localising) is a one-line change
+ * and base/site formatters never drift apart.
+ */
+const PRICE_UNIT_SUFFIX = ' / M Tokens'
+
 function formatTokenPrice(amount: number | undefined): string {
   if (amount === undefined || amount === null || !Number.isFinite(amount)) return '—'
   // Token prices are USD per Mtok; render with 4 decimals by default.
-  return props.formatUsd(amount, 4) + '/Mtok'
+  return props.formatUsd(amount, 4) + PRICE_UNIT_SUFFIX
 }
 
 function formatImagePrice(amount: number | undefined): string {
@@ -315,7 +364,7 @@ function formatImagePrice(amount: number | undefined): string {
 function formatTokenBase(amount: number | undefined): string {
   if (amount === undefined || amount === null || !Number.isFinite(amount)) return '—'
   const fmt = props.formatBase ?? props.formatUsd
-  return fmt(amount, 4) + '/Mtok'
+  return fmt(amount, 4) + PRICE_UNIT_SUFFIX
 }
 
 function formatImageBase(amount: number | undefined): string {

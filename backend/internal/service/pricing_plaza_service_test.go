@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"testing"
 
@@ -477,6 +478,137 @@ func TestPlazaService_ListModelRows_CacheHit(t *testing.T) {
 		require.NoError(t, err)
 	}
 	require.Equal(t, 1, accountRepo.calls, "account repo should be hit only once thanks to cache")
+}
+
+// =====================================================================
+// Cache pricing on token rows
+// =====================================================================
+
+// TestPlazaService_ListModelRows_CachePricesPresent — case A.
+// 模型在 LiteLLM 中带 cache 数据 + breakdown=true → 4 个字段全部出现，site = base × rate。
+func TestPlazaService_ListModelRows_CachePricesPresent(t *testing.T) {
+	groups := []Group{{
+		ID:               80,
+		Name:             "Cache Group",
+		Platform:         PlatformAnthropic,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+		RateMultiplier:   0.8,
+	}}
+	accounts := []Account{makeAccount(1100, PlatformAnthropic, []int64{80}, "claude-opus-4-5")}
+	pricingData := map[string]*LiteLLMModelPricing{
+		"claude-opus-4-5": {
+			InputCostPerToken:                   15e-6,
+			OutputCostPerToken:                  75e-6,
+			CacheCreationInputTokenCost:         3.75e-6,
+			CacheCreationInputTokenCostAbove1hr: 7.5e-6, // > 5m → 启用 SupportsCacheBreakdown
+			CacheReadInputTokenCost:             0.3e-6,
+		},
+	}
+	svc, _ := newPlazaServiceForTest(t, pricingData, accounts, groups, &paymentConfigStubForPlaza{multiplier: 1})
+
+	rows, _, err := svc.ListModelRows(context.Background(), PlazaModelFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	r := rows[0]
+	require.Equal(t, "token", r.Type)
+
+	require.NotNil(t, r.CacheWritePricePerMTok)
+	require.NotNil(t, r.CacheReadPricePerMTok)
+	require.NotNil(t, r.SiteCacheWritePricePerMTok)
+	require.NotNil(t, r.SiteCacheReadPricePerMTok)
+
+	require.InDelta(t, 3.75, *r.CacheWritePricePerMTok, 1e-9)
+	require.InDelta(t, 0.30, *r.CacheReadPricePerMTok, 1e-9)
+	require.InDelta(t, 3.75*0.8, *r.SiteCacheWritePricePerMTok, 1e-9)
+	require.InDelta(t, 0.30*0.8, *r.SiteCacheReadPricePerMTok, 1e-9)
+
+	// JSON 序列化里字段必须存在
+	raw, err := json.Marshal(r)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"cache_write_price_per_mtok":3.75`)
+	require.Contains(t, string(raw), `"cache_read_price_per_mtok":0.3`)
+}
+
+// TestPlazaService_ListModelRows_CacheAbsentWhenZeroAndNoBreakdown — case B.
+// 模型在 LiteLLM 中没有 cache 字段（=0）→ SupportsCacheBreakdown=false → 4 个字段全部缺席。
+func TestPlazaService_ListModelRows_CacheAbsentWhenZeroAndNoBreakdown(t *testing.T) {
+	groups := []Group{{
+		ID:               81,
+		Name:             "No-Cache Group",
+		Platform:         PlatformAnthropic,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+		RateMultiplier:   1,
+	}}
+	accounts := []Account{makeAccount(1101, PlatformAnthropic, []int64{81}, "no-cache-model")}
+	pricingData := map[string]*LiteLLMModelPricing{
+		"no-cache-model": {
+			InputCostPerToken:  1e-6,
+			OutputCostPerToken: 2e-6,
+			// 故意不设置任何 cache 字段；CacheCreationInputTokenCostAbove1hr=0 → SupportsCacheBreakdown=false
+		},
+	}
+	svc, _ := newPlazaServiceForTest(t, pricingData, accounts, groups, &paymentConfigStubForPlaza{multiplier: 1})
+
+	rows, _, err := svc.ListModelRows(context.Background(), PlazaModelFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	r := rows[0]
+
+	require.Nil(t, r.CacheWritePricePerMTok)
+	require.Nil(t, r.CacheReadPricePerMTok)
+	require.Nil(t, r.SiteCacheWritePricePerMTok)
+	require.Nil(t, r.SiteCacheReadPricePerMTok)
+
+	raw, err := json.Marshal(r)
+	require.NoError(t, err)
+	body := string(raw)
+	require.NotContains(t, body, "cache_write_price_per_mtok")
+	require.NotContains(t, body, "cache_read_price_per_mtok")
+	require.NotContains(t, body, "site_cache_write_price_per_mtok")
+	require.NotContains(t, body, "site_cache_read_price_per_mtok")
+}
+
+// TestPlazaService_ListModelRows_CachePresentWithExplicitZeroWhenBreakdown — case C.
+// 模型在 LiteLLM 中显式 5m 价格为 0 但 breakdown=true（通过 1h>0 触发）→ 字段存在且为 0。
+func TestPlazaService_ListModelRows_CachePresentWithExplicitZeroWhenBreakdown(t *testing.T) {
+	groups := []Group{{
+		ID:               82,
+		Name:             "Breakdown-Zero Group",
+		Platform:         PlatformAnthropic,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+		RateMultiplier:   1,
+	}}
+	accounts := []Account{makeAccount(1102, PlatformAnthropic, []int64{82}, "breakdown-zero-model")}
+	pricingData := map[string]*LiteLLMModelPricing{
+		"breakdown-zero-model": {
+			InputCostPerToken:  1e-6,
+			OutputCostPerToken: 2e-6,
+			// 5m = 0, 1h > 0 且 > 5m → enableBreakdown = true（参见 BillingService.GetModelPricing）
+			CacheCreationInputTokenCost:         0,
+			CacheCreationInputTokenCostAbove1hr: 1e-6,
+			CacheReadInputTokenCost:             0,
+		},
+	}
+	svc, _ := newPlazaServiceForTest(t, pricingData, accounts, groups, &paymentConfigStubForPlaza{multiplier: 1})
+
+	rows, _, err := svc.ListModelRows(context.Background(), PlazaModelFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	r := rows[0]
+
+	require.NotNil(t, r.CacheWritePricePerMTok)
+	require.NotNil(t, r.CacheReadPricePerMTok)
+	require.InDelta(t, 0.0, *r.CacheWritePricePerMTok, 1e-9)
+	require.InDelta(t, 0.0, *r.CacheReadPricePerMTok, 1e-9)
+
+	raw, err := json.Marshal(r)
+	require.NoError(t, err)
+	body := string(raw)
+	require.Contains(t, body, `"cache_write_price_per_mtok":0`)
+	require.Contains(t, body, `"cache_read_price_per_mtok":0`)
 }
 
 // intToFixed renders an integer with at least width digits (zero-padded).

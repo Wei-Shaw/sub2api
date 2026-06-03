@@ -38,6 +38,17 @@ type PlazaModelRowDTO struct {
 	SiteInputPricePerMTok  float64 `json:"site_input_price_per_mtok,omitempty"`
 	SiteOutputPricePerMTok float64 `json:"site_output_price_per_mtok,omitempty"`
 
+	// Token-only single-tier cache prices (USD per 1M tokens).
+	//
+	// Pointer semantics intentionally distinguish "absent" (nil → JSON omitted →
+	// frontend renders "—") from "explicit zero" (&0 → JSON 0). Models that do
+	// not declare `SupportsCacheBreakdown` and report zero cache pricing leave
+	// these as nil so clients don't paint a misleading $0.
+	CacheWritePricePerMTok     *float64 `json:"cache_write_price_per_mtok,omitempty"`
+	CacheReadPricePerMTok      *float64 `json:"cache_read_price_per_mtok,omitempty"`
+	SiteCacheWritePricePerMTok *float64 `json:"site_cache_write_price_per_mtok,omitempty"`
+	SiteCacheReadPricePerMTok  *float64 `json:"site_cache_read_price_per_mtok,omitempty"`
+
 	BaseImagePrices *PlazaImagePricesDTO `json:"base_image_prices,omitempty"`
 	SiteImagePrices *PlazaImagePricesDTO `json:"site_image_prices,omitempty"`
 

@@ -65,6 +65,17 @@ type PlazaModelRow struct {
 	SiteInputPricePerMTok  float64 `json:"site_input_price_per_mtok,omitempty"`
 	SiteOutputPricePerMTok float64 `json:"site_output_price_per_mtok,omitempty"`
 
+	// token-only 缓存字段（5m 单档）。指针语义：
+	//   - nil → JSON 中省略，前端渲染 "—"（"未知 / 不适用"）
+	//   - &0  → JSON 输出 0，前端渲染 "$0"（仅当 SupportsCacheBreakdown == true 时显式置 0）
+	//   - &v  → JSON 输出 v
+	// 当源 ModelPricing 的对应缓存价格为 0 且 SupportsCacheBreakdown == false 时，
+	// 字段保持 nil；SupportsCacheBreakdown == true 时即使为 0 也指向 0。
+	CacheWritePricePerMTok     *float64 `json:"cache_write_price_per_mtok,omitempty"`
+	CacheReadPricePerMTok      *float64 `json:"cache_read_price_per_mtok,omitempty"`
+	SiteCacheWritePricePerMTok *float64 `json:"site_cache_write_price_per_mtok,omitempty"`
+	SiteCacheReadPricePerMTok  *float64 `json:"site_cache_read_price_per_mtok,omitempty"`
+
 	// image-only 字段（token 行为 nil）
 	BaseImagePrices *PlazaImagePrices `json:"base_image_prices,omitempty"`
 	SiteImagePrices *PlazaImagePrices `json:"site_image_prices,omitempty"`
@@ -399,6 +410,23 @@ func (s *PlazaService) buildModelRow(g *Group, entry plazaModelEntry) (PlazaMode
 	row.OutputPricePerMTok = pricing.OutputPricePerToken * perMTok
 	row.SiteInputPricePerMTok = row.InputPricePerMTok * rate
 	row.SiteOutputPricePerMTok = row.OutputPricePerMTok * rate
+
+	// Cache 单档价格（5m）。policy:
+	//   - SupportsCacheBreakdown == false 且源值 == 0 → 保持 nil（前端渲染 "—"）
+	//   - 否则 → 显式产出 *float64（即使为 0 也会出现在 JSON 中）
+	if pricing.SupportsCacheBreakdown || pricing.CacheCreation5mPrice != 0 {
+		base := pricing.CacheCreation5mPrice * perMTok
+		site := base * rate
+		row.CacheWritePricePerMTok = &base
+		row.SiteCacheWritePricePerMTok = &site
+	}
+	if pricing.SupportsCacheBreakdown || pricing.CacheReadPricePerToken != 0 {
+		base := pricing.CacheReadPricePerToken * perMTok
+		site := base * rate
+		row.CacheReadPricePerMTok = &base
+		row.SiteCacheReadPricePerMTok = &site
+	}
+
 	row.Multiplier = rate
 	row.DiscountPercent = discountPercentFromMultiplier(rate)
 	return row, true

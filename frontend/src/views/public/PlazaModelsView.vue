@@ -49,6 +49,7 @@
           :platform-options="allPlatforms"
           @update:filter="onFilterChange"
           @currency-change="currencyToggle.set"
+          @use-group="onUseGroup"
         />
       </div>
     </div>
@@ -60,10 +61,12 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { plazaAPI, type PlazaModelRow, type PlazaCurrencyMeta, type PlazaModelsFilter } from '@/api/plaza'
 import { useCurrencyToggle } from '@/composables/useCurrencyToggle'
+import { useAuthRedirect } from '@/composables/useAuthRedirect'
 import PlazaLayout from './PlazaLayout.vue'
 import ModelPlazaTable from '@/components/plaza/ModelPlazaTable.vue'
 
 const { t } = useI18n()
+const { gotoOrLogin } = useAuthRedirect()
 
 // `allRows` is the unfiltered snapshot used to populate the persistent sidebar
 // and the platform dropdown. It is captured exactly once on first load so the
@@ -129,6 +132,22 @@ function groupBtnClass(id: number | undefined): string {
 
 function selectGroup(id: number | undefined) {
   selectedGroupId.value = id
+}
+
+/**
+ * "Use this group" CTA — funnel visitors into the create-key modal pre-selected
+ * to that group. Anonymous visitors are routed through `/login?redirect=…` and
+ * `LoginView` then forwards to the encoded `/keys?openCreate=1&group_id=…` URL.
+ *
+ * The query-string contract (`openCreate=1&group_id=<id>`) is consumed by
+ * `KeysView.onMounted` which opens the modal and replaces the URL to clear
+ * the params, so reload doesn't re-trigger the dialog.
+ */
+function onUseGroup(groupId: number) {
+  void gotoOrLogin({
+    path: '/keys',
+    query: { openCreate: '1', group_id: String(groupId) },
+  })
 }
 
 let lastFilterKey = ''

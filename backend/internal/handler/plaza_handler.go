@@ -102,19 +102,23 @@ func plazaModelRowsToDTO(rows []service.PlazaModelRow) []dto.PlazaModelRowDTO {
 	out := make([]dto.PlazaModelRowDTO, len(rows))
 	for i, r := range rows {
 		out[i] = dto.PlazaModelRowDTO{
-			GroupID:                r.GroupID,
-			GroupName:              r.GroupName,
-			Platform:               r.Platform,
-			Model:                  r.Model,
-			Type:                   r.Type,
-			InputPricePerMTok:      r.InputPricePerMTok,
-			OutputPricePerMTok:     r.OutputPricePerMTok,
-			SiteInputPricePerMTok:  r.SiteInputPricePerMTok,
-			SiteOutputPricePerMTok: r.SiteOutputPricePerMTok,
-			BaseImagePrices:        plazaImagePricesToDTO(r.BaseImagePrices),
-			SiteImagePrices:        plazaImagePricesToDTO(r.SiteImagePrices),
-			Multiplier:             r.Multiplier,
-			DiscountPercent:        r.DiscountPercent,
+			GroupID:                    r.GroupID,
+			GroupName:                  r.GroupName,
+			Platform:                   r.Platform,
+			Model:                      r.Model,
+			Type:                       r.Type,
+			InputPricePerMTok:          r.InputPricePerMTok,
+			OutputPricePerMTok:         r.OutputPricePerMTok,
+			SiteInputPricePerMTok:      r.SiteInputPricePerMTok,
+			SiteOutputPricePerMTok:     r.SiteOutputPricePerMTok,
+			CacheWritePricePerMTok:     r.CacheWritePricePerMTok,
+			CacheReadPricePerMTok:      r.CacheReadPricePerMTok,
+			SiteCacheWritePricePerMTok: r.SiteCacheWritePricePerMTok,
+			SiteCacheReadPricePerMTok:  r.SiteCacheReadPricePerMTok,
+			BaseImagePrices:            plazaImagePricesToDTO(r.BaseImagePrices),
+			SiteImagePrices:            plazaImagePricesToDTO(r.SiteImagePrices),
+			Multiplier:                 r.Multiplier,
+			DiscountPercent:            r.DiscountPercent,
 		}
 	}
 	return out

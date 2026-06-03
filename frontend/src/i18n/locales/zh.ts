@@ -10,6 +10,7 @@ export default {
     login: '登录',
     getStarted: '立即开始',
     goToDashboard: '进入控制台',
+    cta_view_pricing: '查看模型价格',
     // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
     heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
@@ -7290,6 +7291,8 @@ export default {
       empty: '没有符合当前筛选条件的模型。',
       in: '入',
       out: '出',
+      cache_write: '缓存写',
+      cache_read: '缓存读',
       rechargeRatio: '充值比例',
       rechargeNote: '1 CNY 充值 = {usd} USD 站点余额',
       rechargeHint: '原价为上游 USD 报价，固定不变；站点价随币种切换显示',
@@ -7306,6 +7309,7 @@ export default {
         sitePrice: '站点价',
         multiplier: '倍率',
         discount: '折扣',
+        action: '操作',
       },
     },
     plans: {
@@ -7316,6 +7320,8 @@ export default {
       includedModels: '包含模型',
       more: '更多',
     },
+    use_group: '去使用 ›',
+    buy_now: '立即购买',
   },
 
 }

@@ -44,6 +44,19 @@ export interface PlazaModelRow {
   site_input_price_per_mtok?: number
   site_output_price_per_mtok?: number
 
+  /**
+   * Single-tier (5 minute) cache prices, USD per million tokens. Mirrors the
+   * backend's `*float64`/`omitempty` semantics: the field is **omitted** when
+   * the model has no cache pricing data and does not declare
+   * `SupportsCacheBreakdown`. Frontend MUST render `—` for an absent value
+   * and `$0` for an explicit zero (only emitted when the model declares
+   * cache breakdown).
+   */
+  cache_write_price_per_mtok?: number
+  cache_read_price_per_mtok?: number
+  site_cache_write_price_per_mtok?: number
+  site_cache_read_price_per_mtok?: number
+
   base_image_prices?: PlazaImagePrices
   site_image_prices?: PlazaImagePrices
 

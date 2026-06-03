@@ -1045,14 +1045,17 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
+	import { ref, computed, onMounted, onUnmounted, nextTick, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
+	import { useRoute, useRouter } from 'vue-router'
 	import { useAppStore } from '@/stores/app'
 	import { useOnboardingStore } from '@/stores/onboarding'
 	import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -1776,12 +1779,48 @@ function formatResetTime(resetAt: string | null): string {
 
 onMounted(() => {
   loadApiKeys()
-  loadGroups()
+  // `loadGroups` is async; we need its result to validate `group_id` from
+  // the query string before opening the create modal. Chain the auto-open
+  // logic onto it so the resolved `groupOptions` are available.
+  loadGroups().then(() => maybeAutoOpenCreateFromQuery())
   loadUserGroupRates()
   loadPublicSettings()
   document.addEventListener('click', closeGroupSelector)
   resetTimer = setInterval(() => { now.value = new Date() }, 60000)
 })
+
+/**
+ * Plaza → KeysView funnel: when the visitor lands here via
+ * `/keys?openCreate=1&group_id=<id>` (typically after clicking
+ * "Use this group" on the plaza, possibly via a login round-trip), open the
+ * create-API-key modal pre-selected to the requested group and immediately
+ * strip the query so reload doesn't re-trigger the modal.
+ *
+ * Validation: `group_id` must parse to a positive integer that exists in
+ * `groupOptions`; otherwise we leave `formData.group_id` at its default
+ * (the spec scenario "Mount with invalid group_id"). The modal still opens.
+ *
+ * `nextTick` defers the visual change to the next render frame so the
+ * onboarding tour init (data-tour="keys-create-btn") doesn't race with the
+ * modal mount.
+ */
+async function maybeAutoOpenCreateFromQuery() {
+  if (route.query.openCreate !== '1') return
+  const rawGroupId = route.query.group_id
+  if (typeof rawGroupId === 'string') {
+    const parsed = Number(rawGroupId)
+    if (Number.isInteger(parsed) && parsed > 0) {
+      const isSelectable = groupOptions.value.some((opt) => opt.value === parsed)
+      if (isSelectable) {
+        formData.value.group_id = parsed
+      }
+    }
+  }
+  // Strip query params first so HMR / refresh don't reopen the modal.
+  router.replace({ path: '/keys' }).catch(() => {})
+  await nextTick()
+  showCreateModal.value = true
+}
 
 onUnmounted(() => {
   document.removeEventListener('click', closeGroupSelector)

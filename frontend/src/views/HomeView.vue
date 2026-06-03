@@ -51,7 +51,7 @@
           <!-- Pricing Plaza link (anonymous-friendly) -->
           <router-link
             to="/plaza/models"
-            class="hidden text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-dark-300 dark:hover:text-white sm:inline"
+            class="text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-dark-300 dark:hover:text-white"
           >
             {{ t('plaza.title') }}
           </router-link>
@@ -134,13 +134,25 @@
               {{ siteSubtitle }}
             </p>
 
-            <!-- CTA Button -->
-            <div>
+            <!-- CTA Buttons -->
+            <div class="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
               <router-link
                 :to="isAuthenticated ? dashboardPath : '/login'"
                 class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
               >
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
+                <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
+              </router-link>
+              <!--
+                Secondary CTA: anonymous + authenticated visitors alike land on
+                the public plaza so they can survey models and plans without
+                committing. No live API call is made here.
+              -->
+              <router-link
+                to="/plaza/models"
+                class="btn btn-secondary px-6 py-3 text-base"
+              >
+                {{ t('home.cta_view_pricing') }}
                 <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
               </router-link>
             </div>

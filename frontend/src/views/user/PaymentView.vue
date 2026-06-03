@@ -1069,6 +1069,35 @@ onMounted(async () => {
         }
       }
     }
+    // Plaza → PaymentView funnel: when the visitor lands here via
+    // `/purchase?plan_id=<id>` (typically after clicking "Buy now" on the
+    // plaza, possibly via a login round-trip), preselect that plan and clear
+    // `plan_id` from the URL so reload starts clean.
+    //
+    // Wechat-resume / state-driven (`tab=subscription&group=…`) flows take
+    // precedence: only act when neither already chose a plan and no Wechat
+    // resume token / restored payment state is in play.
+    if (typeof route.query.plan_id !== 'undefined') {
+      const wechatResuming = hasWechatResumeQuery(route.query) || paymentPhase.value === 'paying'
+      if (!selectedPlan.value && !wechatResuming) {
+        const rawId = route.query.plan_id
+        if (typeof rawId === 'string') {
+          const parsed = Number(rawId)
+          if (Number.isInteger(parsed) && parsed > 0) {
+            const match = checkout.value.plans.find((p) => p.id === parsed)
+            if (match) {
+              activeTab.value = 'subscription'
+              selectedPlan.value = match
+            }
+          }
+        }
+      }
+      // Always strip the param so reloads stay idempotent — even when the id
+      // didn't match, leaving `?plan_id=9999` around adds nothing useful.
+      const { plan_id: _omit, ...cleanQuery } = route.query
+      void _omit
+      router.replace({ path: route.path, query: cleanQuery }).catch(() => {})
+    }
   } catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
   finally { loading.value = false }
   // Fetch active subscriptions (uses cache, non-blocking)
