@@ -10,8 +10,13 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
+
+func ctxWithGroup(g *Group) context.Context {
+	return context.WithValue(context.Background(), ctxkey.Group, g)
+}
 
 type rateLimit429AccountRepoStub struct {
 	mockAccountRepoForGemini
@@ -95,6 +100,68 @@ func TestHandle429_FallbackDisabledSkipsLocalMark(t *testing.T) {
 	svc.handle429(context.Background(), account, http.Header{}, []byte(`{"error":{"type":"rate_limit_error","message":"slow down"}}`))
 
 	require.Zero(t, accountRepo.rateLimitCalls)
+}
+
+func TestHandle429_GroupDefaultOverridesSystemSeconds(t *testing.T) {
+	accountRepo := &rateLimit429AccountRepoStub{}
+	settingRepo := newMockSettingRepo()
+	// system says 12s; group default should win at 30s.
+	data, _ := json.Marshal(RateLimit429CooldownSettings{Enabled: true, CooldownSeconds: 12})
+	settingRepo.data[SettingKeyRateLimit429CooldownSettings] = string(data)
+
+	settingSvc := NewSettingService(settingRepo, &config.Config{})
+	svc := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	svc.SetSettingService(settingSvc)
+
+	g := &Group{ID: 7, Hydrated: true, Platform: PlatformOpenAI, Status: "active", Default429CooldownSec: 30}
+	account := &Account{ID: 50, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	before := time.Now()
+	svc.handle429(ctxWithGroup(g), account, http.Header{}, []byte(`{"error":{"type":"rate_limit_error","message":"slow down"}}`))
+	after := time.Now()
+
+	require.Equal(t, 1, accountRepo.rateLimitCalls)
+	require.True(t, !accountRepo.lastRateLimitReset.Before(before.Add(30*time.Second)) && !accountRepo.lastRateLimitReset.After(after.Add(30*time.Second)))
+}
+
+func TestHandle429_GroupDefaultForcesEnabledOverDisabledSystem(t *testing.T) {
+	accountRepo := &rateLimit429AccountRepoStub{}
+	settingRepo := newMockSettingRepo()
+	// system disabled; group default >0 forces enabled.
+	data, _ := json.Marshal(RateLimit429CooldownSettings{Enabled: false, CooldownSeconds: 12})
+	settingRepo.data[SettingKeyRateLimit429CooldownSettings] = string(data)
+
+	settingSvc := NewSettingService(settingRepo, &config.Config{})
+	svc := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	svc.SetSettingService(settingSvc)
+
+	g := &Group{ID: 8, Hydrated: true, Platform: PlatformOpenAI, Status: "active", Default429CooldownSec: 20}
+	account := &Account{ID: 51, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	before := time.Now()
+	svc.handle429(ctxWithGroup(g), account, http.Header{}, []byte(`{"error":{"type":"rate_limit_error","message":"slow down"}}`))
+	after := time.Now()
+
+	require.Equal(t, 1, accountRepo.rateLimitCalls)
+	require.True(t, !accountRepo.lastRateLimitReset.Before(before.Add(20*time.Second)) && !accountRepo.lastRateLimitReset.After(after.Add(20*time.Second)))
+}
+
+func TestHandle429_GroupDefaultZeroFallsThroughToSystem(t *testing.T) {
+	accountRepo := &rateLimit429AccountRepoStub{}
+	settingRepo := newMockSettingRepo()
+	data, _ := json.Marshal(RateLimit429CooldownSettings{Enabled: true, CooldownSeconds: 12})
+	settingRepo.data[SettingKeyRateLimit429CooldownSettings] = string(data)
+
+	settingSvc := NewSettingService(settingRepo, &config.Config{})
+	svc := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	svc.SetSettingService(settingSvc)
+
+	g := &Group{ID: 9, Hydrated: true, Platform: PlatformOpenAI, Status: "active", Default429CooldownSec: 0}
+	account := &Account{ID: 52, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	before := time.Now()
+	svc.handle429(ctxWithGroup(g), account, http.Header{}, []byte(`{"error":{"type":"rate_limit_error","message":"slow down"}}`))
+	after := time.Now()
+
+	require.Equal(t, 1, accountRepo.rateLimitCalls)
+	require.True(t, !accountRepo.lastRateLimitReset.Before(before.Add(12*time.Second)) && !accountRepo.lastRateLimitReset.After(after.Add(12*time.Second)))
 }
 
 func TestHandle429_FallbackUsesDefaultSecondsWhenSettingServiceMissing(t *testing.T) {

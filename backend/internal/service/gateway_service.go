@@ -2126,7 +2126,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				return nil, err
 			}
 
-			result, err := s.tryAcquireAccountSlot(ctx, account.ID, s.effectiveAccountConcurrency(account))
+			result, err := s.tryAcquireAccountSlot(ctx, account.ID, s.effectiveAccountConcurrency(ctx, account))
 			if err == nil && result.Acquired {
 				// 获取槽位后检查会话限制（使用 sessionHash 作为会话标识符）
 				if !s.checkAndRegisterSession(ctx, account, sessionHash) {
@@ -2148,7 +2148,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				if waitingCount < cfg.StickySessionMaxWaiting {
 					return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 						AccountID:      account.ID,
-						MaxConcurrency: s.effectiveAccountConcurrency(account),
+						MaxConcurrency: s.effectiveAccountConcurrency(ctx, account),
 						Timeout:        cfg.StickySessionWaitTimeout,
 						MaxWaiting:     cfg.StickySessionMaxWaiting,
 					})
@@ -2156,7 +2156,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 			return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 				AccountID:      account.ID,
-				MaxConcurrency: s.effectiveAccountConcurrency(account),
+				MaxConcurrency: s.effectiveAccountConcurrency(ctx, account),
 				Timeout:        cfg.FallbackWaitTimeout,
 				MaxWaiting:     cfg.FallbackMaxWaiting,
 			})
@@ -2301,7 +2301,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
 
 						if rpmPass { // 粘性会话窗口费用+RPM 检查
-							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, s.effectiveAccountConcurrency(stickyAccount))
+							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, s.effectiveAccountConcurrency(ctx, stickyAccount))
 							if err == nil && result.Acquired {
 								// 会话数量限制检查
 								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
@@ -2333,7 +2333,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 											Account: stickyAccount,
 											WaitPlan: &AccountWaitPlan{
 												AccountID:      stickyAccountID,
-												MaxConcurrency: s.effectiveAccountConcurrency(stickyAccount),
+												MaxConcurrency: s.effectiveAccountConcurrency(ctx, stickyAccount),
 												Timeout:        cfg.StickySessionWaitTimeout,
 												MaxWaiting:     cfg.StickySessionMaxWaiting,
 											},
@@ -2352,7 +2352,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 						// 记录粘性缓存未命中的结构化日志
 						if stickyCacheMissReason != "" {
-							baseRPM := s.effectiveAccountBaseRPM(stickyAccount)
+							baseRPM := s.effectiveAccountBaseRPM(ctx, stickyAccount)
 							var currentRPM int
 							if count, ok := rpmFromPrefetchContext(ctx, stickyAccount.ID); ok {
 								currentRPM = count
@@ -2419,7 +2419,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 				// 4. 尝试获取槽位
 				for _, item := range routingAvailable {
-					result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, s.effectiveAccountConcurrency(item.account))
+					result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, s.effectiveAccountConcurrency(ctx, item.account))
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
 						if !s.checkAndRegisterSession(ctx, item.account, sessionHash) {
@@ -2447,7 +2447,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					}
 					return s.newSelectionResult(ctx, item.account, false, nil, &AccountWaitPlan{
 						AccountID:      item.account.ID,
-						MaxConcurrency: s.effectiveAccountConcurrency(item.account),
+						MaxConcurrency: s.effectiveAccountConcurrency(ctx, item.account),
 						Timeout:        cfg.StickySessionWaitTimeout,
 						MaxWaiting:     cfg.StickySessionMaxWaiting,
 					})
@@ -2505,7 +2505,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				)
 
 				if !clearSticky && platformOK && modelSupported && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
-					result, err := s.tryAcquireAccountSlot(ctx, accountID, s.effectiveAccountConcurrency(account))
+					result, err := s.tryAcquireAccountSlot(ctx, accountID, s.effectiveAccountConcurrency(ctx, account))
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
@@ -2546,7 +2546,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							)
 							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 								AccountID:      accountID,
-								MaxConcurrency: s.effectiveAccountConcurrency(account),
+								MaxConcurrency: s.effectiveAccountConcurrency(ctx, account),
 								Timeout:        cfg.StickySessionWaitTimeout,
 								MaxWaiting:     cfg.StickySessionMaxWaiting,
 							})
@@ -2670,7 +2670,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				break
 			}
 
-			result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, s.effectiveAccountConcurrency(selected.account))
+			result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, s.effectiveAccountConcurrency(ctx, selected.account))
 			if err == nil && result.Acquired {
 				// 会话数量限制检查
 				if !s.checkAndRegisterSession(ctx, selected.account, sessionHash) {
@@ -2704,7 +2704,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 		return s.newSelectionResult(ctx, acc, false, nil, &AccountWaitPlan{
 			AccountID:      acc.ID,
-			MaxConcurrency: s.effectiveAccountConcurrency(acc),
+			MaxConcurrency: s.effectiveAccountConcurrency(ctx, acc),
 			Timeout:        cfg.FallbackWaitTimeout,
 			MaxWaiting:     cfg.FallbackMaxWaiting,
 		})
@@ -2717,7 +2717,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
 
 	for _, acc := range ordered {
-		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, s.effectiveAccountConcurrency(acc))
+		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, s.effectiveAccountConcurrency(ctx, acc))
 		if err == nil && result.Acquired {
 			// 会话数量限制检查
 			if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
@@ -3046,8 +3046,8 @@ func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID in
 // 该方法是 P0-1 引入的"账号级硬限"安全垫的单一入口。所有计算
 // WaitPlan.MaxConcurrency 或调用 tryAcquireAccountSlot 的位置都应使用它，
 // 不要再直接读取 account.Concurrency。
-func (s *GatewayService) effectiveAccountConcurrency(account *Account) int {
-	return s.effectiveAccountConcurrencyWithGroup(account, nil)
+func (s *GatewayService) effectiveAccountConcurrency(ctx context.Context, account *Account) int {
+	return s.effectiveAccountConcurrencyWithGroup(account, GroupFromContext(ctx))
 }
 
 func (s *GatewayService) effectiveAccountConcurrencyWithGroup(account *Account, group *Group) int {
@@ -3064,8 +3064,8 @@ func (s *GatewayService) effectiveAccountConcurrencyWithGroup(account *Account, 
 
 // effectiveAccountBaseRPM 返回账号实际生效的 RPM 上限（per-account 优先，
 // 全局默认 gateway.account_default_rpm 兜底）。
-func (s *GatewayService) effectiveAccountBaseRPM(account *Account) int {
-	return s.effectiveAccountBaseRPMWithGroup(account, nil)
+func (s *GatewayService) effectiveAccountBaseRPM(ctx context.Context, account *Account) int {
+	return s.effectiveAccountBaseRPMWithGroup(account, GroupFromContext(ctx))
 }
 
 func (s *GatewayService) effectiveAccountBaseRPMWithGroup(account *Account, group *Group) int {
@@ -3082,8 +3082,8 @@ func (s *GatewayService) effectiveAccountBaseRPMWithGroup(account *Account, grou
 
 // EffectiveAccountConcurrency 是 effectiveAccountConcurrency 的导出版本，
 // 供 handler / 其它包查询账号实际生效的并发上限。
-func (s *GatewayService) EffectiveAccountConcurrency(account *Account) int {
-	return s.effectiveAccountConcurrency(account)
+func (s *GatewayService) EffectiveAccountConcurrency(ctx context.Context, account *Account) int {
+	return s.effectiveAccountConcurrency(ctx, account)
 }
 
 // EffectiveAccountConcurrencyFromCfg 提供给同 service 包内、没有持有 *GatewayService
@@ -3098,6 +3098,22 @@ func EffectiveAccountConcurrencyFromCfg(cfg *config.Config, account *Account) in
 	return account.EffectiveConcurrency(fleetDefault)
 }
 
+// EffectiveAccountConcurrencyFromCfgCtx 是 EffectiveAccountConcurrencyFromCfg 的
+// ctx 感知版本：额外把请求 ctx 里的分组级默认（account > group > system）纳入解析。
+// 请求路径（Gemini/Antigravity）应使用此版本；跨请求共享池（无每请求 group）继续用
+// 非 ctx 版本。
+func EffectiveAccountConcurrencyFromCfgCtx(ctx context.Context, cfg *config.Config, account *Account) int {
+	fleetDefault := 0
+	if cfg != nil {
+		fleetDefault = cfg.Gateway.AccountDefaultConcurrency
+	}
+	groupDefault := 0
+	if g := GroupFromContext(ctx); g != nil {
+		groupDefault = g.DefaultAccountConcurrency
+	}
+	return account.EffectiveConcurrencyWithGroup(groupDefault, fleetDefault)
+}
+
 // EffectiveAccountBaseRPMFromCfg 是 RPM 版本的同名辅助函数。
 func EffectiveAccountBaseRPMFromCfg(cfg *config.Config, account *Account) int {
 	fleetDefault := 0
@@ -3110,8 +3126,8 @@ func EffectiveAccountBaseRPMFromCfg(cfg *config.Config, account *Account) int {
 // EffectiveAccountBaseRPM 是 effectiveAccountBaseRPM 的导出版本，
 // 供 handler 在做 RPM gating / 计数判定时使用，避免直接读取
 // account.GetBaseRPM() 而绕过全局兜底。
-func (s *GatewayService) EffectiveAccountBaseRPM(account *Account) int {
-	return s.effectiveAccountBaseRPM(account)
+func (s *GatewayService) EffectiveAccountBaseRPM(ctx context.Context, account *Account) int {
+	return s.effectiveAccountBaseRPM(ctx, account)
 }
 
 type usageLogWindowStatsBatchProvider interface {
@@ -3330,7 +3346,7 @@ func (s *GatewayService) withRPMPrefetch(ctx context.Context, accounts []Account
 	for i := range accounts {
 		// P0-1：使用 effectiveAccountBaseRPM 兜底，确保即使账号未显式
 		// 配置 base_rpm，但全局 fleetDefault 启用时也会被预取并参与调度判定。
-		if accounts[i].IsAnthropicOAuthOrSetupToken() && s.effectiveAccountBaseRPM(&accounts[i]) > 0 {
+		if accounts[i].IsAnthropicOAuthOrSetupToken() && s.effectiveAccountBaseRPM(ctx, &accounts[i]) > 0 {
 			ids = append(ids, accounts[i].ID)
 		}
 	}
@@ -3355,7 +3371,7 @@ func (s *GatewayService) isAccountSchedulableForRPM(ctx context.Context, account
 	if !account.IsAnthropicOAuthOrSetupToken() {
 		return true
 	}
-	baseRPM := s.effectiveAccountBaseRPM(account)
+	baseRPM := s.effectiveAccountBaseRPM(ctx, account)
 	if baseRPM <= 0 {
 		return true
 	}
@@ -5416,7 +5432,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 
 		// 发送请求
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), tlsProfile)
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(ctx, account), tlsProfile)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -5499,7 +5515,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					retryReq, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					releaseRetryCtx()
 					if buildErr == nil {
-						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), tlsProfile)
+						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, s.effectiveAccountConcurrency(ctx, account), tlsProfile)
 						if retryErr == nil {
 							if retryResp.StatusCode < 400 {
 								logger.LegacyPrintf("service.gateway", "Account %d: thinking block retry succeeded (blocks downgraded)", account.ID)
@@ -5534,7 +5550,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 									retryReq2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									releaseRetryCtx2()
 									if buildErr2 == nil {
-										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, s.effectiveAccountConcurrency(account), tlsProfile)
+										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, s.effectiveAccountConcurrency(ctx, account), tlsProfile)
 										if retryErr2 == nil {
 											resp = retryResp2
 											break
@@ -5613,7 +5629,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						budgetRetryReq, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 						releaseBudgetRetryCtx()
 						if buildErr == nil {
-							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), tlsProfile)
+							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, s.effectiveAccountConcurrency(ctx, account), tlsProfile)
 							if retryErr == nil {
 								resp = budgetRetryResp
 								break
@@ -5965,7 +5981,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			return nil, err
 		}
 
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), s.tlsFPProfileService.ResolveTLSProfile(account))
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(ctx, account), s.tlsFPProfileService.ResolveTLSProfile(account))
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -6793,7 +6809,7 @@ func (s *GatewayService) executeBedrockUpstream(
 			return nil, err
 		}
 
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), nil)
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(ctx, account), nil)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -7151,7 +7167,7 @@ func (s *GatewayService) executeVertexUpstream(
 			return nil, buildErr
 		}
 
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), nil)
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(ctx, account), nil)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -11047,7 +11063,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	}
 
 	// 发送请求
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(ctx, account), s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
@@ -11076,7 +11092,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		filteredBody := FilterThinkingBlocksForRetry(body)
 		retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
 		if buildErr == nil {
-			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), s.tlsFPProfileService.ResolveTLSProfile(account))
+			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, s.effectiveAccountConcurrency(ctx, account), s.tlsFPProfileService.ResolveTLSProfile(account))
 			if retryErr == nil {
 				resp = retryResp
 				respBody, err = ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
@@ -11168,7 +11184,7 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(ctx, account), s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{

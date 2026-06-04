@@ -1155,7 +1155,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		proxyURL = account.Proxy.URL()
 	}
 	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account))
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(ctx, account))
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())

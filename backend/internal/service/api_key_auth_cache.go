@@ -91,6 +91,13 @@ type APIKeyAuthGroupSnapshot struct {
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）；用于 billing_cache_service.checkRPM 级联判断。
 	RPMLimit int `json:"rpm_limit"`
+
+	// M2 三级覆盖（account > group > system）的分组级默认值。必须随快照携带，
+	// 否则请求热路径反序列化出的 group 对象里这些值恒为零，分组默认无法生效。
+	DefaultPassthroughProfile string `json:"default_passthrough_profile,omitempty"`
+	DefaultAccountConcurrency int    `json:"default_account_concurrency,omitempty"`
+	DefaultAccountRPM         int    `json:"default_account_rpm,omitempty"`
+	Default429CooldownSec     int    `json:"default_429_cooldown_sec,omitempty"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

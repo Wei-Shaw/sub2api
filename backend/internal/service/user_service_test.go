@@ -305,6 +305,15 @@ func (m *mockBillingCache) InvalidateSubscriptionCache(context.Context, int64, i
 func (m *mockBillingCache) GetAPIKeyRateLimit(context.Context, int64) (*APIKeyRateLimitCacheData, error) {
 	return nil, nil
 }
+func (m *mockBillingCache) GetModelQuotaUsage(context.Context, int64, string) (*ModelQuotaUsage, error) {
+	return nil, nil
+}
+func (m *mockBillingCache) UpdateModelQuotaUsage(context.Context, int64, string, float64) error {
+	return nil
+}
+func (m *mockBillingCache) InvalidateModelQuotaUsage(context.Context, int64) error {
+	return nil
+}
 func (m *mockBillingCache) SetAPIKeyRateLimit(context.Context, int64, *APIKeyRateLimitCacheData) error {
 	return nil
 }

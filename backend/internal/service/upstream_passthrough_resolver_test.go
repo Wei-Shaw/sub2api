@@ -232,3 +232,73 @@ func TestResolveUpstreamPassthroughPolicy(t *testing.T) {
 		require.Equal(t, ProfileProtected, got.ProfileApplied)
 	})
 }
+
+func TestResolveUpstreamPassthroughPolicyWithGroup(t *testing.T) {
+	defaults := DefaultUpstreamPassthroughDefaults()
+
+	t.Run("group profile inherited when account has no override", func(t *testing.T) {
+		// reverse account would default to Strict; group forces transparent.
+		a := &Account{Type: AccountTypeOAuth, Platform: PlatformKiro}
+		g := &Group{ID: 1, Hydrated: true, Platform: PlatformAnthropic, Status: "active",
+			DefaultPassthroughProfile: string(ProfileTransparent)}
+		got := ResolveUpstreamPassthroughPolicyWithGroup(a, g, &defaults, GlobalOverrideAuto)
+		require.Equal(t, CategoryReverse, got.Category)
+		require.Equal(t, ProfileTransparent, got.ProfileApplied)
+		require.True(t, got.ForwardClientHeaders)
+	})
+
+	t.Run("account profile beats group profile", func(t *testing.T) {
+		a := &Account{
+			Type:     AccountTypeOAuth,
+			Platform: PlatformKiro,
+			Extra: map[string]any{
+				"upstream_passthrough": map[string]any{"profile": "protected"},
+			},
+		}
+		g := &Group{ID: 1, Hydrated: true, Platform: PlatformAnthropic, Status: "active",
+			DefaultPassthroughProfile: string(ProfileTransparent)}
+		got := ResolveUpstreamPassthroughPolicyWithGroup(a, g, &defaults, GlobalOverrideAuto)
+		require.Equal(t, ProfileProtected, got.ProfileApplied) // account wins
+	})
+
+	t.Run("account sparse toggle still layered on top of group profile", func(t *testing.T) {
+		a := &Account{
+			Type:     AccountTypeOAuth,
+			Platform: PlatformKiro,
+			Extra: map[string]any{
+				"upstream_passthrough": map[string]any{
+					"overrides": map[string]any{"forward_client_ua": true},
+				},
+			},
+		}
+		g := &Group{ID: 1, Hydrated: true, Platform: PlatformAnthropic, Status: "active",
+			DefaultPassthroughProfile: string(ProfileProtected)}
+		got := ResolveUpstreamPassthroughPolicyWithGroup(a, g, &defaults, GlobalOverrideAuto)
+		require.Equal(t, ProfileProtected, got.ProfileApplied) // group profile
+		require.True(t, got.ForwardClientUA)                   // account toggle override
+		require.False(t, got.ForwardClientHeaders)             // protected default
+	})
+
+	t.Run("invalid/empty group profile falls through to category default", func(t *testing.T) {
+		a := &Account{Type: AccountTypeOAuth, Platform: PlatformKiro}
+		g := &Group{ID: 1, Hydrated: true, Platform: PlatformAnthropic, Status: "active",
+			DefaultPassthroughProfile: "bogus"}
+		got := ResolveUpstreamPassthroughPolicyWithGroup(a, g, &defaults, GlobalOverrideAuto)
+		require.Equal(t, ProfileStrict, got.ProfileApplied) // reverse default
+	})
+
+	t.Run("nil group behaves like base resolver", func(t *testing.T) {
+		a := &Account{Type: AccountTypeOAuth, Platform: PlatformKiro}
+		got := ResolveUpstreamPassthroughPolicyWithGroup(a, nil, &defaults, GlobalOverrideAuto)
+		require.Equal(t, ProfileStrict, got.ProfileApplied)
+	})
+
+	t.Run("kill switch beats group profile", func(t *testing.T) {
+		a := &Account{Type: AccountTypeOAuth, Platform: PlatformKiro}
+		g := &Group{ID: 1, Hydrated: true, Platform: PlatformAnthropic, Status: "active",
+			DefaultPassthroughProfile: string(ProfileTransparent)}
+		got := ResolveUpstreamPassthroughPolicyWithGroup(a, g, &defaults, GlobalOverrideForceStrict)
+		require.True(t, got.GlobalOverrideActive)
+		require.Equal(t, ProfileStrict, got.ProfileApplied)
+	})
+}

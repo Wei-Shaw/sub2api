@@ -1495,7 +1495,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 
 		account := selection.Account
-		accountMaxConcurrency := h.gatewayService.EffectiveAccountConcurrency(account)
+		accountMaxConcurrency := h.gatewayService.EffectiveAccountConcurrency(ctx, account)
 		if selection.WaitPlan != nil && selection.WaitPlan.MaxConcurrency > 0 {
 			accountMaxConcurrency = selection.WaitPlan.MaxConcurrency
 		}

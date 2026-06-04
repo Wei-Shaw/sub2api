@@ -99,7 +99,9 @@ func ResolveAndStorePolicy(ctx context.Context, account *Account, settingService
 	}
 	defaults := settingService.GetUpstreamPassthroughDefaults(ctx)
 	override := settingService.GetUpstreamPassthroughGlobalOverride(ctx)
-	policy := ResolveUpstreamPassthroughPolicy(account, &defaults, override)
+	// 三级覆盖中间层：分组级默认 profile（account > group > system）。
+	// group 取认证中间件写入 ctx 的 API Key 绑定分组；账号级覆盖仍优先于 group。
+	policy := ResolveUpstreamPassthroughPolicyWithGroup(account, GroupFromContext(ctx), &defaults, override)
 	return SetUpstreamPolicyInContext(ctx, &policy)
 }
 

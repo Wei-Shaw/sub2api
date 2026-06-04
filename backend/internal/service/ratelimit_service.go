@@ -1038,6 +1038,13 @@ func (s *RateLimitService) apply429FallbackRateLimit(ctx context.Context, accoun
 }
 
 func (s *RateLimitService) get429FallbackCooldown(ctx context.Context, account *Account) (time.Duration, bool) {
+	// 三级覆盖中间层：分组级 Default429CooldownSec（group > system > 硬编码兜底）。
+	// 分组显式设置 >0 时视为「强制启用且用该冷却」，覆盖系统的 Enabled 开关。
+	if g := GroupFromContext(ctx); g != nil && g.Default429CooldownSec > 0 {
+		seconds := clampRateLimit429CooldownSeconds(g.Default429CooldownSec)
+		return time.Duration(seconds) * time.Second, true
+	}
+
 	if s.settingService != nil {
 		settings, err := s.settingService.GetRateLimit429CooldownSettings(ctx)
 		if err == nil && settings != nil {

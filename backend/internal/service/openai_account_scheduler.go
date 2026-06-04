@@ -373,7 +373,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		return nil, nil
 	}
 
-	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, s.service.effectiveAccountConcurrency(account))
+	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, s.service.effectiveAccountConcurrency(ctx, account))
 	if acquireErr == nil && result != nil && result.Acquired {
 		_ = s.service.refreshStickySessionTTL(ctx, req.GroupID, sessionHash, s.service.openAIWSSessionStickyTTL())
 		return &AccountSelectionResult{
@@ -390,7 +390,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			Account: account,
 			WaitPlan: &AccountWaitPlan{
 				AccountID:      accountID,
-				MaxConcurrency: s.service.effectiveAccountConcurrency(account),
+				MaxConcurrency: s.service.effectiveAccountConcurrency(ctx, account),
 				Timeout:        cfg.StickySessionWaitTimeout,
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 			},
@@ -809,7 +809,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrder(
 			compactBlocked = true
 			continue
 		}
-		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, fresh.ID, s.service.effectiveAccountConcurrency(fresh))
+		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, fresh.ID, s.service.effectiveAccountConcurrency(ctx, fresh))
 		if acquireErr != nil {
 			return nil, compactBlocked, acquireErr
 		}
@@ -952,7 +952,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			Account: fresh,
 			WaitPlan: &AccountWaitPlan{
 				AccountID:      fresh.ID,
-				MaxConcurrency: s.service.effectiveAccountConcurrency(fresh),
+				MaxConcurrency: s.service.effectiveAccountConcurrency(ctx, fresh),
 				Timeout:        cfg.FallbackWaitTimeout,
 				MaxWaiting:     cfg.FallbackMaxWaiting,
 			},

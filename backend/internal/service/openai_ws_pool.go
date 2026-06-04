@@ -1567,6 +1567,8 @@ func (p *openAIWSConnPool) effectiveMaxConnsByAccount(account *Account) int {
 	// P0-1：使用 EffectiveAccountConcurrencyFromCfg 兜底，让 admin 未显式设置
 	// account.Concurrency 但开启了全局 gateway.account_default_concurrency 的账号
 	// 也能拿到合理的连接池上限。
+	// 注意：WS 连接池跨请求复用，没有「每请求分组」，故此处不接入分组级默认
+	// （DefaultAccountConcurrency），只走 account > system 两级——这是语义边界，非遗漏。
 	accConc := EffectiveAccountConcurrencyFromCfg(p.cfg, account)
 	if p.modeRouterV2Enabled() {
 		if account == nil {

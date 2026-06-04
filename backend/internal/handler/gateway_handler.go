@@ -528,7 +528,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
 			// 在高并发下可能短暂超出 RPM 限制，但不会导致请求失败。
-			if account.IsAnthropicOAuthOrSetupToken() && h.gatewayService.EffectiveAccountBaseRPM(account) > 0 {
+			if account.IsAnthropicOAuthOrSetupToken() && h.gatewayService.EffectiveAccountBaseRPM(c.Request.Context(), account) > 0 {
 				if err := h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID); err != nil {
 					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
@@ -763,7 +763,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			switch umqMode {
 			case config.UMQModeSerialize:
 				// 串行模式：获取锁 + RPM 延迟 + 释放（当前行为不变）
-				baseRPM := h.gatewayService.EffectiveAccountBaseRPM(account)
+				baseRPM := h.gatewayService.EffectiveAccountBaseRPM(c.Request.Context(), account)
 				release, qErr := h.userMsgQueueHelper.AcquireWithWait(
 					c, account.ID, baseRPM, reqStream, &streamStarted,
 					h.cfg.Gateway.UserMessageQueue.WaitTimeout(),
@@ -781,7 +781,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			case config.UMQModeThrottle:
 				// 软性限速：仅施加 RPM 自适应延迟，不阻塞并发
-				baseRPM := h.gatewayService.EffectiveAccountBaseRPM(account)
+				baseRPM := h.gatewayService.EffectiveAccountBaseRPM(c.Request.Context(), account)
 				if tErr := h.userMsgQueueHelper.ThrottleWithPing(
 					c, account.ID, baseRPM, reqStream, &streamStarted,
 					h.cfg.Gateway.UserMessageQueue.WaitTimeout(),
@@ -956,7 +956,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
 			// 在高并发下可能短暂超出 RPM 限制，但不会导致请求失败。
-			if account.IsAnthropicOAuthOrSetupToken() && h.gatewayService.EffectiveAccountBaseRPM(account) > 0 {
+			if account.IsAnthropicOAuthOrSetupToken() && h.gatewayService.EffectiveAccountBaseRPM(c.Request.Context(), account) > 0 {
 				if err := h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID); err != nil {
 					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}

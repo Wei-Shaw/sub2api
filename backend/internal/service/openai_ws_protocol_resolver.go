@@ -80,6 +80,8 @@ func (r *defaultOpenAIWSProtocolResolver) Resolve(account *Account) OpenAIWSProt
 		// P0-1：用 EffectiveAccountConcurrencyFromCfg 兜底，避免 admin 未显式设置
 		// account.Concurrency 时被强制 fallback 到 HTTP；启用全局
 		// gateway.account_default_concurrency 后即可让该账号正常走 WSv2。
+		// 注意：WS 协议判定属跨请求池路径，无每请求分组，故仅 account > system 两级，
+		// 不接入分组级 DefaultAccountConcurrency（语义边界，非遗漏）。
 		if EffectiveAccountConcurrencyFromCfg(r.cfg, account) <= 0 {
 			return openAIWSHTTPDecision("account_concurrency_invalid")
 		}
