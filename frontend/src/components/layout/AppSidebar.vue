@@ -723,18 +723,21 @@ function customMenuToNavItem(item: CustomMenuItem): NavItem {
   const url = item.url ?? ''
   const isHttp = /^https?:\/\//i.test(url)
   if ((mode === 'redirect' || mode === 'newtab') && isHttp) {
+    const withParams = item.with_user_params !== false
     return {
       path: `/custom/${item.id}`,
       label: item.label,
       icon: null,
       iconSvg: item.icon_svg,
-      externalUrl: buildEmbeddedUrl(
-        url,
-        authStore.user?.id,
-        authStore.token,
-        isDark.value ? 'dark' : 'light',
-        locale.value,
-      ),
+      externalUrl: withParams
+        ? buildEmbeddedUrl(
+            url,
+            authStore.user?.id,
+            authStore.token,
+            isDark.value ? 'dark' : 'light',
+            locale.value,
+          )
+        : url,
       externalNewTab: mode === 'newtab',
     }
   }

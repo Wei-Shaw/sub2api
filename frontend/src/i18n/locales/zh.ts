@@ -5939,6 +5939,8 @@ export default {
         openModeRedirect: '当前标签页跳转',
         openModeNewTab: '新开标签页',
         openModeHint: '内嵌：在应用内以 iframe 打开；跳转：当前页面直接跳转到该网址；新开标签页：在浏览器新标签打开。Markdown 页面（md: 开头）始终在应用内打开。',
+        withUserParams: '携带用户参数',
+        withUserParamsHint: '开启后，打开网址时会附加用户上下文参数（token、user_id、theme、lang 等）；关闭则使用原始网址。',
         add: '添加菜单项',
         remove: '删除',
         moveUp: '上移',

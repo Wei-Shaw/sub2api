@@ -4911,6 +4911,24 @@
                     </p>
                   </div>
 
+                  <!-- Carry user params -->
+                  <div class="sm:col-span-2">
+                    <div class="flex items-center justify-between gap-3">
+                      <label
+                        class="text-xs font-medium text-gray-600 dark:text-gray-400"
+                      >
+                        {{ t("admin.settings.customMenu.withUserParams") }}
+                      </label>
+                      <Toggle
+                        :model-value="item.with_user_params !== false"
+                        @update:model-value="(v: boolean) => (item.with_user_params = v)"
+                      />
+                    </div>
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                      {{ t("admin.settings.customMenu.withUserParamsHint") }}
+                    </p>
+                  </div>
+
                   <!-- URL (full width) -->
                   <div class="sm:col-span-2">
                     <label
@@ -7068,6 +7086,7 @@ const form = reactive<SettingsForm>({
     url: string;
     visibility: "user" | "admin";
     open_mode: "embed" | "redirect" | "newtab";
+    with_user_params: boolean;
     sort_order: number;
   }>,
   custom_endpoints: [] as Array<{
@@ -7702,6 +7721,7 @@ function addMenuItem() {
     url: "",
     visibility: "user",
     open_mode: "embed",
+    with_user_params: true,
     sort_order: form.custom_menu_items.length,
   });
 }
@@ -7838,6 +7858,8 @@ async function loadSettings() {
         if (item.open_mode !== "redirect" && item.open_mode !== "newtab") {
           item.open_mode = "embed";
         }
+        // Legacy items without the flag default to carrying user params.
+        item.with_user_params = item.with_user_params !== false;
       });
     }
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);

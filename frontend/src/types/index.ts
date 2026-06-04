@@ -178,6 +178,12 @@ export interface CustomMenuItem {
    * - 'newtab': open the URL in a new browser tab
    */
   open_mode?: 'embed' | 'redirect' | 'newtab'
+  /**
+   * Whether to append user context params (token, user_id, theme, lang, ...)
+   * to the URL when opening it. Defaults to true (undefined is treated as true)
+   * to preserve legacy behavior.
+   */
+  with_user_params?: boolean
   sort_order: number
 }
 
