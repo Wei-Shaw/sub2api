@@ -280,8 +280,9 @@ REDACTED
 	repo := &groupRepoStubForAdmin{getByID: existingGroupREDACTED
 	svc := &adminServiceImpl{groupRepo: repoREDACTED
 
+	updatedDesc := "updated"
 	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
-		Description: "updated",
+		Description: &updatedDesc,
 REDACTED)
 REDACTED
 	require.NotNil(t, group)
@@ -289,6 +290,45 @@ REDACTED
 	require.True(t, repo.updated.AllowImageGeneration)
 	require.True(t, repo.updated.ImageRateIndependent)
 	require.InDelta(t, 0.5, repo.updated.ImageRateMultiplier, 1e-12)
+REDACTED
+
+func TestAdminService_UpdateGroup_ClearsDescriptionWhenEmptyString(t *testing.T) {
+	existingGroup := &Group{
+		ID:          1,
+		Name:        "existing-group",
+		Description: "Auto-created default group",
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
+REDACTED
+	repo := &groupRepoStubForAdmin{getByID: existingGroupREDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	empty := ""
+	_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		Description: &empty,
+REDACTED)
+REDACTED
+	require.NotNil(t, repo.updated)
+	require.Equal(t, "", repo.updated.Description, "empty string should clear description")
+REDACTED
+
+func TestAdminService_UpdateGroup_PreservesDescriptionWhenNil(t *testing.T) {
+	existingGroup := &Group{
+		ID:          1,
+		Name:        "existing-group",
+		Description: "keep me",
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
+REDACTED
+	repo := &groupRepoStubForAdmin{getByID: existingGroupREDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		Description: nil,
+REDACTED)
+REDACTED
+	require.NotNil(t, repo.updated)
+	require.Equal(t, "keep me", repo.updated.Description, "nil should preserve existing description")
 REDACTED
 
 func TestAdminService_UpdateGroup_RejectsNegativeImageRateMultiplier(t *testing.T) {
