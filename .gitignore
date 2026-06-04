@@ -27,6 +27,8 @@ vendor/
 
 # Go 编译缓存
 backend/.gocache/
+backend/.tmp-go-build-cache/
+backend/.tmp-go-mod-cache/
 
 # ===================
 # Node.js / Vue 前端
