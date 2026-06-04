@@ -320,6 +320,11 @@ gateway:
       queue: 0.7
       error_rate: 0.8
       ttft: 0.5
+      # remaining_usage: 七日(7d)剩余用量权重，剩余越多得分越高（剩余配额多的账号优先调度）。
+      # 仅在 remaining_usage_enabled=true 时生效。
+      remaining_usage: 1.0
+      # remaining_usage_enabled: 是否让“七日剩余用量”参与调度打分，默认关闭。
+      remaining_usage_enabled: false
   # OpenAI HTTP upstream protocol strategy.
   # OpenAI HTTP 上游协议策略（默认 HTTP/2；代理明确不兼容时可临时回退 HTTP/1.1）。
   openai_http2:

@@ -1958,3 +1958,81 @@ func TestDefaultOpenAIAccountScheduler_IsAccountTransportCompatible_Branches(t *
 func int64PtrForTest(v int64) *int64 {
 	return &v
 }
+
+// TestOpenAIAccountScheduler_RemainingUsageWeight 验证“七日剩余用量”打分因子：
+// 关闭时(默认)不影响打分；开启时剩余越多得分越高；无 7d 数据时取中性 0.5。
+func TestOpenAIAccountScheduler_RemainingUsageWeight(t *testing.T) {
+	baseWeights := func(enabled bool) config.GatewayOpenAIWSSchedulerScoreWeights {
+		return config.GatewayOpenAIWSSchedulerScoreWeights{
+			Priority:              1.0,
+			Load:                  1.0,
+			Queue:                 0.7,
+			ErrorRate:             0.8,
+			TTFT:                  0.5,
+			RemainingUsage:        1.0,
+			RemainingUsageEnabled: enabled,
+		}
+	}
+	newScheduler := func(enabled bool) *defaultOpenAIAccountScheduler {
+		svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
+			OpenAIWS: config.GatewayOpenAIWSConfig{SchedulerScoreWeights: baseWeights(enabled)},
+		}}}
+		return newDefaultOpenAIAccountScheduler(svc, nil).(*defaultOpenAIAccountScheduler)
+	}
+	scoreByID := func(plan openAIAccountLoadPlan) map[int64]float64 {
+		m := make(map[int64]float64, len(plan.candidates))
+		for _, c := range plan.candidates {
+			m[c.account.ID] = c.score
+		}
+		return m
+	}
+	// 两个除 7d 用量外完全相同的 OpenAI 账号：highRemaining=10% used，lowRemaining=90% used。
+	mkAccounts := func() []*Account {
+		high := &Account{ID: 7001, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Extra: map[string]any{"codex_7d_used_percent": 10.0}}
+		low := &Account{ID: 7002, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Extra: map[string]any{"codex_7d_used_percent": 90.0}}
+		return []*Account{high, low}
+	}
+	req := OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.1"}
+	loadMap := map[int64]*AccountLoadInfo{}
+
+	t.Run("disabled keeps scores equal (zero regression)", func(t *testing.T) {
+		plan := newScheduler(false).buildOpenAIAccountLoadPlan(req, mkAccounts(), loadMap)
+		s := scoreByID(plan)
+		require.InDelta(t, s[7001], s[7002], 1e-9, "7d remaining must not affect score when disabled")
+	})
+
+	t.Run("enabled prefers account with more remaining", func(t *testing.T) {
+		plan := newScheduler(true).buildOpenAIAccountLoadPlan(req, mkAccounts(), loadMap)
+		s := scoreByID(plan)
+		require.Greater(t, s[7001], s[7002], "more 7d remaining must score higher when enabled")
+		// factor 差 = (1-0.10) - (1-0.90) = 0.8，权重 1.0
+		require.InDelta(t, 0.8, s[7001]-s[7002], 1e-9)
+	})
+
+	t.Run("enabled with no 7d signal is neutral", func(t *testing.T) {
+		high := &Account{ID: 7101, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Extra: map[string]any{"codex_7d_used_percent": 10.0}} // factor 0.9
+		noData := &Account{ID: 7102, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0}                                                     // 无 Extra -> 中性 0.5
+		low := &Account{ID: 7103, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Extra: map[string]any{"codex_7d_used_percent": 90.0}}  // factor 0.1
+		plan := newScheduler(true).buildOpenAIAccountLoadPlan(req, []*Account{high, noData, low}, loadMap)
+		s := scoreByID(plan)
+		require.Greater(t, s[7101], s[7102], "known high-remaining beats no-data")
+		require.Greater(t, s[7102], s[7103], "no-data (neutral) beats known low-remaining")
+		require.InDelta(t, 0.4, s[7102]-s[7103], 1e-9) // 0.5 - 0.1
+	})
+
+	t.Run("enabled with expired 7d window is neutral", func(t *testing.T) {
+		expiredResetAt := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+		high := &Account{ID: 7201, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Extra: map[string]any{"codex_7d_used_percent": 10.0}} // factor 0.9
+		expired := &Account{ID: 7202, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Extra: map[string]any{
+			"codex_7d_used_percent": 90.0,
+			"codex_7d_reset_at":     expiredResetAt,
+		}} // 过期窗口 -> 中性 0.5
+		low := &Account{ID: 7203, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Extra: map[string]any{"codex_7d_used_percent": 90.0}} // factor 0.1
+
+		plan := newScheduler(true).buildOpenAIAccountLoadPlan(req, []*Account{high, expired, low}, loadMap)
+		s := scoreByID(plan)
+		require.Greater(t, s[7201], s[7202], "known high-remaining beats expired-window neutral")
+		require.Greater(t, s[7202], s[7203], "expired-window neutral beats known low-remaining")
+		require.InDelta(t, 0.4, s[7202]-s[7203], 1e-9) // 0.5 - 0.1
+	})
+}

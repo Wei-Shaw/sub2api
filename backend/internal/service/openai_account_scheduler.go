@@ -681,6 +681,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 	plan.loadSkew = calcLoadSkewByMoments(loadRateSum, loadRateSumSquares, len(candidates))
 
 	weights := s.service.openAIWSSchedulerWeights()
+	now := time.Now()
 	for i := range candidates {
 		item := &candidates[i]
 		priorityFactor := 1.0
@@ -700,6 +701,17 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 			weights.Queue*queueFactor +
 			weights.ErrorRate*errorFactor +
 			weights.TTFT*ttftFactor
+
+		// 七日剩余用量因子（可选，默认关闭）：剩余越多得分越高。
+		// 无该信号或检测到窗口已重置时取中性 0.5，避免对无数据账号过度加成/惩罚。
+		if weights.RemainingUsageEnabled {
+			remainingUsageFactor := 0.5
+			if used, ok := resolveAccountExtraNumber(item.account.Extra, "codex_7d_used_percent"); ok &&
+				!openAIQuotaWindowReset(item.account.Extra, "7d", now) {
+				remainingUsageFactor = 1 - clamp01(used/100.0)
+			}
+			item.score += weights.RemainingUsage * remainingUsageFactor
+		}
 	}
 	plan.candidates = candidates
 
@@ -1315,19 +1327,23 @@ func (s *OpenAIGatewayService) openAIWSLBTopK() int {
 func (s *OpenAIGatewayService) openAIWSSchedulerWeights() GatewayOpenAIWSSchedulerScoreWeightsView {
 	if s != nil && s.cfg != nil {
 		return GatewayOpenAIWSSchedulerScoreWeightsView{
-			Priority:  s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority,
-			Load:      s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load,
-			Queue:     s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue,
-			ErrorRate: s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate,
-			TTFT:      s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT,
+			Priority:              s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority,
+			Load:                  s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load,
+			Queue:                 s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue,
+			ErrorRate:             s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate,
+			TTFT:                  s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT,
+			RemainingUsage:        s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.RemainingUsage,
+			RemainingUsageEnabled: s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.RemainingUsageEnabled,
 		}
 	}
 	return GatewayOpenAIWSSchedulerScoreWeightsView{
-		Priority:  1.0,
-		Load:      1.0,
-		Queue:     0.7,
-		ErrorRate: 0.8,
-		TTFT:      0.5,
+		Priority:              1.0,
+		Load:                  1.0,
+		Queue:                 0.7,
+		ErrorRate:             0.8,
+		TTFT:                  0.5,
+		RemainingUsage:        1.0,
+		RemainingUsageEnabled: false,
 	}
 }
 
@@ -1337,6 +1353,9 @@ type GatewayOpenAIWSSchedulerScoreWeightsView struct {
 	Queue     float64
 	ErrorRate float64
 	TTFT      float64
+	// RemainingUsage 七日剩余用量权重；仅在 RemainingUsageEnabled=true 时生效。
+	RemainingUsage        float64
+	RemainingUsageEnabled bool
 }
 
 func clamp01(value float64) float64 {

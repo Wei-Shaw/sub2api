@@ -955,6 +955,11 @@ type GatewayOpenAIWSSchedulerScoreWeights struct {
 	Queue     float64 `mapstructure:"queue"`
 	ErrorRate float64 `mapstructure:"error_rate"`
 	TTFT      float64 `mapstructure:"ttft"`
+	// RemainingUsage 七日(7d)剩余用量权重：剩余越多得分越高。
+	// 仅在 RemainingUsageEnabled=true 时参与打分。
+	RemainingUsage float64 `mapstructure:"remaining_usage"`
+	// RemainingUsageEnabled 是否让“七日剩余用量”参与调度打分，默认关闭。
+	RemainingUsageEnabled bool `mapstructure:"remaining_usage_enabled"`
 }
 
 // GatewayUsageRecordConfig 使用量记录异步队列配置
@@ -1849,6 +1854,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.queue", 0.7)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.error_rate", 0.8)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.ttft", 0.5)
+	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.remaining_usage", 1.0)
+	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.remaining_usage_enabled", false)
 	// OpenAI HTTP upstream protocol strategy
 	viper.SetDefault("gateway.openai_http2.enabled", true)
 	viper.SetDefault("gateway.openai_http2.allow_proxy_fallback_to_http1", true)
@@ -2624,7 +2631,8 @@ func (c *Config) Validate() error {
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.Load < 0 ||
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.Queue < 0 ||
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate < 0 ||
-		c.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT < 0 {
+		c.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT < 0 ||
+		c.Gateway.OpenAIWS.SchedulerScoreWeights.RemainingUsage < 0 {
 		return fmt.Errorf("gateway.openai_ws.scheduler_score_weights.* must be non-negative")
 	}
 	weightSum := c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority +
@@ -2632,6 +2640,9 @@ func (c *Config) Validate() error {
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.Queue +
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate +
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT
+	if c.Gateway.OpenAIWS.SchedulerScoreWeights.RemainingUsageEnabled {
+		weightSum += c.Gateway.OpenAIWS.SchedulerScoreWeights.RemainingUsage
+	}
 	if weightSum <= 0 {
 		return fmt.Errorf("gateway.openai_ws.scheduler_score_weights must not all be zero")
 	}

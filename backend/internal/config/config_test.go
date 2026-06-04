@@ -1588,6 +1588,19 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 		require.Equal(t, 7200, cfg.Gateway.OpenAIWS.StickyResponseIDTTLSeconds)
 	})
 
+	t.Run("scheduler_score_weights 可只启用 remaining_usage", func(t *testing.T) {
+		cfg := buildValid(t)
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.RemainingUsage = 1
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.RemainingUsageEnabled = true
+
+		require.NoError(t, cfg.Validate())
+	})
+
 	cases := []struct {
 		name    string
 		mutate  func(*Config)
