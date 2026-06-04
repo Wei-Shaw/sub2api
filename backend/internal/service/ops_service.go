@@ -338,6 +338,50 @@ func (s *OpsService) GetErrorLogs(ctx context.Context, filter *OpsErrorLogFilter
 	return result, nil
 }
 
+// ListUserErrorRequests 返回某个用户自己的错误请求（精简脱敏）。
+// 强制：仅当前用户、View=all（含业务限流/余额类）、排除 count_tokens 噪声。
+func (s *OpsService) ListUserErrorRequests(ctx context.Context, userID int64, filter *OpsErrorLogFilter) (*UserErrorRequestList, error) {
+	if filter == nil {
+		filter = &OpsErrorLogFilter{}
+	}
+	f := *filter // 拷贝快照，避免原地篡改调用方的 filter（slice 字段只读，浅拷贝足够）
+	filter = &f
+	uid := userID
+	filter.UserID = &uid
+	// 用户侧放宽归属:纳入「删 key 后认证失败」(user_id=NULL,靠 deleted_key_owner 归因)的记录。
+	filter.MatchDeletedKeyOwner = true
+	// APIKeyID 透传：保留 handler 传入的值。安全由 buildOpsErrorLogsWhere 的
+	// "user_id = 自己 AND api_key_id = X" 双重约束保证——传入他人 key 只会得到空集，无泄露。
+	filter.View = "all"
+	filter.ExcludeCountTokens = true
+	filter.ModelFuzzy = true // 用户端模型过滤走 ILIKE 模糊；管理端不设此字段，保持精确
+	// 防御：用户端不接受这些 admin-only / 特殊维度
+	filter.UserQuery = ""
+	filter.Owner = ""
+	filter.Source = ""
+	// 清空 Phase 是防御:Phase 是单值特殊字段,仅当其 == "upstream" 时 buildOpsErrorLogsWhere 才跳过 status>=400 子句。
+	// 用户端一律改走 category→ErrorPhasesAny/ErrorTypesAny(纯 ANY 过滤,不影响 status>=400 子句),
+	// 因此 recovered upstream(error_phase='upstream' 但 status<400,最终成功返回)记录对用户不可见——符合预期。
+	filter.Phase = ""
+
+	list, err := s.opsRepo.ListErrorLogs(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*UserErrorRequest, 0, len(list.Errors))
+	for _, e := range list.Errors {
+		if r := ToUserErrorRequest(e); r != nil {
+			items = append(items, r)
+		}
+	}
+	return &UserErrorRequestList{
+		Items:    items,
+		Total:    list.Total,
+		Page:     list.Page,
+		PageSize: list.PageSize,
+	}, nil
+}
+
 func (s *OpsService) GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorLogDetail, error) {
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return nil, err
@@ -353,6 +397,31 @@ func (s *OpsService) GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorLo
 		return nil, infraerrors.InternalServer("OPS_ERROR_LOAD_FAILED", "Failed to load ops error log").WithCause(err)
 	}
 	return detail, nil
+}
+
+// GetUserErrorRequestDetail 返回某用户自己某条错误请求的脱敏详情(含 error_body)。
+// 安全:强制按用户归属校验;非本人记录一律返回 NotFound(不泄露存在性)。
+func (s *OpsService) GetUserErrorRequestDetail(ctx context.Context, userID, id int64) (*UserErrorRequestDetail, error) {
+	if s.opsRepo == nil {
+		return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
+	}
+	if id <= 0 {
+		return nil, infraerrors.BadRequest("OPS_ERROR_INVALID_ID", "invalid error id")
+	}
+	detail, err := s.opsRepo.GetErrorLogByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
+		}
+		return nil, infraerrors.InternalServer("OPS_ERROR_LOAD_FAILED", "Failed to load ops error log").WithCause(err)
+	}
+	// 归属:直接归属(user_id)或经「已删除 key 归因」(deleted_key_owner_user_id)二者之一即可。
+	ownedDirectly := detail.UserID != nil && *detail.UserID == userID
+	ownedViaDeletedKey := detail.DeletedKeyOwnerUserID != nil && *detail.DeletedKeyOwnerUserID == userID
+	if !ownedDirectly && !ownedViaDeletedKey {
+		return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
+	}
+	return ToUserErrorRequestDetail(detail), nil
 }
 
 // LookupDeletedKeyAudit 按明文 key 反查已删除 key 的原所有者;未命中或未启用返回 (nil, nil)。

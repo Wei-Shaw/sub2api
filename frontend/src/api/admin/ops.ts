@@ -1084,6 +1084,8 @@ export type OpsErrorListQueryParams = {
   platform?: string
   group_id?: number | null
   account_id?: number | null
+  user_id?: number
+  api_key_id?: number
 
   phase?: string
   error_owner?: string

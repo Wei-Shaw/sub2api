@@ -64,6 +64,10 @@ type OpsErrorLog struct {
 	RequestedModel   string `json:"requested_model"`
 	UpstreamModel    string `json:"upstream_model"`
 	RequestType      *int16 `json:"request_type"`
+
+	// 关联 api_key 名称（LEFT JOIN api_keys 取得；软删只覆盖 key 列，name 保留，故已删 key 仍有原名）。
+	APIKeyName    string `json:"api_key_name,omitempty"`
+	APIKeyDeleted bool   `json:"api_key_deleted,omitempty"`
 }
 
 type OpsErrorLogDetail struct {
@@ -108,7 +112,7 @@ type OpsErrorLogFilter struct {
 
 	StatusCodes      []int
 	StatusCodesOther bool
-	Phase            string
+	Phase            string // Special: Phase=="upstream" bypasses status>=400 clause; do not set together with ErrorPhasesAny.
 	Owner            string
 	Source           string
 	Resolved         *bool
@@ -118,6 +122,32 @@ type OpsErrorLogFilter struct {
 	// Optional correlation keys for exact matching.
 	RequestID       string
 	ClientRequestID string
+
+	// User-scoped filters (used by the user-facing error requests endpoint and
+	// by admin drill-down from the usage page).
+	UserID   *int64
+	APIKeyID *int64
+
+	// MatchDeletedKeyOwner: 用户侧专用。UserID 设置且为 true 时,归属从 user_id=UserID
+	// 放宽为 (user_id=UserID OR deleted_key_owner_user_id=UserID),使原所有者能看到
+	// 自己「已删除 key 认证失败」的记录。admin 路径不设此开关 → 行为不变。
+	MatchDeletedKeyOwner bool
+
+	// Model matches against requested_model first, then model.
+	Model string
+	// ModelFuzzy 为 true 时 Model 走 ILIKE 模糊匹配（仅用户端启用）；false（默认）保持精确 =，管理端语义不变。
+	ModelFuzzy bool
+
+	// ExcludeCountTokens drops count_tokens probe errors (is_count_tokens=true).
+	ExcludeCountTokens bool
+
+	// ErrorPhasesAny / ErrorTypesAny add plain ANY() filters WITHOUT touching the
+	// special-cased single `Phase` field (only Phase=="upstream" bypasses the status>=400 clause).
+	// NOTE: these ANY filters do NOT bypass status>=400; records with error_phase='upstream'
+	// but status_code<400 (recovered upstream errors) remain excluded.
+	// Used to map user-facing coarse categories to backend conditions.
+	ErrorPhasesAny []string
+	ErrorTypesAny  []string
 
 	// View controls error categorization for list endpoints.
 	// - errors: show actionable errors (exclude business-limited / 429 / 529)
