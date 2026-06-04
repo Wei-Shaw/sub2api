@@ -218,7 +218,7 @@ func TestResolveOrderPublicByResumeTokenReturnsFrontendContractFields(t *testing
 	})
 	require.NoError(t, err)
 
-	configSvc := service.NewPaymentConfigService(client, nil, []byte("0123456789abcdef0123456789abcdef"))
+	configSvc := service.NewPaymentConfigService(client, nil, []byte("0123456789abcdef0123456789abcdef"), nil)
 	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, configSvc, nil, nil, nil)
 	h := NewPaymentHandler(paymentSvc, nil, nil)
 
@@ -306,7 +306,7 @@ func TestResolveOrderPublicByResumeTokenReturnsBadRequestForMismatchedToken(t *t
 	})
 	require.NoError(t, err)
 
-	configSvc := service.NewPaymentConfigService(client, nil, []byte("0123456789abcdef0123456789abcdef"))
+	configSvc := service.NewPaymentConfigService(client, nil, []byte("0123456789abcdef0123456789abcdef"), nil)
 	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, configSvc, nil, nil, nil)
 	h := NewPaymentHandler(paymentSvc, nil, nil)
 

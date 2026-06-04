@@ -8,9 +8,16 @@
         <!-- Tab Switcher (hide during payment and subscription confirm) -->
         <div v-if="tabs.length > 1 && paymentPhase === 'select' && !selectedPlan" class="flex space-x-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-800">
           <button v-for="tab in tabs" :key="tab.key"
-            class="flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all"
+            class="relative flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all"
             :class="activeTab === tab.key ? 'bg-white text-gray-900 shadow dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'"
-            @click="activeTab = tab.key">{{ tab.label }}</button>
+            @click="onTabClicked(tab.key)">
+            {{ tab.label }}
+            <span
+              v-if="tab.key === 'recharge' && showRechargeTabDot"
+              class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
+              :aria-label="t('payment.promo.redDotAria')"
+            ></span>
+          </button>
         </div>
         <!-- Payment in progress (shared by recharge and subscription) -->
         <template v-if="paymentPhase === 'paying'">
@@ -41,12 +48,39 @@
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
             <template v-else>
+            <!-- 充值赠送活动 banner（活动开启 + 在窗口内时由后端下发） -->
+            <div
+              v-if="rechargePromo"
+              class="card border border-amber-200 bg-amber-50 p-4 dark:border-amber-700/40 dark:bg-amber-900/20"
+            >
+              <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
+                {{ promoValidUntilLabel
+                    ? t('payment.promo.banner', { validUntil: promoValidUntilLabel })
+                    : t('payment.promo.bannerNoExpiry') }}
+              </p>
+              <p
+                v-if="promoTiers.length"
+                class="mt-1 text-xs text-amber-700 dark:text-amber-300"
+              >
+                <span v-for="(tier, idx) in promoTiers" :key="tier.min_amount">
+                  {{ t('payment.promo.tier', {
+                    minAmount: tier.min_amount,
+                    rate: Math.round(tier.bonus_rate * 100),
+                  }) }}<span v-if="idx < promoTiers.length - 1">{{ t('payment.promo.tiersJoiner') }}</span>
+                </span>
+
+                <p>{{ t('payment.promo.customHint') }}</p>
+              </p>
+            </div>
             <div class="card p-6">
               <AmountInput
                 v-model="amount"
                 :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
                 :min="globalMinAmount"
                 :max="globalMaxAmount"
+                :bonus-tiers="promoTiers"
+                :show-red-dots="showPromoRedDots"
+                @bonus-preset-clicked="onPromoPresetClicked"
               />
               <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
             </div>
@@ -74,6 +108,23 @@
                 <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
                   <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
+                </div>
+                <!-- 赠送：仅当当前金额命中赠送档位时显示 -->
+                <div
+                  v-if="currentBonus > 0"
+                  class="flex justify-between"
+                  :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 && balanceRechargeMultiplier === 1 }"
+                >
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.promo.bonusLine') }}</span>
+                  <span class="font-medium text-amber-600 dark:text-amber-400">+${{ currentBonus.toFixed(2) }}</span>
+                </div>
+                <!-- 合计入账：creditedBalance + bonus；仅有赠送时才有意义 -->
+                <div
+                  v-if="currentBonus > 0"
+                  class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600"
+                >
+                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.promo.totalCredited') }}</span>
+                  <span class="text-lg font-bold text-amber-600 dark:text-amber-400">${{ totalCredited.toFixed(2) }}</span>
                 </div>
                 <p v-if="balanceRechargeMultiplier !== 1" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
                   {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
@@ -255,7 +306,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, RechargePromo } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
@@ -279,6 +330,7 @@ import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/paym
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
+import { useRechargePromoDot } from '@/composables/useRechargePromoDot'
 
 const i18n = useI18n()
 const { t } = i18n
@@ -496,6 +548,92 @@ const balanceRechargeMultiplier = computed(() => {
   return multiplier > 0 ? multiplier : 1
 })
 const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+
+/**
+ * 充值赠送活动；后端只在活动开启 + 当前时间在窗口内时下发，否则字段缺失。
+ * 与 balance_recharge_multiplier 是两个完全独立的概念（一个加余额、一个作用于消费），
+ * 这里只读后端结果、不再二次判断时间窗。
+ */
+const rechargePromo = computed<RechargePromo | null>(() => checkout.value?.recharge_promo ?? null)
+
+/** AmountInput 等子组件需要的 tier 数组；活动不存在时空数组以便组件无脑渲染。 */
+const promoTiers = computed(() => rechargePromo.value?.tiers ?? [])
+
+/**
+ * 计算 `payAmount` 应得的赠送金额（与后端 ResolveRechargeBonus 对齐）：
+ * 升序 tiers 中最高匹配档命中（档位匹配仍以 payAmount 为准），
+ * bonus = ceil(payAmount × multiplier × bonusRate × 100) / 100。
+ *
+ * 注意：赠送基数是 credited_balance（payAmount × multiplier），不是裸 payAmount——
+ * 这与后端公式严格一致，避免前后端预览出现 0.01 级偏差。
+ */
+function bonusForAmount(payAmount: number): number {
+  const promo = rechargePromo.value
+  if (!promo || !promo.enabled || promo.tiers.length === 0) return 0
+  if (!Number.isFinite(payAmount) || payAmount <= 0) return 0
+  let rate = 0
+  for (const tier of promo.tiers) {
+    if (payAmount >= tier.min_amount) {
+      rate = tier.bonus_rate
+    } else {
+      break
+    }
+  }
+  if (rate <= 0) return 0
+  return Math.ceil(payAmount * balanceRechargeMultiplier.value * rate * 100) / 100
+}
+
+/** 当前金额的赠送，用于 breakdown 行渲染。 */
+const currentBonus = computed(() => bonusForAmount(validAmount.value))
+
+/** 合计入账 = credited_balance + bonus（两个相加，绝不相乘）。 */
+const totalCredited = computed(() => Math.round((creditedAmount.value + currentBonus.value) * 100) / 100)
+
+const promoDot = useRechargePromoDot({
+  userId: computed(() => user.value?.id ?? null),
+  promo: rechargePromo,
+})
+
+/** Tab 红点：仅活动开启 + 用户未 dismiss 时显示。 */
+const showRechargeTabDot = computed(() => promoDot.shouldShow.value)
+
+/** AmountInput 的预置金额红点开关；与 tab 红点共用 dismiss 状态。 */
+const showPromoRedDots = computed(() => promoDot.shouldShow.value)
+
+/** 把 ISO valid_until 渲染成本地化日期；缺省时回退空串。 */
+const promoValidUntilLabel = computed(() => {
+  const raw = rechargePromo.value?.valid_until
+  if (!raw) return ''
+  try {
+    const d = new Date(raw)
+    if (isNaN(d.getTime())) return raw
+    return d.toLocaleString()
+  } catch {
+    return raw
+  }
+})
+
+function onRechargeTabClicked() {
+  // 切到充值 Tab 即视为"看见活动"，按需求一次性 dismiss
+  if (promoDot.shouldShow.value) {
+    promoDot.dismiss()
+  }
+}
+
+/** Tab 切换入口：除了普通赋值，还顺便处理充值红点 dismiss。 */
+function onTabClicked(key: 'recharge' | 'subscription') {
+  activeTab.value = key
+  if (key === 'recharge') {
+    onRechargeTabClicked()
+  }
+}
+
+function onPromoPresetClicked(_amount: number) {
+  // 点击命中赠送档位的金额即 dismiss 红点（即使不进入提交流程）
+  if (promoDot.shouldShow.value) {
+    promoDot.dismiss()
+  }
+}
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -1018,6 +1156,9 @@ onMounted(async () => {
   try {
     const res = await paymentAPI.getCheckoutInfo()
     checkout.value = res.data
+    // 把活动配置同步到 payment store，让侧边栏 /purchase 红点直接复用，
+    // 避免两侧各自再发一次 checkout-info。
+    paymentStore.setRechargePromo(res.data?.recharge_promo ?? null)
     if (enabledMethods.value.length) {
       const order: readonly string[] = METHOD_ORDER
       const sorted = [...enabledMethods.value].sort((a, b) => {

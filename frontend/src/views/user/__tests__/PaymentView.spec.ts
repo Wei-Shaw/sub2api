@@ -56,6 +56,9 @@ vi.mock('@/stores/auth', () => ({
 vi.mock('@/stores/payment', () => ({
   usePaymentStore: () => ({
     createOrder,
+    // PaymentView.onMounted 会调用 setRechargePromo 把活动同步给侧边栏；
+    // 这里给个 noop 防止 TypeError 让整个 onMounted 早 throw 而吞掉后续断言。
+    setRechargePromo: () => {},
   }),
 }))
 

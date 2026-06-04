@@ -16,6 +16,7 @@ func RegisterPaymentRoutes(
 	paymentHandler *handler.PaymentHandler,
 	webhookHandler *handler.PaymentWebhookHandler,
 	adminPaymentHandler *admin.PaymentHandler,
+	adminRechargePromoHandler *admin.RechargePromoHandler,
 	jwtAuth middleware.JWTAuthMiddleware,
 	adminAuth middleware.AdminAuthMiddleware,
 	settingService *service.SettingService,
@@ -102,6 +103,21 @@ func RegisterPaymentRoutes(
 			providers.POST("", adminPaymentHandler.CreateProvider)
 			providers.PUT("/:id", adminPaymentHandler.UpdateProvider)
 			providers.DELETE("/:id", adminPaymentHandler.DeleteProvider)
+		}
+	}
+
+	// --- Admin recharge promo activities (admin auth) ---
+	// 充值赠送活动以独立列表 CRUD 管理（不再嵌在系统设置里）。
+	if adminRechargePromoHandler != nil {
+		promoGroup := v1.Group("/admin/recharge-promos")
+		promoGroup.Use(gin.HandlerFunc(adminAuth))
+		{
+			promoGroup.GET("", adminRechargePromoHandler.List)
+			promoGroup.POST("", adminRechargePromoHandler.Create)
+			promoGroup.GET("/:id", adminRechargePromoHandler.Get)
+			promoGroup.PUT("/:id", adminRechargePromoHandler.Update)
+			promoGroup.DELETE("/:id", adminRechargePromoHandler.Delete)
+			promoGroup.POST("/:id/toggle", adminRechargePromoHandler.Toggle)
 		}
 	}
 }

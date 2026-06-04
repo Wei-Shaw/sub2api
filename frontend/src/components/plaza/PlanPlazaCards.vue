@@ -1,11 +1,5 @@
 <template>
   <div>
-    <!-- Toolbar -->
-    <div class="mb-4 flex items-center justify-end gap-3">
-      <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('plaza.common.currency') }}</span>
-      <CurrencyToggle :model-value="currencyDisplay" @update:model-value="emit('currency-change', $event)" />
-    </div>
-
     <div v-if="loading" class="rounded-2xl border border-gray-200/70 bg-white/80 p-12 text-center text-sm text-gray-500 dark:border-dark-700/70 dark:bg-dark-900/60 dark:text-dark-400">
       {{ t('common.loading') }}
     </div>
@@ -36,13 +30,13 @@
 
         <div class="mb-4 flex items-baseline gap-2">
           <span class="text-3xl font-bold text-gray-900 dark:text-white">
-            {{ formatCny(card.price, 2) }}
+            {{ formatCny(card.price) }}
           </span>
           <span
             v-if="card.original_price !== undefined && card.original_price > card.price"
             class="text-sm text-gray-400 line-through"
           >
-            {{ formatCny(card.original_price, 2) }}
+            {{ formatCny(card.original_price) }}
           </span>
         </div>
 
@@ -117,26 +111,33 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PlazaPlanCard } from '@/api/plaza'
-import type { PlazaCurrency } from '@/composables/useCurrencyToggle'
 import { useAuthRedirect } from '@/composables/useAuthRedirect'
 import { useAppStore } from '@/stores/app'
-import CurrencyToggle from './CurrencyToggle.vue'
 
 const props = defineProps<{
   cards: PlazaPlanCard[]
   loading: boolean
-  currencyDisplay: PlazaCurrency
-  /** Money formatter for CNY-native plan prices, wired by the parent. */
-  formatCny: (amount: number, digits?: number) => string
-}>()
-
-const emit = defineEmits<{
-  (e: 'currency-change', c: PlazaCurrency): void
 }>()
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const { gotoOrLogin } = useAuthRedirect()
+
+/**
+ * 套餐价格固定按 CNY 展示，不参与 plaza 模型表的 USD/CNY 切换。
+ *
+ * 后端 `PlazaPlanCard.price` 的 native currency 已是 CNY（`currency_meta.plan_native === 'CNY'`），
+ * 这里只做本地化数字格式化，附加 ¥ 符号。`min:0, max:2` 与 `useCurrencyToggle.format` 保持一致，
+ * 整数金额（如 ¥99）不强行补 .00，含小数则最多保留两位。
+ */
+function formatCny(amount: number): string {
+  if (!Number.isFinite(amount)) return '¥0'
+  const formatted = amount.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })
+  return `¥${formatted}`
+}
 
 /**
  * Hide the Buy CTA entirely when payments are globally disabled.

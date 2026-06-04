@@ -154,6 +154,75 @@ func (_u *PaymentOrderUpdate) AddFeeRate(v float64) *PaymentOrderUpdate {
 	return _u
 }
 
+// SetBonusAmount sets the "bonus_amount" field.
+func (_u *PaymentOrderUpdate) SetBonusAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetBonusAmount()
+	_u.mutation.SetBonusAmount(v)
+	return _u
+}
+
+// SetNillableBonusAmount sets the "bonus_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableBonusAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetBonusAmount(*v)
+	}
+	return _u
+}
+
+// AddBonusAmount adds value to the "bonus_amount" field.
+func (_u *PaymentOrderUpdate) AddBonusAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddBonusAmount(v)
+	return _u
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (_u *PaymentOrderUpdate) SetBonusRate(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetBonusRate()
+	_u.mutation.SetBonusRate(v)
+	return _u
+}
+
+// SetNillableBonusRate sets the "bonus_rate" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableBonusRate(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetBonusRate(*v)
+	}
+	return _u
+}
+
+// AddBonusRate adds value to the "bonus_rate" field.
+func (_u *PaymentOrderUpdate) AddBonusRate(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddBonusRate(v)
+	return _u
+}
+
+// SetActivityID sets the "activity_id" field.
+func (_u *PaymentOrderUpdate) SetActivityID(v int64) *PaymentOrderUpdate {
+	_u.mutation.ResetActivityID()
+	_u.mutation.SetActivityID(v)
+	return _u
+}
+
+// SetNillableActivityID sets the "activity_id" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableActivityID(v *int64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetActivityID(*v)
+	}
+	return _u
+}
+
+// AddActivityID adds value to the "activity_id" field.
+func (_u *PaymentOrderUpdate) AddActivityID(v int64) *PaymentOrderUpdate {
+	_u.mutation.AddActivityID(v)
+	return _u
+}
+
+// ClearActivityID clears the value of the "activity_id" field.
+func (_u *PaymentOrderUpdate) ClearActivityID() *PaymentOrderUpdate {
+	_u.mutation.ClearActivityID()
+	return _u
+}
+
 // SetRechargeCode sets the "recharge_code" field.
 func (_u *PaymentOrderUpdate) SetRechargeCode(v string) *PaymentOrderUpdate {
 	_u.mutation.SetRechargeCode(v)
@@ -881,6 +950,27 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.AddedFeeRate(); ok {
 		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.BonusAmount(); ok {
+		_spec.SetField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBonusAmount(); ok {
+		_spec.AddField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.BonusRate(); ok {
+		_spec.SetField(paymentorder.FieldBonusRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBonusRate(); ok {
+		_spec.AddField(paymentorder.FieldBonusRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.ActivityID(); ok {
+		_spec.SetField(paymentorder.FieldActivityID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedActivityID(); ok {
+		_spec.AddField(paymentorder.FieldActivityID, field.TypeInt64, value)
+	}
+	if _u.mutation.ActivityIDCleared() {
+		_spec.ClearField(paymentorder.FieldActivityID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
 	}
@@ -1214,6 +1304,75 @@ func (_u *PaymentOrderUpdateOne) SetNillableFeeRate(v *float64) *PaymentOrderUpd
 // AddFeeRate adds value to the "fee_rate" field.
 func (_u *PaymentOrderUpdateOne) AddFeeRate(v float64) *PaymentOrderUpdateOne {
 	_u.mutation.AddFeeRate(v)
+	return _u
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (_u *PaymentOrderUpdateOne) SetBonusAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetBonusAmount()
+	_u.mutation.SetBonusAmount(v)
+	return _u
+}
+
+// SetNillableBonusAmount sets the "bonus_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableBonusAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetBonusAmount(*v)
+	}
+	return _u
+}
+
+// AddBonusAmount adds value to the "bonus_amount" field.
+func (_u *PaymentOrderUpdateOne) AddBonusAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddBonusAmount(v)
+	return _u
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (_u *PaymentOrderUpdateOne) SetBonusRate(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetBonusRate()
+	_u.mutation.SetBonusRate(v)
+	return _u
+}
+
+// SetNillableBonusRate sets the "bonus_rate" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableBonusRate(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetBonusRate(*v)
+	}
+	return _u
+}
+
+// AddBonusRate adds value to the "bonus_rate" field.
+func (_u *PaymentOrderUpdateOne) AddBonusRate(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddBonusRate(v)
+	return _u
+}
+
+// SetActivityID sets the "activity_id" field.
+func (_u *PaymentOrderUpdateOne) SetActivityID(v int64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetActivityID()
+	_u.mutation.SetActivityID(v)
+	return _u
+}
+
+// SetNillableActivityID sets the "activity_id" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableActivityID(v *int64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetActivityID(*v)
+	}
+	return _u
+}
+
+// AddActivityID adds value to the "activity_id" field.
+func (_u *PaymentOrderUpdateOne) AddActivityID(v int64) *PaymentOrderUpdateOne {
+	_u.mutation.AddActivityID(v)
+	return _u
+}
+
+// ClearActivityID clears the value of the "activity_id" field.
+func (_u *PaymentOrderUpdateOne) ClearActivityID() *PaymentOrderUpdateOne {
+	_u.mutation.ClearActivityID()
 	return _u
 }
 
@@ -1973,6 +2132,27 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if value, ok := _u.mutation.AddedFeeRate(); ok {
 		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.BonusAmount(); ok {
+		_spec.SetField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBonusAmount(); ok {
+		_spec.AddField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.BonusRate(); ok {
+		_spec.SetField(paymentorder.FieldBonusRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBonusRate(); ok {
+		_spec.AddField(paymentorder.FieldBonusRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.ActivityID(); ok {
+		_spec.SetField(paymentorder.FieldActivityID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedActivityID(); ok {
+		_spec.AddField(paymentorder.FieldActivityID, field.TypeInt64, value)
+	}
+	if _u.mutation.ActivityIDCleared() {
+		_spec.ClearField(paymentorder.FieldActivityID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)

@@ -273,6 +273,18 @@ func (f ProxyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ProxyMutation", m)
 }
 
+// The RechargePromoActivityFunc type is an adapter to allow the use of ordinary
+// function as RechargePromoActivity mutator.
+type RechargePromoActivityFunc func(context.Context, *ent.RechargePromoActivityMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RechargePromoActivityFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RechargePromoActivityMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RechargePromoActivityMutation", m)
+}
+
 // The RedeemCodeFunc type is an adapter to allow the use of ordinary
 // function as RedeemCode mutator.
 type RedeemCodeFunc func(context.Context, *ent.RedeemCodeMutation) (ent.Value, error)

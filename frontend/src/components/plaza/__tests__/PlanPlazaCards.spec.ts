@@ -1,5 +1,7 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PlanPlazaCards from '../PlanPlazaCards.vue'
 import type { PlazaPlanCard } from '@/api/plaza'
 
@@ -31,18 +33,35 @@ function makeCard(over: Partial<PlazaPlanCard> = {}): PlazaPlanCard {
   }
 }
 
-const formatCny = (amount: number) => `¥${amount.toFixed(2)}`
+const formatCny = (amount: number) =>
+  `¥${amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+
+// 组件内部使用了 useAppStore（payment_enabled 开关）和 useAuthRedirect
+// （依赖 useRouter + useAuthStore），所以 mount 时必须挂上 Pinia 与 vue-router
+// 两个全局插件，否则会抛 "no active Pinia"。
+function makeRouter() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/login', component: { template: '<div />' } },
+      { path: '/purchase', component: { template: '<div />' } },
+    ],
+  })
+}
 
 function mountCards(cards: PlazaPlanCard[], loading = false) {
   return mount(PlanPlazaCards, {
-    props: {
-      cards,
-      loading,
-      currencyDisplay: 'CNY' as const,
-      formatCny,
+    props: { cards, loading },
+    global: {
+      plugins: [createPinia(), makeRouter()],
     },
   })
 }
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+})
 
 describe('PlanPlazaCards', () => {
   it('显示折扣徽章并划掉 original_price，当 original_price > price', () => {
@@ -51,8 +70,9 @@ describe('PlanPlazaCards', () => {
     ])
     const text = wrapper.text()
     expect(text).toContain('-20%')
-    expect(text).toContain('¥80.00')
-    expect(text).toContain('¥100.00')
+    // 内置 formatter 使用 `min:0, max:2`，整数金额不补 .00
+    expect(text).toContain(formatCny(80))
+    expect(text).toContain(formatCny(100))
     expect(wrapper.html()).toContain('line-through')
   })
 
@@ -67,8 +87,13 @@ describe('PlanPlazaCards', () => {
 
   it('original_price 缺失时按原价展示，无划掉线', () => {
     const wrapper = mountCards([makeCard({ price: 50 })])
-    expect(wrapper.text()).toContain('¥50.00')
+    expect(wrapper.text()).toContain(formatCny(50))
     expect(wrapper.html()).not.toContain('line-through')
+  })
+
+  it('小数金额最多保留两位小数', () => {
+    const wrapper = mountCards([makeCard({ price: 19.9 })])
+    expect(wrapper.text()).toContain('¥19.9')
   })
 
   it('models 超过 10 个时折叠为 +N more 芯片', () => {
@@ -106,12 +131,10 @@ describe('PlanPlazaCards', () => {
     expect(text).toContain('Priority support')
   })
 
-  it('emits currency-change when CurrencyToggle is clicked', async () => {
+  // 套餐列表强制使用 CNY，不再渲染 CurrencyToggle；曾经的 `emits currency-change` 用例已删除。
+  it('不渲染 CurrencyToggle（套餐价格固定 CNY）', () => {
     const wrapper = mountCards([makeCard()])
-    // CurrencyToggle 内部按钮文案为 'CNY' / 'USD'
     const usdBtn = wrapper.findAll('button').find((b) => b.text() === 'USD')
-    expect(usdBtn).toBeDefined()
-    await usdBtn!.trigger('click')
-    expect(wrapper.emitted('currency-change')).toEqual([['USD']])
+    expect(usdBtn).toBeUndefined()
   })
 })

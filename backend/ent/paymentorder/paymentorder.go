@@ -28,6 +28,12 @@ const (
 	FieldPayAmount = "pay_amount"
 	// FieldFeeRate holds the string denoting the fee_rate field in the database.
 	FieldFeeRate = "fee_rate"
+	// FieldBonusAmount holds the string denoting the bonus_amount field in the database.
+	FieldBonusAmount = "bonus_amount"
+	// FieldBonusRate holds the string denoting the bonus_rate field in the database.
+	FieldBonusRate = "bonus_rate"
+	// FieldActivityID holds the string denoting the activity_id field in the database.
+	FieldActivityID = "activity_id"
 	// FieldRechargeCode holds the string denoting the recharge_code field in the database.
 	FieldRechargeCode = "recharge_code"
 	// FieldOutTradeNo holds the string denoting the out_trade_no field in the database.
@@ -115,6 +121,9 @@ var Columns = []string{
 	FieldAmount,
 	FieldPayAmount,
 	FieldFeeRate,
+	FieldBonusAmount,
+	FieldBonusRate,
+	FieldActivityID,
 	FieldRechargeCode,
 	FieldOutTradeNo,
 	FieldPaymentType,
@@ -166,6 +175,10 @@ var (
 	UserNameValidator func(string) error
 	// DefaultFeeRate holds the default value on creation for the "fee_rate" field.
 	DefaultFeeRate float64
+	// DefaultBonusAmount holds the default value on creation for the "bonus_amount" field.
+	DefaultBonusAmount float64
+	// DefaultBonusRate holds the default value on creation for the "bonus_rate" field.
+	DefaultBonusRate float64
 	// RechargeCodeValidator is a validator for the "recharge_code" field. It is called by the builders before save.
 	RechargeCodeValidator func(string) error
 	// DefaultOutTradeNo holds the default value on creation for the "out_trade_no" field.
@@ -247,6 +260,21 @@ func ByPayAmount(opts ...sql.OrderTermOption) OrderOption {
 // ByFeeRate orders the results by the fee_rate field.
 func ByFeeRate(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFeeRate, opts...).ToFunc()
+}
+
+// ByBonusAmount orders the results by the bonus_amount field.
+func ByBonusAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBonusAmount, opts...).ToFunc()
+}
+
+// ByBonusRate orders the results by the bonus_rate field.
+func ByBonusRate(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBonusRate, opts...).ToFunc()
+}
+
+// ByActivityID orders the results by the activity_id field.
+func ByActivityID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldActivityID, opts...).ToFunc()
 }
 
 // ByRechargeCode orders the results by the recharge_code field.

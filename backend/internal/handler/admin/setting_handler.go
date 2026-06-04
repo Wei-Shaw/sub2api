@@ -348,6 +348,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentCancelRateLimitUnit:             paymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:             paymentCfg.CancelRateLimitMode,
 		PaymentAlipayForceQRCode:               paymentCfg.AlipayForceQRCode,
+		PaymentRechargePromo:                   dto.AdminRechargePromoFromService(paymentCfg.RechargePromo),
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
@@ -690,6 +691,10 @@ type UpdateSettingsRequest struct {
 
 	// Force Alipay mobile clients to use QR code payment instead of mobile redirect
 	PaymentAlipayForceQRCode *bool `json:"payment_alipay_force_qrcode"`
+
+	// 充值赠送活动配置已迁移到 /admin/recharge-promos 列表 API（CRUD）。
+	// 系统设置层不再受理 payment_recharge_promo 写入；保留 GET 响应中的
+	// PaymentRechargePromo 字段仅用于显示当前生效活动。
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                *bool `json:"channel_monitor_enabled"`
@@ -2187,6 +2192,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentCancelRateLimitUnit:             updatedPaymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:             updatedPaymentCfg.CancelRateLimitMode,
 		PaymentAlipayForceQRCode:               updatedPaymentCfg.AlipayForceQRCode,
+		PaymentRechargePromo:                   dto.AdminRechargePromoFromService(updatedPaymentCfg.RechargePromo),
 
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,

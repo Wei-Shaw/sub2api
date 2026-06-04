@@ -271,6 +271,13 @@ func resolveRedeemAction(existing *RedeemCode, lookupErr error) redeemAction {
 }
 
 func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) error {
+	// Resolve & persist recharge bonus (if any) before redeem so the
+	// audit trail (`order.bonus_amount`) is in place before money moves.
+	// Idempotent: re-runs after partial failure are safe.
+	if err := s.applyRechargeBonusOnOrder(ctx, o); err != nil {
+		return err
+	}
+
 	// Idempotency: check if redeem code already exists (from a previous partial run)
 	existing, lookupErr := s.redeemService.GetByCode(ctx, o.RechargeCode)
 	action := resolveRedeemAction(existing, lookupErr)
@@ -278,6 +285,10 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	switch action {
 	case redeemActionSkipCompleted:
 		if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
+			return err
+		}
+		// Bonus credit is gated by its own audit log marker, safe to call.
+		if err := s.creditRechargeBonus(ctx, o); err != nil {
 			return err
 		}
 		// Code already created and redeemed — just mark completed
@@ -296,7 +307,80 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
 	}
+	// Credit the recharge promo bonus on top of the redeemed credited balance.
+	// The bonus is applied as a separate UpdateBalance call gated by an audit log
+	// marker for idempotency on retries.
+	if err := s.creditRechargeBonus(ctx, o); err != nil {
+		return err
+	}
 	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+}
+
+// applyRechargeBonusOnOrder resolves the active recharge promo at fulfillment
+// time and persists `bonus_rate` / `bonus_amount` onto the order. Idempotent —
+// once the order already carries non-zero bonus fields, no work is done.
+//
+// Subscription orders intentionally short-circuit (bonus only applies to
+// `order_type = balance`).
+func (s *PaymentService) applyRechargeBonusOnOrder(ctx context.Context, o *dbent.PaymentOrder) error {
+	if o == nil || o.OrderType != payment.OrderTypeBalance {
+		return nil
+	}
+	if o.BonusAmount > 0 || o.BonusRate > 0 {
+		return nil
+	}
+	if s.configService == nil {
+		return nil
+	}
+	cfg, err := s.configService.GetPaymentConfig(ctx)
+	if err != nil || cfg == nil || cfg.RechargePromo == nil {
+		return nil
+	}
+	rate, bonus := ResolveRechargeBonus(o.PayAmount, cfg.BalanceRechargeMultiplier, cfg.RechargePromo, time.Now())
+	if bonus <= 0 {
+		return nil
+	}
+	upd := s.entClient.PaymentOrder.UpdateOneID(o.ID).
+		SetBonusAmount(bonus).
+		SetBonusRate(rate)
+	// 把命中的活动 ID 一并落到订单上（弱引用，无外键约束），便于后续审计 / 退款审查。
+	// 在新方案下 cfg.RechargePromo 来自 recharge_promo_activities，故 ActivityID > 0。
+	if cfg.RechargePromo.ActivityID > 0 {
+		upd = upd.SetActivityID(cfg.RechargePromo.ActivityID)
+	}
+	if _, err := upd.Save(ctx); err != nil {
+		return fmt.Errorf("set bonus on order: %w", err)
+	}
+	o.BonusAmount = bonus
+	o.BonusRate = rate
+	if cfg.RechargePromo.ActivityID > 0 {
+		actID := cfg.RechargePromo.ActivityID
+		o.ActivityID = &actID
+	}
+	return nil
+}
+
+// creditRechargeBonus credits the recorded bonus to the user's balance once.
+// Idempotency is guaranteed via a `BONUS_CREDITED` audit log entry — the
+// bonus is added only on the first successful invocation per order.
+func (s *PaymentService) creditRechargeBonus(ctx context.Context, o *dbent.PaymentOrder) error {
+	if o == nil || o.OrderType != payment.OrderTypeBalance || o.BonusAmount <= 0 {
+		return nil
+	}
+	if s.userRepo == nil {
+		return nil
+	}
+	if s.hasAuditLog(ctx, o.ID, "BONUS_CREDITED") {
+		return nil
+	}
+	if err := s.userRepo.UpdateBalance(ctx, o.UserID, o.BonusAmount); err != nil {
+		return fmt.Errorf("credit bonus: %w", err)
+	}
+	s.writeAuditLog(ctx, o.ID, "BONUS_CREDITED", "system", map[string]any{
+		"bonus_rate":   o.BonusRate,
+		"bonus_amount": o.BonusAmount,
+	})
+	return nil
 }
 
 func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) error {

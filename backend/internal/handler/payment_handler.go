@@ -130,7 +130,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		})
 	}
 
-	response.Success(c, checkoutInfoResponse{
+	resp := checkoutInfoResponse{
 		Methods:                   limitsResp.Methods,
 		GlobalMin:                 limitsResp.GlobalMin,
 		GlobalMax:                 limitsResp.GlobalMax,
@@ -142,7 +142,13 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		HelpImageURL:              cfg.HelpImageURL,
 		StripePublishableKey:      cfg.StripePublishableKey,
 		AlipayForceQRCode:         cfg.AlipayForceQRCode,
-	})
+	}
+	// 仅在活动开启 + 当前时刻位于有效期内时把 RechargePromo 透出，否则保持 nil 以让前端
+	// 直接判断 `if (recharge_promo)` 而不必在每个调用点重复时间窗与 enabled 的判断。
+	if cfg.RechargePromo != nil && cfg.RechargePromo.IsActiveAt(time.Now()) {
+		resp.RechargePromo = checkoutPromoFromConfig(cfg.RechargePromo)
+	}
+	response.Success(c, resp)
 }
 
 type checkoutInfoResponse struct {
@@ -157,6 +163,39 @@ type checkoutInfoResponse struct {
 	HelpImageURL              string                          `json:"help_image_url"`
 	StripePublishableKey      string                          `json:"stripe_publishable_key"`
 	AlipayForceQRCode         bool                            `json:"alipay_force_qrcode"`
+	RechargePromo             *checkoutRechargePromo          `json:"recharge_promo,omitempty"`
+}
+
+// checkoutRechargePromo 是返回给前端的活动配置（区别于服务层的 RechargePromo：
+// 这里不暴露空结构、时间戳总用 RFC3339）。
+type checkoutRechargePromo struct {
+	Enabled    bool                        `json:"enabled"`
+	ValidFrom  *time.Time                  `json:"valid_from,omitempty"`
+	ValidUntil *time.Time                  `json:"valid_until,omitempty"`
+	Tiers      []checkoutRechargePromoTier `json:"tiers"`
+	Version    string                      `json:"version"`
+}
+
+type checkoutRechargePromoTier struct {
+	MinAmount float64 `json:"min_amount"`
+	BonusRate float64 `json:"bonus_rate"`
+}
+
+func checkoutPromoFromConfig(p *service.RechargePromo) *checkoutRechargePromo {
+	if p == nil {
+		return nil
+	}
+	tiers := make([]checkoutRechargePromoTier, 0, len(p.Tiers))
+	for _, t := range p.Tiers {
+		tiers = append(tiers, checkoutRechargePromoTier{MinAmount: t.MinAmount, BonusRate: t.BonusRate})
+	}
+	return &checkoutRechargePromo{
+		Enabled:    p.Enabled,
+		ValidFrom:  p.ValidFrom,
+		ValidUntil: p.ValidUntil,
+		Tiers:      tiers,
+		Version:    p.Version,
+	}
 }
 
 type checkoutPlan struct {

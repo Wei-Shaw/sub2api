@@ -10,6 +10,7 @@ import type {
   LoginAgreementDocument,
   NotifyEmailEntry,
 } from "@/types";
+import type { RechargePromo } from "@/types/payment";
 
 export interface DefaultSubscriptionSetting {
   group_id: number;
@@ -599,6 +600,8 @@ export interface SystemSettings {
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
   payment_visible_method_wxpay_enabled?: boolean;
+  /** 充值赠送活动；后端无配置时为 null。 */
+  payment_recharge_promo?: RechargePromo | null;
   openai_advanced_scheduler_enabled?: boolean;
 
   // 余额、订阅到期与账号限额通知
@@ -832,6 +835,8 @@ export interface UpdateSettingsRequest {
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
   payment_visible_method_wxpay_enabled?: boolean;
+  /** 充值赠送活动；nil 不修改、enabled=false 关闭、enabled=true + tiers 生效。 */
+  payment_recharge_promo?: RechargePromo | null;
   openai_advanced_scheduler_enabled?: boolean;
   // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled?: boolean;

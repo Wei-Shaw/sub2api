@@ -71,6 +71,30 @@ export interface CheckoutInfoResponse {
   stripe_publishable_key: string
   /** When true, Alipay payments on mobile always show the QR code instead of redirecting */
   alipay_force_qrcode?: boolean
+  /**
+   * 充值赠送活动；后端只在活动开启 + 当前时间在窗口内时下发，否则字段为 undefined。
+   * 与 balance_recharge_multiplier 是两个独立概念（一个加余额、一个影响消费），
+   * 前端不要把两者乘起来。
+   */
+  recharge_promo?: RechargePromo
+}
+
+/** 一个赠送档位：当 pay_amount ≥ min_amount 时按 bonus_rate 赠送（取最高匹配档）。 */
+export interface RechargePromoTier {
+  min_amount: number
+  bonus_rate: number
+}
+
+/** 充值赠送活动配置；前端按 tiers 升序、最高匹配档命中。 */
+export interface RechargePromo {
+  enabled: boolean
+  /** ISO8601 起始时间；缺省（null/undefined）视为无下限。 */
+  valid_from?: string | null
+  /** ISO8601 截止时间；缺省（null/undefined）视为无上限。 */
+  valid_until?: string | null
+  tiers: RechargePromoTier[]
+  /** 后端计算的稳定 hash；红点 dismiss key 由 (userId, version) 组成。 */
+  version: string
 }
 
 // ==================== Orders ====================

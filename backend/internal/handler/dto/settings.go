@@ -3,6 +3,7 @@ package dto
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -246,6 +247,10 @@ type SystemSettings struct {
 	// Force Alipay mobile clients to use QR code payment instead of mobile redirect
 	PaymentAlipayForceQRCode bool `json:"payment_alipay_force_qrcode"`
 
+	// 充值赠送活动配置（与 BalanceRechargeMultiplier 互不影响，叠加方式为加法）。
+	// 当未配置或活动关闭时返回 nil，前端据此判断是否渲染 banner / 红点。
+	PaymentRechargePromo *AdminRechargePromo `json:"payment_recharge_promo,omitempty"`
+
 	// 余额、订阅到期与账号限额通知
 	BalanceLowNotifyEnabled         bool               `json:"balance_low_notify_enabled"`
 	BalanceLowNotifyThreshold       float64            `json:"balance_low_notify_threshold"`
@@ -407,6 +412,58 @@ type OpenAIFastPolicyRule struct {
 // OpenAIFastPolicySettings OpenAI fast 策略配置 DTO
 type OpenAIFastPolicySettings struct {
 	Rules []OpenAIFastPolicyRule `json:"rules"`
+}
+
+// AdminRechargePromo 是管理员表单交换的 RechargePromo DTO。
+// 与 service.RechargePromo 同形，但专门挂在 dto 层避免循环依赖。
+type AdminRechargePromo struct {
+	Enabled    bool                     `json:"enabled"`
+	ValidFrom  *time.Time               `json:"valid_from,omitempty"`
+	ValidUntil *time.Time               `json:"valid_until,omitempty"`
+	Tiers      []AdminRechargePromoTier `json:"tiers"`
+	Version    string                   `json:"version,omitempty"`
+}
+
+// AdminRechargePromoTier 一个赠送档位（金额单位 = 网关本币）。
+type AdminRechargePromoTier struct {
+	MinAmount float64 `json:"min_amount"`
+	BonusRate float64 `json:"bonus_rate"`
+}
+
+// AdminRechargePromoFromService 把 service 层结构转为 DTO，nil 透传。
+func AdminRechargePromoFromService(p *service.RechargePromo) *AdminRechargePromo {
+	if p == nil {
+		return nil
+	}
+	tiers := make([]AdminRechargePromoTier, 0, len(p.Tiers))
+	for _, t := range p.Tiers {
+		tiers = append(tiers, AdminRechargePromoTier{MinAmount: t.MinAmount, BonusRate: t.BonusRate})
+	}
+	return &AdminRechargePromo{
+		Enabled:    p.Enabled,
+		ValidFrom:  p.ValidFrom,
+		ValidUntil: p.ValidUntil,
+		Tiers:      tiers,
+		Version:    p.Version,
+	}
+}
+
+// ToService 把 DTO 转为 service 层结构，nil 透传；Version 字段会被服务层重新计算并覆盖。
+func (p *AdminRechargePromo) ToService() *service.RechargePromo {
+	if p == nil {
+		return nil
+	}
+	tiers := make([]service.RechargePromoTier, 0, len(p.Tiers))
+	for _, t := range p.Tiers {
+		tiers = append(tiers, service.RechargePromoTier{MinAmount: t.MinAmount, BonusRate: t.BonusRate})
+	}
+	return &service.RechargePromo{
+		Enabled:    p.Enabled,
+		ValidFrom:  p.ValidFrom,
+		ValidUntil: p.ValidUntil,
+		Tiers:      tiers,
+		Version:    p.Version,
+	}
 }
 
 // EmailTemplateEventOption 描述可编辑的通知邮件事件。
