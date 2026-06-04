@@ -180,7 +180,7 @@ func (s *GatewayService) ForwardAsResponses(
 	var result *ForwardResult
 	var handleErr error
 	if clientStream {
-		result, handleErr = s.handleResponsesStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
+		result, handleErr = s.handleResponsesStreamingResponse(ctx, resp, c, originalModel, mappedModel, reasoningEffort, startTime)
 	} else {
 		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
 	}
@@ -358,6 +358,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 // handleResponsesStreamingResponse reads Anthropic SSE events from upstream,
 // converts each to Responses SSE events, and writes them to the client.
 func (s *GatewayService) handleResponsesStreamingResponse(
+	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
 	originalModel string,
@@ -381,6 +382,8 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	codexStreamCompat := codexResponsesStreamCompatEnabled(ctx) || codexResponsesStreamCompatEnabledForGin(c)
+	codexStreamNormalizer := newOpenAICodexResponsesStreamNormalizer()
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -431,6 +434,12 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 				continue
 			}
 			out := string(reverseToolNamesIfPresent(c, []byte(sse)))
+			if codexStreamCompat {
+				out = normalizeOpenAICodexResponsesSSEBlock(codexStreamNormalizer, out)
+				if out == "" {
+					continue
+				}
+			}
 			if _, err := fmt.Fprint(c.Writer, out); err != nil {
 				logger.L().Info("forward_as_responses stream: client disconnected",
 					zap.String("request_id", requestID),
@@ -452,6 +461,12 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 					continue
 				}
 				out := string(reverseToolNamesIfPresent(c, []byte(sse)))
+				if codexStreamCompat {
+					out = normalizeOpenAICodexResponsesSSEBlock(codexStreamNormalizer, out)
+					if out == "" {
+						continue
+					}
+				}
 				fmt.Fprint(c.Writer, out) //nolint:errcheck
 			}
 			c.Writer.Flush()

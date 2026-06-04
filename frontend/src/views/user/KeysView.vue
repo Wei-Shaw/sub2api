@@ -481,6 +481,30 @@
           />
         </div>
 
+        <div class="rounded-lg border border-primary-200/70 bg-primary-50/60 p-4 dark:border-primary-800/50 dark:bg-primary-900/10">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <label class="input-label mb-1">{{ t('keys.codexResponsesStreamCompat') }}</label>
+              <p class="input-hint">{{ t('keys.codexResponsesStreamCompatHint') }}</p>
+            </div>
+            <button
+              type="button"
+              @click="formData.codex_responses_stream_compat = !formData.codex_responses_stream_compat"
+              :class="[
+                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                formData.codex_responses_stream_compat ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  formData.codex_responses_stream_compat ? 'translate-x-4' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
         <!-- IP Restriction Section -->
         <div class="space-y-3">
           <div class="flex items-center justify-between">
@@ -1174,6 +1198,7 @@ const formData = ref({
   status: 'active' as 'active' | 'inactive',
   use_custom_key: false,
   custom_key: '',
+  codex_responses_stream_compat: false,
   enable_ip_restriction: false,
   ip_whitelist: '',
   ip_blacklist: '',
@@ -1397,6 +1422,7 @@ const editKey = (key: ApiKey) => {
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
     use_custom_key: false,
     custom_key: '',
+    codex_responses_stream_compat: !!key.codex_responses_stream_compat,
     enable_ip_restriction: hasIPRestriction,
     ip_whitelist: (key.ip_whitelist || []).join('\n'),
     ip_blacklist: (key.ip_blacklist || []).join('\n'),
@@ -1553,6 +1579,7 @@ const handleSubmit = async () => {
         rate_limit_5h: rateLimitData.rate_limit_5h,
         rate_limit_1d: rateLimitData.rate_limit_1d,
         rate_limit_7d: rateLimitData.rate_limit_7d,
+        codex_responses_stream_compat: formData.value.codex_responses_stream_compat,
       })
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
@@ -1565,7 +1592,8 @@ const handleSubmit = async () => {
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData
+        rateLimitData,
+        formData.value.codex_responses_stream_compat
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1614,6 +1642,7 @@ const closeModals = () => {
     status: 'active',
     use_custom_key: false,
     custom_key: '',
+    codex_responses_stream_compat: false,
     enable_ip_restriction: false,
     ip_whitelist: '',
     ip_blacklist: '',

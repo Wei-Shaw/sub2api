@@ -66,4 +66,38 @@ describe('UsageProgressBar', () => {
     expect(wrapper.text()).toContain('2h 30m')
     expect(wrapper.text()).not.toContain('现在')
   })
+
+  it('remaining-from-used 模式用已用百分比换算剩余量', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '5h',
+        utilization: 87,
+        displayMode: 'remaining-from-used',
+        color: 'indigo'
+      }
+    })
+
+    expect(wrapper.text()).toContain('余13%')
+    const percent = wrapper.find('span[title="剩余 13%，已用 87%"]')
+    expect(percent.exists()).toBe(true)
+    expect(percent.classes()).toContain('text-amber-600')
+    expect(wrapper.find('.bg-amber-500').exists()).toBe(true)
+  })
+
+  it('remaining 模式直接显示传入的剩余百分比', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '5h',
+        utilization: 83,
+        displayMode: 'remaining',
+        color: 'indigo'
+      }
+    })
+
+    expect(wrapper.text()).toContain('余83%')
+    const percent = wrapper.find('span[title="剩余 83%，已用 17%"]')
+    expect(percent.exists()).toBe(true)
+    expect(percent.classes()).toContain('text-green-600')
+    expect(wrapper.find('.bg-green-500').exists()).toBe(true)
+  })
 })

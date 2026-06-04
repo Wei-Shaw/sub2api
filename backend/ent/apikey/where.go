@@ -100,6 +100,11 @@ func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
 }
 
+// CodexResponsesStreamCompat applies equality check predicate on the "codex_responses_stream_compat" field. It's identical to CodexResponsesStreamCompatEQ.
+func CodexResponsesStreamCompat(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldCodexResponsesStreamCompat, v))
+}
+
 // Quota applies equality check predicate on the "quota" field. It's identical to QuotaEQ.
 func Quota(v float64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldQuota, v))
@@ -603,6 +608,16 @@ func IPBlacklistIsNil() predicate.APIKey {
 // IPBlacklistNotNil applies the NotNil predicate on the "ip_blacklist" field.
 func IPBlacklistNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldIPBlacklist))
+}
+
+// CodexResponsesStreamCompatEQ applies the EQ predicate on the "codex_responses_stream_compat" field.
+func CodexResponsesStreamCompatEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldCodexResponsesStreamCompat, v))
+}
+
+// CodexResponsesStreamCompatNEQ applies the NEQ predicate on the "codex_responses_stream_compat" field.
+func CodexResponsesStreamCompatNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldCodexResponsesStreamCompat, v))
 }
 
 // QuotaEQ applies the EQ predicate on the "quota" field.
