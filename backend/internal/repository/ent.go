@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/ent"
@@ -44,15 +45,10 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 
 	// 构建包含时区信息的数据库连接字符串 (DSN)。
 	// 时区信息会传递给 PostgreSQL，确保数据库层面的时间处理正确。
-	dsn := cfg.Database.DSNWithTimezone(cfg.Timezone)
-
-	// 使用 Ent 的 SQL 驱动打开 PostgreSQL 连接。
-	// dialect.Postgres 指定使用 PostgreSQL 方言进行 SQL 生成。
-	drv, err := entsql.Open(dialect.Postgres, dsn)
+	drv, err := openEntDriverWithSSLFallback(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	applyDBPoolSettings(drv.DB(), cfg)
 
 	// 确保数据库 schema 已准备就绪。
 	// SQL 迁移文件是 schema 的权威来源（source of truth）。
@@ -96,4 +92,49 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	}
 
 	return client, drv.DB(), nil
+}
+
+func openEntDriverWithSSLFallback(cfg *config.Config) (*entsql.Driver, error) {
+	openDriver := func() (*entsql.Driver, error) {
+		dsn := cfg.Database.DSNWithTimezone(cfg.Timezone)
+		drv, err := entsql.Open(dialect.Postgres, dsn)
+		if err != nil {
+			return nil, err
+		}
+		applyDBPoolSettings(drv.DB(), cfg)
+		return drv, nil
+	}
+
+	pingDriver := func(drv *entsql.Driver) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return drv.DB().PingContext(ctx)
+	}
+
+	drv, err := openDriver()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := pingDriver(drv); err != nil {
+		if !config.ShouldFallbackDatabaseSSLModeToDisable(cfg.Database.SSLMode, err) {
+			_ = drv.Close()
+			return nil, err
+		}
+
+		slog.Warn("database.sslmode=prefer unsupported by PostgreSQL driver; falling back to disable")
+		_ = drv.Close()
+		cfg.Database.SSLMode = config.DatabaseSSLModeDisable
+
+		drv, err = openDriver()
+		if err != nil {
+			return nil, err
+		}
+		if err := pingDriver(drv); err != nil {
+			_ = drv.Close()
+			return nil, err
+		}
+	}
+
+	return drv, nil
 }

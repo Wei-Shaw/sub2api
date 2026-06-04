@@ -440,6 +440,29 @@ nano config.yaml
 
 > **注意:** `-tags embed` フラグはフロントエンドをバイナリに組み込みます。このフラグがない場合、バイナリはフロントエンド UI を提供しません。
 
+#### ソースビルド時の実行時設定パス
+
+ソースからビルドして実行する場合、セットアップウィザードと通常起動はデフォルトで現在の作業ディレクトリにある `config.yaml` を読み書きします。たとえば `backend` ディレクトリでバイナリを実行する場合、デフォルトパスは `backend/config.yaml` です。
+
+`config.yaml` や `.installed` などの実行時ファイルを専用のデータディレクトリに置きたい場合は、サービス環境変数で `DATA_DIR` を明示的に設定してください:
+
+```ini
+[Service]
+WorkingDirectory=/opt/sub2api/backend
+Environment=DATA_DIR=/var/lib/sub2api
+Environment=SERVER_HOST=0.0.0.0
+Environment=SERVER_PORT=8080
+```
+
+先にディレクトリを作成し、サービスユーザーに書き込み権限を付与してください:
+
+```bash
+sudo mkdir -p /var/lib/sub2api
+sudo chown -R sub2api:sub2api /var/lib/sub2api
+```
+
+Docker デプロイは従来どおり `/app/data` を使用します。
+
 **`config.yaml` の主要設定:**
 
 ```yaml

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/sysutil"
 
@@ -229,6 +230,25 @@ type InstallRequest struct {
 	Server   ServerConfig   `json:"server"`
 }
 
+func resolveInstallServerConfig(req ServerConfig) ServerConfig {
+	bootstrap := config.GetBootstrapServerConfig()
+	mode := strings.TrimSpace(req.Mode)
+	if mode == "" {
+		mode = strings.TrimSpace(bootstrap.Mode)
+	}
+	if mode == "" {
+		mode = "release"
+	}
+
+	// Web setup should persist the backend's own listen address instead of
+	// trusting the browser-facing port forwarded by the frontend.
+	return ServerConfig{
+		Host: bootstrap.Host,
+		Port: bootstrap.Port,
+		Mode: mode,
+	}
+}
+
 // install performs the installation
 func install(c *gin.Context) {
 	// TOCTOU Protection: Acquire mutex to prevent concurrent installation
@@ -295,6 +315,8 @@ func install(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	req.Server = resolveInstallServerConfig(req.Server)
 
 	// Server validation
 	if req.Server.Port != 0 && !validatePort(req.Server.Port) {

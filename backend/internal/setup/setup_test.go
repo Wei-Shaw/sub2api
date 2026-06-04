@@ -87,3 +87,48 @@ func TestWriteConfigFileKeepsDefaultUserConcurrency(t *testing.T) {
 		t.Fatalf("config missing default user concurrency, got:\n%s", string(data))
 	}
 }
+
+func TestNeedsSetupIgnoresExistingConfigWithoutInstallLock(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+
+	if err := os.WriteFile(GetConfigFilePath(), []byte("server:\n  port: 8080\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(config) error = %v", err)
+	}
+
+	if !NeedsSetup() {
+		t.Fatalf("NeedsSetup() = false, want true when only config exists")
+	}
+}
+
+func TestNeedsSetupFalseWhenInstallLockExists(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+
+	if err := os.WriteFile(GetInstallLockPath(), []byte("installed_at=2026-04-15T00:00:00Z\n"), 0o400); err != nil {
+		t.Fatalf("WriteFile(lock) error = %v", err)
+	}
+
+	if NeedsSetup() {
+		t.Fatalf("NeedsSetup() = true, want false when install lock exists")
+	}
+}
+
+func TestResolveInstallServerConfigUsesBackendBootstrapPort(t *testing.T) {
+	t.Setenv("SERVER_HOST", "127.0.0.1")
+	t.Setenv("SERVER_PORT", "9090")
+
+	got := resolveInstallServerConfig(ServerConfig{
+		Host: "0.0.0.0",
+		Port: 443,
+		Mode: "release",
+	})
+
+	if got.Host != "127.0.0.1" {
+		t.Fatalf("Host = %q, want %q", got.Host, "127.0.0.1")
+	}
+	if got.Port != 9090 {
+		t.Fatalf("Port = %d, want %d", got.Port, 9090)
+	}
+	if got.Mode != "release" {
+		t.Fatalf("Mode = %q, want %q", got.Mode, "release")
+	}
+}

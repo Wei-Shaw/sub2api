@@ -15,6 +15,24 @@ const authStore = useAuthStore()
 const subscriptionStore = useSubscriptionStore()
 const announcementStore = useAnnouncementStore()
 
+async function enforceSetupRouteState(): Promise<boolean> {
+  try {
+    const status = await getSetupStatus()
+    if (status.needs_setup && route.path !== '/setup') {
+      await router.replace('/setup')
+      return true
+    }
+    if (!status.needs_setup && route.path === '/setup') {
+      await router.replace('/')
+      return true
+    }
+  } catch {
+    // If setup endpoint fails, assume normal mode and continue
+  }
+
+  return false
+}
+
 /**
  * Update favicon dynamically
  * @param logoUrl - URL of the logo to use as favicon
@@ -80,6 +98,15 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => route.path,
+  async (path) => {
+    if (path === '/setup') {
+      await enforceSetupRouteState()
+    }
+  }
+)
+
 // Route change trigger (throttled by store)
 router.afterEach(() => {
   if (authStore.isAuthenticated) {
@@ -92,15 +119,8 @@ onBeforeUnmount(() => {
 })
 
 onMounted(async () => {
-  // Check if setup is needed
-  try {
-    const status = await getSetupStatus()
-    if (status.needs_setup && route.path !== '/setup') {
-      router.replace('/setup')
-      return
-    }
-  } catch {
-    // If setup endpoint fails, assume normal mode and continue
+  if (await enforceSetupRouteState()) {
+    return
   }
 
   // Load public settings into appStore (will be cached for other components)

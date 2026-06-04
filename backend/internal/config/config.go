@@ -18,6 +18,11 @@ import (
 const (
 	RunModeStandard = "standard"
 	RunModeSimple   = "simple"
+	dockerDataDir   = "/app/data"
+	systemConfigDir = "/etc/sub2api"
+
+	DatabaseSSLModePrefer  = "prefer"
+	DatabaseSSLModeDisable = "disable"
 )
 
 // 使用量记录队列溢出策略
@@ -1141,6 +1146,20 @@ func (d *DatabaseConfig) DSNWithTimezone(tz string) string {
 	)
 }
 
+func NormalizeDatabaseSSLMode(mode string) string {
+	return strings.ToLower(strings.TrimSpace(mode))
+}
+
+func ShouldFallbackDatabaseSSLModeToDisable(mode string, err error) bool {
+	if NormalizeDatabaseSSLMode(mode) != DatabaseSSLModePrefer || err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, `unsupported sslmode "prefer"`) ||
+		strings.Contains(msg, "unsupported sslmode prefer")
+}
+
 // RedisConfig Redis 连接配置
 // 性能优化：新增连接池和超时参数，提升高并发场景下的吞吐量
 type RedisConfig struct {
@@ -1349,23 +1368,118 @@ func LoadForBootstrap() (*Config, error) {
 	return load(true)
 }
 
+func buildConfigSearchPaths(dataDir string, preferContainerDataDir bool) []string {
+	paths := make([]string, 0, 5)
+	dataDir = strings.TrimSpace(dataDir)
+	if dataDir != "" {
+		paths = append(paths, dataDir)
+	}
+	if preferContainerDataDir {
+		paths = append(paths, dockerDataDir)
+	}
+
+	paths = append(paths, ".", "./config", systemConfigDir)
+
+	// Outside Docker, keep /app/data as a last-resort compatibility fallback
+	// so old manual deployments can still be discovered without overriding
+	// the current working directory's config.
+	if !preferContainerDataDir {
+		paths = append(paths, dockerDataDir)
+	}
+
+	seen := make(map[string]struct{}, len(paths))
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		trimmed := strings.TrimSpace(path)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+func addConfigSearchPaths(v *viper.Viper) {
+	for _, path := range buildConfigSearchPaths(os.Getenv("DATA_DIR"), shouldPreferContainerDataDir()) {
+		v.AddConfigPath(path)
+	}
+}
+
+func isTruthyEnvValue(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldPreferContainerDataDir() bool {
+	if isTruthyEnvValue(os.Getenv("AUTO_SETUP")) {
+		return true
+	}
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+	return false
+}
+
+func isWritableDir(dir string) bool {
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+
+	testFile := dir + "/.write_test"
+	f, err := os.Create(testFile)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	_ = os.Remove(testFile)
+	return true
+}
+
+func resolveWritableDataDir(dataDir string, preferContainerDataDir bool) string {
+	dataDir = strings.TrimSpace(dataDir)
+	if dataDir != "" {
+		return dataDir
+	}
+	if preferContainerDataDir && isWritableDir(dockerDataDir) {
+		return dockerDataDir
+	}
+	return "."
+}
+
+// ResolveDataDir returns the primary writable data directory used by setup.
+// Priority: DATA_DIR environment variable > /app/data in container deployments > current directory.
+func ResolveDataDir() string {
+	return resolveWritableDataDir(os.Getenv("DATA_DIR"), shouldPreferContainerDataDir())
+}
+
+// FindConfigFile returns the first discovered config file according to the
+// runtime search order. An empty string means no config file was found.
+func FindConfigFile() string {
+	v := viper.New()
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
+	addConfigSearchPaths(v)
+	if err := v.ReadInConfig(); err != nil {
+		return ""
+	}
+	return v.ConfigFileUsed()
+}
+
 func load(allowMissingJWTSecret bool) (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 
-	// Add config paths in priority order
-	// 1. DATA_DIR environment variable (highest priority)
-	if dataDir := os.Getenv("DATA_DIR"); dataDir != "" {
-		viper.AddConfigPath(dataDir)
-	}
-	// 2. Docker data directory
-	viper.AddConfigPath("/app/data")
-	// 3. Current directory
-	viper.AddConfigPath(".")
-	// 4. Config subdirectory
-	viper.AddConfigPath("./config")
-	// 5. System config directory
-	viper.AddConfigPath("/etc/sub2api")
+	// Add config paths in runtime priority order.
+	addConfigSearchPaths(viper.GetViper())
 
 	// 环境变量支持
 	viper.AutomaticEnv()
@@ -2827,29 +2941,51 @@ func generateJWTSecret(byteLength int) (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-// GetServerAddress returns the server address (host:port) from config file or environment variable.
-// This is a lightweight function that can be used before full config validation,
-// such as during setup wizard startup.
-// Priority: config.yaml > environment variables > defaults
-func GetServerAddress() string {
+// GetBootstrapServerConfig returns the lightweight server config used before
+// full validation, such as during setup wizard startup.
+// Priority: config search paths + environment overrides + defaults.
+func GetBootstrapServerConfig() ServerConfig {
 	v := viper.New()
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
-	v.AddConfigPath(".")
-	v.AddConfigPath("./config")
-	v.AddConfigPath("/etc/sub2api")
+	addConfigSearchPaths(v)
 
-	// Support SERVER_HOST and SERVER_PORT environment variables
+	// Support SERVER_HOST and SERVER_PORT environment variables.
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.SetDefault("server.host", "0.0.0.0")
 	v.SetDefault("server.port", 8080)
+	v.SetDefault("server.mode", "release")
 
-	// Try to read config file (ignore errors if not found)
+	// Try to read config file (ignore errors if not found).
 	_ = v.ReadInConfig()
 
 	host := v.GetString("server.host")
 	port := v.GetInt("server.port")
+	mode := strings.ToLower(strings.TrimSpace(v.GetString("server.mode")))
+	if host == "" {
+		host = "0.0.0.0"
+	}
+	if port <= 0 {
+		port = 8080
+	}
+	if mode == "" {
+		mode = "release"
+	}
+
+	return ServerConfig{
+		Host: host,
+		Port: port,
+		Mode: mode,
+	}
+}
+
+// GetServerAddress returns the bootstrap server address (host:port) used
+// before full config validation, such as during setup wizard startup.
+func GetServerAddress() string {
+	cfg := GetBootstrapServerConfig()
+	host := cfg.Host
+	port := cfg.Port
 	return fmt.Sprintf("%s:%d", host, port)
 }
 

@@ -452,6 +452,29 @@ nano config.yaml
 
 > **注意：** `-tags embed` 参数会将前端嵌入到二进制文件中。不使用此参数编译的程序将不包含前端界面。
 
+#### 源码编译时的运行配置路径
+
+源码编译运行时，初始化向导和正常启动默认都会在当前工作目录读写 `config.yaml`。例如你在 `backend` 目录运行二进制时，默认路径就是 `backend/config.yaml`。
+
+如果你希望把 `config.yaml`、`.installed` 等运行时文件放到独立数据目录，请在服务环境变量中显式设置 `DATA_DIR`：
+
+```ini
+[Service]
+WorkingDirectory=/opt/sub2api/backend
+Environment=DATA_DIR=/var/lib/sub2api
+Environment=SERVER_HOST=0.0.0.0
+Environment=SERVER_PORT=8080
+```
+
+请先创建目录，并确保服务用户有写权限：
+
+```bash
+sudo mkdir -p /var/lib/sub2api
+sudo chown -R sub2api:sub2api /var/lib/sub2api
+```
+
+Docker 部署仍然和以前一样，继续使用 `/app/data`。
+
 **`config.yaml` 关键配置：**
 
 ```yaml

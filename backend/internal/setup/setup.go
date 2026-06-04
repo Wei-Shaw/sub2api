@@ -38,27 +38,9 @@ func setupDefaultAdminConcurrency() int {
 }
 
 // GetDataDir returns the data directory for storing config and lock files.
-// Priority: DATA_DIR env > /app/data (if exists and writable) > current directory
+// Priority: DATA_DIR env > /app/data in container deployments > current directory.
 func GetDataDir() string {
-	// Check DATA_DIR environment variable first
-	if dir := os.Getenv("DATA_DIR"); dir != "" {
-		return dir
-	}
-
-	// Check if /app/data exists and is writable (Docker environment)
-	dockerDataDir := "/app/data"
-	if info, err := os.Stat(dockerDataDir); err == nil && info.IsDir() {
-		// Try to check if writable by creating a temp file
-		testFile := dockerDataDir + "/.write_test"
-		if f, err := os.Create(testFile); err == nil {
-			_ = f.Close()
-			_ = os.Remove(testFile)
-			return dockerDataDir
-		}
-	}
-
-	// Default to current directory
-	return "."
+	return config.ResolveDataDir()
 }
 
 // GetConfigFilePath returns the full path to config.yaml
@@ -145,14 +127,11 @@ func decideAdminBootstrap(totalUsers, adminUsers int64) adminBootstrapDecision {
 }
 
 // NeedsSetup checks if the system needs initial setup
-// Uses multiple checks to prevent attackers from forcing re-setup by deleting config
+// Uses the installation lock file as the source of truth for whether setup
+// has completed. This allows preseeded config.yaml files to coexist with the
+// initial setup flow until installation is explicitly finalized.
 func NeedsSetup() bool {
-	// Check 1: Config file must not exist
-	if _, err := os.Stat(GetConfigFilePath()); !os.IsNotExist(err) {
-		return false // Config exists, no setup needed
-	}
-
-	// Check 2: Installation lock file (harder to bypass)
+	// Installation lock file is the authoritative signal that setup finished.
 	if _, err := os.Stat(GetInstallLockPath()); !os.IsNotExist(err) {
 		return false // Lock file exists, already installed
 	}
@@ -160,15 +139,65 @@ func NeedsSetup() bool {
 	return true
 }
 
+func buildSetupPostgresDSN(cfg *DatabaseConfig, dbName string) string {
+	if strings.TrimSpace(dbName) == "" {
+		dbName = cfg.DBName
+	}
+	if cfg.Password == "" {
+		return fmt.Sprintf(
+			"host=%s port=%d user=%s dbname=%s sslmode=%s",
+			cfg.Host, cfg.Port, cfg.User, dbName, cfg.SSLMode,
+		)
+	}
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, dbName, cfg.SSLMode,
+	)
+}
+
+func pingPostgresDB(db *sql.DB, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return db.PingContext(ctx)
+}
+
+func openPostgresWithSSLFallback(cfg *DatabaseConfig, dbName string) (*sql.DB, error) {
+	openDB := func() (*sql.DB, error) {
+		return sql.Open("postgres", buildSetupPostgresDSN(cfg, dbName))
+	}
+
+	db, err := openDB()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := pingPostgresDB(db, 5*time.Second); err != nil {
+		if !config.ShouldFallbackDatabaseSSLModeToDisable(cfg.SSLMode, err) {
+			_ = db.Close()
+			return nil, err
+		}
+
+		logger.LegacyPrintf("setup", "database sslmode=prefer unsupported by driver, falling back to disable")
+		_ = db.Close()
+		cfg.SSLMode = config.DatabaseSSLModeDisable
+
+		db, err = openDB()
+		if err != nil {
+			return nil, err
+		}
+		if err := pingPostgresDB(db, 5*time.Second); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+	}
+
+	return db, nil
+}
+
 // TestDatabaseConnection tests the database connection and creates database if not exists
 func TestDatabaseConnection(cfg *DatabaseConfig) error {
-	// First, connect to the default 'postgres' database to check/create target database
-	defaultDSN := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
-	)
-
-	db, err := sql.Open("postgres", defaultDSN)
+	// First, connect to the default 'postgres' database to check/create target database.
+	db, err := openPostgresWithSSLFallback(cfg, "postgres")
 	if err != nil {
 		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
 	}
@@ -182,14 +211,9 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 		}
 	}()
 
+	// Check if target database exists
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
-	if err := db.PingContext(ctx); err != nil {
-		return fmt.Errorf("ping failed: %w", err)
-	}
-
-	// Check if target database exists
 	var exists bool
 	row := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", cfg.DBName)
 	if err := row.Scan(&exists); err != nil {
@@ -214,12 +238,7 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 	}
 	db = nil
 
-	targetDSN := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
-	)
-
-	targetDB, err := sql.Open("postgres", targetDSN)
+	targetDB, err := openPostgresWithSSLFallback(cfg, cfg.DBName)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database '%s': %w", cfg.DBName, err)
 	}
@@ -229,13 +248,6 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 		}
 	}()
-
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel2()
-
-	if err := targetDB.PingContext(ctx2); err != nil {
-		return fmt.Errorf("ping target database failed: %w", err)
-	}
 
 	return nil
 }

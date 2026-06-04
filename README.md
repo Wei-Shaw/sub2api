@@ -439,6 +439,29 @@ nano config.yaml
 
 > **Note:** The `-tags embed` flag embeds the frontend into the binary. Without this flag, the binary will not serve the frontend UI.
 
+#### Runtime config path for source builds
+
+When running a source build, the setup wizard and normal startup read/write `config.yaml` from the current working directory by default. For example, if you run the binary inside `backend`, the default path is `backend/config.yaml`.
+
+If you want runtime files such as `config.yaml` and `.installed` to live in a dedicated data directory, set `DATA_DIR` in your service environment:
+
+```ini
+[Service]
+WorkingDirectory=/opt/sub2api/backend
+Environment=DATA_DIR=/var/lib/sub2api
+Environment=SERVER_HOST=0.0.0.0
+Environment=SERVER_PORT=8080
+```
+
+Create the directory first and ensure the service user can write to it:
+
+```bash
+sudo mkdir -p /var/lib/sub2api
+sudo chown -R sub2api:sub2api /var/lib/sub2api
+```
+
+Docker deployments still use `/app/data` as before.
+
 **Key configuration in `config.yaml`:**
 
 ```yaml

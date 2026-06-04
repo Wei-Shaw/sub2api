@@ -519,16 +519,6 @@ const installing = ref(false)
 const confirmPassword = ref('')
 const serviceReady = ref(false)
 
-// Default server port
-const getCurrentPort = (): number => {
-  const port = window.location.port
-  if (port) {
-    return parseInt(port, 10)
-  }
-
-  return window.location.protocol === 'https:' ? 443 : 80
-}
-
 const formData = reactive<InstallRequest>({
   database: {
     host: 'localhost',
@@ -551,7 +541,8 @@ const formData = reactive<InstallRequest>({
   },
   server: {
     host: '0.0.0.0',
-    port: getCurrentPort(), // Use current port from browser
+    // Resolved by the backend from service config / environment instead of browser URL.
+    port: 0,
     mode: 'release'
   }
 })
