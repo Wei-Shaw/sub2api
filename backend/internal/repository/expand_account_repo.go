@@ -18,6 +18,7 @@ var (
 	errExpandAccountUsed        = infraerrors.Conflict("EXPAND_ACCOUNT_ALREADY_USED", "expand account already marked as used")
 	errExpandInvalidProxy       = infraerrors.BadRequest("INVALID_PROXY_INFO", "invalid proxy_info")
 	errExpandAccountUnavailable = infraerrors.NotFound("EXPAND_ACCOUNT_UNAVAILABLE", "no unused expand account available")
+	errExpandAccountEmailMismatch = infraerrors.BadRequest("EXPAND_ACCOUNT_EMAIL_MISMATCH", "expand account email mismatch")
 )
 
 type expandAccountRepository struct {
@@ -44,7 +45,7 @@ func (r *expandAccountRepository) ListExpandAccounts(ctx context.Context, page, 
 	offset := (page - 1) * pageSize
 	listArgs := append(append([]any{}, args...), pageSize, offset)
 	query := `
-SELECT id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, created_at, updated_at
+SELECT id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at
 FROM expand_accounts` + whereClause + `
 ORDER BY created_at DESC, id DESC
 LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
@@ -72,7 +73,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 
 func (r *expandAccountRepository) GetExpandAccount(ctx context.Context, id int64) (*service.ExpandAccount, error) {
 	const query = `
-SELECT id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, created_at, updated_at
+SELECT id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at
 FROM expand_accounts
 WHERE id = $1`
 
@@ -101,7 +102,7 @@ func (r *expandAccountRepository) CreateExpandAccount(ctx context.Context, input
 	const query = `
 INSERT INTO expand_accounts (email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used)
 VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, false))
-RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, created_at, updated_at`
+RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at`
 
 	item, err := scanExpandAccount(tx.QueryRowContext(
 		ctx,
@@ -149,7 +150,7 @@ SET
 	used = COALESCE($9, used),
 	updated_at = NOW()
 WHERE id = $1
-RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, created_at, updated_at`
+RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at`
 
 	item, err := scanExpandAccount(tx.QueryRowContext(
 		ctx,
@@ -196,7 +197,7 @@ func (r *expandAccountRepository) MarkExpandAccountUsed(ctx context.Context, id 
 UPDATE expand_accounts
 SET used = true, updated_at = NOW()
 WHERE id = $1 AND used = false
-RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, created_at, updated_at`
+RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at`
 
 	item, err := scanExpandAccount(r.db.QueryRowContext(ctx, query, id))
 	if err == nil {
@@ -231,7 +232,7 @@ UPDATE expand_accounts ea
 SET used = true, updated_at = NOW()
 FROM picked
 WHERE ea.id = picked.id
-RETURNING ea.id, ea.email, ea.platform, ea.subscription_type, ea.country, ea.session_key, ea.proxy_id, ea.proxy_info, ea.used, ea.created_at, ea.updated_at`
+RETURNING ea.id, ea.email, ea.platform, ea.subscription_type, ea.country, ea.session_key, ea.proxy_id, ea.proxy_info, ea.used, ea.account_id, ea.login_status, ea.device_id, ea.api_key, ea.created_at, ea.updated_at`
 
 	item, err := scanExpandAccount(r.db.QueryRowContext(ctx, query, strings.TrimSpace(platform)))
 	if err == nil {
@@ -243,11 +244,53 @@ RETURNING ea.id, ea.email, ea.platform, ea.subscription_type, ea.country, ea.ses
 	return nil, err
 }
 
+func (r *expandAccountRepository) ReportExpandAccountLogin(ctx context.Context, input *service.ExpandAccountReportInput) (*service.ExpandAccount, error) {
+	existing, err := r.GetExpandAccount(ctx, input.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.EqualFold(strings.TrimSpace(existing.Email), strings.TrimSpace(input.Email)) {
+		return nil, errExpandAccountEmailMismatch
+	}
+
+	const query = `
+UPDATE expand_accounts
+SET login_status = $2,
+    device_id = $3,
+    api_key = $4,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at`
+
+	var (
+		deviceID any
+		apiKey   any
+	)
+	if input.DeviceID != "" {
+		deviceID = input.DeviceID
+	}
+	if input.APIKey != "" {
+		apiKey = input.APIKey
+	}
+
+	item, scanErr := scanExpandAccount(r.db.QueryRowContext(ctx, query, input.ID, input.LoginStatus, deviceID, apiKey))
+	if scanErr != nil {
+		if scanErr == sql.ErrNoRows {
+			return nil, errExpandAccountNotFound.WithCause(scanErr)
+		}
+		return nil, scanErr
+	}
+	return item, nil
+}
+
 func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, error) {
 	var (
 		item          service.ExpandAccount
 		proxyID       sql.NullInt64
 		proxyInfoJSON []byte
+		accountID     sql.NullInt64
+		deviceID      sql.NullString
+		apiKey        sql.NullString
 	)
 	err := scanner.Scan(
 		&item.ID,
@@ -259,6 +302,10 @@ func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, er
 		&proxyID,
 		&proxyInfoJSON,
 		&item.Used,
+		&accountID,
+		&item.LoginStatus,
+		&deviceID,
+		&apiKey,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
@@ -274,6 +321,15 @@ func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, er
 			return nil, fmt.Errorf("unmarshal expand account proxy_info: %w", err)
 		}
 		item.ProxyInfo = &proxyInfo
+	}
+	if accountID.Valid {
+		item.AccountID = &accountID.Int64
+	}
+	if deviceID.Valid {
+		item.DeviceID = deviceID.String
+	}
+	if apiKey.Valid {
+		item.APIKey = apiKey.String
 	}
 	return &item, nil
 }
@@ -389,8 +445,8 @@ func expandAccountProxyLockHash(key string) int64 {
 }
 
 func buildExpandAccountListWhere(filters service.ExpandAccountListFilters) (string, []any) {
-	clauses := make([]string, 0, 2)
-	args := make([]any, 0, 4)
+	clauses := make([]string, 0, 4)
+	args := make([]any, 0, 6)
 
 	search := strings.TrimSpace(filters.Search)
 	if search != "" {
@@ -408,6 +464,18 @@ func buildExpandAccountListWhere(filters service.ExpandAccountListFilters) (stri
 	case "used":
 		args = append(args, true)
 		clauses = append(clauses, "used = $"+itoa(len(args)))
+	}
+
+	if filters.LoginStatus != nil {
+		args = append(args, *filters.LoginStatus)
+		clauses = append(clauses, "login_status = $"+itoa(len(args)))
+	}
+
+	switch strings.TrimSpace(filters.AccountType) {
+	case "old":
+		clauses = append(clauses, "account_id IS NOT NULL")
+	case "new":
+		clauses = append(clauses, "account_id IS NULL")
 	}
 
 	if len(clauses) == 0 {

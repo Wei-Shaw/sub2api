@@ -4190,7 +4190,15 @@ export default {
       deleteFailed: '删除扩展账号失败',
       markUsedSuccess: '已标记为已使用',
       markUsedFailed: '标记为已使用失败',
-      sessionKeyCopied: 'Session Key 已复制'
+      sessionKeyCopied: 'Session Key 已复制',
+      loginStatus: '上号状态',
+      loginStatusFilter: '上号状态',
+      loginStatusPending: '未上号',
+      loginStatusSuccess: '上号成功',
+      loginStatusFailed: '上号失败',
+      accountType: '账号类型',
+      accountTypeOld: '老号',
+      accountTypeNew: '新号'
     },
 
     // Scheduled Tests

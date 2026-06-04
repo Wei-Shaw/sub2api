@@ -48,6 +48,10 @@ func (s *expandAccountServiceStub) GetAndMarkExpandAccountByPlatform(ctx context
 	return s.item, s.err
 }
 
+func (s *expandAccountServiceStub) ReportExpandAccountLogin(ctx context.Context, input *service.ExpandAccountReportInput) (*service.ExpandAccount, error) {
+	panic("unexpected call")
+}
+
 func TestExpandAccountHandlerGetByPlatform(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -69,6 +73,7 @@ func TestExpandAccountHandlerGetByPlatform(t *testing.T) {
 				Password: "m5N7v5T9s9h4",
 			},
 			Used:      true,
+			AccountID: ptrInt64(77),
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
@@ -134,6 +139,7 @@ func TestExpandAccountHandlerGetByPlatform(t *testing.T) {
 			ProxyID          *int64                          `json:"proxy_id"`
 			ProxyInfo        *service.ProxyInfo              `json:"proxy_info"`
 			Proxy            *dto.AdminProxyWithAccountCount `json:"proxy"`
+			AccountID        *int64                          `json:"account_id"`
 			CreatedAt        string                          `json:"created_at"`
 			UpdatedAt        string                          `json:"updated_at"`
 		} `json:"data"`
@@ -155,6 +161,8 @@ func TestExpandAccountHandlerGetByPlatform(t *testing.T) {
 	require.Equal(t, int64(10), resp.Data.Proxy.AccountCount)
 	require.Equal(t, "success", resp.Data.Proxy.LatencyStatus)
 	require.Equal(t, "warn", resp.Data.Proxy.QualityStatus)
+	require.NotNil(t, resp.Data.AccountID)
+	require.Equal(t, int64(77), *resp.Data.AccountID)
 	require.Equal(t, now.Format(time.RFC3339), resp.Data.CreatedAt)
 	require.Equal(t, now.Format(time.RFC3339), resp.Data.UpdatedAt)
 }

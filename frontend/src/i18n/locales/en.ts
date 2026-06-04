@@ -4099,7 +4099,15 @@ export default {
       deleteFailed: 'Failed to delete expand account',
       markUsedSuccess: 'Marked as used',
       markUsedFailed: 'Failed to mark as used',
-      sessionKeyCopied: 'Session key copied'
+      sessionKeyCopied: 'Session key copied',
+      loginStatus: 'Login Status',
+      loginStatusFilter: 'Login Status',
+      loginStatusPending: 'Pending',
+      loginStatusSuccess: 'Logged In',
+      loginStatusFailed: 'Login Failed',
+      accountType: 'Account Type',
+      accountTypeOld: 'Existing',
+      accountTypeNew: 'New'
     },
 
     // Scheduled Tests

@@ -9,6 +9,10 @@ export interface ExpandAccount {
   country: string
   session_key: string
   used: boolean
+  account_id?: number | null
+  login_status: number
+  device_id?: string
+  api_key?: string
   created_at: string
   updated_at: string
 }
@@ -30,6 +34,8 @@ export async function list(
   filters?: {
     search?: string
     used?: string
+    login_status?: number
+    account_type?: 'old' | 'new'
   }
 ): Promise<PaginatedResponse<ExpandAccount>> {
   const { data } = await apiClient.get<PaginatedResponse<ExpandAccount>>('/admin/expand-accounts', {

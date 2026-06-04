@@ -16,6 +16,10 @@ type ExpandAccount struct {
 	ProxyInfo        *ProxyInfo             `json:"proxy_info,omitempty"`
 	Proxy            *ProxyWithAccountCount `json:"proxy,omitempty"`
 	Used             bool                   `json:"used"`
+	AccountID        *int64                 `json:"account_id,omitempty"`
+	LoginStatus      int64                  `json:"login_status"`
+	DeviceID         string                 `json:"device_id,omitempty"`
+	APIKey           string                 `json:"api_key,omitempty"`
 	CreatedAt        time.Time              `json:"created_at"`
 	UpdatedAt        time.Time              `json:"updated_at"`
 }
@@ -29,8 +33,10 @@ type ProxyInfo struct {
 }
 
 type ExpandAccountListFilters struct {
-	Search string
-	Used   string
+	Search      string
+	Used        string
+	LoginStatus *int64
+	AccountType string
 }
 
 type ExpandAccountCreateInput struct {
@@ -53,6 +59,14 @@ type ExpandAccountUpdateInput struct {
 	Used             *bool
 }
 
+type ExpandAccountReportInput struct {
+	ID          int64
+	Email       string
+	LoginStatus int64
+	DeviceID    string
+	APIKey      string
+}
+
 type ExpandAccountService interface {
 	ListExpandAccounts(ctx context.Context, page, pageSize int, filters ExpandAccountListFilters) ([]ExpandAccount, int64, error)
 	GetExpandAccount(ctx context.Context, id int64) (*ExpandAccount, error)
@@ -61,4 +75,5 @@ type ExpandAccountService interface {
 	DeleteExpandAccount(ctx context.Context, id int64) error
 	MarkExpandAccountUsed(ctx context.Context, id int64) (*ExpandAccount, error)
 	GetAndMarkExpandAccountByPlatform(ctx context.Context, platform string) (*ExpandAccount, error)
+	ReportExpandAccountLogin(ctx context.Context, input *ExpandAccountReportInput) (*ExpandAccount, error)
 }

@@ -18,6 +18,18 @@
             class="w-40"
             @change="reloadFirstPage"
           />
+          <Select
+            v-model="filters.login_status"
+            :options="loginStatusOptions"
+            class="w-40"
+            @change="reloadFirstPage"
+          />
+          <Select
+            v-model="filters.account_type"
+            :options="accountTypeOptions"
+            class="w-40"
+            @change="reloadFirstPage"
+          />
           <div class="flex flex-1 items-center justify-end gap-2">
             <button class="btn btn-secondary" :disabled="loading" @click="loadItems" :title="t('common.refresh')">
               <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
@@ -66,6 +78,30 @@
               ]"
             >
               {{ value ? t('admin.expandAccounts.used') : t('admin.expandAccounts.unused') }}
+            </span>
+          </template>
+
+          <template #cell-login_status="{ value }">
+            <span
+              :class="[
+                'inline-flex rounded-full px-2 py-1 text-xs font-medium',
+                loginStatusBadgeClass(value)
+              ]"
+            >
+              {{ loginStatusLabel(value) }}
+            </span>
+          </template>
+
+          <template #cell-account_type="{ row }">
+            <span
+              :class="[
+                'inline-flex rounded-full px-2 py-1 text-xs font-medium',
+                row.account_id != null
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                  : 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
+              ]"
+            >
+              {{ row.account_id != null ? t('admin.expandAccounts.accountTypeOld') : t('admin.expandAccounts.accountTypeNew') }}
             </span>
           </template>
 
@@ -209,7 +245,9 @@ const markingUsedId = ref<number | null>(null)
 
 const filters = reactive({
   search: '',
-  used: 'all'
+  used: 'all',
+  login_status: 'all' as 'all' | '0' | '1' | '2',
+  account_type: 'all' as 'all' | 'old' | 'new'
 })
 
 const pagination = reactive({
@@ -233,6 +271,8 @@ const columns: Column[] = [
   { key: 'country', label: t('admin.expandAccounts.country') },
   { key: 'session_key', label: t('admin.expandAccounts.sessionKey') },
   { key: 'used', label: t('common.status') },
+  { key: 'login_status', label: t('admin.expandAccounts.loginStatus') },
+  { key: 'account_type', label: t('admin.expandAccounts.accountType') },
   { key: 'created_at', label: t('admin.expandAccounts.createdAt') },
   { key: 'updated_at', label: t('admin.expandAccounts.updatedAt') },
   { key: 'actions', label: t('common.actions') }
@@ -243,6 +283,41 @@ const usedOptions = [
   { label: t('admin.expandAccounts.unused'), value: 'unused' },
   { label: t('admin.expandAccounts.used'), value: 'used' }
 ]
+
+const loginStatusOptions = [
+  { label: t('common.all'), value: 'all' },
+  { label: t('admin.expandAccounts.loginStatusPending'), value: '0' },
+  { label: t('admin.expandAccounts.loginStatusSuccess'), value: '1' },
+  { label: t('admin.expandAccounts.loginStatusFailed'), value: '2' }
+]
+
+const accountTypeOptions = [
+  { label: t('common.all'), value: 'all' },
+  { label: t('admin.expandAccounts.accountTypeOld'), value: 'old' },
+  { label: t('admin.expandAccounts.accountTypeNew'), value: 'new' }
+]
+
+function loginStatusLabel(value: number | null | undefined): string {
+  switch (Number(value ?? 0)) {
+    case 1:
+      return t('admin.expandAccounts.loginStatusSuccess')
+    case 2:
+      return t('admin.expandAccounts.loginStatusFailed')
+    default:
+      return t('admin.expandAccounts.loginStatusPending')
+  }
+}
+
+function loginStatusBadgeClass(value: number | null | undefined): string {
+  switch (Number(value ?? 0)) {
+    case 1:
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+    case 2:
+      return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+    default:
+      return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'
+  }
+}
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -258,7 +333,9 @@ async function loadItems() {
   try {
     const data = await adminAPI.expandAccounts.list(pagination.page, pagination.page_size, {
       search: filters.search.trim() || undefined,
-      used: filters.used === 'all' ? undefined : filters.used
+      used: filters.used === 'all' ? undefined : filters.used,
+      login_status: filters.login_status === 'all' ? undefined : Number(filters.login_status),
+      account_type: filters.account_type === 'all' ? undefined : filters.account_type
     })
     items.value = data.items
     pagination.total = data.total

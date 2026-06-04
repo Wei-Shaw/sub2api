@@ -51,7 +51,7 @@ func TestCreateExpandAccountReusesExistingProxy(t *testing.T) {
 		).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "email", "platform", "subscription_type", "country", "session_key",
-			"proxy_id", "proxy_info", "used", "created_at", "updated_at",
+			"proxy_id", "proxy_info", "used", "account_id", "login_status", "device_id", "api_key", "created_at", "updated_at",
 		}).AddRow(
 			int64(9),
 			input.Email,
@@ -62,6 +62,10 @@ func TestCreateExpandAccountReusesExistingProxy(t *testing.T) {
 			int64(15),
 			[]byte(`{"protocol":"socks5","host":"154.63.48.107","port":7778,"username":"a3p3p1Q0o5j8","password":"m5N7v5T9s9h4"}`),
 			false,
+			nil,
+			int64(0),
+			nil,
+			nil,
 			now,
 			now,
 		))
@@ -128,7 +132,7 @@ func TestCreateExpandAccountCreatesProxyWhenMissing(t *testing.T) {
 		).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "email", "platform", "subscription_type", "country", "session_key",
-			"proxy_id", "proxy_info", "used", "created_at", "updated_at",
+			"proxy_id", "proxy_info", "used", "account_id", "login_status", "device_id", "api_key", "created_at", "updated_at",
 		}).AddRow(
 			int64(10),
 			input.Email,
@@ -139,6 +143,10 @@ func TestCreateExpandAccountCreatesProxyWhenMissing(t *testing.T) {
 			int64(31),
 			[]byte(`{"protocol":"socks5","host":"154.63.48.107","port":7778,"username":"a3p3p1Q0o5j8","password":"m5N7v5T9s9h4"}`),
 			false,
+			nil,
+			int64(0),
+			nil,
+			nil,
 			now,
 			now,
 		))

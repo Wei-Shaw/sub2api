@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,6 +49,14 @@ type callbackExpandAccountRequest struct {
 	ProxyInfo        *callbackExpandAccountProxyInfoRequest `json:"proxy_info" binding:"required"`
 }
 
+type reportExpandAccountRequest struct {
+	ID          int64  `json:"id" binding:"required"`
+	Email       string `json:"email" binding:"required"`
+	LoginStatus *int64 `json:"login_status" binding:"required"`
+	DeviceID    string `json:"device_id"`
+	APIKey      string `json:"api_key"`
+}
+
 type getExpandAccountRequest struct {
 	Platform string `json:"platform" binding:"required"`
 }
@@ -61,6 +71,7 @@ type getExpandAccountResponse struct {
 	ProxyID          *int64                          `json:"proxy_id,omitempty"`
 	ProxyInfo        *service.ProxyInfo              `json:"proxy_info,omitempty"`
 	Proxy            *dto.AdminProxyWithAccountCount `json:"proxy,omitempty"`
+	AccountID        *int64                          `json:"account_id,omitempty"`
 	CreatedAt        string                          `json:"created_at"`
 	UpdatedAt        string                          `json:"updated_at"`
 }
@@ -94,10 +105,17 @@ func (h *ExpandAccountHandler) createFromRequest(c *gin.Context, req createExpan
 
 func (h *ExpandAccountHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
-	items, total, err := h.service.ListExpandAccounts(c.Request.Context(), page, pageSize, service.ExpandAccountListFilters{
-		Search: strings.TrimSpace(c.Query("search")),
-		Used:   strings.TrimSpace(c.Query("used")),
-	})
+	filters := service.ExpandAccountListFilters{
+		Search:      strings.TrimSpace(c.Query("search")),
+		Used:        strings.TrimSpace(c.Query("used")),
+		AccountType: strings.TrimSpace(c.Query("account_type")),
+	}
+	if raw := strings.TrimSpace(c.Query("login_status")); raw != "" {
+		if v, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			filters.LoginStatus = &v
+		}
+	}
+	items, total, err := h.service.ListExpandAccounts(c.Request.Context(), page, pageSize, filters)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -176,6 +194,7 @@ func (h *ExpandAccountHandler) GetByPlatform(c *gin.Context) {
 		SessionKey:       item.SessionKey,
 		ProxyID:          item.ProxyID,
 		ProxyInfo:        item.ProxyInfo,
+		AccountID:        item.AccountID,
 		CreatedAt:        item.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:        item.UpdatedAt.Format(time.RFC3339),
 	}
@@ -245,4 +264,62 @@ func (h *ExpandAccountHandler) MarkUsed(c *gin.Context) {
 		return
 	}
 	response.Success(c, item)
+}
+
+func (h *ExpandAccountHandler) Report(c *gin.Context) {
+	var req reportExpandAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		slog.Warn("expand-accounts report: invalid request body", "client_ip", c.ClientIP(), "err", err)
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_REQUEST", "invalid request body").WithCause(err))
+		return
+	}
+
+	loginStatusValue := int64(-1)
+	if req.LoginStatus != nil {
+		loginStatusValue = *req.LoginStatus
+	}
+	slog.Info("expand-accounts report: entry",
+		"client_ip", c.ClientIP(),
+		"id", req.ID,
+		"email", req.Email,
+		"login_status", loginStatusValue,
+		"device_id", req.DeviceID,
+		"api_key_present", strings.TrimSpace(req.APIKey) != "",
+	)
+
+	if req.LoginStatus == nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_LOGIN_STATUS", "login_status is required"))
+		return
+	}
+	loginStatus := *req.LoginStatus
+	if loginStatus != 1 && loginStatus != 2 {
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_LOGIN_STATUS", "login_status must be 1 or 2"))
+		return
+	}
+
+	deviceID := strings.TrimSpace(req.DeviceID)
+	apiKey := strings.TrimSpace(req.APIKey)
+	if loginStatus == 1 {
+		if deviceID == "" {
+			response.ErrorFrom(c, infraerrors.BadRequest("DEVICE_ID_REQUIRED", "device_id is required when login_status is 1"))
+			return
+		}
+		if apiKey == "" {
+			response.ErrorFrom(c, infraerrors.BadRequest("API_KEY_REQUIRED", "api_key is required when login_status is 1"))
+			return
+		}
+	}
+
+	_, err := h.service.ReportExpandAccountLogin(c.Request.Context(), &service.ExpandAccountReportInput{
+		ID:          req.ID,
+		Email:       strings.TrimSpace(req.Email),
+		LoginStatus: loginStatus,
+		DeviceID:    deviceID,
+		APIKey:      apiKey,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, nil)
 }
