@@ -23,6 +23,17 @@ func (s *OpenAIGatewayService) compactNonstreamKeepaliveInterval() time.Duration
 	return time.Duration(seconds) * time.Second
 }
 
+func (s *OpenAIGatewayService) logOpenAICompactNonstreamKeepaliveBootstrap() {
+	interval := s.compactNonstreamKeepaliveInterval()
+	if interval <= 0 {
+		return
+	}
+	logger.L().With(
+		zap.String("component", "service.openai_gateway"),
+		zap.Int("interval_seconds", int(interval.Seconds())),
+	).Info("OpenAI compact non-stream keepalive enabled")
+}
+
 func (s *OpenAIGatewayService) startCompactNonstreamKeepalive(ctx context.Context, c *gin.Context) func() {
 	if s == nil || c == nil || c.Writer == nil || !isOpenAIResponsesCompactPath(c) {
 		return func() {}
@@ -38,6 +49,16 @@ func (s *OpenAIGatewayService) startCompactNonstreamKeepalive(ctx context.Contex
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	path := ""
+	if c.Request != nil && c.Request.URL != nil {
+		path = strings.TrimSpace(c.Request.URL.Path)
+	}
+	log := logger.FromContext(ctx).With(
+		zap.String("component", "service.openai_gateway"),
+		zap.String("request_path", path),
+		zap.Int("interval_seconds", int(interval.Seconds())),
+	)
+	log.Info("OpenAI compact non-stream keepalive started")
 
 	headers := c.Writer.Header()
 	headers.Set("Content-Type", "application/json")
@@ -53,6 +74,7 @@ func (s *OpenAIGatewayService) startCompactNonstreamKeepalive(ctx context.Contex
 		defer wg.Done()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
+		flushedLogged := false
 		for {
 			select {
 			case <-stopCh:
@@ -60,8 +82,15 @@ func (s *OpenAIGatewayService) startCompactNonstreamKeepalive(ctx context.Contex
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				_, _ = c.Writer.Write([]byte("\n"))
+				if _, err := c.Writer.Write([]byte("\n")); err != nil {
+					log.Warn("OpenAI compact non-stream keepalive write failed", zap.Error(err))
+					return
+				}
 				flusher.Flush()
+				if !flushedLogged {
+					log.Info("OpenAI compact non-stream keepalive flushed")
+					flushedLogged = true
+				}
 			}
 		}
 	}()
@@ -72,6 +101,13 @@ func (s *OpenAIGatewayService) startCompactNonstreamKeepalive(ctx context.Contex
 		})
 		wg.Wait()
 	}
+}
+
+func compactStopFunc(stops ...func()) func() {
+	if len(stops) == 0 || stops[0] == nil {
+		return func() {}
+	}
+	return stops[0]
 }
 
 func logOpenAICompactKeepaliveCommitted(ctx context.Context, c *gin.Context, account *Account, resp *http.Response) {

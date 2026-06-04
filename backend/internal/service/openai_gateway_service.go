@@ -478,6 +478,7 @@ func NewOpenAIGatewayService(
 		openAITokenProvider.SetAccountRuntimeBlocker(svc)
 	}
 	svc.logOpenAIWSModeBootstrap()
+	svc.logOpenAICompactNonstreamKeepaliveBootstrap()
 	return svc
 }
 

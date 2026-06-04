@@ -65,11 +65,11 @@ func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID 
 		req.Body = io.NopCloser(bytes.NewReader(b))
 	}
 	u.requests = append(u.requests, req)
-	if u.err != nil {
-		return nil, u.err
-	}
 	if u.delay > 0 {
 		time.Sleep(u.delay)
+	}
+	if u.err != nil {
+		return nil, u.err
 	}
 	if len(u.responses) > 0 {
 		resp := u.responses[0]
@@ -705,6 +705,55 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactNonstreamKeepaliveWritesLe
 	require.Contains(t, string(body), `"id":"cmp_keepalive"`)
 }
 
+func TestOpenAIGatewayService_OAuthCompactNonPassthroughKeepaliveWritesLeadingNewline(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "Codex Desktop/0.135.0-alpha.1")
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	originalBody := []byte(`{"model":"gpt-5.5","stream":false,"instructions":"local-test-instructions","input":[{"type":"message","role":"user","content":"compact me"}]}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-compact-native-keepalive"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"cmp_native_keepalive","usage":{"input_tokens":11,"output_tokens":22}}`)),
+	}
+	upstream := &httpUpstreamRecorder{resp: resp, delay: 1200 * time.Millisecond}
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			OpenAICompactNonstreamKeepaliveInterval: 1,
+		}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          124,
+		Name:        "acc-native",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+		},
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	body := rec.Body.Bytes()
+	require.True(t, bytes.HasPrefix(body, []byte("\n")), "native compact keepalive should write a leading blank line")
+	require.True(t, json.Valid(bytes.TrimSpace(body)))
+	require.Contains(t, string(body), `"id":"cmp_native_keepalive"`)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, chatgptCodexURL+"/compact", upstream.lastReq.URL.String())
+}
+
 func TestOpenAIGatewayService_OAuthPassthrough_CompactNonstreamKeepaliveDisabledHasNoLeadingWhitespace(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -827,6 +876,71 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactNonstreamKeepaliveCommitte
 			require.True(t, bytes.HasPrefix(rec.Body.Bytes(), []byte("\n")))
 			require.Contains(t, rec.Body.String(), tc.message)
 			require.True(t, logSink.ContainsFieldValue("compact_keepalive_committed", "true"))
+		})
+	}
+}
+
+func TestOpenAIGatewayService_OAuthCompactNonstreamKeepaliveCommittedTransportErrorDoesNotFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	testCases := []struct {
+		name    string
+		body    []byte
+		account *Account
+	}{
+		{
+			name:    "passthrough",
+			body:    []byte(`{"model":"gpt-5.1-codex","stream":true,"instructions":"local-test-instructions","input":[{"type":"text","text":"compact me"}]}`),
+			account: newOpenAICompactPassthroughTestAccount(),
+		},
+		{
+			name: "non_passthrough",
+			body: []byte(`{"model":"gpt-5.5","stream":false,"instructions":"local-test-instructions","input":[{"type":"message","role":"user","content":"compact me"}]}`),
+			account: &Account{
+				ID:          124,
+				Name:        "acc-native",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Concurrency: 1,
+				Credentials: map[string]any{
+					"access_token":       "oauth-token",
+					"chatgpt_account_id": "chatgpt-acc",
+				},
+				Status:         StatusActive,
+				Schedulable:    true,
+				RateMultiplier: f64p(1),
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+			c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			upstream := &httpUpstreamRecorder{
+				err:   errors.New("dial tcp: i/o timeout"),
+				delay: 1200 * time.Millisecond,
+			}
+			svc := &OpenAIGatewayService{
+				cfg: &config.Config{Gateway: config.GatewayConfig{
+					ForceCodexCLI:                           false,
+					OpenAICompactNonstreamKeepaliveInterval: 1,
+				}},
+				httpUpstream: upstream,
+			}
+
+			result, err := svc.Forward(context.Background(), c, tc.account, tc.body)
+			require.Error(t, err)
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.False(t, errors.As(err, &failoverErr), "committed compact keepalive must suppress transport failover")
+			body := rec.Body.Bytes()
+			require.True(t, bytes.HasPrefix(body, []byte("\n")))
+			require.Contains(t, string(body), "Upstream request failed")
 		})
 	}
 }

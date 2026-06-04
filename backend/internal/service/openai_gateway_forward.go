@@ -712,18 +712,31 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 
 		// Send request
+		stopCompactKeepalive := func() {}
+		if !reqStream {
+			stopCompactKeepalive = s.startCompactNonstreamKeepalive(ctx, c)
+		}
+
 		upstreamStart := time.Now()
 		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
+			stopCompactKeepalive()
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
 			// a failover so the handler switches to a healthy account, and temporarily
 			// unschedule the account on durable faults (e.g. rejected proxy credentials).
-			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+			transportErr := s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+			if openAICompactKeepaliveCommitted(c) {
+				logOpenAICompactKeepaliveCommitted(ctx, c, account, nil)
+				writeOpenAICommittedTransportError(c)
+				return nil, fmt.Errorf("upstream request failed after compact keepalive: %s", sanitizeUpstreamErrorMessage(err.Error()))
+			}
+			return nil, transportErr
 		}
 
 		// Handle error response
 		if resp.StatusCode >= 400 {
+			stopCompactKeepalive()
 			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
@@ -731,6 +744,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 			upstreamCode := extractUpstreamErrorCode(respBody)
+			if openAICompactKeepaliveCommitted(c) {
+				logOpenAICompactKeepaliveCommitted(ctx, c, account, resp)
+				return s.handleErrorResponse(ctx, resp, c, account, body, billingModel)
+			}
 			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
 				decoded, decodeErr := ensureReqBody()
 				if decodeErr != nil {
@@ -793,6 +810,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		imageCount := 0
 		var imageOutputSizes []string
 		if reqStream {
+			stopCompactKeepalive()
 			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
 			if err != nil {
 				return nil, err
@@ -803,7 +821,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
 		} else {
-			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
+			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel, stopCompactKeepalive)
 			if err != nil {
 				return nil, err
 			}
