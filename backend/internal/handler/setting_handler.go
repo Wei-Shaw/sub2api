@@ -98,6 +98,8 @@ REDACTED
 		AffiliateEnabled: settings.AffiliateEnabled,
 
 		RiskControlEnabled: settings.RiskControlEnabled,
+
+		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
 REDACTED)
 REDACTED
 

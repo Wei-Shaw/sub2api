@@ -937,7 +937,26 @@ export default {
     exportExcelSuccess: '使用数据导出成功（Excel格式）',
     exportExcelFailed: '使用数据导出失败',
     imageUnit: '张',
-    userAgent: 'User-Agent'
+    userAgent: 'User-Agent',
+    tabs: { usage: '用量明细', errors: '错误请求' REDACTED,
+    errors: {
+      time: '时间', model: '模型', endpoint: '端点', status: '状态码',
+      category: '分类', platform: '平台', message: '错误信息',
+      keyName: 'Key 名称', keyDeleted: '已删除', allKeys: '全部 Key',
+      modelPlaceholder: '搜索模型', allCategories: '全部分类',
+      empty: '暂无错误请求', failedToLoad: '加载错误请求失败',
+      categories: {
+        auth: '认证失败', rate_limit: '限流', quota: '余额/订阅',
+        invalid_request: '参数错误', service_unavailable: '服务暂时不可用',
+        upstream: '上游错误', internal: '平台错误', other: '其他',
+      REDACTED,
+      detail: {
+        title: '错误请求详情',
+        responseBody: '上游响应内容',
+        upstreamStatus: '上游状态码',
+        loadFailed: '加载详情失败，请稍后重试',
+      REDACTED,
+    REDACTED,
   REDACTED,
 
   // Shared keys for channel monitor (admin + user views)
@@ -6486,6 +6505,14 @@ export default {
       openaiExperimentalScheduler: {
         title: 'OpenAI 实验调度策略',
         description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。'
+      REDACTED,
+      usageRecords: {
+        title: '使用记录',
+        description: '与终端用户可见的用量及失败请求记录相关的设置。',
+      REDACTED,
+      user_error_view: {
+        label: '允许用户查看自己的错误请求',
+        description: '开启后，用户可在用量页查看自己失败请求的精简信息（不含内部/上游错误细节）。需运维监控开启才有数据。',
       REDACTED,
       saveSettings: '保存设置',
       saving: '保存中...',
