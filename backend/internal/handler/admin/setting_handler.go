@@ -1312,6 +1312,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")
 				return
 			}
+			switch item.OpenMode {
+			case "", "embed", "redirect", "newtab":
+				// valid; empty defaults to embed
+			default:
+				response.BadRequest(c, "Custom menu item open_mode must be 'embed', 'redirect' or 'newtab'")
+				return
+			}
 			if len(item.IconSVG) > maxMenuItemIconSVGLen {
 				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
 				return
