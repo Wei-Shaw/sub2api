@@ -68,6 +68,8 @@ interface Props {
   planType?: string
   privacyMode?: string
   subscriptionExpiresAt?: string
+  // 自定义平台（OpenAI 兼容透传）的展示名，取自 credentials.platform_name
+  platformName?: string
 }
 
 const props = defineProps<Props>()
@@ -76,7 +78,10 @@ const platformLabel = computed(() => {
   if (props.platform === 'anthropic') return 'Anthropic'
   if (props.platform === 'openai') return 'OpenAI'
   if (props.platform === 'antigravity') return 'Antigravity'
-  return 'Gemini'
+  // 自定义平台：优先展示用户自定义的平台名，否则回退 'Custom'
+  if (props.platform === 'custom') return props.platformName?.trim() || 'Custom'
+  if (props.platform === 'gemini') return 'Gemini'
+  return props.platform || 'Gemini'
 })
 
 const typeLabel = computed(() => {
@@ -126,6 +131,9 @@ const platformClass = computed(() => {
   if (props.platform === 'antigravity') {
     return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
   }
+  if (props.platform === 'custom') {
+    return 'bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300'
+  }
   return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
 })
 
@@ -138,6 +146,9 @@ const typeClass = computed(() => {
   }
   if (props.platform === 'antigravity') {
     return 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
+  }
+  if (props.platform === 'custom') {
+    return 'bg-slate-100 text-slate-600 dark:bg-slate-800/50 dark:text-slate-300'
   }
   return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
 })

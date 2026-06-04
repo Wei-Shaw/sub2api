@@ -29,6 +29,19 @@ func TestBuildV1ModelsURL(t *testing.T) {
 	require.Equal(t, "https://gateway.example.com/antigravity/v1/models", buildV1ModelsURL("https://gateway.example.com/antigravity/"))
 }
 
+func TestBuildOpenAIModelsURL(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "https://api.example.com/v1/models", buildOpenAIModelsURL("https://api.example.com"))
+	require.Equal(t, "https://api.example.com/v1/models", buildOpenAIModelsURL("https://api.example.com/v1"))
+	require.Equal(t, "https://api.example.com/v1/models", buildOpenAIModelsURL("https://api.example.com/v1/"))
+	require.Equal(t, "https://api.example.com/v1/models", buildOpenAIModelsURL("https://api.example.com/v1/models"))
+	// 任意版本段都应保留，不强加 /v1
+	require.Equal(t, "https://api.example.com/v2/models", buildOpenAIModelsURL("https://api.example.com/v2"))
+	// base 已自带 /models 时原样返回，避免拼成 /models/v1/models
+	require.Equal(t, "https://api.example.com/models", buildOpenAIModelsURL("https://api.example.com/models"))
+}
+
 func TestBuildGeminiModelsURL(t *testing.T) {
 	t.Parallel()
 
@@ -116,6 +129,20 @@ func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/models", geminiReq.URL.String())
 	require.Equal(t, "gemini-key", geminiReq.Header.Get("x-goog-api-key"))
+
+	geminiOpenAIReq, err := svc.buildGeminiUpstreamModelsRequest(ctx, &Account{
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "gemini-openai-key",
+			"base_url":      "https://openai-compatible.example.com/v1",
+			"upstream_mode": "openai_chat_completions",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "https://openai-compatible.example.com/v1/models", geminiOpenAIReq.URL.String())
+	require.Equal(t, "Bearer gemini-openai-key", geminiOpenAIReq.Header.Get("Authorization"))
+	require.Empty(t, geminiOpenAIReq.Header.Get("x-goog-api-key"))
 
 	antigravityReq, err := svc.buildAntigravityAPIKeyModelsRequest(ctx, &Account{
 		Platform: PlatformAntigravity,

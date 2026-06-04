@@ -594,6 +594,13 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 	}
 
 	originalModel := req.Model
+
+	// OpenAI 兼容上游（自定义平台 / Gemini upstream_mode=openai_chat_completions）：
+	// 把 Anthropic Messages 请求双向转换后转发到 {base_url}/chat/completions。
+	if account.UsesOpenAICompatRawForward() {
+		return s.forwardMessagesViaOpenAICompat(ctx, c, account, body, originalModel, req.Stream, startTime)
+	}
+
 	mappedModel := req.Model
 	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
 		mappedModel = account.GetMappedModel(req.Model)
@@ -1129,6 +1136,12 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		// ok
 	default:
 		return nil, s.writeGoogleError(c, http.StatusNotFound, "Unsupported action: "+action)
+	}
+
+	// OpenAI 兼容上游（自定义平台 / Gemini upstream_mode=openai_chat_completions）：
+	// 上游只接受 Chat Completions 协议，这里把 Gemini 原生请求双向转换后转发。
+	if account.UsesOpenAICompatRawForward() {
+		return s.forwardNativeViaOpenAICompat(ctx, c, account, originalModel, action, stream, body, startTime)
 	}
 
 	// Some Gemini upstreams validate tool call parts strictly; ensure any `functionCall` part includes a

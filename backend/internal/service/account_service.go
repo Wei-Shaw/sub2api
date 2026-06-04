@@ -419,6 +419,9 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 	case PlatformGemini:
 		// TODO: 测试Gemini API凭证
 		return nil
+	case PlatformCustom:
+		// 自定义平台通过 OpenAI 兼容透传，凭证有效性由实际转发与模型同步校验
+		return nil
 	default:
 		return fmt.Errorf("unsupported platform: %s", account.Platform)
 	}

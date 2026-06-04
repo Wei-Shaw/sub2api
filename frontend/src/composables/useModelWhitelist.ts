@@ -376,6 +376,8 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'spark': return sparkModels
     case 'hunyuan': return hunyuanModels
     case 'perplexity': return perplexityModels
+    // 自定义平台无内置预设模型，支持的模型通过同步上游 /models 获取
+    case 'custom': return []
     default: return claudeModels
   }
 }

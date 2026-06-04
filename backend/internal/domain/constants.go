@@ -22,6 +22,9 @@ const (
 	PlatformOpenAI      = "openai"
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
+	// PlatformCustom 是自定义平台：通过 Base URL + API Key 以 OpenAI 兼容
+	// Chat Completions 协议透传到任意上游服务。
+	PlatformCustom = "custom"
 )
 
 // Account type constants

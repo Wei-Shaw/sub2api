@@ -147,6 +147,40 @@
             <Icon name="cloud" size="sm" />
             Antigravity
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'custom'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'custom'
+                ? 'bg-white text-slate-700 shadow-sm dark:bg-dark-600 dark:text-slate-200'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <svg
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.759 6.759 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
+              />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            {{ t('admin.accounts.custom.platformLabel') }}
+          </button>
+        </div>
+        <!-- 选择自定义平台时，说明其为 OpenAI 兼容格式 -->
+        <div
+          v-if="form.platform === 'custom'"
+          class="mt-2 flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800/40 dark:text-slate-300"
+        >
+          <Icon name="infoCircle" size="sm" class="mt-0.5 shrink-0" />
+          <span>{{ t('admin.accounts.custom.formatNote') }}</span>
         </div>
       </div>
 
@@ -681,7 +715,7 @@
         </div>
 
         <!-- Tier selection (used as fallback when auto-detection is unavailable/fails) -->
-        <div v-if="accountCategory !== 'service_account'" class="mt-4">
+        <div v-if="accountCategory === 'oauth-based'" class="mt-4">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
           <div class="mt-2">
             <select
@@ -1016,15 +1050,14 @@
             v-model="apiKeyBaseUrl"
             type="text"
             class="input"
-            :placeholder="
-              form.platform === 'openai'
-                ? 'https://api.openai.com'
-                : form.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
-                  : 'https://api.anthropic.com'
-            "
+            :placeholder="apiKeyBaseUrlPlaceholder"
           />
           <p class="input-hint">{{ baseUrlHint }}</p>
+        </div>
+        <div v-if="form.platform === 'gemini'">
+          <label class="input-label">{{ t('admin.accounts.gemini.upstreamMode.label') }}</label>
+          <Select v-model="geminiUpstreamMode" :options="geminiUpstreamModeOptions" />
+          <p class="input-hint">{{ t(geminiUpstreamModeHintKey) }}</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
@@ -1033,19 +1066,25 @@
             type="password"
             required
             class="input font-mono"
-            :placeholder="
-              form.platform === 'openai'
-                ? 'sk-proj-...'
-                : form.platform === 'gemini'
-                  ? 'AIza...'
-                  : 'sk-ant-...'
-            "
+            :placeholder="apiKeyPlaceholder"
           />
           <p class="input-hint">{{ apiKeyHint }}</p>
         </div>
 
+        <!-- Custom platform: 自定义平台名（OpenAI 兼容透传，模型经同步上游获取） -->
+        <div v-if="form.platform === 'custom'">
+          <label class="input-label">{{ t('admin.accounts.custom.nameLabel') }}</label>
+          <input
+            v-model="customPlatformName"
+            type="text"
+            class="input"
+            :placeholder="t('admin.accounts.custom.namePlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.custom.nameHint') }}</p>
+        </div>
+
         <!-- Gemini API Key tier selection -->
-        <div v-if="form.platform === 'gemini'">
+        <div v-if="form.platform === 'gemini' && geminiUpstreamMode === 'native'">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
           <select v-model="geminiTierAIStudio" class="input">
             <option value="aistudio_free">{{ t('admin.accounts.gemini.tier.aiStudio.free') }}</option>
@@ -1054,7 +1093,7 @@
           <p class="input-hint">{{ t('admin.accounts.gemini.tier.aiStudioHint') }}</p>
         </div>
 
-        <!-- Model Restriction Section (Antigravity 已在上层条件排除) -->
+        <!-- Model Restriction Section (Antigravity 已在上层条件排除；自定义平台经“同步上游支持的模型”填充) -->
         <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
@@ -3227,7 +3266,8 @@ import type {
   CodexSessionImportMessage,
   OpenAICompactMode,
   OpenAIResponsesMode,
-  OpenAIEndpointCapability
+  OpenAIEndpointCapability,
+  GeminiUpstreamMode
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -3268,6 +3308,11 @@ interface OAuthFlowExposed {
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+const GEMINI_NATIVE_BASE_URL = 'https://generativelanguage.googleapis.com'
+const OPENAI_COMPAT_BASE_URL_PLACEHOLDER = 'https://api.example.com/v1'
+const geminiUpstreamMode = ref<GeminiUpstreamMode>('native')
+// 自定义平台（OpenAI 兼容透传）展示名；支持的模型经“同步上游支持的模型”获取
+const customPlatformName = ref('')
 
 const oauthStepTitle = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
@@ -3279,14 +3324,42 @@ const oauthStepTitle = computed(() => {
 // Platform-specific hints for API Key type
 const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (form.platform === 'custom') return t('admin.accounts.custom.baseUrlHint')
+  if (form.platform === 'gemini' && geminiUpstreamMode.value === 'openai_chat_completions') {
+    return t('admin.accounts.gemini.upstreamMode.openAIBaseUrlHint')
+  }
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
 const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
+  if (form.platform === 'custom') return t('admin.accounts.custom.apiKeyHint')
+  if (form.platform === 'gemini' && geminiUpstreamMode.value === 'openai_chat_completions') {
+    return t('admin.accounts.gemini.upstreamMode.openAIKeyHint')
+  }
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
+})
+
+const apiKeyBaseUrlPlaceholder = computed(() => {
+  if (form.platform === 'openai') return 'https://api.openai.com'
+  if (form.platform === 'custom') return OPENAI_COMPAT_BASE_URL_PLACEHOLDER
+  if (form.platform === 'gemini') {
+    return geminiUpstreamMode.value === 'openai_chat_completions'
+      ? OPENAI_COMPAT_BASE_URL_PLACEHOLDER
+      : GEMINI_NATIVE_BASE_URL
+  }
+  return 'https://api.anthropic.com'
+})
+
+const apiKeyPlaceholder = computed(() => {
+  if (form.platform === 'openai') return 'sk-proj-...'
+  if (form.platform === 'custom') return 'sk-...'
+  if (form.platform === 'gemini') {
+    return geminiUpstreamMode.value === 'openai_chat_completions' ? 'sk-...' : 'AIza...'
+  }
+  return 'sk-ant-...'
 })
 
 interface Props {
@@ -3480,6 +3553,15 @@ const openAIResponsesModeOptions = computed(() => [
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
   { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
 ])
+const geminiUpstreamModeOptions = computed(() => [
+  { value: 'native', label: t('admin.accounts.gemini.upstreamMode.native') },
+  { value: 'openai_chat_completions', label: t('admin.accounts.gemini.upstreamMode.openAIChatCompletions') }
+])
+const geminiUpstreamModeHintKey = computed(() =>
+  geminiUpstreamMode.value === 'openai_chat_completions'
+    ? 'admin.accounts.gemini.upstreamMode.openAIHint'
+    : 'admin.accounts.gemini.upstreamMode.nativeHint'
+)
 const openAITextEndpointCapabilityLabel = computed(() => {
   if (openAIResponsesMode.value === 'force_responses') {
     return t('admin.accounts.openai.capabilityResponses')
@@ -3792,13 +3874,22 @@ watch(
 watch(
   () => form.platform,
   (newPlatform) => {
+    if (newPlatform !== 'gemini') {
+      geminiUpstreamMode.value = 'native'
+    }
+    // 自定义平台：始终为 apikey 类型（OpenAI 兼容透传），无 OAuth/tier 选项
+    if (newPlatform === 'custom') {
+      accountCategory.value = 'apikey'
+    }
     // Reset base URL based on platform
     apiKeyBaseUrl.value =
       (newPlatform === 'openai')
         ? 'https://api.openai.com'
         : newPlatform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+          ? GEMINI_NATIVE_BASE_URL
+          : newPlatform === 'custom'
+            ? ''
+            : 'https://api.anthropic.com'
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
@@ -3857,6 +3948,23 @@ watch(
 
     geminiOAuth.resetState()
     antigravityOAuth.resetState()
+  }
+)
+
+watch(
+  geminiUpstreamMode,
+  (newMode) => {
+    if (form.platform !== 'gemini') return
+    const currentBaseUrl = apiKeyBaseUrl.value.trim().replace(/\/+$/, '')
+    if (newMode === 'openai_chat_completions') {
+      if (currentBaseUrl === GEMINI_NATIVE_BASE_URL) {
+        apiKeyBaseUrl.value = ''
+      }
+      return
+    }
+    if (!currentBaseUrl || currentBaseUrl === OPENAI_COMPAT_BASE_URL_PLACEHOLDER) {
+      apiKeyBaseUrl.value = GEMINI_NATIVE_BASE_URL
+    }
   }
 )
 
@@ -4283,6 +4391,8 @@ const resetForm = () => {
   geminiTierGoogleOne.value = 'google_one_free'
   geminiTierGcp.value = 'gcp_standard'
   geminiTierAIStudio.value = 'aistudio_free'
+  geminiUpstreamMode.value = 'native'
+  customPlatformName.value = ''
   oauth.resetState()
   openaiOAuth.resetState()
   geminiOAuth.resetState()
@@ -4610,13 +4720,25 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
+  if (
+    form.platform === 'gemini' &&
+    geminiUpstreamMode.value === 'openai_chat_completions' &&
+    !apiKeyBaseUrl.value.trim()
+  ) {
+    appStore.showError(t('admin.accounts.upstream.pleaseEnterBaseUrl'))
+    return
+  }
+  if (form.platform === 'custom' && !apiKeyBaseUrl.value.trim()) {
+    appStore.showError(t('admin.accounts.upstream.pleaseEnterBaseUrl'))
+    return
+  }
 
   // Determine default base URL based on platform
   const defaultBaseUrl =
     form.platform === 'openai'
       ? 'https://api.openai.com'
       : form.platform === 'gemini'
-        ? 'https://generativelanguage.googleapis.com'
+        ? GEMINI_NATIVE_BASE_URL
         : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
@@ -4625,7 +4747,16 @@ const handleSubmit = async () => {
     api_key: apiKeyValue.value.trim()
   }
   if (form.platform === 'gemini') {
-    credentials.tier_id = geminiTierAIStudio.value
+    if (geminiUpstreamMode.value === 'openai_chat_completions') {
+      credentials.upstream_mode = 'openai_chat_completions'
+    } else {
+      credentials.tier_id = geminiTierAIStudio.value
+    }
+  }
+  // 自定义平台：保存展示名（OpenAI 兼容透传）
+  if (form.platform === 'custom') {
+    const platformName = customPlatformName.value.trim()
+    if (platformName) credentials.platform_name = platformName
   }
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）

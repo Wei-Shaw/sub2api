@@ -31,6 +31,13 @@ import (
 // 匹配格式: /Users/xxx/.gemini/tmp/[64位十六进制哈希]
 var geminiCLITmpDirRegex = regexp.MustCompile(`/\.gemini/tmp/([A-Fa-f0-9]{64})`)
 
+// geminiNativeAllowedPlatform 报告该分组平台是否允许通过 Gemini 原生协议
+// （/v1beta/models/...）访问。gemini 平台原生支持；custom（OpenAI 兼容透传）
+// 经请求/响应转换后也支持（见 GeminiMessagesCompatService.forwardNativeViaOpenAICompat）。
+func geminiNativeAllowedPlatform(platform string) bool {
+	return platform == service.PlatformGemini || platform == service.PlatformCustom
+}
+
 // GeminiV1BetaListModels proxies:
 // GET /v1beta/models
 func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
@@ -41,7 +48,7 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 	}
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
+	if !hasForcePlatform && (apiKey.Group == nil || !geminiNativeAllowedPlatform(apiKey.Group.Platform)) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -88,7 +95,7 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 	}
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
+	if !hasForcePlatform && (apiKey.Group == nil || !geminiNativeAllowedPlatform(apiKey.Group.Platform)) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -155,7 +162,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组
 	if !middleware.HasForcePlatform(c) {
-		if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
+		if apiKey.Group == nil || !geminiNativeAllowedPlatform(apiKey.Group.Platform) {
 			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 			return
 		}

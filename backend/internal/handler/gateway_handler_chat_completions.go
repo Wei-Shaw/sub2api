@@ -242,9 +242,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		var result *service.ForwardResult
-		if account.Platform == service.PlatformGemini {
+		if account.Platform == service.PlatformGemini || account.IsCustom() {
 			if h.geminiCompatService == nil {
-				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Gemini compatibility service is not configured")
+				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Compatibility service is not configured")
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
@@ -291,6 +291,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+		if account.UsesOpenAICompatRawForward() {
+			upstreamEndpoint = EndpointChatCompletions
+		}
 
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {

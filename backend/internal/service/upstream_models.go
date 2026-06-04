@@ -137,6 +137,8 @@ func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, acc
 		return s.buildGeminiUpstreamModelsRequest(ctx, account)
 	case account.IsAnthropic():
 		return s.buildAnthropicUpstreamModelsRequest(ctx, account)
+	case account.IsCustom():
+		return s.buildCustomUpstreamModelsRequest(ctx, account)
 	default:
 		return nil, newUpstreamModelSyncUnsupportedError(
 			fmt.Sprintf("Unsupported platform for upstream model sync: %s", account.Platform), nil,
@@ -276,7 +278,53 @@ func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Contex
 	return req, nil
 }
 
+// buildCustomUpstreamModelsRequest 为自定义平台（OpenAI 兼容透传）构建上游模型列表请求。
+// 自定义平台没有内置预设模型，其支持的模型通过同步上游 {base_url}/models 获取。
+func (s *AccountTestService) buildCustomUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	if baseURL == "" {
+		return nil, newUpstreamModelSyncConfigError("Custom platform base URL is required", nil)
+	}
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid custom platform base URL", err)
+	}
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" {
+		return nil, newUpstreamModelSyncConfigError("No custom platform API key is available", nil)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildOpenAIModelsURL(normalizedBaseURL), nil)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid custom platform model list URL", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	return req, nil
+}
+
 func (s *AccountTestService) buildGeminiUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	if account.IsGeminiOpenAIChatCompletionsUpstream() {
+		baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+		if strings.TrimSpace(baseURL) == "" {
+			return nil, newUpstreamModelSyncConfigError("Gemini OpenAI-compatible base URL is required", nil)
+		}
+		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return nil, newUpstreamModelSyncConfigError("Invalid Gemini OpenAI-compatible base URL", err)
+		}
+		apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+		if apiKey == "" {
+			return nil, newUpstreamModelSyncConfigError("No Gemini OpenAI-compatible API key is available", nil)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildOpenAIModelsURL(normalizedBaseURL), nil)
+		if err != nil {
+			return nil, newUpstreamModelSyncConfigError("Invalid Gemini OpenAI-compatible model list URL", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		return req, nil
+	}
+
 	baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = geminicli.AIStudioBaseURL
@@ -382,15 +430,16 @@ func buildV1ModelsURL(base string) string {
 	return normalized + "/v1/models"
 }
 
+// buildOpenAIModelsURL 根据上游 base URL 推导 OpenAI 兼容的模型列表地址，与
+// buildOpenAIChatCompletionsURL 使用同一套版本段识别逻辑，保证 /chat/completions
+// 与 /models 解析一致。兼容多种 base 写法：
+//   - https://api.example.com            -> https://api.example.com/v1/models
+//   - https://api.example.com/v1         -> https://api.example.com/v1/models
+//   - https://api.example.com/v2         -> https://api.example.com/v2/models（任意版本段）
+//   - https://api.example.com/v1/models  -> 原样返回
+//   - https://api.example.com/models     -> 原样返回（上游已自带 /models，不强加 /v1）
 func buildOpenAIModelsURL(base string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(normalized, "/v1/models") {
-		return normalized
-	}
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + "/models"
-	}
-	return normalized + "/v1/models"
+	return buildOpenAIEndpointURL(base, "/v1/models")
 }
 
 func buildGeminiModelsURL(base string) string {

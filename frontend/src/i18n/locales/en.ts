@@ -2149,6 +2149,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        custom: 'Custom',
       },
       deleteConfirm:
         "Are you sure you want to delete '{name}'? All associated API keys will no longer belong to any group.",
@@ -3815,7 +3816,18 @@ export default {
                     pleaseEnterRefreshToken: 'Please enter Refresh Token',
                     failedToValidateRT: 'Failed to validate Refresh Token'
                   }
-                },      // Gemini specific (platform-wide)
+                },
+      // Custom platform (OpenAI-compatible passthrough)
+      custom: {
+        platformLabel: 'Custom',
+        formatNote: 'Custom platform: requests are forwarded to your upstream /chat/completions endpoint in OpenAI-compatible Chat Completions format. After saving, use "Sync upstream models" to fetch the supported model list.',
+        baseUrlHint: 'OpenAI-compatible upstream Base URL, e.g. https://api.example.com/v1',
+        apiKeyHint: 'API key for the upstream service',
+        nameLabel: 'Platform Name',
+        namePlaceholder: 'e.g. MyProvider',
+        nameHint: 'Display name shown for this custom platform (optional)'
+      },
+      // Gemini specific (platform-wide)
       gemini: {
         helpButton: 'Help',
         helpDialog: {
@@ -3827,6 +3839,15 @@ export default {
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)',
+        upstreamMode: {
+          label: 'Upstream Mode',
+          native: 'Gemini Native API',
+          openAIChatCompletions: 'OpenAI-compatible Chat Completions',
+          nativeHint: 'Use Gemini native /v1beta/models endpoints. Best for official Gemini API keys.',
+          openAIHint: 'Forward requests directly to upstream /v1/chat/completions. Best for OpenAI-compatible services.',
+          openAIBaseUrlHint: 'Enter an OpenAI-compatible upstream URL, e.g. https://api.example.com/v1',
+          openAIKeyHint: 'API key for the OpenAI-compatible upstream service'
+        },
         tier: {
           label: 'Account Tier',
           hint: 'Tip: The system will try to auto-detect the tier first; if auto-detection is unavailable or fails, your selected tier is used as a fallback (simulated quota).',

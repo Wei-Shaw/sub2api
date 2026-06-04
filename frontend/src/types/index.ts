@@ -485,7 +485,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'custom'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -688,7 +688,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'custom'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -763,9 +763,12 @@ export interface ProxyQualityCheckResult {
 }
 
 // Gemini credentials structure for OAuth and API Key authentication
+export type GeminiUpstreamMode = 'native' | 'openai_chat_completions'
+
 export interface GeminiCredentials {
   // API Key authentication
   api_key?: string
+  upstream_mode?: GeminiUpstreamMode | string
 
   // OAuth authentication
   access_token?: string

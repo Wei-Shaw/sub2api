@@ -862,6 +862,22 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 		}
 	}
 
+	if account.IsGeminiOpenAIChatCompletionsUpstream() {
+		apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+		if apiKey == "" {
+			return s.sendErrorAndEnd(c, "No API key available")
+		}
+		baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+		if baseURL == "" {
+			return s.sendErrorAndEnd(c, "Gemini OpenAI-compatible base URL is required")
+		}
+		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+		}
+		return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, apiKey)
+	}
+
 	// Set SSE headers
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")

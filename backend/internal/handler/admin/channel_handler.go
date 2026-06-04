@@ -521,6 +521,13 @@ func (h *ChannelHandler) SyncPricingModels(c *gin.Context) {
 		return
 	}
 
+	// 自定义平台无 LiteLLM 定价目录（模型名由上游决定），返回空列表，
+	// 管理员在渠道定价中手动添加模型名与价格即可。
+	if platform == service.PlatformCustom {
+		response.Success(c, gin.H{"models": []string{}})
+		return
+	}
+
 	provider, ok := platformToLiteLLMProvider[platform]
 	if !ok {
 		response.ErrorFrom(c, infraerrors.BadRequest("UNSUPPORTED_PLATFORM",

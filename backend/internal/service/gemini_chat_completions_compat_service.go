@@ -42,6 +42,10 @@ func (s *GeminiMessagesCompatService) ForwardAsChatCompletions(
 	clientStream := ccReq.Stream
 	includeUsage := ccReq.StreamOptions != nil && ccReq.StreamOptions.IncludeUsage
 
+	if account.UsesOpenAICompatRawForward() {
+		return s.forwardRawOpenAIChatCompletions(ctx, c, account, body, &ccReq, startTime)
+	}
+
 	responsesReq, err := apicompat.ChatCompletionsToResponses(&ccReq)
 	if err != nil {
 		return nil, s.writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())

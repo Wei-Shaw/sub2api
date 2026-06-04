@@ -173,6 +173,55 @@ func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
 }
 
+const (
+	GeminiUpstreamModeNative                = "native"
+	GeminiUpstreamModeOpenAIChatCompletions = "openai_chat_completions"
+)
+
+func normalizeGeminiUpstreamMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", GeminiUpstreamModeNative, "gemini", "gemini_native":
+		return GeminiUpstreamModeNative
+	case GeminiUpstreamModeOpenAIChatCompletions, "chat_completions", "openai", "openai_compatible":
+		return GeminiUpstreamModeOpenAIChatCompletions
+	default:
+		return GeminiUpstreamModeNative
+	}
+}
+
+func (a *Account) GeminiUpstreamMode() string {
+	if a == nil || a.Platform != PlatformGemini {
+		return GeminiUpstreamModeNative
+	}
+	return normalizeGeminiUpstreamMode(a.GetCredential("upstream_mode"))
+}
+
+func (a *Account) IsGeminiOpenAIChatCompletionsUpstream() bool {
+	return a != nil &&
+		a.Platform == PlatformGemini &&
+		a.Type == AccountTypeAPIKey &&
+		a.GeminiUpstreamMode() == GeminiUpstreamModeOpenAIChatCompletions
+}
+
+// IsCustom 报告该账号是否属于自定义平台。
+func (a *Account) IsCustom() bool {
+	return a != nil && a.Platform == PlatformCustom
+}
+
+// UsesOpenAICompatRawForward 报告该账号是否应通过 OpenAI 兼容 Chat Completions
+// 原样转发路径处理：
+//   - 自定义平台账号（apikey 类型，Base URL + API Key 透传到上游 /chat/completions）
+//   - Gemini 平台显式选择 openai_chat_completions 上游模式的账号
+func (a *Account) UsesOpenAICompatRawForward() bool {
+	if a == nil {
+		return false
+	}
+	if a.IsGeminiOpenAIChatCompletionsUpstream() {
+		return true
+	}
+	return a.Platform == PlatformCustom && a.Type == AccountTypeAPIKey
+}
+
 func (a *Account) GeminiOAuthType() string {
 	if a.Platform != PlatformGemini || a.Type != AccountTypeOAuth {
 		return ""

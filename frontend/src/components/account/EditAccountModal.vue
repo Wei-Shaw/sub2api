@@ -34,17 +34,14 @@
             v-model="editBaseUrl"
             type="text"
             class="input"
-            :placeholder="
-              account.platform === 'openai'
-                ? 'https://api.openai.com'
-                : account.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
-                  : account.platform === 'antigravity'
-                    ? 'https://cloudcode-pa.googleapis.com'
-                    : 'https://api.anthropic.com'
-            "
+            :placeholder="apiKeyBaseUrlPlaceholder"
           />
           <p class="input-hint">{{ baseUrlHint }}</p>
+        </div>
+        <div v-if="account.platform === 'gemini'">
+          <label class="input-label">{{ t('admin.accounts.gemini.upstreamMode.label') }}</label>
+          <Select v-model="geminiUpstreamMode" :options="geminiUpstreamModeOptions" />
+          <p class="input-hint">{{ t(geminiUpstreamModeHintKey) }}</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
@@ -56,20 +53,30 @@
             data-1p-ignore
             data-lpignore="true"
             data-bwignore="true"
-            :placeholder="
-              account.platform === 'openai'
-                ? 'sk-proj-...'
-                : account.platform === 'gemini'
-                  ? 'AIza...'
-                  : account.platform === 'antigravity'
-                    ? 'sk-...'
-                    : 'sk-ant-...'
-            "
+            :placeholder="apiKeyPlaceholder"
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
 
-        <!-- Model Restriction Section (不适用于 Antigravity) -->
+        <!-- Custom platform: 自定义平台名（OpenAI 兼容透传，模型经同步上游获取） -->
+        <div v-if="account.platform === 'custom'">
+          <div
+            class="mb-4 flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800/40 dark:text-slate-300"
+          >
+            <Icon name="infoCircle" size="sm" class="mt-0.5 shrink-0" />
+            <span>{{ t('admin.accounts.custom.formatNote') }}</span>
+          </div>
+          <label class="input-label">{{ t('admin.accounts.custom.nameLabel') }}</label>
+          <input
+            v-model="customPlatformName"
+            type="text"
+            class="input"
+            :placeholder="t('admin.accounts.custom.namePlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.custom.nameHint') }}</p>
+        </div>
+
+        <!-- Model Restriction Section (不适用于 Antigravity；自定义平台经“同步上游支持的模型”填充) -->
         <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
@@ -2387,7 +2394,8 @@ import type {
   CheckMixedChannelResponse,
   OpenAICompactMode,
   OpenAIResponsesMode,
-  OpenAIEndpointCapability
+  OpenAIEndpointCapability,
+  GeminiUpstreamMode
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -2435,13 +2443,44 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const GEMINI_NATIVE_BASE_URL = 'https://generativelanguage.googleapis.com'
+const OPENAI_COMPAT_BASE_URL_PLACEHOLDER = 'https://api.example.com/v1'
+const geminiUpstreamMode = ref<GeminiUpstreamMode>('native')
+// 自定义平台（OpenAI 兼容透传）展示名；支持的模型经“同步上游支持的模型”获取
+const customPlatformName = ref('')
 
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (props.account.platform === 'custom') return t('admin.accounts.custom.baseUrlHint')
+  if (props.account.platform === 'gemini' && geminiUpstreamMode.value === 'openai_chat_completions') {
+    return t('admin.accounts.gemini.upstreamMode.openAIBaseUrlHint')
+  }
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
+})
+
+const apiKeyBaseUrlPlaceholder = computed(() => {
+  if (props.account?.platform === 'openai') return 'https://api.openai.com'
+  if (props.account?.platform === 'custom') return OPENAI_COMPAT_BASE_URL_PLACEHOLDER
+  if (props.account?.platform === 'gemini') {
+    return geminiUpstreamMode.value === 'openai_chat_completions'
+      ? OPENAI_COMPAT_BASE_URL_PLACEHOLDER
+      : GEMINI_NATIVE_BASE_URL
+  }
+  if (props.account?.platform === 'antigravity') return 'https://cloudcode-pa.googleapis.com'
+  return 'https://api.anthropic.com'
+})
+
+const apiKeyPlaceholder = computed(() => {
+  if (props.account?.platform === 'openai') return 'sk-proj-...'
+  if (props.account?.platform === 'custom') return 'sk-...'
+  if (props.account?.platform === 'gemini') {
+    return geminiUpstreamMode.value === 'openai_chat_completions' ? 'sk-...' : 'AIza...'
+  }
+  if (props.account?.platform === 'antigravity') return 'sk-...'
+  return 'sk-ant-...'
 })
 
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
@@ -2688,6 +2727,15 @@ const openAIResponsesModeOptions = computed(() => [
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
   { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
 ])
+const geminiUpstreamModeOptions = computed(() => [
+  { value: 'native', label: t('admin.accounts.gemini.upstreamMode.native') },
+  { value: 'openai_chat_completions', label: t('admin.accounts.gemini.upstreamMode.openAIChatCompletions') }
+])
+const geminiUpstreamModeHintKey = computed(() =>
+  geminiUpstreamMode.value === 'openai_chat_completions'
+    ? 'admin.accounts.gemini.upstreamMode.openAIHint'
+    : 'admin.accounts.gemini.upstreamMode.nativeHint'
+)
 const openAITextEndpointCapabilityLabel = computed(() => {
   if (openAIResponsesMode.value === 'force_responses') {
     return t('admin.accounts.openai.capabilityResponses')
@@ -2841,7 +2889,7 @@ const tempUnschedPresets = computed(() => [
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
-  if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
+  if (props.account?.platform === 'gemini') return GEMINI_NATIVE_BASE_URL
   return 'https://api.anthropic.com'
 })
 
@@ -2965,6 +3013,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexImageGenerationBridgeMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   webSearchEmulationMode.value = 'default'
+  geminiUpstreamMode.value = 'native'
+  customPlatformName.value = ''
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
@@ -3092,11 +3142,20 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Initialize API Key fields for apikey type
   if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
+    if (newAccount.platform === 'gemini') {
+      geminiUpstreamMode.value =
+        credentials.upstream_mode === 'openai_chat_completions' ? 'openai_chat_completions' : 'native'
+    }
+    if (newAccount.platform === 'custom') {
+      customPlatformName.value = (credentials.platform_name as string) || ''
+    }
+    const isGeminiOpenAIUpstream =
+      newAccount.platform === 'gemini' && geminiUpstreamMode.value === 'openai_chat_completions'
     const platformDefaultUrl =
       newAccount.platform === 'openai'
         ? 'https://api.openai.com'
         : newAccount.platform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
+          ? (isGeminiOpenAIUpstream ? '' : GEMINI_NATIVE_BASE_URL)
           : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
@@ -3164,7 +3223,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       newAccount.platform === 'openai'
         ? 'https://api.openai.com'
         : newAccount.platform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
+          ? GEMINI_NATIVE_BASE_URL
           : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
@@ -3207,6 +3266,23 @@ watch(
     }
   },
   { immediate: true }
+)
+
+watch(
+  geminiUpstreamMode,
+  (newMode) => {
+    if (props.account?.platform !== 'gemini' || props.account?.type !== 'apikey') return
+    const currentBaseUrl = editBaseUrl.value.trim().replace(/\/+$/, '')
+    if (newMode === 'openai_chat_completions') {
+      if (currentBaseUrl === GEMINI_NATIVE_BASE_URL) {
+        editBaseUrl.value = ''
+      }
+      return
+    }
+    if (!currentBaseUrl || currentBaseUrl === OPENAI_COMPAT_BASE_URL_PLACEHOLDER) {
+      editBaseUrl.value = GEMINI_NATIVE_BASE_URL
+    }
+  }
 )
 
 // Model mapping helpers
@@ -3684,7 +3760,17 @@ const handleSubmit = async () => {
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
-      const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
+      const isGeminiOpenAIUpstream =
+        props.account.platform === 'gemini' && geminiUpstreamMode.value === 'openai_chat_completions'
+      // 自定义平台与 Gemini OpenAI 兼容上游均要求显式填写 Base URL（无合理默认值）
+      const requiresExplicitBaseUrl = isGeminiOpenAIUpstream || props.account.platform === 'custom'
+      if (requiresExplicitBaseUrl && !editBaseUrl.value.trim()) {
+        appStore.showError(t('admin.accounts.upstream.pleaseEnterBaseUrl'))
+        return
+      }
+      const newBaseUrl = requiresExplicitBaseUrl
+        ? editBaseUrl.value.trim()
+        : editBaseUrl.value.trim() || defaultBaseUrl.value
       const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)
 
       // Always update credentials for apikey type to handle model mapping changes
@@ -3725,6 +3811,26 @@ const handleSubmit = async () => {
           newCredentials.compact_model_mapping = compactModelMapping
         } else {
           delete newCredentials.compact_model_mapping
+        }
+      }
+      if (props.account.platform === 'gemini') {
+        if (geminiUpstreamMode.value === 'openai_chat_completions') {
+          newCredentials.upstream_mode = 'openai_chat_completions'
+          delete newCredentials.tier_id
+        } else {
+          delete newCredentials.upstream_mode
+          if (typeof newCredentials.tier_id !== 'string' || !newCredentials.tier_id.trim()) {
+            newCredentials.tier_id = 'aistudio_free'
+          }
+        }
+      }
+      // 自定义平台：保存展示名（OpenAI 兼容透传）
+      if (props.account.platform === 'custom') {
+        const platformName = customPlatformName.value.trim()
+        if (platformName) {
+          newCredentials.platform_name = platformName
+        } else {
+          delete newCredentials.platform_name
         }
       }
 

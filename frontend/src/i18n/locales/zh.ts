@@ -2177,6 +2177,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        custom: '自定义',
       },
       saving: '保存中...',
       noGroups: '暂无分组',
@@ -3944,6 +3945,16 @@ export default {
           failedToValidateRT: '验证 Refresh Token 失败'
         }
       },
+      // 自定义平台（OpenAI 兼容透传）
+      custom: {
+        platformLabel: '自定义',
+        formatNote: '自定义平台：请求将以 OpenAI 兼容 Chat Completions 格式转发到上游的 /chat/completions 接口。保存后可用“同步上游支持的模型”拉取支持的模型列表。',
+        baseUrlHint: 'OpenAI 兼容上游 Base URL，例如：https://api.example.com/v1',
+        apiKeyHint: '上游服务的 API Key',
+        nameLabel: '平台名称',
+        namePlaceholder: '例如：MyProvider',
+        nameHint: '该自定义平台的展示名称（可选）'
+      },
       // Gemini specific (platform-wide)
       gemini: {
         helpButton: '使用帮助',
@@ -3955,6 +3966,15 @@ export default {
         modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
         baseUrlHint: '留空使用官方 Gemini API',
         apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
+        upstreamMode: {
+          label: '上游模式',
+          native: 'Gemini 原生 API',
+          openAIChatCompletions: 'OpenAI 兼容 Chat Completions',
+          nativeHint: '使用 Gemini 原生 /v1beta/models 接口，适合官方 Gemini API Key。',
+          openAIHint: '请求将原样转发到上游 /v1/chat/completions，适合 OpenAI 兼容服务。',
+          openAIBaseUrlHint: '请输入 OpenAI 兼容上游地址，例如：https://api.example.com/v1',
+          openAIKeyHint: '上游 OpenAI 兼容服务的 API Key'
+        },
         tier: {
           label: '账号等级',
           hint: '提示：系统会优先尝试自动识别账号等级；若自动识别不可用或失败，则使用你选择的等级作为回退（本地模拟配额）。',

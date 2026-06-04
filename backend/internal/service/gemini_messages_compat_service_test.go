@@ -170,6 +170,65 @@ func TestGeminiForwardAsChatCompletions_StreamsOpenAIChunksFromGeminiSSE(t *test
 	require.Contains(t, out, "data: [DONE]")
 }
 
+func TestGeminiForwardAsChatCompletions_OpenAIUpstreamModeForwardsRawChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"x-request-id": []string{"chatcmpl-req-1"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"id":"chatcmpl-1","object":"chat.completion","model":"upstream-gemini","choices":[{"index":0,"message":{"role":"assistant","content":"hello raw"},"finish_reason":"stop"}],"usage":{"prompt_tokens":9,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":3}}}`)),
+		},
+	}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: httpStub,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       103,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "raw-api-key",
+			"base_url":      "https://upstream.example/v1",
+			"upstream_mode": "openai_chat_completions",
+			"model_mapping": map[string]any{
+				"gemini-2.5-flash": "upstream-gemini",
+			},
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"hi"}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "chatcmpl-req-1", result.RequestID)
+	require.Equal(t, "gemini-2.5-flash", result.Model)
+	require.Equal(t, "upstream-gemini", result.UpstreamModel)
+	require.Equal(t, 9, result.Usage.InputTokens)
+	require.Equal(t, 4, result.Usage.OutputTokens)
+	require.Equal(t, 3, result.Usage.CacheReadInputTokens)
+
+	require.NotNil(t, httpStub.lastReq)
+	require.Equal(t, "https://upstream.example/v1/chat/completions", httpStub.lastReq.URL.String())
+	require.Equal(t, "Bearer raw-api-key", httpStub.lastReq.Header.Get("Authorization"))
+	require.Empty(t, httpStub.lastReq.Header.Get("x-goog-api-key"))
+
+	sentBody, err := io.ReadAll(httpStub.lastReq.Body)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"model":"upstream-gemini","messages":[{"role":"user","content":"hi"}]}`, string(sentBody))
+	require.Contains(t, rec.Body.String(), `"content":"hello raw"`)
+}
+
 // TestConvertClaudeToolsToGeminiTools_CustomType 测试custom类型工具转换
 func TestConvertClaudeToolsToGeminiTools_CustomType(t *testing.T) {
 	tests := []struct {

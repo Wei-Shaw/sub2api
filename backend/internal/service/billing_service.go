@@ -253,6 +253,25 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown:     false,
 	}
 
+	// Gemini Flash 系列兜底（gemini-2.5/3-flash 等，远程定价源缺失时的安全网）。
+	s.fallbackPrices["gemini-flash"] = &ModelPricing{
+		InputPricePerToken:         0.3e-6,   // $0.30 per MTok
+		OutputPricePerToken:        2.5e-6,   // $2.50 per MTok
+		CacheCreationPricePerToken: 0.3e-6,   // $0.30 per MTok
+		CacheReadPricePerToken:     0.075e-6, // $0.075 per MTok
+		SupportsCacheBreakdown:     false,
+	}
+
+	// Gemini 3.5 Flash（含 flash-low/high 等推理档变体）。
+	// 业务指定价：展示价 $3/$18/$0.30 的一半。自定义/聚合上游命名，远程定价源不含。
+	s.fallbackPrices["gemini-3.5-flash"] = &ModelPricing{
+		InputPricePerToken:         1.5e-6,  // $1.50 per MTok
+		OutputPricePerToken:        9e-6,    // $9.00 per MTok
+		CacheCreationPricePerToken: 1.5e-6,  // $1.50 per MTok
+		CacheReadPricePerToken:     0.15e-6, // $0.15 per MTok
+		SupportsCacheBreakdown:     false,
+	}
+
 	// OpenAI GPT-5.4（业务指定价格）
 	s.fallbackPrices["gpt-5.4"] = &ModelPricing{
 		InputPricePerToken:             2.5e-6,  // $2.5 per MTok
@@ -339,7 +358,16 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	if strings.Contains(modelLower, "claude") {
 		return s.fallbackPrices["claude-sonnet-4"]
 	}
-	if strings.Contains(modelLower, "gemini-3.1-pro") || strings.Contains(modelLower, "gemini-3-1-pro") {
+	// Gemini 系列兜底：远程定价源缺失时（如自定义/聚合上游命名的 gemini-3.5-flash-low），
+	// 避免零计费。flash 档按 Flash 价，其余（pro 及未知）按 3.1-Pro 价。
+	// 图片模型（gemini-*-image）走图片计费路径，不在此处按 token 兜底。
+	if strings.Contains(modelLower, "gemini") && !strings.Contains(modelLower, "image") {
+		if strings.Contains(modelLower, "flash") {
+			if strings.Contains(modelLower, "3.5") || strings.Contains(modelLower, "3-5") {
+				return s.fallbackPrices["gemini-3.5-flash"]
+			}
+			return s.fallbackPrices["gemini-flash"]
+		}
 		return s.fallbackPrices["gemini-3.1-pro"]
 	}
 

@@ -84,11 +84,19 @@ func TestGetModelPricing_FallbackMatchesByFamily(t *testing.T) {
 		{"claude-3-5-sonnet-20241022", 3e-6},
 		{"claude-3-5-haiku-20241022", 1e-6},
 		{"claude-3-haiku-20240307", 0.25e-6},
+		// Gemini 3.5 Flash（含推理档后缀）按业务指定价；其余 flash 用通用 Flash 兜底价
+		{"gemini-3.5-flash-low", 1.5e-6},
+		{"gemini-2.5-flash", 0.3e-6},
+		{"gemini-3-flash", 0.3e-6},
+		// 非 flash 的 Gemini 回退到 3.1-Pro 价
+		{"gemini-3.1-pro-high", 2e-6},
+		{"gemini-2.5-pro", 2e-6},
 	}
 
 	for _, tt := range tests {
 		pricing, err := svc.GetModelPricing(tt.model)
 		require.NoError(t, err, "模型 %s", tt.model)
+		require.NotNil(t, pricing, "模型 %s 应有定价", tt.model)
 		require.InDelta(t, tt.expectedInput, pricing.InputPricePerToken, 1e-12, "模型 %s 输入价格", tt.model)
 	}
 }
@@ -343,7 +351,10 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		{name: "claude opus 4.5 alt separator", model: "claude-opus-4-5-20260101", expectedInput: 5e-6},
 		{name: "claude generic model fallback sonnet", model: "claude-foo-bar", expectedInput: 3e-6},
 		{name: "gemini explicit fallback", model: "gemini-3-1-pro", expectedInput: 2e-6},
-		{name: "gemini unknown no fallback", model: "gemini-2.0-pro", expectNilPricing: true},
+		{name: "gemini unknown pro falls back to 3.1-pro", model: "gemini-2.0-pro", expectedInput: 2e-6},
+		{name: "gemini 3.5 flash uses dedicated price", model: "gemini-3.5-flash-low", expectedInput: 1.5e-6},
+		{name: "gemini generic flash uses flash price", model: "gemini-2.5-flash", expectedInput: 0.3e-6},
+		{name: "gemini image not token-priced", model: "gemini-3-pro-image", expectNilPricing: true},
 		{name: "openai gpt5.4", model: "gpt-5.4", expectedInput: 2.5e-6},
 		{name: "openai gpt5.4 mini", model: "gpt-5.4-mini", expectedInput: 7.5e-7},
 		{name: "openai gpt5.3 codex", model: "gpt-5.3-codex", expectedInput: 1.5e-6},
