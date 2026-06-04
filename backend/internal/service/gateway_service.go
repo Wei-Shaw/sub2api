@@ -7906,9 +7906,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			if time.Since(lastDataAt) < keepaliveInterval {
 				continue
 			}
-			// SSE ping 事件：Anthropic 原生格式，客户端会正确处理，
-			// 同时保持连接活跃防止 Cloudflare Tunnel 等代理断开
-			if _, werr := fmt.Fprint(w, "event: ping\ndata: {\"type\": \"ping\"}\n\n"); werr != nil {
+			// SSE 注释格式 keepalive：在 HTTP 层保持连接活跃（防止 Cloudflare Tunnel 等代理因空闲断开），
+			// 但不会被 Anthropic SDK yield 给消费者，不干扰客户端（如 Claude Code）的 idle watchdog。
+			if _, werr := fmt.Fprint(w, ": keepalive\n\n"); werr != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.gateway", "Client disconnected during keepalive ping, continuing to drain upstream for billing")
 				continue
