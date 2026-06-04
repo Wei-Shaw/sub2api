@@ -136,3 +136,4 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+.codegraph/

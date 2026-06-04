@@ -1,14 +1,24 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-dark-950">
-    <!-- Background Decoration -->
-    <div class="pointer-events-none fixed inset-0 bg-mesh-gradient"></div>
+  <div class="cosmic-shell min-h-screen">
+    <!-- 星空与鼠标黑洞透镜背景 -->
+    <div class="cosmic-backdrop cosmic-backdrop--fixed cosmic-backdrop--subtle">
+      <div class="starfield starfield--subtle">
+        <div class="stars-sm"></div>
+        <div class="stars-md"></div>
+        <div class="stars-lg"></div>
+      </div>
+      <div class="meteors">
+        <i class="meteor" style="--a: 75deg; --dur: 7s; --delay: 1.6s"></i>
+        <i class="meteor" style="--a: 205deg; --dur: 8s; --delay: 4.4s"></i>
+      </div>
+    </div>
 
     <!-- Sidebar -->
     <AppSidebar />
 
     <!-- Main Content Area -->
     <div
-      class="relative min-h-screen transition-all duration-300"
+      class="cosmic-distortion-surface relative min-h-screen transition-all duration-300"
       :class="[sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-64']"
     >
       <!-- Header -->

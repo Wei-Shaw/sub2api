@@ -14,6 +14,8 @@ import {
 } from '@/api/admin/system'
 import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
 
+type ThemeMode = 'light' | 'dark'
+
 export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
 
@@ -21,6 +23,7 @@ export const useAppStore = defineStore('app', () => {
   const mobileOpen = ref<boolean>(false)
   const loading = ref<boolean>(false)
   const toasts = ref<Toast[]>([])
+  const isDarkMode = ref<boolean>(false)
 
   // Public settings cache state
   const publicSettingsLoaded = ref<boolean>(false)
@@ -49,6 +52,7 @@ export const useAppStore = defineStore('app', () => {
 
   const hasActiveToasts = computed(() => toasts.value.length > 0)
   const backendModeEnabled = computed(() => cachedPublicSettings.value?.backend_mode_enabled ?? false)
+  const themeMode = computed<ThemeMode>(() => (isDarkMode.value ? 'dark' : 'light'))
 
   const loadingCount = ref<number>(0)
 
@@ -82,6 +86,37 @@ export const useAppStore = defineStore('app', () => {
    */
   function setMobileOpen(open: boolean): void {
     mobileOpen.value = open
+  }
+
+  function resolvePreferredTheme(): ThemeMode {
+    const savedTheme = localStorage.getItem('theme')
+    if (savedTheme === 'dark' || savedTheme === 'light') {
+      return savedTheme
+    }
+    return typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light'
+  }
+
+  function applyTheme(theme: ThemeMode, persist = true): void {
+    isDarkMode.value = theme === 'dark'
+    document.documentElement.classList.toggle('dark', isDarkMode.value)
+    if (persist) {
+      localStorage.setItem('theme', theme)
+    }
+  }
+
+  function initTheme(): void {
+    applyTheme(resolvePreferredTheme(), false)
+  }
+
+  function setTheme(theme: ThemeMode): void {
+    applyTheme(theme)
+  }
+
+  function toggleTheme(): void {
+    applyTheme(isDarkMode.value ? 'light' : 'dark')
   }
 
   /**
@@ -409,6 +444,7 @@ export const useAppStore = defineStore('app', () => {
     mobileOpen,
     loading,
     toasts,
+    isDarkMode,
 
     // Public settings state
     publicSettingsLoaded,
@@ -432,12 +468,16 @@ export const useAppStore = defineStore('app', () => {
     // Computed
     hasActiveToasts,
     backendModeEnabled,
+    themeMode,
 
     // Actions
     toggleSidebar,
     setSidebarCollapsed,
     toggleMobileSidebar,
     setMobileOpen,
+    initTheme,
+    setTheme,
+    toggleTheme,
     setLoading,
     showToast,
     showSuccess,

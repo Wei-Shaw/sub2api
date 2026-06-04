@@ -15,25 +15,23 @@
   <!-- Default Home Page -->
   <div
     v-else
-    class="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
+    class="cosmic-shell cosmic-distortion-surface relative flex min-h-screen flex-col overflow-hidden"
   >
-    <!-- Background Decorations -->
-    <div class="pointer-events-none absolute inset-0 overflow-hidden">
-      <div
-        class="absolute -right-40 -top-40 h-96 w-96 rounded-full bg-primary-400/20 blur-3xl"
-      ></div>
-      <div
-        class="absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-primary-500/15 blur-3xl"
-      ></div>
-      <div
-        class="absolute left-1/3 top-1/4 h-72 w-72 rounded-full bg-primary-300/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute bottom-1/4 right-1/4 h-64 w-64 rounded-full bg-primary-400/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
-      ></div>
+    <!-- 星空与鼠标黑洞透镜背景 -->
+    <div class="cosmic-backdrop cosmic-backdrop--absolute">
+      <div class="starfield">
+        <div class="stars-sm"></div>
+        <div class="stars-md"></div>
+        <div class="stars-lg"></div>
+      </div>
+      <div class="meteors">
+        <i class="meteor" style="--a: 18deg; --dur: 5.5s; --delay: 0s"></i>
+        <i class="meteor" style="--a: 75deg; --dur: 7s; --delay: 1.6s"></i>
+        <i class="meteor" style="--a: 140deg; --dur: 6s; --delay: 3.2s"></i>
+        <i class="meteor" style="--a: 205deg; --dur: 8s; --delay: 0.9s"></i>
+        <i class="meteor" style="--a: 268deg; --dur: 6.5s; --delay: 4.4s"></i>
+        <i class="meteor" style="--a: 325deg; --dur: 7.5s; --delay: 2.5s"></i>
+      </div>
     </div>
 
     <!-- Header -->
@@ -67,9 +65,10 @@
           <button
             @click="toggleTheme"
             class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
+            :title="isDarkMode ? t('home.switchToLight') : t('home.switchToDark')"
+            :aria-label="isDarkMode ? t('home.switchToLight') : t('home.switchToDark')"
           >
-            <Icon v-if="isDark" name="sun" size="md" />
+            <Icon v-if="isDarkMode" name="sun" size="md" />
             <Icon v-else name="moon" size="md" />
           </button>
 
@@ -405,7 +404,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
@@ -422,15 +421,13 @@ const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appS
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
+const isDarkMode = computed(() => appStore.isDarkMode)
 
 // Check if homeContent is a URL (for iframe display)
 const isHomeContentUrl = computed(() => {
   const content = homeContent.value.trim()
   return content.startsWith('http://') || content.startsWith('https://')
 })
-
-// Theme
-const isDark = ref(document.documentElement.classList.contains('dark'))
 
 // GitHub URL
 const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
@@ -448,28 +445,11 @@ const userInitial = computed(() => {
 // Current year for footer
 const currentYear = computed(() => new Date().getFullYear())
 
-// Toggle theme
 function toggleTheme() {
-  isDark.value = !isDark.value
-  document.documentElement.classList.toggle('dark', isDark.value)
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-}
-
-// Initialize theme
-function initTheme() {
-  const savedTheme = localStorage.getItem('theme')
-  if (
-    savedTheme === 'dark' ||
-    (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
-  ) {
-    isDark.value = true
-    document.documentElement.classList.add('dark')
-  }
+  appStore.toggleTheme()
 }
 
 onMounted(() => {
-  initTheme()
-
   // Check auth state
   authStore.checkAuth()
 

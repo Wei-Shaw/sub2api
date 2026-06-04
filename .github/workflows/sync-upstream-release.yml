@@ -1,0 +1,156 @@
+name: Sync upstream release
+
+on:
+  schedule:
+    # Check upstream releases daily at 03:20 UTC.
+    - cron: "20 3 * * *"
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: "Optional upstream tag to sync, e.g. v0.1.132. Leave empty to use latest v* tag."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-upstream-release
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      UPSTREAM_REPO: Wei-Shaw/sub2api
+      VERSION_FILE: .github/upstream-version
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch --tags upstream
+
+      - name: Resolve target upstream tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          INPUT_TAG="${{ inputs.upstream_tag || '' }}"
+          if [[ -n "${INPUT_TAG}" ]]; then
+            TARGET_TAG="${INPUT_TAG}"
+          else
+            TARGET_TAG="$(git tag -l 'v*' --sort=-v:refname | head -n 1)"
+          fi
+
+          if [[ -z "${TARGET_TAG}" ]]; then
+            echo "No upstream v* tag found." >&2
+            exit 1
+          fi
+
+          if ! git rev-parse -q --verify "refs/tags/${TARGET_TAG}" >/dev/null; then
+            echo "Tag ${TARGET_TAG} does not exist in upstream." >&2
+            exit 1
+          fi
+
+          CURRENT_TAG=""
+          if [[ -f "${VERSION_FILE}" ]]; then
+            CURRENT_TAG="$(tr -d '[:space:]' < "${VERSION_FILE}")"
+          fi
+
+          echo "target_tag=${TARGET_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "current_tag=${CURRENT_TAG}" >> "${GITHUB_OUTPUT}"
+
+          if [[ "${TARGET_TAG}" == "${CURRENT_TAG}" ]]; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo "Already synced to ${TARGET_TAG}."
+          else
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            echo "Will sync ${CURRENT_TAG:-<none>} -> ${TARGET_TAG}."
+          fi
+
+      - name: Stop if already synced
+        if: steps.version.outputs.changed == 'false'
+        run: echo "No new upstream release tag to sync."
+
+      - name: Create sync branch and merge upstream tag
+        if: steps.version.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TARGET_TAG="${{ steps.version.outputs.target_tag }}"
+          SAFE_TAG="${TARGET_TAG//\//-}"
+          BRANCH="sync-upstream-${SAFE_TAG}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "${BRANCH}"
+          git merge "refs/tags/${TARGET_TAG}" --no-edit
+
+          echo "${TARGET_TAG}" > "${VERSION_FILE}"
+          git add "${VERSION_FILE}"
+          git commit -m "chore: record upstream ${TARGET_TAG}" || true
+
+          git push --force-with-lease origin "${BRANCH}"
+
+          echo "SYNC_BRANCH=${BRANCH}" >> "${GITHUB_ENV}"
+
+      - name: Open or update pull request
+        if: steps.version.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = process.env.SYNC_BRANCH;
+            const base = context.payload.repository.default_branch;
+            const targetTag = '${{ steps.version.outputs.target_tag }}';
+            const currentTag = '${{ steps.version.outputs.current_tag }}' || '<none>';
+            const title = `Sync upstream sub2api ${targetTag}`;
+            const body = [
+              `Syncs upstream \`Wei-Shaw/sub2api\` release tag \`${targetTag}\` into this fork.`,
+              '',
+              `Previous recorded upstream tag: \`${currentTag}\``,
+              `Target upstream tag: \`${targetTag}\``,
+              '',
+              'Please review the diff and CI result before merging.'
+            ].join('\n');
+
+            const { data: pulls } = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              head: `${owner}:${head}`,
+              base,
+            });
+
+            if (pulls.length > 0) {
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: pulls[0].number,
+                title,
+                body,
+              });
+              core.info(`Updated PR #${pulls[0].number}`);
+            } else {
+              const { data: pull } = await github.rest.pulls.create({
+                owner,
+                repo,
+                title,
+                body,
+                head,
+                base,
+                maintainer_can_modify: true,
+              });
+              core.info(`Created PR #${pull.number}`);
+            }

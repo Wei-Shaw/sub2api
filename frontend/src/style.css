@@ -199,23 +199,24 @@
 
   /* ============ 玻璃效果 ============ */
   .glass {
-    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
+    @apply bg-white/75 backdrop-blur-xl dark:bg-dark-900/40;
   }
 
   .glass-card {
-    @apply bg-white/70 dark:bg-dark-800/70;
-    @apply backdrop-blur-xl;
+    @apply bg-white/65 dark:bg-dark-900/30;
+    @apply backdrop-blur-2xl;
     @apply rounded-2xl;
-    @apply border border-white/20 dark:border-dark-700/50;
+    @apply border border-white/20 dark:border-dark-700/60;
     @apply shadow-glass;
     @apply transition-all duration-300;
   }
 
   /* ============ 卡片样式 ============ */
   .card {
-    @apply bg-white dark:bg-dark-800/50;
+    @apply bg-white/70 dark:bg-dark-800/40;
+    @apply backdrop-blur-2xl;
     @apply rounded-2xl;
-    @apply border border-gray-100 dark:border-dark-700/50;
+    @apply border border-white/70 dark:border-dark-700/60;
     @apply shadow-card;
     @apply transition-all duration-300;
   }
@@ -226,9 +227,9 @@
   }
 
   .card-glass {
-    @apply bg-white/70 dark:bg-dark-800/70;
-    @apply backdrop-blur-xl;
-    @apply border border-white/20 dark:border-dark-700/50;
+    @apply bg-white/70 dark:bg-dark-900/30;
+    @apply backdrop-blur-2xl;
+    @apply border border-white/20 dark:border-dark-700/60;
     @apply shadow-glass;
   }
 
@@ -742,7 +743,7 @@
 
   /* 玻璃效果 */
   .glass {
-    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
+    @apply bg-white/75 backdrop-blur-xl dark:bg-dark-900/40;
   }
 
   /* 隐藏滚动条 */
@@ -762,4 +763,475 @@
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }
+}
+
+.dark .card,
+.dark .glass-card,
+.dark .card-glass {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.dark .card-hover:hover {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+:root {
+  --cosmic-cursor-x: 50vw;
+  --cosmic-cursor-y: 50vh;
+  --cosmic-cursor-active: 0;
+  --cosmic-cursor-scale: 0;
+  --cosmic-pull-strength: 0;
+  --cosmic-page-bg:
+    radial-gradient(ellipse at 78% 12%, rgba(255, 255, 255, 0.86) 0 4%, rgba(219, 234, 254, 0.58) 12%, transparent 31%),
+    radial-gradient(ellipse at 13% 92%, rgba(125, 211, 252, 0.14), transparent 45%),
+    linear-gradient(135deg, #f8fbff 0%, #eef7ff 48%, #f7fbff 100%);
+  --star-bright: rgba(35, 64, 120, 0.42);
+  --star-soft: rgba(73, 112, 172, 0.28);
+  --star-faint: rgba(117, 151, 200, 0.2);
+  --meteor-core: rgba(37, 99, 235, 0.9);
+  --meteor-glow: rgba(96, 165, 250, 0.42);
+  --meteor-tail: rgba(59, 130, 246, 0.46);
+}
+
+.dark {
+  --cosmic-page-bg:
+    radial-gradient(ellipse at 78% 14%, rgba(59, 130, 246, 0.11), transparent 30%),
+    radial-gradient(ellipse at 8% 112%, rgba(147, 197, 253, 0.07), transparent 52%),
+    radial-gradient(ellipse at 45% 40%, rgba(15, 23, 42, 0.42), transparent 50%),
+    linear-gradient(135deg, #0e1426 0%, #080d1c 100%);
+  --star-bright: rgba(255, 255, 255, 0.96);
+  --star-soft: rgba(207, 224, 255, 0.78);
+  --star-faint: rgba(170, 210, 255, 0.5);
+  --meteor-core: rgba(255, 237, 174, 0.94);
+  --meteor-glow: rgba(249, 115, 22, 0.42);
+  --meteor-tail: rgba(147, 197, 253, 0.5);
+}
+
+.cosmic-shell {
+  position: relative;
+  background: var(--cosmic-page-bg);
+}
+
+html.cosmic-cursor-active .cosmic-distortion-surface {
+  filter: url('#cosmic-cursor-distortion');
+  will-change: filter;
+}
+
+.cosmic-distortion-svg {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.cosmic-pull-particles {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  overflow: hidden;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  contain: layout style paint;
+}
+
+html.cosmic-cursor-white-hole .cosmic-pull-particles {
+  mix-blend-mode: multiply;
+}
+
+.cosmic-pull-particle {
+  position: fixed;
+  width: calc(var(--particle-size) * var(--particle-length));
+  height: var(--particle-size);
+  border-radius: 9999px;
+  background: linear-gradient(90deg, transparent, var(--particle-color) 42%, transparent);
+  box-shadow: 0 0 6px var(--particle-color);
+  opacity: 0;
+  transform:
+    translate(-50%, -50%)
+    translate(0, 0)
+    rotate(var(--particle-angle))
+    scaleX(0.28);
+  transform-origin: center;
+  animation: cosmic-pull-particle var(--particle-life) linear forwards;
+  will-change: transform, opacity;
+}
+
+.cosmic-cursor-visual {
+  position: fixed;
+  left: var(--cosmic-cursor-x);
+  top: var(--cosmic-cursor-y);
+  z-index: 45;
+  width: clamp(1.6rem, 2.8vw, 2.35rem);
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  pointer-events: none;
+  overflow: visible;
+  background: rgba(0, 0, 0, 0.3);
+  opacity: calc(var(--cosmic-cursor-active) * var(--cosmic-cursor-scale));
+  transform: translate(-50%, -50%) scale(var(--cosmic-cursor-scale));
+  transition: opacity 160ms ease-out;
+  will-change: left, top, opacity, transform;
+  contain: layout style paint;
+}
+
+.cosmic-cursor-visual::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background:
+    conic-gradient(from 0deg, transparent 0 48deg, rgba(255, 255, 255, 0.38) 70deg, transparent 98deg, transparent 188deg, rgba(96, 165, 250, 0.22) 214deg, transparent 250deg, transparent 360deg);
+  opacity: calc(0.2 + var(--cosmic-pull-strength) * 0.16);
+  -webkit-mask-image: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  mask-image: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  animation: cosmic-cursor-edge-flow 2.8s linear infinite;
+}
+
+html.cosmic-cursor-black-hole .cosmic-cursor-visual {
+  background: rgba(0, 0, 0, 0.36);
+  box-shadow:
+    inset 0 0 5px rgba(255, 255, 255, 0.06),
+    0 0 12px rgba(15, 23, 42, 0.24);
+}
+
+html.cosmic-cursor-white-hole .cosmic-cursor-visual {
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.94) 0 34%, rgba(219, 234, 254, 0.64) 48%, rgba(96, 165, 250, 0.12) 66%, transparent 78%);
+  box-shadow:
+    0 0 8px rgba(255, 255, 255, 0.82),
+    0 0 18px rgba(96, 165, 250, 0.24);
+}
+
+html.cosmic-cursor-white-hole .cosmic-cursor-visual::before {
+  background:
+    conic-gradient(from 0deg, transparent 0 44deg, rgba(255, 255, 255, 0.74) 72deg, transparent 104deg, transparent 188deg, rgba(125, 211, 252, 0.38) 218deg, transparent 256deg, transparent 360deg);
+  opacity: calc(0.28 + var(--cosmic-pull-strength) * 0.18);
+}
+
+.cosmic-backdrop {
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cosmic-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: -12%;
+  background:
+    radial-gradient(ellipse at 78% 12%, rgba(255, 255, 255, 0.34), transparent 30%),
+    radial-gradient(ellipse at 14% 90%, rgba(96, 165, 250, 0.1), transparent 44%);
+  filter: blur(0.7px);
+  opacity: 0.48;
+}
+
+.dark .cosmic-backdrop::before {
+  opacity: 0.5;
+  background:
+    radial-gradient(ellipse at 78% 12%, rgba(96, 165, 250, 0.1), transparent 34%),
+    radial-gradient(ellipse at 10% 108%, rgba(147, 197, 253, 0.08), transparent 46%);
+}
+
+.cosmic-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 32%),
+    radial-gradient(ellipse at 50% 115%, rgba(147, 197, 253, 0.12), transparent 58%);
+}
+
+.dark .cosmic-backdrop::after {
+  background:
+    radial-gradient(ellipse at 50% -20%, rgba(96, 165, 250, 0.07), transparent 45%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.08), transparent 42%);
+}
+
+.cosmic-backdrop--fixed {
+  position: fixed;
+}
+
+.cosmic-backdrop--absolute {
+  position: absolute;
+}
+
+.cosmic-backdrop--subtle {
+  opacity: 0.78;
+}
+
+.cosmic-backdrop--subtle::before {
+  opacity: 0.22;
+}
+
+.dark .cosmic-backdrop--subtle::before {
+  opacity: 0.46;
+}
+
+/* 星空容器：覆盖父级，不拦截点击 */
+.starfield {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 三层星点：tile 平铺 + 独立闪烁/漂移 */
+.starfield .stars-sm,
+.starfield .stars-md,
+.starfield .stars-lg {
+  position: absolute;
+  inset: -50%;
+  background-repeat: repeat;
+}
+
+.starfield .stars-sm {
+  background-size: 240px 240px;
+  background-image:
+    radial-gradient(1px 1px at 20px 30px, var(--star-bright), transparent),
+    radial-gradient(1px 1px at 80px 120px, var(--star-soft), transparent),
+    radial-gradient(1px 1px at 160px 60px, var(--star-bright), transparent),
+    radial-gradient(1px 1px at 200px 180px, var(--star-faint), transparent),
+    radial-gradient(1px 1px at 50px 200px, var(--star-bright), transparent),
+    radial-gradient(1px 1px at 120px 210px, var(--star-soft), transparent),
+    radial-gradient(1px 1px at 220px 20px, var(--star-bright), transparent),
+    radial-gradient(1px 1px at 30px 110px, var(--star-soft), transparent);
+  animation: twinkle 5.5s ease-in-out infinite alternate, drift 140s linear infinite;
+}
+
+.starfield .stars-md {
+  background-size: 340px 340px;
+  background-image:
+    radial-gradient(1.6px 1.6px at 40px 50px, var(--star-bright), transparent),
+    radial-gradient(1.6px 1.6px at 260px 140px, var(--star-soft), transparent),
+    radial-gradient(1.6px 1.6px at 150px 250px, var(--star-bright), transparent),
+    radial-gradient(1.6px 1.6px at 300px 300px, var(--star-faint), transparent),
+    radial-gradient(1.6px 1.6px at 90px 300px, var(--star-bright), transparent);
+  opacity: 0.78;
+  animation: twinkle2 8s ease-in-out infinite alternate, drift2 190s linear infinite;
+}
+
+.starfield .stars-lg {
+  background-size: 520px 520px;
+  background-image:
+    radial-gradient(2.2px 2.2px at 120px 90px, var(--star-bright), transparent),
+    radial-gradient(2.2px 2.2px at 420px 360px, var(--star-soft), transparent),
+    radial-gradient(2px 2px at 260px 470px, var(--star-faint), transparent);
+  opacity: 0.82;
+  animation: twinkle 9s ease-in-out infinite alternate, drift 240s linear infinite;
+}
+
+/* 内页弱化变体：星点压暗，避免干扰表格阅读 */
+.starfield--subtle .stars-sm {
+  opacity: 0.36;
+}
+.starfield--subtle .stars-md {
+  opacity: 0.28;
+}
+.starfield--subtle .stars-lg {
+  opacity: 0.24;
+}
+
+.dark .starfield--subtle .stars-sm {
+  opacity: 0.4;
+}
+.dark .starfield--subtle .stars-md {
+  opacity: 0.32;
+}
+.dark .starfield--subtle .stars-lg {
+  opacity: 0.3;
+}
+
+/* ============ 喷流 / 流星：从中心向外辐射 ============ */
+.meteors {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.meteors .meteor {
+  position: absolute;
+  top: clamp(8rem, 22vh, 18rem);
+  right: clamp(4rem, 20vw, 28rem);
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--meteor-core);
+  box-shadow: 0 0 10px 2px var(--meteor-glow);
+  opacity: 0;
+  transform: rotate(var(--a, 0deg)) translateX(0);
+  animation: meteor var(--dur, 6s) linear infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+/* 拖尾：锚在头部、向中心一侧渐隐 */
+.meteors .meteor::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  width: 120px;
+  height: 1.2px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, transparent, var(--meteor-tail));
+  border-radius: 2px;
+}
+
+.cosmic-backdrop--subtle .meteors .meteor {
+  top: clamp(5rem, 13vh, 10rem);
+  right: clamp(1rem, 13vw, 16rem);
+  opacity: 0;
+}
+
+@keyframes cosmic-cursor-edge-flow {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cosmic-pull-particle {
+  0% {
+    opacity: 0;
+    transform:
+      translate(-50%, -50%)
+      translate(0, 0)
+      rotate(var(--particle-angle))
+      scaleX(0.28);
+  }
+  12% {
+    opacity: 0.54;
+  }
+  18% {
+    opacity: 0.58;
+    transform:
+      translate(-50%, -50%)
+      translate(var(--particle-p1-x), var(--particle-p1-y))
+      rotate(var(--particle-p1-angle))
+      scaleX(0.62);
+  }
+  42% {
+    opacity: 0.52;
+    transform:
+      translate(-50%, -50%)
+      translate(var(--particle-p2-x), var(--particle-p2-y))
+      rotate(var(--particle-p2-angle))
+      scaleX(1.08);
+  }
+  66% {
+    opacity: 0.44;
+    transform:
+      translate(-50%, -50%)
+      translate(var(--particle-p3-x), var(--particle-p3-y))
+      rotate(var(--particle-p3-angle))
+      scaleX(0.92);
+  }
+  84% {
+    opacity: 0.26;
+    transform:
+      translate(-50%, -50%)
+      translate(var(--particle-p4-x), var(--particle-p4-y))
+      rotate(var(--particle-p4-angle))
+      scaleX(0.58);
+  }
+  100% {
+    opacity: 0;
+    transform:
+      translate(-50%, -50%)
+      translate(var(--particle-end-x), var(--particle-end-y))
+      rotate(var(--particle-end-angle))
+      scaleX(0.22);
+  }
+}
+
+@keyframes twinkle {
+  0% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes twinkle2 {
+  0% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes drift {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(3%, 2%);
+  }
+}
+
+@keyframes drift2 {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(-2.5%, -1.5%);
+  }
+}
+
+@keyframes meteor {
+  0% {
+    transform: rotate(var(--a, 0deg)) translateX(0);
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+  }
+  22% {
+    opacity: 1;
+  }
+  36% {
+    transform: rotate(var(--a, 0deg)) translateX(560px);
+    opacity: 0;
+  }
+  100% {
+    transform: rotate(var(--a, 0deg)) translateX(560px);
+    opacity: 0;
+  }
+}
+
+/* 尊重系统「减少动态效果」偏好：背景动态效果全部静止 */
+@media (prefers-reduced-motion: reduce) {
+  .cosmic-cursor-visual::before,
+  .cosmic-pull-particle,
+  .cosmic-backdrop::before,
+  .starfield .stars-sm,
+  .starfield .stars-md,
+  .starfield .stars-lg,
+  .meteors .meteor {
+    animation: none !important;
+  }
+  .meteors .meteor {
+    opacity: 0 !important;
+  }
+  .cosmic-pull-particle {
+    display: none !important;
+  }
+}
+
+/* 标签页隐藏时冻结所有常驻背景动画，避免后台空转发热 */
+html.cosmic-paused .starfield .stars-sm,
+html.cosmic-paused .starfield .stars-md,
+html.cosmic-paused .starfield .stars-lg,
+html.cosmic-paused .meteors .meteor,
+html.cosmic-paused .cosmic-cursor-visual::before {
+  animation-play-state: paused !important;
 }
