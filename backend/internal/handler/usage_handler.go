@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -18,15 +19,19 @@ import (
 
 // UsageHandler handles usage-related requests
 type UsageHandler struct {
-	usageService  *service.UsageService
-	apiKeyService *service.APIKeyService
+	usageService   *service.UsageService
+	apiKeyService  *service.APIKeyService
+	settingService *service.SettingService
 }
 
+const dailyTokenLeaderboardLimit = 5
+
 // NewUsageHandler creates a new UsageHandler
-func NewUsageHandler(usageService *service.UsageService, apiKeyService *service.APIKeyService) *UsageHandler {
+func NewUsageHandler(usageService *service.UsageService, apiKeyService *service.APIKeyService, settingService *service.SettingService) *UsageHandler {
 	return &UsageHandler{
-		usageService:  usageService,
-		apiKeyService: apiKeyService,
+		usageService:   usageService,
+		apiKeyService:  apiKeyService,
+		settingService: settingService,
 	}
 }
 
@@ -387,6 +392,66 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 		"start_date": startTime.Format("2006-01-02"),
 		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 	})
+}
+
+// DailyTokenLeaderboard handles getting today's global token leaderboard.
+// GET /api/v1/usage/leaderboard/daily
+func (h *UsageHandler) DailyTokenLeaderboard(c *gin.Context) {
+	if _, ok := middleware2.GetAuthSubjectFromContext(c); !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	if h.settingService == nil || !h.settingService.IsDailyTokenLeaderboardEnabled(c.Request.Context()) {
+		response.Error(c, http.StatusNotFound, "Daily token leaderboard is disabled")
+		return
+	}
+
+	now := timezone.Now()
+	startTime := timezone.StartOfDay(now)
+	endTime := now
+
+	rows, err := h.usageService.GetDailyTokenLeaderboard(c.Request.Context(), startTime, endTime, dailyTokenLeaderboardLimit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	items := make([]usagestats.DailyTokenLeaderboardItem, 0, len(rows))
+	for i, row := range rows {
+		items = append(items, usagestats.DailyTokenLeaderboardItem{
+			Rank:        i + 1,
+			DisplayName: maskLeaderboardDisplayName(row.Username, row.Email, c.GetHeader("Accept-Language")),
+			TotalTokens: row.TotalTokens,
+		})
+	}
+
+	response.Success(c, usagestats.DailyTokenLeaderboardResponse{
+		Items:       items,
+		StartDate:   startTime.Format("2006-01-02"),
+		EndDate:     endTime.Format("2006-01-02"),
+		Limit:       dailyTokenLeaderboardLimit,
+		GeneratedAt: now.Format(time.RFC3339),
+	})
+}
+
+func maskLeaderboardDisplayName(username, email, acceptLanguage string) string {
+	source := strings.TrimSpace(username)
+	if source == "" {
+		emailPrefix, _, _ := strings.Cut(strings.TrimSpace(email), "@")
+		source = strings.TrimSpace(emailPrefix)
+	}
+	if source == "" {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(acceptLanguage)), "en") {
+			return "User***"
+		}
+		return "用户***"
+	}
+
+	runes := []rune(source)
+	if len(runes) > 3 {
+		runes = runes[:3]
+	}
+	return string(runes) + "***"
 }
 
 // BatchAPIKeysUsageRequest represents the request for batch API keys usage

@@ -350,6 +350,7 @@ export default {
     announcements: '公告',
     apiKeys: 'API 密钥',
     usage: '使用记录',
+    leaderboard: '排行榜',
     redeem: '兑换',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
@@ -388,6 +389,19 @@ export default {
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
+  },
+
+  leaderboard: {
+    title: '排行榜',
+    subtitle: '查看今日全站 Token 用量前 5 名',
+    todayTop: '今日 Token Top 5',
+    rank: '排名',
+    user: '用户',
+    tokensToday: '今日 Token',
+    empty: '今日暂无 Token 用量',
+    failedToLoad: '排行榜加载失败',
+    refresh: '刷新',
+    refreshing: '刷新中...',
   },
 
   // Auth
@@ -5497,6 +5511,12 @@ export default {
           configureLink: '前往 渠道管理 > 渠道定价 配置模型价格',
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
+        },
+        dailyTokenLeaderboard: {
+          title: '每日 Token 排行榜',
+          description: '向已登录用户展示全站今日 Token 用量前 5 名。默认关闭。',
+          enabled: '启用每日 Token 排行榜',
+          enabledHint: '关闭后用户侧边栏入口隐藏，排行榜接口不可访问。',
         },
         riskControl: {
           title: '风控中心',

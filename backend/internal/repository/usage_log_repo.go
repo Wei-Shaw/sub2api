@@ -2429,6 +2429,56 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	}, nil
 }
 
+// GetDailyTokenLeaderboard returns the top users by total tokens in a time range.
+func (r *usageLogRepository) GetDailyTokenLeaderboard(ctx context.Context, startTime, endTime time.Time, limit int) (results []usagestats.DailyTokenLeaderboardSourceItem, err error) {
+	if limit <= 0 {
+		limit = 5
+	}
+
+	query := `
+		WITH daily_tokens AS (
+			SELECT
+				u.user_id,
+				COALESCE(us.username, '') AS username,
+				COALESCE(us.email, '') AS email,
+				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) AS total_tokens
+			FROM usage_logs u
+			LEFT JOIN users us ON u.user_id = us.id
+			WHERE u.created_at >= $1 AND u.created_at < $2
+			GROUP BY u.user_id, us.username, us.email
+		)
+		SELECT user_id, username, email, total_tokens
+		FROM daily_tokens
+		ORDER BY total_tokens DESC, user_id ASC
+		LIMIT $3
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+		}
+	}()
+
+	results = make([]usagestats.DailyTokenLeaderboardSourceItem, 0)
+	for rows.Next() {
+		var row usagestats.DailyTokenLeaderboardSourceItem
+		if err = rows.Scan(&row.UserID, &row.Username, &row.Email, &row.TotalTokens); err != nil {
+			return nil, err
+		}
+		results = append(results, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
 // UserDashboardStats 用户仪表盘统计
 type UserDashboardStats = usagestats.UserDashboardStats
 

@@ -30,3 +30,14 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar leaderboard navigation', () => {
+  it('adds feature-flagged leaderboard to shared user and admin personal navigation items', () => {
+    const buildSelfNavItemsMatch = componentSource.match(/function buildSelfNavItems\(withDashboard: boolean\): NavItem\[] \{[\s\S]*?return items\n\}/)
+
+    expect(buildSelfNavItemsMatch).not.toBeNull()
+    expect(buildSelfNavItemsMatch?.[0]).toContain("path: '/leaderboard'")
+    expect(buildSelfNavItemsMatch?.[0]).toContain("label: t('nav.leaderboard')")
+    expect(buildSelfNavItemsMatch?.[0]).toContain('featureFlag: flagDailyTokenLeaderboard')
+  })
+})

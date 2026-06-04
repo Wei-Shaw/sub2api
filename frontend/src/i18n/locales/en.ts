@@ -350,6 +350,7 @@ export default {
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     usage: 'Usage',
+    leaderboard: 'Leaderboard',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
@@ -388,6 +389,19 @@ export default {
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
+  },
+
+  leaderboard: {
+    title: 'Leaderboard',
+    subtitle: "Today's top 5 token users across the site",
+    todayTop: 'Today Token Top 5',
+    rank: 'Rank',
+    user: 'User',
+    tokensToday: 'Tokens Today',
+    empty: 'No token usage today',
+    failedToLoad: 'Failed to load leaderboard',
+    refresh: 'Refresh',
+    refreshing: 'Refreshing...',
   },
 
   // Auth
@@ -5337,6 +5351,12 @@ export default {
           configureLink: 'Configure model pricing in Channel Management > Channel Pricing',
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
+        },
+        dailyTokenLeaderboard: {
+          title: 'Daily Token Leaderboard',
+          description: 'Show logged-in users the top 5 site-wide token consumers for today. Disabled by default.',
+          enabled: 'Enable Daily Token Leaderboard',
+          enabledHint: 'When off, the user sidebar entry is hidden and the leaderboard endpoint is unavailable.',
         },
         riskControl: {
           title: 'Risk Control',

@@ -88,6 +88,20 @@ export interface ApiKeyDailyUsageResponse {
   end_date: string
 }
 
+export interface DailyTokenLeaderboardItem {
+  rank: number
+  display_name: string
+  total_tokens: number
+}
+
+export interface DailyTokenLeaderboardResponse {
+  items: DailyTokenLeaderboardItem[]
+  start_date: string
+  end_date: string
+  limit: number
+  generated_at: string
+}
+
 /**
  * List usage logs with optional filters
  * @param page - Page number (default: 1)
@@ -254,6 +268,15 @@ export async function getDashboardModels(params?: {
 }
 
 /**
+ * Get today's public token leaderboard for authenticated users.
+ * @returns Daily token leaderboard rows
+ */
+export async function getDailyTokenLeaderboard(): Promise<DailyTokenLeaderboardResponse> {
+  const { data } = await apiClient.get<DailyTokenLeaderboardResponse>('/usage/leaderboard/daily')
+  return data
+}
+
+/**
  * Get daily usage details for one API key owned by the current user.
  * @param apiKeyId - API key ID
  * @param days - Number of days to include (1-90)
@@ -315,6 +338,7 @@ export const usageAPI = {
   getDashboardStats,
   getDashboardTrend,
   getDashboardModels,
+  getDailyTokenLeaderboard,
   getMyApiKeyDailyUsage,
   getDashboardApiKeysUsage
 }

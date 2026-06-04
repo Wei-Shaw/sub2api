@@ -217,6 +217,19 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/leaderboard',
+    name: 'Leaderboard',
+    component: () => import('@/views/user/LeaderboardView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Leaderboard',
+      titleKey: 'leaderboard.title',
+      descriptionKey: 'leaderboard.subtitle',
+      requiresDailyTokenLeaderboard: true
+    }
+  },
+  {
     path: '/redeem',
     name: 'Redeem',
     component: () => import('@/views/user/RedeemView.vue'),
@@ -821,6 +834,15 @@ router.beforeEach(async (to, _from, next) => {
     const riskControlEnabled = appStore.cachedPublicSettings?.risk_control_enabled === true
     if (!riskControlEnabled) {
       next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
+      return
+    }
+  }
+
+  if (to.meta.requiresDailyTokenLeaderboard) {
+    const publicSettings = appStore.cachedPublicSettings ?? await appStore.fetchPublicSettings()
+    const dailyTokenLeaderboardEnabled = publicSettings?.daily_token_leaderboard_enabled === true
+    if (!dailyTokenLeaderboardEnabled) {
+      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
     }
   }
