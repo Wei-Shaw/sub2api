@@ -26,10 +26,16 @@ func (s *chatSessionRepoScopeStub) ListSessionsByAPIKey(_ context.Context, userI
 	return []*ChatSession{}, 0, nil
 }
 
-func (s *chatSessionRepoScopeStub) GetSessionDetail(_ context.Context, userID, apiKeyID, sessionID int64, _ int) (*ChatSessionDetail, error) {
+func (s *chatSessionRepoScopeStub) GetSessionDetail(_ context.Context, userID, apiKeyID, sessionID int64, _ pagination.PaginationParams) (*ChatSessionDetail, error) {
 	s.detailUserID = userID
 	s.detailAPIKeyID = apiKeyID
 	return &ChatSessionDetail{ChatSession: ChatSession{ID: sessionID, UserID: userID, APIKeyID: apiKeyID}}, nil
+}
+
+func (s *chatSessionRepoScopeStub) GetChatMessageDetail(_ context.Context, userID, apiKeyID, sessionID, messageID int64) (*ChatMessage, error) {
+	s.detailUserID = userID
+	s.detailAPIKeyID = apiKeyID
+	return &ChatMessage{ID: messageID, SessionID: sessionID}, nil
 }
 
 func (s *chatSessionRepoScopeStub) ListRecentMessagesByAPIKey(_ context.Context, userID, apiKeyID int64, _ int) ([]ChatMessage, error) {
@@ -51,7 +57,7 @@ func TestChatSessionServiceScopesQueriesByUserAndAPIKey(t *testing.T) {
 		t.Fatalf("list scope = user %d key %d, want user 11 key 22", repo.listUserID, repo.listAPIKeyID)
 	}
 
-	if _, err := svc.GetSessionDetail(context.Background(), 33, 44, 55, 50); err != nil {
+	if _, err := svc.GetSessionDetail(context.Background(), 33, 44, 55, pagination.PaginationParams{Page: 1, PageSize: 50}); err != nil {
 		t.Fatalf("GetSessionDetail() error = %v", err)
 	}
 	if repo.detailUserID != 33 || repo.detailAPIKeyID != 44 {

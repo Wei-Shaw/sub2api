@@ -366,10 +366,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			statusCode,
 			truncateOpenAIWSLogValue(err.Error(), openAIWSLogValueMaxLen),
 		)
-		if statusCode == http.StatusTooManyRequests {
-			s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()))
+		if s.shouldFailoverOpenAIWSErrorStatus(statusCode) {
+			if statusCode == http.StatusTooManyRequests {
+				s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()))
+			} else {
+				_ = s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, handshakeHeaders, []byte(strings.TrimSpace(err.Error())))
+			}
 			return &UpstreamFailoverError{
-				StatusCode:      http.StatusTooManyRequests,
+				StatusCode:      statusCode,
 				ResponseHeaders: cloneHeader(handshakeHeaders),
 			}
 		}
@@ -536,6 +540,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					ResponseHeaders: cloneHeader(handshakeHeaders),
 					Duration:        turn.Duration,
 					FirstTokenMs:    turn.FirstTokenMs,
+					FinalOutputText: turn.FinalOutputText,
+					FinalOutputJSON: turn.FinalOutputJSON,
 				}
 				logOpenAIWSV2Passthrough(
 					"relay_turn_completed account_id=%d turn=%d request_id=%s terminal_event=%s duration_ms=%d first_token_ms=%d input_tokens=%d output_tokens=%d cache_read_tokens=%d",
@@ -561,19 +567,25 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					return nil
 				}
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
-				if !isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+				statusCode := openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
+				if !s.shouldFailoverOpenAIWSErrorStatus(statusCode) {
 					return nil
 				}
-				s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, payload, errCodeRaw, errTypeRaw, errMsgRaw)
+				if statusCode == http.StatusTooManyRequests {
+					s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, payload, errCodeRaw, errTypeRaw, errMsgRaw)
+				} else {
+					s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, handshakeHeaders, payload)
+				}
 				logOpenAIWSV2Passthrough(
-					"relay_rate_limit_failover account_id=%d err_code=%s err_type=%s err_message=%s",
+					"relay_error_failover account_id=%d status_code=%d err_code=%s err_type=%s err_message=%s",
 					account.ID,
+					statusCode,
 					truncateOpenAIWSLogValue(errCodeRaw, openAIWSLogValueMaxLen),
 					truncateOpenAIWSLogValue(errTypeRaw, openAIWSLogValueMaxLen),
 					truncateOpenAIWSLogValue(errMsgRaw, openAIWSLogValueMaxLen),
 				)
 				return &UpstreamFailoverError{
-					StatusCode:      http.StatusTooManyRequests,
+					StatusCode:      statusCode,
 					ResponseBody:    append([]byte(nil), payload...),
 					ResponseHeaders: cloneHeader(handshakeHeaders),
 				}
@@ -611,6 +623,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		ResponseHeaders: cloneHeader(handshakeHeaders),
 		Duration:        relayResult.Duration,
 		FirstTokenMs:    relayResult.FirstTokenMs,
+		FinalOutputText: relayResult.FinalOutputText,
+		FinalOutputJSON: relayResult.FinalOutputJSON,
 	}
 
 	turnCount := int(completedTurns.Load())

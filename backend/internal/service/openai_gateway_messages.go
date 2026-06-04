@@ -450,6 +450,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 
 	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, originalModel)
 	finalOutputText := extractAnthropicResponseText(anthropicResp)
+	finalOutputJSON, _ := json.Marshal(anthropicResp)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -457,15 +458,16 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	c.JSON(http.StatusOK, anthropicResp)
 
 	return &OpenAIForwardResult{
-		RequestID:     requestID,
-		ResponseID:    finalResponse.ID,
-		Usage:         usage,
-		Model:         originalModel,
-		BillingModel:  billingModel,
-		UpstreamModel: upstreamModel,
-		Stream:        false,
-		Duration:      time.Since(startTime),
+		RequestID:       requestID,
+		ResponseID:      finalResponse.ID,
+		Usage:           usage,
+		Model:           originalModel,
+		BillingModel:    billingModel,
+		UpstreamModel:   upstreamModel,
+		Stream:          false,
+		Duration:        time.Since(startTime),
 		FinalOutputText: finalOutputText,
+		FinalOutputJSON: cloneJSONRawMessage(finalOutputJSON),
 	}, nil
 }
 

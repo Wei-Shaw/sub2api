@@ -329,9 +329,50 @@ func (h *APIKeyHandler) GetChatSession(c *gin.Context) {
 		response.BadRequest(c, "Invalid session ID")
 		return
 	}
-	limit := minInt(200, maxInt(1, parsePositiveInt(c.Query("limit"), 50)))
+	page := maxInt(1, parsePositiveInt(c.Query("page"), 1))
+	pageSize := minInt(100, maxInt(1, parsePositiveInt(c.Query("page_size"), parsePositiveInt(c.Query("limit"), 20))))
 
-	item, err := h.chatSessionService.GetSessionDetail(c.Request.Context(), subject.UserID, keyID, sessionID, limit)
+	item, err := h.chatSessionService.GetSessionDetail(c.Request.Context(), subject.UserID, keyID, sessionID, pagination.PaginationParams{
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, item)
+}
+
+// GetChatMessage handles loading one full chat message payload.
+// GET /api/v1/keys/:id/chat-sessions/:sessionId/messages/:messageId
+func (h *APIKeyHandler) GetChatMessage(c *gin.Context) {
+	if h.chatSessionService == nil {
+		response.NotFound(c, "Chat session feature is not enabled")
+		return
+	}
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid key ID")
+		return
+	}
+	sessionID, err := strconv.ParseInt(c.Param("sessionId"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid session ID")
+		return
+	}
+	messageID, err := strconv.ParseInt(c.Param("messageId"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid message ID")
+		return
+	}
+
+	item, err := h.chatSessionService.GetChatMessageDetail(c.Request.Context(), subject.UserID, keyID, sessionID, messageID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

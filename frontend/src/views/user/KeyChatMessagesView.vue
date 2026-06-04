@@ -137,9 +137,59 @@
                 <span>{{ message.direction === 'inbound' ? 'User' : 'Assistant' }}</span>
                 <span>{{ formatDateTime(message.created_at) }}</span>
               </div>
-              <pre class="whitespace-pre-wrap break-words font-sans text-sm text-gray-900 dark:text-white">{{ renderMessage(message) }}</pre>
+              <div class="space-y-3">
+                <pre
+                  v-if="message.content_text"
+                  class="whitespace-pre-wrap break-words font-sans text-sm text-gray-900 dark:text-white"
+                >{{ message.content_text }}</pre>
+                <button
+                  v-if="message.has_content_json && !message.content_json"
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  :disabled="isMessageLoading(message.id)"
+                  @click="loadMessagePayload(message)"
+                >
+                  {{ isMessageLoading(message.id) ? '加载中...' : `加载 JSON${formatContentJSONSize(message.content_json_bytes)}` }}
+                </button>
+                <div v-if="extractImageSources(message.content_json).length > 0" class="grid gap-3 sm:grid-cols-2">
+                  <a
+                    v-for="(src, index) in extractImageSources(message.content_json)"
+                    :key="`${message.id}-image-${index}`"
+                    :href="src"
+                    target="_blank"
+                    rel="noreferrer"
+                    class="block overflow-hidden rounded-md border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-950"
+                  >
+                    <img
+                      :src="src"
+                      alt=""
+                      class="max-h-96 w-full object-contain"
+                      loading="lazy"
+                    />
+                  </a>
+                </div>
+                <details
+                  v-if="message.content_json"
+                  class="rounded-md border border-gray-200 bg-white/70 dark:border-dark-700 dark:bg-dark-950/70"
+                >
+                  <summary class="cursor-pointer px-3 py-2 text-xs font-medium text-gray-600 dark:text-dark-300">
+                    JSON
+                  </summary>
+                  <pre class="max-h-[520px] overflow-auto whitespace-pre-wrap break-words px-3 pb-3 font-mono text-xs text-gray-800 dark:text-dark-100">{{ renderJSON(message.content_json) }}</pre>
+                </details>
+              </div>
             </div>
           </div>
+
+          <Pagination
+            v-if="messagePagination.total > messagePagination.page_size"
+            :page="messagePagination.page"
+            :total="messagePagination.total"
+            :page-size="messagePagination.page_size"
+            :show-page-size-selector="false"
+            @update:page="handleMessagePageChange"
+            @update:page-size="handleMessagePageSizeChange"
+          />
         </section>
       </div>
     </div>
@@ -175,10 +225,17 @@ const selectedSessionId = ref<number | null>(null)
 const sessionMeta = ref<ChatSession | null>(null)
 const sessions = ref<ChatSession[]>([])
 const messages = ref<ChatMessage[]>([])
-const detailLimit = 80
+const messagePayloadLoading = ref<Set<number>>(new Set())
+const detailLimit = computed(() => messagePagination.page_size)
 const sessionPagination = reactive({
   page: 1,
   page_size: 10,
+  total: 0,
+  pages: 0
+})
+const messagePagination = reactive({
+  page: 1,
+  page_size: 20,
   total: 0,
   pages: 0
 })
@@ -191,8 +248,14 @@ async function fetchSessions(page = sessionPagination.page, pageSize = sessionPa
 
 async function fetchSessionDetail(sessionId: number) {
   return adminMode.value && adminUserId.value
-    ? adminAPI.apiKeys.getChatSession(apiKeyId.value, adminUserId.value, sessionId, detailLimit)
-    : keysAPI.getChatSession(apiKeyId.value, sessionId, detailLimit)
+    ? adminAPI.apiKeys.getChatSession(apiKeyId.value, adminUserId.value, sessionId, messagePagination.page, messagePagination.page_size)
+    : keysAPI.getChatSession(apiKeyId.value, sessionId, messagePagination.page, messagePagination.page_size)
+}
+
+async function fetchMessagePayload(sessionId: number, messageId: number) {
+  return adminMode.value && adminUserId.value
+    ? adminAPI.apiKeys.getChatMessage(apiKeyId.value, adminUserId.value, sessionId, messageId)
+    : keysAPI.getChatMessage(apiKeyId.value, sessionId, messageId)
 }
 
 async function loadSessions(selectFirst = false) {
@@ -231,17 +294,59 @@ async function selectSession(session: ChatSession) {
   if (!session || detailLoading.value) return
   selectedSessionId.value = session.id
   sessionMeta.value = session
+  messagePagination.page = 1
+  await loadSelectedSessionMessages()
+}
+
+async function loadSelectedSessionMessages() {
+  if (!selectedSessionId.value) return
   detailLoading.value = true
   try {
-    const detail = await fetchSessionDetail(session.id)
+    const detail = await fetchSessionDetail(selectedSessionId.value)
     sessionMeta.value = detail
-    messages.value = detail.messages || []
+    const page = detail.messages_page
+    messages.value = page?.items || detail.messages || []
+    messagePagination.total = page?.total || detail.message_count || 0
+    messagePagination.page = page?.page || messagePagination.page
+    messagePagination.page_size = page?.page_size || messagePagination.page_size
+    messagePagination.pages = page?.pages || 0
+    messagePayloadLoading.value = new Set()
   } catch (error: any) {
     messages.value = []
+    messagePagination.total = 0
+    messagePagination.pages = 0
     appStore.showError(error?.message || '加载 session messages 失败')
   } finally {
     detailLoading.value = false
   }
+}
+
+async function loadMessagePayload(message: ChatMessage) {
+  if (!message || !selectedSessionId.value || isMessageLoading(message.id)) return
+  const next = new Set(messagePayloadLoading.value)
+  next.add(message.id)
+  messagePayloadLoading.value = next
+  try {
+    const detail = await fetchMessagePayload(selectedSessionId.value, message.id)
+    messages.value = messages.value.map((item) => item.id === message.id ? { ...item, ...detail } : item)
+  } catch (error: any) {
+    appStore.showError(error?.message || '加载 message JSON 失败')
+  } finally {
+    const done = new Set(messagePayloadLoading.value)
+    done.delete(message.id)
+    messagePayloadLoading.value = done
+  }
+}
+
+function isMessageLoading(messageId: number) {
+  return messagePayloadLoading.value.has(messageId)
+}
+
+function formatContentJSONSize(bytes?: number) {
+  if (!bytes || bytes <= 0) return ''
+  if (bytes < 1024) return ` (${bytes} B)`
+  if (bytes < 1024 * 1024) return ` (${(bytes / 1024).toFixed(1)} KB)`
+  return ` (${(bytes / 1024 / 1024).toFixed(1)} MB)`
 }
 
 async function refresh() {
@@ -264,9 +369,62 @@ async function handleSessionPageSizeChange(pageSize: number) {
   await loadSessions(true)
 }
 
-function renderMessage(message: ChatMessage) {
-  if (message.content_text) return message.content_text
-  return JSON.stringify(message.content_json || {}, null, 2)
+async function handleMessagePageChange(page: number) {
+  messagePagination.page = page
+  await loadSelectedSessionMessages()
+}
+
+async function handleMessagePageSizeChange(pageSize: number) {
+  messagePagination.page_size = pageSize
+  messagePagination.page = 1
+  await loadSelectedSessionMessages()
+}
+
+function renderJSON(value: unknown) {
+  return JSON.stringify(value || {}, null, 2)
+}
+
+function extractImageSources(value: unknown) {
+  const sources: string[] = []
+  const seen = new Set<string>()
+  const visit = (item: unknown) => {
+    if (typeof item === 'string') {
+      const src = normalizeImageSource(item)
+      if (src && !seen.has(src)) {
+        seen.add(src)
+        sources.push(src)
+      }
+      return
+    }
+    if (Array.isArray(item)) {
+      item.forEach(visit)
+      return
+    }
+    if (!item || typeof item !== 'object') return
+    const record = item as Record<string, unknown>
+    if (record.type === 'image_generation_call' && typeof record.result === 'string') {
+      const mime = typeof record.output_format === 'string' ? `image/${record.output_format}` : 'image/png'
+      const src = normalizeImageSource(record.result, mime)
+      if (src && !seen.has(src)) {
+        seen.add(src)
+        sources.push(src)
+      }
+    }
+    Object.values(record).forEach(visit)
+  }
+  visit(value)
+  return sources
+}
+
+function normalizeImageSource(value: string, fallbackMime = 'image/png') {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(trimmed)) return trimmed
+  if (/^https?:\/\//i.test(trimmed) && /\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i.test(trimmed)) return trimmed
+  if (/^[A-Za-z0-9+/=_-]{80,}$/.test(trimmed)) {
+    return `data:${fallbackMime};base64,${trimmed}`
+  }
+  return ''
 }
 
 function goBack() {

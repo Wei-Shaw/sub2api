@@ -562,6 +562,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				),
 				body,
 				result.FinalOutputText,
+				result.FinalOutputJSON,
 			)
 			return
 		}
@@ -979,6 +980,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				),
 				body,
 				result.FinalOutputText,
+				result.FinalOutputJSON,
 			)
 			return
 		}

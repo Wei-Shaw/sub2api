@@ -1367,6 +1367,32 @@ func TestOpenAIWSConnPool_TargetConnCountAndPrewarmBranches(t *testing.T) {
 	apFail.mu.Unlock()
 }
 
+func TestOpenAIWSConnPool_EvictAccountClosesAllConns(t *testing.T) {
+	pool := newOpenAIWSConnPool(&config.Config{})
+	accountID := int64(42)
+	ap := pool.getOrCreateAccountPool(accountID)
+
+	idle := newOpenAIWSConn("idle", accountID, &openAIWSFakeConn{}, nil)
+	leased := newOpenAIWSConn("leased", accountID, &openAIWSFakeConn{}, nil)
+	require.True(t, leased.tryAcquire())
+	ap.conns[idle.id] = idle
+	ap.conns[leased.id] = leased
+	ap.pinnedConns = map[string]int{idle.id: 1}
+	ap.prewarmActive = true
+	ap.prewarmUntil = time.Now().Add(time.Minute)
+
+	pool.EvictAccount(accountID)
+
+	ap.mu.Lock()
+	require.Empty(t, ap.conns)
+	require.Nil(t, ap.pinnedConns)
+	require.False(t, ap.prewarmActive)
+	require.True(t, ap.prewarmUntil.IsZero())
+	ap.mu.Unlock()
+	require.False(t, idle.tryAcquire())
+	require.ErrorIs(t, leased.pingWithTimeout(time.Millisecond), errOpenAIWSConnClosed)
+}
+
 func TestOpenAIWSConnPool_Acquire_ErrorBranches(t *testing.T) {
 	var nilPool *openAIWSConnPool
 	_, err := nilPool.Acquire(context.Background(), openAIWSAcquireRequest{})

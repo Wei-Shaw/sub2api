@@ -685,6 +685,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
 	finalOutputText := extractChatCompletionsAssistantText(chatResp)
+	finalOutputJSON, _ := json.Marshal(chatResp)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -700,6 +701,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		Stream:          false,
 		Duration:        time.Since(startTime),
 		FinalOutputText: finalOutputText,
+		FinalOutputJSON: cloneJSONRawMessage(finalOutputJSON),
 	}, nil
 }
 

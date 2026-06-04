@@ -310,6 +310,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			),
 			body,
 			result.FinalOutputText,
+			result.FinalOutputJSON,
 		)
 		return
 	}

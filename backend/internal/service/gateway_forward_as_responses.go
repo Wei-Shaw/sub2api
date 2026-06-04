@@ -338,8 +338,10 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
+	var finalOutputJSON json.RawMessage
 	if respBytes, err := json.Marshal(responsesResp); err == nil {
 		respBytes = reverseToolNamesIfPresent(c, respBytes)
+		finalOutputJSON = cloneJSONRawMessage(respBytes)
 		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
 	} else {
 		c.JSON(http.StatusOK, responsesResp)
@@ -354,6 +356,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 		Stream:          false,
 		Duration:        time.Since(startTime),
 		FinalOutputText: finalOutputText,
+		FinalOutputJSON: finalOutputJSON,
 	}, nil
 }
 

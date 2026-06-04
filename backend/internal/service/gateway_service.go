@@ -545,6 +545,9 @@ type ForwardResult struct {
 	// FinalOutputText is an optional normalized final assistant reply used by
 	// auxiliary persistence paths (e.g. chat audit). It does not affect billing.
 	FinalOutputText string
+	// FinalOutputJSON optionally carries structured assistant output for chat
+	// audit persistence. It may include tool calls and image base64 payloads.
+	FinalOutputJSON json.RawMessage
 
 	// 图片生成计费字段（图片生成模型使用）
 	ImageCount         int    // 生成的图片数量

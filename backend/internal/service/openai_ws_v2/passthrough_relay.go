@@ -1,7 +1,9 @@
 package openai_ws_v2
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -33,6 +35,8 @@ type RelayResult struct {
 	Usage                   Usage
 	RequestID               string
 	TerminalEventType       string
+	FinalOutputText         string
+	FinalOutputJSON         json.RawMessage
 	FirstTokenMs            *int
 	Duration                time.Duration
 	ClientToUpstreamFrames  int64
@@ -45,6 +49,8 @@ type RelayTurnResult struct {
 	Usage             Usage
 	RequestID         string
 	TerminalEventType string
+	FinalOutputText   string
+	FinalOutputJSON   json.RawMessage
 	Duration          time.Duration
 	FirstTokenMs      *int
 }
@@ -85,6 +91,11 @@ type relayState struct {
 	requestModel      string
 	lastResponseID    string
 	terminalEventType string
+	finalOutputText   string
+	finalOutputJSON   json.RawMessage
+	outputItems       []json.RawMessage
+	seenOutputItems   map[string]struct{}
+	textParts         []string
 	firstTokenMs      *int
 	turnTimingByID    map[string]*relayTurnTiming
 	activeTurn        *relayTurnTiming
@@ -102,6 +113,8 @@ type observedUpstreamEvent struct {
 	eventType  string
 	responseID string
 	usage      Usage
+	outputText string
+	outputJSON json.RawMessage
 	duration   time.Duration
 	firstToken *int
 }
@@ -635,10 +648,14 @@ func observeUpstreamMessage(
 		}
 	}
 	parsedUsage := parseUsageAndAccumulate(state, message, eventType, onUsageParseFailure)
+	outputText := observeOutputText(state, message, eventType)
+	outputJSON := observeOutputJSON(state, message, eventType)
 	observed := observedUpstreamEvent{
 		eventType:  eventType,
 		responseID: responseID,
 		usage:      parsedUsage,
+		outputText: outputText,
+		outputJSON: outputJSON,
 	}
 	if responseID != "" {
 		turnTiming := openAIWSRelayGetOrInitTurnTiming(state, responseID, now)
@@ -689,6 +706,8 @@ func emitTurnComplete(
 		Usage:             observed.usage,
 		RequestID:         responseID,
 		TerminalEventType: observed.eventType,
+		FinalOutputText:   observed.outputText,
+		FinalOutputJSON:   observed.outputJSON,
 		Duration:          observed.duration,
 		FirstTokenMs:      openAIWSRelayCloneIntPtr(observed.firstToken),
 	})
@@ -822,7 +841,156 @@ func enrichResult(result *RelayResult, state *relayState, duration time.Duration
 	result.Usage = state.usage
 	result.RequestID = state.lastResponseID
 	result.TerminalEventType = state.terminalEventType
+	result.FinalOutputText = strings.TrimSpace(state.finalOutputText)
+	result.FinalOutputJSON = cloneRelayJSONRawMessage(state.finalOutputJSON)
+	if len(result.FinalOutputJSON) == 0 && len(state.outputItems) > 0 {
+		body, err := json.Marshal(map[string]any{
+			"type":   "stream_output",
+			"output": state.outputItems,
+		})
+		if err == nil {
+			result.FinalOutputJSON = cloneRelayJSONRawMessage(body)
+		}
+	}
 	result.FirstTokenMs = state.firstTokenMs
+}
+
+func observeOutputText(state *relayState, message []byte, eventType string) string {
+	if state == nil || len(message) == 0 {
+		return ""
+	}
+	if text := extractOpenAIResponseOutputTextFromWSJSON(message); text != "" {
+		state.finalOutputText = text
+		return text
+	}
+	switch {
+	case strings.Contains(eventType, "output_text.delta"):
+		if delta := strings.TrimSpace(gjson.GetBytes(message, "delta").String()); delta != "" {
+			state.textParts = append(state.textParts, delta)
+		}
+	case strings.Contains(eventType, "text.delta"):
+		if delta := strings.TrimSpace(gjson.GetBytes(message, "delta").String()); delta != "" {
+			state.textParts = append(state.textParts, delta)
+		} else if text := strings.TrimSpace(gjson.GetBytes(message, "text").String()); text != "" {
+			state.textParts = append(state.textParts, text)
+		}
+	}
+	if isTerminalEvent(eventType) && strings.TrimSpace(state.finalOutputText) == "" {
+		state.finalOutputText = strings.TrimSpace(strings.Join(state.textParts, ""))
+	}
+	return strings.TrimSpace(state.finalOutputText)
+}
+
+func observeOutputJSON(state *relayState, message []byte, eventType string) json.RawMessage {
+	if state == nil || len(message) == 0 || !gjson.ValidBytes(message) {
+		return nil
+	}
+	switch eventType {
+	case "response.completed", "response.done":
+		if response := gjson.GetBytes(message, "response"); response.Exists() && response.IsObject() {
+			state.finalOutputJSON = cloneRelayJSONRawMessage([]byte(response.Raw))
+		} else {
+			state.finalOutputJSON = cloneRelayJSONRawMessage(message)
+		}
+	case "response.output_item.done", "response.output_item.added":
+		item := gjson.GetBytes(message, "item")
+		if !item.Exists() || !item.IsObject() {
+			return cloneRelayJSONRawMessage(state.finalOutputJSON)
+		}
+		raw := cloneRelayJSONRawMessage([]byte(item.Raw))
+		if len(raw) == 0 {
+			return cloneRelayJSONRawMessage(state.finalOutputJSON)
+		}
+		if state.seenOutputItems == nil {
+			state.seenOutputItems = make(map[string]struct{})
+		}
+		key := strings.TrimSpace(item.Get("id").String())
+		if key == "" {
+			key = strings.TrimSpace(item.Get("call_id").String())
+		}
+		if key == "" {
+			key = string(raw)
+		}
+		if _, exists := state.seenOutputItems[key]; !exists {
+			state.seenOutputItems[key] = struct{}{}
+			state.outputItems = append(state.outputItems, raw)
+		}
+	}
+	if len(state.finalOutputJSON) > 0 {
+		return cloneRelayJSONRawMessage(state.finalOutputJSON)
+	}
+	if len(state.outputItems) == 0 {
+		return nil
+	}
+	body, err := json.Marshal(map[string]any{
+		"type":   "stream_output",
+		"output": state.outputItems,
+	})
+	if err != nil {
+		return nil
+	}
+	return cloneRelayJSONRawMessage(body)
+}
+
+func cloneRelayJSONRawMessage(body []byte) json.RawMessage {
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 || !json.Valid(body) {
+		return nil
+	}
+	out := make([]byte, len(body))
+	copy(out, body)
+	return json.RawMessage(out)
+}
+
+func extractOpenAIResponseOutputTextFromWSJSON(message []byte) string {
+	if len(message) == 0 || !gjson.ValidBytes(message) {
+		return ""
+	}
+	parts := make([]string, 0, 4)
+	for _, output := range gjson.GetBytes(message, "output").Array() {
+		if text := extractOpenAIResponseContentTextFromWS(output); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	if len(parts) == 0 {
+		for _, output := range gjson.GetBytes(message, "response.output").Array() {
+			if text := extractOpenAIResponseContentTextFromWS(output); text != "" {
+				parts = append(parts, text)
+			}
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
+}
+
+func extractOpenAIResponseContentTextFromWS(result gjson.Result) string {
+	if result.Type == gjson.String {
+		return strings.TrimSpace(result.String())
+	}
+	if text := strings.TrimSpace(result.Get("delta").String()); text != "" {
+		return text
+	}
+	if text := strings.TrimSpace(result.Get("text").String()); text != "" {
+		return text
+	}
+	if content := result.Get("content"); content.IsArray() {
+		parts := make([]string, 0, len(content.Array()))
+		for _, item := range content.Array() {
+			switch item.Get("type").String() {
+			case "output_text", "text", "input_text":
+				if text := strings.TrimSpace(item.Get("text").String()); text != "" {
+					parts = append(parts, text)
+				}
+			default:
+				if item.Type == gjson.String {
+					if text := strings.TrimSpace(item.String()); text != "" {
+						parts = append(parts, text)
+					}
+				}
+			}
+		}
+		return strings.TrimSpace(strings.Join(parts, "\n"))
+	}
+	return ""
 }
 
 func isDisconnectError(err error) bool {

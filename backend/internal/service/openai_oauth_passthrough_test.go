@@ -147,8 +147,9 @@ func TestOpenAIGatewayService_OAuthMessagesBridgeDoesNotInjectDefaultInstruction
 
 type openAIPassthroughFailoverRepo struct {
 	stubOpenAIAccountRepo
-	rateLimitCalls []time.Time
-	overloadCalls  []time.Time
+	rateLimitCalls         []time.Time
+	overloadCalls          []time.Time
+	tempUnschedulableCalls []time.Time
 }
 
 func (r *openAIPassthroughFailoverRepo) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
@@ -158,6 +159,11 @@ func (r *openAIPassthroughFailoverRepo) SetRateLimited(_ context.Context, _ int6
 
 func (r *openAIPassthroughFailoverRepo) SetOverloaded(_ context.Context, _ int64, until time.Time) error {
 	r.overloadCalls = append(r.overloadCalls, until)
+	return nil
+}
+
+func (r *openAIPassthroughFailoverRepo) SetTempUnschedulable(_ context.Context, _ int64, until time.Time, _ string) error {
+	r.tempUnschedulableCalls = append(r.tempUnschedulableCalls, until)
 	return nil
 }
 
@@ -778,6 +784,18 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 		assertRepo  func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time)
 	}{
 		{
+			name:        "oauth_401_temp_unschedulable",
+			accountType: AccountTypeOAuth,
+			statusCode:  http.StatusUnauthorized,
+			body:        `{"error":{"message":"invalid token","type":"authentication_error"}}`,
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
+				require.Empty(t, repo.rateLimitCalls)
+				require.Empty(t, repo.overloadCalls)
+				require.Len(t, repo.tempUnschedulableCalls, 1)
+				require.True(t, time.Until(repo.tempUnschedulableCalls[0]) > 5*time.Minute)
+			},
+		},
+		{
 			name:        "oauth_429_rate_limit",
 			accountType: AccountTypeOAuth,
 			statusCode:  http.StatusTooManyRequests,
@@ -800,6 +818,17 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 				require.Empty(t, repo.rateLimitCalls)
 				require.Len(t, repo.overloadCalls, 1)
 				require.WithinDuration(t, start.Add(10*time.Minute), repo.overloadCalls[0], 5*time.Second)
+			},
+		},
+		{
+			name:        "oauth_503_upstream_unavailable",
+			accountType: AccountTypeOAuth,
+			statusCode:  http.StatusServiceUnavailable,
+			body:        `{"error":{"message":"upstream unavailable","type":"server_error"}}`,
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
+				require.Empty(t, repo.rateLimitCalls)
+				require.Empty(t, repo.overloadCalls)
+				require.Empty(t, repo.tempUnschedulableCalls)
 			},
 		},
 		{
@@ -860,6 +889,9 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 			}
 
 			account := newAccount(tc.accountType)
+			if tc.accountType == AccountTypeOAuth {
+				account.Credentials["refresh_token"] = "refresh-token"
+			}
 			start := time.Now()
 			_, err := svc.Forward(context.Background(), c, account, originalBody)
 			require.Error(t, err)
@@ -867,7 +899,7 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 			var failoverErr *UpstreamFailoverError
 			require.ErrorAs(t, err, &failoverErr)
 			require.Equal(t, tc.statusCode, failoverErr.StatusCode)
-			require.False(t, c.Writer.Written(), "429/529 passthrough 应返回 failover 错误给上层换号，而不是直接向客户端写响应")
+			require.False(t, c.Writer.Written(), "passthrough 可换号错误应返回 failover 给上层换号，而不是直接向客户端写响应")
 
 			v, ok := c.Get(OpsUpstreamErrorsKey)
 			require.True(t, ok)

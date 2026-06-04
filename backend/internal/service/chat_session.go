@@ -11,43 +11,54 @@ import (
 )
 
 type ChatMessage struct {
-	ID          int64           `json:"id"`
-	SessionID   int64           `json:"session_id"`
-	Seq         int             `json:"seq"`
-	Role        string          `json:"role"`
-	Direction   string          `json:"direction"`
-	ContentText string          `json:"content_text"`
-	ContentJSON json.RawMessage `json:"content_json,omitempty"`
-	CreatedAt   time.Time       `json:"created_at"`
+	ID               int64           `json:"id"`
+	SessionID        int64           `json:"session_id"`
+	Seq              int             `json:"seq"`
+	Role             string          `json:"role"`
+	Direction        string          `json:"direction"`
+	ContentText      string          `json:"content_text"`
+	ContentJSON      json.RawMessage `json:"content_json,omitempty"`
+	HasContentJSON   bool            `json:"has_content_json,omitempty"`
+	ContentJSONBytes int64           `json:"content_json_bytes,omitempty"`
+	CreatedAt        time.Time       `json:"created_at"`
 }
 
 type ChatSession struct {
-	ID               int64      `json:"id"`
-	SessionKey       *string    `json:"session_key,omitempty"`
-	RequestID        *string    `json:"request_id,omitempty"`
-	UserID           int64      `json:"user_id"`
-	APIKeyID         int64      `json:"api_key_id"`
-	AccountID        *int64     `json:"account_id,omitempty"`
-	GroupID          *int64     `json:"group_id,omitempty"`
-	Platform         string     `json:"platform"`
-	Model            string     `json:"model"`
-	RequestedModel   *string    `json:"requested_model,omitempty"`
-	UpstreamModel    *string    `json:"upstream_model,omitempty"`
-	InboundEndpoint  *string    `json:"inbound_endpoint,omitempty"`
-	UpstreamEndpoint *string    `json:"upstream_endpoint,omitempty"`
+	ID               int64       `json:"id"`
+	SessionKey       *string     `json:"session_key,omitempty"`
+	RequestID        *string     `json:"request_id,omitempty"`
+	UserID           int64       `json:"user_id"`
+	APIKeyID         int64       `json:"api_key_id"`
+	AccountID        *int64      `json:"account_id,omitempty"`
+	GroupID          *int64      `json:"group_id,omitempty"`
+	Platform         string      `json:"platform"`
+	Model            string      `json:"model"`
+	RequestedModel   *string     `json:"requested_model,omitempty"`
+	UpstreamModel    *string     `json:"upstream_model,omitempty"`
+	InboundEndpoint  *string     `json:"inbound_endpoint,omitempty"`
+	UpstreamEndpoint *string     `json:"upstream_endpoint,omitempty"`
 	RequestType      RequestType `json:"request_type"`
-	Stream           bool       `json:"stream"`
-	Status           string     `json:"status"`
-	HTTPStatusCode   int        `json:"http_status_code"`
-	UserPreview      *string    `json:"user_preview,omitempty"`
-	AssistantPreview *string    `json:"assistant_preview,omitempty"`
-	MessageCount     int        `json:"message_count"`
-	CreatedAt        time.Time  `json:"created_at"`
+	Stream           bool        `json:"stream"`
+	Status           string      `json:"status"`
+	HTTPStatusCode   int         `json:"http_status_code"`
+	UserPreview      *string     `json:"user_preview,omitempty"`
+	AssistantPreview *string     `json:"assistant_preview,omitempty"`
+	MessageCount     int         `json:"message_count"`
+	CreatedAt        time.Time   `json:"created_at"`
 }
 
 type ChatSessionDetail struct {
 	ChatSession
-	Messages []ChatMessage `json:"messages"`
+	Messages     []ChatMessage       `json:"messages"`
+	MessagesPage ChatMessagePageData `json:"messages_page"`
+}
+
+type ChatMessagePageData struct {
+	Items    []ChatMessage `json:"items"`
+	Total    int64         `json:"total"`
+	Page     int           `json:"page"`
+	PageSize int           `json:"page_size"`
+	Pages    int           `json:"pages"`
 }
 
 type ChatMessageEvent struct {
@@ -102,7 +113,8 @@ type ChatMessageEventRecordInput struct {
 type ChatSessionRepository interface {
 	CreateSessionWithMessages(ctx context.Context, input *ChatSessionRecordInput) error
 	ListSessionsByAPIKey(ctx context.Context, userID, apiKeyID int64, params pagination.PaginationParams) ([]*ChatSession, int64, error)
-	GetSessionDetail(ctx context.Context, userID, apiKeyID, sessionID int64, limit int) (*ChatSessionDetail, error)
+	GetSessionDetail(ctx context.Context, userID, apiKeyID, sessionID int64, params pagination.PaginationParams) (*ChatSessionDetail, error)
+	GetChatMessageDetail(ctx context.Context, userID, apiKeyID, sessionID, messageID int64) (*ChatMessage, error)
 	ListRecentMessagesByAPIKey(ctx context.Context, userID, apiKeyID int64, limit int) ([]ChatMessage, error)
 }
 
@@ -192,20 +204,33 @@ func (s *ChatSessionService) ListSessionsByAPIKey(ctx context.Context, userID, a
 	return s.repo.ListSessionsByAPIKey(ctx, userID, apiKeyID, params)
 }
 
-func (s *ChatSessionService) GetSessionDetail(ctx context.Context, userID, apiKeyID, sessionID int64, limit int) (*ChatSessionDetail, error) {
+func (s *ChatSessionService) GetSessionDetail(ctx context.Context, userID, apiKeyID, sessionID int64, params pagination.PaginationParams) (*ChatSessionDetail, error) {
 	if s == nil || s.repo == nil {
 		return nil, infraerrors.NotFound("CHAT_SESSION_NOT_FOUND", "chat session not found")
 	}
 	if userID <= 0 || apiKeyID <= 0 || sessionID <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_CHAT_SESSION_SCOPE", "invalid chat session scope")
 	}
-	if limit <= 0 {
-		limit = 50
+	if params.Page <= 0 {
+		params.Page = 1
 	}
-	if limit > 200 {
-		limit = 200
+	if params.PageSize <= 0 {
+		params.PageSize = 20
 	}
-	return s.repo.GetSessionDetail(ctx, userID, apiKeyID, sessionID, limit)
+	if params.PageSize > 100 {
+		params.PageSize = 100
+	}
+	return s.repo.GetSessionDetail(ctx, userID, apiKeyID, sessionID, params)
+}
+
+func (s *ChatSessionService) GetChatMessageDetail(ctx context.Context, userID, apiKeyID, sessionID, messageID int64) (*ChatMessage, error) {
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.NotFound("CHAT_MESSAGE_NOT_FOUND", "chat message not found")
+	}
+	if userID <= 0 || apiKeyID <= 0 || sessionID <= 0 || messageID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_CHAT_MESSAGE_SCOPE", "invalid chat message scope")
+	}
+	return s.repo.GetChatMessageDetail(ctx, userID, apiKeyID, sessionID, messageID)
 }
 
 func (s *ChatSessionService) ListRecentMessagesByAPIKey(ctx context.Context, userID, apiKeyID int64, limit int) ([]ChatMessage, error) {

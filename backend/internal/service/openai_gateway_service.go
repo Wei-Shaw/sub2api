@@ -246,6 +246,9 @@ type OpenAIForwardResult struct {
 	// FinalOutputText is an optional normalized final assistant reply used by
 	// auxiliary persistence paths (e.g. chat audit). It does not affect billing.
 	FinalOutputText string
+	// FinalOutputJSON optionally carries the full/structured assistant output for
+	// chat audit persistence. It may include tool calls and image base64 payloads.
+	FinalOutputJSON json.RawMessage
 }
 
 type OpenAIWSRetryMetricsSnapshot struct {
@@ -2305,6 +2308,10 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
 }
 
+func (s *OpenAIGatewayService) shouldFailoverOpenAIWSErrorStatus(statusCode int) bool {
+	return s.shouldFailoverUpstreamError(statusCode)
+}
+
 func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account, requestedModel ...string) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if len(requestedModel) > 0 {
@@ -3113,6 +3120,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var usage *OpenAIUsage
 		var firstTokenMs *int
 		var streamResult *openaiStreamingResult
+		var finalOutputText string
+		var finalOutputJSON json.RawMessage
 		imageCount := 0
 		var imageOutputSizes []string
 		if reqStream {
@@ -3124,6 +3133,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			firstTokenMs = streamResult.firstTokenMs
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
+			finalOutputText = streamResult.finalOutputText
+			finalOutputJSON = streamResult.finalOutputJSON
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
@@ -3132,6 +3143,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			usage = nonStreamResult.usage
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
+			finalOutputText = nonStreamResult.finalOutputText
+			finalOutputJSON = nonStreamResult.finalOutputJSON
 		}
 
 		// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
@@ -3156,12 +3169,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			OpenAIWSMode:    false,
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    firstTokenMs,
-			FinalOutputText: func() string {
-				if streamResult != nil {
-					return streamResult.finalOutputText
-				}
-				return ""
-			}(),
+			FinalOutputText: finalOutputText,
+			FinalOutputJSON: finalOutputJSON,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount
@@ -3366,6 +3375,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var usage *OpenAIUsage
 	var firstTokenMs *int
 	var streamResult *openaiStreamingResultPassthrough
+	var finalOutputText string
+	var finalOutputJSON json.RawMessage
 	imageCount := 0
 	var imageOutputSizes []string
 	if reqStream {
@@ -3377,6 +3388,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		firstTokenMs = streamResult.firstTokenMs
 		imageCount = streamResult.imageCount
 		imageOutputSizes = streamResult.imageOutputSizes
+		finalOutputText = streamResult.finalOutputText
+		finalOutputJSON = streamResult.finalOutputJSON
 	} else {
 		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
 		if err != nil {
@@ -3385,6 +3398,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		usage = result.usage
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
+		finalOutputText = result.finalOutputText
+		finalOutputJSON = result.finalOutputJSON
 	}
 
 	if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
@@ -3406,12 +3421,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		OpenAIWSMode:    false,
 		Duration:        time.Since(startTime),
 		FirstTokenMs:    firstTokenMs,
-		FinalOutputText: func() string {
-			if streamResult != nil {
-				return streamResult.finalOutputText
-			}
-			return ""
-		}(),
+		FinalOutputText: finalOutputText,
+		FinalOutputJSON: finalOutputJSON,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
@@ -3572,10 +3583,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 
 func shouldFailoverOpenAIPassthroughResponse(statusCode int) bool {
 	switch statusCode {
-	case http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden, http.StatusTooManyRequests, 529:
 		return true
 	default:
-		return false
+		return statusCode >= http.StatusInternalServerError
 	}
 }
 
@@ -3754,6 +3765,7 @@ type openaiStreamingResultPassthrough struct {
 	imageCount       int
 	imageOutputSizes []string
 	finalOutputText  string
+	finalOutputJSON  json.RawMessage
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -3761,6 +3773,8 @@ type openaiNonStreamingResultPassthrough struct {
 	usage            *OpenAIUsage
 	imageCount       int
 	imageOutputSizes []string
+	finalOutputText  string
+	finalOutputJSON  json.RawMessage
 }
 
 func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
@@ -3901,6 +3915,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	outputTextAcc := newOpenAIResponseTextAccumulator()
+	outputJSONAcc := newOpenAIResponseJSONAccumulator()
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawDone := false
@@ -3938,6 +3954,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			firstTokenMs:     firstTokenMs,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
+			finalOutputText:  outputTextAcc.Text(),
+			finalOutputJSON:  outputJSONAcc.JSON(),
 		}
 	}
 
@@ -3972,6 +3990,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				sawTerminalEvent = true
 			}
 			imageCounter.AddSSEData(dataBytes)
+			outputTextAcc.AddEvent(dataBytes)
+			outputJSONAcc.AddEvent(dataBytes)
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
 			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
@@ -4099,6 +4119,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		usage:            usage,
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		finalOutputText:  extractOpenAIResponseOutputTextFromJSONBytes(body),
+		finalOutputJSON:  cloneJSONRawMessage(body),
 	}, nil
 }
 
@@ -4162,6 +4184,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		usage:            usage,
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		finalOutputText:  extractOpenAIResponseOutputTextFromJSONBytes(body),
+		finalOutputJSON:  cloneJSONRawMessage(body),
 	}, nil
 }
 
@@ -4625,6 +4649,7 @@ type openaiStreamingResult struct {
 	imageCount       int
 	imageOutputSizes []string
 	finalOutputText  string
+	finalOutputJSON  json.RawMessage
 }
 
 type openaiNonStreamingResult struct {
@@ -4632,6 +4657,8 @@ type openaiNonStreamingResult struct {
 	usage            *OpenAIUsage
 	imageCount       int
 	imageOutputSizes []string
+	finalOutputText  string
+	finalOutputJSON  json.RawMessage
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
@@ -4666,6 +4693,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	outputTextAcc := newOpenAIResponseTextAccumulator()
+	outputJSONAcc := newOpenAIResponseJSONAccumulator()
 	var firstTokenMs *int
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -4749,6 +4778,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			firstTokenMs:     firstTokenMs,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
+			finalOutputText:  outputTextAcc.Text(),
+			finalOutputJSON:  outputJSONAcc.JSON(),
 		}
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
@@ -4853,6 +4884,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				line = "data: " + data
 				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
 			}
+			outputTextAcc.AddEvent(dataBytes)
+			outputJSONAcc.AddEvent(dataBytes)
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
 
 			// 写入客户端（客户端断开后继续 drain 上游）
@@ -5252,12 +5285,209 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		usage:            usage,
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		finalOutputText:  extractOpenAIResponseOutputTextFromJSONBytes(body),
+		finalOutputJSON:  cloneJSONRawMessage(body),
 	}, nil
 }
 
 func isEventStreamResponse(header http.Header) bool {
 	contentType := strings.ToLower(header.Get("Content-Type"))
 	return strings.Contains(contentType, "text/event-stream")
+}
+
+func extractOpenAIResponseOutputTextFromJSONBytes(body []byte) string {
+	if len(bytes.TrimSpace(body)) == 0 || !gjson.ValidBytes(body) {
+		return ""
+	}
+	parts := make([]string, 0, 4)
+	for _, output := range gjson.GetBytes(body, "output").Array() {
+		text := extractOpenAIResponseContentText(output)
+		if text != "" {
+			parts = append(parts, text)
+		}
+	}
+	if len(parts) == 0 {
+		for _, output := range gjson.GetBytes(body, "response.output").Array() {
+			text := extractOpenAIResponseContentText(output)
+			if text != "" {
+				parts = append(parts, text)
+			}
+		}
+	}
+	if len(parts) == 0 {
+		for _, choice := range gjson.GetBytes(body, "choices").Array() {
+			if text := extractOpenAIResponseContentText(choice.Get("message")); text != "" {
+				parts = append(parts, text)
+				continue
+			}
+			if text := extractOpenAIResponseContentText(choice.Get("delta")); text != "" {
+				parts = append(parts, text)
+			}
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
+}
+
+func extractOpenAIResponseContentText(result gjson.Result) string {
+	if result.Type == gjson.String {
+		return strings.TrimSpace(result.String())
+	}
+	if text := strings.TrimSpace(result.Get("delta").String()); text != "" {
+		return text
+	}
+	if text := strings.TrimSpace(result.Get("text").String()); text != "" {
+		return text
+	}
+	if content := result.Get("content"); content.IsArray() {
+		parts := make([]string, 0, len(content.Array()))
+		for _, item := range content.Array() {
+			switch item.Get("type").String() {
+			case "output_text", "text", "input_text":
+				if text := strings.TrimSpace(item.Get("text").String()); text != "" {
+					parts = append(parts, text)
+				}
+			default:
+				if item.Type == gjson.String {
+					if text := strings.TrimSpace(item.String()); text != "" {
+						parts = append(parts, text)
+					}
+				}
+			}
+		}
+		return strings.TrimSpace(strings.Join(parts, "\n"))
+	}
+	return ""
+}
+
+type openAIResponseTextAccumulator struct {
+	parts     []string
+	finalText string
+}
+
+func newOpenAIResponseTextAccumulator() *openAIResponseTextAccumulator {
+	return &openAIResponseTextAccumulator{parts: make([]string, 0, 8)}
+}
+
+func (a *openAIResponseTextAccumulator) AddEvent(payload []byte) {
+	if a == nil || len(bytes.TrimSpace(payload)) == 0 || !gjson.ValidBytes(payload) {
+		return
+	}
+	if text := extractOpenAIResponseOutputTextFromJSONBytes(payload); text != "" {
+		a.finalText = text
+		return
+	}
+	eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
+	if eventType == "" {
+		return
+	}
+	if strings.Contains(eventType, "output_text.delta") {
+		if delta := strings.TrimSpace(gjson.GetBytes(payload, "delta").String()); delta != "" {
+			a.parts = append(a.parts, delta)
+		}
+		return
+	}
+	if strings.Contains(eventType, "text.delta") {
+		if delta := strings.TrimSpace(gjson.GetBytes(payload, "delta").String()); delta != "" {
+			a.parts = append(a.parts, delta)
+			return
+		}
+		if text := strings.TrimSpace(gjson.GetBytes(payload, "text").String()); text != "" {
+			a.parts = append(a.parts, text)
+		}
+	}
+}
+
+func (a *openAIResponseTextAccumulator) Text() string {
+	if a == nil {
+		return ""
+	}
+	if text := strings.TrimSpace(a.finalText); text != "" {
+		return text
+	}
+	return strings.TrimSpace(strings.Join(a.parts, ""))
+}
+
+type openAIResponseJSONAccumulator struct {
+	finalResponse json.RawMessage
+	items         []json.RawMessage
+	seenItems     map[string]struct{}
+}
+
+func newOpenAIResponseJSONAccumulator() *openAIResponseJSONAccumulator {
+	return &openAIResponseJSONAccumulator{
+		items:     make([]json.RawMessage, 0, 4),
+		seenItems: make(map[string]struct{}),
+	}
+}
+
+func (a *openAIResponseJSONAccumulator) AddEvent(payload []byte) {
+	if a == nil || len(bytes.TrimSpace(payload)) == 0 || bytes.Equal(bytes.TrimSpace(payload), []byte("[DONE]")) || !gjson.ValidBytes(payload) {
+		return
+	}
+	eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
+	switch eventType {
+	case "response.completed", "response.done":
+		if response := gjson.GetBytes(payload, "response"); response.Exists() && response.IsObject() {
+			if raw := cloneJSONRawMessage([]byte(response.Raw)); len(raw) > 0 {
+				a.finalResponse = raw
+			}
+			return
+		}
+		if raw := cloneJSONRawMessage(payload); len(raw) > 0 {
+			a.finalResponse = raw
+		}
+	case "response.output_item.done", "response.output_item.added":
+		item := gjson.GetBytes(payload, "item")
+		if !item.Exists() || !item.IsObject() {
+			return
+		}
+		raw := cloneJSONRawMessage([]byte(item.Raw))
+		if len(raw) == 0 {
+			return
+		}
+		key := strings.TrimSpace(item.Get("id").String())
+		if key == "" {
+			key = strings.TrimSpace(item.Get("call_id").String())
+		}
+		if key == "" {
+			key = string(raw)
+		}
+		if _, exists := a.seenItems[key]; exists {
+			return
+		}
+		a.seenItems[key] = struct{}{}
+		a.items = append(a.items, raw)
+	}
+}
+
+func (a *openAIResponseJSONAccumulator) JSON() json.RawMessage {
+	if a == nil {
+		return nil
+	}
+	if len(a.finalResponse) > 0 {
+		return cloneJSONRawMessage(a.finalResponse)
+	}
+	if len(a.items) == 0 {
+		return nil
+	}
+	body, err := json.Marshal(map[string]any{
+		"type":   "stream_output",
+		"output": a.items,
+	})
+	if err != nil {
+		return nil
+	}
+	return cloneJSONRawMessage(body)
+}
+
+func cloneJSONRawMessage(body []byte) json.RawMessage {
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 || !json.Valid(body) {
+		return nil
+	}
+	out := make([]byte, len(body))
+	copy(out, body)
+	return json.RawMessage(out)
 }
 
 func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
@@ -5317,6 +5547,8 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		usage:            usage,
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		finalOutputText:  extractOpenAIResponseOutputTextFromJSONBytes(body),
+		finalOutputJSON:  cloneJSONRawMessage(body),
 	}, nil
 }
 

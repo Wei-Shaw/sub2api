@@ -76,6 +76,9 @@ func (s *OpenAIGatewayService) BlockAccountScheduling(account *Account, until ti
 	if s == nil || !isOpenAIAccount(account) {
 		return
 	}
+	if pool := s.openaiWSPool; pool != nil {
+		pool.EvictAccount(account.ID)
+	}
 	now := time.Now()
 	blockUntil := until
 	if blockUntil.IsZero() || !blockUntil.After(now) {

@@ -649,11 +649,14 @@ export interface ChatSessionMessage {
   direction: 'inbound' | 'outbound'
   content_text: string
   content_json?: Record<string, unknown> | null
+  has_content_json?: boolean
+  content_json_bytes?: number
   created_at: string
 }
 
 export interface ChatSessionDetail extends ChatSession {
   messages: ChatSessionMessage[]
+  messages_page?: PaginatedResponse<ChatSessionMessage>
 }
 
 export interface ChatMessage extends ChatSessionMessage {}

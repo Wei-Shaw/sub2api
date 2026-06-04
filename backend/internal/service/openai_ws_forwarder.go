@@ -1910,8 +1910,12 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			account.ProxyID != nil && account.Proxy != nil,
 		)
 		var dialErr *openAIWSDialError
-		if errors.As(err, &dialErr) && dialErr != nil && dialErr.StatusCode == http.StatusTooManyRequests {
-			s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()))
+		if errors.As(err, &dialErr) && dialErr != nil && s.shouldFailoverOpenAIWSErrorStatus(dialErr.StatusCode) {
+			if dialErr.StatusCode == http.StatusTooManyRequests {
+				s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()))
+			} else {
+				_ = s.handleOpenAIAccountUpstreamError(ctx, account, dialErr.StatusCode, dialErr.ResponseHeaders, []byte(strings.TrimSpace(err.Error())))
+			}
 		}
 		return nil, wrapOpenAIWSFallback(classifyOpenAIWSAcquireError(err), err)
 	}
@@ -2795,11 +2799,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				account.ProxyID != nil && account.Proxy != nil,
 			)
 			var dialErr *openAIWSDialError
-			if errors.As(acquireErr, &dialErr) && dialErr != nil && dialErr.StatusCode == http.StatusTooManyRequests {
-				s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(acquireErr.Error()))
-				return nil, &UpstreamFailoverError{
-					StatusCode:      http.StatusTooManyRequests,
-					ResponseHeaders: cloneHeader(dialErr.ResponseHeaders),
+			if errors.As(acquireErr, &dialErr) && dialErr != nil {
+				if s.shouldFailoverOpenAIWSErrorStatus(dialErr.StatusCode) {
+					if dialErr.StatusCode == http.StatusTooManyRequests {
+						s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(acquireErr.Error()))
+					} else {
+						_ = s.handleOpenAIAccountUpstreamError(ctx, account, dialErr.StatusCode, dialErr.ResponseHeaders, []byte(strings.TrimSpace(acquireErr.Error())))
+					}
+					return nil, &UpstreamFailoverError{
+						StatusCode:      dialErr.StatusCode,
+						ResponseHeaders: cloneHeader(dialErr.ResponseHeaders),
+					}
 				}
 			}
 			if errors.Is(acquireErr, errOpenAIWSPreferredConnUnavailable) {
@@ -2891,6 +2901,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		responseID := ""
 		usage := OpenAIUsage{}
 		imageCounter := newOpenAIImageOutputCounter()
+		outputTextAcc := newOpenAIResponseTextAccumulator()
+		outputJSONAcc := newOpenAIResponseJSONAccumulator()
 		var firstTokenMs *int
 		reqStream := openAIWSPayloadBoolFromRaw(payload, "stream", true)
 		turnPreviousResponseID := openAIWSPayloadStringFromRaw(payload, "previous_response_id")
@@ -2996,10 +3008,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						false,
 					)
 				}
-				if !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+				if !wroteDownstream && s.shouldFailoverOpenAIWSErrorStatus(openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)) {
 					lease.MarkBroken()
+					statusCode := openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
+					if statusCode != http.StatusTooManyRequests {
+						s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, lease.HandshakeHeaders(), upstreamMessage)
+					}
 					return nil, &UpstreamFailoverError{
-						StatusCode:      http.StatusTooManyRequests,
+						StatusCode:      statusCode,
 						ResponseBody:    append([]byte(nil), upstreamMessage...),
 						ResponseHeaders: cloneHeader(lease.HandshakeHeaders()),
 					}
@@ -3021,6 +3037,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				parseOpenAIWSResponseUsageFromCompletedEvent(upstreamMessage, &usage)
 			}
 			imageCounter.AddSSEData(upstreamMessage)
+			outputTextAcc.AddEvent(upstreamMessage)
 
 			if !clientDisconnected {
 				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
@@ -3031,6 +3048,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						upstreamMessage = corrected
 					}
 				}
+				outputJSONAcc.AddEvent(upstreamMessage)
 				if err := writeClientMessage(upstreamMessage); err != nil {
 					if isOpenAIWSClientDisconnectError(err) {
 						clientDisconnected = true
@@ -3093,6 +3111,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					ResponseHeaders: lease.HandshakeHeaders(),
 					Duration:        time.Since(turnStart),
 					FirstTokenMs:    firstTokenMs,
+					FinalOutputText: outputTextAcc.Text(),
+					FinalOutputJSON: outputJSONAcc.JSON(),
 				}
 				if imageCount > 0 {
 					result.ImageCount = imageCount
@@ -3292,6 +3312,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return true
 	}
 	for {
+		if s.isOpenAIAccountRuntimeBlocked(account) {
+			resetSessionLease(true)
+			return NewOpenAIWSClientCloseError(
+				coderws.StatusTryAgainLater,
+				"upstream account is temporarily unavailable; please reconnect",
+				errOpenAIWSPreferredConnUnavailable,
+			)
+		}
 		if turn > 1 && !skipBeforeTurn && hooks != nil && hooks.BeforeRequest != nil {
 			if err := hooks.BeforeRequest(turn, currentPayload, currentOriginalModel); err != nil {
 				return err
@@ -4058,6 +4086,10 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 		return nil, nil
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
+		return nil, nil
+	}
+	if s.isOpenAIAccountRuntimeBlocked(account) {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil
 	}
 	// Quota auto-pause must also gate the previous_response_id sticky path; otherwise an

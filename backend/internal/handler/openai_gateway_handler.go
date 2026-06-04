@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -492,6 +493,31 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				).Error("openai.record_usage_failed", zap.Error(err))
 			}
 		})
+		if result != nil {
+			recordChatSessionAsync(
+				c.Request.Context(),
+				h.chatSessionService,
+				apiKey,
+				account,
+				buildChatSessionRecordInput(
+					apiKey,
+					account,
+					sessionHash,
+					result.RequestID,
+					reqModel,
+					reqStream,
+					service.RequestTypeFromLegacy(reqStream, false),
+					c.Writer.Status(),
+					inboundEndpoint,
+					upstreamEndpoint,
+					reqModel,
+					result.UpstreamModel,
+				),
+				body,
+				result.FinalOutputText,
+				result.FinalOutputJSON,
+			)
+		}
 		reqLog.Debug("openai.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),
@@ -1301,6 +1327,25 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	var lastFailoverErr *service.UpstreamFailoverError
+	var wsTurnPayloadsMu sync.Mutex
+	wsTurnPayloads := map[int][]byte{1: append([]byte(nil), firstMessage...)}
+	rememberWSTurnPayload := func(turn int, payload []byte) {
+		if turn <= 0 || len(payload) == 0 {
+			return
+		}
+		wsTurnPayloadsMu.Lock()
+		wsTurnPayloads[turn] = append([]byte(nil), payload...)
+		wsTurnPayloadsMu.Unlock()
+	}
+	loadWSTurnPayload := func(turn int) []byte {
+		wsTurnPayloadsMu.Lock()
+		defer wsTurnPayloadsMu.Unlock()
+		payload := wsTurnPayloads[turn]
+		if len(payload) == 0 {
+			return nil
+		}
+		return append([]byte(nil), payload...)
+	}
 
 	for {
 		reqLog.Debug("openai.websocket_account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
@@ -1385,6 +1430,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+				rememberWSTurnPayload(turn, payload)
 				if turn == 1 {
 					return nil
 				}
@@ -1478,6 +1524,29 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						)
 					}
 				})
+				recordChatSessionAsync(
+					ctx,
+					h.chatSessionService,
+					apiKey,
+					account,
+					buildChatSessionRecordInput(
+						apiKey,
+						account,
+						sessionHash,
+						result.RequestID,
+						reqModel,
+						true,
+						service.RequestTypeWSV2,
+						http.StatusOK,
+						inboundEndpoint,
+						upstreamEndpoint,
+						reqModel,
+						result.UpstreamModel,
+					),
+					loadWSTurnPayload(turn),
+					result.FinalOutputText,
+					result.FinalOutputJSON,
+				)
 			},
 		}
 

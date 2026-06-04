@@ -321,8 +321,10 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	}
 	// Marshal then bytes-replace so tool name mapping is reversed at byte level
 	// (parity with Parrot non-stream flow that marshals → restore → emit).
+	var finalOutputJSON json.RawMessage
 	if respBytes, err := json.Marshal(ccResp); err == nil {
 		respBytes = reverseToolNamesIfPresent(c, respBytes)
+		finalOutputJSON = cloneJSONRawMessage(respBytes)
 		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
 	} else {
 		c.JSON(http.StatusOK, ccResp)
@@ -337,6 +339,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		Stream:          false,
 		Duration:        time.Since(startTime),
 		FinalOutputText: finalOutputText,
+		FinalOutputJSON: finalOutputJSON,
 	}, nil
 }
 

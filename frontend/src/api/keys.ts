@@ -146,11 +146,24 @@ export async function listChatSessions(
 export async function getChatSession(
   id: number,
   sessionId: number,
-  limit: number = 50
+  page: number = 1,
+  pageSize: number = 20
 ): Promise<ChatSessionDetail> {
   const { data } = await apiClient.get<ChatSessionDetail>(`/keys/${id}/chat-sessions/${sessionId}`, {
-    params: { limit }
+    params: {
+      page,
+      page_size: pageSize
+    }
   })
+  return data
+}
+
+export async function getChatMessage(
+  id: number,
+  sessionId: number,
+  messageId: number
+): Promise<ChatMessage> {
+  const { data } = await apiClient.get<ChatMessage>(`/keys/${id}/chat-sessions/${sessionId}/messages/${messageId}`)
   return data
 }
 
@@ -183,7 +196,8 @@ export const keysAPI = {
   toggleStatus,
   listRecentChatMessages,
   listChatSessions,
-  getChatSession
+  getChatSession,
+  getChatMessage
 }
 
 export default keysAPI

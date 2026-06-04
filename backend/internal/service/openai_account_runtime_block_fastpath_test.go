@@ -105,6 +105,23 @@ func TestOpenAIRuntimeBlock_ClearAccountSchedulingBlock(t *testing.T) {
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }
 
+func TestOpenAIRuntimeBlock_EvictsOpenAIWSPoolConns(t *testing.T) {
+	account := &Account{ID: 48, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	pool := newOpenAIWSConnPool(&config.Config{})
+	ap := pool.getOrCreateAccountPool(account.ID)
+	conn := newOpenAIWSConn("runtime_block_conn", account.ID, &openAIWSFakeConn{}, nil)
+	ap.conns[conn.id] = conn
+	svc := &OpenAIGatewayService{openaiWSPool: pool}
+
+	svc.BlockAccountScheduling(account, time.Now().Add(time.Minute), "oauth_401")
+
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	ap.mu.Lock()
+	require.Empty(t, ap.conns)
+	ap.mu.Unlock()
+	require.False(t, conn.tryAcquire())
+}
+
 func TestShouldStopOpenAIOAuth429Failover_OnlyDuringStorm(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	account := &Account{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeOAuth}

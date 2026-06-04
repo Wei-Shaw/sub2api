@@ -167,7 +167,7 @@ func TestRelay_BasicRelayAndUsage(t *testing.T) {
 	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
 		{
 			msgType: coderws.MessageText,
-			payload: []byte(`{"type":"response.completed","response":{"id":"resp_123","usage":{"input_tokens":7,"output_tokens":3,"input_tokens_details":{"cached_tokens":2}}}}`),
+			payload: []byte(`{"type":"response.completed","response":{"id":"resp_123","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}],"usage":{"input_tokens":7,"output_tokens":3,"input_tokens_details":{"cached_tokens":2}}}}`),
 		},
 	}, true)
 
@@ -183,6 +183,7 @@ func TestRelay_BasicRelayAndUsage(t *testing.T) {
 	require.Equal(t, 7, result.Usage.InputTokens)
 	require.Equal(t, 3, result.Usage.OutputTokens)
 	require.Equal(t, 2, result.Usage.CacheReadInputTokens)
+	require.Equal(t, "done", result.FinalOutputText)
 	require.NotNil(t, result.FirstTokenMs)
 	require.Equal(t, int64(1), result.ClientToUpstreamFrames)
 	require.Equal(t, int64(1), result.UpstreamToClientFrames)
@@ -196,7 +197,7 @@ func TestRelay_BasicRelayAndUsage(t *testing.T) {
 	clientWrites := clientConn.Writes()
 	require.Len(t, clientWrites, 1)
 	require.Equal(t, coderws.MessageText, clientWrites[0].msgType)
-	require.JSONEq(t, `{"type":"response.completed","response":{"id":"resp_123","usage":{"input_tokens":7,"output_tokens":3,"input_tokens_details":{"cached_tokens":2}}}}`, string(clientWrites[0].payload))
+	require.JSONEq(t, `{"type":"response.completed","response":{"id":"resp_123","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}],"usage":{"input_tokens":7,"output_tokens":3,"input_tokens_details":{"cached_tokens":2}}}}`, string(clientWrites[0].payload))
 }
 
 func TestRelay_FunctionCallOutputBytesPreserved(t *testing.T) {

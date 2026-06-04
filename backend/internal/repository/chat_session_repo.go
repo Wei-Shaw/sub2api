@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -47,6 +48,10 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 	if err != nil {
 		return err
 	}
+	existingMessages, err := r.getRecentChatMessageFingerprints(ctx, tx, sessionID, 1000)
+	if err != nil {
+		return err
+	}
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO chat_messages (
@@ -58,11 +63,21 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 	}
 	defer stmt.Close()
 
-	for i, msg := range input.Messages {
+	insertedMessages := 0
+	for _, msg := range input.Messages {
+		role := strings.TrimSpace(msg.Role)
+		direction := strings.TrimSpace(msg.Direction)
+		contentText := strings.TrimSpace(msg.ContentText)
+		contentJSONFingerprint := strings.TrimSpace(string(msg.ContentJSON))
 		if lastMsg != nil &&
-			lastMsg.Role == strings.TrimSpace(msg.Role) &&
-			lastMsg.Direction == strings.TrimSpace(msg.Direction) &&
-			strings.TrimSpace(lastMsg.ContentText) == strings.TrimSpace(msg.ContentText) {
+			lastMsg.Role == role &&
+			lastMsg.Direction == direction &&
+			strings.TrimSpace(lastMsg.ContentText) == contentText &&
+			strings.TrimSpace(string(lastMsg.ContentJSON)) == contentJSONFingerprint {
+			continue
+		}
+		fingerprint := chatMessageFingerprint(role, direction, contentText, contentJSONFingerprint)
+		if existingMessages[fingerprint] {
 			continue
 		}
 		var contentJSON any
@@ -72,20 +87,35 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 		if _, err := stmt.ExecContext(
 			ctx,
 			sessionID,
-			messageBaseSeq+i,
-			strings.TrimSpace(msg.Role),
-			strings.TrimSpace(msg.Direction),
-			strings.TrimSpace(msg.ContentText),
+			messageBaseSeq+insertedMessages,
+			role,
+			direction,
+			contentText,
 			contentJSON,
 			input.CreatedAt,
 		); err != nil {
 			return err
 		}
 		lastMsg = &service.ChatMessage{
-			Role:        strings.TrimSpace(msg.Role),
-			Direction:   strings.TrimSpace(msg.Direction),
-			ContentText: strings.TrimSpace(msg.ContentText),
+			Role:        role,
+			Direction:   direction,
+			ContentText: contentText,
+			ContentJSON: msg.ContentJSON,
 		}
+		existingMessages[fingerprint] = true
+		insertedMessages++
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE chat_sessions
+		SET message_count = (
+			SELECT COUNT(*)
+			FROM chat_messages
+			WHERE session_id = $1
+		)
+		WHERE id = $1
+	`, sessionID); err != nil {
+		return err
 	}
 
 	if len(input.Events) > 0 {
@@ -140,6 +170,9 @@ func (r *chatSessionRepository) ensureSession(
 ) (int64, error) {
 	sessionKey := strings.TrimSpace(input.SessionKey)
 	if sessionKey != "" {
+		if err := r.lockSessionKey(ctx, tx, input.UserID, input.APIKeyID, sessionKey); err != nil {
+			return 0, err
+		}
 		var existingID int64
 		err := tx.QueryRowContext(ctx, `
 			SELECT id
@@ -251,6 +284,16 @@ func (r *chatSessionRepository) ensureSession(
 	return sessionID, err
 }
 
+func (r *chatSessionRepository) lockSessionKey(ctx context.Context, tx *sql.Tx, userID, apiKeyID int64, sessionKey string) error {
+	_, err := tx.ExecContext(ctx, `
+		SELECT pg_advisory_xact_lock(
+			hashtextextended($1, 0),
+			hashtextextended($2 || ':' || $3, 0)::INTEGER
+		)
+	`, sessionKey, strconv.FormatInt(userID, 10), strconv.FormatInt(apiKeyID, 10))
+	return err
+}
+
 func (r *chatSessionRepository) nextMessageSeq(ctx context.Context, tx *sql.Tx, table string, sessionID int64) (int, error) {
 	query := "SELECT COALESCE(MAX(seq), 0) FROM " + table + " WHERE session_id = $1"
 	var maxSeq int
@@ -262,20 +305,50 @@ func (r *chatSessionRepository) nextMessageSeq(ctx context.Context, tx *sql.Tx, 
 
 func (r *chatSessionRepository) getLastChatMessage(ctx context.Context, tx *sql.Tx, sessionID int64) (*service.ChatMessage, error) {
 	row := tx.QueryRowContext(ctx, `
-		SELECT role, direction, content_text
+		SELECT role, direction, content_text, content_json
 		FROM chat_messages
 		WHERE session_id = $1
 		ORDER BY seq DESC, id DESC
 		LIMIT 1
 	`, sessionID)
 	msg := &service.ChatMessage{}
-	if err := row.Scan(&msg.Role, &msg.Direction, &msg.ContentText); err != nil {
+	var contentJSON []byte
+	if err := row.Scan(&msg.Role, &msg.Direction, &msg.ContentText, &contentJSON); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
+	msg.ContentJSON = json.RawMessage(contentJSON)
 	return msg, nil
+}
+
+func (r *chatSessionRepository) getRecentChatMessageFingerprints(ctx context.Context, tx *sql.Tx, sessionID int64, limit int) (map[string]bool, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+	rows, err := tx.QueryContext(ctx, `
+		SELECT role, direction, content_text, content_json
+		FROM chat_messages
+		WHERE session_id = $1
+		ORDER BY seq DESC, id DESC
+		LIMIT $2
+	`, sessionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]bool)
+	for rows.Next() {
+		var role, direction, contentText string
+		var contentJSON []byte
+		if err := rows.Scan(&role, &direction, &contentText, &contentJSON); err != nil {
+			return nil, err
+		}
+		out[chatMessageFingerprint(role, direction, contentText, strings.TrimSpace(string(contentJSON)))] = true
+	}
+	return out, rows.Err()
 }
 
 func (r *chatSessionRepository) ListSessionsByAPIKey(ctx context.Context, userID, apiKeyID int64, params pagination.PaginationParams) ([]*service.ChatSession, int64, error) {
@@ -325,9 +398,15 @@ func (r *chatSessionRepository) ListSessionsByAPIKey(ctx context.Context, userID
 	return items, total, rows.Err()
 }
 
-func (r *chatSessionRepository) GetSessionDetail(ctx context.Context, userID, apiKeyID, sessionID int64, limit int) (*service.ChatSessionDetail, error) {
+func (r *chatSessionRepository) GetSessionDetail(ctx context.Context, userID, apiKeyID, sessionID int64, params pagination.PaginationParams) (*service.ChatSessionDetail, error) {
 	if r == nil || r.sql == nil {
 		return nil, sql.ErrNoRows
+	}
+	if params.Page <= 0 {
+		params.Page = 1
+	}
+	if params.PageSize <= 0 {
+		params.PageSize = 20
 	}
 
 	row := r.sql.QueryRowContext(ctx, `
@@ -344,26 +423,35 @@ func (r *chatSessionRepository) GetSessionDetail(ctx context.Context, userID, ap
 		return nil, err
 	}
 
+	offset := (params.Page - 1) * params.PageSize
 	rows, err := r.sql.QueryContext(ctx, `
-		SELECT id, session_id, seq, role, direction, content_text, content_json, created_at
+		SELECT id, session_id, seq, role, direction, content_text, has_content_json, content_json_bytes, created_at
 		FROM (
-			SELECT id, session_id, seq, role, direction, content_text, content_json, created_at
+			SELECT
+				id,
+				session_id,
+				seq,
+				role,
+				direction,
+				content_text,
+				content_json IS NOT NULL AS has_content_json,
+				COALESCE(pg_column_size(content_json), 0)::BIGINT AS content_json_bytes,
+				created_at
 			FROM chat_messages
 			WHERE session_id = $1
 			ORDER BY seq DESC, id DESC
-			LIMIT $2
+			LIMIT $2 OFFSET $3
 		) m
 		ORDER BY seq ASC, id ASC
-	`, sessionID, limit)
+	`, sessionID, params.PageSize, offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	messages := make([]service.ChatMessage, 0, limit)
+	messages := make([]service.ChatMessage, 0, params.PageSize)
 	for rows.Next() {
 		var msg service.ChatMessage
-		var contentJSON []byte
 		if err := rows.Scan(
 			&msg.ID,
 			&msg.SessionID,
@@ -371,22 +459,77 @@ func (r *chatSessionRepository) GetSessionDetail(ctx context.Context, userID, ap
 			&msg.Role,
 			&msg.Direction,
 			&msg.ContentText,
-			&contentJSON,
+			&msg.HasContentJSON,
+			&msg.ContentJSONBytes,
 			&msg.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
-		msg.ContentJSON = json.RawMessage(contentJSON)
 		messages = append(messages, msg)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
+	pages := 1
+	if params.PageSize > 0 {
+		pages = int((int64(session.MessageCount) + int64(params.PageSize) - 1) / int64(params.PageSize))
+		if pages < 1 {
+			pages = 1
+		}
+	}
 	return &service.ChatSessionDetail{
 		ChatSession: *session,
 		Messages:    messages,
+		MessagesPage: service.ChatMessagePageData{
+			Items:    messages,
+			Total:    int64(session.MessageCount),
+			Page:     params.Page,
+			PageSize: params.PageSize,
+			Pages:    pages,
+		},
 	}, nil
+}
+
+func (r *chatSessionRepository) GetChatMessageDetail(ctx context.Context, userID, apiKeyID, sessionID, messageID int64) (*service.ChatMessage, error) {
+	if r == nil || r.sql == nil {
+		return nil, sql.ErrNoRows
+	}
+	row := r.sql.QueryRowContext(ctx, `
+		SELECT
+			m.id,
+			m.session_id,
+			m.seq,
+			m.role,
+			m.direction,
+			m.content_text,
+			m.content_json,
+			m.content_json IS NOT NULL AS has_content_json,
+			COALESCE(pg_column_size(m.content_json), 0)::BIGINT AS content_json_bytes,
+			m.created_at
+		FROM chat_messages m
+		INNER JOIN chat_sessions s ON s.id = m.session_id
+		WHERE m.id = $1 AND m.session_id = $2 AND s.user_id = $3 AND s.api_key_id = $4
+	`, messageID, sessionID, userID, apiKeyID)
+
+	var msg service.ChatMessage
+	var contentJSON []byte
+	if err := row.Scan(
+		&msg.ID,
+		&msg.SessionID,
+		&msg.Seq,
+		&msg.Role,
+		&msg.Direction,
+		&msg.ContentText,
+		&contentJSON,
+		&msg.HasContentJSON,
+		&msg.ContentJSONBytes,
+		&msg.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+	msg.ContentJSON = json.RawMessage(contentJSON)
+	return &msg, nil
 }
 
 func (r *chatSessionRepository) ListRecentMessagesByAPIKey(ctx context.Context, userID, apiKeyID int64, limit int) ([]service.ChatMessage, error) {
@@ -538,16 +681,16 @@ func buildChatSessionPreviews(messages []service.ChatMessageRecordInput) (*strin
 		}
 		switch strings.TrimSpace(msg.Direction) {
 		case "inbound":
-			if userPreview == nil {
-				userPreview = &text
-			}
+			userPreview = &text
 		case "outbound":
-			if assistantPreview == nil {
-				assistantPreview = &text
-			}
+			assistantPreview = &text
 		}
 	}
 	return userPreview, assistantPreview
+}
+
+func chatMessageFingerprint(role string, direction string, contentText string, contentJSON string) string {
+	return strings.TrimSpace(role) + "\x00" + strings.TrimSpace(direction) + "\x00" + strings.TrimSpace(contentText) + "\x00" + strings.TrimSpace(contentJSON)
 }
 
 func truncateChatPreview(value string, maxLen int) string {

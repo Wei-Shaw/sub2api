@@ -13,14 +13,14 @@ import (
 
 // AdminAPIKeyHandler handles admin API key management
 type AdminAPIKeyHandler struct {
-	adminService        service.AdminService
+	adminService       service.AdminService
 	chatSessionService *service.ChatSessionService
 }
 
 // NewAdminAPIKeyHandler creates a new admin API key handler
 func NewAdminAPIKeyHandler(adminService service.AdminService, chatSessionService *service.ChatSessionService) *AdminAPIKeyHandler {
 	return &AdminAPIKeyHandler{
-		adminService:        adminService,
+		adminService:       adminService,
 		chatSessionService: chatSessionService,
 	}
 }
@@ -139,15 +139,53 @@ func (h *AdminAPIKeyHandler) GetChatSession(c *gin.Context) {
 		response.BadRequest(c, "Invalid user ID")
 		return
 	}
-	limit := parsePositiveInt(c.Query("limit"), 50)
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 200 {
-		limit = 200
+	page := parsePositiveInt(c.Query("page"), 1)
+	pageSize := parsePositiveInt(c.Query("page_size"), parsePositiveInt(c.Query("limit"), 20))
+	if pageSize > 100 {
+		pageSize = 100
 	}
 
-	item, err := h.chatSessionService.GetSessionDetail(c.Request.Context(), userID, keyID, sessionID, limit)
+	item, err := h.chatSessionService.GetSessionDetail(c.Request.Context(), userID, keyID, sessionID, pagination.PaginationParams{
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, item)
+}
+
+// GetChatMessage handles admin loading one full chat message payload.
+// GET /api/v1/admin/api-keys/:id/chat-sessions/:sessionId/messages/:messageId?user_id=...
+func (h *AdminAPIKeyHandler) GetChatMessage(c *gin.Context) {
+	if h.chatSessionService == nil {
+		response.NotFound(c, "Chat session feature is not enabled")
+		return
+	}
+
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid API key ID")
+		return
+	}
+	sessionID, err := strconv.ParseInt(c.Param("sessionId"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid session ID")
+		return
+	}
+	messageID, err := strconv.ParseInt(c.Param("messageId"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid message ID")
+		return
+	}
+	userID, err := strconv.ParseInt(c.Query("user_id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	item, err := h.chatSessionService.GetChatMessageDetail(c.Request.Context(), userID, keyID, sessionID, messageID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

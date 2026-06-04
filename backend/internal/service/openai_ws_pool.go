@@ -1432,6 +1432,35 @@ func (p *openAIWSConnPool) evictConn(accountID int64, connID string) {
 	}
 }
 
+func (p *openAIWSConnPool) EvictAccount(accountID int64) {
+	if p == nil || accountID <= 0 {
+		return
+	}
+	value, ok := p.accounts.Load(accountID)
+	if !ok {
+		return
+	}
+	ap, ok := value.(*openAIWSAccountPool)
+	if !ok || ap == nil {
+		return
+	}
+
+	ap.mu.Lock()
+	evicted := make([]*openAIWSConn, 0, len(ap.conns))
+	for connID, conn := range ap.conns {
+		delete(ap.conns, connID)
+		if conn != nil {
+			evicted = append(evicted, conn)
+		}
+	}
+	ap.pinnedConns = nil
+	ap.prewarmActive = false
+	ap.prewarmUntil = time.Time{}
+	ap.mu.Unlock()
+
+	closeOpenAIWSConns(evicted)
+}
+
 func (p *openAIWSConnPool) PinConn(accountID int64, connID string) bool {
 	if p == nil || accountID <= 0 {
 		return false

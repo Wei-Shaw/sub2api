@@ -335,6 +335,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			),
 			body,
 			result.FinalOutputText,
+			result.FinalOutputJSON,
 		)
 		return
 	}
