@@ -71,15 +71,15 @@ func validateHostname(host string) bool {
 
 // validateDBName checks if database name is safe
 func validateDBName(name string) bool {
-	// Allow only alphanumeric and underscores, starting with letter
-	validName := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
+	// Allow alphanumeric, dots and underscores in any position
+	validName := regexp.MustCompile(`^[a-zA-Z0-9_.]+$`)
 	return validName.MatchString(name) && len(name) <= 63
 }
 
 // validateUsername checks if username is safe
 func validateUsername(name string) bool {
-	// Allow only alphanumeric and underscores
-	validName := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	// Allow only alphanumeric, dots and underscores
+	validName := regexp.MustCompile(`^[a-zA-Z0-9_.]+$`)
 	return validName.MatchString(name) && len(name) <= 63
 }
 
