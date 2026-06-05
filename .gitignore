@@ -1,6 +1,9 @@
 docs/claude-relay-service/
 .codex
 
+# Playwright MCP 测试截图/快照（本地调试产物）
+.playwright-mcp/
+
 # ===================
 # Go 后端
 # ===================
@@ -79,6 +82,7 @@ Desktop.ini
 # ===================
 tmp/
 temp/
+logs/
 *.tmp
 *.temp
 *.log
@@ -101,6 +105,15 @@ backend/internal/web/dist/
 !backend/internal/web/dist/
 backend/internal/web/dist/*
 !backend/internal/web/dist/.keep
+
+# Plugin frontend dist: embedded into plugin Go binary via `//go:embed all:frontend/dist`,
+# so the directory must always have at least one file at lint/build time. Build artifacts
+# themselves come from the plugin-frontend-builder Docker stage (or `pnpm build` locally)
+# and should not be tracked.
+plugins/*/frontend/dist/
+!plugins/*/frontend/dist/
+plugins/*/frontend/dist/*
+!plugins/*/frontend/dist/.keep
 
 # 后端运行时缓存数据
 backend/data/
@@ -128,10 +141,21 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
+!docs/ACCOUNT_SCHEDULING_FLOW.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
+!docs/plugin-architecture/
+!docs/plugin-architecture/**
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 .serena/
+
+# ===================
+# 压测工具
+# ===================
+tools/loadtest/
+# Antigravity Manager
+Antigravity-Manager/
+antigravity_projectid_fix.patch
 .codex/
 frontend/coverage/
 aicodex

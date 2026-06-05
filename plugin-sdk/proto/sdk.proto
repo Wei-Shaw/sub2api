@@ -1,0 +1,1979 @@
+syntax = "proto3";
+
+package pluginsdk;
+
+option go_package = "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk";
+
+import "google/protobuf/empty.proto";
+
+// ============================================================
+// CoreSDK Services — 核心提供，插件调用
+// ============================================================
+
+// SQLProxy 代理 SQL 操作到核心连接池
+service SQLProxy {
+  rpc Query(SQLRequest) returns (SQLResponse);
+  rpc Exec(SQLRequest) returns (ExecResponse);
+  rpc BeginTx(BeginTxRequest) returns (TxResponse);
+  rpc TxQuery(TxSQLRequest) returns (SQLResponse);
+  rpc TxExec(TxSQLRequest) returns (ExecResponse);
+  rpc CommitTx(TxIDRequest) returns (google.protobuf.Empty);
+  rpc RollbackTx(TxIDRequest) returns (google.protobuf.Empty);
+}
+
+// RedisProxy 代理 Redis 操作到核心 Redis
+//
+// New code should use Do() — it is the go-redis style universal entry point
+// that supports virtually every Redis command without adding a new RPC per
+// command. The typed RPCs below are retained for backward compatibility with
+// already-built plugin binaries; new SDK clients route them through Do() too.
+service RedisProxy {
+  // Do executes an arbitrary Redis command. This mirrors go-redis's Cmdable.Do
+  // and lets the SDK expose the full Redis command surface without bloating
+  // this proto. Args[0] is the command name (case-insensitive); subsequent
+  // args are the command arguments encoded as raw bytes.
+  rpc Do(DoRequest) returns (DoReply);
+
+  // Legacy typed RPCs — DEPRECATED: prefer Do(). Existing plugin binaries
+  // still call these, so the core must keep them serving.
+  rpc Get(RedisKeyRequest) returns (RedisValueResponse);
+  rpc Set(RedisSetRequest) returns (google.protobuf.Empty);
+  rpc SetEx(RedisSetExRequest) returns (google.protobuf.Empty);
+  rpc Del(RedisDelRequest) returns (google.protobuf.Empty);
+  rpc HGet(RedisHGetRequest) returns (RedisValueResponse);
+  rpc HSet(RedisHSetRequest) returns (google.protobuf.Empty);
+  rpc HGetAll(RedisKeyRequest) returns (RedisMapResponse);
+  rpc HDel(RedisHDelRequest) returns (google.protobuf.Empty);
+  rpc Publish(RedisPubRequest) returns (google.protobuf.Empty);
+  rpc Subscribe(RedisSubRequest) returns (stream RedisMessage);
+}
+
+// EventBus 核心事件总线
+//
+// Deprecated: kept for one release cycle for backwards compatibility.
+// Use EventsExtension below for typed event subscription.
+service EventBus {
+  rpc Publish(EventRequest) returns (google.protobuf.Empty);
+  rpc Subscribe(EventFilter) returns (stream Event);
+}
+
+// LogProxy aggregates structured plugin logs (slog.Records) into the host
+// zap logger. The plugin maintains a single client-streaming RPC for its
+// lifetime and pushes each log record as a typed message; the host replays
+// the record into zap so trace_id / request_id / level / time are preserved
+// in the unified log sink.
+//
+// Failure model (set by V4 user feedback):
+//   - Channel-bounded fire-and-forget on the SDK side (cap 256, drop-on-full)
+//   - No stderr fallback — plugin logs MUST land in the host zap stream or be
+//     dropped (with a counter reported on the next successful send)
+//   - Reconnect uses exponential backoff (100ms..30s); records during the
+//     gap are dropped, not buffered
+service LogProxy {
+  rpc PushLogs(stream LogRecord) returns (LogPushSummary);
+}
+
+message LogRecord {
+  // unix nano timestamp; fixed64 to avoid varint expansion of large values.
+  fixed64 time_unix_nano = 1;
+  // slog.Level numeric value: Debug=-4, Info=0, Warn=4, Error=8.
+  int32 level = 2;
+  string msg = 3;
+  // attrs are flattened: nested groups join keys with "." (matches the host
+  // slog→zap handler convention).
+  repeated LogAttr attrs = 4;
+  // Optional source location; plugin SDK fills these from runtime.Callers.
+  string source_file = 5;
+  int32 source_line = 6;
+  // dropped_since_last_send is non-zero only on the first record sent after
+  // a (re)connect. It tells the host how many records were dropped while
+  // the channel was full or the stream was down, so observability stays
+  // honest even though the records themselves are lost.
+  uint64 dropped_since_last_send = 7;
+}
+
+message LogAttr {
+  string key = 1;
+  // Covers the major slog.Kind values; complex Any values are JSON-encoded
+  // by the SDK and dropped into bytes_value with key suffix ".json".
+  oneof value {
+    string string_value = 10;
+    int64 int_value = 11;
+    double float_value = 12;
+    bool bool_value = 13;
+    fixed64 time_unix_nano = 14;
+    int64 duration_nanos = 15;
+    bytes bytes_value = 16;
+  }
+}
+
+message LogPushSummary {
+  uint64 received = 1;
+}
+
+// ============================================================
+// SQL Messages
+// ============================================================
+
+message SQLRequest {
+  string query = 1;
+  repeated SQLValue args = 2;
+}
+
+message TxSQLRequest {
+  string tx_id = 1;
+  string query = 2;
+  repeated SQLValue args = 3;
+}
+
+message BeginTxRequest {
+  string isolation_level = 1; // "" | "read_committed" | "repeatable_read" | "serializable"
+  bool read_only = 2;
+}
+
+message TxResponse {
+  string tx_id = 1;
+}
+
+message TxIDRequest {
+  string tx_id = 1;
+}
+
+message SQLValue {
+  oneof value {
+    bool null = 1;
+    int64 int_value = 2;
+    double float_value = 3;
+    string string_value = 4;
+    bytes bytes_value = 5;
+    bool bool_value = 6;
+    string time_value = 7;  // RFC3339Nano-encoded time.Time; decoded back to time.Time by the SDK driver
+  }
+}
+
+message SQLResponse {
+  repeated string columns = 1;
+  repeated SQLRow rows = 2;
+  // PostgreSQL type name per column (e.g. "int8", "varchar", "timestamptz", "jsonb").
+  // Populated by the host via rows.ColumnTypes().DatabaseTypeName(); empty when
+  // the driver does not support column type introspection.
+  repeated string column_types = 3;
+}
+
+message SQLRow {
+  repeated SQLValue values = 1;
+}
+
+message ExecResponse {
+  int64 rows_affected = 1;
+  int64 last_insert_id = 2;
+}
+
+// ============================================================
+// Redis Messages
+// ============================================================
+
+message RedisKeyRequest {
+  string key = 1;
+}
+
+message RedisValueResponse {
+  bool exists = 1;
+  bytes value = 2;
+}
+
+message RedisSetRequest {
+  string key = 1;
+  bytes value = 2;
+}
+
+message RedisSetExRequest {
+  string key = 1;
+  bytes value = 2;
+  int64 ttl_seconds = 3;
+}
+
+message RedisDelRequest {
+  repeated string keys = 1;
+}
+
+message RedisHGetRequest {
+  string key = 1;
+  string field = 2;
+}
+
+message RedisHSetRequest {
+  string key = 1;
+  string field = 2;
+  bytes value = 3;
+}
+
+message RedisMapResponse {
+  map<string, bytes> fields = 1;
+}
+
+message RedisHDelRequest {
+  string key = 1;
+  repeated string fields = 2;
+}
+
+message RedisPubRequest {
+  string channel = 1;
+  bytes message = 2;
+}
+
+message RedisSubRequest {
+  repeated string channels = 1;
+}
+
+message RedisMessage {
+  string channel = 1;
+  bytes data = 2;
+}
+
+// DoRequest carries an arbitrary Redis command + arguments. The SDK encodes
+// every argument as raw bytes so binary-safe values (BLOBs, packed structs)
+// pass through losslessly.
+//
+// raw_key controls whether the SDK server applies the per-plugin key
+// namespace before dispatching to Redis. Plugins must declare the
+// "redis_raw_keys" capability in their manifest to use raw_key=true; the
+// core rejects raw_key requests from plugins lacking the capability.
+message DoRequest {
+  // args is [command, arg1, arg2, ...]. command is case-insensitive.
+  repeated bytes args = 1;
+  // raw_key=true bypasses the per-plugin namespace prefix and lets the
+  // command hit keys defined outside the plugin's own namespace. Requires
+  // the "redis_raw_keys" capability.
+  bool raw_key = 2;
+  // key_positions lists the indices in `args` (1-based, into args excluding
+  // the command itself; index 0 is the first key arg) that contain Redis
+  // keys. The server uses this only to apply the namespace prefix; if empty
+  // the server falls back to the command's KEYS metadata. The SDK client is
+  // expected to populate this for non-trivial commands so the server does
+  // not have to know every Redis command's key layout.
+  repeated int32 key_positions = 3;
+}
+
+// DoReply mirrors the shape of a Redis RESP reply. Exactly one of the
+// payload fields (string_value, int_value, array, nil_value) is set
+// depending on `kind`; on a Redis-side error, kind="error" and the message
+// is in `error`. Network-level errors travel as gRPC status codes instead.
+message DoReply {
+  // kind is "string" | "int" | "array" | "nil" | "status" | "error".
+  // "status" is RESP simple strings (OK, PONG, …); SDK clients usually
+  // surface it as a string. "nil" maps to the redis.Nil sentinel.
+  string kind = 1;
+  bytes string_value = 2;
+  int64 int_value = 3;
+  repeated DoReply array = 4;
+  bool nil_value = 5;
+  string error = 6;
+  double float_value = 7;
+}
+
+// ============================================================
+// Event Messages
+// ============================================================
+
+message EventRequest {
+  string topic = 1;
+  bytes payload = 2;
+}
+
+message EventFilter {
+  repeated string topics = 1;
+}
+
+message Event {
+  string topic = 1;
+  bytes payload = 2;
+  int64 timestamp = 3;
+}
+
+// ============================================================
+// SecretEncryption — V5 W5
+// ============================================================
+//
+// SecretEncryption lets a plugin encrypt arbitrary plaintext blobs through
+// the host. The host derives a per-plugin key from its master key via
+// HKDF-SHA256 (salt=plugin_name, info="sub2api-plugin-secret-v1") and uses
+// AES-256-GCM with the plugin name as additional authenticated data (AAD)
+// to seal/open. The master key never leaves the host.
+//
+// Cross-plugin isolation is enforced two ways:
+//
+//   1. Each plugin gets a different derived key, so a ciphertext produced
+//      for plugin A cannot be opened with plugin B's derived key.
+//   2. AAD = plugin_name binds the ciphertext to the issuing plugin even
+//      if the derived keys ever collided.
+//
+// Plugins that hold the "secret_encryption" capability obtain a
+// SecretEncryptor via PluginContext.Secrets() in the SDK.
+service SecretEncryption {
+  rpc Encrypt(EncryptRequest) returns (EncryptResponse);
+  rpc Decrypt(DecryptRequest) returns (DecryptResponse);
+}
+
+message EncryptRequest  { bytes plaintext  = 1; }
+// ciphertext layout = nonce(12 bytes) || ciphertext || tag(16 bytes).
+message EncryptResponse { bytes ciphertext = 1; }
+message DecryptRequest  { bytes ciphertext = 1; }
+message DecryptResponse { bytes plaintext  = 1; }
+
+// JobScheduler — W2 V5 capability
+// ============================================================
+//
+// JobScheduler lets plugins declare scheduled work (interval / cron /
+// fixed_delay) and have the host fire triggers at the appropriate times.
+// Handlers run inside the plugin process; the host owns the scheduling clock,
+// leader-only coordination, and persistence of job history.
+//
+// Wire model:
+//   Plugin opens one bidirectional stream per process lifetime via Subscribe.
+//   The first message MUST be a JobMessage carrying JobRegistration with the
+//   plugin's full set of JobSpecs. The host then pushes JobTrigger frames as
+//   each spec fires; the plugin runs its handler and sends back a JobAck per
+//   trigger. Admin-initiated "Run now" is delivered as ManualTrigger over the
+//   same plugin→host channel and is fanned out to the plugin via JobTrigger
+//   with manual=true.
+//
+// Failure model:
+//   - Stream broken → plugin reconnects with exponential backoff (1s/3s/9s
+//     capped at 30s) and re-sends Register. Triggers missed during the gap
+//     are NOT replayed — semantics match "fire-and-forget at-most-once".
+//   - leader_only specs only fire on the node that holds the leader lock
+//     (per-(plugin, job) key). Other nodes receive nothing.
+//   - Per-plugin concurrency is enforced on the SDK side; over-cap triggers
+//     are immediately Acked with success=false and error="concurrency limit
+//     reached" so the host history records the throttle.
+service JobScheduler {
+  // Subscribe is the single bidirectional stream a plugin uses for the
+  // lifetime of its connection. See file-level doc for the protocol.
+  rpc Subscribe(stream JobMessage) returns (stream JobTrigger);
+}
+
+// JobMessage is the union of plugin → host frames on the Subscribe stream.
+message JobMessage {
+  oneof msg {
+    JobRegistration register = 1;
+    JobAck          ack      = 2;
+    ManualTrigger   manual   = 3;
+  }
+}
+
+// JobRegistration is the first frame the plugin sends after opening the
+// stream. It declares every job the plugin will respond to. Re-registering
+// after a reconnect replaces the previous spec set entirely.
+message JobRegistration {
+  repeated JobSpec specs = 1;
+}
+
+// JobSpec defines one scheduled job. Exactly one of interval_nanos,
+// cron_spec, or fixed_delay_nanos is populated; the remainder are zero.
+message JobSpec {
+  string name              = 1;
+  // kind is "interval" | "cron" | "fixed_delay". Mirrors the populated trigger
+  // field so the host can dispatch without sniffing the union manually.
+  string kind              = 2;
+  int64  interval_nanos    = 3;
+  // cron_spec uses robfig/cron/v3 syntax. 5 fields = standard, 6 fields with
+  // seconds is allowed when the host enables WithSeconds.
+  string cron_spec         = 4;
+  int64  fixed_delay_nanos = 5;
+  // leader_only=true means the host only fires this trigger on the node
+  // holding the per-(plugin, job) leader lock. Used for daily rollups and
+  // other singleton work.
+  bool   leader_only       = 6;
+  // concurrency is the cap on parallel handler runs for THIS job in the
+  // plugin process. <=0 is treated as 1.
+  int32  concurrency       = 7;
+  // timeout_nanos is the per-trigger wall-clock limit. The plugin SDK
+  // cancels the handler ctx when it elapses. <=0 falls back to 5min.
+  int64  timeout_nanos     = 8;
+}
+
+// JobTrigger is the host → plugin push that asks the plugin to run a handler.
+message JobTrigger {
+  string job_name            = 1;
+  // trigger_id is a host-generated ULID; the plugin echoes it in JobAck so
+  // the host can correlate runs even when the plugin re-orders ack delivery.
+  string trigger_id          = 2;
+  int64  fire_time_unix_nano = 3;
+  // manual=true marks triggers initiated by an admin "Run now" call so the
+  // plugin can adjust logging / metrics if it cares; otherwise indistinguishable
+  // from a scheduled trigger.
+  bool   manual              = 4;
+}
+
+// JobAck is the plugin → host completion record for one trigger.
+message JobAck {
+  string trigger_id     = 1;
+  bool   success        = 2;
+  // error is set when success=false. Free-form, surfaced in admin job history.
+  string error          = 3;
+  // duration_nanos is the wall-clock time the handler took (success or not).
+  int64  duration_nanos = 4;
+}
+
+// ManualTrigger is an admin "Run now" invocation flowing plugin→host. The
+// host translates it into a JobTrigger and pushes it back to the plugin via
+// the same Subscribe stream.
+message ManualTrigger {
+  string job_name = 1;
+}
+// SettingsExtension — V5 W3
+// ============================================================
+//
+// SettingsExtension lets a plugin store and read its admin-configurable
+// runtime settings without needing its own dedicated database table. The
+// host owns persistence (plugin_settings table) and validates writes
+// against the JSON Schema the plugin declared in its manifest. The
+// per-plugin settings tab in the admin UI renders that schema directly,
+// so a new plugin only needs to ship a Draft-07 schema + defaults to get
+// a fully functional settings page.
+//
+// Trust model: the SDK server resolves the caller via the same
+// `x-sub2api-plugin` metadata header used elsewhere; a plugin can only
+// read/watch keys inside its own namespace. Cross-plugin settings access
+// is intentionally not supported here.
+service SettingsExtension {
+  // Get returns the current value (and revision) of a single key inside
+  // the calling plugin's namespace. Missing keys return exists=false
+  // rather than a gRPC error so plugins can probe without try/catch.
+  rpc Get(SettingsGetRequest) returns (SettingsGetResponse);
+
+  // Set persists a single key inside the calling plugin's namespace.
+  // The host validates value_json against the plugin's declared JSON
+  // schema and rejects backend-only keys per SETTINGS-V2-DESIGN §4.3.
+  // expected_revision is reserved for future CAS support; pass 0 to
+  // skip the optimistic concurrency check.
+  rpc Set(SettingsSetRequest) returns (SettingsSetResponse);
+
+  // Watch streams change events for keys inside the calling plugin's
+  // namespace. An empty key subscribes to every key in the namespace.
+  // The host MAY emit a synthetic "snapshot" event for each existing key
+  // immediately after subscription so the plugin sees the current state
+  // without an extra round-trip. Reconnect logic is the SDK's
+  // responsibility (exponential backoff, full re-sync on resume).
+  rpc Watch(SettingsWatchRequest) returns (stream SettingsChangeEvent);
+}
+
+message SettingsGetRequest {
+  string key = 1;
+}
+
+message SettingsGetResponse {
+  // value_json holds the JSON-encoded current value when exists=true.
+  bytes value_json = 1;
+  // exists is false when the key is not yet persisted (no admin save and
+  // no default) — callers should fall back to the schema default in that
+  // case rather than treating it as an error.
+  bool exists = 2;
+  // revision is monotonically increasing per (plugin, key); callers can
+  // use it to deduplicate rapid updates.
+  int64 revision = 3;
+
+  // stored_schema_version is plugin_settings.schema_version_at_write — the
+  // schema version that was active when the row was last written. Empty
+  // when exists=false. See SETTINGS-V2-DESIGN §1.5 for semantics.
+  string stored_schema_version = 4;
+
+  // current_schema_version is plugin_settings_schemas.schema_version — the
+  // schema version the plugin most recently registered. The plugin SDK
+  // compares stored vs current to raise SchemaVersionMismatchError when
+  // they disagree. Empty string is normalised to "0" by both sides.
+  string current_schema_version = 5;
+}
+
+message SettingsSetRequest {
+  string key = 1;
+  bytes value_json = 2;
+}
+
+message SettingsSetResponse {
+  // revision is the new revision number after a successful write.
+  int64 revision = 1;
+}
+
+message SettingsWatchRequest {
+  // key="" subscribes to the entire plugin namespace.
+  string key = 1;
+}
+
+message SettingsChangeEvent {
+  string key = 1;
+  bytes value_json = 2;
+  int64 revision = 3;
+
+  // requires_reload mirrors the plugin's `x-requires-reload` schema marker
+  // for this key. The host PluginManager subscribes and triggers a plugin
+  // process reload when it receives a true. Plugins themselves may ignore
+  // this field — it is only meaningful to the host. See SETTINGS-V2-DESIGN
+  // §4.4 for the reload state machine.
+  bool requires_reload = 4;
+}
+
+// ============================================================
+// EventsExtension — Phase A (typed host event subscription)
+// ============================================================
+//
+// EventsExtension lets plugins subscribe to typed host business events.
+//
+// Semantics:
+//   - at-most-once delivery (no replay, no persistence). Plugins doing
+//     reconciliation should use Job-driven pull.
+//   - host buffers up to 256 events per subscriber; on overflow it drops
+//     the oldest and increments dropped_since_last_send on the next event.
+//   - send timeout is 2s; on timeout host closes the stream and the plugin
+//     SDK reconnects with exponential backoff (1s → 2s → 4s → 8s → 30s).
+//   - high-frequency events (e.g. gateway.model.invoked) require a matching
+//     capability declaration in the plugin manifest; otherwise Subscribe
+//     returns PERMISSION_DENIED.
+//
+// Subscribe lifecycle (T25):
+//   The SDK first calls ProbeSubscription synchronously to validate the
+//   caller's capabilities and the requested event_types against the
+//   manifest allow-list. ProbeSubscription returns immediately with the
+//   appropriate gRPC status (OK / PermissionDenied / InvalidArgument).
+//   The SDK then opens the long-lived Subscribe stream on success, and
+//   delegates reconnect on transient transport failures to streamutil.Loop.
+//   This split removes the historical "first-Recv probe" abstraction leak
+//   where Subscribe had to peel off the first message just to surface
+//   synchronous capability errors.
+service EventsExtension {
+  // Subscribe opens the long-lived event stream. Callers SHOULD invoke
+  // ProbeSubscription first; Subscribe still performs the same allow-list
+  // and capability checks server-side (older SDKs that skip Probe rely on
+  // these checks being mirrored on the streaming RPC), but only Probe is
+  // guaranteed to surface synchronous errors before any goroutine spins up.
+  rpc Subscribe(EventSubscribeRequest) returns (stream HostEvent);
+
+  // ProbeSubscription synchronously validates that the caller is allowed
+  // to open a Subscribe stream with the requested filter:
+  //   - caller identity present (otherwise PermissionDenied)
+  //   - manifest declared the requested event_types (otherwise PermissionDenied
+  //     so plugins cannot widen interest at runtime)
+  //   - capability gate satisfied for high-frequency events such as
+  //     gateway.model.invoked (otherwise PermissionDenied)
+  //
+  // Probe does NOT establish a stream and does NOT register a subscriber;
+  // it is a pure precondition check the SDK runs before letting
+  // streamutil.Loop manage reconnects. This is intentional — the loop
+  // ought to retry only on transient transport failures, not on permission
+  // misconfiguration that requires operator action.
+  //
+  // 同步校验订阅请求是否会被接受。返回 OK 表示 caller 可以放心调用 Subscribe；
+  // 返回 PermissionDenied / InvalidArgument 时立即抛给调用方，避免被后台
+  // 重连循环吞掉。Probe 不建立流、不注册订阅者。
+  rpc ProbeSubscription(EventSubscribeRequest) returns (ProbeSubscriptionResponse);
+
+  // Publish lets a plugin emit a HostEvent that the host re-broadcasts to
+  // every other plugin currently subscribed to that event_type. This is the
+  // reverse direction of Subscribe and is intended for plugins that own a
+  // domain whose events other plugins care about (e.g. the payment plugin
+  // emits payment.order.created / payment.order.fulfilled after fulfillment).
+  //
+  // Authorization model:
+  //   - Caller must hold the per-event-type publish capability declared in
+  //     CapabilityRegistry (e.g. events.publish.payment for payment events).
+  //   - The host stamps event_id (if empty), timestamp_nanos and the source
+  //     plugin name; callers SHOULD leave those fields empty unless replaying
+  //     a known event.
+  //   - The host MUST NOT consume the event itself except for fan-out.
+  rpc Publish(PublishEventRequest) returns (PublishEventResponse);
+}
+
+// PublishEventRequest carries a single event to broadcast. The wrapping
+// envelope mirrors HostEvent so the proto wire format is symmetric in both
+// directions; the host validates the inner payload oneof matches the
+// declared event_type before fan-out.
+message PublishEventRequest {
+  HostEvent event = 1;
+}
+
+// PublishEventResponse is the success payload. Delivery to individual
+// subscribers is best-effort and out-of-band (same backpressure semantics
+// as Subscribe).
+message PublishEventResponse {
+  // delivered_to reports how many subscriber streams accepted the event
+  // synchronously. Observability only — never branch on this value.
+  int64 delivered_to = 1;
+}
+
+// ProbeSubscriptionResponse is the success payload of ProbeSubscription.
+// Currently carries a debug-only counter; the only authoritative signal is
+// the gRPC status code. Future fields can document subscriber-side hints
+// (e.g. recommended buffer size) without breaking older SDKs.
+//
+// 调用方主要依赖 gRPC 状态码判断；本响应中的字段仅作为调试 / 观测使用，
+// 不影响后续 Subscribe 流的语义。
+message ProbeSubscriptionResponse {
+  // active_subscriptions reports the host-side count of currently registered
+  // subscribers (across all plugins). Useful for ops dashboards and noisy-
+  // neighbour detection but MUST NOT influence plugin behaviour.
+  // 当前 host 端已注册的订阅者总数，仅供观测，不要据此决定业务逻辑。
+  int64 active_subscriptions = 1;
+}
+
+message EventSubscribeRequest {
+  // event_types acts as a server-side filter; empty means "all events the
+  // plugin's capabilities allow". Names use dotted lowercase
+  // (e.g. "payment.order.created").
+  repeated string event_types = 1;
+  // resume_from_unix_nano is best-effort. Host MAY ignore it; MVP has no
+  // replay buffer so a freshly-reconnected plugin only receives events
+  // emitted after Subscribe returns.
+  int64 resume_from_unix_nano = 2;
+}
+
+message HostEvent {
+  string event_type      = 1;  // e.g. "payment.order.created"
+  string event_id        = 2;  // ULID, stable across redelivery (future)
+  int64  timestamp_nanos = 3;  // host-side wall clock at publish
+  // dropped_since_last_send: number of events dropped between the previous
+  // successful send and this one. Same backpressure pattern as LogRecord.
+  uint64 dropped_since_last_send = 4;
+
+  oneof payload {
+    PaymentOrderCreated       payment_order_created        = 100;
+    PaymentOrderFulfilled     payment_order_fulfilled      = 101;
+    GatewayModelInvoked       gateway_model_invoked        = 102;
+    AuthUserRegistered        auth_user_registered         = 103;
+    AccountRateLimitTriggered account_rate_limit_triggered = 104;
+    // future event types: 105+. NEVER reuse a number; deprecation goes via
+    // [deprecated=true] but the wire number stays reserved.
+  }
+}
+
+message PaymentOrderCreated {
+  int64  order_id              = 1;
+  string out_trade_no          = 2;
+  int64  user_id               = 3;
+  int64  amount_cents          = 4;
+  string plan_id               = 5;   // empty for non-subscription orders
+  string provider_key          = 6;   // e.g. "stripe", "easypay"
+  string biz_type              = 7;   // "balance" | "subscription"
+  int64  created_at_unix_nano  = 8;
+}
+
+message PaymentOrderFulfilled {
+  int64  order_id                = 1;
+  int64  user_id                 = 2;
+  int64  amount_cents            = 3;
+  string biz_type                = 4;   // "balance" | "subscription"
+  string audit_action            = 5;   // matches AuditLog action
+  int64  fulfilled_at_unix_nano  = 6;
+}
+
+message GatewayModelInvoked {
+  string request_id             = 1;
+  int64  user_id                = 2;
+  int64  account_id             = 3;
+  string platform               = 4;   // antigravity | anthropic | openai | gemini
+  string model                  = 5;
+  int64  prompt_tokens          = 6;
+  int64  completion_tokens      = 7;
+  int32  status_code            = 8;   // upstream HTTP status
+  int64  latency_ms             = 9;
+  int64  started_at_unix_nano   = 10;
+}
+
+message AuthUserRegistered {
+  int64  user_id                  = 1;
+  string email                    = 2;
+  string source                   = 3;   // "register" | "oauth" | ...
+  int64  referrer_id              = 4;   // 0 if none
+  int64  registered_at_unix_nano  = 5;
+}
+
+message AccountRateLimitTriggered {
+  int64  account_id           = 1;
+  string platform             = 2;
+  string model                = 3;   // empty if account-wide
+  string scope                = 4;   // "account" | "model" | ...
+  int64  reset_at_unix_nano   = 5;
+  string reason               = 6;
+}
+
+// ============================================================
+// PricingExtension — P2 (skeleton)
+// ============================================================
+//
+// Changelog:
+//   - 2026-05-01 (T24): All price fields migrated from `double` to
+//     `string` decimal. Plugin emits decimal.Decimal.String(); host parses
+//     via decimal.NewFromString. Empty string ("") means "not set" and is
+//     equivalent to the legacy zero. All other proto services keep their
+//     `double` fields — only PricingExtension messages move. Plugin and
+//     host must be deployed together; no double-encoding fallback exists.
+//
+// PricingExtension is implemented by plugins that contribute pricing data
+// or cost-adjustment logic. The host uses ListPricingOverrides + WatchPricingOverrides
+// to maintain an in-memory pricing cache (data layer, hot-path zero RPC).
+// AdjustCost is called per-request to let plugins modify the final cost
+// (adjustment layer).
+//
+// Failure model:
+//   - All RPCs are optional. A plugin that only adjusts cost returns an
+//     empty list and a stream that immediately yields no events. A plugin
+//     that only provides data returns modified=false from AdjustCost.
+//   - If a plugin returns an error from AdjustCost the host falls back to
+//     its own computed cost and logs a warning; per-request errors must
+//     never abort the gateway hot path.
+//   - WatchPricingOverrides may end at any time (deploy / restart). The
+//     host is responsible for reconnecting with exponential backoff and
+//     re-syncing through ListPricingOverrides if the gap exceeds a
+//     replay budget.
+//
+// This service is host -> plugin: the plugin runs the gRPC server inside
+// its own process, the host opens a client over the existing per-plugin
+// gRPC connection (PluginInstance.GRPCConn).
+service PricingExtension {
+  // ListPricingOverrides returns the full set of pricing overrides the
+  // plugin manages. Called by host on startup and as a fallback after a
+  // Watch stream disconnect or periodic safety re-sync.
+  rpc ListPricingOverrides(ListPricingOverridesRequest) returns (ListPricingOverridesResponse);
+
+  // WatchPricingOverrides streams incremental updates. The plugin pushes
+  // events when its pricing data changes. Host reconnects on stream end
+  // with the last-known version so the plugin can decide between a
+  // resume and a full snapshot replay.
+  rpc WatchPricingOverrides(WatchPricingOverridesRequest) returns (stream PricingOverrideEvent);
+
+  // AdjustCost is called per-request after core computes the base cost.
+  // The plugin may return modified=true with a new CostBreakdown to
+  // override; otherwise the host uses its own computed cost.
+  rpc AdjustCost(AdjustCostRequest) returns (AdjustCostResponse);
+
+  // ResolveAccountStatsCost is called per-request after core computes the
+  // customer cost. The plugin returns an optional override the host stores
+  // in usage_logs.account_stats_cost. has_cost=false means "no opinion" —
+  // the host keeps the column NULL and aggregation queries fall back to
+  // total_cost via COALESCE(account_stats_cost, total_cost). Errors are
+  // never fatal; the host falls back to NULL on any RPC failure.
+  rpc ResolveAccountStatsCost(ResolveAccountStatsCostRequest) returns (ResolveAccountStatsCostResponse);
+}
+
+// PricingOverrideKey is the (group_id, platform, model) triple the host
+// uses to look up plugin-supplied pricing in its in-memory cache.
+//
+// group_id == 0 means "applies to all groups". Plugins typically scope
+// pricing by group; the global form is rare and reserved for host-wide
+// emergency rate adjustments.
+message PricingOverrideKey {
+  int64 group_id = 1;
+  string platform = 2;     // anthropic / openai / gemini / antigravity
+  string model = 3;        // e.g. claude-opus-4-7 (lowercase recommended)
+}
+
+// PricingOverride mirrors the existing channel_model_pricing schema so
+// the host can flow the values straight into ChannelModelPricing without
+// a translation layer.
+//
+// All price fields use string decimal encoding (T24): emit via
+// decimal.Decimal.String(); parse via decimal.NewFromString. Empty string
+// ("") means "not set" — equivalent to decimal.NullDecimal{Valid:false} on
+// the plugin side and to the legacy zero on the host fallback path.
+message PricingOverride {
+  PricingOverrideKey key = 1;
+  string billing_mode = 2;       // "token" / "per_request" / "image"
+  // Pricing fields. All are USD per token (token mode) or USD per
+  // request (per_request mode). Decimal string; "" = not set; parse via
+  // decimal.NewFromString.
+  string input_price = 3;
+  string output_price = 4;
+  string cache_write_price = 5;
+  string cache_read_price = 6;
+  string image_output_price = 7;
+  string per_request_price = 8;
+  repeated PricingInterval intervals = 9;
+}
+
+// PricingInterval mirrors backend ent PricingInterval for token-tier or
+// per-request-tier pricing. max_tokens=0 means "unbounded".
+//
+// Price fields follow the same string decimal contract as PricingOverride.
+message PricingInterval {
+  int64 min_tokens = 1;
+  int64 max_tokens = 2;
+  // Decimal string; "" = not set; parse via decimal.NewFromString.
+  string input_price = 3;
+  string output_price = 4;
+  string cache_write_price = 5;
+  string cache_read_price = 6;
+  string image_output_price = 7;
+  string per_request_price = 8;
+}
+
+message ListPricingOverridesRequest {}
+
+message ListPricingOverridesResponse {
+  repeated PricingOverride overrides = 1;
+  // version is a monotonic version string the plugin assigns to the
+  // snapshot. The host stores it and passes it as since_version when
+  // (re)opening WatchPricingOverrides so the plugin can choose between
+  // an incremental resume and a full re-sync.
+  string version = 2;
+}
+
+message WatchPricingOverridesRequest {
+  // since_version is the version returned by the most recent
+  // ListPricingOverrides (or the last PricingOverrideEvent the host
+  // saw). Empty string means "stream from current".
+  string since_version = 1;
+}
+
+message PricingOverrideEvent {
+  enum Op {
+    UPSERT = 0;
+    DELETE = 1;
+  }
+  Op op = 1;
+  // override is set for UPSERT events; deleted_key is set for DELETE
+  // events. The unset alternative is left zero-valued.
+  PricingOverride override = 2;
+  PricingOverrideKey deleted_key = 3;
+  string version = 4;
+}
+
+message AdjustCostRequest {
+  string model = 1;
+  int64 group_id = 2;
+  string user_id = 3;
+  string platform = 4;
+  string service_tier = 5;
+  PricingCostBreakdown core_cost = 6;
+  PricingUsageTokens tokens = 7;
+  // request_id lets the plugin deduplicate retries / make per-request
+  // adjustments idempotent. The host fills it with the gateway request
+  // identifier (typically a ULID).
+  string request_id = 8;
+}
+
+message AdjustCostResponse {
+  // modified=true means final_cost replaces the host's computed cost.
+  // modified=false means the host keeps its own cost and ignores
+  // final_cost.
+  bool modified = 1;
+  PricingCostBreakdown final_cost = 2;
+  // adjustment_reason is surfaced to host logs / audit trail so operators
+  // can trace why a plugin altered the cost. Free-form, optional.
+  string adjustment_reason = 3;
+}
+
+// PricingCostBreakdown is the cost shape exchanged between host and
+// plugin. It is intentionally separate from CostBreakdown messages used
+// by other proto services to keep PricingExtension self-contained even
+// if the host's accounting layer evolves.
+//
+// Cost fields follow the same string decimal contract as PricingOverride
+// (T24). Empty string ("") means "not set"; parse via
+// decimal.NewFromString.
+message PricingCostBreakdown {
+  string currency = 1;       // typically "USD"
+  // Decimal string; "" = not set; parse via decimal.NewFromString.
+  string total = 2;
+  string input_cost = 3;
+  string output_cost = 4;
+  string cache_write_cost = 5;
+  string cache_read_cost = 6;
+  string image_cost = 7;
+  string billing_mode = 8;   // "token" / "per_request" / "image"
+}
+
+// PricingUsageTokens carries the usage figures the plugin needs to make
+// adjustment decisions. Fields mirror service.UsageTokens but use int64
+// to stay within proto numeric conventions; the host casts as needed.
+message PricingUsageTokens {
+  int64 input_tokens = 1;
+  int64 output_tokens = 2;
+  int64 cache_creation_tokens = 3;
+  int64 cache_read_tokens = 4;
+  int64 image_count = 5;
+}
+
+// ResolveAccountStatsCostRequest carries the per-request inputs the
+// channel-management plugin (or any plugin implementing the RPC) needs
+// to evaluate its custom account-stats pricing rules. All fields are
+// optional from the plugin's point of view: a plugin that does not
+// implement the RPC simply returns has_cost=false.
+//
+// channel_id is the resolved channel ID from
+// service.GatewayService.recordUsageCore (0 when no channel is bound).
+// upstream_model is the post-mapping model id the host actually sent.
+// total_cost is the customer-facing cost the host already computed
+// (before account_rate_multiplier) — plugins use this when their rules
+// fall through to "use the customer cost" instead of recomputing from
+// model file pricing.
+message ResolveAccountStatsCostRequest {
+  int64  channel_id     = 1;
+  int64  account_id     = 2;
+  int64  group_id       = 3;
+  string upstream_model = 4;
+  PricingUsageTokens tokens = 5;
+  int32  request_count  = 6;
+  // total_cost is the customer-facing cost the host already computed.
+  // Decimal string; "" = not set; parse via decimal.NewFromString (T24).
+  string total_cost     = 7;
+  // request_id lets the plugin deduplicate retries / make the RPC
+  // idempotent. The host fills it with the gateway request id (typically
+  // a ULID).
+  string request_id     = 8;
+}
+
+// ResolveAccountStatsCostResponse — has_cost=false means the host
+// should keep usage_logs.account_stats_cost NULL. resolution_reason is
+// a free-form audit string surfaced to host logs so operators can trace
+// which rule fired.
+message ResolveAccountStatsCostResponse {
+  bool   has_cost          = 1;
+  // cost is the plugin's per-request override. Only meaningful when
+  // has_cost=true. Decimal string; "" = not set; parse via
+  // decimal.NewFromString (T24).
+  string cost              = 2;
+  string resolution_reason = 3;
+}
+
+// ============================================================
+// MaintenanceExtension
+// ============================================================
+//
+// MaintenanceExtension is implemented by plugins that need periodic
+// data cleanup integrated with the host's OpsCleanupService schedule.
+// Instead of managing independent cron jobs, plugins register this
+// extension and the host calls RunMaintenance once per OpsCleanup cycle
+// (typically daily at 02:00 UTC), sharing the same leader lock and
+// heartbeat infrastructure.
+//
+// Failure model:
+//   - RunMaintenance errors are logged but do not fail the host's
+//     overall OpsCleanup run. Each plugin is isolated.
+//   - If the plugin does not implement this service, the host skips it
+//     (codes.Unimplemented detection, same as PricingExtension).
+//
+// This service is host -> plugin: the plugin runs the gRPC server,
+// the host calls it over the per-plugin gRPC connection.
+service MaintenanceExtension {
+  // RunMaintenance is called by the host's OpsCleanupService after its
+  // own cleanup completes. The plugin performs its retention logic
+  // (e.g. delete old history rows, aggregate daily rollups) and reports
+  // what was cleaned.
+  rpc RunMaintenance(RunMaintenanceRequest) returns (RunMaintenanceResponse);
+}
+
+// RunMaintenanceRequest carries host-side context for the cleanup run.
+message RunMaintenanceRequest {
+  // now_unix is the current time as Unix seconds, so the plugin uses
+  // the same clock as the host for retention cutoff calculations.
+  int64 now_unix = 1;
+}
+
+// RunMaintenanceResponse reports what the plugin cleaned up.
+message RunMaintenanceResponse {
+  // results is one entry per cleanup task the plugin performed.
+  repeated MaintenanceTaskResult results = 1;
+}
+
+// MaintenanceTaskResult reports the outcome of a single cleanup task.
+message MaintenanceTaskResult {
+  // task is a human-readable label (e.g. "delete_old_history").
+  string task = 1;
+  // deleted_count is the number of rows removed / cleaned.
+  int64 deleted_count = 2;
+  // error is non-empty if this task failed. The host logs it but
+  // does not retry.
+  string error = 3;
+}
+
+// ============================================================
+// HostService — W4 (plugin → host reverse RPCs)
+// ============================================================
+//
+// HostService groups the narrow set of host capabilities plugins may call
+// on the reverse gRPC channel. Unlike the existing proxy services
+// (SQLProxy / RedisProxy / …) which mediate host resources, HostService
+// exposes host *business* lookups a plugin would otherwise have to
+// reimplement or vendor.
+//
+// Scope (ADR-UPSTREAM-SYNC-115-121 §4): start with ResolveModelPricing so
+// the channel-management plugin can restore the LiteLLM global-pricing
+// fallback removed when channel_available.go was ported to the plugin.
+// New RPCs are appended here as other plugins grow similar needs; each
+// must be narrow, side-effect-free, and cheap — HostService is for
+// lookups, not for mutations.
+//
+// Availability model:
+//   - The SDK always wires a HostClient; no capability declaration is
+//     required. Callers must treat RPC failures (Unimplemented from older
+//     hosts, Unavailable during host restart, NotFound for missing data)
+//     as "no data" and degrade gracefully rather than aborting.
+//   - The host implementation is optional on the core side: when the
+//     PricingResolver dependency is not injected, the gRPC service is
+//     simply not registered and calls surface as Unimplemented.
+service HostService {
+  // ResolveModelPricing returns the host's globally-known pricing for
+  // the named model (LiteLLM data + host fallbacks). It is the reverse
+  // side of BillingService.GetModelPricing on the core; plugins call it
+  // to synthesise display-only pricing when their own per-channel data
+  // is absent.
+  //
+  // Returns has_pricing=false when no pricing is known for the model.
+  // Network / host errors surface as gRPC status codes; callers MUST
+  // treat any error as "no pricing" and continue rendering.
+  rpc ResolveModelPricing(ResolveModelPricingRequest) returns (ResolveModelPricingResponse);
+
+  // CreditBalance credits a user's balance. Idempotency via idempotency_key
+  // (typically the source order's out_trade_no). A repeat with the same key
+  // returns already_applied=true and the original balance, never double-credits.
+  rpc CreditBalance(CreditBalanceRequest) returns (CreditBalanceResponse);
+
+  // DeductBalance debits a user's balance (refund flow). Idempotent via
+  // idempotency_key. allow_negative permits balance < 0 for refund cases.
+  rpc DeductBalance(DeductBalanceRequest) returns (DeductBalanceResponse);
+
+  // AssignSubscription assigns or extends a subscription plan. Host owns
+  // the user_subscriptions table and group-merge rules. Idempotent.
+  rpc AssignSubscription(AssignSubscriptionRequest) returns (AssignSubscriptionResponse);
+
+  // RevokeSubscriptionDays removes days from an active subscription.
+  // Used by refund flow for subscription orders. Idempotent.
+  rpc RevokeSubscriptionDays(RevokeSubscriptionDaysRequest) returns (RevokeSubscriptionDaysResponse);
+
+  // AccrueRebate triggers the host's affiliate-rebate flow for a paid
+  // order. Returns the rebate amount actually credited (0 if no inviter
+  // or rebate disabled). Idempotent.
+  rpc AccrueRebate(AccrueRebateRequest) returns (AccrueRebateResponse);
+
+  // GetUserByID returns minimal user info (email/username/balance/inviter)
+  // for the payment plugin. Plugins with db.core.read could read users
+  // directly; this RPC exists so payment-flavored fields can evolve.
+  rpc GetUserByID(GetUserByIDRequest) returns (GetUserByIDResponse);
+
+  // SetUserDisabled disables or re-enables a user account. Used by
+  // content moderation plugins to auto-ban users who violate policy.
+  // Also invalidates the user's auth cache to take effect immediately.
+  rpc SetUserDisabled(SetUserDisabledRequest) returns (SetUserDisabledResponse);
+}
+
+// CreditBalanceRequest credits a user's balance.
+message CreditBalanceRequest {
+  int64  user_id          = 1;
+  // amount is decimal-string encoded (T24 convention). Must be > 0.
+  string amount           = 2;
+  // reason is recorded on the audit log; e.g. "payment_order:123".
+  string reason           = 3;
+  // idempotency_key uniquely identifies the source operation.
+  string idempotency_key  = 4;
+  // source: "payment" | "redeem_code" | "admin".
+  string source           = 5;
+}
+
+message CreditBalanceResponse {
+  // new_balance is the user's balance after the credit (decimal string).
+  string new_balance     = 1;
+  // already_applied=true means the idempotency_key matched a prior
+  // credit; new_balance reflects the state at that prior credit.
+  bool   already_applied = 2;
+}
+
+// DeductBalanceRequest debits a user's balance (refund flow).
+message DeductBalanceRequest {
+  int64  user_id          = 1;
+  string amount           = 2;
+  string reason           = 3;
+  string idempotency_key  = 4;
+  string source           = 5;
+  // allow_negative permits balance < 0 (refund flow). Otherwise the host
+  // returns FailedPrecondition when amount > current balance.
+  bool   allow_negative   = 6;
+}
+
+message DeductBalanceResponse {
+  string new_balance     = 1;
+  bool   already_applied = 2;
+}
+
+// AssignSubscriptionRequest assigns or extends a subscription.
+message AssignSubscriptionRequest {
+  int64  user_id          = 1;
+  // plan_id is the host's subscription_plans.id.
+  int64  plan_id          = 2;
+  // group_id is the host's groups.id (multi-tenant aggregator).
+  int64  group_id         = 3;
+  // days to extend; must be > 0.
+  int32  days             = 4;
+  // source is "payment" | "admin" | "redeem_code".
+  string source           = 5;
+  // idempotency_key, typically the source order_id encoded as string.
+  string idempotency_key  = 6;
+}
+
+message AssignSubscriptionResponse {
+  // subscription_id is the host's user_subscriptions.id.
+  int64 subscription_id   = 1;
+  // expires_at_unix is the new subscription expiry (seconds since epoch).
+  int64 expires_at_unix   = 2;
+  bool  already_applied   = 3;
+}
+
+// RevokeSubscriptionDaysRequest removes days from an active subscription.
+message RevokeSubscriptionDaysRequest {
+  int64  user_id          = 1;
+  int64  group_id         = 2;
+  int32  days             = 3;
+  string reason           = 4;
+  string idempotency_key  = 5;
+}
+
+message RevokeSubscriptionDaysResponse {
+  int64 expires_at_unix = 1;
+  bool  already_applied = 2;
+}
+
+// AccrueRebateRequest triggers affiliate rebate accrual for a paid order.
+message AccrueRebateRequest {
+  // invitee_user_id is the user whose order triggered the rebate.
+  int64  invitee_user_id  = 1;
+  // order_amount is the original order amount (decimal string).
+  string order_amount     = 2;
+  // idempotency_key, typically order_id encoded as string.
+  string idempotency_key  = 3;
+}
+
+message AccrueRebateResponse {
+  // rebate_amount is the amount actually credited to the inviter; "" or
+  // "0" if no inviter / rebate disabled / already applied.
+  string rebate_amount    = 1;
+  // inviter_user_id is 0 when no inviter exists.
+  int64  inviter_user_id  = 2;
+  bool   already_applied  = 3;
+}
+
+// GetUserByIDRequest queries minimal user info.
+message GetUserByIDRequest {
+  int64 user_id = 1;
+}
+
+message GetUserByIDResponse {
+  // found=false signals the user does not exist (e.g. deleted account);
+  // every other field is empty in that case.
+  bool   found      = 1;
+  int64  user_id    = 2;
+  string email      = 3;
+  string username   = 4;
+  // balance is decimal-string encoded (T24 convention).
+  string balance    = 5;
+  // inviter_id is 0 when no inviter recorded.
+  int64  inviter_id = 6;
+  // role is "user" | "admin" | ...
+  string role       = 7;
+}
+
+message ResolveModelPricingRequest {
+  // model is the model identifier to resolve. Case-insensitive on the
+  // host side (BillingService.GetModelPricing lowercases internally).
+  string model = 1;
+}
+
+// ResolveModelPricingResponse carries only the subset of pricing fields
+// the channel-management plugin's "Available Channels" popover consumes.
+// Extending this with more fields later is a non-breaking proto change
+// (field numbers are the API contract, not the struct size).
+//
+// All price fields use decimal-string encoding matching the T24
+// convention used by PricingExtension: empty string ("") means "not
+// set"; callers parse via decimal.NewFromString. Using strings instead
+// of doubles avoids IEEE-754 drift on the hot path that feeds user-
+// facing price popovers.
+message ResolveModelPricingResponse {
+  // has_pricing=false signals the host has no pricing data for the
+  // requested model; every price field is empty in that case and the
+  // caller should render the model as "未配置" like before.
+  bool has_pricing = 1;
+  // Input / output token pricing (USD per token). "" = not set.
+  string input_price_per_token = 2;
+  string output_price_per_token = 3;
+  // Cache-breakdown prices. Populated when the host's upstream pricing
+  // data (LiteLLM) carries them; "" otherwise.
+  string cache_write_price_per_token = 4;
+  string cache_read_price_per_token = 5;
+  // Image-output token pricing (nano-banana / gpt-image style models).
+  string image_output_price_per_token = 6;
+}
+
+message SetUserDisabledRequest {
+  int64 user_id = 1;
+  // disabled=true bans the user; disabled=false unbans.
+  bool disabled = 2;
+  // reason is stored in the user's disable_reason field for audit trail.
+  string reason = 3;
+}
+
+message SetUserDisabledResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// AccountPlatformExtension — plugin-provided, host-called
+// ============================================================
+
+// AccountPlatformExtension is implemented by gateway plugins that own
+// account platforms. The host discovers it via lazy gRPC invocation
+// (codes.Unimplemented = not available, same pattern as PricingExtension).
+service AccountPlatformExtension {
+  // ValidateAccountData validates credentials/extra before host persists.
+  rpc ValidateAccountData(ValidateAccountDataRequest)
+      returns (ValidateAccountDataResponse);
+
+  // TestConnection performs a platform-specific connectivity test.
+  // Returns a stream of events compatible with the host SSE format.
+  rpc TestConnection(TestConnectionRequest)
+      returns (stream TestConnectionEvent);
+
+  // RefreshToken performs platform-specific token refresh.
+  rpc RefreshToken(RefreshTokenRequest)
+      returns (RefreshTokenResponse);
+
+  // RefreshTier refreshes account tier/plan info from upstream.
+  rpc RefreshTier(RefreshTierRequest)
+      returns (RefreshTierResponse);
+
+  // GetAvailableModels returns models available for an account.
+  rpc GetAvailableModels(GetAvailableModelsRequest)
+      returns (GetAvailableModelsResponse);
+
+  // ExecuteCustomAction handles plugin-defined custom actions.
+  rpc ExecuteCustomAction(ExecuteCustomActionRequest)
+      returns (ExecuteCustomActionResponse);
+
+  // IsModelSupported asks the plugin whether a specific account supports
+  // a requested model. Called during scheduling to let plugins do runtime
+  // model-support checks beyond static credentials.model_mapping.
+  // Plugins that do not implement this RPC return codes.Unimplemented,
+  // causing the host to fall back to the static account.IsModelSupported().
+  rpc IsModelSupported(IsModelSupportedRequest)
+      returns (IsModelSupportedResponse);
+
+  // GetSchedulingHints lets plugins dynamically adjust account priority
+  // and availability during scheduling. The host calls this in batch
+  // (all candidate accounts for the platform at once) before sorting.
+  // Plugins that do not implement this RPC return codes.Unimplemented,
+  // causing the host to silently skip hint application.
+  rpc GetSchedulingHints(GetSchedulingHintsRequest)
+      returns (GetSchedulingHintsResponse);
+
+  // CheckSchedulability performs a plugin-defined schedulability check on
+  // a single account. Called per-account during the host's scheduling
+  // filter loop, after the built-in checks (active, schedulable, overload,
+  // rate-limit) pass. Only invoked for plugin-owned platforms.
+  //
+  // Plugins that do not implement this RPC return codes.Unimplemented,
+  // causing the host to treat the account as schedulable (default pass).
+  rpc CheckSchedulability(CheckSchedulabilityRequest)
+      returns (CheckSchedulabilityResponse);
+
+  // GenerateAuthURL generates an OAuth authorization URL for a platform.
+  // Called by the host when a user initiates OAuth account creation.
+  // Plugins that do not implement this RPC return codes.Unimplemented.
+  rpc GenerateAuthURL(GenerateAuthURLRequest)
+      returns (GenerateAuthURLResponse);
+
+  // ExchangeOAuthCode exchanges an OAuth authorization code for credentials.
+  // Called by the host after the user completes the OAuth flow and returns
+  // with a code. Plugins that do not implement this RPC return
+  // codes.Unimplemented.
+  rpc ExchangeOAuthCode(ExchangeOAuthCodeRequest)
+      returns (ExchangeOAuthCodeResponse);
+
+  // ValidateRefreshToken validates a refresh token and returns fresh
+  // credentials. Used for account creation via direct refresh token input.
+  // Plugins that do not implement this RPC return codes.Unimplemented.
+  rpc ValidateRefreshToken(ValidateRefreshTokenRequest)
+      returns (ValidateRefreshTokenResponse);
+
+  // CookieAuth authenticates using a session cookie (e.g. Claude session_key).
+  // Platform-specific; plugins that do not support cookie auth return
+  // codes.Unimplemented.
+  rpc CookieAuth(CookieAuthRequest)
+      returns (CookieAuthResponse);
+
+  // SetPrivacy sets the privacy/data-collection mode for an account on the
+  // upstream platform. Plugins that do not support privacy management
+  // return codes.Unimplemented.
+  rpc SetPrivacy(SetPrivacyRequest)
+      returns (SetPrivacyResponse);
+
+  // PostAccountCreate is a hook called by the host after persisting a new
+  // account. Plugins can use it to perform post-creation setup (e.g.
+  // fetching organization info, setting initial privacy mode). Plugins
+  // that do not implement this RPC return codes.Unimplemented.
+  rpc PostAccountCreate(PostAccountCreateRequest)
+      returns (PostAccountCreateResponse);
+
+  // ValidateGroupConfig validates group_extra data before the host persists
+  // a group create or update. Called only when group_extra is non-empty and
+  // the group's platform has a registered plugin.
+  //
+  // Plugins that do not implement this RPC return codes.Unimplemented,
+  // causing the host to silently skip validation (backward compatible).
+  rpc ValidateGroupConfig(ValidateGroupConfigRequest)
+      returns (ValidateGroupConfigResponse);
+}
+message ValidateAccountDataRequest {
+  string platform = 1;
+  string account_type = 2;
+  bytes credentials_json = 3;
+  bytes extra_json = 4;
+  bool is_update = 5;
+  int64 account_id = 6;
+}
+
+message ValidateAccountDataResponse {
+  bool valid = 1;
+  // field_errors maps field path to error message.
+  map<string, string> field_errors = 2;
+  // processed_credentials_json is the transformed credentials to persist.
+  // Empty = use original input.
+  bytes processed_credentials_json = 3;
+  bytes processed_extra_json = 4;
+}
+
+message TestConnectionRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+  string model_id = 6;
+  // proxy_url is the account's configured proxy URL. Empty = no proxy.
+  string proxy_url = 7;
+}
+
+message TestConnectionEvent {
+  // type: "test_start" | "content" | "test_end" | "error"
+  string type = 1;
+  string text = 2;
+  string model = 3;
+  bool success = 4;
+  string error = 5;
+  bytes data_json = 6;
+}
+
+message RefreshTokenRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+}
+
+message RefreshTokenResponse {
+  bool success = 1;
+  string error = 2;
+  bytes updated_credentials_json = 3;
+  bytes updated_extra_json = 4;
+}
+
+message RefreshTierRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+}
+
+message RefreshTierResponse {
+  bool success = 1;
+  string error = 2;
+  bytes updated_extra_json = 3;
+}
+
+message GetAvailableModelsRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+}
+
+message GetAvailableModelsResponse {
+  repeated AvailableModelInfo models = 1;
+}
+
+message AvailableModelInfo {
+  string model_id = 1;
+  string display_name = 2;
+  bool available = 3;
+}
+
+message ExecuteCustomActionRequest {
+  string action_id = 1;
+  int64 account_id = 2;
+  string platform = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+  bytes payload_json = 6;
+}
+
+message ExecuteCustomActionResponse {
+  bool success = 1;
+  string error = 2;
+  bytes result_json = 3;
+  bytes updated_credentials_json = 4;
+  bytes updated_extra_json = 5;
+}
+
+message IsModelSupportedRequest {
+  int64 account_id = 1;
+  string account_platform = 2;
+  string requested_model = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+}
+
+message IsModelSupportedResponse {
+  bool supported = 1;
+  // mapped_model is optional: the plugin may return the actual upstream
+  // model name (e.g. "gpt-4o" -> "gpt-4o-2024-08-06") for the host to
+  // use during forwarding. Empty string means no mapping.
+  string mapped_model = 2;
+}
+
+
+message GetSchedulingHintsRequest {
+  repeated SchedulingHintAccount accounts = 1;
+  string gateway_protocol = 2;  // current gateway protocol (e.g. "anthropic")
+  string requested_model = 3;
+}
+
+message SchedulingHintAccount {
+  int64 account_id = 1;
+  bytes credentials_json = 2;
+  bytes extra_json = 3;
+}
+
+message GetSchedulingHintsResponse {
+  map<int64, SchedulingHint> hints = 1;  // key = account_id
+}
+
+message SchedulingHint {
+  int32 priority_modifier = 1;      // added to priority (positive = lower priority, negative = higher)
+  bool temporarily_unavailable = 2;  // true = skip this account for this scheduling round
+  string reason = 3;                 // for logging
+}
+
+message CheckSchedulabilityRequest {
+  int64 account_id = 1;
+  string account_platform = 2;
+  bytes credentials_json = 3;
+  bytes extra_json = 4;
+  string requested_model = 5;
+  string gateway_protocol = 6;
+}
+
+message CheckSchedulabilityResponse {
+  bool schedulable = 1;
+  string reason = 2;  // reason when not schedulable (for logging)
+}
+
+message GenerateAuthURLRequest {
+  string platform = 1;
+  string oauth_type = 2;       // "oauth"/"setup-token"/"cookie" etc.
+  int64 proxy_id = 3;
+  string redirect_uri = 4;
+  map<string, string> params = 5;  // platform-specific params (project_id, tier_id, etc.)
+}
+
+message GenerateAuthURLResponse {
+  string auth_url = 1;
+  string session_id = 2;       // plugin-managed session ID
+}
+
+message ExchangeOAuthCodeRequest {
+  string platform = 1;
+  string oauth_type = 2;
+  string session_id = 3;
+  string code = 4;
+  string state = 5;
+  int64 proxy_id = 6;
+  string redirect_uri = 7;
+  map<string, string> params = 8;
+}
+
+message ExchangeOAuthCodeResponse {
+  bytes credentials_json = 1;   // ready-to-persist credentials
+  bytes extra_json = 2;         // ready-to-persist extra
+  string account_name = 3;      // suggested account name
+  string tier_id = 4;           // detected tier
+}
+
+message ValidateRefreshTokenRequest {
+  string platform = 1;
+  string refresh_token = 2;
+  int64 proxy_id = 3;
+  map<string, string> params = 4;
+}
+
+message ValidateRefreshTokenResponse {
+  bytes credentials_json = 1;
+  bytes extra_json = 2;
+  string account_name = 3;
+  string tier_id = 4;
+}
+
+message CookieAuthRequest {
+  string session_key = 1;
+  int64 proxy_id = 2;
+  string scope = 3;
+}
+
+message CookieAuthResponse {
+  bytes credentials_json = 1;
+  bytes extra_json = 2;
+  string account_name = 3;
+}
+
+message SetPrivacyRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  bytes credentials_json = 3;
+  bytes extra_json = 4;
+  bool force = 5;
+}
+
+message SetPrivacyResponse {
+  bool success = 1;
+  string privacy_mode = 2;
+  string error = 3;
+}
+
+message PostAccountCreateRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+}
+
+message PostAccountCreateResponse {
+  bytes updated_credentials_json = 1;  // optional, empty = no update
+  bytes updated_extra_json = 2;        // optional
+}
+
+message ValidateGroupConfigRequest {
+  string platform = 1;
+  bytes group_extra_json = 2;   // frontend-submitted group_extra data
+  bool is_update = 3;
+}
+
+message ValidateGroupConfigResponse {
+  bool valid = 1;
+  // field_errors maps field path to error message (e.g. "max_tokens" -> "must be positive").
+  map<string, string> field_errors = 2;
+  // processed_group_extra_json is the optional post-processed group_extra
+  // (e.g. defaults filled in). Empty = use original input.
+  bytes processed_group_extra_json = 3;
+}
+
+// ============================================================
+// GatewayProviderExtension — plugin-provided, host-called
+// ============================================================
+//
+// GatewayProviderExtension allows plugins to handle gateway request
+// forwarding. The host calls Forward with the parsed request context;
+// the plugin streams back response chunks (headers, body bytes, trailers)
+// that the host pipes to the downstream HTTP client.
+//
+// This is the gRPC equivalent of the in-process GatewayProvider interface
+// (backend/internal/gateway/provider.go). Phase 2+ plugins implement this
+// service to handle upstream API forwarding for their platform.
+//
+// Failure model:
+//   - Forward streams GatewayForwardChunk messages; the host writes each
+//     chunk to the downstream http.ResponseWriter as it arrives.
+//   - If the plugin returns a gRPC error before sending any chunk, the
+//     host treats it as a forward failure and may failover to another
+//     account (subject to ShouldFailover).
+//   - If the plugin has already sent header/body chunks, the host sets
+//     UpstreamAccepted=true and will NOT failover on subsequent errors.
+//   - ShouldFailover is called synchronously after a forward failure;
+//     plugins return true to indicate the error is transient and another
+//     account should be tried.
+service GatewayProviderExtension {
+  // Forward handles a single gateway request. The plugin receives the full
+  // request context (account credentials, model, body, headers) and streams
+  // back the upstream response as chunked data.
+  rpc Forward(GatewayForwardRequest) returns (stream GatewayForwardChunk);
+
+  // ShouldFailover asks the plugin whether a failed forward should be
+  // retried with a different account.
+  rpc ShouldFailover(GatewayFailoverRequest) returns (GatewayFailoverResponse);
+}
+
+// GatewayForwardRequest carries the full request context for a gateway
+// forward operation. It is the gRPC equivalent of gateway.ForwardRequest,
+// minus the non-serializable fields (http.ResponseWriter, *gin.Context).
+message GatewayForwardRequest {
+  // --- request identity ---
+  string request_id = 1;
+  string model = 2;
+  bool stream = 3;
+  string protocol = 4;     // "anthropic" / "openai" / "gemini"
+
+  // --- request body ---
+  bytes raw_body = 5;
+
+  // --- account info (the selected account to forward through) ---
+  GatewayAccountInfo account = 6;
+
+  // --- request metadata ---
+  map<string, string> headers = 7;   // relevant upstream headers
+  string method = 8;                 // HTTP method (GET/POST)
+  string path = 9;                   // original request path
+
+  // --- scheduling context ---
+  int64 group_id = 10;               // 0 = no group constraint
+  string session_hash = 11;
+  string metadata_user_id = 12;
+  int64 user_id = 13;
+  int32 switch_count = 14;           // failover counter
+
+  // --- platform-specific ---
+  string gemini_action = 15;         // only when protocol == "gemini"
+  bool is_sticky_session = 16;
+
+  // --- client request context (added for god-object migration) ---
+
+  // client_headers carries the downstream client's HTTP headers
+  // (anthropic-beta, user-agent, content-type, x-api-key, etc.).
+  // Plugins use these to forward or inspect client-originated headers
+  // that are not part of the canonical upstream header set in `headers`.
+  map<string, string> client_headers = 17;
+
+  // --- scheduling / detection context ---
+
+  // is_claude_code_client is true when the request originates from a
+  // Claude Code CLI session (detected via user-agent + body heuristics).
+  bool is_claude_code_client = 18;
+
+  // thinking_enabled indicates whether extended thinking / chain-of-thought
+  // is enabled for this request (parsed from the request body).
+  bool thinking_enabled = 19;
+
+  // prompt_cache_key is the OpenAI prompt cache key extracted from the
+  // request body or headers, used for session affinity.
+  string prompt_cache_key = 20;
+
+  // channel_mapped_model is the model name after channel mapping has been
+  // applied by the host pipeline. Empty when no mapping is active.
+  string channel_mapped_model = 21;
+
+  // --- billing context ---
+
+  // force_cache_billing is set when a failover occurs after billing was
+  // already consumed, forcing input_tokens to be billed as cache_read.
+  bool force_cache_billing = 22;
+
+  // --- image request context (OpenAI Images API) ---
+
+  // images_request_json carries the JSON-encoded OpenAI Images request
+  // metadata (endpoint, model, multipart data, capability). Only set
+  // when protocol == "images".
+  bytes images_request_json = 23;
+}
+
+// GatewayAccountInfo carries the account credentials and metadata the
+// plugin needs to make upstream API calls. Sensitive fields (credentials)
+// are passed as opaque JSON so each platform plugin can decode its own
+// credential schema.
+message GatewayAccountInfo {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;   // JSON-encoded map[string]any
+  bytes extra_json = 5;         // JSON-encoded map[string]any
+  string name = 6;
+  // proxy_url is the fully-qualified proxy URL (e.g. "socks5h://user:pass@host:port")
+  // for this account's configured proxy. Empty when no proxy is assigned.
+  string proxy_url = 7;
+}
+
+// GatewayForwardChunk is a single piece of the streamed response from the
+// plugin back to the host. The host writes these to the downstream HTTP
+// client in order. Exactly one of the chunk types is set per message.
+message GatewayForwardChunk {
+  oneof chunk {
+    GatewayResponseHeaders headers = 1;
+    GatewayResponseBody body = 2;
+    GatewayResponseTrailers trailers = 3;
+    GatewayResponseDone done = 4;
+  }
+}
+
+// GatewayResponseHeaders is the first chunk sent by the plugin, carrying
+// the HTTP response status and headers that the host should write to the
+// downstream client before streaming body data.
+message GatewayResponseHeaders {
+  int32 status_code = 1;
+  map<string, string> headers = 2;
+}
+
+// GatewayResponseBody carries a chunk of the response body. For SSE
+// streams, each SSE event may be one or more body chunks.
+message GatewayResponseBody {
+  bytes data = 1;
+}
+
+// GatewayResponseTrailers carries optional HTTP trailers sent after the
+// body is complete. Most APIs don't use trailers, but they are supported
+// for completeness.
+message GatewayResponseTrailers {
+  map<string, string> trailers = 1;
+}
+
+// GatewayResponseDone signals the end of the forward stream. It carries
+// the usage/timing data that the host needs for billing and logging.
+message GatewayResponseDone {
+  // result carries the usage data for billing; nil means no usage to record.
+  GatewayForwardResult result = 1;
+  // error is set when the forward failed after partial streaming. The host
+  // logs it but cannot failover because upstream already accepted.
+  string error = 2;
+}
+
+// GatewayForwardResult carries usage and timing data produced by the
+// plugin's forward operation. This is the gRPC equivalent of
+// gateway.ForwardResult.
+message GatewayForwardResult {
+  string request_id = 1;
+  string model = 2;
+  string upstream_model = 3;
+  bool stream = 4;
+  int64 duration_ms = 5;
+  int32 first_token_ms = 6;  // 0 = not measured
+
+  // Token counts
+  int64 input_tokens = 10;
+  int64 output_tokens = 11;
+  int64 cache_creation_tokens = 12;
+  int64 cache_read_tokens = 13;
+  int64 image_output_tokens = 14;
+
+  // Client behaviour
+  bool client_disconnect = 20;
+
+  // Image generation billing fields
+  int32 image_count = 21;
+  string image_size = 22;     // "1K" / "2K" / "4K"
+
+  // upstream_error carries structured error information when the upstream
+  // returned an error. Non-nil means the forward encountered an upstream
+  // error; the host uses the structured fields to decide failover strategy
+  // without parsing error strings.
+  GatewayUpstreamError upstream_error = 30;
+
+  // response_headers carries selected upstream HTTP response headers for
+  // post-forward processing (e.g. Codex usage snapshot extraction via
+  // x-codex-* headers). The plugin populates this with headers it deems
+  // relevant; the host maps it to ForwardResult.ResponseHeaders.
+  map<string, string> response_headers = 31;
+}
+
+// GatewayUpstreamError carries structured error information from the
+// upstream API. This replaces string-based error signalling in
+// GatewayResponseDone.error, giving the host enough detail to make
+// failover decisions without parsing free-form error strings.
+message GatewayUpstreamError {
+  // status_code is the upstream HTTP response status code (e.g. 429, 503).
+  int32 status_code = 1;
+
+  // retry_on_same_account indicates a transient error (e.g. Google
+  // intermittent 400, empty response) where retrying on the same account
+  // may succeed. Maps to UpstreamFailoverError.RetryableOnSameAccount.
+  bool retry_on_same_account = 2;
+
+  // force_cache_billing signals that input tokens should be re-billed as
+  // cache_read tokens (e.g. Antigravity sticky session account switch).
+  // Maps to UpstreamFailoverError.ForceCacheBilling.
+  bool force_cache_billing = 3;
+
+  // error_type classifies the error for routing decisions:
+  //   "rate_limit"   — upstream 429
+  //   "overloaded"   — upstream 529 / 503
+  //   "auth_error"   — upstream 401 / 403
+  //   "server_error" — upstream 500 / 502 / 504
+  //   "prompt_too_long" — input exceeded upstream limits
+  //   ""             — unclassified
+  string error_type = 4;
+
+  // response_body is the raw upstream error response body (truncated to
+  // a reasonable size by the plugin). Used by the host for error
+  // passthrough rule matching.
+  bytes response_body = 5;
+
+  // response_headers carries selected upstream HTTP response headers from
+  // the error response. The host maps these to
+  // UpstreamFailoverError.ResponseHeaders for rate-limit reset time
+  // calculation (x-codex-*, x-ratelimit-*, cf-ray, etc.) and diagnostic
+  // header passthrough.
+  map<string, string> response_headers = 6;
+}
+
+// GatewayFailoverRequest is sent to ShouldFailover after a forward failure.
+// It carries the request context and the error that caused the failure so
+// the plugin can decide whether to retry with another account.
+message GatewayFailoverRequest {
+  GatewayForwardRequest request = 1;
+  string error_message = 2;
+  string error_type = 3;   // Go type name of the error (e.g. "UpstreamFailoverError")
+}
+
+// GatewayFailoverResponse carries the plugin's decision on whether to
+// retry the failed forward with a different account.
+message GatewayFailoverResponse {
+  bool should_failover = 1;
+}
+
+// ============================================================
+// GatewayHostCallback — host-provided, plugin-called (reverse RPC)
+// ============================================================
+//
+// GatewayHostCallback provides host capabilities that gateway plugins
+// need during request forwarding. Unlike HostService (which provides
+// business lookups), GatewayHostCallback is specific to the gateway
+// forwarding lifecycle — token acquisition, error reporting, etc.
+//
+// The host registers this service on its gRPC server; the plugin SDK
+// creates a GatewayHostCallbackClient from the same connection used
+// for other core services (SQLProxy, RedisProxy, etc.).
+//
+// Availability model:
+//   - Registered unconditionally when the host has gateway plugins.
+//   - Plugins must treat RPC failures (Unimplemented from older hosts,
+//     Unavailable during restart) as non-fatal and degrade gracefully.
+service GatewayHostCallback {
+  // GetAccessToken retrieves a fresh access token for the given account.
+  // The host manages token refresh internally (OAuth refresh flow,
+  // session key rotation, etc.); plugins call this instead of managing
+  // their own token lifecycle.
+  //
+  // Returns the token and its type so the plugin can construct the
+  // Authorization header. extra_headers carries any additional headers
+  // the host needs added to upstream requests (e.g. anthropic-beta).
+  rpc GetAccessToken(GetAccessTokenRequest) returns (GetAccessTokenResponse);
+
+  // ReportOpsError reports an operational error to the host's ops error
+  // logging infrastructure. Plugins call this when they encounter errors
+  // that should appear in the admin ops dashboard but that the host
+  // cannot observe directly (e.g. errors during plugin-managed upstream
+  // communication).
+  rpc ReportOpsError(ReportOpsErrorRequest) returns (ReportOpsErrorResponse);
+}
+
+message GetAccessTokenRequest {
+  int64 account_id = 1;
+}
+
+message GetAccessTokenResponse {
+  // access_token is the bearer token or API key to use.
+  string access_token = 1;
+  // token_type describes how to use the token: "bearer" means
+  // Authorization: Bearer <token>; "api-key" means x-api-key: <token>.
+  string token_type = 2;
+  // extra_headers are additional headers the host requires on the upstream
+  // request (e.g. anthropic-beta, x-org-id). The plugin should merge
+  // these into its outgoing request headers.
+  map<string, string> extra_headers = 3;
+}
+
+message ReportOpsErrorRequest {
+  string request_id = 1;
+  int64 account_id = 2;
+  int32 status_code = 3;
+  string error_message = 4;
+  // error_type classifies the error for dashboard filtering:
+  // "rate_limit", "overloaded", "auth_error", "server_error", etc.
+  string error_type = 5;
+}
+
+message ReportOpsErrorResponse {}
+
+// ============================================================
+// ContentInterceptExtension — gateway request content interception
+// ============================================================
+//
+// ContentInterceptExtension allows a plugin to inspect request content
+// before the gateway forwards it upstream. The host calls Check() in
+// the pipeline preflight stage, after account selection but before
+// forwarding. The plugin evaluates the content against its moderation
+// policy and returns an action (allow / block / observe).
+//
+// Operating modes (controlled by the plugin's internal config):
+//   - off:       host never calls Check()
+//   - observe:   host calls Check() asynchronously; never blocks requests
+//   - pre_block: host calls Check() synchronously; blocks if action=BLOCK
+//
+// The host decides sync/async based on the mode reported by the plugin
+// in its manifest or via a config query. The plugin itself is stateless
+// with respect to mode — it always evaluates and returns a decision.
+//
+// Availability: probed lazily like other extensions. If the plugin does
+// not implement this service, the host skips content interception.
+service ContentInterceptExtension {
+  // Check evaluates request content against the plugin's moderation policy.
+  rpc Check(ContentCheckRequest) returns (ContentCheckResponse);
+}
+
+message ContentCheckRequest {
+  string request_id = 1;
+
+  // user context
+  int64 user_id = 2;
+  string user_email = 3;
+
+  // api key context
+  int64 api_key_id = 4;
+  string api_key_name = 5;
+  int64 group_id = 6;
+  string group_name = 7;
+
+  // request context
+  string endpoint = 8;     // "/v1/messages", "/v1/chat/completions", etc.
+  string protocol = 9;     // "anthropic", "openai", "gemini"
+  string provider = 10;    // platform: "anthropic", "openai", "gemini", "antigravity"
+  string model = 11;
+
+  // raw request body for content extraction
+  bytes body = 12;
+}
+
+message ContentCheckResponse {
+  // action is the moderation decision.
+  ContentAction action = 1;
+
+  // blocked is true when the request should be rejected.
+  bool blocked = 2;
+
+  // flagged is true when the content was flagged (may be allowed in observe mode).
+  bool flagged = 3;
+
+  // status_code is the HTTP status to return when blocked (default 403).
+  int32 status_code = 4;
+
+  // message is the user-facing error message when blocked.
+  string message = 5;
+
+  // highest_category is the moderation category with the highest score.
+  string highest_category = 6;
+
+  // highest_score is the score of the highest category.
+  double highest_score = 7;
+}
+
+enum ContentAction {
+  CONTENT_ACTION_ALLOW = 0;
+  CONTENT_ACTION_BLOCK = 1;
+  CONTENT_ACTION_OBSERVE = 2;
+}
+

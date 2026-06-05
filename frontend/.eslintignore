@@ -1,0 +1,14 @@
+# 忽略编译后的文件
+vite.config.js
+vite.config.d.ts
+
+# 忽略依赖
+node_modules/
+
+# 忽略构建输出
+dist/
+../backend/internal/web/dist/
+
+# 忽略缓存
+.cache/
+.vite/

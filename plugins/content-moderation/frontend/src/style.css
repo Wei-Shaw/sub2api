@@ -1,0 +1,21 @@
+/*
+ * Plugin entry stylesheet (V2 — Shadow DOM 协议).
+ *
+ * V2 改动 (vs V1):
+ *   - 不再 `@tailwind base;` — preflight (CSS reset) 由 plugin-sdk.css 提供,
+ *     plugin entry.css 与 plugin-sdk.css 都注入到 plugin 自己的 ShadowRoot,
+ *     plugin 内的 utility class 仍能命中, 但 host head 里再也不会出现 plugin
+ *     注入的全局 reset, 避免污染 host UI.
+ *   - 仍保留 components / utilities, 让 plugin SFC 引用的 `.btn`, `.input` 等
+ *     原子类编译进 entry.css.
+ *
+ * 注意: plugin SFC 内若要用 `*, *::before, *::after { box-sizing: border-box }`
+ * 这种全局重置, 由 plugin-sdk.css 已提供, 不必在此处再加.
+ *
+ * @import 必须在 @tailwind 之前 (CSS spec): @import 须出现在所有其他规则之前,
+ * 否则 PostCSS 直接丢弃, .btn/.card/.empty-state 全局类不会进 entry.css.
+ */
+@import '@sub2api/plugin-sdk/src/components.css';
+
+@tailwind components;
+@tailwind utilities;
