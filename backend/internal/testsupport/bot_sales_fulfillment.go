@@ -16,8 +16,9 @@ func NewBotSalesFulfillmentService(client *dbent.Client, db *sql.DB) *service.Bo
 	groupRepo := repository.NewGroupRepository(client, db)
 	userSubRepo := repository.NewUserSubscriptionRepository(client)
 	apiKeyRepo := repository.NewAPIKeyRepository(client, db)
+	userDeviceRepo := repository.NewUserDeviceRepository(client)
 	userSvc := service.NewUserService(userRepo, nil, nil, nil)
 	apiKeySvc := service.NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, nil, nil, &config.Config{Default: config.DefaultConfig{APIKeyPrefix: "sk-test-"}})
 	subscriptionSvc := service.NewSubscriptionService(groupRepo, userSubRepo, nil, client, nil)
-	return service.NewBotSalesFulfillmentService(client, userSvc, subscriptionSvc, apiKeySvc)
+	return service.NewBotSalesFulfillmentService(client, userSvc, subscriptionSvc, apiKeySvc, userDeviceRepo)
 }

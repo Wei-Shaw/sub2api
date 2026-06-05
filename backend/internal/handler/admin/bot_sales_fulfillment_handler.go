@@ -95,6 +95,13 @@ func normalizeBotSalesFulfillmentAliases(raw map[string]any, req *service.BotSal
 			}
 		}
 	}
+	if req.DeviceCode == "" {
+		if v, ok := raw["deviceCode"]; ok {
+			if s, ok := v.(string); ok {
+				req.DeviceCode = s
+			}
+		}
+	}
 }
 
 func int64FromJSONNumber(v any) int64 {

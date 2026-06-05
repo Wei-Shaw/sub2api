@@ -138,6 +138,96 @@ func TestBotSalesFulfillmentHandlerFulfillsPayloadAndRejectsTargetGroupInput(t *
 	require.Equal(t, "UNSUPPORTED_FIELD", envelope.Reason)
 }
 
+func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasForTopup(t *testing.T) {
+	router, client, cleanup := newBotSalesFulfillmentHandlerTestRouter(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	group := createBotSalesFulfillmentHandlerGroup(t, client, "bot-http-balance", service.SubscriptionTypeNone)
+	pkg := client.BalancePackage.Create().
+		SetCode("standard_20").
+		SetLabel("Standard 20").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(group.ID).
+		SetForSale(true).
+		SaveX(ctx)
+
+	newPayload := map[string]any{
+		"external_order_id":  "bs-http-balance-new",
+		"operation":          service.BotSalesFulfillmentOperationNew,
+		"entitlement_kind":   service.BotSalesEntitlementBalance,
+		"balancePackageCode": pkg.Code,
+		"buyer": map[string]any{
+			"external_user_id": "telegram:http-device-owner",
+			"email":            "bot-http-device-owner@example.test",
+		},
+		"delivery_policy": map[string]any{
+			"issue_api_key":     "always",
+			"issue_device_code": true,
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/bot-sales/token-fulfillments", jsonBody(t, newPayload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "bot-sales:bs-http-balance-new:1:new")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var newData map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &newData))
+	deviceCode, ok := newData["device_code"].(string)
+	require.True(t, ok)
+	require.Regexp(t, `^DLG-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$`, deviceCode)
+	delivery, ok := newData["delivery"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, deviceCode, delivery["device_code"])
+	buyer, ok := newData["buyer"].(map[string]any)
+	require.True(t, ok)
+	ownerIDValue, ok := buyer["user_id"].(float64)
+	require.True(t, ok)
+	ownerID := int64(ownerIDValue)
+	require.Equal(t, float64(20), client.User.GetX(ctx, ownerID).Balance)
+
+	topupPayload := map[string]any{
+		"external_order_id":  "bs-http-balance-topup",
+		"operation":          service.BotSalesFulfillmentOperationTopup,
+		"entitlement_kind":   service.BotSalesEntitlementBalance,
+		"balancePackageCode": pkg.Code,
+		"deviceCode":         strings.ToLower(deviceCode),
+		"buyer": map[string]any{
+			"external_user_id": "telegram:http-topup-payer",
+			"email":            "bot-http-topup-payer@example.test",
+		},
+		"delivery_policy": map[string]any{
+			"issue_api_key": "if_missing",
+		},
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/bot-sales/token-fulfillments", jsonBody(t, topupPayload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "bot-sales:bs-http-balance-topup:1:topup")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var topupData map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &topupData))
+	require.Equal(t, service.BotSalesFulfillmentOperationTopup, topupData["operation"])
+	require.Equal(t, deviceCode, topupData["device_code"])
+	topupDelivery, ok := topupData["delivery"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, deviceCode, topupDelivery["device_code"])
+	topupBuyer, ok := topupData["buyer"].(map[string]any)
+	require.True(t, ok)
+	topupOwnerIDValue, ok := topupBuyer["user_id"].(float64)
+	require.True(t, ok)
+	require.Equal(t, ownerID, int64(topupOwnerIDValue))
+	require.Equal(t, float64(40), client.User.GetX(ctx, ownerID).Balance)
+}
+
 func newBotSalesFulfillmentHandlerTestRouter(t *testing.T) (*gin.Engine, *dbent.Client, func()) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)

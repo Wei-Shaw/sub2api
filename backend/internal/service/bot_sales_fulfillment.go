@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,12 +45,14 @@ type BotSalesFulfillmentAffiliate struct {
 }
 
 type BotSalesDeliveryPolicy struct {
-	IssueAPIKey string `json:"issue_api_key"`
+	IssueAPIKey     string `json:"issue_api_key"`
+	IssueDeviceCode bool   `json:"issue_device_code"`
 }
 
 func (p *BotSalesDeliveryPolicy) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		IssueAPIKey any `json:"issue_api_key"`
+		IssueAPIKey     any  `json:"issue_api_key"`
+		IssueDeviceCode bool `json:"issue_device_code"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -63,6 +67,7 @@ func (p *BotSalesDeliveryPolicy) UnmarshalJSON(data []byte) error {
 	case string:
 		p.IssueAPIKey = strings.TrimSpace(v)
 	}
+	p.IssueDeviceCode = raw.IssueDeviceCode
 	return nil
 }
 
@@ -73,6 +78,7 @@ type BotSalesTokenFulfillmentRequest struct {
 	EntitlementKind    string                        `json:"entitlement_kind"`
 	PlanID             int64                         `json:"plan_id"`
 	BalancePackageCode string                        `json:"balance_package_code"`
+	DeviceCode         string                        `json:"device_code"`
 	Buyer              BotSalesFulfillmentBuyer      `json:"buyer"`
 	Affiliate          *BotSalesFulfillmentAffiliate `json:"affiliate"`
 	DeliveryPolicy     BotSalesDeliveryPolicy        `json:"delivery_policy"`
@@ -88,6 +94,7 @@ type BotSalesTokenFulfillmentResponse struct {
 	Balance         BotSalesFulfillmentBalance      `json:"balance,omitempty"`
 	Buyer           BotSalesFulfillmentBuyerResult  `json:"buyer"`
 	Delivery        BotSalesFulfillmentDelivery     `json:"delivery"`
+	DeviceCode      string                          `json:"device_code,omitempty"`
 }
 
 type BotSalesFulfillmentEntitlement struct {
@@ -105,7 +112,8 @@ type BotSalesFulfillmentBuyerResult struct {
 }
 
 type BotSalesFulfillmentDelivery struct {
-	APIKey *BotSalesDeliveryAPIKey `json:"api_key,omitempty"`
+	APIKey     *BotSalesDeliveryAPIKey `json:"api_key,omitempty"`
+	DeviceCode string                  `json:"device_code,omitempty"`
 }
 
 type BotSalesDeliveryAPIKey struct {
@@ -131,6 +139,7 @@ type BotSalesFulfillmentService struct {
 	userService         *UserService
 	subscriptionService *SubscriptionService
 	apiKeyService       *APIKeyService
+	userDeviceRepo      UserDeviceRepository
 }
 
 func NewBotSalesFulfillmentService(
@@ -138,6 +147,7 @@ func NewBotSalesFulfillmentService(
 	userService *UserService,
 	subscriptionService *SubscriptionService,
 	apiKeyService *APIKeyService,
+	userDeviceRepo UserDeviceRepository,
 ) *BotSalesFulfillmentService {
 	return &BotSalesFulfillmentService{
 		entClient:           entClient,
@@ -145,6 +155,7 @@ func NewBotSalesFulfillmentService(
 		userService:         userService,
 		subscriptionService: subscriptionService,
 		apiKeyService:       apiKeyService,
+		userDeviceRepo:      userDeviceRepo,
 	}
 }
 
@@ -194,8 +205,12 @@ func (s *BotSalesFulfillmentService) Fulfill(ctx context.Context, req BotSalesTo
 		return nil, infraerrors.BadRequest("BOT_SALES_ENTITLEMENT_KIND_INVALID", "entitlement_kind must be subscription or balance")
 	}
 
+	apiKeyUserID := resp.Buyer.UserID
+	if apiKeyUserID <= 0 {
+		apiKeyUserID = buyer.ID
+	}
 	if shouldIssueBotSalesAPIKey(req.DeliveryPolicy) && s.apiKeyService != nil {
-		apiKey, err := s.apiKeyService.Create(ctx, buyer.ID, CreateAPIKeyRequest{
+		apiKey, err := s.apiKeyService.Create(ctx, apiKeyUserID, CreateAPIKeyRequest{
 			Name:    fmt.Sprintf("bot-sales-%s", req.ExternalOrderID),
 			GroupID: &resp.Entitlement.GroupID,
 		})
@@ -284,8 +299,32 @@ func (s *BotSalesFulfillmentService) fulfillBalance(ctx context.Context, buyer *
 	if pkg.AmountLedger <= 0 {
 		return infraerrors.BadRequest("BOT_SALES_BALANCE_PACKAGE_INVALID", "balance package amount must be positive")
 	}
-	if err := s.userService.UpdateBalance(ctx, buyer.ID, pkg.AmountLedger); err != nil {
+
+	targetBuyer := buyer
+	var deviceCode string
+	if operation == BotSalesFulfillmentOperationTopup {
+		device, err := s.resolveBotSalesDevice(ctx, req.DeviceCode)
+		if err != nil {
+			return err
+		}
+		owner, err := s.userRepo.GetByID(ctx, device.UserID)
+		if err != nil {
+			return err
+		}
+		targetBuyer = owner
+		if device.DeviceCode != nil {
+			deviceCode = *device.DeviceCode
+		}
+	}
+	if err := s.userService.UpdateBalance(ctx, targetBuyer.ID, pkg.AmountLedger); err != nil {
 		return err
+	}
+	if operation == BotSalesFulfillmentOperationNew {
+		issuedDeviceCode, err := s.issueBotSalesDeviceCode(ctx, targetBuyer, req)
+		if err != nil {
+			return err
+		}
+		deviceCode = issuedDeviceCode
 	}
 	groupID := int64(0)
 	if pkg.GroupID != nil {
@@ -294,6 +333,7 @@ func (s *BotSalesFulfillmentService) fulfillBalance(ctx context.Context, buyer *
 
 	resp.Operation = operation
 	resp.EntitlementKind = BotSalesEntitlementBalance
+	resp.Buyer = BotSalesFulfillmentBuyerResult{UserID: targetBuyer.ID, ExternalUserID: req.Buyer.ExternalUserID, Email: targetBuyer.Email}
 	resp.Entitlement = BotSalesFulfillmentEntitlement{
 		Kind:               BotSalesEntitlementBalance,
 		BalancePackageCode: &code,
@@ -301,7 +341,64 @@ func (s *BotSalesFulfillmentService) fulfillBalance(ctx context.Context, buyer *
 		BalanceCredited:    pkg.AmountLedger,
 	}
 	resp.Balance = BotSalesFulfillmentBalance{GroupID: groupID, AmountLedger: pkg.AmountLedger, ActualCredits: pkg.ActualCredits}
+	resp.Delivery.DeviceCode = deviceCode
+	resp.DeviceCode = deviceCode
 	return nil
+}
+
+func (s *BotSalesFulfillmentService) resolveBotSalesDevice(ctx context.Context, rawCode string) (*UserDevice, error) {
+	if s.userDeviceRepo == nil {
+		return nil, infraerrors.ServiceUnavailable("BOT_SALES_DEVICE_LOOKUP_UNAVAILABLE", "device lookup service is not available")
+	}
+	code := NormalizeRedeemCode(rawCode)
+	if code == "" || !strings.HasPrefix(code, "DLG-") {
+		return nil, infraerrors.BadRequest("BOT_SALES_DEVICE_CODE_REQUIRED", "device_code is required for balance topup")
+	}
+	device, err := s.userDeviceRepo.GetByDeviceCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, ErrUserDeviceNotFound) {
+			return nil, infraerrors.NotFound("BOT_SALES_DEVICE_NOT_FOUND", "device_code was not found")
+		}
+		return nil, err
+	}
+	if device == nil || device.UserID <= 0 {
+		return nil, infraerrors.NotFound("BOT_SALES_DEVICE_NOT_FOUND", "device_code was not found")
+	}
+	return device, nil
+}
+
+func (s *BotSalesFulfillmentService) issueBotSalesDeviceCode(ctx context.Context, buyer *User, req BotSalesTokenFulfillmentRequest) (string, error) {
+	if s.userDeviceRepo == nil {
+		return "", infraerrors.ServiceUnavailable("BOT_SALES_DEVICE_ISSUE_UNAVAILABLE", "device issue service is not available")
+	}
+	claimedAt := time.Now().UTC()
+	deviceHash := botSalesDeviceHash(req.ExternalOrderID, buyer.ID)
+	for attempt := 0; attempt < 5; attempt++ {
+		code, err := GenerateRedeemCodeForType(RedeemTypeDeviceLogin)
+		if err != nil {
+			return "", err
+		}
+		device := &UserDevice{
+			UserID:             buyer.ID,
+			DeviceCode:         &code,
+			DeviceHash:         deviceHash,
+			FingerprintVersion: 1,
+			Platform:           "bot-sales",
+			Arch:               "api",
+			Status:             UserDeviceStatusActive,
+			FirstClaimedAt:     claimedAt,
+			LastClaimedAt:      &claimedAt,
+		}
+		if err := s.userDeviceRepo.Create(ctx, device); err != nil {
+			var constraintErr *dbent.ConstraintError
+			if errors.As(err, &constraintErr) && strings.Contains(strings.ToLower(err.Error()), "device_code") {
+				continue
+			}
+			return "", err
+		}
+		return code, nil
+	}
+	return "", infraerrors.ServiceUnavailable("BOT_SALES_DEVICE_CODE_COLLISION", "could not issue a unique device code")
 }
 
 func (s *BotSalesFulfillmentService) findOrCreateBuyer(ctx context.Context, buyer BotSalesFulfillmentBuyer) (*User, error) {
@@ -369,6 +466,11 @@ func botSalesSyntheticEmail(externalUserID string) string {
 		local = "buyer"
 	}
 	return local + "@bot-sales.local"
+}
+
+func botSalesDeviceHash(externalOrderID string, userID int64) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("bot-sales:%s:%d", strings.TrimSpace(externalOrderID), userID)))
+	return hex.EncodeToString(sum[:])
 }
 
 func botSalesNotes(req BotSalesTokenFulfillmentRequest) string {

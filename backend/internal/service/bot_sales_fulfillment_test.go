@@ -103,6 +103,62 @@ func TestBotSalesFulfillmentAllowsMissingAffiliateAndCreditsBalancePackageGroup(
 	require.Equal(t, pkg.AmountLedger, user.Balance)
 }
 
+func TestBotSalesFulfillmentBalanceNewIssuesDeviceCodeAndTopupCreditsExistingDeviceUser(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	group := createBotSalesGroup(t, client, "bot-balance-topup", service.SubscriptionTypeNone)
+	pkg := client.BalancePackage.Create().
+		SetCode("standard_20").
+		SetLabel("Standard 20").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(group.ID).
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	newResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-new-device",
+		Operation:          service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "telegram:device-owner",
+			Email:          "bot-device-owner@example.test",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways, IssueDeviceCode: true},
+	})
+	require.NoError(t, err)
+	require.Regexp(t, `^DLG-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$`, newResp.Delivery.DeviceCode)
+	require.Equal(t, newResp.Delivery.DeviceCode, newResp.DeviceCode)
+
+	device := client.UserDevice.Query().OnlyX(ctx)
+	require.NotNil(t, device.DeviceCode)
+	require.Equal(t, newResp.Delivery.DeviceCode, *device.DeviceCode)
+	require.Equal(t, newResp.Buyer.UserID, device.UserID)
+	require.Equal(t, float64(20), client.User.GetX(ctx, newResp.Buyer.UserID).Balance)
+
+	topupResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-topup-device",
+		Operation:          service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		DeviceCode:         strings.ToLower(newResp.Delivery.DeviceCode),
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "telegram:topup-payer",
+			Email:          "bot-topup-payer@example.test",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyIfMissing},
+	})
+	require.NoError(t, err)
+	require.Equal(t, service.BotSalesFulfillmentOperationTopup, topupResp.Operation)
+	require.Equal(t, newResp.Delivery.DeviceCode, topupResp.Delivery.DeviceCode)
+	require.Equal(t, newResp.Delivery.DeviceCode, topupResp.DeviceCode)
+	require.Equal(t, newResp.Buyer.UserID, topupResp.Buyer.UserID)
+	require.Equal(t, float64(40), client.User.GetX(ctx, newResp.Buyer.UserID).Balance)
+}
+
 func TestBotSalesFulfillmentDoesNotAcceptTargetGroupInput(t *testing.T) {
 	ctx := context.Background()
 	client, db := newBotSalesFulfillmentEntClient(t)
