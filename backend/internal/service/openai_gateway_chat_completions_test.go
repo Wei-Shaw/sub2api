@@ -97,6 +97,47 @@ func TestNormalizeResponsesBodyServiceTier(t *testing.T) {
 	require.False(t, gjson.GetBytes(body, "service_tier").Exists())
 }
 
+func TestForwardAsChatCompletions_CodexCLIOnlyRejectsNonOfficialClient(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.1","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "curl/8.7.1")
+
+	upstream := &httpUpstreamRecorder{}
+	svc := &OpenAIGatewayService{
+		httpUpstream: upstream,
+		codexDetector: &stubCodexRestrictionDetector{result: CodexClientRestrictionDetectionResult{
+			Enabled: true,
+			Matched: false,
+			Reason:  CodexClientRestrictionReasonNotMatchedUA,
+		}},
+	}
+	account := &Account{
+		ID:          1,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+		},
+		Extra: map[string]any{"codex_cli_only": true},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Equal(t, "forbidden_error", gjson.Get(rec.Body.String(), "error.type").String())
+	require.Equal(t, "This account only allows Codex official clients", gjson.Get(rec.Body.String(), "error.message").String())
+	require.Empty(t, upstream.lastBody)
+}
+
 func TestForwardAsChatCompletions_UnknownModelDoesNotUseDefaultMappedModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
