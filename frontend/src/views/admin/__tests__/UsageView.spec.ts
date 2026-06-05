@@ -3,7 +3,7 @@ import { flushPromises, mount REDACTED from '@vue/test-utils'
 
 import UsageView from '../UsageView.vue'
 
-const { list, getStats, getSnapshotV2, getById, getModelStats REDACTED = vi.hoisted(() => {
+const { list, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs REDACTED = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),
     setItem: vi.fn(),
@@ -16,6 +16,7 @@ const { list, getStats, getSnapshotV2, getById, getModelStats REDACTED = vi.hois
     getSnapshotV2: vi.fn(),
     getById: vi.fn(),
     getModelStats: vi.fn(),
+    listErrorLogs: vi.fn(),
   REDACTED
 REDACTED)
 
@@ -53,6 +54,10 @@ vi.mock('@/api/admin/usage', () => ({
   adminUsageAPI: {
     list: vi.fn(),
   REDACTED,
+REDACTED))
+
+vi.mock('@/api/admin/ops', () => ({
+  listErrorLogs,
 REDACTED))
 
 vi.mock('@/stores/app', () => ({
@@ -287,5 +292,63 @@ describe('admin UsageView handleUserClick', () => {
     await flushPromises()
 
     expect(getById).toHaveBeenCalledWith(2, true)
+  REDACTED)
+REDACTED)
+
+describe('admin UsageView errors tab filter forwarding', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    list.mockReset()
+    getStats.mockReset()
+    getSnapshotV2.mockReset()
+    getModelStats.mockReset()
+    listErrorLogs.mockReset()
+
+    list.mockResolvedValue({ items: [], total: 0, pages: 0 REDACTED)
+    getStats.mockResolvedValue({
+      total_requests: 0, total_input_tokens: 0, total_output_tokens: 0,
+      total_cache_tokens: 0, total_tokens: 0, total_cost: 0, total_actual_cost: 0, average_duration_ms: 0,
+    REDACTED)
+    getSnapshotV2.mockResolvedValue({ trend: [], models: [], groups: [] REDACTED)
+    getModelStats.mockResolvedValue({ models: [] REDACTED)
+    listErrorLogs.mockResolvedValue({ items: [], total: 0, pages: 0 REDACTED)
+  REDACTED)
+
+  afterEach(() => {
+    vi.useRealTimers()
+  REDACTED)
+
+  it('forwards model/account_id/group_id to listErrorLogs on the errors tab', async () => {
+    const wrapper = mount(UsageView, {
+      global: { stubs: {
+        AppLayout: AppLayoutStub, UsageStatsCards: true, UsageFilters: UsageFiltersStub,
+        UsageTable: true, UsageExportProgress: true, UsageCleanupDialog: true,
+        UserBalanceHistoryModal: true, AuditLogModal: true, Pagination: true, Select: true,
+        DateRangePicker: true, Icon: true, TokenUsageTrend: true,
+        ModelDistributionChart: true, GroupDistributionChart: true, EndpointDistributionChart: true,
+        OpsErrorLogTable: true, OpsErrorDetailModal: true,
+      REDACTED REDACTED,
+    REDACTED)
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+
+    // 模拟用户在过滤器里选择了模型/账户/分组
+    const vm = wrapper.vm as any
+    vm.filters.model = 'gpt-5.3-codex'
+    vm.filters.account_id = 7
+    vm.filters.group_id = 3
+    await flushPromises()
+
+    // 切换到「错误请求」标签（第二个 .tab 按钮）触发 loadAdminErrors
+    const tabs = wrapper.findAll('button.tab')
+    await tabs[1].trigger('click')
+    await flushPromises()
+
+    expect(listErrorLogs).toHaveBeenCalledWith(expect.objectContaining({
+      view: 'all',
+      model: 'gpt-5.3-codex',
+      account_id: 7,
+      group_id: 3,
+    REDACTED))
   REDACTED)
 REDACTED)

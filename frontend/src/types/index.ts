@@ -234,6 +234,7 @@ export interface PublicSettings {
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
   affiliate_enabled: boolean
+  allow_user_view_error_requests?: boolean
 REDACTED
 
 export interface AuthResponse {
@@ -1225,7 +1226,7 @@ export interface UsageLog {
   request_type?: UsageRequestType
   stream: boolean
   openai_ws_mode?: boolean
-  duration_ms: number
+  duration_ms: number | null
   first_token_ms: number | null
 
   // 图片生成字段
@@ -1591,6 +1592,36 @@ export interface ExtendSubscriptionRequest {
 REDACTED
 
 // ==================== Query Parameters ====================
+
+export interface UserErrorRequest {
+  id: number
+  created_at: string
+  model: string
+  inbound_endpoint: string
+  status_code: number
+  category: string
+  platform: string
+  message: string
+  key_name: string
+  key_deleted: boolean
+REDACTED
+
+export interface UserErrorRequestDetail extends UserErrorRequest {
+  error_body: string
+  upstream_status_code?: number
+REDACTED
+
+export interface UserErrorListParams {
+  page?: number
+  page_size?: number
+  start_date?: string
+  end_date?: string
+  timezone?: string
+  model?: string
+  status_code?: number
+  category?: string
+  api_key_id?: number
+REDACTED
 
 export interface UsageQueryParams {
   page?: number

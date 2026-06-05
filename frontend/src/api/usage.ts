@@ -10,7 +10,10 @@ import type {
   UsageStatsResponse,
   PaginatedResponse,
   TrendDataPoint,
-  ModelStat
+  ModelStat,
+  UserErrorRequest,
+  UserErrorRequestDetail,
+  UserErrorListParams
 REDACTED from '@/types'
 
 // ==================== Dashboard Types ====================
@@ -304,6 +307,22 @@ export async function getDashboardApiKeysUsage(
   return data
 REDACTED
 
+export async function listMyErrorRequests(
+  params: UserErrorListParams,
+  config: { signal?: AbortSignal REDACTED = {REDACTED
+): Promise<PaginatedResponse<UserErrorRequest>> {
+  const { data REDACTED = await apiClient.get<PaginatedResponse<UserErrorRequest>>('/usage/errors', {
+    ...config,
+    params
+  REDACTED)
+  return data
+REDACTED
+
+export async function getMyErrorDetail(id: number): Promise<UserErrorRequestDetail> {
+  const { data REDACTED = await apiClient.get<UserErrorRequestDetail>(`/usage/errors/${idREDACTED`)
+  return data
+REDACTED
+
 export const usageAPI = {
   list,
   query,
@@ -316,7 +335,10 @@ export const usageAPI = {
   getDashboardTrend,
   getDashboardModels,
   getMyApiKeyDailyUsage,
-  getDashboardApiKeysUsage
+  getDashboardApiKeysUsage,
+  // Error requests
+  listMyErrorRequests,
+  getMyErrorDetail,
 REDACTED
 
 export default usageAPI

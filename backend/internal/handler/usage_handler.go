@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -18,15 +19,24 @@ import (
 
 // UsageHandler handles usage-related requests
 type UsageHandler struct {
-	usageService  *service.UsageService
-	apiKeyService *service.APIKeyService
+	usageService   *service.UsageService
+	apiKeyService  *service.APIKeyService
+	opsService     *service.OpsService
+	settingService *service.SettingService
 REDACTED
 
 // NewUsageHandler creates a new UsageHandler
-func NewUsageHandler(usageService *service.UsageService, apiKeyService *service.APIKeyService) *UsageHandler {
+func NewUsageHandler(
+	usageService *service.UsageService,
+	apiKeyService *service.APIKeyService,
+	opsService *service.OpsService,
+	settingService *service.SettingService,
+) *UsageHandler {
 	return &UsageHandler{
-		usageService:  usageService,
-		apiKeyService: apiKeyService,
+		usageService:   usageService,
+		apiKeyService:  apiKeyService,
+		opsService:     opsService,
+		settingService: settingService,
 REDACTED
 REDACTED
 
@@ -147,6 +157,117 @@ REDACTED
 		out = append(out, *dto.UsageLogFromService(&records[i]))
 REDACTED
 	response.Paginated(c, out, result.Total, page, pageSize)
+REDACTED
+
+// ListErrors handles listing the current user's failed requests (redacted).
+// GET /api/v1/usage/errors
+func (h *UsageHandler) ListErrors(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+REDACTED
+
+	// Visibility switch (fail-closed). Defense-in-depth: frontend also hides the tab.
+	if h.settingService == nil || !h.settingService.IsUserErrorViewAllowed(c.Request.Context()) {
+		response.Forbidden(c, "Error requests view is disabled")
+		return
+REDACTED
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+REDACTED
+
+	page, pageSize := response.ParsePagination(c)
+	if pageSize > 100 {
+		pageSize = 100
+REDACTED
+
+	filter := &service.OpsErrorLogFilter{Page: page, PageSize: pageSizeREDACTED
+
+	// Date range (half-open [start, end)), reuse usage-list semantics.
+	userTZ := c.Query("timezone")
+	if startDateStr := c.Query("start_date"); startDateStr != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			return
+	REDACTED
+		filter.StartTime = &t
+REDACTED
+	if endDateStr := c.Query("end_date"); endDateStr != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			return
+	REDACTED
+		t = t.AddDate(0, 0, 1)
+		filter.EndTime = &t
+REDACTED
+
+	filter.Model = strings.TrimSpace(c.Query("model"))
+
+	if k := strings.TrimSpace(c.Query("api_key_id")); k != "" {
+		n, err := strconv.ParseInt(k, 10, 64)
+		if err != nil || n < 0 {
+			response.BadRequest(c, "Invalid api_key_id")
+			return
+	REDACTED
+		if n > 0 {
+			filter.APIKeyID = &n
+	REDACTED
+REDACTED
+
+	if sc := strings.TrimSpace(c.Query("status_code")); sc != "" {
+		n, err := strconv.Atoi(sc)
+		if err != nil || n < 0 {
+			response.BadRequest(c, "Invalid status_code")
+			return
+	REDACTED
+		filter.StatusCodes = []int{nREDACTED
+REDACTED
+
+	if cat := strings.TrimSpace(c.Query("category")); cat != "" {
+		phases, types := service.CategoryToFilter(cat)
+		filter.ErrorPhasesAny = phases
+		filter.ErrorTypesAny = types
+REDACTED
+
+	result, err := h.opsService.ListUserErrorRequests(c.Request.Context(), subject.UserID, filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Paginated(c, result.Items, int64(result.Total), result.Page, result.PageSize)
+REDACTED
+
+// GetErrorDetail handles fetching one of the current user's failed-request details (redacted).
+// GET /api/v1/usage/errors/:id
+func (h *UsageHandler) GetErrorDetail(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+REDACTED
+	if h.settingService == nil || !h.settingService.IsUserErrorViewAllowed(c.Request.Context()) {
+		response.Forbidden(c, "Error requests view is disabled")
+		return
+REDACTED
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+REDACTED
+	id, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid id")
+		return
+REDACTED
+	detail, err := h.opsService.GetUserErrorRequestDetail(c.Request.Context(), subject.UserID, id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, detail)
 REDACTED
 
 // GetByID handles getting a single usage record

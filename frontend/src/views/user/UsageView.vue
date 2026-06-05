@@ -149,11 +149,27 @@
       </template>
 
       <template #table>
-        <DataTable
+        <!-- Tab 切换栏 -->
+        <div v-if="errorViewEnabled" class="mb-0 flex gap-2 border-b border-gray-200 px-4 pt-3 dark:border-dark-700">
+          <button class="tab" :class="{ 'tab-active': activeTab === 'usage' REDACTED" @click="activeTab = 'usage'">
+            {{ t('usage.tabs.usage') REDACTEDREDACTED
+          </button>
+          <button class="tab" :class="{ 'tab-active': activeTab === 'errors' REDACTED" @click="switchToErrors">
+            {{ t('usage.tabs.errors') REDACTEDREDACTED
+          </button>
+        </div>
+
+        <!-- 用量明细表 -->
+        <!-- flex 链让 DataTable 根 .table-wrapper(flex:1)拿到有界高度以启用内部滚动。
+             虚拟化器测高 race 导致的概率空白,已在 DataTable 内用「就绪门控 + initialRect 兜底」根治。 -->
+        <div v-show="activeTab === 'usage'" class="flex min-h-0 flex-1 flex-col">
+          <DataTable
           :columns="columns"
           :data="usageLogs"
           :loading="loading"
           :server-side-sort="true"
+          :estimate-row-height="88"
+          :overscan="12"
           default-sort-key="created_at"
           default-sort-order="desc"
           @sort="handleSort"
@@ -224,14 +240,14 @@
                   <div class="inline-flex items-center gap-1">
                     <Icon name="arrowDown" size="sm" class="text-emerald-500" />
                     <span class="font-medium text-gray-900 dark:text-white">{{
-                      row.input_tokens.toLocaleString()
+                      (row.input_tokens ?? 0).toLocaleString()
                     REDACTEDREDACTED</span>
                   </div>
                   <!-- Output -->
                   <div class="inline-flex items-center gap-1">
                     <Icon name="arrowUp" size="sm" class="text-violet-500" />
                     <span class="font-medium text-gray-900 dark:text-white">{{
-                      row.output_tokens.toLocaleString()
+                      (row.output_tokens ?? 0).toLocaleString()
                     REDACTEDREDACTED</span>
                   </div>
                 </div>
@@ -280,7 +296,7 @@
           <template #cell-cost="{ row REDACTED">
             <div class="flex items-center gap-1.5 text-sm">
               <span class="font-medium text-green-600 dark:text-green-400">
-                ${{ row.actual_cost.toFixed(6) REDACTEDREDACTED
+                ${{ (row.actual_cost ?? 0).toFixed(6) REDACTEDREDACTED
               </span>
               <!-- Cost Detail Tooltip -->
               <div
@@ -332,11 +348,27 @@
             <EmptyState :message="t('usage.noRecords')" />
           </template>
         </DataTable>
+        </div>
+
+        <!-- 错误请求表 -->
+        <div v-if="errorViewEnabled" v-show="activeTab === 'errors'" class="flex min-h-0 flex-1 flex-col">
+          <UserErrorRequestsTable
+            :rows="errorRows"
+            :total="errorTotal"
+            :loading="errorLoading"
+            :page="errorPage"
+            :page-size="errorPageSize"
+            :api-keys="apiKeys"
+            @filter="onErrorFilter"
+            @update:page="onErrorPage"
+            @update:pageSize="onErrorPageSize"
+          />
+        </div>
       </template>
 
       <template #pagination>
         <Pagination
-          v-if="pagination.total > 0"
+          v-if="pagination.total > 0 && activeTab === 'usage'"
           :page="pagination.page"
           :total="pagination.total"
           :page-size="pagination.page_size"
@@ -550,7 +582,8 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse REDACTED from '@/types'
+import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
+import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse, UserErrorRequest REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import { formatDateTime, formatReasoningEffort REDACTED from '@/utils/format'
 import { getPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
@@ -653,6 +686,12 @@ REDACTED) => {
   filters.value.start_date = range.startDate
   filters.value.end_date = range.endDate
   applyFilters()
+  errorPage.value = 1
+  if (activeTab.value === 'errors') {
+    loadErrors()
+  REDACTED else {
+    errorRows.value = []  // 失效，下次切到 errors tab 时按新日期重新加载
+  REDACTED
 REDACTED
 
 const pagination = reactive({
@@ -666,7 +705,8 @@ const sortState = reactive({
   sort_order: 'desc' as 'asc' | 'desc'
 REDACTED)
 
-const formatDuration = (ms: number): string => {
+const formatDuration = (ms: number | null | undefined): string => {
+  if (ms == null) return '-'
   if (ms < 1000) return `${ms.toFixed(0)REDACTEDms`
   return `${(ms / 1000).toFixed(2)REDACTEDs`
 REDACTED
@@ -926,8 +966,8 @@ const exportToCSV = async () => {
         log.cache_read_tokens,
         log.cache_creation_tokens,
         log.rate_multiplier,
-        log.actual_cost.toFixed(8),
-        log.total_cost.toFixed(8),
+        (log.actual_cost ?? 0).toFixed(8),
+        (log.total_cost ?? 0).toFixed(8),
         log.first_token_ms ?? '',
         log.duration_ms
       ].map(escapeCSVValue)
@@ -986,6 +1026,52 @@ REDACTED
 const hideTokenTooltip = () => {
   tokenTooltipVisible.value = false
   tokenTooltipData.value = null
+REDACTED
+
+// ── Error Requests Tab ──────────────────────────────────────────────────────
+const activeTab = ref<'usage' | 'errors'>('usage')
+const errorViewEnabled = computed(() => appStore.cachedPublicSettings?.allow_user_view_error_requests ?? false)
+
+const errorRows = ref<UserErrorRequest[]>([])
+const errorLoading = ref(false)
+const errorPage = ref(1)
+const errorPageSize = ref(20)
+const errorTotal = ref(0)
+const errorFilter = ref<{ model: string; category: string; api_key_id: number | null REDACTED>({ model: '', category: '', api_key_id: null REDACTED)
+
+const loadErrors = async () => {
+  errorLoading.value = true
+  try {
+    const resp = await usageAPI.listMyErrorRequests({
+      page: errorPage.value,
+      page_size: errorPageSize.value,
+      start_date: startDate.value,
+      end_date: endDate.value,
+      model: errorFilter.value.model || undefined,
+      category: errorFilter.value.category || undefined,
+      api_key_id: errorFilter.value.api_key_id ?? undefined,
+    REDACTED)
+    errorRows.value = resp.items
+    errorTotal.value = resp.total
+  REDACTED catch (error) {
+    console.error('[UsageView] loadErrors failed:', error)
+    appStore.showError(t('usage.errors.failedToLoad'))
+  REDACTED finally {
+    errorLoading.value = false
+  REDACTED
+REDACTED
+
+const onErrorFilter = (f: { model: string; category: string; api_key_id: number | null REDACTED) => {
+  errorFilter.value = f
+  errorPage.value = 1
+  loadErrors()
+REDACTED
+const onErrorPage = (p: number) => { errorPage.value = p; loadErrors() REDACTED
+const onErrorPageSize = (s: number) => { errorPageSize.value = s; errorPage.value = 1; loadErrors() REDACTED
+
+const switchToErrors = () => {
+  activeTab.value = 'errors'
+  if (errorRows.value.length === 0) loadErrors()
 REDACTED
 
 onMounted(() => {

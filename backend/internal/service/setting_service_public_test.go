@@ -91,6 +91,19 @@ REDACTED
 	require.True(t, settings.ForceEmailOnThirdPartySignup)
 REDACTED
 
+func TestSettingService_GetPublicSettings_ExposesAllowUserViewErrorRequests(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyAllowUserViewErrorRequests: "true",
+	REDACTED,
+REDACTED
+	svc := NewSettingService(repo, &config.Config{REDACTED)
+
+	settings, err := svc.GetPublicSettings(context.Background())
+REDACTED
+	require.True(t, settings.AllowUserViewErrorRequests)
+REDACTED
+
 func TestSettingService_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {
 	svc := NewSettingService(&settingPublicRepoStub{
 		values: map[string]string{

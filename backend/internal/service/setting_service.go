@@ -761,6 +761,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
+		SettingKeyAllowUserViewErrorRequests,
 REDACTED
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -873,6 +874,8 @@ REDACTED
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
+
+		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
 REDACTED, nil
 REDACTED
 
@@ -948,6 +951,17 @@ REDACTED
 	return AvailableChannelsRuntime{
 		Enabled: vals[SettingKeyAvailableChannelsEnabled] == "true",
 REDACTED
+REDACTED
+
+// IsUserErrorViewAllowed reads the user-facing error-requests visibility switch
+// directly from the settings store. Fail-closed: on error returns false (opt-in default).
+func (s *SettingService) IsUserErrorViewAllowed(ctx context.Context) bool {
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyAllowUserViewErrorRequestsREDACTED)
+	if err != nil {
+		slog.Warn("failed to get allow_user_view_error_requests setting, defaulting to false", "error", err)
+		return false
+REDACTED
+	return vals[SettingKeyAllowUserViewErrorRequests] == "true"
 REDACTED
 
 // GetAntigravityUserAgentVersion 返回 Antigravity 上游请求使用的版本号。
@@ -1175,6 +1189,7 @@ type PublicSettingsInjectionPayload struct {
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
+	AllowUserViewErrorRequests           bool `json:"allow_user_view_error_requests"`
 REDACTED
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -1237,6 +1252,7 @@ REDACTED
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
+		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
 REDACTED, nil
 REDACTED
 
@@ -1923,6 +1939,8 @@ REDACTED
 	REDACTED
 		updates[SettingKeyDefaultPlatformQuotas] = string(blob)
 REDACTED
+
+	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
 
 	return updates, nil
 REDACTED
@@ -2816,6 +2834,8 @@ REDACTED
 		SettingPaymentVisibleMethodAlipayEnabled:     "false",
 		SettingPaymentVisibleMethodWxpayEnabled:      "false",
 		openAIAdvancedSchedulerSettingKey:            "false",
+
+		SettingKeyAllowUserViewErrorRequests: "false",
 REDACTED
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -3372,6 +3392,8 @@ REDACTED
 			result.DefaultPlatformQuotas = parsed
 	REDACTED
 REDACTED
+
+	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
 
 	return result
 REDACTED
