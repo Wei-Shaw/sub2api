@@ -13,6 +13,10 @@ export interface ExpandAccount {
   login_status: number
   device_id?: string
   api_key?: string
+  email_pwd?: string
+  help_email?: string
+  help_email_url?: string
+  channel?: string
   created_at: string
   updated_at: string
 }
@@ -24,6 +28,10 @@ export interface CreateExpandAccountRequest {
   country: string
   session_key: string
   used?: boolean
+  email_pwd?: string
+  help_email?: string
+  help_email_url?: string
+  channel?: string
 }
 
 export interface UpdateExpandAccountRequest extends CreateExpandAccountRequest {}

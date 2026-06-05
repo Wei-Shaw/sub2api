@@ -68,6 +68,32 @@
             </div>
           </template>
 
+          <template #cell-email_pwd="{ value }">
+            <span class="text-sm text-gray-700 dark:text-gray-200">{{ value || '-' }}</span>
+          </template>
+
+          <template #cell-help_email="{ value }">
+            <span class="text-sm text-gray-700 dark:text-gray-200">{{ value || '-' }}</span>
+          </template>
+
+          <template #cell-help_email_url="{ value }">
+            <a
+              v-if="value"
+              :href="value"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-sm text-primary-600 hover:underline dark:text-primary-400"
+              :title="value"
+            >
+              <span class="inline-block max-w-[220px] truncate align-middle">{{ value }}</span>
+            </a>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
+
+          <template #cell-channel="{ value }">
+            <span class="text-sm text-gray-700 dark:text-gray-200">{{ value || '-' }}</span>
+          </template>
+
           <template #cell-used="{ value }">
             <span
               :class="[
@@ -184,6 +210,22 @@
           <label class="input-label">{{ t('admin.expandAccounts.sessionKey') }}</label>
           <textarea v-model.trim="form.session_key" class="input min-h-[120px] font-mono" />
         </div>
+        <div>
+          <label class="input-label">{{ t('admin.expandAccounts.emailPwd') }}</label>
+          <input v-model.trim="form.email_pwd" class="input" type="text" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.expandAccounts.helpEmail') }}</label>
+          <input v-model.trim="form.help_email" class="input" type="text" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.expandAccounts.helpEmailUrl') }}</label>
+          <input v-model.trim="form.help_email_url" class="input" type="text" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.expandAccounts.channel') }}</label>
+          <input v-model.trim="form.channel" class="input" type="text" />
+        </div>
       </form>
 
       <template #footer>
@@ -261,7 +303,11 @@ const form = reactive<CreateExpandAccountRequest>({
   platform: '',
   subscription_type: '',
   country: '',
-  session_key: ''
+  session_key: '',
+  email_pwd: '',
+  help_email: '',
+  help_email_url: '',
+  channel: ''
 })
 
 const columns: Column[] = [
@@ -270,6 +316,10 @@ const columns: Column[] = [
   { key: 'subscription_type', label: t('admin.expandAccounts.subscriptionType') },
   { key: 'country', label: t('admin.expandAccounts.country') },
   { key: 'session_key', label: t('admin.expandAccounts.sessionKey') },
+  { key: 'email_pwd', label: t('admin.expandAccounts.emailPwd') },
+  { key: 'help_email', label: t('admin.expandAccounts.helpEmail') },
+  { key: 'help_email_url', label: t('admin.expandAccounts.helpEmailUrl') },
+  { key: 'channel', label: t('admin.expandAccounts.channel') },
   { key: 'used', label: t('common.status') },
   { key: 'login_status', label: t('admin.expandAccounts.loginStatus') },
   { key: 'account_type', label: t('admin.expandAccounts.accountType') },
@@ -371,6 +421,10 @@ function resetForm() {
   form.subscription_type = ''
   form.country = ''
   form.session_key = ''
+  form.email_pwd = ''
+  form.help_email = ''
+  form.help_email_url = ''
+  form.channel = ''
 }
 
 function openCreate() {
@@ -386,6 +440,10 @@ function openEdit(item: ExpandAccount) {
   form.subscription_type = item.subscription_type
   form.country = item.country
   form.session_key = item.session_key
+  form.email_pwd = item.email_pwd ?? ''
+  form.help_email = item.help_email ?? ''
+  form.help_email_url = item.help_email_url ?? ''
+  form.channel = item.channel ?? ''
   showFormDialog.value = true
 }
 

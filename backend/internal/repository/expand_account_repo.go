@@ -45,7 +45,7 @@ func (r *expandAccountRepository) ListExpandAccounts(ctx context.Context, page, 
 	offset := (page - 1) * pageSize
 	listArgs := append(append([]any{}, args...), pageSize, offset)
 	query := `
-SELECT id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at
+SELECT id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, email_pwd, help_email, help_email_url, channel, created_at, updated_at
 FROM expand_accounts` + whereClause + `
 ORDER BY created_at DESC, id DESC
 LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
@@ -73,7 +73,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 
 func (r *expandAccountRepository) GetExpandAccount(ctx context.Context, id int64) (*service.ExpandAccount, error) {
 	const query = `
-SELECT id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at
+SELECT id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, email_pwd, help_email, help_email_url, channel, created_at, updated_at
 FROM expand_accounts
 WHERE id = $1`
 
@@ -100,9 +100,9 @@ func (r *expandAccountRepository) CreateExpandAccount(ctx context.Context, input
 	}
 
 	const query = `
-INSERT INTO expand_accounts (email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used)
-VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, false))
-RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at`
+INSERT INTO expand_accounts (email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, email_pwd, help_email, help_email_url, channel)
+VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, false), $9, $10, $11, $12)
+RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, email_pwd, help_email, help_email_url, channel, created_at, updated_at`
 
 	item, err := scanExpandAccount(tx.QueryRowContext(
 		ctx,
@@ -115,6 +115,10 @@ RETURNING id, email, platform, subscription_type, country, session_key, proxy_id
 		proxyID,
 		proxyInfoJSON,
 		input.Used,
+		nullableExpandString(input.EmailPwd),
+		nullableExpandString(input.HelpEmail),
+		nullableExpandString(input.HelpEmailURL),
+		nullableExpandString(input.Channel),
 	))
 	if err != nil {
 		return nil, translatePersistenceError(err, nil, errExpandAccountExists)
@@ -148,9 +152,13 @@ SET
 	proxy_id = COALESCE($7, proxy_id),
 	proxy_info = COALESCE($8::jsonb, proxy_info),
 	used = COALESCE($9, used),
+	email_pwd = $10,
+	help_email = $11,
+	help_email_url = $12,
+	channel = $13,
 	updated_at = NOW()
 WHERE id = $1
-RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at`
+RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, email_pwd, help_email, help_email_url, channel, created_at, updated_at`
 
 	item, err := scanExpandAccount(tx.QueryRowContext(
 		ctx,
@@ -164,6 +172,10 @@ RETURNING id, email, platform, subscription_type, country, session_key, proxy_id
 		proxyID,
 		proxyInfoJSON,
 		input.Used,
+		nullableExpandString(input.EmailPwd),
+		nullableExpandString(input.HelpEmail),
+		nullableExpandString(input.HelpEmailURL),
+		nullableExpandString(input.Channel),
 	))
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -197,7 +209,7 @@ func (r *expandAccountRepository) MarkExpandAccountUsed(ctx context.Context, id 
 UPDATE expand_accounts
 SET used = true, updated_at = NOW()
 WHERE id = $1 AND used = false
-RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at`
+RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, email_pwd, help_email, help_email_url, channel, created_at, updated_at`
 
 	item, err := scanExpandAccount(r.db.QueryRowContext(ctx, query, id))
 	if err == nil {
@@ -232,7 +244,7 @@ UPDATE expand_accounts ea
 SET used = true, updated_at = NOW()
 FROM picked
 WHERE ea.id = picked.id
-RETURNING ea.id, ea.email, ea.platform, ea.subscription_type, ea.country, ea.session_key, ea.proxy_id, ea.proxy_info, ea.used, ea.account_id, ea.login_status, ea.device_id, ea.api_key, ea.created_at, ea.updated_at`
+RETURNING ea.id, ea.email, ea.platform, ea.subscription_type, ea.country, ea.session_key, ea.proxy_id, ea.proxy_info, ea.used, ea.account_id, ea.login_status, ea.device_id, ea.api_key, ea.email_pwd, ea.help_email, ea.help_email_url, ea.channel, ea.created_at, ea.updated_at`
 
 	item, err := scanExpandAccount(r.db.QueryRowContext(ctx, query, strings.TrimSpace(platform)))
 	if err == nil {
@@ -260,7 +272,7 @@ SET login_status = $2,
     api_key = $4,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, created_at, updated_at`
+RETURNING id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, email_pwd, help_email, help_email_url, channel, created_at, updated_at`
 
 	var (
 		deviceID any
@@ -291,6 +303,10 @@ func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, er
 		accountID     sql.NullInt64
 		deviceID      sql.NullString
 		apiKey        sql.NullString
+		emailPwd      sql.NullString
+		helpEmail     sql.NullString
+		helpEmailURL  sql.NullString
+		channel       sql.NullString
 	)
 	err := scanner.Scan(
 		&item.ID,
@@ -306,6 +322,10 @@ func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, er
 		&item.LoginStatus,
 		&deviceID,
 		&apiKey,
+		&emailPwd,
+		&helpEmail,
+		&helpEmailURL,
+		&channel,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
@@ -330,6 +350,18 @@ func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, er
 	}
 	if apiKey.Valid {
 		item.APIKey = apiKey.String
+	}
+	if emailPwd.Valid {
+		item.EmailPwd = emailPwd.String
+	}
+	if helpEmail.Valid {
+		item.HelpEmail = helpEmail.String
+	}
+	if helpEmailURL.Valid {
+		item.HelpEmailURL = helpEmailURL.String
+	}
+	if channel.Valid {
+		item.Channel = channel.String
 	}
 	return &item, nil
 }
@@ -442,6 +474,13 @@ func expandAccountProxyLockHash(key string) int64 {
 	hasher := fnv.New64a()
 	_, _ = hasher.Write([]byte(key))
 	return int64(hasher.Sum64())
+}
+
+func nullableExpandString(v string) any {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	return v
 }
 
 func buildExpandAccountListWhere(filters service.ExpandAccountListFilters) (string, []any) {

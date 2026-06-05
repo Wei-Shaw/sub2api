@@ -18,7 +18,8 @@ func TestGetAndMarkExpandAccountByPlatform(t *testing.T) {
 		WithArgs("Anthropic").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "email", "platform", "subscription_type", "country", "session_key",
-			"proxy_id", "proxy_info", "used", "account_id", "login_status", "device_id", "api_key", "created_at", "updated_at",
+			"proxy_id", "proxy_info", "used", "account_id", "login_status", "device_id", "api_key",
+			"email_pwd", "help_email", "help_email_url", "channel", "created_at", "updated_at",
 		}).AddRow(
 			int64(3),
 			"test1@example.com",
@@ -31,6 +32,10 @@ func TestGetAndMarkExpandAccountByPlatform(t *testing.T) {
 			true,
 			nil,
 			int64(0),
+			nil,
+			nil,
+			nil,
+			nil,
 			nil,
 			nil,
 			now,

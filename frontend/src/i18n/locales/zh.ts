@@ -4198,7 +4198,11 @@ export default {
       loginStatusFailed: '上号失败',
       accountType: '账号类型',
       accountTypeOld: '老号',
-      accountTypeNew: '新号'
+      accountTypeNew: '新号',
+      emailPwd: '邮箱密码',
+      helpEmail: '辅助邮箱',
+      helpEmailUrl: '辅助邮箱链接',
+      channel: '渠道'
     },
 
     // Scheduled Tests

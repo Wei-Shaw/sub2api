@@ -4107,7 +4107,11 @@ export default {
       loginStatusFailed: 'Login Failed',
       accountType: 'Account Type',
       accountTypeOld: 'Existing',
-      accountTypeNew: 'New'
+      accountTypeNew: 'New',
+      emailPwd: 'Email Password',
+      helpEmail: 'Recovery Email',
+      helpEmailUrl: 'Recovery Email URL',
+      channel: 'Channel'
     },
 
     // Scheduled Tests

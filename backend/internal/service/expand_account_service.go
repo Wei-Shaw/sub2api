@@ -20,6 +20,10 @@ type ExpandAccount struct {
 	LoginStatus      int64                  `json:"login_status"`
 	DeviceID         string                 `json:"device_id,omitempty"`
 	APIKey           string                 `json:"api_key,omitempty"`
+	EmailPwd         string                 `json:"email_pwd,omitempty"`
+	HelpEmail        string                 `json:"help_email,omitempty"`
+	HelpEmailURL     string                 `json:"help_email_url,omitempty"`
+	Channel          string                 `json:"channel,omitempty"`
 	CreatedAt        time.Time              `json:"created_at"`
 	UpdatedAt        time.Time              `json:"updated_at"`
 }
@@ -47,6 +51,10 @@ type ExpandAccountCreateInput struct {
 	SessionKey       string
 	ProxyInfo        *ProxyInfo
 	Used             *bool
+	EmailPwd         string
+	HelpEmail        string
+	HelpEmailURL     string
+	Channel          string
 }
 
 type ExpandAccountUpdateInput struct {
@@ -57,6 +65,10 @@ type ExpandAccountUpdateInput struct {
 	SessionKey       string
 	ProxyInfo        *ProxyInfo
 	Used             *bool
+	EmailPwd         string
+	HelpEmail        string
+	HelpEmailURL     string
+	Channel          string
 }
 
 type ExpandAccountReportInput struct {

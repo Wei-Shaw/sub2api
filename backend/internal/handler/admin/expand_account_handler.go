@@ -37,6 +37,10 @@ type createExpandAccountRequest struct {
 	SessionKey       string             `json:"session_key" binding:"required"`
 	ProxyInfo        *service.ProxyInfo `json:"proxy_info"`
 	Used             *bool              `json:"used"`
+	EmailPwd         string             `json:"email_pwd"`
+	HelpEmail        string             `json:"help_email"`
+	HelpEmailURL     string             `json:"help_email_url"`
+	Channel          string             `json:"channel"`
 }
 
 type callbackExpandAccountProxyInfoRequest struct {
@@ -79,6 +83,10 @@ type getExpandAccountResponse struct {
 	ProxyInfo        *service.ProxyInfo              `json:"proxy_info,omitempty"`
 	Proxy            *dto.AdminProxyWithAccountCount `json:"proxy,omitempty"`
 	AccountID        *int64                          `json:"account_id,omitempty"`
+	EmailPwd         string                          `json:"email_pwd,omitempty"`
+	HelpEmail        string                          `json:"help_email,omitempty"`
+	HelpEmailURL     string                          `json:"help_email_url,omitempty"`
+	Channel          string                          `json:"channel,omitempty"`
 	CreatedAt        string                          `json:"created_at"`
 	UpdatedAt        string                          `json:"updated_at"`
 }
@@ -91,6 +99,10 @@ type updateExpandAccountRequest struct {
 	SessionKey       string             `json:"session_key" binding:"required"`
 	ProxyInfo        *service.ProxyInfo `json:"proxy_info"`
 	Used             *bool              `json:"used"`
+	EmailPwd         string             `json:"email_pwd"`
+	HelpEmail        string             `json:"help_email"`
+	HelpEmailURL     string             `json:"help_email_url"`
+	Channel          string             `json:"channel"`
 }
 
 func (h *ExpandAccountHandler) createFromRequest(c *gin.Context, req createExpandAccountRequest) {
@@ -102,6 +114,10 @@ func (h *ExpandAccountHandler) createFromRequest(c *gin.Context, req createExpan
 		SessionKey:       strings.TrimSpace(req.SessionKey),
 		ProxyInfo:        req.ProxyInfo,
 		Used:             req.Used,
+		EmailPwd:         strings.TrimSpace(req.EmailPwd),
+		HelpEmail:        strings.TrimSpace(req.HelpEmail),
+		HelpEmailURL:     strings.TrimSpace(req.HelpEmailURL),
+		Channel:          strings.TrimSpace(req.Channel),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -202,6 +218,10 @@ func (h *ExpandAccountHandler) GetByPlatform(c *gin.Context) {
 		ProxyID:          item.ProxyID,
 		ProxyInfo:        item.ProxyInfo,
 		AccountID:        item.AccountID,
+		EmailPwd:         item.EmailPwd,
+		HelpEmail:        item.HelpEmail,
+		HelpEmailURL:     item.HelpEmailURL,
+		Channel:          item.Channel,
 		CreatedAt:        item.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:        item.UpdatedAt.Format(time.RFC3339),
 	}
@@ -240,6 +260,10 @@ func (h *ExpandAccountHandler) Update(c *gin.Context) {
 		SessionKey:       strings.TrimSpace(req.SessionKey),
 		ProxyInfo:        req.ProxyInfo,
 		Used:             req.Used,
+		EmailPwd:         strings.TrimSpace(req.EmailPwd),
+		HelpEmail:        strings.TrimSpace(req.HelpEmail),
+		HelpEmailURL:     strings.TrimSpace(req.HelpEmailURL),
+		Channel:          strings.TrimSpace(req.Channel),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
