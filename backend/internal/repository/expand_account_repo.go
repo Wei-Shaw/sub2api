@@ -451,6 +451,7 @@ func normalizeExpandProxyInfo(input *service.ProxyInfo) (*service.ProxyInfo, err
 		Port:     input.Port,
 		Username: strings.TrimSpace(input.Username),
 		Password: strings.TrimSpace(input.Password),
+		Region:   strings.TrimSpace(input.Region),
 	}
 	if normalized.Protocol == "" || normalized.Host == "" || normalized.Port <= 0 {
 		return nil, errExpandInvalidProxy

@@ -45,10 +45,12 @@ type createExpandAccountRequest struct {
 
 type callbackExpandAccountProxyInfoRequest struct {
 	Protocol string `json:"protocol" binding:"required"`
-	Host     string `json:"host" binding:"required"`
+	Host     string `json:"host"`
+	IP       string `json:"ip"`
 	Port     int    `json:"port" binding:"required,gt=0"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Region   string `json:"region"`
 }
 
 type callbackExpandAccountRequest struct {
@@ -174,6 +176,14 @@ func (h *ExpandAccountHandler) Callback(c *gin.Context) {
 		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_REQUEST", "invalid request body").WithCause(err))
 		return
 	}
+	host := strings.TrimSpace(req.ProxyInfo.Host)
+	if host == "" {
+		host = strings.TrimSpace(req.ProxyInfo.IP)
+	}
+	if host == "" {
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_PROXY_INFO", "proxy_info.host or proxy_info.ip is required"))
+		return
+	}
 	_, err := h.service.CreateExpandAccount(c.Request.Context(), &service.ExpandAccountCreateInput{
 		Email:            strings.TrimSpace(req.Email),
 		Platform:         strings.TrimSpace(req.Platform),
@@ -182,10 +192,11 @@ func (h *ExpandAccountHandler) Callback(c *gin.Context) {
 		SessionKey:       strings.TrimSpace(req.SessionKey),
 		ProxyInfo: &service.ProxyInfo{
 			Protocol: req.ProxyInfo.Protocol,
-			Host:     req.ProxyInfo.Host,
+			Host:     host,
 			Port:     req.ProxyInfo.Port,
 			Username: req.ProxyInfo.Username,
 			Password: req.ProxyInfo.Password,
+			Region:   strings.TrimSpace(req.ProxyInfo.Region),
 		},
 	})
 	if err != nil {
