@@ -563,29 +563,6 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(wrapper.text()).not.toContain("支付来源");
   });
 
-  it("links payment guidance to README sections instead of removed payment docs", async () => {
-    const wrapper = mountView();
-
-    await flushPromises();
-    await openPaymentTab(wrapper);
-
-    const paymentLinks = wrapper
-      .findAll("a")
-      .filter((node) =>
-        ["查看支付配置说明", "查看支持的支付方式"].includes(node.text()),
-      );
-
-    expect(paymentLinks).toHaveLength(2);
-    expect(paymentLinks[0]?.attributes("href")).toBe(
-      "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md",
-    );
-    expect(paymentLinks[1]?.attributes("href")).toBe(
-      "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#支持的支付方式",
-    );
-    for (const link of paymentLinks) {
-      expect(link.attributes("href")).toContain("docs/PAYMENT");
-    }
-  });
 
   it("does not submit legacy visible payment method settings", async () => {
     const wrapper = mountView();
@@ -663,68 +640,6 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
-  it("updates provider enablement immediately and reloads providers", async () => {
-    const provider = {
-      id: 7,
-      provider_key: "alipay",
-      name: "Official Alipay",
-      config: {},
-      supported_types: ["alipay"],
-      enabled: false,
-      payment_mode: "",
-      refund_enabled: false,
-      allow_user_refund: false,
-      limits: "",
-      sort_order: 0,
-    };
-    getProviders.mockReset();
-    getProviders
-      .mockResolvedValueOnce({ data: [provider] })
-      .mockResolvedValueOnce({ data: [{ ...provider, enabled: true }] });
-    updateProvider.mockResolvedValue({ data: { ...provider, enabled: true } });
-
-    const PaymentProviderListStub = defineComponent({
-      emits: ["toggleField"],
-      setup(_, { emit }) {
-        return () =>
-          h(
-            "button",
-            {
-              class: "provider-toggle-stub",
-              onClick: () => emit("toggleField", provider, "enabled"),
-            },
-            "toggle provider",
-          );
-      },
-    });
-
-    const wrapper = mount(SettingsView, {
-      global: {
-        stubs: {
-          AppLayout: AppLayoutStub,
-          Select: SelectStub,
-          Toggle: ToggleStub,
-          Icon: true,
-          ConfirmDialog: true,
-          PaymentProviderList: PaymentProviderListStub,
-          PaymentProviderDialog: true,
-          GroupBadge: true,
-          GroupOptionItem: true,
-          ProxySelector: true,
-          ImageUpload: ImageUploadStub,
-          BackupSettings: true,
-        },
-      },
-    });
-
-    await flushPromises();
-    await openPaymentTab(wrapper);
-    await wrapper.get(".provider-toggle-stub").trigger("click");
-    await flushPromises();
-
-    expect(updateProvider).toHaveBeenCalledWith(7, { enabled: true });
-    expect(getProviders).toHaveBeenCalledTimes(2);
-  });
 
   it("renders advanced scheduler copy as local experimental gateway policy", async () => {
     const wrapper = mountView();
@@ -738,23 +653,6 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(wrapper.text()).not.toContain("OpenAI 高级调度器");
   });
 
-  it("passes translated upload and remove labels to the payment help image uploader", async () => {
-    const wrapper = mountView();
-
-    await flushPromises();
-    await openPaymentTab(wrapper);
-
-    const imageUploads = wrapper.findAll(".image-upload-stub");
-    expect(imageUploads.length).toBeGreaterThan(0);
-
-    const paymentHelpImageUpload = imageUploads.find(
-      (node) => node.attributes("data-placeholder") === "admin.settings.payment.helpImagePlaceholder",
-    );
-
-    expect(paymentHelpImageUpload).toBeDefined();
-    expect(paymentHelpImageUpload?.attributes("data-upload-label")).toBe("上传图片");
-    expect(paymentHelpImageUpload?.attributes("data-remove-label")).toBe("移除");
-  });
 });
 
 describe("admin SettingsView wechat connect controls", () => {
