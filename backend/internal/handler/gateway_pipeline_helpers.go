@@ -212,7 +212,6 @@ func toOpenAIForwardResult(r *gateway.ForwardResult) *service.OpenAIForwardResul
 	}
 }
 
-
 // fromOpenAIForwardResult converts a service.OpenAIForwardResult back to
 // gateway.ForwardResult. Used by WS handlers that receive per-turn results
 // in OpenAI format but need to pass them to the pipeline hooks.
@@ -237,6 +236,7 @@ func fromOpenAIForwardResult(r *service.OpenAIForwardResult) *gateway.ForwardRes
 		ResponseHeaders:     r.ResponseHeaders,
 	}
 }
+
 // resolveChannelMappingFromContext resolves the channel mapping for usage
 // recording. This is extracted as a shared helper because both CC and
 // Responses pipeline record functions need the same logic.

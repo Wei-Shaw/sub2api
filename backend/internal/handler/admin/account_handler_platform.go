@@ -214,7 +214,9 @@ func writePluginSSEEvent(c *gin.Context, data any) {
 		return
 	}
 	_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", jsonBytes)
-	c.Writer.(http.Flusher).Flush()
+	if f, ok := c.Writer.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func sendPluginSSEError(c *gin.Context, msg string) {

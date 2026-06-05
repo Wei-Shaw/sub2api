@@ -832,7 +832,6 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
-
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
