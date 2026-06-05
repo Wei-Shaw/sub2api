@@ -52,7 +52,7 @@ vi.mock('@/composables/useQuotaNotifyState', () => ({
 vi.mock('@sub2api/plugin-sdk', () => {
   const BaseDialog = defineComponent({ name: 'BaseDialog', props: { show: Boolean }, template: '<div />' })
   const ConfirmDialog = defineComponent({ name: 'ConfirmDialog', template: '<div />' })
-  const Select = defineComponent({ name: 'Select', props: { modelValue: {}, options: Array }, emits: ['update:modelValue'], template: '<select />' })
+  const Select = defineComponent({ name: 'SelectInput', props: { modelValue: {}, options: Array }, emits: ['update:modelValue'], template: '<select />' })
   const PlatformIcon = defineComponent({ name: 'PlatformIcon', template: '<span />' })
   return { BaseDialog, ConfirmDialog, Select, PlatformIcon }
 })

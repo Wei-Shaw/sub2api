@@ -5,7 +5,6 @@ package service
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -61,26 +60,13 @@ func TestCalculateCostUnified_TokenMode(t *testing.T) {
 }
 
 func TestCalculateCostUnified_PerRequestMode(t *testing.T) {
-	// Set up a ChannelService with a per-request pricing channel
-	cs := newTestChannelServiceWithCache(t, &channelCache{
-		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{
-			{groupID: 1, model: "claude-sonnet-4"}: {
-				BillingMode:     BillingModePerRequest,
-				PerRequestPrice: testPtrFloat64(0.05),
-			},
-		},
-		channelByGroupID: map[int64]*Channel{
-			1: {ID: 1, Status: StatusActive},
-		},
-		groupPlatform:           map[int64]string{1: ""},
-		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
-		mappingByGroupModel:     map[channelModelKey]string{},
-		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
-		byID:                    map[int64]*Channel{},
-	})
-
 	bs := newTestBillingService()
-	resolver := NewModelPricingResolver(cs, bs)
+	// Use pre-resolved pricing to test per-request mode without ChannelService
+	preResolved := &ResolvedPricing{
+		Mode:                   BillingModePerRequest,
+		DefaultPerRequestPrice: 0.05,
+	}
+	resolver := NewModelPricingResolver(nil, bs)
 	groupID := int64(1)
 
 	input := CostInput{
@@ -91,6 +77,7 @@ func TestCalculateCostUnified_PerRequestMode(t *testing.T) {
 		RequestCount:   3,
 		RateMultiplier: 2.0,
 		Resolver:       resolver,
+		Resolved:       preResolved,
 	}
 	cost, err := bs.CalculateCostUnified(input)
 	require.NoError(t, err)
@@ -104,28 +91,16 @@ func TestCalculateCostUnified_PerRequestMode(t *testing.T) {
 }
 
 func TestCalculateCostUnified_ImageMode(t *testing.T) {
-	cs := newTestChannelServiceWithCache(t, &channelCache{
-		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{
-			{groupID: 2, model: "gemini-image"}: {
-				BillingMode:     BillingModeImage,
-				PerRequestPrice: testPtrFloat64(0.10),
-			},
-		},
-		channelByGroupID: map[int64]*Channel{
-			2: {ID: 2, Status: StatusActive},
-		},
-		groupPlatform:           map[int64]string{2: ""},
-		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
-		mappingByGroupModel:     map[channelModelKey]string{},
-		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
-		byID:                    map[int64]*Channel{},
-	})
-
 	bs := &BillingService{
 		cfg:            &config.Config{},
 		fallbackPrices: map[string]*ModelPricing{},
 	}
-	resolver := NewModelPricingResolver(cs, bs)
+	// Use pre-resolved pricing to test image mode without ChannelService
+	preResolved := &ResolvedPricing{
+		Mode:                   BillingModeImage,
+		DefaultPerRequestPrice: 0.10,
+	}
+	resolver := NewModelPricingResolver(nil, bs)
 	groupID := int64(2)
 
 	input := CostInput{
@@ -136,6 +111,7 @@ func TestCalculateCostUnified_ImageMode(t *testing.T) {
 		RequestCount:   2,
 		RateMultiplier: 1.0,
 		Resolver:       resolver,
+		Resolved:       preResolved,
 	}
 	cost, err := bs.CalculateCostUnified(input)
 	require.NoError(t, err)
@@ -232,13 +208,3 @@ func TestCalculateCostUnified_UsesPreResolvedPricing(t *testing.T) {
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
-
-// newTestChannelServiceWithCache creates a ChannelService with a pre-populated
-// cache snapshot, bypassing the repository layer entirely.
-func newTestChannelServiceWithCache(t *testing.T, cache *channelCache) *ChannelService {
-	t.Helper()
-	cs := &ChannelService{}
-	cache.loadedAt = time.Now()
-	cs.cache.Store(cache)
-	return cs
-}

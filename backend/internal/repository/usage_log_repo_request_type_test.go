@@ -274,38 +274,6 @@ func TestCoalesceTrimmedString(t *testing.T) {
 	require.Equal(t, "value", coalesceTrimmedString(sql.NullString{Valid: true, String: "value"}, "fallback"))
 }
 
-func TestAppendUsageLogBillingModeWhereCondition(t *testing.T) {
-	tests := []struct {
-		name          string
-		billingMode   string
-		wantCondition string
-	}{
-		{
-			name:          "image includes legacy image rows",
-			billingMode:   string(service.BillingModeImage),
-			wantCondition: "(billing_mode = $1 OR COALESCE(image_count, 0) > 0)",
-		},
-		{
-			name:          "token includes legacy non-image rows",
-			billingMode:   string(service.BillingModeToken),
-			wantCondition: "(billing_mode = $1 OR ((billing_mode IS NULL OR billing_mode = '') AND COALESCE(image_count, 0) <= 0))",
-		},
-		{
-			name:          "per request remains exact",
-			billingMode:   string(service.BillingModePerRequest),
-			wantCondition: "billing_mode = $1",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			conditions, args := appendUsageLogBillingModeWhereCondition(nil, nil, tt.billingMode)
-			require.Equal(t, []string{tt.wantCondition}, conditions)
-			require.Equal(t, []any{tt.billingMode}, args)
-		})
-	}
-}
-
 func anySliceToDriverValues(values []any) []driver.Value {
 	out := make([]driver.Value, 0, len(values))
 	for _, value := range values {

@@ -192,7 +192,7 @@ async function ensureAntigravityMixedChannelConfirmed(groupIds: number[], onConf
   }
 }
 
-async function handleMixedChannelConfirm() { const a = mixedChannelWarningAction.value; if (!a) { clearMixedChannelDialog(); return }; clearMixedChannelDialog(); submitting.value = true; try { await a() } finally { submitting.value = false } }
+async function handleMixedChannelConfirm() { const a = mixedChannelWarningAction.value; if (!a) { clearMixedChannelDialog(); return } clearMixedChannelDialog(); submitting.value = true; try { await a() } finally { submitting.value = false } }
 function handleMixedChannelCancel() { clearMixedChannelDialog() }
 function withConfirmFlag(payload: Record<string, unknown>): Record<string, unknown> {
   if (needsMixedChannelCheck.value && antigravityMixedChannelConfirmed.value) return { ...payload, confirm_mixed_channel_risk: true }

@@ -100,16 +100,6 @@ func TestSummarizeOpenAIWSDialError(t *testing.T) {
 	require.Equal(t, "req_123", reqID)
 }
 
-func TestClassifyOpenAIWSErrorEvent(t *testing.T) {
-	reason, recoverable := classifyOpenAIWSErrorEvent([]byte(`{"type":"error","error":{"code":"upgrade_required","message":"Upgrade required"}}`))
-	require.Equal(t, "upgrade_required", reason)
-	require.True(t, recoverable)
-
-	reason, recoverable = classifyOpenAIWSErrorEvent([]byte(`{"type":"error","error":{"code":"previous_response_not_found","message":"not found"}}`))
-	require.Equal(t, "previous_response_not_found", reason)
-	require.True(t, recoverable)
-}
-
 func TestClassifyOpenAIWSReconnectReason(t *testing.T) {
 	reason, retryable := classifyOpenAIWSReconnectReason(wrapOpenAIWSFallback("policy_violation", errors.New("policy")))
 	require.Equal(t, "policy_violation", reason)
@@ -118,14 +108,6 @@ func TestClassifyOpenAIWSReconnectReason(t *testing.T) {
 	reason, retryable = classifyOpenAIWSReconnectReason(wrapOpenAIWSFallback("read_event", errors.New("io")))
 	require.Equal(t, "read_event", reason)
 	require.True(t, retryable)
-}
-
-func TestOpenAIWSErrorHTTPStatus(t *testing.T) {
-	require.Equal(t, http.StatusBadRequest, openAIWSErrorHTTPStatus([]byte(`{"type":"error","error":{"type":"invalid_request_error","code":"invalid_request","message":"invalid input"}}`)))
-	require.Equal(t, http.StatusUnauthorized, openAIWSErrorHTTPStatus([]byte(`{"type":"error","error":{"type":"authentication_error","code":"invalid_api_key","message":"auth failed"}}`)))
-	require.Equal(t, http.StatusForbidden, openAIWSErrorHTTPStatus([]byte(`{"type":"error","error":{"type":"permission_error","code":"forbidden","message":"forbidden"}}`)))
-	require.Equal(t, http.StatusTooManyRequests, openAIWSErrorHTTPStatus([]byte(`{"type":"error","error":{"type":"rate_limit_error","code":"rate_limit_exceeded","message":"rate limited"}}`)))
-	require.Equal(t, http.StatusBadGateway, openAIWSErrorHTTPStatus([]byte(`{"type":"error","error":{"type":"server_error","code":"server_error","message":"server"}}`)))
 }
 
 func TestResolveOpenAIWSFallbackErrorResponse(t *testing.T) {
@@ -158,22 +140,6 @@ func TestResolveOpenAIWSFallbackErrorResponse(t *testing.T) {
 		_, _, _, _, ok := resolveOpenAIWSFallbackErrorResponse(errors.New("plain error"))
 		require.False(t, ok)
 	})
-}
-
-func TestOpenAIWSFallbackCooling(t *testing.T) {
-	svc := &OpenAIGatewayService{cfg: &config.Config{}}
-	svc.cfg.Gateway.OpenAIWS.FallbackCooldownSeconds = 1
-
-	require.False(t, svc.isOpenAIWSFallbackCooling(1))
-	svc.markOpenAIWSFallbackCooling(1, "upgrade_required")
-	require.True(t, svc.isOpenAIWSFallbackCooling(1))
-
-	svc.clearOpenAIWSFallbackCooling(1)
-	require.False(t, svc.isOpenAIWSFallbackCooling(1))
-
-	svc.markOpenAIWSFallbackCooling(2, "x")
-	time.Sleep(1200 * time.Millisecond)
-	require.False(t, svc.isOpenAIWSFallbackCooling(2))
 }
 
 func TestOpenAIWSRetryBackoff(t *testing.T) {

@@ -21,8 +21,8 @@ import { useI18n } from "vue-i18n";
 import Select from "../Select.vue";
 import type { GroupConfigGroup } from "./types";
 
+const formData = defineModel<Record<string, unknown>>("formData", { required: true });
 const props = defineProps<{
-  formData: Record<string, unknown>;
   groups: GroupConfigGroup[];
   editingGroupId?: number | null;
   platform: string;
@@ -31,7 +31,7 @@ const props = defineProps<{
 const { t } = useI18n();
 
 const fallbackValue = computed(
-  () => (props.formData.fallback_group_id_on_invalid_request as number | null) ?? null,
+  () => (formData.value.fallback_group_id_on_invalid_request as number | null) ?? null,
 );
 
 const fallbackOptions = computed(() => {

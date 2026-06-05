@@ -879,45 +879,6 @@ func TestOpenAIWSDialError_ErrorAndUnwrap(t *testing.T) {
 	require.NoError(t, nilDialErr.Unwrap())
 }
 
-func TestOpenAIWSConnLease_ReadWriteHelpersAndConnStats(t *testing.T) {
-	conn := newOpenAIWSConn("helper_conn", 1, &openAIWSFakeConn{}, http.Header{
-		"X-Test": []string{" value "},
-	})
-	lease := &openAIWSConnLease{conn: conn}
-
-	require.NoError(t, lease.WriteJSONContext(context.Background(), map[string]any{"type": "response.create"}))
-	payload, err := lease.ReadMessage(100 * time.Millisecond)
-	require.NoError(t, err)
-	require.Contains(t, string(payload), "response.completed")
-
-	payload, err = lease.ReadMessageContext(context.Background())
-	require.NoError(t, err)
-	require.Contains(t, string(payload), "response.completed")
-
-	payload, err = conn.readMessageWithTimeout(100 * time.Millisecond)
-	require.NoError(t, err)
-	require.Contains(t, string(payload), "response.completed")
-
-	require.Equal(t, "value", conn.handshakeHeader(" X-Test "))
-	require.NotZero(t, conn.createdAt())
-	require.NotZero(t, conn.lastUsedAt())
-	require.GreaterOrEqual(t, conn.age(time.Now()), time.Duration(0))
-	require.GreaterOrEqual(t, conn.idleDuration(time.Now()), time.Duration(0))
-	require.False(t, conn.isLeased())
-
-	// 覆盖空上下文路径
-	_, err = conn.readMessage(context.Background())
-	require.NoError(t, err)
-
-	// 覆盖 nil 保护分支
-	var nilConn *openAIWSConn
-	require.ErrorIs(t, nilConn.writeJSONWithTimeout(context.Background(), map[string]any{}, time.Second), errOpenAIWSConnClosed)
-	_, err = nilConn.readMessageWithTimeout(10 * time.Millisecond)
-	require.ErrorIs(t, err, errOpenAIWSConnClosed)
-	_, err = nilConn.readMessageWithContextTimeout(context.Background(), 10*time.Millisecond)
-	require.ErrorIs(t, err, errOpenAIWSConnClosed)
-}
-
 func TestOpenAIWSConnPool_PickOldestIdleAndAccountPoolLoad(t *testing.T) {
 	pool := &openAIWSConnPool{}
 	accountID := int64(404)
@@ -1179,41 +1140,6 @@ func TestOpenAIWSConn_LeaseAndTimeHelpers_NilAndClosedBranches(t *testing.T) {
 	cancel()
 	err := conn.acquire(ctx)
 	require.Error(t, err)
-}
-
-func TestOpenAIWSConnLease_ReadWriteNilConnBranches(t *testing.T) {
-	lease := &openAIWSConnLease{}
-	require.ErrorIs(t, lease.WriteJSON(map[string]any{"k": "v"}, time.Second), errOpenAIWSConnClosed)
-	require.ErrorIs(t, lease.WriteJSONContext(context.Background(), map[string]any{"k": "v"}), errOpenAIWSConnClosed)
-	_, err := lease.ReadMessage(10 * time.Millisecond)
-	require.ErrorIs(t, err, errOpenAIWSConnClosed)
-	_, err = lease.ReadMessageContext(context.Background())
-	require.ErrorIs(t, err, errOpenAIWSConnClosed)
-	_, err = lease.ReadMessageWithContextTimeout(context.Background(), 10*time.Millisecond)
-	require.ErrorIs(t, err, errOpenAIWSConnClosed)
-}
-
-func TestOpenAIWSConnLease_ReleasedLeaseGuards(t *testing.T) {
-	conn := newOpenAIWSConn("released_guard", 1, &openAIWSFakeConn{}, nil)
-	lease := &openAIWSConnLease{conn: conn}
-
-	require.NoError(t, lease.PingWithTimeout(50*time.Millisecond))
-
-	lease.Release()
-	lease.Release() // idempotent
-
-	require.ErrorIs(t, lease.WriteJSON(map[string]any{"k": "v"}, time.Second), errOpenAIWSConnClosed)
-	require.ErrorIs(t, lease.WriteJSONContext(context.Background(), map[string]any{"k": "v"}), errOpenAIWSConnClosed)
-	require.ErrorIs(t, lease.WriteJSONWithContextTimeout(context.Background(), map[string]any{"k": "v"}, time.Second), errOpenAIWSConnClosed)
-
-	_, err := lease.ReadMessage(10 * time.Millisecond)
-	require.ErrorIs(t, err, errOpenAIWSConnClosed)
-	_, err = lease.ReadMessageContext(context.Background())
-	require.ErrorIs(t, err, errOpenAIWSConnClosed)
-	_, err = lease.ReadMessageWithContextTimeout(context.Background(), 10*time.Millisecond)
-	require.ErrorIs(t, err, errOpenAIWSConnClosed)
-
-	require.ErrorIs(t, lease.PingWithTimeout(50*time.Millisecond), errOpenAIWSConnClosed)
 }
 
 func TestOpenAIWSConnLease_MarkBrokenAfterRelease_NoEviction(t *testing.T) {

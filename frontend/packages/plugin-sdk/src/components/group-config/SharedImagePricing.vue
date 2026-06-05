@@ -47,9 +47,7 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 
-defineProps<{
-  formData: Record<string, unknown>;
-}>();
+const formData = defineModel<Record<string, unknown>>("formData", { required: true });
 
 const { t } = useI18n();
 </script>

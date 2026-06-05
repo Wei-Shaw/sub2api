@@ -1,7 +1,6 @@
 package service
 
 import (
-	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -55,27 +54,6 @@ func TestOpenAIWSEventShouldParseUsageTerminalEvents(t *testing.T) {
 	}
 	require.False(t, openAIWSEventShouldParseUsage("response.output_text.delta"))
 	require.False(t, openAIWSEventShouldParseUsage(""))
-}
-
-func TestOpenAIWSErrorEventHelpers_ConsistentWithWrapper(t *testing.T) {
-	message := []byte(`{"type":"error","error":{"type":"invalid_request_error","code":"invalid_request","message":"invalid input"}}`)
-	codeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
-
-	wrappedReason, wrappedRecoverable := classifyOpenAIWSErrorEvent(message)
-	rawReason, rawRecoverable := classifyOpenAIWSErrorEventFromRaw(codeRaw, errTypeRaw, errMsgRaw)
-	require.Equal(t, wrappedReason, rawReason)
-	require.Equal(t, wrappedRecoverable, rawRecoverable)
-
-	wrappedStatus := openAIWSErrorHTTPStatus(message)
-	rawStatus := openAIWSErrorHTTPStatusFromRaw(codeRaw, errTypeRaw)
-	require.Equal(t, wrappedStatus, rawStatus)
-	require.Equal(t, http.StatusBadRequest, rawStatus)
-
-	wrappedCode, wrappedType, wrappedMsg := summarizeOpenAIWSErrorEventFields(message)
-	rawCode, rawType, rawMsg := summarizeOpenAIWSErrorEventFieldsFromRaw(codeRaw, errTypeRaw, errMsgRaw)
-	require.Equal(t, wrappedCode, rawCode)
-	require.Equal(t, wrappedType, rawType)
-	require.Equal(t, wrappedMsg, rawMsg)
 }
 
 func TestOpenAIWSMessageLikelyContainsToolCalls(t *testing.T) {

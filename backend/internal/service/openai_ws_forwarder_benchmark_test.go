@@ -8,10 +8,9 @@ import (
 )
 
 var (
-	benchmarkOpenAIWSPayloadJSONSink string
-	benchmarkOpenAIWSStringSink      string
-	benchmarkOpenAIWSBoolSink        bool
-	benchmarkOpenAIWSBytesSink       []byte
+	benchmarkOpenAIWSStringSink string
+	benchmarkOpenAIWSBoolSink   bool
+	benchmarkOpenAIWSBytesSink  []byte
 )
 
 func BenchmarkOpenAIWSForwarderHotPath(b *testing.B) {
@@ -32,7 +31,7 @@ func BenchmarkOpenAIWSForwarderHotPath(b *testing.B) {
 		benchmarkOpenAIWSBoolSink = payload["tools"] != nil
 		benchmarkOpenAIWSStringSink = summarizeOpenAIWSPayloadKeySizes(payload, openAIWSPayloadKeySizeTopN)
 		benchmarkOpenAIWSStringSink = summarizeOpenAIWSInput(payload["input"])
-		benchmarkOpenAIWSPayloadJSONSink = payloadAsJSON(payload)
+		benchmarkOpenAIWSBytesSink = payloadAsJSONBytes(payload)
 	}
 }
 

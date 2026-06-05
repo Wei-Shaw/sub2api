@@ -1399,7 +1399,6 @@ func newWeChatOAuthTestHandlerWithSettings(t *testing.T, invitationEnabled bool,
 		nil,
 		nil,
 		nil,
-		nil,
 	)
 
 	return &AuthHandler{
