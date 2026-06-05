@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -64,6 +65,30 @@ const (
 	// 陈旧时放行一次请求，从而通过正常响应头自愈，而无需等待整个窗口（5h/7d）重置。
 	openAICodexAutoPauseStaleAfter = 2 * time.Hour
 )
+
+// Codex percent-based proactive rate limiting thresholds (env-configurable).
+// Soft limit (Tier 1): used-percent >= threshold triggers 429-equivalent rate limiting.
+// Hard limit (Tier 2): used-percent >= threshold breaks current connection and returns 502.
+var (
+	openAICodexSoftLimitPercent float64 = 70
+	openAICodexHardLimitPercent float64 = 90
+)
+
+func init() {
+	if v := os.Getenv("OPENAI_CODEX_SOFT_LIMIT_PERCENT"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 && f <= 100 {
+			openAICodexSoftLimitPercent = f
+		}
+	}
+	if v := os.Getenv("OPENAI_CODEX_HARD_LIMIT_PERCENT"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 && f <= 100 {
+			openAICodexHardLimitPercent = f
+		}
+	}
+	if openAICodexHardLimitPercent <= openAICodexSoftLimitPercent {
+		openAICodexHardLimitPercent = openAICodexSoftLimitPercent + 1
+	}
+}
 
 // OpenAI allowed headers whitelist (for non-passthrough).
 var openaiAllowedHeaders = map[string]bool{
@@ -3050,6 +3075,37 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		defer func() { _ = resp.Body.Close() }()
 
+		// Proactive codex percent-based rate limiting check.
+		if thr := checkCodexPercentThresholds(resp.Header); thr != nil {
+			if account.Type == AccountTypeOAuth {
+				if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
+					s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
+				}
+			}
+			if thr.hardBreached {
+				_ = resp.Body.Close()
+				s.applyCodexPercentRateLimit(ctx, account, thr)
+				slog.Warn("openai_codex_hard_limit_disconnect",
+					"account_id", account.ID,
+					"percent", thr.maxPercent,
+					"window", thr.window,
+					"threshold", openAICodexHardLimitPercent,
+				)
+				setOpsUpstreamError(c, http.StatusBadGateway,
+					fmt.Sprintf("codex hard limit: %.1f%% %s", thr.maxPercent, thr.window), "")
+				c.JSON(http.StatusBadGateway, gin.H{
+					"error": gin.H{
+						"type":    "upstream_error",
+						"message": fmt.Sprintf("Codex usage quota critical (%.1f%% %s used, threshold %.0f%%)", thr.maxPercent, thr.window, openAICodexHardLimitPercent),
+					},
+				})
+				return nil, fmt.Errorf("codex hard limit: %.1f%% %s", thr.maxPercent, thr.window)
+			}
+			if thr.softBreached {
+				s.applyCodexPercentRateLimit(ctx, account, thr)
+			}
+		}
+
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, originalModel)
 		serviceTier := extractOpenAIServiceTierFromBody(body)
 		// 上游接受后只保留计费需要的标量，避免响应处理期间继续保活完整 input/tools map。
@@ -3298,6 +3354,37 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
 		}
 		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
+	}
+
+	// Proactive codex percent-based rate limiting check.
+	// Must happen BEFORE writing any response to the client so that Tier 2
+	// (hard limit) can still return 502.
+	if thr := checkCodexPercentThresholds(resp.Header); thr != nil {
+		if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
+			s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
+		}
+		if thr.hardBreached {
+			_ = resp.Body.Close()
+			s.applyCodexPercentRateLimit(ctx, account, thr)
+			slog.Warn("openai_codex_hard_limit_disconnect",
+				"account_id", account.ID,
+				"percent", thr.maxPercent,
+				"window", thr.window,
+				"threshold", openAICodexHardLimitPercent,
+			)
+			setOpsUpstreamError(c, http.StatusBadGateway,
+				fmt.Sprintf("codex hard limit: %.1f%% %s", thr.maxPercent, thr.window), "")
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Codex usage quota critical",
+				},
+			})
+			return nil, fmt.Errorf("codex hard limit: %.1f%% %s", thr.maxPercent, thr.window)
+		}
+		if thr.softBreached {
+			s.applyCodexPercentRateLimit(ctx, account, thr)
+		}
 	}
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
@@ -6128,6 +6215,91 @@ func codexResetAtRFC3339(base time.Time, resetAfterSeconds *int) *string {
 	}
 	resetAt := base.Add(time.Duration(sec) * time.Second).Format(time.RFC3339)
 	return &resetAt
+}
+
+// codexThresholdResult describes which percent threshold was breached by the
+// highest used-percent value among the normalised codex windows.
+type codexThresholdResult struct {
+	softBreached bool
+	hardBreached bool
+	maxPercent   float64
+	window       string // "5h" or "7d"
+	resetSeconds *int
+}
+
+// checkCodexPercentThresholds parses codex rate-limit headers and returns a
+// result when any used-percent is non-zero or when x-codex-credits-has-credits
+// indicates the account still has credits. Returns nil when no codex data is
+// present.
+func checkCodexPercentThresholds(headers http.Header) *codexThresholdResult {
+	snapshot := ParseCodexRateLimitHeaders(headers)
+	if snapshot == nil {
+		return nil
+	}
+	normalized := snapshot.Normalize()
+	if normalized == nil {
+		return nil
+	}
+
+	var maxPct float64
+	var win string
+	var resetSec *int
+
+	if normalized.Used5hPercent != nil && *normalized.Used5hPercent > maxPct {
+		maxPct = *normalized.Used5hPercent
+		win = "5h"
+		resetSec = normalized.Reset5hSeconds
+	}
+	if normalized.Used7dPercent != nil && *normalized.Used7dPercent > maxPct {
+		maxPct = *normalized.Used7dPercent
+		win = "7d"
+		resetSec = normalized.Reset7dSeconds
+	}
+	if maxPct <= 0 {
+		return nil
+	}
+
+	hardBreached := maxPct >= openAICodexHardLimitPercent
+	// x-codex-credits-has-credits == "True" means the account has no remaining
+	// credits (boolean is inverted by upstream). Treat as Tier 2 hard limit.
+	if headers.Get("x-codex-credits-has-credits") == "True" {
+		hardBreached = true
+	}
+
+	return &codexThresholdResult{
+		softBreached: maxPct >= openAICodexSoftLimitPercent,
+		hardBreached: hardBreached,
+		maxPercent:   maxPct,
+		window:       win,
+		resetSeconds: resetSec,
+	}
+}
+
+// applyCodexPercentRateLimit marks the account as rate-limited using the reset
+// time from the breached codex window. This is the Tier 1 (soft limit) action
+// and is equivalent to the existing 429 rate-limit handling.
+func (s *OpenAIGatewayService) applyCodexPercentRateLimit(ctx context.Context, account *Account, result *codexThresholdResult) {
+	var resetAt time.Time
+	if result.resetSeconds != nil && *result.resetSeconds > 0 {
+		resetAt = time.Now().Add(time.Duration(*result.resetSeconds) * time.Second)
+	} else {
+		resetAt = time.Now().Add(5 * time.Minute)
+	}
+
+	if s.rateLimitService != nil {
+		s.rateLimitService.notifyAccountSchedulingBlocked(account, resetAt, "codex_percent_soft_limit")
+	}
+	if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
+		slog.Warn("codex_percent_rate_limit_set_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	slog.Info("openai_codex_soft_limit_triggered",
+		"account_id", account.ID,
+		"percent", result.maxPercent,
+		"window", result.window,
+		"threshold", openAICodexSoftLimitPercent,
+		"reset_at", resetAt,
+	)
 }
 
 func buildCodexUsageExtraUpdates(snapshot *OpenAICodexUsageSnapshot, fallbackNow time.Time) map[string]any {
