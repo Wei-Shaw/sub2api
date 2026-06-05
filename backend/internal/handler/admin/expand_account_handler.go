@@ -1,11 +1,17 @@
 package admin
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -16,10 +22,11 @@ import (
 type ExpandAccountHandler struct {
 	service      service.ExpandAccountService
 	adminService service.AdminService
+	cfg          *config.Config
 }
 
-func NewExpandAccountHandler(service service.ExpandAccountService, adminService service.AdminService) *ExpandAccountHandler {
-	return &ExpandAccountHandler{service: service, adminService: adminService}
+func NewExpandAccountHandler(service service.ExpandAccountService, adminService service.AdminService, cfg *config.Config) *ExpandAccountHandler {
+	return &ExpandAccountHandler{service: service, adminService: adminService, cfg: cfg}
 }
 
 type createExpandAccountRequest struct {
@@ -310,7 +317,7 @@ func (h *ExpandAccountHandler) Report(c *gin.Context) {
 		}
 	}
 
-	_, err := h.service.ReportExpandAccountLogin(c.Request.Context(), &service.ExpandAccountReportInput{
+	item, err := h.service.ReportExpandAccountLogin(c.Request.Context(), &service.ExpandAccountReportInput{
 		ID:          req.ID,
 		Email:       strings.TrimSpace(req.Email),
 		LoginStatus: loginStatus,
@@ -321,5 +328,76 @@ func (h *ExpandAccountHandler) Report(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+
+	if loginStatus == 1 && item != nil && strings.EqualFold(strings.TrimSpace(item.Platform), "anthropic") {
+		h.submitOpenAPIChannel(c.Request.Context(), item.Email, apiKey)
+	}
+
 	response.Success(c, nil)
+}
+
+// submitOpenAPIChannel 向外部渠道保存接口提交一条新渠道记录。
+// 失败仅记录日志，不影响主流程返回，避免外部接口故障阻塞上号回调。
+func (h *ExpandAccountHandler) submitOpenAPIChannel(ctx context.Context, email, apiKey string) {
+	if h.cfg == nil {
+		slog.Warn("expand-accounts report: openapi_channel skipped, cfg is nil")
+		return
+	}
+	url := strings.TrimSpace(h.cfg.OpenAPIChannel.URL)
+	token := strings.TrimSpace(h.cfg.OpenAPIChannel.Token)
+	if url == "" || token == "" {
+		slog.Warn("expand-accounts report: openapi_channel skipped, url/token not configured")
+		return
+	}
+
+	payload := map[string]any{
+		"mode": "single",
+		"channel": map[string]any{
+			"type":     14,
+			"key":      apiKey,
+			"name":     email,
+			"base_url": "http://claude.opsapi.cn",
+			"models":   "claude-opus-4-7,claude-sonnet-4-6,claude-opus-4-6,claude-haiku-4-5-20251001,claude-opus-4-8",
+			"group":    "claude专属",
+			"tag":      "opsapi",
+			"remark":   "",
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		slog.Error("expand-accounts report: marshal openapi_channel payload failed", "err", err)
+		return
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		slog.Error("expand-accounts report: build openapi_channel request failed", "err", err)
+		return
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-OpenAPI-Token", token)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		slog.Error("expand-accounts report: call openapi_channel failed", "url", url, "err", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		slog.Error("expand-accounts report: openapi_channel returned non-2xx",
+			"url", url,
+			"status", resp.StatusCode,
+			"body", string(respBody),
+		)
+		return
+	}
+	slog.Info("expand-accounts report: openapi_channel submitted",
+		"email", email,
+		"status", resp.StatusCode,
+	)
 }

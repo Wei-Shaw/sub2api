@@ -114,7 +114,7 @@ func TestExpandAccountHandlerGetByPlatform(t *testing.T) {
 		},
 	}
 
-	h := NewExpandAccountHandler(expandSvc, adminSvc)
+	h := NewExpandAccountHandler(expandSvc, adminSvc, nil)
 	router := gin.New()
 	router.POST("/api/v1/expand-accounts/get", h.GetByPlatform)
 

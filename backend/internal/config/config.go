@@ -93,6 +93,15 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	OpenAPIChannel          OpenAPIChannelConfig          `mapstructure:"openapi_channel"`
+}
+
+// OpenAPIChannelConfig 外部渠道保存接口配置（用于上号成功后回写渠道信息）
+type OpenAPIChannelConfig struct {
+	// URL: 渠道保存接口完整地址，例如 http://127.0.0.1:3010/openapi/channel/
+	URL string `mapstructure:"url"`
+	// Token: X-OpenAPI-Token 请求头值
+	Token string `mapstructure:"token"`
 }
 
 type LogConfig struct {
@@ -1945,6 +1954,10 @@ func setDefaults() {
 	// Subscription Maintenance (bounded queue + worker pool)
 	viper.SetDefault("subscription_maintenance.worker_count", 2)
 	viper.SetDefault("subscription_maintenance.queue_size", 1024)
+
+	// OpenAPI Channel (上号成功后回写渠道信息所用的外部接口)
+	viper.SetDefault("openapi_channel.url", "http://127.0.0.1:3010/openapi/channel/")
+	viper.SetDefault("openapi_channel.token", "Aa123456")
 
 }
 
