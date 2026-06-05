@@ -10,15 +10,16 @@ export default {
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Get Started',
+    // Hero secondary CTA — sends anonymous visitors to the public model
+    // pricing plaza (no login required).
     cta_view_pricing: 'View model pricing',
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
-    tags: {
-      subscriptionToApi: 'Subscription to API',
-      stickySession: 'Session Persistence',
-      realtimeBilling: 'Pay As You Go'
-    },
+    // The `tags` block (Subscription to API / Session Persistence / Pay
+    // As You Go) was removed: the three chips repeated the same value
+    // props as the Features Grid right below them. Replaced with a
+    // single section header (`home.features.title`).
     // Pain points section
     painPoints: {
       title: 'Sound Familiar?',
@@ -47,6 +48,21 @@ export default {
       subtitle: 'Three simple steps to stress-free AI access'
     },
     features: {
+      // Features Grid section header — now a full peer of the
+      // Showcase (plans / promo) section headers: eyebrow chip +
+      // gradient h2 + one-line subtitle. Without the eyebrow / sub
+      // the bare h2 read flatter than the two headers below it; with
+      // them, the three section anchors on the homepage finally form
+      // a matched set.
+      //
+      // The eyebrow says "what category" ("Capabilities") while the
+      // h2 carries the value claim ("Why choose us") — splitting the
+      // labour rather than echoing the same phrase twice.
+      eyebrow: 'Capabilities',
+      title: 'Why choose us',
+      // Subtitle distils the three cards below into one rhythmic
+      // line (mirrors the cadence of the plans block's subtitle).
+      subtitle: 'One unified gateway · Always reliable · Pay as you go',
       unifiedGateway: 'One-Click Access',
       unifiedGatewayDesc: 'Get a single API key to call all connected AI models. No separate applications needed.',
       multiAccount: 'Always Reliable',
@@ -90,15 +106,44 @@ export default {
         }
       }
     },
-    providers: {
-      title: 'Supported AI Models',
-      description: 'One API, Multiple Choices',
-      supported: 'Supported',
-      soon: 'Soon',
-      claude: 'Claude',
-      gemini: 'Gemini',
-      antigravity: 'Antigravity',
-      more: 'More'
+    // Homepage conversion section: replaces the static Providers block.
+    // Recharge-bonus campaign banner (visible to anonymous visitors on home).
+    // `name` comes from the backend and is rendered as plain text.
+    promo: {
+      // Section title rendered above the banner ("活动专区" in zh).
+      title: 'Promotions',
+      // Eyebrow tag above the section title. Was previously an inline
+      // banner eyebrow; now reused on the outer section header.
+      eyebrow: 'Limited time',
+      // Header subtitle — minimalist parallel of the plans subtitle:
+      // "limited time" carries urgency, "bonuses maxed out" carries
+      // magnitude. Short rhythm matches the plans block so both
+      // headers read as a paired set.
+      subtitle: 'Limited time, bonuses maxed out',
+      // Slanted top-right corner ribbon copy — graphic "limited" badge.
+      ribbon: 'Limited',
+      cta_recharge: 'Recharge now',
+      // Hero row: "Get up to +X% bonus credit" — the "+X%" is split out
+      // into its own mid-sized highlighted span by the template.
+      bonus_headline_prefix: 'Get up to',
+      bonus_headline_suffix: 'bonus credit',
+      // Tier pills only render the amount portion; the bonus rate is
+      // promoted to its own highlighted span in the template.
+      tier_amount_label: 'Spend ¥{min}',
+      expires_at: 'Active until {date}'
+    },
+    // Subscription plans block (separated from the promo banner; has its
+    // own header) + "view all plans" link rendered below the truncated grid.
+    plans: {
+      eyebrow: 'Subscription · Plans',
+      title: 'Subscription Plans',
+      // Copy strategy: removed the "upgrade or downgrade anytime"
+      // line (product no longer guarantees mid-cycle downgrades,
+      // misleading promise). Replaced with a "variety + fit" angle —
+      // signal that there is a tier for every workload, avoid scaring
+      // off price-sensitive visitors with a "go bigger" framing.
+      subtitle: 'Plans for every workload — there is one that fits you',
+      view_all: 'View all plans →'
     },
     // CTA section
     cta: {
@@ -108,6 +153,28 @@ export default {
     },
     footer: {
       allRightsReserved: 'All rights reserved.'
+    },
+    // Homepage "Contact Us" section. See HomeContactSection.vue header for design notes.
+    // Section header was removed (2026-06 product call) — only card copy remains.
+    contact: {
+      qq: {
+        title: 'QQ Direct',
+        description: 'Add us on QQ for direct sales & support conversations.',
+        copy: 'Copy QQ Number',
+        copied: 'Copied'
+      },
+      qqGroup: {
+        title: 'QQ Group: {number}',
+        description: 'Join the official QQ group to chat with other users in real time.',
+        action: 'Join QQ Group',
+        qrAlt: 'QQ group QR code'
+      },
+      telegram: {
+        title: 'Telegram',
+        description: 'Join our Telegram channel for the latest updates and announcements.',
+        action: 'Join Telegram',
+        qrAlt: 'Telegram QR code'
+      }
     }
   },
 
@@ -6960,6 +7027,24 @@ export default {
       totalCredited: 'Total credited',
       bonusBadge: '+{rate}%',
       redDotAria: 'Recharge campaign has updates',
+      // Confirm dialog shown when the user has lingered on the payment
+      // page long enough that the bonus campaign's `valid_until` has
+      // ticked over by the time they finally click "create order".
+      // Backend re-evaluates the window on submit and will not award
+      // the bonus, so we have to hard-stop here — otherwise the user
+      // sees the banner + bonus preview, clicks pay, and then can't
+      // square that with the actual ledger entry.
+      //
+      // Tone: factual, no exclamation marks or "warning" language —
+      // it's not an error, just a closed window. The body answers
+      // the two questions the user will ask in that exact order
+      // ("is the bonus gone?" / "can I still pay?"). The primary
+      // button is verb-explicit ("Continue top-up") so it reads
+      // correctly even without the body context.
+      expiredTitle: 'Recharge bonus campaign has ended',
+      expiredBody: 'This top-up will no longer earn the bonus credit. Would you still like to continue?',
+      expiredContinue: 'Continue top-up',
+      expiredCancel: 'Cancel',
     },
     refundReason: 'Refund Reason',
     refundReasonPlaceholder: 'Please describe your refund reason',

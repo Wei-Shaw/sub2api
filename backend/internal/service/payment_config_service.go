@@ -34,7 +34,7 @@ const (
 	SettingCancelWindowSize    = "CANCEL_RATE_LIMIT_WINDOW"
 	SettingCancelWindowUnit    = "CANCEL_RATE_LIMIT_UNIT"
 	SettingCancelWindowMode    = "CANCEL_RATE_LIMIT_WINDOW_MODE"
-	SettingAlipayForceQRCode = "ALIPAY_FORCE_QRCODE"
+	SettingAlipayForceQRCode   = "ALIPAY_FORCE_QRCODE"
 	// SettingRechargePromo 已废弃（充值赠送配置已迁移到 recharge_promo_activities 活动表）。
 	// 保留常量定义但不再读写：旧部署遗留的 system_settings.RECHARGE_PROMO 行可由
 	// admin 工具人工清理；运行时不再依赖该 key。

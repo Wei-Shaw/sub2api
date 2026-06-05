@@ -22,14 +22,26 @@ type plazaServiceAPI interface {
 	ListPlanCards(ctx context.Context) ([]service.PlazaPlanCard, service.PlazaCurrencyMeta, error)
 }
 
-// PlazaHandler 处理公开计费广场（model / plan）相关请求；无需鉴权。
+// PlazaHandler 处理公开计费广场（model / plan / recharge-promo）相关请求；无需鉴权。
 type PlazaHandler struct {
-	plazaService plazaServiceAPI
+	plazaService  plazaServiceAPI
+	promoActivity rechargePromoActivityAPI
+	// promoNow 仅用于测试时注入虚假"当前时间"；生产环境为 nil，handler 走 time.Now()。
+	promoNow promoNowProvider
 }
 
 // NewPlazaHandler 构造 PlazaHandler。
-func NewPlazaHandler(plazaService *service.PlazaService) *PlazaHandler {
-	return &PlazaHandler{plazaService: plazaService}
+//
+// 注入 RechargePromoActivityService 以支持 GET /api/v1/plaza/recharge-promo
+// 公开端点（首页 banner 数据源）。
+func NewPlazaHandler(
+	plazaService *service.PlazaService,
+	promoActivity *service.RechargePromoActivityService,
+) *PlazaHandler {
+	return &PlazaHandler{
+		plazaService:  plazaService,
+		promoActivity: promoActivity,
+	}
 }
 
 // ListModels GET /api/v1/plaza/models

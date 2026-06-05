@@ -12,9 +12,10 @@ import (
 
 // RegisterPlazaRoutes 注册公开计费广场路由（无需认证）。
 //
-// 包含两个端点：
-//   - GET /api/v1/plaza/models  匿名查看模型定价
-//   - GET /api/v1/plaza/plans   匿名查看在售套餐
+// 包含三个端点：
+//   - GET /api/v1/plaza/models          匿名查看模型定价
+//   - GET /api/v1/plaza/plans           匿名查看在售套餐
+//   - GET /api/v1/plaza/recharge-promo  匿名查看当前生效充值赠送活动（首页 banner）
 //
 // 与 /api/v1/settings/public 在同一公开链路上，但增加了一层 Redis 边界限流
 // （每分钟 60 次/IP，Redis 不可用时降级 fail-open，不阻断匿名访问）。
@@ -38,6 +39,12 @@ func RegisterPlazaRoutes(
 				FailureMode: middleware.RateLimitFailOpen,
 			}),
 			h.Plaza.ListPlans,
+		)
+		plaza.GET("/recharge-promo",
+			rateLimiter.LimitWithOptions("plaza-recharge-promo", 60, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailOpen,
+			}),
+			h.Plaza.GetPublicRechargePromo,
 		)
 	}
 }

@@ -58,7 +58,7 @@
                     ? t('payment.promo.banner', { validUntil: promoValidUntilLabel })
                     : t('payment.promo.bannerNoExpiry') }}
               </p>
-              <p
+              <div
                 v-if="promoTiers.length"
                 class="mt-1 text-xs text-amber-700 dark:text-amber-300"
               >
@@ -70,7 +70,7 @@
                 </span>
 
                 <p>{{ t('payment.promo.customHint') }}</p>
-              </p>
+              </div>
             </div>
             <div class="card p-6">
               <AmountInput
@@ -131,7 +131,7 @@
                 </p>
               </div>
             </div>
-            <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
+            <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" data-test="payment-submit-recharge" @click="handleSubmitRecharge">
               <span v-if="submitting" class="flex items-center justify-center gap-2">
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {{ t('common.processing') }}
@@ -284,6 +284,64 @@
         </div>
       </Transition>
     </Teleport>
+    <!--
+      Recharge-promo expired confirm modal.
+
+      Triggered exclusively from `handleSubmitRecharge` when the
+      promo's `valid_until` has ticked over since the page rendered;
+      the visual + interactive grammar is deliberately matched to the
+      Renewal Plan modal above (same overlay treatment, same Teleport
+      / Transition wrapping, same close affordance) so users who've
+      already learned that pattern in this view recognise this as a
+      modal-class confirm rather than a different surface.
+
+      Buttons live in a 2-column flex row instead of stacked: this is
+      a yes/no decision, stacking would imply a hierarchy ("the top
+      one is canonical") that the cancel-vs-continue choice doesn't
+      have. The destructive-leaning side (cancel) is on the left,
+      mirroring the OS conventions on macOS dialogs.
+    -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div
+          v-if="showPromoExpiredModal"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          data-test="promo-expired-modal"
+          @click.self="cancelRechargeAfterPromoExpired"
+        >
+          <div class="relative w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-dark-700 dark:bg-dark-900">
+            <button
+              class="absolute right-4 top-4 rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+              @click="cancelRechargeAfterPromoExpired"
+            >
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('payment.promo.expiredTitle') }}
+            </h3>
+            <p class="mb-5 text-sm leading-relaxed text-gray-600 dark:text-dark-300">
+              {{ t('payment.promo.expiredBody') }}
+            </p>
+            <div class="flex gap-2">
+              <button
+                class="btn btn-secondary flex-1"
+                data-test="promo-expired-cancel"
+                @click="cancelRechargeAfterPromoExpired"
+              >
+                {{ t('payment.promo.expiredCancel') }}
+              </button>
+              <button
+                class="btn btn-primary flex-1"
+                data-test="promo-expired-confirm"
+                @click="confirmRechargeAfterPromoExpired"
+              >
+                {{ t('payment.promo.expiredContinue') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
     <!-- Image Preview Overlay -->
     <Teleport to="body">
       <Transition name="modal">
@@ -367,6 +425,17 @@ interface CreateOrderOptions {
   paymentType?: string
   isResume?: boolean
   mobileQrFallbackAttempted?: boolean
+  /**
+   * 当前金额 banner / breakdown 上向用户展示的赠送预览金额。
+   * 仅在 balance 充值且 > 0 时传；后端用其触发 RECHARGE_PROMO_EXPIRED
+   * 二次校验。订阅 / 重放 (resume) / mobile-QR fallback 等路径不传，
+   * 语义即"无赠送期待"，后端不会拦截。
+   */
+  expectedBonus?: number
+  /**
+   * 用户在二次确认 modal 上点过"继续充值"重发本次请求时为 true。
+   */
+  promoExpiredAcknowledged?: boolean
 }
 
 interface WeixinJSBridgeLike {
@@ -600,14 +669,34 @@ const showRechargeTabDot = computed(() => promoDot.shouldShow.value)
 /** AmountInput 的预置金额红点开关；与 tab 红点共用 dismiss 状态。 */
 const showPromoRedDots = computed(() => promoDot.shouldShow.value)
 
-/** 把 ISO valid_until 渲染成本地化日期；缺省时回退空串。 */
+/**
+ * Render the recharge promo's `valid_until` ISO timestamp down to the
+ * second. The bare `Date#toLocaleString()` we used previously is locale-
+ * dependent — some runtimes drop seconds from the default short format,
+ * which made "ends at 23:59:59" indistinguishable from "ends at 23:59"
+ * for users on those locales. Hand the explicit options bag in so all
+ * locales get H/M/S, matching the homepage banner and the admin
+ * RechargePromos table.
+ *
+ * Empty / unparseable inputs fall through to '' (banner switches to the
+ * "no expiry" copy) or to the original raw string (defensive, never
+ * empty-renders mid-page).
+ */
 const promoValidUntilLabel = computed(() => {
   const raw = rechargePromo.value?.valid_until
   if (!raw) return ''
   try {
     const d = new Date(raw)
     if (isNaN(d.getTime())) return raw
-    return d.toLocaleString()
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
   } catch {
     return raw
   }
@@ -634,6 +723,40 @@ function onPromoPresetClicked(_amount: number) {
     promoDot.dismiss()
   }
 }
+
+/**
+ * 充值赠送活动是否在"此时此刻"已经过期。
+ *
+ * 设计取舍：
+ *   • 不做成 reactive computed + 定时器轮询。该判定只在用户点击
+ *     "创建订单"那一刻才有意义，平时 banner / breakdown 维持
+ *     onMounted 时的快照即可（用户已经在看着 banner 操作，让 banner
+ *     在他眼皮底下文案突变反而比弹窗确认更出戏）。一次性 Date.now()
+ *     比较 → 零额外生命周期、零清理负担。
+ *   • 后端只在 enabled + 在窗口内时才下发 recharge_promo，所以拿到
+ *     promo 一定意味着"页面打开时活动是开着的"，能形成 expired 这
+ *     一过渡只能因为用户停留过久。这正是题目要拦的场景。
+ *   • valid_until 缺省（无截止活动）→ 永不过期；解析失败 → 保守判
+ *     定为未过期（避免后端推坏数据时无脑封锁支付通路）。
+ */
+function isPromoExpiredNow(): boolean {
+  const promo = rechargePromo.value
+  if (!promo) return false
+  if (!promo.valid_until) return false
+  const ts = Date.parse(promo.valid_until)
+  if (!Number.isFinite(ts)) return false
+  return Date.now() >= ts
+}
+
+/**
+ * 充值活动到期二次确认弹窗的状态。
+ *
+ * `pendingExpiredAmount` 把"用户当时点击提交时的金额"快照下来，与
+ * `validAmount` 解耦——避免弹窗显示后用户再去改 AmountInput 造成
+ * 实际下单金额与告警金额漂移（小概率但很难调试）。
+ */
+const showPromoExpiredModal = ref(false)
+const pendingExpiredAmount = ref(0)
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -814,7 +937,60 @@ function closeRenewalModal() {
 
 async function handleSubmitRecharge() {
   if (!canSubmit.value || submitting.value) return
-  await createOrder(validAmount.value, 'balance')
+  // 充值赠送活动到期防呆：用户停留时间过长时，页面上的 banner /
+  // breakdown 加赠行依然来自 onMounted 时拿到的 checkout-info 快照
+  // （rechargePromo 不会自己刷），但 valid_until 已经悄悄过期了。
+  // 后端在 createOrder 时会按服务器当前时间重新判窗，赠送会被静默
+  // 拒绝 —— 那一刻用户已经付完钱、看着账单和 UI 上 +$X.XX 对不上号
+  // 才反应过来，体验非常糟糕。
+  //
+  // 这里在客户端判窗 + 二次确认：只要 valid_until 已过就先弹一个
+  // 模态告诉用户"加赠没了，是否仍继续"，确认后才走老路。判断只发
+  // 生在点击的瞬间（一次性 Date.now() 比较），不需要轮询定时器；
+  // 那种情况发生频率远低于支付主流程，加 setInterval 反而引入清理
+  // 复杂度。
+  if (isPromoExpiredNow()) {
+    pendingExpiredAmount.value = validAmount.value
+    showPromoExpiredModal.value = true
+    return
+  }
+  // 把当前金额的赠送预览金额（与后端 ResolveRechargeBonus 同算法
+  // mirror）随请求带给 server。这是触发 server 端 RECHARGE_PROMO_EXPIRED
+  // 二次校验的唯一信号 — 只有 client 明确表明"我正在向用户展示 $X
+  // 赠送"时，server 才会在赠送实际不发的时候返回 409；其它路径
+  // (订阅 / recovery 重放) 不传该字段，server 一律放行。
+  await createOrder(validAmount.value, 'balance', undefined, {
+    expectedBonus: bonusForAmount(validAmount.value),
+  })
+}
+
+/**
+ * 用户在到期确认弹窗里点"继续充值"——把闸口外面那笔金额放进真正
+ * 的下单流程。为什么单独锁一个 `pendingExpiredAmount`、而不是直接
+ * 复用 `validAmount.value`？因为模态是异步交互、用户可以再去改输
+ * 入框，避免"显示弹窗时是 200，确认前用户改成 500"造成的金额漂移。
+ */
+async function confirmRechargeAfterPromoExpired() {
+  const amt = pendingExpiredAmount.value
+  showPromoExpiredModal.value = false
+  pendingExpiredAmount.value = 0
+  if (amt > 0) {
+    // 用户已二次确认；带 ack=true 重发，server 跳过 promo 拦截。
+    // expectedBonus 仍传当前的本地预览：让 server 能精确比对（虽然
+    // 在 ack=true 路径下 server 不再读这个字段做拦截判定，仍透传
+    // 是为了语义自包含 — 这次提交在客户端的"期待"是什么，链路上始终
+    // 一致）。fulfillment 阶段按服务器时间重判窗，不会因此误发赠送。
+    await createOrder(amt, 'balance', undefined, {
+      expectedBonus: bonusForAmount(amt),
+      promoExpiredAcknowledged: true,
+    })
+  }
+}
+
+/** 用户取消——不创建订单，让其回到金额选择界面继续犹豫或退出。 */
+function cancelRechargeAfterPromoExpired() {
+  showPromoExpiredModal.value = false
+  pendingExpiredAmount.value = 0
 }
 
 async function confirmSubscribe() {
@@ -837,6 +1013,8 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       isMobile: isMobileDevice(),
       isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
       forceQRCode: !!(checkout.value.alipay_force_qrcode && normalizeVisibleMethod(requestType) === 'alipay'),
+      expectedBonus: options.expectedBonus,
+      promoExpiredAcknowledged: options.promoExpiredAcknowledged,
     })
     if (options.openid) {
       payload.openid = options.openid
@@ -972,6 +1150,24 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     }
   } catch (err: unknown) {
     const apiErr = err as Record<string, unknown>
+    // 充值赠送活动到期 — 服务端兜底拦截。
+    //
+    // 客户端时钟可能慢于真实时间，本地 isPromoExpiredNow() 漏判时
+    // server 会返回 409 RECHARGE_PROMO_EXPIRED；我们必须把这条错误
+    // 转化为同一个二次确认 modal（与本地快速路径形成对称），而不是
+    // 走通用 toast。条件刻意收紧到"balance 充值 + 还没 ack"——订阅
+    // 永远不应进这个分支（前端不会传 expectedBonus），但加这层
+    // 防护让错误处理读起来更显式；ack 已传却又拿到 409 属于服务端
+    // 状态自相矛盾，按通用错误处理走，方便调试时不被静默吞掉。
+    if (
+      apiErr.reason === 'RECHARGE_PROMO_EXPIRED' &&
+      orderType === 'balance' &&
+      !options.promoExpiredAcknowledged
+    ) {
+      pendingExpiredAmount.value = orderAmount
+      showPromoExpiredModal.value = true
+      return
+    }
     if (apiErr.reason === 'TOO_MANY_PENDING') {
       const metadata = apiErr.metadata as Record<string, unknown> | undefined
       errorMessage.value = t('payment.errors.tooManyPending', { max: metadata?.max || '' })

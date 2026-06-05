@@ -126,7 +126,7 @@
           <!-- Left: Text Content -->
           <div class="flex-1 text-center lg:text-left">
             <h1
-              class="mb-4 text-4xl font-bold text-gray-900 dark:text-white md:text-5xl lg:text-6xl"
+              class="mb-4 bg-gradient-to-br from-gray-900 via-primary-700 to-gray-900 bg-clip-text text-4xl font-bold leading-[1.1] text-transparent dark:from-white dark:via-primary-300 dark:to-white md:text-5xl lg:text-6xl"
             >
               {{ siteName }}
             </h1>
@@ -144,9 +144,9 @@
                 <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
               </router-link>
               <!--
-                Secondary CTA: anonymous + authenticated visitors alike land on
-                the public plaza so they can survey models and plans without
-                committing. No live API call is made here.
+                Secondary CTA — funnels anonymous + authenticated visitors
+                alike to the public plaza so they can survey models &
+                plans without committing. No live API call is made here.
               -->
               <router-link
                 to="/plaza/models"
@@ -196,40 +196,84 @@
           </div>
         </div>
 
-        <!-- Feature Tags - Centered -->
-        <div class="mb-12 flex flex-wrap items-center justify-center gap-4 md:gap-6">
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
+        <!--
+          Section header for the Features Grid.
+
+          Earlier iterations of this slot have shrunk progressively:
+            v1: three pill-shaped feature tags (订阅转 API / 会话保持 /
+                按量计费) — duplicated the cards directly below.
+            v2: a bare gradient `<h2>我们的优势</h2>` — read as flat /
+                weak next to HomeShowcaseSection's plans + promo
+                headers, which both ship the full "eyebrow chip +
+                gradient h2 + one-line subtitle" treatment.
+
+          v3 (this version) promotes the header to the same three-
+          part composition so all three homepage section anchors
+          (核心能力 / 订阅套餐 / 活动专区) read as a matched set:
+
+            • eyebrow chip — small uppercase tracking-wide tag with
+              a leading dot. Uses the `sky` palette to differentiate
+              from `plans` (primary) and `promo` (amber); the three
+              colours together act as visual section markers as the
+              user scrolls.
+            • gradient h2 — same `bg-clip-text` + responsive
+              text-3xl→md:text-4xl rhythm as the other two h2's,
+              with a `sky-600` mid-stop matching the eyebrow.
+            • subtitle paragraph — distils the three cards below
+              into one cadenced line, capped at `max-w-xl` so it
+              never wraps awkwardly under the title.
+        -->
+        <!--
+          Spacing rationale (mt-16 / md:mt-24):
+          The hero block above ends in a tall code-terminal mockup
+          whose bottom edge sits visually flush with whatever follows
+          — the previous gap was just `mb-12` from the hero wrapper,
+          which read as cramped. Adding a top margin on this header
+          (rather than a bottom margin on the hero) keeps the hero's
+          internal rhythm untouched and gives the Features section
+          its own clear "breathing room" entry, so the eye registers
+          a section break before reading the eyebrow.
+
+          Responsive scale (16 → 24): on mobile the hero already
+          stacks vertically and consumes the full viewport, so 64px
+          is enough separation; on tablet+ the hero compresses and
+          the section change needs more vertical air to feel like a
+          deliberate scroll target rather than a continuation.
+        -->
+        <div
+          class="mb-12 mt-16 flex flex-col items-center text-center md:mt-24"
+        >
+          <span
+            class="mb-3 inline-flex items-center gap-1.5 rounded-full border border-sky-300/70 bg-sky-50/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
+            data-test="home-features-eyebrow"
           >
-            <Icon name="swap" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.subscriptionToApi')
-            }}</span>
-          </div>
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
+            <span class="inline-block h-1 w-1 rounded-full bg-sky-500"></span>
+            {{ t('home.features.eyebrow') }}
+          </span>
+          <h2
+            class="bg-gradient-to-r from-gray-900 via-sky-600 to-gray-900 bg-clip-text text-3xl font-bold leading-tight text-transparent dark:from-white dark:via-sky-300 dark:to-white md:text-4xl"
+            data-test="home-features-title"
           >
-            <Icon name="shield" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.stickySession')
-            }}</span>
-          </div>
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
+            {{ t('home.features.title') }}
+          </h2>
+          <p
+            class="mt-3 max-w-xl text-sm text-gray-600 dark:text-dark-400 md:text-base"
+            data-test="home-features-subtitle"
           >
-            <Icon name="chart" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.realtimeBilling')
-            }}</span>
-          </div>
+            {{ t('home.features.subtitle') }}
+          </p>
         </div>
 
         <!-- Features Grid -->
         <div class="mb-12 grid gap-6 md:grid-cols-3">
           <!-- Feature 1: Unified Gateway -->
           <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
+            class="feature-card group relative overflow-hidden rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary-300/50 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60 dark:hover:border-primary-500/40"
           >
+            <span
+              aria-hidden="true"
+              class="pointer-events-none absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r from-blue-500 to-blue-600 transition-transform duration-300 group-hover:scale-x-100"
+            ></span>
             <div
               class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30 transition-transform group-hover:scale-110"
             >
@@ -245,8 +289,12 @@
 
           <!-- Feature 2: Account Pool -->
           <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
+            class="feature-card group relative overflow-hidden rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary-300/50 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60 dark:hover:border-primary-500/40"
           >
+            <span
+              aria-hidden="true"
+              class="pointer-events-none absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r from-primary-500 to-primary-600 transition-transform duration-300 group-hover:scale-x-100"
+            ></span>
             <div
               class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/30 transition-transform group-hover:scale-110"
             >
@@ -274,8 +322,12 @@
 
           <!-- Feature 3: Billing & Quota -->
           <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
+            class="feature-card group relative overflow-hidden rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary-300/50 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60 dark:hover:border-primary-500/40"
           >
+            <span
+              aria-hidden="true"
+              class="pointer-events-none absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r from-purple-500 to-purple-600 transition-transform duration-300 group-hover:scale-x-100"
+            ></span>
             <div
               class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg shadow-purple-500/30 transition-transform group-hover:scale-110"
             >
@@ -302,105 +354,54 @@
           </div>
         </div>
 
-        <!-- Supported Providers -->
-        <div class="mb-8 text-center">
-          <h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">
-            {{ t('home.providers.title') }}
-          </h2>
-          <p class="text-sm text-gray-600 dark:text-dark-400">
-            {{ t('home.providers.description') }}
-          </p>
-        </div>
-
-        <div class="mb-16 flex flex-wrap items-center justify-center gap-4">
-          <!-- Claude - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-400 to-orange-500"
-            >
-              <span class="text-xs font-bold text-white">C</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.claude') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- GPT - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600"
-            >
-              <span class="text-xs font-bold text-white">G</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">GPT</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Gemini - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600"
-            >
-              <span class="text-xs font-bold text-white">G</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.gemini') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Antigravity - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-pink-600"
-            >
-              <span class="text-xs font-bold text-white">A</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.antigravity') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- More - Coming Soon -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-gray-200/50 bg-white/40 px-5 py-3 opacity-60 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/40"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-gray-500 to-gray-600"
-            >
-              <span class="text-xs font-bold text-white">+</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.more') }}</span>
-            <span
-              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400"
-              >{{ t('home.providers.soon') }}</span
-            >
-          </div>
-        </div>
+        <!--
+          Conversion-oriented showcase that replaces the static "Supported
+          Providers" pills. Lazily fetches the active recharge promo (if any)
+          and the top 3 plan cards; gracefully hides itself when
+          `payment_enabled === false` or all data sources fail.
+        -->
+        <HomeShowcaseSection />
       </div>
     </main>
 
-    <!-- Footer -->
+    <!--
+      Footer.
+
+      Layout: copyright pinned left, secondary cluster (contact strip
+      + docs link) pinned right via `justify-between`. The contact
+      strip is rendered here — not in <main> — because the operator's
+      contact info is "fine print" plumbing, not a conversion CTA;
+      tucking it into the footer keeps the page's narrative arc
+      (hero → features → plans/promo) uncluttered while still giving
+      every visitor a one-glance way to reach a human.
+
+      On mobile the inner row collapses to `flex-col` (`text-center`),
+      so the copyright stacks above the strip — unchanged from prior
+      footer behaviour, only `justify-center` → `justify-between` was
+      flipped to make the right-pinning meaningful at sm+.
+    -->
     <footer class="relative z-10 border-t border-gray-200/50 px-6 py-8 dark:border-dark-800/50">
       <div
-        class="mx-auto flex max-w-6xl flex-col items-center justify-center gap-4 text-center sm:flex-row sm:text-left"
+        class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left"
       >
         <p class="text-sm text-gray-500 dark:text-dark-400">
           &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
         </p>
-        <div class="flex items-center gap-4">
+        <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:justify-end">
+          <HomeContactSection />
+          <!--
+            Vertical divider between the contact strip and the docs
+            link, matching the in-strip dividers inside
+            HomeContactSection so the whole footer-right reads as a
+            single pipe-separated list. `v-if="docUrl"` mirrors the
+            link's own guard so we don't end up with a dangling
+            divider when the docs URL isn't configured.
+          -->
+          <span
+            v-if="docUrl"
+            class="h-4 w-px bg-gray-300/70 dark:bg-dark-700"
+            aria-hidden="true"
+          ></span>
           <a
             v-if="docUrl"
             :href="docUrl"
@@ -409,14 +410,6 @@
             class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
           >
             {{ t('home.docs') }}
-          </a>
-          <a
-            :href="githubUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-          >
-            GitHub
           </a>
         </div>
       </div>
@@ -430,6 +423,8 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import HomeShowcaseSection from '@/components/home/HomeShowcaseSection.vue'
+import HomeContactSection from '@/components/home/HomeContactSection.vue'
 
 const { t } = useI18n()
 
@@ -451,9 +446,6 @@ const isHomeContentUrl = computed(() => {
 
 // Theme
 const isDark = ref(document.documentElement.classList.contains('dark'))
-
-// GitHub URL
-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
 
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated)

@@ -9,16 +9,21 @@
 
     <div v-else class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
       <article
-        v-for="card in cards"
+        v-for="card in visibleCards"
         :key="card.id"
-        class="flex flex-col rounded-2xl border border-gray-200/70 bg-white/80 p-5 shadow-sm transition-shadow hover:shadow-lg dark:border-dark-700/70 dark:bg-dark-900/60"
+        class="plan-card group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200/70 bg-white/80 p-5 shadow-sm backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary-300/70 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/70 dark:bg-dark-900/60 dark:hover:border-primary-500/50"
       >
+        <!-- Top accent bar reveals on hover -->
+        <span
+          aria-hidden="true"
+          class="pointer-events-none absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r from-primary-400 via-primary-500 to-indigo-500 transition-transform duration-300 group-hover:scale-x-100"
+        ></span>
         <header class="mb-4">
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between gap-2">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ card.name }}</h3>
             <span
               v-if="discountOf(card) > 0"
-              class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+              class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm shadow-emerald-500/30"
             >
               -{{ discountOf(card) }}%
             </span>
@@ -104,6 +109,34 @@
         </button>
       </article>
     </div>
+
+    <!--
+      "View all plans" footer link, rendered only when the parent passes
+      `viewAllHref` AND there is something hidden behind the truncation.
+      Used by the homepage showcase to funnel users from a truncated
+      grid (`maxItems=3`) into the full management plaza.
+
+      Visibility rule: `cards.length > visibleCards.length`.
+        - If `maxItems` is unset, `visibleCards.length === cards.length`
+          → no truncation → no link (PlazaPlansView already shows all).
+        - If the homepage receives ≤ `maxItems` plans, all of them are
+          on screen → the "View all" link would lead to the SAME set
+          of cards, which is confusing UX. Hide it.
+        - If there are more plans than `maxItems`, render the link so
+          users can drill into the full plaza.
+      Also hidden during loading and empty states.
+    -->
+    <div
+      v-if="viewAllHref && !loading && cards.length > visibleCards.length"
+      class="mt-8 flex justify-center"
+    >
+      <router-link
+        :to="viewAllHref"
+        class="view-all-link group inline-flex items-center gap-1.5 rounded-full border border-primary-200/70 bg-white/70 px-4 py-2 text-sm font-medium text-primary-700 backdrop-blur-sm transition-all hover:border-primary-400 hover:bg-primary-50 hover:shadow-md hover:shadow-primary-500/10 dark:border-primary-500/30 dark:bg-dark-900/60 dark:text-primary-300 dark:hover:border-primary-400/60 dark:hover:bg-primary-500/10"
+      >
+        {{ t('home.plans.view_all') }}
+      </router-link>
+    </div>
   </div>
 </template>
 
@@ -117,11 +150,36 @@ import { useAppStore } from '@/stores/app'
 const props = defineProps<{
   cards: PlazaPlanCard[]
   loading: boolean
+  /**
+   * Optional cap on how many cards to render. When omitted (or < 1) the full
+   * `cards` array is shown, preserving the default behaviour used by
+   * `PlazaPlansView`. The homepage showcase passes `maxItems=3` and combines
+   * it with `viewAllHref` to drive users to the full management plaza.
+   */
+  maxItems?: number
+  /**
+   * Optional `RouteLocationRaw`-compatible path (e.g. `/plaza/plans`). When
+   * truthy, a "View all plans →" link is rendered below the grid. The link
+   * is intentionally rendered only when there are cards to show, so empty
+   * /loading states stay clean.
+   */
+  viewAllHref?: string
 }>()
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const { gotoOrLogin } = useAuthRedirect()
+
+/**
+ * Cards actually rendered: respects an optional `maxItems` cap so the homepage
+ * showcase can show a 3-card preview while keeping the management plaza view
+ * (`PlazaPlansView`) at full fidelity by simply not passing the prop.
+ */
+const visibleCards = computed(() => {
+  const cap = props.maxItems
+  if (typeof cap !== 'number' || cap < 1) return props.cards
+  return props.cards.slice(0, cap)
+})
 
 /**
  * 套餐价格固定按 CNY 展示，不参与 plaza 模型表的 USD/CNY 切换。

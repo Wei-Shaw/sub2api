@@ -46,13 +46,18 @@ function makeRouter() {
       { path: '/', component: { template: '<div />' } },
       { path: '/login', component: { template: '<div />' } },
       { path: '/purchase', component: { template: '<div />' } },
+      { path: '/plaza/plans', component: { template: '<div />' } },
     ],
   })
 }
 
-function mountCards(cards: PlazaPlanCard[], loading = false) {
+function mountCards(
+  cards: PlazaPlanCard[],
+  loading = false,
+  extraProps: Partial<{ maxItems: number; viewAllHref: string }> = {},
+) {
   return mount(PlanPlazaCards, {
-    props: { cards, loading },
+    props: { cards, loading, ...extraProps },
     global: {
       plugins: [createPinia(), makeRouter()],
     },
@@ -136,5 +141,86 @@ describe('PlanPlazaCards', () => {
     const wrapper = mountCards([makeCard()])
     const usdBtn = wrapper.findAll('button').find((b) => b.text() === 'USD')
     expect(usdBtn).toBeUndefined()
+  })
+
+  // ----- 首页 showcase 用到的两个可选 prop：maxItems / viewAllHref -----
+  // 默认行为（不传新 prop）必须与 PlazaPlansView 当前一致：渲染全部卡片、不渲染“查看全部”链接。
+  describe('homepage showcase props', () => {
+    function makeManyCards(n: number): PlazaPlanCard[] {
+      return Array.from({ length: n }, (_, i) =>
+        makeCard({ id: i + 1, name: `Plan ${i + 1}` }),
+      )
+    }
+
+    it('maxItems=3 时只渲染前 3 张卡', () => {
+      const wrapper = mountCards(makeManyCards(5), false, { maxItems: 3 })
+      const articles = wrapper.findAll('article')
+      expect(articles.length).toBe(3)
+      expect(wrapper.text()).toContain('Plan 1')
+      expect(wrapper.text()).toContain('Plan 3')
+      expect(wrapper.text()).not.toContain('Plan 4')
+      expect(wrapper.text()).not.toContain('Plan 5')
+    })
+
+    it('未传 maxItems 时维持现有行为：渲染全部卡片', () => {
+      const wrapper = mountCards(makeManyCards(5))
+      expect(wrapper.findAll('article').length).toBe(5)
+    })
+
+    it('cards 数 > maxItems 时（首页有截断）渲染"查看全部"链接', () => {
+      const wrapper = mountCards(makeManyCards(5), false, {
+        maxItems: 3,
+        viewAllHref: '/plaza/plans',
+      })
+      // i18n key 直接被回显（见顶部 mock）
+      expect(wrapper.text()).toContain('home.plans.view_all')
+      const link = wrapper.find('a[href="/plaza/plans"]')
+      expect(link.exists()).toBe(true)
+    })
+
+    it('cards 数 <= maxItems 时（首页已展示全部）不渲染"查看全部"链接', () => {
+      // 边界 1：cards 数 === maxItems —— 全部已经在屏，再给 view-all 链接
+      // 会指向相同卡片集合，纯多余。
+      const wrapperEq = mountCards(makeManyCards(3), false, {
+        maxItems: 3,
+        viewAllHref: '/plaza/plans',
+      })
+      expect(wrapperEq.text()).not.toContain('home.plans.view_all')
+
+      // 边界 2：cards 数 < maxItems —— 同上，也不该出现链接。
+      const wrapperLt = mountCards(makeManyCards(2), false, {
+        maxItems: 3,
+        viewAllHref: '/plaza/plans',
+      })
+      expect(wrapperLt.text()).not.toContain('home.plans.view_all')
+    })
+
+    it('未传 maxItems（全量展示）时即使有 viewAllHref 也不渲染链接', () => {
+      // PlazaPlansView 场景：不传 maxItems，本身就是全量管理页。理论上
+      // 也不会传 viewAllHref，但这里加防御性断言：即使误传，也不会渲出
+      // 一个"查看全部"按钮指回当前页。
+      const wrapper = mountCards(makeManyCards(5), false, {
+        viewAllHref: '/plaza/plans',
+      })
+      expect(wrapper.text()).not.toContain('home.plans.view_all')
+    })
+
+    it('未传 viewAllHref 时不渲染"查看全部"链接（PlazaPlansView 现状）', () => {
+      const wrapper = mountCards(makeManyCards(3))
+      expect(wrapper.text()).not.toContain('home.plans.view_all')
+    })
+
+    it('cards 为空时即使传了 viewAllHref 也不渲染链接（避免空态指向无意义页）', () => {
+      const wrapper = mountCards([], false, { viewAllHref: '/plaza/plans' })
+      expect(wrapper.text()).not.toContain('home.plans.view_all')
+    })
+
+    it('loading 时不渲染"查看全部"链接', () => {
+      const wrapper = mountCards(makeManyCards(5), true, {
+        maxItems: 3,
+        viewAllHref: '/plaza/plans',
+      })
+      expect(wrapper.text()).not.toContain('home.plans.view_all')
+    })
   })
 })

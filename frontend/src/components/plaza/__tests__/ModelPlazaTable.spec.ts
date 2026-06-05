@@ -76,8 +76,12 @@ describe('ModelPlazaTable', () => {
     const wrapper = mountTable([tokenRow()])
     const text = wrapper.text()
     expect(text).toContain('claude-3-5-sonnet')
-    expect(text).toContain('$3.0000/Mtok')
-    expect(text).toContain('$15.0000/Mtok')
+    // 后缀已从紧凑形式 "/Mtok" 升级为可读的 " / M Tokens"（见
+    // ModelPlazaTable.vue PRICE_UNIT_SUFFIX）。这里跟着改成完整后缀，
+    // 确保未来若 PRICE_UNIT_SUFFIX 再变（例如本地化 / 单复数），
+    // 能被这条测试第一时间发现。
+    expect(text).toContain('$3.0000 / M Tokens')
+    expect(text).toContain('$15.0000 / M Tokens')
   })
 
   it('渲染 image 行的三档价格', () => {
@@ -199,12 +203,12 @@ describe('ModelPlazaTable', () => {
       },
     })
     const text = wrapper.text()
-    // 原价（base）始终是 USD
-    expect(text).toContain('$3.0000/Mtok')
-    expect(text).toContain('$15.0000/Mtok')
+    // 原价（base）始终是 USD；后缀同上，跟随组件 PRICE_UNIT_SUFFIX。
+    expect(text).toContain('$3.0000 / M Tokens')
+    expect(text).toContain('$15.0000 / M Tokens')
     // 站点价（site）走 formatUsd → 显示为 ¥
-    expect(text).toContain('¥21.0000/Mtok')
-    expect(text).toContain('¥105.0000/Mtok')
+    expect(text).toContain('¥21.0000 / M Tokens')
+    expect(text).toContain('¥105.0000 / M Tokens')
   })
 
   it('rechargeMultiplier > 0 时渲染充值比例横幅', () => {

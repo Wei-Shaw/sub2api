@@ -290,4 +290,215 @@ describe('PaymentView · recharge bonus promo', () => {
       expect(window.localStorage.length).toBe(0)
     })
   })
+
+  // 充值赠送活动到期防呆（用户在充值页待时间过长 → 活动 valid_until 已过
+  // → 点击"创建订单"必须先弹二次确认）。两个用例分别覆盖：
+  //   1. continue：弹窗 → 用户点"继续充值" → 真正调用 createOrder；
+  //   2. cancel  ：弹窗 → 用户取消 → 不进入下单流程；
+  // 还有一条独立的负向用例：valid_until 仍在未来 → 点击直接下单，
+  // 永远不显示弹窗 — 防止 modal 误伤"活动还在窗口内"的常规路径。
+  describe('expired-promo confirm modal', () => {
+    /**
+     * 触发到期场景的最小 fixture：
+     *   • 把 `valid_until` 钉在 2020 年 — 远比任何现实运行时早，
+     *     `Date.now() >= ts` 必为真，无需 `vi.useFakeTimers`。
+     *   • tiers / enabled 保持默认，让 banner 与 breakdown 加赠行
+     *     仍然渲染——这正是题目里"用户停留过久，banner 还摆着但
+     *     窗口期已过"的状态。
+     */
+    function expiredPromoFixture(): PromoFixture {
+      return {
+        ...defaultPromoFixture(),
+        valid_until: '2020-01-01T00:00:00Z',
+      }
+    }
+
+    /**
+     * 拿到充值底部的"创建订单"提交按钮。组件里通过 data-test
+     * 钩子 `payment-submit-recharge` 锁定，避免依赖 i18n 文本
+     * （t() 在测试里被 mock 成 identity，文本会包含 key）或
+     * 顺序 (`buttons[buttons.length - 1]`) 这类脆弱选择。
+     */
+    function findSubmitButton(wrapper: ReturnType<typeof mountPaymentView>) {
+      const btn = wrapper.find('[data-test="payment-submit-recharge"]')
+      expect(btn.exists()).toBe(true)
+      return btn
+    }
+
+    /** 触发金额输入到 200（命中第一档），让 canSubmit 进入 true。 */
+    async function enterTierAmount(wrapper: ReturnType<typeof mountPaymentView>, amt = 200) {
+      const amountInput = wrapper.findComponent(AmountInput)
+      amountInput.vm.$emit('update:modelValue', amt)
+      await flushPromises()
+    }
+
+    it('blocks submission and only forwards to createOrder after the user confirms', async () => {
+      getCheckoutInfo.mockResolvedValue(checkoutFixture({ promo: expiredPromoFixture() }))
+      createOrder.mockResolvedValue({})
+
+      const wrapper = mountPaymentView()
+      await flushPromises()
+      await enterTierAmount(wrapper)
+
+      // 第一次点提交：因为活动已经过期，应只触发弹窗，不走下单。
+      await findSubmitButton(wrapper).trigger('click')
+      await flushPromises()
+
+      const modal = wrapper.find('[data-test="promo-expired-modal"]')
+      expect(modal.exists()).toBe(true)
+      expect(createOrder).not.toHaveBeenCalled()
+
+      // 用户在弹窗内确认——这次必须真正下单。
+      await wrapper.find('[data-test="promo-expired-confirm"]').trigger('click')
+      await flushPromises()
+
+      expect(createOrder).toHaveBeenCalledTimes(1)
+      // 弹窗应当随 confirm 关闭；保留它只会让用户疑惑还有第二次确认。
+      expect(wrapper.find('[data-test="promo-expired-modal"]').exists()).toBe(false)
+    })
+
+    it('keeps createOrder untouched when the user cancels in the modal', async () => {
+      getCheckoutInfo.mockResolvedValue(checkoutFixture({ promo: expiredPromoFixture() }))
+
+      const wrapper = mountPaymentView()
+      await flushPromises()
+      await enterTierAmount(wrapper)
+
+      await findSubmitButton(wrapper).trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-test="promo-expired-modal"]').exists()).toBe(true)
+
+      await wrapper.find('[data-test="promo-expired-cancel"]').trigger('click')
+      await flushPromises()
+
+      // 核心断言——取消必须不进入下单流程。这是题目的硬性要求；
+      // 模态本身是否同步消失依赖 Vue `<Transition>` 在 jsdom 下的
+      // leave 完成时序（confirm 路径里的 `await createOrder(...)`
+      // 隐式给了它多一个 microtask 调度，cancel 是纯同步翻转，时序
+      // 在这里更紧），用例不去守这条不稳定的边界——modal 关闭使用
+      // 的是和 confirm 相同的 `showPromoExpiredModal.value = false`，
+      // confirm 用例已经守住了那行代码的正确性。
+      expect(createOrder).not.toHaveBeenCalled()
+    })
+
+    it('does not show the modal when the promo is still in window', async () => {
+      // 反向用例：未过期 → 不能误触弹窗。否则正常充值路径都会被
+      // 拦下，回归严重。
+      getCheckoutInfo.mockResolvedValue(checkoutFixture({ promo: defaultPromoFixture() }))
+      createOrder.mockResolvedValue({})
+
+      const wrapper = mountPaymentView()
+      await flushPromises()
+      await enterTierAmount(wrapper)
+
+      await findSubmitButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find('[data-test="promo-expired-modal"]').exists()).toBe(false)
+      expect(createOrder).toHaveBeenCalledTimes(1)
+    })
+
+    it('forwards client_expected_bonus on the create-order payload for active promos', async () => {
+      // 后端拦截判窗的唯一信号是这个字段——前端必须在每次 balance 提交
+      // 时把"banner / breakdown 上正在向用户展示的赠送预览金额"如实
+      // 上报。这里守 happy path：promo 还在窗口、用户付 200 → 命中
+      // 200×1×0.05 = 10 这一档，payload 必须带 client_expected_bonus=10。
+      // 一旦该字段被误删，server 的 RECHARGE_PROMO_EXPIRED 闸门会彻底
+      // 失效（client 永远不发期待 → server 永远不拦），属于安全回归
+      // 必须有测试守住。
+      getCheckoutInfo.mockResolvedValue(checkoutFixture({ promo: defaultPromoFixture() }))
+      createOrder.mockResolvedValue({})
+
+      const wrapper = mountPaymentView()
+      await flushPromises()
+      await enterTierAmount(wrapper, 200)
+
+      await findSubmitButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(createOrder).toHaveBeenCalledTimes(1)
+      const payload = createOrder.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(payload).toMatchObject({
+        amount: 200,
+        order_type: 'balance',
+        client_expected_bonus: 10,
+      })
+      // 没确认过就不该带 ack；只有用户在 modal 上点了"继续充值"重发
+      // 时才允许出现。
+      expect(payload.promo_expired_acknowledged).toBeUndefined()
+    })
+
+    // 服务端兜底路径：客户端时钟与服务端有偏差、或 admin 在用户停留期间
+    // 中途禁用了活动 → 本地 isPromoExpiredNow() 漏判 → server 返回
+    // 409 RECHARGE_PROMO_EXPIRED。前端 catch 必须把这条错误转化为同一个
+    // 二次确认 modal（与本地快速路径形成对称），不能走通用 toast。
+    describe('server-side 409 fallback', () => {
+      /** 模拟后端 infraerrors.Conflict 经 apiClient 拦截后抛出的形状。 */
+      function makePromoExpired409(): Error & Record<string, unknown> {
+        const err = new Error('recharge bonus campaign has ended') as Error & Record<string, unknown>
+        err.status = 409
+        err.code = 409
+        err.reason = 'RECHARGE_PROMO_EXPIRED'
+        return err
+      }
+
+      it('opens the modal when paymentStore.createOrder rejects with RECHARGE_PROMO_EXPIRED', async () => {
+        // 用未过期的 promo 让本地快速路径放行 → 第一次提交真的会调
+        // server，server 才有机会返回 409。这条路径覆盖"client 时钟
+        // 慢 / admin 中途禁用活动"两类现实漂移。
+        getCheckoutInfo.mockResolvedValue(checkoutFixture({ promo: defaultPromoFixture() }))
+        createOrder.mockRejectedValueOnce(makePromoExpired409())
+
+        const wrapper = mountPaymentView()
+        await flushPromises()
+        await enterTierAmount(wrapper, 200)
+
+        await findSubmitButton(wrapper).trigger('click')
+        await flushPromises()
+
+        // 第一次提交应该已经走到 server（返回了 409）。
+        expect(createOrder).toHaveBeenCalledTimes(1)
+        // catch 分支必须把它转成 modal——而不是通用 toast。
+        expect(showError).not.toHaveBeenCalled()
+        expect(wrapper.find('[data-test="promo-expired-modal"]').exists()).toBe(true)
+
+        // 用户在 modal 内确认 → 应再次调用 createOrder，且这次必须
+        // 带 promo_expired_acknowledged=true（让 server 跳过拦截）。
+        createOrder.mockResolvedValueOnce({})
+        await wrapper.find('[data-test="promo-expired-confirm"]').trigger('click')
+        await flushPromises()
+
+        expect(createOrder).toHaveBeenCalledTimes(2)
+        const retryPayload = createOrder.mock.calls[1]?.[0] as Record<string, unknown>
+        expect(retryPayload).toMatchObject({
+          amount: 200,
+          order_type: 'balance',
+          promo_expired_acknowledged: true,
+        })
+      })
+
+      it('does not retry createOrder when the user cancels the server-triggered modal', async () => {
+        // 防回归：cancel 路径在 server 触发的弹窗里也必须保持"不重发"。
+        // 这是题目的硬性约束 — 用户拒绝就别再悄悄替他下单。
+        getCheckoutInfo.mockResolvedValue(checkoutFixture({ promo: defaultPromoFixture() }))
+        createOrder.mockRejectedValueOnce(makePromoExpired409())
+
+        const wrapper = mountPaymentView()
+        await flushPromises()
+        await enterTierAmount(wrapper, 200)
+
+        await findSubmitButton(wrapper).trigger('click')
+        await flushPromises()
+        expect(wrapper.find('[data-test="promo-expired-modal"]').exists()).toBe(true)
+        expect(createOrder).toHaveBeenCalledTimes(1) // server 那次
+
+        await wrapper.find('[data-test="promo-expired-cancel"]').trigger('click')
+        await flushPromises()
+
+        // 关键：取消后不应再次 createOrder。计数仍是 1（只有最初触发
+        // 409 的那次）。
+        expect(createOrder).toHaveBeenCalledTimes(1)
+      })
+    })
+  })
 })

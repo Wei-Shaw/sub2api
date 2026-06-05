@@ -345,7 +345,8 @@ func (s *RechargePromoActivityService) List(
 // ActivityToPromo 把 ent 实体映射成 service 层的 *RechargePromo。
 //
 // Version 形如 "{id}:{updated_at_unix}"，编辑同一活动后 version 会变化，
-// 前端红点能重新点亮。入参 nil 时返回 nil。
+// 前端红点能重新点亮。Name 字段同步透传，作为首页 banner / checkout-info
+// 的展示标题。入参 nil 时返回 nil。
 func ActivityToPromo(row *dbent.RechargePromoActivity) *RechargePromo {
 	if row == nil {
 		return nil
@@ -355,6 +356,7 @@ func ActivityToPromo(row *dbent.RechargePromoActivity) *RechargePromo {
 		ValidFrom:  row.ValidFrom,
 		ValidUntil: row.ValidUntil,
 		Tiers:      tiersFromDomain(row.Tiers),
+		Name:       row.Name,
 		Version:    fmt.Sprintf("%d:%d", row.ID, row.UpdatedAt.Unix()),
 		ActivityID: row.ID,
 	}

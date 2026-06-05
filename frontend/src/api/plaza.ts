@@ -94,6 +94,43 @@ export interface PlazaPlansResponse {
   currency_meta: PlazaCurrencyMeta
 }
 
+// ==================== Public Recharge Promo ====================
+
+/**
+ * Single bonus tier on a public recharge campaign.
+ *
+ * Mirrors `dto.PublicRechargePromoTierDTO` 1-to-1.
+ */
+export interface PublicRechargePromoTier {
+  /** Inclusive lower bound of the tier (CNY). */
+  min_amount: number
+  /** Multiplicative bonus rate, e.g. 0.05 means +5% extra USD credited. */
+  bonus_rate: number
+}
+
+/**
+ * Active recharge campaign payload returned by `GET /api/v1/plaza/recharge-promo`.
+ *
+ * Mirrors `dto.PublicRechargePromoDTO` exactly. The backend deliberately
+ * **omits** `enabled` (presence implies enabled) and `activity_id`
+ * (internal audit field) compared to the authenticated `checkout-info`
+ * counterpart. The `version` string is the same dismiss-key contract
+ * (`{id}:{updated_at_unix}`) used elsewhere.
+ */
+export interface PublicRechargePromo {
+  /** Operator-authored display name; used as the banner title. Plain text — never inject as HTML. */
+  name: string
+  valid_from?: string
+  valid_until?: string
+  tiers: PublicRechargePromoTier[]
+  version: string
+}
+
+/** Top-level response shape: `promo` is `null` when no campaign is active. */
+export interface PublicRechargePromoResponse {
+  promo: PublicRechargePromo | null
+}
+
 // ==================== Filter Params ====================
 
 export interface PlazaModelsFilter {
@@ -125,6 +162,20 @@ export const plazaAPI = {
   /** Fetch the subscription-plan plaza cards. */
   async listPlans(): Promise<PlazaPlansResponse> {
     const { data } = await apiClient.get<PlazaPlansResponse>('/plaza/plans')
+    return data
+  },
+
+  /**
+   * Fetch the active recharge promo (anonymous-accessible).
+   *
+   * Resolves to `{ promo: null }` whenever no campaign is currently active —
+   * including expired windows, empty tiers, and backend errors (the backend
+   * silent-skips on its end so anonymous marketing surfaces never 5xx). The
+   * response is intentionally HEADER-FREE: callers MUST NOT attach an
+   * `Authorization` token, mirroring `/plaza/plans` behavior.
+   */
+  async getRechargePromo(): Promise<PublicRechargePromoResponse> {
+    const { data } = await apiClient.get<PublicRechargePromoResponse>('/plaza/recharge-promo')
     return data
   },
 }

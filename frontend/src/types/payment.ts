@@ -187,6 +187,22 @@ export interface CreateOrderRequest {
   openid?: string
   wechat_resume_token?: string
   is_mobile?: boolean
+  /**
+   * 前端在点击"创建订单"瞬间、对当前 amount 计算出的赠送预览金额
+   * （与后端 ResolveRechargeBonus 同算法 mirror）。后端用它配合
+   * 服务器当前时间二次判窗：用户期待 > 0 但服务端不再发任何赠送
+   * → 返回 409 RECHARGE_PROMO_EXPIRED 让前端弹二次确认。
+   *
+   * 仅在 balance 充值且赠送预览 > 0 时上报；订阅 / 未到档 / 无活动
+   * 一律不传或 0。详见 PaymentView submitBalanceWithPromoGuard。
+   */
+  client_expected_bonus?: number
+  /**
+   * 用户在"活动已结束"二次确认 modal 上点过"继续充值"，重发请求时
+   * 携带 true，后端跳过 promo 拦截。fulfillment 仍按服务器时间核账，
+   * 不会因此误发赠送。
+   */
+  promo_expired_acknowledged?: boolean
 }
 
 export type CreateOrderResultType = 'order_created' | 'oauth_required' | 'jsapi_ready'

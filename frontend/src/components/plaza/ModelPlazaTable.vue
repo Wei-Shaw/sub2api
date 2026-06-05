@@ -115,6 +115,29 @@
             <!-- Base price -->
             <td class="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-dark-200">
               <template v-if="row.type === 'token'">
+                <!--
+                  Per-row token-price stack. We deliberately render only
+                  three lines now — input / output / cache_read — and have
+                  dropped the previous "cache_write" row.
+
+                  Rationale for the cut:
+                    1. Cache write is a one-time write cost upstream
+                       providers charge to *populate* the prompt cache;
+                       almost every real workload then re-reads that cache
+                       many times, so steady-state cost is dominated by
+                       input + cache_read. Surfacing cache_write next to
+                       them inflated the table without aiding the buying
+                       decision (users were comparing the wrong number).
+                    2. The four-line block was already the tallest cell
+                       in the table and forced extra row height across
+                       *every* row, including image rows that don't even
+                       have token pricing.
+                    3. cache_write is still available on the underlying
+                       PlazaModelRow shape (`*_cache_write_price_per_mtok`)
+                       — only the UI affordance is gone — so admin tooling
+                       and any future "advanced/expert" toggle can re-
+                       expose it without a data migration.
+                -->
                 <div class="space-y-0.5 text-xs">
                   <div>
                     <span class="text-gray-400">{{ t('plaza.models.in') }}</span>
@@ -123,10 +146,6 @@
                   <div>
                     <span class="text-gray-400">{{ t('plaza.models.out') }}</span>
                     {{ formatTokenBase(row.output_price_per_mtok) }}
-                  </div>
-                  <div>
-                    <span class="text-gray-400">{{ t('plaza.models.cache_write') }}</span>
-                    {{ formatTokenBase(row.cache_write_price_per_mtok) }}
                   </div>
                   <div>
                     <span class="text-gray-400">{{ t('plaza.models.cache_read') }}</span>
@@ -155,6 +174,15 @@
             <!-- Site price -->
             <td class="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-dark-200">
               <template v-if="row.type === 'token'">
+                <!--
+                  Mirrors the base-price stack above: input / output /
+                  cache_read only. See the base-price comment for the
+                  full rationale on why cache_write was removed. Keeping
+                  the two stacks structurally identical is important —
+                  users read across the row to compare原价 vs 站点价格,
+                  and divergent line counts would force their eye to
+                  re-anchor for every comparison.
+                -->
                 <div class="space-y-0.5 text-xs">
                   <div>
                     <span class="text-gray-400">{{ t('plaza.models.in') }}</span>
@@ -163,10 +191,6 @@
                   <div>
                     <span class="text-gray-400">{{ t('plaza.models.out') }}</span>
                     {{ formatTokenPrice(row.site_output_price_per_mtok) }}
-                  </div>
-                  <div>
-                    <span class="text-gray-400">{{ t('plaza.models.cache_write') }}</span>
-                    {{ formatTokenPrice(row.site_cache_write_price_per_mtok) }}
                   </div>
                   <div>
                     <span class="text-gray-400">{{ t('plaza.models.cache_read') }}</span>

@@ -91,4 +91,3 @@ func calculateGatewayRefundAmount(orderAmount, payAmount, refundAmount float64, 
 		Round(fractionDigits).
 		InexactFloat64()
 }
-

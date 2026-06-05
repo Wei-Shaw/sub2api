@@ -1,5 +1,7 @@
 package dto
 
+import "time"
+
 // PlazaCurrencyMetaDTO carries the data needed to render CNY ⇄ USD toggle on
 // the plaza pages. The `balance_recharge_multiplier` is sourced from the
 // existing payment configuration: 1 CNY recharge → multiplier USD credited.
@@ -83,4 +85,33 @@ type PlazaModelsResponseDTO struct {
 type PlazaPlansResponseDTO struct {
 	Cards        []PlazaPlanCardDTO   `json:"cards"`
 	CurrencyMeta PlazaCurrencyMetaDTO `json:"currency_meta"`
+}
+
+// PublicRechargePromoTierDTO 是公开充值赠送活动 DTO 的单个赠送档位。
+type PublicRechargePromoTierDTO struct {
+	MinAmount float64 `json:"min_amount"`
+	BonusRate float64 `json:"bonus_rate"`
+}
+
+// PublicRechargePromoDTO 是 GET /api/v1/plaza/recharge-promo 的展示型 promo 体。
+//
+// 与 service.RechargePromo / checkout-info.recharge_promo 的差异（按 design D2）：
+//   - 不含 `enabled`：能出现在响应里就意味着已启用且时间窗内
+//   - 不含 `activity_id`：那是后端审计字段，对匿名前端无意义
+//   - 多一个 `name`：作为运营文案位（首页 banner 标题），同时也回填到
+//     checkout-info.recharge_promo.name 保持一致
+type PublicRechargePromoDTO struct {
+	Name       string                       `json:"name"`
+	ValidFrom  *time.Time                   `json:"valid_from,omitempty"`
+	ValidUntil *time.Time                   `json:"valid_until,omitempty"`
+	Tiers      []PublicRechargePromoTierDTO `json:"tiers"`
+	Version    string                       `json:"version"`
+}
+
+// PublicRechargePromoResponseDTO 是 GET /api/v1/plaza/recharge-promo 的整体响应。
+//
+// 当无生效活动时 `Promo` 为 nil（JSON 序列化为 `"promo": null`），
+// 不使用 omitempty —— 前端始终能依靠 `promo` 字段是否为 null 来判断。
+type PublicRechargePromoResponseDTO struct {
+	Promo *PublicRechargePromoDTO `json:"promo"`
 }

@@ -21,6 +21,11 @@ type RechargePromo struct {
 	ValidFrom  *time.Time          `json:"valid_from,omitempty"`
 	ValidUntil *time.Time          `json:"valid_until,omitempty"`
 	Tiers      []RechargePromoTier `json:"tiers"`
+	// Name 是活动的展示标题（来自 recharge_promo_activities.name 列；
+	// schema 约束 1..120 字符）。仅在 RechargePromo 由 ActivityToPromo 构造
+	// （即来自数据库）时透传，供 marketing surfaces（首页 banner、
+	// checkout-info）作为运营文案位使用；入站请求 / 校验路径不读取该字段。
+	Name string `json:"name,omitempty"`
 	// Version 由后端在保存时基于活动表 ID 生成（不透明字符串）。
 	// 客户端用它作为 localStorage 红点 dismiss key 的一部分；
 	// 对前端是不透明的，不需要关心其内部含义。
