@@ -110,7 +110,7 @@
         @sort="handleSort"
         @userClick="handleUserClick"
       />
-      <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
+      <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" storage-key="usage-page-size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
     </div>
   </AppLayout>
   <UsageExportProgress :show="exportProgress.show" :progress="exportProgress.progress" :current="exportProgress.current" :total="exportProgress.total" :estimated-time="exportProgress.estimatedTime" @cancel="cancelExport" />
@@ -231,7 +231,7 @@ const getGranularityForRange = (start: string, end: string): 'day' | 'hour' => {
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start); const endDate = ref(defaultRange.end)
 const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, request_type: undefined, billing_type: null, start_date: startDate.value, end_date: endDate.value })
-const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
+const pagination = reactive({ page: 1, page_size: getPersistedPageSize(undefined, 'usage-page-size'), total: 0 })
 const sortState = reactive({
   sort_by: 'created_at',
   sort_order: 'desc' as 'asc' | 'desc'

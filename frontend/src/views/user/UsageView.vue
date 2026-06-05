@@ -340,6 +340,7 @@
           :page="pagination.page"
           :total="pagination.total"
           :page-size="pagination.page_size"
+          storage-key="usage-page-size"
           @update:page="handlePageChange"
           @update:pageSize="handlePageSizeChange"
         />
@@ -657,7 +658,7 @@ const onDateRangeChange = (range: {
 
 const pagination = reactive({
   page: 1,
-  page_size: getPersistedPageSize(),
+  page_size: getPersistedPageSize(undefined, 'usage-page-size'),
   total: 0,
   pages: 0
 })
