@@ -1451,6 +1451,10 @@ func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) 
 	if err := s.accountRepo.ClearTempUnschedulable(ctx, accountID); err != nil {
 		return err
 	}
+	slog.Info("account_temp_unschedulable_cleared",
+		"account_id", accountID,
+		"reason", "rate_limit_cleared",
+	)
 	if s.tempUnschedCache != nil {
 		if err := s.tempUnschedCache.DeleteTempUnsched(ctx, accountID); err != nil {
 			slog.Warn("temp_unsched_cache_delete_failed", "account_id", accountID, "error", err)
@@ -1516,6 +1520,10 @@ func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID
 	if err := s.accountRepo.ClearTempUnschedulable(ctx, accountID); err != nil {
 		return err
 	}
+	slog.Info("account_temp_unschedulable_cleared",
+		"account_id", accountID,
+		"reason", "explicit_clear",
+	)
 	if s.tempUnschedCache != nil {
 		if err := s.tempUnschedCache.DeleteTempUnsched(ctx, accountID); err != nil {
 			slog.Warn("temp_unsched_cache_delete_failed", "account_id", accountID, "error", err)
@@ -1754,12 +1762,31 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 	if account == nil {
 		return false
 	}
-	if rule.DurationMinutes <= 0 {
-		return false
-	}
 
 	now := time.Now()
-	until := now.Add(time.Duration(rule.DurationMinutes) * time.Minute)
+	var until time.Time
+
+	// 优先使用 ResetAtTime（按应用配置的服务器时区计算）
+	if rule.ResetAtTime != "" {
+		if nextReset, ok := nextTempUnschedResetAt(now, rule.ResetAtTime); ok {
+			until = nextReset
+		} else {
+			slog.Warn("temp_unsched_invalid_reset_at_time",
+				"account_id", account.ID,
+				"rule_index", ruleIndex,
+				"reset_at_time", rule.ResetAtTime,
+				"duration_minutes", rule.DurationMinutes,
+			)
+		}
+	}
+
+	// 如果 ResetAtTime 未设置或解析失败，则使用 DurationMinutes
+	if until.IsZero() {
+		if rule.DurationMinutes <= 0 {
+			return false
+		}
+		until = now.Add(time.Duration(rule.DurationMinutes) * time.Minute)
+	}
 
 	state := &TempUnschedState{
 		UntilUnix:       until.Unix(),
@@ -1790,7 +1817,18 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 		}
 	}
 
-	slog.Info("account_temp_unschedulable", "account_id", account.ID, "until", until, "rule_index", ruleIndex, "status_code", statusCode)
+	resetType := "duration_minutes"
+	if rule.ResetAtTime != "" {
+		resetType = "reset_at_time(" + rule.ResetAtTime + ")"
+	}
+	slog.Info("account_temp_unschedulable",
+		"account_id", account.ID,
+		"until", until,
+		"rule_index", ruleIndex,
+		"status_code", statusCode,
+		"matched_keyword", matchedKeyword,
+		"reset_type", resetType,
+	)
 	return true
 }
 

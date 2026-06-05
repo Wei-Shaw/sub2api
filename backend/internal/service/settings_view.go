@@ -254,6 +254,7 @@ type PublicSettings struct {
 	DocURL                           string
 	HomeContent                      string
 	HideCcsImportButton              bool
+	ServerTimezone                   string
 
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string

@@ -31,6 +31,7 @@ export const useAppStore = defineStore('app', () => {
   const contactInfo = ref<string>('')
   const apiBaseUrl = ref<string>('')
   const docUrl = ref<string>('')
+  const serverTimezone = ref<string>('')
   const cachedPublicSettings = ref<PublicSettings | null>(null)
 
   // Version cache state
@@ -298,6 +299,7 @@ export const useAppStore = defineStore('app', () => {
     contactInfo.value = config.contact_info || ''
     apiBaseUrl.value = config.api_base_url || ''
     docUrl.value = config.doc_url || ''
+    serverTimezone.value = config.server_timezone || ''
     publicSettingsLoaded.value = true
   }
 
@@ -335,6 +337,7 @@ export const useAppStore = defineStore('app', () => {
         doc_url: docUrl.value,
         home_content: '',
         hide_ccs_import_button: false,
+        server_timezone: serverTimezone.value,
         payment_enabled: false,
         table_default_page_size: 20,
         table_page_size_options: [10, 20, 50, 100],
@@ -418,6 +421,7 @@ export const useAppStore = defineStore('app', () => {
     contactInfo,
     apiBaseUrl,
     docUrl,
+    serverTimezone,
     cachedPublicSettings,
 
     // Version state

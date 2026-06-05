@@ -2456,6 +2456,13 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if input == nil {
+		return nil, ErrAccountNilInput
+	}
+	if err := ValidateTempUnschedulableCredentials(input.Credentials); err != nil {
+		return nil, err
+	}
+
 	// 绑定分组
 	groupIDs := input.GroupIDs
 	// 如果没有指定分组,自动绑定对应平台的默认分组
@@ -2578,7 +2585,11 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if len(input.Credentials) > 0 {
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
-		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		mergedCredentials := MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		if err := ValidateTempUnschedulableCredentials(mergedCredentials); err != nil {
+			return nil, err
+		}
+		account.Credentials = mergedCredentials
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。
@@ -2754,6 +2765,11 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if input.RateMultiplier != nil {
 		if *input.RateMultiplier < 0 {
 			return nil, errors.New("rate_multiplier must be >= 0")
+		}
+	}
+	if len(input.Credentials) > 0 {
+		if err := ValidateTempUnschedulableCredentials(input.Credentials); err != nil {
+			return nil, err
 		}
 	}
 

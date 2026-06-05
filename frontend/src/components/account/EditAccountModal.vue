@@ -1207,6 +1207,28 @@
                     class="input"
                     :placeholder="t('admin.accounts.tempUnschedulable.durationPlaceholder')"
                   />
+                  <p class="input-hint">{{ t('admin.accounts.tempUnschedulable.durationMinutesHint') }}</p>
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.resetAtTime') }}</label>
+                  <div class="flex gap-2">
+                    <input
+                      v-model="rule.reset_at_time"
+                      type="time"
+                      class="input flex-1"
+                      :placeholder="t('admin.accounts.tempUnschedulable.resetAtTimePlaceholder')"
+                    />
+                    <button
+                      type="button"
+                      @click="rule.reset_at_time = '00:00'"
+                      class="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:border-dark-600 dark:text-gray-400 dark:hover:bg-dark-600 dark:hover:text-gray-200"
+                    >
+                      {{ t('admin.accounts.tempUnschedulable.resetAtMidnightShortcut') }}
+                    </button>
+                  </div>
+                  <p class="input-hint">
+                    {{ t('admin.accounts.tempUnschedulable.resetAtTimeHint', { timezone: effectiveServerTimezone }) }}
+                  </p>
                 </div>
                 <div class="sm:col-span-2">
                   <label class="input-label">{{ t('admin.accounts.tempUnschedulable.keywords') }}</label>
@@ -2398,7 +2420,11 @@ import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
-import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
+import {
+  applyInterceptWarmup,
+  buildTempUnschedRules,
+  hasInvalidTempUnschedResetAtTime
+} from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
@@ -2435,6 +2461,9 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const effectiveServerTimezone = computed(
+  () => appStore.serverTimezone || t('admin.accounts.tempUnschedulable.serverTimezoneUnknown')
+)
 
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
@@ -2458,6 +2487,8 @@ interface TempUnschedRuleForm {
   keywords: string
   duration_minutes: number | null
   description: string
+  // 按时间点重置（格式："HH:MM"，如"00:00"表示每天凌晨0点重置）
+  reset_at_time?: string
 }
 
 // State
@@ -2815,7 +2846,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 529,
       keywords: 'overloaded, too many',
       duration_minutes: 60,
-      description: t('admin.accounts.tempUnschedulable.presets.overloadDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.overloadDesc'),
+      reset_at_time: ''
     }
   },
   {
@@ -2824,7 +2856,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 429,
       keywords: 'rate limit, too many requests',
       duration_minutes: 10,
-      description: t('admin.accounts.tempUnschedulable.presets.rateLimitDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.rateLimitDesc'),
+      reset_at_time: ''
     }
   },
   {
@@ -2833,7 +2866,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 503,
       keywords: 'unavailable, maintenance',
       duration_minutes: 30,
-      description: t('admin.accounts.tempUnschedulable.presets.unavailableDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.unavailableDesc'),
+      reset_at_time: ''
     }
   }
 ])
@@ -3348,7 +3382,8 @@ const addTempUnschedRule = (preset?: TempUnschedRuleForm) => {
     error_code: null,
     keywords: '',
     duration_minutes: 30,
-    description: ''
+    description: '',
+    reset_at_time: ''
   })
 }
 
@@ -3365,43 +3400,16 @@ const moveTempUnschedRule = (index: number, direction: number) => {
   rules[target] = current
 }
 
-const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
-  const out: Array<{
-    error_code: number
-    keywords: string[]
-    duration_minutes: number
-    description: string
-  }> = []
-
-  for (const rule of rules) {
-    const errorCode = Number(rule.error_code)
-    const duration = Number(rule.duration_minutes)
-    const keywords = splitTempUnschedKeywords(rule.keywords)
-    if (!Number.isFinite(errorCode) || errorCode < 100 || errorCode > 599) {
-      continue
-    }
-    if (!Number.isFinite(duration) || duration <= 0) {
-      continue
-    }
-    if (keywords.length === 0) {
-      continue
-    }
-    out.push({
-      error_code: Math.trunc(errorCode),
-      keywords,
-      duration_minutes: Math.trunc(duration),
-      description: rule.description.trim()
-    })
-  }
-
-  return out
-}
-
 const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
   if (!tempUnschedEnabled.value) {
     delete credentials.temp_unschedulable_enabled
     delete credentials.temp_unschedulable_rules
     return true
+  }
+
+  if (hasInvalidTempUnschedResetAtTime(tempUnschedRules.value)) {
+    appStore.showError(t('admin.accounts.tempUnschedulable.resetAtTimeInvalid'))
+    return false
   }
 
   const rules = buildTempUnschedRules(tempUnschedRules.value)
@@ -3429,7 +3437,8 @@ function loadTempUnschedRules(credentials?: Record<string, unknown>) {
       error_code: toPositiveNumber(entry.error_code),
       keywords: formatTempUnschedKeywords(entry.keywords),
       duration_minutes: toPositiveNumber(entry.duration_minutes),
-      description: typeof entry.description === 'string' ? entry.description : ''
+      description: typeof entry.description === 'string' ? entry.description : '',
+      reset_at_time: typeof entry.reset_at_time === 'string' ? entry.reset_at_time : ''
     }
   })
 }
@@ -3526,13 +3535,6 @@ function formatTempUnschedKeywords(value: unknown) {
     return value
   }
   return ''
-}
-
-const splitTempUnschedKeywords = (value: string) => {
-  return value
-    .split(/[,;]/)
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
 }
 
 function toPositiveNumber(value: unknown) {

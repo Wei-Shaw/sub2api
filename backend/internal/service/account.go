@@ -4,6 +4,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"hash/fnv"
 	"log/slog"
 	"reflect"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 type Account struct {
@@ -80,6 +83,89 @@ type TempUnschedulableRule struct {
 	Keywords        []string `json:"keywords"`
 	DurationMinutes int      `json:"duration_minutes"`
 	Description     string   `json:"description"`
+	// ResetAtTime 按服务器配置时区的时间点重置（格式："HH:MM"，如"00:00"表示每天凌晨0点重置）
+	// 设置后，临时不可调度状态将在下一个该时间点自动解除
+	// 如果同时设置了DurationMinutes，则优先使用ResetAtTime
+	ResetAtTime string `json:"reset_at_time,omitempty"`
+}
+
+type tempUnschedResetClock struct {
+	Hour   int
+	Minute int
+}
+
+const tempUnschedResetAtTimeLayout = "15:04"
+
+func parseTempUnschedResetAtTime(value string) (tempUnschedResetClock, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return tempUnschedResetClock{}, false
+	}
+	if len(value) != len(tempUnschedResetAtTimeLayout) || value[2] != ':' {
+		return tempUnschedResetClock{}, false
+	}
+	for idx, ch := range value {
+		if idx == 2 {
+			continue
+		}
+		if ch < '0' || ch > '9' {
+			return tempUnschedResetClock{}, false
+		}
+	}
+	parsed, err := time.Parse(tempUnschedResetAtTimeLayout, value)
+	if err != nil {
+		return tempUnschedResetClock{}, false
+	}
+	return tempUnschedResetClock{Hour: parsed.Hour(), Minute: parsed.Minute()}, true
+}
+
+func isValidTempUnschedResetAtTime(value string) bool {
+	_, ok := parseTempUnschedResetAtTime(value)
+	return ok
+}
+
+func nextTempUnschedResetAt(now time.Time, resetAtTime string) (time.Time, bool) {
+	clock, ok := parseTempUnschedResetAtTime(resetAtTime)
+	if !ok {
+		return time.Time{}, false
+	}
+
+	loc := timezone.Location()
+	localNow := now.In(loc)
+	nextReset := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), clock.Hour, clock.Minute, 0, 0, loc)
+	if !nextReset.After(localNow) {
+		nextReset = nextReset.AddDate(0, 0, 1)
+	}
+	return nextReset, true
+}
+
+func ValidateTempUnschedulableCredentials(credentials map[string]any) error {
+	if credentials == nil {
+		return nil
+	}
+	raw, ok := credentials["temp_unschedulable_rules"]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	for idx, item := range tempUnschedRuleItems(raw) {
+		entry, ok := item.(map[string]any)
+		if !ok || entry == nil {
+			continue
+		}
+		resetAtTime := parseTempUnschedString(entry["reset_at_time"])
+		if resetAtTime == "" {
+			continue
+		}
+		if !isValidTempUnschedResetAtTime(resetAtTime) {
+			return infraerrors.BadRequest(
+				"TEMP_UNSCHED_RESET_AT_TIME_INVALID",
+				fmt.Sprintf("temp_unschedulable_rules[%d].reset_at_time must use HH:MM between 00:00 and 23:59", idx),
+			)
+		}
+	}
+
+	return nil
 }
 
 func (a *Account) IsActive() bool {
@@ -304,13 +390,13 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 		return nil
 	}
 
-	arr, ok := raw.([]any)
-	if !ok {
+	items := tempUnschedRuleItems(raw)
+	if len(items) == 0 {
 		return nil
 	}
 
-	rules := make([]TempUnschedulableRule, 0, len(arr))
-	for _, item := range arr {
+	rules := make([]TempUnschedulableRule, 0, len(items))
+	for idx, item := range items {
 		entry, ok := item.(map[string]any)
 		if !ok || entry == nil {
 			continue
@@ -321,9 +407,23 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 			Keywords:        parseTempUnschedStrings(entry["keywords"]),
 			DurationMinutes: parseTempUnschedInt(entry["duration_minutes"]),
 			Description:     parseTempUnschedString(entry["description"]),
+			ResetAtTime:     parseTempUnschedString(entry["reset_at_time"]),
 		}
 
-		if rule.ErrorCode <= 0 || rule.DurationMinutes <= 0 || len(rule.Keywords) == 0 {
+		// 验证：必须有错误码和关键词，且至少有duration_minutes或reset_at_time之一
+		if rule.ErrorCode <= 0 || len(rule.Keywords) == 0 {
+			continue
+		}
+		if rule.ResetAtTime != "" && !isValidTempUnschedResetAtTime(rule.ResetAtTime) {
+			slog.Warn("temp_unsched_invalid_reset_at_time",
+				"account_id", a.ID,
+				"rule_index", idx,
+				"reset_at_time", rule.ResetAtTime,
+				"duration_minutes", rule.DurationMinutes,
+			)
+			rule.ResetAtTime = ""
+		}
+		if rule.DurationMinutes <= 0 && rule.ResetAtTime == "" {
 			continue
 		}
 
@@ -331,6 +431,21 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 	}
 
 	return rules
+}
+
+func tempUnschedRuleItems(value any) []any {
+	switch v := value.(type) {
+	case []any:
+		return v
+	case []map[string]any:
+		items := make([]any, 0, len(v))
+		for _, item := range v {
+			items = append(items, item)
+		}
+		return items
+	default:
+		return nil
+	}
 }
 
 func parseTempUnschedString(value any) string {

@@ -148,6 +148,9 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 			return nil, err
 		}
 	}
+	if err := ValidateTempUnschedulableCredentials(req.Credentials); err != nil {
+		return nil, err
+	}
 
 	// 创建账号
 	account := &Account{
@@ -248,6 +251,9 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	if req.Credentials != nil {
+		if err := ValidateTempUnschedulableCredentials(*req.Credentials); err != nil {
+			return nil, err
+		}
 		account.Credentials = *req.Credentials
 	}
 
