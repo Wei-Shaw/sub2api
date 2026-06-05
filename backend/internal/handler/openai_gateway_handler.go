@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -20,7 +19,6 @@ import (
 
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
@@ -214,86 +212,6 @@ func (h *OpenAIGatewayHandler) anthropicErrorResponseWithMetadata(c *gin.Context
 	c.JSON(status, body)
 }
 
-// anthropicStreamingAwareError handles errors that may occur during streaming,
-// using Anthropic SSE error format.
-func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
-	h.anthropicStreamingAwareErrorWithMetadata(c, status, errType, message, nil, streamStarted)
-}
-
-// anthropicStreamingAwareErrorWithMetadata 带 metadata + reason 的 Anthropic 流错误响应
-func (h *OpenAIGatewayHandler) anthropicStreamingAwareErrorWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string, streamStarted bool) {
-	if streamStarted {
-		flusher, ok := c.Writer.(http.Flusher)
-		if ok {
-			errPayload, _ := json.Marshal(gin.H{
-				"type": "error",
-				"error": gin.H{
-					"type":    errType,
-					"message": message,
-				},
-			})
-			fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", errPayload) //nolint:errcheck
-			flusher.Flush()
-		}
-		return
-	}
-	h.anthropicErrorResponseWithMetadata(c, status, errType, message, metadata)
-}
-
-// handleAnthropicFailoverExhausted maps upstream failover errors to Anthropic format.
-func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
-	status, errType, errMsg := h.mapUpstreamError(failoverErr.StatusCode)
-	h.anthropicStreamingAwareError(c, status, errType, errMsg, streamStarted)
-}
-
-// ensureAnthropicErrorResponse writes a fallback Anthropic error if no response was written.
-func (h *OpenAIGatewayHandler) ensureAnthropicErrorResponse(c *gin.Context, streamStarted bool) bool {
-	if c == nil || c.Writer == nil || c.Writer.Written() {
-		return false
-	}
-	h.anthropicStreamingAwareError(c, http.StatusBadGateway, "api_error", "Upstream request failed", streamStarted)
-	return true
-}
-
-func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context, body []byte, reqLog *zap.Logger) bool {
-	if !gjson.GetBytes(body, `input.#(type=="function_call_output")`).Exists() {
-		return true
-	}
-
-	var reqBody map[string]any
-	if err := json.Unmarshal(body, &reqBody); err != nil {
-		// 保持原有容错语义：解析失败时跳过预校验，沿用后续上游校验结果。
-		return true
-	}
-
-	c.Set(service.OpenAIParsedRequestBodyKey, reqBody)
-	validation := service.ValidateFunctionCallOutputContext(reqBody)
-	if !validation.HasFunctionCallOutput {
-		return true
-	}
-
-	previousResponseID, _ := reqBody["previous_response_id"].(string)
-	if strings.TrimSpace(previousResponseID) != "" || validation.HasToolCallContext {
-		return true
-	}
-
-	if validation.HasFunctionCallOutputMissingCallID {
-		reqLog.Warn("openai.request_validation_failed",
-			zap.String("reason", "function_call_output_missing_call_id"),
-		)
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
-		return false
-	}
-	if validation.HasItemReferenceForAllCallIDs {
-		return true
-	}
-
-	reqLog.Warn("openai.request_validation_failed",
-		zap.String("reason", "function_call_output_missing_item_reference"),
-	)
-	h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
-	return false
-}
 func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if !isOpenAIWSUpgradeRequest(c.Request) {
 		h.errorResponse(c, http.StatusUpgradeRequired, "invalid_request_error", "WebSocket upgrade required (Upgrade: websocket)")
@@ -782,13 +700,6 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
 }
 
-// handleFailoverExhaustedSimple 简化版本，用于没有响应体的情况
-func (h *OpenAIGatewayHandler) handleFailoverExhaustedSimple(c *gin.Context, statusCode int, streamStarted bool) {
-	status, errType, errMsg := h.mapUpstreamError(statusCode)
-	service.SetOpsUpstreamError(c, statusCode, errMsg, "")
-	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
-}
-
 func (h *OpenAIGatewayHandler) mapUpstreamError(statusCode int) (int, string, string) {
 	switch statusCode {
 	case 401:
@@ -876,14 +787,6 @@ func setOpenAIClientTransportHTTP(c *gin.Context) {
 
 func setOpenAIClientTransportWS(c *gin.Context) {
 	service.SetOpenAIClientTransport(c, service.OpenAIClientTransportWS)
-}
-
-func ensureOpenAIPoolModeSessionHash(sessionHash string, account *service.Account) string {
-	if sessionHash != "" || account == nil || !account.IsPoolMode() {
-		return sessionHash
-	}
-	// 为当前请求生成一次性粘性会话键，确保同账号重试不会重新负载均衡到其他账号。
-	return "openai-pool-retry-" + uuid.NewString()
 }
 
 func openAIWSIngressFallbackSessionSeed(userID, apiKeyID int64, groupID *int64) string {

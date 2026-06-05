@@ -3048,6 +3048,72 @@
             </div>
           </div>
 
+          <!-- Default Platform Quotas -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.defaults.defaultPlatformQuotas") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.defaults.defaultPlatformQuotasHint") }}
+              </p>
+            </div>
+            <div class="px-6 py-4">
+              <p class="mb-3 text-xs text-amber-600 dark:text-amber-400">
+                {{ t("admin.settings.defaults.platformQuotaNotice") }}
+              </p>
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b text-left text-xs font-medium uppercase text-gray-500 dark:border-dark-600">
+                    <th class="px-2 py-2">{{ t("admin.settings.platformQuota.platform") }}</th>
+                    <th class="px-2 py-2">{{ t("admin.settings.platformQuota.daily") }}</th>
+                    <th class="px-2 py-2">{{ t("admin.settings.platformQuota.weekly") }}</th>
+                    <th class="px-2 py-2">{{ t("admin.settings.platformQuota.monthly") }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="platform in platformQuotaPlatforms"
+                    :key="platform"
+                    class="border-b dark:border-dark-600"
+                  >
+                    <td class="px-2 py-2 font-mono text-xs">{{ platform }}</td>
+                    <td class="px-2 py-2">
+                      <input
+                        v-model.number="platformQuotaForm[platform]!.daily"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        class="input h-8 w-28 text-xs"
+                        :placeholder="t('admin.settings.platformQuota.placeholder')"
+                      />
+                    </td>
+                    <td class="px-2 py-2">
+                      <input
+                        v-model.number="platformQuotaForm[platform]!.weekly"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        class="input h-8 w-28 text-xs"
+                        :placeholder="t('admin.settings.platformQuota.placeholder')"
+                      />
+                    </td>
+                    <td class="px-2 py-2">
+                      <input
+                        v-model.number="platformQuotaForm[platform]!.monthly"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        class="input h-8 w-28 text-xs"
+                        :placeholder="t('admin.settings.platformQuota.placeholder')"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div class="card">
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
@@ -5835,8 +5901,11 @@ import {
   deriveWeChatConnectStoredMode,
   normalizeDefaultSubscriptionSettings,
   resolveWeChatConnectModeCapabilities,
+  sanitizePlatformQuotasMap,
+  normalizePlatformQuotasMap,
 } from "@/api/admin/settings";
 import type {
+  DefaultPlatformQuotasMap,
   AuthSourceDefaultsState,
   AuthSourceType,
   SystemSettings,
@@ -6333,6 +6402,12 @@ const form = reactive<SettingsForm>({
 
 const authSourceDefaults = reactive<AuthSourceDefaultsState>(
   buildAuthSourceDefaultsState({}),
+);
+
+// ── 默认平台限额 ──────────────────────────────────────────────────────────
+const platformQuotaPlatforms = ["anthropic", "openai", "gemini", "antigravity"] as const;
+const platformQuotaForm = reactive<DefaultPlatformQuotasMap>(
+  normalizePlatformQuotasMap(),
 );
 
 const authSourceDefaultsMeta = computed(() => [
@@ -6935,6 +7010,7 @@ async function loadSettings() {
           }))
         : defaultLoginAgreementDocuments();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
+    Object.assign(platformQuotaForm, normalizePlatformQuotasMap(settings.default_platform_quotas));
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
@@ -7276,6 +7352,7 @@ async function saveSettings() {
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
+      default_platform_quotas: sanitizePlatformQuotasMap(platformQuotaForm),
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,

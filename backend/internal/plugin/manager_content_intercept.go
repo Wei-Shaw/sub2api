@@ -4,7 +4,6 @@ import (
 	"log/slog"
 
 	"github.com/Wei-Shaw/sub2api/internal/gateway"
-	"google.golang.org/grpc"
 )
 
 // tryStartContentInterceptExtension unconditionally creates a
@@ -23,10 +22,7 @@ func (m *PluginManager) tryStartContentInterceptExtension(inst *PluginInstance) 
 		return
 	}
 
-	interceptor := gateway.NewPluginContentInterceptor(
-		inst.Name,
-		grpc.ClientConnInterface(conn).(*grpc.ClientConn),
-	)
+	interceptor := gateway.NewPluginContentInterceptor(inst.Name, conn)
 	m.pipeline.SetContentInterceptor(interceptor)
 
 	slog.Info("plugin content intercept extension attached", "plugin", inst.Name)

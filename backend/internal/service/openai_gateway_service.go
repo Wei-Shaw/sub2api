@@ -228,12 +228,12 @@ type OpenAIForwardResult struct {
 	ServiceTier *string
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
-	ReasoningEffort *string
-	Stream          bool
-	OpenAIWSMode    bool
-	ResponseHeaders http.Header
-	Duration        time.Duration
-	FirstTokenMs    *int
+	ReasoningEffort    *string
+	Stream             bool
+	OpenAIWSMode       bool
+	ResponseHeaders    http.Header
+	Duration           time.Duration
+	FirstTokenMs       *int
 	ImageCount         int
 	ImageSize          string
 	ImageInputSize     string
@@ -342,21 +342,21 @@ type OpenAIGatewayService struct {
 	balanceNotifyService  *BalanceNotifyService
 	settingService        *SettingService
 
-	openaiWSPoolOnce              sync.Once
-	openaiWSStateStoreOnce        sync.Once
-	openaiSchedulerOnce           sync.Once
-	openaiWSPassthroughDialerOnce sync.Once
-	openaiWSPool                  *openAIWSConnPool
-	openaiWSStateStore            OpenAIWSStateStore
-	openaiScheduler               OpenAIAccountScheduler
-	openaiWSPassthroughDialer     openAIWSClientDialer
-	openaiAccountStats            *openAIAccountRuntimeStats
-	openaiAccountRuntimeBlockUntil      sync.Map // key: int64(accountID), value: time.Time
-	openaiOAuth429WindowStartUnixNano   atomic.Int64
-	openaiOAuth429WindowCount           atomic.Int64
+	openaiWSPoolOnce                  sync.Once
+	openaiWSStateStoreOnce            sync.Once
+	openaiSchedulerOnce               sync.Once
+	openaiWSPassthroughDialerOnce     sync.Once
+	openaiWSPool                      *openAIWSConnPool
+	openaiWSStateStore                OpenAIWSStateStore
+	openaiScheduler                   OpenAIAccountScheduler
+	openaiWSPassthroughDialer         openAIWSClientDialer
+	openaiAccountStats                *openAIAccountRuntimeStats
+	openaiAccountRuntimeBlockUntil    sync.Map // key: int64(accountID), value: time.Time
+	openaiOAuth429WindowStartUnixNano atomic.Int64
+	openaiOAuth429WindowCount         atomic.Int64
 
-	openaiWSRetryMetrics openAIWSRetryMetrics
-	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
+	openaiWSRetryMetrics                openAIWSRetryMetrics
+	responseHeaderFilter                *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle               *accountWriteThrottle
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
@@ -5677,80 +5677,6 @@ func isUsagePricingUnavailableError(err error) bool {
 	return strings.Contains(msg, "no pricing available") || strings.Contains(msg, "pricing not found")
 }
 
-func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
-	ctx context.Context,
-	apiKey *APIKey,
-	billingModel string,
-	multiplier float64,
-	tokens UsageTokens,
-	serviceTier string,
-) (*CostBreakdown, error) {
-	if s.resolver != nil && apiKey.Group != nil {
-		gid := apiKey.Group.ID
-		return s.billingService.CalculateCostUnified(CostInput{
-			Ctx:            ctx,
-			Model:          billingModel,
-			GroupID:        &gid,
-			Tokens:         tokens,
-			RequestCount:   1,
-			RateMultiplier: multiplier,
-			ServiceTier:    serviceTier,
-			Resolver:       s.resolver,
-		})
-	}
-	return s.billingService.CalculateCostWithServiceTier(billingModel, tokens, multiplier, serviceTier)
-}
-
-func (s *OpenAIGatewayService) calculateOpenAIImageCost(
-	ctx context.Context,
-	billingModel string,
-	apiKey *APIKey,
-	result *OpenAIForwardResult,
-	multiplier float64,
-) *CostBreakdown {
-	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
-		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
-		gid := apiKey.Group.ID
-		cost, err := s.billingService.CalculateCostUnified(CostInput{
-			Ctx:            ctx,
-			Model:          billingModel,
-			GroupID:        &gid,
-			RequestCount:   result.ImageCount,
-			SizeTier:       result.ImageSize,
-			RateMultiplier: multiplier,
-			Resolver:       s.resolver,
-			Resolved:       resolved,
-		})
-		if err == nil {
-			return cost
-		}
-		logger.LegacyPrintf("service.openai_gateway", "Calculate image channel cost failed: %v", err)
-	}
-
-	var groupConfig *ImagePriceConfig
-	if apiKey != nil && apiKey.Group != nil {
-		cfg := apiKey.Group.ImageConfig()
-		groupConfig = &ImagePriceConfig{
-			Price1K: cfg.Price1K,
-			Price2K: cfg.Price2K,
-			Price4K: cfg.Price4K,
-		}
-	}
-	return s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
-}
-
-func (s *OpenAIGatewayService) resolveOpenAIChannelPricing(ctx context.Context, billingModel string, apiKey *APIKey) *ResolvedPricing {
-	if s.resolver == nil || apiKey == nil || apiKey.Group == nil {
-		return nil
-	}
-	gid := apiKey.Group.ID
-	resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
-	if resolved.Source == PricingSourceChannel {
-		return resolved
-	}
-	return nil
-}
-
 // ParseCodexRateLimitHeaders extracts Codex usage limits from response headers.
 // Exported for use in ratelimit_service when handling OpenAI 429 responses.
 func ParseCodexRateLimitHeaders(headers http.Header) *OpenAICodexUsageSnapshot {
@@ -6817,11 +6743,4 @@ func openAIQuotaAutoPauseSettingsFromContext(ctx context.Context) OpsOpenAIAccou
 	}
 	settings, _ := ctx.Value(openAIQuotaAutoPauseCtxKey{}).(OpsOpenAIAccountQuotaAutoPauseSettings)
 	return settings
-}
-
-func (s *OpenAIGatewayService) withOpenAIQuotaAutoPauseContext(ctx context.Context) context.Context {
-	if s == nil || s.settingService == nil {
-		return ctx
-	}
-	return withOpenAIQuotaAutoPauseSettings(ctx, s.settingService.GetOpenAIQuotaAutoPauseSettings(ctx))
 }

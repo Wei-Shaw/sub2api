@@ -251,8 +251,8 @@ func splitSQLStatements(content string) []string {
 			if idx := strings.Index(line, "--"); idx >= 0 {
 				line = line[:idx]
 			}
-			cleaned.WriteString(line)
-			cleaned.WriteString("\n")
+			_, _ = cleaned.WriteString(line)
+			_, _ = cleaned.WriteString("\n")
 		}
 		stmt := strings.TrimSpace(cleaned.String())
 		if stmt == "" {

@@ -1330,10 +1330,6 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceTopKExcludes
 	}
 }
 
-func intPtrForTest(v int) *int {
-	return &v
-}
-
 func TestOpenAIAccountRuntimeStats_ReportAndSnapshot(t *testing.T) {
 	stats := newOpenAIAccountRuntimeStats()
 	stats.report(1001, true, nil)

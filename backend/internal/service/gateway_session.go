@@ -95,6 +95,7 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 
 	return ""
 }
+
 // BindStickySession sets session -> account binding with standard TTL.
 func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
@@ -102,6 +103,7 @@ func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, 
 	}
 	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
 }
+
 // GetCachedSessionAccountID retrieves the account ID bound to a sticky session.
 // Returns 0 if no binding exists or on error.
 func (s *GatewayService) GetCachedSessionAccountID(ctx context.Context, groupID *int64, sessionHash string) (int64, error) {
@@ -114,6 +116,7 @@ func (s *GatewayService) GetCachedSessionAccountID(ctx context.Context, groupID 
 	}
 	return accountID, nil
 }
+
 // FindGeminiSession 查找 Gemini 会话（基于内容摘要链的 Fallback 匹配）
 // 返回最长匹配的会话信息（uuid, accountID）
 func (s *GatewayService) FindGeminiSession(_ context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, matchedChain string, found bool) {
@@ -122,6 +125,7 @@ func (s *GatewayService) FindGeminiSession(_ context.Context, groupID int64, pre
 	}
 	return s.digestStore.Find(groupID, prefixHash, digestChain)
 }
+
 // SaveGeminiSession 保存 Gemini 会话。oldDigestChain 为 Find 返回的 matchedChain，用于删旧 key。
 func (s *GatewayService) SaveGeminiSession(_ context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64, oldDigestChain string) error {
 	if digestChain == "" || s.digestStore == nil {
@@ -130,6 +134,7 @@ func (s *GatewayService) SaveGeminiSession(_ context.Context, groupID int64, pre
 	s.digestStore.Save(groupID, prefixHash, digestChain, uuid, accountID, oldDigestChain)
 	return nil
 }
+
 // FindAnthropicSession 查找 Anthropic 会话（基于内容摘要链的 Fallback 匹配）
 func (s *GatewayService) FindAnthropicSession(_ context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, matchedChain string, found bool) {
 	if digestChain == "" || s.digestStore == nil {
@@ -137,6 +142,7 @@ func (s *GatewayService) FindAnthropicSession(_ context.Context, groupID int64, 
 	}
 	return s.digestStore.Find(groupID, prefixHash, digestChain)
 }
+
 // SaveAnthropicSession 保存 Anthropic 会话
 func (s *GatewayService) SaveAnthropicSession(_ context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64, oldDigestChain string) error {
 	if digestChain == "" || s.digestStore == nil {
@@ -227,15 +233,7 @@ func (s *GatewayService) hashContent(content string) string {
 	h := xxhash.Sum64String(content)
 	return strconv.FormatUint(h, 36)
 }
-// hashBodyForSessionSeed 为 sessionID 提供一个稳定但仅对本次请求特征化的种子。
-// 复用 SHA-256 + 截断，与 generateSessionUUID 的输入格式对齐。
-func hashBodyForSessionSeed(body []byte) string {
-	if len(body) == 0 {
-		return ""
-	}
-	sum := sha256.Sum256(body)
-	return fmt.Sprintf("%x", sum[:16])
-}
+
 // GenerateSessionUUID creates a deterministic UUID4 from a seed string.
 func GenerateSessionUUID(seed string) string {
 	return generateSessionUUID(seed)
@@ -251,4 +249,3 @@ func generateSessionUUID(seed string) string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x",
 		bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
 }
-

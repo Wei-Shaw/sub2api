@@ -208,10 +208,8 @@ func (s *SDKServer) checkActiveTxLimit(pluginName string) error {
 func collectColumnTypeNames(rows *sql.Rows, numCols int) []string {
 	colTypes, _ := rows.ColumnTypes()
 	typeNames := make([]string, numCols)
-	if colTypes != nil {
-		for i, ct := range colTypes {
-			typeNames[i] = ct.DatabaseTypeName()
-		}
+	for i, ct := range colTypes {
+		typeNames[i] = ct.DatabaseTypeName()
 	}
 	return typeNames
 }

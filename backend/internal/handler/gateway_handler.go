@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -28,10 +27,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
-
-const gatewayCompatibilityMetricsLogInterval = 1024
-
-var gatewayCompatibilityMetricsLogCounter atomic.Uint64
 
 // GatewayHandler handles API gateway requests
 type GatewayHandler struct {
@@ -677,13 +672,6 @@ func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *se
 	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
 }
 
-// handleFailoverExhaustedSimple 简化版本，用于没有响应体的情况
-func (h *GatewayHandler) handleFailoverExhaustedSimple(c *gin.Context, statusCode int, streamStarted bool) {
-	status, errType, errMsg := h.mapUpstreamError(statusCode)
-	service.SetOpsUpstreamError(c, statusCode, errMsg, "")
-	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
-}
-
 func (h *GatewayHandler) mapUpstreamError(statusCode int) (int, string, string) {
 	switch statusCode {
 	case 401:
@@ -1132,23 +1120,6 @@ func (h *GatewayHandler) metadataBridgeEnabled() bool {
 		return true
 	}
 	return h.cfg.Gateway.OpenAIWS.MetadataBridgeEnabled
-}
-
-func (h *GatewayHandler) maybeLogCompatibilityFallbackMetrics(reqLog *zap.Logger) {
-	if reqLog == nil {
-		return
-	}
-	if gatewayCompatibilityMetricsLogCounter.Add(1)%gatewayCompatibilityMetricsLogInterval != 0 {
-		return
-	}
-	metrics := service.SnapshotOpenAICompatibilityFallbackMetrics()
-	reqLog.Info("gateway.compatibility_fallback_metrics",
-		zap.Int64("session_hash_legacy_read_fallback_total", metrics.SessionHashLegacyReadFallbackTotal),
-		zap.Int64("session_hash_legacy_read_fallback_hit", metrics.SessionHashLegacyReadFallbackHit),
-		zap.Int64("session_hash_legacy_dual_write_total", metrics.SessionHashLegacyDualWriteTotal),
-		zap.Float64("session_hash_legacy_read_hit_rate", metrics.SessionHashLegacyReadHitRate),
-		zap.Int64("metadata_legacy_fallback_total", metrics.MetadataLegacyFallbackTotal),
-	)
 }
 
 func (h *GatewayHandler) submitUsageRecordTask(task service.UsageRecordTask) {

@@ -208,53 +208,6 @@ func (h *AccountHandler) tryPluginTestConnection(c *gin.Context, account *servic
 	return true
 }
 
-func (h *AccountHandler) tryPluginCustomAction(c *gin.Context, account *service.Account, actionID string, payload json.RawMessage) bool {
-	client := h.platformClient(account.Platform)
-	if client == nil {
-		return false
-	}
-	creds, _ := json.Marshal(account.Credentials)
-	extra, _ := json.Marshal(account.Extra)
-
-	resp, err := client.ExecuteCustomAction(
-		c.Request.Context(),
-		actionID, account.ID, account.Platform,
-		creds, extra, payload,
-	)
-	if err != nil {
-		response.InternalError(c, "plugin custom action: "+err.Error())
-		return true
-	}
-	if !resp.Success {
-		response.Error(c, http.StatusBadRequest, resp.Error)
-		return true
-	}
-
-	if len(resp.UpdatedCredentialsJson) > 0 || len(resp.UpdatedExtraJson) > 0 {
-		updates := &service.UpdateAccountInput{}
-		if len(resp.UpdatedCredentialsJson) > 0 {
-			var c2 map[string]any
-			if err := json.Unmarshal(resp.UpdatedCredentialsJson, &c2); err == nil {
-				updates.Credentials = c2
-			}
-		}
-		if len(resp.UpdatedExtraJson) > 0 {
-			var e2 map[string]any
-			if err := json.Unmarshal(resp.UpdatedExtraJson, &e2); err == nil {
-				updates.Extra = e2
-			}
-		}
-		_, _ = h.adminService.UpdateAccount(c.Request.Context(), account.ID, updates)
-	}
-
-	var result any
-	if len(resp.ResultJson) > 0 {
-		_ = json.Unmarshal(resp.ResultJson, &result)
-	}
-	response.Success(c, result)
-	return true
-}
-
 func writePluginSSEEvent(c *gin.Context, data any) {
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {

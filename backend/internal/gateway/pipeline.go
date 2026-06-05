@@ -60,11 +60,11 @@ func NewGatewayPipeline(
 		}
 	}
 	return &GatewayPipeline{
-		registry:       registry,
-		gatewayService: gw,
-		billingCache:   billing,
-		concurrency:    conc,
-		settings:       settings,
+		registry:           registry,
+		gatewayService:     gw,
+		billingCache:       billing,
+		concurrency:        conc,
+		settings:           settings,
 		maxFailovers:       maxFailovers,
 		maxFailoversGemini: maxFailoversGemini,
 	}

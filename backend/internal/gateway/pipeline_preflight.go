@@ -111,13 +111,13 @@ func (p *GatewayPipeline) resolveChannelMapping(c *gin.Context, req *ForwardRequ
 
 // Slot acquisition constants matching handler/gateway_helper.go.
 const (
-	slotMaxWait         = 30 * time.Second
-	slotPingInterval    = 10 * time.Second
-	slotInitialBackoff  = 100 * time.Millisecond
-	slotBackoffMult     = 1.5
-	slotMaxBackoff      = 2 * time.Second
-	ssePingClaude       = "data: {\"type\": \"ping\"}\n\n"
-	ssePingComment      = ":\n\n"
+	slotMaxWait        = 30 * time.Second
+	slotPingInterval   = 10 * time.Second
+	slotInitialBackoff = 100 * time.Millisecond
+	slotBackoffMult    = 1.5
+	slotMaxBackoff     = 2 * time.Second
+	ssePingClaude      = "data: {\"type\": \"ping\"}\n\n"
+	ssePingComment     = ":\n\n"
 )
 
 func (p *GatewayPipeline) acquireUserSlot(c *gin.Context, req *ForwardRequest) (func(), error) {

@@ -77,31 +77,6 @@ func tryPluginExchangeOAuthCode(
 	return resp.CredentialsJson, resp.ExtraJson, resp.AccountName, resp.TierId, true
 }
 
-// tryPluginValidateRefreshToken delegates refresh token validation to the plugin.
-// Returns (credentialsJSON, extraJSON, accountName, tierID, handled).
-func tryPluginValidateRefreshToken(
-	ctx context.Context,
-	registry *plugin.PlatformRegistry,
-	platform, refreshToken string,
-	proxyID int64,
-	params map[string]string,
-) (credentialsJSON, extraJSON []byte, accountName, tierID string, handled bool) {
-	client := pluginClientForPlatform(registry, platform)
-	if client == nil {
-		return nil, nil, "", "", false
-	}
-	resp, err := client.ValidateRefreshToken(ctx, platform, refreshToken, proxyID, params)
-	if err != nil {
-		if isUnimplemented(err) {
-			return nil, nil, "", "", false
-		}
-		slog.WarnContext(ctx, "plugin validate refresh token failed, falling back to core",
-			"platform", platform, "err", err)
-		return nil, nil, "", "", false
-	}
-	return resp.CredentialsJson, resp.ExtraJson, resp.AccountName, resp.TierId, true
-}
-
 // tryPluginCookieAuth delegates cookie authentication to the plugin.
 // Returns (credentialsJSON, extraJSON, accountName, handled).
 func tryPluginCookieAuth(

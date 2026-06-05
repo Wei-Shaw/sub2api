@@ -18,8 +18,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
+	"golang.org/x/net/http2"     //nolint:staticcheck // h2c depends on this
+	"golang.org/x/net/http2/h2c" //nolint:staticcheck // h2c deprecated but no replacement yet
 )
 
 // ProviderSet 提供服务器层的依赖
@@ -143,7 +143,7 @@ func ProvideHTTPServer(cfg *config.Config, router *gin.Engine, pluginRouter *plu
 	// 根据配置决定是否启用 H2C
 	if cfg.Server.H2C.Enabled {
 		h2cConfig := cfg.Server.H2C
-		httpHandler = h2c.NewHandler(httpHandler, &http2.Server{
+		httpHandler = h2c.NewHandler(httpHandler, &http2.Server{ //nolint:staticcheck // h2c deprecated but no replacement
 			MaxConcurrentStreams:         h2cConfig.MaxConcurrentStreams,
 			IdleTimeout:                  time.Duration(h2cConfig.IdleTimeout) * time.Second,
 			MaxReadFrameSize:             uint32(h2cConfig.MaxReadFrameSize),

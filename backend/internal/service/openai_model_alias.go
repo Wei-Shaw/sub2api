@@ -126,12 +126,3 @@ func usageBillingModelCandidates(primary string, alternates ...string) []string 
 	}
 	return candidates
 }
-
-func firstUsageBillingModel(candidates []string) string {
-	for _, candidate := range candidates {
-		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}

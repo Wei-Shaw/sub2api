@@ -1,9 +1,6 @@
 package handler
 
 import (
-	"net/http"
-
-	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -34,16 +31,4 @@ func (h *GatewayHandler) responsesErrorResponseWithMetadata(c *gin.Context, stat
 		body["metadata"] = metadata
 	}
 	c.JSON(status, body)
-}
-
-// handleResponsesFailoverExhausted writes a failover-exhausted error in Responses format.
-func (h *GatewayHandler) handleResponsesFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
-	if streamStarted {
-		return // Can't write error after stream started
-	}
-	statusCode := http.StatusBadGateway
-	if lastErr != nil && lastErr.StatusCode > 0 {
-		statusCode = lastErr.StatusCode
-	}
-	h.responsesErrorResponse(c, statusCode, "server_error", "All available accounts exhausted")
 }
