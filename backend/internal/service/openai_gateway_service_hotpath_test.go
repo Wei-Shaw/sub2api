@@ -112,8 +112,8 @@ REDACTED
 REDACTED
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)
-	// 合成路径默认 instructions 现填入真实 Codex base prompt（openai.DefaultInstructions）。
-	encodedInstr, _ := json.Marshal(defaultCodexSynthInstructions())
+	// 合成路径默认 instructions 现按模型填入真实 Codex base prompt（此处 inbound model=gpt-5）。
+	encodedInstr, _ := json.Marshal(defaultCodexSynthInstructions("gpt-5"))
 	expectedBody := fmt.Sprintf(`{"model":"gpt-5","stream":false,"reasoning":{"effort":"none"REDACTED,"instructions":%s,"input":[{"type":"message","content":[{"type":"input_text","text":"hi","nonce":9007199254740993REDACTED]REDACTED]REDACTED`, string(encodedInstr))
 	require.JSONEq(t, expectedBody, string(upstream.lastBody))
 	require.Equal(t, "9007199254740993", gjson.GetBytes(upstream.lastBody, "input.0.content.0.nonce").Raw)

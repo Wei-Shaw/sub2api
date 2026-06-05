@@ -2502,7 +2502,7 @@ REDACTED
 	instructions := gjson.GetBytes(body, "instructions")
 	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
 	if instructionsEmpty && !compatMessagesBridge {
-		markPatchSet("instructions", defaultCodexSynthInstructions())
+		markPatchSet("instructions", defaultCodexSynthInstructions(reqModel))
 REDACTED
 
 	billingModel := account.GetMappedModel(reqModel)
@@ -2612,6 +2612,10 @@ REDACTED
 			codexResult = applyCodexOAuthTransform(decoded, isCodexCLI, isCompactRequest)
 	REDACTED
 		if codexResult.Modified {
+			markDecodedModified()
+	REDACTED
+		// 带真实 device_id 时补齐 client_metadata 安装标识，与真实 Codex 对齐（compact 形态不同，跳过）。
+		if !isCompactRequest && applyCodexClientMetadata(decoded, account) {
 			markDecodedModified()
 	REDACTED
 		if codexResult.NormalizedModel != "" {
