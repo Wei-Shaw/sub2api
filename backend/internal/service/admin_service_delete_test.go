@@ -263,6 +263,39 @@ func (s *deleteGroupAPIKeyRepoStub) ListKeysByGroupID(ctx context.Context, group
 	return s.keys, nil
 }
 
+type deleteUserAPIKeyRepoStub struct {
+	apiKeyRepoStubForGroupUpdate
+	keysByUserID           map[int64][]APIKey
+	listUserIDs            []int64
+	deleteWithAuditIDs     []int64
+	deleteWithAuditErrByID map[int64]error
+}
+
+func (s *deleteUserAPIKeyRepoStub) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
+	s.listUserIDs = append(s.listUserIDs, userID)
+	keys := append([]APIKey(nil), s.keysByUserID[userID]...)
+	return keys, &pagination.PaginationResult{Total: int64(len(keys)), Page: params.Page, PageSize: params.PageSize}, nil
+}
+
+func (s *deleteUserAPIKeyRepoStub) DeleteWithAudit(ctx context.Context, id int64) error {
+	s.deleteWithAuditIDs = append(s.deleteWithAuditIDs, id)
+	if s.deleteWithAuditErrByID != nil {
+		if err, ok := s.deleteWithAuditErrByID[id]; ok {
+			return err
+		}
+	}
+	for userID, keys := range s.keysByUserID {
+		remaining := keys[:0]
+		for _, key := range keys {
+			if key.ID != id {
+				remaining = append(remaining, key)
+			}
+		}
+		s.keysByUserID[userID] = remaining
+	}
+	return nil
+}
+
 type proxyRepoStub struct {
 	deleteErr    error
 	countErr     error
@@ -513,6 +546,43 @@ func TestAdminService_DeleteUser_Success(t *testing.T) {
 	err := svc.DeleteUser(context.Background(), 7)
 	require.NoError(t, err)
 	require.Equal(t, []int64{7}, repo.deletedIDs)
+}
+
+func TestAdminService_DeleteUser_DeletesOwnedAPIKeys(t *testing.T) {
+	userRepo := &userRepoStub{user: &User{ID: 7, Role: RoleUser}}
+	apiKeyRepo := &deleteUserAPIKeyRepoStub{
+		keysByUserID: map[int64][]APIKey{
+			7: {
+				{ID: 101, UserID: 7, Key: "redacted-key-1"},
+				{ID: 102, UserID: 7, Key: "redacted-key-2"},
+			},
+		},
+	}
+	svc := &adminServiceImpl{userRepo: userRepo, apiKeyRepo: apiKeyRepo}
+
+	err := svc.DeleteUser(context.Background(), 7)
+	require.NoError(t, err)
+	require.Equal(t, []int64{7, 7}, apiKeyRepo.listUserIDs)
+	require.Equal(t, []int64{101, 102}, apiKeyRepo.deleteWithAuditIDs)
+	require.Equal(t, []int64{7}, userRepo.deletedIDs)
+}
+
+func TestAdminService_DeleteUser_StopsWhenAPIKeyDeleteFails(t *testing.T) {
+	deleteKeyErr := errors.New("delete api key failed")
+	userRepo := &userRepoStub{user: &User{ID: 7, Role: RoleUser}}
+	apiKeyRepo := &deleteUserAPIKeyRepoStub{
+		keysByUserID: map[int64][]APIKey{
+			7: {{ID: 101, UserID: 7, Key: "redacted-key"}},
+		},
+		deleteWithAuditErrByID: map[int64]error{101: deleteKeyErr},
+	}
+	svc := &adminServiceImpl{userRepo: userRepo, apiKeyRepo: apiKeyRepo}
+
+	err := svc.DeleteUser(context.Background(), 7)
+	require.ErrorIs(t, err, deleteKeyErr)
+	require.Equal(t, []int64{7}, apiKeyRepo.listUserIDs)
+	require.Equal(t, []int64{101}, apiKeyRepo.deleteWithAuditIDs)
+	require.Empty(t, userRepo.deletedIDs)
 }
 
 func TestAdminService_DeleteUser_NotFound(t *testing.T) {

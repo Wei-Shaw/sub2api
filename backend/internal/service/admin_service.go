@@ -834,6 +834,25 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	if user.Role == "admin" {
 		return errors.New("cannot delete admin user")
 	}
+	if s.apiKeyRepo != nil {
+		params := pagination.PaginationParams{Page: 1, PageSize: 1000, SortBy: "id", SortOrder: pagination.SortOrderAsc}
+		for {
+			keys, _, err := s.apiKeyRepo.ListByUserID(ctx, id, params, APIKeyListFilters{})
+			if err != nil {
+				logger.LegacyPrintf("service.admin", "list user api keys before delete failed: user_id=%d err=%v", id, err)
+				return err
+			}
+			if len(keys) == 0 {
+				break
+			}
+			for i := range keys {
+				if err := s.apiKeyRepo.DeleteWithAudit(ctx, keys[i].ID); err != nil {
+					logger.LegacyPrintf("service.admin", "delete user api key failed: user_id=%d api_key_id=%d err=%v", id, keys[i].ID, err)
+					return err
+				}
+			}
+		}
+	}
 	if err := s.userRepo.Delete(ctx, id); err != nil {
 		logger.LegacyPrintf("service.admin", "delete user failed: user_id=%d err=%v", id, err)
 		return err
