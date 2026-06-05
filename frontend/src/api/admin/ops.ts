@@ -907,6 +907,9 @@ export interface OpsErrorLog {
   user_id?: number | null
   user_email: string
   api_key_id?: number | null
+  // 关联 api_key 名称（后端 LEFT JOIN api_keys；软删保留 name，故已删 key 仍有原名）。
+  api_key_name?: string
+  api_key_deleted?: boolean
   account_id?: number | null
   account_name: string
   group_id?: number | null
@@ -1086,6 +1089,8 @@ export type OpsErrorListQueryParams = {
   account_id?: number | null
   user_id?: number
   api_key_id?: number
+  // 模型过滤：后端以 COALESCE(requested_model, model) 精确匹配（admin 路径）。
+  model?: string
 
   phase?: string
   error_owner?: string

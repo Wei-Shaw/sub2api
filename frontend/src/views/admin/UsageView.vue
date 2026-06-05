@@ -647,6 +647,9 @@ const loadAdminErrors = async () => {
       end_time: toRFC3339(filters.value.end_date, true),
       user_id: filters.value.user_id ?? undefined,
       api_key_id: filters.value.api_key_id ?? undefined,
+      account_id: filters.value.account_id ?? undefined,
+      group_id: filters.value.group_id ?? undefined,
+      model: filters.value.model || undefined,
     })
     errRows.value = resp.items
     errTotal.value = resp.total
