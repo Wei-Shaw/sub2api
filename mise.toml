@@ -1,0 +1,18 @@
+# mise 工具版本固定
+# 用 `mise install` 一次性装齐；start.sh 通过 `mise exec` 调用，保证版本一致。
+# Go 1.26.4 由 go.mod 声明；mise 暂未提供该版本，这里固定 1.25，
+# 利用 Go 的 GOTOOLCHAIN=auto（默认）在需要时自动拉取 1.26.x。
+# 项目暂无 Python；如未来引入，按需追加 `python = "3.12"`，
+# start.sh 会自动走 uv（优先） → poetry 的安装/启动流程。
+
+[tools]
+go   = "1.25"
+node = "20"
+# pnpm 9：与项目 Dockerfile / CI 保持一致（"pinned to v9 to match CI"）。
+# pnpm 10+ 引入的 verify-deps-before-run 会在每次 run script 前重跑 install，
+# 与本仓库现有 lockfile + build-script 状态不兼容，会卡住 `pnpm dev`。
+pnpm = "9"
+
+[env]
+# Go toolchain 自动升级：当 go.mod 要求更高版本时自动下载
+GOTOOLCHAIN = "auto"

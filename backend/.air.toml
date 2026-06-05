@@ -1,0 +1,29 @@
+# air 热加载配置（开发用）
+# 项目入口在 ./cmd/server，必须显式声明，否则 air 默认对 root 执行 `go build .` 会失败。
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd          = "go build -o ./tmp/main ./cmd/server"
+bin          = "./tmp/main"
+# 子命令传给生成的二进制（按需补充，例如 --setup）
+args_bin     = []
+delay        = 1000
+exclude_dir  = ["assets", "tmp", "vendor", "testdata", "bin", "migrations", "ent/schema/migrate"]
+include_ext  = ["go", "yaml", "yml", "tpl", "tmpl", "html", "sql"]
+exclude_regex = ["_test\\.go$", "wire_gen\\.go$"]
+stop_on_error = true
+send_interrupt = true
+kill_delay     = "5s"
+
+[log]
+time = false
+
+[color]
+main    = "magenta"
+watcher = "cyan"
+build   = "yellow"
+runner  = "green"
+
+[misc]
+clean_on_exit = true
