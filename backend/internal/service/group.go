@@ -29,11 +29,11 @@ type GroupAnthropicConfig struct {
 
 // GroupOpenAIConfig OpenAI 平台专属配置（封装在 GroupExtra["openai_config"] 中）
 type GroupOpenAIConfig struct {
-	AllowMessagesDispatch       bool                              `json:"allow_messages_dispatch"`
-	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
+	AllowMessagesDispatch       bool                               `json:"allow_messages_dispatch"`
+	DefaultMappedModel          string                             `json:"default_mapped_model,omitempty"`
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
-	RequireOAuthOnly            bool                              `json:"require_oauth_only"`
-	RequirePrivacySet           bool                              `json:"require_privacy_set"`
+	RequireOAuthOnly            bool                               `json:"require_oauth_only"`
+	RequirePrivacySet           bool                               `json:"require_privacy_set"`
 }
 
 // GroupAntigravityConfig Antigravity 平台专属配置（封装在 GroupExtra["antigravity_config"] 中）

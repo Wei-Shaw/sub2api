@@ -4157,4 +4157,3 @@ func openAIWSErrorHTTPStatusFromRaw(codeRaw, errTypeRaw string) int {
 		return http.StatusBadGateway
 	}
 }
-

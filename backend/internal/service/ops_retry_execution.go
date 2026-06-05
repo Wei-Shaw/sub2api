@@ -350,4 +350,3 @@ func (s *OpsService) isFailoverError(message string) bool {
 	}
 	return strings.Contains(msg, "upstream error:") && strings.Contains(msg, "failover")
 }
-

@@ -28,7 +28,7 @@
 // limit):
 //   - plugin_settings_types.go   — shared types/errors/constants
 //   - plugin_settings_schema.go  — schema lifecycle (RegisterSchema,
-//                                  compile, extractMeta, validate, seed)
+//     compile, extractMeta, validate, seed)
 //   - plugin_settings_io.go      — Get/Set + SchemaInfo + ListPlugins
 //   - plugin_settings_pubsub.go  — Subscribe / notify / dropAll
 //   - plugin_settings_service.go — struct definition + constructor (this file)

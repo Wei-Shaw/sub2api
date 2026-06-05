@@ -245,11 +245,11 @@ type PublicSettings struct {
 	WeChatOAuthMobileEnabled bool
 	BackendModeEnabled       bool
 	// PaymentEnabled 已迁移到 plugin（payment plugin 自带 PluginSettings）。
-	OIDCOAuthEnabled         bool
-	OIDCOAuthProviderName    string
-	GitHubOAuthEnabled       bool
-	GoogleOAuthEnabled       bool
-	Version                  string
+	OIDCOAuthEnabled      bool
+	OIDCOAuthProviderName string
+	GitHubOAuthEnabled    bool
+	GoogleOAuthEnabled    bool
+	Version               string
 
 	BalanceLowNotifyEnabled     bool
 	AccountQuotaNotifyEnabled   bool

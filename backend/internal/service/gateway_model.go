@@ -13,6 +13,7 @@ import (
 func modelsListCacheKey(groupID *int64, platform string) string {
 	return fmt.Sprintf("%d|%s", derefGroupID(groupID), strings.TrimSpace(platform))
 }
+
 // isModelSupportedByAccountWithContext 根据账户平台检查模型支持（带 context）
 // 对于 Antigravity 平台，会先获取映射后的最终模型名（包括 thinking 后缀）再检查支持
 func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Context, account *Account, requestedModel string) bool {
@@ -45,6 +46,7 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 	}
 	return s.isModelSupportedByAccount(account, requestedModel)
 }
+
 // isModelSupportedByAccount 根据账户平台检查模型支持（无 context，用于非 Antigravity 平台）
 func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedModel string) bool {
 	if account.Platform == PlatformAntigravity {
@@ -72,6 +74,7 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	// 其他平台使用账户的模型支持检查
 	return account.IsModelSupported(requestedModel)
 }
+
 // ResolveChannelMapping 委托渠道缓存解析模型映射
 func (s *GatewayService) ResolveChannelMapping(ctx context.Context, groupID int64, platform, model string) ChannelMappingResult {
 	if s.channelCacheReader == nil {
@@ -79,10 +82,12 @@ func (s *GatewayService) ResolveChannelMapping(ctx context.Context, groupID int6
 	}
 	return s.channelCacheReader.ResolveChannelMapping(ctx, groupID, platform, model)
 }
+
 // ReplaceModelInBody 替换请求体中的模型名（导出供 handler 使用）
 func (s *GatewayService) ReplaceModelInBody(body []byte, newModel string) []byte {
 	return ReplaceModelInBody(body, newModel)
 }
+
 // IsModelRestricted 检查模型是否被渠道限制
 func (s *GatewayService) IsModelRestricted(ctx context.Context, groupID int64, platform, model string) bool {
 	if s.channelCacheReader == nil {
@@ -90,6 +95,7 @@ func (s *GatewayService) IsModelRestricted(ctx context.Context, groupID int64, p
 	}
 	return s.channelCacheReader.IsModelRestricted(ctx, groupID, platform, model)
 }
+
 // ResolveChannelMappingAndRestrict 解析渠道映射。
 // 模型限制检查已移至调度阶段（checkChannelPricingRestriction），restricted 始终返回 false。
 func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, platform, model string) (ChannelMappingResult, bool) {
@@ -98,6 +104,7 @@ func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, g
 	}
 	return s.channelCacheReader.ResolveChannelMappingAndRestrict(ctx, groupID, platform, model)
 }
+
 // checkChannelPricingRestriction 根据渠道计费基准检查模型是否受定价列表限制。
 // 供调度阶段预检查（requested / channel_mapped）。
 // upstream 需逐账号检查，此处返回 false。
@@ -112,6 +119,7 @@ func (s *GatewayService) checkChannelPricingRestriction(ctx context.Context, gro
 	}
 	return s.channelCacheReader.IsModelRestricted(ctx, *groupID, platform, billingModel)
 }
+
 // billingModelForRestriction 根据计费基准确定限制检查使用的模型。
 // upstream 返回空（需逐账号检查）。
 func billingModelForRestriction(source, requestedModel, channelMappedModel string) string {
@@ -126,6 +134,7 @@ func billingModelForRestriction(source, requestedModel, channelMappedModel strin
 		return channelMappedModel
 	}
 }
+
 // isUpstreamModelRestrictedByChannel 检查账号映射后的上游模型是否受渠道定价限制。
 // 仅在 BillingModelSource="upstream" 且 RestrictModels=true 时由调度循环调用。
 func (s *GatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string) bool {
@@ -138,6 +147,7 @@ func (s *GatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context,
 	}
 	return s.channelCacheReader.IsModelRestricted(ctx, groupID, account.Platform, upstreamModel)
 }
+
 // resolveAccountUpstreamModel 确定账号将请求模型映射为什么上游模型。
 func resolveAccountUpstreamModel(account *Account, requestedModel string) string {
 	if account.Platform == PlatformAntigravity {
@@ -145,6 +155,7 @@ func resolveAccountUpstreamModel(account *Account, requestedModel string) string
 	}
 	return account.GetMappedModel(requestedModel)
 }
+
 // needsUpstreamChannelRestrictionCheck 判断是否需要在调度循环中逐账号检查上游模型的渠道限制。
 func (s *GatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64, platform string) bool {
 	if groupID == nil || s.channelCacheReader == nil || platform == "" {
@@ -156,6 +167,7 @@ func (s *GatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Contex
 	}
 	return meta.BillingModelSource == BillingModelSourceUpstream
 }
+
 // isStickyAccountUpstreamRestricted 检查粘性会话命中的账号是否受 upstream 渠道限制。
 // 合并 needsUpstreamChannelRestrictionCheck + isUpstreamModelRestrictedByChannel 两步调用，
 // 供 sticky session 条件链使用，避免内联多个函数调用导致行过长。
@@ -169,6 +181,7 @@ func (s *GatewayService) isStickyAccountUpstreamRestricted(ctx context.Context, 
 	}
 	return s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel)
 }
+
 // GetAvailableModels returns the list of models available for a group
 // It aggregates model_mapping keys from all schedulable accounts in the group
 func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {
@@ -274,6 +287,7 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 		s.modelsListCache.Delete(key)
 	}
 }
+
 // reconcileCachedTokens 兼容 Kimi 等上游：
 // 将 OpenAI 风格的 cached_tokens 映射到 Claude 标准的 cache_read_input_tokens
 func reconcileCachedTokens(usage map[string]any) bool {
@@ -291,4 +305,3 @@ func reconcileCachedTokens(usage map[string]any) bool {
 	usage["cache_read_input_tokens"] = cached
 	return true
 }
-

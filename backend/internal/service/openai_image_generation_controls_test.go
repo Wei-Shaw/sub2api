@@ -147,7 +147,6 @@ func TestOpenAIGatewayServiceForward_ExplicitImageToolWorksWithBridgeDisabled(t 
 	require.NotContains(t, instructions, "image_generation")
 }
 
-
 func TestOpenAIGatewayService_CodexImageGenerationBridgeOverridePrecedence(t *testing.T) {
 	groupID := int64(4242)
 
@@ -271,7 +270,6 @@ func newOpenAIImageGenerationControlTestService(upstream *httpUpstreamRecorder) 
 		toolCorrector:    NewCodexToolCorrector(),
 	}
 }
-
 
 func newOpenAIImageGenerationControlTestContext(allowImages bool, userAgent string) (*gin.Context, *httptest.ResponseRecorder) {
 	recorder := httptest.NewRecorder()

@@ -55,21 +55,21 @@ type APIKeyAuthUserSnapshot struct {
 
 // APIKeyAuthGroupSnapshot 分组快照
 type APIKeyAuthGroupSnapshot struct {
-	ID                              int64    `json:"id"`
-	Name                            string   `json:"name"`
-	Platform                        string   `json:"platform"`
-	Status                          string   `json:"status"`
-	SubscriptionType                string   `json:"subscription_type"`
-	RateMultiplier                  float64  `json:"rate_multiplier"`
-	DailyLimitUSD                   *float64 `json:"daily_limit_usd,omitempty"`
-	WeeklyLimitUSD                  *float64 `json:"weekly_limit_usd,omitempty"`
-	MonthlyLimitUSD                 *float64 `json:"monthly_limit_usd,omitempty"`
-	AllowImageGeneration            bool     `json:"allow_image_generation"`
-	ImageRateIndependent            bool     `json:"image_rate_independent"`
-	ImageRateMultiplier             float64  `json:"image_rate_multiplier"`
-	ImagePrice1K                    *float64 `json:"image_price_1k,omitempty"`
-	ImagePrice2K                    *float64 `json:"image_price_2k,omitempty"`
-	ImagePrice4K                    *float64 `json:"image_price_4k,omitempty"`
+	ID                   int64    `json:"id"`
+	Name                 string   `json:"name"`
+	Platform             string   `json:"platform"`
+	Status               string   `json:"status"`
+	SubscriptionType     string   `json:"subscription_type"`
+	RateMultiplier       float64  `json:"rate_multiplier"`
+	DailyLimitUSD        *float64 `json:"daily_limit_usd,omitempty"`
+	WeeklyLimitUSD       *float64 `json:"weekly_limit_usd,omitempty"`
+	MonthlyLimitUSD      *float64 `json:"monthly_limit_usd,omitempty"`
+	AllowImageGeneration bool     `json:"allow_image_generation"`
+	ImageRateIndependent bool     `json:"image_rate_independent"`
+	ImageRateMultiplier  float64  `json:"image_rate_multiplier"`
+	ImagePrice1K         *float64 `json:"image_price_1k,omitempty"`
+	ImagePrice2K         *float64 `json:"image_price_2k,omitempty"`
+	ImagePrice4K         *float64 `json:"image_price_4k,omitempty"`
 	// ImageConfigExtra 存储 GroupExtra["image_config"] 的副本，
 	// 用于 snapshot→Group 还原时在 GroupExtra 中重建 image_config 键。
 	ImageConfigExtra *GroupImageConfig `json:"image_config_extra,omitempty"`
@@ -81,10 +81,10 @@ type APIKeyAuthGroupSnapshot struct {
 	OpenAIConfigExtra *GroupOpenAIConfig `json:"openai_config_extra,omitempty"`
 	// AntigravityConfigExtra 存储 GroupExtra["antigravity_config"] 的副本，
 	// 用于 snapshot→Group 还原时在 GroupExtra 中重建 antigravity_config 键。
-	AntigravityConfigExtra *GroupAntigravityConfig `json:"antigravity_config_extra,omitempty"`
-	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
-	FallbackGroupID                 *int64   `json:"fallback_group_id,omitempty"`
-	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request,omitempty"`
+	AntigravityConfigExtra          *GroupAntigravityConfig `json:"antigravity_config_extra,omitempty"`
+	ClaudeCodeOnly                  bool                    `json:"claude_code_only"`
+	FallbackGroupID                 *int64                  `json:"fallback_group_id,omitempty"`
+	FallbackGroupIDOnInvalidRequest *int64                  `json:"fallback_group_id_on_invalid_request,omitempty"`
 
 	// Model routing is used by gateway account selection, so it must be part of auth cache snapshot.
 	// Only anthropic groups use these fields; others may leave them empty.

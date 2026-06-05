@@ -54,4 +54,3 @@ func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (s
 	// Token刷新由后台 TokenRefreshService 处理，此处只返回当前token
 	return accessToken, "oauth", nil
 }
-

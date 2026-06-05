@@ -172,7 +172,7 @@ var hostSharedReadableTables = map[string]struct{}{
 	// and validate plan IDs at order creation time. Schema is stable and
 	// rows contain only catalog metadata (name, price, validity) — safe to
 	// expose to plugin code.
-	"subscription_plans":  {},
+	"subscription_plans": {},
 }
 
 // Forget drops the entry for plugin name. Called when a plugin is stopped

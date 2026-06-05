@@ -27,7 +27,6 @@ import (
 // We do NOT block on possibly long-running user jobs here.
 const pluginSchedulerStopGracePeriod = 2 * time.Second
 
-
 // pluginScheduler owns one plugin's cron / interval / fixed-delay state and
 // the bidirectional stream goroutine pair. All public methods are safe for
 // concurrent callers.
@@ -202,4 +201,3 @@ func (ps *pluginScheduler) runFixedDelayLoop(jobName string, delay time.Duration
 		}
 	}
 }
-

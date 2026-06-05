@@ -152,7 +152,6 @@ func (m *PluginManager) spawnTryPricing(sc *spawnCtx) error {
 	return nil
 }
 
-
 // -------------------------------------------------------------
 // Stage: platforms — register platform declarations from manifest
 // -------------------------------------------------------------
@@ -234,6 +233,7 @@ func (m *PluginManager) unregisterGatewayProviders(pluginName string, manifest *
 		)
 	}
 }
+
 // -------------------------------------------------------------
 // Stage: maintenance — attach MaintenanceExtension client (best-effort)
 // -------------------------------------------------------------

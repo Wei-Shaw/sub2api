@@ -204,4 +204,3 @@ func (s *JobSchedulerServer) ManualFire(pluginName, jobName string) error {
 	}
 	return ps.manualFire(jobName)
 }
-

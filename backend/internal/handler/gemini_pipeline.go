@@ -135,7 +135,7 @@ func (h *GatewayHandler) buildGeminiParseFunc(
 			Model:        modelName,
 			Stream:       stream,
 			RawBody:      body,
-			GinContext:    c,
+			GinContext:   c,
 			SessionHash:  sessionHash,
 			GeminiAction: action,
 		}

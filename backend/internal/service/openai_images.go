@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"bufio"
@@ -32,7 +32,7 @@ const (
 	openAIImagesGenerationsURL = "https://api.openai.com/v1/images/generations"
 	openAIImagesEditsURL       = "https://api.openai.com/v1/images/edits"
 
-	openAIImageMaxUploadPartSize = 20 << 20 // 20MB per multipart upload part
+	openAIImageMaxUploadPartSize   = 20 << 20 // 20MB per multipart upload part
 	openAIImagesResponsesMainModel = "gpt-5.4-mini"
 )
 

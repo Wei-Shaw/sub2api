@@ -153,4 +153,3 @@ func (t *BillingTicket) PreCheckPlan() *ServiceQuotaPreCheckPlan {
 	}
 	return t.plan
 }
-

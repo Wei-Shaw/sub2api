@@ -31,8 +31,8 @@ type GroupHandler struct {
 	dashboardService     *service.DashboardService
 	groupCapacityService *service.GroupCapacityService
 	// serviceQuotaSvc 用于在删除 group 后失效服务限额缓存（FK CASCADE 自动删除关联，但缓存不感知）。
-	serviceQuotaSvc      service.ServiceQuotaService
-	platformRegistry     *plugin.PlatformRegistry
+	serviceQuotaSvc  service.ServiceQuotaService
+	platformRegistry *plugin.PlatformRegistry
 }
 
 type optionalLimitField struct {
@@ -96,16 +96,16 @@ func NewGroupHandler(adminService service.AdminService, dashboardService *servic
 
 // CreateGroupRequest represents create group request
 type CreateGroupRequest struct {
-	Name             string             `json:"name" binding:"required"`
-	Description      string             `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty"`
-	RateMultiplier   float64            `json:"rate_multiplier"`
-	IsExclusive      bool               `json:"is_exclusive"`
-	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
+	Name             string                 `json:"name" binding:"required"`
+	Description      string                 `json:"description"`
+	Platform         string                 `json:"platform" binding:"omitempty"`
+	RateMultiplier   float64                `json:"rate_multiplier"`
+	IsExclusive      bool                   `json:"is_exclusive"`
+	SubscriptionType string                 `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
 	GroupExtra       map[string]interface{} `json:"group_extra,omitempty"`
-	DailyLimitUSD    optionalLimitField `json:"daily_limit_usd"`
-	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
-	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
+	DailyLimitUSD    optionalLimitField     `json:"daily_limit_usd"`
+	WeeklyLimitUSD   optionalLimitField     `json:"weekly_limit_usd"`
+	MonthlyLimitUSD  optionalLimitField     `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
@@ -137,17 +137,17 @@ type CreateGroupRequest struct {
 
 // UpdateGroupRequest represents update group request
 type UpdateGroupRequest struct {
-	Name             string             `json:"name"`
-	Description      string             `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty"`
-	RateMultiplier   *float64           `json:"rate_multiplier"`
-	IsExclusive      *bool              `json:"is_exclusive"`
-	Status           string             `json:"status" binding:"omitempty,oneof=active inactive"`
+	Name             string                 `json:"name"`
+	Description      string                 `json:"description"`
+	Platform         string                 `json:"platform" binding:"omitempty"`
+	RateMultiplier   *float64               `json:"rate_multiplier"`
+	IsExclusive      *bool                  `json:"is_exclusive"`
+	Status           string                 `json:"status" binding:"omitempty,oneof=active inactive"`
 	GroupExtra       map[string]interface{} `json:"group_extra,omitempty"`
-	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
-	DailyLimitUSD    optionalLimitField `json:"daily_limit_usd"`
-	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
-	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
+	SubscriptionType string                 `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
+	DailyLimitUSD    optionalLimitField     `json:"daily_limit_usd"`
+	WeeklyLimitUSD   optionalLimitField     `json:"weekly_limit_usd"`
+	MonthlyLimitUSD  optionalLimitField     `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            *bool    `json:"allow_image_generation"`
 	ImageRateIndependent            *bool    `json:"image_rate_independent"`
@@ -329,7 +329,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
-		GroupExtra:                       req.GroupExtra,
+		GroupExtra:                      req.GroupExtra,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -406,7 +406,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
-		GroupExtra:                       req.GroupExtra,
+		GroupExtra:                      req.GroupExtra,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
