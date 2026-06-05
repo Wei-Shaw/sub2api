@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
 var codexModelMap = map[string]string{
@@ -154,6 +156,12 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 			delete(reqBody, key)
 			result.Modified = true
 		}
+	}
+
+	// 请求带 reasoning 时补齐 include:["reasoning.encrypted_content"]，与真实 Codex 对齐
+	// （compact 端点形态不同，单独处理，此处跳过）。
+	if !opts.IsCompact && ensureCodexReasoningInclude(reqBody) {
+		result.Modified = true
 	}
 
 	// 兼容遗留的 functions 和 function_call，转换为 tools 和 tool_choice
@@ -964,12 +972,52 @@ func extractPromptLikeInstructionsFromInput(reqBody map[string]any) string {
 	return strings.Join(texts, "\n\n")
 }
 
+// defaultCodexSynthInstructions 返回合成路径在 instructions 为空时应填入的默认提示词。
+//
+// 返回真实 Codex CLI 的 base instructions（openai.DefaultInstructions，内嵌自
+// instructions.txt，开头为 "You are Codex, based on GPT-5..."），使合成请求在提示词
+// 层面贴近真实 Codex 行为；若内嵌 prompt 意外为空，回退到最小占位符以保证字段非空。
+func defaultCodexSynthInstructions() string {
+	if instructions := strings.TrimSpace(openai.DefaultInstructions); instructions != "" {
+		return instructions
+	}
+	return "You are a helpful coding assistant."
+}
+
+// ensureCodexReasoningInclude 在请求带 reasoning 时补齐 include:["reasoning.encrypted_content"]。
+//
+// 真实 Codex 在 reasoning 存在时总会请求加密推理内容（ChatGPT/store=false 场景下用于上下文回放）。
+// 该函数为加法式、幂等：仅在 include 缺失或未包含该项时追加；对非数组的异常 include 不做破坏性改写。
+func ensureCodexReasoningInclude(reqBody map[string]any) bool {
+	reasoning, ok := reqBody["reasoning"].(map[string]any)
+	if !ok || len(reasoning) == 0 {
+		return false
+	}
+	const encrypted = "reasoning.encrypted_content"
+	switch existing := reqBody["include"].(type) {
+	case nil:
+		reqBody["include"] = []any{encrypted}
+		return true
+	case []any:
+		for _, v := range existing {
+			if s, ok := v.(string); ok && s == encrypted {
+				return false
+			}
+		}
+		reqBody["include"] = append(existing, encrypted)
+		return true
+	default:
+		// include 为非预期类型时保持原样，避免破坏调用方意图。
+		return false
+	}
+}
+
 // applyInstructions 处理 instructions 字段：仅在 instructions 为空时填充默认值。
 func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
 	if !isInstructionsEmpty(reqBody) {
 		return false
 	}
-	reqBody["instructions"] = "You are a helpful coding assistant."
+	reqBody["instructions"] = defaultCodexSynthInstructions()
 	return true
 }
 
