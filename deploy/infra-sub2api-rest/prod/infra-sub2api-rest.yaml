@@ -1,0 +1,72 @@
+name: golang_node
+description: 云主机部署方式的 Golang 项目
+
+hosts:
+  {{ range .Hosts }}{{ .Host }}:
+    remote_user: {{ .RemoteUser }}
+  {{ end }}
+
+tasks:
+  deploy:
+    sudo: true
+    steps:
+      - uses: checkout
+        with:
+          repository: {{ .Repository }}
+          commit: {{ .Commit }}
+          tag: {{ .Tag }}
+      - name: build
+        run: |
+          source ~/.bashrc
+          goup set 1.26.4
+          cd backend
+          go mod tidy
+          cd ..
+          make build-backend
+          mkdir -p package/infra-sub2api-rest/{bin,conf}
+          cp backend/bin/server package/infra-sub2api-rest/bin/infra-sub2api-rest
+          cp -R conf/infra-sub2api-rest/prod/* package/infra-sub2api-rest/conf/
+      - uses: setup
+      - uses: release
+      - uses: upload
+        with:
+          user: ops
+          source: package/{{ .ServiceName }}
+          deploy_path: /app/{{ .ServiceName }}
+      - uses: symlink
+      - uses: cleanup
+      - uses: clear-build
+      - uses: releases
+        with:
+          num: 3
+      - name: chown app workspace
+        run:
+          sudo chown -R app:app /app
+        runs-on: remote
+      - name: link system service
+        run: |
+          sudo ln -nfs /app/{{.ServiceName}}/current/conf/{{.ServiceName}}.service /etc/systemd/system/
+      - name: daemon-reload
+        send_change: true
+        with:
+          product: infra
+          serviceName: {{ .ServiceName }}
+          description: "{{ .Description }}"
+          operator: {{ .Operator }}
+        run: |
+          sudo systemctl daemon-reload
+          sudo systemctl restart {{.ServiceName}}
+          sudo systemctl status {{.ServiceName}}
+          while true
+          do
+            status=$(systemctl is-failed {{.ServiceName}})
+            if [ $status == 'active' ]; then
+              echo -e "\033[32;1mservice is running\033[0m";
+              exit 0;
+            elif [ $status == 'failed' ]; then
+              echo -e "\033[31;1mservice is start failed\033[0m" >&2;
+              exit 1;
+            fi
+            sleep 2
+          done
+        runs-on: remote

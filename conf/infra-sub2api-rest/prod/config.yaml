@@ -1,0 +1,109 @@
+# sub2api 生产配置（infra-sub2api-rest, prod）
+#
+# 加载顺序：viper 在 $DATA_DIR / /app/data / . / ./config / /etc/sub2api 下找 config.yaml
+# 部署后由 systemd 注入 DATA_DIR=/app/infra-sub2api-rest/current/conf 让本文件被命中。
+# 文件名必须是 config.yaml（sub2api 的 viper.SetConfigName("config") 硬编码）。
+#
+# 任何 KEY 都可被同名大写环境变量覆盖（_ 替代 . 层级），例如
+#   JWT_SECRET=xxx        覆盖 jwt.secret
+#   DATABASE_PASSWORD=xx  覆盖 database.password
+# 真实密钥/密码建议放 EnvironmentFile 注入，不要明文落仓库。
+#
+# 首次部署数据库初始化（一次性）：
+#   1) 目标机上：sudo -u postgres createdb sub2api
+#   2) 跑一次 CLI 向导建表 + 建管理员（不监听端口、跑完即退）：
+#        DATABASE_PASSWORD=postgres \
+#          /app/infra-sub2api-rest/current/bin/infra-sub2api-rest --setup
+#   3) 之后 systemctl start infra-sub2api-rest 即可
+# 第二次及以后部署：DB 已初始化，直接 systemctl restart。
+
+server:
+  host: "0.0.0.0"
+  port: 8001
+  mode: "release"
+  # Nginx 反代时这里要列出 Nginx 所在 IP/CIDR，否则后端不会信任 X-Forwarded-For，
+  # 业务里看到的 client_ip 永远是 127.0.0.1。
+  # 同机 Nginx 用 ["127.0.0.1"]；多机部署列上前置 LB / Nginx 的内网段。
+  trusted_proxies:
+    - "127.0.0.1"
+  max_request_body_size: 268435456   # 256MB
+  h2c:
+    enabled: true
+    max_concurrent_streams: 50
+    idle_timeout: 75
+    max_read_frame_size: 1048576
+    max_upload_buffer_per_connection: 2097152
+    max_upload_buffer_per_stream: 524288
+
+# standard: 完整 SaaS（计费 / 配额）；simple: 个人 / 内部用，跳过计费
+run_mode: "standard"
+
+cors:
+  # 同源（前端 Nginx 反代到后端）时留空即可
+  allowed_origins: []
+  allow_credentials: true
+
+log:
+  level: "info"
+  format: "json"
+  service_name: "infra-sub2api-rest"
+  env: "production"
+  caller: true
+  stacktrace_level: "error"
+  output:
+    to_stdout: true     # 让 systemd journald 接管
+    to_file: false      # 不双写本地文件，journalctl -u <svc> 看
+  sampling:
+    enabled: false
+
+# 本机 PostgreSQL（127.0.0.1，无 SSL，trust 模式）
+database:
+  host: "127.0.0.1"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  dbname: "sub2api"
+  sslmode: "disable"
+  max_open_conns: 256
+  max_idle_conns: 128
+  conn_max_lifetime_minutes: 30
+  conn_max_idle_time_minutes: 5
+
+# 本机 Redis（127.0.0.1，无密码）
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 1024
+  min_idle_conns: 128
+  enable_tls: false
+
+ops:
+  enabled: true
+
+jwt:
+  # 留空表示由环境变量 JWT_SECRET 注入（推荐用 systemd EnvironmentFile）。
+  # 留空且未注入 → 严格 Load 阶段会报 "jwt.secret is required"，启动失败（这是期望行为：fail-fast）。
+  # 生成命令：openssl rand -hex 32
+  secret: ""
+  expire_hour: 24
+  access_token_expire_minutes: 0
+
+totp:
+  # 留空 → 启动时自动随机生成（warn），但每次重启都会变，导致存量 2FA 失效。
+  # 生产必须固定：openssl rand -hex 32 → 写入这里或通过 TOTP_ENCRYPTION_KEY 环境变量注入。
+  # 必须是合法 hex（[0-9a-f]+，长度 64），否则启动失败。
+  encryption_key: ""
+
+# 仅在 --setup / AUTO_SETUP 首启路径下被读，正常运行只影响"新用户默认值"
+default:
+  admin_email: "admin@sub2api.local"
+  admin_password: "admin123"
+  user_concurrency: 5
+  user_balance: 0
+  api_key_prefix: "sk-"
+  rate_multiplier: 1.0
+
+rate_limit:
+  overload_cooldown_minutes: 10

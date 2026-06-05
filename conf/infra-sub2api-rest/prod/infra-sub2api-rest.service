@@ -1,0 +1,27 @@
+[Unit]
+Description=infra-sub2api-rest (Sub2API backend)
+# 等本机 PG / Redis 先就绪；如服务名不一致按目标机改
+After=network-online.target postgresql.service redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=102400
+WorkingDirectory=/app/infra-sub2api-rest/current
+
+# 配置文件位置：viper 在 $DATA_DIR 下找 config.yaml（硬编码文件名）
+# → /app/infra-sub2api-rest/current/conf/config.yaml
+Environment=DATA_DIR=/app/infra-sub2api-rest/current/conf
+
+# 敏感值由该文件注入（git 不追踪，目标机 chmod 600 root:root 维护）
+# 至少应包含：JWT_SECRET、TOTP_ENCRYPTION_KEY；可选 DATABASE_PASSWORD 等
+EnvironmentFile=/etc/sub2api/secrets.env
+
+# sub2api 不支持 --config flag，配置位置完全由 DATA_DIR 决定
+ExecStart=/app/infra-sub2api-rest/current/bin/infra-sub2api-rest
+
+[Install]
+WantedBy=multi-user.target
