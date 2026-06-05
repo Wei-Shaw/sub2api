@@ -581,6 +581,8 @@ func TestAPIContracts(t *testing.T) {
 							"image_size": null,
 							"image_input_size": null,
 							"image_output_size": null,
+							"image_output_tokens": 0,
+							"image_output_cost": 0,
 							"image_size_source": null,
 							"image_size_breakdown": null,
 							"media_type": null,
