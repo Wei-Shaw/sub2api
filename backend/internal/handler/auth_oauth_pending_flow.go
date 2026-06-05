@@ -366,6 +366,10 @@ func (h *AuthHandler) legacyCompleteRegistrationSessionStatus(
 	}
 
 	payload := normalizePendingOAuthCompletionResponse(mergePendingCompletionResponse(session, nil))
+	if skipEmailCompletion, _ := payload["skip_email_completion"].(bool); skipEmailCompletion {
+		// 邀请制待完成会话应直接进入邀请码完成注册，不应被旧兼容逻辑回退到邮箱补全页。
+		return session, false, nil
+	}
 	if step := pendingSessionStringValue(payload, "step"); step != "" {
 		return session, true, nil
 	}

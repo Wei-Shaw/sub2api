@@ -322,6 +322,44 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 		return
 	}
+	if compatEmailUser == nil && !h.isForceEmailOnThirdPartySignup(c.Request.Context()) {
+		tokenPair, user, authErr := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, "", "")
+		if authErr != nil {
+			if errors.Is(authErr, service.ErrOAuthInvitationRequired) {
+				if err := h.createLinuxDoOAuthInvitationPendingSession(
+					c,
+					identityKey,
+					email,
+					redirectTo,
+					browserSessionKey,
+					upstreamClaims,
+				); err != nil {
+					redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
+					return
+				}
+				redirectToFrontendCallback(c, frontendCallback)
+				return
+			}
+			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(authErr), infraerrors.Message(authErr))
+			return
+		}
+		if err := h.ensureLinuxDoRuntimeIdentityBinding(c.Request.Context(), user.ID, identityKey, upstreamClaims); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+			return
+		}
+		h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+		clearOAuthPendingSessionCookie(c, secureCookie)
+		clearOAuthPendingBrowserCookie(c, secureCookie)
+
+		fragment := url.Values{}
+		fragment.Set("access_token", tokenPair.AccessToken)
+		fragment.Set("refresh_token", tokenPair.RefreshToken)
+		fragment.Set("expires_in", strconv.Itoa(tokenPair.ExpiresIn))
+		fragment.Set("token_type", "Bearer")
+		fragment.Set("redirect", redirectTo)
+		redirectWithFragment(c, frontendCallback, fragment)
+		return
+	}
 	if err := h.createLinuxDoOAuthChoicePendingSession(
 		c,
 		identityKey,
@@ -431,6 +469,29 @@ func (h *AuthHandler) createLinuxDoOAuthChoicePendingSession(
 		BrowserSessionKey:      browserSessionKey,
 		UpstreamIdentityClaims: upstreamClaims,
 		CompletionResponse:     completionResponse,
+	})
+}
+
+func (h *AuthHandler) createLinuxDoOAuthInvitationPendingSession(
+	c *gin.Context,
+	identity service.PendingAuthIdentityKey,
+	resolvedEmail string,
+	redirectTo string,
+	browserSessionKey string,
+	upstreamClaims map[string]any,
+) error {
+	return h.createOAuthPendingSession(c, oauthPendingSessionPayload{
+		Intent:                 oauthIntentLogin,
+		Identity:               identity,
+		ResolvedEmail:          strings.TrimSpace(resolvedEmail),
+		RedirectTo:             strings.TrimSpace(redirectTo),
+		BrowserSessionKey:      strings.TrimSpace(browserSessionKey),
+		UpstreamIdentityClaims: upstreamClaims,
+		CompletionResponse: map[string]any{
+			"redirect":              strings.TrimSpace(redirectTo),
+			"error":                 "invitation_required",
+			"skip_email_completion": true,
+		},
 	})
 }
 
@@ -552,6 +613,45 @@ func (h *AuthHandler) getLinuxDoOAuthConfig(ctx context.Context) (config.LinuxDo
 		return config.LinuxDoConnectConfig{}, infraerrors.NotFound("OAUTH_DISABLED", "oauth login is disabled")
 	}
 	return h.cfg.LinuxDo, nil
+}
+
+func (h *AuthHandler) ensureLinuxDoRuntimeIdentityBinding(
+	ctx context.Context,
+	userID int64,
+	identity service.PendingAuthIdentityKey,
+	upstreamClaims map[string]any,
+) error {
+	client := h.entClient()
+	if client == nil {
+		return infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready")
+	}
+
+	tx, err := client.Tx(ctx)
+	if err != nil {
+		return infraerrors.InternalServer("AUTH_IDENTITY_BIND_FAILED", "failed to begin linuxdo identity repair transaction").WithCause(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := applyPendingOAuthBindingTx(
+		dbent.NewTxContext(ctx, tx),
+		tx,
+		h.authService,
+		h.userService,
+		&dbent.PendingAuthSession{
+			Intent:                 oauthIntentLogin,
+			ProviderType:           strings.TrimSpace(identity.ProviderType),
+			ProviderKey:            strings.TrimSpace(identity.ProviderKey),
+			ProviderSubject:        strings.TrimSpace(identity.ProviderSubject),
+			UpstreamIdentityClaims: cloneOAuthMetadata(upstreamClaims),
+		},
+		nil,
+		&userID,
+		true,
+		false,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func linuxDoExchangeCode(
