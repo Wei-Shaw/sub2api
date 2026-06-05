@@ -22,10 +22,11 @@ import { useI18n } from 'vue-i18n'
 import { usePlatforms } from '@/composables/usePlatforms'
 import JsonSchemaForm from '@/components/common/JsonSchemaForm.vue'
 
+const formData = defineModel<Record<string, any>>('formData', { required: true })
+
 const props = defineProps<{
   mode: 'create' | 'edit'
   platform: string
-  formData: Record<string, any>
   groups: any[]
   editingGroupId?: number | null
 }>()

@@ -325,7 +325,7 @@
       ref="configRef"
       :mode="mode"
       :platform="formData.platform"
-      :form-data="formData"
+      v-model:form-data="formData"
       :groups="groups"
       :editing-group-id="mode === 'edit' ? editingGroupId : undefined"
     />
@@ -341,9 +341,10 @@ import type { AdminGroup } from "@/types";
 import type { Component } from "vue";
 import type { GroupConfigExposed } from "./config/types";
 
+const formData = defineModel<Record<string, any>>('formData', { required: true });
+
 const props = defineProps<{
   mode: "create" | "edit";
-  formData: Record<string, any>;
   groups: AdminGroup[];
   platformOptions: { value: string; label: string }[];
   configComponent: Component | null;
@@ -370,7 +371,7 @@ const subscriptionTypeOptions = computed(() => [
 /** Groups eligible as copy-accounts source (same platform, has accounts, excludes self in edit) */
 const filteredCopyGroupOptions = computed(() => {
   const eligibleGroups = props.groups.filter((g) => {
-    if (g.platform !== props.formData.platform) return false;
+    if (g.platform !== formData.value.platform) return false;
     if ((g.account_count || 0) <= 0) return false;
     if (props.mode === "edit" && g.id === props.editingGroupId) return false;
     return true;
@@ -383,21 +384,21 @@ const filteredCopyGroupOptions = computed(() => {
 
 const onPlatformChange = () => {
   if (props.mode === "create") {
-    props.formData.copy_accounts_from_group_ids = [];
+    formData.value.copy_accounts_from_group_ids = [];
   }
 };
 
 const addCopyGroup = (e: Event) => {
   const val = Number((e.target as HTMLSelectElement).value);
-  if (val && !props.formData.copy_accounts_from_group_ids.includes(val)) {
-    props.formData.copy_accounts_from_group_ids.push(val);
+  if (val && !formData.value.copy_accounts_from_group_ids.includes(val)) {
+    formData.value.copy_accounts_from_group_ids.push(val);
   }
   (e.target as HTMLSelectElement).value = "";
 };
 
 const removeCopyGroup = (groupId: number) => {
-  props.formData.copy_accounts_from_group_ids =
-    props.formData.copy_accounts_from_group_ids.filter(
+  formData.value.copy_accounts_from_group_ids =
+    formData.value.copy_accounts_from_group_ids.filter(
       (id: number) => id !== groupId,
     );
 };

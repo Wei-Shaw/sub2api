@@ -247,6 +247,7 @@ func TestSpawnPipeline_StagesContract(t *testing.T) {
 		{"pricing", false},
 		{"platforms", true},
 		{"maintenance", false},
+		{"content_intercept", false},
 	}
 	if len(stages) != len(want) {
 		t.Fatalf("stage count: got %d want %d", len(stages), len(want))

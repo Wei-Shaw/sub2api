@@ -354,7 +354,7 @@
       >
         <GroupFormFields
           mode="create"
-          :form-data="createForm"
+          v-model:form-data="createForm"
           :groups="groups"
           :platform-options="platformOptions"
           :config-component="createConfigComponent"
@@ -418,7 +418,7 @@
       >
         <GroupFormFields
           mode="edit"
-          :form-data="editForm"
+          v-model:form-data="editForm"
           :groups="groups"
           :platform-options="platformOptions"
           :config-component="editConfigComponent"

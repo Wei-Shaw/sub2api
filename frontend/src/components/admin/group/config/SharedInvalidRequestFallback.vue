@@ -20,8 +20,9 @@ import { useI18n } from "vue-i18n";
 import type { AdminGroup } from "@/types";
 import { Select } from "@sub2api/plugin-sdk";
 
+const formData = defineModel<Record<string, any>>('formData', { required: true });
+
 const props = defineProps<{
-  formData: Record<string, any>;
   groups: AdminGroup[];
   editingGroupId?: number | null;
   platform: string;

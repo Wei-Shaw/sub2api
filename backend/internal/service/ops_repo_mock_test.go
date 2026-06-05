@@ -173,6 +173,22 @@ func (m *opsRepoMock) IsAlertSilenced(ctx context.Context, ruleID int64, platfor
 	return false, nil
 }
 
+func (m *opsRepoMock) InsertRetryAttempt(ctx context.Context, input *OpsInsertRetryAttemptInput) (int64, error) {
+	return 0, nil
+}
+
+func (m *opsRepoMock) UpdateRetryAttempt(ctx context.Context, input *OpsUpdateRetryAttemptInput) error {
+	return nil
+}
+
+func (m *opsRepoMock) GetLatestRetryAttemptForError(ctx context.Context, sourceErrorID int64) (*OpsRetryAttempt, error) {
+	return nil, nil
+}
+
+func (m *opsRepoMock) ListRetryAttemptsByErrorID(ctx context.Context, sourceErrorID int64, limit int) ([]*OpsRetryAttempt, error) {
+	return []*OpsRetryAttempt{}, nil
+}
+
 func (m *opsRepoMock) UpsertHourlyMetrics(ctx context.Context, startTime, endTime time.Time) error {
 	return nil
 }

@@ -207,9 +207,10 @@ interface ModelRoutingRule {
   accounts: SimpleAccount[];
 }
 
+const formData = defineModel<Record<string, any>>('formData', { required: true });
+
 const props = defineProps<{
   mode: "create" | "edit";
-  formData: Record<string, any>;
 }>();
 
 const { t } = useI18n();
@@ -235,7 +236,7 @@ const accountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
     const res = await adminAPI.accounts.list(
       1,
       20,
-      { search: keyword, platform: props.formData.platform || '' },
+      { search: keyword, platform: formData.value?.platform || '' },
       { signal },
     );
     return res.items.map((a) => ({ id: a.id, name: a.name }));

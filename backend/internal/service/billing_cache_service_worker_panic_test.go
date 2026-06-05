@@ -98,6 +98,22 @@ func (p *panickingBillingCache) InvalidateQuotaConfig(ctx context.Context, userI
 	return nil
 }
 
+func (p *panickingBillingCache) GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*UserPlatformQuotaCacheEntry, bool, error) {
+	return nil, false, nil
+}
+
+func (p *panickingBillingCache) SetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string, entry *UserPlatformQuotaCacheEntry, ttl time.Duration) error {
+	return nil
+}
+
+func (p *panickingBillingCache) DeleteUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) error {
+	return nil
+}
+
+func (p *panickingBillingCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration) error {
+	return nil
+}
+
 // TestCacheWriteWorker_PanicRecovery 验证 runCacheWriteTask 的 recover：
 // 1) 入队一个 panic 任务 → worker 吞掉 panic 继续消费
 // 2) 再入队一个正常任务（不同 kind 避免被同一 worker 的锁或队列粘滞影响）
