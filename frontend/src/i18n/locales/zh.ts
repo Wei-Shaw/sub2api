@@ -4935,6 +4935,8 @@ export default {
         group: '分组',
         user: '用户',
         userId: '用户 ID',
+        apiKey: 'API Key',
+        keyDeletedBadge: 'Key 已删除',
         account: '账号',
         accountId: '账号 ID',
         status: '状态码',

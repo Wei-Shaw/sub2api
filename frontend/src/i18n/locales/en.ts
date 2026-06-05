@@ -4776,6 +4776,8 @@ export default {
         group: 'Group',
         user: 'User',
         userId: 'User ID',
+        apiKey: 'API Key',
+        keyDeletedBadge: 'Key Deleted',
         account: 'Account',
         accountId: 'Account ID',
         status: 'Status',
