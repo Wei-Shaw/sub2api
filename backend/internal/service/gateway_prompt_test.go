@@ -401,12 +401,13 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			err := json.Unmarshal(result, &parsed)
 			require.NoError(t, err)
 
-			// system 应为 array 格式，对齐真实 Claude Code CLI 的 2-block 形态：
+			// system 应为 array 格式，对齐真实 Claude Code CLI 的 3-block 形态：
 			//   [0] billing attribution block (x-anthropic-billing-header: cc_version=...;)
-			//   [1] Claude Code prompt block (带 cache_control)
+			//   [1] Claude Code 身份前缀 block (不带 cache_control)
+			//   [2] 工具无关的通用提示词扩充 block (带 cache_control，作为缓存断点)
 			systemArr, ok := parsed["system"].([]any)
 			require.True(t, ok, "system should be an array, got %T", parsed["system"])
-			require.Len(t, systemArr, 2, "system array should have exactly 2 blocks (billing + cc prompt)")
+			require.Len(t, systemArr, 3, "system array should have exactly 3 blocks (billing + cc prompt + expansion)")
 
 			billingBlock, ok := systemArr[0].(map[string]any)
 			require.True(t, ok)
@@ -420,8 +421,15 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			require.True(t, ok)
 			require.Equal(t, "text", systemBlock["type"])
 			require.Equal(t, tt.wantSystemText, systemBlock["text"])
-			cc, ok := systemBlock["cache_control"].(map[string]any)
-			require.True(t, ok, "cc prompt block should have cache_control")
+			_, hasCC := systemBlock["cache_control"]
+			require.False(t, hasCC, "身份前缀 block 不应带 cache_control（断点落在扩充块）")
+
+			expansionBlock, ok := systemArr[2].(map[string]any)
+			require.True(t, ok)
+			require.Equal(t, "text", expansionBlock["type"])
+			require.Equal(t, claudeCodeSystemPromptExpansion, expansionBlock["text"])
+			cc, ok := expansionBlock["cache_control"].(map[string]any)
+			require.True(t, ok, "expansion block should have cache_control")
 			require.Equal(t, "ephemeral", cc["type"])
 
 			// 检查 messages
