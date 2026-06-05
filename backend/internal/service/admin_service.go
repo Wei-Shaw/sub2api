@@ -834,12 +834,84 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	if user.Role == "admin" {
 		return errors.New("cannot delete admin user")
 	}
-	if err := s.userRepo.Delete(ctx, id); err != nil {
-		logger.LegacyPrintf("service.admin", "delete user failed: user_id=%d err=%v", id, err)
+
+	apiKeys, err := s.listUserAPIKeysForDeletion(ctx, id)
+	if err != nil {
 		return err
 	}
+
+	if s.entClient != nil {
+		tx, err := s.entClient.Tx(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+
+		opCtx := dbent.NewTxContext(ctx, tx)
+		if err := s.deleteUserWithAPIKeys(opCtx, id, apiKeys); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	} else {
+		if err := s.deleteUserWithAPIKeys(ctx, id, apiKeys); err != nil {
+			return err
+		}
+	}
+
 	if s.authCacheInvalidator != nil {
+		for _, key := range apiKeys {
+			if keyValue := strings.TrimSpace(key.Key); keyValue != "" {
+				s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, keyValue)
+			}
+		}
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, id)
+	}
+	return nil
+}
+
+func (s *adminServiceImpl) listUserAPIKeysForDeletion(ctx context.Context, userID int64) ([]APIKey, error) {
+	if s.apiKeyRepo == nil {
+		return nil, nil
+	}
+
+	const pageSize = 1000
+	keys := make([]APIKey, 0)
+	for page := 1; ; page++ {
+		batch, result, err := s.apiKeyRepo.ListByUserID(ctx, userID, pagination.PaginationParams{
+			Page:      page,
+			PageSize:  pageSize,
+			SortBy:    "id",
+			SortOrder: pagination.SortOrderAsc,
+		}, APIKeyListFilters{})
+		if err != nil {
+			return nil, fmt.Errorf("list user api keys: %w", err)
+		}
+		keys = append(keys, batch...)
+		if len(batch) == 0 || len(batch) < pageSize || result == nil || int64(len(keys)) >= result.Total {
+			break
+		}
+	}
+	return keys, nil
+}
+
+func (s *adminServiceImpl) deleteUserWithAPIKeys(ctx context.Context, userID int64, apiKeys []APIKey) error {
+	if s.apiKeyRepo != nil {
+		for _, key := range apiKeys {
+			if key.ID <= 0 {
+				continue
+			}
+			if err := s.apiKeyRepo.DeleteWithAudit(ctx, key.ID); err != nil {
+				logger.LegacyPrintf("service.admin", "delete user api key failed: user_id=%d api_key_id=%d err=%v", userID, key.ID, err)
+				return fmt.Errorf("delete user api key %d: %w", key.ID, err)
+			}
+		}
+	}
+
+	if err := s.userRepo.Delete(ctx, userID); err != nil {
+		logger.LegacyPrintf("service.admin", "delete user failed: user_id=%d err=%v", userID, err)
+		return err
 	}
 	return nil
 }
