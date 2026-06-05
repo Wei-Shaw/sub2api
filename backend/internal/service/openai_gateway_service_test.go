@@ -424,6 +424,57 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOpenAISelectAccountWithLoadAwareness_ImageRateLimitSkipsOnlyImageRequests(t *testing.T) {
+	future := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
+	groupID := int64(1)
+
+	imageLimited := Account{
+		ID:          1,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			modelRateLimitsKey: map[string]any{
+				openAIImageGenerationRateLimitKey: map[string]any{
+					"rate_limit_reset_at": future,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	available := Account{
+		ID:          2,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+REDACTED
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{imageLimited, availableREDACTEDREDACTED,
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{REDACTED),
+REDACTED
+
+	imageSelection, err := svc.SelectAccountWithLoadAwareness(WithOpenAIImageGenerationIntent(context.Background()), &groupID, "", "gpt-5.4", nil)
+REDACTED
+	require.NotNil(t, imageSelection)
+	require.Equal(t, available.ID, imageSelection.Account.ID)
+	if imageSelection.ReleaseFunc != nil {
+		imageSelection.ReleaseFunc()
+REDACTED
+
+	textSelection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gpt-5.4", nil)
+REDACTED
+	require.NotNil(t, textSelection)
+	require.Equal(t, imageLimited.ID, textSelection.Account.ID)
+	if textSelection.ReleaseFunc != nil {
+		textSelection.ReleaseFunc()
+REDACTED
+REDACTED
+
 func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulableWhenNoConcurrencyService(t *testing.T) {
 	now := time.Now()
 	resetAt := now.Add(10 * time.Minute)

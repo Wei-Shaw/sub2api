@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -65,6 +66,13 @@ const (
 	defaultRateLimit429CooldownSeconds = 5
 	maxRateLimit429CooldownSeconds     = 7200
 )
+
+const (
+	openAIImageRateLimitDefaultCooldown = time.Minute
+	openAIImageRateLimitReason          = "openai_image_rate_limited"
+)
+
+var openAIImageTryAgainPattern = regexp.MustCompile(`(?i)try again in\s+([0-9]+(?:\.[0-9]+)?)\s*(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes)`)
 
 const (
 	openAI403CooldownMinutesDefault = 10
@@ -1616,6 +1624,109 @@ REDACTED
 		return false
 REDACTED
 	return s.tryTempUnschedulable(ctx, account, statusCode, responseBody)
+REDACTED
+
+func (s *RateLimitService) HandleOpenAIImageRateLimit(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) bool {
+	if s == nil || account == nil || s.accountRepo == nil {
+		return false
+REDACTED
+	if account.Platform != PlatformOpenAI {
+		return false
+REDACTED
+	if !account.ShouldHandleErrorCode(statusCode) {
+		slog.Info("openai_image_rate_limit_skipped_by_error_code_policy", "account_id", account.ID, "status_code", statusCode)
+		return false
+REDACTED
+	if !isOpenAIImageRateLimitError(statusCode, responseBody) {
+		return false
+REDACTED
+
+	resetAt := openAIImageRateLimitResetAt(headers, responseBody)
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, openAIImageGenerationRateLimitKey, resetAt, openAIImageRateLimitReason); err != nil {
+		slog.Warn("openai_image_rate_limit_set_model_rate_limit_failed", "account_id", account.ID, "scope", openAIImageGenerationRateLimitKey, "error", err)
+		return true
+REDACTED
+	slog.Info("openai_image_rate_limited", "account_id", account.ID, "scope", openAIImageGenerationRateLimitKey, "reset_at", resetAt, "reset_in", time.Until(resetAt).Truncate(time.Second))
+	return true
+REDACTED
+
+func isOpenAIImageRateLimitError(statusCode int, body []byte) bool {
+	if statusCode != http.StatusTooManyRequests || len(body) == 0 {
+		return false
+REDACTED
+	lower := strings.ToLower(string(body))
+	for _, marker := range []string{
+		"for limit gpt-image",
+		"input-images per min",
+		"gpt-image-2-codex",
+		"gpt-image",
+REDACTED {
+		if strings.Contains(lower, marker) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func openAIImageRateLimitResetAt(headers http.Header, body []byte) time.Time {
+	now := time.Now()
+	if resetAt := parseRetryAfterResetTime(headers, now); resetAt != nil && resetAt.After(now) {
+		return *resetAt
+REDACTED
+	if resetAt := calculateOpenAI429ResetTime(headers); resetAt != nil && resetAt.After(now) {
+		return *resetAt
+REDACTED
+	if resetUnix := parseOpenAIRateLimitResetTime(body); resetUnix != nil {
+		if resetAt := time.Unix(*resetUnix, 0); resetAt.After(now) {
+			return resetAt
+	REDACTED
+REDACTED
+	if cooldown := parseOpenAIImageTryAgainCooldown(body); cooldown > 0 {
+		return now.Add(cooldown)
+REDACTED
+	return now.Add(openAIImageRateLimitDefaultCooldown)
+REDACTED
+
+func parseRetryAfterResetTime(headers http.Header, now time.Time) *time.Time {
+	if headers == nil {
+		return nil
+REDACTED
+	raw := strings.TrimSpace(headers.Get("Retry-After"))
+	if raw == "" {
+		return nil
+REDACTED
+	if seconds, err := strconv.ParseFloat(raw, 64); err == nil {
+		resetAt := now.Add(time.Duration(seconds * float64(time.Second)))
+		return &resetAt
+REDACTED
+	if parsed, err := http.ParseTime(raw); err == nil {
+		return &parsed
+REDACTED
+	return nil
+REDACTED
+
+func parseOpenAIImageTryAgainCooldown(body []byte) time.Duration {
+	if len(body) == 0 {
+		return 0
+REDACTED
+	match := openAIImageTryAgainPattern.FindSubmatch(body)
+	if len(match) != 3 {
+		return 0
+REDACTED
+	value, err := strconv.ParseFloat(string(match[1]), 64)
+	if err != nil || value <= 0 {
+		return 0
+REDACTED
+	switch strings.ToLower(string(match[2])) {
+	case "ms":
+		return time.Duration(value * float64(time.Millisecond))
+	case "s", "sec", "secs", "second", "seconds":
+		return time.Duration(value * float64(time.Second))
+	case "m", "min", "mins", "minute", "minutes":
+		return time.Duration(value * float64(time.Minute))
+	default:
+		return 0
+REDACTED
 REDACTED
 
 const upstreamModelNotFoundCooldown = 30 * time.Minute
