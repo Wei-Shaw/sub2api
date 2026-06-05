@@ -16,7 +16,7 @@ import (
 // 通过 fixture 注入 channel/account/group 的 scope 信息，让 validatePathLinkage
 // 单测脱离真实 DB。
 
-// ptrInt64/ptrString 在同 package 已存在（payment_config_plans_validation_test.go / admin_service_group_test.go），复用即可。
+func ptrInt64(v int64) *int64 { return &v }
 
 // extractAppErrorMetadata 把 ApplicationError 的 reason（业务错误码）+ metadata 拿出来比对，
 // 避免依赖具体 message 文案。
