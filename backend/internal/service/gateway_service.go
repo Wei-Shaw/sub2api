@@ -569,6 +569,19 @@ func (e *UpstreamFailoverError) Error() string {
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
 }
 
+type upstreamStreamError struct {
+	statusCode    int
+	responseBody  []byte
+	responseError string
+}
+
+func (e *upstreamStreamError) Error() string {
+	if e == nil || e.responseError == "" {
+		return "have error in stream"
+	}
+	return e.responseError
+}
+
 // TempUnscheduleRetryableError 对 RetryableOnSameAccount 类型的 failover 错误触发临时封禁。
 // 由 handler 层在同账号重试全部用尽、切换账号时调用。
 func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *UpstreamFailoverError) {
@@ -5080,9 +5093,20 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if reqStream {
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, shouldMimicClaudeCode)
 		if err != nil {
+			var streamErr *upstreamStreamError
+			if errors.As(err, &streamErr) {
+				statusCode := streamErr.statusCode
+				if statusCode <= 0 {
+					statusCode = http.StatusForbidden
+				}
+				return nil, &UpstreamFailoverError{
+					StatusCode:   statusCode,
+					ResponseBody: streamErr.responseBody,
+				}
+			}
 			if err.Error() == "have error in stream" {
 				return nil, &UpstreamFailoverError{
-					StatusCode: 403,
+					StatusCode: http.StatusForbidden,
 				}
 			}
 			return nil, err
@@ -7681,7 +7705,15 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 
 		if eventName == "error" {
-			return nil, dataLine, nil, errors.New("have error in stream")
+			responseBody := strings.TrimSpace(dataLine)
+			if responseBody == "" {
+				responseBody = strings.TrimSpace(strings.Join(lines, "\n"))
+			}
+			return nil, dataLine, nil, &upstreamStreamError{
+				statusCode:    http.StatusForbidden,
+				responseBody:  []byte(responseBody),
+				responseError: "have error in stream",
+			}
 		}
 
 		if dataLine == "" {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -98,6 +99,44 @@ func TestStreamWrittenGuard_GeminiPath_AbortFailoverOnSSEContentWritten(t *testi
 	firstIdx := strings.Index(body, "event: message_start")
 	lastIdx := strings.LastIndex(body, "event: message_start")
 	assert.Equal(t, firstIdx, lastIdx, "Gemini 路径不得出现双 message_start")
+}
+
+func TestGatewayHandler_HandleFailoverExhaustedRecordsUpstreamBodyForOps(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	upstreamBody := []byte(`{"type":"error","error":{"type":"permission_error","message":"actual upstream says plan disabled"}}`)
+	failoverErr := &service.UpstreamFailoverError{
+		StatusCode:   http.StatusForbidden,
+		ResponseBody: upstreamBody,
+	}
+	h := &GatewayHandler{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				LogUpstreamErrorBody:         true,
+				LogUpstreamErrorBodyMaxBytes: 2048,
+			},
+		},
+	}
+
+	h.handleFailoverExhausted(c, failoverErr, service.PlatformAnthropic, false)
+
+	status, ok := c.Get(service.OpsUpstreamStatusCodeKey)
+	require.True(t, ok)
+	require.Equal(t, http.StatusForbidden, status)
+
+	msg, ok := c.Get(service.OpsUpstreamErrorMessageKey)
+	require.True(t, ok)
+	require.Equal(t, "actual upstream says plan disabled", msg)
+
+	detail, ok := c.Get(service.OpsUpstreamErrorDetailKey)
+	require.True(t, ok)
+	require.Equal(t, string(upstreamBody), detail)
+
+	require.Equal(t, http.StatusBadGateway, w.Code)
+	require.Contains(t, w.Body.String(), "Upstream access forbidden, please contact administrator")
 }
 
 // TestStreamWrittenGuard_NoByteWritten_GuardNotTriggered 验证反向场景：
