@@ -230,7 +230,7 @@ type CreateGroupInput struct {
 
 type UpdateGroupInput struct {
 	Name             string
-	Description      string
+	Description      *string
 	Platform         string
 	RateMultiplier   *float64 // 使用指针以支持设置为0
 	IsExclusive      *bool
@@ -1924,8 +1924,8 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.Name != "" {
 		group.Name = input.Name
 	}
-	if input.Description != "" {
-		group.Description = input.Description
+	if input.Description != nil {
+		group.Description = *input.Description
 	}
 	if input.Platform != "" {
 		group.Platform = input.Platform

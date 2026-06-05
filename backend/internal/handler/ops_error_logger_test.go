@@ -931,3 +931,45 @@ func TestSetOpsEndpointContext_NilContext(t *testing.T) {
 		setOpsEndpointContext(nil, "model", int16(1))
 	})
 }
+
+func TestGetOpsAPIKeyFallsBackToOpsFallbackKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	// 主 key 缺席（鉴权早退场景）：返回 nil。
+	require.Nil(t, getOpsAPIKey(c))
+
+	// 写入 ops 专用 fallback key 后应能取到，且带齐 user/group。
+	groupID := int64(55)
+	apiKey := &service.APIKey{
+		ID:      100,
+		GroupID: &groupID,
+		User:    &service.User{ID: 7},
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformAnthropic},
+	}
+	c.Set(string(middleware2.ContextKeyOpsFallbackAPIKey), apiKey)
+
+	got := getOpsAPIKey(c)
+	require.NotNil(t, got)
+	require.Equal(t, int64(100), got.ID)
+	require.NotNil(t, got.User)
+	require.Equal(t, int64(7), got.User.ID)
+	require.NotNil(t, got.Group)
+	require.Equal(t, service.PlatformAnthropic, got.Group.Platform)
+}
+
+func TestGetOpsAPIKeyPrefersPrimaryContextKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	primary := &service.APIKey{ID: 1}
+	fallback := &service.APIKey{ID: 2}
+	c.Set(string(middleware2.ContextKeyAPIKey), primary)
+	c.Set(string(middleware2.ContextKeyOpsFallbackAPIKey), fallback)
+
+	got := getOpsAPIKey(c)
+	require.NotNil(t, got)
+	require.Equal(t, int64(1), got.ID, "已鉴权请求应优先使用正式 api key")
+}

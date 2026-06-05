@@ -59,6 +59,10 @@ const (
 	codexCLIVersion                    = "0.125.0"
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
+	// 配额自动暂停时，超过该时长仍未刷新的 used% 快照视为陈旧，不再据此暂停账号。
+	// 被暂停的账号收不到流量，其快照永远不会从上游响应头刷新；该兜底让账号在快照
+	// 陈旧时放行一次请求，从而通过正常响应头自愈，而无需等待整个窗口（5h/7d）重置。
+	openAICodexAutoPauseStaleAfter = 2 * time.Hour
 )
 
 // OpenAI allowed headers whitelist (for non-passthrough).
@@ -126,19 +130,6 @@ type NormalizedCodexLimits struct {
 	Window7dMinutes *int
 }
 
-func normalizeCodexFiveHourUsedPercent(raw *float64) *float64 {
-	if raw == nil {
-		return nil
-	}
-	// OpenAI's 5h Codex quota header is remaining%, despite the upstream header
-	// name saying "used"; the canonical codex_5h_used_percent field stores used%.
-	used := 100 - *raw
-	if used < 0 {
-		used = 0
-	}
-	return &used
-}
-
 // Normalize converts primary/secondary fields to canonical 5h/7d fields.
 // Strategy: Compare window_minutes to determine which is 5h vs 7d.
 // Returns nil if snapshot is nil or has no useful data.
@@ -197,7 +188,7 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 
 	// Assign values
 	if use5hFromPrimary {
-		result.Used5hPercent = normalizeCodexFiveHourUsedPercent(s.PrimaryUsedPercent)
+		result.Used5hPercent = s.PrimaryUsedPercent
 		result.Reset5hSeconds = s.PrimaryResetAfterSeconds
 		result.Window5hMinutes = s.PrimaryWindowMinutes
 		result.Used7dPercent = s.SecondaryUsedPercent
@@ -207,7 +198,7 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 		result.Used7dPercent = s.PrimaryUsedPercent
 		result.Reset7dSeconds = s.PrimaryResetAfterSeconds
 		result.Window7dMinutes = s.PrimaryWindowMinutes
-		result.Used5hPercent = normalizeCodexFiveHourUsedPercent(s.SecondaryUsedPercent)
+		result.Used5hPercent = s.SecondaryUsedPercent
 		result.Reset5hSeconds = s.SecondaryResetAfterSeconds
 		result.Window5hMinutes = s.SecondaryWindowMinutes
 	}
@@ -249,6 +240,7 @@ type OpenAIForwardResult struct {
 	ResponseHeaders    http.Header
 	Duration           time.Duration
 	FirstTokenMs       *int
+	ClientDisconnect   bool
 	ImageCount         int
 	ImageSize          string
 	ImageInputSize     string
@@ -1497,7 +1489,34 @@ func resolveOpenAIQuotaUtilization(extra map[string]any, window string, now time
 	if openAIQuotaWindowReset(extra, window, now) {
 		return 0, false
 	}
+	// 快照过于陈旧（账号长期未收到流量刷新）时，不再据此暂停。放行后下一次响应头
+	// 会刷新快照实现自愈，避免账号在错误/过期的 used% 上被永久跳过（issue #2994）。
+	if openAICodexSnapshotStaleForPause(extra, now) {
+		return 0, false
+	}
 	return usedPercent / 100, true
+}
+
+// openAICodexSnapshotStaleForPause reports whether the Codex usage snapshot is stale
+// enough that it should no longer keep an account auto-paused. It anchors on
+// codex_usage_updated_at (always written by buildCodexUsageExtraUpdates). A missing or
+// unparseable timestamp returns false (treated as fresh, so the account stays paused) —
+// this is deliberate: it prevents any snapshot without a write time from silently escaping
+// auto-pause, and a genuinely-exhausted account that is actively served refreshes the
+// timestamp on every response so it never crosses the staleness bound.
+func openAICodexSnapshotStaleForPause(extra map[string]any, now time.Time) bool {
+	if len(extra) == 0 {
+		return false
+	}
+	updatedRaw, ok := extra["codex_usage_updated_at"]
+	if !ok {
+		return false
+	}
+	updatedAt, err := parseTime(fmt.Sprint(updatedRaw))
+	if err != nil {
+		return false
+	}
+	return now.Sub(updatedAt) >= openAICodexAutoPauseStaleAfter
 }
 
 // openAIQuotaWindowReset reports whether the Codex usage window's reset time has
@@ -4620,6 +4639,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	}
 
 	needModelReplace := originalModel != mappedModel
+	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
+	streamImageOutputs := make([]json.RawMessage, 0, 1)
+	streamSeenImages := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
 			usage:            usage,
@@ -4698,13 +4720,6 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
-
-			// Replace model in response if needed.
-			// Fast path: most events do not contain model field values.
-			if needModelReplace && mappedModel != "" && strings.Contains(data, mappedModel) {
-				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
-			}
-
 			dataBytes := []byte(data)
 			if openAIStreamEventIsTerminal(data) {
 				sawTerminalEvent = true
@@ -4729,6 +4744,26 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				data = string(correctedData)
 				line = "data: " + data
 				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			}
+			if imageOutput, ok := extractImageGenerationOutputFromSSEData(dataBytes, streamSeenImages); ok {
+				streamImageOutputs = append(streamImageOutputs, imageOutput)
+			}
+			if responsesStreamEventMayContributeToOutput(eventType) {
+				var streamEvent apicompat.ResponsesStreamEvent
+				if err := json.Unmarshal(dataBytes, &streamEvent); err == nil {
+					streamOutputAccumulator.ProcessEvent(&streamEvent)
+				}
+			}
+			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, streamOutputAccumulator, streamImageOutputs); normalized {
+				dataBytes = normalizedData
+				data = string(normalizedData)
+				line = "data: " + data
+				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			}
+			// Replace model in response if needed.
+			// Fast path: most events do not contain model field values.
+			if needModelReplace && mappedModel != "" && strings.Contains(line, mappedModel) {
+				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
 			}
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
 
@@ -5265,6 +5300,45 @@ func extractCodexFinalResponse(body string) ([]byte, bool) {
 	return nil, false
 }
 
+func normalizeResponsesStreamingTerminalOutput(data []byte, acc *apicompat.BufferedResponseAccumulator, imageOutputs []json.RawMessage) ([]byte, bool) {
+	eventType := strings.TrimSpace(gjson.GetBytes(data, "type").String())
+	switch eventType {
+	case "response.completed", "response.done", "response.incomplete", "response.cancelled", "response.canceled":
+	default:
+		return data, false
+	}
+
+	output := gjson.GetBytes(data, "response.output")
+	hasAccumulatedOutput := (acc != nil && acc.HasContent()) || len(imageOutputs) > 0
+	if output.Exists() && output.IsArray() {
+		if len(output.Array()) > 0 || !hasAccumulatedOutput {
+			return data, false
+		}
+	}
+
+	outputJSON := []byte("[]")
+	if reconstructed, ok := buildResponsesOutputJSON(acc, imageOutputs); ok {
+		outputJSON = reconstructed
+	}
+	updated, err := sjson.SetRawBytes(data, "response.output", outputJSON)
+	if err != nil {
+		return data, false
+	}
+	return updated, true
+}
+
+func responsesStreamEventMayContributeToOutput(eventType string) bool {
+	switch eventType {
+	case "response.output_text.delta",
+		"response.output_item.added",
+		"response.function_call_arguments.delta",
+		"response.reasoning_summary_text.delta":
+		return true
+	default:
+		return false
+	}
+}
+
 // reconstructResponseOutputFromSSE scans raw SSE body text for delta events and
 // returns a JSON-encoded output array reconstructed from accumulated deltas.
 // Returns (nil, false) if no content was found in deltas.
@@ -5276,17 +5350,23 @@ func reconstructResponseOutputFromSSE(bodyText string) ([]byte, bool) {
 		if imageOutput, ok := extractImageGenerationOutputFromSSEData(data, seenImages); ok {
 			imageOutputs = append(imageOutputs, imageOutput)
 		}
-		var event apicompat.ResponsesStreamEvent
-		if err := json.Unmarshal(data, &event); err == nil {
-			acc.ProcessEvent(&event)
+		eventType := strings.TrimSpace(gjson.GetBytes(data, "type").String())
+		if responsesStreamEventMayContributeToOutput(eventType) {
+			var event apicompat.ResponsesStreamEvent
+			if err := json.Unmarshal(data, &event); err == nil {
+				acc.ProcessEvent(&event)
+			}
 		}
 	})
-	if !acc.HasContent() && len(imageOutputs) == 0 {
+	return buildResponsesOutputJSON(acc, imageOutputs)
+}
+
+func buildResponsesOutputJSON(acc *apicompat.BufferedResponseAccumulator, imageOutputs []json.RawMessage) ([]byte, bool) {
+	if (acc == nil || !acc.HasContent()) && len(imageOutputs) == 0 {
 		return nil, false
 	}
-
 	var output []json.RawMessage
-	if acc.HasContent() {
+	if acc != nil && acc.HasContent() {
 		outputJSON, err := json.Marshal(acc.BuildOutput())
 		if err == nil {
 			_ = json.Unmarshal(outputJSON, &output)

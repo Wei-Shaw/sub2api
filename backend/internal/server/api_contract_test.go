@@ -897,7 +897,8 @@ func TestAPIContracts(t *testing.T) {
 					"wechat_connect_mobile_app_secret_configured": false,
 					"wechat_connect_redirect_url": "",
 					"wechat_connect_frontend_redirect_url": "/auth/wechat/callback",
-					"wechat_connect_scopes": "snsapi_login"
+					"wechat_connect_scopes": "snsapi_login",
+					"allow_user_view_error_requests": false
 				}
 			}`,
 		},
@@ -1169,7 +1170,8 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_dingtalk_subscriptions": [],
 					"auth_source_default_dingtalk_grant_on_signup": false,
 					"auth_source_default_dingtalk_grant_on_first_bind": false,
-					"force_email_on_third_party_signup": false
+					"force_email_on_third_party_signup": false,
+					"allow_user_view_error_requests": false
 				}
 			}`,
 		},
@@ -1281,7 +1283,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
-	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
+	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil, nil)
 	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
@@ -2102,6 +2104,10 @@ func (r *stubApiKeyRepo) Delete(ctx context.Context, id int64) error {
 	delete(r.byID, id)
 	delete(r.byKey, key.Key)
 	return nil
+}
+
+func (r *stubApiKeyRepo) DeleteWithAudit(ctx context.Context, id int64) error {
+	return r.Delete(ctx, id)
 }
 
 func (r *stubApiKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, _ service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
