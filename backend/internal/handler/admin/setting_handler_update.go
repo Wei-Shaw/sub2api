@@ -370,6 +370,37 @@ type UpdateSettingsRequest struct {
 	AllowUserViewErrorRequests *bool `json:"allow_user_view_error_requests"`
 }
 
+func applyTelegramSettingsFromRequest(settings *service.SystemSettings, req UpdateSettingsRequest, previous *service.SystemSettings) {
+	if settings == nil {
+		return
+	}
+	if previous == nil {
+		previous = &service.SystemSettings{}
+	}
+
+	settings.TelegramBotToken = previous.TelegramBotToken
+	settings.TelegramBotTokenConfigured = previous.TelegramBotTokenConfigured
+	if req.TelegramBotToken != nil {
+		settings.TelegramBotToken = strings.TrimSpace(*req.TelegramBotToken)
+		settings.TelegramBotTokenConfigured = settings.TelegramBotToken != ""
+	}
+	if req.TelegramChatID != nil {
+		settings.TelegramChatID = strings.TrimSpace(*req.TelegramChatID)
+	} else {
+		settings.TelegramChatID = previous.TelegramChatID
+	}
+	settings.TelegramNotifyNewUser = boolValueOrDefault(req.TelegramNotifyNewUser, previous.TelegramNotifyNewUser)
+	settings.TelegramNotifyAccountError = boolValueOrDefault(req.TelegramNotifyAccountError, previous.TelegramNotifyAccountError)
+	settings.TelegramNotifyAccountExpired = boolValueOrDefault(req.TelegramNotifyAccountExpired, previous.TelegramNotifyAccountExpired)
+	settings.TelegramNotifyPaymentSuccess = boolValueOrDefault(req.TelegramNotifyPaymentSuccess, previous.TelegramNotifyPaymentSuccess)
+	settings.TelegramNotifyPaymentFailed = boolValueOrDefault(req.TelegramNotifyPaymentFailed, previous.TelegramNotifyPaymentFailed)
+	settings.TelegramNotifyRefund = boolValueOrDefault(req.TelegramNotifyRefund, previous.TelegramNotifyRefund)
+	settings.TelegramNotifySubExpired = boolValueOrDefault(req.TelegramNotifySubExpired, previous.TelegramNotifySubExpired)
+	settings.TelegramNotifyBalanceLow = boolValueOrDefault(req.TelegramNotifyBalanceLow, previous.TelegramNotifyBalanceLow)
+	settings.TelegramNotifyOpsAlert = boolValueOrDefault(req.TelegramNotifyOpsAlert, previous.TelegramNotifyOpsAlert)
+	settings.TelegramNotifyProxyExpired = boolValueOrDefault(req.TelegramNotifyProxyExpired, previous.TelegramNotifyProxyExpired)
+}
+
 // UpdateSettings 更新系统设置
 // PUT /api/v1/admin/settings
 // ensureActorTotpForStepUp 校验当前操作者具备开启 step-up 门控的条件：
@@ -1841,6 +1872,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return previousSettings.CyberSessionBlockTTLSeconds
 		}(),
 	}
+	applyTelegramSettingsFromRequest(settings, req, previousSettings)
 
 	// req.AuthSourceXxxPlatformQuotas 为 nil 表示本次请求未包含该 source 的 quota 配置（保留 previousAuthSourceDefaults 中的值）；
 	// non-nil（含 empty map）表示整体覆盖：empty map = 清空该 source 的所有 quota 配置。

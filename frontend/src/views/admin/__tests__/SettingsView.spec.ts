@@ -724,9 +724,9 @@ describe("admin SettingsView Telegram notification settings", () => {
     await openEmailTab(wrapper);
 
     await findTelegramBotTokenInput(wrapper)?.setValue(
-      "telegram-test-token-fixture",
+      "tg-fixture",
     );
-    await findTelegramChatIDInput(wrapper)?.setValue("-1001234567890");
+    await findTelegramChatIDInput(wrapper)?.setValue("telegram-chat-fixture");
 
     const testButton = wrapper
       .findAll("button")
@@ -738,9 +738,50 @@ describe("admin SettingsView Telegram notification settings", () => {
     await flushPromises();
 
     expect(testTelegramConnection).toHaveBeenCalledWith({
-      telegram_bot_token: "telegram-test-token-fixture",
-      telegram_chat_id: "-1001234567890",
+      telegram_bot_token: "tg-fixture",
+      telegram_chat_id: "telegram-chat-fixture",
     });
+  });
+
+  it("persists every Telegram notification switch when saving settings", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      telegram_bot_token_configured: true,
+      telegram_chat_id: "telegram-chat-fixture",
+      telegram_notify_new_user: true,
+      telegram_notify_account_error: true,
+      telegram_notify_account_expired: true,
+      telegram_notify_payment_success: true,
+      telegram_notify_payment_failed: true,
+      telegram_notify_refund: true,
+      telegram_notify_sub_expired: true,
+      telegram_notify_balance_low: true,
+      telegram_notify_ops_alert: true,
+      telegram_notify_proxy_expired: true,
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openEmailTab(wrapper);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        telegram_chat_id: "telegram-chat-fixture",
+        telegram_notify_new_user: true,
+        telegram_notify_account_error: true,
+        telegram_notify_account_expired: true,
+        telegram_notify_payment_success: true,
+        telegram_notify_payment_failed: true,
+        telegram_notify_refund: true,
+        telegram_notify_sub_expired: true,
+        telegram_notify_balance_low: true,
+        telegram_notify_ops_alert: true,
+        telegram_notify_proxy_expired: true,
+      }),
+    );
   });
 });
 
