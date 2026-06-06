@@ -240,8 +240,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 	if len(search) > 100 {
 		search = search[:100]
 	}
-	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
-
 	var groupID int64
 	if groupIDStr := c.Query("group"); groupIDStr != "" {
 		if groupIDStr == accountListGroupUngroupedQueryValue {
@@ -380,16 +378,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 
 		result[i] = item
-	}
-
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
-	if etag != "" {
-		c.Header("ETag", etag)
-		c.Header("Vary", "If-None-Match")
-		if ifNoneMatchMatched(c.GetHeader("If-None-Match"), etag) {
-			c.Status(http.StatusNotModified)
-			return
-		}
 	}
 
 	response.Paginated(c, result, total, page, pageSize)
