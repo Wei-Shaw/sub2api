@@ -16,7 +16,7 @@
       :placeholder="t('auth.passwordPlaceholder')"
       :disabled="isSubmitting"
     />
-    <div v-if="captchaEnabled && captchaSiteKey" class="space-y-2">
+    <div v-if="emailVerifyEnabled && captchaEnabled && captchaSiteKey" class="space-y-2">
       <CaptchaWidget
         ref="captchaRef"
             :provider="captchaProvider"
@@ -26,17 +26,17 @@
         @error="onCaptchaError"
       />
     </div>
-    <div class="flex gap-3">
-    <input
-      v-model="verifyCode"
-      :data-testid="`${testIdPrefix}-create-account-verify-code`"
-      type="text"
+    <div v-if="emailVerifyEnabled" class="flex gap-3">
+      <input
+        v-model="verifyCode"
+        :data-testid="`${testIdPrefix}-create-account-verify-code`"
+        type="text"
         inputmode="numeric"
-      maxlength="6"
-      class="input min-w-0 flex-1"
-      placeholder="123456"
-      :disabled="isSubmitting"
-    />
+        maxlength="6"
+        class="input min-w-0 flex-1"
+        placeholder="123456"
+        :disabled="isSubmitting"
+      />
       <button
         :data-testid="`${testIdPrefix}-create-account-send-code`"
         type="button"
@@ -53,10 +53,10 @@
         }}
       </button>
     </div>
-    <p v-if="sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
+    <p v-if="emailVerifyEnabled && sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
       {{ t('auth.codeSentSuccess') }}
     </p>
-    <p v-else class="text-xs text-gray-500 dark:text-dark-400">
+    <p v-else-if="emailVerifyEnabled" class="text-xs text-gray-500 dark:text-dark-400">
       {{ t('auth.verificationCodeHint') }}
     </p>
     <input
@@ -126,6 +126,7 @@ const sendCodeError = ref('')
 const sendCodeSuccess = ref(false)
 const countdown = ref(0)
 const invitationCodeEnabled = ref(false)
+const emailVerifyEnabled = ref(true)
 const captchaEnabled = ref<boolean>(false)
 const captchaProvider = ref<'turnstile' | 'hcaptcha' | 'tencent_captcha'>('turnstile')
 const captchaSiteKey = ref('')
@@ -263,7 +264,7 @@ function handleSubmit() {
   emit('submit', {
     email: trimmedEmail,
     password: password.value,
-    verifyCode: verifyCode.value.trim(),
+    verifyCode: emailVerifyEnabled.value ? verifyCode.value.trim() : '',
     invitationCode: invitationCode.value.trim() || undefined
   })
 }
@@ -276,6 +277,7 @@ onMounted(async () => {
   try {
     const settings = await getPublicSettings()
     invitationCodeEnabled.value = settings.invitation_code_enabled === true
+    emailVerifyEnabled.value = settings.email_verify_enabled !== false
     captchaEnabled.value = settings.captcha_enabled ?? settings.turnstile_enabled
     captchaProvider.value =
       settings.captcha_provider === 'hcaptcha'
@@ -286,6 +288,7 @@ onMounted(async () => {
     captchaSiteKey.value = settings.captcha_site_key || settings.turnstile_site_key || ''
   } catch {
     invitationCodeEnabled.value = false
+    emailVerifyEnabled.value = true
     captchaEnabled.value = false
     captchaProvider.value = 'turnstile'
     captchaSiteKey.value = ''
