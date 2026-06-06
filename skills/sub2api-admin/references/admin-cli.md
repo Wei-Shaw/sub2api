@@ -12,7 +12,7 @@ export SUB2API_ADMIN_API_KEY='<admin api key>'
 ## CLI
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js <command>
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js <command>
 ```
 
 ## Accounts
@@ -20,41 +20,41 @@ node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js <command>
 ### 只读
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts list --page-size 20
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts list --search outlook --platform openai --type oauth --status active
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts get 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts usage 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts stats 40 --days 30
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts today-stats 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts batch-today-stats --ids 40,39
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts models 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts temp-unschedulable 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts antigravity-default-model-mapping
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts list --page-size 20
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts list --search outlook --platform openai --type oauth --status active
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts get 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts usage 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts stats 40 --days 30
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts today-stats 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts batch-today-stats --ids 40,39
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts models 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts temp-unschedulable 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts antigravity-default-model-mapping
 ```
 
 `accounts export` 会包含账号凭据和 token，建议写入文件，不要直接刷屏：
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts export --ids 40,39 --file accounts-export.json
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts export --platform openai --type oauth --include-proxies false --file accounts-export.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts export --ids 40,39 --file accounts-export.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts export --platform openai --type oauth --include-proxies false --file accounts-export.json
 ```
 
 ### 单账号写入
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts create --file account.json
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts update 40 --json '{"concurrency":20}'
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts set-status 40 active
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts set-schedulable 40 true
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts clear-error 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts clear-rate-limit 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts recover-state 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts reset-quota 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts refresh 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts test 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts sync-models 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts apply-oauth 40 --file credentials.json
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts reset-temp-unschedulable 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts create --file account.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts update 40 --json '{"concurrency":20}'
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts set-status 40 active
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts set-schedulable 40 true
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts clear-error 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts clear-rate-limit 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts recover-state 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts reset-quota 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts refresh 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts test 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts sync-models 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts apply-oauth 40 --file credentials.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts reset-temp-unschedulable 40
 ```
 
 ### 删除与清理
@@ -62,18 +62,18 @@ node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts reset-temp
 删除前先列出目标账号名和 ID。
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts delete 25
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts keep-only --name 'target@example.com'
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts delete 25
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts keep-only --name 'target@example.com'
 ```
 
 ### 批量写入
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts batch-create --file accounts.json
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts batch-update-credentials --file payload.json
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts bulk-update --ids 40,39 --json '{"concurrency":10,"priority":2}'
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts batch-refresh --ids 40,39
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts batch-clear-error --ids 40,39
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts batch-create --file accounts.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts batch-update-credentials --file payload.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts bulk-update --ids 40,39 --json '{"concurrency":10,"priority":2}'
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts batch-refresh --ids 40,39
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts batch-clear-error --ids 40,39
 ```
 
 `bulk-update` 可覆盖页面“批量更新”的字段，payload 由后台表单字段决定，例如 `base_url`、`model_mapping`、`group_ids`、`proxy_id`、`concurrency`、`priority`、`rate_multiplier`、`status`、`compact_mode` 等。更新前先用 `accounts get <id>` 确认字段名。
@@ -83,21 +83,21 @@ node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts batch-clea
 通用后台导入：
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts import-data --file accounts-export.json
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts import-codex-session --file payload.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts import-data --file accounts-export.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts import-codex-session --file payload.json
 ```
 
 CRS 同步：
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts crs-preview --file payload.json
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts crs-sync --file payload.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts crs-preview --file payload.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts crs-sync --file payload.json
 ```
 
 旧版 JSON 导入仍可用，会把模板账号的配置复制给导入账号：
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts import-json \
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts import-json \
   --file /path/accounts.json \
   --template-name 'template@example.com' \
   --dry-run
@@ -113,8 +113,8 @@ node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts import-jso
 ## Groups And Proxies
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js groups all
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js proxies all
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js groups all
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js proxies all
 ```
 
 ## Error Rules And TLS Profiles
@@ -122,18 +122,18 @@ node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js proxies all
 对应账号页顶部“错误透传规则”和“TLS 指纹模板”。
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js error-rules list
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js error-rules get 1
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js error-rules create --file rule.json
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js error-rules update 1 --json '{"enabled":true}'
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js error-rules toggle 1 false
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js error-rules delete 1
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js error-rules list
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js error-rules get 1
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js error-rules create --file rule.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js error-rules update 1 --json '{"enabled":true}'
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js error-rules toggle 1 false
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js error-rules delete 1
 
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles list
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles get 1
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles create --file profile.json
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles update 1 --file profile.json
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles delete 1
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles list
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles get 1
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles create --file profile.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles update 1 --file profile.json
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles delete 1
 ```
 
 ## Raw Admin API
@@ -141,8 +141,8 @@ node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles delete
 未封装或新版本后台接口可用 `api` 直通。路径可写 `/admin/...` 或 `/api/v1/admin/...`。
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js api GET /admin/groups/all
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js api POST /admin/accounts/bulk-update \
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js api GET /admin/groups/all
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js api POST /admin/accounts/bulk-update \
   --json '{"account_ids":[40],"concurrency":10}'
 ```
 

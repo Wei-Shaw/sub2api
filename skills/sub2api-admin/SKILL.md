@@ -11,7 +11,7 @@ Use the bundled CLI instead of ad hoc `curl`.
 export SUB2API_BASE_URL='https://your-sub2api-host'
 export SUB2API_ADMIN_API_KEY='<admin api key>'
 
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts list
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts list
 ```
 
 For all commands and payload examples, read [references/admin-cli.md](references/admin-cli.md).
@@ -27,13 +27,13 @@ For all commands and payload examples, read [references/admin-cli.md](references
 ## Common Commands
 
 ```bash
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts list --page-size 20
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts get 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts usage 40
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts set-schedulable 40 true
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js accounts bulk-update --ids 40,39 --json '{"concurrency":10}'
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js error-rules list
-node ~/.agents/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles list
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts list --page-size 20
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts get 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts usage 40
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts set-schedulable 40 true
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js accounts bulk-update --ids 40,39 --json '{"concurrency":10}'
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js error-rules list
+node ~/.codex/skills/sub2api-admin/scripts/sub2api-admin.js tls-profiles list
 ```
 
 ## Safety Notes
