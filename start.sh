@@ -8,6 +8,7 @@
 #   ./start.sh status  [backend|frontend|all]
 #   ./start.sh logs    [backend|frontend]       # 跟随查看 syslog（fallback 本地日志文件）
 #   ./start.sh logs    [backend|frontend] --file # 强制 tail 本地日志文件
+#   ./start.sh prod    [info|check]             # 生产环境说明/烟测（默认 info）
 #
 # 特性:
 #   - 启动后与终端解绑（setsid + 重定向 + disown），关闭终端不影响进程。
@@ -47,7 +48,7 @@ REDIS_PORT="${REDIS_PORT:-6379}"
 
 # ============== 颜色 ==============
 if [[ -t 1 ]]; then
-  C_R="\033[31m"; C_G="\033[32m"; C_Y="\033[33m"; C_B="\033[34m"; C_D="\033[2m"; C_0="\033[0m"
+  C_R=$'\033[31m'; C_G=$'\033[32m'; C_Y=$'\033[33m'; C_B=$'\033[34m'; C_D=$'\033[2m'; C_0=$'\033[0m'
 else
   C_R=""; C_G=""; C_Y=""; C_B=""; C_D=""; C_0=""
 fi
@@ -427,6 +428,154 @@ cmd_logs() {
   logs_one "$t" "${1:---auto}"
 }
 
+# ============== 生产环境探活 ==============
+# 配置（可被环境变量覆盖，方便切到 staging / 不同机房）
+PROD_API_HOST="${PROD_API_HOST:-10.36.32.221}"
+PROD_API_PORT="${PROD_API_PORT:-8001}"
+PROD_WEB_HOST="${PROD_WEB_HOST:-10.36.32.221}"
+PROD_WEB_PORT="${PROD_WEB_PORT:-3001}"
+PROD_PUBLIC_URL="${PROD_PUBLIC_URL:-https://sub2api.p1.cn}"
+
+# 单条 check 用同一个工具栈以保持输出整齐
+__prod_pass=0
+__prod_fail=0
+__prod_warn=0
+
+_p_pass() { printf "  ${C_G}✓${C_0} %s\n" "$*"; __prod_pass=$((__prod_pass+1)); }
+_p_fail() { printf "  ${C_R}✗${C_0} %s\n" "$*"; __prod_fail=$((__prod_fail+1)); }
+_p_warn() { printf "  ${C_Y}!${C_0} %s\n" "$*"; __prod_warn=$((__prod_warn+1)); }
+_p_kv()   { printf "    ${C_D}%s${C_0} %s\n" "$1" "$2"; }
+
+# TCP 探活: _p_tcp <label> <host> <port>
+_p_tcp() {
+  local label="$1" host="$2" port="$3"
+  if timeout 3 bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null; then
+    _p_pass "$label  TCP $host:$port"
+  else
+    _p_fail "$label  TCP $host:$port 不通（超时或被拒）"
+    return 1
+  fi
+}
+
+# HTTP 检查: _p_http <label> <url> <expect_code> [<expect_body_grep_pattern>]
+# expect_code 支持: 200 | 2xx | 3xx | 4xx | 401|302（多个允许码竖线分隔）
+_p_http() {
+  local label="$1" url="$2" expect="$3" needle="${4:-}"
+  local tmp err; tmp="$(mktemp)"; err="$(mktemp)"
+  local out; out="$(curl -sS -o "$tmp" -w '%{http_code}|%{time_total}|%{size_download}' \
+    --max-time 10 -k "$url" 2>"$err")" || true
+  local code time size
+  IFS='|' read -r code time size <<< "$out"
+  local pass=0
+  if [[ "$code" == "000" || -z "$code" ]]; then
+    _p_fail "$label  $url  ← 连接失败 / 超时"
+    _p_kv "↳ curl" "$(head -c 200 "$err" | tr '\n' ' ')"
+    rm -f "$tmp" "$err"; return 1
+  fi
+  # 期望码匹配
+  if [[ ",${expect//|/,}," == *",${code},"* ]]; then
+    pass=1
+  elif [[ "$expect" == "2xx" && "$code" =~ ^2 ]]; then pass=1
+  elif [[ "$expect" == "3xx" && "$code" =~ ^3 ]]; then pass=1
+  elif [[ "$expect" == "4xx" && "$code" =~ ^4 ]]; then pass=1
+  fi
+  if (( pass == 0 )); then
+    _p_fail "$label  HTTP $code（期望 $expect）  ${time}s  $url"
+    _p_kv "↳ body" "$(head -c 200 "$tmp" | tr '\n' ' ')"
+    rm -f "$tmp" "$err"; return 1
+  fi
+  # body 关键字校验
+  if [[ -n "$needle" ]] && ! grep -q "$needle" "$tmp"; then
+    _p_warn "$label  HTTP $code 但 body 未含 \"$needle\"  ${time}s"
+    _p_kv "↳ body" "$(head -c 200 "$tmp" | tr '\n' ' ')"
+    rm -f "$tmp" "$err"; return 0
+  fi
+  _p_pass "$label  HTTP $code  ${time}s  ${size}B"
+  rm -f "$tmp" "$err"
+}
+
+prod_info() {
+  cat <<EOF
+${C_B}sub2api 生产环境${C_0}
+
+公网入口（需经过公司网络 / VPN）：
+  Web   ${C_G}https://sub2api.p1.cn${C_0}        ← 需 OSS 认证（浏览器登录公司 SSO）
+  API   ${C_G}https://sub2api.p1.cn/api${C_0}    ← 无认证，curl / SDK 直接打
+
+内网直连（绕过 Nginx + OSS，调试 / CI 用）：
+  Backend  http://${PROD_API_HOST}:${PROD_API_PORT}   ← systemd: infra-sub2api-rest
+  Frontend http://${PROD_WEB_HOST}:${PROD_WEB_PORT}   ← 本机 Nginx 服务静态文件
+
+链路：浏览器 → sub2api.p1.cn (443) → OSS 网关 → Nginx
+                                                ├── /        → ${PROD_WEB_HOST}:${PROD_WEB_PORT}  (静态)
+                                                └── /api/*   → ${PROD_API_HOST}:${PROD_API_PORT}  (Go 后端)
+
+部署目录（目标机上）：/app/infra-sub2api-rest/current/
+配置文件                /app/infra-sub2api-rest/current/conf/config.yaml
+敏感值                  /etc/sub2api/secrets.env  (EnvironmentFile)
+systemd 单元           infra-sub2api-rest.service
+日志                    journalctl -u infra-sub2api-rest -f
+
+更多见 conf/README.md
+EOF
+}
+
+prod_check() {
+  __prod_pass=0; __prod_fail=0; __prod_warn=0
+  printf "${C_B}sub2api 生产环境烟测${C_0}  %s\n\n" "$(date -Iseconds)"
+
+  printf "${C_B}[1] 内网直连后端 (%s:%s)${C_0}\n" "$PROD_API_HOST" "$PROD_API_PORT"
+  _p_tcp  "TCP "                                "$PROD_API_HOST" "$PROD_API_PORT" || true
+  _p_http "/health           " "http://$PROD_API_HOST:$PROD_API_PORT/health"               "200" || true
+  _p_http "/api/v1/settings/public" "http://$PROD_API_HOST:$PROD_API_PORT/api/v1/settings/public" "200" '"code":' || true
+  _p_http "/api/v1/admin/* (未授权应 401)" "http://$PROD_API_HOST:$PROD_API_PORT/api/v1/admin/accounts" "401|403" || true
+  echo
+
+  printf "${C_B}[2] 内网直连前端 (%s:%s)${C_0}\n" "$PROD_WEB_HOST" "$PROD_WEB_PORT"
+  _p_tcp  "TCP "                                "$PROD_WEB_HOST" "$PROD_WEB_PORT" || true
+  _p_http "/                 " "http://$PROD_WEB_HOST:$PROD_WEB_PORT/" "200" '<div id="app"' || true
+  echo
+
+  printf "${C_B}[3] 公网 API 入口 (%s)${C_0}\n" "$PROD_PUBLIC_URL"
+  if command -v dig >/dev/null 2>&1; then
+    local host="${PROD_PUBLIC_URL#https://}"; host="${host%%/*}"
+    local ip; ip="$(dig +short +time=3 +tries=1 "$host" | tail -1)"
+    if [[ -n "$ip" ]]; then _p_pass "DNS  $host → $ip"; else _p_fail "DNS 解析失败 $host"; fi
+  fi
+  _p_http "/api/v1/settings/public (不走 OSS)" "$PROD_PUBLIC_URL/api/v1/settings/public" "200" '"code":' || true
+  _p_http "/api/v1/admin/* (无 token 应 401)" "$PROD_PUBLIC_URL/api/v1/admin/accounts" "401|403" || true
+  echo
+
+  printf "${C_B}[4] 公网 Web 入口 (OSS 拦截预期)${C_0}\n"
+  # OSS 通常 302 跳转到登录页，或返回 401；200 直出前端就是 OSS 没生效 → 警告
+  _p_http "/   (期望 302/401)" "$PROD_PUBLIC_URL/" "302|401|307|303" || true
+  echo
+
+  printf "${C_B}汇总${C_0}: "
+  printf "${C_G}%d pass${C_0}  " "$__prod_pass"
+  (( __prod_warn > 0 )) && printf "${C_Y}%d warn${C_0}  " "$__prod_warn"
+  if (( __prod_fail > 0 )); then
+    printf "${C_R}%d fail${C_0}\n" "$__prod_fail"
+    echo
+    echo "排查建议："
+    echo "  - TCP 不通  → 在生产机本地 \`ss -ltn | grep -E ':800[01]|:3001'\` 看是否在监听；防火墙 / SG 规则"
+    echo "  - /health 200 但 /api/v1/settings/public 500 → DB / Redis 未连上，journalctl -u infra-sub2api-rest -n 100"
+    echo "  - 公网 /api 失败但内网直连成功 → Nginx upstream / OSS 配置；nginx -T 看 location /api"
+    echo "  - 公网 / 返回 200 而不是 302 → OSS 没拦截到本站，登录认证形同虚设，立即检查 OSS 接入"
+    return 1
+  fi
+  printf "${C_G}all ok${C_0}\n"
+}
+
+cmd_prod() {
+  local sub="${1:-info}"
+  case "$sub" in
+    info|help|"")  prod_info ;;
+    check|test)    prod_check ;;
+    *) err "未知 prod 子命令: $sub（支持 check | info）"; exit 2 ;;
+  esac
+}
+
 usage() {
   sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
 }
@@ -439,6 +588,7 @@ main() {
     restart) cmd_restart "${1:-all}" ;;
     status)  cmd_status  "${1:-all}" ;;
     logs)    cmd_logs    "$@" ;;
+    prod)    cmd_prod    "$@" ;;
     ""|-h|--help|help) usage ;;
     *) err "未知命令: $action"; usage; exit 2 ;;
   esac
