@@ -183,6 +183,7 @@
           @select-page="selectPage"
           @toggle-schedulable="handleBulkToggleSchedulable"
           @schedule-selected="openBulkScheduleSelected"
+          @remove-scheduled="handleBulkRemoveScheduled"
         />
         <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable
@@ -1620,6 +1621,57 @@ const openBulkScheduleSelected = async () => {
   } catch (error: any) {
     console.error('Failed to prepare bulk scheduled tests:', error)
     appStore.showError(error?.message || t('admin.accounts.bulkScheduledTests.loadFailed'))
+  }
+}
+const handleBulkRemoveScheduled = async () => {
+  if (selIds.value.length === 0) {
+    appStore.showError(t('admin.accounts.bulkScheduledTests.noSelection'))
+    return
+  }
+  if (!confirm(t('admin.accounts.bulkScheduledTests.removeConfirm', { count: selIds.value.length }))) return
+
+  let success = 0
+  let failed = 0
+  let totalPlans = 0
+
+  for (const accountId of [...selIds.value]) {
+    try {
+      const plans = await adminAPI.scheduledTests.listByAccount(accountId)
+      if (plans.length === 0) continue
+      totalPlans += plans.length
+      let accountFailed = false
+      for (const plan of plans) {
+        try {
+          await adminAPI.scheduledTests.delete(plan.id)
+        } catch (err) {
+          console.error('Failed to delete scheduled test plan:', plan.id, err)
+          accountFailed = true
+        }
+      }
+      if (accountFailed) {
+        failed += 1
+      } else {
+        success += 1
+      }
+    } catch (err) {
+      console.error('Failed to list/remove plans for account:', accountId, err)
+      failed += 1
+    }
+  }
+
+  if (totalPlans === 0) {
+    appStore.showError(t('admin.accounts.bulkScheduledTests.noPlansToRemove'))
+    return
+  }
+
+  if (failed === 0) {
+    appStore.showSuccess(t('admin.accounts.bulkScheduledTests.removeSuccess', { count: success }))
+    clearSelection()
+  } else if (success > 0) {
+    appStore.showError(t('admin.accounts.bulkScheduledTests.removePartialSuccess', { success, failed }))
+    clearSelection()
+  } else {
+    appStore.showError(t('admin.accounts.bulkScheduledTests.removeFailed'))
   }
 }
 const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true }

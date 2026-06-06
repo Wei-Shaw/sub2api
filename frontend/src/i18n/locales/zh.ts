@@ -3392,6 +3392,7 @@ export default {
         edit: '批量编辑账号',
         delete: '批量删除',
         scheduleTest: '批量定时测试',
+        removeScheduleTest: '批量移除定时测试',
         enableScheduling: '批量启用调度',
         disableScheduling: '批量停止调度',
         resetStatus: '批量重置状态',
@@ -3423,7 +3424,12 @@ export default {
         loadFailed: '加载批量定时测试信息失败',
         success: '已为 {count} 个账号创建定时测试计划',
         partialSuccess: '批量定时测试部分成功：成功 {success} 个，失败 {failed} 个',
-        failed: '批量定时测试失败'
+        failed: '批量定时测试失败',
+        removeConfirm: '确定要移除选中的 {count} 个账号的所有定时测试计划吗？此操作无法撤销。',
+        removeSuccess: '已移除 {count} 个账号的定时测试计划',
+        removePartialSuccess: '批量移除部分成功：成功 {success} 个，失败 {failed} 个',
+        removeFailed: '批量移除定时测试失败',
+        noPlansToRemove: '所选账号均未配置定时测试'
       },
       bulkDeleteTitle: '批量删除账号',
       bulkDeleteConfirm: '确定要删除选中的 {count} 个账号吗？此操作无法撤销。',

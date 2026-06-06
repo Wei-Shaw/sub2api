@@ -25,6 +25,9 @@
     </div>
     <div class="flex gap-2">
       <template v-if="selectedIds.length > 0">
+        <button v-if="selectedIds.length > 0" @click="$emit('remove-scheduled')" class="btn btn-warning btn-sm">
+          {{ t('admin.accounts.bulkActions.removeScheduleTest') }}
+        </button>
         <button v-if="selectedIds.length > 0" @click="$emit('schedule-selected')" class="btn btn-secondary btn-sm">
           {{ t('admin.accounts.bulkActions.scheduleTest') }}
         </button>
@@ -44,5 +47,5 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-defineProps(['selectedIds']); defineEmits(['delete', 'edit-selected', 'edit-filtered', 'clear', 'select-page', 'toggle-schedulable', 'reset-status', 'refresh-token', 'schedule-selected']); const { t } = useI18n()
+defineProps(['selectedIds']); defineEmits(['delete', 'edit-selected', 'edit-filtered', 'clear', 'select-page', 'toggle-schedulable', 'reset-status', 'refresh-token', 'schedule-selected', 'remove-scheduled']); const { t } = useI18n()
 </script>

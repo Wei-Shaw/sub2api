@@ -3245,6 +3245,7 @@ export default {
         edit: 'Bulk Edit',
         delete: 'Bulk Delete',
         scheduleTest: 'Bulk Scheduled Test',
+        removeScheduleTest: 'Bulk Remove Scheduled Test',
         enableScheduling: 'Enable Scheduling',
         disableScheduling: 'Disable Scheduling',
         resetStatus: 'Reset Status',
@@ -3278,7 +3279,12 @@ export default {
         loadFailed: 'Failed to load bulk scheduled test data',
         success: 'Created scheduled test plans for {count} account(s)',
         partialSuccess: 'Bulk scheduled test completed partially: {success} succeeded, {failed} failed',
-        failed: 'Bulk scheduled test failed'
+        failed: 'Bulk scheduled test failed',
+        removeConfirm: 'Remove all scheduled test plans for the selected {count} account(s)? This action cannot be undone.',
+        removeSuccess: 'Removed scheduled test plans for {count} account(s)',
+        removePartialSuccess: 'Bulk removal completed partially: {success} succeeded, {failed} failed',
+        removeFailed: 'Bulk remove scheduled test failed',
+        noPlansToRemove: 'None of the selected accounts have scheduled tests configured'
       },
       bulkDeleteTitle: 'Bulk Delete Accounts',
       bulkDeleteConfirm: 'Delete the selected {count} account(s)? This action cannot be undone.',
