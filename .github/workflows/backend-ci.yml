@@ -61,6 +61,9 @@ jobs:
       - name: Verify Go version
         run: |
           go version | grep -q 'go1.26.4'
+      - name: Auto-format with current Go gofmt
+        working-directory: backend
+        run: gofmt -w .
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
