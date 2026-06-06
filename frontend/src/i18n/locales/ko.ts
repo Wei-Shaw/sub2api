@@ -609,6 +609,7 @@ export default {
     errors: {
       USER_NOT_ACTIVE: 'Account has been disabled.',
     },
+    emailSuffixAllowedMore: '외 {count}개',
     },
 
   // 대시보드
@@ -654,7 +655,20 @@ export default {
     viewUsage: '사용 기록 보기',
     checkDetailedLogs: '상세 사용 로그 보기',
     redeemCode: '교환 코드',
-    addBalanceWithCode: '교환 코드로 잔액 충전'
+    addBalanceWithCode: '교환 코드로 잔액 충전',
+    platformBreakdown: '플랫폼별 분해',
+    platformBreakdownEmpty: '플랫폼 사용량이 없습니다',
+    platformCount: '{count}개 플랫폼',
+    platformOther: '기타',
+    platformQuota: {
+      title: '할당량 사용량',
+      daily: '일',
+      weekly: '주',
+      monthly: '월(최근 30일)',
+      resetsAt: '{time}에 초기화',
+      noLimit: '제한 없음',
+      disabled: '비활성화됨',
+    },
   },
 
   // 그룹(공유)
@@ -1812,7 +1826,8 @@ export default {
         lastActive: '마지막 활성 시간',
         lastUsed: '마지막 사용 시간',
         created: '생성 시간',
-        actions: '작업'
+        actions: '작업',
+        balancePlatformQuota: '잔액(플랫폼 할당량)',
       },
       today: '오늘',
       total: '최근 30일',
@@ -2030,6 +2045,41 @@ export default {
         dragToReorder: '드래그하여 정렬'
       },
       typeAffiliateBalance: 'Balance (Affiliate Transfer)',
+      platformQuota: {
+        menuItem: '플랫폼 한도',
+        title: '플랫폼 한도',
+        subtitle: '사용자 {email}의 각 업스트림 플랫폼에 대한 일 / 주 / 월 사용 한도를 설정합니다',
+        columns: {
+          platform: '플랫폼',
+          daily: '일 (USD)',
+          weekly: '주 (USD)',
+          monthly: '월 (USD, 30일 rolling)',
+          usage: '현재 사용량',
+        },
+        placeholder: '제한 없음',
+        save: '저장',
+        saving: '저장 중...',
+        cancel: '취소',
+        clearAll: '모두 비우기(모든 한도 해제)',
+        clearAllConfirm: '모든 플랫폼의 일 / 주 / 월 한도를 비우시겠습니까? 모든 플랫폼이 "제한 없음"으로 바뀌며, 로컬에서 되돌릴 수 없으므로 저장 전에 수동으로 다시 입력해야 합니다.',
+        reset: {
+          button: '이 창 초기화',
+          confirm: '이 사용자의 {platform} 플랫폼 {window} 사용량을 초기화하시겠습니까? 이 작업은 즉시 적용됩니다.',
+          success: '{platform} {window} 사용량이 초기화되었습니다',
+          failed: '초기화 실패',
+        },
+        updateSuccess: '플랫폼 한도가 업데이트되었습니다',
+        updateFailed: '저장 실패',
+        loadFailed: '로드 실패',
+        hint: '비워 두기 = 이 창 제한 없음.',
+        windowDaily: '일',
+        windowWeekly: '주',
+        windowMonthly: '월',
+        cellNotConfigured: '설정되지 않음',
+        cellColumnTooltip: '한도가 설정된 플랫폼만 표시합니다',
+        subscriptionWarning: '이 사용자는 활성 구독이 있습니다. 플랫폼 한도는 잔액(standard) 모드에만 적용되며, 구독 모드 요청에는 적용되지 않습니다.',
+        invalidNumber: '다음 필드가 올바른 숫자가 아닙니다. 저장 전에 수정하세요: {fields}',
+      },
     },
 
     // Groups Management
@@ -2305,6 +2355,12 @@ export default {
         title: 'Claude Max Usage Simulation',
         tooltip: 'When enabled, for Claude models without upstream cache-write usage, the system deterministically maps tokens to a small input plus 1h cache creation while keeping total tokens unchanged.',
       },
+      modelsList: {
+        title: '사용자 정의 /v1/models 모델 목록',
+        hint: '/v1/models 표시 결과에만 영향을 주며, 모델 호출 화이트리스트와 계정 스케줄링에는 영향을 주지 않습니다.',
+        loading: '모델 목록을 불러오는 중...',
+        empty: '표시할 모델이 없습니다',
+      },
       },
 
     // Available Channels (aggregated read-only view)
@@ -2478,6 +2534,8 @@ export default {
         unnamed: '이름 없음',
         codexImageGenerationBridge: 'Codex Image Generation Bridge',
         codexImageGenerationBridgeHint: 'When enabled, Codex /responses text requests in OpenAI groups may be automatically given the image_generation tool. Keep off unless the routed accounts support image generation.',
+        bedrockCCCompat: 'Bedrock CC 호환',
+        bedrockCCCompatHint: '⚠️ 활성화하면 이 채널의 Bedrock 계정 요청에 Claude Code 호환 처리(thinking 타입 변환, tool_use ID 정리)가 적용됩니다',
 }
     },
 
@@ -2826,7 +2884,8 @@ export default {
         proxy: '프록시',
         lastUsed: '최근 사용',
         expiresAt: '만료 시간',
-        actions: '작업'
+        actions: '작업',
+        createdAt: '생성 시간',
       },
       allPrivacyModes: '전체 Privacy 상태',
       privacyUnset: '설정되지 않음',
@@ -3232,6 +3291,8 @@ export default {
         codexImageGenerationBridgeInherit: 'Follow channel',
         codexImageGenerationBridgeInheritDesc: 'Do not write an account override; use the channel or global policy.',
         compactAuto: 'Compact Auto',
+        codexCLIOnlyAllowClaudeCode: 'Claude Code의 Codex 플러그인 추가 허용',
+        codexCLIOnlyAllowClaudeCodeDesc: '위 스위치가 켜져 있을 때만 적용됩니다. Claude Code의 Codex 플러그인을 통해 시작된 요청(originator=Claude Code 정확히 일치)을 추가 허용하며, 다른 비공식 클라이언트 차단에는 영향을 주지 않습니다.',
     },
       anthropic: {
         apiKeyPassthrough: '자동 패스스루(인증만 교체)',
@@ -3892,6 +3953,15 @@ export default {
       vertexSaJsonRequired: 'Please upload a Service Account JSON',
       vertexSaJsonSelectBtn: 'Select JSON',
       vertexSaJsonUploadHint: 'After uploading or dropping a JSON file, the project_id will be auto-extracted. Key content is only used for account creation.',
+      usageWindowsHint: '“5h / 7d”는 업스트림 계정(예: OpenAI ChatGPT, Claude)의 공식 rolling 사용량 창 제한입니다. 업스트림이 계정에 적용하는 제한이며 sub2api 설정도, 매핑한 모델과도 관련이 없습니다. 창이 rolling 만료되면 사용량은 자동 초기화되며 sub2api 쪽에서 이 제한을 해제할 수 없습니다.',
+      poolModeRetryStatusCodes: '동일 계정 재시도 상태 코드',
+      poolModeRetryStatusCodesHint: '풀 모드에서만 적용됩니다. 영어 쉼표로 구분한 HTTP 상태 코드(100-599)를 입력하세요. 일치하면 동일 계정으로 재시도합니다. 비워 두면 기본값({default})을 사용합니다.',
+      autoPause5hThreshold: '5h 사용량 임계값(%)',
+      autoPause7dThreshold: '7d 사용량 임계값(%)',
+      autoPauseThresholdHint: '비워 두거나 0을 입력하면 전역 기본 임계값(운영 설정에서 구성)을 사용합니다. 구체적인 값을 입력하면 전역 기본값을 덮어씁니다. 임계값에 도달하면 스케줄링 시 계정을 건너뛰기만 하고 schedulable은 수정하지 않습니다.',
+      autoPause5hDisabled: '5h 자동 일시 중지 비활성화',
+      autoPause7dDisabled: '7d 자동 일시 중지 비활성화',
+      autoPauseDisabledHint: '활성화하면 전역 기본 임계값이 설정되어 있어도 이 계정은 자동 일시 중지되지 않습니다.',
     },
 
     // Scheduled Tests
@@ -4110,7 +4180,10 @@ export default {
       nameRequired: '프록시 이름을 입력하세요',
       hostRequired: '호스트 주소를 입력하세요',
       portInvalid: '포트는 1-65535 사이여야 합니다',
-      deleteConfirm: '프록시 \'{name}\'를 삭제하시겠습니까? 이 프록시를 사용하는 계정에서는 프록시 설정이 제거됩니다.'
+      deleteConfirm: '프록시 \'{name}\'를 삭제하시겠습니까? 이 프록시를 사용하는 계정에서는 프록시 설정이 제거됩니다.',
+      ad: {
+        inline: '적합한 프록시 IP를 찾고 있나요?',
+      },
     },
 
     // Redeem Codes Management
@@ -4431,7 +4504,8 @@ export default {
           failed: '실패',
           canceled: '취소됨'
         }
-      }
+      },
+      userDeletedBadge: '삭제됨',
     },
 
     // Ops Monitoring
@@ -5193,8 +5267,14 @@ export default {
           slaMinPercentRange: 'SLA 최소 비율은 0~100 사이여야 합니다',
           ttftP99MaxRange: 'TTFT P99 최대값은 0 이상이어야 합니다',
           requestErrorRateMaxRange: '요청 오류율 최대값은 0~100 사이여야 합니다',
-          upstreamErrorRateMaxRange: '업스트림 오류율 최대값은 0~100 사이여야 합니다'
-        }
+          upstreamErrorRateMaxRange: '업스트림 오류율 최대값은 0~100 사이여야 합니다',
+          openaiQuotaAutoPauseRange: 'OpenAI 할당량 자동 일시 중지 임계값은 0-100 사이여야 합니다',
+        },
+        openaiQuotaAutoPause: 'OpenAI 계정 할당량 자동 일시 중지',
+        openaiQuotaAutoPauseHint: 'OpenAI 계정의 5h / 7d 사용량이 임계값에 도달하면 스케줄링이 해당 계정을 자동으로 건너뜁니다. rolling 창이 지나면 자동 복구됩니다. 계정별 임계값이 이 전역 기본값보다 우선합니다.',
+        openaiQuotaAutoPauseDefault5h: '기본 5h 사용량 임계값 (%)',
+        openaiQuotaAutoPauseDefault7d: '기본 7d 사용량 임계값 (%)',
+        openaiQuotaAutoPauseThresholdHint: '범위 0-100; 비워 두거나 0이면 전역 기본 임계값을 사용하지 않습니다.',
       },
       concurrency: {
         title: '동시성 / 대기열',
@@ -5574,7 +5654,10 @@ export default {
         defaultSubscriptionsEmpty: '기본 구독이 설정되지 않았습니다. 새 사용자는 구독 패키지를 자동으로 받지 않습니다.',
         defaultSubscriptionsDuplicate: '기본 구독에 중복 그룹이 있습니다: {groupId}. 각 그룹은 한 번만 나타날 수 있습니다.',
         subscriptionGroup: '구독 그룹',
-        subscriptionValidityDays: '유효 기간(일)'
+        subscriptionValidityDays: '유효 기간(일)',
+        defaultPlatformQuotas: '기본 플랫폼 한도(가입 시 부여)',
+        defaultPlatformQuotasHint: '새 사용자가 가입할 때 플랫폼 한도 기록을 자동으로 작성합니다. 기존 사용자는 영향을 받지 않습니다. 비워 두기 = 해당 플랫폼/창 제한 없음.',
+        platformQuotaNotice: '월 한도는 달력 월이 아니라 30일 rolling 창입니다',
       },
       claudeCode: {
         title: 'Claude Code 설정',
@@ -5614,6 +5697,8 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: 'OpenAI upstream의 Cloudflare browser-UA challenge를 우회하는 데 사용합니다. client User-Agent가 브라우저(Mozilla/...)로 감지될 때만 적용됩니다. 비워두면 내장 기본값을 사용합니다.',
+        openaiAllowClaudeCodeCodexPlugin: 'Claude Code에서 Codex 플러그인 사용 허용',
+        openaiAllowClaudeCodeCodexPluginDesc: '전역 스위치이며, “Codex 공식 클라이언트만 허용”이 켜진 OpenAI OAuth 계정에만 적용됩니다. 켜면 이러한 모든 계정이 Claude Code의 Codex 플러그인을 통한 요청(originator=Claude Code 정확히 일치)을 추가 허용하며, 계정별 설정이 필요 없습니다. 업스트림 요청은 계속 패스스루됩니다.',
       },
       webSearchEmulation: {
         title: 'Web Search 에뮬레이션',
@@ -6309,7 +6394,9 @@ export default {
         grantOnFirstBindHint: '기존 계정이 해당 소스를 처음 바인딩할 때 기본 혜택을 지급합니다.',
         defaultSubscriptionsLabel: '기본 구독',
         defaultSubscriptionsHint: '현재 인증 소스에만 적용되며, 설정이 없으면 소스 전용 구독은 추가되지 않습니다.',
-        noSourceSubscriptions: '현재 소스에 설정된 전용 기본 구독이 없습니다.'
+        noSourceSubscriptions: '현재 소스에 설정된 전용 기본 구독이 없습니다.',
+        platformQuotasOverride: '플랫폼 한도 덮어쓰기',
+        platformQuotasOverrideHint: '비워 둔 필드는 “시스템 기본 플랫폼 한도”를 상속합니다. 0을 입력하면 해당 창 사용을 금지합니다.',
       },
       paymentVisibleMethods: {
         methodLabel: '{title} 표시 방식',
@@ -6415,6 +6502,25 @@ export default {
         saveFailed: 'Failed to save 429 default cooldown settings',
         saved: '429 default cooldown settings saved',
         title: '429 Default Cooldown',
+      },
+      apiKeyAcl: {
+        title: 'API Key IP 접근 제어',
+        description: 'API Key 화이트리스트와 블랙리스트 판단에 사용할 클라이언트 IP를 제어합니다',
+        trustForwardedIp: '리버스 프록시가 전달한 클라이언트 IP 신뢰',
+        trustForwardedIpHint: '기본값은 꺼짐입니다. origin이 Cloudflare 또는 Nginx 리버스 프록시 접근만 허용할 때만 켜세요. 켜면 API Key IP 화이트/블랙리스트가 CF-Connecting-IP, X-Real-IP 또는 X-Forwarded-For를 사용하며, 사용 기록의 요청 IP와 일치합니다.',
+      },
+      platformQuota: {
+        platform: '플랫폼',
+        daily: '일일 한도 (USD)',
+        weekly: '주간 한도 (USD)',
+        monthly: '월간 한도 (USD, 30일 rolling)',
+        placeholder: '제한 없음',
+      },
+      subscriptionExpiryNotify: {
+        title: '구독 만료 알림',
+        description: '구독 만료가 가까워질 때 사용자에게 이메일 알림을 보낼지 제어합니다.',
+        enabled: '구독 만료 알림 활성화',
+        enabledHint: '활성화하면 시스템이 구독 만료 7일, 3일, 1일 전에 각각 한 번씩 알림을 보냅니다.',
       },
       },
 
@@ -6779,6 +6885,8 @@ export default {
         retention: 'Retention',
         runtime: 'Runtime',
         scope: 'Scope',
+        riskThresholds: '위험 임계값',
+        keywords: '키워드 차단',
       },
       testContentWithStoredApiKey: 'Test content with stored key',
       testInputApiKeys: 'Test input keys',
@@ -6800,6 +6908,48 @@ export default {
       workerPoolMeta: '{active} processing, {idle} idle and ready, {total} total',
       workerStatus: 'Worker Runtime',
       workerStatusHint: 'Queue and worker pool status for asynchronous observation tasks.',
+      modelFilter: '모델 범위',
+      modelFilterHint: '클라이언트가 요청한 모델명 기준으로 콘텐츠 감사를 실행할지 결정합니다. 모델 매핑 후에도 요청 모델 기준으로 판단합니다.',
+      modelFilterAll: '모든 모델',
+      modelFilterAllDesc: '모든 모델 요청이 콘텐츠 감사를 거칩니다.',
+      modelFilterInclude: '지정 모델만',
+      modelFilterIncludeDesc: '목록에 있는 모델만 콘텐츠 감사를 실행합니다.',
+      modelFilterExclude: '지정 모델 제외',
+      modelFilterExcludeDesc: '목록에 있는 모델은 콘텐츠 감사를 건너뛰고, 나머지 모델은 감사를 실행합니다.',
+      modelFilterModels: '모델 목록',
+      modelFilterModelCount: '{count}개 모델 설정됨',
+      modelFilterModelsRequired: '현재 모델 범위에는 최소 1개 모델을 설정해야 합니다',
+      modelFilterAllSummary: '모든 모델에 적용',
+      modelFilterIncludeSummary: '{count}개 모델에만 적용',
+      modelFilterExcludeSummary: '{count}개 모델 제외',
+      preBlockSyncStatus: '사전 차단 동기 상태',
+      preBlockSyncHint: '동기 감사 경로의 실시간 카운트이며, 비동기 기록 작업은 포함하지 않습니다.',
+      preBlockActive: '동기 처리 중',
+      preBlockActiveHint: '현재 감사 중',
+      preBlockChecked: '검사됨',
+      preBlockCheckedHint: '사전 차단 경로에 진입함',
+      preBlockAllowed: '허용됨',
+      preBlockAllowedHint: '차단 조건에 걸리지 않음',
+      preBlockBlocked: '차단됨',
+      preBlockBlockedHint: 'hit 후 요청 거부',
+      preBlockErrors: '감사 오류',
+      preBlockErrorsHint: '실패 또는 사용 가능한 Key 없음',
+      preBlockAvgLatency: '평균 소요 시간',
+      preBlockAvgLatencyHint: '동기 경로 평균값',
+      preBlockAPIKeyLoad: '감사 Key 부하',
+      preBlockAPIKeyLoadHint: '동기 사전 차단은 사용 가능한 감사 Key를 직접 순환 사용합니다.',
+      preBlockAPIKeyLoadSummary: '동기 동시 {active} / 사용 가능 Key {available}, 누적 {total}회, worker: {workerActive} / {workerTotal}',
+      preBlockAPIKeyTotals: '누적 {total}, 성공 {success}, 오류 {errors}',
+      preBlockAPIKeyLoadEmpty: '감사 Key 부하 데이터가 없습니다',
+      preBlockKeyActiveShort: '동시',
+      preBlockKeyTotalShort: '누적',
+      preBlockKeyAvgShort: '평균',
+      preBlockKeyLastShort: '최근',
+      riskThresholds: '위험 임계값',
+      riskThresholdsHint: 'OpenAI Moderations 분류별 hit 임계값을 조정합니다. 점수가 임계값 이상이면 hit로 간주합니다.',
+      riskThresholdDefault: '기본값 {value}',
+      riskThresholdReset: '기본 임계값 복원',
+      riskThresholdPercent: '임계값 비율',
     },
     },
 

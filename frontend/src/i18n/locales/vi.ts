@@ -609,6 +609,7 @@ export default {
     errors: {
       USER_NOT_ACTIVE: 'Tài khoản đã bị vô hiệu hóa.',
     },
+    emailSuffixAllowedMore: 'và {count} mục khác',
     },
 
   // Dashboard
@@ -654,7 +655,20 @@ export default {
     viewUsage: 'Xem lịch sử sử dụng',
     checkDetailedLogs: 'Xem nhật ký sử dụng chi tiết',
     redeemCode: 'Mã đổi',
-    addBalanceWithCode: 'Nạp số dư bằng mã đổi'
+    addBalanceWithCode: 'Nạp số dư bằng mã đổi',
+    platformBreakdown: 'Phân tách theo nền tảng',
+    platformBreakdownEmpty: 'Chưa có mức dùng theo nền tảng',
+    platformCount: '{count} nền tảng',
+    platformOther: 'Khác',
+    platformQuota: {
+      title: 'Mức dùng hạn mức',
+      daily: 'Ngày',
+      weekly: 'Tuần',
+      monthly: 'Tháng (30 ngày gần đây)',
+      resetsAt: 'Đặt lại lúc {time}',
+      noLimit: 'Không giới hạn',
+      disabled: 'Đã tắt',
+    },
   },
 
   // Groups (shared)
@@ -1811,7 +1825,8 @@ export default {
         lastActive: 'Lần hoạt động cuối',
         lastUsed: 'Lần sử dụng cuối',
         created: 'Thời gian tạo',
-        actions: 'Thao tác'
+        actions: 'Thao tác',
+        balancePlatformQuota: 'Số dư (hạn mức nền tảng)',
       },
       today: 'Hôm nay',
       total: '30 ngày gần đây',
@@ -2029,6 +2044,41 @@ export default {
         dragToReorder: 'Kéo thả để sắp xếp'
       },
       typeAffiliateBalance: 'Số dư (Chuyển affiliate)',
+      platformQuota: {
+        menuItem: 'Hạn mức nền tảng',
+        title: 'Hạn mức nền tảng',
+        subtitle: 'Cấu hình giới hạn sử dụng ngày / tuần / tháng cho từng nền tảng upstream của người dùng {email}',
+        columns: {
+          platform: 'Nền tảng',
+          daily: 'Ngày (USD)',
+          weekly: 'Tuần (USD)',
+          monthly: 'Tháng (USD, rolling 30 ngày)',
+          usage: 'Mức dùng hiện tại',
+        },
+        placeholder: 'Không giới hạn',
+        save: 'Lưu',
+        saving: 'Đang lưu...',
+        cancel: 'Hủy',
+        clearAll: 'Xóa tất cả (gỡ mọi hạn mức)',
+        clearAllConfirm: 'Xác nhận xóa hạn mức ngày / tuần / tháng của tất cả nền tảng? Mọi nền tảng sẽ trở thành "không giới hạn"; không thể hoàn tác cục bộ, cần nhập lại thủ công trước khi lưu.',
+        reset: {
+          button: 'Đặt lại cửa sổ này',
+          confirm: 'Xác nhận đặt lại mức dùng {window} của người dùng này trên nền tảng {platform}? Thao tác có hiệu lực ngay.',
+          success: 'Đã đặt lại mức dùng {platform} {window}',
+          failed: 'Đặt lại thất bại',
+        },
+        updateSuccess: 'Đã cập nhật hạn mức nền tảng',
+        updateFailed: 'Lưu thất bại',
+        loadFailed: 'Tải thất bại',
+        hint: 'Để trống = không giới hạn cửa sổ này.',
+        windowDaily: 'Ngày',
+        windowWeekly: 'Tuần',
+        windowMonthly: 'Tháng',
+        cellNotConfigured: 'Chưa cấu hình',
+        cellColumnTooltip: 'Chỉ hiển thị nền tảng đã đặt hạn mức',
+        subscriptionWarning: 'Người dùng này có đăng ký đang hiệu lực; hạn mức nền tảng chỉ áp dụng ở chế độ số dư (standard), request ở chế độ đăng ký không bị hạn mức này ràng buộc.',
+        invalidNumber: 'Các trường sau không phải số hợp lệ, vui lòng sửa trước khi lưu: {fields}',
+      },
     },
 
     // Groups Management
@@ -2304,6 +2354,12 @@ export default {
         title: 'Mô phỏng usage Claude Max',
         tooltip: 'Khi bật, với các model Claude không có usage cache-write từ upstream, hệ thống sẽ ánh xạ token một cách xác định sang một input nhỏ cộng với tạo cache 1h, đồng thời giữ nguyên tổng số token.',
       },
+      modelsList: {
+        title: 'Danh sách mô hình /v1/models tùy chỉnh',
+        hint: 'Chỉ ảnh hưởng kết quả hiển thị của /v1/models, không ảnh hưởng whitelist model gọi API và điều phối tài khoản.',
+        loading: 'Đang tải danh sách mô hình...',
+        empty: 'Chưa có mô hình nào để hiển thị',
+      },
       },
 
     // Available Channels (aggregated read-only view)
@@ -2477,6 +2533,8 @@ export default {
         unnamed: 'Chưa đặt tên',
         codexImageGenerationBridge: 'Cầu nối tạo ảnh Codex',
         codexImageGenerationBridgeHint: 'Khi bật, các yêu cầu văn bản Codex /responses trong nhóm OpenAI có thể tự động được cấp công cụ image_generation. Hãy giữ tắt trừ khi các tài khoản được định tuyến hỗ trợ tạo ảnh.',
+        bedrockCCCompat: 'Tương thích Bedrock CC',
+        bedrockCCCompatHint: '⚠️ Sau khi bật, request của tài khoản Bedrock trong kênh này sẽ được xử lý tương thích Claude Code (chuyển kiểu thinking, dọn ID tool_use)',
 }
     },
 
@@ -2826,7 +2884,8 @@ export default {
         proxy: 'Proxy',
         lastUsed: 'Lần dùng gần nhất',
         expiresAt: 'Hết hạn lúc',
-        actions: 'Thao tác'
+        actions: 'Thao tác',
+        createdAt: 'Thời gian tạo',
       },
       allPrivacyModes: 'Tất cả trạng thái Privacy',
       privacyUnset: 'Chưa thiết lập',
@@ -3232,6 +3291,8 @@ export default {
         codexImageGenerationBridgeInherit: 'Theo kênh',
         codexImageGenerationBridgeInheritDesc: 'Không ghi đè ở cấp tài khoản; dùng chính sách kênh hoặc toàn cục.',
         compactAuto: 'Compact tự động',
+        codexCLIOnlyAllowClaudeCode: 'Mở thêm cho plugin Codex trong Claude Code',
+        codexCLIOnlyAllowClaudeCodeDesc: 'Chỉ có hiệu lực khi công tắc phía trên đang bật. Cho phép thêm các request được gửi qua plugin Codex của Claude Code (khớp chính xác originator=Claude Code), không ảnh hưởng việc chặn client không chính thức khác.',
     },
       anthropic: {
         apiKeyPassthrough: 'Tự động passthrough (chỉ thay xác thực)',
@@ -3892,6 +3953,15 @@ export default {
       vertexSaJsonRequired: 'Vui lòng tải lên Service Account JSON',
       vertexSaJsonSelectBtn: 'Chọn JSON',
       vertexSaJsonUploadHint: 'Sau khi tải lên hoặc thả tệp JSON, project_id sẽ được tự động trích xuất. Nội dung key chỉ được dùng để tạo tài khoản.',
+      usageWindowsHint: '“5h / 7d” là các cửa sổ giới hạn sử dụng rolling chính thức của tài khoản upstream (như OpenAI ChatGPT, Claude), do upstream áp cho tài khoản; đây không phải cấu hình sub2api và không liên quan tới mô hình bạn ánh xạ. Khi cửa sổ rolling hết hạn, mức dùng sẽ tự đặt lại; sub2api không thể gỡ giới hạn này ở phía mình.',
+      poolModeRetryStatusCodes: 'Mã trạng thái retry trên cùng tài khoản',
+      poolModeRetryStatusCodesHint: 'Chỉ có hiệu lực trong chế độ pool. Nhập mã trạng thái HTTP (100-599) phân tách bằng dấu phẩy tiếng Anh; khi khớp sẽ retry trên cùng tài khoản. Để trống để dùng mặc định ({default}).',
+      autoPause5hThreshold: 'Ngưỡng dùng 5h (%)',
+      autoPause7dThreshold: 'Ngưỡng dùng 7d (%)',
+      autoPauseThresholdHint: 'Để trống hoặc nhập 0 để dùng ngưỡng mặc định toàn cục (cấu hình trong cài đặt vận hành); nhập giá trị cụ thể để ghi đè mặc định toàn cục. Khi đạt ngưỡng, hệ thống chỉ bỏ qua tài khoản khi điều phối, không sửa schedulable.',
+      autoPause5hDisabled: 'Tắt tự động tạm dừng 5h',
+      autoPause7dDisabled: 'Tắt tự động tạm dừng 7d',
+      autoPauseDisabledHint: 'Khi bật, tài khoản này sẽ không bao giờ bị tự động tạm dừng, kể cả khi đã cấu hình ngưỡng mặc định toàn cục.',
     },
 
     // Scheduled Tests
@@ -4110,7 +4180,10 @@ export default {
       nameRequired: 'Vui lòng nhập tên proxy',
       hostRequired: 'Vui lòng nhập địa chỉ máy chủ',
       portInvalid: 'Cổng phải nằm trong khoảng 1-65535',
-      deleteConfirm: 'Bạn có chắc muốn xóa proxy \'{name}\' không? Các tài khoản đang dùng proxy này sẽ bị gỡ cấu hình proxy.'
+      deleteConfirm: 'Bạn có chắc muốn xóa proxy \'{name}\' không? Các tài khoản đang dùng proxy này sẽ bị gỡ cấu hình proxy.',
+      ad: {
+        inline: 'Đang tìm proxy IP phù hợp?',
+      },
     },
 
     // Redeem Codes Management
@@ -4431,7 +4504,8 @@ export default {
           failed: 'Thất bại',
           canceled: 'Đã hủy'
         }
-      }
+      },
+      userDeletedBadge: 'Đã xóa',
     },
 
     // Ops Monitoring
@@ -5193,8 +5267,14 @@ export default {
           slaMinPercentRange: 'Tỷ lệ SLA tối thiểu phải nằm trong khoảng 0-100',
           ttftP99MaxRange: 'Giá trị TTFT P99 tối đa phải lớn hơn hoặc bằng 0',
           requestErrorRateMaxRange: 'Giá trị tối đa của tỷ lệ lỗi yêu cầu phải nằm trong khoảng 0-100',
-          upstreamErrorRateMaxRange: 'Giá trị tối đa của tỷ lệ lỗi upstream phải nằm trong khoảng 0-100'
-        }
+          upstreamErrorRateMaxRange: 'Giá trị tối đa của tỷ lệ lỗi upstream phải nằm trong khoảng 0-100',
+          openaiQuotaAutoPauseRange: 'Ngưỡng tự động tạm dừng hạn ngạch OpenAI phải nằm trong khoảng 0-100',
+        },
+        openaiQuotaAutoPause: 'Tự động tạm dừng tài khoản OpenAI theo hạn ngạch',
+        openaiQuotaAutoPauseHint: 'Khi mức dùng 5h / 7d của tài khoản OpenAI đạt ngưỡng, điều phối sẽ tự động bỏ qua tài khoản đó; sau khi cửa sổ rolling qua đi sẽ tự phục hồi. Ngưỡng cấp tài khoản ưu tiên hơn mặc định toàn cục này.',
+        openaiQuotaAutoPauseDefault5h: 'Ngưỡng dùng 5h mặc định (%)',
+        openaiQuotaAutoPauseDefault7d: 'Ngưỡng dùng 7d mặc định (%)',
+        openaiQuotaAutoPauseThresholdHint: 'Phạm vi 0-100; để trống hoặc 0 nghĩa là không bật ngưỡng mặc định toàn cục.',
       },
       concurrency: {
         title: 'Đồng thời / xếp hàng',
@@ -5574,7 +5654,10 @@ export default {
         defaultSubscriptionsEmpty: 'Chưa cấu hình gói đăng ký mặc định. Người dùng mới sẽ không tự động nhận gói đăng ký nào.',
         defaultSubscriptionsDuplicate: 'Gói đăng ký mặc định có nhóm bị trùng lặp: {groupId}. Mỗi nhóm chỉ được xuất hiện một lần.',
         subscriptionGroup: 'Nhóm đăng ký',
-        subscriptionValidityDays: 'Thời hạn hiệu lực (ngày)'
+        subscriptionValidityDays: 'Thời hạn hiệu lực (ngày)',
+        defaultPlatformQuotas: 'Hạn mức nền tảng mặc định (cấp khi đăng ký)',
+        defaultPlatformQuotasHint: 'Tự động ghi bản ghi hạn mức nền tảng khi người dùng mới đăng ký; không ảnh hưởng người dùng hiện có. Để trống = không giới hạn nền tảng/cửa sổ đó.',
+        platformQuotaNotice: 'Hạn mức tháng là cửa sổ rolling 30 ngày, không phải tháng lịch',
       },
       claudeCode: {
         title: 'Cài đặt Claude Code',
@@ -5614,6 +5697,8 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: 'Dùng để vượt qua thử thách Cloudflare browser-UA ở upstream OpenAI. Chỉ áp dụng khi User-Agent của client được nhận diện là trình duyệt (Mozilla/...). Để trống để dùng mặc định tích hợp.',
+        openaiAllowClaudeCodeCodexPlugin: 'Cho phép dùng plugin Codex trong Claude Code',
+        openaiAllowClaudeCodeCodexPluginDesc: 'Công tắc toàn cục, chỉ áp dụng cho tài khoản OpenAI OAuth đã bật “Chỉ cho phép client Codex chính thức”. Sau khi bật, mọi tài khoản kiểu này sẽ cho phép thêm request qua plugin Codex của Claude Code (khớp chính xác originator=Claude Code), không cần cấu hình từng tài khoản; request upstream vẫn được passthrough.',
       },
       webSearchEmulation: {
         title: 'Mô phỏng Web Search',
@@ -6309,7 +6394,9 @@ export default {
         grantOnFirstBindHint: 'Cấp quyền lợi mặc định khi tài khoản hiện có liên kết nguồn này lần đầu.',
         defaultSubscriptionsLabel: 'Gói đăng ký mặc định',
         defaultSubscriptionsHint: 'Chỉ có hiệu lực với nguồn xác thực hiện tại; nếu chưa cấu hình thì sẽ không cộng thêm gói đăng ký riêng cho nguồn đó.',
-        noSourceSubscriptions: 'Nguồn hiện tại chưa cấu hình gói đăng ký mặc định riêng.'
+        noSourceSubscriptions: 'Nguồn hiện tại chưa cấu hình gói đăng ký mặc định riêng.',
+        platformQuotasOverride: 'Ghi đè hạn mức nền tảng',
+        platformQuotasOverrideHint: 'Các trường để trống sẽ kế thừa “hạn mức nền tảng mặc định của hệ thống”; nhập 0 nghĩa là cấm dùng cửa sổ đó.',
       },
       paymentVisibleMethods: {
         methodLabel: 'Cách hiển thị của {title}',
@@ -6415,6 +6502,25 @@ export default {
         saveFailed: 'Không thể lưu cài đặt cooldown mặc định 429',
         saved: 'Đã lưu cài đặt cooldown mặc định 429',
         title: 'Cooldown mặc định 429',
+      },
+      apiKeyAcl: {
+        title: 'Kiểm soát truy cập IP cho API Key',
+        description: 'Kiểm soát API Key whitelist và blacklist dùng IP client nào để phán định',
+        trustForwardedIp: 'Tin cậy IP client do reverse proxy chuyển tiếp',
+        trustForwardedIpHint: 'Mặc định tắt. Chỉ bật khi origin chỉ cho phép Cloudflare hoặc Nginx reverse proxy truy cập; sau khi bật, whitelist/blacklist IP của API Key sẽ dùng CF-Connecting-IP, X-Real-IP hoặc X-Forwarded-For, nhất quán với IP request trong bản ghi sử dụng.',
+      },
+      platformQuota: {
+        platform: 'Nền tảng',
+        daily: 'Hạn mức ngày (USD)',
+        weekly: 'Hạn mức tuần (USD)',
+        monthly: 'Hạn mức tháng (USD, rolling 30 ngày)',
+        placeholder: 'Không giới hạn',
+      },
+      subscriptionExpiryNotify: {
+        title: 'Nhắc đăng ký sắp hết hạn',
+        description: 'Kiểm soát có gửi email nhắc người dùng khi đăng ký sắp hết hạn hay không.',
+        enabled: 'Bật nhắc đăng ký sắp hết hạn',
+        enabledHint: 'Sau khi bật, hệ thống sẽ gửi nhắc một lần vào 7 ngày, 3 ngày và 1 ngày trước khi đăng ký hết hạn.',
       },
       },
 
@@ -6779,6 +6885,8 @@ export default {
         retention: 'Lưu trữ',
         runtime: 'Runtime',
         scope: 'Phạm vi',
+        riskThresholds: 'Ngưỡng rủi ro',
+        keywords: 'Chặn từ khóa',
       },
       testContentWithStoredApiKey: 'Kiểm tra nội dung bằng khóa đã lưu',
       testInputApiKeys: 'Kiểm tra các khóa đã nhập',
@@ -6800,6 +6908,48 @@ export default {
       workerPoolMeta: '{active} đang xử lý, {idle} rảnh và sẵn sàng, tổng {total}',
       workerStatus: 'Runtime của worker',
       workerStatusHint: 'Trạng thái hàng đợi và pool worker cho các tác vụ quan sát bất đồng bộ.',
+      modelFilter: 'Phạm vi mô hình',
+      modelFilterHint: 'Quyết định có kiểm duyệt nội dung hay không theo tên mô hình client request; sau khi ánh xạ mô hình vẫn xét theo mô hình được request.',
+      modelFilterAll: 'Tất cả mô hình',
+      modelFilterAllDesc: 'Mọi request mô hình đều đi qua kiểm duyệt nội dung.',
+      modelFilterInclude: 'Chỉ mô hình chỉ định',
+      modelFilterIncludeDesc: 'Chỉ các mô hình trong danh sách mới được kiểm duyệt.',
+      modelFilterExclude: 'Loại trừ mô hình chỉ định',
+      modelFilterExcludeDesc: 'Các mô hình trong danh sách sẽ bỏ qua kiểm duyệt, các mô hình còn lại vẫn được kiểm duyệt.',
+      modelFilterModels: 'Danh sách mô hình',
+      modelFilterModelCount: 'Đã cấu hình {count} mô hình',
+      modelFilterModelsRequired: 'Phạm vi mô hình hiện tại cần ít nhất 1 mô hình',
+      modelFilterAllSummary: 'Áp dụng cho tất cả mô hình',
+      modelFilterIncludeSummary: 'Chỉ áp dụng cho {count} mô hình',
+      modelFilterExcludeSummary: 'Loại trừ {count} mô hình',
+      preBlockSyncStatus: 'Trạng thái đồng bộ chặn trước',
+      preBlockSyncHint: 'Bộ đếm thời gian thực của chuỗi kiểm duyệt đồng bộ, không bao gồm tác vụ ghi bản ghi bất đồng bộ.',
+      preBlockActive: 'Đang xử lý đồng bộ',
+      preBlockActiveHint: 'Hiện đang kiểm duyệt',
+      preBlockChecked: 'Đã kiểm tra',
+      preBlockCheckedHint: 'Đã đi vào chuỗi chặn trước',
+      preBlockAllowed: 'Đã cho qua',
+      preBlockAllowedHint: 'Không kích hoạt chặn',
+      preBlockBlocked: 'Đã chặn',
+      preBlockBlockedHint: 'Từ chối request sau khi hit',
+      preBlockErrors: 'Lỗi kiểm duyệt',
+      preBlockErrorsHint: 'Thất bại hoặc không có Key khả dụng',
+      preBlockAvgLatency: 'Thời gian trung bình',
+      preBlockAvgLatencyHint: 'Giá trị trung bình của chuỗi đồng bộ',
+      preBlockAPIKeyLoad: 'Tải Key kiểm duyệt',
+      preBlockAPIKeyLoadHint: 'Chặn trước đồng bộ sẽ xoay vòng trực tiếp các Key kiểm duyệt khả dụng.',
+      preBlockAPIKeyLoadSummary: 'Đồng bộ {active} / Key khả dụng {available}, tích lũy {total} lần, worker: {workerActive} / {workerTotal}',
+      preBlockAPIKeyTotals: 'Tích lũy {total}, thành công {success}, lỗi {errors}',
+      preBlockAPIKeyLoadEmpty: 'Chưa có dữ liệu tải Key kiểm duyệt',
+      preBlockKeyActiveShort: 'Đồng thời',
+      preBlockKeyTotalShort: 'Tích lũy',
+      preBlockKeyAvgShort: 'TB',
+      preBlockKeyLastShort: 'Gần nhất',
+      riskThresholds: 'Ngưỡng rủi ro',
+      riskThresholdsHint: 'Điều chỉnh ngưỡng hit theo phân loại OpenAI Moderations; điểm đạt hoặc vượt ngưỡng sẽ được xem là hit.',
+      riskThresholdDefault: 'Mặc định {value}',
+      riskThresholdReset: 'Khôi phục ngưỡng mặc định',
+      riskThresholdPercent: 'Phần trăm ngưỡng',
     },
     },
 
