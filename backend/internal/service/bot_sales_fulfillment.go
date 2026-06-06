@@ -37,6 +37,8 @@ type BotSalesFulfillmentBuyer struct {
 	Email          string `json:"email"`
 	Username       string `json:"username"`
 	DisplayName    string `json:"display_name"`
+	Provider       string `json:"provider"`
+	ProviderUserID string `json:"provider_user_id"`
 	TelegramID     string `json:"telegram_id"`
 }
 
@@ -302,7 +304,7 @@ func (s *BotSalesFulfillmentService) fulfillBalance(ctx context.Context, buyer *
 
 	targetBuyer := buyer
 	var deviceCode string
-	if operation == BotSalesFulfillmentOperationTopup {
+	if operation == BotSalesFulfillmentOperationTopup && strings.TrimSpace(req.DeviceCode) != "" {
 		device, err := s.resolveBotSalesDevice(ctx, req.DeviceCode)
 		if err != nil {
 			return err
@@ -403,15 +405,22 @@ func (s *BotSalesFulfillmentService) issueBotSalesDeviceCode(ctx context.Context
 
 func (s *BotSalesFulfillmentService) findOrCreateBuyer(ctx context.Context, buyer BotSalesFulfillmentBuyer) (*User, error) {
 	email := strings.TrimSpace(buyer.Email)
+	lookupEmails := []string{email}
 	if email == "" {
-		email = botSalesSyntheticEmail(buyer.ExternalUserID)
+		lookupEmails = botSalesBuyerLookupEmails(buyer)
+		email = lookupEmails[0]
 	}
-	existing, err := s.userRepo.GetByEmail(ctx, email)
-	if err == nil {
-		return existing, nil
-	}
-	if !errors.Is(err, ErrUserNotFound) {
-		return nil, err
+	for _, lookupEmail := range lookupEmails {
+		if lookupEmail == "" {
+			continue
+		}
+		existing, err := s.userRepo.GetByEmail(ctx, lookupEmail)
+		if err == nil {
+			return existing, nil
+		}
+		if !errors.Is(err, ErrUserNotFound) {
+			return nil, err
+		}
 	}
 
 	username := strings.TrimSpace(buyer.Username)
@@ -451,6 +460,65 @@ func shouldIssueBotSalesAPIKey(policy BotSalesDeliveryPolicy) bool {
 	default:
 		return false
 	}
+}
+
+func botSalesBuyerLookupEmails(buyer BotSalesFulfillmentBuyer) []string {
+	candidates := []string{buyer.ExternalUserID}
+	provider := strings.TrimSpace(strings.ToLower(buyer.Provider))
+	providerUserID := strings.TrimSpace(buyer.ProviderUserID)
+	if parsedProvider, parsedUserID := botSalesParseChannelUserID(buyer.ExternalUserID); parsedProvider != "" && parsedUserID != "" {
+		if provider == "" {
+			provider = parsedProvider
+		}
+		if providerUserID == "" {
+			providerUserID = parsedUserID
+		}
+	}
+	telegramID := strings.TrimSpace(buyer.TelegramID)
+	if providerUserID == "" && provider == "telegram" {
+		providerUserID = telegramID
+	}
+	if provider != "" && providerUserID != "" {
+		candidates = append(candidates, provider+":"+providerUserID)
+	}
+	if telegramID != "" {
+		candidates = append(candidates, "telegram:"+telegramID, "tg:"+telegramID)
+	}
+
+	emails := make([]string, 0, len(candidates))
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		email := botSalesSyntheticEmail(candidate)
+		if email == "" {
+			continue
+		}
+		if _, ok := seen[email]; ok {
+			continue
+		}
+		seen[email] = struct{}{}
+		emails = append(emails, email)
+	}
+	if len(emails) == 0 {
+		return []string{botSalesSyntheticEmail(buyer.ExternalUserID)}
+	}
+	return emails
+}
+
+func botSalesParseChannelUserID(externalUserID string) (string, string) {
+	value := strings.TrimSpace(externalUserID)
+	if !strings.HasPrefix(value, "channel:") {
+		return "", ""
+	}
+	parts := strings.SplitN(strings.TrimPrefix(value, "channel:"), ":user:", 2)
+	if len(parts) != 2 {
+		return "", ""
+	}
+	provider := strings.TrimSpace(strings.ToLower(parts[0]))
+	providerUserID := strings.TrimSpace(parts[1])
+	if provider == "" || providerUserID == "" {
+		return "", ""
+	}
+	return provider, providerUserID
 }
 
 func botSalesSyntheticEmail(externalUserID string) string {

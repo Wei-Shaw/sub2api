@@ -160,7 +160,10 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 		"entitlement_kind":   service.BotSalesEntitlementBalance,
 		"balancePackageCode": pkg.Code,
 		"buyer": map[string]any{
-			"external_user_id": "telegram:http-device-owner",
+			"external_user_id": "channel:telegram:user:http-device-owner",
+			"provider":         "telegram",
+			"provider_user_id": "http-device-owner",
+			"telegram_id":      "http-device-owner",
 			"email":            "bot-http-device-owner@example.test",
 		},
 		"delivery_policy": map[string]any{
@@ -191,6 +194,44 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 	ownerID := int64(ownerIDValue)
 	require.Equal(t, float64(20), client.User.GetX(ctx, ownerID).Balance)
 
+	currentBuyerTopupPayload := map[string]any{
+		"external_order_id":  "bs-http-balance-current-buyer-topup",
+		"operation":          service.BotSalesFulfillmentOperationTopup,
+		"entitlement_kind":   service.BotSalesEntitlementBalance,
+		"balancePackageCode": pkg.Code,
+		"buyer": map[string]any{
+			"external_user_id": "channel:telegram:user:http-device-owner",
+			"provider":         "telegram",
+			"provider_user_id": "http-device-owner",
+			"telegram_id":      "http-device-owner",
+			"email":            "bot-http-device-owner@example.test",
+		},
+		"delivery_policy": map[string]any{
+			"issue_api_key": "if_missing",
+		},
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/bot-sales/token-fulfillments", jsonBody(t, currentBuyerTopupPayload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "bot-sales:bs-http-balance-current-buyer-topup:1:topup")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var currentBuyerTopupData map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &currentBuyerTopupData))
+	require.Equal(t, service.BotSalesFulfillmentOperationTopup, currentBuyerTopupData["operation"])
+	require.NotContains(t, currentBuyerTopupData, "device_code")
+	currentTopupDelivery, ok := currentBuyerTopupData["delivery"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, currentTopupDelivery, "device_code")
+	currentTopupBuyer, ok := currentBuyerTopupData["buyer"].(map[string]any)
+	require.True(t, ok)
+	currentTopupOwnerIDValue, ok := currentTopupBuyer["user_id"].(float64)
+	require.True(t, ok)
+	require.Equal(t, ownerID, int64(currentTopupOwnerIDValue))
+	require.Equal(t, float64(40), client.User.GetX(ctx, ownerID).Balance)
+
 	topupPayload := map[string]any{
 		"external_order_id":  "bs-http-balance-topup",
 		"operation":          service.BotSalesFulfillmentOperationTopup,
@@ -198,7 +239,9 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 		"balancePackageCode": pkg.Code,
 		"deviceCode":         strings.ToLower(deviceCode),
 		"buyer": map[string]any{
-			"external_user_id": "telegram:http-topup-payer",
+			"external_user_id": "channel:zalo:user:http-topup-payer",
+			"provider":         "zalo",
+			"provider_user_id": "http-topup-payer",
 			"email":            "bot-http-topup-payer@example.test",
 		},
 		"delivery_policy": map[string]any{
@@ -225,7 +268,7 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 	topupOwnerIDValue, ok := topupBuyer["user_id"].(float64)
 	require.True(t, ok)
 	require.Equal(t, ownerID, int64(topupOwnerIDValue))
-	require.Equal(t, float64(40), client.User.GetX(ctx, ownerID).Balance)
+	require.Equal(t, float64(60), client.User.GetX(ctx, ownerID).Balance)
 }
 
 func newBotSalesFulfillmentHandlerTestRouter(t *testing.T) (*gin.Engine, *dbent.Client, func()) {
