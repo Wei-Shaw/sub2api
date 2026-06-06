@@ -13,6 +13,7 @@ type ExpandAccount struct {
 	Country          string                 `json:"country"`
 	SessionKey       string                 `json:"session_key"`
 	ProxyID          *int64                 `json:"proxy_id,omitempty"`
+	ProxyName        string                 `json:"proxy_name,omitempty"`
 	ProxyInfo        *ProxyInfo             `json:"proxy_info,omitempty"`
 	Proxy            *ProxyWithAccountCount `json:"proxy,omitempty"`
 	Used             bool                   `json:"used"`

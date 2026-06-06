@@ -8,6 +8,8 @@ export interface ExpandAccount {
   subscription_type: string
   country: string
   session_key: string
+  proxy_id?: number | null
+  proxy_name?: string
   used: boolean
   account_id?: number | null
   login_status: number

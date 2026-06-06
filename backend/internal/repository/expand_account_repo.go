@@ -45,9 +45,10 @@ func (r *expandAccountRepository) ListExpandAccounts(ctx context.Context, page, 
 	offset := (page - 1) * pageSize
 	listArgs := append(append([]any{}, args...), pageSize, offset)
 	query := `
-SELECT id, email, platform, subscription_type, country, session_key, proxy_id, proxy_info, used, account_id, login_status, device_id, api_key, email_pwd, help_email, help_email_url, channel, created_at, updated_at
-FROM expand_accounts` + whereClause + `
-ORDER BY created_at DESC, id DESC
+SELECT ea.id, ea.email, ea.platform, ea.subscription_type, ea.country, ea.session_key, ea.proxy_id, ea.proxy_info, ea.used, ea.account_id, ea.login_status, ea.device_id, ea.api_key, ea.email_pwd, ea.help_email, ea.help_email_url, ea.channel, ea.created_at, ea.updated_at, p.name AS proxy_name
+FROM expand_accounts ea
+LEFT JOIN proxies p ON p.id = ea.proxy_id AND p.deleted_at IS NULL` + whereClause + `
+ORDER BY ea.created_at DESC, ea.id DESC
 LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 
 	rows, err := r.db.QueryContext(ctx, query, listArgs...)
@@ -58,7 +59,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 
 	items := make([]service.ExpandAccount, 0, pageSize)
 	for rows.Next() {
-		item, err := scanExpandAccount(rows)
+		item, err := scanExpandAccountWithProxyName(rows)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -296,6 +297,14 @@ RETURNING id, email, platform, subscription_type, country, session_key, proxy_id
 }
 
 func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, error) {
+	return scanExpandAccountRow(scanner, false)
+}
+
+func scanExpandAccountWithProxyName(scanner expandAccountScanner) (*service.ExpandAccount, error) {
+	return scanExpandAccountRow(scanner, true)
+}
+
+func scanExpandAccountRow(scanner expandAccountScanner, withProxyName bool) (*service.ExpandAccount, error) {
 	var (
 		item          service.ExpandAccount
 		proxyID       sql.NullInt64
@@ -307,8 +316,9 @@ func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, er
 		helpEmail     sql.NullString
 		helpEmailURL  sql.NullString
 		channel       sql.NullString
+		proxyName     sql.NullString
 	)
-	err := scanner.Scan(
+	dest := []any{
 		&item.ID,
 		&item.Email,
 		&item.Platform,
@@ -328,8 +338,11 @@ func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, er
 		&channel,
 		&item.CreatedAt,
 		&item.UpdatedAt,
-	)
-	if err != nil {
+	}
+	if withProxyName {
+		dest = append(dest, &proxyName)
+	}
+	if err := scanner.Scan(dest...); err != nil {
 		return nil, err
 	}
 	if proxyID.Valid {
@@ -362,6 +375,9 @@ func scanExpandAccount(scanner expandAccountScanner) (*service.ExpandAccount, er
 	}
 	if channel.Valid {
 		item.Channel = channel.String
+	}
+	if proxyName.Valid {
+		item.ProxyName = proxyName.String
 	}
 	return &item, nil
 }

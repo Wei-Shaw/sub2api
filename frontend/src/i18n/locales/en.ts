@@ -4111,7 +4111,8 @@ export default {
       emailPwd: 'Email Password',
       helpEmail: 'Recovery Email',
       helpEmailUrl: 'Recovery Email URL',
-      channel: 'Channel'
+      channel: 'Channel',
+      proxyName: 'Proxy Name'
     },
 
     // Scheduled Tests

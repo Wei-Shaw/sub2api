@@ -94,6 +94,10 @@
             <span class="text-sm text-gray-700 dark:text-gray-200">{{ value || '-' }}</span>
           </template>
 
+          <template #cell-proxy_name="{ value }">
+            <span class="text-sm text-gray-700 dark:text-gray-200" :title="value || ''">{{ value || '-' }}</span>
+          </template>
+
           <template #cell-used="{ value }">
             <span
               :class="[
@@ -320,6 +324,7 @@ const columns: Column[] = [
   { key: 'help_email', label: t('admin.expandAccounts.helpEmail') },
   { key: 'help_email_url', label: t('admin.expandAccounts.helpEmailUrl') },
   { key: 'channel', label: t('admin.expandAccounts.channel') },
+  { key: 'proxy_name', label: t('admin.expandAccounts.proxyName') },
   { key: 'used', label: t('common.status') },
   { key: 'login_status', label: t('admin.expandAccounts.loginStatus') },
   { key: 'account_type', label: t('admin.expandAccounts.accountType') },

@@ -4202,7 +4202,8 @@ export default {
       emailPwd: '邮箱密码',
       helpEmail: '辅助邮箱',
       helpEmailUrl: '辅助邮箱链接',
-      channel: '渠道'
+      channel: '渠道',
+      proxyName: '代理名称'
     },
 
     // Scheduled Tests
