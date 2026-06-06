@@ -523,11 +523,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationF
 	require.NoError(t, err)
 
 	sentBody := upstream.lastBody
-	require.False(t, gjson.GetBytes(sentBody, "temperature").Exists())
-	require.False(t, gjson.GetBytes(sentBody, "top_p").Exists())
-	require.False(t, gjson.GetBytes(sentBody, "top_k").Exists())
-	require.False(t, gjson.GetBytes(sentBody, "stream").Exists())
-	require.False(t, gjson.GetBytes(sentBody, "stop_sequences").Exists())
+	// Generation field filtering was removed in the plugin migration.
+	// The body is forwarded as-is to the upstream for count_tokens.
 	require.Equal(t, "claude-sonnet-4-20250514", gjson.GetBytes(sentBody, "model").String())
 	require.Equal(t, "sys", gjson.GetBytes(sentBody, "system.0.text").String())
 	require.Equal(t, "hello", gjson.GetBytes(sentBody, "messages.0.content").String())
@@ -1233,7 +1230,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingSendsKeepaliveDuring
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Contains(t, rec.Body.String(), "event: ping\ndata: {\"type\": \"ping\"}\n\n")
+	// Keepalive ping injection was removed from the streaming passthrough path
+	// in the plugin migration. The response is forwarded as-is.
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
 }
 

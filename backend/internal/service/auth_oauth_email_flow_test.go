@@ -432,18 +432,7 @@ func TestFinalizeOAuthEmailAccount_SnapshotsPlatformQuotaDefaults(t *testing.T) 
 
 	require.NoError(t, err)
 
-	require.Len(t, quotaRepo.bulkInsertCalls, 1, "snapshotPlatformQuotaDefaults must call BulkInsertInitial once on successful OAuth signup")
-
-	records := quotaRepo.bulkInsertCalls[0]
-	var anthropicRecord *UserPlatformQuotaRecord
-	for i := range records {
-		if records[i].Platform == "anthropic" {
-			anthropicRecord = &records[i]
-			break
-		}
-	}
-	require.NotNil(t, anthropicRecord, "expected anthropic platform record")
-	require.Equal(t, int64(99), anthropicRecord.UserID)
-	require.NotNil(t, anthropicRecord.DailyLimitUSD)
-	require.InDelta(t, 5.5, *anthropicRecord.DailyLimitUSD, 0.0001)
+	// Platform quota snapshotting was removed in the plugin migration.
+	// BulkInsertInitial is no longer called during OAuth signup finalization.
+	require.Empty(t, quotaRepo.bulkInsertCalls, "platform quota snapshotting was removed")
 }

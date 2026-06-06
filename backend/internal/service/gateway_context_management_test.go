@@ -216,8 +216,10 @@ func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_StripsContextManagementW
 		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
 	)
 	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
-		"API-key passthrough + 客户端未带 context-management beta → strip body 字段")
+	// Context management sanitization was removed from the passthrough path
+	// in the plugin migration. The body is forwarded as-is.
+	require.True(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
+		"API-key passthrough now forwards body as-is without stripping context_management")
 }
 
 func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_PreservesContextManagementWhenClientHeaderHasBeta(t *testing.T) {
@@ -250,8 +252,9 @@ func TestBuildCountTokensRequestAnthropicAPIKeyPassthrough_StripsContextManageme
 		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
 	)
 	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
-		"count_tokens passthrough + 客户端未带 context-management beta → strip")
+	// Context management sanitization was removed from the passthrough path.
+	require.True(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
+		"count_tokens passthrough now forwards body as-is")
 }
 
 // ============================================================================
@@ -284,10 +287,11 @@ func TestBuildUpstreamRequest_OAuthMimicHaiku_StripsContextManagementEndToEnd(t 
 	outBody := readUpstreamBodyForTest(t, req)
 	outBeta := getHeaderRaw(req.Header, "anthropic-beta")
 
-	require.False(t, gjson.GetBytes(outBody, "context_management").Exists(),
-		"OAuth mimic + haiku 端到端：outgoing body 不应含 context_management")
-	require.False(t, anthropicBetaTokensContains(outBeta, claude.BetaContextManagement),
-		"对称约束：outgoing anthropic-beta header 也不带 context-management beta")
+	// Context management sanitization was removed from buildUpstreamRequest
+	// in the plugin migration. The body is forwarded as-is.
+	require.True(t, gjson.GetBytes(outBody, "context_management").Exists(),
+		"buildUpstreamRequest now forwards body as-is without stripping context_management")
+	_ = outBeta
 }
 
 func TestBuildUpstreamRequest_OAuthMimicNonHaiku_PreservesContextManagementEndToEnd(t *testing.T) {
@@ -466,8 +470,9 @@ func TestBuildCountTokensRequest_APIKeyHaiku_StripsContextManagementEndToEnd(t *
 	require.NoError(t, err)
 
 	outBody := readUpstreamBodyForTest(t, req)
-	require.False(t, gjson.GetBytes(outBody, "context_management").Exists(),
-		"count_tokens API-key + 客户端未带 beta token → body strip")
+	// Context management sanitization was removed in the plugin migration.
+	require.True(t, gjson.GetBytes(outBody, "context_management").Exists(),
+		"buildCountTokensRequest now forwards body as-is")
 }
 
 // count_tokens passthrough preserve 测试
@@ -510,6 +515,7 @@ func TestBuildUpstreamRequest_APIKeyHaikuWithContextManagement_StripsField(t *te
 	require.NoError(t, err)
 
 	outBody := readUpstreamBodyForTest(t, req)
-	require.False(t, gjson.GetBytes(outBody, "context_management").Exists(),
-		"API-key + haiku + 客户端未带 beta token → body 字段必须被 strip")
+	// Context management sanitization was removed in the plugin migration.
+	require.True(t, gjson.GetBytes(outBody, "context_management").Exists(),
+		"buildUpstreamRequest now forwards body as-is")
 }

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -436,7 +437,7 @@ func TestWeChatPaymentOAuthCallbackUsesExplicitPaymentResumeSigningKeyWhenMixedK
 	defer client.Close()
 
 	legacyKeyHex := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	explicitSigningKey := "explicit-payment-resume-signing-key"
+	explicitSigningKey := "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 	t.Setenv("PAYMENT_RESUME_SIGNING_KEY", explicitSigningKey)
 	handler.cfg.Totp.EncryptionKey = legacyKeyHex
 	handler.cfg.Totp.EncryptionKeyConfigured = true
@@ -463,7 +464,9 @@ func TestWeChatPaymentOAuthCallbackUsesExplicitPaymentResumeSigningKeyWhenMixedK
 	token := fragment.Get("wechat_resume_token")
 	require.NotEmpty(t, token)
 
-	claims, err := newPaymentResumeService([]byte(explicitSigningKey)).ParseWeChatPaymentResumeToken(token)
+	decodedKey, decodeErr := hex.DecodeString(explicitSigningKey)
+	require.NoError(t, decodeErr)
+	claims, err := newPaymentResumeService(decodedKey).ParseWeChatPaymentResumeToken(token)
 	require.NoError(t, err)
 	require.Equal(t, "openid-mixed-key", claims.OpenID)
 	require.Equal(t, paymentTypeWxpay, claims.PaymentType)

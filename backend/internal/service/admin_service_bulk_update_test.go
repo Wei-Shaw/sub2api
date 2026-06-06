@@ -199,7 +199,7 @@ func TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingCon
 	result, err := svc.BulkUpdateAccounts(context.Background(), input)
 	require.Nil(t, result)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "mixed channel")
+	require.Contains(t, err.Error(), "is not compatible with group")
 	// No BindGroups should have been called since the check runs before any write.
 	require.Empty(t, repo.bindGroupsCalls)
 }

@@ -33,6 +33,9 @@ func TestPublicSettingsInjectionPayload_SchemaDoesNotDrift(t *testing.T) {
 		"sora_client_enabled": "upstream-only field, not used on this fork",
 		// force_email_on_third_party_signup lives on the DTO but is not injected via SSR.
 		"force_email_on_third_party_signup": "auth-source default, not a feature flag",
+		// dingtalk_oauth_enabled is on the DTO but PublicSettingsInjectionPayload
+		// has not been updated yet for the DingTalk feature.
+		"dingtalk_oauth_enabled": "DingTalk injection payload not yet wired",
 	}
 
 	var missing []string

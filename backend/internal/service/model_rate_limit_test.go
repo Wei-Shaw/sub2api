@@ -193,8 +193,11 @@ func TestIsModelRateLimited_Antigravity_ThinkingAffectsModelKey(t *testing.T) {
 	}
 
 	ctx := context.WithValue(context.Background(), ctxkey.ThinkingEnabled, true)
-	if !account.isModelRateLimitedWithContext(ctx, "claude-sonnet-4-5") {
-		t.Errorf("expected model to be rate limited")
+	// applyThinkingModelSuffix no longer adds -thinking suffix, so the model key
+	// used for rate limit check is "claude-sonnet-4-5", not "claude-sonnet-4-5-thinking".
+	// Since only "claude-sonnet-4-5-thinking" is rate limited, the check returns false.
+	if account.isModelRateLimitedWithContext(ctx, "claude-sonnet-4-5") {
+		t.Errorf("model should NOT be rate limited (thinking suffix no longer applied)")
 	}
 }
 

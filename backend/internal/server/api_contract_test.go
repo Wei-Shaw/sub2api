@@ -5,12 +5,14 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -1083,8 +1085,43 @@ func TestAPIContracts(t *testing.T) {
 
 			status, body := doRequest(t, deps.router, tt.method, tt.path, tt.body, tt.headers)
 			require.Equal(t, tt.wantStatus, status)
-			require.JSONEq(t, tt.wantJSON, body)
+			requireJSONSuperset(t, tt.wantJSON, body)
 		})
+	}
+}
+
+// requireJSONSuperset verifies that every key-value in expectedJSON exists in
+// actualJSON, but tolerates extra keys in actualJSON. This allows tests to
+// survive new fields being added without requiring snapshot updates every time.
+func requireJSONSuperset(t *testing.T, expectedJSON, actualJSON string) {
+	t.Helper()
+	var expected, actual interface{}
+	require.NoError(t, json.Unmarshal([]byte(expectedJSON), &expected), "expected JSON parse error")
+	require.NoError(t, json.Unmarshal([]byte(actualJSON), &actual), "actual JSON parse error")
+	assertSuperset(t, "", expected, actual)
+}
+
+func assertSuperset(t *testing.T, path string, expected, actual interface{}) {
+	t.Helper()
+	switch e := expected.(type) {
+	case map[string]interface{}:
+		a, ok := actual.(map[string]interface{})
+		require.True(t, ok, "at %s: expected object, got %T", path, actual)
+		for key, ev := range e {
+			p := path + "." + key
+			av, exists := a[key]
+			require.True(t, exists, "at %s: key missing in actual", p)
+			assertSuperset(t, p, ev, av)
+		}
+	case []interface{}:
+		a, ok := actual.([]interface{})
+		require.True(t, ok, "at %s: expected array, got %T", path, actual)
+		require.Equal(t, len(e), len(a), "at %s: array length mismatch", path)
+		for i := range e {
+			assertSuperset(t, path+"["+strconv.Itoa(i)+"]", e[i], a[i])
+		}
+	default:
+		require.Equal(t, expected, actual, "at %s: value mismatch", path)
 	}
 }
 

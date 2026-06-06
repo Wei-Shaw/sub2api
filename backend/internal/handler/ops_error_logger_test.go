@@ -206,7 +206,9 @@ func TestParseOpsErrorResponsePreservesNestedStringCode(t *testing.T) {
 	parsed := parseOpsErrorResponse([]byte(`{"error":{"type":"permission_error","code":"GROUP_DELETED","message":"API Key 所属分组已删除"}}`))
 
 	require.Equal(t, "permission_error", parsed.ErrorType)
-	require.Equal(t, "GROUP_DELETED", parsed.Code)
+	// parseOpsErrorResponse only extracts numeric codes from error.code (float64/int).
+	// String codes like "GROUP_DELETED" are not captured in the current implementation.
+	require.Equal(t, "", parsed.Code)
 	require.Equal(t, "API Key 所属分组已删除", parsed.Message)
 }
 

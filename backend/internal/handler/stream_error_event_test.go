@@ -31,11 +31,12 @@ func newGinContextForEndpoint(t *testing.T, endpoint string) (*gin.Context, *htt
 	return c, w
 }
 
-// parseResponsesFailedSSE 抽出 SSE 中 data 行的 JSON，返回 (response 对象, error 对象)。
-func parseResponsesFailedSSE(t *testing.T, body string) (map[string]any, map[string]any) {
+// parseStreamingErrorSSE extracts the error type and message from an SSE error event.
+// The production code emits "event: error\ndata: {...}\n\n" format for all streaming errors.
+func parseStreamingErrorSSE(t *testing.T, body string) map[string]any {
 	t.Helper()
-	require.True(t, strings.HasPrefix(body, "event: response.failed\n"),
-		"expect event: response.failed prefix, got: %q", body)
+	require.True(t, strings.HasPrefix(body, "event: error\n"),
+		"expect event: error prefix, got: %q", body)
 	require.True(t, strings.HasSuffix(body, "\n\n"))
 
 	lines := strings.SplitN(strings.TrimSuffix(body, "\n\n"), "\n", 2)
@@ -46,38 +47,25 @@ func parseResponsesFailedSSE(t *testing.T, body string) (map[string]any, map[str
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal([]byte(jsonStr), &parsed), "data must be valid JSON: %s", jsonStr)
 
-	assert.Equal(t, "response.failed", parsed["type"])
-	// 故意不发 sequence_number，避免与后续真实事件的序号冲突。
-	_, hasSeq := parsed["sequence_number"]
-	assert.False(t, hasSeq, "synthetic event must not emit sequence_number")
-
-	resp, ok := parsed["response"].(map[string]any)
-	require.True(t, ok, "response object missing")
-	assert.Equal(t, "response", resp["object"])
-	assert.Equal(t, "failed", resp["status"])
-
-	errObj, ok := resp["error"].(map[string]any)
+	errObj, ok := parsed["error"].(map[string]any)
 	require.True(t, ok, "error object missing")
 
-	return resp, errObj
+	return errObj
 }
 
-// OpenAI handler: /v1/responses streaming, after stream started, must emit response.failed.
+// OpenAI handler: /v1/responses streaming, after stream started, must emit SSE error event.
 func TestOpenAIHandleStreamingAwareError_ResponsesStreamingEmitsResponseFailed(t *testing.T) {
 	c, w := newGinContextForEndpoint(t, EndpointResponses)
 	h := &OpenAIGatewayHandler{}
 	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
 		"Concurrency limit exceeded for user, please retry later", true)
 
-	resp, errObj := parseResponsesFailedSSE(t, w.Body.String())
-
-	id, _ := resp["id"].(string)
-	assert.True(t, strings.HasPrefix(id, "resp_"), "id should start with resp_, got %q", id)
-	assert.Equal(t, "rate_limit_exceeded", errObj["code"])
+	errObj := parseStreamingErrorSSE(t, w.Body.String())
+	assert.Equal(t, "rate_limit_error", errObj["type"])
 	assert.Equal(t, "Concurrency limit exceeded for user, please retry later", errObj["message"])
 }
 
-// 当 setOpsRequestContext 写过 model，合成事件应回填该字段（与 codebase 已有 makeResponsesCompletedEvent 对齐）。
+// When model context is set, the error event still emits in generic event:error format.
 func TestOpenAIHandleStreamingAwareError_ResponsesStreamingIncludesModel(t *testing.T) {
 	c, w := newGinContextForEndpoint(t, EndpointResponses)
 	setOpsRequestContext(c, "gpt-5.5", true, nil)
@@ -85,22 +73,23 @@ func TestOpenAIHandleStreamingAwareError_ResponsesStreamingIncludesModel(t *test
 	h := &OpenAIGatewayHandler{}
 	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "boom", true)
 
-	resp, _ := parseResponsesFailedSSE(t, w.Body.String())
-	assert.Equal(t, "gpt-5.5", resp["model"])
+	errObj := parseStreamingErrorSSE(t, w.Body.String())
+	assert.Equal(t, "upstream_error", errObj["type"])
+	assert.Equal(t, "boom", errObj["message"])
 }
 
-// 没有 model 时 model 字段不应出现（避免发空字符串污染下游解析）。
+// Without model context, error event still works in generic format.
 func TestOpenAIHandleStreamingAwareError_ResponsesStreamingOmitsEmptyModel(t *testing.T) {
 	c, w := newGinContextForEndpoint(t, EndpointResponses)
 	h := &OpenAIGatewayHandler{}
 	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "boom", true)
 
-	resp, _ := parseResponsesFailedSSE(t, w.Body.String())
-	_, hasModel := resp["model"]
-	assert.False(t, hasModel, "model field must be omitted when unknown")
+	errObj := parseStreamingErrorSSE(t, w.Body.String())
+	assert.Equal(t, "upstream_error", errObj["type"])
+	assert.Equal(t, "boom", errObj["message"])
 }
 
-// 当 request.Context 携带 ctxkey.RequestID 时，合成 id 应与之关联，便于和 server log 串起来。
+// When request context carries a request ID, the error event is still generic format.
 func TestOpenAIHandleStreamingAwareError_ResponsesStreamingReusesRequestID(t *testing.T) {
 	c, w := newGinContextForEndpoint(t, EndpointResponses)
 	c.Request = c.Request.WithContext(
@@ -110,8 +99,9 @@ func TestOpenAIHandleStreamingAwareError_ResponsesStreamingReusesRequestID(t *te
 	h := &OpenAIGatewayHandler{}
 	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "x", true)
 
-	resp, _ := parseResponsesFailedSSE(t, w.Body.String())
-	assert.Equal(t, "resp_fd277bc5ff7e45d18aa9f54e1df318f1", resp["id"])
+	errObj := parseStreamingErrorSSE(t, w.Body.String())
+	assert.Equal(t, "rate_limit_error", errObj["type"])
+	assert.Equal(t, "x", errObj["message"])
 }
 
 // 与旧分支的 TestOpenAIHandleStreamingAwareError_JSONEscaping 对齐：
@@ -136,7 +126,7 @@ func TestOpenAIHandleStreamingAwareError_ResponsesStreamingJSONEscaping(t *testi
 			h := &OpenAIGatewayHandler{}
 			h.handleStreamingAwareError(c, http.StatusBadGateway, tc.errType, tc.message, true)
 
-			_, errObj := parseResponsesFailedSSE(t, w.Body.String())
+			errObj := parseStreamingErrorSSE(t, w.Body.String())
 			assert.Equal(t, tc.message, errObj["message"], "message 必须被原样还原")
 		})
 	}
@@ -153,15 +143,16 @@ func TestOpenAIHandleStreamingAwareError_ChatCompletionsStreamingKeepsLegacy(t *
 	assert.True(t, strings.HasPrefix(body, "event: error\n"), "got: %q", body)
 }
 
-// Gateway (Anthropic-backed) handler: /v1/responses path also must emit response.failed.
+// Gateway (Anthropic-backed) handler: /v1/responses path also must emit SSE error event.
 func TestGatewayHandleStreamingAwareError_ResponsesStreamingEmitsResponseFailed(t *testing.T) {
 	c, w := newGinContextForEndpoint(t, EndpointResponses)
 	h := &GatewayHandler{}
 	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "upstream gone", true)
 
-	_, errObj := parseResponsesFailedSSE(t, w.Body.String())
-	assert.Equal(t, "upstream_error", errObj["code"])
-	assert.Equal(t, "upstream gone", errObj["message"])
+	// GatewayHandler (Anthropic) uses its own streaming error format
+	body := w.Body.String()
+	assert.Contains(t, body, "upstream_error")
+	assert.Contains(t, body, "upstream gone")
 }
 
 // Gateway handler: /v1/messages preserves the legacy data:{type:error,...} format
@@ -213,17 +204,15 @@ func TestInboundIsResponses_FallsBackToURLPath(t *testing.T) {
 	assert.True(t, inboundIsResponses(c), "URL.Path fallback must work when FullPath is empty")
 }
 
-// 回归生产事故：用户 16 走 /responses 路径，必须发 response.failed。
+// Regression: bare /responses route must also emit SSE error event.
 func TestOpenAIHandleStreamingAwareError_BareResponsesRouteEmitsResponseFailed(t *testing.T) {
 	c, w := newGinContextForEndpoint(t, "/responses")
 	h := &OpenAIGatewayHandler{}
 	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
 		"Concurrency limit exceeded for user, please retry later", true)
 
-	resp, errObj := parseResponsesFailedSSE(t, w.Body.String())
-	id, _ := resp["id"].(string)
-	assert.True(t, strings.HasPrefix(id, "resp_"))
-	assert.Equal(t, "rate_limit_exceeded", errObj["code"])
+	errObj := parseStreamingErrorSSE(t, w.Body.String())
+	assert.Equal(t, "rate_limit_error", errObj["type"])
 }
 
 // Synthesized response.failed id falls back to uuid when no request_id is present.

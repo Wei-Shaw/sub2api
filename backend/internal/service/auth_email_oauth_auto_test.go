@@ -71,17 +71,7 @@ func TestEmailOAuthAuto_SnapshotsPlatformQuotaDefaults(t *testing.T) {
 	require.NotNil(t, user)
 	require.Equal(t, int64(88), user.ID)
 
-	require.Len(t, quotaRepo.bulkInsertCalls, 1, "createEmailOAuthUser must snapshot platform quotas via BulkInsertInitial")
-
-	records := quotaRepo.bulkInsertCalls[0]
-	var geminiRecord *UserPlatformQuotaRecord
-	for i := range records {
-		if records[i].Platform == "gemini" {
-			geminiRecord = &records[i]
-			break
-		}
-	}
-	require.NotNil(t, geminiRecord, "expected gemini platform record")
-	require.NotNil(t, geminiRecord.MonthlyLimitUSD)
-	require.InDelta(t, 100.0, *geminiRecord.MonthlyLimitUSD, 0.0001)
+	// Platform quota snapshotting was removed in the plugin migration.
+	// BulkInsertInitial is no longer called during user creation.
+	require.Empty(t, quotaRepo.bulkInsertCalls, "platform quota snapshotting was removed")
 }

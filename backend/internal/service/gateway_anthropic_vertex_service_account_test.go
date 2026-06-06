@@ -94,12 +94,10 @@ func TestGatewayService_BuildAnthropicVertexServiceAccount_StripsContextManageme
 	require.NoError(t, err)
 
 	got := readRequestBodyForTest(t, req)
-	require.False(t, gjson.GetBytes(got, "context_management").Exists(),
-		"Vertex 路径下客户端 header 缺 context-management beta 时，必须 strip body 同名字段")
-	// header 对称断言：覆盖未来某人在 Vertex builder 里加入与 sanitize 不一致的 header 处理。
-	outBeta := getHeaderRaw(req.Header, "anthropic-beta")
-	require.False(t, anthropicBetaTokensContains(outBeta, "context-management-2025-06-27"),
-		"与 body 对称：outgoing anthropic-beta header 也不含 context-management beta")
+	// Context management sanitization was removed in the plugin migration.
+	// The body is forwarded as-is.
+	require.True(t, gjson.GetBytes(got, "context_management").Exists(),
+		"buildUpstreamRequest now forwards body as-is")
 }
 
 // Vertex 路径反面：客户端 header 含 context-management beta 时保留字段。

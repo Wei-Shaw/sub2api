@@ -69,13 +69,9 @@ func TestAccountHandler_AccountIDsRequired(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	body := decodeError(t, rec)
-	// 空 account_ids 触发 binding tag min=1（来自 BulkUpdateAccountsRequest 结构体），
-	// validator 错被 BindJSONOrError 转字段级 INVALID_REQUEST_BODY；
-	// 业务级 ACCOUNT_IDS_REQUIRED 是 binding 通过后再校验时使用，本 case 命中前者。
-	require.Equal(t, "INVALID_REQUEST_BODY", body.Reason)
-	// validatorFieldPath 当前用 lowerFirstSegment（task #33）—— Go 字段名 AccountIDs 转 "accountIDs"，
-	// 还没做完整 snake_case；前端按 path 大小写不敏感匹配即可。下一轮可在 helper 内升级 snake_case
-	// 而不影响调用方契约（只需更新测试断言）。
-	require.Contains(t, body.Metadata["fields"], `"path":"accountIDs"`)
-	require.Contains(t, body.Metadata["fields"], `"code":"MIN"`)
+	// BulkUpdateAccountsRequest no longer has binding:"min=1" on AccountIDs.
+	// Empty account_ids passes binding and hits the business-level check which
+	// calls response.BadRequest with a plain message (no structured reason).
+	require.Equal(t, "", body.Reason)
+	require.Contains(t, body.Message, "account_ids or filters is required")
 }

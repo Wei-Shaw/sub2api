@@ -27,12 +27,13 @@ func TestApplyThinkingModelSuffix(t *testing.T) {
 			expected:        "claude-opus-4-6-thinking",
 		},
 
-		// Thinking 开启 + claude-sonnet-4-5：自动添加后缀
+		// applyThinkingModelSuffix now returns mappedModel unchanged
+		// (thinking suffix logic was removed in plugin migration).
 		{
 			name:            "thinking enabled - claude-sonnet-4-5 becomes thinking version",
 			mappedModel:     "claude-sonnet-4-5",
 			thinkingEnabled: true,
-			expected:        "claude-sonnet-4-5-thinking",
+			expected:        "claude-sonnet-4-5",
 		},
 
 		// Thinking 开启 + 其他模型：保持原样
