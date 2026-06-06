@@ -2036,6 +2036,60 @@ func ComputeQuotaResetAt(extra map[string]any) {
 	}
 }
 
+// NormalizeFixedQuotaWindows aligns preserved quota usage with the active fixed reset window.
+//
+// Editing an existing account can switch a daily/weekly quota from rolling to fixed reset
+// while preserving quota_*_used and quota_*_start. If the preserved start belongs to the
+// old rolling window, response mapping treats the usage as expired and the dashboard shows
+// 0 until the next reset. Normalize those stale starts before persisting the edited account.
+func NormalizeFixedQuotaWindows(extra map[string]any) {
+	if extra == nil {
+		return
+	}
+	now := time.Now()
+	tzName, _ := extra["quota_reset_timezone"].(string)
+	if tzName == "" {
+		tzName = "UTC"
+	}
+	tz, err := time.LoadLocation(tzName)
+	if err != nil {
+		tz = time.UTC
+	}
+
+	if mode, _ := extra["quota_daily_reset_mode"].(string); mode == "fixed" && parseExtraFloat64(extra["quota_daily_limit"]) > 0 {
+		hour := int(parseExtraFloat64(extra["quota_daily_reset_hour"]))
+		if hour < 0 || hour > 23 {
+			hour = 0
+		}
+		lastReset := lastFixedDailyReset(hour, tz, now)
+		start := parseExtraTime(extra["quota_daily_start"])
+		if start.IsZero() || start.Before(lastReset) {
+			extra["quota_daily_used"] = 0.0
+			extra["quota_daily_start"] = lastReset.UTC().Format(time.RFC3339)
+		}
+	}
+
+	if mode, _ := extra["quota_weekly_reset_mode"].(string); mode == "fixed" && parseExtraFloat64(extra["quota_weekly_limit"]) > 0 {
+		day := 1
+		if rawDay, ok := extra["quota_weekly_reset_day"]; ok {
+			day = int(parseExtraFloat64(rawDay))
+		}
+		if day < 0 || day > 6 {
+			day = 1
+		}
+		hour := int(parseExtraFloat64(extra["quota_weekly_reset_hour"]))
+		if hour < 0 || hour > 23 {
+			hour = 0
+		}
+		lastReset := lastFixedWeeklyReset(day, hour, tz, now)
+		start := parseExtraTime(extra["quota_weekly_start"])
+		if start.IsZero() || start.Before(lastReset) {
+			extra["quota_weekly_used"] = 0.0
+			extra["quota_weekly_start"] = lastReset.UTC().Format(time.RFC3339)
+		}
+	}
+}
+
 // ValidateQuotaResetConfig 校验配额固定重置时间配置的合法性
 func ValidateQuotaResetConfig(extra map[string]any) error {
 	if extra == nil {
@@ -2362,6 +2416,18 @@ func parseExtraFloat64(value any) float64 {
 		}
 	}
 	return 0
+}
+
+func parseExtraTime(value any) time.Time {
+	if s, ok := value.(string); ok {
+		if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+			return t
+		}
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 // parseExtraInt 从 extra 字段解析 int 值

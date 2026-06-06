@@ -45,6 +45,106 @@ func TestStream_ReasoningOpensItemBeforeDelta(t *testing.T) {
 	}
 }
 
+func TestStream_ReasoningOnlySynthesizesVisibleText(t *testing.T) {
+	events := collectStreamEvents(t, []string{
+		`{"choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":""}}]}`,
+		`{"choices":[{"index":0,"delta":{"reasoning_content":"thinking before final"}}]}`,
+		`{"choices":[{"index":0,"delta":{"content":""},"finish_reason":"length"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`,
+	})
+
+	open := map[int]string{}
+	var sawTextDelta, sawTextDone, sawMessageDone bool
+	for _, e := range events {
+		switch e.Type {
+		case "response.output_item.added":
+			require.NotNil(t, e.Item)
+			open[e.OutputIndex] = e.Item.Type
+		case "response.output_text.delta":
+			sawTextDelta = true
+			require.Equalf(t, "message", open[e.OutputIndex], "fallback text delta before its item was opened")
+			require.Equal(t, "thinking before final", e.Delta)
+		case "response.output_text.done":
+			sawTextDone = true
+			require.Equal(t, "thinking before final", e.Text)
+		case "response.output_item.done":
+			if e.Item != nil && e.Item.Type == "message" {
+				sawMessageDone = true
+				require.Equal(t, "thinking before final", e.Item.Content[0].Text)
+			}
+		case "response.completed":
+			require.NotNil(t, e.Response)
+			require.Equal(t, "incomplete", e.Response.Status)
+			require.NotNil(t, e.Response.IncompleteDetails)
+			require.Equal(t, "max_output_tokens", e.Response.IncompleteDetails.Reason)
+			require.Len(t, e.Response.Output, 2)
+			require.Equal(t, "reasoning", e.Response.Output[0].Type)
+			require.Equal(t, "message", e.Response.Output[1].Type)
+			require.Equal(t, "thinking before final", e.Response.Output[1].Content[0].Text)
+		}
+	}
+	require.True(t, sawTextDelta, "reasoning-only stream must produce visible text delta")
+	require.True(t, sawTextDone, "reasoning-only stream must close visible text part")
+	require.True(t, sawMessageDone, "reasoning-only stream must close synthesized message item")
+}
+
+func TestStream_ReasoningOnlyBlankDoesNotSynthesizeVisibleText(t *testing.T) {
+	events := collectStreamEvents(t, []string{
+		`{"choices":[{"index":0,"delta":{"reasoning_content":"   "}}]}`,
+		`{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+	})
+
+	for _, e := range events {
+		require.NotEqual(t, "response.output_text.delta", e.Type)
+		if e.Type == "response.completed" {
+			require.NotNil(t, e.Response)
+			require.Len(t, e.Response.Output, 2)
+			require.Equal(t, "reasoning", e.Response.Output[0].Type)
+			require.Equal(t, "message", e.Response.Output[1].Type)
+			require.Equal(t, "", e.Response.Output[1].Content[0].Text)
+		}
+	}
+}
+
+func TestStream_ReasoningThenContentDoesNotDuplicateFallbackText(t *testing.T) {
+	events := collectStreamEvents(t, []string{
+		`{"choices":[{"index":0,"delta":{"reasoning_content":"private plan"}}]}`,
+		`{"choices":[{"index":0,"delta":{"content":"final answer"}}]}`,
+		`{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+	})
+
+	var textDeltas []string
+	for _, e := range events {
+		switch e.Type {
+		case "response.output_text.delta":
+			textDeltas = append(textDeltas, e.Delta)
+		case "response.completed":
+			require.NotNil(t, e.Response)
+			require.Len(t, e.Response.Output, 2)
+			require.Equal(t, "private plan", e.Response.Output[0].Summary[0].Text)
+			require.Equal(t, "final answer", e.Response.Output[1].Content[0].Text)
+		}
+	}
+	require.Equal(t, []string{"final answer"}, textDeltas)
+}
+
+func TestStream_ReasoningThenToolCallDoesNotSynthesizeVisibleText(t *testing.T) {
+	events := collectStreamEvents(t, []string{
+		`{"choices":[{"index":0,"delta":{"reasoning_content":"call a tool"}}]}`,
+		`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"exec","arguments":"{}"}}]}}]}`,
+		`{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+	})
+
+	for _, e := range events {
+		require.NotEqual(t, "response.output_text.delta", e.Type)
+		if e.Type == "response.completed" {
+			require.NotNil(t, e.Response)
+			require.Len(t, e.Response.Output, 2)
+			require.Equal(t, "reasoning", e.Response.Output[0].Type)
+			require.Equal(t, "function_call", e.Response.Output[1].Type)
+		}
+	}
+}
+
 // TestStream_ToolCallLifecycleComplete guards that a tool call is fully closed
 // (function_call_arguments.done + output_item.done with full arguments), which
 // codex needs to execute the call.

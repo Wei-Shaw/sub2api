@@ -75,7 +75,7 @@ func extractFirstUserText(body []byte) string {
 //
 // 形态严格对齐真实 Claude Code CLI：
 //
-//	{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.92.{fp}; cc_entrypoint=cli; cch=00000;"}
+//	{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.161.{fp}; cc_entrypoint=cli; cch=00000;"}
 //
 // cch=00000 是签名占位符，由 signBillingHeaderCCH 在 buildUpstreamRequest 阶段
 // 替换为基于完整 body 的 xxhash64 5 位十六进制摘要。

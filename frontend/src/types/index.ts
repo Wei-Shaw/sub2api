@@ -242,6 +242,7 @@ export interface PublicSettings {
   channel_monitor_enabled: boolean
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
+  service_quota_enabled: boolean
   affiliate_enabled: boolean
   allow_user_view_error_requests?: boolean
 }
@@ -1245,6 +1246,8 @@ export interface UsageLog {
   image_output_size: string | null
   image_size_source: ImageSizeSource | null
   image_size_breakdown: ImageSizeBreakdown | null
+  image_output_tokens: number
+  image_output_cost: number
 
   // User-Agent
   user_agent: string | null
@@ -1419,6 +1422,8 @@ export interface UsageStatsResponse {
   total_input_tokens: number
   total_output_tokens: number
   total_cache_tokens: number
+  total_cache_read_tokens: number
+  total_cache_creation_tokens: number
   total_tokens: number
   total_cost: number // 标准计费
   total_actual_cost: number // 实际扣除
