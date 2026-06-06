@@ -53,7 +53,7 @@ func TestApplyCodexClientMetadata(t *testing.T) {
 	// 既有 client_metadata（如 turn metadata）保留，仅补 installation 键
 	body3 := map[string]any{"client_metadata": map[string]any{"x-codex-turn-metadata": "t"}}
 	require.True(t, applyCodexClientMetadata(body3, acc))
-	cm3 := body3["client_metadata"].(map[string]any)
+	cm3, _ := body3["client_metadata"].(map[string]any)
 	require.Equal(t, "t", cm3["x-codex-turn-metadata"])
 	require.Equal(t, "dev-xyz", cm3["x-codex-installation-id"])
 }

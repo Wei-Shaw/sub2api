@@ -1436,11 +1436,11 @@ func (s *GatewayService) buildOAuthMetadataUserIDFromBody(
 // accountID 恒存在，故 seed 永不为空 —— 输出始终是确定性 UUID，而非随机值。
 func buildStableSessionSeed(accountID int64, clientDiscriminator, firstUserText string) string {
 	var b strings.Builder
-	b.WriteString(strconv.FormatInt(accountID, 10))
-	b.WriteString("::")
-	b.WriteString(clientDiscriminator)
-	b.WriteString("::")
-	b.WriteString(firstUserText)
+	_, _ = b.WriteString(strconv.FormatInt(accountID, 10))
+	_, _ = b.WriteString("::")
+	_, _ = b.WriteString(clientDiscriminator)
+	_, _ = b.WriteString("::")
+	_, _ = b.WriteString(firstUserText)
 	return b.String()
 }
 
