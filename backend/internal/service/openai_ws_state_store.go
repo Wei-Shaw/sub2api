@@ -100,9 +100,10 @@ REDACTED
 	s.maybeCleanup()
 
 	expiresAt := time.Now().Add(ttl)
+	mapKey := openAIWSResponseAccountMapKey(groupID, id)
 	s.responseToAccountMu.Lock()
-	ensureBindingCapacity(s.responseToAccount, id, openAIWSStateStoreMaxEntriesPerMap)
-	s.responseToAccount[id] = openAIWSAccountBinding{accountID: accountID, expiresAt: expiresAtREDACTED
+	ensureBindingCapacity(s.responseToAccount, mapKey, openAIWSStateStoreMaxEntriesPerMap)
+	s.responseToAccount[mapKey] = openAIWSAccountBinding{accountID: accountID, expiresAt: expiresAtREDACTED
 	s.responseToAccountMu.Unlock()
 
 	if s.cache == nil {
@@ -122,8 +123,9 @@ REDACTED
 	s.maybeCleanup()
 
 	now := time.Now()
+	mapKey := openAIWSResponseAccountMapKey(groupID, id)
 	s.responseToAccountMu.RLock()
-	if binding, ok := s.responseToAccount[id]; ok {
+	if binding, ok := s.responseToAccount[mapKey]; ok {
 		if now.Before(binding.expiresAt) {
 			accountID := binding.accountID
 			s.responseToAccountMu.RUnlock()
@@ -153,7 +155,7 @@ func (s *defaultOpenAIWSStateStore) DeleteResponseAccount(ctx context.Context, g
 		return nil
 REDACTED
 	s.responseToAccountMu.Lock()
-	delete(s.responseToAccount, id)
+	delete(s.responseToAccount, openAIWSResponseAccountMapKey(groupID, id))
 	s.responseToAccountMu.Unlock()
 
 	if s.cache == nil {
@@ -415,6 +417,11 @@ REDACTED
 func openAIWSResponseAccountCacheKey(responseID string) string {
 	sum := sha256.Sum256([]byte(responseID))
 	return openAIWSResponseAccountCachePrefix + hex.EncodeToString(sum[:])
+REDACTED
+
+// openAIWSResponseAccountMapKey 本地热缓存按分组隔离的 key，与 Redis 层保持一致，避免跨组命中。
+func openAIWSResponseAccountMapKey(groupID int64, responseID string) string {
+	return fmt.Sprintf("%d:%s", groupID, responseID)
 REDACTED
 
 func normalizeOpenAIWSTTL(ttl time.Duration) time.Duration {
