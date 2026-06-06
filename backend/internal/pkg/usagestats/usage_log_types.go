@@ -169,6 +169,8 @@ type UserSpendingRankingResponse struct {
 type UserBreakdownItem struct {
 	UserID       int64   `json:"user_id"`
 	Email        string  `json:"email"`
+	Username     string  `json:"username,omitempty"`
+	DeviceCode   string  `json:"device_code,omitempty"`
 	Requests     int64   `json:"requests"`
 	InputTokens  int64   `json:"input_tokens"`  // 输入 token 累计
 	OutputTokens int64   `json:"output_tokens"` // 输出 token 累计

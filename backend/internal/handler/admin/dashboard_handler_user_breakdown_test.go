@@ -173,8 +173,8 @@ func TestGetUserBreakdown_LimitClamped(t *testing.T) {
 func TestGetUserBreakdown_ResponseFormat(t *testing.T) {
 	repo := &userBreakdownRepoCapture{
 		result: []usagestats.UserBreakdownItem{
-			{UserID: 1, Email: "alice@test.com", Requests: 100, TotalTokens: 50000, Cost: 1.5, ActualCost: 1.2},
-			{UserID: 2, Email: "bob@test.com", Requests: 50, TotalTokens: 25000, Cost: 0.8, ActualCost: 0.6},
+			{UserID: 1, Email: "alice@test.com", Username: "alice", DeviceCode: "DLG-ALICE-0001", Requests: 100, TotalTokens: 50000, Cost: 1.5, ActualCost: 1.2},
+			{UserID: 2, Email: "bob@test.com", Username: "bob", Requests: 50, TotalTokens: 25000, Cost: 0.8, ActualCost: 0.6},
 		},
 	}
 	router := newUserBreakdownRouter(repo)
@@ -200,6 +200,8 @@ func TestGetUserBreakdown_ResponseFormat(t *testing.T) {
 	require.Len(t, resp.Data.Users, 2)
 	require.Equal(t, int64(1), resp.Data.Users[0].UserID)
 	require.Equal(t, "alice@test.com", resp.Data.Users[0].Email)
+	require.Equal(t, "alice", resp.Data.Users[0].Username)
+	require.Equal(t, "DLG-ALICE-0001", resp.Data.Users[0].DeviceCode)
 	require.Equal(t, int64(100), resp.Data.Users[0].Requests)
 	require.InDelta(t, 1.2, resp.Data.Users[0].ActualCost, 0.001)
 	require.Equal(t, "2026-03-01", resp.Data.StartDate)

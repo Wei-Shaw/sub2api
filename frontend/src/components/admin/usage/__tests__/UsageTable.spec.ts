@@ -547,4 +547,46 @@ describe('admin UsageTable deleted-user badge', () => {
     expect(wrapper.text()).not.toContain('Deleted')
     expect(wrapper.text()).toContain('active@test.com')
   })
+
+  it('prefers row device_code over generated user email in the user cell', () => {
+    const row = {
+      request_id: 'req-device-user-1',
+      model: 'claude-3',
+      user_id: 4,
+      user: {
+        id: 4,
+        username: 'invite-user',
+        email: 'invite-f9f57fa29ae0ea07bc41a80cc87fbee9@invite-local.invalid',
+        deleted_at: null,
+      },
+      device_code: 'DLG-USAGE-0001',
+      actual_cost: 0,
+      total_cost: 0,
+      input_cost: 0,
+      output_cost: 0,
+      rate_multiplier: 1,
+      input_tokens: 1,
+      output_tokens: 1,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [{ key: 'user', label: 'User' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStubWithUser,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('DLG-USAGE-0001')
+    expect(text).not.toContain('invite-f9f57fa29ae0ea07bc41a80cc87fbee9@invite-local.invalid')
+  })
 })

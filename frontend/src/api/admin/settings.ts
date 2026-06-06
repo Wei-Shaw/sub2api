@@ -1194,12 +1194,13 @@ export async function previewEmailTemplate(
  * Test Telegram bot connection request
  */
 export interface TestTelegramRequest {
+  telegram_bot_token?: string;
   telegram_chat_id?: string;
 }
 
 /**
- * Test Telegram bot connection using saved config (optionally override chat_id)
- * @param request - Optional chat_id override
+ * Test Telegram bot connection using saved config (optionally overriding unsaved token/chat_id)
+ * @param request - Optional bot token/chat_id overrides
  * @returns Test result message
  */
 export async function testTelegramConnection(

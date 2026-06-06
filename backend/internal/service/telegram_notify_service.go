@@ -105,6 +105,10 @@ func (s *TelegramNotifyService) sendMessage(ctx context.Context, text string) er
 		return nil
 	}
 
+	return s.sendMessageWithConfig(ctx, cfg, text)
+}
+
+func (s *TelegramNotifyService) sendMessageWithConfig(ctx context.Context, cfg *telegramConfig, text string) error {
 	apiURL := telegramAPIBase + cfg.Token + telegramSendMethod
 
 	form := url.Values{}
@@ -149,15 +153,31 @@ func (s *TelegramNotifyService) InvalidateCache() {
 	s.mu.Unlock()
 }
 
-// SendTestMessageWithChatID sends a test message using the saved bot token but overriding the chat ID.
-// This allows testing delivery to a different chat without changing saved settings.
-func (s *TelegramNotifyService) SendTestMessageWithChatID(ctx context.Context, chatID string) error {
+// SendTestMessageWithOverrides sends a test message using saved config with optional unsaved token/chat overrides.
+// This allows testing admin-entered settings before saving them. It never caches the token override.
+func (s *TelegramNotifyService) SendTestMessageWithOverrides(ctx context.Context, botToken, chatID string) error {
 	cfg, err := s.getConfig(ctx)
 	if err != nil {
 		return err
 	}
 	if cfg == nil {
+		cfg = &telegramConfig{}
+	} else {
+		cfg = &telegramConfig{Token: cfg.Token, ChatID: cfg.ChatID}
+	}
+
+	if token := strings.TrimSpace(botToken); token != "" {
+		cfg.Token = token
+	}
+	if id := strings.TrimSpace(chatID); id != "" {
+		cfg.ChatID = id
+	}
+
+	if strings.TrimSpace(cfg.Token) == "" {
 		return fmt.Errorf("telegram bot token is not configured")
+	}
+	if strings.TrimSpace(cfg.ChatID) == "" {
+		return fmt.Errorf("telegram chat id is not configured")
 	}
 
 	text := fmt.Sprintf(
@@ -167,30 +187,13 @@ func (s *TelegramNotifyService) SendTestMessageWithChatID(ctx context.Context, c
 		time.Now().Format("2006-01-02 15:04:05"),
 	)
 
-	apiURL := telegramAPIBase + cfg.Token + telegramSendMethod
+	return s.sendMessageWithConfig(ctx, cfg, text)
+}
 
-	form := url.Values{}
-	form.Set("chat_id", chatID)
-	form.Set("text", text)
-	form.Set("parse_mode", "HTML")
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return fmt.Errorf("failed to create telegram request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send telegram message: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("telegram API returned status %d", resp.StatusCode)
-	}
-
-	return nil
+// SendTestMessageWithChatID sends a test message using the saved bot token but overriding the chat ID.
+// This allows testing delivery to a different chat without changing saved settings.
+func (s *TelegramNotifyService) SendTestMessageWithChatID(ctx context.Context, chatID string) error {
+	return s.SendTestMessageWithOverrides(ctx, "", chatID)
 }
 
 // --- Notification Methods ---

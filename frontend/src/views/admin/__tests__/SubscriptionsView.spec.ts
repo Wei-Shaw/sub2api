@@ -190,6 +190,8 @@ describe('admin SubscriptionsView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('DLG-YPK2-AAAA-BBBB')
+    expect(wrapper.text()).not.toContain('invite-f9f57fa29ae0ea07bc41a80cc87fbee9@invite-local.invalid')
+    expect(wrapper.text().match(/DLG-YPK2-AAAA-BBBB/g)).toHaveLength(1)
     expect(wrapper.text()).not.toContain('admin.subscriptions.deviceCode')
     expect(wrapper.text()).not.toContain('admin.subscriptions.deviceBound')
 

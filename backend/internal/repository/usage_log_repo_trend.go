@@ -609,6 +609,8 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		SELECT
 			COALESCE(ul.user_id, 0) as user_id,
 			COALESCE(u.email, '') as email,
+			COALESCE(u.username, '') as username,
+			COALESCE(ud.device_code, '') as device_code,
 			COUNT(*) as requests,
 			COALESCE(SUM(ul.input_tokens), 0) as input_tokens,
 			COALESCE(SUM(ul.output_tokens), 0) as output_tokens,
@@ -619,6 +621,13 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 			COALESCE(SUM(COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1)), 0) as account_cost
 		FROM usage_logs ul
 		LEFT JOIN users u ON u.id = ul.user_id
+		LEFT JOIN LATERAL (
+			SELECT device_code
+			FROM user_devices
+			WHERE user_id = ul.user_id AND NULLIF(TRIM(device_code), '') IS NOT NULL
+			ORDER BY last_login_at DESC NULLS LAST, created_at DESC
+			LIMIT 1
+		) ud ON TRUE
 		WHERE ul.created_at >= $1 AND ul.created_at < $2
 	`
 	args := []any{startTime, endTime}
@@ -668,7 +677,7 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 	case "total_tokens", "input_tokens", "output_tokens", "cache_tokens", "requests", "cost", "actual_cost":
 		orderBy = dim.SortBy
 	}
-	query += " GROUP BY ul.user_id, u.email ORDER BY " + orderBy + " DESC"
+	query += " GROUP BY ul.user_id, u.email, u.username, ud.device_code ORDER BY " + orderBy + " DESC"
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
@@ -690,6 +699,8 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		if err := rows.Scan(
 			&row.UserID,
 			&row.Email,
+			&row.Username,
+			&row.DeviceCode,
 			&row.Requests,
 			&row.InputTokens,
 			&row.OutputTokens,

@@ -1867,6 +1867,8 @@ export interface GroupStat {
 export interface UserBreakdownItem {
   user_id: number
   email: string
+  username?: string | null
+  device_code?: string | null
   requests: number
   input_tokens: number
   output_tokens: number

@@ -58,10 +58,10 @@
                   @click="selectFilterUser(user)"
                   class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-700"
                 >
-                  <span class="font-medium text-gray-900 dark:text-white">{{ user.email }}</span>
+                  <span class="font-medium text-gray-900 dark:text-white">{{ getUserSearchDisplay(user) }}</span>
                   <span class="ml-2 text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
                   <span
-                    v-if="user.primary_redeem_code"
+                    v-if="user.primary_redeem_code && !shouldUseUserSearchIdentityAsPrimary(user)"
                     class="ml-2 rounded bg-blue-50 px-1.5 py-0.5 font-mono text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                   >
                     {{ user.primary_redeem_code }}
@@ -225,15 +225,13 @@
                   class="max-w-[22rem] truncate font-medium text-gray-900 dark:text-white"
                   :title="getSubscriptionUserTitle(row)"
                 >
-                  {{ userColumnMode === 'email'
-                    ? (row.user?.email || t('admin.redeem.userPrefix', { id: row.user_id }))
-                    : (row.user?.username || '-')
-                  }}
+                  {{ getSubscriptionUserDisplay(row) }}
                 </div>
                 <div class="flex min-w-0 flex-wrap items-center gap-1.5">
                   <span class="text-xs text-gray-500 dark:text-gray-400">#{{ row.user_id }}</span>
                   <template v-if="getSubscriptionIdentityCode(row)">
                     <span
+                      v-if="!isSubscriptionIdentityPrimary(row)"
                       class="inline-flex max-w-[16rem] items-center rounded bg-blue-50 px-1.5 py-0.5 font-mono text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                       :title="getSubscriptionIdentityCode(row) || undefined"
                     >
@@ -554,10 +552,10 @@
                 @click="selectUser(user)"
                 class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-700"
               >
-                <span class="font-medium text-gray-900 dark:text-white">{{ user.email }}</span>
+                <span class="font-medium text-gray-900 dark:text-white">{{ getUserSearchDisplay(user) }}</span>
                 <span class="ml-2 text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
                 <span
-                  v-if="user.primary_redeem_code"
+                  v-if="user.primary_redeem_code && !shouldUseUserSearchIdentityAsPrimary(user)"
                   class="ml-2 rounded bg-blue-50 px-1.5 py-0.5 font-mono text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                 >
                   {{ user.primary_redeem_code }}
@@ -830,7 +828,7 @@ import { adminAPI } from '@/api/admin'
 import type { UserSubscription, Group, GroupPlatform, SubscriptionType } from '@/types'
 import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@/components/common/types'
-import { formatDateTimeToMinute } from '@/utils/format'
+import { formatDateTimeToMinute, formatUserDisplayName } from '@/utils/format'
 import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -1010,13 +1008,23 @@ const showUserDropdown = ref(false)
 const selectedUser = ref<SimpleUser | null>(null)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
+const shouldUseUserSearchIdentityAsPrimary = (user: SimpleUser) => {
+  const identityCode = user.primary_redeem_code?.trim()
+  return Boolean(identityCode && (user.has_device_binding || user.primary_redeem_type === 'device_login'))
+}
+
 const getUserSearchDisplay = (user: SimpleUser) => {
   const identityCode = user.primary_redeem_code?.trim()
+  if (shouldUseUserSearchIdentityAsPrimary(user)) {
+    return formatUserDisplayName({ id: user.id, email: user.email, device_code: identityCode }, 36)
+  }
   return identityCode ? `${user.email} · ${identityCode}` : user.email
 }
 
 const getSubscriptionIdentityCode = (subscription: UserSubscription) =>
   subscription.device_identity_code?.trim() || ''
+
+const isSubscriptionIdentityPrimary = (subscription: UserSubscription) => Boolean(getSubscriptionIdentityCode(subscription))
 
 const copySubscriptionIdentityCode = async (subscription: UserSubscription) => {
   const identityCode = getSubscriptionIdentityCode(subscription)
@@ -1024,12 +1032,28 @@ const copySubscriptionIdentityCode = async (subscription: UserSubscription) => {
   await copyToClipboard(identityCode)
 }
 
-const getSubscriptionUserTitle = (subscription: UserSubscription) => {
+const getSubscriptionUserDisplay = (subscription: UserSubscription) => {
+  const user = subscription.user
   const identityCode = getSubscriptionIdentityCode(subscription)
-  const userLabel = userColumnMode.value === 'email'
-    ? (subscription.user?.email || t('admin.redeem.userPrefix', { id: subscription.user_id }))
-    : (subscription.user?.username || '-')
-  return identityCode ? `${userLabel} · ${identityCode}` : userLabel
+  if (userColumnMode.value === 'email') {
+    return formatUserDisplayName({
+      user_id: subscription.user_id,
+      email: user?.email,
+      device_identity_code: identityCode
+    }, 36)
+  }
+  return formatUserDisplayName({
+    user_id: subscription.user_id,
+    username: user?.username,
+    email: user?.email,
+    device_identity_code: identityCode
+  }, 36)
+}
+
+const getSubscriptionUserTitle = (subscription: UserSubscription) => {
+  const userLabel = getSubscriptionUserDisplay(subscription)
+  const email = subscription.user?.email?.trim()
+  return email && email !== userLabel ? `${userLabel} · ${email}` : userLabel
 }
 
 const filters = reactive({

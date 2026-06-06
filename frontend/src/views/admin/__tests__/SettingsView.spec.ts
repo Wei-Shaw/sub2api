@@ -10,6 +10,7 @@ const {
   getWebSearchEmulationConfig,
   updateWebSearchEmulationConfig,
   getAdminApiKey,
+  testTelegramConnection,
   getOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
@@ -38,6 +39,7 @@ const {
   getWebSearchEmulationConfig: vi.fn(),
   updateWebSearchEmulationConfig: vi.fn(),
   getAdminApiKey: vi.fn(),
+  testTelegramConnection: vi.fn(),
   getOverloadCooldownSettings: vi.fn(),
   getRateLimit429CooldownSettings: vi.fn(),
   updateRateLimit429CooldownSettings: vi.fn(),
@@ -85,6 +87,7 @@ vi.mock("@/api", () => ({
       getWebSearchEmulationConfig,
       updateWebSearchEmulationConfig,
       getAdminApiKey,
+      testTelegramConnection,
       getOverloadCooldownSettings,
       getRateLimit429CooldownSettings,
       updateRateLimit429CooldownSettings,
@@ -590,6 +593,32 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openEmailTab(wrapper: ReturnType<typeof mountView>) {
+  const emailTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.email"));
+
+  expect(emailTabButton).toBeDefined();
+  await emailTabButton?.trigger("click");
+  await flushPromises();
+}
+
+function findTelegramBotTokenInput(wrapper: ReturnType<typeof mountView>) {
+  return wrapper.findAll("input").find((node) =>
+    node
+      .attributes("placeholder")
+      ?.includes("admin.settings.telegramNotifications.botToken"),
+  );
+}
+
+function findTelegramChatIDInput(wrapper: ReturnType<typeof mountView>) {
+  return wrapper.findAll("input").find((node) =>
+    node
+      .attributes("placeholder")
+      ?.includes("admin.settings.telegramNotifications.chatIdPlaceholder"),
+  );
+}
+
 function getUsersTabToggles(wrapper: ReturnType<typeof mountView>) {
   const sections = wrapper.findAll(".card");
   const registrationCard = sections.find((node) =>
@@ -612,6 +641,108 @@ async function setViewport(width: number) {
   window.dispatchEvent(new Event("resize"));
   await nextTick();
 }
+
+function resetCommonSettingsMocks() {
+  getSettings.mockReset();
+  updateSettings.mockReset();
+  getWebSearchEmulationConfig.mockReset();
+  updateWebSearchEmulationConfig.mockReset();
+  getAdminApiKey.mockReset();
+  testTelegramConnection.mockReset();
+  getOverloadCooldownSettings.mockReset();
+  getRateLimit429CooldownSettings.mockReset();
+  updateRateLimit429CooldownSettings.mockReset();
+  getStreamTimeoutSettings.mockReset();
+  getRectifierSettings.mockReset();
+  getBetaPolicySettings.mockReset();
+  getGroups.mockReset();
+  listProxies.mockReset();
+  getProviders.mockReset();
+  updateProvider.mockReset();
+  createProvider.mockReset();
+  deleteProvider.mockReset();
+  fetchPublicSettings.mockReset();
+  adminSettingsFetch.mockReset();
+  showError.mockReset();
+  showSuccess.mockReset();
+  localeRef.value = "zh-CN";
+
+  getSettings.mockResolvedValue({ ...baseSettingsResponse });
+  updateSettings.mockImplementation(async (payload) => ({
+    ...baseSettingsResponse,
+    ...payload,
+  }));
+  getWebSearchEmulationConfig.mockResolvedValue({ enabled: false, providers: [] });
+  updateWebSearchEmulationConfig.mockResolvedValue({ enabled: false, providers: [] });
+  getAdminApiKey.mockResolvedValue({ exists: false, masked_key: "" });
+  testTelegramConnection.mockResolvedValue({ message: "ok" });
+  getOverloadCooldownSettings.mockResolvedValue({ enabled: true, cooldown_minutes: 10 });
+  getRateLimit429CooldownSettings.mockResolvedValue({ enabled: true, cooldown_seconds: 5 });
+  updateRateLimit429CooldownSettings.mockImplementation(async (payload) => payload);
+  getStreamTimeoutSettings.mockResolvedValue({
+    enabled: true,
+    action: "temp_unsched",
+    temp_unsched_minutes: 5,
+    threshold_count: 3,
+    threshold_window_minutes: 10,
+  });
+  getRectifierSettings.mockResolvedValue({
+    enabled: true,
+    thinking_signature_enabled: true,
+    thinking_budget_enabled: true,
+    apikey_signature_enabled: false,
+    apikey_signature_patterns: [],
+  });
+  getBetaPolicySettings.mockResolvedValue({ rules: [] });
+  getGroups.mockResolvedValue([]);
+  listProxies.mockResolvedValue({ items: [] });
+  getProviders.mockResolvedValue({ data: [] });
+  fetchPublicSettings.mockResolvedValue(undefined);
+  adminSettingsFetch.mockResolvedValue(undefined);
+}
+
+describe("admin SettingsView Telegram notification settings", () => {
+  beforeEach(() => {
+    resetCommonSettingsMocks();
+  });
+
+  it("renders the admin bot token field as readable text instead of a masked password", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openEmailTab(wrapper);
+
+    const tokenInput = findTelegramBotTokenInput(wrapper);
+    expect(tokenInput).toBeDefined();
+    expect(tokenInput?.attributes("type")).toBe("text");
+  });
+
+  it("tests Telegram using the unsaved bot token and chat id currently entered by admin", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openEmailTab(wrapper);
+
+    await findTelegramBotTokenInput(wrapper)?.setValue(
+      "telegram-test-token-fixture",
+    );
+    await findTelegramChatIDInput(wrapper)?.setValue("-1001234567890");
+
+    const testButton = wrapper
+      .findAll("button")
+      .find((node) =>
+        node.text().includes("admin.settings.telegramNotifications.testConnection"),
+      );
+    expect(testButton).toBeDefined();
+    await testButton?.trigger("click");
+    await flushPromises();
+
+    expect(testTelegramConnection).toHaveBeenCalledWith({
+      telegram_bot_token: "telegram-test-token-fixture",
+      telegram_chat_id: "-1001234567890",
+    });
+  });
+});
 
 describe("admin SettingsView registration and tab layout", () => {
   beforeEach(() => {

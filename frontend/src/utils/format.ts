@@ -376,15 +376,32 @@ export function ellipseMiddle(str: string, maxLen: number = 16): string {
   return `${str.slice(0, headLen)}…${str.slice(-tailLen)}`
 }
 
+export interface UserDisplayIdentity {
+  device_code?: string | null
+  deviceCode?: string | null
+  device_identity_code?: string | null
+  deviceIdentityCode?: string | null
+  username?: string | null
+  email?: string | null
+  user_id?: number | null
+  id?: number | null
+}
+
 /**
  * Format a user display name for charts/labels.
- * Priority: device_code > username (ellipsed) > email (ellipsed) > "User #id"
+ * Priority: device_code aliases > username (ellipsed) > email (ellipsed) > "User #id".
  */
 export function formatUserDisplayName(
-  user: { device_code?: string; username?: string; email?: string; user_id?: number },
+  user: UserDisplayIdentity,
   maxLen: number = 18
 ): string {
-  const deviceCode = user.device_code?.trim()
+  const deviceCode = (
+    user.device_code
+    || user.deviceCode
+    || user.device_identity_code
+    || user.deviceIdentityCode
+    || ''
+  ).trim()
   if (deviceCode) return deviceCode
 
   const username = user.username?.trim()
@@ -393,5 +410,5 @@ export function formatUserDisplayName(
   const email = user.email?.trim()
   if (email) return ellipseMiddle(email, maxLen)
 
-  return `User #${user.user_id ?? '?'}`
+  return `User #${user.user_id ?? user.id ?? '?'}`
 }

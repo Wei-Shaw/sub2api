@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"reflect"
+	"regexp"
 	"testing"
 	"time"
 
@@ -1044,4 +1045,50 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.Equal(t, "priority", *log.ServiceTier)
 	})
 
+}
+
+func TestUsageLogRepositoryGetUserBreakdownStatsIncludesIdentityFields(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+
+	mock.ExpectQuery(regexp.QuoteMeta("FROM usage_logs ul")).
+		WithArgs(start, end).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"user_id",
+			"email",
+			"username",
+			"device_code",
+			"requests",
+			"input_tokens",
+			"output_tokens",
+			"cache_tokens",
+			"total_tokens",
+			"cost",
+			"actual_cost",
+			"account_cost",
+		}).AddRow(
+			int64(42),
+			"invite-8794805d94e3@example.com",
+			"invite-8794805d94e3",
+			"DLG-ABCD-1234",
+			int64(12),
+			int64(1000),
+			int64(2000),
+			int64(456),
+			int64(3456),
+			1.23,
+			0.99,
+			1.11,
+		))
+
+	items, err := repo.GetUserBreakdownStats(context.Background(), start, end, usagestats.UserBreakdownDimension{}, 0)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, "invite-8794805d94e3@example.com", items[0].Email)
+	require.Equal(t, "invite-8794805d94e3", items[0].Username)
+	require.Equal(t, "DLG-ABCD-1234", items[0].DeviceCode)
+	require.NoError(t, mock.ExpectationsWereMet())
 }

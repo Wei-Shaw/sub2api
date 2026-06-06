@@ -29,12 +29,12 @@
         <template #cell-user="{ row }">
           <div class="text-sm">
             <button
-              v-if="row.user?.email"
+              v-if="row.user_id && formatUsageUserDisplay(row) !== '-'"
               class="font-medium text-primary-600 underline decoration-dashed underline-offset-2 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
               @click="$emit('userClick', row.user_id, row.user?.email)"
-              :title="t('admin.usage.clickToViewBalance')"
+              :title="formatUsageUserTitle(row)"
             >
-              {{ row.user.email }}
+              {{ formatUsageUserDisplay(row) }}
             </button>
             <span v-else class="font-medium text-gray-900 dark:text-white">-</span>
             <span v-if="row.user?.deleted_at" class="ml-1 inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30">
@@ -468,7 +468,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { formatDateTime, formatReasoningEffort } from '@/utils/format'
+import { formatDateTime, formatReasoningEffort, formatUserDisplayName } from '@/utils/format'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
@@ -573,6 +573,24 @@ const handleBatchFetchIpGeo = async () => {
   } finally {
     ipGeoBatchLoading.value = false
   }
+}
+
+const formatUsageUserDisplay = (row: AdminUsageLog): string => {
+  const label = formatUserDisplayName({
+    user_id: row.user_id,
+    device_code: row.device_code,
+    username: row.user?.username,
+    email: row.user?.email
+  }, 24)
+  return label === 'User #?' ? '-' : label
+}
+
+const formatUsageUserTitle = (row: AdminUsageLog): string => {
+  const label = formatUsageUserDisplay(row)
+  const email = row.user?.email?.trim()
+  const balanceHint = t('admin.usage.clickToViewBalance')
+  const identity = email && email !== label ? `${label} · ${email}` : label
+  return identity && identity !== '-' ? `${identity} · ${balanceHint}` : balanceHint
 }
 
 // Tooltip state - cost
