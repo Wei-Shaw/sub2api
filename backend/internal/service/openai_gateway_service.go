@@ -3066,6 +3066,7 @@ REDACTED
 		// Handle normal response
 		var usage *OpenAIUsage
 		var firstTokenMs *int
+		responseID := ""
 		imageCount := 0
 		var imageOutputSizes []string
 		if reqStream {
@@ -3075,6 +3076,7 @@ REDACTED
 		REDACTED
 			usage = streamResult.usage
 			firstTokenMs = streamResult.firstTokenMs
+			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
 	REDACTED else {
@@ -3083,9 +3085,11 @@ REDACTED
 				return nil, err
 		REDACTED
 			usage = nonStreamResult.usage
+			responseID = strings.TrimSpace(nonStreamResult.responseID)
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
 	REDACTED
+		s.bindHTTPResponseAccount(ctx, c, account, responseID)
 
 		// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
 		if account.Type == AccountTypeOAuth {
@@ -3100,6 +3104,7 @@ REDACTED
 
 		forwardResult := &OpenAIForwardResult{
 			RequestID:       resp.Header.Get("x-request-id"),
+			ResponseID:      responseID,
 			Usage:           *usage,
 			Model:           originalModel,
 			UpstreamModel:   upstreamModel,
@@ -3312,6 +3317,7 @@ REDACTED
 
 	var usage *OpenAIUsage
 	var firstTokenMs *int
+	responseID := ""
 	imageCount := 0
 	var imageOutputSizes []string
 	if reqStream {
@@ -3321,6 +3327,7 @@ REDACTED
 	REDACTED
 		usage = result.usage
 		firstTokenMs = result.firstTokenMs
+		responseID = strings.TrimSpace(result.responseID)
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 REDACTED else {
@@ -3329,9 +3336,11 @@ REDACTED else {
 			return nil, err
 	REDACTED
 		usage = result.usage
+		responseID = strings.TrimSpace(result.responseID)
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 REDACTED
+	s.bindHTTPResponseAccount(ctx, c, account, responseID)
 
 	if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
 		s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
@@ -3343,6 +3352,7 @@ REDACTED
 
 	forwardResult := &OpenAIForwardResult{
 		RequestID:       resp.Header.Get("x-request-id"),
+		ResponseID:      responseID,
 		Usage:           *usage,
 		Model:           reqModel,
 		UpstreamModel:   upstreamPassthroughModel,
@@ -3657,6 +3667,7 @@ REDACTED
 type openaiStreamingResultPassthrough struct {
 	usage            *OpenAIUsage
 	firstTokenMs     *int
+	responseID       string
 	imageCount       int
 	imageOutputSizes []string
 REDACTED
@@ -3664,6 +3675,7 @@ REDACTED
 type openaiNonStreamingResultPassthrough struct {
 	*OpenAIUsage
 	usage            *OpenAIUsage
+	responseID       string
 	imageCount       int
 	imageOutputSizes []string
 REDACTED
@@ -3807,6 +3819,7 @@ REDACTED
 	usage := &OpenAIUsage{REDACTED
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
+	responseID := ""
 	clientDisconnected := false
 	sawDone := false
 	sawTerminalEvent := false
@@ -3841,6 +3854,7 @@ REDACTED
 		return &openaiStreamingResultPassthrough{
 			usage:            usage,
 			firstTokenMs:     firstTokenMs,
+			responseID:       responseID,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
 	REDACTED
@@ -3875,6 +3889,9 @@ REDACTED
 		REDACTED
 			if openAIStreamEventIsTerminal(trimmedData) {
 				sawTerminalEvent = true
+		REDACTED
+			if responseID == "" {
+				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
 		REDACTED
 			imageCounter.AddSSEData(dataBytes)
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
@@ -4002,6 +4019,7 @@ REDACTED
 	return &openaiNonStreamingResultPassthrough{
 		OpenAIUsage:      usage,
 		usage:            usage,
+		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 REDACTED, nil
@@ -4065,6 +4083,7 @@ REDACTED
 	return &openaiNonStreamingResultPassthrough{
 		OpenAIUsage:      usage,
 		usage:            usage,
+		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
 REDACTED, nil
@@ -4526,6 +4545,7 @@ REDACTED
 type openaiStreamingResult struct {
 	usage            *OpenAIUsage
 	firstTokenMs     *int
+	responseID       string
 	imageCount       int
 	imageOutputSizes []string
 REDACTED
@@ -4533,6 +4553,7 @@ REDACTED
 type openaiNonStreamingResult struct {
 	*OpenAIUsage
 	usage            *OpenAIUsage
+	responseID       string
 	imageCount       int
 	imageOutputSizes []string
 REDACTED
@@ -4570,6 +4591,7 @@ REDACTED
 	usage := &OpenAIUsage{REDACTED
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
+	responseID := ""
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
@@ -4653,6 +4675,7 @@ REDACTED
 		return &openaiStreamingResult{
 			usage:            usage,
 			firstTokenMs:     firstTokenMs,
+			responseID:       responseID,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
 	REDACTED
@@ -4732,6 +4755,9 @@ REDACTED
 				sawTerminalEvent = true
 		REDACTED
 			eventType := strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			if responseID == "" {
+				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
+		REDACTED
 			forceFlushFailedEvent := false
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
@@ -5089,6 +5115,33 @@ REDACTED
 	return openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage"))
 REDACTED
 
+func extractOpenAIResponseIDFromJSONBytes(body []byte) string {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return ""
+REDACTED
+	if id := strings.TrimSpace(gjson.GetBytes(body, "id").String()); id != "" {
+		return id
+REDACTED
+	return strings.TrimSpace(gjson.GetBytes(body, "response.id").String())
+REDACTED
+
+func (s *OpenAIGatewayService) bindHTTPResponseAccount(ctx context.Context, c *gin.Context, account *Account, responseID string) {
+	if s == nil || account == nil || account.ID <= 0 {
+		return
+REDACTED
+	responseID = strings.TrimSpace(responseID)
+	if responseID == "" {
+		return
+REDACTED
+	store := s.getOpenAIWSStateStore()
+	if store == nil {
+		return
+REDACTED
+	groupID := getOpenAIGroupIDFromContext(c)
+	ttl := s.openAIWSResponseStickyTTL()
+	logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, store.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
+REDACTED
+
 func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 	if !value.Exists() || !value.IsObject() {
 		return OpenAIUsage{REDACTED, false
@@ -5169,6 +5222,7 @@ REDACTED
 	return &openaiNonStreamingResult{
 		OpenAIUsage:      usage,
 		usage:            usage,
+		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 REDACTED, nil
@@ -5234,6 +5288,7 @@ REDACTED
 	return &openaiNonStreamingResult{
 		OpenAIUsage:      usage,
 		usage:            usage,
+		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
 REDACTED, nil
