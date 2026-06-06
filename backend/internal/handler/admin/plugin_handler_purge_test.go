@@ -111,7 +111,7 @@ func TestDeleteHandler_Success(t *testing.T) {
 	}
 	var resp struct {
 		Code int                    `json:"code"`
-		Data map[string]interface{} `json:"data"`
+		Data map[string]any `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v body=%s", err, w.Body.String())

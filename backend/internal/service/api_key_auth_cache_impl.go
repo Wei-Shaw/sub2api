@@ -366,7 +366,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 // buildGroupExtraFromSnapshot 从快照的各平台 ConfigExtra 重建 GroupExtra，
 // 使得 ImageConfig()/AnthropicConfig()/OpenAIConfig()/AntigravityConfig() accessor
 // 在 cache-restored Group 上能正确命中 GroupExtra 路径。
-func buildGroupExtraFromSnapshot(gs *APIKeyAuthGroupSnapshot) map[string]interface{} {
+func buildGroupExtraFromSnapshot(gs *APIKeyAuthGroupSnapshot) map[string]any {
 	if gs == nil {
 		return nil
 	}
@@ -377,7 +377,7 @@ func buildGroupExtraFromSnapshot(gs *APIKeyAuthGroupSnapshot) map[string]interfa
 	if !hasImage && !hasAnthropic && !hasOpenAI && !hasAntigravity {
 		return nil
 	}
-	extra := make(map[string]interface{}, 4)
+	extra := make(map[string]any, 4)
 	if hasImage {
 		extra["image_config"] = gs.ImageConfigExtra
 	}

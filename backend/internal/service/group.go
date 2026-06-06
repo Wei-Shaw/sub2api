@@ -114,7 +114,7 @@ type Group struct {
 	RPMLimit int
 
 	// GroupExtra 插件平台扩展配置（plugin 平台使用）
-	GroupExtra map[string]interface{}
+	GroupExtra map[string]any
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -326,9 +326,9 @@ func (g *Group) AntigravityConfig() GroupAntigravityConfig {
 
 // mergeOpenAIConfigIntoExtra 将 OpenAI 配置合并到 GroupExtra 的 "openai_config" 键中。
 // 如果 extra 为 nil 则创建新 map。
-func mergeOpenAIConfigIntoExtra(extra map[string]interface{}, cfg GroupOpenAIConfig) map[string]interface{} {
+func mergeOpenAIConfigIntoExtra(extra map[string]any, cfg GroupOpenAIConfig) map[string]any {
 	if extra == nil {
-		extra = make(map[string]interface{})
+		extra = make(map[string]any)
 	}
 	extra["openai_config"] = &cfg
 	return extra
@@ -336,9 +336,9 @@ func mergeOpenAIConfigIntoExtra(extra map[string]interface{}, cfg GroupOpenAICon
 
 // mergeAntigravityConfigIntoExtra 将 Antigravity 配置合并到 GroupExtra 的 "antigravity_config" 键中。
 // 如果 extra 为 nil 则创建新 map。
-func mergeAntigravityConfigIntoExtra(extra map[string]interface{}, cfg GroupAntigravityConfig) map[string]interface{} {
+func mergeAntigravityConfigIntoExtra(extra map[string]any, cfg GroupAntigravityConfig) map[string]any {
 	if extra == nil {
-		extra = make(map[string]interface{})
+		extra = make(map[string]any)
 	}
 	extra["antigravity_config"] = &cfg
 	return extra
@@ -346,9 +346,9 @@ func mergeAntigravityConfigIntoExtra(extra map[string]interface{}, cfg GroupAnti
 
 // mergeImageConfigIntoExtra 将图片配置合并到 GroupExtra 的 "image_config" 键中。
 // 如果 extra 为 nil 则创建新 map。
-func mergeImageConfigIntoExtra(extra map[string]interface{}, cfg GroupImageConfig) map[string]interface{} {
+func mergeImageConfigIntoExtra(extra map[string]any, cfg GroupImageConfig) map[string]any {
 	if extra == nil {
-		extra = make(map[string]interface{})
+		extra = make(map[string]any)
 	}
 	extra["image_config"] = &cfg
 	return extra
@@ -356,9 +356,9 @@ func mergeImageConfigIntoExtra(extra map[string]interface{}, cfg GroupImageConfi
 
 // mergeAnthropicConfigIntoExtra 将 Anthropic 配置合并到 GroupExtra 的 "anthropic_config" 键中。
 // 如果 extra 为 nil 则创建新 map。
-func mergeAnthropicConfigIntoExtra(extra map[string]interface{}, cfg GroupAnthropicConfig) map[string]interface{} {
+func mergeAnthropicConfigIntoExtra(extra map[string]any, cfg GroupAnthropicConfig) map[string]any {
 	if extra == nil {
-		extra = make(map[string]interface{})
+		extra = make(map[string]any)
 	}
 	extra["anthropic_config"] = &cfg
 	return extra

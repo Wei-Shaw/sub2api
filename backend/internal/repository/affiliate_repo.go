@@ -1064,7 +1064,7 @@ func (r *affiliateRepository) SetUserRebateRate(ctx context.Context, userID int6
 			return err
 		}
 		// nullableArg lets us use a single UPDATE for both "set value" and
-		// "clear" cases — database/sql converts nil interface{} to SQL NULL.
+		// "clear" cases — database/sql converts nil any to SQL NULL.
 		res, err := txClient.ExecContext(txCtx, `
 UPDATE user_affiliates
 SET aff_rebate_rate_percent = $1,
@@ -1107,7 +1107,7 @@ WHERE user_id = ANY($2)`, nullableArg(ratePercent), pq.Array(userIDs))
 	})
 }
 
-// nullableArg unwraps a *float64 into an interface{} suitable for SQL parameter
+// nullableArg unwraps a *float64 into an any suitable for SQL parameter
 // binding: nil pointer → SQL NULL, non-nil → the float value.
 func nullableArg(v *float64) any {
 	if v == nil {
