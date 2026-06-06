@@ -131,7 +131,7 @@ REDACTED
 
 	// 验证所有权
 	if key.UserID != subject.UserID {
-		response.Forbidden(c, "Not authorized to access this key")
+		response.NotFound(c, "API key not found")
 		return
 REDACTED
 
