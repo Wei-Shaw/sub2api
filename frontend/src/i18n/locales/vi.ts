@@ -908,6 +908,22 @@ export default {
     perMillionTokens: '/ 1M Token',
     unitPrice: 'Đơn giá mỗi lần',
     imageUnitPrice: 'Đơn giá mỗi ảnh',
+    imageBillingSize: 'Kích thước tính phí',
+    imageInputSize: 'Kích thước đầu vào',
+    imageOutputSize: 'Kích thước đầu ra',
+    imageOutputTokens: 'Token đầu ra ảnh',
+    imageOutputTokenPrice: 'Đơn giá token đầu ra ảnh',
+    imageOutputCost: 'Chi phí đầu ra ảnh',
+    imageSizeSource: 'Nguồn kích thước',
+    imageSizeBreakdown: 'Chi tiết kích thước',
+    imageSizeSourceOutput: 'Đầu ra upstream',
+    imageSizeSourceInput: 'Đầu vào yêu cầu',
+    imageSizeSourceDefault: 'Mức tính phí mặc định',
+    imageSizeSourceLegacy: 'Bản ghi lịch sử',
+    imageSizeSourceMissing: 'Chưa ghi nhận',
+    imageSizeNotRecorded: 'Chưa ghi nhận',
+    imageSizeLegacyUnstandardized: 'Lịch sử không chuẩn hóa',
+    imageSizeUnknown: 'Không xác định',
     cacheRead: 'Đọc cache',
     cacheWrite: 'Ghi cache',
     serviceTier: 'Cấp dịch vụ',
@@ -928,7 +944,26 @@ export default {
     userAgent: 'User-Agent',
     imageCount: 'Số lượng ảnh',
     imageTotalPrice: 'Tổng giá ảnh',
+    tabs: { usage: 'Chi tiết sử dụng', errors: 'Yêu cầu lỗi' },
+    errors: {
+      time: 'Thời gian', model: 'Mô hình', endpoint: 'Endpoint', status: 'Mã trạng thái',
+      category: 'Phân loại', platform: 'Nền tảng', message: 'Thông báo lỗi',
+      keyName: 'Tên key', keyDeleted: 'Đã xóa', allKeys: 'Tất cả key',
+      modelPlaceholder: 'Tìm mô hình', allCategories: 'Tất cả phân loại',
+      empty: 'Chưa có yêu cầu lỗi', failedToLoad: 'Tải yêu cầu lỗi thất bại',
+      categories: {
+        auth: 'Lỗi xác thực', rate_limit: 'Giới hạn tốc độ', quota: 'Số dư/thuê bao',
+        invalid_request: 'Tham số lỗi', service_unavailable: 'Dịch vụ tạm không khả dụng',
+        upstream: 'Lỗi upstream', internal: 'Lỗi nền tảng', other: 'Khác',
+      },
+      detail: {
+        title: 'Chi tiết yêu cầu lỗi',
+        responseBody: 'Nội dung phản hồi upstream',
+        upstreamStatus: 'Mã trạng thái upstream',
+        loadFailed: 'Tải chi tiết thất bại, vui lòng thử lại sau',
+      },
     },
+  },
 
   // Shared keys for channel monitor (admin + user views)
   monitorCommon: {
@@ -4752,6 +4787,8 @@ export default {
         group: 'Nhóm',
         user: 'Người dùng',
         userId: 'ID người dùng',
+        apiKey: 'API Key',
+        keyDeletedBadge: 'Key đã xóa',
         deviceCode: 'Mã thiết bị',
         account: 'Tài khoản',
         accountId: 'ID tài khoản',
@@ -4921,7 +4958,11 @@ export default {
         suggestRequest: '⚠️ Yêu cầu client bị lỗi, khuyến nghị: liên hệ khách hàng để sửa tham số yêu cầu / đánh dấu đã giải quyết thủ công',
         suggestAuth: '⚠️ Xác thực thất bại, khuyến nghị: kiểm tra API Key còn hợp lệ hay không / liên hệ khách hàng cập nhật thông tin xác thực',
         suggestPlatform: '🚨 Lỗi nền tảng, khuyến nghị điều tra và khắc phục ngay',
-        suggestGeneric: 'Xem chi tiết để biết thêm thông tin'
+        suggestGeneric: 'Xem chi tiết để biết thêm thông tin',
+        apiKeyPrefix: 'Tiền tố key',
+        attemptedKeyPrefix: 'Tiền tố key đã thử',
+        deletedKeyOwner: 'Chủ sở hữu key đã xóa',
+        keyDeletedBadge: 'Key đã xóa'
       },
       requestDetails: {
         title: 'Chi tiết yêu cầu',
@@ -6415,6 +6456,14 @@ export default {
       openaiExperimentalScheduler: {
         title: 'Chiến lược điều phối thử nghiệm OpenAI',
         description: 'Mặc định tắt. Khi bật, chỉ ảnh hưởng đến logic lựa chọn điều phối thử nghiệm giữa các tài khoản OpenAI trong gateway này, không đại diện cho khả năng chính thức của upstream OpenAI.'
+      },
+      usageRecords: {
+        title: 'Bản ghi sử dụng',
+        description: 'Cài đặt cho bản ghi sử dụng và yêu cầu lỗi hiển thị cho người dùng cuối.',
+      },
+      user_error_view: {
+        label: 'Cho phép người dùng xem yêu cầu lỗi của chính họ',
+        description: 'Khi bật, người dùng có thể xem phiên bản đã che thông tin của các yêu cầu thất bại trên trang sử dụng (không có chi tiết nội bộ/upstream). Cần bật giám sát vận hành để có dữ liệu.',
       },
       telegramNotifications: {
         title: 'Thông báo Telegram',

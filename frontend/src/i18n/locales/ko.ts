@@ -908,6 +908,22 @@ export default {
     perMillionTokens: '/ 1M Token',
     unitPrice: '건당 가격',
     imageUnitPrice: '장당 가격',
+    imageBillingSize: '과금 크기',
+    imageInputSize: '입력 크기',
+    imageOutputSize: '출력 크기',
+    imageOutputTokens: '이미지 출력 Token',
+    imageOutputTokenPrice: '이미지 출력 단가',
+    imageOutputCost: '이미지 출력 비용',
+    imageSizeSource: '크기 출처',
+    imageSizeBreakdown: '크기 상세',
+    imageSizeSourceOutput: '업스트림 출력',
+    imageSizeSourceInput: '요청 입력',
+    imageSizeSourceDefault: '기본 과금 등급',
+    imageSizeSourceLegacy: '기록 데이터',
+    imageSizeSourceMissing: '기록 없음',
+    imageSizeNotRecorded: '기록 없음',
+    imageSizeLegacyUnstandardized: '비표준 기록',
+    imageSizeUnknown: '알 수 없음',
     cacheRead: '읽기',
     cacheWrite: '쓰기',
     serviceTier: '서비스 티어',
@@ -926,9 +942,28 @@ export default {
     exportExcelFailed: '사용 데이터 내보내기에 실패했습니다',
     imageUnit: '장',
     userAgent: 'User-Agent',
-    imageCount: 'Image count',
-    imageTotalPrice: 'Image total price',
+    imageCount: '이미지 수',
+    imageTotalPrice: '이미지 총액',
+    tabs: { usage: '사용 상세', errors: '오류 요청' },
+    errors: {
+      time: '시간', model: '모델', endpoint: '엔드포인트', status: '상태 코드',
+      category: '분류', platform: '플랫폼', message: '오류 메시지',
+      keyName: 'Key 이름', keyDeleted: '삭제됨', allKeys: '전체 Key',
+      modelPlaceholder: '모델 검색', allCategories: '전체 분류',
+      empty: '오류 요청이 없습니다', failedToLoad: '오류 요청 로드 실패',
+      categories: {
+        auth: '인증 실패', rate_limit: '속도 제한', quota: '잔액/구독',
+        invalid_request: '파라미터 오류', service_unavailable: '서비스 일시 사용 불가',
+        upstream: '업스트림 오류', internal: '플랫폼 오류', other: '기타',
+      },
+      detail: {
+        title: '오류 요청 상세',
+        responseBody: '업스트림 응답 내용',
+        upstreamStatus: '업스트림 상태 코드',
+        loadFailed: '상세 로드 실패, 나중에 다시 시도하세요',
+      },
     },
+  },
 
   // Shared keys for channel monitor (admin + user views)
   monitorCommon: {
@@ -4752,6 +4787,8 @@ export default {
         group: '그룹',
         user: '사용자',
         userId: '사용자 ID',
+        apiKey: 'API Key',
+        keyDeletedBadge: 'Key 삭제됨',
         deviceCode: '디바이스 코드',
         account: '계정',
         accountId: '계정 ID',
@@ -4921,7 +4958,11 @@ export default {
         suggestRequest: '⚠️ 클라이언트 요청 오류입니다. 고객에게 요청 파라미터 수정을 안내하거나 수동으로 해결 처리하세요',
         suggestAuth: '⚠️ 인증 실패입니다. API Key 유효성을 확인하거나 고객에게 자격 증명 갱신을 요청하세요',
         suggestPlatform: '🚨 플랫폼 오류입니다. 즉시 점검 및 수정을 권장합니다',
-        suggestGeneric: '자세한 정보는 상세를 확인하세요'
+        suggestGeneric: '자세한 정보는 상세를 확인하세요',
+        apiKeyPrefix: 'Key 접두사',
+        attemptedKeyPrefix: '시도한 Key 접두사',
+        deletedKeyOwner: '삭제된 Key 소유자',
+        keyDeletedBadge: 'Key 삭제됨'
       },
       requestDetails: {
         title: '요청 상세',
@@ -6415,6 +6456,14 @@ export default {
       openaiExperimentalScheduler: {
         title: 'OpenAI 실험 스케줄링 정책',
         description: '기본적으로 비활성화됩니다. 활성화해도 이 게이트웨이의 OpenAI 계정 간 실험적 스케줄링 선택 로직에만 영향을 주며, 업스트림 OpenAI 공식 기능을 의미하지는 않습니다.'
+      },
+      usageRecords: {
+        title: '사용 기록',
+        description: '최종 사용자에게 보이는 사용 및 실패 요청 기록 설정입니다.',
+      },
+      user_error_view: {
+        label: '사용자가 자신의 오류 요청을 볼 수 있도록 허용',
+        description: '활성화하면 사용자는 사용 페이지에서 자신의 실패 요청을 마스킹된 형태로 볼 수 있습니다(내부/업스트림 상세 제외). 데이터가 있으려면 운영 모니터링이 활성화되어야 합니다.',
       },
       telegramNotifications: {
         title: 'Telegram 알림',
