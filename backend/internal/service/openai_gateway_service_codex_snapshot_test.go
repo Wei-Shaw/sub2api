@@ -104,37 +104,36 @@ func TestBuildCodexUsageExtraUpdates_UsesSnapshotUpdatedAt(t *testing.T) {
 	}
 }
 
-func TestBuildCodexUsageExtraUpdates_NormalizesFiveHourRemainingToUsedPercent(t *testing.T) {
-	primaryUsed := 93.0
-	primaryReset := 86400
-	primaryWindow := 10080
-	secondaryRemaining := 6.0
-	secondaryReset := 3600
+// TestBuildCodexUsageExtraUpdates_FreshAccountUsedPercentNotInverted_Issue2994 locks in the
+// canonical "used %" semantics for the 5h window. A fresh account reports a tiny
+// secondary-used-percent (~1%); the stored codex_5h_used_percent must equal that value
+// directly and must NOT be inverted to ~99%. Regression guard for issue #2994 / the reverted
+// commit b65dde63 (PR #2918), which applied `100 - used` and made fresh accounts look
+// exhausted, tripping auto-pause and excluding them from scheduling.
+func TestBuildCodexUsageExtraUpdates_FreshAccountUsedPercentNotInverted_Issue2994(t *testing.T) {
+	secondaryUsed := 1.0 // 5h window: barely used
 	secondaryWindow := 300
+	primaryUsed := 2.0 // 7d window: barely used
+	primaryWindow := 10080
 
 	snapshot := &OpenAICodexUsageSnapshot{
-		PrimaryUsedPercent:         &primaryUsed,
-		PrimaryResetAfterSeconds:   &primaryReset,
-		PrimaryWindowMinutes:       &primaryWindow,
-		SecondaryUsedPercent:       &secondaryRemaining,
-		SecondaryResetAfterSeconds: &secondaryReset,
-		SecondaryWindowMinutes:     &secondaryWindow,
-		UpdatedAt:                  "2026-05-30T07:04:09Z",
+		PrimaryUsedPercent:     &primaryUsed,
+		PrimaryWindowMinutes:   &primaryWindow,
+		SecondaryUsedPercent:   &secondaryUsed,
+		SecondaryWindowMinutes: &secondaryWindow,
+		UpdatedAt:              "2026-02-16T10:00:00Z",
 	}
 
-	updates := buildCodexUsageExtraUpdates(snapshot, time.Time{})
+	updates := buildCodexUsageExtraUpdates(snapshot, time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC))
 	if updates == nil {
 		t.Fatal("expected non-nil updates")
 	}
 
-	if got := updates["codex_secondary_used_percent"]; got != 6.0 {
-		t.Fatalf("codex_secondary_used_percent = %v, want raw upstream value 6", got)
+	if got := updates["codex_5h_used_percent"]; got != 1.0 {
+		t.Fatalf("codex_5h_used_percent = %v, want 1.0 (direct used%%, NOT inverted to 99)", got)
 	}
-	if got := updates["codex_5h_used_percent"]; got != 94.0 {
-		t.Fatalf("codex_5h_used_percent = %v, want 94", got)
-	}
-	if got := updates["codex_7d_used_percent"]; got != 93.0 {
-		t.Fatalf("codex_7d_used_percent = %v, want 93", got)
+	if got := updates["codex_7d_used_percent"]; got != 2.0 {
+		t.Fatalf("codex_7d_used_percent = %v, want 2.0 (direct used%%, NOT inverted to 98)", got)
 	}
 }
 

@@ -227,6 +227,30 @@ func TestOpenAIGatewayService_GenerateSessionHash_AttachesLegacyHashToContext(t 
 	require.NotEmpty(t, openAILegacySessionHashFromContext(c.Request.Context()))
 }
 
+func TestExtractOpenAIResponseIDFromJSONBytes(t *testing.T) {
+	require.Equal(t, "resp_json", extractOpenAIResponseIDFromJSONBytes([]byte(`{"id":"resp_json"}`)))
+	require.Equal(t, "resp_sse", extractOpenAIResponseIDFromJSONBytes([]byte(`{"type":"response.completed","response":{"id":"resp_sse"}}`)))
+	require.Empty(t, extractOpenAIResponseIDFromJSONBytes([]byte(`{"response":{}}`)))
+	require.Empty(t, extractOpenAIResponseIDFromJSONBytes([]byte(`not-json`)))
+}
+
+func TestOpenAIGatewayService_BindHTTPResponseAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	groupID := int64(4201)
+	c.Set("api_key", &APIKey{ID: 501, GroupID: &groupID})
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 37001, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	svc.bindHTTPResponseAccount(context.Background(), c, account, "resp_http_001")
+
+	got, err := svc.getOpenAIWSStateStore().GetResponseAccount(context.Background(), groupID, "resp_http_001")
+	require.NoError(t, err)
+	require.Equal(t, account.ID, got)
+}
+
 func TestOpenAIGatewayService_GenerateExplicitSessionHash_SkipsContentFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &OpenAIGatewayService{}
@@ -421,6 +445,57 @@ func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T)
 	}
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAISelectAccountWithLoadAwareness_ImageRateLimitSkipsOnlyImageRequests(t *testing.T) {
+	future := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
+	groupID := int64(1)
+
+	imageLimited := Account{
+		ID:          1,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			modelRateLimitsKey: map[string]any{
+				openAIImageGenerationRateLimitKey: map[string]any{
+					"rate_limit_reset_at": future,
+				},
+			},
+		},
+	}
+	available := Account{
+		ID:          2,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+	}
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{imageLimited, available}},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+
+	imageSelection, err := svc.SelectAccountWithLoadAwareness(WithOpenAIImageGenerationIntent(context.Background()), &groupID, "", "gpt-5.4", nil)
+	require.NoError(t, err)
+	require.NotNil(t, imageSelection)
+	require.Equal(t, available.ID, imageSelection.Account.ID)
+	if imageSelection.ReleaseFunc != nil {
+		imageSelection.ReleaseFunc()
+	}
+
+	textSelection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gpt-5.4", nil)
+	require.NoError(t, err)
+	require.NotNil(t, textSelection)
+	require.Equal(t, imageLimited.ID, textSelection.Account.ID)
+	if textSelection.ReleaseFunc != nil {
+		textSelection.ReleaseFunc()
 	}
 }
 
@@ -1233,6 +1308,85 @@ func TestOpenAIStreamingPreambleKeepaliveUsesDownstreamIdle(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "response.completed")
 }
 
+func TestOpenAIStreamingNormalizesTerminalOutputFromDeltas(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.created","response":{"id":"resp_sdk_parse"}}`,
+			"",
+			`data: {"type":"response.output_text.delta","delta":"pon"}`,
+			"",
+			`data: {"type":"response.output_text.delta","delta":"g"}`,
+			"",
+			`data: {"type":"response.completed","response":{"id":"resp_sdk_parse","status":"completed","output":null,"usage":{"input_tokens":1,"output_tokens":1}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-sdk-parse"}},
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	terminalType, terminalPayload, ok := extractOpenAISSETerminalEvent(rec.Body.String())
+	require.True(t, ok)
+	require.Equal(t, "response.completed", terminalType)
+	output := gjson.GetBytes(terminalPayload, "response.output")
+	require.True(t, output.IsArray())
+	require.Len(t, output.Array(), 1)
+	require.Equal(t, "pong", gjson.GetBytes(terminalPayload, "response.output.0.content.0.text").String())
+}
+
+func TestOpenAIStreamingNormalizesTerminalOutputToEmptyArray(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.completed","response":{"id":"resp_empty","status":"completed","output":null,"usage":{"input_tokens":1,"output_tokens":0}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-empty-output"}},
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	terminalType, terminalPayload, ok := extractOpenAISSETerminalEvent(rec.Body.String())
+	require.True(t, ok)
+	require.Equal(t, "response.completed", terminalType)
+	output := gjson.GetBytes(terminalPayload, "response.output")
+	require.True(t, output.IsArray())
+	require.Len(t, output.Array(), 0)
+}
+
 func TestOpenAIStreamingPolicyResponseFailedBeforeOutputPassesThrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
@@ -1774,7 +1928,7 @@ func TestOpenAIUpdateCodexUsageSnapshotFromHeaders(t *testing.T) {
 
 	select {
 	case updates := <-repo.updateExtraCalls:
-		require.Equal(t, 88.0, updates["codex_5h_used_percent"])
+		require.Equal(t, 12.0, updates["codex_5h_used_percent"])
 		require.Equal(t, 34.0, updates["codex_7d_used_percent"])
 		require.Equal(t, 600, updates["codex_5h_reset_after_seconds"])
 		require.Equal(t, 86400, updates["codex_7d_reset_after_seconds"])
