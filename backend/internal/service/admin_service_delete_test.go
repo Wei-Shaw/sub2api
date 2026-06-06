@@ -515,6 +515,31 @@ REDACTED
 	require.Equal(t, []int64{7REDACTED, repo.deletedIDs)
 REDACTED
 
+func TestAdminService_DeleteUser_DeletesOwnedAPIKeys(t *testing.T) {
+	repo := &userRepoStub{user: &User{ID: 7, Role: RoleUserREDACTEDREDACTED
+	apiKeyRepo := &apiKeyRepoStub{
+		allowListByUserID: true,
+		listByUserIDKeys: []APIKey{
+			{ID: 11, UserID: 7, Key: "sk-user-1"REDACTED,
+			{ID: 12, UserID: 7, Key: "sk-user-2"REDACTED,
+	REDACTED,
+REDACTED
+	invalidator := &authCacheInvalidatorStub{REDACTED
+	svc := &adminServiceImpl{
+		userRepo:             repo,
+		apiKeyRepo:           apiKeyRepo,
+		authCacheInvalidator: invalidator,
+REDACTED
+
+	err := svc.DeleteUser(context.Background(), 7)
+REDACTED
+	require.Equal(t, []int64{7REDACTED, repo.deletedIDs)
+	require.Equal(t, []int64{7REDACTED, apiKeyRepo.listByUserIDCalls)
+	require.Equal(t, []int64{11, 12REDACTED, apiKeyRepo.deletedIDs)
+	require.ElementsMatch(t, []string{"sk-user-1", "sk-user-2"REDACTED, invalidator.keys)
+	require.Equal(t, []int64{7REDACTED, invalidator.userIDs)
+REDACTED
+
 func TestAdminService_DeleteUser_NotFound(t *testing.T) {
 	repo := &userRepoStub{getErr: ErrUserNotFoundREDACTED
 	svc := &adminServiceImpl{userRepo: repoREDACTED
