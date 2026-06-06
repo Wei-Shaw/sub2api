@@ -736,6 +736,7 @@ export default {
       description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行。',
       copy: '复制',
       copied: '已复制',
+      download: '下载',
       note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
       noGroupTitle: '请先分配分组',
       noGroupDescription:
@@ -743,6 +744,9 @@ export default {
       openai: {
         description: '将以下配置文件添加到 Codex CLI 配置目录中。',
         configTomlHint: '请确保以下内容位于 config.toml 文件的开头部分',
+        installScriptHintUnix: '下载后在终端运行 bash install-codex-ws.sh。脚本会自动创建 ~/.codex，并备份已有 config.toml/auth.json。',
+        installScriptHintWindows:
+          '下载后在 PowerShell 中运行 powershell -ExecutionPolicy Bypass -File .\\install-codex-ws.ps1。脚本会自动创建 %userprofile%\\.codex，并备份已有 config.toml/auth.json。',
         note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
         noteWindows:
           '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。'
@@ -910,6 +914,9 @@ export default {
     imageBillingSize: '计费尺寸',
     imageInputSize: '输入尺寸',
     imageOutputSize: '输出尺寸',
+    imageOutputTokens: '图片输出 Token',
+    imageOutputTokenPrice: '图片输出单价',
+    imageOutputCost: '图片输出成本',
     imageSizeSource: '尺寸来源',
     imageSizeBreakdown: '尺寸明细',
     imageSizeSourceOutput: '上游输出',
@@ -937,7 +944,26 @@ export default {
     exportExcelSuccess: '使用数据导出成功（Excel格式）',
     exportExcelFailed: '使用数据导出失败',
     imageUnit: '张',
-    userAgent: 'User-Agent'
+    userAgent: 'User-Agent',
+    tabs: { usage: '用量明细', errors: '错误请求' },
+    errors: {
+      time: '时间', model: '模型', endpoint: '端点', status: '状态码',
+      category: '分类', platform: '平台', message: '错误信息',
+      keyName: 'Key 名称', keyDeleted: '已删除', allKeys: '全部 Key',
+      modelPlaceholder: '搜索模型', allCategories: '全部分类',
+      empty: '暂无错误请求', failedToLoad: '加载错误请求失败',
+      categories: {
+        auth: '认证失败', rate_limit: '限流', quota: '余额/订阅',
+        invalid_request: '参数错误', service_unavailable: '服务暂时不可用',
+        upstream: '上游错误', internal: '平台错误', other: '其他',
+      },
+      detail: {
+        title: '错误请求详情',
+        responseBody: '上游响应内容',
+        upstreamStatus: '上游状态码',
+        loadFailed: '加载详情失败，请稍后重试',
+      },
+    },
   },
 
   // Shared keys for channel monitor (admin + user views)
@@ -2176,6 +2202,7 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
+        xai: 'xAI',
         antigravity: 'Antigravity',
       },
       saving: '保存中...',
@@ -3237,6 +3264,7 @@ export default {
         openai: 'OpenAI',
         anthropic: 'Anthropic',
         gemini: 'Gemini',
+        xai: 'xAI',
         antigravity: 'Antigravity',
       },
       types: {
@@ -3461,6 +3489,7 @@ export default {
       vertexSaJsonInvalid: 'Service Account JSON 格式无效',
       vertexSaJsonRequired: '请上传 Service Account JSON',
       oauthSetupToken: 'OAuth / Setup Token',
+      xaiAccount: 'xAI 账号',
       addMethod: '添加方式',
       setupTokenLongLived: 'Setup Token（长期有效）',
       baseUrl: 'Base URL',
@@ -3561,6 +3590,10 @@ export default {
         webSearchEnabled: '开启',
         webSearchDisabled: '关闭',
       },
+      xai: {
+        baseUrlHint: '默认 xAI API 地址。除非使用兼容网关，否则保持 https://api.x.ai/v1。',
+        apiKeyHint: '可使用 xAI API Key，或选择 OAuth 接入 Grok CLI 凭证。'
+      },
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
       modelMapping: '模型映射',
@@ -3580,7 +3613,8 @@ export default {
       syncUpstreamModels: '同步上游支持的模型',
       syncUpstreamModelsLoading: '同步上游中...',
       syncUpstreamModelsSuccess: '已从上游同步 {count} 个新模型（上游共 {total} 个）',
-      syncUpstreamModelsNoChanges: '上游 {count} 个模型均已在白名单中',
+      syncUpstreamModelsReplaceSuccess: '已用上游模型覆盖当前配置：保留 {count} 个上游模型，移除 {removed} 个失效模型',
+      syncUpstreamModelsNoChanges: '上游 {count} 个模型已与当前配置一致',
       syncUpstreamModelsEmpty: '上游没有返回可同步的模型',
       syncUpstreamModelsFailed: '同步上游模型失败',
       syncUpstreamModelsError: '同步上游模型失败：{message}',
@@ -3869,6 +3903,32 @@ export default {
           pleaseEnterRefreshToken: '请输入 Refresh Token',
           pleaseEnterSessionToken: '请输入 Session Token'
         },
+        // xAI/Grok specific
+        xai: {
+          title: 'xAI 账户授权',
+          followSteps: '请按照以下步骤完成 xAI/Grok 账户授权：',
+          step1GenerateUrl: '生成授权链接',
+          generateAuthUrl: '生成授权链接',
+          step2OpenUrl: '在浏览器中打开链接并完成授权',
+          openUrlDesc: '请在新标签页中打开授权链接，登录您的 xAI 账户并授权。',
+          importantNotice:
+            '重要提示：授权后浏览器地址栏变为 http://127.0.0.1:56121/callback... 或 http://localhost... 时，复制完整回调链接或 code。',
+          step3EnterCode: '输入授权链接或 Code',
+          authCodeDesc: '授权完成后，复制回调链接（推荐）或仅复制 code，粘贴到下方即可。',
+          authCode: '授权链接或 Code',
+          authCodePlaceholder: '方式1：粘贴完整回调链接\n方式2：仅粘贴 code 参数的值',
+          authCodeHint: '系统会自动从链接中解析 code/state。',
+          failedToGenerateUrl: '生成 xAI 授权链接失败',
+          missingExchangeParams: '缺少 code / session_id / state',
+          failedToExchangeCode: 'xAI 授权码兑换失败',
+          refreshTokenAuth: '手动输入 RT',
+          refreshTokenDesc: '输入您已有的 xAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
+          refreshTokenPlaceholder: '粘贴您的 xAI Refresh Token...\n支持多个，每行一个',
+          validating: '验证中...',
+          validateAndCreate: '验证并创建账号',
+          pleaseEnterRefreshToken: '请输入 Refresh Token',
+          failedToValidateRT: '验证 xAI Refresh Token 失败'
+        },
         // Gemini specific
         gemini: {
           title: 'Gemini 账户授权',
@@ -4097,6 +4157,7 @@ export default {
       usingModel: '使用模型：{model}',
       sendingTestMessage: '发送测试消息："hi"',
       sendingImageRequest: '发送生图测试请求...',
+      sendingVideoRequest: '发送视频生成测试请求...',
       response: '响应：',
       startTest: '开始测试',
       retry: '重试',
@@ -4114,6 +4175,13 @@ export default {
       imageTestMode: '模式：生图测试',
       imagePreview: '生成结果：',
       imageReceived: '已收到第 {count} 张测试图片',
+      videoPromptLabel: '视频提示词',
+      videoPromptPlaceholder: '例如：一个蓝色小方块在白色背景上缓慢从左向右移动。',
+      videoPromptDefault: 'A tiny blue square slowly moving left to right on a white background.',
+      videoTestHint: '选择视频模型后，这里会创建视频任务并轮询结果，完成后展示返回视频。',
+      videoTestMode: '模式：视频生成测试',
+      videoPreview: '生成视频：',
+      videoReceived: '已收到第 {count} 个测试视频',
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',
@@ -4765,7 +4833,8 @@ export default {
       errorRate: '错误率：',
       upstreamRate: '上游错误率：',
       latencyDuration: '请求时长',
-      ttftLabel: '首 Token 延迟（毫秒）',
+      durationLabel: '总耗时（duration_ms）',
+      ttftLabel: 'TTFT（first_token_ms）',
       p50: 'p50',
       p90: 'p90',
       p95: 'p95',
@@ -4916,6 +4985,8 @@ export default {
         group: '分组',
         user: '用户',
         userId: '用户 ID',
+        apiKey: 'API Key',
+        keyDeletedBadge: 'Key 已删除',
         account: '账号',
         accountId: '账号 ID',
         status: '状态码',
@@ -5042,7 +5113,11 @@ export default {
         suggestRequest: '⚠️ 客户端请求错误，建议：联系客户修正请求参数 / 手动标记已解决',
         suggestAuth: '⚠️ 认证失败，建议：检查 API Key 是否有效 / 联系客户更新凭证',
         suggestPlatform: '🚨 平台错误，建议立即排查修复',
-        suggestGeneric: '查看详情了解更多信息'
+        suggestGeneric: '查看详情了解更多信息',
+        apiKeyPrefix: 'Key 前缀',
+        attemptedKeyPrefix: '尝试的 Key 前缀',
+        deletedKeyOwner: '已删除 Key 所有者',
+        keyDeletedBadge: 'Key 已删除'
       },
       requestDetails: {
         title: '请求明细',
@@ -5428,6 +5503,12 @@ export default {
         raw: 'Raw（不聚合）',
         preagg: 'Preagg（聚合）'
       },
+      requestType: {
+        all: '全部请求类型',
+        sync: '同步',
+        stream: '流式',
+        ws_v2: 'WS v2'
+      },
       accountAvailability: {
         available: '可用',
         unavailable: '不可用',
@@ -5452,8 +5533,8 @@ export default {
         tokens: '当前时间窗口内处理的总Token数量。',
         sla: '服务等级协议达成率，排除业务限制（如余额不足、配额超限）的成功请求占比。',
         errors: '错误统计，包括总错误数、错误率和上游错误率。',
-        latency: '请求时长统计，包括 p50、p90、p95、p99 等百分位数。',
-        ttft: '首 Token 延迟（Time To First Token），衡量流式响应的首 Token 返回速度。',
+        latency: '基于 duration_ms 的请求总耗时统计，包括 p50、p90、p95、p99 等百分位数。',
+        ttft: '基于 first_token_ms 的首 Token 延迟，衡量收到第一个 Token 之前的等待时间。',
         health: '系统健康评分（0-100），综合考虑 SLA、错误率和资源使用情况。'
       },
       charts: {
@@ -6482,6 +6563,14 @@ export default {
       openaiExperimentalScheduler: {
         title: 'OpenAI 实验调度策略',
         description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。'
+      },
+      usageRecords: {
+        title: '使用记录',
+        description: '与终端用户可见的用量及失败请求记录相关的设置。',
+      },
+      user_error_view: {
+        label: '允许用户查看自己的错误请求',
+        description: '开启后，用户可在用量页查看自己失败请求的精简信息（不含内部/上游错误细节）。需运维监控开启才有数据。',
       },
       saveSettings: '保存设置',
       saving: '保存中...',

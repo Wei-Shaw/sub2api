@@ -11,6 +11,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -1950,6 +1952,133 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+func normalizeAdminModelIDs(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func modelIDsFromMapping(mapping map[string]string) []string {
+	ids := make([]string, 0, len(mapping))
+	for requestedModel := range mapping {
+		ids = append(ids, requestedModel)
+	}
+	return normalizeAdminModelIDs(ids)
+}
+
+func openAIModelsFromIDs(ids []string) []openai.Model {
+	normalized := normalizeAdminModelIDs(ids)
+	if len(normalized) == 0 {
+		return nil
+	}
+	defaultByID := make(map[string]openai.Model, len(openai.DefaultModels))
+	for _, model := range openai.DefaultModels {
+		defaultByID[model.ID] = model
+	}
+	models := make([]openai.Model, 0, len(normalized))
+	for _, id := range normalized {
+		if model, ok := defaultByID[id]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, openai.Model{
+			ID:          id,
+			Object:      "model",
+			Type:        "model",
+			DisplayName: id,
+		})
+	}
+	return models
+}
+
+func claudeModelsFromIDs(ids []string) []claude.Model {
+	normalized := normalizeAdminModelIDs(ids)
+	if len(normalized) == 0 {
+		return nil
+	}
+	defaultByID := make(map[string]claude.Model, len(claude.DefaultModels))
+	for _, model := range claude.DefaultModels {
+		defaultByID[model.ID] = model
+	}
+	models := make([]claude.Model, 0, len(normalized))
+	for _, id := range normalized {
+		if model, ok := defaultByID[id]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, claude.Model{
+			ID:          id,
+			Type:        "model",
+			DisplayName: id,
+			CreatedAt:   "",
+		})
+	}
+	return models
+}
+
+func geminiModelsFromIDs(ids []string) []geminicli.Model {
+	normalized := normalizeAdminModelIDs(ids)
+	if len(normalized) == 0 {
+		return nil
+	}
+	defaultByID := make(map[string]geminicli.Model, len(geminicli.DefaultModels))
+	for _, model := range geminicli.DefaultModels {
+		defaultByID[model.ID] = model
+	}
+	models := make([]geminicli.Model, 0, len(normalized))
+	for _, id := range normalized {
+		if model, ok := defaultByID[id]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, geminicli.Model{
+			ID:          id,
+			Type:        "model",
+			DisplayName: id,
+			CreatedAt:   "",
+		})
+	}
+	return models
+}
+
+func antigravityModelsFromIDs(ids []string) []antigravity.ClaudeModel {
+	normalized := normalizeAdminModelIDs(ids)
+	if len(normalized) == 0 {
+		return nil
+	}
+	defaultModels := antigravity.DefaultModels()
+	defaultByID := make(map[string]antigravity.ClaudeModel, len(defaultModels))
+	for _, model := range defaultModels {
+		defaultByID[model.ID] = model
+	}
+	models := make([]antigravity.ClaudeModel, 0, len(normalized))
+	for _, id := range normalized {
+		if model, ok := defaultByID[id]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, antigravity.ClaudeModel{
+			ID:          id,
+			Type:        "model",
+			DisplayName: id,
+			CreatedAt:   "",
+		})
+	}
+	return models
+}
+
 // GetAvailableModels handles getting available models for an account
 // GET /api/v1/admin/accounts/:id/models
 func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
@@ -1975,118 +2104,76 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 
 		mapping := account.GetModelMapping()
 		if len(mapping) == 0 {
+			if cloudModels := openAIModelsFromIDs(account.GetCloudModelIDs()); len(cloudModels) > 0 {
+				response.Success(c, cloudModels)
+				return
+			}
 			response.Success(c, openai.DefaultModels)
 			return
 		}
 
-		// Return mapped models
-		var models []openai.Model
-		for requestedModel := range mapping {
-			var found bool
-			for _, dm := range openai.DefaultModels {
-				if dm.ID == requestedModel {
-					models = append(models, dm)
-					found = true
-					break
-				}
-			}
-			if !found {
-				models = append(models, openai.Model{
-					ID:          requestedModel,
-					Object:      "model",
-					Type:        "model",
-					DisplayName: requestedModel,
-				})
-			}
+		response.Success(c, openAIModelsFromIDs(modelIDsFromMapping(mapping)))
+		return
+	}
+
+	// Handle xAI accounts
+	if account.IsXAI() {
+		mapping := account.GetModelMapping()
+		if len(mapping) > 0 {
+			response.Success(c, xai.ModelsFromIDs(modelIDsFromMapping(mapping)))
+			return
 		}
-		response.Success(c, models)
+
+		if cloudModels := xai.ModelsFromIDs(account.GetCloudModelIDs()); len(cloudModels) > 0 {
+			response.Success(c, cloudModels)
+			return
+		}
+
+		response.Success(c, xai.DefaultModels)
 		return
 	}
 
 	// Handle Gemini accounts
 	if account.IsGemini() {
-		// For OAuth accounts: return default Gemini models
-		if account.IsOAuth() {
-			response.Success(c, geminicli.DefaultModels)
-			return
-		}
-
-		// For API Key accounts: return models based on model_mapping
 		mapping := account.GetModelMapping()
-		if len(mapping) == 0 {
-			response.Success(c, geminicli.DefaultModels)
+		if len(mapping) > 0 {
+			response.Success(c, geminiModelsFromIDs(modelIDsFromMapping(mapping)))
 			return
 		}
 
-		var models []geminicli.Model
-		for requestedModel := range mapping {
-			var found bool
-			for _, dm := range geminicli.DefaultModels {
-				if dm.ID == requestedModel {
-					models = append(models, dm)
-					found = true
-					break
-				}
-			}
-			if !found {
-				models = append(models, geminicli.Model{
-					ID:          requestedModel,
-					Type:        "model",
-					DisplayName: requestedModel,
-					CreatedAt:   "",
-				})
-			}
+		if cloudModels := geminiModelsFromIDs(account.GetCloudModelIDs()); len(cloudModels) > 0 {
+			response.Success(c, cloudModels)
+			return
 		}
-		response.Success(c, models)
+
+		response.Success(c, geminicli.DefaultModels)
 		return
 	}
 
 	// Handle Antigravity accounts: return Claude + Gemini models
 	if account.Platform == service.PlatformAntigravity {
+		if cloudModels := antigravityModelsFromIDs(account.GetCloudModelIDs()); len(cloudModels) > 0 {
+			response.Success(c, cloudModels)
+			return
+		}
 		// 直接复用 antigravity.DefaultModels()，与 /v1/models 端点保持同步
 		response.Success(c, antigravity.DefaultModels())
 		return
 	}
 
 	// Handle Claude/Anthropic accounts
-	// For OAuth and Setup-Token accounts: return default models
-	if account.IsOAuth() {
-		response.Success(c, claude.DefaultModels)
-		return
-	}
-
-	// For API Key accounts: return models based on model_mapping
 	mapping := account.GetModelMapping()
-	if len(mapping) == 0 {
-		// No mapping configured, return default models
-		response.Success(c, claude.DefaultModels)
+	if len(mapping) > 0 {
+		response.Success(c, claudeModelsFromIDs(modelIDsFromMapping(mapping)))
 		return
 	}
 
-	// Return mapped models (keys of the mapping are the available model IDs)
-	var models []claude.Model
-	for requestedModel := range mapping {
-		// Try to find display info from default models
-		var found bool
-		for _, dm := range claude.DefaultModels {
-			if dm.ID == requestedModel {
-				models = append(models, dm)
-				found = true
-				break
-			}
-		}
-		// If not found in defaults, create a basic entry
-		if !found {
-			models = append(models, claude.Model{
-				ID:          requestedModel,
-				Type:        "model",
-				DisplayName: requestedModel,
-				CreatedAt:   "",
-			})
-		}
+	if cloudModels := claudeModelsFromIDs(account.GetCloudModelIDs()); len(cloudModels) > 0 {
+		response.Success(c, cloudModels)
+		return
 	}
 
-	response.Success(c, models)
+	response.Success(c, claude.DefaultModels)
 }
 
 // SyncUpstreamModels handles syncing live supported models from an account's upstream.
@@ -2125,6 +2212,12 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 
 		slog.Warn("sync_upstream_models_failed", "account_id", accountID)
 		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
+		return
+	}
+
+	extra := account.ExtraWithCloudModels(models, time.Now())
+	if _, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{Extra: extra}); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 const upstreamModelsBodyLimit int64 = 8 << 20
@@ -133,6 +134,8 @@ func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, acc
 		return s.buildAntigravityAPIKeyModelsRequest(ctx, account)
 	case account.IsOpenAI():
 		return s.buildOpenAIUpstreamModelsRequest(ctx, account)
+	case account.IsXAI():
+		return s.buildXAIUpstreamModelsRequest(ctx, account)
 	case account.IsGemini():
 		return s.buildGeminiUpstreamModelsRequest(ctx, account)
 	case account.IsAnthropic():
@@ -273,6 +276,30 @@ func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Contex
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	return req, nil
+}
+
+func (s *AccountTestService) buildXAIUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	authToken, err := s.resolveXAIAuthToken(ctx, account)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("No xAI access token or API key is available", err)
+	}
+
+	baseURL := account.GetXAIBaseURL()
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = xai.DefaultAPIBaseURL
+	}
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid xAI base URL", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, xai.BuildModelsURL(normalizedBaseURL), nil)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid xAI model list URL", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
 	return req, nil
 }
 

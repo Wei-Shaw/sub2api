@@ -17,7 +17,7 @@ vi.mock('@/composables/useClipboard', () => ({
 import UseKeyModal from '../UseKeyModal.vue'
 
 describe('UseKeyModal', () => {
-  it('renders GPT-5.5 and goals feature in OpenAI Codex config', () => {
+  it('renders GPT-5.5 and goals feature in OpenAI Codex WebSocket install script', () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -46,10 +46,10 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('model = "gpt-5.4"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
-    expect(configToml).toContain('[features]\ngoals = true')
+    expect(configToml).toContain('[features]\nresponses_websockets_v2 = true\ngoals = true')
   })
 
-  it('renders GPT-5.5 and goals feature in OpenAI Codex WebSocket config', async () => {
+  it('renders GPT-5.5 and goals feature in OpenAI Codex WebSocket config', () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -69,14 +69,6 @@ describe('UseKeyModal', () => {
       }
     })
 
-    const wsTab = wrapper.findAll('button').find((button) =>
-      button.text().includes('keys.useKeyModal.cliTabs.codexCliWs')
-    )
-
-    expect(wsTab).toBeDefined()
-    await wsTab!.trigger('click')
-    await nextTick()
-
     const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
     const configToml = codeBlocks.find((content) => content.includes('supports_websockets = true'))
 
@@ -95,7 +87,7 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'openai'
+        platform: 'xai'
       },
       global: {
         stubs: {

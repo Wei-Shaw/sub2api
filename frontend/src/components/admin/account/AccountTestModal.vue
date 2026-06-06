@@ -55,12 +55,12 @@
         />
       </div>
 
-      <div v-if="supportsImageTest" class="space-y-1.5">
+      <div v-if="supportsMediaTest" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
-          :label="t('admin.accounts.imagePromptLabel')"
-          :placeholder="t('admin.accounts.imagePromptPlaceholder')"
-          :hint="t('admin.accounts.imageTestHint')"
+          :label="supportsXAIVideoTest ? t('admin.accounts.videoPromptLabel') : t('admin.accounts.imagePromptLabel')"
+          :placeholder="supportsXAIVideoTest ? t('admin.accounts.videoPromptPlaceholder') : t('admin.accounts.imagePromptPlaceholder')"
+          :hint="supportsXAIVideoTest ? t('admin.accounts.videoTestHint') : t('admin.accounts.imageTestHint')"
           :disabled="status === 'connecting'"
           rows="3"
         />
@@ -142,6 +142,30 @@
         </div>
       </div>
 
+      <div v-if="generatedVideos.length > 0" class="space-y-2">
+        <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
+          {{ t('admin.accounts.videoPreview') }}
+        </div>
+        <div class="space-y-3">
+          <div
+            v-for="(video, index) in generatedVideos"
+            :key="`${video.url}-${index}`"
+            class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-500 dark:bg-dark-700"
+          >
+            <video
+              :src="video.url"
+              controls
+              playsinline
+              class="max-h-[360px] w-full bg-black"
+              :aria-label="`test-video-${index + 1}`"
+            />
+            <div class="border-t border-gray-100 px-3 py-1.5 text-xs text-gray-500 dark:border-dark-500 dark:text-gray-300">
+              {{ video.mimeType || 'video/mp4' }}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Image Lightbox -->
       <Teleport to="body">
         <Transition name="fade">
@@ -176,7 +200,9 @@
         <span class="flex items-center gap-1">
           <Icon name="chat" size="sm" :stroke-width="2" />
           {{
-            supportsImageTest
+            supportsXAIVideoTest
+              ? t('admin.accounts.videoTestMode')
+              : supportsImageTest
               ? t('admin.accounts.imageTestMode')
               : t('admin.accounts.testPrompt')
           }}
@@ -254,6 +280,11 @@ interface PreviewImage {
   mimeType?: string
 }
 
+interface PreviewVideo {
+  url: string
+  mimeType?: string
+}
+
 const props = defineProps<{
   show: boolean
   account: Account | null
@@ -274,8 +305,36 @@ const testPrompt = ref('')
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
+const generatedVideos = ref<PreviewVideo[]>([])
 const previewImageUrl = ref('')
-const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
+const prioritizedGeminiModels = [
+  'gemini-3.1-flash-image',
+  'gemini-2.5-flash-image',
+  'gemini-3.5-flash',
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+  'gemini-3-flash-preview',
+  'gemini-3-pro-preview',
+  'gemini-2.0-flash'
+]
+const prioritizedXAIModels = [
+  'grok-4.3',
+  'grok-4.3-fast',
+  'grok-4.20-0309-non-reasoning',
+  'grok-4.20-0309-reasoning',
+  'grok-4.20-multi-agent-0309',
+  'grok-code-fast-1',
+  'grok-build-0.1',
+  'grok-3-mini',
+  'grok-imagine-image',
+  'grok-imagine-image-quality',
+  'grok-imagine-video',
+  'grok-imagine-video-1.5-preview'
+]
+
+const isXAIImageModel = (modelID: string) => modelID.toLowerCase().startsWith('grok-imagine-image')
+const isXAIVideoModel = (modelID: string) => modelID.toLowerCase().startsWith('grok-imagine-video')
+
 const supportsGeminiImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
   if (!modelID.startsWith('gemini-') || !modelID.includes('-image')) return false
@@ -289,17 +348,105 @@ const supportsOpenAIImageTest = computed(() => {
   return props.account?.platform === 'openai'
 })
 
-const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
+const supportsXAIImageTest = computed(() => {
+  const modelID = selectedModelId.value.toLowerCase()
+  return props.account?.platform === 'xai' && isXAIImageModel(modelID)
+})
+
+const supportsXAIVideoTest = computed(() => {
+  const modelID = selectedModelId.value.toLowerCase()
+  return props.account?.platform === 'xai' && isXAIVideoModel(modelID)
+})
+
+const supportsImageTest = computed(
+  () => supportsGeminiImageTest.value || supportsOpenAIImageTest.value || supportsXAIImageTest.value
+)
+
+const supportsMediaTest = computed(() => supportsImageTest.value || supportsXAIVideoTest.value)
+
+const getTestableModels = (models: ClaudeModel[]) => {
+  return models
+}
 
 const sortTestModels = (models: ClaudeModel[]) => {
-  const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
+  const priorityIDs = props.account?.platform === 'xai' ? prioritizedXAIModels : prioritizedGeminiModels
+  const priorityMap = new Map(priorityIDs.map((id, index) => [id, index]))
 
   return [...models].sort((a, b) => {
+    if (props.account?.platform === 'xai') {
+      const aRank = isXAIVideoModel(a.id) ? 2 : isXAIImageModel(a.id) ? 1 : 0
+      const bRank = isXAIVideoModel(b.id) ? 2 : isXAIImageModel(b.id) ? 1 : 0
+      if (aRank !== bRank) return aRank - bRank
+    }
+
     const aPriority = priorityMap.get(a.id) ?? Number.MAX_SAFE_INTEGER
     const bPriority = priorityMap.get(b.id) ?? Number.MAX_SAFE_INTEGER
     if (aPriority !== bPriority) return aPriority - bPriority
     return 0
   })
+}
+
+const modelIDsToOptions = (modelIDs: string[]): ClaudeModel[] => {
+  const seen = new Set<string>()
+  const models: ClaudeModel[] = []
+  for (const rawModelID of modelIDs) {
+    const modelID = rawModelID.trim()
+    if (!modelID || seen.has(modelID)) continue
+    seen.add(modelID)
+    models.push({
+      id: modelID,
+      type: 'model',
+      display_name: modelID,
+      created_at: ''
+    })
+  }
+  return models
+}
+
+const hasModelMapping = (account: Account): boolean => {
+  const mapping = account.credentials?.model_mapping
+  if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return false
+  return Object.keys(mapping as Record<string, unknown>).length > 0
+}
+
+const hasProjectID = (account: Account): boolean => {
+  const projectID = account.credentials?.project_id
+  return typeof projectID === 'string' && projectID.trim() !== ''
+}
+
+const canSyncUpstreamModelsForTest = (account: Account): boolean => {
+  if (hasModelMapping(account)) return false
+
+  switch (account.platform) {
+    case 'anthropic':
+      return account.type === 'oauth' || account.type === 'setup-token' || account.type === 'apikey'
+    case 'openai':
+      return account.type === 'apikey'
+    case 'xai':
+      return account.type === 'oauth' || account.type === 'apikey'
+    case 'gemini':
+      return account.type === 'apikey' || (account.type === 'oauth' && !hasProjectID(account))
+    case 'antigravity':
+      return true
+    default:
+      return false
+  }
+}
+
+const fetchAvailableModelsForTest = async (account: Account): Promise<ClaudeModel[]> => {
+  if (canSyncUpstreamModelsForTest(account)) {
+    try {
+      const result = await adminAPI.accounts.syncUpstreamModels(account.id)
+      const upstreamModels = modelIDsToOptions(result.models || [])
+      if (upstreamModels.length > 0) {
+        return upstreamModels
+      }
+    } catch (error) {
+      console.warn('Failed to sync upstream models for account test:', error)
+    }
+  }
+
+  return adminAPI.accounts.getAvailableModels(account.id)
 }
 
 // Load available models when modal opens
@@ -317,8 +464,13 @@ watch(
 )
 
 watch(selectedModelId, () => {
-  if (supportsImageTest.value && !testPrompt.value.trim()) {
-    testPrompt.value = t('admin.accounts.imagePromptDefault')
+  const currentPrompt = testPrompt.value.trim()
+  const imagePrompt = t('admin.accounts.imagePromptDefault')
+  const videoPrompt = t('admin.accounts.videoPromptDefault')
+  if (supportsImageTest.value && (!currentPrompt || currentPrompt === videoPrompt)) {
+    testPrompt.value = imagePrompt
+  } else if (supportsXAIVideoTest.value && (!currentPrompt || currentPrompt === imagePrompt)) {
+    testPrompt.value = videoPrompt
   }
 })
 
@@ -328,10 +480,9 @@ const loadAvailableModels = async () => {
   loadingModels.value = true
   selectedModelId.value = '' // Reset selection before loading
   try {
-    const models = await adminAPI.accounts.getAvailableModels(props.account.id)
-    availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
-      ? sortTestModels(models)
-      : models
+    const models = getTestableModels(await fetchAvailableModelsForTest(props.account))
+    const shouldSortModels = ['gemini', 'antigravity', 'xai'].includes(props.account.platform)
+    availableModels.value = shouldSortModels ? sortTestModels(models) : models
     // Default selection by platform
     if (availableModels.value.length > 0) {
       if (props.account.platform === 'gemini') {
@@ -358,6 +509,7 @@ const resetState = () => {
   streamingContent.value = ''
   errorMessage.value = ''
   generatedImages.value = []
+  generatedVideos.value = []
   previewImageUrl.value = ''
 }
 
@@ -410,9 +562,9 @@ const startTest = async () => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-              model_id: selectedModelId.value,
-              prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
-            }),
+        model_id: selectedModelId.value,
+        prompt: supportsMediaTest.value ? testPrompt.value.trim() : ''
+      }),
       signal: abortController.signal
     })
 
@@ -469,6 +621,7 @@ const handleEvent = (event: {
   success?: boolean
   error?: string
   image_url?: string
+  video_url?: string
   mime_type?: string
 }) => {
   switch (event.type) {
@@ -478,7 +631,9 @@ const handleEvent = (event: {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
       }
       addLine(
-        supportsImageTest.value
+        supportsXAIVideoTest.value
+          ? t('admin.accounts.sendingVideoRequest')
+          : supportsImageTest.value
             ? t('admin.accounts.sendingImageRequest')
             : t('admin.accounts.sendingTestMessage'),
         'text-gray-400'
@@ -491,6 +646,22 @@ const handleEvent = (event: {
       if (event.text) {
         streamingContent.value += event.text
         scrollToBottom()
+      }
+      break
+
+    case 'video':
+      if (event.video_url) {
+        generatedVideos.value.push({
+          url: event.video_url,
+          mimeType: event.mime_type
+        })
+        addLine(t('admin.accounts.videoReceived', { count: generatedVideos.value.length }), 'text-purple-300')
+      }
+      break
+
+    case 'status':
+      if (event.text) {
+        addLine(event.text, 'text-gray-400')
       }
       break
 
@@ -525,6 +696,7 @@ const handleEvent = (event: {
         addLine(streamingContent.value, 'text-green-300')
         streamingContent.value = ''
       }
+      addLine(`Error: ${errorMessage.value}`, 'text-red-400')
       break
   }
 }

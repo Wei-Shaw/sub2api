@@ -92,33 +92,6 @@ func TestExtractOpenAICodexProbeUpdatesAccepts429WithCodexHeaders(t *testing.T) 
 	}
 }
 
-func TestBuildCodexUsageProgressFromExtra_UsesCanonicalUsedPercent(t *testing.T) {
-	t.Parallel()
-	now := time.Date(2026, 5, 30, 7, 4, 9, 0, time.UTC)
-	extra := map[string]any{
-		"codex_5h_used_percent": 94.0,
-		"codex_5h_reset_at":     now.Add(2 * time.Hour).Format(time.RFC3339),
-		"codex_7d_used_percent": 93.0,
-		"codex_7d_reset_at":     now.Add(5 * 24 * time.Hour).Format(time.RFC3339),
-	}
-
-	fiveHour := buildCodexUsageProgressFromExtra(extra, "5h", now)
-	if fiveHour == nil {
-		t.Fatal("expected non-nil 5h progress")
-	}
-	if fiveHour.Utilization != 94.0 {
-		t.Fatalf("5h Utilization = %v, want 94", fiveHour.Utilization)
-	}
-
-	sevenDay := buildCodexUsageProgressFromExtra(extra, "7d", now)
-	if sevenDay == nil {
-		t.Fatal("expected non-nil 7d progress")
-	}
-	if sevenDay.Utilization != 93.0 {
-		t.Fatalf("7d Utilization = %v, want 93", sevenDay.Utilization)
-	}
-}
-
 func TestAccountUsageService_PersistOpenAICodexProbeSnapshotOnlyUpdatesExtra(t *testing.T) {
 	t.Parallel()
 

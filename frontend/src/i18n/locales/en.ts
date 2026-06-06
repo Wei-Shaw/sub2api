@@ -738,12 +738,15 @@ export default {
         'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
       copy: 'Copy',
       copied: 'Copied',
+      download: 'Download',
       note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
       noGroupTitle: 'Please assign a group first',
       noGroupDescription: 'This API key has not been assigned to a group. Please click the group column in the key list to assign one before viewing the configuration.',
       openai: {
         description: 'Add the following configuration files to your Codex CLI config directory.',
         configTomlHint: 'Make sure the following content is at the beginning of the config.toml file',
+        installScriptHintUnix: 'Download and run bash install-codex-ws.sh in terminal. The script creates ~/.codex and backs up existing config.toml/auth.json.',
+        installScriptHintWindows: 'Download and run powershell -ExecutionPolicy Bypass -File .\\install-codex-ws.ps1 in PowerShell. The script creates %userprofile%\\.codex and backs up existing config.toml/auth.json.',
         note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
         noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
       },
@@ -906,6 +909,9 @@ export default {
     imageBillingSize: 'Billing size',
     imageInputSize: 'Input size',
     imageOutputSize: 'Output size',
+    imageOutputTokens: 'Image Output Tokens',
+    imageOutputTokenPrice: 'Image Output Price',
+    imageOutputCost: 'Image Output Cost',
     imageSizeSource: 'Size source',
     imageSizeBreakdown: 'Size breakdown',
     imageSizeSourceOutput: 'Upstream output',
@@ -933,7 +939,26 @@ export default {
     exportExcelSuccess: 'Usage data exported successfully (Excel format)',
     exportExcelFailed: 'Failed to export usage data',
     imageUnit: ' images',
-    userAgent: 'User-Agent'
+    userAgent: 'User-Agent',
+    tabs: { usage: 'Usage', errors: 'Error Requests' },
+    errors: {
+      time: 'Time', model: 'Model', endpoint: 'Endpoint', status: 'Status',
+      category: 'Category', platform: 'Platform', message: 'Message',
+      keyName: 'Key Name', keyDeleted: 'Deleted', allKeys: 'All keys',
+      modelPlaceholder: 'Search model', allCategories: 'All categories',
+      empty: 'No error requests', failedToLoad: 'Failed to load error requests',
+      categories: {
+        auth: 'Auth failed', rate_limit: 'Rate limited', quota: 'Balance/Subscription',
+        invalid_request: 'Invalid request', service_unavailable: 'Service unavailable',
+        upstream: 'Upstream error', internal: 'Platform error', other: 'Other',
+      },
+      detail: {
+        title: 'Error Request Detail',
+        responseBody: 'Response Body',
+        upstreamStatus: 'Upstream Status',
+        loadFailed: 'Failed to load detail, please try again',
+      },
+    },
   },
 
   // Shared keys for channel monitor (admin + user views)
@@ -2148,6 +2173,7 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
+        xai: 'xAI',
         antigravity: 'Antigravity',
       },
       deleteConfirm:
@@ -3050,6 +3076,7 @@ export default {
         claude: 'Claude',
         openai: 'OpenAI',
         gemini: 'Gemini',
+        xai: 'xAI',
         antigravity: 'Antigravity',
       },
       types: {
@@ -3313,6 +3340,7 @@ export default {
       vertexSaJsonInvalid: 'Service Account JSON format is invalid',
       vertexSaJsonRequired: 'Please upload a Service Account JSON',
       oauthSetupToken: 'OAuth / Setup Token',
+      xaiAccount: 'xAI Account',
       addMethod: 'Add Method',
       setupTokenLongLived: 'Setup Token (Long-lived)',
       baseUrl: 'Base URL',
@@ -3418,6 +3446,10 @@ export default {
         webSearchEnabled: 'Enabled',
         webSearchDisabled: 'Disabled',
       },
+      xai: {
+        baseUrlHint: 'Default xAI API endpoint. Keep https://api.x.ai/v1 unless you use a compatible gateway.',
+        apiKeyHint: 'Use an xAI API key or choose OAuth for Grok CLI credentials.'
+      },
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
       modelMapping: 'Model Mapping',
@@ -3438,7 +3470,8 @@ export default {
       syncUpstreamModels: 'Sync upstream supported models',
       syncUpstreamModelsLoading: 'Syncing upstream...',
       syncUpstreamModelsSuccess: 'Synced {count} new model(s) from upstream ({total} upstream total)',
-      syncUpstreamModelsNoChanges: 'All {count} upstream model(s) are already in the whitelist',
+      syncUpstreamModelsReplaceSuccess: 'Replaced the current config with upstream models: kept {count} upstream model(s), removed {removed} stale model(s)',
+      syncUpstreamModelsNoChanges: 'The current config already matches {count} upstream model(s)',
       syncUpstreamModelsEmpty: 'Upstream returned no models to sync',
       syncUpstreamModelsFailed: 'Failed to sync upstream models',
       syncUpstreamModelsError: 'Failed to sync upstream models: {message}',
@@ -3737,6 +3770,36 @@ export default {
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
           pleaseEnterSessionToken: 'Please enter Session Token'
         },
+        // xAI/Grok specific
+        xai: {
+          title: 'xAI Account Authorization',
+          followSteps: 'Follow these steps to complete xAI/Grok account authorization:',
+          step1GenerateUrl: 'Generate the authorization URL',
+          generateAuthUrl: 'Generate Auth URL',
+          step2OpenUrl: 'Open the URL in your browser and complete authorization',
+          openUrlDesc:
+            'Open the authorization URL in a new tab, log in to your xAI account, and authorize access.',
+          importantNotice:
+            'Important: After authorization, copy the full callback URL or code when the browser address bar changes to http://127.0.0.1:56121/callback... or http://localhost...',
+          step3EnterCode: 'Enter Authorization URL or Code',
+          authCodeDesc:
+            'After authorization, copy the callback URL (recommended) or only the code and paste it below.',
+          authCode: 'Authorization URL or Code',
+          authCodePlaceholder:
+            'Option 1: Paste the complete callback URL\nOption 2: Paste only the code parameter value',
+          authCodeHint: 'The system will auto-extract code/state from the URL.',
+          failedToGenerateUrl: 'Failed to generate xAI auth URL',
+          missingExchangeParams: 'Missing code, session ID, or state',
+          failedToExchangeCode: 'Failed to exchange xAI authorization code',
+          refreshTokenAuth: 'Manual RT',
+          refreshTokenDesc:
+            'Enter your existing xAI Refresh Token. Supports batch input (one per line). The system will automatically validate and create accounts.',
+          refreshTokenPlaceholder: 'Paste your xAI Refresh Token...\nSupports multiple tokens, one per line',
+          validating: 'Validating...',
+          validateAndCreate: 'Validate & Create',
+          pleaseEnterRefreshToken: 'Please enter Refresh Token',
+          failedToValidateRT: 'Failed to validate xAI Refresh Token'
+        },
         // Gemini specific
 	        gemini: {
 	          title: 'Gemini Account Authorization',
@@ -3971,6 +4034,7 @@ export default {
       usingModel: 'Using model: {model}',
       sendingTestMessage: 'Sending test message: "hi"',
       sendingImageRequest: 'Sending image generation test request...',
+      sendingVideoRequest: 'Sending video generation test request...',
       response: 'Response:',
       startTest: 'Start Test',
       testing: 'Testing...',
@@ -3989,6 +4053,13 @@ export default {
       imageTestMode: 'Mode: Image generation test',
       imagePreview: 'Generated images:',
       imageReceived: 'Received test image #{count}',
+      videoPromptLabel: 'Video prompt',
+      videoPromptPlaceholder: 'Example: A tiny blue square slowly moving left to right on a white background.',
+      videoPromptDefault: 'A tiny blue square slowly moving left to right on a white background.',
+      videoTestHint: 'When a video model is selected, this test creates a video task, polls for completion, and previews the returned video.',
+      videoTestMode: 'Mode: Video generation test',
+      videoPreview: 'Generated videos:',
+      videoReceived: 'Received test video #{count}',
       // Stats Modal
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',
@@ -4611,6 +4682,7 @@ export default {
       errorRate: 'error_rate:',
       upstreamRate: 'upstream_rate:',
       latencyDuration: 'Request Duration',
+      durationLabel: 'Duration (duration_ms)',
       ttftLabel: 'TTFT (first_token_ms)',
       p50: 'p50:',
       p90: 'p90:',
@@ -4757,6 +4829,8 @@ export default {
         group: 'Group',
         user: 'User',
         userId: 'User ID',
+        apiKey: 'API Key',
+        keyDeletedBadge: 'Key Deleted',
         account: 'Account',
         accountId: 'Account ID',
         status: 'Status',
@@ -4883,7 +4957,11 @@ export default {
         suggestRequest: 'Client request error: ask customer to fix request parameters',
         suggestAuth: 'Auth failed: verify API key/credentials',
         suggestPlatform: 'Platform error: prioritize investigation and fix',
-        suggestGeneric: 'See details for more context'
+        suggestGeneric: 'See details for more context',
+        apiKeyPrefix: 'Key Prefix',
+        attemptedKeyPrefix: 'Attempted Key Prefix',
+        deletedKeyOwner: 'Deleted Key Owner',
+        keyDeletedBadge: 'Key Deleted'
       },
       requestDetails: {
         title: 'Request Details',
@@ -5268,6 +5346,12 @@ export default {
         raw: 'Raw',
         preagg: 'Preagg'
       },
+      requestType: {
+        all: 'All request types',
+        sync: 'Sync',
+        stream: 'Stream',
+        ws_v2: 'WS v2'
+      },
       accountAvailability: {
         available: 'Available',
         unavailable: 'Unavailable',
@@ -5292,8 +5376,8 @@ export default {
         sla: 'Service Level Agreement success rate, excluding business limits (e.g., insufficient balance, quota exceeded).',
         errors: 'Error statistics, including total errors, error rate, and upstream error rate.',
         upstreamErrors: 'Upstream error statistics, excluding rate limit errors (429/529).',
-        latency: 'Request duration statistics, including p50, p90, p95, p99 percentiles.',
-        ttft: 'Time To First Token, measuring the speed of first token return in streaming responses.',
+        latency: 'Request duration statistics based on duration_ms, including p50, p90, p95, and p99 percentiles.',
+        ttft: 'Time To First Token based on first_token_ms, measuring how long it takes to receive the first token.',
         health: 'System health score (0-100), considering SLA, error rate, and resource usage.'
       },
       charts: {
@@ -6327,6 +6411,14 @@ export default {
       openaiExperimentalScheduler: {
         title: 'OpenAI experimental scheduler policy',
         description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability."
+      },
+      usageRecords: {
+        title: 'Usage Records',
+        description: 'Settings for usage and failed-request records visible to end users.',
+      },
+      user_error_view: {
+        label: 'Allow users to view their own error requests',
+        description: 'When enabled, users can see a redacted view of their failed requests on the usage page (no internal/upstream details). Requires ops monitoring enabled to have data.',
       },
       saveSettings: 'Save Settings',
       saving: 'Saving...',

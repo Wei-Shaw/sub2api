@@ -75,6 +75,11 @@ const (
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
 
+const (
+	AccountExtraCloudModelsKey            = "cloud_models"
+	AccountExtraCloudModelsRefreshedAtKey = "cloud_models_refreshed_at"
+)
+
 type TempUnschedulableRule struct {
 	ErrorCode       int      `json:"error_code"`
 	Keywords        []string `json:"keywords"`
@@ -1050,6 +1055,14 @@ func (a *Account) IsOpenAI() bool {
 	return a.Platform == PlatformOpenAI
 }
 
+func (a *Account) IsXAI() bool {
+	return a.Platform == PlatformXAI
+}
+
+func (a *Account) IsOpenAICompatibleGateway() bool {
+	return a.Platform == PlatformOpenAI || a.Platform == PlatformXAI
+}
+
 func (a *Account) IsAnthropic() bool {
 	return a.Platform == PlatformAnthropic
 }
@@ -1060,6 +1073,14 @@ func (a *Account) IsOpenAIOAuth() bool {
 
 func (a *Account) IsOpenAIApiKey() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeAPIKey
+}
+
+func (a *Account) IsXAIOAuth() bool {
+	return a.IsXAI() && a.Type == AccountTypeOAuth
+}
+
+func (a *Account) IsXAIApiKey() bool {
+	return a.IsXAI() && a.Type == AccountTypeAPIKey
 }
 
 func (a *Account) GetOpenAIBaseURL() string {
@@ -1129,6 +1150,105 @@ func (a *Account) GetOpenAISessionID() string {
 		return ""
 	}
 	return strings.TrimSpace(a.GetExtraString("openai_session_id"))
+}
+
+func (a *Account) GetXAIBaseURL() string {
+	if !a.IsXAI() {
+		return ""
+	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	if baseURL == "" {
+		return "https://api.x.ai/v1"
+	}
+	return strings.TrimRight(baseURL, "/")
+}
+
+func (a *Account) GetXAIAccessToken() string {
+	if !a.IsXAI() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+func (a *Account) GetXAIRefreshToken() string {
+	if !a.IsXAIOAuth() {
+		return ""
+	}
+	return a.GetCredential("refresh_token")
+}
+
+func (a *Account) GetXAIApiKey() string {
+	if !a.IsXAIApiKey() {
+		return ""
+	}
+	apiKey := a.GetCredential("api_key")
+	if apiKey == "" {
+		apiKey = a.GetCredential("access_token")
+	}
+	return apiKey
+}
+
+func (a *Account) GetCloudModelIDs() []string {
+	if a == nil || a.Extra == nil {
+		return nil
+	}
+	return normalizeAccountModelIDs(a.Extra[AccountExtraCloudModelsKey])
+}
+
+func (a *Account) ExtraWithCloudModels(modelIDs []string, refreshedAt time.Time) map[string]any {
+	extraSize := 2
+	if a != nil {
+		extraSize += len(a.Extra)
+	}
+	extra := make(map[string]any, extraSize)
+	if a != nil && a.Extra != nil {
+		for key, value := range a.Extra {
+			extra[key] = value
+		}
+	}
+	extra[AccountExtraCloudModelsKey] = normalizeAccountModelIDs(modelIDs)
+	extra[AccountExtraCloudModelsRefreshedAtKey] = refreshedAt.UTC().Format(time.RFC3339)
+	return extra
+}
+
+func normalizeAccountModelIDs(value any) []string {
+	var raw []string
+	switch v := value.(type) {
+	case []string:
+		raw = v
+	case []any:
+		raw = make([]string, 0, len(v))
+		for _, item := range v {
+			switch item := item.(type) {
+			case string:
+				raw = append(raw, item)
+			case map[string]any:
+				if s, ok := item["id"].(string); ok {
+					raw = append(raw, s)
+				}
+			case map[string]string:
+				raw = append(raw, item["id"])
+			}
+		}
+	default:
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(raw))
+	modelIDs := make([]string, 0, len(raw))
+	for _, item := range raw {
+		modelID := strings.TrimSpace(item)
+		if modelID == "" {
+			continue
+		}
+		if _, exists := seen[modelID]; exists {
+			continue
+		}
+		seen[modelID] = struct{}{}
+		modelIDs = append(modelIDs, modelID)
+	}
+	sort.Strings(modelIDs)
+	return modelIDs
 }
 
 func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapability) bool {
@@ -2036,6 +2156,60 @@ func ComputeQuotaResetAt(extra map[string]any) {
 	}
 }
 
+// NormalizeFixedQuotaWindows aligns preserved quota usage with the active fixed reset window.
+//
+// Editing an existing account can switch a daily/weekly quota from rolling to fixed reset
+// while preserving quota_*_used and quota_*_start. If the preserved start belongs to the
+// old rolling window, response mapping treats the usage as expired and the dashboard shows
+// 0 until the next reset. Normalize those stale starts before persisting the edited account.
+func NormalizeFixedQuotaWindows(extra map[string]any) {
+	if extra == nil {
+		return
+	}
+	now := time.Now()
+	tzName, _ := extra["quota_reset_timezone"].(string)
+	if tzName == "" {
+		tzName = "UTC"
+	}
+	tz, err := time.LoadLocation(tzName)
+	if err != nil {
+		tz = time.UTC
+	}
+
+	if mode, _ := extra["quota_daily_reset_mode"].(string); mode == "fixed" && parseExtraFloat64(extra["quota_daily_limit"]) > 0 {
+		hour := int(parseExtraFloat64(extra["quota_daily_reset_hour"]))
+		if hour < 0 || hour > 23 {
+			hour = 0
+		}
+		lastReset := lastFixedDailyReset(hour, tz, now)
+		start := parseExtraTime(extra["quota_daily_start"])
+		if start.IsZero() || start.Before(lastReset) {
+			extra["quota_daily_used"] = 0.0
+			extra["quota_daily_start"] = lastReset.UTC().Format(time.RFC3339)
+		}
+	}
+
+	if mode, _ := extra["quota_weekly_reset_mode"].(string); mode == "fixed" && parseExtraFloat64(extra["quota_weekly_limit"]) > 0 {
+		day := 1
+		if rawDay, ok := extra["quota_weekly_reset_day"]; ok {
+			day = int(parseExtraFloat64(rawDay))
+		}
+		if day < 0 || day > 6 {
+			day = 1
+		}
+		hour := int(parseExtraFloat64(extra["quota_weekly_reset_hour"]))
+		if hour < 0 || hour > 23 {
+			hour = 0
+		}
+		lastReset := lastFixedWeeklyReset(day, hour, tz, now)
+		start := parseExtraTime(extra["quota_weekly_start"])
+		if start.IsZero() || start.Before(lastReset) {
+			extra["quota_weekly_used"] = 0.0
+			extra["quota_weekly_start"] = lastReset.UTC().Format(time.RFC3339)
+		}
+	}
+}
+
 // ValidateQuotaResetConfig 校验配额固定重置时间配置的合法性
 func ValidateQuotaResetConfig(extra map[string]any) error {
 	if extra == nil {
@@ -2362,6 +2536,18 @@ func parseExtraFloat64(value any) float64 {
 		}
 	}
 	return 0
+}
+
+func parseExtraTime(value any) time.Time {
+	if s, ok := value.(string); ok {
+		if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+			return t
+		}
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 // parseExtraInt 从 extra 字段解析 int 值

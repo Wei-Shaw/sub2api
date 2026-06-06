@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -44,6 +45,7 @@ type TestEvent struct {
 	Status   string `json:"status,omitempty"`
 	Code     string `json:"code,omitempty"`
 	ImageURL string `json:"image_url,omitempty"`
+	VideoURL string `json:"video_url,omitempty"`
 	MimeType string `json:"mime_type,omitempty"`
 	Data     any    `json:"data,omitempty"`
 	Success  bool   `json:"success,omitempty"`
@@ -54,6 +56,10 @@ const (
 	defaultGeminiTextTestPrompt  = "hi"
 	defaultGeminiImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
 	defaultOpenAIImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
+	defaultXAIVideoTestPrompt    = "A tiny blue square slowly moving left to right on a white background."
+	xaiVideoTestDurationSeconds  = 2
+	xaiVideoPollInterval         = 3 * time.Second
+	xaiVideoPollTimeout          = 2 * time.Minute
 )
 
 // isOpenAIImageModel checks if the model is an OpenAI image generation model (e.g. gpt-image-2).
@@ -61,11 +67,20 @@ func isOpenAIImageModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(model), "gpt-image-")
 }
 
+func isXAIImageModel(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-image")
+}
+
+func isXAIVideoModel(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-video")
+}
+
 // AccountTestService handles account testing operations
 type AccountTestService struct {
 	accountRepo               AccountRepository
 	geminiTokenProvider       *GeminiTokenProvider
 	claudeTokenProvider       *ClaudeTokenProvider
+	xaiTokenProvider          *XAITokenProvider
 	antigravityGatewayService *AntigravityGatewayService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
@@ -77,6 +92,7 @@ func NewAccountTestService(
 	accountRepo AccountRepository,
 	geminiTokenProvider *GeminiTokenProvider,
 	claudeTokenProvider *ClaudeTokenProvider,
+	xaiTokenProvider *XAITokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
@@ -86,6 +102,7 @@ func NewAccountTestService(
 		accountRepo:               accountRepo,
 		geminiTokenProvider:       geminiTokenProvider,
 		claudeTokenProvider:       claudeTokenProvider,
+		xaiTokenProvider:          xaiTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
@@ -182,6 +199,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
+	}
+
+	if account.IsXAI() {
+		return s.testXAIAccountConnection(c, account, modelID, prompt)
 	}
 
 	if account.IsGemini() {
@@ -839,6 +860,610 @@ func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, accoun
 		}
 		account.Status = StatusActive
 		account.ErrorMessage = ""
+	}
+}
+
+// testXAIAccountConnection tests an xAI/Grok account via the compatible endpoint for the selected model.
+func (s *AccountTestService) testXAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	ctx := c.Request.Context()
+
+	testModelID := modelID
+	if testModelID == "" {
+		testModelID = xai.DefaultTestModel
+	}
+	if account.Type == AccountTypeAPIKey {
+		testModelID = account.GetMappedModel(testModelID)
+	}
+
+	if isXAIVideoModel(testModelID) {
+		videoPrompt := strings.TrimSpace(prompt)
+		if videoPrompt == "" {
+			videoPrompt = defaultXAIVideoTestPrompt
+		}
+		return s.testXAIVideoGeneration(c, ctx, account, testModelID, videoPrompt)
+	}
+
+	if isXAIImageModel(testModelID) {
+		imagePrompt := strings.TrimSpace(prompt)
+		if imagePrompt == "" {
+			imagePrompt = defaultOpenAIImageTestPrompt
+		}
+		return s.testXAIImageGeneration(c, ctx, account, testModelID, imagePrompt)
+	}
+
+	authToken, err := s.resolveXAIAuthToken(ctx, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(account.GetXAIBaseURL())
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+	}
+
+	payload := createOpenAITestPayload(testModelID, false)
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create test payload")
+	}
+	payloadBytes, err = xai.NormalizeResponsesBody(payloadBytes, testModelID, true, "")
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to normalize request: %s", err.Error()))
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, xai.BuildResponsesURL(normalizedBaseURL), bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Connection", "Keep-Alive")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	var resp *http.Response
+	if s.tlsFPProfileService != nil {
+		resp, err = s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	} else {
+		resp, err = s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	}
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	return s.processOpenAIStream(c, resp.Body)
+}
+
+func (s *AccountTestService) testXAIImageGeneration(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
+	authToken, err := s.resolveXAIAuthToken(ctx, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(account.GetXAIBaseURL())
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+
+	payload := map[string]any{
+		"model":           modelID,
+		"prompt":          prompt,
+		"n":               1,
+		"response_format": "b64_json",
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create xAI image generation payload")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, xai.BuildImagesGenerationsURL(normalizedBaseURL), bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create xAI image generation request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	var resp *http.Response
+	if s.tlsFPProfileService != nil {
+		resp, err = s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	} else {
+		resp, err = s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	}
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("xAI image generation request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read xAI image response: %s", err.Error()))
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return s.sendErrorAndEnd(c, formatXAIImageHTTPError(resp.StatusCode, body))
+	}
+
+	var result struct {
+		Data []struct {
+			URL           string `json:"url"`
+			B64JSON       string `json:"b64_json"`
+			RevisedPrompt string `json:"revised_prompt"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse xAI image response: %s", err.Error()))
+	}
+	if len(result.Data) == 0 {
+		return s.sendErrorAndEnd(c, "No images returned from xAI image generation API")
+	}
+
+	sentImages := 0
+	for _, item := range result.Data {
+		if item.RevisedPrompt != "" {
+			s.sendEvent(c, TestEvent{Type: "content", Text: item.RevisedPrompt})
+		}
+		switch {
+		case strings.TrimSpace(item.B64JSON) != "":
+			s.sendEvent(c, TestEvent{
+				Type:     "image",
+				ImageURL: "data:image/png;base64," + strings.TrimSpace(item.B64JSON),
+				MimeType: "image/png",
+			})
+			sentImages++
+		case strings.TrimSpace(item.URL) != "":
+			s.sendEvent(c, TestEvent{
+				Type:     "image",
+				ImageURL: strings.TrimSpace(item.URL),
+				MimeType: "image/*",
+			})
+			sentImages++
+		}
+	}
+	if sentImages == 0 {
+		return s.sendErrorAndEnd(c, "xAI image generation response did not include image data")
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+type xaiVideoPollResult struct {
+	Status       string
+	Progress     string
+	VideoURL     string
+	ErrorMessage string
+	Body         string
+}
+
+func (s *AccountTestService) testXAIVideoGeneration(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
+	authToken, err := s.resolveXAIAuthToken(ctx, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(account.GetXAIBaseURL())
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+
+	payload := map[string]any{
+		"model":    modelID,
+		"prompt":   prompt,
+		"duration": xaiVideoTestDurationSeconds,
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create xAI video generation payload")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, xai.BuildVideosGenerationsURL(normalizedBaseURL), bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create xAI video generation request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	resp, err := s.doXAIAccountTestRequest(req, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("xAI video generation request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read xAI video generation response: %s", err.Error()))
+	}
+	if resp.StatusCode != http.StatusOK {
+		return s.sendErrorAndEnd(c, formatXAIVideoHTTPError(resp.StatusCode, body))
+	}
+
+	var createResult any
+	if err := json.Unmarshal(body, &createResult); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse xAI video generation response: %s", err.Error()))
+	}
+	requestID := extractJSONStringByKeys(createResult, "request_id", "id")
+	if requestID == "" {
+		if upstreamError := extractJSONErrorMessage(createResult); upstreamError != "" {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("xAI video generation failed: %s", upstreamError))
+		}
+		return s.sendErrorAndEnd(c, "xAI video generation response did not include request_id")
+	}
+
+	s.sendEvent(c, TestEvent{Type: "status", Text: fmt.Sprintf("xAI video task created: %s", requestID)})
+
+	timer := time.NewTimer(xaiVideoPollTimeout)
+	defer timer.Stop()
+
+	lastStatus := "created"
+	for {
+		result, err := s.pollXAIVideoTask(ctx, account, authToken, normalizedBaseURL, requestID)
+		if err != nil {
+			return s.sendErrorAndEnd(c, err.Error())
+		}
+
+		if result.Status != "" {
+			lastStatus = result.Status
+		}
+		if result.VideoURL != "" {
+			s.sendEvent(c, TestEvent{
+				Type:     "video",
+				VideoURL: result.VideoURL,
+				MimeType: "video/mp4",
+			})
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
+		}
+		if isXAIVideoCompletedStatus(result.Status) {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("xAI video task completed but response did not include video URL: %s", truncateString(result.Body, 1024)))
+		}
+		if isXAIVideoFailedStatus(result.Status) {
+			if result.ErrorMessage != "" {
+				return s.sendErrorAndEnd(c, fmt.Sprintf("xAI video task failed: %s", result.ErrorMessage))
+			}
+			return s.sendErrorAndEnd(c, fmt.Sprintf("xAI video task failed with status: %s", result.Status))
+		}
+
+		s.sendEvent(c, TestEvent{Type: "status", Text: formatXAIVideoPollStatus(result)})
+
+		select {
+		case <-ctx.Done():
+			return s.sendErrorAndEnd(c, "xAI video generation cancelled")
+		case <-timer.C:
+			return s.sendErrorAndEnd(c, fmt.Sprintf("xAI video generation timed out; last status: %s", lastStatus))
+		case <-time.After(xaiVideoPollInterval):
+		}
+	}
+}
+
+func (s *AccountTestService) pollXAIVideoTask(ctx context.Context, account *Account, authToken, normalizedBaseURL, requestID string) (xaiVideoPollResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, xai.BuildVideoPollURL(normalizedBaseURL, requestID), nil)
+	if err != nil {
+		return xaiVideoPollResult{}, fmt.Errorf("failed to create xAI video poll request")
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	resp, err := s.doXAIAccountTestRequest(req, account)
+	if err != nil {
+		return xaiVideoPollResult{}, fmt.Errorf("xAI video poll request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return xaiVideoPollResult{}, fmt.Errorf("failed to read xAI video poll response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return xaiVideoPollResult{}, fmt.Errorf("xAI video poll returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var raw any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return xaiVideoPollResult{}, fmt.Errorf("failed to parse xAI video poll response: %w", err)
+	}
+
+	return xaiVideoPollResult{
+		Status:       extractJSONStringByKeys(raw, "status", "state"),
+		Progress:     extractJSONStringByKeys(raw, "progress", "percent", "percentage"),
+		VideoURL:     extractXAIVideoURL(raw),
+		ErrorMessage: extractJSONErrorMessage(raw),
+		Body:         string(body),
+	}, nil
+}
+
+func (s *AccountTestService) doXAIAccountTestRequest(req *http.Request, account *Account) (*http.Response, error) {
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	if s.tlsFPProfileService != nil {
+		return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	}
+	return s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+}
+
+func formatXAIVideoPollStatus(result xaiVideoPollResult) string {
+	status := strings.TrimSpace(result.Status)
+	if status == "" {
+		status = "pending"
+	}
+	if result.Progress != "" {
+		return fmt.Sprintf("xAI video task status: %s (%s%%)", status, strings.TrimSuffix(result.Progress, "%"))
+	}
+	return fmt.Sprintf("xAI video task status: %s", status)
+}
+
+func formatXAIImageHTTPError(statusCode int, body []byte) string {
+	return formatXAIMediaHTTPError(statusCode, body, "图片生成", "image generation")
+}
+
+func formatXAIVideoHTTPError(statusCode int, body []byte) string {
+	return formatXAIMediaHTTPError(statusCode, body, "视频生成", "video generation")
+}
+
+func formatXAIMediaHTTPError(statusCode int, body []byte, zhOperation, enOperation string) string {
+	message := strings.TrimSpace(string(body))
+	var raw any
+	if len(body) > 0 && json.Unmarshal(body, &raw) == nil {
+		parts := make([]string, 0, 2)
+		if code := extractJSONStringByKeys(raw, "code"); code != "" {
+			parts = append(parts, code)
+		}
+		if upstreamError := extractJSONErrorMessage(raw); upstreamError != "" {
+			parts = append(parts, upstreamError)
+		}
+		if len(parts) > 0 {
+			message = strings.Join(parts, ": ")
+		}
+	}
+	if message == "" {
+		message = http.StatusText(statusCode)
+	}
+
+	lowerMessage := strings.ToLower(message)
+	if statusCode == http.StatusForbidden &&
+		(strings.Contains(lowerMessage, "out of credits") ||
+			strings.Contains(lowerMessage, "grok subscription") ||
+			strings.Contains(lowerMessage, "spending-limit") ||
+			strings.Contains(lowerMessage, "does not have permission")) {
+		return fmt.Sprintf("xAI %s权限不足或额度用尽（上游 403）：%s。请给该 Grok 账号增加 credits，或升级/开通 SuperGrok 后再测试。", zhOperation, message)
+	}
+
+	return fmt.Sprintf("xAI %s returned %d: %s", enOperation, statusCode, message)
+}
+
+func isXAIVideoFailedStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "failed", "failure", "error", "errored", "cancelled", "canceled", "rejected":
+		return true
+	default:
+		return false
+	}
+}
+
+func isXAIVideoCompletedStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed", "complete", "succeeded", "success", "done":
+		return true
+	default:
+		return false
+	}
+}
+
+func extractXAIVideoURL(value any) string {
+	for _, key := range []string{"video_url", "download_url", "mp4_url", "asset_url"} {
+		if videoURL := extractJSONStringByKeys(value, key); videoURL != "" {
+			return videoURL
+		}
+	}
+	if videoURL := extractNestedJSONURL(value, "video"); videoURL != "" {
+		return videoURL
+	}
+	for _, key := range []string{"videos", "data", "output", "outputs"} {
+		if videoURL := extractNestedJSONURL(value, key); videoURL != "" {
+			return videoURL
+		}
+	}
+	return extractJSONStringByKeys(value, "url")
+}
+
+func extractNestedJSONURL(value any, key string) string {
+	if object, ok := value.(map[string]any); ok {
+		if nested, exists := object[key]; exists {
+			if videoURL := extractJSONStringByKeys(nested, "url", "video_url", "download_url", "mp4_url", "asset_url"); videoURL != "" {
+				return videoURL
+			}
+		}
+	}
+	return ""
+}
+
+func extractJSONErrorMessage(value any) string {
+	if object, ok := value.(map[string]any); ok {
+		if rawError, exists := object["error"]; exists {
+			if message := extractJSONStringByKeys(rawError, "message", "error_description", "error", "code"); message != "" {
+				return message
+			}
+			if text := jsonScalarToString(rawError); text != "" {
+				return text
+			}
+		}
+	}
+	return extractJSONStringByKeys(value, "error_description", "message")
+}
+
+func extractJSONStringByKeys(value any, keys ...string) string {
+	switch typed := value.(type) {
+	case map[string]any:
+		for _, key := range keys {
+			if raw, exists := typed[key]; exists {
+				if text := jsonScalarToString(raw); text != "" {
+					return text
+				}
+			}
+		}
+		for _, raw := range typed {
+			if text := extractJSONStringByKeys(raw, keys...); text != "" {
+				return text
+			}
+		}
+	case []any:
+		for _, raw := range typed {
+			if text := extractJSONStringByKeys(raw, keys...); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func jsonScalarToString(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case float64, bool:
+		return strings.TrimSpace(fmt.Sprintf("%v", typed))
+	default:
+		return ""
+	}
+}
+
+func (s *AccountTestService) FetchXAIAvailableModels(ctx context.Context, account *Account) ([]xai.Model, error) {
+	if account == nil || !account.IsXAI() {
+		return nil, errors.New("account is not an xAI account")
+	}
+	if s.httpUpstream == nil {
+		return nil, errors.New("http upstream is not available")
+	}
+
+	authToken, err := s.resolveXAIAuthToken(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(account.GetXAIBaseURL())
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, xai.BuildModelsURL(normalizedBaseURL), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create xAI models request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Connection", "Keep-Alive")
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	var resp *http.Response
+	if s.tlsFPProfileService != nil {
+		resp, err = s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	} else {
+		resp, err = s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("request xAI models: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if readErr != nil {
+		return nil, fmt.Errorf("read xAI models response: %w", readErr)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return nil, fmt.Errorf("xAI models returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	models, err := xai.ParseModelList(body)
+	if err != nil {
+		return nil, err
+	}
+	if len(models) == 0 {
+		return nil, errors.New("xAI models response is empty")
+	}
+	return models, nil
+}
+
+func (s *AccountTestService) resolveXAIAuthToken(ctx context.Context, account *Account) (string, error) {
+	if account == nil || !account.IsXAI() {
+		return "", errors.New("account is not an xAI account")
+	}
+	switch account.Type {
+	case AccountTypeOAuth:
+		if s.xaiTokenProvider != nil {
+			token, err := s.xaiTokenProvider.GetAccessToken(ctx, account)
+			if err != nil {
+				return "", fmt.Errorf("failed to get access token: %w", err)
+			}
+			if strings.TrimSpace(token) != "" {
+				return strings.TrimSpace(token), nil
+			}
+		}
+		authToken := strings.TrimSpace(account.GetXAIAccessToken())
+		if authToken == "" {
+			return "", errors.New("no access token available")
+		}
+		return authToken, nil
+	case AccountTypeAPIKey:
+		authToken := strings.TrimSpace(account.GetXAIApiKey())
+		if authToken == "" {
+			return "", errors.New("no API key available")
+		}
+		return authToken, nil
+	default:
+		return "", fmt.Errorf("unsupported account type: %s", account.Type)
 	}
 }
 

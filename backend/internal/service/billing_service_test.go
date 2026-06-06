@@ -166,6 +166,80 @@ func TestGetModelPricing_OpenAICompactAliasesFallback(t *testing.T) {
 	}
 }
 
+func TestGetModelPricing_XAIGrokFallback(t *testing.T) {
+	svc := newTestBillingService()
+
+	tests := []struct {
+		model       string
+		inputPrice  float64
+		outputPrice float64
+		cacheRead   float64
+	}{
+		{model: "grok-4.3", inputPrice: 1.25e-6, outputPrice: 2.5e-6, cacheRead: 0.2e-6},
+		{model: "grok-4.3-fast", inputPrice: 1.25e-6, outputPrice: 2.5e-6, cacheRead: 0.2e-6},
+		{model: "Grok-4.3-Mini-Fast", inputPrice: 1.25e-6, outputPrice: 2.5e-6, cacheRead: 0.2e-6},
+		{model: "grok-4.20-0309-non-reasoning", inputPrice: 1.25e-6, outputPrice: 2.5e-6, cacheRead: 0.2e-6},
+		{model: "xai/grok-3-mini-fast-latest", inputPrice: 1.25e-6, outputPrice: 2.5e-6, cacheRead: 0.2e-6},
+		{model: "grok-code-fast-1", inputPrice: 1.25e-6, outputPrice: 2.5e-6, cacheRead: 0.2e-6},
+		{model: "grok-build-0.1", inputPrice: 1e-6, outputPrice: 2e-6, cacheRead: 0.2e-6},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			pricing, err := svc.GetModelPricing(tt.model)
+			require.NoError(t, err)
+			require.NotNil(t, pricing)
+			require.InDelta(t, tt.inputPrice, pricing.InputPricePerToken, 1e-12)
+			require.InDelta(t, tt.outputPrice, pricing.OutputPricePerToken, 1e-12)
+			require.InDelta(t, tt.cacheRead, pricing.CacheReadPricePerToken, 1e-12)
+		})
+	}
+}
+
+func TestCalculateCost_XAIGrokCacheRead(t *testing.T) {
+	svc := newTestBillingService()
+
+	tokens := UsageTokens{
+		InputTokens:     1000,
+		OutputTokens:    200,
+		CacheReadTokens: 500,
+	}
+	cost, err := svc.CalculateCost("grok-4.3-fast", tokens, 1.0)
+	require.NoError(t, err)
+
+	expectedInput := float64(tokens.InputTokens) * 1.25e-6
+	expectedOutput := float64(tokens.OutputTokens) * 2.5e-6
+	expectedCacheRead := float64(tokens.CacheReadTokens) * 0.2e-6
+	require.InDelta(t, expectedInput, cost.InputCost, 1e-10)
+	require.InDelta(t, expectedOutput, cost.OutputCost, 1e-10)
+	require.InDelta(t, expectedCacheRead, cost.CacheReadCost, 1e-10)
+	require.InDelta(t, expectedInput+expectedOutput+expectedCacheRead, cost.TotalCost, 1e-10)
+}
+
+func TestCalculateCost_XAIServerSideToolUsage(t *testing.T) {
+	svc := newTestBillingService()
+
+	tokens := UsageTokens{
+		InputTokens:  1000,
+		OutputTokens: 200,
+		ServerSideToolUsage: map[string]int{
+			"SERVER_SIDE_TOOL_WEB_SEARCH":         2,
+			"SERVER_SIDE_TOOL_X_SEARCH":           1,
+			"SERVER_SIDE_TOOL_COLLECTIONS_SEARCH": 3,
+			"SERVER_SIDE_TOOL_ATTACHMENT_SEARCH":  1,
+			"SERVER_SIDE_TOOL_VIEW_IMAGE":         9,
+		},
+	}
+	cost, err := svc.CalculateCost("grok-4.3", tokens, 1.2)
+	require.NoError(t, err)
+
+	expectedTokenCost := float64(tokens.InputTokens)*1.25e-6 + float64(tokens.OutputTokens)*2.5e-6
+	expectedToolCost := float64(2+1)*0.005 + float64(3)*0.0025 + 0.01
+	require.InDelta(t, expectedToolCost, cost.ToolInvocationCost, 1e-10)
+	require.InDelta(t, expectedTokenCost+expectedToolCost, cost.TotalCost, 1e-10)
+	require.InDelta(t, (expectedTokenCost+expectedToolCost)*1.2, cost.ActualCost, 1e-10)
+}
+
 func TestGetModelPricing_OpenAIGPT54MiniFallback(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -344,6 +418,9 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		{name: "claude generic model fallback sonnet", model: "claude-foo-bar", expectedInput: 3e-6},
 		{name: "gemini explicit fallback", model: "gemini-3-1-pro", expectedInput: 2e-6},
 		{name: "gemini unknown no fallback", model: "gemini-2.0-pro", expectNilPricing: true},
+		{name: "xai grok 4.3 alias", model: "grok-4.3-fast", expectedInput: 1.25e-6},
+		{name: "xai grok 4.20 alias", model: "xai/grok-4.20-mini-fast", expectedInput: 1.25e-6},
+		{name: "xai grok build", model: "grok-build-0.1", expectedInput: 1e-6},
 		{name: "openai gpt5.4", model: "gpt-5.4", expectedInput: 2.5e-6},
 		{name: "openai gpt5.4 mini", model: "gpt-5.4-mini", expectedInput: 7.5e-7},
 		{name: "openai gpt5.3 codex", model: "gpt-5.3-codex", expectedInput: 1.5e-6},
@@ -481,6 +558,7 @@ func TestIsModelSupported(t *testing.T) {
 	require.True(t, svc.IsModelSupported("claude-sonnet-4"))
 	require.True(t, svc.IsModelSupported("Claude-Opus-4.5"))
 	require.True(t, svc.IsModelSupported("claude-3-haiku"))
+	require.True(t, svc.IsModelSupported("grok-4.3-fast"))
 	require.False(t, svc.IsModelSupported("gpt-4o"))
 	require.False(t, svc.IsModelSupported("gemini-pro"))
 }
@@ -949,4 +1027,63 @@ func TestGetModelPricingWithChannel_UnknownModelReturnsError(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, pricing)
 	require.Contains(t, err.Error(), "pricing not found")
+}
+
+func TestGetModelPricingWithChannel_NilImageOutputPriceZerosAndMarksExplicit(t *testing.T) {
+	svc := newTestBillingService()
+
+	chPricing := &ChannelModelPricing{
+		InputPrice:  testPtrFloat64(10e-6),
+		OutputPrice: testPtrFloat64(20e-6),
+		// ImageOutputPrice intentionally nil
+	}
+	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
+	require.NoError(t, err)
+
+	require.Equal(t, 0.0, pricing.ImageOutputPricePerToken)
+	require.True(t, pricing.ImageOutputPriceExplicit)
+}
+
+func TestComputeTokenBreakdown_ExplicitZeroImagePrice_NoFallback(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing := &ModelPricing{
+		InputPricePerToken:       3e-6,
+		OutputPricePerToken:      15e-6,
+		ImageOutputPricePerToken: 0,
+		ImageOutputPriceExplicit: true,
+	}
+	tokens := UsageTokens{
+		InputTokens:       100,
+		OutputTokens:      200,
+		ImageOutputTokens: 50,
+	}
+	bd := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
+
+	// ImageOutputTokens should NOT fall back to outputPrice
+	require.Equal(t, 0.0, bd.ImageOutputCost)
+	// textOutputTokens = 200 - 50 = 150
+	require.InDelta(t, 150*15e-6, bd.OutputCost, 1e-12)
+}
+
+func TestComputeTokenBreakdown_NonExplicitZeroImagePrice_FallsBackToOutput(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing := &ModelPricing{
+		InputPricePerToken:       3e-6,
+		OutputPricePerToken:      15e-6,
+		ImageOutputPricePerToken: 0,
+		ImageOutputPriceExplicit: false,
+	}
+	tokens := UsageTokens{
+		InputTokens:       100,
+		OutputTokens:      200,
+		ImageOutputTokens: 50,
+	}
+	bd := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
+
+	// Should fall back to outputPrice since not explicit
+	require.InDelta(t, 50*15e-6, bd.ImageOutputCost, 1e-12)
+	// textOutputTokens = 200 - 50 = 150
+	require.InDelta(t, 150*15e-6, bd.OutputCost, 1e-12)
 }

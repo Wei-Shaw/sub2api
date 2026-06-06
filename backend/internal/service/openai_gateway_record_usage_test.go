@@ -155,6 +155,7 @@ func newOpenAIRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo U
 		nil,
 		nil,
 		nil,
+		nil,
 		nil, // userPlatformQuotaRepo
 	)
 	svc.userGroupRateResolver = newUserGroupRateResolver(
@@ -181,6 +182,7 @@ func expectedOpenAICost(t *testing.T, svc *OpenAIGatewayService, model string, u
 		OutputTokens:        usage.OutputTokens,
 		CacheCreationTokens: usage.CacheCreationInputTokens,
 		CacheReadTokens:     usage.CacheReadInputTokens,
+		ServerSideToolUsage: usage.ServerSideToolUsage,
 	}, multiplier)
 	require.NoError(t, err)
 	return cost
@@ -292,6 +294,50 @@ func TestOpenAIGatewayServiceRecordUsage_MissingPricingRecordsZeroCostUsageLog(t
 	require.Zero(t, billingRepo.lastCmd.APIKeyQuotaCost)
 	require.Zero(t, billingRepo.lastCmd.APIKeyRateLimitCost)
 	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_XAIGrokFallbackBillsNonZero(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	usage := OpenAIUsage{
+		InputTokens:          1500,
+		OutputTokens:         200,
+		CacheReadInputTokens: 500,
+		ServerSideToolUsage: map[string]int{
+			"SERVER_SIDE_TOOL_WEB_SEARCH": 2,
+			"SERVER_SIDE_TOOL_X_SEARCH":   1,
+		},
+	}
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_xai_grok_billing",
+			Usage:     usage,
+			Model:     "grok-4.3-fast",
+			Duration:  time.Second,
+		},
+		APIKey:  &APIKey{ID: 1003},
+		User:    &User{ID: 2003},
+		Account: &Account{ID: 3003, Platform: PlatformXAI, Type: AccountTypeOAuth},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, billingRepo.calls)
+	require.Equal(t, 1, usageRepo.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 1000, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 500, usageRepo.lastLog.CacheReadTokens)
+
+	expectedTotal := float64(1000)*1.25e-6 + float64(500)*0.2e-6 + float64(200)*2.5e-6 + float64(3)*0.005
+	expectedActual := expectedTotal * 1.1
+	require.InDelta(t, expectedTotal, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, expectedActual, usageRepo.lastLog.ActualCost, 1e-12)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.InDelta(t, expectedActual, billingRepo.lastCmd.BalanceCost, 1e-12)
+	require.NotZero(t, billingRepo.lastCmd.BalanceCost)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T) {

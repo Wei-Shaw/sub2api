@@ -29,6 +29,7 @@ type opsDashboardSnapshotV2CacheKey struct {
 	Platform     string               `json:"platform"`
 	GroupID      *int64               `json:"group_id"`
 	QueryMode    service.OpsQueryMode `json:"mode"`
+	RequestType  *int16               `json:"request_type"`
 	BucketSecond int                  `json:"bucket_second"`
 }
 
@@ -56,6 +57,12 @@ func (h *OpsHandler) GetDashboardSnapshotV2(c *gin.Context) {
 		Platform:  strings.TrimSpace(c.Query("platform")),
 		QueryMode: parseOpsQueryMode(c),
 	}
+	requestType, err := parseOpsRequestType(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	filter.RequestType = requestType
 	if v := strings.TrimSpace(c.Query("group_id")); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || id <= 0 {
@@ -72,6 +79,7 @@ func (h *OpsHandler) GetDashboardSnapshotV2(c *gin.Context) {
 		Platform:     filter.Platform,
 		GroupID:      filter.GroupID,
 		QueryMode:    filter.QueryMode,
+		RequestType:  filter.RequestType,
 		BucketSecond: bucketSeconds,
 	})
 	cacheKey := string(keyRaw)

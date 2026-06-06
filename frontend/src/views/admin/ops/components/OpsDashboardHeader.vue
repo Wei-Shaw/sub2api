@@ -6,7 +6,7 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { adminAPI } from '@/api'
-import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRealtimeTrafficSummary } from '@/api/admin/ops'
+import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRealtimeTrafficSummary, type OpsRequestType } from '@/api/admin/ops'
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
 import { formatNumber } from '@/utils/format'
@@ -19,6 +19,7 @@ interface Props {
   groupId: number | null
   timeRange: string
   queryMode: string
+  requestType: OpsRequestType | ''
   loading: boolean
   lastUpdated: Date | null
   thresholds?: OpsMetricThresholds | null // 阈值配置
@@ -34,6 +35,7 @@ interface Emits {
   (e: 'update:group', value: number | null): void
   (e: 'update:timeRange', value: string): void
   (e: 'update:queryMode', value: string): void
+  (e: 'update:requestType', value: OpsRequestType | ''): void
   (e: 'update:customTimeRange', startTime: string, endTime: string): void
   (e: 'refresh'): void
   (e: 'openRequestDetails', preset?: OpsRequestDetailsPreset): void
@@ -111,6 +113,7 @@ const platformOptions = computed(() => [
   { value: 'openai', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'gemini', label: 'Gemini' },
+  { value: 'xai', label: 'xAI' },
   { value: 'antigravity', label: 'Antigravity' }
 ])
 
@@ -132,6 +135,13 @@ const queryModeOptions = computed(() => [
   { value: 'auto', label: t('admin.ops.queryMode.auto') },
   { value: 'raw', label: t('admin.ops.queryMode.raw') },
   { value: 'preagg', label: t('admin.ops.queryMode.preagg') }
+])
+
+const requestTypeOptions = computed(() => [
+  { value: '', label: t('admin.ops.requestType.all') },
+  { value: 'sync', label: t('admin.ops.requestType.sync') },
+  { value: 'stream', label: t('admin.ops.requestType.stream') },
+  { value: 'ws_v2', label: t('admin.ops.requestType.ws_v2') }
 ])
 
 const groupOptions = computed(() => {
@@ -206,6 +216,11 @@ function handleCustomTimeRangeCancel() {
 
 function handleQueryModeChange(val: string | number | boolean | null) {
   emit('update:queryMode', String(val || 'auto'))
+}
+
+function handleRequestTypeChange(val: string | number | boolean | null) {
+  const nextValue = typeof val === 'string' ? val : ''
+  emit('update:requestType', nextValue === 'sync' || nextValue === 'stream' || nextValue === 'ws_v2' ? nextValue : '')
 }
 
 function openDetails(preset?: OpsRequestDetailsPreset) {
@@ -301,7 +316,7 @@ async function loadRealtimeTrafficSummary() {
   }
   realtimeTrafficLoading.value = true
   try {
-    const res = await opsAPI.getRealtimeTrafficSummary(realtimeWindow.value, props.platform, props.groupId)
+    const res = await opsAPI.getRealtimeTrafficSummary(realtimeWindow.value, props.platform, props.groupId, props.requestType || undefined)
     if (res && res.enabled === false) {
       adminSettingsStore.setOpsRealtimeMonitoringEnabledLocal(false)
     }
@@ -315,7 +330,7 @@ async function loadRealtimeTrafficSummary() {
 }
 
 watch(
-  () => [realtimeWindow.value, props.platform, props.groupId] as const,
+  () => [realtimeWindow.value, props.platform, props.groupId, props.requestType] as const,
   () => {
     loadRealtimeTrafficSummary()
   },
@@ -917,6 +932,13 @@ function handleToolbarRefresh() {
             class="relative w-full sm:w-[150px]"
             @update:model-value="handleTimeRangeChange"
           />
+
+          <Select
+            :model-value="requestType"
+            :options="requestTypeOptions"
+            class="w-full sm:w-[150px]"
+            @update:model-value="handleRequestTypeChange"
+          />
         </template>
 
         <Select
@@ -1279,14 +1301,14 @@ function handleToolbarRefresh() {
         <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 4;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
-              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.latencyDuration') }}</span>
+              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.durationLabel') }}</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.latency')" />
             </div>
             <button
               v-if="!props.fullscreen"
               class="text-[10px] font-bold text-blue-500 hover:underline"
               type="button"
-              @click="openDetails({ title: t('admin.ops.latencyDuration'), sort: 'duration_desc' })"
+              @click="openDetails({ title: t('admin.ops.durationLabel'), sort: 'duration_desc' })"
             >
               {{ t('admin.ops.requestDetails.details') }}
             </button>
@@ -1330,7 +1352,7 @@ function handleToolbarRefresh() {
         <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 5;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
-              <span class="text-[10px] font-bold uppercase text-gray-400">TTFT</span>
+              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.ttftLabel') }}</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.ttft')" />
             </div>
             <button

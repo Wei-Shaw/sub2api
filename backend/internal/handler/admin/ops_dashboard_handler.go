@@ -36,6 +36,12 @@ func (h *OpsHandler) GetDashboardOverview(c *gin.Context) {
 		Platform:  strings.TrimSpace(c.Query("platform")),
 		QueryMode: parseOpsQueryMode(c),
 	}
+	requestType, err := parseOpsRequestType(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	filter.RequestType = requestType
 	if v := strings.TrimSpace(c.Query("group_id")); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || id <= 0 {
@@ -77,6 +83,12 @@ func (h *OpsHandler) GetDashboardThroughputTrend(c *gin.Context) {
 		Platform:  strings.TrimSpace(c.Query("platform")),
 		QueryMode: parseOpsQueryMode(c),
 	}
+	requestType, err := parseOpsRequestType(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	filter.RequestType = requestType
 	if v := strings.TrimSpace(c.Query("group_id")); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || id <= 0 {
@@ -119,6 +131,12 @@ func (h *OpsHandler) GetDashboardLatencyHistogram(c *gin.Context) {
 		Platform:  strings.TrimSpace(c.Query("platform")),
 		QueryMode: parseOpsQueryMode(c),
 	}
+	requestType, err := parseOpsRequestType(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	filter.RequestType = requestType
 	if v := strings.TrimSpace(c.Query("group_id")); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || id <= 0 {
@@ -160,6 +178,12 @@ func (h *OpsHandler) GetDashboardErrorTrend(c *gin.Context) {
 		Platform:  strings.TrimSpace(c.Query("platform")),
 		QueryMode: parseOpsQueryMode(c),
 	}
+	requestType, err := parseOpsRequestType(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	filter.RequestType = requestType
 	if v := strings.TrimSpace(c.Query("group_id")); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || id <= 0 {
@@ -202,6 +226,12 @@ func (h *OpsHandler) GetDashboardErrorDistribution(c *gin.Context) {
 		Platform:  strings.TrimSpace(c.Query("platform")),
 		QueryMode: parseOpsQueryMode(c),
 	}
+	requestType, err := parseOpsRequestType(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	filter.RequestType = requestType
 	if v := strings.TrimSpace(c.Query("group_id")); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || id <= 0 {
@@ -350,4 +380,20 @@ func parseOpsQueryMode(c *gin.Context) service.OpsQueryMode {
 		return ""
 	}
 	return service.ParseOpsQueryMode(raw)
+}
+
+func parseOpsRequestType(c *gin.Context) (*int16, error) {
+	if c == nil {
+		return nil, nil
+	}
+	raw := strings.TrimSpace(c.Query("request_type"))
+	if raw == "" {
+		return nil, nil
+	}
+	requestType, err := service.ParseUsageRequestType(raw)
+	if err != nil {
+		return nil, err
+	}
+	value := int16(requestType)
+	return &value, nil
 }

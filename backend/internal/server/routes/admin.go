@@ -41,6 +41,9 @@ func RegisterAdminRoutes(
 		// Antigravity OAuth
 		registerAntigravityOAuthRoutes(admin, h)
 
+		// xAI OAuth
+		registerXAIOAuthRoutes(admin, h)
+
 		// 代理管理
 		registerProxyRoutes(admin, h)
 
@@ -368,6 +371,16 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 	}
 }
 
+func registerXAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	xai := admin.Group("/xai")
+	{
+		xai.POST("/oauth/auth-url", h.Admin.XAIOAuth.GenerateAuthURL)
+		xai.POST("/oauth/exchange-code", h.Admin.XAIOAuth.ExchangeCode)
+		xai.POST("/oauth/refresh-token", h.Admin.XAIOAuth.RefreshToken)
+		xai.POST("/accounts/:id/refresh", h.Admin.XAIOAuth.RefreshAccountToken)
+	}
+}
+
 func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	proxies := admin.Group("/proxies")
 	{
@@ -506,9 +519,6 @@ func registerSystemRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	system := admin.Group("/system")
 	{
 		system.GET("/version", h.Admin.System.GetVersion)
-		system.GET("/check-updates", h.Admin.System.CheckUpdates)
-		system.POST("/update", h.Admin.System.PerformUpdate)
-		system.POST("/rollback", h.Admin.System.Rollback)
 		system.POST("/restart", h.Admin.System.RestartService)
 	}
 }

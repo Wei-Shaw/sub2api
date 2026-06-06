@@ -17,6 +17,7 @@
         :group-id="groupId"
         :time-range="timeRange"
         :query-mode="queryMode"
+        :request-type="requestType"
         :loading="loading"
         :last-updated="lastUpdated"
         :thresholds="metricThresholds"
@@ -29,6 +30,7 @@
         @update:platform="onPlatformChange"
         @update:group="onGroupChange"
         @update:query-mode="onQueryModeChange"
+        @update:request-type="onRequestTypeChange"
         @update:custom-time-range="onCustomTimeRangeChange"
         @refresh="fetchData"
         @open-request-details="handleOpenRequestDetails"
@@ -116,6 +118,7 @@
           :time-range="timeRange"
           :platform="platform"
           :group-id="groupId"
+          :request-type="requestType"
           :error-type="errorDetailsType"
           @update:show="showErrorDetails = $event"
           @openErrorDetail="openError"
@@ -129,6 +132,7 @@
           :preset="requestDetailsPreset"
           :platform="platform"
           :group-id="groupId"
+          :request-type="requestType"
           @openErrorDetail="openError"
         />
       </template>
@@ -149,6 +153,7 @@ import {
   type OpsErrorDistributionResponse,
   type OpsErrorTrendResponse,
   type OpsLatencyHistogramResponse,
+  type OpsRequestType,
   type OpsThroughputTrendResponse,
   type OpsMetricThresholds
 } from '@/api/admin/ops'
@@ -183,6 +188,7 @@ const allowedTimeRanges = new Set<TimeRange>(['5m', '30m', '1h', '6h', '24h', 'c
 
 type QueryMode = 'auto' | 'raw' | 'preagg'
 const allowedQueryModes = new Set<QueryMode>(['auto', 'raw', 'preagg'])
+const allowedRequestTypes = new Set<OpsRequestType>(['sync', 'stream', 'ws_v2'])
 
 const loading = ref(true)
 const hasLoadedOnce = ref(false)
@@ -193,6 +199,7 @@ const timeRange = ref<TimeRange>('1h')
 const platform = ref<string>('')
 const groupId = ref<number | null>(null)
 const queryMode = ref<QueryMode>('auto')
+const requestType = ref<OpsRequestType | ''>('')
 const customStartTime = ref<string | null>(null)
 const customEndTime = ref<string | null>(null)
 const switchTrendWindowHours = 5
@@ -204,6 +211,7 @@ const QUERY_KEYS = {
   platform: 'platform',
   groupId: 'group_id',
   queryMode: 'mode',
+  requestType: 'request_type',
   fullscreen: 'fullscreen',
 
   // Deep links
@@ -291,6 +299,13 @@ const applyRouteQueryToState = () => {
     queryMode.value = allowedQueryModes.has(fallback as QueryMode) ? (fallback as QueryMode) : 'auto'
   }
 
+  const nextRequestType = readQueryString(QUERY_KEYS.requestType)
+  if (nextRequestType && allowedRequestTypes.has(nextRequestType as OpsRequestType)) {
+    requestType.value = nextRequestType as OpsRequestType
+  } else {
+    requestType.value = ''
+  }
+
   // Deep links
   const openRules = readQueryString(QUERY_KEYS.openAlertRules)
   if (openRules === '1' || openRules === 'true') {
@@ -321,6 +336,7 @@ const buildQueryFromState = () => {
   if (platform.value) next[QUERY_KEYS.platform] = platform.value
   if (typeof groupId.value === 'number' && groupId.value > 0) next[QUERY_KEYS.groupId] = String(groupId.value)
   if (queryMode.value !== 'auto') next[QUERY_KEYS.queryMode] = queryMode.value
+  if (requestType.value) next[QUERY_KEYS.requestType] = requestType.value
 
   return next
 }
@@ -504,6 +520,14 @@ function onQueryModeChange(v: string | number | boolean | null) {
   queryMode.value = v as QueryMode
 }
 
+function onRequestTypeChange(v: string | number | boolean | null) {
+  if (typeof v !== 'string') {
+    requestType.value = ''
+    return
+  }
+  requestType.value = allowedRequestTypes.has(v as OpsRequestType) ? (v as OpsRequestType) : ''
+}
+
 function openError(id: number) {
   selectedErrorId.value = id
   // Ensure only one modal visible at a time.
@@ -516,6 +540,7 @@ function buildApiParams() {
   const params: any = {
     platform: platform.value || undefined,
     group_id: groupId.value ?? undefined,
+    request_type: requestType.value || undefined,
     mode: queryMode.value
   }
 
@@ -538,6 +563,7 @@ function buildSwitchTrendParams() {
   const params: any = {
     platform: platform.value || undefined,
     group_id: groupId.value ?? undefined,
+    request_type: requestType.value || undefined,
     mode: queryMode.value
   }
   const endTime = new Date()
@@ -737,7 +763,7 @@ async function fetchData() {
 }
 
 watch(
-  () => [timeRange.value, platform.value, groupId.value, queryMode.value] as const,
+  () => [timeRange.value, platform.value, groupId.value, queryMode.value, requestType.value] as const,
   () => {
     if (isApplyingRouteQuery.value) return
     if (opsEnabled.value) {
@@ -755,13 +781,19 @@ watch(
     const prevTimeRange = timeRange.value
     const prevPlatform = platform.value
     const prevGroupId = groupId.value
+    const prevQueryMode = queryMode.value
+    const prevRequestType = requestType.value
 
     isApplyingRouteQuery.value = true
     applyRouteQueryToState()
     isApplyingRouteQuery.value = false
 
     const changed =
-      prevTimeRange !== timeRange.value || prevPlatform !== platform.value || prevGroupId !== groupId.value
+      prevTimeRange !== timeRange.value ||
+      prevPlatform !== platform.value ||
+      prevGroupId !== groupId.value ||
+      prevQueryMode !== queryMode.value ||
+      prevRequestType !== requestType.value
     if (changed) {
       if (opsEnabled.value) {
         fetchData()

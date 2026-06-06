@@ -4536,20 +4536,73 @@ func appendRequestTypeOrStreamQueryFilter(query string, args []any, requestType 
 	return query, args
 }
 
-// buildRequestTypeFilterCondition 在 request_type 过滤时兼容 legacy 字段，避免历史数据漏查。
-func buildRequestTypeFilterCondition(startArgIndex int, requestType int16) (string, []any) {
+func buildRequestTypeFilterConditionWithColumns(startArgIndex int, requestType int16, requestTypeColumn, streamColumn, openAIWSModeColumn string) (string, []any) {
 	normalized := service.RequestTypeFromInt16(requestType)
 	requestTypeArg := int16(normalized)
+	unknownValue := int16(service.RequestTypeUnknown)
+
 	switch normalized {
 	case service.RequestTypeSync:
-		return fmt.Sprintf("(request_type = $%d OR (request_type = %d AND stream = FALSE AND openai_ws_mode = FALSE))", startArgIndex, int16(service.RequestTypeUnknown)), []any{requestTypeArg}
+		if streamColumn == "" {
+			return fmt.Sprintf("%s = $%d", requestTypeColumn, startArgIndex), []any{requestTypeArg}
+		}
+		if openAIWSModeColumn == "" {
+			return fmt.Sprintf("(%s = $%d OR (%s = %d AND %s = FALSE))",
+				requestTypeColumn,
+				startArgIndex,
+				requestTypeColumn,
+				unknownValue,
+				streamColumn,
+			), []any{requestTypeArg}
+		}
+		return fmt.Sprintf("(%s = $%d OR (%s = %d AND %s = FALSE AND %s = FALSE))",
+			requestTypeColumn,
+			startArgIndex,
+			requestTypeColumn,
+			unknownValue,
+			streamColumn,
+			openAIWSModeColumn,
+		), []any{requestTypeArg}
 	case service.RequestTypeStream:
-		return fmt.Sprintf("(request_type = $%d OR (request_type = %d AND stream = TRUE AND openai_ws_mode = FALSE))", startArgIndex, int16(service.RequestTypeUnknown)), []any{requestTypeArg}
+		if streamColumn == "" {
+			return fmt.Sprintf("%s = $%d", requestTypeColumn, startArgIndex), []any{requestTypeArg}
+		}
+		if openAIWSModeColumn == "" {
+			return fmt.Sprintf("(%s = $%d OR (%s = %d AND %s = TRUE))",
+				requestTypeColumn,
+				startArgIndex,
+				requestTypeColumn,
+				unknownValue,
+				streamColumn,
+			), []any{requestTypeArg}
+		}
+		return fmt.Sprintf("(%s = $%d OR (%s = %d AND %s = TRUE AND %s = FALSE))",
+			requestTypeColumn,
+			startArgIndex,
+			requestTypeColumn,
+			unknownValue,
+			streamColumn,
+			openAIWSModeColumn,
+		), []any{requestTypeArg}
 	case service.RequestTypeWSV2:
-		return fmt.Sprintf("(request_type = $%d OR (request_type = %d AND openai_ws_mode = TRUE))", startArgIndex, int16(service.RequestTypeUnknown)), []any{requestTypeArg}
+		if openAIWSModeColumn == "" {
+			return fmt.Sprintf("%s = $%d", requestTypeColumn, startArgIndex), []any{requestTypeArg}
+		}
+		return fmt.Sprintf("(%s = $%d OR (%s = %d AND %s = TRUE))",
+			requestTypeColumn,
+			startArgIndex,
+			requestTypeColumn,
+			unknownValue,
+			openAIWSModeColumn,
+		), []any{requestTypeArg}
 	default:
-		return fmt.Sprintf("request_type = $%d", startArgIndex), []any{requestTypeArg}
+		return fmt.Sprintf("%s = $%d", requestTypeColumn, startArgIndex), []any{requestTypeArg}
 	}
+}
+
+// buildRequestTypeFilterCondition 在 request_type 过滤时兼容 legacy 字段，避免历史数据漏查。
+func buildRequestTypeFilterCondition(startArgIndex int, requestType int16) (string, []any) {
+	return buildRequestTypeFilterConditionWithColumns(startArgIndex, requestType, "request_type", "stream", "openai_ws_mode")
 }
 
 func nullInt64(v *int64) sql.NullInt64 {
