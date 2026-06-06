@@ -151,7 +151,7 @@ type AdminGroup struct {
 	SortOrder int `json:"sort_order"`
 
 	// 插件平台扩展配置
-	GroupExtra map[string]interface{} `json:"group_extra,omitempty"`
+	GroupExtra map[string]any `json:"group_extra,omitempty"`
 }
 
 type Account struct {
