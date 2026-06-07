@@ -19,8 +19,9 @@ func TestResolveProviderMeta(t *testing.T) {
 	}{
 		{"openai", "openai", "v-claw-openai", "OpenAI", "openai-responses", true},
 		{"anthropic", "anthropic", "v-claw-anthropic", "Anthropic", "anthropic-messages", true},
-		{"gemini", "gemini", "v-claw-google", "Google", "google-native", true},
-		{"antigravity maps to google", "antigravity", "v-claw-google", "Google", "google-native", true},
+		{"kiro", "kiro", "v-claw-kiro", "Kiro", "anthropic-messages", true},
+		{"gemini", "gemini", "v-claw-gemini", "Google", "google-native", true},
+		{"antigravity", "antigravity", "v-claw-antigravity", "Google", "google-native", true},
 		{"unknown platform derives dynamically", "newplatform", "v-claw-newplatform", "Newplatform", "openai-chat", true},
 		{"empty platform", "", "", "", "", false},
 	}

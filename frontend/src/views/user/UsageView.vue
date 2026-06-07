@@ -209,7 +209,6 @@
       />
     </div>
   </AppLayout>
-
 </template>
 
 <script setup lang="ts">

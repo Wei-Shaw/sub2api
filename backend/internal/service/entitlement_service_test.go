@@ -541,6 +541,166 @@ func TestEntitlementService_AutoSwitchEntitlement_UsesActiveSubscriptionWhenBala
 	require.Equal(t, subscriptionGroupID, *result.State.Current.GroupID)
 }
 
+func TestEntitlementService_AutoSwitchEntitlement_RebindsExpiredBootstrapSubscriptionKeyToNewActiveSubscription(t *testing.T) {
+	now := time.Now()
+	oldGroupID := int64(8)
+	newGroupID := int64(9)
+	monthlyLimit := 30.0
+	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Key: "sk-bootstrap", Name: "bootstrap-openai", Status: StatusActive, GroupID: &oldGroupID}}}
+	updater := &entitlementAPIKeyUpdaterStub{keys: keyRepo}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 10}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{
+			oldGroupID: {ID: oldGroupID, Name: "OpenAI Free Trial", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, MonthlyLimitUSD: &monthlyLimit, SupportedModelScopes: []string{"openai"}},
+			newGroupID: {ID: newGroupID, Name: "V-Claw Basic Pass", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, MonthlyLimitUSD: &monthlyLimit, SupportedModelScopes: []string{"openai"}},
+		}},
+		updater,
+		keyRepo,
+		&entitlementUserSubRepoStub{subs: []UserSubscription{
+			{ID: 7, UserID: 42, GroupID: oldGroupID, Status: SubscriptionStatusExpired, StartsAt: now.Add(-96 * time.Hour), ExpiresAt: now.Add(-24 * time.Hour)},
+			{ID: 8, UserID: 42, GroupID: newGroupID, Status: SubscriptionStatusActive, StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(90 * 24 * time.Hour), MonthlyUsageUSD: 1.5},
+		}},
+	)
+
+	result, err := svc.AutoSwitchEntitlement(context.Background(), 42, AutoSwitchEntitlementRequest{Reason: "subscription_not_found", ErrorCode: "SUBSCRIPTION_NOT_FOUND", CurrentAPIKeyID: &[]int64{100}[0], CurrentGroupID: &[]int64{oldGroupID}[0], ProviderID: "v-claw-openai", AllowAPIKeyChange: true, PreferCurrentAPIKey: true})
+
+	require.NoError(t, err)
+	require.True(t, result.Switched)
+	require.Equal(t, EntitlementSwitchActionGroup, result.Action)
+	require.NotNil(t, result.Target)
+	require.Equal(t, EntitlementModeSubscription, result.Target.Mode)
+	require.Equal(t, newGroupID, result.Target.GroupID)
+	require.Equal(t, int64(100), result.Target.APIKeyID)
+	require.Equal(t, "active_subscription_group", result.Target.Reason)
+	require.Equal(t, newGroupID, *updater.updatedGroup)
+	require.NotNil(t, result.State)
+	require.NotNil(t, result.State.Current)
+	require.Equal(t, EntitlementModeSubscription, result.State.Current.Mode)
+	require.Equal(t, newGroupID, *result.State.Current.GroupID)
+}
+
+func TestEntitlementService_AutoSwitchEntitlement_RebindsCurrentKeyOnlyWithinSamePlatform(t *testing.T) {
+	now := time.Now()
+	monthlyLimit := 30.0
+	tests := []struct {
+		name          string
+		platform      string
+		otherPlatform string
+	}{
+		{name: "openai", platform: PlatformOpenAI, otherPlatform: PlatformAnthropic},
+		{name: "anthropic", platform: PlatformAnthropic, otherPlatform: PlatformOpenAI},
+		{name: "kiro", platform: PlatformKiro, otherPlatform: PlatformAnthropic},
+		{name: "gemini", platform: PlatformGemini, otherPlatform: PlatformOpenAI},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oldGroupID := int64(100 + i*10)
+			samePlatformGroupID := oldGroupID + 1
+			crossPlatformGroupID := oldGroupID + 2
+			currentAPIKeyID := int64(1000 + i)
+			keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{{ID: currentAPIKeyID, UserID: 42, Key: "sk-" + tt.name, Name: "bootstrap-" + tt.name, Status: StatusActive, GroupID: &oldGroupID}}}
+			updater := &entitlementAPIKeyUpdaterStub{keys: keyRepo}
+			svc := NewEntitlementService(
+				&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 10}}},
+				&entitlementGroupRepoStub{groups: map[int64]*Group{
+					oldGroupID:           {ID: oldGroupID, Name: tt.name + " expired", Platform: tt.platform, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, MonthlyLimitUSD: &monthlyLimit},
+					samePlatformGroupID:  {ID: samePlatformGroupID, Name: tt.name + " active", Platform: tt.platform, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, MonthlyLimitUSD: &monthlyLimit},
+					crossPlatformGroupID: {ID: crossPlatformGroupID, Name: tt.otherPlatform + " active", Platform: tt.otherPlatform, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, MonthlyLimitUSD: &monthlyLimit},
+				}},
+				updater,
+				keyRepo,
+				&entitlementUserSubRepoStub{subs: []UserSubscription{
+					{ID: crossPlatformGroupID, UserID: 42, GroupID: crossPlatformGroupID, Status: SubscriptionStatusActive, StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(30 * 24 * time.Hour)},
+					{ID: oldGroupID, UserID: 42, GroupID: oldGroupID, Status: SubscriptionStatusExpired, StartsAt: now.Add(-96 * time.Hour), ExpiresAt: now.Add(-24 * time.Hour)},
+					{ID: samePlatformGroupID, UserID: 42, GroupID: samePlatformGroupID, Status: SubscriptionStatusActive, StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(30 * 24 * time.Hour)},
+				}},
+			)
+
+			result, err := svc.AutoSwitchEntitlement(context.Background(), 42, AutoSwitchEntitlementRequest{Reason: "subscription_not_found", ErrorCode: "SUBSCRIPTION_NOT_FOUND", CurrentAPIKeyID: &currentAPIKeyID, CurrentGroupID: &oldGroupID, ProviderID: providerIDForPlatform(tt.otherPlatform), AllowAPIKeyChange: true, AllowProviderChange: true, PreferCurrentAPIKey: true})
+
+			require.NoError(t, err)
+			require.True(t, result.Switched)
+			require.Equal(t, EntitlementSwitchActionGroup, result.Action)
+			require.NotNil(t, result.Target)
+			require.Equal(t, samePlatformGroupID, result.Target.GroupID)
+			require.Equal(t, tt.platform, result.Target.GroupPlatform)
+			require.Equal(t, currentAPIKeyID, result.Target.APIKeyID)
+			require.Equal(t, samePlatformGroupID, *updater.updatedGroup)
+			require.NotEqual(t, crossPlatformGroupID, result.Target.GroupID, "current %s key must not rebind to %s entitlement", tt.platform, tt.otherPlatform)
+		})
+	}
+}
+
+func TestEntitlementService_AutoSwitchEntitlement_RejectsCrossPlatformOnlyCandidateForCurrentKey(t *testing.T) {
+	now := time.Now()
+	oldGroupID := int64(8)
+	crossSubscriptionGroupID := int64(9)
+	crossBalanceGroupID := int64(10)
+	monthlyLimit := 30.0
+	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Key: "sk-openai", Name: "bootstrap-openai", Status: StatusActive, GroupID: &oldGroupID}}}
+	updater := &entitlementAPIKeyUpdaterStub{keys: keyRepo}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 10}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{
+			oldGroupID:               {ID: oldGroupID, Name: "OpenAI expired", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, MonthlyLimitUSD: &monthlyLimit},
+			crossSubscriptionGroupID: {ID: crossSubscriptionGroupID, Name: "Gemini active", Platform: PlatformGemini, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, MonthlyLimitUSD: &monthlyLimit},
+			crossBalanceGroupID:      {ID: crossBalanceGroupID, Name: "Gemini credit", Platform: PlatformGemini, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+		}},
+		updater,
+		keyRepo,
+		&entitlementUserSubRepoStub{subs: []UserSubscription{
+			{ID: 7, UserID: 42, GroupID: oldGroupID, Status: SubscriptionStatusExpired, StartsAt: now.Add(-96 * time.Hour), ExpiresAt: now.Add(-24 * time.Hour)},
+			{ID: 8, UserID: 42, GroupID: crossSubscriptionGroupID, Status: SubscriptionStatusActive, StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(90 * 24 * time.Hour)},
+		}},
+	)
+
+	_, err := svc.AutoSwitchEntitlement(context.Background(), 42, AutoSwitchEntitlementRequest{Reason: "subscription_not_found", ErrorCode: "SUBSCRIPTION_NOT_FOUND", CurrentAPIKeyID: &[]int64{100}[0], CurrentGroupID: &oldGroupID, ProviderID: "v-claw-gemini", AllowAPIKeyChange: true, AllowProviderChange: true, PreferCurrentAPIKey: true})
+
+	require.ErrorIs(t, err, ErrEntitlementAutoSwitchNotAvailable)
+	require.Zero(t, updater.updatedID, "OpenAI current key must not rebind to Gemini subscription or balance groups")
+}
+
+func TestEntitlementService_AutoSwitchEntitlement_RebindsExpiredSubscriptionKeyToBalanceGroupInsteadOfSwitchingAPIKey(t *testing.T) {
+	now := time.Now()
+	oldGroupID := int64(8)
+	balanceGroupID := int64(18)
+	monthlyLimit := 30.0
+	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{
+		{ID: 100, UserID: 42, Key: "sk-bootstrap", Name: "bootstrap-openai", Status: StatusActive, GroupID: &oldGroupID},
+		{ID: 101, UserID: 42, Key: "sk-balance", Name: "balance-openai", Status: StatusActive, GroupID: &balanceGroupID},
+	}}
+	updater := &entitlementAPIKeyUpdaterStub{keys: keyRepo}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 10}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{
+			oldGroupID:     {ID: oldGroupID, Name: "OpenAI Free Trial", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, MonthlyLimitUSD: &monthlyLimit, SupportedModelScopes: []string{"openai"}},
+			balanceGroupID: {ID: balanceGroupID, Name: "V-Claw Balance Enterprise", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, SupportedModelScopes: []string{"openai"}},
+		}},
+		updater,
+		keyRepo,
+		&entitlementUserSubRepoStub{subs: []UserSubscription{
+			{ID: 7, UserID: 42, GroupID: oldGroupID, Status: SubscriptionStatusExpired, StartsAt: now.Add(-96 * time.Hour), ExpiresAt: now.Add(-24 * time.Hour)},
+		}},
+	)
+
+	result, err := svc.AutoSwitchEntitlement(context.Background(), 42, AutoSwitchEntitlementRequest{Reason: "subscription_not_found", ErrorCode: "SUBSCRIPTION_NOT_FOUND", CurrentAPIKeyID: &[]int64{100}[0], CurrentGroupID: &[]int64{oldGroupID}[0], ProviderID: "v-claw-openai", AllowAPIKeyChange: true, PreferCurrentAPIKey: true})
+
+	require.NoError(t, err)
+	require.True(t, result.Switched)
+	require.Equal(t, EntitlementSwitchActionGroup, result.Action)
+	require.NotNil(t, result.Target)
+	require.Equal(t, EntitlementModeBalance, result.Target.Mode)
+	require.Equal(t, balanceGroupID, result.Target.GroupID)
+	require.Equal(t, int64(100), result.Target.APIKeyID, "sticky bootstrap continuity must rebind the request key, not route through another API key")
+	require.Equal(t, balanceGroupID, *updater.updatedGroup)
+	require.Equal(t, int64(100), updater.updatedID)
+	require.NotNil(t, result.State)
+	require.NotNil(t, result.State.Current)
+	require.Equal(t, EntitlementModeBalance, result.State.Current.Mode)
+	require.Equal(t, balanceGroupID, *result.State.Current.GroupID)
+}
+
 func TestEntitlementService_AutoSwitchEntitlement_SkipsExhaustedSubscriptionTarget(t *testing.T) {
 	now := time.Now()
 	later := now.Add(30 * 24 * time.Hour)

@@ -24,7 +24,7 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 
 // NewAPIKeyAuthMiddlewareWithEntitlements creates the gateway API-key middleware with
 // server-side entitlement auto-switch enabled for quota/limit failures. This is the
-// real OpenClaw/provider traffic surface; renderer/titlebar hooks do not see these calls.
+// real provider traffic surface; renderer/titlebar hooks do not see these calls.
 func NewAPIKeyAuthMiddlewareWithEntitlements(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, entitlementService *service.EntitlementService, cfg *config.Config) APIKeyAuthMiddleware {
 	return APIKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService, entitlementService, cfg))
 }
@@ -85,7 +85,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			return
 		}
 
-		// 如果x-api-key header中没有，尝试从x-goog-api-key header中提取（Gemini CLI兼容）
+		// 如果x-api-key header中没有，尝试从x-goog-api-key header中提取（Google/Gemini CLI兼容）
 		if apiKeyString == "" {
 			apiKeyString = c.GetHeader("x-goog-api-key")
 		}
@@ -209,8 +209,22 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			)
 			if subErr != nil {
 				if !skipBilling {
-					AbortWithError(c, 403, "SUBSCRIPTION_NOT_FOUND", "No active subscription found for this group")
-					return
+					if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "subscription_not_found", "SUBSCRIPTION_NOT_FOUND", false); ok {
+						apiKey = switchedKey
+						subscription = nil
+						isSubscriptionType = apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+						if isSubscriptionType && subscriptionService != nil {
+							sub, subErr = subscriptionService.GetActiveSubscription(c.Request.Context(), apiKey.User.ID, apiKey.Group.ID)
+							if subErr != nil {
+								AbortWithError(c, 403, "SUBSCRIPTION_NOT_FOUND", "No active subscription found for this group")
+								return
+							}
+							subscription = sub
+						}
+					} else {
+						AbortWithError(c, 403, "SUBSCRIPTION_NOT_FOUND", "No active subscription found for this group")
+						return
+					}
 				}
 				// skipBilling: 订阅不存在也放行，handler 会返回可用的数据
 			} else {
@@ -224,7 +238,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			// Key 状态检查
 			switch apiKey.Status {
 			case service.StatusAPIKeyQuotaExhausted:
-				if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "api_key_quota_exhausted", "API_KEY_QUOTA_EXHAUSTED", true, false); ok {
+				if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "api_key_quota_exhausted", "API_KEY_QUOTA_EXHAUSTED", false); ok {
 					apiKey = switchedKey
 					subscription = nil
 					break
@@ -242,7 +256,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				return
 			}
 			if apiKey.IsQuotaExhausted() {
-				if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "api_key_quota_exhausted", "API_KEY_QUOTA_EXHAUSTED", true, false); ok {
+				if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "api_key_quota_exhausted", "API_KEY_QUOTA_EXHAUSTED", false); ok {
 					apiKey = switchedKey
 					subscription = nil
 				} else {
@@ -271,7 +285,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 						errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
 						code = "USAGE_LIMIT_EXCEEDED"
 						status = 429
-						if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "subscription_limit_exceeded", code, true, true); ok {
+						if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "subscription_limit_exceeded", code, true); ok {
 							apiKey = switchedKey
 							subscription = nil
 						} else {
@@ -288,8 +302,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查。
 				// 鉴权层保持历史语义：MinimumBalanceReserve 只用于 billing-cache 预检；
 				// 这里仍只在余额耗尽时尝试自动切到有效订阅，否则拒绝。
+				// Hidden provider keys are rebound in-place to active subscriptions instead of switching API keys.
 				if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
-					if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "balance_insufficient", "INSUFFICIENT_BALANCE", true, false); ok {
+					if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "balance_insufficient", "INSUFFICIENT_BALANCE", false); ok {
 						apiKey = switchedKey
 						subscription = nil
 						if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() && subscriptionService != nil {
@@ -398,7 +413,7 @@ func isAsyncImageTaskRead(method, path string) bool {
 	return strings.HasPrefix(path, "/v1/images/tasks/") || strings.HasPrefix(path, "/images/tasks/")
 }
 
-func tryAutoSwitchAPIKey(c *gin.Context, apiKeyService *service.APIKeyService, entitlementService *service.EntitlementService, apiKey *service.APIKey, reason, errorCode string, allowAPIKeyChange, allowProviderChange bool) (*service.APIKey, bool) {
+func tryAutoSwitchAPIKey(c *gin.Context, apiKeyService *service.APIKeyService, entitlementService *service.EntitlementService, apiKey *service.APIKey, reason, errorCode string, allowProviderChange bool) (*service.APIKey, bool) {
 	if c == nil || apiKeyService == nil || entitlementService == nil || apiKey == nil || apiKey.User == nil {
 		return nil, false
 	}
@@ -418,8 +433,9 @@ func tryAutoSwitchAPIKey(c *gin.Context, apiKeyService *service.APIKeyService, e
 		CurrentAPIKeyID:     &currentAPIKeyID,
 		CurrentGroupID:      currentGroupID,
 		ProviderID:          providerID,
-		AllowAPIKeyChange:   allowAPIKeyChange,
+		AllowAPIKeyChange:   false,
 		AllowProviderChange: allowProviderChange,
+		PreferCurrentAPIKey: true,
 	})
 	if err != nil || result == nil || !result.Switched || result.Target == nil {
 		return nil, false
@@ -442,14 +458,10 @@ func tryAutoSwitchAPIKey(c *gin.Context, apiKeyService *service.APIKeyService, e
 
 func providerIDForAutoSwitchPlatform(platform string) string {
 	platform = strings.ToLower(strings.TrimSpace(platform))
-	switch platform {
-	case "":
+	if platform == "" {
 		return ""
-	case service.PlatformGemini, service.PlatformAntigravity:
-		return "v-claw-google"
-	default:
-		return "v-claw-" + platform
 	}
+	return "v-claw-" + platform
 }
 
 // GetAPIKeyFromContext 从上下文中获取API key

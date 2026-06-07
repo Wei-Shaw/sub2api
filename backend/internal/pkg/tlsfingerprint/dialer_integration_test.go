@@ -33,6 +33,7 @@ func skipIfExternalServiceUnavailable(t *testing.T, err error) {
 			strings.Contains(errStr, "EOF") ||
 			strings.Contains(errStr, "no such host") ||
 			strings.Contains(errStr, "network is unreachable") ||
+			strings.Contains(errStr, "TLS handshake failed: EOF") ||
 			strings.Contains(errStr, "timeout") ||
 			strings.Contains(errStr, "deadline exceeded") {
 			t.Skipf("skipping test: external service unavailable: %v", err)

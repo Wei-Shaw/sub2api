@@ -171,6 +171,7 @@ type AutoSwitchEntitlementRequest struct {
 	ModelID             string `json:"model_id,omitempty"`
 	AllowAPIKeyChange   bool   `json:"allow_api_key_change"`
 	AllowProviderChange bool   `json:"allow_provider_change"`
+	PreferCurrentAPIKey bool   `json:"prefer_current_api_key"`
 }
 
 type EntitlementRuntimeAction struct {
@@ -675,6 +676,7 @@ func buildSubscriptionCreditQuota(sub UserSubscription, group *Group) *Entitleme
 }
 
 func providerIDForPlatform(platform string) string {
+	platform = strings.ToLower(strings.TrimSpace(platform))
 	if platform == "" {
 		return ""
 	}
@@ -698,11 +700,30 @@ func (s *EntitlementService) buildSwitchTargets(ctx context.Context, user *User,
 	}
 	var targets []EntitlementSwitchTarget
 
+	// Request-time continuity for hidden/bootstrap API keys is rebind-only. If the
+	// key that the client is actively using is not itself usable, the gateway must
+	// fail instead of selecting another API key: clients cannot silently swap the
+	// secret they send on the next request.
+	if req.PreferCurrentAPIKey {
+		if currentKey == nil || !isUsableAPIKeyForSwitch(*currentKey) || !isContinuitySwitchTrigger(req) {
+			return nil
+		}
+		if shouldTrySubscriptionSwitch(user, req) {
+			if subscriptionTargets := s.subscriptionSwitchTargets(ctx, keys, currentKey, items, req); len(subscriptionTargets) > 0 {
+				return sortSwitchTargets(subscriptionTargets)
+			}
+		}
+		if user.Balance > 0 {
+			targets = append(targets, s.stickyBalanceSwitchTargets(ctx, user, keys, currentKey, items, req)...)
+		}
+		return sortSwitchTargets(targets)
+	}
+
 	// When the current key is on balance/credit mode and the wallet is empty, keep the
 	// same hidden API key alive by binding it to an active subscription group for the
 	// same provider/platform. V-Claw users do not manage API keys directly, so this is
 	// the server-side continuity path for manual/admin subscription grants.
-	if user.Balance <= 0 || strings.EqualFold(req.Reason, "balance_insufficient") || strings.EqualFold(req.ErrorCode, "INSUFFICIENT_BALANCE") {
+	if shouldTrySubscriptionSwitch(user, req) {
 		if subscriptionTargets := s.subscriptionSwitchTargets(ctx, keys, currentKey, items, req); len(subscriptionTargets) > 0 {
 			targets = append(targets, subscriptionTargets...)
 		}
@@ -742,6 +763,10 @@ func (s *EntitlementService) buildSwitchTargets(ctx context.Context, user *User,
 			}
 		}
 	}
+	return sortSwitchTargets(targets)
+}
+
+func sortSwitchTargets(targets []EntitlementSwitchTarget) []EntitlementSwitchTarget {
 	sort.SliceStable(targets, func(i, j int) bool {
 		if targets[i].Priority != targets[j].Priority {
 			return targets[i].Priority > targets[j].Priority
@@ -749,6 +774,76 @@ func (s *EntitlementService) buildSwitchTargets(ctx context.Context, user *User,
 		return targets[i].APIKeyID < targets[j].APIKeyID
 	})
 	return targets
+}
+
+func isContinuitySwitchTrigger(req AutoSwitchEntitlementRequest) bool {
+	if isSubscriptionSwitchTrigger(req) {
+		return true
+	}
+	reason := strings.ToLower(strings.TrimSpace(req.Reason))
+	code := strings.ToUpper(strings.TrimSpace(req.ErrorCode))
+	return reason == "subscription_limit_exceeded" || code == "USAGE_LIMIT_EXCEEDED"
+}
+
+func (s *EntitlementService) stickyBalanceSwitchTargets(ctx context.Context, user *User, keys []APIKey, currentKey *APIKey, items []EntitlementItem, req AutoSwitchEntitlementRequest) []EntitlementSwitchTarget {
+	if currentKey == nil || !isUsableAPIKeyForSwitch(*currentKey) {
+		return nil
+	}
+	var targets []EntitlementSwitchTarget
+	seen := make(map[int64]struct{})
+	addTarget := func(groupID int64, reason string, priority int) {
+		if groupID <= 0 {
+			return
+		}
+		if _, ok := seen[groupID]; ok {
+			return
+		}
+		if target, ok := s.switchTargetForGroup(ctx, user, keys, currentKey, groupID, req, reason, priority); ok {
+			target.EstimatedBalanceUSD = user.Balance
+			targets = append(targets, target)
+			seen[groupID] = struct{}{}
+		}
+	}
+	if currentKey.GroupID != nil {
+		for _, item := range items {
+			if item.GroupID == *currentKey.GroupID && item.FallbackGroupID != nil {
+				addTarget(*item.FallbackGroupID, "subscription_fallback_group", 100)
+			}
+		}
+	}
+	for _, key := range keys {
+		if key.GroupID == nil {
+			continue
+		}
+		addTarget(*key.GroupID, "active_balance_group_rebind", 60)
+	}
+	if len(targets) == 0 {
+		if target, ok := s.defaultBalanceGroupSwitchTarget(ctx, user, keys, currentKey, items, req); ok {
+			target.EstimatedBalanceUSD = user.Balance
+			targets = append(targets, target)
+		}
+	}
+	return targets
+}
+
+func shouldTrySubscriptionSwitch(user *User, req AutoSwitchEntitlementRequest) bool {
+	if user != nil && user.Balance <= 0 {
+		return true
+	}
+	return isSubscriptionSwitchTrigger(req)
+}
+
+func isSubscriptionSwitchTrigger(req AutoSwitchEntitlementRequest) bool {
+	reason := strings.ToLower(strings.TrimSpace(req.Reason))
+	code := strings.ToUpper(strings.TrimSpace(req.ErrorCode))
+	return reason == "balance_insufficient" ||
+		code == "INSUFFICIENT_BALANCE" ||
+		reason == "subscription_not_found" ||
+		reason == "subscription_invalid" ||
+		reason == "subscription_expired" ||
+		code == "SUBSCRIPTION_NOT_FOUND" ||
+		code == "SUBSCRIPTION_INVALID" ||
+		code == "SUBSCRIPTION_EXPIRED"
 }
 
 func (s *EntitlementService) subscriptionSwitchTargets(ctx context.Context, keys []APIKey, currentKey *APIKey, items []EntitlementItem, req AutoSwitchEntitlementRequest) []EntitlementSwitchTarget {
@@ -762,7 +857,7 @@ func (s *EntitlementService) subscriptionSwitchTargets(ctx context.Context, keys
 	if key == nil || key.GroupID == nil {
 		return nil
 	}
-	if currentGroup, err := s.groupRepo.GetByID(ctx, *key.GroupID); err == nil && currentGroup != nil && currentGroup.IsSubscriptionType() {
+	if currentGroup, err := s.groupRepo.GetByID(ctx, *key.GroupID); err == nil && currentGroup != nil && currentGroup.IsSubscriptionType() && !isSubscriptionSwitchTrigger(req) {
 		return nil
 	}
 
@@ -775,7 +870,7 @@ func (s *EntitlementService) subscriptionSwitchTargets(ctx context.Context, keys
 		if err != nil || group == nil || !group.IsSubscriptionType() || !group.IsActive() {
 			continue
 		}
-		if req.ProviderID != "" && providerIDForPlatform(group.Platform) != req.ProviderID && !req.AllowProviderChange {
+		if !s.switchTargetPlatformCompatible(ctx, group, currentKey, items, req) {
 			continue
 		}
 		targets = append(targets, EntitlementSwitchTarget{
@@ -830,33 +925,56 @@ func (s *EntitlementService) defaultBalanceGroupSwitchTarget(ctx context.Context
 }
 
 func (s *EntitlementService) autoSwitchTargetPlatform(ctx context.Context, currentKey *APIKey, items []EntitlementItem, req AutoSwitchEntitlementRequest) string {
-	if providerPlatform := platformFromProviderID(req.ProviderID); providerPlatform != "" {
-		return providerPlatform
-	}
 	if req.CurrentGroupID != nil && *req.CurrentGroupID > 0 {
 		if group, err := s.groupRepo.GetByID(ctx, *req.CurrentGroupID); err == nil && group != nil && group.Platform != "" {
-			return group.Platform
+			return strings.ToLower(strings.TrimSpace(group.Platform))
 		}
 	}
 	if currentKey != nil && currentKey.GroupID != nil {
 		if group, err := s.groupRepo.GetByID(ctx, *currentKey.GroupID); err == nil && group != nil && group.Platform != "" {
-			return group.Platform
+			return strings.ToLower(strings.TrimSpace(group.Platform))
 		}
 	}
 	for _, item := range items {
 		if item.Current && item.GroupPlatform != "" {
-			return item.GroupPlatform
+			return strings.ToLower(strings.TrimSpace(item.GroupPlatform))
 		}
+	}
+	if providerPlatform := platformFromProviderID(req.ProviderID); providerPlatform != "" {
+		return providerPlatform
 	}
 	return ""
 }
 
 func platformFromProviderID(providerID string) string {
-	providerID = strings.TrimSpace(providerID)
+	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	if providerID == "" {
 		return ""
 	}
-	return strings.TrimPrefix(providerID, "v-claw-")
+	for _, prefix := range []string{"v-claw-", "platform:", "provider:"} {
+		providerID = strings.TrimPrefix(providerID, prefix)
+	}
+	return providerID
+}
+
+func sameAutoSwitchPlatform(a, b string) bool {
+	a = strings.ToLower(strings.TrimSpace(a))
+	b = strings.ToLower(strings.TrimSpace(b))
+	return a != "" && b != "" && a == b
+}
+
+func (s *EntitlementService) switchTargetPlatformCompatible(ctx context.Context, group *Group, currentKey *APIKey, items []EntitlementItem, req AutoSwitchEntitlementRequest) bool {
+	if group == nil {
+		return false
+	}
+	targetPlatform := s.autoSwitchTargetPlatform(ctx, currentKey, items, req)
+	if targetPlatform != "" {
+		return sameAutoSwitchPlatform(group.Platform, targetPlatform)
+	}
+	if req.ProviderID == "" || req.AllowProviderChange {
+		return true
+	}
+	return sameAutoSwitchPlatform(group.Platform, platformFromProviderID(req.ProviderID)) || strings.EqualFold(providerIDForPlatform(group.Platform), strings.TrimSpace(req.ProviderID))
 }
 
 func isBasicBalanceGroupBetter(a, b Group) bool {
@@ -874,7 +992,7 @@ func (s *EntitlementService) switchTargetForGroup(ctx context.Context, user *Use
 	if err != nil || group == nil || group.IsSubscriptionType() || !group.IsActive() || !user.CanBindGroup(group.ID, group.IsExclusive) {
 		return EntitlementSwitchTarget{}, false
 	}
-	if req.ProviderID != "" && providerIDForPlatform(group.Platform) != req.ProviderID && !req.AllowProviderChange {
+	if !s.switchTargetPlatformCompatible(ctx, group, preferredKey, nil, req) {
 		return EntitlementSwitchTarget{}, false
 	}
 	key := preferredKey

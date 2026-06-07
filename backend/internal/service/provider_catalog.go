@@ -55,6 +55,7 @@ var apiStyleForPlatform = map[string]string{
 	"anthropic":   "anthropic-messages",
 	"gemini":      "google-native",
 	"antigravity": "google-native",
+	"kiro":        "anthropic-messages",
 }
 
 // platformDisplayName maps platform to a human-friendly provider name.
@@ -64,15 +65,18 @@ var platformDisplayName = map[string]string{
 	"anthropic":   "Anthropic",
 	"gemini":      "Google",
 	"antigravity": "Google",
+	"kiro":        "Kiro",
 }
 
-// platformToProviderID maps platform to the v-claw provider ID.
-// Multiple platforms can map to the same provider (e.g., gemini + antigravity → v-claw-google).
+// platformToProviderID maps platform to the client-facing provider ID.
+// Keep this one-to-one with platform so provider traffic cannot collapse distinct
+// entitlement groups (for example, gemini and antigravity must not share a provider ID).
 var platformToProviderID = map[string]string{
 	"openai":      "v-claw-openai",
 	"anthropic":   "v-claw-anthropic",
-	"gemini":      "v-claw-google",
-	"antigravity": "v-claw-google",
+	"gemini":      "v-claw-gemini",
+	"antigravity": "v-claw-antigravity",
+	"kiro":        "v-claw-kiro",
 }
 
 // resolveProviderMeta derives provider metadata from a platform string.
