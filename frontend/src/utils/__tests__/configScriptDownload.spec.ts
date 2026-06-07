@@ -13,9 +13,16 @@ function decodeBatchPayload(content: string): string {
 }
 
 function extractClaudeBatchPayload(content: string): string {
-  const marker = '__PINAI_CLAUDE_CODE_PS1__'
+  const marker = '__LOOK2EYE_CLAUDE_CODE_PS1__'
   const markerIndex = content.lastIndexOf(marker)
   if (markerIndex < 0) throw new Error('missing Claude Code payload marker')
+  return content.slice(markerIndex + marker.length).trimStart()
+}
+
+function extractOpenCodeBatchPayload(content: string): string {
+  const marker = '__LOOK2EYE_OPENCODE_PS1__'
+  const markerIndex = content.lastIndexOf(marker)
+  if (markerIndex < 0) throw new Error('missing OpenCode payload marker')
   return content.slice(markerIndex + marker.length).trimStart()
 }
 
@@ -38,7 +45,7 @@ describe('configScriptDownload', () => {
     expect(script.content).toContain('AUTH_PATH="$CODEX_DIR/auth.json"')
     expect(script.content).toContain('BACKUP_DIR="$CODEX_DIR/backups"')
     expect(script.content).toContain('restore|--restore|/restore')
-    expect(script.content).toContain('base_url = "{{PINAI_BASE_URL}}"')
+    expect(script.content).toContain('base_url = "{{LOOK2EYE_BASE_URL}}"')
     expect(script.content).toContain('json.dumps({"OPENAI_API_KEY": api_key}')
     expect(script.content).toContain('stop_codex_processes')
   })
@@ -50,18 +57,18 @@ describe('configScriptDownload', () => {
       platform: 'openai',
       baseUrl: 'https://api.example.com/v1',
       apiKey: 'sk-win-key',
-      siteName: 'PinAI'
+      siteName: 'Look2eye'
     })
 
-    expect(script.filename).toBe('PinAI-codex-config.bat')
+    expect(script.filename).toBe('Look2eye-codex-config.bat')
     expect(script.content).toContain('@echo off')
-    expect(script.content).toContain('PINAI_CODEX_EXIT')
+    expect(script.content).toContain('LOOK2EYE_CODEX_EXIT')
 
     const payload = decodeBatchPayload(script.content)
     expect(payload).toContain("$BaseUrl = 'https://api.example.com/v1'")
     expect(payload).toContain("$ApiKey = 'sk-win-key'")
     expect(payload).toContain('$ConfigTomlTemplate')
-    expect(payload).toContain('model_provider = "PinAI"')
+    expect(payload).toContain('model_provider = "Look2eye"')
     expect(payload).toContain('Restore-CodexBackup')
     expect(payload).toContain('Stop-CodexProcesses')
   })
@@ -73,12 +80,12 @@ describe('configScriptDownload', () => {
       platform: 'anthropic',
       baseUrl: 'https://api.example.com/v1/',
       apiKey: 'sk-claude-key',
-      siteName: 'PinAI'
+      siteName: 'Look2eye'
     })
 
-    expect(script.filename).toBe('PinAI-claude-code-config.sh')
+    expect(script.filename).toBe('Look2eye-claude-code-config.sh')
     expect(script.content).toContain('#!/usr/bin/env sh')
-    expect(script.content).toContain('PinAI Claude Code 配置已完成')
+    expect(script.content).toContain('Look2eye Claude Code 配置已完成')
     expect(script.content).toContain("BASE_URL='https://api.example.com/v1'")
     expect(script.content).toContain("API_KEY='sk-claude-key'")
     expect(script.content).toContain('CLAUDE_DIR="$HOME/.claude"')
@@ -103,9 +110,9 @@ describe('configScriptDownload', () => {
 
     expect(script.filename).toBe('look2eye-claude-code-config.bat')
     expect(script.content).toContain('@echo off')
-    expect(script.content).toContain('PINAI_SETUP_MARKER=__PINAI_CLAUDE_CODE_PS1__')
-    expect(script.content).toContain('__PINAI_CLAUDE_CODE_PS1__')
-    expect(script.content).toContain('PINAI_SETUP_LAUNCHED_FROM_EXPLORER')
+    expect(script.content).toContain('LOOK2EYE_SETUP_MARKER=__LOOK2EYE_CLAUDE_CODE_PS1__')
+    expect(script.content).toContain('__LOOK2EYE_CLAUDE_CODE_PS1__')
+    expect(script.content).toContain('LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER')
 
     const payload = extractClaudeBatchPayload(script.content)
     expect(payload).toContain("Applying $SiteName Claude Code config")
@@ -117,6 +124,62 @@ describe('configScriptDownload', () => {
     expect(payload).toContain('Join-Path $claudeDir "backups"')
     expect(payload).toContain('$envMap["ANTHROPIC_AUTH_TOKEN"] = $ApiKey')
     expect(payload).toContain('$envMap["CLAUDE_CODE_ATTRIBUTION_HEADER"] = "0"')
+    expect(payload).toContain('Write-Utf8NoBom')
+  })
+
+  it('builds a macOS OpenCode shell script that merges opencode.json', () => {
+    const script = buildAPIKeyConfigScript({
+      client: 'opencode',
+      os: 'mac',
+      platform: 'openai',
+      baseUrl: 'https://api.example.com/v1/',
+      apiKey: 'sk-opencode-key',
+      siteName: 'Look2eye'
+    })
+
+    expect(script.filename).toBe('Look2eye-opencode-config.sh')
+    expect(script.content).toContain('#!/usr/bin/env sh')
+    expect(script.content).toContain('Look2eye OpenCode 配置已完成')
+    expect(script.content).toContain("BASE_URL='https://api.example.com/v1'")
+    expect(script.content).toContain("API_KEY='sk-opencode-key'")
+    expect(script.content).toContain('OPENCODE_DIR="$HOME/.config/opencode"')
+    expect(script.content).toContain('CONFIG_PATH="$OPENCODE_DIR/opencode.json"')
+    expect(script.content).toContain('BACKUP_DIR="$OPENCODE_DIR/backups"')
+    expect(script.content).toContain('default_models = json.loads')
+    expect(script.content).toContain('"gpt-5.5"')
+    expect(script.content).toContain('options["baseURL"] = base_url')
+    expect(script.content).toContain('options["apiKey"] = api_key')
+    expect(script.content).toContain('opts["store"] = False')
+    expect(script.content).not.toContain('Installing Look2eye OpenCode configuration')
+  })
+
+  it('builds a Windows OpenCode batch script from the marker-based template', () => {
+    const script = buildAPIKeyConfigScript({
+      client: 'opencode',
+      os: 'win',
+      platform: 'gemini',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-opencode-win-key'
+    })
+
+    expect(script.filename).toBe('look2eye-opencode-config.bat')
+    expect(script.content).toContain('@echo off')
+    expect(script.content).toContain('LOOK2EYE_SETUP_MARKER=__LOOK2EYE_OPENCODE_PS1__')
+    expect(script.content).toContain('__LOOK2EYE_OPENCODE_PS1__')
+    expect(script.content).toContain('LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER')
+
+    const payload = extractOpenCodeBatchPayload(script.content)
+    expect(payload).toContain("Applying $SiteName OpenCode config")
+    expect(payload).toContain("Join-Path (Join-Path $targetHome \".config\") \"opencode\"")
+    expect(payload).toContain('Join-Path $openCodeDir "opencode.json"')
+    expect(payload).toContain('Join-Path $openCodeDir "backups"')
+    expect(payload).toContain("$BaseUrl = 'https://api.example.com/v1'")
+    expect(payload).toContain("$ApiKey = 'sk-opencode-win-key'")
+    expect(payload).toContain('$ModelsJson')
+    expect(payload).toContain('"gpt-5.5"')
+    expect(payload).toContain('$options["baseURL"] = $BaseUrl.Trim().TrimEnd("/")')
+    expect(payload).toContain('$options["apiKey"] = $ApiKey')
+    expect(payload).toContain('Ensure-AgentStoreFalse')
     expect(payload).toContain('Write-Utf8NoBom')
   })
 

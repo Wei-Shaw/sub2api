@@ -31,6 +31,176 @@ const CODEX_DEFAULT_REVIEW_MODEL = 'gpt-5.5'
 const CODEX_REASONING_EFFORT = 'xhigh'
 const CODEX_CONTEXT_WINDOW = 1000000
 const CODEX_AUTO_COMPACT_TOKEN_LIMIT = 900000
+const OPENCODE_DEFAULT_MODELS_JSON = `{
+  "gpt-5.2": {
+    "name": "GPT-5.2",
+    "limit": {
+      "context": 400000,
+      "output": 128000
+    },
+    "options": {
+      "store": false
+    },
+    "variants": {
+      "low": {
+        "reasoningEffort": "low"
+      },
+      "medium": {
+        "reasoningEffort": "medium"
+      },
+      "high": {
+        "reasoningEffort": "high"
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh"
+      }
+    }
+  },
+  "gpt-5.5": {
+    "name": "GPT-5.5",
+    "limit": {
+      "context": 1050000,
+      "output": 128000
+    },
+    "options": {
+      "store": false
+    },
+    "variants": {
+      "low": {
+        "reasoningEffort": "low"
+      },
+      "medium": {
+        "reasoningEffort": "medium"
+      },
+      "high": {
+        "reasoningEffort": "high"
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh"
+      }
+    }
+  },
+  "gpt-5.4": {
+    "name": "GPT-5.4",
+    "limit": {
+      "context": 1050000,
+      "output": 128000
+    },
+    "options": {
+      "store": false
+    },
+    "variants": {
+      "low": {
+        "reasoningEffort": "low"
+      },
+      "medium": {
+        "reasoningEffort": "medium"
+      },
+      "high": {
+        "reasoningEffort": "high"
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh"
+      }
+    }
+  },
+  "gpt-5.4-mini": {
+    "name": "GPT-5.4 Mini",
+    "limit": {
+      "context": 400000,
+      "output": 128000
+    },
+    "options": {
+      "store": false
+    },
+    "variants": {
+      "low": {
+        "reasoningEffort": "low"
+      },
+      "medium": {
+        "reasoningEffort": "medium"
+      },
+      "high": {
+        "reasoningEffort": "high"
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh"
+      }
+    }
+  },
+  "gpt-5.3-codex-spark": {
+    "name": "GPT-5.3 Codex Spark",
+    "limit": {
+      "context": 128000,
+      "output": 32000
+    },
+    "options": {
+      "store": false
+    },
+    "variants": {
+      "low": {
+        "reasoningEffort": "low"
+      },
+      "medium": {
+        "reasoningEffort": "medium"
+      },
+      "high": {
+        "reasoningEffort": "high"
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh"
+      }
+    }
+  },
+  "gpt-5.3-codex": {
+    "name": "GPT-5.3 Codex",
+    "limit": {
+      "context": 400000,
+      "output": 128000
+    },
+    "options": {
+      "store": false
+    },
+    "variants": {
+      "low": {
+        "reasoningEffort": "low"
+      },
+      "medium": {
+        "reasoningEffort": "medium"
+      },
+      "high": {
+        "reasoningEffort": "high"
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh"
+      }
+    }
+  },
+  "codex-mini-latest": {
+    "name": "Codex Mini",
+    "limit": {
+      "context": 200000,
+      "output": 100000
+    },
+    "options": {
+      "store": false
+    },
+    "variants": {
+      "low": {
+        "reasoningEffort": "low"
+      },
+      "medium": {
+        "reasoningEffort": "medium"
+      },
+      "high": {
+        "reasoningEffort": "high"
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh"
+      }
+    }
+  }
+}`
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '')
 
@@ -64,7 +234,7 @@ function json(value: unknown): string {
 
 function codexProviderName(siteName: string): string {
   const sanitized = siteName.replace(/[^A-Za-z0-9_-]+/g, '')
-  return sanitized || 'PinAI'
+  return sanitized || 'Look2eye'
 }
 
 function codexConfigTemplate(input: Required<Pick<ConfigScriptInput, 'siteName'>>): string {
@@ -85,12 +255,12 @@ max_depth = 1
 
 [model_providers.${providerName}]
 name = "${providerName}"
-base_url = "{{PINAI_BASE_URL}}"
+base_url = "{{LOOK2EYE_BASE_URL}}"
 wire_api = "responses"
-supports_websockets = {{PINAI_ENABLE_WEBSOCKET}}
+supports_websockets = {{LOOK2EYE_ENABLE_WEBSOCKET}}
 
 [features]
-responses_websockets_v2 = {{PINAI_ENABLE_WEBSOCKET}}
+responses_websockets_v2 = {{LOOK2EYE_ENABLE_WEBSOCKET}}
 goals = true
 
 [windows]
@@ -106,25 +276,25 @@ function buildCodexShellScript(input: Required<Pick<ConfigScriptInput, 'baseUrl'
   return `#!/usr/bin/env sh
 set -eu
 
-pinai_setup_result() {
+look2eye_setup_result() {
   rc=$?
   if [ "$rc" -eq 0 ]; then
     printf '\\n'
     echo "============================================================"
-    echo "[PINAI SETUP SUCCESS] ${siteName} Codex CLI 配置已完成。"
+    echo "[LOOK2EYE SETUP SUCCESS] ${siteName} Codex CLI 配置已完成。"
     echo "请重新打开 Codex 或对应客户端，让新配置生效。"
     echo "============================================================"
   else
     printf '\\n' >&2
     echo "============================================================" >&2
-    echo "[PINAI SETUP FAILED] ${siteName} Codex CLI 配置未完成或未完全生效。退出码：$rc" >&2
+    echo "[LOOK2EYE SETUP FAILED] ${siteName} Codex CLI 配置未完成或未完全生效。退出码：$rc" >&2
     echo "请查看上方失败原因；如提示 Codex 未关闭，请手动关闭后重试。" >&2
     echo "============================================================" >&2
   fi
   trap - EXIT
   exit "$rc"
 }
-trap pinai_setup_result EXIT
+trap look2eye_setup_result EXIT
 
 BASE_URL=${shellQuote(baseUrl)}
 API_KEY=${shellQuote(input.apiKey)}
@@ -138,7 +308,7 @@ BACKUP_DIR="$CODEX_DIR/backups"
 mkdir -p "$CODEX_DIR" "$BACKUP_DIR"
 
 stop_codex_processes() {
-  if [ "\${PINAI_SKIP_CODEX_PROCESS_CLOSE:-}" = "1" ]; then
+  if [ "\${LOOK2EYE_SKIP_CODEX_PROCESS_CLOSE:-}" = "1" ]; then
     echo "已跳过结束 Codex 进程。"
     return 0
   fi
@@ -199,9 +369,9 @@ else
   exit 1
 fi
 
-PINAI_ACTION=\${1:-apply}
+LOOK2EYE_ACTION=\${1:-apply}
 
-case "$PINAI_ACTION" in
+case "$LOOK2EYE_ACTION" in
   ""|1|apply|--apply)
     printf "\\n${siteName} Codex CLI 一键配置：默认覆盖当前配置。\\n"
     echo "如需恢复备份，请在终端运行本脚本并追加 restore 参数。"
@@ -265,7 +435,7 @@ PY
     exit 0
     ;;
   *)
-    echo "失败：参数无效：$PINAI_ACTION。直接运行会配置 ${siteName}；恢复备份请使用 restore 参数。" >&2
+    echo "失败：参数无效：$LOOK2EYE_ACTION。直接运行会配置 ${siteName}；恢复备份请使用 restore 参数。" >&2
     exit 1
     ;;
 esac
@@ -305,8 +475,8 @@ if auth_path.exists() and auth_path.read_text(encoding="utf-8").strip():
     except json.JSONDecodeError as exc:
         raise RuntimeError("auth.json 不是合法 JSON，请手动合并后重试。") from exc
 
-rendered_config = template.replace("{{PINAI_BASE_URL}}", base_url)
-rendered_config = rendered_config.replace("{{PINAI_ENABLE_WEBSOCKET}}", "true" if enable_ws else "false")
+rendered_config = template.replace("{{LOOK2EYE_BASE_URL}}", base_url)
+rendered_config = rendered_config.replace("{{LOOK2EYE_ENABLE_WEBSOCKET}}", "true" if enable_ws else "false")
 rendered_config = rendered_config.replace("\\r\\n", "\\n").replace("\\r", "\\n").rstrip("\\n") + "\\n"
 auth_text = json.dumps({"OPENAI_API_KEY": api_key}, ensure_ascii=False, separators=(",", ":")) + "\\n"
 
@@ -340,7 +510,7 @@ $ConfigTomlTemplate = ${powershellSingleQuote(template)}
 $SiteName = ${powershellSingleQuote(siteName)}
 
 function Stop-CodexProcesses {
-  if ($env:PINAI_SKIP_CODEX_PROCESS_CLOSE -eq "1") {
+  if ($env:LOOK2EYE_SKIP_CODEX_PROCESS_CLOSE -eq "1") {
     Write-Host "已跳过结束 Codex 进程。"
     return
   }
@@ -481,8 +651,8 @@ try {
     }
   }
 
-  $newConfig = $ConfigTomlTemplate.Replace("{{PINAI_BASE_URL}}", $BaseUrl.Trim().TrimEnd("/"))
-  $newConfig = $newConfig.Replace("{{PINAI_ENABLE_WEBSOCKET}}", $EnableWebSocket.ToString().ToLowerInvariant())
+  $newConfig = $ConfigTomlTemplate.Replace("{{LOOK2EYE_BASE_URL}}", $BaseUrl.Trim().TrimEnd("/"))
+  $newConfig = $newConfig.Replace("{{LOOK2EYE_ENABLE_WEBSOCKET}}", $EnableWebSocket.ToString().ToLowerInvariant())
   $newConfig = $newConfig.TrimEnd([char[]]@([char]13, [char]10)) + [Environment]::NewLine
   $newAuth = ([ordered]@{ OPENAI_API_KEY = $ApiKey.Trim() } | ConvertTo-Json -Compress) + [Environment]::NewLine
 
@@ -514,23 +684,23 @@ function buildCodexBatchScript(input: Required<Pick<ConfigScriptInput, 'baseUrl'
   return `@echo off
 chcp 65001 >nul
 setlocal
-set "PINAI_CODEX_EXIT=1"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$script = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')); $path = Join-Path $env:TEMP 'pinai-codex-config.ps1'; Set-Content -Encoding UTF8 -Path $path -Value $script; & $path %*"
-set "PINAI_CODEX_EXIT=%ERRORLEVEL%"
+set "LOOK2EYE_CODEX_EXIT=1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$script = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')); $path = Join-Path $env:TEMP 'look2eye-codex-config.ps1'; Set-Content -Encoding UTF8 -Path $path -Value $script; & $path %*"
+set "LOOK2EYE_CODEX_EXIT=%ERRORLEVEL%"
 echo.
-if "%PINAI_CODEX_EXIT%"=="0" (
+if "%LOOK2EYE_CODEX_EXIT%"=="0" (
   echo ============================================================
-  echo [PINAI SETUP SUCCESS] ${input.siteName} Codex CLI config/restore completed.
+  echo [LOOK2EYE SETUP SUCCESS] ${input.siteName} Codex CLI config/restore completed.
   echo Reopen Codex or the target client to load the new config.
   echo ============================================================
 ) else (
   echo ============================================================
-  echo [PINAI SETUP FAILED] ${input.siteName} Codex CLI config/restore did not complete. Exit code: %PINAI_CODEX_EXIT%
+  echo [LOOK2EYE SETUP FAILED] ${input.siteName} Codex CLI config/restore did not complete. Exit code: %LOOK2EYE_CODEX_EXIT%
   echo Check the error above. If Codex is still open, close it manually and retry.
   echo ============================================================
 )
 pause
-endlocal & exit /b %PINAI_CODEX_EXIT%
+endlocal & exit /b %LOOK2EYE_CODEX_EXIT%
 `
 }
 
@@ -547,25 +717,25 @@ function buildClaudeShellScript(input: Required<Pick<ConfigScriptInput, 'baseUrl
   return `#!/usr/bin/env sh
 set -eu
 
-pinai_setup_result() {
+look2eye_setup_result() {
   rc=$?
   if [ "$rc" -eq 0 ]; then
     printf '\\n'
     echo "============================================================"
-    echo "[PINAI SETUP SUCCESS] ${siteName} Claude Code 配置已完成。"
+    echo "[LOOK2EYE SETUP SUCCESS] ${siteName} Claude Code 配置已完成。"
     echo "请重新打开 Claude Code 或对应客户端，让新配置生效。"
     echo "============================================================"
   else
     printf '\\n' >&2
     echo "============================================================" >&2
-    echo "[PINAI SETUP FAILED] ${siteName} Claude Code 配置未完成或未完全生效。退出码：$rc" >&2
+    echo "[LOOK2EYE SETUP FAILED] ${siteName} Claude Code 配置未完成或未完全生效。退出码：$rc" >&2
     echo "请查看上方失败原因；如 settings.json 无法自动合并，请手动处理后重试。" >&2
     echo "============================================================" >&2
   fi
   trap - EXIT
   exit "$rc"
 }
-trap pinai_setup_result EXIT
+trap look2eye_setup_result EXIT
 
 BASE_URL=${shellQuote(baseUrl)}
 API_KEY=${shellQuote(input.apiKey)}
@@ -766,46 +936,404 @@ function buildClaudeBatchScript(input: Required<Pick<ConfigScriptInput, 'baseUrl
   const psScript = buildClaudePowerShellPayload(input)
   return `@echo off
 setlocal
-set "PINAI_SETUP_SCRIPT_PATH=%~f0"
-set "PINAI_SETUP_PAYLOAD="
-set "PINAI_SETUP_EXIT=1"
-set "PINAI_SETUP_LAUNCHED_FROM_EXPLORER=0"
-set "PINAI_SETUP_MARKER=__PINAI_CLAUDE_CODE_PS1__"
-for /f "usebackq delims=" %%I in (\`powershell.exe -NoProfile -Command "$p=[System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), '.ps1'); Write-Output $p"\`) do set "PINAI_SETUP_PAYLOAD=%%I"
-for /f "usebackq delims=" %%I in (\`powershell.exe -NoProfile -Command "$ErrorActionPreference='Stop'; try { $ps = Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $PID); $cmd = if ($null -ne $ps) { Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $ps.ParentProcessId) } else { $null }; $parent = if ($null -ne $cmd) { Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $cmd.ParentProcessId) } else { $null }; if ($null -ne $parent -and $parent.Name -ieq 'explorer.exe') { '1' } else { '0' } } catch { '0' }"\`) do set "PINAI_SETUP_LAUNCHED_FROM_EXPLORER=%%I"
-if not defined PINAI_SETUP_PAYLOAD (
-  set "PINAI_SETUP_EXIT=1"
-  goto :pinai_setup_done
+set "LOOK2EYE_SETUP_SCRIPT_PATH=%~f0"
+set "LOOK2EYE_SETUP_PAYLOAD="
+set "LOOK2EYE_SETUP_EXIT=1"
+set "LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER=0"
+set "LOOK2EYE_SETUP_MARKER=__LOOK2EYE_CLAUDE_CODE_PS1__"
+for /f "usebackq delims=" %%I in (\`powershell.exe -NoProfile -Command "$p=[System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), '.ps1'); Write-Output $p"\`) do set "LOOK2EYE_SETUP_PAYLOAD=%%I"
+for /f "usebackq delims=" %%I in (\`powershell.exe -NoProfile -Command "$ErrorActionPreference='Stop'; try { $ps = Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $PID); $cmd = if ($null -ne $ps) { Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $ps.ParentProcessId) } else { $null }; $parent = if ($null -ne $cmd) { Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $cmd.ParentProcessId) } else { $null }; if ($null -ne $parent -and $parent.Name -ieq 'explorer.exe') { '1' } else { '0' } } catch { '0' }"\`) do set "LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER=%%I"
+if not defined LOOK2EYE_SETUP_PAYLOAD (
+  set "LOOK2EYE_SETUP_EXIT=1"
+  goto :look2eye_setup_done
 )
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=$env:PINAI_SETUP_SCRIPT_PATH; $out=$env:PINAI_SETUP_PAYLOAD; $marker=$env:PINAI_SETUP_MARKER; $text=[System.IO.File]::ReadAllText($p); $idx=$text.LastIndexOf($marker); if($idx -lt 0){ Write-Error 'PowerShell payload marker not found.'; exit 1 }; $code=$text.Substring($idx + $marker.Length).TrimStart(); $enc=New-Object System.Text.UTF8Encoding($true); [System.IO.File]::WriteAllText($out, $code, $enc)"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=$env:LOOK2EYE_SETUP_SCRIPT_PATH; $out=$env:LOOK2EYE_SETUP_PAYLOAD; $marker=$env:LOOK2EYE_SETUP_MARKER; $text=[System.IO.File]::ReadAllText($p); $idx=$text.LastIndexOf($marker); if($idx -lt 0){ Write-Error 'PowerShell payload marker not found.'; exit 1 }; $code=$text.Substring($idx + $marker.Length).TrimStart(); $enc=New-Object System.Text.UTF8Encoding($true); [System.IO.File]::WriteAllText($out, $code, $enc)"
 if errorlevel 1 (
-  set "PINAI_SETUP_EXIT=1"
-  goto :pinai_setup_done
+  set "LOOK2EYE_SETUP_EXIT=1"
+  goto :look2eye_setup_done
 )
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PINAI_SETUP_PAYLOAD%"
-set "PINAI_SETUP_EXIT=%ERRORLEVEL%"
-if exist "%PINAI_SETUP_PAYLOAD%" del /f /q "%PINAI_SETUP_PAYLOAD%" >nul 2>nul
-:pinai_setup_done
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%LOOK2EYE_SETUP_PAYLOAD%"
+set "LOOK2EYE_SETUP_EXIT=%ERRORLEVEL%"
+if exist "%LOOK2EYE_SETUP_PAYLOAD%" del /f /q "%LOOK2EYE_SETUP_PAYLOAD%" >nul 2>nul
+:look2eye_setup_done
 echo.
-if "%PINAI_SETUP_EXIT%"=="0" (
+if "%LOOK2EYE_SETUP_EXIT%"=="0" (
   echo ============================================================
-  echo [PINAI SETUP SUCCESS] ${input.siteName} Claude Code config completed.
+  echo [LOOK2EYE SETUP SUCCESS] ${input.siteName} Claude Code config completed.
   echo Reopen Claude Code or the target client to load the new config.
   echo ============================================================
 ) else (
   echo ============================================================
-  echo [PINAI SETUP FAILED] ${input.siteName} Claude Code config did not complete. Exit code: %PINAI_SETUP_EXIT%
+  echo [LOOK2EYE SETUP FAILED] ${input.siteName} Claude Code config did not complete. Exit code: %LOOK2EYE_SETUP_EXIT%
   echo Check the error above. If settings.json cannot be merged automatically, handle it manually and retry.
   echo ============================================================
 )
-if "%PINAI_SETUP_LAUNCHED_FROM_EXPLORER%"=="1" (
+if "%LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER%"=="1" (
   echo.
   echo 按任意键关闭窗口...
   pause >nul
 )
-endlocal & exit /b %PINAI_SETUP_EXIT%
+endlocal & exit /b %LOOK2EYE_SETUP_EXIT%
 
-__PINAI_CLAUDE_CODE_PS1__
+__LOOK2EYE_CLAUDE_CODE_PS1__
+${psScript}`
+}
+
+function buildOpenCodeShellScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
+  const siteName = input.siteName
+  const baseUrl = resolveBaseUrl(input.baseUrl)
+
+  return `#!/usr/bin/env sh
+set -eu
+
+look2eye_setup_result() {
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    printf '\\n'
+    echo "============================================================"
+    echo "[LOOK2EYE SETUP SUCCESS] ${siteName} OpenCode 配置已完成。"
+    echo "请重新打开 OpenCode 或对应客户端，让新配置生效。"
+    echo "============================================================"
+  else
+    printf '\\n' >&2
+    echo "============================================================" >&2
+    echo "[LOOK2EYE SETUP FAILED] ${siteName} OpenCode 配置未完成或未完全生效。退出码：$rc" >&2
+    echo "请查看上方失败原因；如 opencode.json 无法自动合并，请手动处理后重试。" >&2
+    echo "============================================================" >&2
+  fi
+  trap - EXIT
+  exit "$rc"
+}
+trap look2eye_setup_result EXIT
+
+BASE_URL=${shellQuote(baseUrl)}
+API_KEY=${shellQuote(input.apiKey)}
+OPENCODE_DIR="$HOME/.config/opencode"
+CONFIG_PATH="$OPENCODE_DIR/opencode.json"
+BACKUP_DIR="$OPENCODE_DIR/backups"
+
+PYTHON_BIN=
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
+  PYTHON_BIN=python3
+elif command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
+  PYTHON_BIN=python
+else
+  echo "Failed: a working python3 or python is required to merge existing OpenCode config safely." >&2
+  exit 1
+fi
+
+mkdir -p "$OPENCODE_DIR" "$BACKUP_DIR"
+
+unique_backup_path() {
+  path=$1
+  backup_dir=$2
+  timestamp=$3
+  name=$(basename "$path")
+  backup="$backup_dir/$name.bak-$timestamp"
+  counter=2
+  while [ -e "$backup" ]; do
+    backup="$backup_dir/$name.bak-$timestamp-$(printf "%02d" "$counter")"
+    counter=$((counter + 1))
+  done
+  printf '%s\\n' "$backup"
+}
+
+timestamp=$(date +"%Y%m%d-%H%M%S")
+if [ -f "$CONFIG_PATH" ]; then
+  backup_path=$(unique_backup_path "$CONFIG_PATH" "$BACKUP_DIR" "$timestamp")
+  cp "$CONFIG_PATH" "$backup_path"
+  echo "Backup: $backup_path"
+fi
+
+"$PYTHON_BIN" - "$CONFIG_PATH" "$BASE_URL" "$API_KEY" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+base_url = sys.argv[2].rstrip("/")
+api_key = sys.argv[3]
+default_models = json.loads(r'''${OPENCODE_DEFAULT_MODELS_JSON}''')
+
+if not api_key:
+    raise RuntimeError("Missing API key.")
+if not base_url:
+    raise RuntimeError("Missing base URL.")
+
+config = {}
+if config_path.exists() and config_path.read_text(encoding="utf-8").strip():
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("opencode.json is not valid JSON. Please merge it manually.") from exc
+    if not isinstance(config, dict):
+        raise RuntimeError("opencode.json must contain a JSON object.")
+
+provider = config.get("provider")
+if not isinstance(provider, dict):
+    provider = {}
+openai = provider.get("openai")
+if not isinstance(openai, dict):
+    openai = {}
+options = openai.get("options")
+if not isinstance(options, dict):
+    options = {}
+options["baseURL"] = base_url
+options["apiKey"] = api_key
+openai["options"] = options
+
+models = openai.get("models")
+if not isinstance(models, dict):
+    models = {}
+for model_name, model_config in default_models.items():
+    existing_model = models.get(model_name)
+    if isinstance(existing_model, dict):
+        existing_model["variants"] = model_config.get("variants", {})
+        models[model_name] = existing_model
+    else:
+        models[model_name] = model_config
+openai["models"] = models
+provider["openai"] = openai
+config["provider"] = provider
+config.setdefault("$schema", "https://opencode.ai/config.json")
+
+agent = config.get("agent")
+if not isinstance(agent, dict):
+    agent = {}
+for section_name in ("build", "plan"):
+    section = agent.get(section_name)
+    if not isinstance(section, dict):
+        section = {}
+    opts = section.get("options")
+    if not isinstance(opts, dict):
+        opts = {}
+    opts["store"] = False
+    section["options"] = opts
+    agent[section_name] = section
+config["agent"] = agent
+
+config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8")
+PY
+
+echo "Done. ${siteName} OpenCode config has been updated."
+`
+}
+
+function buildOpenCodePowerShellPayload(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
+  const siteName = input.siteName
+  const baseUrl = resolveBaseUrl(input.baseUrl)
+
+  return `$ErrorActionPreference = "Stop"
+
+$BaseUrl = ${powershellSingleQuote(baseUrl)}
+$ApiKey = ${powershellSingleQuote(input.apiKey)}
+$SiteName = ${powershellSingleQuote(siteName)}
+$ModelsJson = @'
+${OPENCODE_DEFAULT_MODELS_JSON}
+'@
+
+function ConvertTo-OrderedMap {
+  param([object]$Value)
+  $map = [ordered]@{}
+  if ($null -eq $Value) { return $map }
+  if ($Value -is [System.Collections.IDictionary]) {
+    foreach ($key in $Value.Keys) { $map[[string]$key] = $Value[$key] }
+    return $map
+  }
+  foreach ($prop in $Value.PSObject.Properties) {
+    $map[$prop.Name] = $prop.Value
+  }
+  return $map
+}
+
+function Backup-File {
+  param(
+    [string]$Path,
+    [string]$BackupDir,
+    [string]$Timestamp
+  )
+  if (Test-Path -LiteralPath $Path) {
+    New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+    $backup = Get-UniqueBackupPath $Path $BackupDir $Timestamp
+    Copy-Item -LiteralPath $Path -Destination $backup
+    Write-Host "Backup: $backup"
+  }
+}
+
+function Get-UniqueBackupPath {
+  param(
+    [string]$Path,
+    [string]$BackupDir,
+    [string]$Timestamp
+  )
+  $name = Split-Path -Leaf $Path
+  $backup = Join-Path $BackupDir "$name.bak-$Timestamp"
+  $counter = 2
+  while (Test-Path -LiteralPath $backup) {
+    $backup = Join-Path $BackupDir ("{0}.bak-{1}-{2:D2}" -f $name, $Timestamp, $counter)
+    $counter++
+  }
+  return $backup
+}
+
+function Write-Utf8NoBom {
+  param(
+    [string]$Path,
+    [string]$Text
+  )
+  $encoding = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, $Text, $encoding)
+}
+
+function Ensure-AgentStoreFalse {
+  param([object]$Config)
+  $agent = [ordered]@{}
+  if ($Config.Contains("agent")) {
+    $agent = ConvertTo-OrderedMap $Config["agent"]
+  }
+  foreach ($sectionName in @("build", "plan")) {
+    $section = [ordered]@{}
+    if ($agent.Contains($sectionName)) {
+      $section = ConvertTo-OrderedMap $agent[$sectionName]
+    }
+    $options = [ordered]@{}
+    if ($section.Contains("options")) {
+      $options = ConvertTo-OrderedMap $section["options"]
+    }
+    $options["store"] = $false
+    $section["options"] = $options
+    $agent[$sectionName] = $section
+  }
+  $Config["agent"] = $agent
+}
+
+try {
+  if ([string]::IsNullOrWhiteSpace($ApiKey)) { throw "Missing API key." }
+  if ([string]::IsNullOrWhiteSpace($BaseUrl)) { throw "Missing base URL." }
+
+  $targetHome = $env:USERPROFILE
+  if ([string]::IsNullOrWhiteSpace($targetHome)) { throw "USERPROFILE is empty." }
+
+  $openCodeDir = Join-Path (Join-Path $targetHome ".config") "opencode"
+  $configPath = Join-Path $openCodeDir "opencode.json"
+  $backupDir = Join-Path $openCodeDir "backups"
+  $config = [ordered]@{}
+
+  if (Test-Path -LiteralPath $configPath) {
+    $raw = [System.IO.File]::ReadAllText($configPath)
+    if (-not [string]::IsNullOrWhiteSpace($raw)) {
+      try {
+        $config = ConvertTo-OrderedMap ($raw | ConvertFrom-Json)
+      } catch {
+        throw "opencode.json is not valid JSON. Please merge it manually."
+      }
+    }
+  }
+
+  $provider = [ordered]@{}
+  if ($config.Contains("provider")) {
+    $provider = ConvertTo-OrderedMap $config["provider"]
+  }
+  $openai = [ordered]@{}
+  if ($provider.Contains("openai")) {
+    $openai = ConvertTo-OrderedMap $provider["openai"]
+  }
+  $options = [ordered]@{}
+  if ($openai.Contains("options")) {
+    $options = ConvertTo-OrderedMap $openai["options"]
+  }
+  $options["baseURL"] = $BaseUrl.Trim().TrimEnd("/")
+  $options["apiKey"] = $ApiKey
+  $openai["options"] = $options
+
+  $models = [ordered]@{}
+  if ($openai.Contains("models")) {
+    $models = ConvertTo-OrderedMap $openai["models"]
+  }
+  $defaultModels = ConvertTo-OrderedMap ($ModelsJson | ConvertFrom-Json)
+  foreach ($modelName in $defaultModels.Keys) {
+    if (-not $models.Contains($modelName)) {
+      $models[$modelName] = $defaultModels[$modelName]
+    } else {
+      $model = ConvertTo-OrderedMap $models[$modelName]
+      $defaultModel = ConvertTo-OrderedMap $defaultModels[$modelName]
+      if ($defaultModel.Contains("variants")) {
+        $model["variants"] = ConvertTo-OrderedMap $defaultModel["variants"]
+      }
+      $models[$modelName] = $model
+    }
+  }
+  $openai["models"] = $models
+  $provider["openai"] = $openai
+  $config["provider"] = $provider
+  if (-not $config.Contains('$schema')) {
+    $config['$schema'] = "https://opencode.ai/config.json"
+  }
+  Ensure-AgentStoreFalse $config
+
+  Write-Host "Applying $SiteName OpenCode config..."
+  Write-Host "Config: $configPath"
+  Write-Host "Base:   $($BaseUrl.Trim().TrimEnd('/'))"
+
+  New-Item -ItemType Directory -Force -Path $openCodeDir | Out-Null
+  New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+  $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+  Backup-File $configPath $backupDir $timestamp
+  Write-Utf8NoBom $configPath (($config | ConvertTo-Json -Depth 80) + [Environment]::NewLine)
+
+  Write-Host "Done. $SiteName OpenCode config has been updated."
+  exit 0
+} catch {
+  Write-Host "Failed: $($_.Exception.Message)" -ForegroundColor Red
+  exit 1
+}
+`
+}
+
+function buildOpenCodeBatchScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
+  const psScript = buildOpenCodePowerShellPayload(input)
+  return `@echo off
+setlocal
+set "LOOK2EYE_SETUP_SCRIPT_PATH=%~f0"
+set "LOOK2EYE_SETUP_PAYLOAD="
+set "LOOK2EYE_SETUP_EXIT=1"
+set "LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER=0"
+set "LOOK2EYE_SETUP_MARKER=__LOOK2EYE_OPENCODE_PS1__"
+for /f "usebackq delims=" %%I in (\`powershell.exe -NoProfile -Command "$p=[System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), '.ps1'); Write-Output $p"\`) do set "LOOK2EYE_SETUP_PAYLOAD=%%I"
+for /f "usebackq delims=" %%I in (\`powershell.exe -NoProfile -Command "$ErrorActionPreference='Stop'; try { $ps = Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $PID); $cmd = if ($null -ne $ps) { Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $ps.ParentProcessId) } else { $null }; $parent = if ($null -ne $cmd) { Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $cmd.ParentProcessId) } else { $null }; if ($null -ne $parent -and $parent.Name -ieq 'explorer.exe') { '1' } else { '0' } } catch { '0' }"\`) do set "LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER=%%I"
+if not defined LOOK2EYE_SETUP_PAYLOAD (
+  set "LOOK2EYE_SETUP_EXIT=1"
+  goto :look2eye_setup_done
+)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=$env:LOOK2EYE_SETUP_SCRIPT_PATH; $out=$env:LOOK2EYE_SETUP_PAYLOAD; $marker=$env:LOOK2EYE_SETUP_MARKER; $text=[System.IO.File]::ReadAllText($p); $idx=$text.LastIndexOf($marker); if($idx -lt 0){ Write-Error 'PowerShell payload marker not found.'; exit 1 }; $code=$text.Substring($idx + $marker.Length).TrimStart(); $enc=New-Object System.Text.UTF8Encoding($true); [System.IO.File]::WriteAllText($out, $code, $enc)"
+if errorlevel 1 (
+  set "LOOK2EYE_SETUP_EXIT=1"
+  goto :look2eye_setup_done
+)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%LOOK2EYE_SETUP_PAYLOAD%"
+set "LOOK2EYE_SETUP_EXIT=%ERRORLEVEL%"
+if exist "%LOOK2EYE_SETUP_PAYLOAD%" del /f /q "%LOOK2EYE_SETUP_PAYLOAD%" >nul 2>nul
+:look2eye_setup_done
+echo.
+if "%LOOK2EYE_SETUP_EXIT%"=="0" (
+  echo ============================================================
+  echo [LOOK2EYE SETUP SUCCESS] ${input.siteName} OpenCode config completed.
+  echo Reopen OpenCode or the target client to load the new config.
+  echo ============================================================
+) else (
+  echo ============================================================
+  echo [LOOK2EYE SETUP FAILED] ${input.siteName} OpenCode config did not complete. Exit code: %LOOK2EYE_SETUP_EXIT%
+  echo Check the error above. If opencode.json cannot be merged automatically, handle it manually and retry.
+  echo ============================================================
+)
+if "%LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER%"=="1" (
+  echo.
+  echo 按任意键关闭窗口...
+  pause >nul
+)
+endlocal & exit /b %LOOK2EYE_SETUP_EXIT%
+
+__LOOK2EYE_OPENCODE_PS1__
 ${psScript}`
 }
 
@@ -997,6 +1525,10 @@ export function buildAPIKeyConfigScript(input: ConfigScriptInput): { filename: s
       ? os === 'win'
         ? buildClaudeBatchScript({ baseUrl: input.baseUrl, apiKey: input.apiKey, siteName, platform: input.platform })
         : buildClaudeShellScript({ baseUrl: input.baseUrl, apiKey: input.apiKey, siteName, platform: input.platform })
+    : input.client === 'opencode'
+      ? os === 'win'
+        ? buildOpenCodeBatchScript({ baseUrl: input.baseUrl, apiKey: input.apiKey, siteName })
+        : buildOpenCodeShellScript({ baseUrl: input.baseUrl, apiKey: input.apiKey, siteName })
     : os === 'win'
       ? buildBatchScript(buildPayload({ ...input, siteName }), siteName)
       : buildShellScript(buildPayload({ ...input, siteName }), siteName)

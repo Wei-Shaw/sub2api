@@ -1601,7 +1601,7 @@ const downloadConfigScript = (client: ConfigScriptClient) => {
       allowMessagesDispatch: key.group.allow_messages_dispatch || false,
       baseUrl: publicSettings.value?.api_base_url || window.location.origin,
       apiKey: key.key,
-      siteName: publicSettings.value?.site_name || 'Sub2API'
+      siteName: publicSettings.value?.site_name || 'look2eye'
     })
     appStore.showSuccess(t('keys.configScriptMenu.downloadStarted'))
     closeConfigScriptMenu()
