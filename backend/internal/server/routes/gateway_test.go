@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -36,7 +37,11 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 		nil,
 		nil,
 		nil,
-		&config.Config{},
+		&config.Config{
+			Gateway: config.GatewayConfig{
+				MaxBodySize: 1 << 20,
+			},
+		},
 	)
 
 	return router
@@ -58,6 +63,29 @@ func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI responses handler", path)
 	}
+}
+
+func TestGatewayRoutesJobsPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	postReq := httptest.NewRequest(http.MethodPost, "/v1/jobs", strings.NewReader(`{"capability":"text.basic","input":{"prompt":"hello"}}`))
+	postReq.Header.Set("Content-Type", "application/json")
+	postResp := httptest.NewRecorder()
+	router.ServeHTTP(postResp, postReq)
+	require.NotEqual(t, http.StatusNotFound, postResp.Code)
+
+	var created struct {
+		Data struct {
+			JobID string `json:"job_id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(postResp.Body.Bytes(), &created))
+	require.NotEmpty(t, created.Data.JobID)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/jobs/"+created.Data.JobID, nil)
+	getResp := httptest.NewRecorder()
+	router.ServeHTTP(getResp, getReq)
+	require.NotEqual(t, http.StatusNotFound, getResp.Code)
 }
 
 func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
