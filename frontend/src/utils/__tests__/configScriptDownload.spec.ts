@@ -5,24 +5,10 @@ import {
 } from '../configScriptDownload'
 
 function decodeBatchPayload(content: string): string {
-  const encoded = content.match(/FromBase64String\('([^']+)'\)/)?.[1]
-  if (!encoded) throw new Error('missing encoded payload')
-  const binary = atob(encoded)
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
-  return new TextDecoder().decode(bytes)
-}
-
-function extractClaudeBatchPayload(content: string): string {
-  const marker = '__LOOK2EYE_CLAUDE_CODE_PS1__'
+  const marker = content.match(/(__LOOK2EYE_[A-Z_]+_PS1__)/)?.[1]
+  if (!marker) throw new Error('missing embedded payload marker')
   const markerIndex = content.lastIndexOf(marker)
-  if (markerIndex < 0) throw new Error('missing Claude Code payload marker')
-  return content.slice(markerIndex + marker.length).trimStart()
-}
-
-function extractOpenCodeBatchPayload(content: string): string {
-  const marker = '__LOOK2EYE_OPENCODE_PS1__'
-  const markerIndex = content.lastIndexOf(marker)
-  if (markerIndex < 0) throw new Error('missing OpenCode payload marker')
+  if (markerIndex < 0) throw new Error('missing embedded payload')
   return content.slice(markerIndex + marker.length).trimStart()
 }
 
@@ -62,7 +48,11 @@ describe('configScriptDownload', () => {
 
     expect(script.filename).toBe('Look2eye-codex-config.bat')
     expect(script.content).toContain('@echo off')
-    expect(script.content).toContain('LOOK2EYE_CODEX_EXIT')
+    expect(script.content).toContain('LOOK2EYE_SETUP_EXIT')
+    expect(script.content).toContain('LOOK2EYE_SETUP_MARKER=__LOOK2EYE_CODEX_PS1__')
+    expect(script.content).toContain('-EncodedCommand ')
+    expect(script.content).toContain('__LOOK2EYE_CODEX_PS1__')
+    expect(script.content).not.toContain('$path =')
     expect(script.content).toContain('Windows 未检测到 Node.js')
     expect(script.content).toContain('是否现在通过 winget 安装 Node.js LTS？[Y/N]')
     expect(script.content).toContain('where winget.exe')
@@ -116,9 +106,10 @@ describe('configScriptDownload', () => {
 
     expect(script.filename).toBe('look2eye-claude-code-config.bat')
     expect(script.content).toContain('@echo off')
+    expect(script.content).toContain('-EncodedCommand ')
     expect(script.content).toContain('LOOK2EYE_SETUP_MARKER=__LOOK2EYE_CLAUDE_CODE_PS1__')
     expect(script.content).toContain('__LOOK2EYE_CLAUDE_CODE_PS1__')
-    expect(script.content).toContain('LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER')
+    expect(script.content).not.toContain('$path =')
     expect(script.content).toContain('Windows 未检测到 Node.js')
     expect(script.content).toContain('是否现在通过 winget 安装 Node.js LTS？[Y/N]')
     expect(script.content).toContain('where winget.exe')
@@ -126,7 +117,7 @@ describe('configScriptDownload', () => {
     expect(script.content).toContain('https://nodejs.org/')
     expect(script.content).toContain('where npm.cmd')
 
-    const payload = extractClaudeBatchPayload(script.content)
+    const payload = decodeBatchPayload(script.content)
     expect(payload).toContain("Applying $SiteName Claude Code config")
     expect(payload).toContain('https://api.example.com/v1')
     expect(payload).toContain('sk-claude-key')
@@ -176,9 +167,10 @@ describe('configScriptDownload', () => {
 
     expect(script.filename).toBe('look2eye-opencode-config.bat')
     expect(script.content).toContain('@echo off')
+    expect(script.content).toContain('-EncodedCommand ')
     expect(script.content).toContain('LOOK2EYE_SETUP_MARKER=__LOOK2EYE_OPENCODE_PS1__')
     expect(script.content).toContain('__LOOK2EYE_OPENCODE_PS1__')
-    expect(script.content).toContain('LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER')
+    expect(script.content).not.toContain('$path =')
     expect(script.content).toContain('Windows 未检测到 Node.js')
     expect(script.content).toContain('是否现在通过 winget 安装 Node.js LTS？[Y/N]')
     expect(script.content).toContain('where winget.exe')
@@ -186,7 +178,7 @@ describe('configScriptDownload', () => {
     expect(script.content).toContain('https://nodejs.org/')
     expect(script.content).toContain('where npm.cmd')
 
-    const payload = extractOpenCodeBatchPayload(script.content)
+    const payload = decodeBatchPayload(script.content)
     expect(payload).toContain("Applying $SiteName OpenCode config")
     expect(payload).toContain("Join-Path (Join-Path $targetHome \".config\") \"opencode\"")
     expect(payload).toContain('Join-Path $openCodeDir "opencode.json"')

@@ -714,30 +714,82 @@ if errorlevel 1 (
 )`
 }
 
-function buildCodexBatchScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
-  const encoded = toBase64UTF8(buildCodexPowerShellPayload(input))
+function buildPowerShellPayloadExtractorCommand(): string {
+  return buildEncodedPowerShellCommand(`$ErrorActionPreference = "Stop"
+$scriptPath = $env:LOOK2EYE_SETUP_SCRIPT_PATH
+$payloadPath = $env:LOOK2EYE_SETUP_PAYLOAD
+$marker = $env:LOOK2EYE_SETUP_MARKER
+$text = [System.IO.File]::ReadAllText($scriptPath)
+$index = $text.LastIndexOf($marker)
+if ($index -lt 0) { throw "PowerShell payload marker not found." }
+$payload = $text.Substring($index + $marker.Length).TrimStart([char]13, [char]10)
+$encoding = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($payloadPath, $payload, $encoding)
+`)
+}
+
+function buildEmbeddedPowerShellBatch(input: {
+  marker: string
+  payload: string
+  tempName: string
+  passArgs?: boolean
+  successMessage: string
+  successHint: string
+  failureMessage: string
+  failureHint: string
+  nodeClientLabel: string
+}): string {
+  const extractor = buildPowerShellPayloadExtractorCommand()
+  const forwardedArgs = input.passArgs ? ' %*' : ''
+
   return `@echo off
 chcp 65001 >nul
 setlocal
-set "LOOK2EYE_CODEX_EXIT=1"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$script = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')); $path = Join-Path $env:TEMP 'look2eye-codex-config.ps1'; Set-Content -Encoding UTF8 -Path $path -Value $script; & $path %*"
-set "LOOK2EYE_CODEX_EXIT=%ERRORLEVEL%"
+set "LOOK2EYE_SETUP_SCRIPT_PATH=%~f0"
+set "LOOK2EYE_SETUP_PAYLOAD=%TEMP%\\${input.tempName}-%RANDOM%-%RANDOM%.ps1"
+set "LOOK2EYE_SETUP_EXIT=1"
+set "LOOK2EYE_SETUP_MARKER=${input.marker}"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${extractor}
+if errorlevel 1 (
+  set "LOOK2EYE_SETUP_EXIT=1"
+  goto :look2eye_setup_done
+)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%LOOK2EYE_SETUP_PAYLOAD%"${forwardedArgs}
+set "LOOK2EYE_SETUP_EXIT=%ERRORLEVEL%"
+if exist "%LOOK2EYE_SETUP_PAYLOAD%" del /f /q "%LOOK2EYE_SETUP_PAYLOAD%" >nul 2>nul
+:look2eye_setup_done
 echo.
-if "%LOOK2EYE_CODEX_EXIT%"=="0" (
+if "%LOOK2EYE_SETUP_EXIT%"=="0" (
   echo ============================================================
-  echo [LOOK2EYE SETUP SUCCESS] ${input.siteName} Codex CLI config/restore completed.
-  echo Reopen Codex or the target client to load the new config.
+  echo [LOOK2EYE SETUP SUCCESS] ${input.successMessage}
+  echo ${input.successHint}
   echo ============================================================
 ) else (
   echo ============================================================
-  echo [LOOK2EYE SETUP FAILED] ${input.siteName} Codex CLI config/restore did not complete. Exit code: %LOOK2EYE_CODEX_EXIT%
-  echo Check the error above. If Codex is still open, close it manually and retry.
+  echo [LOOK2EYE SETUP FAILED] ${input.failureMessage} Exit code: %LOOK2EYE_SETUP_EXIT%
+  echo ${input.failureHint}
   echo ============================================================
 )
-${windowsNodeRuntimeNotice('Codex CLI')}
+${windowsNodeRuntimeNotice(input.nodeClientLabel)}
 pause
-endlocal & exit /b %LOOK2EYE_CODEX_EXIT%
-`
+endlocal & exit /b %LOOK2EYE_SETUP_EXIT%
+
+${input.marker}
+${input.payload}`
+}
+
+function buildCodexBatchScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
+  return buildEmbeddedPowerShellBatch({
+    marker: '__LOOK2EYE_CODEX_PS1__',
+    payload: buildCodexPowerShellPayload(input),
+    tempName: 'look2eye-codex-config',
+    passArgs: true,
+    successMessage: `${input.siteName} Codex CLI config/restore completed.`,
+    successHint: 'Reopen Codex or the target client to load the new config.',
+    failureMessage: `${input.siteName} Codex CLI config/restore did not complete.`,
+    failureHint: 'Check the error above. If Codex is still open, close it manually and retry.',
+    nodeClientLabel: 'Codex CLI'
+  })
 }
 
 function resolveClaudeBase(_input: Required<Pick<ConfigScriptInput, 'baseUrl'>> & Pick<ConfigScriptInput, 'platform'>): string {
@@ -967,51 +1019,16 @@ try {
 }
 
 function buildClaudeBatchScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>> & Pick<ConfigScriptInput, 'platform'>): string {
-  const psScript = buildClaudePowerShellPayload(input)
-  return `@echo off
-setlocal
-set "LOOK2EYE_SETUP_SCRIPT_PATH=%~f0"
-set "LOOK2EYE_SETUP_PAYLOAD="
-set "LOOK2EYE_SETUP_EXIT=1"
-set "LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER=0"
-set "LOOK2EYE_SETUP_MARKER=__LOOK2EYE_CLAUDE_CODE_PS1__"
-for /f "usebackq delims=" %%I in (\`powershell.exe -NoProfile -Command "$p=[System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), '.ps1'); Write-Output $p"\`) do set "LOOK2EYE_SETUP_PAYLOAD=%%I"
-for /f "usebackq delims=" %%I in (\`powershell.exe -NoProfile -Command "$ErrorActionPreference='Stop'; try { $ps = Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $PID); $cmd = if ($null -ne $ps) { Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $ps.ParentProcessId) } else { $null }; $parent = if ($null -ne $cmd) { Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $cmd.ParentProcessId) } else { $null }; if ($null -ne $parent -and $parent.Name -ieq 'explorer.exe') { '1' } else { '0' } } catch { '0' }"\`) do set "LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER=%%I"
-if not defined LOOK2EYE_SETUP_PAYLOAD (
-  set "LOOK2EYE_SETUP_EXIT=1"
-  goto :look2eye_setup_done
-)
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=$env:LOOK2EYE_SETUP_SCRIPT_PATH; $out=$env:LOOK2EYE_SETUP_PAYLOAD; $marker=$env:LOOK2EYE_SETUP_MARKER; $text=[System.IO.File]::ReadAllText($p); $idx=$text.LastIndexOf($marker); if($idx -lt 0){ Write-Error 'PowerShell payload marker not found.'; exit 1 }; $code=$text.Substring($idx + $marker.Length).TrimStart(); $enc=New-Object System.Text.UTF8Encoding($true); [System.IO.File]::WriteAllText($out, $code, $enc)"
-if errorlevel 1 (
-  set "LOOK2EYE_SETUP_EXIT=1"
-  goto :look2eye_setup_done
-)
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%LOOK2EYE_SETUP_PAYLOAD%"
-set "LOOK2EYE_SETUP_EXIT=%ERRORLEVEL%"
-if exist "%LOOK2EYE_SETUP_PAYLOAD%" del /f /q "%LOOK2EYE_SETUP_PAYLOAD%" >nul 2>nul
-:look2eye_setup_done
-echo.
-if "%LOOK2EYE_SETUP_EXIT%"=="0" (
-  echo ============================================================
-  echo [LOOK2EYE SETUP SUCCESS] ${input.siteName} Claude Code config completed.
-  echo Reopen Claude Code or the target client to load the new config.
-  echo ============================================================
-) else (
-  echo ============================================================
-  echo [LOOK2EYE SETUP FAILED] ${input.siteName} Claude Code config did not complete. Exit code: %LOOK2EYE_SETUP_EXIT%
-  echo Check the error above. If settings.json cannot be merged automatically, handle it manually and retry.
-  echo ============================================================
-)
-${windowsNodeRuntimeNotice('Claude Code')}
-if "%LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER%"=="1" (
-  echo.
-  echo 按任意键关闭窗口...
-  pause >nul
-)
-endlocal & exit /b %LOOK2EYE_SETUP_EXIT%
-
-__LOOK2EYE_CLAUDE_CODE_PS1__
-${psScript}`
+  return buildEmbeddedPowerShellBatch({
+    marker: '__LOOK2EYE_CLAUDE_CODE_PS1__',
+    payload: buildClaudePowerShellPayload(input),
+    tempName: 'look2eye-claude-code-config',
+    successMessage: `${input.siteName} Claude Code config completed.`,
+    successHint: 'Reopen Claude Code or the target client to load the new config.',
+    failureMessage: `${input.siteName} Claude Code config did not complete.`,
+    failureHint: 'Check the error above. If settings.json cannot be merged automatically, handle it manually and retry.',
+    nodeClientLabel: 'Claude Code'
+  })
 }
 
 function buildOpenCodeShellScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
@@ -1326,51 +1343,16 @@ try {
 }
 
 function buildOpenCodeBatchScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
-  const psScript = buildOpenCodePowerShellPayload(input)
-  return `@echo off
-setlocal
-set "LOOK2EYE_SETUP_SCRIPT_PATH=%~f0"
-set "LOOK2EYE_SETUP_PAYLOAD="
-set "LOOK2EYE_SETUP_EXIT=1"
-set "LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER=0"
-set "LOOK2EYE_SETUP_MARKER=__LOOK2EYE_OPENCODE_PS1__"
-for /f "usebackq delims=" %%I in (\`powershell.exe -NoProfile -Command "$p=[System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), '.ps1'); Write-Output $p"\`) do set "LOOK2EYE_SETUP_PAYLOAD=%%I"
-for /f "usebackq delims=" %%I in (\`powershell.exe -NoProfile -Command "$ErrorActionPreference='Stop'; try { $ps = Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $PID); $cmd = if ($null -ne $ps) { Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $ps.ParentProcessId) } else { $null }; $parent = if ($null -ne $cmd) { Get-CimInstance Win32_Process -Filter ('ProcessId={0}' -f $cmd.ParentProcessId) } else { $null }; if ($null -ne $parent -and $parent.Name -ieq 'explorer.exe') { '1' } else { '0' } } catch { '0' }"\`) do set "LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER=%%I"
-if not defined LOOK2EYE_SETUP_PAYLOAD (
-  set "LOOK2EYE_SETUP_EXIT=1"
-  goto :look2eye_setup_done
-)
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=$env:LOOK2EYE_SETUP_SCRIPT_PATH; $out=$env:LOOK2EYE_SETUP_PAYLOAD; $marker=$env:LOOK2EYE_SETUP_MARKER; $text=[System.IO.File]::ReadAllText($p); $idx=$text.LastIndexOf($marker); if($idx -lt 0){ Write-Error 'PowerShell payload marker not found.'; exit 1 }; $code=$text.Substring($idx + $marker.Length).TrimStart(); $enc=New-Object System.Text.UTF8Encoding($true); [System.IO.File]::WriteAllText($out, $code, $enc)"
-if errorlevel 1 (
-  set "LOOK2EYE_SETUP_EXIT=1"
-  goto :look2eye_setup_done
-)
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%LOOK2EYE_SETUP_PAYLOAD%"
-set "LOOK2EYE_SETUP_EXIT=%ERRORLEVEL%"
-if exist "%LOOK2EYE_SETUP_PAYLOAD%" del /f /q "%LOOK2EYE_SETUP_PAYLOAD%" >nul 2>nul
-:look2eye_setup_done
-echo.
-if "%LOOK2EYE_SETUP_EXIT%"=="0" (
-  echo ============================================================
-  echo [LOOK2EYE SETUP SUCCESS] ${input.siteName} OpenCode config completed.
-  echo Reopen OpenCode or the target client to load the new config.
-  echo ============================================================
-) else (
-  echo ============================================================
-  echo [LOOK2EYE SETUP FAILED] ${input.siteName} OpenCode config did not complete. Exit code: %LOOK2EYE_SETUP_EXIT%
-  echo Check the error above. If opencode.json cannot be merged automatically, handle it manually and retry.
-  echo ============================================================
-)
-${windowsNodeRuntimeNotice('OpenCode')}
-if "%LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER%"=="1" (
-  echo.
-  echo 按任意键关闭窗口...
-  pause >nul
-)
-endlocal & exit /b %LOOK2EYE_SETUP_EXIT%
-
-__LOOK2EYE_OPENCODE_PS1__
-${psScript}`
+  return buildEmbeddedPowerShellBatch({
+    marker: '__LOOK2EYE_OPENCODE_PS1__',
+    payload: buildOpenCodePowerShellPayload(input),
+    tempName: 'look2eye-opencode-config',
+    successMessage: `${input.siteName} OpenCode config completed.`,
+    successHint: 'Reopen OpenCode or the target client to load the new config.',
+    failureMessage: `${input.siteName} OpenCode config did not complete.`,
+    failureHint: 'Check the error above. If opencode.json cannot be merged automatically, handle it manually and retry.',
+    nodeClientLabel: 'OpenCode'
+  })
 }
 
 function buildClaudePayload(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>> & Pick<ConfigScriptInput, 'platform'>): ConfigPayload {
@@ -1516,22 +1498,26 @@ Write-Host "Done. Restart your terminal for environment variable changes to take
 `
 }
 
-function toBase64UTF8(value: string): string {
-  const bytes = new TextEncoder().encode(value)
+function toBase64UTF16LE(value: string): string {
   let binary = ''
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte)
-  })
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    binary += String.fromCharCode(code & 0xff, code >> 8)
+  }
   return btoa(binary)
+}
+
+function buildEncodedPowerShellCommand(script: string): string {
+  return toBase64UTF16LE(script.replace(/\r\n/g, '\n').replace(/\r/g, '\n'))
 }
 
 function buildBatchScript(payload: ConfigPayload, siteName: string): string {
   const psScript = buildPowerShellScript(payload, siteName)
-  const encoded = toBase64UTF8(psScript)
+  const encoded = buildEncodedPowerShellCommand(psScript)
   return `@echo off
 setlocal
 echo Installing ${siteName} ${payload.label} configuration...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$script = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')); $path = Join-Path $env:TEMP 'look2eye-config.ps1'; Set-Content -Encoding UTF8 -Path $path -Value $script; & $path"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}
 if errorlevel 1 (
   echo Installation failed.
   pause
@@ -1583,7 +1569,10 @@ export function isConfigScriptClientAvailable(input: Pick<ConfigScriptInput, 'cl
 export function downloadAPIKeyConfigScript(input: ConfigScriptInput): void {
   const script = buildAPIKeyConfigScript(input)
   const mime = script.os === 'win' ? 'application/x-bat' : 'text/x-shellscript'
-  const blob = new Blob([script.content], { type: `${mime};charset=utf-8` })
+  const content = script.os === 'win'
+    ? script.content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n/g, '\r\n')
+    : script.content
+  const blob = new Blob([content], { type: `${mime};charset=utf-8` })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
