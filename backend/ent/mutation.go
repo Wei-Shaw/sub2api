@@ -30834,8 +30834,8 @@ type SubscriptionPlanMutation struct {
 	addprice          *float64
 	original_price    *float64
 	addoriginal_price *float64
-	validity_days     *int
-	addvalidity_days  *int
+	validity_days     *float64
+	addvalidity_days  *float64
 	validity_unit     *string
 	features          *string
 	product_name      *string
@@ -31203,13 +31203,13 @@ func (m *SubscriptionPlanMutation) ResetOriginalPrice() {
 }
 
 // SetValidityDays sets the "validity_days" field.
-func (m *SubscriptionPlanMutation) SetValidityDays(i int) {
-	m.validity_days = &i
+func (m *SubscriptionPlanMutation) SetValidityDays(f float64) {
+	m.validity_days = &f
 	m.addvalidity_days = nil
 }
 
 // ValidityDays returns the value of the "validity_days" field in the mutation.
-func (m *SubscriptionPlanMutation) ValidityDays() (r int, exists bool) {
+func (m *SubscriptionPlanMutation) ValidityDays() (r float64, exists bool) {
 	v := m.validity_days
 	if v == nil {
 		return
@@ -31220,7 +31220,7 @@ func (m *SubscriptionPlanMutation) ValidityDays() (r int, exists bool) {
 // OldValidityDays returns the old "validity_days" field's value of the SubscriptionPlan entity.
 // If the SubscriptionPlan object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SubscriptionPlanMutation) OldValidityDays(ctx context.Context) (v int, err error) {
+func (m *SubscriptionPlanMutation) OldValidityDays(ctx context.Context) (v float64, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldValidityDays is only allowed on UpdateOne operations")
 	}
@@ -31234,17 +31234,17 @@ func (m *SubscriptionPlanMutation) OldValidityDays(ctx context.Context) (v int, 
 	return oldValue.ValidityDays, nil
 }
 
-// AddValidityDays adds i to the "validity_days" field.
-func (m *SubscriptionPlanMutation) AddValidityDays(i int) {
+// AddValidityDays adds f to the "validity_days" field.
+func (m *SubscriptionPlanMutation) AddValidityDays(f float64) {
 	if m.addvalidity_days != nil {
-		*m.addvalidity_days += i
+		*m.addvalidity_days += f
 	} else {
-		m.addvalidity_days = &i
+		m.addvalidity_days = &f
 	}
 }
 
 // AddedValidityDays returns the value that was added to the "validity_days" field in this mutation.
-func (m *SubscriptionPlanMutation) AddedValidityDays() (r int, exists bool) {
+func (m *SubscriptionPlanMutation) AddedValidityDays() (r float64, exists bool) {
 	v := m.addvalidity_days
 	if v == nil {
 		return
@@ -31718,7 +31718,7 @@ func (m *SubscriptionPlanMutation) SetField(name string, value ent.Value) error 
 		m.SetOriginalPrice(v)
 		return nil
 	case subscriptionplan.FieldValidityDays:
-		v, ok := value.(int)
+		v, ok := value.(float64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -31845,7 +31845,7 @@ func (m *SubscriptionPlanMutation) AddField(name string, value ent.Value) error 
 		m.AddOriginalPrice(v)
 		return nil
 	case subscriptionplan.FieldValidityDays:
-		v, ok := value.(int)
+		v, ok := value.(float64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}

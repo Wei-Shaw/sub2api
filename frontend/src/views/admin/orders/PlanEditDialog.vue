@@ -39,7 +39,7 @@
         <div><label class="input-label">{{ t('payment.admin.originalPrice') }}</label><input v-model.number="planForm.original_price" type="number" step="0.01" min="0" class="input" /></div>
       </div>
       <div class="grid grid-cols-2 gap-4">
-        <div><label class="input-label">{{ t('payment.admin.validityDays') }} <span class="text-red-500">*</span></label><input v-model.number="planForm.validity_days" type="number" min="1" class="input" required /></div>
+        <div><label class="input-label">{{ t('payment.admin.validityDays') }} <span class="text-red-500">*</span></label><input v-model.number="planForm.validity_days" type="number" min="0.001" step="any" class="input" required /></div>
         <div><label class="input-label">{{ t('payment.admin.validityUnit') }} <span class="text-red-500">*</span></label><Select v-model="planForm.validity_unit" :options="validityUnitOptions" /></div>
       </div>
       <div class="grid grid-cols-2 gap-4">
@@ -167,7 +167,7 @@ async function handleSavePlan() {
     appStore.showError(t('payment.admin.priceRequired'))
     return
   }
-  if (!planForm.validity_days || planForm.validity_days < 1) {
+  if (!planForm.validity_days || planForm.validity_days <= 0) {
     appStore.showError(t('payment.admin.validityDaysRequired'))
     return
   }

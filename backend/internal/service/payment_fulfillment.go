@@ -365,7 +365,9 @@ func (s *PaymentService) sendSubscriptionPurchaseSuccessNotification(ctx context
 		"expiry_time":        "",
 		"order_id":           strconv.FormatInt(o.ID, 10),
 	}
-	if o.SubscriptionDays != nil {
+	if seconds := subscriptionValiditySecondsFromOrder(o); seconds > 0 {
+		variables["subscription_days"] = formatSubscriptionValidityDays(seconds)
+	} else if o.SubscriptionDays != nil {
 		variables["subscription_days"] = strconv.Itoa(*o.SubscriptionDays)
 	}
 	if o.SubscriptionGroupID != nil {
@@ -425,6 +427,10 @@ func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid
 func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error {
 	gid := *o.SubscriptionGroupID
 	days := *o.SubscriptionDays
+	validityDuration := time.Duration(0)
+	if seconds := subscriptionValiditySecondsFromOrder(o); seconds > 0 {
+		validityDuration = time.Duration(seconds) * time.Second
+	}
 	g, err := s.groupRepo.GetByID(ctx, gid)
 	if err != nil || g.Status != payment.EntityStatusActive {
 		return fmt.Errorf("group %d no longer exists or inactive", gid)
@@ -436,11 +442,26 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 		return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 	}
 	orderNote := fmt.Sprintf("payment order %d", o.ID)
-	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: orderNote})
+	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, ValidityDuration: validityDuration, AssignedBy: 0, Notes: orderNote})
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
 	}
 	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
+}
+
+func subscriptionValiditySecondsFromOrder(o *dbent.PaymentOrder) int64 {
+	if snapshot := psOrderProviderSnapshot(o); snapshot != nil && snapshot.SubscriptionValiditySeconds > 0 {
+		return snapshot.SubscriptionValiditySeconds
+	}
+	return 0
+}
+
+func formatSubscriptionValidityDays(seconds int64) string {
+	if seconds <= 0 {
+		return ""
+	}
+	days := float64(seconds) / 86400
+	return strconv.FormatFloat(days, 'f', -1, 64)
 }
 
 func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action string) bool {
