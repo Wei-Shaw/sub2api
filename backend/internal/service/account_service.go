@@ -68,6 +68,9 @@ type AccountRepository interface {
 	ClearAntigravityQuotaScopes(ctx context.Context, id int64) error
 	ClearModelRateLimits(ctx context.Context, id int64) error
 	UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error
+	// UpdateSessionWindowEnd 仅更新 5h 窗口的结束时间，不动 start / status。
+	// 用于 active poll 拿到新 ResetsAt 后回写，避免覆盖请求路径上记录的 status。
+	UpdateSessionWindowEnd(ctx context.Context, id int64, end time.Time) error
 	UpdateExtra(ctx context.Context, id int64, updates map[string]any) error
 	BulkUpdate(ctx context.Context, ids []int64, updates AccountBulkUpdate) (int64, error)
 	// IncrementQuotaUsed 原子递增 API Key 账号的配额用量（总/日/周）
