@@ -316,4 +316,106 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdProxies, 0)
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+	require.Nil(t, adminSvc.createdAccounts[0].GroupIDs)
+	require.NotNil(t, adminSvc.createdAccounts[0].ProxyID)
+	require.EqualValues(t, 1, *adminSvc.createdAccounts[0].ProxyID)
+}
+
+func TestImportDataBindsSelectedGroupAndDefaultLiveProxy(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.proxies = []service.Proxy{
+		{ID: 7, Name: "live", Protocol: "http", Host: "10.0.0.1", Port: 8080, Status: service.StatusActive},
+	}
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":        "acc",
+					"platform":    service.PlatformOpenAI,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "x"},
+					"concurrency": 1,
+					"priority":    1,
+				},
+			},
+		},
+		"group_id":                2,
+		"skip_default_group_bind": true,
+		"proxy_assignment": map[string]any{
+			"mode":             dataImportProxyAssignmentDefaultLive,
+			"default_proxy_id": 7,
+		},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, adminSvc.createdAccounts, 1)
+	require.Equal(t, []int64{2}, adminSvc.createdAccounts[0].GroupIDs)
+	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+	require.NotNil(t, adminSvc.createdAccounts[0].ProxyID)
+	require.EqualValues(t, 7, *adminSvc.createdAccounts[0].ProxyID)
+}
+
+func TestImportDataRejectsInactiveDefaultProxy(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.proxies = []service.Proxy{
+		{ID: 7, Name: "dead", Protocol: "http", Host: "10.0.0.1", Port: 8080, Status: "inactive"},
+	}
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":     dataType,
+			"version":  dataVersion,
+			"proxies":  []map[string]any{},
+			"accounts": []map[string]any{},
+		},
+		"proxy_assignment": map[string]any{
+			"mode":             dataImportProxyAssignmentDefaultLive,
+			"default_proxy_id": 7,
+		},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Empty(t, adminSvc.createdAccounts)
+}
+
+func TestImportDataRejectsRandomLiveWithoutActiveProxy(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.proxies = []service.Proxy{
+		{ID: 7, Name: "dead", Protocol: "http", Host: "10.0.0.1", Port: 8080, Status: "inactive"},
+	}
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":     dataType,
+			"version":  dataVersion,
+			"proxies":  []map[string]any{},
+			"accounts": []map[string]any{},
+		},
+		"proxy_assignment": map[string]any{
+			"mode": dataImportProxyAssignmentRandomLive,
+		},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Empty(t, adminSvc.createdAccounts)
 }

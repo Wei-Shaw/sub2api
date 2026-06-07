@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AdminDataImportResult, AdminDataPayload } from '@/types'
+import type { AdminDataImportRequest, AdminDataImportResult, AdminDataPayload } from '@/types'
 
 describe('types index admin import exports', () => {
   it('exposes AdminDataPayload and AdminDataImportResult type aliases', () => {
@@ -17,8 +17,18 @@ describe('types index admin import exports', () => {
       account_failed: 0,
       errors: [],
     }
+    const request: AdminDataImportRequest = {
+      data: payload,
+      group_id: 7,
+      skip_default_group_bind: true,
+      proxy_assignment: {
+        mode: 'default_live',
+        default_proxy_id: 9,
+      },
+    }
 
     expect(payload.proxies).toEqual([])
     expect(result.account_created).toBe(0)
+    expect(request.proxy_assignment?.mode).toBe('default_live')
   })
 })

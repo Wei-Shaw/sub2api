@@ -2,8 +2,10 @@ package admin
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +24,11 @@ const (
 	legacyDataType = "sub2api-bundle"
 	dataVersion    = 1
 	dataPageCap    = 1000
+
+	dataImportProxyAssignmentKeepFile    = "keep_file"
+	dataImportProxyAssignmentNone        = "none"
+	dataImportProxyAssignmentRandomLive  = "random_live"
+	dataImportProxyAssignmentDefaultLive = "default_live"
 )
 
 type DataPayload struct {
@@ -73,8 +80,15 @@ type DataAccount struct {
 }
 
 type DataImportRequest struct {
-	Data                 DataPayload `json:"data"`
-	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+	Data                 DataPayload                `json:"data"`
+	SkipDefaultGroupBind *bool                      `json:"skip_default_group_bind"`
+	GroupID              *int64                     `json:"group_id"`
+	ProxyAssignment      *DataImportProxyAssignment `json:"proxy_assignment"`
+}
+
+type DataImportProxyAssignment struct {
+	Mode           string `json:"mode"`
+	DefaultProxyID *int64 `json:"default_proxy_id,omitempty"`
 }
 
 type DataImportResult struct {
@@ -247,6 +261,14 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	if req.SkipDefaultGroupBind != nil {
 		skipDefaultGroupBind = *req.SkipDefaultGroupBind
 	}
+	groupIDs, err := h.resolveImportGroupIDs(ctx, req.GroupID)
+	if err != nil {
+		return DataImportResult{}, err
+	}
+	proxyAssignment, err := normalizeDataImportProxyAssignment(req.ProxyAssignment)
+	if err != nil {
+		return DataImportResult{}, err
+	}
 
 	dataPayload := req.Data
 	result := DataImportResult{}
@@ -396,6 +418,11 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 	}
 
+	resolvedProxyAssignment, err := h.resolveImportProxyAssignment(ctx, proxyAssignment)
+	if err != nil {
+		return result, err
+	}
+
 	// 收集需要异步设置隐私的 Antigravity OAuth 账号
 	var privacyAccounts []*service.Account
 
@@ -411,20 +438,16 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			continue
 		}
 
-		var proxyID *int64
-		if item.ProxyKey != nil && *item.ProxyKey != "" {
-			if id, ok := proxyKeyToID[*item.ProxyKey]; ok {
-				proxyID = &id
-			} else {
-				result.AccountFailed++
-				result.Errors = append(result.Errors, DataImportError{
-					Kind:     "account",
-					Name:     item.Name,
-					ProxyKey: *item.ProxyKey,
-					Message:  "proxy_key not found",
-				})
-				continue
-			}
+		proxyID, proxyErr := resolveDataImportAccountProxyID(item, proxyKeyToID, resolvedProxyAssignment)
+		if proxyErr != nil {
+			result.AccountFailed++
+			result.Errors = append(result.Errors, DataImportError{
+				Kind:     "account",
+				Name:     item.Name,
+				ProxyKey: itemProxyKey(item),
+				Message:  proxyErr.Error(),
+			})
+			continue
 		}
 
 		enrichCredentialsFromIDToken(&item)
@@ -440,7 +463,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Concurrency:          item.Concurrency,
 			Priority:             item.Priority,
 			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
+			GroupIDs:             append([]int64(nil), groupIDs...),
 			ExpiresAt:            item.ExpiresAt,
 			AutoPauseOnExpired:   item.AutoPauseOnExpired,
 			SkipDefaultGroupBind: skipDefaultGroupBind,
@@ -482,6 +505,144 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	}
 
 	return result, nil
+}
+
+func (h *AccountHandler) resolveImportGroupIDs(ctx context.Context, groupID *int64) ([]int64, error) {
+	if groupID == nil {
+		return nil, nil
+	}
+	if *groupID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_GROUP_ID", "group_id must be positive")
+	}
+	group, err := h.adminService.GetGroup(ctx, *groupID)
+	if err != nil {
+		return nil, err
+	}
+	if group == nil {
+		return nil, infraerrors.BadRequest("GROUP_NOT_FOUND", "selected group not found")
+	}
+	if group.Status != "" && group.Status != service.StatusActive {
+		return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "selected group is not active")
+	}
+	return []int64{*groupID}, nil
+}
+
+type resolvedDataImportProxyAssignment struct {
+	Mode           string
+	DefaultProxyID *int64
+	RandomProxyIDs []int64
+}
+
+func normalizeDataImportProxyAssignment(assignment *DataImportProxyAssignment) (DataImportProxyAssignment, error) {
+	if assignment == nil {
+		return DataImportProxyAssignment{Mode: dataImportProxyAssignmentKeepFile}, nil
+	}
+	mode := strings.ToLower(strings.TrimSpace(assignment.Mode))
+	if mode == "" {
+		mode = dataImportProxyAssignmentKeepFile
+	}
+	out := DataImportProxyAssignment{
+		Mode:           mode,
+		DefaultProxyID: assignment.DefaultProxyID,
+	}
+	switch mode {
+	case dataImportProxyAssignmentKeepFile, dataImportProxyAssignmentNone, dataImportProxyAssignmentRandomLive:
+		return out, nil
+	case dataImportProxyAssignmentDefaultLive:
+		if out.DefaultProxyID == nil || *out.DefaultProxyID <= 0 {
+			return out, infraerrors.BadRequest("INVALID_PROXY_ASSIGNMENT", "default_live proxy assignment requires an active proxy")
+		}
+		return out, nil
+	default:
+		return out, infraerrors.BadRequest("INVALID_PROXY_ASSIGNMENT", "proxy_assignment.mode is invalid")
+	}
+}
+
+func (h *AccountHandler) resolveImportProxyAssignment(ctx context.Context, assignment DataImportProxyAssignment) (resolvedDataImportProxyAssignment, error) {
+	resolved := resolvedDataImportProxyAssignment{Mode: assignment.Mode}
+	switch assignment.Mode {
+	case dataImportProxyAssignmentKeepFile, dataImportProxyAssignmentNone:
+		return resolved, nil
+	case dataImportProxyAssignmentRandomLive:
+		ids, err := h.listActiveImportProxyIDs(ctx)
+		if err != nil {
+			return resolved, err
+		}
+		if len(ids) == 0 {
+			return resolved, infraerrors.BadRequest("NO_ACTIVE_PROXY", "no active proxies available")
+		}
+		resolved.RandomProxyIDs = ids
+		return resolved, nil
+	case dataImportProxyAssignmentDefaultLive:
+		proxy, err := h.adminService.GetProxy(ctx, *assignment.DefaultProxyID)
+		if err != nil {
+			return resolved, err
+		}
+		if proxy == nil || !proxy.IsActive() {
+			return resolved, infraerrors.BadRequest("PROXY_NOT_ACTIVE", "selected proxy is not active")
+		}
+		proxyID := *assignment.DefaultProxyID
+		resolved.DefaultProxyID = &proxyID
+		return resolved, nil
+	default:
+		return resolved, infraerrors.BadRequest("INVALID_PROXY_ASSIGNMENT", "proxy_assignment.mode is invalid")
+	}
+}
+
+func (h *AccountHandler) listActiveImportProxyIDs(ctx context.Context) ([]int64, error) {
+	proxies, err := h.listAllProxies(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(proxies))
+	for i := range proxies {
+		if proxies[i].IsActive() {
+			ids = append(ids, proxies[i].ID)
+		}
+	}
+	return ids, nil
+}
+
+func resolveDataImportAccountProxyID(item DataAccount, proxyKeyToID map[string]int64, assignment resolvedDataImportProxyAssignment) (*int64, error) {
+	switch assignment.Mode {
+	case dataImportProxyAssignmentNone:
+		return nil, nil
+	case dataImportProxyAssignmentRandomLive:
+		if len(assignment.RandomProxyIDs) == 0 {
+			return nil, infraerrors.BadRequest("NO_ACTIVE_PROXY", "no active proxies available")
+		}
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(assignment.RandomProxyIDs))))
+		if err != nil {
+			return nil, err
+		}
+		proxyID := assignment.RandomProxyIDs[idx.Int64()]
+		return &proxyID, nil
+	case dataImportProxyAssignmentDefaultLive:
+		if assignment.DefaultProxyID == nil {
+			return nil, infraerrors.BadRequest("INVALID_PROXY_ASSIGNMENT", "default_live proxy assignment requires an active proxy")
+		}
+		proxyID := *assignment.DefaultProxyID
+		return &proxyID, nil
+	case dataImportProxyAssignmentKeepFile:
+		proxyKey := itemProxyKey(item)
+		if proxyKey == "" {
+			return nil, nil
+		}
+		if id, ok := proxyKeyToID[proxyKey]; ok {
+			proxyID := id
+			return &proxyID, nil
+		}
+		return nil, errors.New("proxy_key not found")
+	default:
+		return nil, infraerrors.BadRequest("INVALID_PROXY_ASSIGNMENT", "proxy_assignment.mode is invalid")
+	}
+}
+
+func itemProxyKey(item DataAccount) string {
+	if item.ProxyKey == nil {
+		return ""
+	}
+	return strings.TrimSpace(*item.ProxyKey)
 }
 
 func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, error) {

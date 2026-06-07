@@ -1492,6 +1492,18 @@ export interface AdminDataAccount {
   auto_pause_on_expired?: boolean
 }
 
+export interface AdminDataImportProxyAssignment {
+  mode: 'keep_file' | 'none' | 'random_live' | 'default_live'
+  default_proxy_id?: number | null
+}
+
+export interface AdminDataImportRequest {
+  data: AdminDataPayload
+  skip_default_group_bind?: boolean
+  group_id?: number | null
+  proxy_assignment?: AdminDataImportProxyAssignment
+}
+
 export interface AdminDataImportError {
   kind: 'proxy' | 'account'
   name?: string
