@@ -156,6 +156,23 @@ func (s *FailoverState) HandleSelectionExhausted(ctx context.Context) FailoverAc
 
 // needForceCacheBilling 判断 failover 时是否需要强制缓存计费。
 // 粘性会话切换账号、或上游明确标记时，将 input_tokens 转为 cache_read 计费。
+// HandleAccountSlotExhausted excludes a saturated account and continues the
+// failover loop so another account can be selected instead of failing the
+// request immediately.
+func (s *FailoverState) HandleAccountSlotExhausted(ctx context.Context, accountID int64) FailoverAction {
+	s.FailedAccountIDs[accountID] = struct{}{}
+	if s.SwitchCount >= s.MaxSwitches {
+		return FailoverExhausted
+	}
+	s.SwitchCount++
+	logger.FromContext(ctx).Warn("gateway.failover_account_slot_exhausted_switch_account",
+		zap.Int64("account_id", accountID),
+		zap.Int("switch_count", s.SwitchCount),
+		zap.Int("max_switches", s.MaxSwitches),
+	)
+	return FailoverContinue
+}
+
 func needForceCacheBilling(hasBoundSession bool, failoverErr *service.UpstreamFailoverError) bool {
 	return hasBoundSession || (failoverErr != nil && failoverErr.ForceCacheBilling)
 }

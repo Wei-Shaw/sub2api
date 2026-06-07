@@ -70,6 +70,27 @@ func TestNewFailoverState(t *testing.T) {
 	})
 }
 
+func TestHandleAccountSlotExhausted(t *testing.T) {
+	fs := NewFailoverState(2, false)
+
+	action := fs.HandleAccountSlotExhausted(context.Background(), 101)
+	if action != FailoverContinue {
+		t.Fatalf("first saturated account: got %v, want %v", action, FailoverContinue)
+	}
+	if _, ok := fs.FailedAccountIDs[101]; !ok {
+		t.Fatalf("expected saturated account to be excluded")
+	}
+	if fs.SwitchCount != 1 {
+		t.Fatalf("switch count = %d, want 1", fs.SwitchCount)
+	}
+
+	_ = fs.HandleAccountSlotExhausted(context.Background(), 102)
+	action = fs.HandleAccountSlotExhausted(context.Background(), 103)
+	if action != FailoverExhausted {
+		t.Fatalf("exhausted action: got %v, want %v", action, FailoverExhausted)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // sleepWithContext 测试
 // ---------------------------------------------------------------------------
