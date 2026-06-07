@@ -5115,6 +5115,100 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	return openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage"))
 }
 
+func logOpenAIHTTP200SuspiciousUsageResponse(ctx context.Context, source string, resp *http.Response, c *gin.Context, body []byte, usage *OpenAIUsage, usageParsed bool) {
+	if resp == nil || resp.StatusCode != http.StatusOK || len(body) == 0 {
+		return
+	}
+
+	reason := detectOpenAIHTTP200SuspiciousUsageReason(body, usage, usageParsed)
+	if reason == "" {
+		return
+	}
+
+	fields := []zap.Field{
+		zap.String("component", "service.openai_gateway"),
+		zap.String("source", source),
+		zap.String("reason", reason),
+		zap.Int("status_code", resp.StatusCode),
+		zap.String("content_type", resp.Header.Get("Content-Type")),
+		zap.String("upstream_request_id", strings.TrimSpace(resp.Header.Get("x-request-id"))),
+		zap.String("response_body", string(body)),
+	}
+	if c != nil && c.Request != nil && c.Request.URL != nil {
+		fields = append(fields,
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+		)
+	}
+	logger.FromContext(ctx).With(fields...).Warn("openai.http_200_suspicious_usage_response")
+}
+
+func detectOpenAIHTTP200SuspiciousUsageReason(body []byte, usage *OpenAIUsage, usageParsed bool) string {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return "empty_body"
+	}
+	if !gjson.ValidBytes(trimmed) {
+		return "json_parse_failed"
+	}
+	if gjson.GetBytes(trimmed, "error").Exists() || strings.EqualFold(strings.TrimSpace(gjson.GetBytes(trimmed, "type").String()), "error") {
+		return "error_shape"
+	}
+
+	usageValue, usageExists := firstExistingGJSONValue(trimmed, "usage", "response.usage", "useage", "response.useage")
+	if !usageExists {
+		return "usage_missing"
+	}
+	if !usageValue.IsObject() {
+		return "usage_invalid_type"
+	}
+	if usageJSONHasPositiveTokenCount(usageValue) {
+		return ""
+	}
+	if usageParsed && usage != nil && openAIUsageHasAnyTokens(*usage) {
+		return ""
+	}
+	return "usage_zero"
+}
+
+func firstExistingGJSONValue(body []byte, paths ...string) (gjson.Result, bool) {
+	for _, path := range paths {
+		value := gjson.GetBytes(body, path)
+		if value.Exists() {
+			return value, true
+		}
+	}
+	return gjson.Result{}, false
+}
+
+func usageJSONHasPositiveTokenCount(usage gjson.Result) bool {
+	for _, path := range []string{
+		"total_tokens",
+		"input_tokens",
+		"output_tokens",
+		"prompt_tokens",
+		"completion_tokens",
+		"cache_creation_input_tokens",
+		"input_tokens_details.cached_tokens",
+		"prompt_tokens_details.cached_tokens",
+		"output_tokens_details.image_tokens",
+		"completion_tokens_details.image_tokens",
+	} {
+		if usage.Get(path).Int() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func openAIUsageHasAnyTokens(usage OpenAIUsage) bool {
+	return usage.InputTokens > 0 ||
+		usage.OutputTokens > 0 ||
+		usage.CacheCreationInputTokens > 0 ||
+		usage.CacheReadInputTokens > 0 ||
+		usage.ImageOutputTokens > 0
+}
+
 func extractOpenAIResponseIDFromJSONBytes(body []byte) string {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return ""
@@ -5196,6 +5290,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
 	if !usageOK {
+		logOpenAIHTTP200SuspiciousUsageResponse(ctx, "openai_non_stream_parse_failed", resp, c, body, nil, false)
 		if bodyLooksLikeSSE {
 			return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
 		}
@@ -5217,6 +5312,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		}
 	}
 
+	logOpenAIHTTP200SuspiciousUsageResponse(ctx, "openai_non_stream", resp, c, body, usage, true)
 	c.Data(resp.StatusCode, contentType, body)
 
 	return &openaiNonStreamingResult{
@@ -5283,6 +5379,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			contentType = "text/event-stream"
 		}
 	}
+	logOpenAIHTTP200SuspiciousUsageResponse(context.Background(), "openai_sse_to_json", resp, c, body, usage, true)
 	c.Data(resp.StatusCode, contentType, body)
 
 	return &openaiNonStreamingResult{

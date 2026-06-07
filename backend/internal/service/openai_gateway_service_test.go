@@ -25,6 +25,52 @@ import (
 var _ AccountRepository = (*stubOpenAIAccountRepo)(nil)
 var _ GatewayCache = (*stubGatewayCache)(nil)
 
+func TestDetectOpenAIHTTP200SuspiciousUsageReason(t *testing.T) {
+	tests := []struct {
+		name        string
+		body        []byte
+		usage       *OpenAIUsage
+		usageParsed bool
+		want        string
+	}{
+		{
+			name: "missing usage",
+			body: []byte(`{"id":"resp_1","output":[]}`),
+			want: "usage_missing",
+		},
+		{
+			name: "upstream error wrapped in 200",
+			body: []byte(`{"type":"error","error":{"message":"bad upstream"}}`),
+			want: "error_shape",
+		},
+		{
+			name: "misspelled usage with zero tokens",
+			body: []byte(`{"useage":{"input_tokens":0,"output_tokens":0}}`),
+			want: "usage_zero",
+		},
+		{
+			name: "parsed usage wins when raw provider omits token fields",
+			body: []byte(`{"usage":{}}`),
+			usage: &OpenAIUsage{
+				InputTokens: 1,
+			},
+			usageParsed: true,
+			want:        "",
+		},
+		{
+			name: "normal usage",
+			body: []byte(`{"usage":{"input_tokens":1,"output_tokens":2}}`),
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, detectOpenAIHTTP200SuspiciousUsageReason(tt.body, tt.usage, tt.usageParsed))
+		})
+	}
+}
+
 type stubOpenAIAccountRepo struct {
 	AccountRepository
 	accounts []Account
