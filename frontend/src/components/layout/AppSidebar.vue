@@ -8,15 +8,39 @@
   >
     <!-- Logo/Brand -->
     <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
-      <!-- Custom Logo or Default Logo -->
-      <div class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-glow">
-        <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
-      </div>
+      <!--
+        Brand "go home" link is split into two router-links pointing to "/":
+        - Logo link wraps the logo image (always visible, also in collapsed state).
+        - Title link wraps the site name (visible only in expanded state).
+        VersionBadge stays OUTSIDE both links so its button/dropdown clicks
+        do not bubble into a router navigation, and its visual position is
+        preserved exactly as before. Title link is aria-hidden + tabindex=-1
+        so assistive tech announces a single "go home" link via the logo.
+      -->
+      <router-link
+        to="/"
+        class="sidebar-brand-link sidebar-brand-link-logo"
+        :aria-label="t('nav.goHome')"
+        :title="t('nav.goHome')"
+        @click="handleBrandClick"
+      >
+        <div class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-glow">
+          <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+        </div>
+      </router-link>
       <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
-        <span class="sidebar-brand-title text-lg font-bold text-gray-900 dark:text-white">
-          {{ siteName }}
-        </span>
-        <!-- Version Badge -->
+        <router-link
+          to="/"
+          class="sidebar-brand-link sidebar-brand-link-text"
+          tabindex="-1"
+          aria-hidden="true"
+          @click="handleBrandClick"
+        >
+          <span class="sidebar-brand-title text-lg font-bold text-gray-900 dark:text-white">
+            {{ siteName }}
+          </span>
+        </router-link>
+        <!-- Version Badge: sibling of the title link, NOT inside any router-link -->
         <VersionBadge :version="siteVersion" />
       </div>
     </div>
@@ -72,7 +96,7 @@
             <router-link
               v-else
               :to="item.path"
-              class="sidebar-link mb-1"
+              class="sidebar-link mb-1 relative"
               :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
               :title="sidebarCollapsed ? item.label : undefined"
               :id="
@@ -89,6 +113,11 @@
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
               <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <span
+                v-if="item.showDot && item.showDot()"
+                class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
+                :aria-label="t('payment.promo.redDotAria')"
+              ></span>
             </router-link>
           </template>
         </div>
@@ -105,7 +134,7 @@
             v-for="item in personalNavItems"
             :key="item.path"
             :to="item.path"
-            class="sidebar-link mb-1"
+            class="sidebar-link mb-1 relative"
             :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
@@ -114,6 +143,11 @@
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            <span
+              v-if="item.showDot && item.showDot()"
+              class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
+              :aria-label="t('payment.promo.redDotAria')"
+            ></span>
           </router-link>
         </div>
       </template>
@@ -125,7 +159,7 @@
             v-for="item in userNavItems"
             :key="item.path"
             :to="item.path"
-            class="sidebar-link mb-1"
+            class="sidebar-link mb-1 relative"
             :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
@@ -134,6 +168,11 @@
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            <span
+              v-if="item.showDot && item.showDot()"
+              class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
+              :aria-label="t('payment.promo.redDotAria')"
+            ></span>
           </router-link>
         </div>
       </template>
@@ -183,10 +222,11 @@
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
+import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore, usePaymentStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
+import { useRechargePromoDot } from '@/composables/useRechargePromoDot'
 
 interface NavItem {
   path: string
@@ -207,6 +247,11 @@ interface NavItem {
    * 开关切换时菜单自动更新。
    */
   featureFlag?: () => boolean | undefined
+  /**
+   * 可选的红点 getter。返回 true 时菜单项右上角渲染一个红点（用于活动/通知等场景）。
+   * 与 `featureFlag` 一样依赖 reactive 来源，状态变化即重渲染。
+   */
+  showDot?: () => boolean
 }
 
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
@@ -232,6 +277,7 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const adminSettingsStore = useAdminSettingsStore()
+const paymentStore = usePaymentStore()
 
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
@@ -654,6 +700,15 @@ const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 
+// 充值赠送活动红点：站点开启支付 + 后端下发活动 + 当前用户未 dismiss 时亮起。
+// 同一份 dismiss 状态在 PaymentView 内的 tab/preset 红点和侧边栏菜单红点之间共享，
+// 用户点了任一处即可整体熄灭（同 tab 通过 composable 的 sharedTick，跨 tab 通过 storage 事件）。
+const purchasePromoDot = useRechargePromoDot({
+  userId: computed(() => authStore.user?.id ?? null),
+  promo: computed(() => paymentStore.rechargePromo),
+})
+const flagPurchasePromoDot = () => purchasePromoDot.shouldShow.value
+
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
@@ -670,7 +725,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
+    { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment, showDot: flagPurchasePromoDot },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
@@ -738,6 +793,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagRiskControl },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
+    { path: '/admin/recharge-promos', label: t('nav.rechargePromos'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: flagAdminPayment },
     {
       path: '/admin/affiliates',
       label: t('nav.affiliateManagement'),
@@ -799,6 +855,15 @@ function toggleTheme() {
 
 function closeMobile() {
   appStore.setMobileOpen(false)
+}
+
+function handleBrandClick() {
+  // Mirror handleMenuItemClick: close the mobile drawer after navigation.
+  if (mobileOpen.value) {
+    setTimeout(() => {
+      appStore.setMobileOpen(false)
+    }, 150)
+  }
 }
 
 function handleMenuItemClick(itemPath: string) {
@@ -885,6 +950,22 @@ watch(
   { immediate: true }
 )
 
+// 拉取充值赠送活动（用于侧边栏 /purchase 红点）。
+// 仅在用户登录后拉取一次；登出后清空，避免下一个登录用户继承上一个人的状态。
+// 不依赖 payment feature flag——flagPayment 已经会过滤掉菜单项，
+// 这里多发一次轻量请求换取“flag 后开启时也能立刻显示红点”的体验。
+watch(
+  () => authStore.isAuthenticated,
+  (v) => {
+    if (v) {
+      paymentStore.fetchRechargePromo()
+    } else {
+      paymentStore.resetRechargePromo()
+    }
+  },
+  { immediate: true }
+)
+
 onMounted(() => {
   if (isAdmin.value) {
     adminSettingsStore.fetch()
@@ -896,6 +977,56 @@ onMounted(() => {
 .sidebar-logo {
   flex: 0 0 2.25rem;
   min-width: 2.25rem;
+}
+
+/* Brand "go home" link: applied to both the logo wrapper and the title
+ * wrapper so each has its own tight click box (logo bounds / text bounds),
+ * instead of the full sidebar-header padding. Version badge sits outside
+ * both links and is unaffected. */
+.sidebar-brand-link {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 0.5rem;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-brand-link-logo {
+  /* Match the logo's rounded-xl so hover/focus ring hugs the icon. */
+  border-radius: 0.75rem;
+  flex: 0 0 auto;
+}
+
+.sidebar-brand-link-text {
+  /* Inline link wrapping just the site-name span; takes its natural width. */
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sidebar-brand-link:hover {
+  background-color: rgb(243 244 246); /* gray-100 */
+}
+
+.dark .sidebar-brand-link:hover {
+  background-color: rgb(31 41 55); /* dark-800 */
+}
+
+.sidebar-brand-link:focus {
+  outline: none;
+}
+
+.sidebar-brand-link:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgb(255 255 255),
+    0 0 0 4px rgb(99 102 241); /* primary-500-ish ring with offset */
+}
+
+.dark .sidebar-brand-link:focus-visible {
+  box-shadow:
+    0 0 0 2px rgb(17 24 39),
+    0 0 0 4px rgb(129 140 248);
 }
 
 .sidebar-header-collapsed {

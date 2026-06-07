@@ -35,6 +35,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/rechargepromoactivity"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -82,6 +83,7 @@ const (
 	TypePromoCode                     = "PromoCode"
 	TypePromoCodeUsage                = "PromoCodeUsage"
 	TypeProxy                         = "Proxy"
+	TypeRechargePromoActivity         = "RechargePromoActivity"
 	TypeRedeemCode                    = "RedeemCode"
 	TypeSecuritySecret                = "SecuritySecret"
 	TypeSetting                       = "Setting"
@@ -20501,6 +20503,12 @@ type PaymentOrderMutation struct {
 	addpay_amount            *float64
 	fee_rate                 *float64
 	addfee_rate              *float64
+	bonus_amount             *float64
+	addbonus_amount          *float64
+	bonus_rate               *float64
+	addbonus_rate            *float64
+	activity_id              *int64
+	addactivity_id           *int64
 	recharge_code            *string
 	out_trade_no             *string
 	payment_type             *string
@@ -20966,6 +20974,188 @@ func (m *PaymentOrderMutation) AddedFeeRate() (r float64, exists bool) {
 func (m *PaymentOrderMutation) ResetFeeRate() {
 	m.fee_rate = nil
 	m.addfee_rate = nil
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (m *PaymentOrderMutation) SetBonusAmount(f float64) {
+	m.bonus_amount = &f
+	m.addbonus_amount = nil
+}
+
+// BonusAmount returns the value of the "bonus_amount" field in the mutation.
+func (m *PaymentOrderMutation) BonusAmount() (r float64, exists bool) {
+	v := m.bonus_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBonusAmount returns the old "bonus_amount" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldBonusAmount(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBonusAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBonusAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBonusAmount: %w", err)
+	}
+	return oldValue.BonusAmount, nil
+}
+
+// AddBonusAmount adds f to the "bonus_amount" field.
+func (m *PaymentOrderMutation) AddBonusAmount(f float64) {
+	if m.addbonus_amount != nil {
+		*m.addbonus_amount += f
+	} else {
+		m.addbonus_amount = &f
+	}
+}
+
+// AddedBonusAmount returns the value that was added to the "bonus_amount" field in this mutation.
+func (m *PaymentOrderMutation) AddedBonusAmount() (r float64, exists bool) {
+	v := m.addbonus_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBonusAmount resets all changes to the "bonus_amount" field.
+func (m *PaymentOrderMutation) ResetBonusAmount() {
+	m.bonus_amount = nil
+	m.addbonus_amount = nil
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (m *PaymentOrderMutation) SetBonusRate(f float64) {
+	m.bonus_rate = &f
+	m.addbonus_rate = nil
+}
+
+// BonusRate returns the value of the "bonus_rate" field in the mutation.
+func (m *PaymentOrderMutation) BonusRate() (r float64, exists bool) {
+	v := m.bonus_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBonusRate returns the old "bonus_rate" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldBonusRate(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBonusRate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBonusRate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBonusRate: %w", err)
+	}
+	return oldValue.BonusRate, nil
+}
+
+// AddBonusRate adds f to the "bonus_rate" field.
+func (m *PaymentOrderMutation) AddBonusRate(f float64) {
+	if m.addbonus_rate != nil {
+		*m.addbonus_rate += f
+	} else {
+		m.addbonus_rate = &f
+	}
+}
+
+// AddedBonusRate returns the value that was added to the "bonus_rate" field in this mutation.
+func (m *PaymentOrderMutation) AddedBonusRate() (r float64, exists bool) {
+	v := m.addbonus_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBonusRate resets all changes to the "bonus_rate" field.
+func (m *PaymentOrderMutation) ResetBonusRate() {
+	m.bonus_rate = nil
+	m.addbonus_rate = nil
+}
+
+// SetActivityID sets the "activity_id" field.
+func (m *PaymentOrderMutation) SetActivityID(i int64) {
+	m.activity_id = &i
+	m.addactivity_id = nil
+}
+
+// ActivityID returns the value of the "activity_id" field in the mutation.
+func (m *PaymentOrderMutation) ActivityID() (r int64, exists bool) {
+	v := m.activity_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActivityID returns the old "activity_id" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldActivityID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActivityID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActivityID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActivityID: %w", err)
+	}
+	return oldValue.ActivityID, nil
+}
+
+// AddActivityID adds i to the "activity_id" field.
+func (m *PaymentOrderMutation) AddActivityID(i int64) {
+	if m.addactivity_id != nil {
+		*m.addactivity_id += i
+	} else {
+		m.addactivity_id = &i
+	}
+}
+
+// AddedActivityID returns the value that was added to the "activity_id" field in this mutation.
+func (m *PaymentOrderMutation) AddedActivityID() (r int64, exists bool) {
+	v := m.addactivity_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearActivityID clears the value of the "activity_id" field.
+func (m *PaymentOrderMutation) ClearActivityID() {
+	m.activity_id = nil
+	m.addactivity_id = nil
+	m.clearedFields[paymentorder.FieldActivityID] = struct{}{}
+}
+
+// ActivityIDCleared returns if the "activity_id" field was cleared in this mutation.
+func (m *PaymentOrderMutation) ActivityIDCleared() bool {
+	_, ok := m.clearedFields[paymentorder.FieldActivityID]
+	return ok
+}
+
+// ResetActivityID resets all changes to the "activity_id" field.
+func (m *PaymentOrderMutation) ResetActivityID() {
+	m.activity_id = nil
+	m.addactivity_id = nil
+	delete(m.clearedFields, paymentorder.FieldActivityID)
 }
 
 // SetRechargeCode sets the "recharge_code" field.
@@ -22511,7 +22701,7 @@ func (m *PaymentOrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentOrderMutation) Fields() []string {
-	fields := make([]string, 0, 39)
+	fields := make([]string, 0, 42)
 	if m.user != nil {
 		fields = append(fields, paymentorder.FieldUserID)
 	}
@@ -22532,6 +22722,15 @@ func (m *PaymentOrderMutation) Fields() []string {
 	}
 	if m.fee_rate != nil {
 		fields = append(fields, paymentorder.FieldFeeRate)
+	}
+	if m.bonus_amount != nil {
+		fields = append(fields, paymentorder.FieldBonusAmount)
+	}
+	if m.bonus_rate != nil {
+		fields = append(fields, paymentorder.FieldBonusRate)
+	}
+	if m.activity_id != nil {
+		fields = append(fields, paymentorder.FieldActivityID)
 	}
 	if m.recharge_code != nil {
 		fields = append(fields, paymentorder.FieldRechargeCode)
@@ -22651,6 +22850,12 @@ func (m *PaymentOrderMutation) Field(name string) (ent.Value, bool) {
 		return m.PayAmount()
 	case paymentorder.FieldFeeRate:
 		return m.FeeRate()
+	case paymentorder.FieldBonusAmount:
+		return m.BonusAmount()
+	case paymentorder.FieldBonusRate:
+		return m.BonusRate()
+	case paymentorder.FieldActivityID:
+		return m.ActivityID()
 	case paymentorder.FieldRechargeCode:
 		return m.RechargeCode()
 	case paymentorder.FieldOutTradeNo:
@@ -22738,6 +22943,12 @@ func (m *PaymentOrderMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldPayAmount(ctx)
 	case paymentorder.FieldFeeRate:
 		return m.OldFeeRate(ctx)
+	case paymentorder.FieldBonusAmount:
+		return m.OldBonusAmount(ctx)
+	case paymentorder.FieldBonusRate:
+		return m.OldBonusRate(ctx)
+	case paymentorder.FieldActivityID:
+		return m.OldActivityID(ctx)
 	case paymentorder.FieldRechargeCode:
 		return m.OldRechargeCode(ctx)
 	case paymentorder.FieldOutTradeNo:
@@ -22859,6 +23070,27 @@ func (m *PaymentOrderMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFeeRate(v)
+		return nil
+	case paymentorder.FieldBonusAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBonusAmount(v)
+		return nil
+	case paymentorder.FieldBonusRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBonusRate(v)
+		return nil
+	case paymentorder.FieldActivityID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActivityID(v)
 		return nil
 	case paymentorder.FieldRechargeCode:
 		v, ok := value.(string)
@@ -23101,6 +23333,15 @@ func (m *PaymentOrderMutation) AddedFields() []string {
 	if m.addfee_rate != nil {
 		fields = append(fields, paymentorder.FieldFeeRate)
 	}
+	if m.addbonus_amount != nil {
+		fields = append(fields, paymentorder.FieldBonusAmount)
+	}
+	if m.addbonus_rate != nil {
+		fields = append(fields, paymentorder.FieldBonusRate)
+	}
+	if m.addactivity_id != nil {
+		fields = append(fields, paymentorder.FieldActivityID)
+	}
 	if m.addplan_id != nil {
 		fields = append(fields, paymentorder.FieldPlanID)
 	}
@@ -23127,6 +23368,12 @@ func (m *PaymentOrderMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedPayAmount()
 	case paymentorder.FieldFeeRate:
 		return m.AddedFeeRate()
+	case paymentorder.FieldBonusAmount:
+		return m.AddedBonusAmount()
+	case paymentorder.FieldBonusRate:
+		return m.AddedBonusRate()
+	case paymentorder.FieldActivityID:
+		return m.AddedActivityID()
 	case paymentorder.FieldPlanID:
 		return m.AddedPlanID()
 	case paymentorder.FieldSubscriptionGroupID:
@@ -23164,6 +23411,27 @@ func (m *PaymentOrderMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddFeeRate(v)
+		return nil
+	case paymentorder.FieldBonusAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBonusAmount(v)
+		return nil
+	case paymentorder.FieldBonusRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBonusRate(v)
+		return nil
+	case paymentorder.FieldActivityID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddActivityID(v)
 		return nil
 	case paymentorder.FieldPlanID:
 		v, ok := value.(int64)
@@ -23203,6 +23471,9 @@ func (m *PaymentOrderMutation) ClearedFields() []string {
 	var fields []string
 	if m.FieldCleared(paymentorder.FieldUserNotes) {
 		fields = append(fields, paymentorder.FieldUserNotes)
+	}
+	if m.FieldCleared(paymentorder.FieldActivityID) {
+		fields = append(fields, paymentorder.FieldActivityID)
 	}
 	if m.FieldCleared(paymentorder.FieldPayURL) {
 		fields = append(fields, paymentorder.FieldPayURL)
@@ -23277,6 +23548,9 @@ func (m *PaymentOrderMutation) ClearField(name string) error {
 	switch name {
 	case paymentorder.FieldUserNotes:
 		m.ClearUserNotes()
+		return nil
+	case paymentorder.FieldActivityID:
+		m.ClearActivityID()
 		return nil
 	case paymentorder.FieldPayURL:
 		m.ClearPayURL()
@@ -23363,6 +23637,15 @@ func (m *PaymentOrderMutation) ResetField(name string) error {
 		return nil
 	case paymentorder.FieldFeeRate:
 		m.ResetFeeRate()
+		return nil
+	case paymentorder.FieldBonusAmount:
+		m.ResetBonusAmount()
+		return nil
+	case paymentorder.FieldBonusRate:
+		m.ResetBonusRate()
+		return nil
+	case paymentorder.FieldActivityID:
+		m.ResetActivityID()
 		return nil
 	case paymentorder.FieldRechargeCode:
 		m.ResetRechargeCode()
@@ -28750,6 +29033,840 @@ func (m *ProxyMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Proxy edge %s", name)
+}
+
+// RechargePromoActivityMutation represents an operation that mutates the RechargePromoActivity nodes in the graph.
+type RechargePromoActivityMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	name          *string
+	enabled       *bool
+	valid_from    *time.Time
+	valid_until   *time.Time
+	tiers         *[]domain.RechargePromoTier
+	appendtiers   []domain.RechargePromoTier
+	operator      *string
+	note          *string
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*RechargePromoActivity, error)
+	predicates    []predicate.RechargePromoActivity
+}
+
+var _ ent.Mutation = (*RechargePromoActivityMutation)(nil)
+
+// rechargepromoactivityOption allows management of the mutation configuration using functional options.
+type rechargepromoactivityOption func(*RechargePromoActivityMutation)
+
+// newRechargePromoActivityMutation creates new mutation for the RechargePromoActivity entity.
+func newRechargePromoActivityMutation(c config, op Op, opts ...rechargepromoactivityOption) *RechargePromoActivityMutation {
+	m := &RechargePromoActivityMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRechargePromoActivity,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRechargePromoActivityID sets the ID field of the mutation.
+func withRechargePromoActivityID(id int64) rechargepromoactivityOption {
+	return func(m *RechargePromoActivityMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RechargePromoActivity
+		)
+		m.oldValue = func(ctx context.Context) (*RechargePromoActivity, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RechargePromoActivity.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRechargePromoActivity sets the old RechargePromoActivity of the mutation.
+func withRechargePromoActivity(node *RechargePromoActivity) rechargepromoactivityOption {
+	return func(m *RechargePromoActivityMutation) {
+		m.oldValue = func(context.Context) (*RechargePromoActivity, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RechargePromoActivityMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RechargePromoActivityMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RechargePromoActivityMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RechargePromoActivityMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RechargePromoActivity.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetName sets the "name" field.
+func (m *RechargePromoActivityMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *RechargePromoActivityMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the RechargePromoActivity entity.
+// If the RechargePromoActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargePromoActivityMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *RechargePromoActivityMutation) ResetName() {
+	m.name = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *RechargePromoActivityMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *RechargePromoActivityMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the RechargePromoActivity entity.
+// If the RechargePromoActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargePromoActivityMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *RechargePromoActivityMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetValidFrom sets the "valid_from" field.
+func (m *RechargePromoActivityMutation) SetValidFrom(t time.Time) {
+	m.valid_from = &t
+}
+
+// ValidFrom returns the value of the "valid_from" field in the mutation.
+func (m *RechargePromoActivityMutation) ValidFrom() (r time.Time, exists bool) {
+	v := m.valid_from
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValidFrom returns the old "valid_from" field's value of the RechargePromoActivity entity.
+// If the RechargePromoActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargePromoActivityMutation) OldValidFrom(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValidFrom is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValidFrom requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValidFrom: %w", err)
+	}
+	return oldValue.ValidFrom, nil
+}
+
+// ClearValidFrom clears the value of the "valid_from" field.
+func (m *RechargePromoActivityMutation) ClearValidFrom() {
+	m.valid_from = nil
+	m.clearedFields[rechargepromoactivity.FieldValidFrom] = struct{}{}
+}
+
+// ValidFromCleared returns if the "valid_from" field was cleared in this mutation.
+func (m *RechargePromoActivityMutation) ValidFromCleared() bool {
+	_, ok := m.clearedFields[rechargepromoactivity.FieldValidFrom]
+	return ok
+}
+
+// ResetValidFrom resets all changes to the "valid_from" field.
+func (m *RechargePromoActivityMutation) ResetValidFrom() {
+	m.valid_from = nil
+	delete(m.clearedFields, rechargepromoactivity.FieldValidFrom)
+}
+
+// SetValidUntil sets the "valid_until" field.
+func (m *RechargePromoActivityMutation) SetValidUntil(t time.Time) {
+	m.valid_until = &t
+}
+
+// ValidUntil returns the value of the "valid_until" field in the mutation.
+func (m *RechargePromoActivityMutation) ValidUntil() (r time.Time, exists bool) {
+	v := m.valid_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValidUntil returns the old "valid_until" field's value of the RechargePromoActivity entity.
+// If the RechargePromoActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargePromoActivityMutation) OldValidUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValidUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValidUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValidUntil: %w", err)
+	}
+	return oldValue.ValidUntil, nil
+}
+
+// ClearValidUntil clears the value of the "valid_until" field.
+func (m *RechargePromoActivityMutation) ClearValidUntil() {
+	m.valid_until = nil
+	m.clearedFields[rechargepromoactivity.FieldValidUntil] = struct{}{}
+}
+
+// ValidUntilCleared returns if the "valid_until" field was cleared in this mutation.
+func (m *RechargePromoActivityMutation) ValidUntilCleared() bool {
+	_, ok := m.clearedFields[rechargepromoactivity.FieldValidUntil]
+	return ok
+}
+
+// ResetValidUntil resets all changes to the "valid_until" field.
+func (m *RechargePromoActivityMutation) ResetValidUntil() {
+	m.valid_until = nil
+	delete(m.clearedFields, rechargepromoactivity.FieldValidUntil)
+}
+
+// SetTiers sets the "tiers" field.
+func (m *RechargePromoActivityMutation) SetTiers(dpt []domain.RechargePromoTier) {
+	m.tiers = &dpt
+	m.appendtiers = nil
+}
+
+// Tiers returns the value of the "tiers" field in the mutation.
+func (m *RechargePromoActivityMutation) Tiers() (r []domain.RechargePromoTier, exists bool) {
+	v := m.tiers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTiers returns the old "tiers" field's value of the RechargePromoActivity entity.
+// If the RechargePromoActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargePromoActivityMutation) OldTiers(ctx context.Context) (v []domain.RechargePromoTier, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTiers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTiers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTiers: %w", err)
+	}
+	return oldValue.Tiers, nil
+}
+
+// AppendTiers adds dpt to the "tiers" field.
+func (m *RechargePromoActivityMutation) AppendTiers(dpt []domain.RechargePromoTier) {
+	m.appendtiers = append(m.appendtiers, dpt...)
+}
+
+// AppendedTiers returns the list of values that were appended to the "tiers" field in this mutation.
+func (m *RechargePromoActivityMutation) AppendedTiers() ([]domain.RechargePromoTier, bool) {
+	if len(m.appendtiers) == 0 {
+		return nil, false
+	}
+	return m.appendtiers, true
+}
+
+// ResetTiers resets all changes to the "tiers" field.
+func (m *RechargePromoActivityMutation) ResetTiers() {
+	m.tiers = nil
+	m.appendtiers = nil
+}
+
+// SetOperator sets the "operator" field.
+func (m *RechargePromoActivityMutation) SetOperator(s string) {
+	m.operator = &s
+}
+
+// Operator returns the value of the "operator" field in the mutation.
+func (m *RechargePromoActivityMutation) Operator() (r string, exists bool) {
+	v := m.operator
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOperator returns the old "operator" field's value of the RechargePromoActivity entity.
+// If the RechargePromoActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargePromoActivityMutation) OldOperator(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOperator is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOperator requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOperator: %w", err)
+	}
+	return oldValue.Operator, nil
+}
+
+// ResetOperator resets all changes to the "operator" field.
+func (m *RechargePromoActivityMutation) ResetOperator() {
+	m.operator = nil
+}
+
+// SetNote sets the "note" field.
+func (m *RechargePromoActivityMutation) SetNote(s string) {
+	m.note = &s
+}
+
+// Note returns the value of the "note" field in the mutation.
+func (m *RechargePromoActivityMutation) Note() (r string, exists bool) {
+	v := m.note
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNote returns the old "note" field's value of the RechargePromoActivity entity.
+// If the RechargePromoActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargePromoActivityMutation) OldNote(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNote is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNote requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNote: %w", err)
+	}
+	return oldValue.Note, nil
+}
+
+// ClearNote clears the value of the "note" field.
+func (m *RechargePromoActivityMutation) ClearNote() {
+	m.note = nil
+	m.clearedFields[rechargepromoactivity.FieldNote] = struct{}{}
+}
+
+// NoteCleared returns if the "note" field was cleared in this mutation.
+func (m *RechargePromoActivityMutation) NoteCleared() bool {
+	_, ok := m.clearedFields[rechargepromoactivity.FieldNote]
+	return ok
+}
+
+// ResetNote resets all changes to the "note" field.
+func (m *RechargePromoActivityMutation) ResetNote() {
+	m.note = nil
+	delete(m.clearedFields, rechargepromoactivity.FieldNote)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *RechargePromoActivityMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *RechargePromoActivityMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the RechargePromoActivity entity.
+// If the RechargePromoActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargePromoActivityMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *RechargePromoActivityMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *RechargePromoActivityMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *RechargePromoActivityMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the RechargePromoActivity entity.
+// If the RechargePromoActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargePromoActivityMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *RechargePromoActivityMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the RechargePromoActivityMutation builder.
+func (m *RechargePromoActivityMutation) Where(ps ...predicate.RechargePromoActivity) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RechargePromoActivityMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RechargePromoActivityMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RechargePromoActivity, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RechargePromoActivityMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RechargePromoActivityMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RechargePromoActivity).
+func (m *RechargePromoActivityMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RechargePromoActivityMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.name != nil {
+		fields = append(fields, rechargepromoactivity.FieldName)
+	}
+	if m.enabled != nil {
+		fields = append(fields, rechargepromoactivity.FieldEnabled)
+	}
+	if m.valid_from != nil {
+		fields = append(fields, rechargepromoactivity.FieldValidFrom)
+	}
+	if m.valid_until != nil {
+		fields = append(fields, rechargepromoactivity.FieldValidUntil)
+	}
+	if m.tiers != nil {
+		fields = append(fields, rechargepromoactivity.FieldTiers)
+	}
+	if m.operator != nil {
+		fields = append(fields, rechargepromoactivity.FieldOperator)
+	}
+	if m.note != nil {
+		fields = append(fields, rechargepromoactivity.FieldNote)
+	}
+	if m.created_at != nil {
+		fields = append(fields, rechargepromoactivity.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, rechargepromoactivity.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RechargePromoActivityMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case rechargepromoactivity.FieldName:
+		return m.Name()
+	case rechargepromoactivity.FieldEnabled:
+		return m.Enabled()
+	case rechargepromoactivity.FieldValidFrom:
+		return m.ValidFrom()
+	case rechargepromoactivity.FieldValidUntil:
+		return m.ValidUntil()
+	case rechargepromoactivity.FieldTiers:
+		return m.Tiers()
+	case rechargepromoactivity.FieldOperator:
+		return m.Operator()
+	case rechargepromoactivity.FieldNote:
+		return m.Note()
+	case rechargepromoactivity.FieldCreatedAt:
+		return m.CreatedAt()
+	case rechargepromoactivity.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RechargePromoActivityMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case rechargepromoactivity.FieldName:
+		return m.OldName(ctx)
+	case rechargepromoactivity.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case rechargepromoactivity.FieldValidFrom:
+		return m.OldValidFrom(ctx)
+	case rechargepromoactivity.FieldValidUntil:
+		return m.OldValidUntil(ctx)
+	case rechargepromoactivity.FieldTiers:
+		return m.OldTiers(ctx)
+	case rechargepromoactivity.FieldOperator:
+		return m.OldOperator(ctx)
+	case rechargepromoactivity.FieldNote:
+		return m.OldNote(ctx)
+	case rechargepromoactivity.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case rechargepromoactivity.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown RechargePromoActivity field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RechargePromoActivityMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case rechargepromoactivity.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case rechargepromoactivity.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case rechargepromoactivity.FieldValidFrom:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValidFrom(v)
+		return nil
+	case rechargepromoactivity.FieldValidUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValidUntil(v)
+		return nil
+	case rechargepromoactivity.FieldTiers:
+		v, ok := value.([]domain.RechargePromoTier)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTiers(v)
+		return nil
+	case rechargepromoactivity.FieldOperator:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOperator(v)
+		return nil
+	case rechargepromoactivity.FieldNote:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNote(v)
+		return nil
+	case rechargepromoactivity.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case rechargepromoactivity.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RechargePromoActivity field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RechargePromoActivityMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RechargePromoActivityMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RechargePromoActivityMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown RechargePromoActivity numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RechargePromoActivityMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(rechargepromoactivity.FieldValidFrom) {
+		fields = append(fields, rechargepromoactivity.FieldValidFrom)
+	}
+	if m.FieldCleared(rechargepromoactivity.FieldValidUntil) {
+		fields = append(fields, rechargepromoactivity.FieldValidUntil)
+	}
+	if m.FieldCleared(rechargepromoactivity.FieldNote) {
+		fields = append(fields, rechargepromoactivity.FieldNote)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RechargePromoActivityMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RechargePromoActivityMutation) ClearField(name string) error {
+	switch name {
+	case rechargepromoactivity.FieldValidFrom:
+		m.ClearValidFrom()
+		return nil
+	case rechargepromoactivity.FieldValidUntil:
+		m.ClearValidUntil()
+		return nil
+	case rechargepromoactivity.FieldNote:
+		m.ClearNote()
+		return nil
+	}
+	return fmt.Errorf("unknown RechargePromoActivity nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RechargePromoActivityMutation) ResetField(name string) error {
+	switch name {
+	case rechargepromoactivity.FieldName:
+		m.ResetName()
+		return nil
+	case rechargepromoactivity.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case rechargepromoactivity.FieldValidFrom:
+		m.ResetValidFrom()
+		return nil
+	case rechargepromoactivity.FieldValidUntil:
+		m.ResetValidUntil()
+		return nil
+	case rechargepromoactivity.FieldTiers:
+		m.ResetTiers()
+		return nil
+	case rechargepromoactivity.FieldOperator:
+		m.ResetOperator()
+		return nil
+	case rechargepromoactivity.FieldNote:
+		m.ResetNote()
+		return nil
+	case rechargepromoactivity.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case rechargepromoactivity.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown RechargePromoActivity field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RechargePromoActivityMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RechargePromoActivityMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RechargePromoActivityMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RechargePromoActivityMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RechargePromoActivityMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RechargePromoActivityMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RechargePromoActivityMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown RechargePromoActivity unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RechargePromoActivityMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown RechargePromoActivity edge %s", name)
 }
 
 // RedeemCodeMutation represents an operation that mutates the RedeemCode nodes in the graph.

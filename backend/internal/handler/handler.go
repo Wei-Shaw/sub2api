@@ -35,6 +35,7 @@ type AdminHandlers struct {
 	ChannelMonitorTemplate *admin.ChannelMonitorRequestTemplateHandler
 	ContentModeration      *admin.ContentModerationHandler
 	Payment                *admin.PaymentHandler
+	RechargePromo          *admin.RechargePromoHandler
 	Affiliate              *admin.AffiliateHandler
 }
 
@@ -56,6 +57,7 @@ type Handlers struct {
 	Payment          *PaymentHandler
 	PaymentWebhook   *PaymentWebhookHandler
 	AvailableChannel *AvailableChannelHandler
+	Plaza            *PlazaHandler
 }
 
 // BuildInfo contains build-time information

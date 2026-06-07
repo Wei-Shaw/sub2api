@@ -35,6 +35,10 @@ const (
 	SettingCancelWindowUnit    = "CANCEL_RATE_LIMIT_UNIT"
 	SettingCancelWindowMode    = "CANCEL_RATE_LIMIT_WINDOW_MODE"
 	SettingAlipayForceQRCode   = "ALIPAY_FORCE_QRCODE"
+	// SettingRechargePromo 已废弃（充值赠送配置已迁移到 recharge_promo_activities 活动表）。
+	// 保留常量定义但不再读写：旧部署遗留的 system_settings.RECHARGE_PROMO 行可由
+	// admin 工具人工清理；运行时不再依赖该 key。
+	SettingRechargePromo = "RECHARGE_PROMO"
 )
 
 // Default values for payment configuration settings.
@@ -71,6 +75,9 @@ type PaymentConfig struct {
 
 	// Force Alipay mobile users to use QR code instead of mobile redirect
 	AlipayForceQRCode bool `json:"alipay_force_qrcode"`
+
+	// 充值赠送活动（与 BalanceRechargeMultiplier 完全独立的市场促销）。nil 或 Enabled=false 视作未开启。
+	RechargePromo *RechargePromo `json:"recharge_promo,omitempty"`
 }
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
@@ -183,11 +190,24 @@ type PaymentConfigService struct {
 	entClient     *dbent.Client
 	settingRepo   SettingRepository
 	encryptionKey []byte
+	// activitySvc 是充值赠送活动表的访问层；payment 配置中
+	// `recharge_promo` 字段以该表为单一事实来源。
+	activitySvc *RechargePromoActivityService
 }
 
 // NewPaymentConfigService creates a new PaymentConfigService.
-func NewPaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, encryptionKey []byte) *PaymentConfigService {
-	return &PaymentConfigService{entClient: entClient, settingRepo: settingRepo, encryptionKey: encryptionKey}
+func NewPaymentConfigService(
+	entClient *dbent.Client,
+	settingRepo SettingRepository,
+	encryptionKey []byte,
+	activitySvc *RechargePromoActivityService,
+) *PaymentConfigService {
+	return &PaymentConfigService{
+		entClient:     entClient,
+		settingRepo:   settingRepo,
+		encryptionKey: encryptionKey,
+		activitySvc:   activitySvc,
+	}
 }
 
 // IsPaymentEnabled returns whether the payment system is enabled.
@@ -220,6 +240,13 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 	cfg := s.parsePaymentConfig(vals)
 	// Load Stripe publishable key from the first enabled Stripe provider instance
 	cfg.StripePublishableKey = s.getStripePublishableKey(ctx)
+	// Recharge promo 来自独立的 recharge_promo_activities 表；不从 system_settings 读。
+	// 失败不致命：promo 缺失等价于"未开启活动"，让上层 GetCheckoutInfo 自动隐藏 banner。
+	if s.activitySvc != nil {
+		if row, perr := s.activitySvc.GetCurrent(ctx); perr == nil && row != nil {
+			cfg.RechargePromo = ActivityToPromo(row)
+		}
+	}
 	return cfg, nil
 }
 
@@ -247,6 +274,9 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		CancelRateLimitMode:    vals[SettingCancelWindowMode],
 
 		AlipayForceQRCode: vals[SettingAlipayForceQRCode] == "true",
+
+		// RechargePromo 由 GetPaymentConfig 在 parsePaymentConfig 之后从活动表回填，
+		// parsePaymentConfig 自身不再读 system_settings.RECHARGE_PROMO。
 	}
 	if cfg.LoadBalanceStrategy == "" {
 		cfg.LoadBalanceStrategy = payment.DefaultLoadBalanceStrategy
@@ -335,6 +365,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	} else {
 		m[SettingEnabledPaymentTypes] = ""
 	}
+	// recharge_promo 现由 RechargePromoActivityService 通过独立 admin handler 管理。
 	return s.settingRepo.SetMultiple(ctx, m)
 }
 

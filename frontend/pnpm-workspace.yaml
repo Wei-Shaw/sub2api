@@ -4,3 +4,6 @@ packages:
 allowBuilds:
   esbuild: false
   vue-demi: false
+
+overrides:
+  js-cookie: 3.0.7

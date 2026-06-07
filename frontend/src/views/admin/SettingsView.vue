@@ -6237,6 +6237,25 @@
                     </div>
                   </div>
                 </div>
+                <!-- 充值赠送活动（已迁移至独立页面） -->
+                <div class="rounded-lg border border-amber-200 bg-amber-50/30 p-4 dark:border-amber-800/40 dark:bg-amber-900/10">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+                        {{ t("admin.settings.payment.promo.section") }}
+                      </h4>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.payment.promo.sectionHint") }}
+                      </p>
+                    </div>
+                    <router-link
+                      to="/admin/recharge-promos"
+                      class="shrink-0 rounded-md border border-primary-500 px-3 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:border-primary-400 dark:text-primary-300 dark:hover:bg-primary-500/10"
+                    >
+                      {{ t("admin.rechargePromos.title") }}
+                    </router-link>
+                  </div>
+                </div>
                 <!-- Row 4: Enabled payment types (provider badges like sub2apipay) -->
                 <div>
                   <label class="input-label">{{
@@ -7218,6 +7237,14 @@ const form = reactive<SettingsForm>({
   payment_cancel_rate_limit_unit: "day",
   payment_cancel_rate_limit_window_mode: "rolling",
   payment_alipay_force_qrcode: false,
+  // 充值赠送活动；初始为 null = 不下发任何修改（== 后端不动现有 setting）。
+  payment_recharge_promo: null as null | {
+    enabled: boolean;
+    valid_from?: string | null;
+    valid_until?: string | null;
+    tiers: Array<{ min_amount: number; bonus_rate: number }>;
+    version: string;
+  },
   table_default_page_size: tablePageSizeDefault,
   table_page_size_options: [10, 20, 50, 100],
   custom_menu_items: [] as Array<{

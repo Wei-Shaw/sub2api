@@ -130,7 +130,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		})
 	}
 
-	response.Success(c, checkoutInfoResponse{
+	resp := checkoutInfoResponse{
 		Methods:                   limitsResp.Methods,
 		GlobalMin:                 limitsResp.GlobalMin,
 		GlobalMax:                 limitsResp.GlobalMax,
@@ -142,7 +142,13 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		HelpImageURL:              cfg.HelpImageURL,
 		StripePublishableKey:      cfg.StripePublishableKey,
 		AlipayForceQRCode:         cfg.AlipayForceQRCode,
-	})
+	}
+	// 仅在活动开启 + 当前时刻位于有效期内时把 RechargePromo 透出，否则保持 nil 以让前端
+	// 直接判断 `if (recharge_promo)` 而不必在每个调用点重复时间窗与 enabled 的判断。
+	if cfg.RechargePromo != nil && cfg.RechargePromo.IsActiveAt(time.Now()) {
+		resp.RechargePromo = checkoutPromoFromConfig(cfg.RechargePromo)
+	}
+	response.Success(c, resp)
 }
 
 type checkoutInfoResponse struct {
@@ -157,6 +163,44 @@ type checkoutInfoResponse struct {
 	HelpImageURL              string                          `json:"help_image_url"`
 	StripePublishableKey      string                          `json:"stripe_publishable_key"`
 	AlipayForceQRCode         bool                            `json:"alipay_force_qrcode"`
+	RechargePromo             *checkoutRechargePromo          `json:"recharge_promo,omitempty"`
+}
+
+// checkoutRechargePromo 是返回给前端的活动配置（区别于服务层的 RechargePromo：
+// 这里不暴露空结构、时间戳总用 RFC3339）。
+type checkoutRechargePromo struct {
+	Enabled bool `json:"enabled"`
+	// Name 是当前活动的展示标题（运营文案位）。匿名公开端点
+	// `/api/v1/plaza/recharge-promo` 也返回相同字段，前端用它作为
+	// 首页 banner 的标题。
+	Name       string                      `json:"name,omitempty"`
+	ValidFrom  *time.Time                  `json:"valid_from,omitempty"`
+	ValidUntil *time.Time                  `json:"valid_until,omitempty"`
+	Tiers      []checkoutRechargePromoTier `json:"tiers"`
+	Version    string                      `json:"version"`
+}
+
+type checkoutRechargePromoTier struct {
+	MinAmount float64 `json:"min_amount"`
+	BonusRate float64 `json:"bonus_rate"`
+}
+
+func checkoutPromoFromConfig(p *service.RechargePromo) *checkoutRechargePromo {
+	if p == nil {
+		return nil
+	}
+	tiers := make([]checkoutRechargePromoTier, 0, len(p.Tiers))
+	for _, t := range p.Tiers {
+		tiers = append(tiers, checkoutRechargePromoTier{MinAmount: t.MinAmount, BonusRate: t.BonusRate})
+	}
+	return &checkoutRechargePromo{
+		Enabled:    p.Enabled,
+		Name:       p.Name,
+		ValidFrom:  p.ValidFrom,
+		ValidUntil: p.ValidUntil,
+		Tiers:      tiers,
+		Version:    p.Version,
+	}
 }
 
 type checkoutPlan struct {
@@ -221,6 +265,22 @@ type CreateOrderRequest struct {
 	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
 	// embedded browsers that strip the "Mobile" keyword).
 	IsMobile *bool `json:"is_mobile,omitempty"`
+	// ClientExpectedBonus 是前端在点击"创建订单"那一刻、对当前 Amount
+	// 计算出的赠送金额（与后端 ResolveRechargeBonus 同算法 mirror）。
+	// 仅在 balance 充值且页面 banner / breakdown 上正在向用户展示
+	// 赠送时才 > 0；其它场景（订阅、未到档、活动未开）应为 0 / 缺省。
+	//
+	// 这是"用户原本期待赠送 $X"的语义信号，用于让 service 在
+	// CreateOrder 阶段判断：用户期待 > 0 但服务端当时已不发任何赠送
+	// （活动 valid_until 已过、被禁用、被删除等）→ 拦截让用户二次确认。
+	// 不参与金额计算、不影响 fulfillment（fulfillment 始终以服务器
+	// 当前时间重判窗为准），仅作 UX 通知触发条件。
+	ClientExpectedBonus float64 `json:"client_expected_bonus,omitempty"`
+	// PromoExpiredAcknowledged = true 表示前端弹过"活动已结束，是否
+	// 仍要继续充值"的二次确认 modal、用户已经点了"继续充值"。带上
+	// 这个标志再次 POST 时，CreateOrder 不再拦截；fulfillment 仍按
+	// 服务器时间核账，不会因此误发赠送。
+	PromoExpiredAcknowledged bool `json:"promo_expired_acknowledged,omitempty"`
 }
 
 // CreateOrder creates a new payment order.
@@ -253,20 +313,22 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		mobile = *req.IsMobile
 	}
 	result, err := h.paymentService.CreateOrder(c.Request.Context(), service.CreateOrderRequest{
-		UserID:          subject.UserID,
-		Amount:          req.Amount,
-		PaymentType:     req.PaymentType,
-		OpenID:          req.OpenID,
-		ClientIP:        c.ClientIP(),
-		IsMobile:        mobile,
-		IsWeChatBrowser: isWeChatBrowser(c),
-		SrcHost:         c.Request.Host,
-		SrcURL:          c.Request.Referer(),
-		ReturnURL:       req.ReturnURL,
-		PaymentSource:   req.PaymentSource,
-		OrderType:       req.OrderType,
-		PlanID:          req.PlanID,
-		Locale:          c.GetHeader("Accept-Language"),
+		UserID:                   subject.UserID,
+		Amount:                   req.Amount,
+		PaymentType:              req.PaymentType,
+		OpenID:                   req.OpenID,
+		ClientIP:                 c.ClientIP(),
+		IsMobile:                 mobile,
+		IsWeChatBrowser:          isWeChatBrowser(c),
+		SrcHost:                  c.Request.Host,
+		SrcURL:                   c.Request.Referer(),
+		ReturnURL:                req.ReturnURL,
+		PaymentSource:            req.PaymentSource,
+		OrderType:                req.OrderType,
+		PlanID:                   req.PlanID,
+		Locale:                   c.GetHeader("Accept-Language"),
+		ClientExpectedBonus:      req.ClientExpectedBonus,
+		PromoExpiredAcknowledged: req.PromoExpiredAcknowledged,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

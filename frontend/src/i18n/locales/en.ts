@@ -9,15 +9,17 @@ export default {
     dashboard: 'Dashboard',
     login: 'Login',
     getStarted: 'Get Started',
-    goToDashboard: 'Go to Dashboard',
+    goToDashboard: 'Get Started',
+    // Hero secondary CTA — sends anonymous visitors to the public model
+    // pricing plaza (no login required).
+    cta_view_pricing: 'View model pricing',
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
-    tags: {
-      subscriptionToApi: 'Subscription to API',
-      stickySession: 'Session Persistence',
-      realtimeBilling: 'Pay As You Go'
-    },
+    // The `tags` block (Subscription to API / Session Persistence / Pay
+    // As You Go) was removed: the three chips repeated the same value
+    // props as the Features Grid right below them. Replaced with a
+    // single section header (`home.features.title`).
     // Pain points section
     painPoints: {
       title: 'Sound Familiar?',
@@ -46,6 +48,21 @@ export default {
       subtitle: 'Three simple steps to stress-free AI access'
     },
     features: {
+      // Features Grid section header — now a full peer of the
+      // Showcase (plans / promo) section headers: eyebrow chip +
+      // gradient h2 + one-line subtitle. Without the eyebrow / sub
+      // the bare h2 read flatter than the two headers below it; with
+      // them, the three section anchors on the homepage finally form
+      // a matched set.
+      //
+      // The eyebrow says "what category" ("Capabilities") while the
+      // h2 carries the value claim ("Why choose us") — splitting the
+      // labour rather than echoing the same phrase twice.
+      eyebrow: 'Capabilities',
+      title: 'Why choose us',
+      // Subtitle distils the three cards below into one rhythmic
+      // line (mirrors the cadence of the plans block's subtitle).
+      subtitle: 'One unified gateway · Always reliable · Pay as you go',
       unifiedGateway: 'One-Click Access',
       unifiedGatewayDesc: 'Get a single API key to call all connected AI models. No separate applications needed.',
       multiAccount: 'Always Reliable',
@@ -89,15 +106,44 @@ export default {
         }
       }
     },
-    providers: {
-      title: 'Supported AI Models',
-      description: 'One API, Multiple Choices',
-      supported: 'Supported',
-      soon: 'Soon',
-      claude: 'Claude',
-      gemini: 'Gemini',
-      antigravity: 'Antigravity',
-      more: 'More'
+    // Homepage conversion section: replaces the static Providers block.
+    // Recharge-bonus campaign banner (visible to anonymous visitors on home).
+    // `name` comes from the backend and is rendered as plain text.
+    promo: {
+      // Section title rendered above the banner ("活动专区" in zh).
+      title: 'Promotions',
+      // Eyebrow tag above the section title. Was previously an inline
+      // banner eyebrow; now reused on the outer section header.
+      eyebrow: 'Limited time',
+      // Header subtitle — minimalist parallel of the plans subtitle:
+      // "limited time" carries urgency, "bonuses maxed out" carries
+      // magnitude. Short rhythm matches the plans block so both
+      // headers read as a paired set.
+      subtitle: 'Limited time, bonuses maxed out',
+      // Slanted top-right corner ribbon copy — graphic "limited" badge.
+      ribbon: 'Limited',
+      cta_recharge: 'Recharge now',
+      // Hero row: "Get up to +X% bonus credit" — the "+X%" is split out
+      // into its own mid-sized highlighted span by the template.
+      bonus_headline_prefix: 'Get up to',
+      bonus_headline_suffix: 'bonus credit',
+      // Tier pills only render the amount portion; the bonus rate is
+      // promoted to its own highlighted span in the template.
+      tier_amount_label: 'Spend ¥{min}',
+      expires_at: 'Active until {date}'
+    },
+    // Subscription plans block (separated from the promo banner; has its
+    // own header) + "view all plans" link rendered below the truncated grid.
+    plans: {
+      eyebrow: 'Subscription · Plans',
+      title: 'Subscription Plans',
+      // Copy strategy: removed the "upgrade or downgrade anytime"
+      // line (product no longer guarantees mid-cycle downgrades,
+      // misleading promise). Replaced with a "variety + fit" angle —
+      // signal that there is a tier for every workload, avoid scaring
+      // off price-sensitive visitors with a "go bigger" framing.
+      subtitle: 'Plans for every workload — there is one that fits you',
+      view_all: 'View all plans →'
     },
     // CTA section
     cta: {
@@ -107,6 +153,28 @@ export default {
     },
     footer: {
       allRightsReserved: 'All rights reserved.'
+    },
+    // Homepage "Contact Us" section. See HomeContactSection.vue header for design notes.
+    // Section header was removed (2026-06 product call) — only card copy remains.
+    contact: {
+      qq: {
+        title: 'QQ Direct',
+        description: 'Add us on QQ for direct sales & support conversations.',
+        copy: 'Copy QQ Number',
+        copied: 'Copied'
+      },
+      qqGroup: {
+        title: 'QQ Group: {number}',
+        description: 'Join the official QQ group to chat with other users in real time.',
+        action: 'Join QQ Group',
+        qrAlt: 'QQ group QR code'
+      },
+      telegram: {
+        title: 'Telegram',
+        description: 'Join our Telegram channel for the latest updates and announcements.',
+        action: 'Join Telegram',
+        qrAlt: 'Telegram QR code'
+      }
     }
   },
 
@@ -303,6 +371,7 @@ export default {
     processing: 'Processing...',
     contactSupport: 'Contact Support',
     add: 'Add',
+    remove: 'Remove',
     invalidEmail: 'Please enter a valid email address',
     optional: 'optional',
     selectOption: 'Select an option',
@@ -367,12 +436,14 @@ export default {
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
+    rechargePromos: 'Recharge Promotions',
     settings: 'Settings',
     myAccount: 'My Account',
     lightMode: 'Light Mode',
     darkMode: 'Dark Mode',
     collapse: 'Collapse',
     expand: 'Expand',
+    goHome: 'Go to homepage',
     logout: 'Logout',
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
@@ -4512,6 +4583,60 @@ export default {
       failedToLoadUsages: 'Failed to load usage records'
     },
 
+    // Recharge Promo Activities (CRUD list)
+    rechargePromos: {
+      title: 'Recharge Promotions',
+      description: 'Manage the list of recharge bonus campaigns. At most one can be enabled at a time.',
+      createBtn: 'New Campaign',
+      createTitle: 'New Recharge Promotion',
+      editTitle: 'Edit Recharge Promotion',
+      deleteTitle: 'Delete Campaign',
+      deleteConfirm: 'Are you sure you want to delete this campaign? This action cannot be undone.',
+      toggleHint: 'Click to toggle enabled state',
+      statusEnabled: 'Enabled',
+      statusDisabled: 'Disabled',
+      noLowerBound: 'No start',
+      noUpperBound: 'No end',
+      loadFailed: 'Failed to load campaigns',
+      created: 'Campaign created',
+      updated: 'Campaign updated',
+      saveFailed: 'Failed to save campaign',
+      toggled: 'Enabled state toggled',
+      toggleFailed: 'Failed to toggle enabled state',
+      deleted: 'Campaign deleted',
+      deleteFailed: 'Failed to delete campaign',
+      columns: {
+        name: 'Name',
+        status: 'Status',
+        tiers: 'Tiers',
+        window: 'Active Window',
+        updatedAt: 'Updated At',
+        actions: 'Actions'
+      },
+      fields: {
+        name: 'Campaign Name',
+        namePlaceholder: 'e.g. June 2x Bonus',
+        enabled: 'Enable now',
+        enabledHint: 'Enabling will automatically disable any other active campaign (only one can be enabled at a time).',
+        validFrom: 'Valid From',
+        validUntil: 'Valid Until',
+        tiers: 'Bonus Tiers (ascending min_amount)',
+        addTier: 'Add Tier',
+        minAmount: 'Min Amount',
+        bonusRate: 'Bonus Rate (0~0.99)',
+        tiersEmptyHint: 'No tiers yet — please add at least one before enabling.',
+        note: 'Note (optional)',
+      },
+      errors: {
+        nameRequired: 'Please enter the campaign name',
+        tiersRequiredWhenEnabled: 'At least one tier is required before enabling the campaign',
+        minAmountInvalid: 'Tier min_amount must be a positive number',
+        bonusRateOutOfRange: 'Tier bonus_rate must be in [0, 1)',
+        tiersNotAscending: 'Tier min_amount must be strictly ascending (no duplicates)',
+        validUntilBeforeFrom: 'Valid Until must be after Valid From'
+      }
+    },
+
     // Usage Records
     usage: {
       title: 'Usage Records',
@@ -5870,6 +5995,26 @@ export default {
         cancelRateLimitWindowModeFixed: 'Fixed',
         alipayForceQRCode: 'Force Alipay QR Code',
         alipayForceQRCodeHint: 'When enabled, mobile Alipay users always see a QR code instead of being redirected to the mobile payment page',
+        promo: {
+          section: 'Recharge Bonus Campaign',
+          sectionHint: 'When configured, users earn an extra bonus on top of their credited balance (pay_amount × balance_recharge_multiplier) once their payment hits a tier — bonus = ceil2(credited_balance × bonus_rate). Custom amounts also receive the bonus as long as they fall within a tier range.',
+          enabled: 'Enable Campaign',
+          enabledHint: 'Disabling takes effect immediately; saving resets the user-facing red dot.',
+          validFrom: 'Valid From',
+          validFromHint: 'Leave blank for no start restriction',
+          validUntil: 'Valid Until',
+          validUntilHint: 'Leave blank for no end restriction',
+          tiers: 'Tiers (ascending)',
+          tiersHint: 'Fill in ascending min_amount; bonus_rate applies once user pays ≥ that tier',
+          tierMinAmount: 'Min Amount',
+          tierBonusRate: 'Bonus Rate (0~1)',
+          addTier: 'Add Tier',
+          removeTier: 'Remove',
+          errorEmptyTiers: 'At least one tier is required when enabled',
+          errorMinAmountAscending: 'Tier min_amount must be strictly increasing',
+          errorBonusRateRange: 'bonus_rate must be in [0, 1)',
+          errorWindowOrder: 'valid_from must be earlier than valid_until',
+        },
         helpText: 'Help Text',
         helpImageUrl: 'Help Image URL',
         manageProviders: 'Manage Providers',
@@ -6911,6 +7056,35 @@ export default {
     amountTooHigh: 'Maximum amount is {max}',
     amountNoMethod: 'No payment method available for this amount',
     rechargeRatePreview: 'Current rate: 1 CNY = {usd} USD',
+    promo: {
+      banner: 'Recharge bonus campaign is on (until {validUntil}). Higher tiers earn extra credit.',
+      bannerNoExpiry: 'Recharge bonus campaign is on. Higher tiers earn extra credit.',
+      tier: 'Spend {minAmount}+ → +{rate}%',
+      tiersJoiner: '; ',
+      customHint: 'Custom amounts that reach a tier earn the same bonus.',
+      bonusLine: 'Bonus credit',
+      totalCredited: 'Total credited',
+      bonusBadge: '+{rate}%',
+      redDotAria: 'Recharge campaign has updates',
+      // Confirm dialog shown when the user has lingered on the payment
+      // page long enough that the bonus campaign's `valid_until` has
+      // ticked over by the time they finally click "create order".
+      // Backend re-evaluates the window on submit and will not award
+      // the bonus, so we have to hard-stop here — otherwise the user
+      // sees the banner + bonus preview, clicks pay, and then can't
+      // square that with the actual ledger entry.
+      //
+      // Tone: factual, no exclamation marks or "warning" language —
+      // it's not an error, just a closed window. The body answers
+      // the two questions the user will ask in that exact order
+      // ("is the bonus gone?" / "can I still pay?"). The primary
+      // button is verb-explicit ("Continue top-up") so it reads
+      // correctly even without the body context.
+      expiredTitle: 'Recharge bonus campaign has ended',
+      expiredBody: 'This top-up will no longer earn the bonus credit. Would you still like to continue?',
+      expiredContinue: 'Continue top-up',
+      expiredCancel: 'Cancel',
+    },
     refundReason: 'Refund Reason',
     refundReasonPlaceholder: 'Please describe your refund reason',
     stripeLoadFailed: 'Failed to load payment component. Please refresh and try again.',
@@ -7068,8 +7242,8 @@ export default {
       editPlan: 'Edit Plan',
       deletePlan: 'Delete Plan',
       deletePlanConfirm: 'Are you sure you want to delete this plan?',
-      originalPrice: 'Original Price',
-      price: 'Price',
+      originalPrice: 'Original Price (CNY)',
+      price: 'Price (CNY)',
       validityDays: 'Validity (days)',
       validityUnit: 'Validity Unit',
       sortOrder: 'Sort Order',
@@ -7127,6 +7301,59 @@ export default {
         revoked: 'Revoked',
       },
     },
+  },
+
+  plaza: {
+    title: 'Model Pricing',
+    subtitle: 'List prices for every model and subscription plan available on this site.',
+    tabs: {
+      models: 'Models',
+      plans: 'Plans',
+    },
+    common: {
+      currency: 'Currency',
+      reset: 'Reset',
+    },
+    models: {
+      searchPlaceholder: 'Search model name…',
+      allGroups: 'All groups',
+      allPlatforms: 'All platforms',
+      groupSidebarTitle: 'Groups',
+      groupCount: '{n} models',
+      empty: 'No models match the current filters.',
+      in: 'in',
+      out: 'out',
+      cache_write: 'Cache write',
+      cache_read: 'Cache read',
+      rechargeRatio: 'Recharge ratio',
+      rechargeNote: '1 CNY recharge = {usd} USD site balance',
+      rechargeHint: 'Base price is the upstream USD quote (fixed); site price follows the currency toggle',
+      type: {
+        token: 'Token',
+        image: 'Image',
+      },
+      col: {
+        group: 'Group',
+        model: 'Model',
+        platform: 'Platform',
+        type: 'Type',
+        basePrice: 'Base price',
+        sitePrice: 'Site price',
+        multiplier: 'Multiplier',
+        discount: 'Discount',
+        action: 'Action',
+      },
+    },
+    plans: {
+      empty: 'No subscription plans for sale.',
+      validity: 'Validity',
+      group: 'Group',
+      days: 'days',
+      includedModels: 'Included models',
+      more: 'more',
+    },
+    use_group: 'Use this group →',
+    buy_now: 'Buy now',
   },
 
 }

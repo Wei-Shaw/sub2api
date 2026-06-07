@@ -9,15 +9,17 @@ export default {
     dashboard: '控制台',
     login: '登录',
     getStarted: '立即开始',
-    goToDashboard: '进入控制台',
+    goToDashboard: '开始使用',
+    // Hero 二级 CTA：把匿名访客引到公开的模型价格 plaza 页（不强制登录）
+    cta_view_pricing: '查看模型价格',
     // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
     heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
-    tags: {
-      subscriptionToApi: '订阅转 API',
-      stickySession: '会话保持',
-      realtimeBilling: '按量计费'
-    },
+    // tags 区块已废弃：原本是 hero 下面的三颗胶囊（订阅转 API / 会话保持 /
+    // 按量计费），与下方 Features Grid 的三张卡片在表达上严重重复，
+    // 一屏内同样的卖点连续出现两遍反而稀释信息。已统一改用一个 section
+    // header（home.features.title 我们的优势）替代这一排胶囊，把焦点
+    // 直接交给 Features Grid。
     // 用户痛点区块
     painPoints: {
       title: '你是否也遇到这些问题？',
@@ -46,6 +48,23 @@ export default {
       subtitle: '简单三步，开始省心使用 AI'
     },
     features: {
+      // Features Grid 的 section header — 完整对齐 Showcase（plans /
+      // promo）块的三件套版式：eyebrow 小标签 + 渐变 h2 主标 + 一行
+      // 副标。仅有 h2 时视觉太单薄、和下方两个 section 的 header 不
+      // 在同一节奏；补齐之后首页三块（核心能力 / 订阅套餐 / 活动专区）
+      // header 才真正成为一组。
+      //
+      // eyebrow 故意用"核心能力"而不是再喊一遍"我们的优势"——上下两
+      // 行如果同义复读，反而把节奏拖塌；eyebrow 担任"这是什么分类"，
+      // h2 担任"价值主张"，subtitle 担任"具体兑现成什么"。
+      eyebrow: '核心能力',
+      title: '我们的优势',
+      // 副标：把下方三张卡的关键词浓缩成一行（一键接入 · 稳定可靠 ·
+      // 按量计费），三段式节奏对仗 plans 块的"多档套餐，总有一款适
+      // 合你"。控制在 ~16 字以内，避免在窄屏挤成两行破坏排版。
+      // 注："一键接入"与下方第一张卡的 unifiedGateway 标题逐字对齐，
+      // 让副标 → 卡片标题形成视线的承接而不是同义复读。
+      subtitle: '一键接入 · 稳定可靠 · 按量计费',
       unifiedGateway: '一键接入',
       unifiedGatewayDesc: '获取一个 API 密钥，即可调用所有已接入的 AI 模型，无需分别申请。',
       multiAccount: '稳定可靠',
@@ -89,15 +108,38 @@ export default {
         }
       }
     },
-    providers: {
-      title: '已支持的 AI 模型',
-      description: '一个 API，多种选择',
-      supported: '已支持',
-      soon: '即将推出',
-      claude: 'Claude',
-      gemini: 'Gemini',
-      antigravity: 'Antigravity',
-      more: '更多'
+    // 首页转化区：替换静态 Providers 段，承载充值赠送活动 banner + 套餐卡预览。
+    // 充值赠送活动 banner（匿名首页可见）。`name` 来自后端，作为纯文本渲染。
+    promo: {
+      // 区块标题（banner 上方居中 header）。
+      title: '活动专区',
+      // 区块标题上方的小标签。原本作为 banner 内 inline eyebrow 复用，现在
+      // banner inline 段已删除，这个 key 复用到外层 header 的 eyebrow 上。
+      eyebrow: '限时活动',
+      // header 副标题：极简对仗式，"限时活动"承担时效感，"优惠拉满"承担
+      // 力度感。八字短句与 plans 的"多档套餐，总有一款适合你"在节奏上
+      // 对齐，让两块 header 视觉与韵律都成对。
+      subtitle: '限时活动，优惠拉满',
+      // 右上角斜置角标文案（图形化"限时"标签）
+      ribbon: '限时',
+      cta_recharge: '立即充值',
+      // 头部 hero 行："最高赠送 +X% 余额"——把"+X%"独立成中字号高亮渲染。
+      bonus_headline_prefix: '最高赠送',
+      bonus_headline_suffix: '余额',
+      // tier 项内只渲染金额段；rate% 由模板独立成 span 高亮。
+      tier_amount_label: '满 ¥{min}',
+      expires_at: '活动至 {date}'
+    },
+    // 订阅套餐分区（独立于活动 banner，拥有自己的标题）+ 卡片底部"查看全部套餐"链接。
+    plans: {
+      eyebrow: '订阅 · 套餐',
+      title: '订阅套餐',
+      // 文案策略：删除原"随时升降级"（产品侧已不保证期内任意降级，避免
+      // 误导承诺），改用"多档可选 + 总有一款适合你"——锚定丰富度 + 匹配感，
+      // 替代上一版"量大优惠"的折扣心智，让用户在浏览套餐时不被价格门槛
+      // 直接劝退。
+      subtitle: '多档套餐，总有一款适合你',
+      view_all: '查看全部套餐 →'
     },
     // CTA 区块
     cta: {
@@ -107,6 +149,28 @@ export default {
     },
     footer: {
       allRightsReserved: '保留所有权利。'
+    },
+    // 首页底部 "联系客服" 区块。配色与文案策略见 HomeContactSection.vue 头部注释。
+    // 当前无分区标题（产品决定 2026-06：以静态卡片代替二次推销标题）。
+    contact: {
+      qq: {
+        title: 'QQ 客服',
+        description: '直接添加 QQ 好友咨询，售前售后都可以聊',
+        copy: '复制 QQ 号',
+        copied: '已复制'
+      },
+      qqGroup: {
+        title: 'QQ群: {number}',
+        description: '加入官方交流群，与其他用户实时讨论',
+        action: '加入 QQ 群',
+        qrAlt: 'QQ 群二维码'
+      },
+      telegram: {
+        title: 'Telegram',
+        description: '加入 Telegram 频道，获取最新动态与公告',
+        action: '加入 Telegram',
+        qrAlt: 'Telegram 二维码'
+      }
     }
   },
 
@@ -303,6 +367,7 @@ export default {
     processing: '处理中...',
     contactSupport: '联系客服',
     add: '添加',
+    remove: '移除',
     invalidEmail: '请输入有效的邮箱地址',
     optional: '可选',
     selectOption: '请选择',
@@ -367,12 +432,14 @@ export default {
     redeemCodes: '兑换码',
     ops: '运维监控',
     promoCodes: '优惠码',
+    rechargePromos: '充值活动记录',
     settings: '系统设置',
     myAccount: '我的账户',
     lightMode: '浅色模式',
     darkMode: '深色模式',
     collapse: '收起',
     expand: '展开',
+    goHome: '返回首页',
     logout: '退出登录',
     github: 'GitHub',
     mySubscriptions: '我的订阅',
@@ -1696,7 +1763,7 @@ export default {
         createTitle: '创建 S3 账号',
         editTitle: '编辑 S3 账号',
         empty: '暂无 S3 账号，请先创建',
-        editHint: '点击“编辑”将在右侧抽屉中修改账号信息。',
+        editHint: '点击"编辑"将在右侧抽屉中修改账号信息。',
         deleteConfirm: '确定删除 S3 账号 {profileID} 吗？',
         columns: {
           profile: '账号',
@@ -3171,7 +3238,7 @@ export default {
         expiresAt: '过期时间',
         actions: '操作'
       },
-      usageWindowsHint: '“5h / 7d”是上游账号（如 OpenAI ChatGPT、Claude）官方的滚动用量窗口限制，由上游对账号设定，并非 sub2api 配置，也与你映射的模型无关。窗口滚动到期后用量会自动重置，无法在 sub2api 端解除该限制。',
+      usageWindowsHint: '"5h / 7d"是上游账号（如 OpenAI ChatGPT、Claude）官方的滚动用量窗口限制，由上游对账号设定，并非 sub2api 配置，也与你映射的模型无关。窗口滚动到期后用量会自动重置，无法在 sub2api 端解除该限制。',
       allPrivacyModes: '全部Privacy状态',
       privacyUnset: '未设置',
       privacyTrainingOff: '已关闭训练数据共享',
@@ -4047,7 +4114,7 @@ export default {
         },
         quotaPolicy: {
           title: 'Gemini 配额与限流政策（参考）',
-          note: '注意：Gemini 官方未提供用量查询接口。此处显示的“每日配额”是由系统根据账号等级模拟计算的估算值，仅供调度参考，请以 Google 官方实际报错为准。',
+          note: '注意：Gemini 官方未提供用量查询接口。此处显示的"每日配额"是由系统根据账号等级模拟计算的估算值，仅供调度参考，请以 Google 官方实际报错为准。',
           columns: {
             channel: '授权通道',
             account: '账号状态',
@@ -4665,6 +4732,60 @@ export default {
       failedToLoadUsages: '加载使用记录失败'
     },
 
+    // Recharge Promo Activities (CRUD list)
+    rechargePromos: {
+      title: '充值活动记录',
+      description: '管理充值赠送活动列表，同一时间最多启用一个',
+      createBtn: '新建活动',
+      createTitle: '新建充值活动',
+      editTitle: '编辑充值活动',
+      deleteTitle: '删除活动',
+      deleteConfirm: '确定要删除该活动吗？此操作不可撤销。',
+      toggleHint: '点击切换启用/停用',
+      statusEnabled: '已启用',
+      statusDisabled: '未启用',
+      noLowerBound: '不限开始时间',
+      noUpperBound: '不限结束时间',
+      loadFailed: '加载活动列表失败',
+      created: '活动已创建',
+      updated: '活动已更新',
+      saveFailed: '保存活动失败',
+      toggled: '已切换启用状态',
+      toggleFailed: '切换启用状态失败',
+      deleted: '活动已删除',
+      deleteFailed: '删除活动失败',
+      columns: {
+        name: '活动名称',
+        status: '状态',
+        tiers: '档位',
+        window: '生效区间',
+        updatedAt: '更新时间',
+        actions: '操作'
+      },
+      fields: {
+        name: '活动名称',
+        namePlaceholder: '例如：6 月限时双倍充值',
+        enabled: '立即启用',
+        enabledHint: '启用后会自动停用其它活动（同时只允许一个启用）',
+        validFrom: '开始时间',
+        validUntil: '结束时间',
+        tiers: '赠送档位（min_amount 升序）',
+        addTier: '添加档位',
+        minAmount: '最低支付金额',
+        bonusRate: '赠送比例 (0~0.99)',
+        tiersEmptyHint: '当前没有档位；启用前请至少添加一档',
+        note: '备注（可选）',
+      },
+      errors: {
+        nameRequired: '请填写活动名称',
+        tiersRequiredWhenEnabled: '启用活动前至少需要一个档位',
+        minAmountInvalid: '档位的 min_amount 必须是正数',
+        bonusRateOutOfRange: '档位的 bonus_rate 必须在 [0, 1) 之间',
+        tiersNotAscending: '档位的 min_amount 必须严格升序（不允许重复）',
+        validUntilBeforeFrom: '结束时间必须晚于开始时间'
+      }
+    },
+
     // Usage Records
     usage: {
       title: '使用记录',
@@ -4755,7 +4876,7 @@ export default {
       db: '数据库',
       goroutines: '协程',
       jobs: '后台任务',
-      jobsHelp: '点击“明细”查看任务心跳与报错信息',
+      jobsHelp: '点击"明细"查看任务心跳与报错信息',
       active: '活跃',
       idle: '空闲',
       waiting: '等待',
@@ -5951,14 +6072,14 @@ export default {
       },
       purchase: {
         title: '充值/订阅页面',
-        description: '在侧边栏展示“充值/订阅”入口，并在页面内通过 iframe 打开指定链接',
+        description: '在侧边栏展示"充值/订阅"入口，并在页面内通过 iframe 打开指定链接',
         enabled: '显示充值/订阅入口',
         enabledHint: '仅在标准模式（非简单模式）下展示',
         url: '充值/订阅页面 URL',
         urlPlaceholder: 'https://example.com/purchase',
         urlHint: '必须是完整的 http(s) 链接',
         iframeWarning:
-          '⚠️ iframe 提示：部分网站会通过 X-Frame-Options 或 CSP（frame-ancestors）禁止被 iframe 嵌入，出现空白时可引导用户使用”新窗口打开”。',
+          '⚠️ iframe 提示：部分网站会通过 X-Frame-Options 或 CSP（frame-ancestors）禁止被 iframe 嵌入，出现空白时可引导用户使用"新窗口打开"。',
         integrationDoc: '支付集成文档',
         integrationDocHint: '包含接口说明、幂等语义及示例代码'
       },
@@ -6026,6 +6147,26 @@ export default {
         cancelRateLimitWindowModeFixed: '固定',
         alipayForceQRCode: '支付宝强制二维码支付',
         alipayForceQRCodeHint: '启用后，移动端支付宝用户将统一使用二维码扫码支付，不再跳转至手机网站支付',
+        promo: {
+          section: '充值赠送活动',
+          sectionHint: '配置后，用户支付金额命中档位时会按 bonus_rate 在 credited_balance（pay_amount × balance_recharge_multiplier）基础上额外赠送余额；自定义金额只要落在赠送区间内同样按对应档位赠送。',
+          enabled: '启用赠送活动',
+          enabledHint: '关闭后该活动立即失效；保存后会重置前端红点',
+          validFrom: '活动开始时间',
+          validFromHint: '留空则不限制开始时间',
+          validUntil: '活动截止时间',
+          validUntilHint: '留空则不限制截止时间',
+          tiers: '档位（升序）',
+          tiersHint: '按 min_amount 升序填写；用户实付金额 ≥ 该档时按 bonus_rate 计算赠送',
+          tierMinAmount: '最低金额',
+          tierBonusRate: '赠送比例（0~1）',
+          addTier: '新增档位',
+          removeTier: '删除',
+          errorEmptyTiers: '启用活动后至少需要一档',
+          errorMinAmountAscending: '档位 min_amount 必须严格递增',
+          errorBonusRateRange: '赠送比例必须在 [0, 1)',
+          errorWindowOrder: '开始时间必须早于截止时间',
+        },
         helpText: '帮助文本',
         helpImageUrl: '帮助图片链接',
         manageProviders: '管理服务商',
@@ -7091,6 +7232,35 @@ export default {
     amountTooHigh: '最高金额为 {max}',
     amountNoMethod: '该金额没有可用的支付方式',
     rechargeRatePreview: '当前倍率：1 CNY = {usd} USD',
+    promo: {
+      banner: '充值赠送活动进行中（截止 {validUntil}），按档位享额外赠送余额',
+      bannerNoExpiry: '充值赠送活动进行中，按档位享额外赠送余额',
+      tier: '满 {minAmount} 加赠 {rate}%',
+      tiersJoiner: '；',
+      customHint: '自定义金额到达活动档位同样赠送。',
+      bonusLine: '赠送余额',
+      totalCredited: '合计入账',
+      bonusBadge: '+{rate}%',
+      redDotAria: '充值活动有更新',
+      // 二次确认弹窗：用户在充值页停留过久、点击"创建订单"那一刻活动
+      // 刚好已过 valid_until 时触发。后端会按当前时间核账，不再发放
+      // 赠送 — 我们必须在前端硬截一刀，避免用户以为还能拿到 banner /
+      // breakdown 上预览的那笔加赠（页面打开时确实能拿，但下单时已经
+      // 来不及了）。
+      //
+      // 文案语气策略：
+      //   • 标题陈述事实，不用感叹号 / "注意" 这类施压词，让用户知道
+      //     这不是错误，只是窗口期已过。
+      //   • body 必须明确两件事：① 加赠没了；② 充值本身仍可继续。
+      //     之前测试场（无此弹窗时）用户最大的怨气是"明明 banner 还
+      //     在，为什么没赠送" — 文案要正面回答这个怀疑。
+      //   • 主按钮用"继续充值"而不是"确认"——让操作语义自包含，
+      //     即使用户没读 body 也知道点下去会走老路。
+      expiredTitle: '充值赠送活动已结束',
+      expiredBody: '此次充值将不再享受加赠余额。是否仍要继续充值？',
+      expiredContinue: '继续充值',
+      expiredCancel: '取消',
+    },
     refundReason: '退款原因',
     refundReasonPlaceholder: '请描述您的退款原因',
     stripeLoadFailed: '支付组件加载失败，请刷新页面重试',
@@ -7247,8 +7417,8 @@ export default {
       editPlan: '编辑套餐',
       deletePlan: '删除套餐',
       deletePlanConfirm: '确定要删除此套餐吗？',
-      originalPrice: '原价',
-      price: '价格',
+      originalPrice: '原价 (CNY)',
+      price: '价格 (CNY)',
       validityDays: '有效期（天）',
       validityUnit: '有效期单位',
       sortOrder: '排序',
@@ -7306,6 +7476,59 @@ export default {
         revoked: '已撤销',
       },
     },
+  },
+
+  plaza: {
+    title: '模型价格',
+    subtitle: '本站所有模型与订阅套餐的对外报价。',
+    tabs: {
+      models: '模型',
+      plans: '套餐',
+    },
+    common: {
+      currency: '币种',
+      reset: '重置',
+    },
+    models: {
+      searchPlaceholder: '搜索模型名…',
+      allGroups: '全部分组',
+      allPlatforms: '全部平台',
+      groupSidebarTitle: '分组',
+      groupCount: '{n} 个模型',
+      empty: '没有符合当前筛选条件的模型。',
+      in: '入',
+      out: '出',
+      cache_write: '缓存写',
+      cache_read: '缓存读',
+      rechargeRatio: '充值比例',
+      rechargeNote: '1 CNY 充值 = {usd} USD 站点余额',
+      rechargeHint: '原价为上游 USD 报价，固定不变；站点价随币种切换显示',
+      type: {
+        token: 'Token',
+        image: '图像',
+      },
+      col: {
+        group: '分组',
+        model: '模型',
+        platform: '平台',
+        type: '类型',
+        basePrice: '原价',
+        sitePrice: '站点价',
+        multiplier: '倍率',
+        discount: '折扣',
+        action: '操作',
+      },
+    },
+    plans: {
+      empty: '暂无在售订阅套餐。',
+      validity: '有效期',
+      group: '分组',
+      days: '天',
+      includedModels: '包含模型',
+      more: '更多',
+    },
+    use_group: '去使用 ›',
+    buy_now: '立即购买',
   },
 
 }

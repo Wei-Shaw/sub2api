@@ -49,6 +49,28 @@ DROP INDEX CONCURRENTLY IF EXISTS idx_b;
 		require.True(t, nonTx)
 		require.NoError(t, err)
 	})
+
+	// 回归：注释里出现 CONCURRENTLY/BEGIN/COMMIT 等关键字，不应被裸 substring 匹配误伤。
+	// 触发场景：146_recharge_promo_activities_crud.sql 因为注释里有 "CONCURRENTLY"
+	// 一词被错误地拒绝为 "must be placed in *_notx.sql"。
+	t.Run("事务迁移注释中出现CONCURRENTLY字样不应被拒绝", func(t *testing.T) {
+		content := `-- 本文件无 CONCURRENTLY 索引，走默认事务即可。
+ALTER TABLE t ADD COLUMN IF NOT EXISTS name VARCHAR(120) NOT NULL DEFAULT 'x';
+CREATE UNIQUE INDEX IF NOT EXISTS t_name_uidx ON t (name);
+`
+		nonTx, err := validateMigrationExecutionMode("146_x.sql", content)
+		require.False(t, nonTx)
+		require.NoError(t, err)
+	})
+
+	t.Run("notx迁移注释中出现BEGIN字样不应被拒绝", func(t *testing.T) {
+		content := `-- 描述：BEGIN 事务相关说明，仅是文字。
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a ON t(a);
+`
+		nonTx, err := validateMigrationExecutionMode("001_x_notx.sql", content)
+		require.True(t, nonTx)
+		require.NoError(t, err)
+	})
 }
 
 func TestApplyMigrationsFS_NonTransactionalMigration(t *testing.T) {

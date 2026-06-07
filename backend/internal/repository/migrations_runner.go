@@ -443,7 +443,8 @@ func isMigrationChecksumCompatible(name, dbChecksum, fileChecksum string) bool {
 
 func validateMigrationExecutionMode(name, content string) (bool, error) {
 	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	upperContent := strings.ToUpper(content)
+	// 先剥掉 -- 行注释再做关键字匹配，否则注释里出现 "CONCURRENTLY"/"BEGIN" 等字样会被误判。
+	upperContent := strings.ToUpper(stripSQLLineComment(content))
 	nonTx := strings.HasSuffix(normalizedName, nonTransactionalMigrationSuffix)
 
 	if !nonTx {

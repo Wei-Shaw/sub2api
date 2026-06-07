@@ -82,6 +82,20 @@ export interface BuildCreateOrderPayloadInput {
   isWechatBrowser: boolean
   /** When true, Alipay payments always use QR code (passes is_mobile: false to backend) */
   forceQRCode?: boolean
+  /**
+   * 当前 amount 在前端 banner / breakdown 上向用户展示的赠送预览金额。
+   * 仅 balance 充值且 > 0 时有意义；用于让后端在 CreateOrder 阶段做
+   * "充值赠送活动是否仍有效"的二次校验：用户期待 > 0 但服务端按当前
+   * 时间已不发任何赠送 → 返回 409 RECHARGE_PROMO_EXPIRED 让前端弹
+   * 二次确认 modal。订阅 / 未到档 / 无活动 / payment-recovery 重放
+   * 路径都应保持 undefined（语义即"没有期待"）。
+   */
+  expectedBonus?: number
+  /**
+   * 用户在二次确认 modal 上点过"继续充值"重发本请求时为 true，后端
+   * 跳过 promo 拦截。
+   */
+  promoExpiredAcknowledged?: boolean
 }
 
 type CreateOrderFlowResult = CreateOrderResult & {
@@ -135,6 +149,15 @@ export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): Cr
   }
   if (normalizedOrigin) {
     payload.return_url = `${normalizedOrigin}/payment/result`
+  }
+  // 仅在前端确实在向用户展示 > 0 的赠送预览时上报：让后端能精确
+  // 判定"用户原本期待赠送 $X"——这是触发 RECHARGE_PROMO_EXPIRED 二次
+  // 确认的唯一信号。0 / 未传一律视为"没有期待"，后端不会拦截。
+  if (typeof input.expectedBonus === 'number' && input.expectedBonus > 0) {
+    payload.client_expected_bonus = input.expectedBonus
+  }
+  if (input.promoExpiredAcknowledged) {
+    payload.promo_expired_acknowledged = true
   }
 
   return payload

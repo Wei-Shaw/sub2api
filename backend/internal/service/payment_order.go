@@ -38,6 +38,9 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err != nil {
 		return nil, err
 	}
+	if err := checkRechargePromoExpired(req, cfg, time.Now()); err != nil {
+		return nil, err
+	}
 	if err := s.checkCancelRateLimit(ctx, req.UserID, cfg); err != nil {
 		return nil, err
 	}
@@ -110,6 +113,63 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		return nil, err
 	}
 	return resp, nil
+}
+
+// checkRechargePromoExpired 是充值赠送活动到期的二次拦截。
+//
+// 设计目标：用户在充值页停留过久 → 点击"创建订单"那一刻活动 valid_until
+// 已过 / 被禁用 / 被删除时，服务端必须显式告诉用户"赠送已结束"，而不是
+// 让单子静默下出去 → 用户付完钱才发现没赠送。
+//
+// 仅在 balance 充值且前端明确告知"正在向用户展示一笔 > 0 的赠送预览"
+// （client_expected_bonus > 0）时启用——条件刻意收窄到"客户端有期待"，
+// 避免误伤普通充值（金额没到档 / 订阅订单 / 活动从未开过 → expected=0），
+// 保持老流程的零侵入。判定本身用服务器**当前时间**重算同一笔金额的
+// 赠送；只要服务端给出 0，即认为客户端展示与服务端事实不一致，返回
+// 409 让前端弹"活动已结束，是否继续充值"的二次确认 modal。
+//
+// 用户在 modal 上点"继续充值"会带 PromoExpiredAcknowledged=true 重发，
+// 本闸门放行；fulfillment 阶段仍按服务器时间硬判窗，因此即便绕过本
+// 闸门，也不会误发赠送。
+//
+// 故意不做的事：
+//   - 不与 client_expected_bonus 做精确数值比对。活动仍在窗口、但 admin
+//     中途调过 tier → 服务端给的金额可能与 client 期待不同——这不是
+//     "活动已结束"，强行用同一个 modal 文案会混淆视听；该场景由"banner
+//     实时刷新"独立解决，不在本闸门 scope。
+//   - 不在客户端没发 client_expected_bonus 时做兜底拦截。直接 curl
+//     打接口的用户没有 banner 期待，他们就是想充值；fulfillment 自动
+//     按 0 赠送处理，安全已守住。
+//
+// 拆出独立函数除了让 CreateOrder 主流程更清晰，更重要的是把这段判定
+// 变成纯函数：参数全部显式传入、零外部依赖（now 也参数化），便于
+// 单测覆盖各种 promo / amount / ack 组合。
+func checkRechargePromoExpired(req CreateOrderRequest, cfg *PaymentConfig, now time.Time) error {
+	if req.OrderType != payment.OrderTypeBalance {
+		return nil
+	}
+	if req.ClientExpectedBonus <= 0 {
+		return nil
+	}
+	if req.PromoExpiredAcknowledged {
+		return nil
+	}
+	if cfg == nil {
+		// 防御性分支：cfg 缺失走不到 ResolveRechargeBonus（promo 必为 nil
+		// → 服务端无赠送），与 cfg 存在但 promo nil 同义，仍应拦截。
+		return infraerrors.Conflict(
+			"RECHARGE_PROMO_EXPIRED",
+			"recharge bonus campaign has ended; please confirm to continue without bonus",
+		)
+	}
+	_, serverBonus := ResolveRechargeBonus(req.Amount, cfg.BalanceRechargeMultiplier, cfg.RechargePromo, now)
+	if serverBonus <= 0 {
+		return infraerrors.Conflict(
+			"RECHARGE_PROMO_EXPIRED",
+			"recharge bonus campaign has ended; please confirm to continue without bonus",
+		)
+	}
+	return nil
 }
 
 func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig) (*dbent.SubscriptionPlan, error) {

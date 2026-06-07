@@ -174,6 +174,31 @@ const routes: RouteRecordRaw[] = [
       title: 'Legal Document'
     }
   },
+  {
+    // Default plaza tab redirects to the model plaza.
+    path: '/plaza',
+    redirect: '/plaza/models'
+  },
+  {
+    path: '/plaza/models',
+    name: 'PlazaModels',
+    component: () => import('@/views/public/PlazaModelsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Pricing Plaza',
+      titleKey: 'plaza.title'
+    }
+  },
+  {
+    path: '/plaza/plans',
+    name: 'PlazaPlans',
+    component: () => import('@/views/public/PlazaPlansView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Pricing Plaza',
+      titleKey: 'plaza.title'
+    }
+  },
 
   // ==================== User Routes ====================
   {
@@ -537,6 +562,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/recharge-promos',
+    name: 'AdminRechargePromos',
+    component: () => import('@/views/admin/RechargePromosView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Recharge Promotions',
+      titleKey: 'admin.rechargePromos.title',
+      descriptionKey: 'admin.rechargePromos.description'
+    }
+  },
+  {
     path: '/admin/settings',
     name: 'AdminSettings',
     component: () => import('@/views/admin/SettingsView.vue'),
@@ -689,7 +726,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal', '/plaza']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',

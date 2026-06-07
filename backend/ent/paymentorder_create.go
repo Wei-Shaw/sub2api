@@ -81,6 +81,48 @@ func (_c *PaymentOrderCreate) SetNillableFeeRate(v *float64) *PaymentOrderCreate
 	return _c
 }
 
+// SetBonusAmount sets the "bonus_amount" field.
+func (_c *PaymentOrderCreate) SetBonusAmount(v float64) *PaymentOrderCreate {
+	_c.mutation.SetBonusAmount(v)
+	return _c
+}
+
+// SetNillableBonusAmount sets the "bonus_amount" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableBonusAmount(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetBonusAmount(*v)
+	}
+	return _c
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (_c *PaymentOrderCreate) SetBonusRate(v float64) *PaymentOrderCreate {
+	_c.mutation.SetBonusRate(v)
+	return _c
+}
+
+// SetNillableBonusRate sets the "bonus_rate" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableBonusRate(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetBonusRate(*v)
+	}
+	return _c
+}
+
+// SetActivityID sets the "activity_id" field.
+func (_c *PaymentOrderCreate) SetActivityID(v int64) *PaymentOrderCreate {
+	_c.mutation.SetActivityID(v)
+	return _c
+}
+
+// SetNillableActivityID sets the "activity_id" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableActivityID(v *int64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetActivityID(*v)
+	}
+	return _c
+}
+
 // SetRechargeCode sets the "recharge_code" field.
 func (_c *PaymentOrderCreate) SetRechargeCode(v string) *PaymentOrderCreate {
 	_c.mutation.SetRechargeCode(v)
@@ -517,6 +559,14 @@ func (_c *PaymentOrderCreate) defaults() {
 		v := paymentorder.DefaultFeeRate
 		_c.mutation.SetFeeRate(v)
 	}
+	if _, ok := _c.mutation.BonusAmount(); !ok {
+		v := paymentorder.DefaultBonusAmount
+		_c.mutation.SetBonusAmount(v)
+	}
+	if _, ok := _c.mutation.BonusRate(); !ok {
+		v := paymentorder.DefaultBonusRate
+		_c.mutation.SetBonusRate(v)
+	}
 	if _, ok := _c.mutation.OutTradeNo(); !ok {
 		v := paymentorder.DefaultOutTradeNo
 		_c.mutation.SetOutTradeNo(v)
@@ -576,6 +626,12 @@ func (_c *PaymentOrderCreate) check() error {
 	}
 	if _, ok := _c.mutation.FeeRate(); !ok {
 		return &ValidationError{Name: "fee_rate", err: errors.New(`ent: missing required field "PaymentOrder.fee_rate"`)}
+	}
+	if _, ok := _c.mutation.BonusAmount(); !ok {
+		return &ValidationError{Name: "bonus_amount", err: errors.New(`ent: missing required field "PaymentOrder.bonus_amount"`)}
+	}
+	if _, ok := _c.mutation.BonusRate(); !ok {
+		return &ValidationError{Name: "bonus_rate", err: errors.New(`ent: missing required field "PaymentOrder.bonus_rate"`)}
 	}
 	if _, ok := _c.mutation.RechargeCode(); !ok {
 		return &ValidationError{Name: "recharge_code", err: errors.New(`ent: missing required field "PaymentOrder.recharge_code"`)}
@@ -724,6 +780,18 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.FeeRate(); ok {
 		_spec.SetField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
 		_node.FeeRate = value
+	}
+	if value, ok := _c.mutation.BonusAmount(); ok {
+		_spec.SetField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+		_node.BonusAmount = value
+	}
+	if value, ok := _c.mutation.BonusRate(); ok {
+		_spec.SetField(paymentorder.FieldBonusRate, field.TypeFloat64, value)
+		_node.BonusRate = value
+	}
+	if value, ok := _c.mutation.ActivityID(); ok {
+		_spec.SetField(paymentorder.FieldActivityID, field.TypeInt64, value)
+		_node.ActivityID = &value
 	}
 	if value, ok := _c.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
@@ -1027,6 +1095,66 @@ func (u *PaymentOrderUpsert) UpdateFeeRate() *PaymentOrderUpsert {
 // AddFeeRate adds v to the "fee_rate" field.
 func (u *PaymentOrderUpsert) AddFeeRate(v float64) *PaymentOrderUpsert {
 	u.Add(paymentorder.FieldFeeRate, v)
+	return u
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsert) SetBonusAmount(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldBonusAmount, v)
+	return u
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateBonusAmount() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldBonusAmount)
+	return u
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsert) AddBonusAmount(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldBonusAmount, v)
+	return u
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (u *PaymentOrderUpsert) SetBonusRate(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldBonusRate, v)
+	return u
+}
+
+// UpdateBonusRate sets the "bonus_rate" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateBonusRate() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldBonusRate)
+	return u
+}
+
+// AddBonusRate adds v to the "bonus_rate" field.
+func (u *PaymentOrderUpsert) AddBonusRate(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldBonusRate, v)
+	return u
+}
+
+// SetActivityID sets the "activity_id" field.
+func (u *PaymentOrderUpsert) SetActivityID(v int64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldActivityID, v)
+	return u
+}
+
+// UpdateActivityID sets the "activity_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateActivityID() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldActivityID)
+	return u
+}
+
+// AddActivityID adds v to the "activity_id" field.
+func (u *PaymentOrderUpsert) AddActivityID(v int64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldActivityID, v)
+	return u
+}
+
+// ClearActivityID clears the value of the "activity_id" field.
+func (u *PaymentOrderUpsert) ClearActivityID() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldActivityID)
 	return u
 }
 
@@ -1708,6 +1836,76 @@ func (u *PaymentOrderUpsertOne) AddFeeRate(v float64) *PaymentOrderUpsertOne {
 func (u *PaymentOrderUpsertOne) UpdateFeeRate() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateFeeRate()
+	})
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsertOne) SetBonusAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusAmount(v)
+	})
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsertOne) AddBonusAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusAmount(v)
+	})
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateBonusAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusAmount()
+	})
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (u *PaymentOrderUpsertOne) SetBonusRate(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusRate(v)
+	})
+}
+
+// AddBonusRate adds v to the "bonus_rate" field.
+func (u *PaymentOrderUpsertOne) AddBonusRate(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusRate(v)
+	})
+}
+
+// UpdateBonusRate sets the "bonus_rate" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateBonusRate() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusRate()
+	})
+}
+
+// SetActivityID sets the "activity_id" field.
+func (u *PaymentOrderUpsertOne) SetActivityID(v int64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetActivityID(v)
+	})
+}
+
+// AddActivityID adds v to the "activity_id" field.
+func (u *PaymentOrderUpsertOne) AddActivityID(v int64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddActivityID(v)
+	})
+}
+
+// UpdateActivityID sets the "activity_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateActivityID() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateActivityID()
+	})
+}
+
+// ClearActivityID clears the value of the "activity_id" field.
+func (u *PaymentOrderUpsertOne) ClearActivityID() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearActivityID()
 	})
 }
 
@@ -2640,6 +2838,76 @@ func (u *PaymentOrderUpsertBulk) AddFeeRate(v float64) *PaymentOrderUpsertBulk {
 func (u *PaymentOrderUpsertBulk) UpdateFeeRate() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateFeeRate()
+	})
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsertBulk) SetBonusAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusAmount(v)
+	})
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsertBulk) AddBonusAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusAmount(v)
+	})
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateBonusAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusAmount()
+	})
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (u *PaymentOrderUpsertBulk) SetBonusRate(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusRate(v)
+	})
+}
+
+// AddBonusRate adds v to the "bonus_rate" field.
+func (u *PaymentOrderUpsertBulk) AddBonusRate(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusRate(v)
+	})
+}
+
+// UpdateBonusRate sets the "bonus_rate" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateBonusRate() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusRate()
+	})
+}
+
+// SetActivityID sets the "activity_id" field.
+func (u *PaymentOrderUpsertBulk) SetActivityID(v int64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetActivityID(v)
+	})
+}
+
+// AddActivityID adds v to the "activity_id" field.
+func (u *PaymentOrderUpsertBulk) AddActivityID(v int64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddActivityID(v)
+	})
+}
+
+// UpdateActivityID sets the "activity_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateActivityID() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateActivityID()
+	})
+}
+
+// ClearActivityID clears the value of the "activity_id" field.
+func (u *PaymentOrderUpsertBulk) ClearActivityID() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearActivityID()
 	})
 }
 

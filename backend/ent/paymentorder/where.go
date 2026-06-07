@@ -90,6 +90,21 @@ func FeeRate(v float64) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldFeeRate, v))
 }
 
+// BonusAmount applies equality check predicate on the "bonus_amount" field. It's identical to BonusAmountEQ.
+func BonusAmount(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldBonusAmount, v))
+}
+
+// BonusRate applies equality check predicate on the "bonus_rate" field. It's identical to BonusRateEQ.
+func BonusRate(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldBonusRate, v))
+}
+
+// ActivityID applies equality check predicate on the "activity_id" field. It's identical to ActivityIDEQ.
+func ActivityID(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldActivityID, v))
+}
+
 // RechargeCode applies equality check predicate on the "recharge_code" field. It's identical to RechargeCodeEQ.
 func RechargeCode(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldRechargeCode, v))
@@ -588,6 +603,136 @@ func FeeRateLT(v float64) predicate.PaymentOrder {
 // FeeRateLTE applies the LTE predicate on the "fee_rate" field.
 func FeeRateLTE(v float64) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldLTE(FieldFeeRate, v))
+}
+
+// BonusAmountEQ applies the EQ predicate on the "bonus_amount" field.
+func BonusAmountEQ(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldBonusAmount, v))
+}
+
+// BonusAmountNEQ applies the NEQ predicate on the "bonus_amount" field.
+func BonusAmountNEQ(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNEQ(FieldBonusAmount, v))
+}
+
+// BonusAmountIn applies the In predicate on the "bonus_amount" field.
+func BonusAmountIn(vs ...float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIn(FieldBonusAmount, vs...))
+}
+
+// BonusAmountNotIn applies the NotIn predicate on the "bonus_amount" field.
+func BonusAmountNotIn(vs ...float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotIn(FieldBonusAmount, vs...))
+}
+
+// BonusAmountGT applies the GT predicate on the "bonus_amount" field.
+func BonusAmountGT(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGT(FieldBonusAmount, v))
+}
+
+// BonusAmountGTE applies the GTE predicate on the "bonus_amount" field.
+func BonusAmountGTE(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGTE(FieldBonusAmount, v))
+}
+
+// BonusAmountLT applies the LT predicate on the "bonus_amount" field.
+func BonusAmountLT(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLT(FieldBonusAmount, v))
+}
+
+// BonusAmountLTE applies the LTE predicate on the "bonus_amount" field.
+func BonusAmountLTE(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLTE(FieldBonusAmount, v))
+}
+
+// BonusRateEQ applies the EQ predicate on the "bonus_rate" field.
+func BonusRateEQ(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldBonusRate, v))
+}
+
+// BonusRateNEQ applies the NEQ predicate on the "bonus_rate" field.
+func BonusRateNEQ(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNEQ(FieldBonusRate, v))
+}
+
+// BonusRateIn applies the In predicate on the "bonus_rate" field.
+func BonusRateIn(vs ...float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIn(FieldBonusRate, vs...))
+}
+
+// BonusRateNotIn applies the NotIn predicate on the "bonus_rate" field.
+func BonusRateNotIn(vs ...float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotIn(FieldBonusRate, vs...))
+}
+
+// BonusRateGT applies the GT predicate on the "bonus_rate" field.
+func BonusRateGT(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGT(FieldBonusRate, v))
+}
+
+// BonusRateGTE applies the GTE predicate on the "bonus_rate" field.
+func BonusRateGTE(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGTE(FieldBonusRate, v))
+}
+
+// BonusRateLT applies the LT predicate on the "bonus_rate" field.
+func BonusRateLT(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLT(FieldBonusRate, v))
+}
+
+// BonusRateLTE applies the LTE predicate on the "bonus_rate" field.
+func BonusRateLTE(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLTE(FieldBonusRate, v))
+}
+
+// ActivityIDEQ applies the EQ predicate on the "activity_id" field.
+func ActivityIDEQ(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldActivityID, v))
+}
+
+// ActivityIDNEQ applies the NEQ predicate on the "activity_id" field.
+func ActivityIDNEQ(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNEQ(FieldActivityID, v))
+}
+
+// ActivityIDIn applies the In predicate on the "activity_id" field.
+func ActivityIDIn(vs ...int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIn(FieldActivityID, vs...))
+}
+
+// ActivityIDNotIn applies the NotIn predicate on the "activity_id" field.
+func ActivityIDNotIn(vs ...int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotIn(FieldActivityID, vs...))
+}
+
+// ActivityIDGT applies the GT predicate on the "activity_id" field.
+func ActivityIDGT(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGT(FieldActivityID, v))
+}
+
+// ActivityIDGTE applies the GTE predicate on the "activity_id" field.
+func ActivityIDGTE(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGTE(FieldActivityID, v))
+}
+
+// ActivityIDLT applies the LT predicate on the "activity_id" field.
+func ActivityIDLT(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLT(FieldActivityID, v))
+}
+
+// ActivityIDLTE applies the LTE predicate on the "activity_id" field.
+func ActivityIDLTE(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLTE(FieldActivityID, v))
+}
+
+// ActivityIDIsNil applies the IsNil predicate on the "activity_id" field.
+func ActivityIDIsNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIsNull(FieldActivityID))
+}
+
+// ActivityIDNotNil applies the NotNil predicate on the "activity_id" field.
+func ActivityIDNotNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotNull(FieldActivityID))
 }
 
 // RechargeCodeEQ applies the EQ predicate on the "recharge_code" field.

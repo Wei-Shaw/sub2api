@@ -577,6 +577,7 @@ var ProviderSet = wire.NewSet(
 	NewModelPricingResolver,
 	NewContentModerationService,
 	NewAffiliateService,
+	NewRechargePromoActivityService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
 	ProvidePaymentOrderExpiryService,
@@ -585,6 +586,8 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
+	NewPlazaService,
+	wire.Bind(new(PlazaPaymentConfigSource), new(*PaymentConfigService)),
 )
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
@@ -596,8 +599,14 @@ func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named
 // payment.EncryptionKey type instead of raw []byte, avoiding Wire ambiguity.
-func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, key payment.EncryptionKey) *PaymentConfigService {
-	return NewPaymentConfigService(entClient, settingRepo, []byte(key))
+// 同时注入 RechargePromoActivityService —— 充值赠送配置已迁移到独立活动表。
+func ProvidePaymentConfigService(
+	entClient *dbent.Client,
+	settingRepo SettingRepository,
+	key payment.EncryptionKey,
+	activitySvc *RechargePromoActivityService,
+) *PaymentConfigService {
+	return NewPaymentConfigService(entClient, settingRepo, []byte(key), activitySvc)
 }
 
 // ProvideBalanceNotifyService creates BalanceNotifyService
