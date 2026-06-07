@@ -1,4 +1,11 @@
 import type { GroupPlatform } from '@/types'
+import {
+  WINDOWS_BASIC_BATCH_TEMPLATE,
+  WINDOWS_CLIENT_INSTALL_NOTICE_TEMPLATE,
+  WINDOWS_EMBEDDED_POWERSHELL_BATCH_TEMPLATE,
+  WINDOWS_NODE_RUNTIME_NOTICE_TEMPLATE,
+  renderConfigScriptTemplate
+} from './configScriptTemplates'
 
 export const CONFIG_SCRIPT_SITE_NAME = 'look2eye'
 
@@ -24,6 +31,30 @@ interface ConfigPayload {
   label: string
   files: ConfigFile[]
   env?: Record<string, string>
+}
+
+interface ClientInstallSpec {
+  label: string
+  commandName: string
+  npmPackage: string
+}
+
+const CODEX_INSTALL_SPEC: ClientInstallSpec = {
+  label: 'Codex CLI',
+  commandName: 'codex',
+  npmPackage: '@openai/codex'
+}
+
+const CLAUDE_CODE_INSTALL_SPEC: ClientInstallSpec = {
+  label: 'Claude Code',
+  commandName: 'claude',
+  npmPackage: '@anthropic-ai/claude-code'
+}
+
+const OPENCODE_INSTALL_SPEC: ClientInstallSpec = {
+  label: 'OpenCode',
+  commandName: 'opencode',
+  npmPackage: 'opencode-ai'
 }
 
 const CODEX_DEFAULT_MODEL = 'gpt-5.5'
@@ -224,6 +255,34 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
 
+function shellClientInstallNotice(spec: ClientInstallSpec): string {
+  return `
+ensure_${spec.commandName}_client() {
+  if command -v ${spec.commandName} >/dev/null 2>&1; then
+    ${spec.commandName} --version 2>/dev/null || true
+    return 0
+  fi
+
+  echo "[LOOK2EYE NOTICE] 未检测到 ${spec.label}，准备通过 npm 全局安装。"
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "未检测到 npm，无法自动安装 ${spec.label}。请先安装 Node.js LTS：https://nodejs.org/" >&2
+    echo "安装 Node.js 后可手动执行：npm install -g ${spec.npmPackage}" >&2
+    return 0
+  fi
+
+  if npm install -g ${spec.npmPackage}; then
+    if command -v ${spec.commandName} >/dev/null 2>&1; then
+      ${spec.commandName} --version 2>/dev/null || true
+    else
+      echo "${spec.label} 已安装，但当前终端仍未检测到 ${spec.commandName}；请重新打开终端后再运行客户端。" >&2
+    fi
+  else
+    echo "${spec.label} 自动安装失败，请手动执行：npm install -g ${spec.npmPackage}" >&2
+  fi
+}
+`
+}
+
 function powershellSingleQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`
 }
@@ -272,6 +331,7 @@ function buildCodexShellScript(input: Required<Pick<ConfigScriptInput, 'baseUrl'
   const siteName = input.siteName
   const baseUrl = resolveBaseUrl(input.baseUrl)
   const template = codexConfigTemplate(input)
+  const clientInstall = shellClientInstallNotice(CODEX_INSTALL_SPEC)
 
   return `#!/usr/bin/env sh
 set -eu
@@ -493,6 +553,8 @@ PY
 echo "回读校验：已确认配置和认证文件写入成功。"
 echo "已完成，${siteName} Codex CLI 配置已更新。正在自动关闭 Codex..."
 stop_codex_processes
+${clientInstall}
+ensure_codex_client
 `
 }
 
@@ -680,38 +742,20 @@ try {
 }
 
 function windowsNodeRuntimeNotice(clientLabel: string): string {
-  return `where node.exe >nul 2>nul
-if errorlevel 1 (
-  echo.
-  echo [LOOK2EYE NOTICE] Windows 未检测到 Node.js；配置文件已写入，但 ${clientLabel} 可能无法安装或运行。
-  set "LOOK2EYE_INSTALL_NODE="
-  set /p "LOOK2EYE_INSTALL_NODE=是否现在通过 winget 安装 Node.js LTS？[Y/N] "
-  if /i "%LOOK2EYE_INSTALL_NODE%"=="Y" (
-    where winget.exe >nul 2>nul
-    if errorlevel 1 (
-      echo 未检测到 winget，无法自动安装 Node.js。
-      echo 请手动下载安装 Node.js LTS：https://nodejs.org/
-    ) else (
-      winget install OpenJS.NodeJS.LTS
-      where node.exe >nul 2>nul
-      if errorlevel 1 (
-        echo Node.js 安装后当前窗口仍未检测到 node.exe；请重新打开终端后再运行客户端。
-      ) else (
-        for /f "delims=" %%I in ('node --version 2^>nul') do echo Node.js: %%I
-      )
-    )
-  ) else (
-    echo 已跳过 Node.js 安装。请稍后安装 Node.js LTS：https://nodejs.org/
-  )
-) else (
-  for /f "delims=" %%I in ('node --version 2^>nul') do echo Node.js: %%I
-  where npm.cmd >nul 2>nul
-  if errorlevel 1 (
-    echo [LOOK2EYE NOTICE] 未检测到 npm；如客户端安装失败，请重新安装 Node.js LTS 并勾选 npm。
-  ) else (
-    for /f "delims=" %%I in ('npm --version 2^>nul') do echo npm: %%I
-  )
-)`
+  return renderConfigScriptTemplate(WINDOWS_NODE_RUNTIME_NOTICE_TEMPLATE, {
+    CLIENT_LABEL: clientLabel
+  })
+}
+
+function windowsClientInstallNotice(spec: ClientInstallSpec): string {
+  const commandName = spec.commandName.toLowerCase().endsWith('.cmd')
+    ? spec.commandName
+    : `${spec.commandName}.cmd`
+  return renderConfigScriptTemplate(WINDOWS_CLIENT_INSTALL_NOTICE_TEMPLATE, {
+    CLIENT_LABEL: spec.label,
+    COMMAND_NAME: commandName,
+    NPM_PACKAGE: spec.npmPackage
+  })
 }
 
 function buildPowerShellPayloadExtractorCommand(): string {
@@ -719,12 +763,33 @@ function buildPowerShellPayloadExtractorCommand(): string {
 $scriptPath = $env:LOOK2EYE_SETUP_SCRIPT_PATH
 $payloadPath = $env:LOOK2EYE_SETUP_PAYLOAD
 $marker = $env:LOOK2EYE_SETUP_MARKER
-$text = [System.IO.File]::ReadAllText($scriptPath)
-$index = $text.LastIndexOf($marker)
+$bytes = [System.IO.File]::ReadAllBytes($scriptPath)
+$markerBytes = [System.Text.Encoding]::ASCII.GetBytes($marker)
+$index = -1
+for ($i = $bytes.Length - $markerBytes.Length; $i -ge 0; $i--) {
+  $matched = $true
+  for ($j = 0; $j -lt $markerBytes.Length; $j++) {
+    if ($bytes[$i + $j] -ne $markerBytes[$j]) {
+      $matched = $false
+      break
+    }
+  }
+  if ($matched) {
+    $index = $i
+    break
+  }
+}
 if ($index -lt 0) { throw "PowerShell payload marker not found." }
-$payload = $text.Substring($index + $marker.Length).TrimStart([char]13, [char]10)
-$encoding = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($payloadPath, $payload, $encoding)
+$start = $index + $markerBytes.Length
+while ($start -lt $bytes.Length -and ($bytes[$start] -eq 13 -or $bytes[$start] -eq 10)) {
+  $start++
+}
+$bom = [byte[]](0xEF, 0xBB, 0xBF)
+$payloadLength = $bytes.Length - $start
+$output = New-Object byte[] ($bom.Length + $payloadLength)
+[System.Array]::Copy($bom, 0, $output, 0, $bom.Length)
+[System.Array]::Copy($bytes, $start, $output, $bom.Length, $payloadLength)
+[System.IO.File]::WriteAllBytes($payloadPath, $output)
 `)
 }
 
@@ -738,44 +803,24 @@ function buildEmbeddedPowerShellBatch(input: {
   failureMessage: string
   failureHint: string
   nodeClientLabel: string
+  clientInstall: ClientInstallSpec
 }): string {
   const extractor = buildPowerShellPayloadExtractorCommand()
   const forwardedArgs = input.passArgs ? ' %*' : ''
 
-  return `@echo off
-chcp 65001 >nul
-setlocal
-set "LOOK2EYE_SETUP_SCRIPT_PATH=%~f0"
-set "LOOK2EYE_SETUP_PAYLOAD=%TEMP%\\${input.tempName}-%RANDOM%-%RANDOM%.ps1"
-set "LOOK2EYE_SETUP_EXIT=1"
-set "LOOK2EYE_SETUP_MARKER=${input.marker}"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${extractor}
-if errorlevel 1 (
-  set "LOOK2EYE_SETUP_EXIT=1"
-  goto :look2eye_setup_done
-)
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%LOOK2EYE_SETUP_PAYLOAD%"${forwardedArgs}
-set "LOOK2EYE_SETUP_EXIT=%ERRORLEVEL%"
-if exist "%LOOK2EYE_SETUP_PAYLOAD%" del /f /q "%LOOK2EYE_SETUP_PAYLOAD%" >nul 2>nul
-:look2eye_setup_done
-echo.
-if "%LOOK2EYE_SETUP_EXIT%"=="0" (
-  echo ============================================================
-  echo [LOOK2EYE SETUP SUCCESS] ${input.successMessage}
-  echo ${input.successHint}
-  echo ============================================================
-) else (
-  echo ============================================================
-  echo [LOOK2EYE SETUP FAILED] ${input.failureMessage} Exit code: %LOOK2EYE_SETUP_EXIT%
-  echo ${input.failureHint}
-  echo ============================================================
-)
-${windowsNodeRuntimeNotice(input.nodeClientLabel)}
-pause
-endlocal & exit /b %LOOK2EYE_SETUP_EXIT%
-
-${input.marker}
-${input.payload}`
+  return renderConfigScriptTemplate(WINDOWS_EMBEDDED_POWERSHELL_BATCH_TEMPLATE, {
+    TEMP_NAME: input.tempName,
+    MARKER: input.marker,
+    EXTRACTOR_COMMAND: extractor,
+    FORWARDED_ARGS: forwardedArgs,
+    SUCCESS_MESSAGE: input.successMessage,
+    SUCCESS_HINT: input.successHint,
+    FAILURE_MESSAGE: input.failureMessage,
+    FAILURE_HINT: input.failureHint,
+    NODE_RUNTIME_NOTICE: windowsNodeRuntimeNotice(input.nodeClientLabel),
+    CLIENT_INSTALL_NOTICE: windowsClientInstallNotice(input.clientInstall),
+    POWERSHELL_PAYLOAD: input.payload
+  })
 }
 
 function buildCodexBatchScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
@@ -788,7 +833,8 @@ function buildCodexBatchScript(input: Required<Pick<ConfigScriptInput, 'baseUrl'
     successHint: 'Reopen Codex or the target client to load the new config.',
     failureMessage: `${input.siteName} Codex CLI config/restore did not complete.`,
     failureHint: 'Check the error above. If Codex is still open, close it manually and retry.',
-    nodeClientLabel: 'Codex CLI'
+    nodeClientLabel: 'Codex CLI',
+    clientInstall: CODEX_INSTALL_SPEC
   })
 }
 
@@ -799,6 +845,7 @@ function resolveClaudeBase(_input: Required<Pick<ConfigScriptInput, 'baseUrl'>> 
 function buildClaudeShellScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>> & Pick<ConfigScriptInput, 'platform'>): string {
   const siteName = input.siteName
   const baseUrl = resolveClaudeBase(input)
+  const clientInstall = shellClientInstallNotice(CLAUDE_CODE_INSTALL_SPEC)
 
   return `#!/usr/bin/env sh
 set -eu
@@ -900,6 +947,8 @@ settings_path.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\
 PY
 
 echo "Done. ${siteName} Claude Code config has been updated."
+${clientInstall}
+ensure_claude_client
 `
 }
 
@@ -1027,13 +1076,15 @@ function buildClaudeBatchScript(input: Required<Pick<ConfigScriptInput, 'baseUrl
     successHint: 'Reopen Claude Code or the target client to load the new config.',
     failureMessage: `${input.siteName} Claude Code config did not complete.`,
     failureHint: 'Check the error above. If settings.json cannot be merged automatically, handle it manually and retry.',
-    nodeClientLabel: 'Claude Code'
+    nodeClientLabel: 'Claude Code',
+    clientInstall: CLAUDE_CODE_INSTALL_SPEC
   })
 }
 
 function buildOpenCodeShellScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
   const siteName = input.siteName
   const baseUrl = resolveBaseUrl(input.baseUrl)
+  const clientInstall = shellClientInstallNotice(OPENCODE_INSTALL_SPEC)
 
   return `#!/usr/bin/env sh
 set -eu
@@ -1168,6 +1219,8 @@ config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\\n",
 PY
 
 echo "Done. ${siteName} OpenCode config has been updated."
+${clientInstall}
+ensure_opencode_client
 `
 }
 
@@ -1351,7 +1404,8 @@ function buildOpenCodeBatchScript(input: Required<Pick<ConfigScriptInput, 'baseU
     successHint: 'Reopen OpenCode or the target client to load the new config.',
     failureMessage: `${input.siteName} OpenCode config did not complete.`,
     failureHint: 'Check the error above. If opencode.json cannot be merged automatically, handle it manually and retry.',
-    nodeClientLabel: 'OpenCode'
+    nodeClientLabel: 'OpenCode',
+    clientInstall: OPENCODE_INSTALL_SPEC
   })
 }
 
@@ -1514,18 +1568,11 @@ function buildEncodedPowerShellCommand(script: string): string {
 function buildBatchScript(payload: ConfigPayload, siteName: string): string {
   const psScript = buildPowerShellScript(payload, siteName)
   const encoded = buildEncodedPowerShellCommand(psScript)
-  return `@echo off
-setlocal
-echo Installing ${siteName} ${payload.label} configuration...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}
-if errorlevel 1 (
-  echo Installation failed.
-  pause
-  exit /b 1
-)
-echo Done.
-pause
-`
+  return renderConfigScriptTemplate(WINDOWS_BASIC_BATCH_TEMPLATE, {
+    SITE_NAME: siteName,
+    PAYLOAD_LABEL: payload.label,
+    ENCODED_COMMAND: encoded
+  })
 }
 
 export function getConfigScriptOS(): ConfigScriptOS {
