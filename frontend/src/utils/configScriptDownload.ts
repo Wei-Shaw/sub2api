@@ -679,6 +679,41 @@ try {
 `
 }
 
+function windowsNodeRuntimeNotice(clientLabel: string): string {
+  return `where node.exe >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo [LOOK2EYE NOTICE] Windows 未检测到 Node.js；配置文件已写入，但 ${clientLabel} 可能无法安装或运行。
+  set "LOOK2EYE_INSTALL_NODE="
+  set /p "LOOK2EYE_INSTALL_NODE=是否现在通过 winget 安装 Node.js LTS？[Y/N] "
+  if /i "%LOOK2EYE_INSTALL_NODE%"=="Y" (
+    where winget.exe >nul 2>nul
+    if errorlevel 1 (
+      echo 未检测到 winget，无法自动安装 Node.js。
+      echo 请手动下载安装 Node.js LTS：https://nodejs.org/
+    ) else (
+      winget install OpenJS.NodeJS.LTS
+      where node.exe >nul 2>nul
+      if errorlevel 1 (
+        echo Node.js 安装后当前窗口仍未检测到 node.exe；请重新打开终端后再运行客户端。
+      ) else (
+        for /f "delims=" %%I in ('node --version 2^>nul') do echo Node.js: %%I
+      )
+    )
+  ) else (
+    echo 已跳过 Node.js 安装。请稍后安装 Node.js LTS：https://nodejs.org/
+  )
+) else (
+  for /f "delims=" %%I in ('node --version 2^>nul') do echo Node.js: %%I
+  where npm.cmd >nul 2>nul
+  if errorlevel 1 (
+    echo [LOOK2EYE NOTICE] 未检测到 npm；如客户端安装失败，请重新安装 Node.js LTS 并勾选 npm。
+  ) else (
+    for /f "delims=" %%I in ('npm --version 2^>nul') do echo npm: %%I
+  )
+)`
+}
+
 function buildCodexBatchScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
   const encoded = toBase64UTF8(buildCodexPowerShellPayload(input))
   return `@echo off
@@ -699,6 +734,7 @@ if "%LOOK2EYE_CODEX_EXIT%"=="0" (
   echo Check the error above. If Codex is still open, close it manually and retry.
   echo ============================================================
 )
+${windowsNodeRuntimeNotice('Codex CLI')}
 pause
 endlocal & exit /b %LOOK2EYE_CODEX_EXIT%
 `
@@ -966,6 +1002,7 @@ if "%LOOK2EYE_SETUP_EXIT%"=="0" (
   echo Check the error above. If settings.json cannot be merged automatically, handle it manually and retry.
   echo ============================================================
 )
+${windowsNodeRuntimeNotice('Claude Code')}
 if "%LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER%"=="1" (
   echo.
   echo 按任意键关闭窗口...
@@ -1324,6 +1361,7 @@ if "%LOOK2EYE_SETUP_EXIT%"=="0" (
   echo Check the error above. If opencode.json cannot be merged automatically, handle it manually and retry.
   echo ============================================================
 )
+${windowsNodeRuntimeNotice('OpenCode')}
 if "%LOOK2EYE_SETUP_LAUNCHED_FROM_EXPLORER%"=="1" (
   echo.
   echo 按任意键关闭窗口...
