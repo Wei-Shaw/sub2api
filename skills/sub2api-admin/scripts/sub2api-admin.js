@@ -45,6 +45,16 @@ function usage() {
   sub2api-admin.js accounts import-json --file <path> --template-name <name> [--skip-name <name>] [--dry-run]
   sub2api-admin.js groups all
   sub2api-admin.js proxies all
+  sub2api-admin.js redeem-codes list [--page-size 200] [--page N] [--type balance] [--status unused] [--search TEXT] [--sort-by id] [--sort-order desc]
+  sub2api-admin.js redeem-codes export [--file redeem-codes.csv] [list filters...]
+  sub2api-admin.js redeem-codes get <id>
+  sub2api-admin.js redeem-codes generate --json '{...REDACTED' | --file payload.json [--idempotency-key KEY]
+  sub2api-admin.js redeem-codes create-and-redeem --json '{...REDACTED' | --file payload.json [--idempotency-key KEY]
+  sub2api-admin.js redeem-codes batch-update --ids 1,2 --json '{...REDACTED' | --file fields.json
+  sub2api-admin.js redeem-codes delete <id>
+  sub2api-admin.js redeem-codes batch-delete --ids 1,2
+  sub2api-admin.js redeem-codes expire <id>
+  sub2api-admin.js redeem-codes stats
   sub2api-admin.js error-rules list|get|create|update|delete|toggle ...
   sub2api-admin.js tls-profiles list|get|create|update|delete ...
   sub2api-admin.js api <GET|POST|PUT|DELETE> <admin-path> [--json '{...REDACTED' | --file payload.json]
@@ -84,10 +94,11 @@ function authHeaders() {
   throw new Error("Missing SUB2API_ADMIN_API_KEY");
 REDACTED
 
-async function apiRequest(method, pathname, body) {
+async function apiRequest(method, pathname, body, extraHeaders = {REDACTED) {
   const headers = {
     ...authHeaders(),
     Accept: "application/json",
+    ...extraHeaders,
   REDACTED;
   const options = { method, headers REDACTED;
   if (body !== undefined) {
@@ -109,6 +120,32 @@ async function apiRequest(method, pathname, body) {
   return data.data;
 REDACTED
 
+async function apiRawRequest(method, pathname, body, extraHeaders = {REDACTED) {
+  const headers = {
+    ...authHeaders(),
+    Accept: "*/*",
+    ...extraHeaders,
+  REDACTED;
+  const options = { method, headers REDACTED;
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  REDACTED
+  const res = await fetch(`${BASE_URLREDACTED${pathnameREDACTED`, options);
+  const text = await res.text();
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const data = JSON.parse(text);
+      detail = data.message || data.code || detail;
+    REDACTED catch {
+      if (text) detail = text;
+    REDACTED
+    throw new Error(`${methodREDACTED ${pathnameREDACTED failed: ${detailREDACTED`);
+  REDACTED
+  return text;
+REDACTED
+
 function encodeQuery(params) {
   const pairs = [];
   for (const [key, value] of Object.entries(params)) {
@@ -127,6 +164,14 @@ REDACTED
 
 async function adminRequest(method, adminPath, body) {
   return apiRequest(method, normalizeAdminPath(adminPath), body);
+REDACTED
+
+async function adminRequestWithHeaders(method, adminPath, body, headers = {REDACTED) {
+  return apiRequest(method, normalizeAdminPath(adminPath), body, headers);
+REDACTED
+
+async function adminRawRequest(method, adminPath, body, headers = {REDACTED) {
+  return apiRawRequest(method, normalizeAdminPath(adminPath), body, headers);
 REDACTED
 
 async function listAccounts(options = {REDACTED) {
@@ -199,6 +244,36 @@ function accountListOptions(flags) {
     sortOrder: flags["sort-order"] || "asc",
     lite: flags.lite === undefined ? true : parseBool(flags.lite, "--lite"),
   REDACTED;
+REDACTED
+
+function redeemCodesListOptions(flags) {
+  return {
+    page: Number(flags.page || 1),
+    pageSize: Number(flags["page-size"] || 200),
+    type: flags.type,
+    status: flags.status,
+    search: flags.search,
+    sortBy: flags["sort-by"] || "id",
+    sortOrder: flags["sort-order"] || "desc",
+  REDACTED;
+REDACTED
+
+function redeemCodesQuery(flags) {
+  const options = redeemCodesListOptions(flags);
+  return encodeQuery({
+    page: options.page,
+    page_size: options.pageSize,
+    type: options.type,
+    status: options.status,
+    search: options.search,
+    sort_by: options.sortBy,
+    sort_order: options.sortOrder,
+  REDACTED);
+REDACTED
+
+function idempotencyHeaders(flags) {
+  if (!flags["idempotency-key"]) return {REDACTED;
+  return { "Idempotency-Key": flags["idempotency-key"] REDACTED;
 REDACTED
 
 function printJson(data) {
@@ -530,6 +605,71 @@ async function commandProxies(args) {
   throw new Error(`unknown proxies subcommand: ${sub || "(missing)"REDACTED`);
 REDACTED
 
+async function commandRedeemCodes(args) {
+  const sub = args.positional[1];
+  if (sub === "list") {
+    printJson(await adminRequest("GET", `/admin/redeem-codes${redeemCodesQuery(args.flags)REDACTED`));
+    return;
+  REDACTED
+  if (sub === "export") {
+    const csv = await adminRawRequest("GET", `/admin/redeem-codes/export${redeemCodesQuery(args.flags)REDACTED`);
+    if (args.flags.file) {
+      fs.writeFileSync(path.resolve(args.flags.file), csv);
+      printJson({ file: path.resolve(args.flags.file) REDACTED);
+    REDACTED else {
+      process.stdout.write(csv);
+    REDACTED
+    return;
+  REDACTED
+  if (sub === "get") {
+    const id = args.positional[2];
+    if (!id) throw new Error("redeem-codes get requires <id>");
+    printJson(await adminRequest("GET", `/admin/redeem-codes/${idREDACTED`));
+    return;
+  REDACTED
+  if (sub === "generate") {
+    printJson(await adminRequestWithHeaders("POST", "/admin/redeem-codes/generate", readJsonPayload(args.flags), idempotencyHeaders(args.flags)));
+    return;
+  REDACTED
+  if (sub === "create-and-redeem") {
+    printJson(await adminRequestWithHeaders("POST", "/admin/redeem-codes/create-and-redeem", readJsonPayload(args.flags), idempotencyHeaders(args.flags)));
+    return;
+  REDACTED
+  if (sub === "batch-update") {
+    const fields = readJsonPayload(args.flags, { required: false REDACTED) || {REDACTED;
+    const payload = args.flags.ids ? { ids: parseIds(args.flags.ids), fields REDACTED : fields;
+    if (!Array.isArray(payload.ids) || payload.ids.length === 0) {
+      throw new Error("redeem-codes batch-update requires --ids or payload.ids");
+    REDACTED
+    if (!payload.fields || typeof payload.fields !== "object") {
+      throw new Error("redeem-codes batch-update requires fields");
+    REDACTED
+    printJson(await adminRequest("POST", "/admin/redeem-codes/batch-update", payload));
+    return;
+  REDACTED
+  if (sub === "delete") {
+    const id = args.positional[2];
+    if (!id) throw new Error("redeem-codes delete requires <id>");
+    printJson(await adminRequest("DELETE", `/admin/redeem-codes/${idREDACTED`));
+    return;
+  REDACTED
+  if (sub === "batch-delete") {
+    printJson(await adminRequest("POST", "/admin/redeem-codes/batch-delete", { ids: parseIds(args.flags.ids) REDACTED));
+    return;
+  REDACTED
+  if (sub === "expire") {
+    const id = args.positional[2];
+    if (!id) throw new Error("redeem-codes expire requires <id>");
+    printJson(await adminRequest("POST", `/admin/redeem-codes/${idREDACTED/expire`));
+    return;
+  REDACTED
+  if (sub === "stats") {
+    printJson(await adminRequest("GET", "/admin/redeem-codes/stats"));
+    return;
+  REDACTED
+  throw new Error(`unknown redeem-codes subcommand: ${sub || "(missing)"REDACTED`);
+REDACTED
+
 async function commandCrudResource(args, name, basePath, options = {REDACTED) {
   const sub = args.positional[1];
   const id = args.positional[2];
@@ -590,6 +730,10 @@ async function main() {
   REDACTED
   if (root === "proxies") {
     await commandProxies(args);
+    return;
+  REDACTED
+  if (root === "redeem-codes") {
+    await commandRedeemCodes(args);
     return;
   REDACTED
   if (root === "error-rules") {
