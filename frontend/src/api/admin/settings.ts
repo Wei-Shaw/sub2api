@@ -451,6 +451,9 @@ export interface SystemSettings {
   turnstile_site_key: string;
   turnstile_secret_key_configured: boolean;
   api_key_acl_trust_forwarded_ip: boolean;
+  api_request_ip_blocklist: string[];
+  api_request_ip_block_action: "block" | "ban_user" | string;
+  api_request_ip_block_trust_forwarded_ip: boolean;
 
   // LinuxDo Connect OAuth settings
   linuxdo_connect_enabled: boolean;
@@ -560,7 +563,6 @@ export interface SystemSettings {
   rewrite_message_cache_control: boolean;
   antigravity_user_agent_version: string;
   openai_codex_user_agent: string;
-  openai_allow_claude_code_codex_plugin: boolean;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -707,6 +709,9 @@ export interface UpdateSettingsRequest {
   turnstile_site_key?: string;
   turnstile_secret_key?: string;
   api_key_acl_trust_forwarded_ip?: boolean;
+  api_request_ip_blocklist?: string[];
+  api_request_ip_block_action?: "block" | "ban_user" | string;
+  api_request_ip_block_trust_forwarded_ip?: boolean;
   linuxdo_connect_enabled?: boolean;
   linuxdo_connect_client_id?: string;
   linuxdo_connect_client_secret?: string;
@@ -796,7 +801,6 @@ export interface UpdateSettingsRequest {
   rewrite_message_cache_control?: boolean;
   antigravity_user_agent_version?: string;
   openai_codex_user_agent?: string;
-  openai_allow_claude_code_codex_plugin?: boolean;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;

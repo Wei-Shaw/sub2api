@@ -17,11 +17,13 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -33,7 +35,6 @@ type AdminService interface {
 	// User management
 	ListUsers(ctx context.Context, page, pageSize int, filters UserListFilters, sortBy, sortOrder string) ([]User, int64, error)
 	GetUser(ctx context.Context, id int64) (*User, error)
-	GetUserIncludeDeleted(ctx context.Context, id int64) (*User, error)
 	CreateUser(ctx context.Context, input *CreateUserInput) (*User, error)
 	UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error)
 	DeleteUser(ctx context.Context, id int64) error
@@ -42,6 +43,7 @@ type AdminService interface {
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 	GetUserRPMStatus(ctx context.Context, userID int64) (*UserRPMStatus, error)
+	ImportAPIRequestIPBlocklistFromDisabledUsers(ctx context.Context) (*ImportAPIRequestIPBlocklistResult, error)
 	// GetUserBalanceHistory returns paginated balance/concurrency change records for a user.
 	// codeType is optional - pass empty string to return all types.
 	// Also returns totalRecharged (sum of all positive balance top-ups).
@@ -129,7 +131,7 @@ type CreateUserInput struct {
 	Password      string
 	Username      string
 	Notes         string
-	Balance       *float64
+	Balance       float64
 	Concurrency   int
 	RPMLimit      int
 	AllowedGroups []int64
@@ -148,6 +150,14 @@ type UpdateUserInput struct {
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
+}
+
+type ImportAPIRequestIPBlocklistResult struct {
+	DisabledUserCount int      `json:"disabled_user_count"`
+	ScannedIPCount    int      `json:"scanned_ip_count"`
+	AddedIPCount      int      `json:"added_ip_count"`
+	TotalIPCount      int      `json:"total_ip_count"`
+	AddedIPs          []string `json:"added_ips"`
 }
 
 type AdminBindAuthIdentityInput struct {
@@ -638,6 +648,112 @@ func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, fi
 	return users, result.Total, nil
 }
 
+func (s *adminServiceImpl) ImportAPIRequestIPBlocklistFromDisabledUsers(ctx context.Context) (*ImportAPIRequestIPBlocklistResult, error) {
+	if s.userRepo == nil || s.settingService == nil || s.entClient == nil {
+		return nil, fmt.Errorf("admin service dependencies are not initialized")
+	}
+
+	const pageSize = 500
+	var disabledUserIDs []int64
+	for page := 1; ; page++ {
+		users, result, err := s.userRepo.ListWithFilters(ctx, pagination.PaginationParams{
+			Page:      page,
+			PageSize:  pageSize,
+			SortBy:    "id",
+			SortOrder: "asc",
+		}, UserListFilters{
+			Status:               StatusDisabled,
+			IncludeSubscriptions: boolPtr(false),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, user := range users {
+			disabledUserIDs = append(disabledUserIDs, user.ID)
+		}
+		if result == nil || page >= result.Pages || len(users) == 0 {
+			break
+		}
+	}
+
+	settings, err := s.settingService.GetAllSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	existing := make(map[string]struct{}, len(settings.APIRequestIPBlocklist))
+	for _, rule := range settings.APIRequestIPBlocklist {
+		rule = strings.TrimSpace(rule)
+		if rule != "" {
+			existing[rule] = struct{}{}
+		}
+	}
+
+	result := &ImportAPIRequestIPBlocklistResult{
+		DisabledUserCount: len(disabledUserIDs),
+	}
+	if len(disabledUserIDs) == 0 {
+		result.TotalIPCount = len(existing)
+		return result, nil
+	}
+
+	scanned := make(map[string]struct{})
+	const chunkSize = 500
+	for start := 0; start < len(disabledUserIDs); start += chunkSize {
+		end := start + chunkSize
+		if end > len(disabledUserIDs) {
+			end = len(disabledUserIDs)
+		}
+		var rows []struct {
+			IPAddress *string `json:"ip_address"`
+		}
+		err := s.entClient.UsageLog.Query().
+			Unique(true).
+			Where(
+				usagelog.UserIDIn(disabledUserIDs[start:end]...),
+				usagelog.IPAddressNotNil(),
+				usagelog.IPAddressNEQ(""),
+			).
+			Select(usagelog.FieldIPAddress).
+			Scan(ctx, &rows)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			if row.IPAddress == nil {
+				continue
+			}
+			raw := strings.TrimSpace(*row.IPAddress)
+			if raw == "" || !ip.ValidateIPPattern(raw) {
+				continue
+			}
+			scanned[raw] = struct{}{}
+			if _, ok := existing[raw]; ok {
+				continue
+			}
+			existing[raw] = struct{}{}
+			result.AddedIPs = append(result.AddedIPs, raw)
+		}
+	}
+
+	sort.Strings(result.AddedIPs)
+	merged := make([]string, 0, len(existing))
+	for rule := range existing {
+		merged = append(merged, rule)
+	}
+	sort.Strings(merged)
+	result.ScannedIPCount = len(scanned)
+	result.AddedIPCount = len(result.AddedIPs)
+	result.TotalIPCount = len(merged)
+	if result.AddedIPCount == 0 {
+		return result, nil
+	}
+	settings.APIRequestIPBlocklist = merged
+	if err := s.settingService.UpdateSettings(ctx, settings); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (s *adminServiceImpl) loadUserGroupRatesOneByOne(ctx context.Context, users []User) {
 	if s.userGroupRateRepo == nil {
 		return
@@ -675,24 +791,13 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 	return user, nil
 }
 
-func (s *adminServiceImpl) GetUserIncludeDeleted(ctx context.Context, id int64) (*User, error) {
-	return s.userRepo.GetByIDIncludeDeleted(ctx, id)
-}
-
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
-	balance := 0.0
-	if input.Balance != nil {
-		balance = *input.Balance
-	} else if s.settingService != nil {
-		balance = s.settingService.GetDefaultBalance(ctx)
-	}
-
 	user := &User{
 		Email:         input.Email,
 		Username:      input.Username,
 		Notes:         input.Notes,
 		Role:          RoleUser, // Always create as regular user, never admin
-		Balance:       balance,
+		Balance:       input.Balance,
 		Concurrency:   input.Concurrency,
 		RPMLimit:      input.RPMLimit,
 		Status:        StatusActive,

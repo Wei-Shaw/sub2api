@@ -49,10 +49,13 @@ type SystemSettings struct {
 	SMTPFromName           string `json:"smtp_from_name"`
 	SMTPUseTLS             bool   `json:"smtp_use_tls"`
 
-	TurnstileEnabled             bool   `json:"turnstile_enabled"`
-	TurnstileSiteKey             string `json:"turnstile_site_key"`
-	TurnstileSecretKeyConfigured bool   `json:"turnstile_secret_key_configured"`
-	APIKeyACLTrustForwardedIP    bool   `json:"api_key_acl_trust_forwarded_ip"`
+	TurnstileEnabled                  bool     `json:"turnstile_enabled"`
+	TurnstileSiteKey                  string   `json:"turnstile_site_key"`
+	TurnstileSecretKeyConfigured      bool     `json:"turnstile_secret_key_configured"`
+	APIKeyACLTrustForwardedIP         bool     `json:"api_key_acl_trust_forwarded_ip"`
+	APIRequestIPBlocklist             []string `json:"api_request_ip_blocklist"`
+	APIRequestIPBlockAction           string   `json:"api_request_ip_block_action"`
+	APIRequestIPBlockTrustForwardedIP bool     `json:"api_request_ip_block_trust_forwarded_ip"`
 
 	LinuxDoConnectEnabled                bool   `json:"linuxdo_connect_enabled"`
 	LinuxDoConnectClientID               string `json:"linuxdo_connect_client_id"`
@@ -185,7 +188,6 @@ type SystemSettings struct {
 	RewriteMessageCacheControl         bool   `json:"rewrite_message_cache_control"`
 	AntigravityUserAgentVersion        string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent               string `json:"openai_codex_user_agent"`
-	OpenAIAllowClaudeCodeCodexPlugin   bool   `json:"openai_allow_claude_code_codex_plugin"`
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`

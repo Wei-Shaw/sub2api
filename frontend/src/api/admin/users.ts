@@ -44,6 +44,14 @@ export interface AdminBoundAuthIdentity {
   channel?: AdminBoundAuthIdentityChannel | null
 }
 
+export interface ImportAPIRequestIPBlocklistResult {
+  disabled_user_count: number
+  scanned_ip_count: number
+  added_ip_count: number
+  total_ip_count: number
+  added_ips: string[]
+}
+
 /**
  * List all users with pagination
  * @param page - Page number (default: 1)
@@ -100,12 +108,10 @@ export async function list(
 /**
  * Get user by ID
  * @param id - User ID
- * @param includeDeleted - Whether to include soft-deleted users
  * @returns User details
  */
-export async function getById(id: number, includeDeleted = false): Promise<AdminUser> {
-  const url = includeDeleted ? `/admin/users/${id}?include_deleted=true` : `/admin/users/${id}`
-  const { data } = await apiClient.get<AdminUser>(url)
+export async function getById(id: number): Promise<AdminUser> {
+  const { data } = await apiClient.get<AdminUser>(`/admin/users/${id}`)
   return data
 }
 
@@ -117,11 +123,8 @@ export async function getById(id: number, includeDeleted = false): Promise<Admin
 export async function create(userData: {
   email: string
   password: string
-  username?: string
-  notes?: string
   balance?: number
   concurrency?: number
-  rpm_limit?: number
   allowed_groups?: number[] | null
 }): Promise<AdminUser> {
   const { data } = await apiClient.post<AdminUser>('/admin/users', userData)
@@ -189,6 +192,13 @@ export async function updateConcurrency(id: number, concurrency: number): Promis
  */
 export async function toggleStatus(id: number, status: 'active' | 'disabled'): Promise<AdminUser> {
   return update(id, { status })
+}
+
+export async function importDisabledUsageIpsToApiBlocklist(): Promise<ImportAPIRequestIPBlocklistResult> {
+  const { data } = await apiClient.post<ImportAPIRequestIPBlocklistResult>(
+    '/admin/users/import-disabled-usage-ips-to-api-blocklist'
+  )
+  return data
 }
 
 /**
@@ -383,6 +393,7 @@ export const usersAPI = {
   updateBalance,
   updateConcurrency,
   toggleStatus,
+  importDisabledUsageIpsToApiBlocklist,
   getUserApiKeys,
   getUserUsageStats,
   getUserBalanceHistory,
