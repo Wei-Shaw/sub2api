@@ -170,6 +170,11 @@ func FallbackGroupIDOnInvalidRequest(v int64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFallbackGroupIDOnInvalidRequest, v))
 }
 
+// CodexOfficialOnly applies equality check predicate on the "codex_official_only" field. It's identical to CodexOfficialOnlyEQ.
+func CodexOfficialOnly(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCodexOfficialOnly, v))
+}
+
 // ModelRoutingEnabled applies equality check predicate on the "model_routing_enabled" field. It's identical to ModelRoutingEnabledEQ.
 func ModelRoutingEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldModelRoutingEnabled, v))
@@ -1233,6 +1238,16 @@ func FallbackGroupIDOnInvalidRequestIsNil() predicate.Group {
 // FallbackGroupIDOnInvalidRequestNotNil applies the NotNil predicate on the "fallback_group_id_on_invalid_request" field.
 func FallbackGroupIDOnInvalidRequestNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldFallbackGroupIDOnInvalidRequest))
+}
+
+// CodexOfficialOnlyEQ applies the EQ predicate on the "codex_official_only" field.
+func CodexOfficialOnlyEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCodexOfficialOnly, v))
+}
+
+// CodexOfficialOnlyNEQ applies the NEQ predicate on the "codex_official_only" field.
+func CodexOfficialOnlyNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldCodexOfficialOnly, v))
 }
 
 // ModelRoutingIsNil applies the IsNil predicate on the "model_routing" field.

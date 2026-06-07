@@ -22,6 +22,10 @@ func (s *stubCodexRestrictionDetector) Detect(_ *gin.Context, _ *Account, _ []st
 	return s.result
 }
 
+func (s *stubCodexRestrictionDetector) DetectPolicy(_ *gin.Context, _ bool, _ []string, _ []string) CodexClientRestrictionDetectionResult {
+	return s.result
+}
+
 func TestOpenAIGatewayService_GetCodexClientRestrictionDetector(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

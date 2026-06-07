@@ -1060,6 +1060,81 @@
           </div>
         </div>
 
+        <!-- Codex 官方客户端限制（仅 openai 平台） -->
+        <div v-if="createForm.platform === 'openai'" class="border-t pt-4">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.openaiCodex.title") }}
+            </label>
+            <div class="group relative inline-flex">
+              <Icon
+                name="questionCircle"
+                size="sm"
+                :stroke-width="2"
+                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              />
+              <div
+                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
+              >
+                <div
+                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
+                >
+                  <p class="text-xs leading-relaxed text-gray-300">
+                    {{ t("admin.groups.openaiCodex.tooltip") }}
+                  </p>
+                  <div
+                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="
+                createForm.codex_official_only =
+                  !createForm.codex_official_only
+              "
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                createForm.codex_official_only
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  createForm.codex_official_only
+                    ? 'translate-x-6'
+                    : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                createForm.codex_official_only
+                  ? t("admin.groups.openaiCodex.enabled")
+                  : t("admin.groups.openaiCodex.disabled")
+              }}
+            </span>
+          </div>
+          <div v-if="createForm.codex_official_only" class="mt-3">
+            <label class="input-label">{{
+              t("admin.groups.openaiCodex.fallbackGroup")
+            }}</label>
+            <Select
+              v-model="createForm.fallback_group_id"
+              :options="openAICodexFallbackGroupOptions"
+              :placeholder="t('admin.groups.openaiCodex.noFallback')"
+            />
+            <p class="input-hint">
+              {{ t("admin.groups.openaiCodex.fallbackHint") }}
+            </p>
+          </div>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -2344,6 +2419,81 @@
           </div>
         </div>
 
+        <!-- Codex 官方客户端限制（仅 openai 平台） -->
+        <div v-if="editForm.platform === 'openai'" class="border-t pt-4">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.openaiCodex.title") }}
+            </label>
+            <div class="group relative inline-flex">
+              <Icon
+                name="questionCircle"
+                size="sm"
+                :stroke-width="2"
+                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              />
+              <div
+                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
+              >
+                <div
+                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
+                >
+                  <p class="text-xs leading-relaxed text-gray-300">
+                    {{ t("admin.groups.openaiCodex.tooltip") }}
+                  </p>
+                  <div
+                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="
+                editForm.codex_official_only =
+                  !editForm.codex_official_only
+              "
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                editForm.codex_official_only
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  editForm.codex_official_only
+                    ? 'translate-x-6'
+                    : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                editForm.codex_official_only
+                  ? t("admin.groups.openaiCodex.enabled")
+                  : t("admin.groups.openaiCodex.disabled")
+              }}
+            </span>
+          </div>
+          <div v-if="editForm.codex_official_only" class="mt-3">
+            <label class="input-label">{{
+              t("admin.groups.openaiCodex.fallbackGroup")
+            }}</label>
+            <Select
+              v-model="editForm.fallback_group_id"
+              :options="openAICodexFallbackGroupOptionsForEdit"
+              :placeholder="t('admin.groups.openaiCodex.noFallback')"
+            />
+            <p class="input-hint">
+              {{ t("admin.groups.openaiCodex.fallbackHint") }}
+            </p>
+          </div>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="editForm.platform === 'openai'"
@@ -3194,6 +3344,42 @@ const fallbackGroupOptionsForEdit = computed(() => {
   return options;
 });
 
+// OpenAI Codex 降级分组选项（创建时）- 仅包含 openai 平台且未启用 codex_official_only 的分组
+const openAICodexFallbackGroupOptions = computed(() => {
+  const options: { value: number | null; label: string }[] = [
+    { value: null, label: t("admin.groups.openaiCodex.noFallback") },
+  ];
+  const eligibleGroups = groups.value.filter(
+    (g) =>
+      g.platform === "openai" &&
+      !g.codex_official_only &&
+      g.status === "active",
+  );
+  eligibleGroups.forEach((g) => {
+    options.push({ value: g.id, label: g.name });
+  });
+  return options;
+});
+
+// OpenAI Codex 降级分组选项（编辑时）- 排除自身
+const openAICodexFallbackGroupOptionsForEdit = computed(() => {
+  const options: { value: number | null; label: string }[] = [
+    { value: null, label: t("admin.groups.openaiCodex.noFallback") },
+  ];
+  const currentId = editingGroup.value?.id;
+  const eligibleGroups = groups.value.filter(
+    (g) =>
+      g.platform === "openai" &&
+      !g.codex_official_only &&
+      g.status === "active" &&
+      g.id !== currentId,
+  );
+  eligibleGroups.forEach((g) => {
+    options.push({ value: g.id, label: g.name });
+  });
+  return options;
+});
+
 // 无效请求兜底分组选项（创建时）- 仅包含 anthropic 平台、非订阅且未配置兜底的分组
 const invalidRequestFallbackOptions = computed(() => {
   const options: { value: number | null; label: string }[] = [
@@ -3344,6 +3530,8 @@ const createForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  // OpenAI Codex 官方客户端限制（仅 openai 平台使用）
+  codex_official_only: false,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
@@ -3675,6 +3863,8 @@ const editForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  // OpenAI Codex 官方客户端限制（仅 openai 平台使用）
+  codex_official_only: false,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   default_mapped_model: '',
@@ -3925,6 +4115,7 @@ const closeCreateModal = () => {
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
+  createForm.codex_official_only = false;
   resetMessagesDispatchFormState(createForm);
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
@@ -4052,6 +4243,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
     group.fallback_group_id_on_invalid_request;
+  editForm.codex_official_only = group.codex_official_only || false;
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
     group.messages_dispatch_model_config,
   );
@@ -4234,11 +4426,16 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
+    createForm.fallback_group_id = null;
+    if (newVal !== "anthropic") {
+      createForm.claude_code_only = false;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(createForm);
+      createForm.codex_official_only = false;
     }
     if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
       createForm.require_oauth_only = false;
@@ -4252,35 +4449,34 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
+    if (editingGroup.value && newVal !== editingGroup.value.platform) {
+      editForm.fallback_group_id = null;
+    }
+    if (newVal !== "anthropic") {
+      editForm.claude_code_only = false;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(editForm);
+      editForm.codex_official_only = false;
     }
     if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
       editForm.require_oauth_only = false;
       editForm.require_privacy_set = false;
     }
     if (editingGroup.value) {
-      resetModelsListState(editModelsListState, editForm.platform === editingGroup.value.platform ? editingGroup.value.models_list_config : undefined);
+      resetModelsListState(
+        editModelsListState,
+        editForm.platform === editingGroup.value.platform
+          ? editingGroup.value.models_list_config
+          : undefined,
+      );
       loadModelsListCandidates("edit", editingGroup.value.id, newVal);
     }
   },
 );
-
-watch(
-  () => editForm.platform,
-  (newVal) => {
-    if (!['anthropic', 'antigravity'].includes(newVal)) {
-      editForm.fallback_group_id_on_invalid_request = null
-    }
-    if (newVal !== 'openai') {
-      editForm.allow_messages_dispatch = false
-      editForm.default_mapped_model = ''
-    }
-  }
-)
 
 // 点击外部关闭账号搜索下拉框
 const handleClickOutside = (event: MouseEvent) => {

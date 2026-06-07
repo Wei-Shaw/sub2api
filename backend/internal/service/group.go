@@ -34,9 +34,11 @@ type Group struct {
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
 
-	// Claude Code 客户端限制
+	// 客户端限制（Anthropic Claude Code / OpenAI Codex）
 	ClaudeCodeOnly  bool
 	FallbackGroupID *int64
+	// OpenAI Codex 官方客户端限制（仅 openai 平台使用）
+	CodexOfficialOnly bool
 	// 无效请求兜底分组（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 

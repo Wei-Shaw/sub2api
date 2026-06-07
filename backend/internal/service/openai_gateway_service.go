@@ -913,14 +913,8 @@ func SnapshotOpenAICompatibilityFallbackMetrics() OpenAICompatibilityFallbackMet
 
 func (s *OpenAIGatewayService) detectCodexClientRestriction(c *gin.Context, account *Account) CodexClientRestrictionDetectionResult {
 	var globalAllowedClients []string
-	if account != nil && account.IsCodexCLIOnlyEnabled() && s != nil && s.settingService != nil {
-		ctx := context.Background()
-		if c != nil && c.Request != nil {
-			ctx = c.Request.Context()
-		}
-		if s.settingService.IsOpenAIAllowClaudeCodeCodexPluginEnabled(ctx) {
-			globalAllowedClients = []string{openai.AllowedClientClaudeCode}
-		}
+	if account != nil && account.IsCodexCLIOnlyEnabled() {
+		globalAllowedClients = s.codexRestrictionGlobalAllowedClients(c)
 	}
 	return s.getCodexClientRestrictionDetector().Detect(c, account, globalAllowedClients)
 }

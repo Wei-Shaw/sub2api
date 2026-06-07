@@ -461,6 +461,14 @@ func (s *APIKeyService) GetByID(ctx context.Context, id int64) (*APIKey, error) 
 	return apiKey, nil
 }
 
+// GetGroupByIDLite returns a lightweight group snapshot for runtime fallback decisions.
+func (s *APIKeyService) GetGroupByIDLite(ctx context.Context, id int64) (*Group, error) {
+	if s == nil || s.groupRepo == nil {
+		return nil, fmt.Errorf("group repository is not configured")
+	}
+	return s.groupRepo.GetByIDLite(ctx, id)
+}
+
 // GetByKey 根据Key字符串获取API Key（用于认证）
 func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, error) {
 	cacheKey := s.authCacheKey(key)

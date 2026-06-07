@@ -33,6 +33,7 @@ type CodexClientRestrictionDetectionResult struct {
 // CodexClientRestrictionDetector 定义 codex_cli_only 统一检测入口。
 type CodexClientRestrictionDetector interface {
 	Detect(c *gin.Context, account *Account, globalAllowedClients []string) CodexClientRestrictionDetectionResult
+	DetectPolicy(c *gin.Context, enabled bool, allowedClients []string, globalAllowedClients []string) CodexClientRestrictionDetectionResult
 }
 
 // OpenAICodexClientRestrictionDetector 为 OpenAI OAuth codex_cli_only 的默认实现。
@@ -52,7 +53,17 @@ func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *A
 			Reason:  CodexClientRestrictionReasonDisabled,
 		}
 	}
+	return d.DetectPolicy(c, true, account.GetCodexCLIOnlyAllowedClients(), globalAllowedClients)
+}
 
+func (d *OpenAICodexClientRestrictionDetector) DetectPolicy(c *gin.Context, enabled bool, allowedClients []string, globalAllowedClients []string) CodexClientRestrictionDetectionResult {
+	if !enabled {
+		return CodexClientRestrictionDetectionResult{
+			Enabled: false,
+			Matched: false,
+			Reason:  CodexClientRestrictionReasonDisabled,
+		}
+	}
 	if d != nil && d.cfg != nil && d.cfg.Gateway.ForceCodexCLI {
 		return CodexClientRestrictionDetectionResult{
 			Enabled: true,
@@ -82,9 +93,9 @@ func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *A
 		}
 	}
 
-	// 官方客户端白名单未命中时，先尝试账号级额外放行的命名客户端预设（如 Claude Code codex 插件）。
-	if allowed := account.GetCodexCLIOnlyAllowedClients(); len(allowed) > 0 &&
-		openai.MatchAllowedClients(userAgent, originator, allowed) {
+	// 官方客户端白名单未命中时，先尝试策略级额外放行的命名客户端预设（如账号级 Claude Code codex 插件）。
+	if len(allowedClients) > 0 &&
+		openai.MatchAllowedClients(userAgent, originator, allowedClients) {
 		return CodexClientRestrictionDetectionResult{
 			Enabled: true,
 			Matched: true,

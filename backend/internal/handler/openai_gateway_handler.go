@@ -129,6 +129,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
+	if effectiveAPIKey, rejected := h.applyOpenAIGroupCodexOfficialRestriction(c, apiKey, false); rejected {
+		return
+	} else {
+		apiKey = effectiveAPIKey
+	}
 	reqLog := requestLogger(
 		c,
 		"handler.openai_gateway.responses",
@@ -599,6 +604,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	if !ok {
 		h.anthropicErrorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
+	}
+	if effectiveAPIKey, rejected := h.applyOpenAIGroupCodexOfficialRestriction(c, apiKey, true); rejected {
+		return
+	} else {
+		apiKey = effectiveAPIKey
 	}
 	reqLog := requestLogger(
 		c,
@@ -1148,6 +1158,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if !ok {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
+	}
+	if effectiveAPIKey, rejected := h.applyOpenAIGroupCodexOfficialRestriction(c, apiKey, false); rejected {
+		return
+	} else {
+		apiKey = effectiveAPIKey
 	}
 
 	reqLog := requestLogger(

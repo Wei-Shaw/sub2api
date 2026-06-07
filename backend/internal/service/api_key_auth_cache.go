@@ -72,6 +72,7 @@ type APIKeyAuthGroupSnapshot struct {
 	ImagePrice4K                    *float64 `json:"image_price_4k,omitempty"`
 	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id,omitempty"`
+	CodexOfficialOnly               bool     `json:"codex_official_only"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request,omitempty"`
 
 	// Model routing is used by gateway account selection, so it must be part of auth cache snapshot.

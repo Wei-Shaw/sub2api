@@ -259,3 +259,57 @@ func TestOpenAICodexClientRestrictionDetector_Detect_AllowedClients(t *testing.T
 		require.Equal(t, CodexClientRestrictionReasonMatchedAllowedClient, result.Reason)
 	})
 }
+
+func TestOpenAICodexClientRestrictionDetector_DetectPolicy_GroupCodexOfficialOnly(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const (
+		claudeCodeUA         = "Claude Code/0.5.0 (Macos 15.5; arm64) iTerm2.app (Claude Code; 1.0.4)"
+		claudeCodeOriginator = "Claude Code"
+	)
+
+	t.Run("disabled policy bypasses", func(t *testing.T) {
+		detector := NewOpenAICodexClientRestrictionDetector(nil)
+
+		result := detector.DetectPolicy(newCodexDetectorTestContext("curl/8.0", "my_client"), false, nil, nil)
+
+		require.False(t, result.Enabled)
+		require.False(t, result.Matched)
+		require.Equal(t, CodexClientRestrictionReasonDisabled, result.Reason)
+	})
+
+	t.Run("enabled policy rejects non official client", func(t *testing.T) {
+		detector := NewOpenAICodexClientRestrictionDetector(nil)
+
+		result := detector.DetectPolicy(newCodexDetectorTestContext("curl/8.0", "my_client"), true, nil, nil)
+
+		require.True(t, result.Enabled)
+		require.False(t, result.Matched)
+		require.Equal(t, CodexClientRestrictionReasonNotMatchedUA, result.Reason)
+	})
+
+	t.Run("enabled policy allows official codex user agent", func(t *testing.T) {
+		detector := NewOpenAICodexClientRestrictionDetector(nil)
+
+		result := detector.DetectPolicy(newCodexDetectorTestContext("codex_cli_rs/0.99.0", ""), true, nil, nil)
+
+		require.True(t, result.Enabled)
+		require.True(t, result.Matched)
+		require.Equal(t, CodexClientRestrictionReasonMatchedUA, result.Reason)
+	})
+
+	t.Run("enabled policy allows global claude code preset", func(t *testing.T) {
+		detector := NewOpenAICodexClientRestrictionDetector(nil)
+
+		result := detector.DetectPolicy(
+			newCodexDetectorTestContext(claudeCodeUA, claudeCodeOriginator),
+			true,
+			nil,
+			[]string{"claude_code"},
+		)
+
+		require.True(t, result.Enabled)
+		require.True(t, result.Matched)
+		require.Equal(t, CodexClientRestrictionReasonMatchedGlobalAllowedClient, result.Reason)
+	})
+}

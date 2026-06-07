@@ -206,7 +206,8 @@ type CreateGroupInput struct {
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
 	ClaudeCodeOnly       bool   // 仅允许 Claude Code 客户端
-	FallbackGroupID      *int64 // 降级分组 ID
+	FallbackGroupID      *int64 // 客户端限制降级分组 ID（Claude Code / OpenAI Codex）
+	CodexOfficialOnly    bool   // OpenAI 分组仅允许 Codex 官方客户端
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -247,7 +248,8 @@ type UpdateGroupInput struct {
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
 	ClaudeCodeOnly       *bool  // 仅允许 Claude Code 客户端
-	FallbackGroupID      *int64 // 降级分组 ID
+	FallbackGroupID      *int64 // 客户端限制降级分组 ID（Claude Code / OpenAI Codex）
+	CodexOfficialOnly    *bool  // OpenAI 分组仅允许 Codex 官方客户端
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -1779,9 +1781,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		imageRateMultiplier = *input.ImageRateMultiplier
 	}
 
-	// 校验降级分组
+	// 校验客户端限制降级分组
 	if input.FallbackGroupID != nil {
-		if err := s.validateFallbackGroup(ctx, 0, *input.FallbackGroupID); err != nil {
+		if err := s.validateClientRestrictionFallbackGroup(ctx, 0, platform, *input.FallbackGroupID); err != nil {
 			return nil, err
 		}
 	}
@@ -1853,6 +1855,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ImagePrice4K:                    imagePrice4K,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
+		CodexOfficialOnly:               input.CodexOfficialOnly,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
 		ModelRouting:                    input.ModelRouting,
 		MCPXMLInject:                    mcpXMLInject,
@@ -1866,6 +1869,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RPMLimit:                        input.RPMLimit,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	sanitizeGroupCodexOfficialRestrictionFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 	}
@@ -1922,6 +1926,10 @@ func normalizePrice(price *float64) *float64 {
 // currentGroupID: 当前分组 ID（新建时为 0）
 // fallbackGroupID: 降级分组 ID
 func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGroupID, fallbackGroupID int64) error {
+	return s.validateClientRestrictionFallbackGroup(ctx, currentGroupID, "", fallbackGroupID)
+}
+
+func (s *adminServiceImpl) validateClientRestrictionFallbackGroup(ctx context.Context, currentGroupID int64, platform string, fallbackGroupID int64) error {
 	// 不能将自己设置为降级分组
 	if currentGroupID > 0 && currentGroupID == fallbackGroupID {
 		return fmt.Errorf("cannot set self as fallback group")
@@ -1944,9 +1952,17 @@ func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGro
 			return fmt.Errorf("fallback group not found: %w", err)
 		}
 
-		// 降级分组不能启用 claude_code_only，否则会造成死循环
-		if nextID == fallbackGroupID && fallbackGroup.ClaudeCodeOnly {
-			return fmt.Errorf("fallback group cannot have claude_code_only enabled")
+		if nextID == fallbackGroupID {
+			if platform == PlatformOpenAI {
+				if fallbackGroup.Platform != PlatformOpenAI {
+					return fmt.Errorf("fallback group must be openai platform")
+				}
+				if fallbackGroup.CodexOfficialOnly {
+					return fmt.Errorf("fallback group cannot have codex_official_only enabled")
+				}
+			} else if fallbackGroup.ClaudeCodeOnly {
+				return fmt.Errorf("fallback group cannot have claude_code_only enabled")
+			}
 		}
 
 		if fallbackGroup.FallbackGroupID == nil {
@@ -2047,14 +2063,14 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.ImagePrice4K = normalizePrice(input.ImagePrice4K)
 	}
 
-	// Claude Code 客户端限制
+	// 客户端限制（Anthropic Claude Code / OpenAI Codex）
 	if input.ClaudeCodeOnly != nil {
 		group.ClaudeCodeOnly = *input.ClaudeCodeOnly
 	}
 	if input.FallbackGroupID != nil {
 		// 校验降级分组
 		if *input.FallbackGroupID > 0 {
-			if err := s.validateFallbackGroup(ctx, id, *input.FallbackGroupID); err != nil {
+			if err := s.validateClientRestrictionFallbackGroup(ctx, id, group.Platform, *input.FallbackGroupID); err != nil {
 				return nil, err
 			}
 			group.FallbackGroupID = input.FallbackGroupID
@@ -2062,6 +2078,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			// 传入 0 或负数表示清除降级分组
 			group.FallbackGroupID = nil
 		}
+	}
+	if input.CodexOfficialOnly != nil {
+		group.CodexOfficialOnly = *input.CodexOfficialOnly
 	}
 	fallbackOnInvalidRequest := group.FallbackGroupIDOnInvalidRequest
 	if input.FallbackGroupIDOnInvalidRequest != nil {
@@ -2117,6 +2136,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.RPMLimit = *input.RPMLimit
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	sanitizeGroupCodexOfficialRestrictionFields(group)
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err

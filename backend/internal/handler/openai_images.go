@@ -37,6 +37,11 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
+	if effectiveAPIKey, rejected := h.applyOpenAIGroupCodexOfficialRestriction(c, apiKey, false); rejected {
+		return
+	} else {
+		apiKey = effectiveAPIKey
+	}
 	reqLog := requestLogger(
 		c,
 		"handler.openai_gateway.images",

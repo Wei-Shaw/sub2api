@@ -572,6 +572,32 @@ func TestAdminService_ValidateFallbackGroup_DetectsCycle(t *testing.T) {
 	require.Contains(t, err.Error(), "fallback group cycle")
 }
 
+func TestAdminService_CreateGroup_OpenAICodexFallbackRejectsCodexOnlyFallback(t *testing.T) {
+	fallbackID := int64(10)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			fallbackID: {
+				ID:                fallbackID,
+				Platform:          PlatformOpenAI,
+				Status:            StatusActive,
+				CodexOfficialOnly: true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:              "openai-codex-only",
+		Platform:          PlatformOpenAI,
+		RateMultiplier:    1.0,
+		CodexOfficialOnly: true,
+		FallbackGroupID:   &fallbackID,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group cannot have codex_official_only enabled")
+	require.Nil(t, repo.created)
+}
+
 type groupRepoStubForFallbackCycle struct {
 	groups map[int64]*Group
 }
