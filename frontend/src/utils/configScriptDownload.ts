@@ -1,6 +1,7 @@
 import type { GroupPlatform } from '@/types'
 
 export const CONFIG_SCRIPT_SITE_NAME = 'look2eye'
+const CONFIG_SCRIPT_BASE_URL = 'https://api.look2eye.com'
 
 export type ConfigScriptClient = 'codex' | 'claude' | 'opencode'
 export type ConfigScriptOS = 'mac' | 'win'
@@ -270,7 +271,7 @@ sandbox = "elevated"
 
 function buildCodexShellScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
   const siteName = input.siteName
-  const baseUrl = resolveBaseUrl(input.baseUrl)
+  const baseUrl = CONFIG_SCRIPT_BASE_URL
   const template = codexConfigTemplate(input)
 
   return `#!/usr/bin/env sh
@@ -498,7 +499,7 @@ stop_codex_processes
 
 function buildCodexPowerShellPayload(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
   const siteName = input.siteName
-  const baseUrl = resolveBaseUrl(input.baseUrl)
+  const baseUrl = CONFIG_SCRIPT_BASE_URL
   const template = codexConfigTemplate(input)
 
   return `$ErrorActionPreference = "Stop"
@@ -704,10 +705,8 @@ endlocal & exit /b %LOOK2EYE_CODEX_EXIT%
 `
 }
 
-function resolveClaudeBase(input: Required<Pick<ConfigScriptInput, 'baseUrl'>> & Pick<ConfigScriptInput, 'platform'>): string {
-  return input.platform === 'antigravity'
-    ? resolveAntigravityBase(input.baseUrl)
-    : resolveBaseUrl(input.baseUrl)
+function resolveClaudeBase(_input: Required<Pick<ConfigScriptInput, 'baseUrl'>> & Pick<ConfigScriptInput, 'platform'>): string {
+  return CONFIG_SCRIPT_BASE_URL
 }
 
 function buildClaudeShellScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>> & Pick<ConfigScriptInput, 'platform'>): string {
@@ -981,7 +980,7 @@ ${psScript}`
 
 function buildOpenCodeShellScript(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
   const siteName = input.siteName
-  const baseUrl = resolveBaseUrl(input.baseUrl)
+  const baseUrl = CONFIG_SCRIPT_BASE_URL
 
   return `#!/usr/bin/env sh
 set -eu
@@ -1121,7 +1120,7 @@ echo "Done. ${siteName} OpenCode config has been updated."
 
 function buildOpenCodePowerShellPayload(input: Required<Pick<ConfigScriptInput, 'baseUrl' | 'apiKey' | 'siteName'>>): string {
   const siteName = input.siteName
-  const baseUrl = resolveBaseUrl(input.baseUrl)
+  const baseUrl = CONFIG_SCRIPT_BASE_URL
 
   return `$ErrorActionPreference = "Stop"
 
