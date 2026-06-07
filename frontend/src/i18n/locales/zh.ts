@@ -700,6 +700,7 @@ export default {
     created: '创建时间',
     copyToClipboard: '复制到剪贴板',
     copied: '已复制！',
+    configScript: '配置脚本',
     importToCcSwitch: '导入到 CCS',
     enable: '启用',
     disable: '禁用',
@@ -731,6 +732,16 @@ export default {
     quota: '额度',
     lastUsedAt: '上次使用时间',
     useKey: '使用密钥',
+    configScriptMenu: {
+      codexCli: 'Codex CLI',
+      claudeCode: 'Claude Code',
+      opencode: 'OpenCode',
+      hintMac: 'macOS 下载 .sh；建议在终端执行 sh ~/Downloads/脚本名.sh，或 chmod +x 后运行。',
+      hintWindows: 'Windows 下载 .bat；下载后双击或在 CMD 中运行。',
+      unsupportedClient: '当前分组不支持此客户端配置脚本',
+      downloadStarted: '配置脚本已开始下载',
+      downloadFailed: '下载配置脚本失败'
+    },
     useKeyModal: {
       title: '使用 API 密钥',
       description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行。',

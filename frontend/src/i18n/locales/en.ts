@@ -701,6 +701,7 @@ export default {
     created: 'Created',
     copyToClipboard: 'Copy to clipboard',
     copied: 'Copied!',
+    configScript: 'Config Script',
     importToCcSwitch: 'Import to CCS',
     enable: 'Enable',
     disable: 'Disable',
@@ -732,6 +733,16 @@ export default {
     quota: 'Quota',
     lastUsedAt: 'Last Used',
     useKey: 'Use Key',
+    configScriptMenu: {
+      codexCli: 'Codex CLI',
+      claudeCode: 'Claude Code',
+      opencode: 'OpenCode',
+      hintMac: 'macOS downloads .sh. Run sh ~/Downloads/script-name.sh in terminal, or chmod +x before running.',
+      hintWindows: 'Windows downloads .bat. Double-click it or run it in CMD after downloading.',
+      unsupportedClient: 'This group does not support the selected client config script',
+      downloadStarted: 'Config script download started',
+      downloadFailed: 'Failed to download config script'
+    },
     useKeyModal: {
       title: 'Use API Key',
       description:
