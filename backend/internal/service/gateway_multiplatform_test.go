@@ -180,6 +180,9 @@ func (m *mockAccountRepoForPlatform) ClearModelRateLimits(ctx context.Context, i
 func (m *mockAccountRepoForPlatform) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {
 	return nil
 }
+func (m *mockAccountRepoForPlatform) UpdateSessionWindowEnd(ctx context.Context, id int64, end time.Time) error {
+	return nil
+}
 func (m *mockAccountRepoForPlatform) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
 	return nil
 }

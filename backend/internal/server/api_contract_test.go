@@ -1795,6 +1795,10 @@ func (s *stubAccountRepo) UpdateSessionWindow(ctx context.Context, id int64, sta
 	return errors.New("not implemented")
 }
 
+func (s *stubAccountRepo) UpdateSessionWindowEnd(ctx context.Context, id int64, end time.Time) error {
+	return errors.New("not implemented")
+}
+
 func (s *stubAccountRepo) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
 	return errors.New("not implemented")
 }

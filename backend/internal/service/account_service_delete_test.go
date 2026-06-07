@@ -191,6 +191,10 @@ func (s *accountRepoStub) UpdateSessionWindow(ctx context.Context, id int64, sta
 	panic("unexpected UpdateSessionWindow call")
 }
 
+func (s *accountRepoStub) UpdateSessionWindowEnd(ctx context.Context, id int64, end time.Time) error {
+	panic("unexpected UpdateSessionWindowEnd call")
+}
+
 func (s *accountRepoStub) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
 	panic("unexpected UpdateExtra call")
 }
