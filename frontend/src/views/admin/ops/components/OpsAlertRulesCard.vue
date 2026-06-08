@@ -145,6 +145,24 @@ const metricDefinitions = computed(() => {
       unit: '%'
     },
     {
+      type: 'p95_latency_ms',
+      group: 'system',
+      label: t('admin.ops.alertRules.metrics.p95'),
+      description: t('admin.ops.alertRules.metricDescriptions.p95'),
+      recommendedOperator: '>',
+      recommendedThreshold: 2000,
+      unit: 'ms'
+    },
+    {
+      type: 'p99_latency_ms',
+      group: 'system',
+      label: t('admin.ops.alertRules.metrics.p99'),
+      description: t('admin.ops.alertRules.metricDescriptions.p99'),
+      recommendedOperator: '>',
+      recommendedThreshold: 3000,
+      unit: 'ms'
+    },
+    {
       type: 'cpu_usage_percent',
       group: 'system',
       label: t('admin.ops.alertRules.metrics.cpu'),
@@ -238,6 +256,40 @@ const metricDefinitions = computed(() => {
       group: 'account',
       label: t('admin.ops.alertRules.metrics.overloadAccountCount'),
       description: t('admin.ops.alertRules.metricDescriptions.overloadAccountCount'),
+      recommendedOperator: '>',
+      recommendedThreshold: 0
+    },
+    {
+      type: 'account_available_count',
+      group: 'account',
+      label: t('admin.ops.alertRules.metrics.accountAvailableCount'),
+      description: t('admin.ops.alertRules.metricDescriptions.accountAvailableCount'),
+      recommendedOperator: '<',
+      recommendedThreshold: 1
+    },
+    {
+      type: 'account_available_ratio',
+      group: 'account',
+      label: t('admin.ops.alertRules.metrics.accountAvailableRatio'),
+      description: t('admin.ops.alertRules.metricDescriptions.accountAvailableRatio'),
+      recommendedOperator: '<',
+      recommendedThreshold: 30,
+      unit: '%'
+    },
+    {
+      type: 'account_quota_usage_ratio',
+      group: 'account',
+      label: t('admin.ops.alertRules.metrics.accountQuotaUsageRatio'),
+      description: t('admin.ops.alertRules.metricDescriptions.accountQuotaUsageRatio'),
+      recommendedOperator: '>=',
+      recommendedThreshold: 80,
+      unit: '%'
+    },
+    {
+      type: 'account_quota_exhausted_count',
+      group: 'account',
+      label: t('admin.ops.alertRules.metrics.accountQuotaExhaustedCount'),
+      description: t('admin.ops.alertRules.metricDescriptions.accountQuotaExhaustedCount'),
       recommendedOperator: '>',
       recommendedThreshold: 0
     }

@@ -252,3 +252,178 @@ func TestComputeRuleMetricNewIndicators(t *testing.T) {
 		})
 	}
 }
+
+func TestOpsAlertI18NNormalizesLegacyChineseNames(t *testing.T) {
+	t.Parallel()
+
+	rules := normalizeDefaultOpsAlertRules([]*OpsAlertRule{
+		{Name: "错误率过高", Description: "当错误率超过 5% 且持续 5 分钟时触发告警", Severity: "P1"},
+		{Name: "成功率过低", Description: "", Severity: "P0"},
+	})
+	require.Equal(t, "Tỷ lệ lỗi cao", rules[0].Name)
+	require.Equal(t, "Tỷ lệ thành công thấp", rules[1].Name)
+	require.False(t, containsCJK(rules[0].Description))
+	require.Equal(t, "P1: Tỷ lệ lỗi cao", buildOpsAlertTitle(rules[0]))
+
+	events := normalizeDefaultOpsAlertEvents([]*OpsAlertEvent{
+		{Title: "P0: 错误率极高", Description: "错误率极高"},
+	})
+	require.Equal(t, "P0: Tỷ lệ lỗi cực cao", events[0].Title)
+	require.Equal(t, "Tỷ lệ lỗi cực cao", events[0].Description)
+}
+
+func TestAccountQuotaUsagePercentHelpers(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	accounts := []Account{
+		{
+			ID:       1,
+			Name:     "safe",
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeAPIKey,
+			Status:   StatusActive,
+			Extra: map[string]any{
+				"quota_limit": 1000.0,
+				"quota_used":  650.0,
+			},
+		},
+		{
+			ID:       2,
+			Name:     "near-empty",
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeAPIKey,
+			Status:   StatusActive,
+			Extra: map[string]any{
+				"quota_daily_limit": 1000.0,
+				"quota_daily_used":  800.0,
+				"quota_daily_start": now.Format(time.RFC3339),
+			},
+		},
+		{
+			ID:       3,
+			Name:     "oauth-no-quota",
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeOAuth,
+			Status:   StatusActive,
+			Extra: map[string]any{
+				"quota_limit": 1000.0,
+				"quota_used":  1000.0,
+			},
+		},
+	}
+
+	got := maxAccountQuotaUsagePercent(accounts)
+	require.InDelta(t, 80.0, got, 0.0001)
+
+	percent, ok := accountMaxQuotaUsagePercent(accounts[0])
+	require.True(t, ok)
+	require.InDelta(t, 65.0, percent, 0.0001)
+}
+
+func TestComputeRuleMetricAccountInventoryAndQuota(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	groupID := int64(42)
+	accounts := []Account{
+		{
+			ID:          1,
+			Name:        "available-quota-70",
+			Platform:    PlatformAnthropic,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			GroupIDs:    []int64{groupID},
+			Extra: map[string]any{
+				"quota_limit": 1000.0,
+				"quota_used":  700.0,
+			},
+		},
+		{
+			ID:          2,
+			Name:        "exhausted-daily",
+			Platform:    PlatformAnthropic,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			GroupIDs:    []int64{groupID},
+			Extra: map[string]any{
+				"quota_daily_limit": 1000.0,
+				"quota_daily_used":  1000.0,
+				"quota_daily_start": now.Format(time.RFC3339),
+			},
+		},
+		{
+			ID:          3,
+			Name:        "disabled-other-group",
+			Platform:    PlatformAnthropic,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusDisabled,
+			Schedulable: true,
+			GroupIDs:    []int64{99},
+			Extra: map[string]any{
+				"quota_limit": 1000.0,
+				"quota_used":  950.0,
+			},
+		},
+	}
+
+	svc := &OpsAlertEvaluatorService{
+		opsService: &OpsService{
+			listAccountsForOpsHook: func(_ context.Context, platformFilter string, groupIDFilter *int64) ([]Account, error) {
+				return accounts, nil
+			},
+		},
+		opsRepo: &stubOpsRepo{overview: &OpsDashboardOverview{}},
+	}
+	ctx := context.Background()
+	start := now.Add(-5 * time.Minute)
+
+	tests := []struct {
+		metric string
+		group  *int64
+		want   float64
+	}{
+		{metric: "account_available_count", group: &groupID, want: 1},
+		{metric: "account_available_ratio", group: &groupID, want: 50},
+		{metric: "account_quota_usage_ratio", group: &groupID, want: 100},
+		{metric: "account_quota_exhausted_count", group: &groupID, want: 1},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.metric, func(t *testing.T) {
+			t.Parallel()
+			got, ok := svc.computeRuleMetric(ctx, &OpsAlertRule{MetricType: tt.metric}, nil, start, now, PlatformAnthropic, tt.group)
+			require.True(t, ok)
+			require.InDelta(t, tt.want, got, 0.0001)
+		})
+	}
+}
+
+func TestComputeRuleMetricLatencyPercentiles(t *testing.T) {
+	t.Parallel()
+
+	p95 := 2100
+	p99 := 3200
+	svc := &OpsAlertEvaluatorService{
+		opsRepo: &stubOpsRepo{overview: &OpsDashboardOverview{
+			RequestCountSLA: 10,
+			Duration: OpsPercentiles{
+				P95: &p95,
+				P99: &p99,
+			},
+		}},
+	}
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	gotP95, ok := svc.computeRuleMetric(ctx, &OpsAlertRule{MetricType: "p95_latency_ms"}, nil, now.Add(-5*time.Minute), now, "", nil)
+	require.True(t, ok)
+	require.Equal(t, float64(2100), gotP95)
+
+	gotP99, ok := svc.computeRuleMetric(ctx, &OpsAlertRule{MetricType: "p99_latency_ms"}, nil, now.Add(-5*time.Minute), now, "", nil)
+	require.True(t, ok)
+	require.Equal(t, float64(3200), gotP99)
+}

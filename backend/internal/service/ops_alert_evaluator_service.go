@@ -197,6 +197,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 		logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] list rules failed: %v", err)
 		return
 	}
+	rules = normalizeDefaultOpsAlertRules(rules)
 
 	rulesTotal := len(rules)
 	rulesEnabled := 0
@@ -280,7 +281,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				RuleID:         rule.ID,
 				Severity:       strings.TrimSpace(rule.Severity),
 				Status:         OpsAlertStatusFiring,
-				Title:          fmt.Sprintf("%s: %s", strings.TrimSpace(rule.Severity), strings.TrimSpace(rule.Name)),
+				Title:          buildOpsAlertTitle(rule),
 				Description:    buildOpsAlertDescription(rule, metricValue, windowMinutes, scopePlatform, scopeGroupID),
 				MetricValue:    float64Ptr(metricValue),
 				ThresholdValue: float64Ptr(rule.Threshold),
@@ -594,6 +595,36 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 			return 0, false
 		}
 		return float64(n), true
+	case "account_available_count":
+		accounts, ok := s.listAccountsForAlertMetric(ctx, platform, groupID)
+		if !ok {
+			return 0, false
+		}
+		return float64(countAccounts(accounts, func(acc Account) bool { return acc.IsSchedulable() })), true
+	case "account_available_ratio":
+		accounts, ok := s.listAccountsForAlertMetric(ctx, platform, groupID)
+		if !ok {
+			return 0, false
+		}
+		if len(accounts) == 0 {
+			return 0, true
+		}
+		available := countAccounts(accounts, func(acc Account) bool { return acc.IsSchedulable() })
+		return (float64(available) / float64(len(accounts))) * 100, true
+	case "account_quota_usage_ratio":
+		accounts, ok := s.listAccountsForAlertMetric(ctx, platform, groupID)
+		if !ok {
+			return 0, false
+		}
+		return maxAccountQuotaUsagePercent(accounts), true
+	case "account_quota_exhausted_count":
+		accounts, ok := s.listAccountsForAlertMetric(ctx, platform, groupID)
+		if !ok {
+			return 0, false
+		}
+		return float64(countAccounts(accounts, func(acc Account) bool {
+			return acc.IsAPIKeyOrBedrock() && acc.IsQuotaExceeded()
+		})), true
 	}
 
 	overview, err := s.opsRepo.GetDashboardOverview(ctx, &OpsDashboardFilter{
@@ -626,6 +657,16 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 			return 0, false
 		}
 		return overview.UpstreamErrorRate * 100, true
+	case "p95_latency_ms":
+		if overview.Duration.P95 == nil {
+			return 0, false
+		}
+		return float64(*overview.Duration.P95), true
+	case "p99_latency_ms":
+		if overview.Duration.P99 == nil {
+			return 0, false
+		}
+		return float64(*overview.Duration.P99), true
 	default:
 		return 0, false
 	}
@@ -1062,6 +1103,107 @@ func (l *slidingWindowLimiter) Allow(now time.Time) bool {
 	}
 	l.sent = append(l.sent, now)
 	return true
+}
+
+func (s *OpsAlertEvaluatorService) listAccountsForAlertMetric(ctx context.Context, platform string, groupID *int64) ([]Account, bool) {
+	if s == nil || s.opsService == nil {
+		return nil, false
+	}
+	accounts, err := s.opsService.listAllAccountsForOps(ctx, platform, groupID)
+	if err != nil {
+		return nil, false
+	}
+	if groupID == nil || *groupID <= 0 {
+		return accounts, true
+	}
+	filtered := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if opsAlertAccountBelongsToGroup(account, *groupID) {
+			filtered = append(filtered, account)
+		}
+	}
+	return filtered, true
+}
+
+func countAccounts(accounts []Account, condition func(Account) bool) int64 {
+	if len(accounts) == 0 || condition == nil {
+		return 0
+	}
+	var count int64
+	for _, account := range accounts {
+		if condition(account) {
+			count++
+		}
+	}
+	return count
+}
+
+func opsAlertAccountBelongsToGroup(account Account, groupID int64) bool {
+	if groupID <= 0 {
+		return true
+	}
+	for _, id := range account.GroupIDs {
+		if id == groupID {
+			return true
+		}
+	}
+	for _, group := range account.Groups {
+		if group != nil && group.ID == groupID {
+			return true
+		}
+	}
+	for _, accountGroup := range account.AccountGroups {
+		if accountGroup.GroupID == groupID {
+			return true
+		}
+	}
+	return false
+}
+
+func maxAccountQuotaUsagePercent(accounts []Account) float64 {
+	var maxUsage float64
+	for _, account := range accounts {
+		if !account.IsAPIKeyOrBedrock() {
+			continue
+		}
+		if percent, ok := accountMaxQuotaUsagePercent(account); ok && percent > maxUsage {
+			maxUsage = percent
+		}
+	}
+	return maxUsage
+}
+
+func accountMaxQuotaUsagePercent(account Account) (float64, bool) {
+	maxUsage := 0.0
+	hasLimit := false
+	if limit := account.GetQuotaLimit(); limit > 0 {
+		hasLimit = true
+		maxUsage = math.Max(maxUsage, quotaUsagePercent(account.GetQuotaUsed(), limit))
+	}
+	if limit := account.GetQuotaDailyLimit(); limit > 0 {
+		hasLimit = true
+		used := account.GetQuotaDailyUsed()
+		if account.IsDailyQuotaPeriodExpired() {
+			used = 0
+		}
+		maxUsage = math.Max(maxUsage, quotaUsagePercent(used, limit))
+	}
+	if limit := account.GetQuotaWeeklyLimit(); limit > 0 {
+		hasLimit = true
+		used := account.GetQuotaWeeklyUsed()
+		if account.IsWeeklyQuotaPeriodExpired() {
+			used = 0
+		}
+		maxUsage = math.Max(maxUsage, quotaUsagePercent(used, limit))
+	}
+	return maxUsage, hasLimit
+}
+
+func quotaUsagePercent(used, limit float64) float64 {
+	if limit <= 0 || used <= 0 {
+		return 0
+	}
+	return (used / limit) * 100
 }
 
 // computeGroupAvailableRatio returns the available percentage for a group.

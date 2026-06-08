@@ -197,7 +197,7 @@ func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Conte
 		return
 	}
 	adminEmails := s.getAccountQuotaNotifyEmails(ctx)
-	if len(adminEmails) == 0 {
+	if len(adminEmails) == 0 && s.telegramNotifySvc == nil {
 		return
 	}
 
@@ -248,14 +248,23 @@ func (s *BalanceNotifyService) checkQuotaDimCrossings(account *Account, dims []q
 
 // asyncSendQuotaAlert sends quota alert email in a goroutine with panic recovery.
 func (s *BalanceNotifyService) asyncSendQuotaAlert(adminEmails []string, accountID int64, accountName, platform string, dim quotaDim, newUsed, effectiveThreshold float64, siteName string) {
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				slog.Error("panic in quota notification", "recover", r)
-			}
+	if len(adminEmails) > 0 {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("panic in quota notification", "recover", r)
+				}
+			}()
+			s.sendQuotaAlertEmails(adminEmails, accountID, accountName, platform, dim, newUsed, siteName)
 		}()
-		s.sendQuotaAlertEmails(adminEmails, accountID, accountName, platform, dim, newUsed, siteName)
-	}()
+	}
+	if s.telegramNotifySvc != nil {
+		remaining := dim.limit - newUsed
+		if remaining < 0 {
+			remaining = 0
+		}
+		go s.telegramNotifySvc.NotifyAccountQuotaAlert(context.Background(), accountID, accountName, platform, quotaDimLabels[dim.name], newUsed, dim.limit, remaining, dim.threshold, dim.thresholdType)
+	}
 }
 
 // getBalanceNotifyConfig reads global balance notification settings.

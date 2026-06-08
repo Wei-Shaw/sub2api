@@ -624,8 +624,8 @@ INSERT INTO ops_alert_rules (
     window_minutes, sustained_minutes, severity, notify_email, cooldown_minutes,
     created_at, updated_at
 ) VALUES (
-    '错误率过高',
-    '当错误率超过 5% 且持续 5 分钟时触发告警',
+    'Tỷ lệ lỗi cao',
+    'Cảnh báo khi tỷ lệ lỗi vượt 5% trong 5 phút.',
     true, 'error_rate', '>', 5.0, 5, 5, 'P1', true, 20, NOW(), NOW()
 ) ON CONFLICT (name) DO NOTHING;
 
@@ -635,8 +635,8 @@ INSERT INTO ops_alert_rules (
     window_minutes, sustained_minutes, severity, notify_email, cooldown_minutes,
     created_at, updated_at
 ) VALUES (
-    '成功率过低',
-    '当成功率低于 95% 且持续 5 分钟时触发告警（服务可用性下降）',
+    'Tỷ lệ thành công thấp',
+    'Cảnh báo khi tỷ lệ thành công dưới 95% trong 5 phút.',
     true, 'success_rate', '<', 95.0, 5, 5, 'P0', true, 15, NOW(), NOW()
 ) ON CONFLICT (name) DO NOTHING;
 
@@ -646,8 +646,8 @@ INSERT INTO ops_alert_rules (
     window_minutes, sustained_minutes, severity, notify_email, cooldown_minutes,
     created_at, updated_at
 ) VALUES (
-    'P99延迟过高',
-    '当 P99 延迟超过 3000ms 且持续 10 分钟时触发告警',
+    'Độ trễ P99 cao',
+    'Cảnh báo khi độ trễ P99 vượt 3000ms trong 10 phút.',
     true, 'p99_latency_ms', '>', 3000.0, 5, 10, 'P2', true, 30, NOW(), NOW()
 ) ON CONFLICT (name) DO NOTHING;
 
@@ -657,8 +657,8 @@ INSERT INTO ops_alert_rules (
     window_minutes, sustained_minutes, severity, notify_email, cooldown_minutes,
     created_at, updated_at
 ) VALUES (
-    'P95延迟过高',
-    '当 P95 延迟超过 2000ms 且持续 10 分钟时触发告警',
+    'Độ trễ P95 cao',
+    'Cảnh báo khi độ trễ P95 vượt 2000ms trong 10 phút.',
     true, 'p95_latency_ms', '>', 2000.0, 5, 10, 'P2', true, 30, NOW(), NOW()
 ) ON CONFLICT (name) DO NOTHING;
 
@@ -668,8 +668,8 @@ INSERT INTO ops_alert_rules (
     window_minutes, sustained_minutes, severity, notify_email, cooldown_minutes,
     created_at, updated_at
 ) VALUES (
-    'CPU使用率过高',
-    '当 CPU 使用率超过 85% 且持续 10 分钟时触发告警',
+    'CPU sử dụng cao',
+    'Cảnh báo khi CPU vượt 85% trong 10 phút.',
     true, 'cpu_usage_percent', '>', 85.0, 5, 10, 'P2', true, 30, NOW(), NOW()
 ) ON CONFLICT (name) DO NOTHING;
 
@@ -679,8 +679,8 @@ INSERT INTO ops_alert_rules (
     window_minutes, sustained_minutes, severity, notify_email, cooldown_minutes,
     created_at, updated_at
 ) VALUES (
-    '内存使用率过高',
-    '当内存使用率超过 90% 且持续 10 分钟时触发告警（可能导致 OOM）',
+    'Bộ nhớ sử dụng cao',
+    'Cảnh báo khi bộ nhớ vượt 90% trong 10 phút, có nguy cơ OOM.',
     true, 'memory_usage_percent', '>', 90.0, 5, 10, 'P1', true, 20, NOW(), NOW()
 ) ON CONFLICT (name) DO NOTHING;
 
@@ -690,8 +690,8 @@ INSERT INTO ops_alert_rules (
     window_minutes, sustained_minutes, severity, notify_email, cooldown_minutes,
     created_at, updated_at
 ) VALUES (
-    '并发队列积压',
-    '当并发队列深度超过 100 且持续 5 分钟时触发告警（系统处理能力不足）',
+    'Hàng đợi đồng thời bị backlog',
+    'Cảnh báo khi hàng đợi đồng thời vượt 100 trong 5 phút.',
     true, 'concurrency_queue_depth', '>', 100.0, 5, 5, 'P1', true, 20, NOW(), NOW()
 ) ON CONFLICT (name) DO NOTHING;
 
@@ -701,8 +701,8 @@ INSERT INTO ops_alert_rules (
     window_minutes, sustained_minutes, severity, notify_email, cooldown_minutes,
     created_at, updated_at
 ) VALUES (
-    '错误率极高',
-    '当错误率超过 20% 且持续 1 分钟时触发告警（服务严重异常）',
+    'Tỷ lệ lỗi cực cao',
+    'Cảnh báo nghiêm trọng khi tỷ lệ lỗi vượt 20% trong 1 phút.',
     true, 'error_rate', '>', 20.0, 1, 1, 'P0', true, 15, NOW(), NOW()
 ) ON CONFLICT (name) DO NOTHING;
 

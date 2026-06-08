@@ -17,7 +17,11 @@ func (s *OpsService) ListAlertRules(ctx context.Context) ([]*OpsAlertRule, error
 	if s.opsRepo == nil {
 		return []*OpsAlertRule{}, nil
 	}
-	return s.opsRepo.ListAlertRules(ctx)
+	rules, err := s.opsRepo.ListAlertRules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeDefaultOpsAlertRules(rules), nil
 }
 
 func (s *OpsService) CreateAlertRule(ctx context.Context, rule *OpsAlertRule) (*OpsAlertRule, error) {
@@ -85,7 +89,11 @@ func (s *OpsService) ListAlertEvents(ctx context.Context, filter *OpsAlertEventF
 	if s.opsRepo == nil {
 		return []*OpsAlertEvent{}, nil
 	}
-	return s.opsRepo.ListAlertEvents(ctx, filter)
+	events, err := s.opsRepo.ListAlertEvents(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeDefaultOpsAlertEvents(events), nil
 }
 
 func (s *OpsService) GetAlertEventByID(ctx context.Context, eventID int64) (*OpsAlertEvent, error) {
@@ -108,6 +116,7 @@ func (s *OpsService) GetAlertEventByID(ctx context.Context, eventID int64) (*Ops
 	if ev == nil {
 		return nil, infraerrors.NotFound("OPS_ALERT_EVENT_NOT_FOUND", "alert event not found")
 	}
+	normalizeDefaultOpsAlertEvent(ev)
 	return ev, nil
 }
 

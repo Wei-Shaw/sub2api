@@ -5074,7 +5074,7 @@ const messages = {
       },
       alertEvents: {
         title: 'Sự kiện cảnh báo',
-        description: 'Bản ghi kích hoạt/khôi phục cảnh báo gần đây (chỉ thông báo qua email)',
+        description: 'Bản ghi kích hoạt/khôi phục cảnh báo gần đây (email và Telegram nếu được bật)',
         loading: 'Đang tải...',
         empty: 'Chưa có sự kiện cảnh báo nào',
         loadFailed: 'Tải sự kiện cảnh báo thất bại',
@@ -5122,7 +5122,7 @@ const messages = {
       },
       alertRules: {
         title: 'Quy tắc cảnh báo',
-        description: 'Tạo và quản lý cảnh báo ngưỡng hệ thống (chỉ thông báo qua email)',
+        description: 'Tạo và quản lý cảnh báo ngưỡng hệ thống (email và Telegram nếu được bật)',
         loading: 'Đang tải...',
         empty: 'Chưa có quy tắc cảnh báo nào',
         loadFailed: 'Tải quy tắc cảnh báo thất bại',
@@ -5156,7 +5156,11 @@ const messages = {
           accountRateLimitedCount: 'Số tài khoản bị giới hạn tốc độ',
           accountErrorCount: 'Số tài khoản lỗi (không gồm trạng thái tạm thời không thể điều phối)',
           accountErrorRatio: 'Tỷ lệ tài khoản lỗi (%)',
-          overloadAccountCount: 'Số tài khoản quá tải'
+          overloadAccountCount: 'Số tài khoản quá tải',
+          accountAvailableCount: 'Số tài khoản khả dụng',
+          accountAvailableRatio: 'Tỷ lệ tài khoản khả dụng (%)',
+          accountQuotaUsageRatio: 'Mức dùng quota tài khoản cao nhất (%)',
+          accountQuotaExhaustedCount: 'Số tài khoản hết quota'
         },
         metricDescriptions: {
           successRate: 'Tỷ lệ yêu cầu thành công trong cửa sổ thống kê (0~100).',
@@ -5173,7 +5177,11 @@ const messages = {
           accountRateLimitedCount: 'Số lượng tài khoản bị giới hạn tốc độ trong cửa sổ thống kê.',
           accountErrorCount: 'Số lượng tài khoản phát sinh lỗi trong cửa sổ thống kê (không gồm trạng thái tạm thời không thể điều phối).',
           accountErrorRatio: 'Tỷ lệ tài khoản lỗi trong cửa sổ thống kê (0~100).',
-          overloadAccountCount: 'Số lượng tài khoản quá tải trong cửa sổ thống kê.'
+          overloadAccountCount: 'Số lượng tài khoản quá tải trong cửa sổ thống kê.',
+          accountAvailableCount: 'Số tài khoản hiện có thể điều phối (active, schedulable, chưa hết hạn/rate-limit/quá tải/hết quota).',
+          accountAvailableRatio: 'Tỷ lệ tài khoản hiện có thể điều phối trên tổng tài khoản trong phạm vi lọc (0~100).',
+          accountQuotaUsageRatio: 'Mức sử dụng quota cao nhất của các tài khoản API Key/Bedrock theo tổng/ngày/tuần (0~100+).',
+          accountQuotaExhaustedCount: 'Số tài khoản API Key/Bedrock đã hết quota ở tổng/ngày/tuần.'
         },
         hints: {
           recommended: 'Khuyến nghị: toán tử {operator}, ngưỡng {threshold}{unit}',

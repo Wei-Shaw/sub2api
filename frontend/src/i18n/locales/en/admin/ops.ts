@@ -476,7 +476,7 @@ export default {
       },
       alertEvents: {
         title: 'Alert Events',
-        description: 'Recent alert firing/resolution records (email-only)',
+        description: 'Recent alert firing/resolution records (email and Telegram when enabled)',
         loading: 'Loading...',
         empty: 'No alert events',
         loadFailed: 'Failed to load alert events',
@@ -524,7 +524,7 @@ export default {
       },
       alertRules: {
         title: 'Alert Rules',
-        description: 'Create and manage threshold-based system alerts (email-only)',
+        description: 'Create and manage threshold-based system alerts (email and Telegram when enabled)',
         loading: 'Loading...',
         empty: 'No alert rules',
         loadFailed: 'Failed to load alert rules',
@@ -559,7 +559,11 @@ export default {
           accountErrorCount: 'Error Accounts (excluding temporarily unschedulable)',
           accountErrorRatio: 'Error Account Ratio (%)',
           accountTempUnscheduledCount: 'Temporarily Unschedulable Accounts',
-          overloadAccountCount: 'Overloaded Accounts'
+          overloadAccountCount: 'Overloaded Accounts',
+          accountAvailableCount: 'Available Accounts',
+          accountAvailableRatio: 'Available Account Ratio (%)',
+          accountQuotaUsageRatio: 'Max Account Quota Usage (%)',
+          accountQuotaExhaustedCount: 'Quota-exhausted Accounts'
         },
         metricDescriptions: {
           successRate: 'Percentage of successful requests in the window (0-100).',
@@ -577,7 +581,11 @@ export default {
           accountErrorCount: 'Number of error accounts within the window (excluding temporarily unschedulable).',
           accountErrorRatio: 'Error account ratio within the window (0-100).',
           accountTempUnscheduledCount: 'Number of accounts currently temporarily unschedulable (e.g. proxy/credential failure auto-eviction).',
-          overloadAccountCount: 'Number of overloaded accounts within the window.'
+          overloadAccountCount: 'Number of overloaded accounts within the window.',
+          accountAvailableCount: 'Number of accounts currently schedulable (active, schedulable, not expired/rate-limited/overloaded/quota-exhausted).',
+          accountAvailableRatio: 'Ratio of currently schedulable accounts over all accounts in scope (0-100).',
+          accountQuotaUsageRatio: 'Highest quota usage among API Key/Bedrock accounts across total/daily/weekly dimensions (0-100+).',
+          accountQuotaExhaustedCount: 'Number of API Key/Bedrock accounts exhausted in total/daily/weekly quota.'
         },
         hints: {
           recommended: 'Recommended: operator {operator}, threshold {threshold}{unit}',

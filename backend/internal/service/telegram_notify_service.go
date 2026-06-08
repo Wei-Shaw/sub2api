@@ -397,6 +397,46 @@ func (s *TelegramNotifyService) NotifyOpsAlert(ctx context.Context, ruleName, se
 	}
 }
 
+// NotifyAccountQuotaAlert sends an operational notification when an account quota threshold is crossed.
+// It reuses the Ops Alert Telegram toggle because quota exhaustion affects routing capacity.
+func (s *TelegramNotifyService) NotifyAccountQuotaAlert(ctx context.Context, accountID int64, accountName, platform, dimension string, used, limit, remaining, threshold float64, thresholdType string) {
+	if !s.isEnabled(ctx, SettingTelegramNotifyOpsAlert) {
+		return
+	}
+	thresholdLabel := fmt.Sprintf("%.4f remaining", threshold)
+	if thresholdType == thresholdTypePercentage {
+		thresholdLabel = fmt.Sprintf("%.2f%% remaining", threshold)
+	}
+	usagePercent := 0.0
+	if limit > 0 {
+		usagePercent = used / limit * 100
+	}
+	text := fmt.Sprintf(
+		" <b>Account Quota Alert</b>\n\n"+
+			" ID: <code>%d</code>\n"+
+			" Name: %s\n"+
+			" Platform: %s\n"+
+			" Dimension: %s\n"+
+			" Used: <b>%.4f / %.4f</b> (%.2f%%)\n"+
+			" Remaining: <b>%.4f</b>\n"+
+			" Threshold: %s\n"+
+			" Time: %s",
+		accountID,
+		escapeHTML(accountName),
+		escapeHTML(platform),
+		escapeHTML(dimension),
+		used,
+		limit,
+		usagePercent,
+		remaining,
+		escapeHTML(thresholdLabel),
+		time.Now().Format("2006-01-02 15:04:05"),
+	)
+	if err := s.sendMessage(ctx, text); err != nil {
+		slog.Error("telegram notify account quota failed", "error", err, "account_id", accountID)
+	}
+}
+
 // NotifyProxyExpired sends a notification when proxies are about to expire or have expired.
 func (s *TelegramNotifyService) NotifyProxyExpired(ctx context.Context, proxyName string, expiresAt time.Time, isExpired bool) {
 	if !s.isEnabled(ctx, SettingTelegramNotifyProxyExpired) {

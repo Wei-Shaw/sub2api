@@ -476,7 +476,7 @@ export default {
       },
       alertEvents: {
         title: '告警事件',
-        description: '最近的告警触发/恢复记录（仅邮件通知）',
+        description: '最近的告警触发/恢复记录（开启后支持邮件和 Telegram）',
         loading: '加载中...',
         empty: '暂无告警事件',
         loadFailed: '加载告警事件失败',
@@ -524,7 +524,7 @@ export default {
       },
       alertRules: {
         title: '告警规则',
-        description: '创建与管理系统阈值告警（仅邮件通知）',
+        description: '创建与管理系统阈值告警（开启后支持邮件和 Telegram）',
         loading: '加载中...',
         empty: '暂无告警规则',
         loadFailed: '加载告警规则失败',
@@ -559,7 +559,11 @@ export default {
           accountErrorCount: '错误账号数（不含临时不可调度）',
           accountErrorRatio: '错误账号比例 (%)',
           accountTempUnscheduledCount: '临时不可调度账号数',
-          overloadAccountCount: '过载账号数'
+          overloadAccountCount: '过载账号数',
+          accountAvailableCount: '可用账号数',
+          accountAvailableRatio: '可用账号比例 (%)',
+          accountQuotaUsageRatio: '账号最高额度使用率 (%)',
+          accountQuotaExhaustedCount: '额度耗尽账号数'
         },
         metricDescriptions: {
           successRate: '统计窗口内成功请求占比（0~100）。',
@@ -577,7 +581,11 @@ export default {
           accountErrorCount: '统计窗口内产生错误的账号数量（不含临时不可调度）。',
           accountErrorRatio: '统计窗口内错误账号占比（0~100）。',
           accountTempUnscheduledCount: '当前处于临时不可调度状态的账号数量（如代理/凭据故障被自动摘除）。',
-          overloadAccountCount: '统计窗口内过载账号数量。'
+          overloadAccountCount: '统计窗口内过载账号数量。',
+          accountAvailableCount: '当前可调度账号数（active、schedulable，且未过期/限流/过载/额度耗尽）。',
+          accountAvailableRatio: '当前可调度账号占范围内全部账号的比例（0~100）。',
+          accountQuotaUsageRatio: 'API Key/Bedrock 账号在总/日/周任一维度的最高额度使用率（0~100+）。',
+          accountQuotaExhaustedCount: '总/日/周任一额度已耗尽的 API Key/Bedrock 账号数量。'
         },
         hints: {
           recommended: '推荐：运算符 {operator}，阈值 {threshold}{unit}',

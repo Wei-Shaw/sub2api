@@ -18,7 +18,13 @@ type opsAccountStatsRepository interface {
 }
 
 func (s *OpsService) listAllAccountsForOps(ctx context.Context, platformFilter string, groupIDFilter *int64) ([]Account, error) {
-	if s == nil || s.accountRepo == nil {
+	if s == nil {
+		return []Account{}, nil
+	}
+	if s.listAccountsForOpsHook != nil {
+		return s.listAccountsForOpsHook(ctx, platformFilter, groupIDFilter)
+	}
+	if s.accountRepo == nil {
 		return []Account{}, nil
 	}
 	if repo, ok := s.accountRepo.(opsAccountStatsRepository); ok {

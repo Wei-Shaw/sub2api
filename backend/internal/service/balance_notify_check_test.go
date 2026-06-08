@@ -402,3 +402,29 @@ func TestCheckQuotaDimCrossings_MultipleDims_MixedResults(t *testing.T) {
 	// None should trigger. No panic expected.
 	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
 }
+
+func TestCheckAccountQuotaAfterIncrement_AllowsTelegramWithoutEmailRecipients(t *testing.T) {
+	s, repo := newBalanceNotifyServiceForTest()
+	repo.data[SettingKeyAccountQuotaNotifyEnabled] = "true"
+	repo.data[SettingKeyAccountQuotaNotifyEmails] = "[]"
+	s.SetTelegramNotifyService(NewTelegramNotifyService(repo))
+
+	a := &Account{
+		ID:       1,
+		Name:     "quota-telegram",
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra: map[string]any{
+			"quota_notify_daily_enabled":        true,
+			"quota_notify_daily_threshold":      30.0,
+			"quota_notify_daily_threshold_type": "percentage",
+		},
+	}
+
+	// Should not return early just because email recipients are empty; Telegram
+	// send is best-effort and silently skips because token/chat are unset.
+	s.CheckAccountQuotaAfterIncrement(context.Background(), a, 150, &AccountQuotaState{
+		DailyUsed:  750,
+		DailyLimit: 1000,
+	})
+}

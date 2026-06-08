@@ -5074,7 +5074,7 @@ const messages = {
       },
       alertEvents: {
         title: '알림 이벤트',
-        description: '최근 알림 발생/복구 기록(이메일 알림만)',
+        description: '최근 알림 발생/복구 기록(활성화 시 이메일 및 Telegram)',
         loading: '로딩 중...',
         empty: '알림 이벤트가 없습니다',
         loadFailed: '알림 이벤트 로드 실패',
@@ -5122,7 +5122,7 @@ const messages = {
       },
       alertRules: {
         title: '알림 규칙',
-        description: '시스템 임계값 알림을 생성하고 관리합니다(이메일 알림만)',
+        description: '시스템 임계값 알림을 생성하고 관리합니다(활성화 시 이메일 및 Telegram)',
         loading: '로딩 중...',
         empty: '알림 규칙이 없습니다',
         loadFailed: '알림 규칙 로드 실패',
@@ -5156,7 +5156,11 @@ const messages = {
           accountRateLimitedCount: '속도 제한 계정 수',
           accountErrorCount: '오류 계정 수(일시적 비스케줄 가능 제외)',
           accountErrorRatio: '오류 계정 비율 (%)',
-          overloadAccountCount: '과부하 계정 수'
+          overloadAccountCount: '과부하 계정 수',
+          accountAvailableCount: '사용 가능 계정 수',
+          accountAvailableRatio: '사용 가능 계정 비율 (%)',
+          accountQuotaUsageRatio: '최대 계정 quota 사용률 (%)',
+          accountQuotaExhaustedCount: 'quota 소진 계정 수'
         },
         metricDescriptions: {
           successRate: '통계 윈도우 내 성공 요청 비율(0~100)입니다.',
@@ -5173,7 +5177,11 @@ const messages = {
           accountRateLimitedCount: '통계 윈도우 내 속도 제한된 계정 수입니다.',
           accountErrorCount: '통계 윈도우 내 오류를 발생시킨 계정 수(일시적 비스케줄 가능 제외)입니다.',
           accountErrorRatio: '통계 윈도우 내 오류 계정 비율(0~100)입니다.',
-          overloadAccountCount: '통계 윈도우 내 과부하 계정 수입니다.'
+          overloadAccountCount: '통계 윈도우 내 과부하 계정 수입니다.',
+          accountAvailableCount: '현재 스케줄 가능한 계정 수(active, schedulable, 만료/속도 제한/과부하/quota 소진 제외)입니다.',
+          accountAvailableRatio: '범위 내 전체 계정 대비 현재 스케줄 가능한 계정 비율(0~100)입니다.',
+          accountQuotaUsageRatio: 'API Key/Bedrock 계정의 총/일/주 quota 중 가장 높은 사용률(0~100+)입니다.',
+          accountQuotaExhaustedCount: '총/일/주 quota가 소진된 API Key/Bedrock 계정 수입니다.'
         },
         hints: {
           recommended: '권장: 연산자 {operator}, 임계값 {threshold}{unit}',
