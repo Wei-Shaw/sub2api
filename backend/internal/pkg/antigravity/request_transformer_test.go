@@ -150,6 +150,21 @@ func TestBuildParts_ToolUseSignatureHandling(t *testing.T) {
 	})
 }
 
+func TestBuildParts_DocumentBase64PreservedAsInlineData(t *testing.T) {
+	content := `[
+		{"type":"text","text":"这可以看得出是谁购买的吗?"},
+		{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0xLjQ="},"title":"receipt.pdf"}
+	]`
+
+	parts, _, err := buildParts(json.RawMessage(content), map[string]string{}, true)
+	require.NoError(t, err)
+	require.Len(t, parts, 2)
+	require.Equal(t, "这可以看得出是谁购买的吗?", parts[0].Text)
+	require.NotNil(t, parts[1].InlineData)
+	require.Equal(t, "application/pdf", parts[1].InlineData.MimeType)
+	require.Equal(t, "JVBERi0xLjQ=", parts[1].InlineData.Data)
+}
+
 // TestBuildTools_CustomTypeTools 测试custom类型工具转换
 func TestBuildTools_CustomTypeTools(t *testing.T) {
 	tests := []struct {

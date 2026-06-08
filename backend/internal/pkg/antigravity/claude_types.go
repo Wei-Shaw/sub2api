@@ -79,14 +79,14 @@ type ContentBlock struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
-	// image
+	// image/document/file
 	Source *ImageSource `json:"source,omitempty"`
 }
 
-// ImageSource Claude 图片来源
+// ImageSource Claude 图片/文件来源
 type ImageSource struct {
 	Type      string `json:"type"`       // "base64"
-	MediaType string `json:"media_type"` // "image/png", "image/jpeg" 等
+	MediaType string `json:"media_type"` // "image/png", "image/jpeg", "application/pdf" 等
 	Data      string `json:"data"`
 }
 
