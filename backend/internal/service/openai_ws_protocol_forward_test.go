@@ -262,9 +262,8 @@ func TestOpenAIGatewayService_Forward_HTTPIngressRetriesInvalidEncryptedContentO
 	require.Equal(t, "keep me", gjson.GetBytes(firstBody, "input.0.summary.0.text").String())
 
 	require.False(t, gjson.GetBytes(secondBody, "previous_response_id").Exists(), "HTTP 精确重试不应重新带回 previous_response_id")
-	require.False(t, gjson.GetBytes(secondBody, "input.0.encrypted_content").Exists(), "精确重试应移除 reasoning.encrypted_content")
-	require.Equal(t, "keep me", gjson.GetBytes(secondBody, "input.0.summary.0.text").String(), "精确重试应保留有效 reasoning summary")
-	require.Equal(t, "input_text", gjson.GetBytes(secondBody, "input.1.type").String(), "非 reasoning input 应保持原样")
+	require.Equal(t, "input_text", gjson.GetBytes(secondBody, "input.0.type").String(), "精确重试应移除 reasoning input 并保留非 reasoning input")
+	require.False(t, gjson.GetBytes(secondBody, "input.1").Exists())
 
 	decision, _ := c.Get("openai_ws_transport_decision")
 	reason, _ := c.Get("openai_ws_transport_reason")
@@ -347,8 +346,8 @@ func TestOpenAIGatewayService_Forward_HTTPIngressRetriesWrappedInvalidEncryptedC
 	firstBody := upstream.bodies[0]
 	secondBody := upstream.bodies[1]
 	require.True(t, gjson.GetBytes(firstBody, "input.0.encrypted_content").Exists(), "首次请求不应做发送前预清理")
-	require.False(t, gjson.GetBytes(secondBody, "input.0.encrypted_content").Exists(), "wrapped exact retry 应移除 reasoning.encrypted_content")
-	require.Equal(t, "keep me too", gjson.GetBytes(secondBody, "input.0.summary.0.text").String(), "wrapped exact retry 应保留有效 reasoning summary")
+	require.Equal(t, "input_text", gjson.GetBytes(secondBody, "input.0.type").String(), "wrapped exact retry 应移除 reasoning input 并保留非 reasoning input")
+	require.False(t, gjson.GetBytes(secondBody, "input.1").Exists())
 
 	decision, _ := c.Get("openai_ws_transport_decision")
 	reason, _ := c.Get("openai_ws_transport_reason")
@@ -1768,9 +1767,7 @@ func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentRecoversSingleO
 	wsRequestMu.Unlock()
 	require.Len(t, requests, 2)
 	require.True(t, gjson.GetBytes(requests[0], `input.encrypted_content`).Exists(), "首轮单对象应保留 encrypted_content")
-	require.True(t, gjson.GetBytes(requests[1], `input.summary.0.text`).Exists(), "恢复重试应保留 reasoning summary")
-	require.False(t, gjson.GetBytes(requests[1], `input.encrypted_content`).Exists(), "恢复重试只应移除 encrypted_content")
-	require.Equal(t, "reasoning", gjson.GetBytes(requests[1], `input.type`).String())
+	require.False(t, gjson.GetBytes(requests[1], `input`).Exists(), "恢复重试应移除单对象 reasoning input")
 	require.False(t, gjson.GetBytes(requests[1], `previous_response_id`).Exists(), "恢复重试应移除 previous_response_id")
 }
 
