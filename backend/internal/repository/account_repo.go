@@ -64,6 +64,8 @@ var schedulerNeutralExtraKeys = map[string]struct{REDACTED{
 	"session_window_utilization": {REDACTED,
 REDACTED
 
+const postgresParameterBatchSize = 50000
+
 // NewAccountRepository 创建账户仓储实例。
 // 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
 func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AccountRepository {
@@ -1662,17 +1664,23 @@ REDACTED
 
 func (r *accountRepository) loadProxies(ctx context.Context, proxyIDs []int64) (map[int64]*service.Proxy, error) {
 	proxyMap := make(map[int64]*service.Proxy)
+	proxyIDs = uniquePositiveInt64s(proxyIDs)
 	if len(proxyIDs) == 0 {
 		return proxyMap, nil
 REDACTED
 
-	proxies, err := r.client.Proxy.Query().Where(dbproxy.IDIn(proxyIDs...)).All(ctx)
-	if err != nil {
-		return nil, err
-REDACTED
-
-	for _, p := range proxies {
-		proxyMap[p.ID] = proxyEntityToService(p)
+	for start := 0; start < len(proxyIDs); start += postgresParameterBatchSize {
+		end := start + postgresParameterBatchSize
+		if end > len(proxyIDs) {
+			end = len(proxyIDs)
+	REDACTED
+		proxies, err := r.client.Proxy.Query().Where(dbproxy.IDIn(proxyIDs[start:end]...)).All(ctx)
+		if err != nil {
+			return nil, err
+	REDACTED
+		for _, p := range proxies {
+			proxyMap[p.ID] = proxyEntityToService(p)
+	REDACTED
 REDACTED
 	return proxyMap, nil
 REDACTED
@@ -1682,36 +1690,92 @@ func (r *accountRepository) loadAccountGroups(ctx context.Context, accountIDs []
 	groupIDsByAccount := make(map[int64][]int64)
 	accountGroupsByAccount := make(map[int64][]service.AccountGroup)
 
+	accountIDs = uniquePositiveInt64s(accountIDs)
 	if len(accountIDs) == 0 {
 		return groupsByAccount, groupIDsByAccount, accountGroupsByAccount, nil
 REDACTED
 
-	entries, err := r.client.AccountGroup.Query().
-		Where(dbaccountgroup.AccountIDIn(accountIDs...)).
-		WithGroup().
-		Order(dbaccountgroup.ByAccountID(), dbaccountgroup.ByPriority()).
-		All(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-REDACTED
-
-	for _, ag := range entries {
-		groupSvc := groupEntityToService(ag.Edges.Group)
-		agSvc := service.AccountGroup{
-			AccountID: ag.AccountID,
-			GroupID:   ag.GroupID,
-			Priority:  ag.Priority,
-			CreatedAt: ag.CreatedAt,
-			Group:     groupSvc,
+	for start := 0; start < len(accountIDs); start += postgresParameterBatchSize {
+		end := start + postgresParameterBatchSize
+		if end > len(accountIDs) {
+			end = len(accountIDs)
 	REDACTED
-		accountGroupsByAccount[ag.AccountID] = append(accountGroupsByAccount[ag.AccountID], agSvc)
-		groupIDsByAccount[ag.AccountID] = append(groupIDsByAccount[ag.AccountID], ag.GroupID)
-		if groupSvc != nil {
-			groupsByAccount[ag.AccountID] = append(groupsByAccount[ag.AccountID], groupSvc)
+		entries, err := r.client.AccountGroup.Query().
+			Where(dbaccountgroup.AccountIDIn(accountIDs[start:end]...)).
+			Order(dbaccountgroup.ByAccountID(), dbaccountgroup.ByPriority()).
+			All(ctx)
+		if err != nil {
+			return nil, nil, nil, err
+	REDACTED
+		groupIDs := make([]int64, 0, len(entries))
+		for _, ag := range entries {
+			groupIDs = append(groupIDs, ag.GroupID)
+	REDACTED
+		groupMap, err := r.loadGroups(ctx, groupIDs)
+		if err != nil {
+			return nil, nil, nil, err
+	REDACTED
+
+		for _, ag := range entries {
+			groupSvc := groupMap[ag.GroupID]
+			agSvc := service.AccountGroup{
+				AccountID: ag.AccountID,
+				GroupID:   ag.GroupID,
+				Priority:  ag.Priority,
+				CreatedAt: ag.CreatedAt,
+				Group:     groupSvc,
+		REDACTED
+			accountGroupsByAccount[ag.AccountID] = append(accountGroupsByAccount[ag.AccountID], agSvc)
+			groupIDsByAccount[ag.AccountID] = append(groupIDsByAccount[ag.AccountID], ag.GroupID)
+			if groupSvc != nil {
+				groupsByAccount[ag.AccountID] = append(groupsByAccount[ag.AccountID], groupSvc)
+		REDACTED
 	REDACTED
 REDACTED
 
 	return groupsByAccount, groupIDsByAccount, accountGroupsByAccount, nil
+REDACTED
+
+func (r *accountRepository) loadGroups(ctx context.Context, groupIDs []int64) (map[int64]*service.Group, error) {
+	groupMap := make(map[int64]*service.Group)
+	groupIDs = uniquePositiveInt64s(groupIDs)
+	if len(groupIDs) == 0 {
+		return groupMap, nil
+REDACTED
+
+	for start := 0; start < len(groupIDs); start += postgresParameterBatchSize {
+		end := start + postgresParameterBatchSize
+		if end > len(groupIDs) {
+			end = len(groupIDs)
+	REDACTED
+		groups, err := r.client.Group.Query().Where(dbgroup.IDIn(groupIDs[start:end]...)).All(ctx)
+		if err != nil {
+			return nil, err
+	REDACTED
+		for _, g := range groups {
+			groupMap[g.ID] = groupEntityToService(g)
+	REDACTED
+REDACTED
+	return groupMap, nil
+REDACTED
+
+func uniquePositiveInt64s(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+REDACTED
+	out := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{REDACTED, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+	REDACTED
+		if _, ok := seen[id]; ok {
+			continue
+	REDACTED
+		seen[id] = struct{REDACTED{REDACTED
+		out = append(out, id)
+REDACTED
+	return out
 REDACTED
 
 func (r *accountRepository) loadAccountGroupIDs(ctx context.Context, accountID int64) ([]int64, error) {
