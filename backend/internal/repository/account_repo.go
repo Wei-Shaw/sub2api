@@ -1273,6 +1273,20 @@ REDACTED
 	return nil
 REDACTED
 
+func (r *accountRepository) UpdateSessionWindowEnd(ctx context.Context, id int64, end time.Time) error {
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetSessionWindowEnd(end).
+		Save(ctx)
+	if err != nil {
+		return err
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue session window end update failed: account=%d err=%v", id, err)
+REDACTED
+	return nil
+REDACTED
+
 func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
