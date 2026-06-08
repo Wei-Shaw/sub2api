@@ -235,6 +235,57 @@ REDACTED)
 	require.Equal(t, http.StatusOK, w.Code)
 REDACTED
 
+func TestAPIKeyAuthRejectsExclusiveGroupWhenUserNoLongerAllowed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	group := &service.Group{
+		ID:          202,
+		Name:        "exclusive",
+		Status:      service.StatusActive,
+		IsExclusive: true,
+		Hydrated:    true,
+REDACTED
+	user := &service.User{
+		ID:            7,
+		Role:          service.RoleUser,
+		Status:        service.StatusActive,
+		Balance:       10,
+		Concurrency:   3,
+		AllowedGroups: []int64{REDACTED,
+REDACTED
+	apiKey := &service.APIKey{
+		ID:     100,
+		UserID: user.ID,
+		Key:    "test-key",
+		Status: service.StatusActive,
+		User:   user,
+		Group:  group,
+REDACTED
+	apiKey.GroupID = &group.ID
+
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+		REDACTED
+			clone := *apiKey
+			return &clone, nil
+	REDACTED,
+REDACTED
+
+	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	router := newAuthTestRouter(apiKeyService, nil, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "GROUP_NOT_ALLOWED")
+REDACTED
+
 func TestAPIKeyAuthOverwritesInvalidContextGroup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
