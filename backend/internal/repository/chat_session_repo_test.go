@@ -50,7 +50,7 @@ func TestChatSessionRepositoryAppendRefreshesSessionCreatedAt(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec("SELECT pg_advisory_xact_lock").
-		WithArgs(input.SessionKey, "11", "22").
+		WithArgs("11:22:" + input.SessionKey).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("FROM chat_sessions\\s+WHERE user_id = \\$1 AND api_key_id = \\$2 AND session_key = \\$3").
 		WithArgs(input.UserID, input.APIKeyID, input.SessionKey).

@@ -286,11 +286,8 @@ func (r *chatSessionRepository) ensureSession(
 
 func (r *chatSessionRepository) lockSessionKey(ctx context.Context, tx *sql.Tx, userID, apiKeyID int64, sessionKey string) error {
 	_, err := tx.ExecContext(ctx, `
-		SELECT pg_advisory_xact_lock(
-			hashtextextended($1, 0),
-			hashtextextended($2 || ':' || $3, 0)::INTEGER
-		)
-	`, sessionKey, strconv.FormatInt(userID, 10), strconv.FormatInt(apiKeyID, 10))
+		SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
+	`, strconv.FormatInt(userID, 10)+":"+strconv.FormatInt(apiKeyID, 10)+":"+sessionKey)
 	return err
 }
 
