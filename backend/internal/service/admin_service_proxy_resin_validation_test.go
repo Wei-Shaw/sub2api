@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -70,6 +71,22 @@ func (s *proxyRepoStubForResinValidation) CountAccountsByProxyID(context.Context
 
 func (s *proxyRepoStubForResinValidation) ListAccountSummariesByProxyID(context.Context, int64) ([]ProxyAccountSummary, error) {
 	panic("unexpected ListAccountSummariesByProxyID call")
+}
+
+func (s *proxyRepoStubForResinValidation) SweepExpiredProxies(context.Context, time.Time) (int64, error) {
+	panic("unexpected SweepExpiredProxies call")
+}
+
+func (s *proxyRepoStubForResinValidation) ListAllForFallback(context.Context) ([]Proxy, error) {
+	panic("unexpected ListAllForFallback call")
+}
+
+func (s *proxyRepoStubForResinValidation) CountExpired(context.Context) (int64, error) {
+	panic("unexpected CountExpired call")
+}
+
+func (s *proxyRepoStubForResinValidation) CountExpiringSoon(context.Context, time.Time) (int64, error) {
+	panic("unexpected CountExpiringSoon call")
 }
 
 func TestAdminService_CreateProxy_AllowsResinWithoutToken(t *testing.T) {
