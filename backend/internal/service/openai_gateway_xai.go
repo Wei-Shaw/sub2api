@@ -209,6 +209,148 @@ func (s *OpenAIGatewayService) buildXAIUpstreamRequest(
 	return req, nil
 }
 
+func (s *OpenAIGatewayService) ForwardXAIVideosGeneration(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	channelMappedModel string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	if account == nil {
+		return nil, fmt.Errorf("account is nil")
+	}
+	if account.Platform != PlatformXAI {
+		return nil, fmt.Errorf("videos endpoint requires an xAI account")
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("parse xai video request: %w", err)
+	}
+	requestModel, _ := payload["model"].(string)
+	requestModel = strings.TrimSpace(requestModel)
+	if requestModel == "" {
+		return nil, fmt.Errorf("videos endpoint requires a model")
+	}
+	upstreamModel := account.GetMappedModel(requestModel)
+	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
+		upstreamModel = mapped
+	}
+	upstreamModel = strings.TrimSpace(upstreamModel)
+	if !isXAIVideoGenerationModel(upstreamModel) {
+		return nil, fmt.Errorf("videos endpoint requires an xAI video model, got %q", upstreamModel)
+	}
+	if upstreamModel != requestModel {
+		payload["model"] = upstreamModel
+		rewritten, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("rewrite xai video model: %w", err)
+		}
+		body = rewritten
+	}
+
+	token, _, err := s.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	validatedURL, err := s.validateUpstreamBaseURL(account.GetXAIBaseURL())
+	if err != nil {
+		return nil, err
+	}
+	upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, xai.BuildVideosGenerationsURL(validatedURL), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	upstreamReq.Header.Set("Authorization", "Bearer "+token)
+	upstreamReq.Header.Set("Content-Type", "application/json")
+	upstreamReq.Header.Set("Accept", "application/json")
+	if c != nil && c.Request != nil {
+		for key, values := range c.Request.Header {
+			lowerKey := strings.ToLower(key)
+			if lowerKey != "accept-language" && lowerKey != "user-agent" {
+				continue
+			}
+			for _, value := range values {
+				upstreamReq.Header.Add(key, value)
+			}
+		}
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	upstreamStart := time.Now()
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+	if err != nil {
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		setOpsUpstreamError(c, 0, safeErr, "")
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: 0,
+			UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+			Kind:               "request_error",
+			Message:            safeErr,
+		})
+		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		return nil, err
+	}
+	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	contentType := "application/json"
+	if upstreamType := strings.TrimSpace(resp.Header.Get("Content-Type")); upstreamType != "" {
+		contentType = upstreamType
+	}
+	c.Data(resp.StatusCode, contentType, respBody)
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		upstreamErr := openAIImagesUpstreamErrorFromHTTP(resp.StatusCode, resp.Header, respBody)
+		setOpsUpstreamError(c, resp.StatusCode, upstreamErr.Message, resp.Header.Get("x-request-id"))
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+			Kind:               "user_error",
+			Message:            upstreamErr.Message,
+		})
+		return nil, upstreamErr
+	}
+
+	requestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	if requestID == "" {
+		requestID = strings.TrimSpace(resp.Header.Get("x-requestid"))
+	}
+	usage, _ := extractOpenAIUsageFromJSONBytes(respBody)
+	providerMediaCost := buildXAIMediaCostFromUsageOrEstimate(usage, buildXAIVideoMediaCost(upstreamModel, payload))
+	return &OpenAIForwardResult{
+		RequestID:            requestID,
+		Usage:                usage,
+		Model:                requestModel,
+		UpstreamModel:        upstreamModel,
+		BillingModel:         requestModel,
+		Stream:               false,
+		ResponseHeaders:      resp.Header.Clone(),
+		Duration:             time.Since(startTime),
+		ProviderMediaCost:    providerMediaCost,
+		UseImageRateForMedia: providerMediaCost != nil,
+	}, nil
+}
+
+func isXAIVideoGenerationModel(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-video")
+}
+
 func (s *OpenAIGatewayService) forwardXAIResponsesAsChatCompletions(
 	ctx context.Context,
 	c *gin.Context,

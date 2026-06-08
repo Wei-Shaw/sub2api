@@ -1485,8 +1485,8 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		&service.DeferredService{},
 		nil,
 		nil,
-		channelSvc,
 		nil,
+		channelSvc,
 		nil,
 		nil,
 		nil, // userPlatformQuotaRepo

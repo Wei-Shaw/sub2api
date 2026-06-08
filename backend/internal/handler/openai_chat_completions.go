@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -30,6 +31,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
+	}
+	if platform := service.PlatformFromAPIKey(apiKey); platform == service.PlatformOpenAI || platform == service.PlatformXAI {
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.Platform, platform))
 	}
 
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)

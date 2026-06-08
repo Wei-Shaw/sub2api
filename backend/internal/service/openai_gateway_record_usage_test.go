@@ -340,6 +340,57 @@ func TestOpenAIGatewayServiceRecordUsage_XAIGrokFallbackBillsNonZero(t *testing.
 	require.NotZero(t, billingRepo.lastCmd.BalanceCost)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_XAIMediaCostBillsWithoutTokens(t *testing.T) {
+	groupID := int64(11)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_xai_video_media_billing",
+			Model:     "grok-imagine-video-1.5-preview",
+			Duration:  time.Second,
+			ProviderMediaCost: buildXAIVideoMediaCost("grok-imagine-video-1.5-preview", map[string]any{
+				"duration":   2,
+				"resolution": "480p",
+				"image":      map[string]any{"url": "https://example.test/still.png"},
+			}),
+			UseImageRateForMedia: true,
+		},
+		APIKey: &APIKey{
+			ID:      1004,
+			GroupID: &groupID,
+			Group: &Group{
+				ID:                   groupID,
+				RateMultiplier:       2,
+				ImageRateIndependent: true,
+				ImageRateMultiplier:  1.5,
+			},
+		},
+		User:    &User{ID: 2004},
+		Account: &Account{ID: 3004, Platform: PlatformXAI, Type: AccountTypeOAuth},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, billingRepo.calls)
+	require.Equal(t, 1, usageRepo.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Zero(t, usageRepo.lastLog.InputTokens)
+	require.Zero(t, usageRepo.lastLog.OutputTokens)
+	require.InDelta(t, 0.01, usageRepo.lastLog.InputCost, 1e-12)
+	require.InDelta(t, 0.16, usageRepo.lastLog.OutputCost, 1e-12)
+	require.InDelta(t, 0.17, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.255, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 1.5, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.InDelta(t, 0.255, billingRepo.lastCmd.BalanceCost, 1e-12)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T) {
 	groupID := int64(11)
 	groupRate := 1.4
