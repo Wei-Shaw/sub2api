@@ -259,6 +259,10 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 					Source: src,
 				})
 			}
+		case "input_file":
+			if block := responsesFileToAnthropicBlock(p); block != nil {
+				blocks = append(blocks, *block)
+			}
 		}
 	}
 
@@ -324,6 +328,10 @@ func fromResponsesCallIDToAnthropic(id string) string {
 
 // dataURIToAnthropicImageSource parses a data URI into an AnthropicImageSource.
 func dataURIToAnthropicImageSource(dataURI string) *AnthropicImageSource {
+	return dataURIToAnthropicSource(dataURI)
+}
+
+func dataURIToAnthropicSource(dataURI string) *AnthropicImageSource {
 	if !strings.HasPrefix(dataURI, "data:") {
 		return nil
 	}
@@ -344,6 +352,23 @@ func dataURIToAnthropicImageSource(dataURI string) *AnthropicImageSource {
 		MediaType: mediaType,
 		Data:      data,
 	}
+}
+
+func responsesFileToAnthropicBlock(part ResponsesContentPart) *AnthropicContentBlock {
+	block := AnthropicContentBlock{Type: "document", Title: part.Filename}
+	switch {
+	case part.FileData != "":
+		src := dataURIToAnthropicSource(part.FileData)
+		if src == nil {
+			return nil
+		}
+		block.Source = src
+	case part.FileURL != "":
+		block.Source = &AnthropicImageSource{Type: "url", URL: part.FileURL}
+	default:
+		return nil
+	}
+	return &block
 }
 
 // mergeConsecutiveMessages merges consecutive messages with the same role

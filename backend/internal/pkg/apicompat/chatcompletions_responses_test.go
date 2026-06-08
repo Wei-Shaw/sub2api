@@ -260,6 +260,56 @@ func TestChatCompletionsToResponses_EmptyContentNeverNull(t *testing.T) {
 	}
 }
 
+func TestChatCompletionsToResponses_FileData(t *testing.T) {
+	content := `[{"type":"text","text":"Analyze this file"},{"type":"file","file":{"filename":"example-report.pdf","file_data":"data:application/pdf;base64,abc123"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "Analyze this file", parts[0].Text)
+	assert.Equal(t, "input_file", parts[1].Type)
+	assert.Equal(t, "example-report.pdf", parts[1].Filename)
+	assert.Equal(t, "data:application/pdf;base64,abc123", parts[1].FileData)
+	assert.Empty(t, parts[1].FileURL)
+}
+
+func TestChatCompletionsToResponses_FileURL(t *testing.T) {
+	content := `[{"type":"file","file":{"filename":"report.pdf","file_url":"https://example.com/report.pdf"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_file", parts[0].Type)
+	assert.Equal(t, "report.pdf", parts[0].Filename)
+	assert.Equal(t, "https://example.com/report.pdf", parts[0].FileURL)
+	assert.Empty(t, parts[0].FileData)
+}
+
 func TestChatCompletionsToResponses_SystemArrayContent(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
@@ -615,6 +665,49 @@ func TestChatCompletionsToResponses_ToolArrayContent(t *testing.T) {
 	assert.Equal(t, "function_call_output", items[2].Type)
 	assert.Equal(t, "call_1", items[2].CallID)
 	assert.Equal(t, "image width: 100; image height: 200", items[2].Output)
+}
+
+func TestResponsesToChatCompletionsRequest_InputFile(t *testing.T) {
+	input := json.RawMessage(`[
+		{"role":"user","content":[
+			{"type":"input_text","text":"Analyze this"},
+			{"type":"input_file","filename":"receipt.pdf","file_data":"data:application/pdf;base64,JVBERi0x"}
+		]}
+	]`)
+	req := &ResponsesRequest{Model: "gpt-4o", Input: input}
+
+	chatReq, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Len(t, chatReq.Messages, 1)
+
+	var parts []ChatContentPart
+	require.NoError(t, json.Unmarshal(chatReq.Messages[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "text", parts[0].Type)
+	assert.Equal(t, "Analyze this", parts[0].Text)
+	require.NotNil(t, parts[1].File)
+	assert.Equal(t, "file", parts[1].Type)
+	assert.Equal(t, "receipt.pdf", parts[1].File.Filename)
+	assert.Equal(t, "data:application/pdf;base64,JVBERi0x", parts[1].File.FileData)
+}
+
+func TestResponsesToChatCompletionsRequest_TopLevelInputFile(t *testing.T) {
+	input := json.RawMessage(`[
+		{"type":"input_file","filename":"receipt.pdf","file_url":"https://example.com/receipt.pdf"}
+	]`)
+	req := &ResponsesRequest{Model: "gpt-4o", Input: input}
+
+	chatReq, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Len(t, chatReq.Messages, 1)
+
+	var parts []ChatContentPart
+	require.NoError(t, json.Unmarshal(chatReq.Messages[0].Content, &parts))
+	require.Len(t, parts, 1)
+	require.NotNil(t, parts[0].File)
+	assert.Equal(t, "file", parts[0].Type)
+	assert.Equal(t, "receipt.pdf", parts[0].File.Filename)
+	assert.Equal(t, "https://example.com/receipt.pdf", parts[0].File.FileURL)
 }
 
 func TestResponsesToChatCompletions_Incomplete(t *testing.T) {

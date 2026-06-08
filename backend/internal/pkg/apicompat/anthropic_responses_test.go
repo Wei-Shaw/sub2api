@@ -1314,6 +1314,136 @@ func TestAnthropicToResponses_ImageOnlyUserMessage(t *testing.T) {
 	assert.Equal(t, "data:image/jpeg;base64,/9j/4AAQ", parts[0].ImageURL)
 }
 
+func TestAnthropicToResponses_UserDocumentBlock(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"text","text":"Summarize this file"},
+				{"type":"document","title":"example-report.pdf","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0x"}}
+			]`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "Summarize this file", parts[0].Text)
+	assert.Equal(t, "input_file", parts[1].Type)
+	assert.Equal(t, "example-report.pdf", parts[1].Filename)
+	assert.Equal(t, "data:application/pdf;base64,JVBERi0x", parts[1].FileData)
+	assert.Empty(t, parts[1].FileURL)
+}
+
+func TestAnthropicToResponses_UserDocumentURLBlock(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"document","title":"report.pdf","source":{"type":"url","url":"https://example.com/report.pdf"}}
+			]`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_file", parts[0].Type)
+	assert.Equal(t, "report.pdf", parts[0].Filename)
+	assert.Equal(t, "https://example.com/report.pdf", parts[0].FileURL)
+	assert.Empty(t, parts[0].FileData)
+}
+
+func TestAnthropicToResponses_UserFileBlock(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"file","title":"example-report.pdf","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0x"}}
+			]`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_file", parts[0].Type)
+	assert.Equal(t, "example-report.pdf", parts[0].Filename)
+	assert.Equal(t, "data:application/pdf;base64,JVBERi0x", parts[0].FileData)
+}
+
+func TestResponsesToAnthropicRequest_InputFileDataBecomesDocument(t *testing.T) {
+	input := json.RawMessage(`[
+		{"role":"user","content":[
+			{"type":"input_text","text":"Analyze this"},
+			{"type":"input_file","filename":"receipt.pdf","file_data":"data:application/pdf;base64,JVBERi0x"}
+		]}
+	]`)
+	req := &ResponsesRequest{Model: "claude-sonnet-4-6", Input: input}
+
+	out, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, out.Messages, 1)
+
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(out.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 2)
+	assert.Equal(t, "text", blocks[0].Type)
+	assert.Equal(t, "document", blocks[1].Type)
+	assert.Equal(t, "receipt.pdf", blocks[1].Title)
+	require.NotNil(t, blocks[1].Source)
+	assert.Equal(t, "base64", blocks[1].Source.Type)
+	assert.Equal(t, "application/pdf", blocks[1].Source.MediaType)
+	assert.Equal(t, "JVBERi0x", blocks[1].Source.Data)
+}
+
+func TestResponsesToAnthropicRequest_InputFileURLBecomesDocument(t *testing.T) {
+	input := json.RawMessage(`[
+		{"role":"user","content":[
+			{"type":"input_file","filename":"receipt.pdf","file_url":"https://example.com/receipt.pdf"}
+		]}
+	]`)
+	req := &ResponsesRequest{Model: "claude-sonnet-4-6", Input: input}
+
+	out, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, out.Messages, 1)
+
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(out.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 1)
+	assert.Equal(t, "document", blocks[0].Type)
+	assert.Equal(t, "receipt.pdf", blocks[0].Title)
+	require.NotNil(t, blocks[0].Source)
+	assert.Equal(t, "url", blocks[0].Source.Type)
+	assert.Equal(t, "https://example.com/receipt.pdf", blocks[0].Source.URL)
+}
+
 func TestAnthropicToResponses_ToolResultWithImage(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",

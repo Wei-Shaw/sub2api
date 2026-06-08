@@ -226,7 +226,7 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 		toolResultImageParts = append(toolResultImageParts, imageParts...)
 	}
 
-	// Remaining text + image blocks → user message with content parts.
+	// Remaining text + image/file blocks → user message with content parts.
 	// Also include images extracted from tool_results so the model can see them.
 	var parts []ResponsesContentPart
 	for _, b := range blocks {
@@ -238,6 +238,10 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 		case "image":
 			if uri := anthropicImageToDataURI(b.Source); uri != "" {
 				parts = append(parts, ResponsesContentPart{Type: "input_image", ImageURL: uri})
+			}
+		case "document", "file":
+			if part := anthropicFileToResponsesPart(b); part != nil {
+				parts = append(parts, *part)
 			}
 		}
 	}
@@ -339,6 +343,30 @@ func anthropicImageToDataURI(src *AnthropicImageSource) string {
 		mediaType = "image/png"
 	}
 	return "data:" + mediaType + ";base64," + src.Data
+}
+
+func anthropicFileToResponsesPart(block AnthropicContentBlock) *ResponsesContentPart {
+	if block.Source == nil {
+		return nil
+	}
+	part := ResponsesContentPart{Type: "input_file", Filename: block.Title}
+	switch block.Source.Type {
+	case "url":
+		part.FileURL = block.Source.URL
+	default:
+		if block.Source.Data == "" {
+			return nil
+		}
+		mediaType := block.Source.MediaType
+		if mediaType == "" {
+			mediaType = "application/octet-stream"
+		}
+		part.FileData = "data:" + mediaType + ";base64," + block.Source.Data
+	}
+	if part.FileData == "" && part.FileURL == "" {
+		return nil
+	}
+	return &part
 }
 
 // convertToolResultOutput extracts text and image content from a tool_result
