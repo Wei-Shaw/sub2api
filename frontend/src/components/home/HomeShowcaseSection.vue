@@ -138,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import HomePromoBanner from './HomePromoBanner.vue'
 import PlanPlazaCards from '@/components/plaza/PlanPlazaCards.vue'
@@ -201,11 +201,14 @@ async function load(): Promise<void> {
   loading.value = false
 }
 
-onMounted(() => {
-  // No need to fetch if payments are off — the section is not rendered.
-  if (!paymentEnabled.value) return
-  void load()
-})
+// Use watch with immediate to handle both:
+// 1. Settings already loaded at mount time (immediate fires)
+// 2. Settings loaded async after mount (watch fires on change)
+watch(paymentEnabled, (enabled) => {
+  if (enabled && !loading.value && cards.value.length === 0 && !promo.value) {
+    void load()
+  }
+}, { immediate: true })
 
 // Bind unused i18n ref so eslint-vue does not flag it. (`t` is used in template.)
 void t

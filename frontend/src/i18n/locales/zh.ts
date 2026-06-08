@@ -11,7 +11,7 @@ export default {
     getStarted: '立即开始',
     goToDashboard: '开始使用',
     // Hero 二级 CTA：把匿名访客引到公开的模型价格 plaza 页（不强制登录）
-    cta_view_pricing: '查看模型价格',
+    cta_view_pricing: '模型价格',
     // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
     heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',

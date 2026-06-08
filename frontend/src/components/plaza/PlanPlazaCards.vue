@@ -73,7 +73,7 @@
           </div>
         </div>
 
-        <div v-if="card.models.length > 0" class="mt-auto">
+        <div v-if="card.models && card.models.length > 0" class="mt-auto">
           <div class="mb-2 text-[10px] uppercase tracking-wider text-gray-400">
             {{ t('plaza.plans.includedModels') }}
           </div>
@@ -232,12 +232,12 @@ function featureLines(card: PlazaPlanCard): string[] {
 }
 
 function displayedModels(card: PlazaPlanCard): string[] {
-  return card.models.slice(0, VISIBLE_MODELS)
+  return (card.models || []).slice(0, VISIBLE_MODELS)
 }
 
 /** Number of models hidden behind a "+N more" chip; combines local cap and server overflow. */
 function extraCount(card: PlazaPlanCard): number {
-  const localExtra = Math.max(0, card.models.length - VISIBLE_MODELS)
+  const localExtra = Math.max(0, (card.models || []).length - VISIBLE_MODELS)
   return localExtra + (card.models_overflow || 0)
 }
 

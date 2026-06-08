@@ -12,7 +12,7 @@ export default {
     goToDashboard: 'Get Started',
     // Hero secondary CTA — sends anonymous visitors to the public model
     // pricing plaza (no login required).
-    cta_view_pricing: 'View model pricing',
+    cta_view_pricing: 'Model Pricing',
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',

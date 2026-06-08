@@ -37,7 +37,7 @@
     </div>
 
     <!-- Header -->
-    <header class="relative z-20 px-6 py-4">
+    <header class="sticky top-0 z-20 bg-white/80 px-6 py-4 backdrop-blur-md dark:bg-dark-950/80">
       <nav class="mx-auto flex max-w-6xl items-center justify-between">
         <!-- Logo -->
         <div class="flex items-center">
@@ -48,44 +48,47 @@
 
         <!-- Nav Actions -->
         <div class="flex items-center gap-3">
-          <!-- Pricing Plaza link (anonymous-friendly) -->
-          <router-link
-            to="/plaza/models"
-            class="text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-dark-300 dark:hover:text-white"
-          >
-            {{ t('plaza.title') }}
-          </router-link>
+          <!-- Scrollable menu items -->
+          <div class="nav-actions flex items-center gap-3 overflow-x-auto">
+            <!-- Pricing Plaza link (anonymous-friendly) -->
+            <router-link
+              to="/plaza/models"
+              class="shrink-0 whitespace-nowrap text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-dark-300 dark:hover:text-white"
+            >
+              {{ t('plaza.title') }}
+            </router-link>
 
-          <!-- Language Switcher -->
-          <LocaleSwitcher />
+            <!-- Language Switcher -->
+            <LocaleSwitcher class="shrink-0" />
 
-          <!-- Doc Link -->
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="t('home.viewDocs')"
-          >
-            <Icon name="book" size="md" />
-          </a>
+            <!-- Doc Link -->
+            <a
+              v-if="docUrl"
+              :href="docUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="shrink-0 rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+              :title="t('home.viewDocs')"
+            >
+              <Icon name="book" size="md" />
+            </a>
 
-          <!-- Theme Toggle -->
-          <button
-            @click="toggleTheme"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
-          >
-            <Icon v-if="isDark" name="sun" size="md" />
-            <Icon v-else name="moon" size="md" />
-          </button>
+            <!-- Theme Toggle -->
+            <button
+              @click="toggleTheme"
+              class="shrink-0 rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+              :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
+            >
+              <Icon v-if="isDark" name="sun" size="md" />
+              <Icon v-else name="moon" size="md" />
+            </button>
+          </div>
 
-          <!-- Login / Dashboard Button -->
+          <!-- Login / Dashboard Button (fixed, not scrollable) -->
           <router-link
             v-if="isAuthenticated"
             :to="dashboardPath"
-            class="inline-flex items-center gap-1.5 rounded-full bg-gray-900 py-1 pl-1 pr-2.5 transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
+            class="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-gray-900 py-1 pl-1 pr-2.5 transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
           >
             <span
               class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-[10px] font-semibold text-white"
@@ -110,7 +113,7 @@
           <router-link
             v-else
             to="/login"
-            class="inline-flex items-center rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
+            class="shrink-0 inline-flex items-center rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
           >
             {{ t('home.login') }}
           </router-link>
@@ -119,7 +122,7 @@
     </header>
 
     <!-- Main Content -->
-    <main class="relative z-10 flex-1 px-6 py-16">
+    <main class="relative z-10 px-6 py-16">
       <div class="mx-auto max-w-6xl">
         <!-- Hero Section - Left/Right Layout -->
         <div class="mb-12 flex flex-col items-center justify-between gap-12 lg:flex-row lg:gap-16">
@@ -138,7 +141,7 @@
             <div class="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
               <router-link
                 :to="isAuthenticated ? dashboardPath : '/login'"
-                class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
+                class="btn btn-primary px-6 py-3 text-base shadow-lg shadow-primary-500/30"
               >
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
                 <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
@@ -380,7 +383,7 @@
       footer behaviour, only `justify-center` → `justify-between` was
       flipped to make the right-pinning meaningful at sm+.
     -->
-    <footer class="relative z-10 border-t border-gray-200/50 px-6 py-8 dark:border-dark-800/50">
+    <footer class="relative z-10 mt-auto border-t border-gray-200/50 px-6 py-8 dark:border-dark-800/50">
       <div
         class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left"
       >
@@ -493,6 +496,15 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* Nav Actions - hide scrollbar but allow horizontal scroll on mobile */
+.nav-actions {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.nav-actions::-webkit-scrollbar {
+  display: none;
+}
+
 /* Terminal Container */
 .terminal-container {
   position: relative;
