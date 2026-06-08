@@ -197,6 +197,7 @@ type CreateGroupInput struct {
 	Platform         string
 	RateMultiplier   float64
 	IsExclusive      bool
+	OperatorUserID   *int64
 	SubscriptionType string   // standard/subscription
 	DailyLimitUSD    *float64 // 日限额 (USD)
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
@@ -1866,6 +1867,23 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		}
 	}
 
+	autoGrantCreator := input.IsExclusive &&
+		subscriptionType == SubscriptionTypeStandard &&
+		input.OperatorUserID != nil &&
+		*input.OperatorUserID > 0
+
+	opCtx := ctx
+	var tx *dbent.Tx
+	if autoGrantCreator && s.entClient != nil {
+		var err error
+		tx, err = s.entClient.Tx(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("begin transaction: %w", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		opCtx = dbent.NewTxContext(ctx, tx)
+	}
+
 	group := &Group{
 		Name:                            input.Name,
 		Description:                     input.Description,
@@ -1898,8 +1916,18 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RPMLimit:                        input.RPMLimit,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
-	if err := s.groupRepo.Create(ctx, group); err != nil {
+	if err := s.groupRepo.Create(opCtx, group); err != nil {
 		return nil, err
+	}
+	if autoGrantCreator {
+		if err := s.userRepo.AddGroupToAllowedGroups(opCtx, *input.OperatorUserID, group.ID); err != nil {
+			return nil, fmt.Errorf("grant creator access to exclusive group: %w", err)
+		}
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit transaction: %w", err)
+		}
 	}
 
 	// require_oauth_only: 过滤掉 apikey 类型账号
