@@ -325,6 +325,18 @@ func (s *proxyRepoStub) CountAccountsByProxyID(ctx context.Context, proxyID int6
 func (s *proxyRepoStub) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
 	panic("unexpected ListAccountSummariesByProxyID call")
 }
+func (s *proxyRepoStub) SweepExpiredProxies(_ context.Context, _ time.Time) (int64, error) {
+	return 0, nil
+}
+func (s *proxyRepoStub) ListAllForFallback(_ context.Context) ([]Proxy, error) {
+	return nil, nil
+}
+func (s *proxyRepoStub) CountExpired(_ context.Context) (int64, error) {
+	return 0, nil
+}
+func (s *proxyRepoStub) CountExpiringSoon(_ context.Context, _ time.Time) (int64, error) {
+	return 0, nil
+}
 
 type redeemRepoStub struct {
 	deleteErrByID map[int64]error
@@ -513,6 +525,31 @@ func TestAdminService_DeleteUser_Success(t *testing.T) {
 	err := svc.DeleteUser(context.Background(), 7)
 	require.NoError(t, err)
 	require.Equal(t, []int64{7}, repo.deletedIDs)
+}
+
+func TestAdminService_DeleteUser_DeletesOwnedAPIKeys(t *testing.T) {
+	repo := &userRepoStub{user: &User{ID: 7, Role: RoleUser}}
+	apiKeyRepo := &apiKeyRepoStub{
+		allowListByUserID: true,
+		listByUserIDKeys: []APIKey{
+			{ID: 11, UserID: 7, Key: "sk-user-1"},
+			{ID: 12, UserID: 7, Key: "sk-user-2"},
+		},
+	}
+	invalidator := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{
+		userRepo:             repo,
+		apiKeyRepo:           apiKeyRepo,
+		authCacheInvalidator: invalidator,
+	}
+
+	err := svc.DeleteUser(context.Background(), 7)
+	require.NoError(t, err)
+	require.Equal(t, []int64{7}, repo.deletedIDs)
+	require.Equal(t, []int64{7}, apiKeyRepo.listByUserIDCalls)
+	require.Equal(t, []int64{11, 12}, apiKeyRepo.deletedIDs)
+	require.ElementsMatch(t, []string{"sk-user-1", "sk-user-2"}, invalidator.keys)
+	require.Equal(t, []int64{7}, invalidator.userIDs)
 }
 
 func TestAdminService_DeleteUser_NotFound(t *testing.T) {

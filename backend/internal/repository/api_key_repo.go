@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -106,7 +107,11 @@ func (r *apiKeyRepository) GetKeyAndOwnerID(ctx context.Context, id int64) (stri
 func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
 	m, err := r.activeQuery().
 		Where(apikey.KeyEQ(key)).
-		WithUser().
+		WithUser(func(q *dbent.UserQuery) {
+			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
+				gq.Select(group.FieldID)
+			})
+		}).
 		WithGroup().
 		Only(ctx)
 	if err != nil {
@@ -155,12 +160,16 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldLastActiveAt,
 				user.FieldRpmLimit,
 			)
+			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
+				gq.Select(group.FieldID)
+			})
 		}).
 		WithGroup(func(q *dbent.GroupQuery) {
 			q.Select(
 				group.FieldID,
 				group.FieldName,
 				group.FieldPlatform,
+				group.FieldIsExclusive,
 				group.FieldStatus,
 				group.FieldSubscriptionType,
 				group.FieldRateMultiplier,
@@ -295,6 +304,76 @@ func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 			Exist(mixins.SkipSoftDelete(ctx))
 		if err != nil {
 			return err
+		}
+		if exists {
+			return nil
+		}
+		return service.ErrAPIKeyNotFound
+	}
+	return nil
+}
+
+// DeleteWithAudit 在同一事务内:
+//  1. 把(明文 key、所有者、key 名称)写入 deleted_api_key_audits;
+//  2. 软删除该 key(tombstone 覆盖 key 列以释放唯一约束)。
+//
+// 保证"被删除的 key 一定能反查到所有者"。事务模式与 group_repo.DeleteCascade 一致。
+func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error {
+	tombstoneKey := fmt.Sprintf("__deleted__%d__%d", id, time.Now().UnixNano())
+
+	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		return r.deleteWithAudit(ctx, existingTx.Client(), id, tombstoneKey)
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+	exec := r.client
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		exec = tx.Client()
+	}
+
+	if err := r.deleteWithAudit(ctx, exec, id, tombstoneKey); err != nil {
+		return err
+	}
+
+	if tx != nil {
+		return tx.Commit()
+	}
+	return nil
+}
+
+func (r *apiKeyRepository) deleteWithAudit(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
+	// 1. 审计:数据源即 api_keys 当前行;WHERE deleted_at IS NULL 保证只对未删除行写一次。
+	if _, err := exec.ExecContext(ctx, `
+		INSERT INTO deleted_api_key_audits (key, api_key_id, user_id, key_name, deleted_at)
+		SELECT key, id, user_id, name, NOW()
+		FROM api_keys
+		WHERE id = $1 AND deleted_at IS NULL`, id); err != nil {
+		return err
+	}
+
+	// 2. 软删除(tombstone 覆盖 key)。
+	res, err := exec.ExecContext(ctx, `
+		UPDATE api_keys
+		SET key = $1, deleted_at = NOW(), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL`, tombstoneKey, id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		// 并发/重复删除:记录已存在(已软删)则幂等返回 nil(defer 回滚空事务),否则 NotFound。
+		exists, existErr := r.client.APIKey.Query().
+			Where(apikey.IDEQ(id)).
+			Exist(mixins.SkipSoftDelete(ctx))
+		if existErr != nil {
+			return existErr
 		}
 		if exists {
 			return nil
@@ -645,6 +724,14 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
+		if allowed := m.Edges.User.Edges.AllowedGroups; len(allowed) > 0 {
+			out.User.AllowedGroups = make([]int64, 0, len(allowed))
+			for _, g := range allowed {
+				if g != nil {
+					out.User.AllowedGroups = append(out.User.AllowedGroups, g.ID)
+				}
+			}
+		}
 	}
 	if m.Edges.Group != nil {
 		out.Group = groupEntityToService(m.Edges.Group)

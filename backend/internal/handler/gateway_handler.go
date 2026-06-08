@@ -441,7 +441,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity {
-				result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, reqModel, "generateContent", reqStream, body, hasBoundSession)
+				result, err = h.antigravityGatewayService.ForwardGemini(
+					requestCtx,
+					c,
+					account,
+					reqModel,
+					"generateContent",
+					reqStream,
+					body,
+					hasBoundSession,
+					service.WithForwardGeminiSession(derefGroupID(apiKey.GroupID), sessionKey),
+				)
 			} else {
 				result, err = h.geminiCompatService.Forward(requestCtx, c, account, body)
 			}
