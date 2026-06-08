@@ -16,18 +16,14 @@
 
 </div>
 
-> **Sub2API 官方仅使用  `sub2api.org` 与 `pincc.ai` 两个域名。其他使用 Sub2API 名义的网站可能为第三方部署或服务，与本项目无关，请自行甄别。**
----
 
-## 在线体验
+## ⚠️ 重要提醒
 
-体验地址：**[https://demo.sub2api.org/](https://demo.sub2api.org/)**
+使用本项目前，请务必仔细阅读以下内容：
 
-演示账号（共享演示环境；自建部署不会自动创建该账号）：
-
-| 邮箱 | 密码 |
-|------|------|
-| admin@sub2api.org | admin123 |
+- **🚨 服务条款风险**：使用本项目可能违反 Anthropic 等上游服务商的服务条款。请在使用前仔细阅读相关服务商的用户协议，由此产生的一切风险由用户自行承担。
+- **⚖️ 合规使用**：请在符合您所在国家或地区法律法规的前提下使用本项目，严禁将其用于任何违法违规用途。
+- **📖 免责声明**：本项目仅供技术学习与研究使用，作者不对因使用本项目导致的账户封禁、服务中断、数据丢失或其他任何直接或间接损失承担责任。
 
 ## 项目概述
 
@@ -50,14 +46,10 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 > [想出现在这里？](mailto:support@pincc.ai)
 
 <table>
-<tr>
-<td width="180" align="center" valign="middle"><a href="https://shop.pincc.ai/"><img src="assets/partners/logos/pincc-logo.png" alt="pincc" width="150"></a></td>
-<td valign="middle"><b><a href="https://shop.pincc.ai/">PinCC</a></b> 是基于 Sub2API 搭建的官方中转服务，提供 Claude Code、Codex、Gemini 等主流模型的稳定中转，开箱即用，免去自建部署与运维烦恼。</td>
-</tr>
 
 <tr>
-<td width="180"><a href="https://www.packyapi.com/register?aff=sub2api"><img src="assets/partners/logos/packycode.png" alt="PackyCode" width="150"></a></td>
-<td>感谢 PackyCode 赞助了本项目！PackyCode 是一家稳定、高效的API中转服务商，提供 Claude Code、Codex、Gemini 等多种中转服务。PackyCode 为本软件的用户提供了特别优惠，使用<a href="https://www.packyapi.com/register?aff=sub2api">此链接</a>注册并在充值时填写"sub2api"优惠码，首次充值可以享受9折优惠！</td>
+<td width="180"><a href="https://www.openmodel.ai?ref=sub2api"><img src="assets/partners/logos/openmodel.jpg" alt="openmodel" width="150"></a></td>
+<td>一个API，顶级模型随便用！<a href="https://www.openmodel.ai?ref=sub2api">OpenModel</a> 专注于生产级、高可用的 AI API 网关，让你的应用真正做到高速稳定：自动故障转移、智能选最优渠道、生产级 SLA 保障。远超单一供应商的 SLA，让稳定性成为您的核心竞争力。</td>
 </tr>
 
 <tr>
