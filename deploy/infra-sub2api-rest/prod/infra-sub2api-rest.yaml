@@ -17,15 +17,40 @@ tasks:
           tag: {{ .Tag }}
       - name: build
         run: |
+          set -euo pipefail
+
+          # 1) 用 Docker 仅构建前端（构建机无 node/pnpm）
+          docker build \
+            --target frontend-builder \
+            --build-arg NODE_IMAGE=hub.p1.cn/cicd/node:24 \
+            --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
+            -f deploy/infra-sub2api-rest/prod/Dockerfile \
+            -t {{ .ServiceName }}-frontend-builder:tmp \
+            .
+
+          # 2) 从容器中把前端产物 copy 到后端 embed 目录
+          CID=$(docker create {{ .ServiceName }}-frontend-builder:tmp)
+          rm -rf backend/internal/web/dist
+          docker cp "${CID}:/app/backend/internal/web/dist" backend/internal/web/dist
+          docker rm "${CID}"
+          docker rmi {{ .ServiceName }}-frontend-builder:tmp || true
+
+          # 3) 本机按原有方式编译后端（嵌入前端）
+          # 临时关闭 nounset：~/.bashrc 会 source /etc/bashrc，其中引用了未定义的 PS1
+          set +u
           source ~/.bashrc
+          set -u
           goup set 1.26.4
           cd backend
           go mod tidy
+          make build-embed
           cd ..
-          make build-backend
-          mkdir -p package/infra-sub2api-rest/{bin,conf}
-          cp backend/bin/server package/infra-sub2api-rest/bin/infra-sub2api-rest
-          cp -R conf/infra-sub2api-rest/prod/* package/infra-sub2api-rest/conf/
+
+          mkdir -p package/{{ .ServiceName }}/{bin,conf}
+          cp backend/bin/server package/{{ .ServiceName }}/bin/{{ .ServiceName }}
+          cp -R conf/{{ .ServiceName }}/prod/* package/{{ .ServiceName }}/conf/
+          chmod +x package/{{ .ServiceName }}/bin/{{ .ServiceName }}
+
       - uses: setup
       - uses: release
       - uses: upload
@@ -39,10 +64,6 @@ tasks:
       - uses: releases
         with:
           num: 3
-      - name: chown app workspace
-        run:
-          sudo chown -R app:app /app
-        runs-on: remote
       - name: link system service
         run: |
           sudo ln -nfs /app/{{.ServiceName}}/current/conf/{{.ServiceName}}.service /etc/systemd/system/
@@ -55,8 +76,8 @@ tasks:
           operator: {{ .Operator }}
         run: |
           sudo systemctl daemon-reload
-          sudo systemctl restart {{.ServiceName}}
-          sudo systemctl status {{.ServiceName}}
+          sudo systemctl restart infra-sub2api-rest
+          sudo systemctl status infra-sub2api-rest
           while true
           do
             status=$(systemctl is-failed {{.ServiceName}})

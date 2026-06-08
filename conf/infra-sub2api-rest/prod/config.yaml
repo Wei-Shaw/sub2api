@@ -19,7 +19,7 @@
 
 server:
   host: "0.0.0.0"
-  port: 8001
+  port: 3001
   mode: "release"
   # Nginx 反代时这里要列出 Nginx 所在 IP/CIDR，否则后端不会信任 X-Forwarded-For，
   # 业务里看到的 client_ip 永远是 127.0.0.1。
