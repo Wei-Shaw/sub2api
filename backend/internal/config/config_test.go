@@ -216,6 +216,24 @@ func TestLoadOpenAIResponseHeaderTimeoutFromEnv(t *testing.T) {
 	require.Equal(t, 1800, cfg.Gateway.OpenAIResponseHeaderTimeout)
 }
 
+func TestLoadOpenAIResponsesStreamDataIntervalTimeoutFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_RESPONSES_STREAM_DATA_INTERVAL_TIMEOUT", "900")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 900, cfg.Gateway.OpenAIResponsesStreamDataIntervalTimeout)
+}
+
+func TestLoadCompactDrainAfterClientDisconnectFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_COMPACT_DRAIN_AFTER_CLIENT_DISCONNECT", "true")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.CompactDrainAfterClientDisconnect)
+}
+
 func TestLoadOpenAIWSStickyTTLCompatibility(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_OPENAI_WS_STICKY_RESPONSE_ID_TTL_SECONDS", "0")
@@ -1284,6 +1302,16 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "gateway.openai_response_header_timeout",
 		},
 		{
+			name:    "gateway openai responses stream data interval negative",
+			mutate:  func(c *Config) { c.Gateway.OpenAIResponsesStreamDataIntervalTimeout = -1 },
+			wantErr: "gateway.openai_responses_stream_data_interval_timeout must be non-negative",
+		},
+		{
+			name:    "gateway openai responses stream data interval range",
+			mutate:  func(c *Config) { c.Gateway.OpenAIResponsesStreamDataIntervalTimeout = 30 },
+			wantErr: "gateway.openai_responses_stream_data_interval_timeout must be 0 or between 60-1800 seconds",
+		},
+		{
 			name:    "gateway max idle conns",
 			mutate:  func(c *Config) { c.Gateway.MaxIdleConns = 0 },
 			wantErr: "gateway.max_idle_conns",
@@ -1905,6 +1933,9 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 	if cfg.Gateway.StreamDataIntervalTimeout != 180 {
 		t.Fatalf("stream_data_interval_timeout = %d, want 180", cfg.Gateway.StreamDataIntervalTimeout)
 	}
+	if cfg.Gateway.OpenAIResponsesStreamDataIntervalTimeout != 0 {
+		t.Fatalf("openai_responses_stream_data_interval_timeout = %d, want 0", cfg.Gateway.OpenAIResponsesStreamDataIntervalTimeout)
+	}
 	if cfg.Gateway.StreamKeepaliveInterval != 10 {
 		t.Fatalf("stream_keepalive_interval = %d, want 10", cfg.Gateway.StreamKeepaliveInterval)
 	}
@@ -1913,6 +1944,9 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 	}
 	if cfg.Gateway.ImageStreamKeepaliveInterval != 10 {
 		t.Fatalf("image_stream_keepalive_interval = %d, want 10", cfg.Gateway.ImageStreamKeepaliveInterval)
+	}
+	if cfg.Gateway.CompactDrainAfterClientDisconnect {
+		t.Fatalf("compact_drain_after_client_disconnect = true, want false")
 	}
 	if cfg.Gateway.ImageConcurrency.Enabled {
 		t.Fatalf("image_concurrency.enabled = true, want false")

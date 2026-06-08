@@ -692,6 +692,9 @@ type GatewayConfig struct {
 	// OpenAIResponseHeaderTimeout: OpenAI/Codex 上游等待响应头的超时时间（秒），0表示无超时
 	// OpenAI/Codex 请求可能在上游排队较久；默认不使用通用响应头超时截断。
 	OpenAIResponseHeaderTimeout int `mapstructure:"openai_response_header_timeout"`
+	// OpenAIResponsesStreamDataIntervalTimeout: OpenAI `/responses` 上游 SSE 数据间隔超时（秒），0表示禁用。
+	// Codex 长推理/compact 可能长时间只有下游 keepalive、上游无新事件；默认禁用避免误杀正常长流。
+	OpenAIResponsesStreamDataIntervalTimeout int `mapstructure:"openai_responses_stream_data_interval_timeout"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
@@ -708,6 +711,9 @@ type GatewayConfig struct {
 	// CodexImageGenerationBridgeEnabled: 是否为 Codex `/v1/responses` 自动注入 image_generation 工具和桥接指令。
 	// 默认关闭，避免纯文本 Codex 请求被意外改写；显式携带 image_generation 工具的请求仍按分组能力转发。
 	CodexImageGenerationBridgeEnabled bool `mapstructure:"codex_image_generation_bridge_enabled"`
+	// CompactDrainAfterClientDisconnect: Codex compact/internal summary 请求下游断开后是否继续 drain 上游。
+	// 默认关闭，避免内部摘要任务在客户端超时后继续占用连接/内存。
+	CompactDrainAfterClientDisconnect bool `mapstructure:"compact_drain_after_client_disconnect"`
 	// ForcedCodexInstructionsTemplateFile: 服务端强制附加到 Codex 顶层 instructions 的模板文件路径。
 	// 模板渲染后会直接覆盖最终 instructions；若需要保留客户端 system 转换结果，请在模板中显式引用 {{ .ExistingInstructions }}。
 	ForcedCodexInstructionsTemplateFile string `mapstructure:"forced_codex_instructions_template_file"`
@@ -1812,6 +1818,7 @@ func setDefaults() {
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
+	viper.SetDefault("gateway.openai_responses_stream_data_interval_timeout", 0)
 	viper.SetDefault("gateway.log_upstream_error_body", true)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
@@ -1820,6 +1827,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
+	viper.SetDefault("gateway.compact_drain_after_client_disconnect", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
@@ -2448,6 +2456,13 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIResponseHeaderTimeout < 0 {
 		return fmt.Errorf("gateway.openai_response_header_timeout must be non-negative")
+	}
+	if c.Gateway.OpenAIResponsesStreamDataIntervalTimeout < 0 {
+		return fmt.Errorf("gateway.openai_responses_stream_data_interval_timeout must be non-negative")
+	}
+	if c.Gateway.OpenAIResponsesStreamDataIntervalTimeout != 0 &&
+		(c.Gateway.OpenAIResponsesStreamDataIntervalTimeout < 60 || c.Gateway.OpenAIResponsesStreamDataIntervalTimeout > 1800) {
+		return fmt.Errorf("gateway.openai_responses_stream_data_interval_timeout must be 0 or between 60-1800 seconds")
 	}
 	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
 		switch c.Gateway.ConnectionPoolIsolation {
