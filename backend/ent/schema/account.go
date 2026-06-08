@@ -91,6 +91,9 @@ func (Account) Fields() []ent.Field {
 		field.Int64("proxy_id").
 			Optional().
 			Nillable(),
+		field.Int64("proxy_fallback_origin_id").
+			Optional().Nillable().
+			Comment("Original proxy id replaced by expiry-fallback; for manual revert. NULL = not in fallback."),
 
 		// concurrency: 账户最大并发请求数
 		// 用于限制同一时间对该账户发起的请求数量

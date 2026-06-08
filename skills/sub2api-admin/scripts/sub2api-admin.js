@@ -45,6 +45,16 @@ function usage() {
   sub2api-admin.js accounts import-json --file <path> --template-name <name> [--skip-name <name>] [--dry-run]
   sub2api-admin.js groups all
   sub2api-admin.js proxies all
+  sub2api-admin.js redeem-codes list [--page-size 200] [--page N] [--type balance] [--status unused] [--search TEXT] [--sort-by id] [--sort-order desc]
+  sub2api-admin.js redeem-codes export [--file redeem-codes.csv] [list filters...]
+  sub2api-admin.js redeem-codes get <id>
+  sub2api-admin.js redeem-codes generate --json '{...}' | --file payload.json [--idempotency-key KEY]
+  sub2api-admin.js redeem-codes create-and-redeem --json '{...}' | --file payload.json [--idempotency-key KEY]
+  sub2api-admin.js redeem-codes batch-update --ids 1,2 --json '{...}' | --file fields.json
+  sub2api-admin.js redeem-codes delete <id>
+  sub2api-admin.js redeem-codes batch-delete --ids 1,2
+  sub2api-admin.js redeem-codes expire <id>
+  sub2api-admin.js redeem-codes stats
   sub2api-admin.js error-rules list|get|create|update|delete|toggle ...
   sub2api-admin.js tls-profiles list|get|create|update|delete ...
   sub2api-admin.js api <GET|POST|PUT|DELETE> <admin-path> [--json '{...}' | --file payload.json]
@@ -84,10 +94,11 @@ function authHeaders() {
   throw new Error("Missing SUB2API_ADMIN_API_KEY");
 }
 
-async function apiRequest(method, pathname, body) {
+async function apiRequest(method, pathname, body, extraHeaders = {}) {
   const headers = {
     ...authHeaders(),
     Accept: "application/json",
+    ...extraHeaders,
   };
   const options = { method, headers };
   if (body !== undefined) {
@@ -109,6 +120,32 @@ async function apiRequest(method, pathname, body) {
   return data.data;
 }
 
+async function apiRawRequest(method, pathname, body, extraHeaders = {}) {
+  const headers = {
+    ...authHeaders(),
+    Accept: "*/*",
+    ...extraHeaders,
+  };
+  const options = { method, headers };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  const res = await fetch(`${BASE_URL}${pathname}`, options);
+  const text = await res.text();
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const data = JSON.parse(text);
+      detail = data.message || data.code || detail;
+    } catch {
+      if (text) detail = text;
+    }
+    throw new Error(`${method} ${pathname} failed: ${detail}`);
+  }
+  return text;
+}
+
 function encodeQuery(params) {
   const pairs = [];
   for (const [key, value] of Object.entries(params)) {
@@ -127,6 +164,14 @@ function normalizeAdminPath(pathname) {
 
 async function adminRequest(method, adminPath, body) {
   return apiRequest(method, normalizeAdminPath(adminPath), body);
+}
+
+async function adminRequestWithHeaders(method, adminPath, body, headers = {}) {
+  return apiRequest(method, normalizeAdminPath(adminPath), body, headers);
+}
+
+async function adminRawRequest(method, adminPath, body, headers = {}) {
+  return apiRawRequest(method, normalizeAdminPath(adminPath), body, headers);
 }
 
 async function listAccounts(options = {}) {
@@ -199,6 +244,36 @@ function accountListOptions(flags) {
     sortOrder: flags["sort-order"] || "asc",
     lite: flags.lite === undefined ? true : parseBool(flags.lite, "--lite"),
   };
+}
+
+function redeemCodesListOptions(flags) {
+  return {
+    page: Number(flags.page || 1),
+    pageSize: Number(flags["page-size"] || 200),
+    type: flags.type,
+    status: flags.status,
+    search: flags.search,
+    sortBy: flags["sort-by"] || "id",
+    sortOrder: flags["sort-order"] || "desc",
+  };
+}
+
+function redeemCodesQuery(flags) {
+  const options = redeemCodesListOptions(flags);
+  return encodeQuery({
+    page: options.page,
+    page_size: options.pageSize,
+    type: options.type,
+    status: options.status,
+    search: options.search,
+    sort_by: options.sortBy,
+    sort_order: options.sortOrder,
+  });
+}
+
+function idempotencyHeaders(flags) {
+  if (!flags["idempotency-key"]) return {};
+  return { "Idempotency-Key": flags["idempotency-key"] };
 }
 
 function printJson(data) {
@@ -530,6 +605,71 @@ async function commandProxies(args) {
   throw new Error(`unknown proxies subcommand: ${sub || "(missing)"}`);
 }
 
+async function commandRedeemCodes(args) {
+  const sub = args.positional[1];
+  if (sub === "list") {
+    printJson(await adminRequest("GET", `/admin/redeem-codes${redeemCodesQuery(args.flags)}`));
+    return;
+  }
+  if (sub === "export") {
+    const csv = await adminRawRequest("GET", `/admin/redeem-codes/export${redeemCodesQuery(args.flags)}`);
+    if (args.flags.file) {
+      fs.writeFileSync(path.resolve(args.flags.file), csv);
+      printJson({ file: path.resolve(args.flags.file) });
+    } else {
+      process.stdout.write(csv);
+    }
+    return;
+  }
+  if (sub === "get") {
+    const id = args.positional[2];
+    if (!id) throw new Error("redeem-codes get requires <id>");
+    printJson(await adminRequest("GET", `/admin/redeem-codes/${id}`));
+    return;
+  }
+  if (sub === "generate") {
+    printJson(await adminRequestWithHeaders("POST", "/admin/redeem-codes/generate", readJsonPayload(args.flags), idempotencyHeaders(args.flags)));
+    return;
+  }
+  if (sub === "create-and-redeem") {
+    printJson(await adminRequestWithHeaders("POST", "/admin/redeem-codes/create-and-redeem", readJsonPayload(args.flags), idempotencyHeaders(args.flags)));
+    return;
+  }
+  if (sub === "batch-update") {
+    const fields = readJsonPayload(args.flags, { required: false }) || {};
+    const payload = args.flags.ids ? { ids: parseIds(args.flags.ids), fields } : fields;
+    if (!Array.isArray(payload.ids) || payload.ids.length === 0) {
+      throw new Error("redeem-codes batch-update requires --ids or payload.ids");
+    }
+    if (!payload.fields || typeof payload.fields !== "object") {
+      throw new Error("redeem-codes batch-update requires fields");
+    }
+    printJson(await adminRequest("POST", "/admin/redeem-codes/batch-update", payload));
+    return;
+  }
+  if (sub === "delete") {
+    const id = args.positional[2];
+    if (!id) throw new Error("redeem-codes delete requires <id>");
+    printJson(await adminRequest("DELETE", `/admin/redeem-codes/${id}`));
+    return;
+  }
+  if (sub === "batch-delete") {
+    printJson(await adminRequest("POST", "/admin/redeem-codes/batch-delete", { ids: parseIds(args.flags.ids) }));
+    return;
+  }
+  if (sub === "expire") {
+    const id = args.positional[2];
+    if (!id) throw new Error("redeem-codes expire requires <id>");
+    printJson(await adminRequest("POST", `/admin/redeem-codes/${id}/expire`));
+    return;
+  }
+  if (sub === "stats") {
+    printJson(await adminRequest("GET", "/admin/redeem-codes/stats"));
+    return;
+  }
+  throw new Error(`unknown redeem-codes subcommand: ${sub || "(missing)"}`);
+}
+
 async function commandCrudResource(args, name, basePath, options = {}) {
   const sub = args.positional[1];
   const id = args.positional[2];
@@ -590,6 +730,10 @@ async function main() {
   }
   if (root === "proxies") {
     await commandProxies(args);
+    return;
+  }
+  if (root === "redeem-codes") {
+    await commandRedeemCodes(args);
     return;
   }
   if (root === "error-rules") {
