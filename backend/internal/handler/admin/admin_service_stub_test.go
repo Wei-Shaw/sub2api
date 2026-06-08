@@ -473,8 +473,30 @@ func (s *stubAdminService) GetProxiesByIDs(ctx context.Context, ids []int64) ([]
 func (s *stubAdminService) CreateProxy(ctx context.Context, input *service.CreateProxyInput) (*service.Proxy, error) {
 	s.mu.Lock()
 	s.createdProxies = append(s.createdProxies, input)
+	id := int64(400 + len(s.createdProxies) - 1)
 	s.mu.Unlock()
-	proxy := service.Proxy{ID: 400, Name: input.Name, Status: service.StatusActive}
+	expiryWarnDays := 7
+	if input.ExpiryWarnDays.Set {
+		expiryWarnDays = input.ExpiryWarnDays.Value
+	}
+	proxy := service.Proxy{
+		ID:             id,
+		Name:           input.Name,
+		Protocol:       input.Protocol,
+		Host:           input.Host,
+		Port:           input.Port,
+		Username:       input.Username,
+		Password:       input.Password,
+		BasePath:       input.BasePath,
+		Status:         service.StatusActive,
+		ExpiresAt:      input.ExpiresAt,
+		FallbackMode:   input.FallbackMode,
+		BackupProxyID:  input.BackupProxyID,
+		ExpiryWarnDays: expiryWarnDays,
+	}
+	if proxy.FallbackMode == "" {
+		proxy.FallbackMode = service.FallbackModeNone
+	}
 	return &proxy, nil
 }
 

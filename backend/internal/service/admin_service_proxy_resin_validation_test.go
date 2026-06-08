@@ -131,3 +131,62 @@ func TestAdminService_UpdateProxy_AllowsExistingResinWithoutToken(t *testing.T) 
 	require.NotNil(t, updated)
 	require.Len(t, repo.updated, 1)
 }
+
+func TestAdminService_UpdateProxy_PartialPreservesExpiryFallback(t *testing.T) {
+	t.Parallel()
+
+	expiresAt := time.Now().UTC().Add(48 * time.Hour)
+	backupID := int64(2)
+	repo := &proxyRepoStubForResinValidation{
+		existing: &Proxy{
+			ID:             1,
+			Name:           "proxy",
+			Protocol:       ProxyProtocolHTTP,
+			Host:           "proxy.example.com",
+			Port:           8080,
+			Status:         StatusActive,
+			ExpiresAt:      &expiresAt,
+			FallbackMode:   FallbackModeProxy,
+			BackupProxyID:  &backupID,
+			ExpiryWarnDays: 14,
+		},
+	}
+	svc := &adminServiceImpl{proxyRepo: repo}
+
+	updated, err := svc.UpdateProxy(context.Background(), 1, &UpdateProxyInput{
+		Status: StatusDisabled,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, StatusDisabled, updated.Status)
+	require.Equal(t, &expiresAt, updated.ExpiresAt)
+	require.Equal(t, FallbackModeProxy, updated.FallbackMode)
+	require.Equal(t, &backupID, updated.BackupProxyID)
+	require.Equal(t, 14, updated.ExpiryWarnDays)
+	require.Len(t, repo.updated, 1)
+}
+
+func TestAdminService_UpdateProxy_RejectsInvalidFallbackMode(t *testing.T) {
+	t.Parallel()
+
+	repo := &proxyRepoStubForResinValidation{
+		existing: &Proxy{
+			ID:             1,
+			Name:           "proxy",
+			Protocol:       ProxyProtocolHTTP,
+			Host:           "proxy.example.com",
+			Port:           8080,
+			Status:         StatusActive,
+			FallbackMode:   FallbackModeNone,
+			ExpiryWarnDays: 7,
+		},
+	}
+	svc := &adminServiceImpl{proxyRepo: repo}
+
+	_, err := svc.UpdateProxy(context.Background(), 1, &UpdateProxyInput{
+		FallbackMode: OptionalStringInput{Set: true, Value: "bad-mode"},
+	})
+
+	require.Error(t, err)
+	require.Empty(t, repo.updated)
+}

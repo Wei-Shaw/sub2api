@@ -495,6 +495,15 @@
             </button>
           </div>
         </div>
+        <div v-if="supportsResinBasePath(createForm.protocol)">
+          <label class="input-label">{{ t('admin.proxies.basePath') }}</label>
+          <input
+            v-model="createForm.base_path"
+            type="text"
+            class="input"
+            :placeholder="t('admin.proxies.form.basePathPlaceholder')"
+          />
+        </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.expiresAt') }}</label>
           <div class="mb-2 flex flex-wrap gap-2">
@@ -726,6 +735,15 @@
               <Icon :name="editPasswordVisible ? 'eyeOff' : 'eye'" size="md" />
             </button>
           </div>
+        </div>
+        <div v-if="supportsResinBasePath(editForm.protocol)">
+          <label class="input-label">{{ t('admin.proxies.basePath') }}</label>
+          <input
+            v-model="editForm.base_path"
+            type="text"
+            class="input"
+            :placeholder="t('admin.proxies.form.basePathPlaceholder')"
+          />
         </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.status') }}</label>
@@ -1130,6 +1148,7 @@ const batchParseResult = reactive({
     port: number
     username: string
     password: string
+    base_path: string
   }>
 })
 
@@ -1140,6 +1159,7 @@ const createForm = reactive({
   port: 8080,
   username: '',
   password: '',
+  base_path: '',
   expires_at: '' as string,
   fallback_mode: 'none' as 'none' | 'proxy' | 'direct',
   backup_proxy_id: null as number | null,
@@ -1153,6 +1173,7 @@ const editForm = reactive({
   port: 8080,
   username: '',
   password: '',
+  base_path: '',
   status: 'active' as 'active' | 'inactive' | 'expired',
   expires_at: '' as string,
   fallback_mode: 'none' as 'none' | 'proxy' | 'direct',
@@ -1179,6 +1200,9 @@ const isAbortError = (error: unknown) => {
 
 const isResinProtocol = (protocol: ProxyProtocol | string) =>
   protocol === 'resin_http' || protocol === 'resin_https' || protocol === 'resin_socks5'
+
+const supportsResinBasePath = (protocol: ProxyProtocol | string) =>
+  protocol === 'resin_http' || protocol === 'resin_https'
 
 const protocolLabel = (protocol: ProxyProtocol | string) => {
   switch (protocol) {
@@ -1318,6 +1342,7 @@ const closeCreateModal = () => {
   createForm.port = 8080
   createForm.username = ''
   createForm.password = ''
+  createForm.base_path = ''
   createForm.expires_at = ''
   createForm.fallback_mode = 'none'
   createForm.backup_proxy_id = null
@@ -1345,6 +1370,7 @@ const parseProxyUrl = (
   port: number
   username: string
   password: string
+  base_path: string
 } | null => {
   const trimmed = line.trim()
   if (!trimmed) return null
@@ -1365,7 +1391,8 @@ const parseProxyUrl = (
     host: host.trim(),
     port: portNum,
     username: username?.trim() || '',
-    password: password?.trim() || ''
+    password: password?.trim() || '',
+    base_path: ''
   }
 }
 
@@ -1446,6 +1473,7 @@ const handleCreateProxy = async () => {
       host: createForm.host.trim(),
       port: createForm.port,
       username: createForm.username.trim() || null,
+      base_path: supportsResinBasePath(createForm.protocol) ? createForm.base_path.trim() : '',
       password: createForm.password.trim() || null,
       expires_at: createForm.expires_at ? Math.floor(new Date(createForm.expires_at).getTime() / 1000) : null,
       fallback_mode: createForm.fallback_mode,
@@ -1471,6 +1499,7 @@ const handleEdit = (proxy: Proxy) => {
   editForm.port = proxy.port
   editForm.username = proxy.username || ''
   editForm.password = proxy.password || ''
+  editForm.base_path = proxy.base_path || ''
   editForm.status = proxy.status === 'expired' ? 'inactive' : proxy.status
   editForm.expires_at = proxy.expires_at ? proxy.expires_at.slice(0, 10) : ''
   editForm.fallback_mode = proxy.fallback_mode || 'none'
@@ -1511,6 +1540,7 @@ const handleUpdateProxy = async () => {
       host: editForm.host.trim(),
       port: editForm.port,
       username: editForm.username.trim() || null,
+      base_path: supportsResinBasePath(editForm.protocol) ? editForm.base_path.trim() : '',
       status: editForm.status,
       expires_at: editForm.expires_at ? Math.floor(new Date(editForm.expires_at).getTime() / 1000) : null,
       fallback_mode: editForm.fallback_mode,
@@ -1807,12 +1837,12 @@ const editExpiresDays = computed<number | null>({
 })
 
 const expiryLabel = (row: Proxy): string => {
-  const { key, params } = proxyExpiryLabelKey(row.expires_at, row.status)
+  const { key, params } = proxyExpiryLabelKey(row.expires_at, row.status, row.expiry_warn_days)
   return params ? t(key, params) : t(key)
 }
 
 const expiryBadgeClass = (row: Proxy): string =>
-  proxyExpiryBadgeClass(row.expires_at, row.status)
+  proxyExpiryBadgeClass(row.expires_at, row.status, row.expiry_warn_days)
 
 const qualityOverallClass = (status?: string) => {
   if (status === 'healthy') return 'badge-success'

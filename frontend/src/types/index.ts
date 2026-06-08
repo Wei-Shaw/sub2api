@@ -1136,7 +1136,11 @@ export interface AdminDataProxy {
   username?: string | null
   base_path?: string | null
   password?: string | null
-  status: 'active' | 'inactive'
+  status: 'active' | 'inactive' | 'expired'
+  expires_at?: number | null
+  fallback_mode?: 'none' | 'proxy' | 'direct'
+  backup_proxy_name?: string | null
+  expiry_warn_days?: number
 }
 
 export interface AdminDataAccount {

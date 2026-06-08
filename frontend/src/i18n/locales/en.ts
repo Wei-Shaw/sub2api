@@ -4227,6 +4227,7 @@ export default {
       port: 'Port',
       username: 'Username (Optional)',
       password: 'Password (Optional)',
+      basePath: 'Base path',
       status: 'Status',
       enterProxyName: 'Enter proxy name',
       leaveEmptyToKeep: 'Leave empty to keep current',
@@ -4311,6 +4312,7 @@ export default {
       form: {
         hostPlaceholder: 'proxy.example.com',
         portPlaceholder: '8080',
+        basePathPlaceholder: '/resin-base-path',
         resinHostPlaceholder: 'resin.example.com',
         resinPlatformPlaceholder: 'openai',
         resinTokenPlaceholder: 'resin-token'

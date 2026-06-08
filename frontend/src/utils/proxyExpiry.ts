@@ -1,5 +1,5 @@
 // 代理有效期展示逻辑(ProxiesView 与 AccountsView 共用)。
-// 到期紧迫度固定两档:剩余 ≤3 天红、≤7 天黄(不读 per-proxy expiry_warn_days)。
+// 到期紧迫度两档:剩余 ≤3 天红、≤ expiry_warn_days 天黄。
 export const EXPIRY_WARN_DAYS = 7
 export const EXPIRY_DANGER_DAYS = 3
 
@@ -8,11 +8,15 @@ export const daysUntil = (iso: string): number =>
   Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000)
 
 // 倒计时徽章的 CSS class(纯函数,无 i18n 依赖)。
-export function proxyExpiryBadgeClass(expiresAt: string | null, status?: string): string {
+export function proxyExpiryBadgeClass(
+  expiresAt: string | null,
+  status?: string,
+  warnDays: number = EXPIRY_WARN_DAYS,
+): string {
   if (status === 'expired') return 'badge badge-danger'
   const d = expiresAt ? daysUntil(expiresAt) : Infinity
   if (d <= EXPIRY_DANGER_DAYS) return 'badge badge-danger'
-  if (d <= EXPIRY_WARN_DAYS) return 'badge badge-warning'
+  if (d <= warnDays) return 'badge badge-warning'
   return 'text-gray-500'
 }
 
@@ -20,10 +24,11 @@ export function proxyExpiryBadgeClass(expiresAt: string | null, status?: string)
 export function proxyExpiryLabelKey(
   expiresAt: string | null,
   status?: string,
+  warnDays: number = EXPIRY_WARN_DAYS,
 ): { key: string; params?: { days: number } } {
   if (status === 'expired') return { key: 'admin.proxies.expired' }
   const d = expiresAt ? daysUntil(expiresAt) : Infinity
   if (d < 0) return { key: 'admin.proxies.overdueDays', params: { days: Math.abs(d) } }
-  if (d <= EXPIRY_WARN_DAYS) return { key: 'admin.proxies.expiringInDays', params: { days: d } }
+  if (d <= warnDays) return { key: 'admin.proxies.expiringInDays', params: { days: d } }
   return { key: 'admin.proxies.remainingDays', params: { days: d } }
 }

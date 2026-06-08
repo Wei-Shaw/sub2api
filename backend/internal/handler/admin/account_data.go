@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -33,19 +35,45 @@ type DataPayload struct {
 }
 
 type DataProxy struct {
-	ProxyKey        string `json:"proxy_key"`
-	Name            string `json:"name"`
-	Protocol        string `json:"protocol"`
-	Host            string `json:"host"`
-	Port            int    `json:"port"`
-	Username        string `json:"username,omitempty"`
-	Password        string `json:"password,omitempty"`
-	BasePath        string `json:"base_path,omitempty"`
-	Status          string `json:"status"`
-	ExpiresAt       *int64 `json:"expires_at,omitempty"`        // unix 秒，与 DataAccount.ExpiresAt 风格一致
-	FallbackMode    string `json:"fallback_mode,omitempty"`     // none/direct/proxy
-	BackupProxyName string `json:"backup_proxy_name,omitempty"` // 备用代理 name（跨实例按 name 反查）
-	ExpiryWarnDays  int    `json:"expiry_warn_days,omitempty"`
+	ProxyKey        string            `json:"proxy_key"`
+	Name            string            `json:"name"`
+	Protocol        string            `json:"protocol"`
+	Host            string            `json:"host"`
+	Port            int               `json:"port"`
+	Username        string            `json:"username,omitempty"`
+	Password        string            `json:"password,omitempty"`
+	BasePath        string            `json:"base_path,omitempty"`
+	Status          string            `json:"status"`
+	ExpiresAt       DataNullableInt64 `json:"expires_at"`                  // unix 秒；null 表示永不过期
+	FallbackMode    string            `json:"fallback_mode,omitempty"`     // none/direct/proxy
+	BackupProxyName string            `json:"backup_proxy_name,omitempty"` // 备用代理 name（跨实例按 name 反查）
+	ExpiryWarnDays  *int              `json:"expiry_warn_days,omitempty"`
+}
+
+type DataNullableInt64 struct {
+	Set   bool
+	Value *int64
+}
+
+func (f DataNullableInt64) MarshalJSON() ([]byte, error) {
+	if f.Value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(*f.Value)
+}
+
+func (f *DataNullableInt64) UnmarshalJSON(data []byte) error {
+	f.Set = true
+	if bytes.Equal(data, []byte("null")) {
+		f.Value = nil
+		return nil
+	}
+	var value int64
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	f.Value = &value
+	return nil
 }
 
 // DataAccount 是管理员显式备份导出使用的账号结构，故意不走 dto.Account 的脱敏路径，
@@ -123,14 +151,19 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			response.ErrorFrom(c, err)
 			return
 		}
+		proxies, err = appendMissingFallbackProxies(ctx, h.adminService, proxies)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
 	} else {
 		proxies = []service.Proxy{}
 	}
 
-	// 构建 id→name 映射，用于导出备用代理 name
-	proxyNameByID := make(map[int64]string, len(proxies))
-	for i := range proxies {
-		proxyNameByID[proxies[i].ID] = proxies[i].Name
+	proxyNameByID, err := loadFallbackProxyNames(ctx, h.adminService, proxies)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
 	}
 
 	proxyKeyByID := make(map[int64]string, len(proxies))
@@ -140,15 +173,16 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 		key := buildProxyKeyWithBasePath(p.Protocol, p.Host, p.Port, p.Username, p.Password, p.BasePath)
 		proxyKeyByID[p.ID] = key
 
-		var expiresAt *int64
+		expiresAt := DataNullableInt64{Set: true}
 		if p.ExpiresAt != nil {
 			v := p.ExpiresAt.Unix()
-			expiresAt = &v
+			expiresAt.Value = &v
 		}
 		var backupProxyName string
 		if p.BackupProxyID != nil {
 			backupProxyName = proxyNameByID[*p.BackupProxyID]
 		}
+		expiryWarnDays := p.ExpiryWarnDays
 		dataProxies = append(dataProxies, DataProxy{
 			ProxyKey:        key,
 			Name:            p.Name,
@@ -162,7 +196,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			ExpiresAt:       expiresAt,
 			FallbackMode:    p.FallbackMode,
 			BackupProxyName: backupProxyName,
-			ExpiryWarnDays:  p.ExpiryWarnDays,
+			ExpiryWarnDays:  &expiryWarnDays,
 		})
 	}
 
@@ -236,27 +270,13 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		return result, err
 	}
 
-	proxyKeyToID := make(map[string]int64, len(existingProxies))
-	// proxyNameToID 用于 backup_proxy_name 反查：DB 已有 + 本批次新建均会写入
-	proxyNameToID := make(map[string]int64, len(existingProxies))
-	for i := range existingProxies {
-		p := existingProxies[i]
-		key := buildProxyKeyWithBasePath(p.Protocol, p.Host, p.Port, p.Username, p.Password, p.BasePath)
-		proxyKeyToID[key] = p.ID
-		if p.BasePath == "" {
-			proxyKeyToID[buildProxyKey(p.Protocol, p.Host, p.Port, p.Username, p.Password)] = p.ID
-		}
-		if p.Name != "" {
-			proxyNameToID[p.Name] = p.ID
-		}
-	}
+	proxyByKey := buildProxyLookup(existingProxies)
+	proxyNameToID := buildImportProxyNameIndex(existingProxies, dataPayload.Proxies)
 
+	pendingFallbacks := make([]pendingProxyFallbackImport, 0, len(dataPayload.Proxies))
 	for i := range dataPayload.Proxies {
 		item := dataPayload.Proxies[i]
-		key := item.ProxyKey
-		if key == "" {
-			key = buildProxyKeyWithBasePath(item.Protocol, item.Host, item.Port, item.Username, item.Password, item.BasePath)
-		}
+		key := proxyKeyForDataProxy(item)
 		if err := validateDataProxy(item); err != nil {
 			result.ProxyFailed++
 			result.Errors = append(result.Errors, DataImportError{
@@ -268,84 +288,25 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			continue
 		}
 		normalizedStatus := normalizeProxyStatus(item.Status)
-		if existingID, ok := proxyKeyToID[key]; ok {
-			proxyKeyToID[key] = existingID
+		if existing, ok := proxyByKey[key]; ok {
 			result.ProxyReused++
-			if normalizedStatus != "" {
-				if proxy, getErr := h.adminService.GetProxy(ctx, existingID); getErr == nil && proxy != nil && proxy.Status != normalizedStatus {
-					// 同步 status 时传入完整字段，避免零值覆盖已存在代理的有效期/fallback 配置。
-					var existingExpiresAt *time.Time
-					if item.ExpiresAt != nil {
-						t := time.Unix(*item.ExpiresAt, 0).UTC()
-						existingExpiresAt = &t
-					}
-					existingFallbackMode := item.FallbackMode
-					if existingFallbackMode == "" {
-						existingFallbackMode = service.FallbackModeNone
-					}
-					var existingBackupProxyID *int64
-					if item.BackupProxyName != "" {
-						if bid, ok := proxyNameToID[item.BackupProxyName]; ok {
-							existingBackupProxyID = &bid
-						}
-					}
-					_, _ = h.adminService.UpdateProxy(ctx, existingID, &service.UpdateProxyInput{
-						Status:         normalizedStatus,
-						ExpiresAt:      existingExpiresAt,
-						FallbackMode:   existingFallbackMode,
-						BackupProxyID:  existingBackupProxyID,
-						ExpiryWarnDays: item.ExpiryWarnDays,
-						BasePath:       &proxy.BasePath,
-						Name:           proxy.Name,
-						Protocol:       proxy.Protocol,
-						Host:           proxy.Host,
-						Port:           proxy.Port,
-						Username:       proxy.Username,
-						Password:       proxy.Password,
+			registerImportedProxyName(proxyNameToID, item, &existing)
+			updateInput := updateProxyInputForImport(existing, item, normalizedStatus)
+			if proxyImportNeedsUpdate(updateInput) {
+				if _, err := h.adminService.UpdateProxy(ctx, existing.ID, updateInput); err != nil {
+					result.Errors = append(result.Errors, DataImportError{
+						Kind:     "proxy",
+						Name:     item.Name,
+						ProxyKey: key,
+						Message:  "update proxy failed: " + err.Error(),
 					})
 				}
 			}
+			pendingFallbacks = append(pendingFallbacks, pendingFallbackForImportedProxy(existing, item, key))
 			continue
 		}
 
-		// 解析 expires_at（unix 秒 → *time.Time）
-		var expiresAt *time.Time
-		if item.ExpiresAt != nil {
-			t := time.Unix(*item.ExpiresAt, 0).UTC()
-			expiresAt = &t
-		}
-
-		// 解析 backup_proxy_name → backup_proxy_id
-		fallbackMode := item.FallbackMode
-		var backupProxyID *int64
-		if item.BackupProxyName != "" {
-			if bid, ok := proxyNameToID[item.BackupProxyName]; ok {
-				backupProxyID = &bid
-			} else {
-				// 查不到备用代理：降级 fallback_mode=none，记录 warning
-				fallbackMode = service.FallbackModeNone
-				result.Errors = append(result.Errors, DataImportError{
-					Kind:     "proxy",
-					Name:     item.Name,
-					ProxyKey: key,
-					Message:  fmt.Sprintf("backup_proxy_name %q not found, fallback_mode downgraded to none", item.BackupProxyName),
-				})
-			}
-		}
-
-		created, createErr := h.adminService.CreateProxy(ctx, &service.CreateProxyInput{
-			Name:           defaultProxyName(item.Name),
-			Protocol:       item.Protocol,
-			Host:           item.Host,
-			Port:           item.Port,
-			Username:       item.Username,
-			Password:       item.Password,
-			BasePath:       item.BasePath,
-			ExpiresAt:      expiresAt,
-			FallbackMode:   fallbackMode,
-			BackupProxyID:  backupProxyID,
-			ExpiryWarnDays: item.ExpiryWarnDays,
-		})
+		created, createErr := h.adminService.CreateProxy(ctx, createProxyInputForImport(item))
 		if createErr != nil {
 			result.ProxyFailed++
 			result.Errors = append(result.Errors, DataImportError{
@@ -356,34 +317,14 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			})
 			continue
 		}
-		proxyKeyToID[key] = created.ID
-		if created.BasePath == "" {
-			proxyKeyToID[buildProxyKey(created.Protocol, created.Host, created.Port, created.Username, created.Password)] = created.ID
-		}
-		// 把新建代理的 name 也加入反查表，供后续批内代理引用
-		if created.Name != "" {
-			proxyNameToID[created.Name] = created.ID
-		}
+		registerProxyKey(proxyByKey, key, created)
+		registerImportedProxyName(proxyNameToID, item, created)
 		result.ProxyCreated++
-
-		if normalizedStatus != "" && normalizedStatus != created.Status {
-			// 新建后同步 status 时，传入完整字段，避免零值覆盖刚创建的有效期/fallback 配置。
-			_, _ = h.adminService.UpdateProxy(ctx, created.ID, &service.UpdateProxyInput{
-				Status:         normalizedStatus,
-				ExpiresAt:      expiresAt,
-				FallbackMode:   fallbackMode,
-				BackupProxyID:  backupProxyID,
-				ExpiryWarnDays: item.ExpiryWarnDays,
-				BasePath:       &created.BasePath,
-				Name:           created.Name,
-				Protocol:       created.Protocol,
-				Host:           created.Host,
-				Port:           created.Port,
-				Username:       created.Username,
-				Password:       created.Password,
-			})
-		}
+		applyImportedProxyStatus(ctx, h.adminService, created, normalizedStatus, item, key, &result)
+		pendingFallbacks = append(pendingFallbacks, pendingFallbackForImportedProxy(*created, item, key))
 	}
+
+	applyPendingProxyFallbacks(ctx, h.adminService, pendingFallbacks, proxyNameToID, &result)
 
 	// 收集需要异步设置隐私的 Antigravity OAuth 账号
 	var privacyAccounts []*service.Account
@@ -402,7 +343,8 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 		var proxyID *int64
 		if item.ProxyKey != nil && *item.ProxyKey != "" {
-			if id, ok := proxyKeyToID[*item.ProxyKey]; ok {
+			if proxy, ok := proxyByKey[*item.ProxyKey]; ok {
+				id := proxy.ID
 				proxyID = &id
 			} else {
 				result.AccountFailed++
@@ -658,6 +600,13 @@ func validateDataProxy(item DataProxy) error {
 		normalizedStatus := normalizeProxyStatus(item.Status)
 		if normalizedStatus != service.StatusActive && normalizedStatus != "inactive" {
 			return fmt.Errorf("proxy status is invalid: %s", item.Status)
+		}
+	}
+	if item.FallbackMode != "" {
+		switch item.FallbackMode {
+		case service.FallbackModeNone, service.FallbackModeProxy, service.FallbackModeDirect:
+		default:
+			return fmt.Errorf("proxy fallback_mode is invalid: %s", item.FallbackMode)
 		}
 	}
 	return nil

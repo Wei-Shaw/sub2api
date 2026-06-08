@@ -25,14 +25,16 @@ type dataPayload struct {
 }
 
 type dataProxy struct {
-	ProxyKey string `json:"proxy_key"`
-	Name     string `json:"name"`
-	Protocol string `json:"protocol"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Status   string `json:"status"`
+	ProxyKey        string `json:"proxy_key"`
+	Name            string `json:"name"`
+	Protocol        string `json:"protocol"`
+	Host            string `json:"host"`
+	Port            int    `json:"port"`
+	Username        string `json:"username"`
+	Password        string `json:"password"`
+	Status          string `json:"status"`
+	FallbackMode    string `json:"fallback_mode"`
+	BackupProxyName string `json:"backup_proxy_name"`
 }
 
 type dataAccount struct {
@@ -127,6 +129,58 @@ func TestExportDataIncludesSecrets(t *testing.T) {
 	require.Equal(t, "pass", resp.Data.Proxies[0].Password)
 	require.Len(t, resp.Data.Accounts, 1)
 	require.Equal(t, "secret", resp.Data.Accounts[0].Credentials["token"])
+}
+
+func TestAccountExportDataIncludesFallbackBackupProxy(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	proxyID := int64(11)
+	backupID := int64(12)
+	adminSvc.proxies = []service.Proxy{
+		{
+			ID:            proxyID,
+			Name:          "primary",
+			Protocol:      "http",
+			Host:          "127.0.0.1",
+			Port:          8080,
+			Status:        service.StatusActive,
+			FallbackMode:  service.FallbackModeProxy,
+			BackupProxyID: &backupID,
+		},
+		{
+			ID:       backupID,
+			Name:     "backup",
+			Protocol: "http",
+			Host:     "127.0.0.2",
+			Port:     8081,
+			Status:   service.StatusActive,
+		},
+	}
+	adminSvc.accounts = []service.Account{
+		{
+			ID:          21,
+			Name:        "account",
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeOAuth,
+			Credentials: map[string]any{"token": "secret"},
+			ProxyID:     &proxyID,
+			Status:      service.StatusActive,
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/data", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dataResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Data.Proxies, 2)
+	require.Equal(t, "primary", resp.Data.Proxies[0].Name)
+	require.Equal(t, "backup", resp.Data.Proxies[0].BackupProxyName)
+	require.Equal(t, "backup", resp.Data.Proxies[1].Name)
+	require.NotNil(t, resp.Data.Accounts[0].ProxyKey)
+	require.Equal(t, resp.Data.Proxies[0].ProxyKey, *resp.Data.Accounts[0].ProxyKey)
 }
 
 func TestExportDataWithoutProxies(t *testing.T) {
@@ -274,4 +328,62 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdProxies, 0)
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+}
+
+func TestAccountImportDataReusedProxyRestoresFallback(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	adminSvc.proxies = []service.Proxy{
+		{
+			ID:             1,
+			Name:           "primary",
+			Protocol:       "http",
+			Host:           "127.0.0.1",
+			Port:           8080,
+			Status:         service.StatusActive,
+			FallbackMode:   service.FallbackModeNone,
+			ExpiryWarnDays: 7,
+		},
+		{
+			ID:       2,
+			Name:     "backup",
+			Protocol: "http",
+			Host:     "127.0.0.2",
+			Port:     8081,
+			Status:   service.StatusActive,
+		},
+	}
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{
+				{
+					"proxy_key":         "http|127.0.0.1|8080||",
+					"name":              "primary",
+					"protocol":          "http",
+					"host":              "127.0.0.1",
+					"port":              8080,
+					"status":            "active",
+					"fallback_mode":     service.FallbackModeProxy,
+					"backup_proxy_name": "backup",
+				},
+			},
+			"accounts": []map[string]any{},
+		},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, adminSvc.updatedProxies, 1)
+	update := adminSvc.updatedProxies[0]
+	require.Equal(t, service.FallbackModeProxy, update.FallbackMode.Value)
+	require.NotNil(t, update.BackupProxyID.Value)
+	require.Equal(t, int64(2), *update.BackupProxyID.Value)
 }

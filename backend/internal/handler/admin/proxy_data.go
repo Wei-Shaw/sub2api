@@ -46,25 +46,32 @@ func (h *ProxyHandler) ExportData(c *gin.Context) {
 		}
 	}
 
-	// 构建 id→name 映射，用于导出备用代理 name
-	proxyNameByID := make(map[int64]string, len(proxies))
-	for i := range proxies {
-		proxyNameByID[proxies[i].ID] = proxies[i].Name
+	proxies, err = appendMissingFallbackProxies(ctx, h.adminService, proxies)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	proxyNameByID, err := loadFallbackProxyNames(ctx, h.adminService, proxies)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
 	}
 
 	dataProxies := make([]DataProxy, 0, len(proxies))
 	for i := range proxies {
 		p := proxies[i]
 		key := buildProxyKeyWithBasePath(p.Protocol, p.Host, p.Port, p.Username, p.Password, p.BasePath)
-		var expiresAt *int64
+		expiresAt := DataNullableInt64{Set: true}
 		if p.ExpiresAt != nil {
 			v := p.ExpiresAt.Unix()
-			expiresAt = &v
+			expiresAt.Value = &v
 		}
 		var backupProxyName string
 		if p.BackupProxyID != nil {
 			backupProxyName = proxyNameByID[*p.BackupProxyID]
 		}
+		expiryWarnDays := p.ExpiryWarnDays
 		dataProxies = append(dataProxies, DataProxy{
 			ProxyKey:        key,
 			Name:            p.Name,
@@ -78,7 +85,7 @@ func (h *ProxyHandler) ExportData(c *gin.Context) {
 			ExpiresAt:       expiresAt,
 			FallbackMode:    p.FallbackMode,
 			BackupProxyName: backupProxyName,
-			ExpiryWarnDays:  p.ExpiryWarnDays,
+			ExpiryWarnDays:  &expiryWarnDays,
 		})
 	}
 
@@ -117,28 +124,14 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 		return
 	}
 
-	proxyByKey := make(map[string]service.Proxy, len(existingProxies))
-	// proxyNameToID 用于 backup_proxy_name 反查：DB 已有 + 本批次新建均会写入
-	proxyNameToID := make(map[string]int64, len(existingProxies))
-	for i := range existingProxies {
-		p := existingProxies[i]
-		key := buildProxyKeyWithBasePath(p.Protocol, p.Host, p.Port, p.Username, p.Password, p.BasePath)
-		proxyByKey[key] = p
-		if p.BasePath == "" {
-			proxyByKey[buildProxyKey(p.Protocol, p.Host, p.Port, p.Username, p.Password)] = p
-		}
-		if p.Name != "" {
-			proxyNameToID[p.Name] = p.ID
-		}
-	}
+	proxyByKey := buildProxyLookup(existingProxies)
+	proxyNameToID := buildImportProxyNameIndex(existingProxies, req.Data.Proxies)
 
 	latencyProbeIDs := make([]int64, 0, len(req.Data.Proxies))
+	pendingFallbacks := make([]pendingProxyFallbackImport, 0, len(req.Data.Proxies))
 	for i := range req.Data.Proxies {
 		item := req.Data.Proxies[i]
-		key := item.ProxyKey
-		if key == "" {
-			key = buildProxyKeyWithBasePath(item.Protocol, item.Host, item.Port, item.Username, item.Password, item.BasePath)
-		}
+		key := proxyKeyForDataProxy(item)
 
 		if err := validateDataProxy(item); err != nil {
 			result.ProxyFailed++
@@ -154,90 +147,24 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 		normalizedStatus := normalizeProxyStatus(item.Status)
 		if existing, ok := proxyByKey[key]; ok {
 			result.ProxyReused++
-			if normalizedStatus != "" && normalizedStatus != existing.Status {
-				// 已存在代理同步 status 时，同时保留/覆盖导入 item 的完整字段，
-				// 避免 UpdateProxy 零值覆盖有效期/fallback 配置。
-				var existingExpiresAt *time.Time
-				if item.ExpiresAt != nil {
-					t := time.Unix(*item.ExpiresAt, 0).UTC()
-					existingExpiresAt = &t
-				}
-				existingFallbackMode := item.FallbackMode
-				if existingFallbackMode == "" {
-					existingFallbackMode = service.FallbackModeNone
-				}
-				var existingBackupProxyID *int64
-				if item.BackupProxyName != "" {
-					if bid, ok := proxyNameToID[item.BackupProxyName]; ok {
-						existingBackupProxyID = &bid
-					}
-				}
-				updateInput := &service.UpdateProxyInput{
-					Status:         normalizedStatus,
-					ExpiresAt:      existingExpiresAt,
-					FallbackMode:   existingFallbackMode,
-					BackupProxyID:  existingBackupProxyID,
-					ExpiryWarnDays: item.ExpiryWarnDays,
-					BasePath:       &existing.BasePath,
-					// 保留已存在代理的网络配置字段
-					Name:     existing.Name,
-					Protocol: existing.Protocol,
-					Host:     existing.Host,
-					Port:     existing.Port,
-					Username: existing.Username,
-					Password: existing.Password,
-				}
+			registerImportedProxyName(proxyNameToID, item, &existing)
+			updateInput := updateProxyInputForImport(existing, item, normalizedStatus)
+			if proxyImportNeedsUpdate(updateInput) {
 				if _, err := h.adminService.UpdateProxy(ctx, existing.ID, updateInput); err != nil {
 					result.Errors = append(result.Errors, DataImportError{
 						Kind:     "proxy",
 						Name:     item.Name,
 						ProxyKey: key,
-						Message:  "update status failed: " + err.Error(),
+						Message:  "update proxy failed: " + err.Error(),
 					})
 				}
 			}
+			pendingFallbacks = append(pendingFallbacks, pendingFallbackForImportedProxy(existing, item, key))
 			latencyProbeIDs = append(latencyProbeIDs, existing.ID)
 			continue
 		}
 
-		// 解析 expires_at（unix 秒 → *time.Time）
-		var expiresAt *time.Time
-		if item.ExpiresAt != nil {
-			t := time.Unix(*item.ExpiresAt, 0).UTC()
-			expiresAt = &t
-		}
-
-		// 解析 backup_proxy_name → backup_proxy_id
-		fallbackMode := item.FallbackMode
-		var backupProxyID *int64
-		if item.BackupProxyName != "" {
-			if bid, ok := proxyNameToID[item.BackupProxyName]; ok {
-				backupProxyID = &bid
-			} else {
-				// 查不到备用代理：降级 fallback_mode=none，记录 warning
-				fallbackMode = service.FallbackModeNone
-				result.Errors = append(result.Errors, DataImportError{
-					Kind:     "proxy",
-					Name:     item.Name,
-					ProxyKey: key,
-					Message:  fmt.Sprintf("backup_proxy_name %q not found, fallback_mode downgraded to none", item.BackupProxyName),
-				})
-			}
-		}
-
-		created, err := h.adminService.CreateProxy(ctx, &service.CreateProxyInput{
-			Name:           defaultProxyName(item.Name),
-			Protocol:       item.Protocol,
-			Host:           item.Host,
-			Port:           item.Port,
-			Username:       item.Username,
-			Password:       item.Password,
-			BasePath:       item.BasePath,
-			ExpiresAt:      expiresAt,
-			FallbackMode:   fallbackMode,
-			BackupProxyID:  backupProxyID,
-			ExpiryWarnDays: item.ExpiryWarnDays,
-		})
+		created, err := h.adminService.CreateProxy(ctx, createProxyInputForImport(item))
 		if err != nil {
 			result.ProxyFailed++
 			result.Errors = append(result.Errors, DataImportError{
@@ -249,41 +176,14 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 			continue
 		}
 		result.ProxyCreated++
-		proxyByKey[key] = *created
-		if created.BasePath == "" {
-			proxyByKey[buildProxyKey(created.Protocol, created.Host, created.Port, created.Username, created.Password)] = *created
-		}
-		// 把新建代理的 name 也加入反查表，供后续批内代理引用
-		if created.Name != "" {
-			proxyNameToID[created.Name] = created.ID
-		}
-
-		if normalizedStatus != "" && normalizedStatus != created.Status {
-			// 新建后同步 status 时，传入完整字段，避免零值覆盖刚创建的有效期/fallback 配置。
-			if _, err := h.adminService.UpdateProxy(ctx, created.ID, &service.UpdateProxyInput{
-				Status:         normalizedStatus,
-				ExpiresAt:      expiresAt,
-				FallbackMode:   fallbackMode,
-				BackupProxyID:  backupProxyID,
-				ExpiryWarnDays: item.ExpiryWarnDays,
-				BasePath:       &created.BasePath,
-				Name:           created.Name,
-				Protocol:       created.Protocol,
-				Host:           created.Host,
-				Port:           created.Port,
-				Username:       created.Username,
-				Password:       created.Password,
-			}); err != nil {
-				result.Errors = append(result.Errors, DataImportError{
-					Kind:     "proxy",
-					Name:     item.Name,
-					ProxyKey: key,
-					Message:  "update status failed: " + err.Error(),
-				})
-			}
-		}
+		registerProxyKey(proxyByKey, key, created)
+		registerImportedProxyName(proxyNameToID, item, created)
+		applyImportedProxyStatus(ctx, h.adminService, created, normalizedStatus, item, key, &result)
+		pendingFallbacks = append(pendingFallbacks, pendingFallbackForImportedProxy(*created, item, key))
 		// CreateProxy already triggers a latency probe, avoid double probing here.
 	}
+
+	applyPendingProxyFallbacks(ctx, h.adminService, pendingFallbacks, proxyNameToID, &result)
 
 	if len(latencyProbeIDs) > 0 {
 		ids := append([]int64(nil), latencyProbeIDs...)

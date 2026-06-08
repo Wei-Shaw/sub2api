@@ -200,6 +200,7 @@ export async function batchCreate(
     port: number
     username?: string
     password?: string
+    base_path?: string
   }>
 ): Promise<{
   created: number

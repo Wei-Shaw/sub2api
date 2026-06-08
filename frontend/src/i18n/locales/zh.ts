@@ -4320,6 +4320,7 @@ export default {
       port: '端口',
       username: '用户名（可选）',
       password: '密码（可选）',
+      basePath: '基础路径',
       status: '状态',
       enterProxyName: '请输入代理名称',
       optionalAuth: '可选认证信息',
@@ -4327,6 +4328,7 @@ export default {
       form: {
         hostPlaceholder: '请输入主机地址',
         portPlaceholder: '请输入端口',
+        basePathPlaceholder: '/resin-base-path',
         resinHostPlaceholder: 'resin.example.com',
         resinPlatformPlaceholder: 'openai',
         resinTokenPlaceholder: 'resin-token'

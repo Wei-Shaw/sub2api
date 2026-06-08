@@ -400,7 +400,27 @@ type CreateProxyInput struct {
 	ExpiresAt      *time.Time
 	FallbackMode   string
 	BackupProxyID  *int64
-	ExpiryWarnDays int
+	ExpiryWarnDays OptionalIntInput
+}
+
+type OptionalTimeInput struct {
+	Set   bool
+	Value *time.Time
+}
+
+type OptionalInt64Input struct {
+	Set   bool
+	Value *int64
+}
+
+type OptionalStringInput struct {
+	Set   bool
+	Value string
+}
+
+type OptionalIntInput struct {
+	Set   bool
+	Value int
 }
 
 type UpdateProxyInput struct {
@@ -412,10 +432,10 @@ type UpdateProxyInput struct {
 	Password       string
 	BasePath       *string
 	Status         string
-	ExpiresAt      *time.Time
-	FallbackMode   string
-	BackupProxyID  *int64
-	ExpiryWarnDays int
+	ExpiresAt      OptionalTimeInput
+	FallbackMode   OptionalStringInput
+	BackupProxyID  OptionalInt64Input
+	ExpiryWarnDays OptionalIntInput
 }
 
 type GenerateRedeemCodesInput struct {
@@ -3112,12 +3132,22 @@ func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyIn
 	if mode == "" {
 		mode = FallbackModeNone
 	}
+	if err := validateProxyFallbackMode(mode); err != nil {
+		return nil, err
+	}
 	// 校验：mode=proxy 必须有 backup
 	if mode == FallbackModeProxy && input.BackupProxyID == nil {
 		return nil, infraerrors.BadRequest("PROXY_BACKUP_REQUIRED", "backup proxy required when fallback_mode=proxy")
 	}
-	if input.ExpiryWarnDays < 0 {
+	warnDays := 7
+	if input.ExpiryWarnDays.Set {
+		warnDays = input.ExpiryWarnDays.Value
+	}
+	if warnDays < 0 {
 		return nil, infraerrors.BadRequest("PROXY_WARN_DAYS_INVALID", "expiry_warn_days must be >= 0")
+	}
+	if warnDays == 0 && !input.ExpiryWarnDays.Set {
+		warnDays = 7
 	}
 
 	proxy := &Proxy{
@@ -3132,7 +3162,7 @@ func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyIn
 		ExpiresAt:      input.ExpiresAt,
 		FallbackMode:   mode,
 		BackupProxyID:  input.BackupProxyID,
-		ExpiryWarnDays: input.ExpiryWarnDays,
+		ExpiryWarnDays: warnDays,
 	}
 	if err := s.proxyRepo.Create(ctx, proxy); err != nil {
 		return nil, err
@@ -3144,20 +3174,8 @@ func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyIn
 
 func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *UpdateProxyInput) (*Proxy, error) {
 	// 校验：backup_proxy_id 不能是自身
-	if input.BackupProxyID != nil && *input.BackupProxyID == id {
+	if input.BackupProxyID.Set && input.BackupProxyID.Value != nil && *input.BackupProxyID.Value == id {
 		return nil, infraerrors.BadRequest("PROXY_BACKUP_SELF", "backup proxy cannot be itself")
-	}
-	// 规范化 fallback_mode
-	mode := input.FallbackMode
-	if mode == "" {
-		mode = FallbackModeNone
-	}
-	// 校验：mode=proxy 必须有 backup
-	if mode == FallbackModeProxy && input.BackupProxyID == nil {
-		return nil, infraerrors.BadRequest("PROXY_BACKUP_REQUIRED", "backup proxy required when fallback_mode=proxy")
-	}
-	if input.ExpiryWarnDays < 0 {
-		return nil, infraerrors.BadRequest("PROXY_WARN_DAYS_INVALID", "expiry_warn_days must be >= 0")
 	}
 
 	proxy, err := s.proxyRepo.GetByID(ctx, id)
@@ -3193,11 +3211,40 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 	if input.Status != "" {
 		proxy.Status = input.Status
 	}
-	// 透传有效期与回退字段
-	proxy.ExpiresAt = input.ExpiresAt
-	proxy.FallbackMode = mode
-	proxy.BackupProxyID = input.BackupProxyID
-	proxy.ExpiryWarnDays = input.ExpiryWarnDays
+	if input.ExpiresAt.Set {
+		proxy.ExpiresAt = input.ExpiresAt.Value
+	}
+	if input.FallbackMode.Set {
+		mode := input.FallbackMode.Value
+		if mode == "" {
+			mode = FallbackModeNone
+		}
+		if err := validateProxyFallbackMode(mode); err != nil {
+			return nil, err
+		}
+		proxy.FallbackMode = mode
+	}
+	if input.BackupProxyID.Set {
+		proxy.BackupProxyID = input.BackupProxyID.Value
+	}
+	if input.ExpiryWarnDays.Set {
+		if input.ExpiryWarnDays.Value < 0 {
+			return nil, infraerrors.BadRequest("PROXY_WARN_DAYS_INVALID", "expiry_warn_days must be >= 0")
+		}
+		proxy.ExpiryWarnDays = input.ExpiryWarnDays.Value
+	}
+	if proxy.FallbackMode == "" {
+		proxy.FallbackMode = FallbackModeNone
+	}
+	if err := validateProxyFallbackMode(proxy.FallbackMode); err != nil {
+		return nil, err
+	}
+	if proxy.ExpiryWarnDays < 0 {
+		return nil, infraerrors.BadRequest("PROXY_WARN_DAYS_INVALID", "expiry_warn_days must be >= 0")
+	}
+	if proxy.FallbackMode == FallbackModeProxy && proxy.BackupProxyID == nil {
+		return nil, infraerrors.BadRequest("PROXY_BACKUP_REQUIRED", "backup proxy required when fallback_mode=proxy")
+	}
 
 	if err := validateResinProxyCredentials(proxy.Protocol, proxy.Username, proxy.Password); err != nil {
 		return nil, err
@@ -3207,6 +3254,15 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 		return nil, err
 	}
 	return proxy, nil
+}
+
+func validateProxyFallbackMode(mode string) error {
+	switch mode {
+	case FallbackModeNone, FallbackModeProxy, FallbackModeDirect:
+		return nil
+	default:
+		return infraerrors.BadRequest("PROXY_FALLBACK_MODE_INVALID", "fallback_mode must be one of: none, proxy, direct")
+	}
 }
 
 func (s *adminServiceImpl) DeleteProxy(ctx context.Context, id int64) error {

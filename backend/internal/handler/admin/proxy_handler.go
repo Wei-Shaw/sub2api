@@ -37,23 +37,23 @@ type CreateProxyRequest struct {
 	ExpiresAt      *int64 `json:"expires_at"`
 	FallbackMode   string `json:"fallback_mode" binding:"omitempty,oneof=none proxy direct"`
 	BackupProxyID  *int64 `json:"backup_proxy_id"`
-	ExpiryWarnDays int    `json:"expiry_warn_days" binding:"omitempty,min=0"`
+	ExpiryWarnDays *int   `json:"expiry_warn_days" binding:"omitempty,min=0"`
 }
 
 // UpdateProxyRequest represents update proxy request
 type UpdateProxyRequest struct {
-	Name           string  `json:"name"`
-	Protocol       string  `json:"protocol" binding:"omitempty,oneof=http https socks5 socks5h resin_http resin_https resin_socks5"`
-	Host           string  `json:"host"`
-	Port           int     `json:"port" binding:"omitempty,min=1,max=65535"`
-	Username       string  `json:"username"`
-	Password       string  `json:"password"`
-	BasePath       *string `json:"base_path"`
-	Status         string  `json:"status" binding:"omitempty,oneof=active inactive"`
-	ExpiresAt      *int64  `json:"expires_at"`
-	FallbackMode   string  `json:"fallback_mode" binding:"omitempty,oneof=none proxy direct"`
-	BackupProxyID  *int64  `json:"backup_proxy_id"`
-	ExpiryWarnDays int     `json:"expiry_warn_days" binding:"omitempty,min=0"`
+	Name           string                 `json:"name"`
+	Protocol       string                 `json:"protocol" binding:"omitempty,oneof=http https socks5 socks5h resin_http resin_https resin_socks5"`
+	Host           string                 `json:"host"`
+	Port           int                    `json:"port" binding:"omitempty,min=1,max=65535"`
+	Username       string                 `json:"username"`
+	Password       string                 `json:"password"`
+	BasePath       *string                `json:"base_path"`
+	Status         string                 `json:"status" binding:"omitempty,oneof=active inactive"`
+	ExpiresAt      dto.NullableInt64Field `json:"expires_at"`
+	FallbackMode   *string                `json:"fallback_mode" binding:"omitempty,oneof=none proxy direct"`
+	BackupProxyID  dto.NullableInt64Field `json:"backup_proxy_id"`
+	ExpiryWarnDays *int                   `json:"expiry_warn_days" binding:"omitempty,min=0"`
 }
 
 // List handles listing all proxies with pagination
@@ -150,6 +150,10 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 			t := time.Unix(*req.ExpiresAt, 0).UTC()
 			expiresAt = &t
 		}
+		expiryWarnDays := 0
+		if req.ExpiryWarnDays != nil {
+			expiryWarnDays = *req.ExpiryWarnDays
+		}
 		proxy, err := h.adminService.CreateProxy(ctx, &service.CreateProxyInput{
 			Name:           strings.TrimSpace(req.Name),
 			Protocol:       strings.TrimSpace(req.Protocol),
@@ -161,7 +165,7 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 			ExpiresAt:      expiresAt,
 			FallbackMode:   strings.TrimSpace(req.FallbackMode),
 			BackupProxyID:  req.BackupProxyID,
-			ExpiryWarnDays: req.ExpiryWarnDays,
+			ExpiryWarnDays: service.OptionalIntInput{Set: req.ExpiryWarnDays != nil, Value: expiryWarnDays},
 		})
 		if err != nil {
 			return nil, err
@@ -186,9 +190,20 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 	}
 
 	var expiresAt *time.Time
-	if req.ExpiresAt != nil && *req.ExpiresAt > 0 {
-		t := time.Unix(*req.ExpiresAt, 0).UTC()
+	if req.ExpiresAt.Set && req.ExpiresAt.Value != nil && *req.ExpiresAt.Value > 0 {
+		t := time.Unix(*req.ExpiresAt.Value, 0).UTC()
 		expiresAt = &t
+	}
+	fallbackMode := service.OptionalStringInput{}
+	if req.FallbackMode != nil {
+		fallbackMode = service.OptionalStringInput{
+			Set:   true,
+			Value: strings.TrimSpace(*req.FallbackMode),
+		}
+	}
+	expiryWarnDays := service.OptionalIntInput{}
+	if req.ExpiryWarnDays != nil {
+		expiryWarnDays = service.OptionalIntInput{Set: true, Value: *req.ExpiryWarnDays}
 	}
 	proxy, err := h.adminService.UpdateProxy(c.Request.Context(), proxyID, &service.UpdateProxyInput{
 		Name:           strings.TrimSpace(req.Name),
@@ -199,10 +214,10 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		Password:       strings.TrimSpace(req.Password),
 		BasePath:       trimStringPtr(req.BasePath),
 		Status:         strings.TrimSpace(req.Status),
-		ExpiresAt:      expiresAt,
-		FallbackMode:   strings.TrimSpace(req.FallbackMode),
-		BackupProxyID:  req.BackupProxyID,
-		ExpiryWarnDays: req.ExpiryWarnDays,
+		ExpiresAt:      service.OptionalTimeInput{Set: req.ExpiresAt.Set, Value: expiresAt},
+		FallbackMode:   fallbackMode,
+		BackupProxyID:  service.OptionalInt64Input{Set: req.BackupProxyID.Set, Value: req.BackupProxyID.Value},
+		ExpiryWarnDays: expiryWarnDays,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
