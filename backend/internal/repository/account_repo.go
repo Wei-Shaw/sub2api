@@ -607,8 +607,16 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 		field = dbaccount.FieldRateMultiplier
 		defaultOrder = false
 	case "last_used_at":
-		field = dbaccount.FieldLastUsedAt
-		defaultOrder = false
+		if sortOrder == pagination.SortOrderDesc {
+			return []func(*entsql.Selector){
+				dbaccount.ByLastUsedAt(entsql.OrderDesc(), entsql.OrderNullsLast()),
+				dbaccount.ByID(entsql.OrderDesc()),
+			}
+		}
+		return []func(*entsql.Selector){
+			dbaccount.ByLastUsedAt(entsql.OrderNullsLast()),
+			dbaccount.ByID(),
+		}
 	case "expires_at":
 		field = dbaccount.FieldExpiresAt
 		defaultOrder = false
