@@ -1656,6 +1656,11 @@ func (s *ContentModerationService) applyFlaggedAccountSideEffects(ctx context.Co
 			slog.Warn("content_moderation.ban_get_user_failed", "user_id", *log.UserID, "error", err)
 			return false
 		}
+		if user.IsAdmin() {
+			slog.Warn("content_moderation.autoban_skipped_admin", "user_id", *log.UserID, "role", user.Role, "count", count, "threshold", cfg.BanThreshold)
+			// TODO: Disable the triggering API key instead when API key mutation is available here.
+			return false
+		}
 		if user.Status != StatusDisabled {
 			user.Status = StatusDisabled
 			if err := s.userRepo.Update(ctx, user); err != nil {
