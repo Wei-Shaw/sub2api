@@ -136,3 +136,11 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+.trellis/
+.agents/
+.ace-tool/
+.github/agents/
+.github/copilot/
+.github/hooks/
+.github/prompts/
+.github/skills/
