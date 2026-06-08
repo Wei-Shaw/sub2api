@@ -7,10 +7,10 @@
 // grpc_server_redis_do.go),由 Do() 负责命名空间、能力检查等安全控制.
 // 当所有插件都升级到使用 Do() 的 SDK 后,这些方法可以删除。
 //
-// 这里的 legacy 方法把 key 当作原始字符串透传给 Redis,不做命名空间校验,
-// 因为旧 SDK 客户端自己手动拼接 `plugin:<name>:` 前缀(见 channel-management
-// 的 cache_writer.go 和 hello-world 的旧版 main.go)。如果在这里再加一层
-// 前缀会出现 `plugin:foo:plugin:foo:bar` 的双重前缀。
+// 旧 SDK 客户端自己手动拼接 `plugin:<name>:` 前缀(见 channel-management
+// 的 cache_writer.go 和 hello-world 的旧版 main.go)。此文件对每个方法
+// 进行命名空间校验(checkLegacyRedisKey),确保 key 以 `plugin:<name>:`
+// 开头,不匹配时需要 redis.raw capability,与 Do() 的安全策略对齐。
 //
 // 关于 caller 鉴权:RequirePluginIdentityUnary/Stream 拦截器已在 ctx 上塞好
 // 已校验的 plugin name,所以这里的 handler 无需再调用 resolveCaller —— 直接
@@ -21,6 +21,7 @@ package plugin
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -32,9 +33,43 @@ import (
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
+// checkLegacyRedisKey validates that key carries the caller's namespace prefix
+// (plugin:<name>:). If the key does not match, the caller must hold the
+// redis.raw capability; otherwise PermissionDenied is returned.
+// This mirrors the defence-in-depth logic in Do() (grpc_server_redis_do.go).
+func (s *SDKServer) checkLegacyRedisKey(ctx context.Context, key string) error {
+	pluginName, _ := CallerFromContext(ctx)
+	if pluginName == "" {
+		return nil // anonymous/internal callers — interceptor already blocks these
+	}
+	prefix := "plugin:" + pluginName + ":"
+	if strings.HasPrefix(key, prefix) {
+		return nil
+	}
+	if s.capabilities.Has(pluginName, "redis.raw") {
+		return nil
+	}
+	return status.Errorf(codes.PermissionDenied,
+		"redis key %q not in plugin namespace %q and plugin lacks redis.raw capability",
+		truncateForLog([]byte(key)), prefix)
+}
+
+// checkLegacyRedisKeys validates multiple keys using checkLegacyRedisKey.
+func (s *SDKServer) checkLegacyRedisKeys(ctx context.Context, keys []string) error {
+	for _, key := range keys {
+		if err := s.checkLegacyRedisKey(ctx, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *SDKServer) Get(ctx context.Context, req *pluginsdk.RedisKeyRequest) (*pluginsdk.RedisValueResponse, error) {
 	if s.redis == nil {
 		return nil, errService("redis")
+	}
+	if err := s.checkLegacyRedisKey(ctx, req.GetKey()); err != nil {
+		return nil, err
 	}
 	val, err := s.redis.Get(ctx, req.GetKey()).Bytes()
 	if err != nil {
@@ -50,6 +85,9 @@ func (s *SDKServer) Set(ctx context.Context, req *pluginsdk.RedisSetRequest) (*e
 	if s.redis == nil {
 		return nil, errService("redis")
 	}
+	if err := s.checkLegacyRedisKey(ctx, req.GetKey()); err != nil {
+		return nil, err
+	}
 	if err := s.redis.Set(ctx, req.GetKey(), req.GetValue(), 0).Err(); err != nil {
 		return nil, errInternal(err, "plugin redis set")
 	}
@@ -59,6 +97,9 @@ func (s *SDKServer) Set(ctx context.Context, req *pluginsdk.RedisSetRequest) (*e
 func (s *SDKServer) SetEx(ctx context.Context, req *pluginsdk.RedisSetExRequest) (*emptypb.Empty, error) {
 	if s.redis == nil {
 		return nil, errService("redis")
+	}
+	if err := s.checkLegacyRedisKey(ctx, req.GetKey()); err != nil {
+		return nil, err
 	}
 	ttl := time.Duration(req.GetTtlSeconds()) * time.Second
 	if err := s.redis.Set(ctx, req.GetKey(), req.GetValue(), ttl).Err(); err != nil {
@@ -75,6 +116,9 @@ func (s *SDKServer) Del(ctx context.Context, req *pluginsdk.RedisDelRequest) (*e
 	if len(keys) == 0 {
 		return &emptypb.Empty{}, nil
 	}
+	if err := s.checkLegacyRedisKeys(ctx, keys); err != nil {
+		return nil, err
+	}
 	if err := s.redis.Del(ctx, keys...).Err(); err != nil {
 		return nil, errInternal(err, "plugin redis del")
 	}
@@ -84,6 +128,9 @@ func (s *SDKServer) Del(ctx context.Context, req *pluginsdk.RedisDelRequest) (*e
 func (s *SDKServer) HGet(ctx context.Context, req *pluginsdk.RedisHGetRequest) (*pluginsdk.RedisValueResponse, error) {
 	if s.redis == nil {
 		return nil, errService("redis")
+	}
+	if err := s.checkLegacyRedisKey(ctx, req.GetKey()); err != nil {
+		return nil, err
 	}
 	val, err := s.redis.HGet(ctx, req.GetKey(), req.GetField()).Bytes()
 	if err != nil {
@@ -99,6 +146,9 @@ func (s *SDKServer) HSet(ctx context.Context, req *pluginsdk.RedisHSetRequest) (
 	if s.redis == nil {
 		return nil, errService("redis")
 	}
+	if err := s.checkLegacyRedisKey(ctx, req.GetKey()); err != nil {
+		return nil, err
+	}
 	if err := s.redis.HSet(ctx, req.GetKey(), req.GetField(), req.GetValue()).Err(); err != nil {
 		return nil, errInternal(err, "plugin redis hset")
 	}
@@ -108,6 +158,9 @@ func (s *SDKServer) HSet(ctx context.Context, req *pluginsdk.RedisHSetRequest) (
 func (s *SDKServer) HGetAll(ctx context.Context, req *pluginsdk.RedisKeyRequest) (*pluginsdk.RedisMapResponse, error) {
 	if s.redis == nil {
 		return nil, errService("redis")
+	}
+	if err := s.checkLegacyRedisKey(ctx, req.GetKey()); err != nil {
+		return nil, err
 	}
 	m, err := s.redis.HGetAll(ctx, req.GetKey()).Result()
 	if err != nil {
@@ -124,6 +177,9 @@ func (s *SDKServer) HDel(ctx context.Context, req *pluginsdk.RedisHDelRequest) (
 	if s.redis == nil {
 		return nil, errService("redis")
 	}
+	if err := s.checkLegacyRedisKey(ctx, req.GetKey()); err != nil {
+		return nil, err
+	}
 	if err := s.redis.HDel(ctx, req.GetKey(), req.GetFields()...).Err(); err != nil {
 		return nil, errInternal(err, "plugin redis hdel")
 	}
@@ -133,6 +189,9 @@ func (s *SDKServer) HDel(ctx context.Context, req *pluginsdk.RedisHDelRequest) (
 func (s *SDKServer) Publish(ctx context.Context, req *pluginsdk.RedisPubRequest) (*emptypb.Empty, error) {
 	if s.redis == nil {
 		return nil, errService("redis")
+	}
+	if err := s.checkLegacyRedisKey(ctx, req.GetChannel()); err != nil {
+		return nil, err
 	}
 	if err := s.redis.Publish(ctx, req.GetChannel(), req.GetMessage()).Err(); err != nil {
 		return nil, errInternal(err, "plugin redis publish")
@@ -150,6 +209,9 @@ func (s *SDKServer) Subscribe(req *pluginsdk.RedisSubRequest, stream grpc.Server
 	channels := req.GetChannels()
 	if len(channels) == 0 {
 		return status.Error(codes.InvalidArgument, "at least one channel is required")
+	}
+	if err := s.checkLegacyRedisKeys(stream.Context(), channels); err != nil {
+		return err
 	}
 
 	pubsub := s.redis.Subscribe(stream.Context(), channels...)

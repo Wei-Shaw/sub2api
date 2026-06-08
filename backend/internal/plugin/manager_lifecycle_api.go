@@ -96,13 +96,13 @@ func (m *PluginManager) ShutdownAll(ctx context.Context) {
 	}
 	wg.Wait()
 
-	if m.sdkGRPC != nil {
-		m.sdkGRPC.GracefulStop()
-	}
-	// Stop the JobScheduler before SDKServer so per-plugin schedulers can
-	// flush pending acks while their RecordRun sink is still alive.
+	// Stop the JobScheduler before gRPC so per-plugin schedulers can flush
+	// pending acks while the gRPC connection is still alive.
 	if m.jobScheduler != nil {
 		m.jobScheduler.Stop()
+	}
+	if m.sdkGRPC != nil {
+		m.sdkGRPC.GracefulStop()
 	}
 	if m.sdkServer != nil {
 		m.sdkServer.Stop()

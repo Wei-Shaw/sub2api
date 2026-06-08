@@ -45,7 +45,7 @@ func (s *gatewayProviderServer) forwardBedrock(
 		return err
 	}
 
-	resp, err := s.httpClient.Do(httpReq)
+	resp, err := defaultHTTPClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("bedrock request failed: %w", err)
 	}

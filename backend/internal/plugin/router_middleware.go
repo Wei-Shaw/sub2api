@@ -63,6 +63,9 @@ type PluginRouter struct {
 	// 用 atomic.Pointer 保证读路径无锁,允许 host 在生命周期任意时刻替换。
 	backendModeChecker atomic.Pointer[BackendModeChecker]
 
+	// authEngines 缓存每种 authType 对应的预构建 gin.Engine。
+	authEngines sync.Map // map[string]*gin.Engine
+
 	// proxies 缓存反向代理实例,避免每次请求重新构造。
 	proxies sync.Map // map[string]*httputil.ReverseProxy
 }
@@ -201,7 +204,41 @@ func (r *PluginRouter) respondBackendModeBlocked(w http.ResponseWriter, req *htt
 	_, _ = w.Write([]byte(body))
 }
 
-// runAuthMiddleware 通过临时 gin.Engine 执行匹配 authType 的鉴权中间件。
+// authCaptureKeyType / authCaptureKey 和 authCapture 用于在 request context
+// 中传递 per-request 指针,配合 per-router 缓存的 gin.Engine 使用。
+
+type authCaptureKeyType struct{}
+
+var authCaptureKey = authCaptureKeyType{}
+
+// authCapture 是一个 per-request 的容器,由 runAuthMiddleware 创建,放入
+// request context;预构建的 captureHandler 从 c.Request.Context() 取出后
+// 回写 *gin.Context。使用指针结构体是因为 context.Value 返回的是接口值,
+// 需要通过指针才能让 handler 的写入对调用方可见。
+type authCapture struct {
+	ctx *gin.Context
+}
+
+// getOrBuildAuthEngine 返回给定 authType 对应的预构建 gin.Engine。
+// Engine 的 handler chain 是 [authMiddleware, captureHandler],其中
+// captureHandler 从 request context 取出 *authCapture 并回写 *gin.Context,
+// 供 runAuthMiddleware 在 engine.ServeHTTP 返回后读取。
+func (r *PluginRouter) getOrBuildAuthEngine(authType string, handler gin.HandlerFunc) *gin.Engine {
+	if v, ok := r.authEngines.Load(authType); ok {
+		return v.(*gin.Engine)
+	}
+	engine := gin.New()
+	engine.Use(handler)
+	engine.Any("/*any", func(c *gin.Context) {
+		if cap, ok := c.Request.Context().Value(authCaptureKey).(*authCapture); ok {
+			cap.ctx = c
+		}
+	})
+	actual, _ := r.authEngines.LoadOrStore(authType, engine)
+	return actual.(*gin.Engine)
+}
+
+// runAuthMiddleware 通过预构建的 gin.Engine 执行匹配 authType 的鉴权中间件。
 // 返回的 *gin.Context 在通过时携带鉴权信息(无鉴权时返回 nil ctx + ok=true)。
 // ok=false 表示鉴权失败,响应已经被中间件写出,调用方应直接返回。
 //
@@ -237,22 +274,20 @@ func (r *PluginRouter) runAuthMiddleware(w http.ResponseWriter, req *http.Reques
 		return nil, false
 	}
 
-	engine := gin.New()
-	engine.Use(handler)
-	var captured *gin.Context
-	engine.Any("/*any", func(c *gin.Context) {
-		captured = c
-	})
+	engine := r.getOrBuildAuthEngine(authType, handler)
+	cap := &authCapture{}
+	authReq := req.WithContext(context.WithValue(req.Context(), authCaptureKey, cap))
 	buf := &bufferedAuthWriter{header: http.Header{}}
-	engine.ServeHTTP(buf, req)
-	if captured == nil || captured.IsAborted() {
+	engine.ServeHTTP(buf, authReq)
+
+	if cap.ctx == nil || cap.ctx.IsAborted() {
 		// 鉴权 middleware 已 abort, 把缓冲的响应原样转发给真实 writer。
 		buf.flushTo(w)
 		return nil, false
 	}
 	// 鉴权成功: 丢弃缓冲(仅含 Gin 隐式追加的 200 状态码), 让后续阶段
 	// 自由写 header。
-	return captured, true
+	return cap.ctx, true
 }
 
 // bufferedAuthWriter 记录鉴权 engine 写出的 status / header / body, 但

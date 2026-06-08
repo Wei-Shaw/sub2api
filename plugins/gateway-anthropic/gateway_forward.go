@@ -4,29 +4,28 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
-
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 )
+
+// defaultHTTPClient is a shared HTTP client tuned for streaming upstream
+// requests. See gatewayutil.NewStreamingHTTPClient for tuning rationale.
+var defaultHTTPClient = gatewayutil.NewStreamingHTTPClient()
 
 // gatewayProviderServer implements the GatewayProviderExtension gRPC service.
 // It handles upstream API forwarding for the Anthropic Messages API.
 type gatewayProviderServer struct {
 	pb.UnimplementedGatewayProviderExtensionServer
-	httpClient *http.Client
+	logger func() *slog.Logger
 }
 
-func newGatewayProviderServer() *gatewayProviderServer {
-	return &gatewayProviderServer{
-		httpClient: &http.Client{
-			// No global timeout; streaming responses can be long-lived.
-			// Per-request timeouts are handled by context cancellation.
-		},
-	}
+func newGatewayProviderServer(logFn func() *slog.Logger) *gatewayProviderServer {
+	return &gatewayProviderServer{logger: logFn}
 }
 
 // Forward handles a single gateway request by:
@@ -44,6 +43,13 @@ func (s *gatewayProviderServer) Forward(
 	startTime := time.Now()
 	ctx := stream.Context()
 
+	s.logger().Info("forward request",
+		"request_id", req.GetRequestId(),
+		"model", req.GetModel(),
+		"account_type", req.GetAccount().GetAccountType(),
+		"stream", req.GetStream(),
+	)
+
 	// Build the upstream HTTP request. Bedrock and Vertex accounts use
 	// dedicated forwarding paths with provider-specific auth and URLs.
 	upstream, err := buildUpstreamRequest(ctx, req)
@@ -58,7 +64,7 @@ func (s *gatewayProviderServer) Forward(
 	}
 
 	// Execute the upstream request.
-	resp, err := s.httpClient.Do(upstream.httpReq)
+	resp, err := defaultHTTPClient.Do(upstream.httpReq)
 	if err != nil {
 		return fmt.Errorf("upstream request failed: %w", err)
 	}

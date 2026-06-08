@@ -67,7 +67,7 @@ func (p *AnthropicGatewayPlugin) RegisterGRPCServices(server *grpc.Server) {
 	p.accountPlatformServer = newAccountPlatformServer()
 	pb.RegisterAccountPlatformExtensionServer(server, p.accountPlatformServer)
 
-	p.gatewayProviderServer = newGatewayProviderServer()
+	p.gatewayProviderServer = newGatewayProviderServer(p.Logger)
 	pb.RegisterGatewayProviderExtensionServer(server, p.gatewayProviderServer)
 }
 

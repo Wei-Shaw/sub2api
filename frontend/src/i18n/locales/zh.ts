@@ -312,6 +312,7 @@ export default {
     saving: '保存中...',
     selectedCount: '（已选 {count} 个）',
     refresh: '刷新',
+    retry: '重试',
     view: '查看',
     settings: '设置',
     chooseFile: '选择文件',
@@ -6560,5 +6561,11 @@ export default {
     }
   },
 
+  // Plugin View
+  plugin: {
+    loading: '正在加载插件 "{name}"...',
+    loadError: '插件页面加载失败。',
+    contextUnavailable: '插件上下文不可用。'
+  },
 
 }

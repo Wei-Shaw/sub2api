@@ -47,7 +47,7 @@ func (s *gatewayProviderServer) forwardVertex(
 	forwardVertexClientHeaders(httpReq, req.GetHeaders())
 	forwardVertexClientHeaders(httpReq, req.GetClientHeaders())
 
-	resp, err := s.httpClient.Do(httpReq)
+	resp, err := defaultHTTPClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("vertex request failed: %w", err)
 	}

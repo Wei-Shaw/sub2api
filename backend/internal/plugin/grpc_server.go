@@ -73,6 +73,7 @@ type SDKServer struct {
 
 type activeTx struct {
 	tx        *sql.Tx
+	cancel    context.CancelFunc // WithTimeout cancel; called on Commit/Rollback/cleanup
 	owner     string
 	startedAt time.Time
 }
@@ -119,6 +120,9 @@ func (s *SDKServer) Stop() {
 	defer s.txMu.Unlock()
 	for id, t := range s.txs {
 		_ = t.tx.Rollback()
+		if t.cancel != nil {
+			t.cancel()
+		}
 		delete(s.txs, id)
 	}
 }
@@ -187,6 +191,9 @@ func (s *SDKServer) rollbackTimedOutTx() {
 	s.txMu.Unlock()
 
 	for _, e := range expired {
+		if e.t.cancel != nil {
+			e.t.cancel()
+		}
 		if err := e.t.tx.Rollback(); err != nil {
 			slog.Warn("rollback timed-out plugin tx", "tx_id", e.id, "error", err)
 		} else {

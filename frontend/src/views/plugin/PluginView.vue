@@ -36,6 +36,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { findPluginManifest } from '@/plugins/loader'
 import { loadPluginEntry, unloadPlugin } from '@/plugins/loader-runtime'
 import { mountPluginAssets, type MountedPluginHandle } from '@/plugins/mount-plugin'
@@ -55,6 +56,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 type ViewState = 'loading' | 'placeholder' | 'ready' | 'error'
 
 const route = useRoute()
+const { t } = useI18n()
 
 const pluginName = computed(() => stringMeta('pluginName'))
 const displayName = computed(() => stringMeta('pluginDisplayName'))
@@ -81,14 +83,14 @@ const shadowHostRef = useTemplateRef<HTMLDivElement>('shadowHost')
 let mountedHandle: MountedPluginHandle | null = null
 let activeMountToken = 0
 
-const loadingText = computed(() => `Loading plugin "${displayName.value || pluginName.value}"...`)
-const errorText = computed(() => 'Failed to load plugin page.')
-const retryText = 'Retry'
+const loadingText = computed(() => t('plugin.loading', { name: displayName.value || pluginName.value }))
+const errorText = computed(() => t('plugin.loadError'))
+const retryText = computed(() => t('common.retry'))
 const placeholderText = computed(() => {
   if (!pluginName.value) {
-    return 'Plugin context unavailable.'
+    return t('plugin.contextUnavailable')
   }
-  return `Plugin "${displayName.value || pluginName.value}" page is loading...`
+  return t('plugin.loading', { name: displayName.value || pluginName.value })
 })
 
 watch(

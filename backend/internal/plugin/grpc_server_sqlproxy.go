@@ -70,15 +70,21 @@ func (s *SDKServer) BeginTx(ctx context.Context, req *pluginsdk.BeginTxRequest) 
 	// transport 层 cancel（finishStream → s.cancel()）。database/sql.Tx
 	// 的 awaitDone goroutine 会监听 ctx.Done() 并自动 rollback。事务的
 	// 生命周期跨越 BeginTx → TxQuery/TxExec → CommitTx 多个 RPC，必须
-	// 用 WithoutCancel 使 ctx 脱离 RPC 生命周期。事务超时保护由
-	// rollbackTimedOutTx（30s 清理）兜底。
-	tx, err := s.db.BeginTx(context.WithoutCancel(ctx), opts)
+	// 用 WithoutCancel 使 ctx 脱离 RPC 生命周期。
+	//
+	// 双重保护: WithTimeout 确保即使插件崩溃 / 网络断开, 事务的 context
+	// 也会在 txAutoRollbackTimeout 后被 cancel, 由 database/sql.Tx 的
+	// awaitDone 自动 rollback。与 rollbackTimedOutTx 的周期性清理互为
+	// 兜底, 两者都不可省略。
+	txCtx, txCancel := context.WithTimeout(context.WithoutCancel(ctx), txAutoRollbackTimeout)
+	tx, err := s.db.BeginTx(txCtx, opts)
 	if err != nil {
+		txCancel()
 		return nil, errInternal(err, "plugin begin tx")
 	}
 	id := uuid.NewString()
 	s.txMu.Lock()
-	s.txs[id] = &activeTx{tx: tx, owner: pluginName, startedAt: time.Now()}
+	s.txs[id] = &activeTx{tx: tx, cancel: txCancel, owner: pluginName, startedAt: time.Now()}
 	s.txMu.Unlock()
 	return &pluginsdk.TxResponse{TxId: id}, nil
 }
@@ -119,10 +125,11 @@ func (s *SDKServer) TxExec(ctx context.Context, req *pluginsdk.TxSQLRequest) (*p
 }
 
 func (s *SDKServer) CommitTx(ctx context.Context, req *pluginsdk.TxIDRequest) (*emptypb.Empty, error) {
-	tx, err := s.popTx(ctx, req.GetTxId())
+	tx, cancel, err := s.popTx(ctx, req.GetTxId())
 	if err != nil {
 		return nil, err
 	}
+	defer cancel()
 	if err := tx.Commit(); err != nil {
 		return nil, errInternal(err, "plugin commit tx")
 	}
@@ -130,10 +137,11 @@ func (s *SDKServer) CommitTx(ctx context.Context, req *pluginsdk.TxIDRequest) (*
 }
 
 func (s *SDKServer) RollbackTx(ctx context.Context, req *pluginsdk.TxIDRequest) (*emptypb.Empty, error) {
-	tx, err := s.popTx(ctx, req.GetTxId())
+	tx, cancel, err := s.popTx(ctx, req.GetTxId())
 	if err != nil {
 		return nil, err
 	}
+	defer cancel()
 	if err := tx.Rollback(); err != nil {
 		return nil, errInternal(err, "plugin rollback tx")
 	}
@@ -154,19 +162,23 @@ func (s *SDKServer) lookupTx(ctx context.Context, id string) (*sql.Tx, error) {
 	return t.tx, nil
 }
 
-func (s *SDKServer) popTx(ctx context.Context, id string) (*sql.Tx, error) {
+func (s *SDKServer) popTx(ctx context.Context, id string) (*sql.Tx, context.CancelFunc, error) {
 	s.txMu.Lock()
 	defer s.txMu.Unlock()
 	t, ok := s.txs[id]
 	if !ok {
-		return nil, status.Errorf(codes.NotFound, "unknown tx_id: %s", id)
+		return nil, nil, status.Errorf(codes.NotFound, "unknown tx_id: %s", id)
 	}
 	if caller, _ := CallerFromContext(ctx); caller != t.owner {
-		return nil, status.Errorf(codes.PermissionDenied,
+		return nil, nil, status.Errorf(codes.PermissionDenied,
 			"tx %s belongs to %s, not %s", id, t.owner, caller)
 	}
 	delete(s.txs, id)
-	return t.tx, nil
+	cancel := t.cancel
+	if cancel == nil {
+		cancel = func() {} // noop for legacy txs without timeout
+	}
+	return t.tx, cancel, nil
 }
 
 // parseIsolationLevel converts a proto-level isolation string to sql.IsolationLevel.

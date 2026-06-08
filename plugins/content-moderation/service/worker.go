@@ -65,12 +65,22 @@ func (s *ModerationService) enqueueRecord(input ContentModerationCheckInput, cfg
 }
 
 func (s *ModerationService) worker(id int) {
+	defer s.wg.Done()
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), maxContentModerationTimeoutMS*time.Millisecond+10*time.Second)
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+		}
+		ctx, cancel := context.WithTimeout(s.ctx, maxContentModerationTimeoutMS*time.Millisecond+10*time.Second)
 		cfg, err := s.loadConfig(ctx)
 		if err != nil || id >= cfg.WorkerCount {
 			cancel()
-			time.Sleep(time.Second)
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
 			continue
 		}
 		task, ok := s.dequeueAsyncTask(ctx, time.Second)
@@ -139,12 +149,17 @@ func (s *ModerationService) dequeueAsyncTask(ctx context.Context, idleWait time.
 }
 
 func (s *ModerationService) cleanupWorker() {
+	defer s.wg.Done()
 	timer := time.NewTimer(contentModerationCleanupDelay)
 	defer timer.Stop()
 	for {
-		<-timer.C
-		s.runCleanupOnce()
-		timer.Reset(contentModerationCleanupInterval)
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-timer.C:
+			s.runCleanupOnce()
+			timer.Reset(contentModerationCleanupInterval)
+		}
 	}
 }
 

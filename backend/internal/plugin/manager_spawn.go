@@ -163,6 +163,10 @@ func (m *PluginManager) spawnPipe(sc *spawnCtx) error {
 	procCtx, cancelProc := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(procCtx, sc.inst.BinaryPath)
 
+	// 安全加固：不继承宿主全部环境变量。过滤掉数据库密码、JWT 密钥等
+	// 敏感配置，防止泄露给插件子进程。详见 spawn_env.go。
+	cmd.Env = sanitizedEnvForPlugin()
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancelProc()

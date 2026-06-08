@@ -22,6 +22,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/plugins/content-moderation/internal/pagination"
 )
 
+// shutdownTimeout is the grace period given to in-flight async workers
+// after the service's cancel signal fires.
+const shutdownTimeout = 5 * time.Second
+
 // ModerationService is the migrated content-moderation engine. It replaces the
 // core's ContentModerationService; instead of injected repositories it holds
 // SDK-provided resources and a Repository/HashCache built on top of them.
@@ -31,6 +35,9 @@ type ModerationService struct {
 	logger    *slog.Logger
 	repo      Repository
 	hashCache HashCache
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
 
 	httpClient               *http.Client
 	asyncQueue               chan contentModerationTask
@@ -67,22 +74,43 @@ type contentModerationTask struct {
 // NewModerationService builds the engine from the SDK context plus the
 // SQL repository and Redis hash cache. It launches the async worker pool and
 // the retention-cleanup loop.
-func NewModerationService(ctx pluginsdk.PluginContext, repo Repository, hashCache HashCache) *ModerationService {
+func NewModerationService(pctx pluginsdk.PluginContext, repo Repository, hashCache HashCache) *ModerationService {
+	svcCtx, cancel := context.WithCancel(context.Background())
 	svc := &ModerationService{
-		settings:   ctx.Settings(),
-		host:       ctx.HostPayment(),
-		logger:     ctx.Logger(),
+		settings:   pctx.Settings(),
+		host:       pctx.HostPayment(),
+		logger:     pctx.Logger(),
 		repo:       repo,
 		hashCache:  hashCache,
+		ctx:        svcCtx,
+		cancel:     cancel,
 		httpClient: &http.Client{},
 		asyncQueue: make(chan contentModerationTask, maxContentModerationQueueSize),
 		keyHealth:  make(map[string]*contentModerationKeyHealth),
 	}
 	for i := 0; i < maxContentModerationWorkerCount; i++ {
+		svc.wg.Add(1)
 		go svc.worker(i)
 	}
+	svc.wg.Add(1)
 	go svc.cleanupWorker()
 	return svc
+}
+
+// Shutdown cancels the service context so all worker and cleanup goroutines
+// exit their loops, then waits up to shutdownTimeout for them to finish.
+func (s *ModerationService) Shutdown() {
+	if s == nil || s.cancel == nil {
+		return
+	}
+	s.cancel()
+	done := make(chan struct{})
+	go func() { s.wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(shutdownTimeout):
+		s.logger.Warn("content_moderation.shutdown_timeout", "timeout", shutdownTimeout)
+	}
 }
 
 func (s *ModerationService) GetConfig(ctx context.Context) (*ContentModerationConfigView, error) {
@@ -93,6 +121,10 @@ func (s *ModerationService) GetConfig(ctx context.Context) (*ContentModerationCo
 	return s.configView(cfg), nil
 }
 
+// Check evaluates a content moderation request. The function exceeds 30 lines
+// because it is a linear chain of early-return guards (nil/config/mode/group/
+// model/empty/hash/sampling/api-key) that cannot be meaningfully decomposed
+// without creating artificial wrappers that hide the control flow.
 func (s *ModerationService) Check(ctx context.Context, input ContentModerationCheckInput) (*ContentModerationDecision, error) {
 	allow := &ContentModerationDecision{Allowed: true, Action: ContentModerationActionAllow}
 	if s == nil {
@@ -200,31 +232,50 @@ func (s *ModerationService) checkPreBlockGuards(ctx context.Context, input Conte
 }
 
 func (s *ModerationService) checkSync(ctx context.Context, input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, hashText string, queueDelay *int, allowBlock bool) *ContentModerationDecision {
-	allow := &ContentModerationDecision{Allowed: true, Action: ContentModerationActionAllow}
 	trackPreBlock := queueDelay == nil && allowBlock && cfg != nil && cfg.Mode == ContentModerationModePreBlock
 	if trackPreBlock {
 		s.preBlockActive.Add(1)
 		defer s.preBlockActive.Add(-1)
 	}
-	start := time.Now()
-	result, err := s.callModeration(ctx, cfg, content.ModerationInput(), trackPreBlock)
-	latency := int(time.Since(start).Milliseconds())
+	result, latency, err := s.callModerationAPI(ctx, cfg, content, trackPreBlock)
 	if err != nil {
-		if trackPreBlock {
-			s.recordPreBlockSyncMetric(latency, ContentModerationActionError)
-		}
-		s.logger.Warn("content_moderation.audit_api_failed",
-			"user_id", input.UserID, "endpoint", input.Endpoint, "mode", cfg.Mode, "latency_ms", latency, "error", err)
-		if queueDelay != nil {
-			s.asyncErrors.Add(1)
-		}
-		if cfg.RecordNonHits {
-			log := s.buildLog(input, cfg, ContentModerationActionError, false, "", 0, nil, content.ExcerptText(), &latency, queueDelay, err.Error())
-			_ = s.repo.CreateLog(ctx, log)
-		}
-		return allow
+		s.handleModerationAPIError(ctx, input, cfg, content, latency, queueDelay, trackPreBlock, err)
+		return &ContentModerationDecision{Allowed: true, Action: ContentModerationActionAllow}
 	}
+	decision := s.evaluateModerationResult(result, cfg, allowBlock, latency, trackPreBlock)
+	s.persistModerationDecision(ctx, input, cfg, content, hashText, result, decision, latency, queueDelay)
+	return decision
+}
 
+// callModerationAPI invokes the upstream moderation API and returns the result
+// with the measured latency.
+func (s *ModerationService) callModerationAPI(ctx context.Context, cfg *ContentModerationConfig, content ContentModerationInput, trackKeyLoad bool) (*moderationAPIResult, int, error) {
+	start := time.Now()
+	result, err := s.callModeration(ctx, cfg, content.ModerationInput(), trackKeyLoad)
+	latency := int(time.Since(start).Milliseconds())
+	return result, latency, err
+}
+
+// handleModerationAPIError logs the API failure, records metrics, and
+// optionally persists an error log.
+func (s *ModerationService) handleModerationAPIError(ctx context.Context, input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, latency int, queueDelay *int, trackPreBlock bool, err error) {
+	if trackPreBlock {
+		s.recordPreBlockSyncMetric(latency, ContentModerationActionError)
+	}
+	s.logger.Warn("content_moderation.audit_api_failed",
+		"user_id", input.UserID, "endpoint", input.Endpoint, "mode", cfg.Mode, "latency_ms", latency, "error", err)
+	if queueDelay != nil {
+		s.asyncErrors.Add(1)
+	}
+	if cfg.RecordNonHits {
+		log := s.buildLog(input, cfg, ContentModerationActionError, false, "", 0, nil, content.ExcerptText(), &latency, queueDelay, err.Error())
+		_ = s.repo.CreateLog(ctx, log)
+	}
+}
+
+// evaluateModerationResult evaluates the API response scores against
+// configured thresholds and builds the decision.
+func (s *ModerationService) evaluateModerationResult(result *moderationAPIResult, cfg *ContentModerationConfig, allowBlock bool, latency int, trackPreBlock bool) *ContentModerationDecision {
 	flagged, highestCategory, highestScore := evaluateModerationScores(result.CategoryScores, cfg.Thresholds)
 	action := ContentModerationActionAllow
 	blocked := false
@@ -235,31 +286,45 @@ func (s *ModerationService) checkSync(ctx context.Context, input ContentModerati
 	if trackPreBlock {
 		s.recordPreBlockSyncMetric(latency, action)
 	}
-	s.logger.Info("content_moderation.audit_result",
-		"user_id", input.UserID, "endpoint", input.Endpoint, "mode", cfg.Mode,
-		"flagged", flagged, "blocked", blocked, "action", action,
-		"highest_category", highestCategory, "highest_score", highestScore, "latency_ms", latency)
-	if flagged || cfg.RecordNonHits {
-		log := s.buildLog(input, cfg, action, flagged, highestCategory, highestScore, result.CategoryScores, content.ExcerptText(), &latency, queueDelay, "")
-		if queueDelay == nil && cfg.Mode == ContentModerationModePreBlock {
-			s.enqueueRecord(input, cfg, log, hashText, flagged, flagged)
-		} else {
-			s.persistContentModerationLog(ctx, cfg, log, hashText, flagged, flagged)
-		}
-	}
-	if blocked {
-		return &ContentModerationDecision{
-			Allowed: false, Blocked: true, Flagged: true,
-			Message: cfg.BlockMessage, StatusCode: cfg.BlockStatus,
-			HighestCategory: highestCategory, HighestScore: highestScore,
-			CategoryScores: result.CategoryScores, Action: action,
-		}
-	}
 	return &ContentModerationDecision{
-		Allowed: true, Flagged: flagged,
+		Allowed: !blocked, Blocked: blocked, Flagged: flagged,
+		Message:         boolString(blocked, cfg.BlockMessage, ""),
+		StatusCode:      boolInt(blocked, cfg.BlockStatus, 0),
 		HighestCategory: highestCategory, HighestScore: highestScore,
 		CategoryScores: result.CategoryScores, Action: action,
 	}
+}
+
+// persistModerationDecision logs the audit result and persists the moderation
+// log entry (either inline or via the async record queue).
+func (s *ModerationService) persistModerationDecision(ctx context.Context, input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, hashText string, result *moderationAPIResult, decision *ContentModerationDecision, latency int, queueDelay *int) {
+	s.logger.Info("content_moderation.audit_result",
+		"user_id", input.UserID, "endpoint", input.Endpoint, "mode", cfg.Mode,
+		"flagged", decision.Flagged, "blocked", decision.Blocked, "action", decision.Action,
+		"highest_category", decision.HighestCategory, "highest_score", decision.HighestScore, "latency_ms", latency)
+	if !decision.Flagged && !cfg.RecordNonHits {
+		return
+	}
+	log := s.buildLog(input, cfg, decision.Action, decision.Flagged, decision.HighestCategory, decision.HighestScore, result.CategoryScores, content.ExcerptText(), &latency, queueDelay, "")
+	if queueDelay == nil && cfg.Mode == ContentModerationModePreBlock {
+		s.enqueueRecord(input, cfg, log, hashText, decision.Flagged, decision.Flagged)
+	} else {
+		s.persistContentModerationLog(ctx, cfg, log, hashText, decision.Flagged, decision.Flagged)
+	}
+}
+
+func boolString(cond bool, ifTrue, ifFalse string) string {
+	if cond {
+		return ifTrue
+	}
+	return ifFalse
+}
+
+func boolInt(cond bool, ifTrue, ifFalse int) int {
+	if cond {
+		return ifTrue
+	}
+	return ifFalse
 }
 
 func (s *ModerationService) recordPreBlockSyncMetric(latencyMS int, action string) {

@@ -145,8 +145,14 @@ func (c *grpcConn) ResetSession(_ context.Context) error {
 		return driver.ErrBadConn
 	}
 	c.txMu.Lock()
+	orphanedTx := c.txID
 	c.txID = ""
 	c.txMu.Unlock()
+	if orphanedTx != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), txFinishTimeout)
+		defer cancel()
+		_, _ = c.client.RollbackTx(ctx, &pb.TxIDRequest{TxId: orphanedTx})
+	}
 	return nil
 }
 

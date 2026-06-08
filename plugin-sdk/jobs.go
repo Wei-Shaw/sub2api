@@ -393,8 +393,8 @@ func (c *jobsClient) dispatch(ctx context.Context, trig *pb.JobTrigger) {
 // records timeout / missing ack as failure when correlation expires.
 func (c *jobsClient) sendAck(triggerID string, success bool, errMsg string, durationNanos int64) {
 	c.streamMu.Lock()
+	defer c.streamMu.Unlock()
 	stream := c.stream
-	c.streamMu.Unlock()
 	if stream == nil {
 		c.logger.Warn("dropping ack: stream not open",
 			"trigger_id", triggerID,

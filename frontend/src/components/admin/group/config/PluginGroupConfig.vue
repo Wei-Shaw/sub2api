@@ -5,7 +5,7 @@
     </h3>
     <JsonSchemaForm
       :schema="schema"
-      :model-value="formData.group_extra || {}"
+      :model-value="groupExtra"
       @update:model-value="formData.group_extra = $event"
     />
   </div>
@@ -21,13 +21,14 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePlatforms } from '@/composables/usePlatforms'
 import JsonSchemaForm from '@/components/common/JsonSchemaForm.vue'
+import type { AdminGroup } from '@/types'
 
-const formData = defineModel<Record<string, any>>('formData', { required: true })
+const formData = defineModel<Record<string, unknown>>('formData', { required: true })
 
 const props = defineProps<{
   mode: 'create' | 'edit'
   platform: string
-  groups: any[]
+  groups: AdminGroup[]
   editingGroupId?: number | null
 }>()
 
@@ -41,4 +42,10 @@ const schema = computed(() => {
   return decl?.group_config?.group_extra_schema || null
 })
 const hasSchema = computed(() => schema.value != null && Object.keys(schema.value).length > 0)
+const groupExtra = computed<Record<string, unknown>>(() => {
+  const raw = formData.value.group_extra
+  return (raw != null && typeof raw === 'object' && !Array.isArray(raw))
+    ? raw as Record<string, unknown>
+    : {} as Record<string, unknown>
+})
 </script>

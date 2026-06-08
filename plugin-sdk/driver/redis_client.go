@@ -34,6 +34,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
@@ -59,6 +60,7 @@ type RedisClient struct {
 	logger     *slog.Logger
 	namespace  string       // "" = no prefixing (Raw mode); else "plugin:<name>:"
 	rawAllowed bool         // true if the plugin declared redis_raw_keys
+	rawOnce    sync.Once    // guards lazy init of rawClient
 	rawClient  *RedisClient // lazily-initialised raw twin (created by Raw())
 }
 
@@ -103,15 +105,14 @@ func (r *RedisClient) Raw() *RedisClient {
 	if !r.rawAllowed {
 		return nil
 	}
-	if r.rawClient != nil {
-		return r.rawClient
-	}
-	r.rawClient = &RedisClient{
-		cli:        r.cli,
-		logger:     r.logger,
-		namespace:  "",
-		rawAllowed: r.rawAllowed,
-	}
+	r.rawOnce.Do(func() {
+		r.rawClient = &RedisClient{
+			cli:        r.cli,
+			logger:     r.logger,
+			namespace:  "",
+			rawAllowed: r.rawAllowed,
+		}
+	})
 	return r.rawClient
 }
 

@@ -64,6 +64,9 @@ func (p *ContentModerationPlugin) Shutdown() error {
 	if c := p.ctx.Load(); c != nil {
 		(*c).Logger().Info("content-moderation plugin shutting down")
 	}
+	if p.service != nil {
+		p.service.Shutdown()
+	}
 	return nil
 }
 
