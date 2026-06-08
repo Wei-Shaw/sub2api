@@ -35,6 +35,7 @@ type OpsAlertEvaluatorService struct {
 	opsService   *OpsService
 	opsRepo      OpsRepository
 	emailService *EmailService
+	proxyRepo    ProxyRepository
 
 	redisClient *redis.Client
 	cfg         *config.Config
@@ -67,11 +68,13 @@ func NewOpsAlertEvaluatorService(
 	emailService *EmailService,
 	redisClient *redis.Client,
 	cfg *config.Config,
+	proxyRepo ProxyRepository,
 ) *OpsAlertEvaluatorService {
 	return &OpsAlertEvaluatorService{
 		opsService:   opsService,
 		opsRepo:      opsRepo,
 		emailService: emailService,
+		proxyRepo:    proxyRepo,
 		redisClient:  redisClient,
 		cfg:          cfg,
 		instanceID:   uuid.NewString(),
@@ -506,6 +509,18 @@ REDACTED
 		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
 			return acc.HasError && acc.TempUnschedulableUntil == nil
 	REDACTED)), true
+	case "account_temp_unscheduled_count":
+		if s == nil || s.opsService == nil {
+			return 0, false
+	REDACTED
+		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
+		if err != nil || availability == nil {
+			return 0, false
+	REDACTED
+		now := time.Now().UTC()
+		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
+			return acc.TempUnschedulableUntil != nil && now.Before(*acc.TempUnschedulableUntil)
+	REDACTED)), true
 	case "group_rate_limit_ratio":
 		if groupID == nil || *groupID <= 0 {
 			return 0, false
@@ -548,6 +563,24 @@ REDACTED
 		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
 			return acc.IsOverloaded
 	REDACTED)), true
+	case "proxy_expired_count":
+		if s == nil || s.proxyRepo == nil {
+			return 0, false
+	REDACTED
+		n, err := s.proxyRepo.CountExpired(ctx)
+		if err != nil {
+			return 0, false
+	REDACTED
+		return float64(n), true
+	case "proxy_expiring_soon_count":
+		if s == nil || s.proxyRepo == nil {
+			return 0, false
+	REDACTED
+		n, err := s.proxyRepo.CountExpiringSoon(ctx, time.Now())
+		if err != nil {
+			return 0, false
+	REDACTED
+		return float64(n), true
 REDACTED
 
 	overview, err := s.opsRepo.GetDashboardOverview(ctx, &OpsDashboardFilter{

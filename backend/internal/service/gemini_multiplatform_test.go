@@ -184,6 +184,10 @@ func (m *mockAccountRepoForGemini) ResetQuotaUsed(ctx context.Context, id int64)
 	return nil
 REDACTED
 
+func (m *mockAccountRepoForGemini) RevertProxyFallback(ctx context.Context, accountID int64) error {
+	return nil
+REDACTED
+
 // Verify interface implementation
 var _ AccountRepository = (*mockAccountRepoForGemini)(nil)
 
