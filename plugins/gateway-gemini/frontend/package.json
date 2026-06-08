@@ -1,0 +1,30 @@
+{
+  "name": "@sub2api/plugin-gateway-gemini",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "axios": "^1.15.0",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.0",
+    "vue-i18n": "^9.9.0",
+    "vue-router": "^4.2.5"
+  },
+  "devDependencies": {
+    "@sub2api/plugin-sdk": "file:../../../frontend/packages/plugin-sdk",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "~5.3.0",
+    "vite": "^5.0.0",
+    "vue-tsc": "^1.8.27"
+  }
+}

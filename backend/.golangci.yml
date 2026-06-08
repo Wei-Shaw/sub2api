@@ -1,0 +1,139 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - depguard
+    - errcheck
+    - gosec
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+  settings:
+    depguard:
+      rules:
+        # Enforce: service must not depend on repository.
+        service-no-repository:
+          list-mode: original
+          files:
+            - "**/internal/service/**"
+            - "!**/internal/service/ops_aggregation_service.go"
+            - "!**/internal/service/ops_alert_evaluator_service.go"
+            - "!**/internal/service/ops_cleanup_service.go"
+            - "!**/internal/service/ops_metrics_collector.go"
+            - "!**/internal/service/ops_scheduled_report_service.go"
+            - "!**/internal/service/wire.go"
+          deny:
+            - pkg: github.com/Wei-Shaw/sub2api/internal/repository
+              desc: "service must not import repository"
+            - pkg: gorm.io/gorm
+              desc: "service must not import gorm"
+            - pkg: github.com/redis/go-redis/v9
+              desc: "service must not import redis"
+        handler-no-repository:
+          list-mode: original
+          files:
+            - "**/internal/handler/**"
+          deny:
+            - pkg: github.com/Wei-Shaw/sub2api/internal/repository
+              desc: "handler must not import repository"
+            - pkg: gorm.io/gorm
+              desc: "handler must not import gorm"
+            - pkg: github.com/redis/go-redis/v9
+              desc: "handler must not import redis"
+    gosec:
+      excludes:
+        - G101
+        - G103
+        - G104
+        - G109
+        - G115
+        - G201
+        - G202
+        - G301
+        - G302
+        - G304
+        - G306
+        - G404
+      severity: high
+      confidence: high
+    errcheck:
+      # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
+      # Such cases aren't reported by default.
+      # Default: false
+      check-type-assertions: true
+      # report about assignment of errors to blank identifier: `num, _ := strconv.Atoi(numStr)`.
+      # Such cases aren't reported by default.
+      # Default: false
+      check-blank: false
+      # To disable the errcheck built-in exclude list.
+      # See `-excludeonly` option in https://github.com/kisielk/errcheck#excluding-functions for details.
+      # Default: false
+      disable-default-exclusions: true
+      # List of functions to exclude from checking, where each entry is a single function to exclude.
+      # See https://github.com/kisielk/errcheck#excluding-functions for details.
+      exclude-functions:
+        - io/ioutil.ReadFile
+        - io.Copy(*bytes.Buffer)
+        - io.Copy(os.Stdout)
+        - fmt.Println
+        - fmt.Print
+        - fmt.Printf
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+      # Display function signature instead of selector.
+      # Default: false
+      verbose: true
+    ineffassign:
+      # Check escaping variables of type error, may cause false positives.
+      # Default: false
+      check-escaping-errors: true
+    staticcheck:
+      # https://staticcheck.dev/docs/configuration/options/#dot_import_whitelist
+      dot-import-whitelist:
+        - fmt
+      # https://staticcheck.dev/docs/configuration/options/#initialisms
+      initialisms: [ "ACL", "API", "ASCII", "CPU", "CSS", "DNS", "EOF", "GUID", "HTML", "HTTP", "HTTPS", "ID", "IP", "JSON", "QPS", "RAM", "RPC", "SLA", "SMTP", "SQL", "SSH", "TCP", "TLS", "TTL", "UDP", "UI", "GID", "UID", "UUID", "URI", "URL", "UTF8", "VM", "XML", "XMPP", "XSRF", "XSS", "SIP", "RTP", "AMQP", "DB", "TS" ]
+      # https://staticcheck.dev/docs/configuration/options/#http_status_code_whitelist
+      http-status-code-whitelist: [ "200", "400", "404", "500" ]
+      # "all" enables every SA/ST/S/QF check; only list the ones to disable.
+      checks:
+        - all
+        - -ST1000  # Package comment format
+        - -ST1003  # Poorly chosen identifier (ApiKey vs APIKey)
+        - -ST1020  # Comment on exported method format
+        - -ST1021  # Comment on exported type format
+        - -ST1022  # Comment on exported variable format
+    unused:
+      # Default: true
+      field-writes-are-uses: true
+      # Default: false
+      post-statements-are-reads: true
+      # Default: true
+      exported-fields-are-used: true
+      # Default: true
+      parameters-are-used: true
+      # Default: true
+      local-variables-are-used: false
+      # Default: true — must be true, ent generates 130K+ lines of code
+      generated-is-used: true
+
+formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      # Simplify code: gofmt with `-s` option.
+      # Default: true
+      simplify: false
+      # Apply the rewrite rules to the source before reformatting.
+      # https://pkg.go.dev/cmd/gofmt
+      # Default: []
+      rewrite-rules:
+        - pattern: 'interface{}'
+          replacement: 'any'
+        - pattern: 'a[b:len(a)]'
+          replacement: 'a[b:]'
