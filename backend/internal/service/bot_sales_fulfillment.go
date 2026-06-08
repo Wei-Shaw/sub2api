@@ -610,12 +610,29 @@ func botSalesPaymentAmount(req BotSalesTokenFulfillmentRequest, pkg *dbent.Balan
 	if req.PaymentAmount > 0 && !math.IsNaN(req.PaymentAmount) && !math.IsInf(req.PaymentAmount, 0) {
 		return req.PaymentAmount, "payload", nil
 	}
+	if botSalesPaymentAmountProvided(req) {
+		if req.PaymentAmount < 0 || math.IsNaN(req.PaymentAmount) || math.IsInf(req.PaymentAmount, 0) {
+			return 0, "", infraerrors.BadRequest("BOT_SALES_PAYMENT_AMOUNT_INVALID", "payment_amount must be non-negative")
+		}
+		return req.PaymentAmount, "payload", nil
+	}
 	unitPrice, ok := resolveCurrencyOverride(pkg.CurrencyOverrides, currency)
 	if !ok {
 		return 0, "", infraerrors.BadRequest("BOT_SALES_PACKAGE_VND_PRICE_REQUIRED", "payment_amount is required unless balance package has a VND currency override")
 	}
 	quantity := botSalesQuantity(req)
 	return unitPrice * float64(quantity), "balance_package.currency_overrides", nil
+}
+
+func botSalesPaymentAmountProvided(req BotSalesTokenFulfillmentRequest) bool {
+	if req.RawPayload == nil {
+		return false
+	}
+	if _, ok := req.RawPayload["payment_amount"]; ok {
+		return true
+	}
+	_, ok := req.RawPayload["paymentAmount"]
+	return ok
 }
 
 func validateBotSalesBalanceQuantity(req BotSalesTokenFulfillmentRequest, pkg *dbent.BalancePackage) error {

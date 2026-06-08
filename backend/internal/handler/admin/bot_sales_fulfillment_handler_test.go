@@ -14,6 +14,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
+	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -273,6 +274,67 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 	require.True(t, ok)
 	require.Equal(t, ownerID, int64(topupOwnerIDValue))
 	require.Equal(t, float64(60), client.User.GetX(ctx, ownerID).Balance)
+}
+
+func TestBotSalesFulfillmentHandlerAcceptsExplicitZeroPaymentAmount(t *testing.T) {
+	router, client, cleanup := newBotSalesFulfillmentHandlerTestRouter(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	group := createBotSalesFulfillmentHandlerGroup(t, client, "bot-http-balance-zero", service.SubscriptionTypeNone)
+	pkg := client.BalancePackage.Create().
+		SetCode("http_zero_no_vnd_override").
+		SetLabel("HTTP Zero No VND Override").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(group.ID).
+		SetForSale(true).
+		SaveX(ctx)
+
+	payload := map[string]any{
+		"external_order_id":      "bs-http-balance-zero",
+		"external_order_item_id": "item-zero",
+		"operation":              service.BotSalesFulfillmentOperationNew,
+		"entitlement_kind":       service.BotSalesEntitlementBalance,
+		"balance_package_code":   pkg.Code,
+		"quantity":               1,
+		"payment_amount":         0,
+		"payment_currency":       "VND",
+		"payment_provider":       "manual",
+		"buyer": map[string]any{
+			"external_user_id": "channel:telegram:user:http-zero",
+			"provider":         "telegram",
+			"provider_user_id": "http-zero",
+			"telegram_id":      "http-zero",
+			"email":            "bot-http-zero@example.test",
+		},
+		"delivery_policy": map[string]any{
+			"issue_api_key":     "always",
+			"issue_device_code": true,
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/bot-sales/token-fulfillments", jsonBody(t, payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "bot-sales:bs-http-balance-zero:item-zero:new")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var data map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &data))
+	require.Equal(t, service.BotSalesEntitlementBalance, data["entitlement_kind"])
+	buyer, ok := data["buyer"].(map[string]any)
+	require.True(t, ok)
+	ownerIDValue, ok := buyer["user_id"].(float64)
+	require.True(t, ok)
+	require.Equal(t, float64(20), client.User.GetX(ctx, int64(ownerIDValue)).Balance)
+
+	order := client.PaymentOrder.Query().Where(paymentorder.OutTradeNoHasPrefix("bs_")).OnlyX(ctx)
+	require.Equal(t, float64(0), order.PaymentAmount)
+	require.Equal(t, "payload", order.ProviderSnapshot["payment_amount_source"])
+	require.Equal(t, float64(0), order.ProviderSnapshot["payment_amount"])
 }
 
 func newBotSalesFulfillmentHandlerTestRouter(t *testing.T) (*gin.Engine, *dbent.Client, func()) {
