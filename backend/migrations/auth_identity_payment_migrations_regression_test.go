@@ -1,11 +1,23 @@
 package migrations
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestMigration033RetainsAppliedProductionChecksum(t *testing.T) {
+	content, err := FS.ReadFile("033_ops_monitoring_vnext.sql")
+	require.NoError(t, err)
+
+	sum := sha256.Sum256([]byte(strings.TrimSpace(string(content))))
+	require.Equal(t, "accf363544d187aecad4f1c68fe34118f86d1a931465e66490c530d3f3f1106d", hex.EncodeToString(sum[:]))
+	require.Contains(t, string(content), "错误率过高")
+	require.NotContains(t, string(content), "Tỷ lệ lỗi cao")
+}
 
 func TestMigration112UsesIdempotentAddColumn(t *testing.T) {
 	content, err := FS.ReadFile("112_add_payment_order_provider_key_snapshot.sql")
