@@ -114,6 +114,36 @@ func (r *affiliateRepository) BindInviter(ctx context.Context, userID, inviterID
 	return bound, nil
 }
 
+func (r *affiliateRepository) IsAffiliateDescendant(ctx context.Context, userID, candidateDescendantID int64) (bool, error) {
+	if userID <= 0 || candidateDescendantID <= 0 {
+		return false, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, `
+WITH RECURSIVE descendants AS (
+    SELECT user_id
+    FROM user_affiliates
+    WHERE inviter_id = $1
+    UNION
+    SELECT ua.user_id
+    FROM user_affiliates ua
+    JOIN descendants d ON ua.inviter_id = d.user_id
+)
+SELECT EXISTS(SELECT 1 FROM descendants WHERE user_id = $2)`, userID, candidateDescendantID)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return false, rows.Err()
+	}
+	var exists bool
+	if err := rows.Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, rows.Err()
+}
+
 func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
 	if amount <= 0 {
 		return false, nil

@@ -157,6 +157,29 @@ func (h *AffiliateHandler) BatchSetRate(c *gin.Context) {
 	response.Success(c, gin.H{"affected": len(req.UserIDs)})
 }
 
+// BindInviter manually creates one inviter-invitee relationship.
+// POST /api/v1/admin/affiliates/invites/bind
+type BindAffiliateInviterRequest struct {
+	InviterUserID int64 `json:"inviter_user_id" binding:"required"`
+	InviteeUserID int64 `json:"invitee_user_id" binding:"required"`
+}
+
+func (h *AffiliateHandler) BindInviter(c *gin.Context) {
+	var req BindAffiliateInviterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.affiliateService.AdminBindInviter(c.Request.Context(), req.InviteeUserID, req.InviterUserID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"inviter_user_id": req.InviterUserID,
+		"invitee_user_id": req.InviteeUserID,
+	})
+}
+
 // AffiliateUserSummary is the minimal user shape returned by LookupUsers,
 // shared with the frontend's add-custom-user picker.
 type AffiliateUserSummary struct {
