@@ -166,6 +166,55 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
+    <!-- xAI OAuth accounts: monthly Grok billing window -->
+    <template v-else-if="account.platform === 'xai' && account.type === 'oauth'">
+      <div v-if="xaiBilling" class="space-y-1">
+        <UsageProgressBar
+          label="月度"
+          :utilization="xaiUsageProgress"
+          :resets-at="xaiBilling.billing_period_end"
+          :display-percent="xaiUsageDisplayPercent"
+          :extra-stats="xaiBillingStats"
+          color="amber"
+        />
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <button
+            type="button"
+            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
+            :disabled="activeQueryLoading"
+            @click="loadActiveUsage"
+          >
+            <svg
+              class="h-2.5 w-2.5"
+              :class="{ 'animate-spin': activeQueryLoading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ t('admin.accounts.usageWindow.activeQuery') }}
+          </button>
+        </div>
+      </div>
+      <div v-else-if="loading" class="space-y-1.5">
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[48px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-12 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[72px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="usageInfo?.error || error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[220px]" :title="usageInfo?.error || error || ''">
+        {{ usageInfo?.error || error }}
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
     <!-- Antigravity OAuth accounts: fetch usage from API -->
     <template v-else-if="account.platform === 'antigravity' && account.type === 'oauth'">
       <!-- 账户类型徽章 -->
@@ -564,6 +613,9 @@ const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'openai') {
     return props.account.type === 'oauth'
   }
+  if (props.account.platform === 'xai') {
+    return props.account.type === 'oauth'
+  }
   return false
 })
 
@@ -588,6 +640,80 @@ const hasOpenAIUsageFallback = computed(() => {
 })
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
+
+const xaiBilling = computed(() => {
+  if (props.account.platform !== 'xai' || props.account.type !== 'oauth') return null
+  return usageInfo.value?.xai_billing ?? null
+})
+
+const xaiUsedPercent = computed(() => {
+  const billing = xaiBilling.value
+  if (!billing) return null
+  if (typeof billing.used_percent === 'number' && Number.isFinite(billing.used_percent)) {
+    return billing.used_percent
+  }
+  const used = billing.used_cents
+  const limit = billing.monthly_limit_cents
+  if (
+    typeof used === 'number' &&
+    Number.isFinite(used) &&
+    typeof limit === 'number' &&
+    Number.isFinite(limit) &&
+    limit > 0
+  ) {
+    return (used / limit) * 100
+  }
+  return null
+})
+
+const xaiUsagePercent = computed(() => {
+  if (xaiUsedPercent.value === null) return null
+  return Math.max(0, xaiUsedPercent.value)
+})
+
+const xaiUsageLabel = computed(() => {
+  if (xaiUsagePercent.value === null) return '--'
+  const percent = Math.round(xaiUsagePercent.value)
+  return percent > 999 ? '>999%' : `${percent}%`
+})
+
+const xaiUsageProgress = computed(() => {
+  return xaiUsagePercent.value ?? 0
+})
+
+const xaiUsageDisplayPercent = computed(() => {
+  return xaiUsageLabel.value
+})
+
+const formatXAICents = (cents?: number | null) => {
+  if (typeof cents !== 'number' || !Number.isFinite(cents)) return 'US$--'
+  return `US$${(cents / 100).toFixed(2)}`
+}
+
+const xaiBillingStats = computed(() => {
+  const billing = xaiBilling.value
+  if (!billing) return []
+
+  const stats: Array<{ label: string; title?: string }> = []
+  const hasUsed = typeof billing.used_cents === 'number' && Number.isFinite(billing.used_cents)
+  const hasLimit = typeof billing.monthly_limit_cents === 'number' && Number.isFinite(billing.monthly_limit_cents)
+
+  if (hasUsed) {
+    stats.push({ label: `已用 ${formatXAICents(billing.used_cents)}` })
+  }
+  if (hasLimit) {
+    stats.push({ label: `上限 ${formatXAICents(billing.monthly_limit_cents)}` })
+  }
+
+  const cap = billing.on_demand_cap_cents
+  if (typeof cap === 'number' && Number.isFinite(cap) && cap > 0) {
+    stats.push({ label: `按量 ${formatXAICents(cap)}` })
+  } else {
+    stats.push({ label: '按量 未启用' })
+  }
+
+  return stats
+})
 
 const shouldAutoLoadUsageOnMount = computed(() => {
   return shouldFetchUsage.value
@@ -1026,7 +1152,11 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
   error.value = null
 
   try {
-    const fetchFn = () => adminAPI.accounts.getUsage(props.account.id, options?.source)
+    const fetchFn = () => (
+      options?.source === undefined
+        ? adminAPI.accounts.getUsage(props.account.id)
+        : adminAPI.accounts.getUsage(props.account.id, options.source)
+    )
     const result = await enqueueUsageRequest(props.account, fetchFn)
     if (!unmounted.value) {
       usageInfo.value = result
@@ -1213,6 +1343,7 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
+  _usageCache.delete(props.account.id)
   requestAutoLoad()
 })
 

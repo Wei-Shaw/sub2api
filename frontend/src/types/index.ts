@@ -938,6 +938,15 @@ export interface AntigravityModelQuota {
   reset_time: string  // 重置时间 ISO8601
 }
 
+export interface XAIBillingSummary {
+  monthly_limit_cents?: number | null
+  used_cents?: number | null
+  on_demand_cap_cents?: number | null
+  billing_period_start?: string | null
+  billing_period_end?: string | null
+  used_percent?: number | null
+}
+
 export interface AccountUsageInfo {
   source?: 'passive' | 'active'
   updated_at: string | null
@@ -951,6 +960,7 @@ export interface AccountUsageInfo {
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
+  xai_billing?: XAIBillingSummary | null
   ai_credits?: Array<{
     credit_type?: string
     amount?: number

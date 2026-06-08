@@ -655,4 +655,46 @@ describe('AccountUsageCell', () => {
 		expect(wrapper.text()).toContain('A $0.00')
 		expect(wrapper.text()).toContain('U $0.00')
   })
+
+  it('xAI OAuth 会按 Grok 月度 billing 窗口展示用量', async () => {
+		getUsage.mockResolvedValue({
+		  xai_billing: {
+		    monthly_limit_cents: 15000,
+		    used_cents: 13255,
+		    on_demand_cap_cents: 0,
+		    billing_period_start: '2026-06-01T00:00:00Z',
+		    billing_period_end: '2026-07-01T00:00:00Z',
+		    used_percent: 13255 / 15000 * 100
+		  }
+		})
+
+		const wrapper = mount(AccountUsageCell, {
+		  props: {
+		    account: makeAccount({
+		      id: 5001,
+		      platform: 'xai',
+		      type: 'oauth',
+		      extra: {}
+		    })
+		  },
+		  global: {
+		    stubs: {
+		      UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'displayPercent', 'extraStats', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ Math.round(utilization) }}|{{ displayPercent }}|{{ resetsAt }}<span v-for="stat in extraStats" :key="stat.label">{{ stat.label }}</span></div>'
+          },
+		      AccountQuotaInfo: true
+		    }
+		  }
+		})
+
+		await flushPromises()
+
+		expect(getUsage).toHaveBeenCalledWith(5001)
+		expect(wrapper.text()).toContain('月度|88|88%|2026-07-01T00:00:00Z')
+		expect(wrapper.text()).toContain('按量 未启用')
+		expect(wrapper.text()).toContain('已用 US$132.55')
+		expect(wrapper.text()).toContain('上限 US$150.00')
+		expect(wrapper.text()).toContain('88%')
+  })
 })

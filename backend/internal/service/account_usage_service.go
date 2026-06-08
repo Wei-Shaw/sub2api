@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -111,7 +114,10 @@ const (
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
 	openAICodexProbeVersion = "0.125.0"
+	xaiBillingTimeout       = 15 * time.Second
 )
+
+var xaiBillingEndpointURL = "https://cli-chat-proxy.grok.com/v1/billing"
 
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
@@ -176,6 +182,16 @@ type AICredit struct {
 	MinimumBalance float64 `json:"minimum_balance,omitempty"`
 }
 
+// XAIBillingSummary 表示 Grok/xAI 月度账单额度。
+type XAIBillingSummary struct {
+	MonthlyLimitCents  *float64   `json:"monthly_limit_cents,omitempty"`
+	UsedCents          *float64   `json:"used_cents,omitempty"`
+	OnDemandCapCents   *float64   `json:"on_demand_cap_cents,omitempty"`
+	BillingPeriodStart *time.Time `json:"billing_period_start,omitempty"`
+	BillingPeriodEnd   *time.Time `json:"billing_period_end,omitempty"`
+	UsedPercent        *float64   `json:"used_percent,omitempty"`
+}
+
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
 	Source             string         `json:"source,omitempty"`               // "passive" or "active"
@@ -202,6 +218,9 @@ type UsageInfo struct {
 
 	// Antigravity AI Credits 余额
 	AICredits []AICredit `json:"ai_credits,omitempty"`
+
+	// xAI/Grok 月度账单额度
+	XAIBilling *XAIBillingSummary `json:"xai_billing,omitempty"`
 
 	// Antigravity 废弃模型转发规则 (old_model_id -> new_model_id)
 	ModelForwardingRules map[string]string `json:"model_forwarding_rules,omitempty"`
@@ -263,6 +282,7 @@ type AccountUsageService struct {
 	usageFetcher            ClaudeUsageFetcher
 	geminiQuotaService      *GeminiQuotaService
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
+	xaiTokenProvider        *XAITokenProvider
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
@@ -275,6 +295,7 @@ func NewAccountUsageService(
 	usageFetcher ClaudeUsageFetcher,
 	geminiQuotaService *GeminiQuotaService,
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
+	xaiTokenProvider *XAITokenProvider,
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -285,6 +306,7 @@ func NewAccountUsageService(
 		usageFetcher:            usageFetcher,
 		geminiQuotaService:      geminiQuotaService,
 		antigravityQuotaFetcher: antigravityQuotaFetcher,
+		xaiTokenProvider:        xaiTokenProvider,
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
@@ -323,6 +345,14 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 	if account.Platform == PlatformAntigravity {
 		usage, err := s.getAntigravityUsage(ctx, account)
 		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
+	if account.Platform == PlatformXAI && account.Type == AccountTypeOAuth {
+		usage, err := s.getXAIUsage(ctx, account)
+		if err == nil && usage != nil && usage.Error == "" {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
 		return usage, err
@@ -543,6 +573,248 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 	}
 
 	return usage, nil
+}
+
+func (s *AccountUsageService) getXAIUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+	now := time.Now()
+	usage := &UsageInfo{UpdatedAt: &now}
+
+	billing, err := s.fetchXAIBilling(ctx, account)
+	if err != nil {
+		usage.ErrorCode = classifyXAIBillingError(err)
+		usage.NeedsReauth = usage.ErrorCode == "unauthenticated"
+		usage.Error = fmt.Sprintf("xAI billing API error: %v", err)
+		return usage, nil
+	}
+	usage.XAIBilling = billing
+	return usage, nil
+}
+
+type xaiBillingHTTPError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *xaiBillingHTTPError) Error() string {
+	if e == nil {
+		return ""
+	}
+	body := strings.TrimSpace(e.Body)
+	if body == "" {
+		return fmt.Sprintf("HTTP %d", e.StatusCode)
+	}
+	if len(body) > 300 {
+		body = body[:300] + "..."
+	}
+	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, body)
+}
+
+type xaiBillingEnvelope struct {
+	Config *xaiBillingConfig `json:"config"`
+}
+
+type xaiBillingConfig struct {
+	MonthlyLimit            any    `json:"monthlyLimit"`
+	MonthlyLimitSnake       any    `json:"monthly_limit"`
+	Used                    any    `json:"used"`
+	OnDemandCap             any    `json:"onDemandCap"`
+	OnDemandCapSnake        any    `json:"on_demand_cap"`
+	BillingPeriodStart      string `json:"billingPeriodStart"`
+	BillingPeriodStartSnake string `json:"billing_period_start"`
+	BillingPeriodEnd        string `json:"billingPeriodEnd"`
+	BillingPeriodEndSnake   string `json:"billing_period_end"`
+}
+
+func (s *AccountUsageService) fetchXAIBilling(ctx context.Context, account *Account) (*XAIBillingSummary, error) {
+	if account == nil || account.Platform != PlatformXAI || account.Type != AccountTypeOAuth {
+		return nil, fmt.Errorf("account is not an xAI OAuth account")
+	}
+	accessToken, err := s.resolveXAIBillingAccessToken(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, xaiBillingTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, xaiBillingEndpointURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create xAI billing request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	client, err := httppool.GetClient(httppool.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               xaiBillingTimeout,
+		ResponseHeaderTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build xAI billing client: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("xAI billing request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, &xaiBillingHTTPError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
+	}
+
+	var envelope xaiBillingEnvelope
+	decoder := json.NewDecoder(resp.Body)
+	decoder.UseNumber()
+	if err := decoder.Decode(&envelope); err != nil {
+		return nil, fmt.Errorf("decode xAI billing response: %w", err)
+	}
+	summary := buildXAIBillingSummary(envelope.Config)
+	if summary == nil {
+		return nil, fmt.Errorf("xAI billing response missing config")
+	}
+	return summary, nil
+}
+
+func (s *AccountUsageService) resolveXAIBillingAccessToken(ctx context.Context, account *Account) (string, error) {
+	if s != nil && s.xaiTokenProvider != nil {
+		accessToken, err := s.xaiTokenProvider.GetAccessToken(ctx, account)
+		if err == nil && strings.TrimSpace(accessToken) != "" {
+			return strings.TrimSpace(accessToken), nil
+		}
+		if strings.TrimSpace(account.GetXAIAccessToken()) == "" {
+			return "", err
+		}
+		slog.Warn("xai_billing_token_provider_failed_use_stored_token", "account_id", account.ID, "error", err)
+	}
+
+	accessToken := strings.TrimSpace(account.GetXAIAccessToken())
+	if accessToken == "" {
+		return "", fmt.Errorf("no access token available")
+	}
+	return accessToken, nil
+}
+
+func buildXAIBillingSummary(config *xaiBillingConfig) *XAIBillingSummary {
+	if config == nil {
+		return nil
+	}
+	monthlyLimit := parseXAICentValue(firstNonNil(config.MonthlyLimit, config.MonthlyLimitSnake))
+	used := parseXAICentValue(config.Used)
+	onDemandCap := parseXAICentValue(firstNonNil(config.OnDemandCap, config.OnDemandCapSnake))
+	periodStart := parseXAIBillingTime(firstNonEmptyXAIString(config.BillingPeriodStart, config.BillingPeriodStartSnake))
+	periodEnd := parseXAIBillingTime(firstNonEmptyXAIString(config.BillingPeriodEnd, config.BillingPeriodEndSnake))
+
+	summary := &XAIBillingSummary{
+		MonthlyLimitCents:  monthlyLimit,
+		UsedCents:          used,
+		OnDemandCapCents:   onDemandCap,
+		BillingPeriodStart: periodStart,
+		BillingPeriodEnd:   periodEnd,
+	}
+	if monthlyLimit != nil && *monthlyLimit > 0 && used != nil {
+		usedPercent := (*used / *monthlyLimit) * 100
+		summary.UsedPercent = &usedPercent
+	}
+	return summary
+}
+
+func parseXAICentValue(value any) *float64 {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case map[string]any:
+		return parseXAICentValue(v["val"])
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return &f
+		}
+	case float64:
+		return &v
+	case float32:
+		f := float64(v)
+		return &f
+	case int:
+		f := float64(v)
+		return &f
+	case int64:
+		f := float64(v)
+		return &f
+	case int32:
+		f := float64(v)
+		return &f
+	case uint:
+		f := float64(v)
+		return &f
+	case uint64:
+		f := float64(v)
+		return &f
+	case uint32:
+		f := float64(v)
+		return &f
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return nil
+		}
+		if f, err := strconv.ParseFloat(trimmed, 64); err == nil {
+			return &f
+		}
+	}
+	return nil
+}
+
+func parseXAIBillingTime(value string) *time.Time {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	t, err := parseTime(trimmed)
+	if err != nil {
+		return nil
+	}
+	return &t
+}
+
+func classifyXAIBillingError(err error) string {
+	var httpErr *xaiBillingHTTPError
+	if errors.As(err, &httpErr) {
+		switch httpErr.StatusCode {
+		case http.StatusUnauthorized:
+			return "unauthenticated"
+		case http.StatusForbidden:
+			return "forbidden"
+		case http.StatusTooManyRequests:
+			return "rate_limited"
+		}
+	}
+	return "network_error"
+}
+
+func firstNonNil(values ...any) any {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
+func firstNonEmptyXAIString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func shouldRefreshOpenAICodexSnapshot(account *Account, usage *UsageInfo, now time.Time) bool {

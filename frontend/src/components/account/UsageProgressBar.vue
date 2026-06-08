@@ -2,25 +2,33 @@
   <div>
     <!-- Window stats row (above progress bar) -->
     <div
-      v-if="windowStats && (windowStats.requests > 0 || windowStats.tokens > 0)"
+      v-if="hasStatsRow"
       class="mb-0.5 flex items-center"
     >
       <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
-        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+        <span v-if="showWindowStats" class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatRequests }} req
         </span>
-        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+        <span v-if="showWindowStats" class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatTokens }}
         </span>
-        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800" :title="t('usage.accountBilled')">
+        <span v-if="showWindowStats" class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800" :title="t('usage.accountBilled')">
           A ${{ formatAccountCost }}
         </span>
         <span
-          v-if="windowStats?.user_cost != null"
+          v-if="showWindowStats && windowStats?.user_cost != null"
           class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
           :title="t('usage.userBilled')"
         >
           U ${{ formatUserCost }}
+        </span>
+        <span
+          v-for="stat in visibleExtraStats"
+          :key="stat.label"
+          class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
+          :title="stat.title"
+        >
+          {{ stat.label }}
         </span>
       </div>
     </div>
@@ -62,6 +70,11 @@ import { useI18n } from 'vue-i18n'
 import type { WindowStats } from '@/types'
 import { formatCompactNumber } from '@/utils/format'
 
+interface ExtraStat {
+  label: string
+  title?: string
+}
+
 const props = defineProps<{
   label: string
   utilization: number // Percentage (0-100+)
@@ -69,6 +82,8 @@ const props = defineProps<{
   color: 'indigo' | 'emerald' | 'purple' | 'amber'
   windowStats?: WindowStats | null
   showNowWhenIdle?: boolean
+  displayPercent?: string | null
+  extraStats?: ExtraStat[]
 }>()
 
 const { t } = useI18n()
@@ -136,8 +151,19 @@ const barWidth = computed(() => {
 
 // Display percentage (cap at 999% for readability)
 const displayPercent = computed(() => {
+  if (props.displayPercent != null) return props.displayPercent
   const percent = Math.round(props.utilization)
   return percent > 999 ? '>999%' : `${percent}%`
+})
+
+const showWindowStats = computed(() => {
+  return !!props.windowStats && (props.windowStats.requests > 0 || props.windowStats.tokens > 0)
+})
+
+const visibleExtraStats = computed(() => props.extraStats ?? [])
+
+const hasStatsRow = computed(() => {
+  return showWindowStats.value || visibleExtraStats.value.length > 0
 })
 
 const shouldShowResetTime = computed(() => {
