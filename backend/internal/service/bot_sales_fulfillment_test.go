@@ -228,6 +228,40 @@ func TestBotSalesFulfillmentBalanceTopupWithoutDeviceCodeCreditsCanonicalBuyerAc
 	}
 }
 
+func TestBotSalesFulfillmentCreatesBuyerWithDefaultLimitsFromSettings(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	require.NoError(t, testsupport.SetSettings(ctx, client, map[string]string{
+		service.SettingKeyDefaultConcurrency:  "5",
+		service.SettingKeyDefaultUserRPMLimit: "123",
+	}))
+	group := createBotSalesGroup(t, client, "bot-default-limits", service.SubscriptionTypeSubscription)
+	plan := client.SubscriptionPlan.Create().
+		SetGroupID(group.ID).
+		SetName("Bot default limits monthly").
+		SetPrice(9.9).
+		SetValidityDays(30).
+		SetValidityUnit("day").
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID: "bs-order-default-limits",
+		Operation:       service.BotSalesFulfillmentOperationNew,
+		EntitlementKind: service.BotSalesEntitlementSubscription,
+		PlanID:          plan.ID,
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:default-limits",
+		},
+	})
+	require.NoError(t, err)
+
+	created := client.User.GetX(ctx, resp.Buyer.UserID)
+	require.Equal(t, 5, created.Concurrency)
+	require.Equal(t, 123, created.RpmLimit)
+}
+
 func TestBotSalesFulfillmentBalanceTopupWithoutDeviceCodeReusesLegacyBuyerAcrossProviders(t *testing.T) {
 	cases := []struct {
 		name           string

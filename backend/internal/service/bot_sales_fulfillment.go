@@ -13,6 +13,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/balancepackage"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -139,6 +140,7 @@ type BotSalesFulfillmentService struct {
 	entClient           *dbent.Client
 	userRepo            UserRepository
 	userService         *UserService
+	settingService      *SettingService
 	subscriptionService *SubscriptionService
 	apiKeyService       *APIKeyService
 	userDeviceRepo      UserDeviceRepository
@@ -147,6 +149,7 @@ type BotSalesFulfillmentService struct {
 func NewBotSalesFulfillmentService(
 	entClient *dbent.Client,
 	userService *UserService,
+	settingService *SettingService,
 	subscriptionService *SubscriptionService,
 	apiKeyService *APIKeyService,
 	userDeviceRepo UserDeviceRepository,
@@ -155,6 +158,7 @@ func NewBotSalesFulfillmentService(
 		entClient:           entClient,
 		userRepo:            userServiceUserRepo(userService),
 		userService:         userService,
+		settingService:      settingService,
 		subscriptionService: subscriptionService,
 		apiKeyService:       apiKeyService,
 		userDeviceRepo:      userDeviceRepo,
@@ -430,18 +434,30 @@ func (s *BotSalesFulfillmentService) findOrCreateBuyer(ctx context.Context, buye
 	if username == "" {
 		username = email
 	}
+	defaultConcurrency, defaultRPMLimit := s.botSalesBuyerDefaults(ctx)
 	created := &User{
 		Email:        email,
 		Username:     username,
 		PasswordHash: fmt.Sprintf("bot-sales:%d", time.Now().UnixNano()),
 		Role:         RoleUser,
 		Status:       StatusActive,
-		Concurrency:  1,
+		Concurrency:  defaultConcurrency,
+		RPMLimit:     defaultRPMLimit,
 	}
 	if err := s.userRepo.Create(ctx, created); err != nil {
 		return nil, err
 	}
 	return created, nil
+}
+
+func (s *BotSalesFulfillmentService) botSalesBuyerDefaults(ctx context.Context) (int, int) {
+	defaultConcurrency := dbuser.DefaultConcurrency
+	defaultRPMLimit := dbuser.DefaultRpmLimit
+	if s != nil && s.settingService != nil {
+		defaultConcurrency = s.settingService.GetDefaultConcurrency(ctx)
+		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
+	}
+	return defaultConcurrency, defaultRPMLimit
 }
 
 func userServiceUserRepo(userService *UserService) UserRepository {
