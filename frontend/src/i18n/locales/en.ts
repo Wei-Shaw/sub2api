@@ -1745,6 +1745,19 @@ export default {
       errors: {
         loadFailed: 'Failed to load affiliate records'
       },
+      bind: {
+        action: 'Manual Bind',
+        title: 'Manually Bind Affiliate Users',
+        inviterUserId: 'Inviter User ID',
+        inviteeUserId: 'Invitee User ID',
+        inviterPlaceholder: 'Parent user ID',
+        inviteePlaceholder: 'Child user ID',
+        hint: 'Only unbound invitees can be assigned an inviter. Existing relationships are not overwritten.',
+        submit: 'Bind Users',
+        success: 'Affiliate relationship bound',
+        invalidUserId: 'Enter valid user IDs',
+        sameUser: 'Inviter and invitee cannot be the same user'
+      },
       records: {
         search: 'Search',
         searchPlaceholder: 'Email, username, user ID, or order number',
@@ -4060,6 +4073,8 @@ export default {
       videoTestMode: 'Mode: Video generation test',
       videoPreview: 'Generated videos:',
       videoReceived: 'Received test video #{count}',
+      videoPlaybackError: 'Embedded playback failed. Open the original video link to view it.',
+      openVideo: 'Open original video',
       // Stats Modal
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',

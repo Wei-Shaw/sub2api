@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -39,17 +41,18 @@ const (
 
 // TestEvent represents a SSE event for account testing
 type TestEvent struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	Model    string `json:"model,omitempty"`
-	Status   string `json:"status,omitempty"`
-	Code     string `json:"code,omitempty"`
-	ImageURL string `json:"image_url,omitempty"`
-	VideoURL string `json:"video_url,omitempty"`
-	MimeType string `json:"mime_type,omitempty"`
-	Data     any    `json:"data,omitempty"`
-	Success  bool   `json:"success,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Type      string `json:"type"`
+	Text      string `json:"text,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Code      string `json:"code,omitempty"`
+	ImageURL  string `json:"image_url,omitempty"`
+	VideoURL  string `json:"video_url,omitempty"`
+	SourceURL string `json:"source_url,omitempty"`
+	MimeType  string `json:"mime_type,omitempty"`
+	Data      any    `json:"data,omitempty"`
+	Success   bool   `json:"success,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 const (
@@ -57,9 +60,14 @@ const (
 	defaultGeminiImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
 	defaultOpenAIImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
 	defaultXAIVideoTestPrompt    = "A tiny blue square slowly moving left to right on a white background."
+	defaultXAIImageToVideoPrompt = "Animate this source image with subtle natural motion and a gentle camera push-in. Preserve the subject and composition."
+	defaultXAIImageToVideoURL    = "https://docs.x.ai/assets/api-examples/images/style-realistic.png"
 	xaiVideoTestDurationSeconds  = 2
+	xaiVideoTestResolution       = "480p"
 	xaiVideoPollInterval         = 3 * time.Second
 	xaiVideoPollTimeout          = 2 * time.Minute
+	xaiVideoInlineMaxBytes       = 20 << 20
+	xaiVideoInlineFetchTimeout   = 20 * time.Second
 )
 
 // isOpenAIImageModel checks if the model is an OpenAI image generation model (e.g. gpt-image-2).
@@ -73,6 +81,10 @@ func isXAIImageModel(model string) bool {
 
 func isXAIVideoModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-video")
+}
+
+func isXAIImageToVideoOnlyModel(model string) bool {
+	return strings.EqualFold(strings.TrimSpace(model), "grok-imagine-video-1.5-preview")
 }
 
 // AccountTestService handles account testing operations
@@ -878,7 +890,11 @@ func (s *AccountTestService) testXAIAccountConnection(c *gin.Context, account *A
 	if isXAIVideoModel(testModelID) {
 		videoPrompt := strings.TrimSpace(prompt)
 		if videoPrompt == "" {
-			videoPrompt = defaultXAIVideoTestPrompt
+			if isXAIImageToVideoOnlyModel(testModelID) {
+				videoPrompt = defaultXAIImageToVideoPrompt
+			} else {
+				videoPrompt = defaultXAIVideoTestPrompt
+			}
 		}
 		return s.testXAIVideoGeneration(c, ctx, account, testModelID, videoPrompt)
 	}
@@ -1095,6 +1111,13 @@ func (s *AccountTestService) testXAIVideoGeneration(c *gin.Context, ctx context.
 		"prompt":   prompt,
 		"duration": xaiVideoTestDurationSeconds,
 	}
+	if isXAIImageToVideoOnlyModel(modelID) {
+		payload["image"] = map[string]any{
+			"url":  defaultXAIImageToVideoURL,
+			"type": "image_url",
+		}
+		payload["resolution"] = xaiVideoTestResolution
+	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create xAI video generation payload")
@@ -1150,10 +1173,12 @@ func (s *AccountTestService) testXAIVideoGeneration(c *gin.Context, ctx context.
 			lastStatus = result.Status
 		}
 		if result.VideoURL != "" {
+			videoURL, mimeType := s.prepareXAIVideoPlaybackURL(ctx, account, result.VideoURL)
 			s.sendEvent(c, TestEvent{
-				Type:     "video",
-				VideoURL: result.VideoURL,
-				MimeType: "video/mp4",
+				Type:      "video",
+				VideoURL:  videoURL,
+				SourceURL: result.VideoURL,
+				MimeType:  mimeType,
 			})
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
@@ -1180,6 +1205,54 @@ func (s *AccountTestService) testXAIVideoGeneration(c *gin.Context, ctx context.
 	}
 }
 
+func (s *AccountTestService) prepareXAIVideoPlaybackURL(ctx context.Context, account *Account, rawVideoURL string) (string, string) {
+	videoURL := strings.TrimSpace(rawVideoURL)
+	if videoURL == "" {
+		return "", "video/mp4"
+	}
+	if strings.HasPrefix(strings.ToLower(videoURL), "data:") || s.httpUpstream == nil {
+		return videoURL, "video/mp4"
+	}
+
+	parsed, err := url.Parse(videoURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return videoURL, "video/mp4"
+	}
+
+	fetchCtx, cancel := context.WithTimeout(ctx, xaiVideoInlineFetchTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, videoURL, nil)
+	if err != nil {
+		return videoURL, "video/mp4"
+	}
+	req.Header.Set("Accept", "video/*,application/octet-stream;q=0.9,*/*;q=0.1")
+
+	resp, err := s.doXAIAccountTestRequest(req, account)
+	if err != nil || resp == nil {
+		return videoURL, "video/mp4"
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return videoURL, "video/mp4"
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, xaiVideoInlineMaxBytes+1))
+	if err != nil || len(body) == 0 || len(body) > xaiVideoInlineMaxBytes {
+		return videoURL, "video/mp4"
+	}
+
+	mimeType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if index := strings.Index(mimeType, ";"); index >= 0 {
+		mimeType = strings.TrimSpace(mimeType[:index])
+	}
+	if !strings.HasPrefix(strings.ToLower(mimeType), "video/") {
+		mimeType = "video/mp4"
+	}
+
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(body)), mimeType
+}
+
 func (s *AccountTestService) pollXAIVideoTask(ctx context.Context, account *Account, authToken, normalizedBaseURL, requestID string) (xaiVideoPollResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, xai.BuildVideoPollURL(normalizedBaseURL, requestID), nil)
 	if err != nil {
@@ -1198,7 +1271,7 @@ func (s *AccountTestService) pollXAIVideoTask(ctx context.Context, account *Acco
 	if err != nil {
 		return xaiVideoPollResult{}, fmt.Errorf("failed to read xAI video poll response: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		return xaiVideoPollResult{}, fmt.Errorf("xAI video poll returned %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -2260,20 +2333,60 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 		return s.sendErrorAndEnd(c, message)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read image response: %s", err.Error()))
+	return s.streamOpenAIImageOAuthTestResponse(c, resp.Body)
+}
+
+func (s *AccountTestService) streamOpenAIImageOAuthTestResponse(c *gin.Context, body io.Reader) error {
+	type readEvent struct {
+		line string
+		err  error
 	}
 
-	results, _, _, _, _, err := collectOpenAIImagesFromResponsesBody(body)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse image response: %s", err.Error()))
-	}
-	if len(results) == 0 {
-		return s.sendErrorAndEnd(c, "No images returned from responses API")
-	}
+	events := make(chan readEvent, 16)
+	done := make(chan struct{})
+	go func() {
+		defer close(events)
+		reader := bufio.NewReader(body)
+		for {
+			line, err := reader.ReadString('\n')
+			if line != "" {
+				select {
+				case events <- readEvent{line: line}:
+				case <-done:
+					return
+				}
+			}
+			if err == io.EOF {
+				return
+			}
+			if err != nil {
+				select {
+				case events <- readEvent{err: err}:
+				case <-done:
+				}
+				return
+			}
+		}
+	}()
+	defer close(done)
 
-	for _, item := range results {
+	var (
+		acc          openAISSEDataAccumulator
+		responseMeta openAIResponsesImageResult
+		emitted      = make(map[string]struct{})
+		streamErr    error
+		completed    bool
+		imageCount   int
+	)
+
+	emitImage := func(item openAIResponsesImageResult) {
+		key := openAIResponsesImageResultKey("", item)
+		if key != "" {
+			if _, exists := emitted[key]; exists {
+				return
+			}
+			emitted[key] = struct{}{}
+		}
 		if item.RevisedPrompt != "" {
 			s.sendEvent(c, TestEvent{Type: "content", Text: item.RevisedPrompt})
 		}
@@ -2283,10 +2396,93 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 			ImageURL: "data:" + mimeType + ";base64," + item.Result,
 			MimeType: mimeType,
 		})
+		imageCount++
 	}
 
-	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-	return nil
+	processPayload := func(payload []byte) {
+		if streamErr != nil || completed || !json.Valid(payload) {
+			return
+		}
+		var event struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(payload, &event); err != nil {
+			return
+		}
+
+		if meta, _, ok := extractOpenAIResponsesImageMetaFromLifecycleEvent(payload); ok {
+			mergeOpenAIResponsesImageMeta(&responseMeta, meta)
+		}
+
+		switch event.Type {
+		case "response.output_item.done":
+			item, _, ok, err := extractOpenAIImageFromResponsesOutputItemDone(payload)
+			if err != nil {
+				streamErr = err
+				return
+			}
+			if !ok {
+				return
+			}
+			mergeOpenAIResponsesImageMeta(&item, responseMeta)
+			emitImage(item)
+		case "response.completed":
+			results, _, _, firstMeta, err := extractOpenAIImagesFromResponsesCompleted(payload)
+			if err != nil {
+				streamErr = err
+				return
+			}
+			completed = true
+			mergeOpenAIResponsesImageMeta(&responseMeta, firstMeta)
+			for _, item := range results {
+				mergeOpenAIResponsesImageMeta(&item, responseMeta)
+				emitImage(item)
+			}
+		case "error", "response.failed":
+			if upstreamErr := openAIImagesUpstreamErrorFromSSEPayload(payload); upstreamErr != nil {
+				streamErr = errors.New(upstreamErr.clientMessage())
+			}
+		}
+	}
+
+	keepalive := time.NewTicker(20 * time.Second)
+	defer keepalive.Stop()
+
+	for {
+		select {
+		case ev, ok := <-events:
+			if !ok {
+				acc.Flush(processPayload)
+				if streamErr != nil {
+					return s.sendErrorAndEnd(c, streamErr.Error())
+				}
+				if imageCount == 0 {
+					return s.sendErrorAndEnd(c, "No images returned from responses API")
+				}
+				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+				return nil
+			}
+			if ev.err != nil {
+				acc.Flush(processPayload)
+				if streamErr != nil {
+					return s.sendErrorAndEnd(c, streamErr.Error())
+				}
+				return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read image response: %s", ev.err.Error()))
+			}
+			acc.AddLine(ev.line, processPayload)
+			if streamErr != nil {
+				return s.sendErrorAndEnd(c, streamErr.Error())
+			}
+			if completed && imageCount > 0 {
+				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+				return nil
+			}
+		case <-keepalive.C:
+			s.sendEvent(c, TestEvent{Type: "content", Text: "等待 OpenAI 生图结果...\n"})
+		case <-c.Request.Context().Done():
+			return c.Request.Context().Err()
+		}
+	}
 }
 
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {

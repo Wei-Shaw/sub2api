@@ -279,7 +279,7 @@ describe('AccountTestModal', () => {
       createStreamResponse([
         'data: {"type":"test_start","model":"grok-imagine-video"}\n',
         'data: {"type":"status","text":"xAI video task created: video-task-1"}\n',
-        'data: {"type":"video","video_url":"https://cdn.example.test/video-task-1.mp4","mime_type":"video/mp4"}\n',
+        'data: {"type":"video","video_url":"data:video/mp4;base64,dmlkZW8tYnl0ZXM=","source_url":"https://cdn.example.test/video-task-1.mp4","mime_type":"video/mp4"}\n',
         'data: {"type":"test_complete","success":true}\n'
       ])
     ) as any
@@ -315,12 +315,14 @@ describe('AccountTestModal', () => {
 
     const preview = wrapper.find('video[aria-label="test-video-1"]')
     expect(preview.exists()).toBe(true)
-    expect(preview.attributes('src')).toBe('https://cdn.example.test/video-task-1.mp4')
+    expect(preview.attributes('src')).toBe('data:video/mp4;base64,dmlkZW8tYnl0ZXM=')
+    const sourceLink = wrapper.find('a[href="https://cdn.example.test/video-task-1.mp4"]')
+    expect(sourceLink.exists()).toBe(true)
   })
 
   it('其他支持上游同步的平台也会优先同步远端模型列表', async () => {
     syncUpstreamModels.mockResolvedValueOnce({
-      models: ['gpt-5.4', 'gpt-image-2']
+      models: ['gpt-5.3-codex', 'gpt-5.4', 'gpt-5.3-codex-spark', 'gpt-image-2']
     })
 
     const wrapper = mountModal({

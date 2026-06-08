@@ -49,6 +49,10 @@ var DefaultModels = []Model{
 	{ID: "grok-4.20-mini-fast", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.20 Mini Fast", Name: "Grok 4.20 Mini Fast"},
 	{ID: "grok-code-fast-1", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Code Fast 1", Name: "Grok Code Fast 1"},
 	{ID: "grok-3-mini", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 3 Mini", Name: "Grok 3 Mini"},
+	{ID: "grok-imagine-image", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Imagine Image", Name: "Grok Imagine Image"},
+	{ID: "grok-imagine-image-quality", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Imagine Image Quality", Name: "Grok Imagine Image Quality"},
+	{ID: "grok-imagine-video", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Imagine Video", Name: "Grok Imagine Video"},
+	{ID: "grok-imagine-video-1.5-preview", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Imagine Video 1.5 Preview", Name: "Grok Imagine Video 1.5 Preview"},
 }
 
 func DefaultModelIDs() []string {

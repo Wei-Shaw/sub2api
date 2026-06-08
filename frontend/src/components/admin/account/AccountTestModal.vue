@@ -155,12 +155,26 @@
             <video
               :src="video.url"
               controls
+              preload="metadata"
               playsinline
               class="max-h-[360px] w-full bg-black"
               :aria-label="`test-video-${index + 1}`"
+              @error="video.error = true"
             />
-            <div class="border-t border-gray-100 px-3 py-1.5 text-xs text-gray-500 dark:border-dark-500 dark:text-gray-300">
-              {{ video.mimeType || 'video/mp4' }}
+            <div class="space-y-1 border-t border-gray-100 px-3 py-1.5 text-xs text-gray-500 dark:border-dark-500 dark:text-gray-300">
+              <div>{{ video.mimeType || 'video/mp4' }}</div>
+              <div v-if="video.error" class="text-red-600 dark:text-red-300">
+                {{ t('admin.accounts.videoPlaybackError') }}
+              </div>
+              <a
+                v-if="video.sourceUrl"
+                :href="video.sourceUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex text-primary-600 hover:text-primary-700 dark:text-primary-300 dark:hover:text-primary-200"
+              >
+                {{ t('admin.accounts.openVideo') }}
+              </a>
             </div>
           </div>
         </div>
@@ -282,7 +296,9 @@ interface PreviewImage {
 
 interface PreviewVideo {
   url: string
+  sourceUrl?: string
   mimeType?: string
+  error?: boolean
 }
 
 const props = defineProps<{
@@ -364,8 +380,11 @@ const supportsImageTest = computed(
 
 const supportsMediaTest = computed(() => supportsImageTest.value || supportsXAIVideoTest.value)
 
+const retiredOpenAIModelIDs = new Set(['gpt-5.3-codex', 'gpt-5.3-codex-spark'])
+
 const getTestableModels = (models: ClaudeModel[]) => {
-  return models
+  if (props.account?.platform !== 'openai') return models
+  return models.filter((model) => !retiredOpenAIModelIDs.has(model.id.trim().toLowerCase()))
 }
 
 const sortTestModels = (models: ClaudeModel[]) => {
@@ -622,6 +641,7 @@ const handleEvent = (event: {
   error?: string
   image_url?: string
   video_url?: string
+  source_url?: string
   mime_type?: string
 }) => {
   switch (event.type) {
@@ -653,6 +673,7 @@ const handleEvent = (event: {
       if (event.video_url) {
         generatedVideos.value.push({
           url: event.video_url,
+          sourceUrl: event.source_url || event.video_url,
           mimeType: event.mime_type
         })
         addLine(t('admin.accounts.videoReceived', { count: generatedVideos.value.length }), 'text-purple-300')

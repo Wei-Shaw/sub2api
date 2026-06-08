@@ -1258,6 +1258,16 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	if capability == "" {
 		return true
 	}
+	if a.IsXAI() {
+		if capability != OpenAIEndpointCapabilityChatCompletions {
+			return false
+		}
+		configured, found := a.openAIEndpointCapabilitySet()
+		if !found {
+			return true
+		}
+		return configured[string(capability)]
+	}
 	if !a.IsOpenAI() {
 		return false
 	}
@@ -1326,7 +1336,10 @@ func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
 }
 
 func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapability) bool {
-	if !a.IsOpenAI() {
+	if capability == "" {
+		return true
+	}
+	if !a.IsOpenAI() && a.Platform != PlatformXAI {
 		return false
 	}
 	switch capability {

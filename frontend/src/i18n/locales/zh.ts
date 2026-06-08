@@ -1767,6 +1767,19 @@ export default {
       errors: {
         loadFailed: '加载邀请返利记录失败'
       },
+      bind: {
+        action: '手动绑定',
+        title: '手动绑定上下级',
+        inviterUserId: '邀请人用户 ID',
+        inviteeUserId: '被邀请人用户 ID',
+        inviterPlaceholder: '上级用户 ID',
+        inviteePlaceholder: '下级用户 ID',
+        hint: '仅支持给未绑定邀请人的用户新增上级；已绑定关系不会被覆盖。',
+        submit: '确认绑定',
+        success: '上下级绑定成功',
+        invalidUserId: '请输入有效的用户 ID',
+        sameUser: '邀请人和被邀请人不能是同一个用户'
+      },
       records: {
         search: '搜索',
         searchPlaceholder: '邮箱、用户名、用户 ID、订单号',
@@ -4182,6 +4195,8 @@ export default {
       videoTestMode: '模式：视频生成测试',
       videoPreview: '生成视频：',
       videoReceived: '已收到第 {count} 个测试视频',
+      videoPlaybackError: '内嵌播放失败，可打开原始视频链接查看。',
+      openVideo: '打开原始视频',
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',

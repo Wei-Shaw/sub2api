@@ -1967,7 +1967,7 @@ func modelIDsFromMapping(mapping map[string]string) []string {
 }
 
 func openAIModelsFromIDs(ids []string) []openai.Model {
-	normalized := normalizeAdminModelIDs(ids)
+	normalized := normalizeAdminModelIDs(openai.FilterRetiredModelIDs(ids))
 	if len(normalized) == 0 {
 		return nil
 	}
@@ -2086,7 +2086,7 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	if account.IsOpenAI() {
 		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
 		if account.IsOpenAIPassthroughEnabled() {
-			response.Success(c, openai.DefaultModels)
+			response.Success(c, openAIModelsFromIDs(openai.DefaultModelIDs()))
 			return
 		}
 
@@ -2202,6 +2202,9 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
 		return
 	}
+	if account.IsOpenAI() {
+		models = openai.FilterRetiredModelIDs(models)
+	}
 
 	extra := account.ExtraWithCloudModels(models, time.Now())
 	if _, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{Extra: extra}); err != nil {
@@ -2257,6 +2260,9 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 		slog.Warn("sync_upstream_models_preview_failed", "platform", req.Platform)
 		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
 		return
+	}
+	if tempAccount.IsOpenAI() {
+		models = openai.FilterRetiredModelIDs(models)
 	}
 
 	response.Success(c, gin.H{"models": models})

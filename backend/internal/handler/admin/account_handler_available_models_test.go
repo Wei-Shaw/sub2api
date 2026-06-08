@@ -126,7 +126,9 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t 
 			Status:   service.StatusActive,
 			Credentials: map[string]any{
 				"model_mapping": map[string]any{
-					"gpt-5": "gpt-5.1",
+					"gpt-5":               "gpt-5.1",
+					"gpt-5.3-codex":       "gpt-5.3-codex",
+					"gpt-5.3-codex-spark": "gpt-5.3-codex-spark",
 				},
 			},
 		},
@@ -184,6 +186,9 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefau
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotEmpty(t, resp.Data)
 	require.NotEqual(t, "gpt-5", resp.Data[0].ID)
+	for _, model := range resp.Data {
+		require.NotContains(t, []string{"gpt-5.3-codex", "gpt-5.3-codex-spark"}, model.ID)
+	}
 }
 
 func TestAccountHandlerGetAvailableModels_UsesCloudModelsWhenNoMapping(t *testing.T) {
@@ -201,7 +206,7 @@ func TestAccountHandlerGetAvailableModels_UsesCloudModelsWhenNoMapping(t *testin
 				Type:     service.AccountTypeAPIKey,
 				Status:   service.StatusActive,
 				Extra: map[string]any{
-					service.AccountExtraCloudModelsKey: []any{"gpt-5.4", "custom-openai-model"},
+					service.AccountExtraCloudModelsKey: []any{"gpt-5.4", "gpt-5.3-codex", "custom-openai-model"},
 				},
 			},
 			expected: []string{"custom-openai-model", "gpt-5.4"},
@@ -305,7 +310,7 @@ func TestAccountHandlerSyncUpstreamModels_PersistsCloudModelsForNonXAI(t *testin
 	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"model-b"},{"id":"model-a"},{"id":"model-b"}]}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"model-b"},{"id":"gpt-5.3-codex"},{"id":"model-a"},{"id":"gpt-5.3-codex-spark"},{"id":"model-b"}]}`)),
 	}}
 	router := setupSyncUpstreamModelsRouter(svc, upstream)
 

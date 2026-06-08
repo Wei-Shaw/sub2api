@@ -157,6 +157,11 @@ func TestAccountTestServiceXAIVideoGenerationCreatesAndPollsTask(t *testing.T) {
 				}`)),
 				Header: make(http.Header),
 			},
+			{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`video-bytes`)),
+				Header:     http.Header{"Content-Type": []string{"video/mp4"}},
+			},
 		},
 	}
 	svc := NewAccountTestService(
@@ -185,7 +190,7 @@ func TestAccountTestServiceXAIVideoGenerationCreatesAndPollsTask(t *testing.T) {
 	}, "grok-imagine-video", "make a video")
 
 	require.NoError(t, err)
-	require.Len(t, upstream.requests, 2)
+	require.Len(t, upstream.requests, 3)
 
 	createReq := upstream.requests[0]
 	require.Equal(t, http.MethodPost, createReq.Method)
@@ -207,9 +212,121 @@ func TestAccountTestServiceXAIVideoGenerationCreatesAndPollsTask(t *testing.T) {
 	require.Equal(t, "Bearer xai-key", pollReq.Header.Get("Authorization"))
 	require.Equal(t, "application/json", pollReq.Header.Get("Accept"))
 
+	mediaReq := upstream.requests[2]
+	require.Equal(t, http.MethodGet, mediaReq.Method)
+	require.Equal(t, "https://cdn.example.test/video-task-1.mp4", mediaReq.URL.String())
+	require.Empty(t, mediaReq.Header.Get("Authorization"))
+	require.Contains(t, mediaReq.Header.Get("Accept"), "video/*")
+
 	output := recorder.Body.String()
-	require.Contains(t, output, `"video_url":"https://cdn.example.test/video-task-1.mp4"`)
+	require.Contains(t, output, `"video_url":"data:video/mp4;base64,dmlkZW8tYnl0ZXM="`)
+	require.Contains(t, output, `"source_url":"https://cdn.example.test/video-task-1.mp4"`)
 	require.Contains(t, output, `"success":true`)
+}
+
+func TestAccountTestServiceXAIVideoPreviewUsesImageToVideoPayload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := &xaiModelsHTTPUpstreamStub{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"request_id":"video-task-1"}`)),
+				Header:     make(http.Header),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`{
+					"status": "completed",
+					"video": {"url": "https://cdn.example.test/video-task-1.mp4"}
+				}`)),
+				Header: make(http.Header),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`video-bytes`)),
+				Header:     http.Header{"Content-Type": []string{"video/mp4"}},
+			},
+		},
+	}
+	svc := NewAccountTestService(
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		upstream,
+		&config.Config{},
+		nil,
+	)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/9/test", nil)
+
+	err := svc.testXAIAccountConnection(c, &Account{
+		ID:       9,
+		Platform: PlatformXAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "xai-key",
+			"base_url": "https://api.x.ai/v1",
+		},
+	}, "grok-imagine-video-1.5-preview", "")
+
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 3)
+
+	bodyBytes, readErr := io.ReadAll(upstream.requests[0].Body)
+	require.NoError(t, readErr)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(bodyBytes, &body))
+	require.Equal(t, "grok-imagine-video-1.5-preview", body["model"])
+	require.Equal(t, defaultXAIImageToVideoPrompt, body["prompt"])
+	require.Equal(t, xaiVideoTestResolution, body["resolution"])
+	require.EqualValues(t, 2, body["duration"])
+
+	image, ok := body["image"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, defaultXAIImageToVideoURL, image["url"])
+	require.Equal(t, "image_url", image["type"])
+}
+
+func TestAccountTestServiceXAIVideoPollAcceptsPendingAcceptedResponse(t *testing.T) {
+	upstream := &xaiModelsHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusAccepted,
+			Body:       io.NopCloser(strings.NewReader(`{"status":"pending","progress":0}`)),
+			Header:     make(http.Header),
+		},
+	}
+	svc := NewAccountTestService(
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		upstream,
+		&config.Config{},
+		nil,
+	)
+
+	result, err := svc.pollXAIVideoTask(context.Background(), &Account{
+		ID:       9,
+		Platform: PlatformXAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "xai-key",
+			"base_url": "https://api.x.ai/v1",
+		},
+	}, "xai-key", "https://api.x.ai/v1", "video-task-1")
+
+	require.NoError(t, err)
+	require.Equal(t, "pending", result.Status)
+	require.Equal(t, "0", result.Progress)
+	require.Empty(t, result.VideoURL)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://api.x.ai/v1/videos/video-task-1", upstream.requests[0].URL.String())
 }
 
 func TestFormatXAIVideoHTTPErrorExplainsCreditsAndSubscription(t *testing.T) {
