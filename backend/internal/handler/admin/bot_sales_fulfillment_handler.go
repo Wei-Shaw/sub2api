@@ -88,6 +88,11 @@ func normalizeBotSalesFulfillmentAliases(raw map[string]any, req *service.BotSal
 			}
 		}
 	}
+	if req.Quantity == 0 {
+		if v, ok := raw["quantity"]; ok {
+			req.Quantity = intFromJSONNumber(v)
+		}
+	}
 	if req.ExternalOrderID == "" {
 		if v, ok := raw["external_order_code"]; ok {
 			if s, ok := v.(string); ok {
@@ -101,6 +106,76 @@ func normalizeBotSalesFulfillmentAliases(raw map[string]any, req *service.BotSal
 				req.DeviceCode = s
 			}
 		}
+	}
+	if req.ExternalOrderItemID == "" {
+		if s := stringFromJSON(raw["externalOrderItemId"]); s != "" {
+			req.ExternalOrderItemID = s
+		}
+	}
+	if req.ExternalPaymentID == "" {
+		if s := stringFromJSON(raw["externalPaymentId"]); s != "" {
+			req.ExternalPaymentID = s
+		}
+	}
+	if req.PaymentAmount == 0 {
+		if v, ok := raw["paymentAmount"]; ok {
+			req.PaymentAmount = float64FromJSONNumber(v)
+		}
+	}
+	if req.PaymentCurrency == "" {
+		if s := stringFromJSON(raw["paymentCurrency"]); s != "" {
+			req.PaymentCurrency = s
+		}
+	}
+	if req.PaymentProvider == "" {
+		if s := stringFromJSON(raw["paymentProvider"]); s != "" {
+			req.PaymentProvider = s
+		}
+	}
+	if req.PaymentProviderTxnID == "" {
+		if s := stringFromJSON(raw["paymentProviderTxnId"]); s != "" {
+			req.PaymentProviderTxnID = s
+		}
+	}
+	if req.PaidAt == nil {
+		if s := stringFromJSON(raw["paidAt"]); s != "" {
+			if t, err := time.Parse(time.RFC3339, s); err == nil {
+				req.PaidAt = &t
+			}
+		}
+	}
+}
+
+func stringFromJSON(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func float64FromJSONNumber(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case int64:
+		return float64(n)
+	case int:
+		return float64(n)
+	default:
+		return 0
+	}
+}
+
+func intFromJSONNumber(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int64:
+		return int(n)
+	case int:
+		return n
+	default:
+		return 0
 	}
 }
 

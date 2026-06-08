@@ -145,12 +145,13 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 
 	group := createBotSalesFulfillmentHandlerGroup(t, client, "bot-http-balance", service.SubscriptionTypeNone)
 	pkg := client.BalancePackage.Create().
-		SetCode("standard_20").
-		SetLabel("Standard 20").
+		SetCode("http_20").
+		SetLabel("HTTP 20").
 		SetAmountLedger(20).
 		SetActualCredits(27000000).
 		SetCreditUnit("tokens").
 		SetGroupID(group.ID).
+		SetCurrencyOverrides(map[string]float64{"VND": 100000}).
 		SetForSale(true).
 		SaveX(ctx)
 
@@ -159,6 +160,7 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 		"operation":          service.BotSalesFulfillmentOperationNew,
 		"entitlement_kind":   service.BotSalesEntitlementBalance,
 		"balancePackageCode": pkg.Code,
+		"quantity":           1,
 		"buyer": map[string]any{
 			"external_user_id": "channel:telegram:user:http-device-owner",
 			"provider":         "telegram",
@@ -199,6 +201,7 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 		"operation":          service.BotSalesFulfillmentOperationTopup,
 		"entitlement_kind":   service.BotSalesEntitlementBalance,
 		"balancePackageCode": pkg.Code,
+		"quantity":           1,
 		"buyer": map[string]any{
 			"external_user_id": "channel:telegram:user:http-device-owner",
 			"provider":         "telegram",
@@ -237,6 +240,7 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 		"operation":          service.BotSalesFulfillmentOperationTopup,
 		"entitlement_kind":   service.BotSalesEntitlementBalance,
 		"balancePackageCode": pkg.Code,
+		"quantity":           1,
 		"deviceCode":         strings.ToLower(deviceCode),
 		"buyer": map[string]any{
 			"external_user_id": "channel:zalo:user:http-topup-payer",

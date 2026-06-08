@@ -23,10 +23,13 @@ func NewBotSalesFulfillmentService(client *dbent.Client, db *sql.DB) *service.Bo
 	userSubRepo := repository.NewUserSubscriptionRepository(client)
 	apiKeyRepo := repository.NewAPIKeyRepository(client, db)
 	userDeviceRepo := repository.NewUserDeviceRepository(client)
+	redeemRepo := repository.NewRedeemCodeRepository(client)
 	cfg := &config.Config{Default: config.DefaultConfig{APIKeyPrefix: "sk-test-", UserConcurrency: 5}}
 	settingSvc := service.NewSettingService(settingRepo, cfg)
 	userSvc := service.NewUserService(userRepo, nil, nil, nil)
 	apiKeySvc := service.NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, nil, nil, cfg)
 	subscriptionSvc := service.NewSubscriptionService(groupRepo, userSubRepo, nil, client, nil)
-	return service.NewBotSalesFulfillmentService(client, userSvc, settingSvc, subscriptionSvc, apiKeySvc, userDeviceRepo)
+	redeemSvc := service.NewRedeemService(redeemRepo, userRepo, subscriptionSvc, nil, nil, client, nil, nil)
+	paymentSvc := service.NewPaymentService(client, nil, nil, redeemSvc, subscriptionSvc, nil, userRepo, groupRepo, nil)
+	return service.NewBotSalesFulfillmentService(client, userSvc, settingSvc, subscriptionSvc, apiKeySvc, userDeviceRepo, paymentSvc)
 }
