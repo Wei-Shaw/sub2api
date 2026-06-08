@@ -57,7 +57,7 @@ export async function list(
   pageSize: number = 20,
   filters?: {
     status?: 'active' | 'disabled'
-    role?: 'admin' | 'user'
+    role?: 'admin' | 'readonly' | 'user'
     search?: string
     group_name?: string         // fuzzy filter by allowed group name
     attributes?: Record<number, string>  // attributeId -> value
@@ -189,6 +189,16 @@ export async function updateConcurrency(id: number, concurrency: number): Promis
  */
 export async function toggleStatus(id: number, status: 'active' | 'disabled'): Promise<AdminUser> {
   return update(id, { status })
+}
+
+/**
+ * Toggle user role
+ * @param id - User ID
+ * @param role - New role
+ * @returns Updated user
+ */
+export async function updateRole(id: number, role: 'admin' | 'readonly' | 'user'): Promise<AdminUser> {
+  return update(id, { role })
 }
 
 /**
@@ -383,6 +393,7 @@ export const usersAPI = {
   updateBalance,
   updateConcurrency,
   toggleStatus,
+  updateRole,
   getUserApiKeys,
   getUserUsageStats,
   getUserBalanceHistory,

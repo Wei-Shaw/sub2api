@@ -67,6 +67,10 @@ func (u *User) IsAdmin() bool {
 	return u.Role == RoleAdmin
 }
 
+func (u *User) CanAccessAdmin() bool {
+	return u.Role == RoleAdmin || u.Role == RoleReadonly
+}
+
 func (u *User) IsActive() bool {
 	return u.Status == StatusActive
 }

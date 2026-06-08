@@ -109,6 +109,30 @@ func TestAuthSubjectHelpers_RoundTrip(t *testing.T) {
 	require.Equal(t, "admin", role)
 }
 
+func TestReadOnlyAdminGuard_AllowsReadsAndBlocksWrites(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyUserRole), service.RoleReadonly)
+		c.Next()
+	})
+	r.Use(ReadOnlyAdminGuard())
+	r.GET("/t", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.POST("/t", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/t", nil)
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "READONLY_FORBIDDEN")
+}
+
 func TestAPIKeyAndSubscriptionFromContext(t *testing.T) {
 	c := &gin.Context{}
 
