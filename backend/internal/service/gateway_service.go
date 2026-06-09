@@ -6396,14 +6396,30 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 		return nil, err
 	}
 
-	// 能力维度 sanitize：Vertex 路径上 anthropic-beta header 原样透传客户端值
-	// （下面白名单跳过 anthropic-version 但保留 anthropic-beta），依此决定是否
-	// 保留 body 中的 context_management，与 Anthropic 直连 / Bedrock 路径对称。
+	// 计算最终发往上游的 anthropic-beta header：客户端透传值经 BetaPolicy
+	// filter + defaultDroppedBetasSet 过滤后的结果。此前 Vertex 路径不应用
+	// BetaPolicy filter / dropSet（PR #2833 把它列为"已知局限"），导致管理员
+	// 配置的 filter 规则在 Vertex 上失效，进而把上游不认的 token
+	// （如 prompt-caching-scope-2026-01-05、redact-thinking-2026-02-12）原样转发，
+	// Vertex 直接 400：`Unexpected value(s) ... for the anthropic-beta header`。
+	var clientBeta string
 	if c != nil && c.Request != nil {
-		clientBeta := getHeaderRaw(c.Request.Header, "anthropic-beta")
-		if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(vertexBody, clientBeta); changed {
-			vertexBody = sanitized
-		}
+		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
+	}
+	// block 检查：与 Bedrock 路径 resolveBedrockBetaTokensForRequest 对称，
+	// 命中 block 规则直接返回 BetaBlockedError，由上层映射为 4xx。
+	if policy := s.evaluateBetaPolicy(ctx, clientBeta, account, modelID); policy.blockErr != nil {
+		return nil, policy.blockErr
+	}
+	effectiveDropSet := mergeDropSets(s.getBetaPolicyFilterSet(ctx, c, account, modelID))
+	finalBeta := stripBetaTokensWithSet(clientBeta, effectiveDropSet)
+
+	// 能力维度 sanitize：按【最终】发出的 anthropic-beta header（而非客户端
+	// 原始值）决定是否保留 body 中的 context_management 字段，确保即使 filter
+	// 规则剥掉了 context-management-2025-06-27，body 同步 strip，与 Anthropic
+	// 直连 / Bedrock 路径对称。
+	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(vertexBody, finalBeta); changed {
+		vertexBody = sanitized
 	}
 	fullURL, err := buildVertexAnthropicURL(account.VertexProjectID(), account.VertexLocation(modelID), modelID, reqStream)
 	if err != nil {
@@ -6434,6 +6450,14 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 	req.Header.Del("anthropic-version")
 	setHeaderRaw(req.Header, "authorization", "Bearer "+token)
 	setHeaderRaw(req.Header, "content-type", "application/json")
+
+	// 覆盖白名单透传写入的客户端 anthropic-beta，确保 BetaPolicy filter 后的
+	// 最终值生效（与主路径 buildUpstreamRequest 末尾的 deleteHeaderAllForms +
+	// setHeaderRaw 对称）。
+	deleteHeaderAllForms(req.Header, "anthropic-beta")
+	if finalBeta != "" {
+		setHeaderRaw(req.Header, "anthropic-beta", finalBeta)
+	}
 
 	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD_VERTEX_ANTHROPIC", req.Header, vertexBody, map[string]string{
 		"url":        req.URL.String(),
