@@ -251,6 +251,89 @@ func TestApplyErrorPassthroughRule_NoSkipMonitoringDoesNotSetContextKey(t *testi
 	assert.False(t, exists, "OpsSkipPassthroughKey should NOT be set when skip_monitoring=false")
 REDACTED
 
+// ---- ResponseCommittedKey: service 层写完错误响应后标记，handler 层检查跳过兜底写入 ----
+
+func TestHandleErrorResponse_SetsResponseCommitted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	svc := &GatewayService{REDACTED
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"error":{"message":"temperature: range: 0..1"REDACTEDREDACTED`))),
+		Header:     http.Header{REDACTED,
+REDACTED
+	account := &Account{ID: 100, Platform: PlatformAnthropic, Type: AccountTypeAPIKeyREDACTED
+
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, account)
+REDACTED
+	assert.True(t, IsResponseCommitted(c), "non-failover error path must mark response committed")
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+REDACTED
+
+func TestHandleErrorResponse_PassthroughRuleSetsCommitted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	ruleSvc := &ErrorPassthroughService{REDACTED
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{
+		newNonFailoverPassthroughRule(http.StatusBadRequest, "temperature", http.StatusBadRequest, "参数错误"),
+REDACTED)
+	BindErrorPassthroughService(c, ruleSvc)
+
+	svc := &GatewayService{REDACTED
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"error":{"message":"temperature: range: 0..1"REDACTEDREDACTED`))),
+		Header:     http.Header{REDACTED,
+REDACTED
+	account := &Account{ID: 200, Platform: PlatformAnthropic, Type: AccountTypeAPIKeyREDACTED
+
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, account)
+REDACTED
+	assert.True(t, IsResponseCommitted(c), "passthrough rule path must mark response committed")
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	errField := payload["error"].(map[string]any)
+	assert.Equal(t, "参数错误", errField["message"])
+REDACTED
+
+func TestOpenAIHandleErrorResponse_SetsResponseCommitted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	svc := &OpenAIGatewayService{REDACTED
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"error":{"message":"rate limit exceeded"REDACTEDREDACTED`))),
+		Header:     http.Header{REDACTED,
+REDACTED
+	account := &Account{ID: 101, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
+REDACTED
+	assert.True(t, IsResponseCommitted(c), "OpenAI non-failover path must mark response committed")
+REDACTED
+
+func TestGeminiWriteGeminiMappedError_SetsResponseCommitted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	svc := &GeminiMessagesCompatService{REDACTED
+	body := []byte(`{"error":{"message":"invalid field"REDACTEDREDACTED`)
+	account := &Account{ID: 102, Platform: PlatformGemini, Type: AccountTypeAPIKeyREDACTED
+
+	err := svc.writeGeminiMappedError(c, account, http.StatusBadRequest, "req-99", body)
+REDACTED
+	assert.True(t, IsResponseCommitted(c), "Gemini path must mark response committed")
+REDACTED
+
 func newNonFailoverPassthroughRule(statusCode int, keyword string, respCode int, customMessage string) *model.ErrorPassthroughRule {
 	return &model.ErrorPassthroughRule{
 		ID:              1,
