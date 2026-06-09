@@ -692,7 +692,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: imageOutputSizes,
 		}, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
+		clientModel := strings.TrimSpace(parsed.Model)
+		if clientModel == "" {
+			clientModel = requestModel
+		}
+		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c, clientModel, parsed.Quality, parsed.Size)
 		if err != nil {
 			return nil, err
 		}
@@ -853,11 +857,16 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 	return dst
 }
 
-func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context) (OpenAIUsage, int, []string, error) {
+func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context, requestedModel string, requestedQuality string, fallbackSize string) (OpenAIUsage, int, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
+	usage, _ := extractOpenAIUsageFromJSONBytes(body)
+	imageCount := extractOpenAIImageCountFromJSONBytes(body)
+	imageOutputSizes := collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
+	body, usage = normalizeOpenAIImagesResponseMetadata(body, usage, imageCount, imageOutputSizes, requestedModel, requestedQuality, fallbackSize)
+
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -867,8 +876,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 	}
 	c.Data(resp.StatusCode, contentType, body)
 
-	usage, _ := extractOpenAIUsageFromJSONBytes(body)
-	return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
+	return usage, imageCount, imageOutputSizes, nil
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
@@ -1131,6 +1139,180 @@ func mergeOpenAIUsage(dst *OpenAIUsage, body []byte) {
 			dst.ImageOutputTokens = parsed.ImageOutputTokens
 		}
 	}
+}
+
+func normalizeOpenAIImagesResponseMetadata(body []byte, usage OpenAIUsage, imageCount int, imageOutputSizes []string, requestedModel string, requestedQuality string, fallbackSize string) ([]byte, OpenAIUsage) {
+	quality := normalizeOpenAIImageQuality(requestedQuality)
+	shouldNormalizeUsage := quality != "" && quality != "auto"
+	if imageCount > 0 && shouldNormalizeUsage {
+		imageTokens := estimateOpenAIImageOutputTokens(imageOutputSizes, imageCount, requestedQuality, fallbackSize)
+		if imageTokens > 0 && (usage.OutputTokens != imageTokens || usage.ImageOutputTokens != imageTokens) {
+			usage.OutputTokens = imageTokens
+			usage.ImageOutputTokens = imageTokens
+		}
+		if usage.InputTokens < 0 {
+			usage.InputTokens = 0
+		}
+	}
+	if !gjson.ValidBytes(body) {
+		return body, usage
+	}
+
+	patched := body
+	setIfMissingOrZero := func(path string, value int) {
+		current := gjson.GetBytes(patched, path)
+		if !current.Exists() || current.Int() == 0 {
+			if next, err := sjson.SetBytes(patched, path, value); err == nil {
+				patched = next
+			}
+		}
+	}
+	setInt := func(path string, value int) {
+		if next, err := sjson.SetBytes(patched, path, value); err == nil {
+			patched = next
+		}
+	}
+	setStringIfNeeded := func(path string, value string, replaceAuto bool) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		current := strings.TrimSpace(gjson.GetBytes(patched, path).String())
+		if current == "" || (replaceAuto && strings.EqualFold(current, "auto")) {
+			if next, err := sjson.SetBytes(patched, path, value); err == nil {
+				patched = next
+			}
+		}
+	}
+
+	if model := strings.TrimSpace(requestedModel); model != "" {
+		if next, err := sjson.SetBytes(patched, "model", model); err == nil {
+			patched = next
+		}
+	}
+	if quality != "" && quality != "auto" {
+		if next, err := sjson.SetBytes(patched, "quality", quality); err == nil {
+			patched = next
+		}
+	}
+
+	if imageCount > 0 && usage.OutputTokens > 0 && shouldNormalizeUsage {
+		setIfMissingOrZero("usage.input_tokens", usage.InputTokens)
+		setInt("usage.output_tokens", usage.OutputTokens)
+		setInt("usage.output_tokens_details.image_tokens", usage.ImageOutputTokens)
+		setInt("usage.output_tokens_details.text_tokens", 0)
+		setIfMissingOrZero("usage.input_tokens_details.image_tokens", 0)
+		setIfMissingOrZero("usage.input_tokens_details.text_tokens", usage.InputTokens)
+		setInt("usage.total_tokens", usage.InputTokens+usage.OutputTokens)
+	}
+
+	if size := selectOpenAIImageSizeForMetadata(imageOutputSizes, fallbackSize); strings.TrimSpace(size) != "" {
+		setStringIfNeeded("size", size, true)
+		data := gjson.GetBytes(patched, "data")
+		if data.IsArray() {
+			for idx, item := range data.Array() {
+				if strings.TrimSpace(item.Get("size").String()) == "" || strings.EqualFold(strings.TrimSpace(item.Get("size").String()), "auto") {
+					if next, err := sjson.SetBytes(patched, fmt.Sprintf("data.%d.size", idx), size); err == nil {
+						patched = next
+					}
+				}
+			}
+		}
+	}
+	return patched, usage
+}
+
+func estimateOpenAIImageOutputTokens(outputSizes []string, imageCount int, quality string, fallbackSize string) int {
+	if imageCount <= 0 {
+		return 0
+	}
+	sizes := compactTrimmedStrings(outputSizes)
+	if len(sizes) == 0 {
+		sizes = []string{fallbackSize}
+	}
+	total := 0
+	for idx := 0; idx < imageCount; idx++ {
+		size := ""
+		if idx < len(sizes) {
+			size = sizes[idx]
+		} else if len(sizes) > 0 {
+			size = sizes[len(sizes)-1]
+		}
+		if strings.EqualFold(strings.TrimSpace(size), "auto") || strings.TrimSpace(size) == "" {
+			size = fallbackSize
+		}
+		total += estimateOpenAIImageOutputTokensForSizeQuality(size, quality)
+	}
+	return total
+}
+
+func estimateOpenAIImageOutputTokensForSizeQuality(size string, quality string) int {
+	q := normalizeOpenAIImageQuality(quality)
+	if q == "" || q == "auto" {
+		q = "medium"
+	}
+	switch normalizeOpenAIImageDimensionKey(size) {
+	case "1024x1024":
+		return openAIImageTokenByQuality(q, 196, 1756, 7024)
+	case "1024x1536", "1536x1024":
+		return openAIImageTokenByQuality(q, 168, 1372, 5488)
+	case "2048x2048":
+		return openAIImageTokenByQuality(q, 397, 3568, 14272)
+	case "1152x2048", "2048x1152":
+		return openAIImageTokenByQuality(q, 229, 2223, 8892)
+	case "2160x3840", "3840x2160":
+		return openAIImageTokenByQuality(q, 1543, 7919, 23719)
+	}
+	switch NormalizeImageBillingTierOrDefault(size) {
+	case ImageBillingSize1K:
+		return openAIImageTokenByQuality(q, 196, 1756, 7024)
+	case ImageBillingSize4K:
+		return openAIImageTokenByQuality(q, 1543, 7919, 23719)
+	default:
+		return openAIImageTokenByQuality(q, 397, 3568, 14272)
+	}
+}
+
+func openAIImageTokenByQuality(quality string, low int, medium int, high int) int {
+	switch normalizeOpenAIImageQuality(quality) {
+	case "low":
+		return low
+	case "high":
+		return high
+	default:
+		return medium
+	}
+}
+
+func normalizeOpenAIImageQuality(quality string) string {
+	switch strings.ToLower(strings.TrimSpace(quality)) {
+	case "low", "medium", "high", "auto":
+		return strings.ToLower(strings.TrimSpace(quality))
+	default:
+		return ""
+	}
+}
+
+func normalizeOpenAIImageDimensionKey(size string) string {
+	width, height, ok := parseImageBillingDimensions(size)
+	if !ok {
+		return strings.ToLower(strings.TrimSpace(size))
+	}
+	return fmt.Sprintf("%dx%d", width, height)
+}
+
+func selectOpenAIImageSizeForMetadata(outputSizes []string, fallbackSize string) string {
+	for _, output := range outputSizes {
+		trimmed := strings.TrimSpace(output)
+		if trimmed != "" && !strings.EqualFold(trimmed, "auto") {
+			return trimmed
+		}
+	}
+	fallbackSize = strings.TrimSpace(fallbackSize)
+	if fallbackSize != "" {
+		return fallbackSize
+	}
+	return firstDisplayImageOutputSize(outputSizes)
 }
 
 func extractOpenAIImageCountFromJSONBytes(body []byte) int {
