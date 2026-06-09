@@ -40,6 +40,12 @@ type StreamingProcessor struct {
 	outputTokens      int
 	cacheReadTokens   int
 	imageOutputTokens int
+
+	// refusal detection signals (keyed on raw Gemini finishReason + content).
+	// sawToolUse reuses usedTool; tracked here for query symmetry.
+	lastFinishReason string
+	sawVisibleText   bool
+	sawThinking      bool
 }
 
 // NewStreamingProcessor 创建流式响应处理器
@@ -131,6 +137,9 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 	// 检查是否结束
 	if len(geminiResp.Candidates) > 0 {
 		finishReason := geminiResp.Candidates[0].FinishReason
+		if finishReason != "" {
+			p.lastFinishReason = finishReason
+		}
 		if finishReason == "MALFORMED_FUNCTION_CALL" {
 			log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in stream for model %s", p.originalModel)
 			if geminiResp.Candidates[0].Content != nil {
@@ -173,6 +182,22 @@ func (p *StreamingProcessor) Finish() ([]byte, *ClaudeUsage) {
 // MessageStartSent 报告流中是否已发出过 message_start 事件（即是否收到过有效的上游数据）
 func (p *StreamingProcessor) MessageStartSent() bool {
 	return p.messageStartSent
+}
+
+// LastFinishReason returns the most recent raw Gemini finishReason seen.
+func (p *StreamingProcessor) LastFinishReason() string {
+	return p.lastFinishReason
+}
+
+// SawMeaningfulContent reports whether any visible text, thinking, or tool use
+// was produced. A refusal/empty turn produces none.
+func (p *StreamingProcessor) SawMeaningfulContent() bool {
+	return p.sawVisibleText || p.sawThinking || p.usedTool
+}
+
+// SawToolUse reports whether a tool_use block was produced.
+func (p *StreamingProcessor) SawToolUse() bool {
+	return p.usedTool
 }
 
 // emitMessageStart 发送 message_start 事件
@@ -296,6 +321,7 @@ func (p *StreamingProcessor) processThinking(text, signature string) []byte {
 	}
 
 	if text != "" {
+		p.sawThinking = true
 		_, _ = result.Write(p.emitDelta("thinking_delta", map[string]any{
 			"thinking": text,
 		}))
@@ -320,6 +346,8 @@ func (p *StreamingProcessor) processText(text, signature string) []byte {
 		}
 		return nil
 	}
+
+	p.sawVisibleText = true
 
 	// 处理之前的 trailingSignature
 	if p.trailingSignature != "" {
