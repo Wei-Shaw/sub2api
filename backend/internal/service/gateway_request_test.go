@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -75,6 +76,16 @@ func TestParseGatewayRequest_InvalidStreamType(t *testing.T) {
 	body := []byte(`{"stream":"true"}`)
 	_, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
 	require.Error(t, err)
+}
+
+func TestParseGatewayRequest_RejectsTooDeepJSONBeforeGJSON(t *testing.T) {
+	body := []byte(`{"model":"claude-3","messages":` +
+		strings.Repeat("[", pkghttputil.MaxJSONNestingDepth+1) +
+		strings.Repeat("]", pkghttputil.MaxJSONNestingDepth+1) +
+		`}`)
+
+	_, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
+	require.ErrorIs(t, err, pkghttputil.ErrJSONNestingTooDeep)
 }
 
 // ============ Gemini 原生格式解析测试 ============

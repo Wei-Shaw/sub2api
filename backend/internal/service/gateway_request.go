@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -160,6 +161,9 @@ func parseGatewayRequestCurrentBody(parsed *ParsedRequest, protocol string) erro
 	}
 
 	bodyBytes := parsed.Body.Bytes()
+	if err := pkghttputil.ValidateJSONNestingDepth(bodyBytes); err != nil {
+		return err
+	}
 	if !gjson.ValidBytes(bodyBytes) {
 		return fmt.Errorf("invalid json")
 	}

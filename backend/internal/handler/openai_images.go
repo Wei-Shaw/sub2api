@@ -54,6 +54,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return
 		}
+		if isJSONNestingTooDeepError(err) {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", requestJSONNestingTooDeepMessage)
+			return
+		}
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
 		return
 	}

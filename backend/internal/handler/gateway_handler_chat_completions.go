@@ -51,6 +51,10 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			h.chatCompletionsErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return
 		}
+		if isJSONNestingTooDeepError(err) {
+			h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", requestJSONNestingTooDeepMessage)
+			return
+		}
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
 		return
 	}
