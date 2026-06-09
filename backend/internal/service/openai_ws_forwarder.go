@@ -991,6 +991,26 @@ func (s *OpenAIGatewayService) openAIWSPassthroughIdleTimeout() time.Duration {
 	return openAIWSPassthroughIdleTimeoutDefault
 }
 
+func (s *OpenAIGatewayService) openAIWSPassthroughDownstreamPingInterval() time.Duration {
+	if s != nil && s.cfg != nil {
+		seconds := s.cfg.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds
+		if seconds > 0 {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+	return 0
+}
+
+func (s *OpenAIGatewayService) openAIWSPassthroughDownstreamPingTimeout() time.Duration {
+	if s != nil && s.cfg != nil {
+		seconds := s.cfg.Gateway.OpenAIWS.PassthroughDownstreamPingTimeoutSeconds
+		if seconds > 0 {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+	return 5 * time.Second
+}
+
 func (s *OpenAIGatewayService) openAIWSWriteTimeout() time.Duration {
 	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.WriteTimeoutSeconds > 0 {
 		return time.Duration(s.cfg.Gateway.OpenAIWS.WriteTimeoutSeconds) * time.Second

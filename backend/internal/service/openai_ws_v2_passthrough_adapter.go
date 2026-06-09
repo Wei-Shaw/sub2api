@@ -69,6 +69,17 @@ func (c *openAIWSPolicyEnforcingFrameConn) WriteFrame(ctx context.Context, msgTy
 	return c.inner.WriteFrame(ctx, msgType, payload)
 }
 
+func (c *openAIWSPolicyEnforcingFrameConn) Ping(ctx context.Context) error {
+	if c == nil || c.inner == nil {
+		return errOpenAIWSConnClosed
+	}
+	pingable, ok := c.inner.(openaiwsv2.PingableFrameConn)
+	if !ok {
+		return errOpenAIWSConnClosed
+	}
+	return pingable.Ping(ctx)
+}
+
 func (c *openAIWSPolicyEnforcingFrameConn) Close() error {
 	if c == nil || c.inner == nil {
 		return nil
@@ -213,6 +224,16 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 		ctx = context.Background()
 	}
 	return c.conn.Write(ctx, msgType, payload)
+}
+
+func (c *openAIWSClientFrameConn) Ping(ctx context.Context) error {
+	if c == nil || c.conn == nil {
+		return errOpenAIWSConnClosed
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return c.conn.Ping(ctx)
 }
 
 func (c *openAIWSClientFrameConn) Close() error {
@@ -506,6 +527,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		Options: openaiwsv2.RelayOptions{
 			WriteTimeout:                    s.openAIWSWriteTimeout(),
 			IdleTimeout:                     s.openAIWSPassthroughIdleTimeout(),
+			DownstreamPingInterval:          s.openAIWSPassthroughDownstreamPingInterval(),
+			DownstreamPingTimeout:           s.openAIWSPassthroughDownstreamPingTimeout(),
 			FirstMessageType:                coderws.MessageText,
 			FirstMessageSent:                upstreamFirstMessageSent,
 			StartClientAfterFirstDownstream: true,

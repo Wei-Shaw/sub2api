@@ -917,6 +917,10 @@ type GatewayOpenAIWSConfig struct {
 	EventFlushBatchSize int `mapstructure:"event_flush_batch_size"`
 	// EventFlushIntervalMS: WS 流式写出最大等待时间（毫秒）；0 表示仅按 batch 触发
 	EventFlushIntervalMS int `mapstructure:"event_flush_interval_ms"`
+	// PassthroughDownstreamPingIntervalSeconds: passthrough 模式下游 WS Ping 间隔；0 表示关闭。
+	PassthroughDownstreamPingIntervalSeconds int `mapstructure:"passthrough_downstream_ping_interval_seconds"`
+	// PassthroughDownstreamPingTimeoutSeconds: passthrough 模式下游 WS Ping 等待 Pong 的超时时间。
+	PassthroughDownstreamPingTimeoutSeconds int `mapstructure:"passthrough_downstream_ping_timeout_seconds"`
 	// PrewarmCooldownMS: 连接池预热触发冷却时间（毫秒）
 	PrewarmCooldownMS int `mapstructure:"prewarm_cooldown_ms"`
 	// FallbackCooldownSeconds: WS 回退冷却窗口，避免 WS/HTTP 抖动；0 表示关闭冷却
@@ -1851,6 +1855,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.queue_limit_per_conn", 64)
 	viper.SetDefault("gateway.openai_ws.event_flush_batch_size", 1)
 	viper.SetDefault("gateway.openai_ws.event_flush_interval_ms", 10)
+	viper.SetDefault("gateway.openai_ws.passthrough_downstream_ping_interval_seconds", 20)
+	viper.SetDefault("gateway.openai_ws.passthrough_downstream_ping_timeout_seconds", 5)
 	viper.SetDefault("gateway.openai_ws.prewarm_cooldown_ms", 300)
 	viper.SetDefault("gateway.openai_ws.fallback_cooldown_seconds", 30)
 	viper.SetDefault("gateway.openai_ws.retry_backoff_initial_ms", 120)
@@ -2569,6 +2575,22 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIWS.EventFlushIntervalMS < 0 {
 		return fmt.Errorf("gateway.openai_ws.event_flush_interval_ms must be non-negative")
+	}
+	if c.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds != 0 &&
+		(c.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds < 5 ||
+			c.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds > 60) {
+		return fmt.Errorf("gateway.openai_ws.passthrough_downstream_ping_interval_seconds must be 0 or between 5-60 seconds")
+	}
+	if c.Gateway.OpenAIWS.PassthroughDownstreamPingTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.openai_ws.passthrough_downstream_ping_timeout_seconds must be non-negative")
+	}
+	if c.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds > 0 &&
+		c.Gateway.OpenAIWS.PassthroughDownstreamPingTimeoutSeconds <= 0 {
+		return fmt.Errorf("gateway.openai_ws.passthrough_downstream_ping_timeout_seconds must be positive when passthrough downstream ping is enabled")
+	}
+	if c.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds > 0 &&
+		c.Gateway.OpenAIWS.PassthroughDownstreamPingTimeoutSeconds >= c.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds {
+		return fmt.Errorf("gateway.openai_ws.passthrough_downstream_ping_timeout_seconds must be less than passthrough_downstream_ping_interval_seconds")
 	}
 	if c.Gateway.OpenAIWS.PrewarmCooldownMS < 0 {
 		return fmt.Errorf("gateway.openai_ws.prewarm_cooldown_ms must be non-negative")

@@ -140,6 +140,12 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.EventFlushIntervalMS != 10 {
 		t.Fatalf("Gateway.OpenAIWS.EventFlushIntervalMS = %d, want 10", cfg.Gateway.OpenAIWS.EventFlushIntervalMS)
 	}
+	if cfg.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds != 20 {
+		t.Fatalf("Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds = %d, want 20", cfg.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds)
+	}
+	if cfg.Gateway.OpenAIWS.PassthroughDownstreamPingTimeoutSeconds != 5 {
+		t.Fatalf("Gateway.OpenAIWS.PassthroughDownstreamPingTimeoutSeconds = %d, want 5", cfg.Gateway.OpenAIWS.PassthroughDownstreamPingTimeoutSeconds)
+	}
 	if cfg.Gateway.OpenAIWS.PrewarmCooldownMS != 300 {
 		t.Fatalf("Gateway.OpenAIWS.PrewarmCooldownMS = %d, want 300", cfg.Gateway.OpenAIWS.PrewarmCooldownMS)
 	}
@@ -1648,6 +1654,32 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			name:    "write_timeout_seconds 必须为正数",
 			mutate:  func(c *Config) { c.Gateway.OpenAIWS.WriteTimeoutSeconds = 0 },
 			wantErr: "gateway.openai_ws.write_timeout_seconds",
+		},
+		{
+			name:    "passthrough_downstream_ping_interval_seconds 必须为 0 或 5-60 秒",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds = 4 },
+			wantErr: "gateway.openai_ws.passthrough_downstream_ping_interval_seconds",
+		},
+		{
+			name:    "passthrough_downstream_ping_timeout_seconds 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.PassthroughDownstreamPingTimeoutSeconds = -1 },
+			wantErr: "gateway.openai_ws.passthrough_downstream_ping_timeout_seconds",
+		},
+		{
+			name: "启用 passthrough downstream ping 时 timeout 必须为正数",
+			mutate: func(c *Config) {
+				c.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds = 20
+				c.Gateway.OpenAIWS.PassthroughDownstreamPingTimeoutSeconds = 0
+			},
+			wantErr: "gateway.openai_ws.passthrough_downstream_ping_timeout_seconds",
+		},
+		{
+			name: "passthrough downstream ping timeout 必须小于 interval",
+			mutate: func(c *Config) {
+				c.Gateway.OpenAIWS.PassthroughDownstreamPingIntervalSeconds = 20
+				c.Gateway.OpenAIWS.PassthroughDownstreamPingTimeoutSeconds = 20
+			},
+			wantErr: "gateway.openai_ws.passthrough_downstream_ping_timeout_seconds must be less than passthrough_downstream_ping_interval_seconds",
 		},
 		{
 			name:    "pool_target_utilization 必须在 (0,1]",
