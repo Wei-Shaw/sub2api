@@ -638,7 +638,7 @@ REDACTED
 				Kind:               "failover",
 				Message:            upstreamMsg,
 		REDACTED)
-			s.handleFailoverSideEffects(upstreamCtx, resp, account, upstreamModel)
+			s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, upstreamModel)
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
