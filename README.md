@@ -125,6 +125,7 @@ Community projects that extend or integrate with Sub2API:
 |---------|-------------|----------|
 | ~~[Sub2ApiPay](https://github.com/touwaeriol/sub2apipay)~~ | ~~Self-service payment system~~ | **Now Built-in** — Payment is now integrated into Sub2API, no separate deployment needed. See [Payment Configuration Guide](docs/PAYMENT.md) |
 | [sub2api-mobile](https://github.com/ckken/sub2api-mobile) | Mobile admin console | Cross-platform app (iOS/Android/Web) for user management, account management, monitoring dashboard, and multi-backend switching; built with Expo + React Native |
+| [sub2api-skills](https://github.com/deltrivx/sub2api-skills) | Assistant skill and Telegram operations bot templates | Community integration for account, group, token, config, diagnostics and confirmation-protected maintenance workflows. See [integration notes](docs/community/sub2api-skills.md) |
 
 ## Tech Stack
 
