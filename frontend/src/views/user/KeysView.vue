@@ -328,6 +328,15 @@
                 <Icon name="upload" size="sm" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
               </button>
+              <!-- Import to RelaySwitch Button -->
+              <button
+                v-if="!publicSettings?.hide_ccs_import_button"
+                @click="importToRelaySwitch(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-teal-50 hover:text-teal-600 dark:hover:bg-teal-900/20 dark:hover:text-teal-400"
+              >
+                <Icon name="link" size="sm" />
+                <span class="text-xs">{{ t('keys.importToRelaySwitch') }}</span>
+              </button>
               <!-- Toggle Status Button -->
               <button
                 @click="toggleKeyStatus(row)"
@@ -1077,6 +1086,7 @@ import {
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
 } from '@/utils/ccswitchImport'
+import { buildRelaySwitchProviderImportDeeplink } from '@/utils/relayswitchImport'
 
 // Helper to format date for datetime-local input
 const formatDateTimeLocal = (isoDate: string): string => {
@@ -1153,6 +1163,7 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
+let relaySwitchLaunchReminderTimer: ReturnType<typeof setTimeout> | null = null
 
 // Get the currently selected key for group change
 const selectedKeyForGroup = computed(() => {
@@ -1762,6 +1773,48 @@ const closeCcsClientSelect = () => {
   pendingCcsRow.value = null
 }
 
+const clearRelaySwitchLaunchReminder = () => {
+  if (relaySwitchLaunchReminderTimer) {
+    clearTimeout(relaySwitchLaunchReminderTimer)
+    relaySwitchLaunchReminderTimer = null
+  }
+}
+
+const importToRelaySwitch = (row: ApiKey) => {
+  const baseUrl = publicSettings.value?.api_base_url || window.location.origin
+  const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
+  const deeplink = buildRelaySwitchProviderImportDeeplink({
+    name: providerName,
+    baseUrl,
+    apiKey: row.key
+  })
+
+  clearRelaySwitchLaunchReminder()
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') {
+      clearRelaySwitchLaunchReminder()
+    }
+  }
+
+  try {
+    document.addEventListener('visibilitychange', handleVisibilityChange, { once: true })
+    window.location.href = deeplink
+
+    relaySwitchLaunchReminderTimer = setTimeout(() => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      if (document.visibilityState !== 'hidden' && document.hasFocus()) {
+        appStore.showError(t('keys.relaySwitchNotInstalled'))
+      }
+      relaySwitchLaunchReminderTimer = null
+    }, 1400)
+  } catch (error) {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    clearRelaySwitchLaunchReminder()
+    appStore.showError(t('keys.relaySwitchNotInstalled'))
+  }
+}
+
 function formatResetTime(resetAt: string | null): string {
   if (!resetAt) return ''
   const diff = new Date(resetAt).getTime() - now.value.getTime()
@@ -1786,5 +1839,6 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', closeGroupSelector)
   if (resetTimer) clearInterval(resetTimer)
+  clearRelaySwitchLaunchReminder()
 })
 </script>
