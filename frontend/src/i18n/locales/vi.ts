@@ -929,6 +929,9 @@ const messages = {
     imageSizeUnknown: 'Không xác định',
     cacheRead: 'Đọc cache',
     cacheWrite: 'Ghi cache',
+    cacheHit: 'Cache hit',
+    cacheCreate: 'Tạo cache',
+    cacheHitRate: 'Tỷ lệ cache hit',
     serviceTier: 'Cấp dịch vụ',
     serviceTierPriority: 'Fast',
     serviceTierFlex: 'Flex',
@@ -1324,6 +1327,7 @@ const messages = {
       providers: {
         email: 'Email',
         linuxdo: 'LinuxDo',
+        dingtalk: 'DingTalk',
         oidc: '{providerName}',
         wechat: 'WeChat',
       },

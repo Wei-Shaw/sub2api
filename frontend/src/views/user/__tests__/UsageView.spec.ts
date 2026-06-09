@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
@@ -46,6 +47,10 @@ const messages: Record<string, string> = {
   'admin.usage.billingModeImage': 'Image',
   'admin.usage.allGroups': 'All groups',
   'admin.usage.allModels': 'All models',
+  'admin.usage.inputCost': 'Input Cost',
+  'admin.usage.outputCost': 'Output Cost',
+  'admin.usage.cacheCreationCost': 'Cache Creation Cost',
+  'admin.usage.cacheReadCost': 'Cache Read Cost',
   'usage.allApiKeys': 'All API Keys',
   'usage.apiKeyFilter': 'API Key',
   'usage.model': 'Model',
@@ -60,8 +65,64 @@ const messages: Record<string, string> = {
   'usage.preparingExport': 'Preparing export',
   'usage.exportSuccess': 'Export success',
   'usage.exportFailed': 'Export failed',
-  'common.refresh': 'Refresh',
-  'common.reset': 'Reset',
+  'usage.tabs.usage': 'Usage',
+  'usage.tabs.errors': 'Errors',
+  'usage.endpointDistribution': 'Endpoint Distribution',
+  'usage.totalRequests': 'Total requests',
+  'usage.inSelectedRange': 'in selected range',
+  'usage.totalTokens': 'Total tokens',
+  'usage.in': 'Input',
+  'usage.out': 'Output',
+  'usage.cacheTotal': 'Cache',
+  'usage.cacheBreakdown': 'Cache Token Breakdown',
+  'usage.cacheCreationTokensLabel': 'Cache Creation',
+  'usage.cacheReadTokensLabel': 'Cache Read',
+  'usage.totalCost': 'Total cost',
+  'usage.standardCost': 'standard',
+  'usage.avgDuration': 'Average duration',
+  'usage.costDetails': 'Cost Breakdown',
+  'usage.inputTokenPrice': 'Input price',
+  'usage.outputTokenPrice': 'Output price',
+  'usage.imageOutputCost': 'Image Output Cost',
+  'usage.imageOutputTokens': 'Image Output Tokens',
+  'usage.perMillionTokens': '/ 1M tokens',
+  'usage.serviceTier': 'Service tier',
+  'usage.serviceTierPriority': 'Fast',
+  'usage.serviceTierFlex': 'Flex',
+  'usage.serviceTierStandard': 'Standard',
+  'usage.rate': 'Rate',
+  'usage.original': 'Original',
+  'usage.billed': 'Billed',
+  'usage.unitPrice': 'Unit price',
+  'usage.imageUnit': ' images',
+  'usage.imageCount': 'Image count',
+  'usage.imageBillingSize': 'Billing size',
+  'usage.imageInputSize': 'Input size',
+  'usage.imageOutputSize': 'Output size',
+  'usage.imageSizeSource': 'Size source',
+  'usage.imageSizeBreakdown': 'Size breakdown',
+  'usage.imageSizeSourceOutput': 'Upstream output',
+  'usage.imageSizeSourceInput': 'Request input',
+  'usage.imageSizeSourceDefault': 'Default billing tier',
+  'usage.imageSizeSourceLegacy': 'Legacy record',
+  'usage.imageSizeSourceMissing': 'Not recorded',
+  'usage.imageSizeNotRecorded': 'not recorded',
+  'usage.imageSizeLegacyUnstandardized': 'legacy unstandardized',
+  'usage.imageSizeUnknown': 'unknown',
+  'usage.imageUnitPrice': 'Per-image price',
+  'usage.imageTotalPrice': 'Image total price',
+  'usage.cacheHit': 'Cache hit',
+  'usage.cacheCreate': 'Cache write',
+  'usage.cacheHitRate': 'Cache hit rate',
+  'usage.reasoningEffort': 'Reasoning Effort',
+  'usage.cost': 'Cost',
+  'usage.firstToken': 'First Token',
+  'usage.duration': 'Duration',
+  'usage.time': 'Time',
+  'usage.userAgent': 'User Agent',
+  'usage.perRequest': 'per request',
+  'usage.accountBilled': 'Account billed',
+  'usage.userBilled': 'User billed',
 }
 
 vi.mock('@/api', () => ({
@@ -101,6 +162,9 @@ const usageLog = {
   request_id: 'req-user-export',
   actual_cost: 0.092883,
   total_cost: 0.092883,
+  total_cache_tokens: 278276,
+  total_cache_creation_tokens: 4,
+  total_cache_read_tokens: 278272,
   rate_multiplier: 1,
   service_tier: 'priority',
   input_cost: 0.020285,
@@ -136,12 +200,13 @@ function mountUsageView() {
         Select: true,
         DateRangePicker: true,
         Icon: true,
-        UsageStatsCards: chartStub,
         UsageTable: chartStub,
         ModelDistributionChart: chartStub,
         GroupDistributionChart: chartStub,
         EndpointDistributionChart: chartStub,
         TokenUsageTrend: chartStub,
+        UserErrorRequestsTable: chartStub,
+        Teleport: true,
       },
     },
   })
@@ -166,6 +231,8 @@ describe('user UsageView', () => {
       total_input_tokens: 10,
       total_output_tokens: 20,
       total_cache_tokens: 0,
+      total_cache_creation_tokens: 0,
+      total_cache_read_tokens: 0,
       total_tokens: 30,
       total_cost: 0.1,
       total_actual_cost: 0.08,
@@ -205,6 +272,42 @@ describe('user UsageView', () => {
     }))
     expect(list).toHaveBeenCalledWith(1, 100)
     expect(getAvailable).toHaveBeenCalled()
+  })
+
+  it('renders split cache stats without raw i18n keys', async () => {
+    query.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    getStats.mockResolvedValue({
+      total_requests: 1,
+      total_input_tokens: 4057,
+      total_output_tokens: 101,
+      total_cache_tokens: 278276,
+      total_cache_creation_tokens: 4,
+      total_cache_read_tokens: 278272,
+      total_tokens: 282434,
+      total_cost: 0.1,
+      total_actual_cost: 0.1,
+      average_duration_ms: 1,
+      endpoints: [],
+      upstream_endpoints: [],
+      endpoint_paths: [],
+    })
+    list.mockResolvedValue({ items: [] })
+
+    const wrapper = mountUsageView()
+    await flushPromises()
+    await nextTick()
+
+    const text = wrapper.text().replace(/\s+/g, ' ')
+    expect(text).toContain('Total tokens')
+    expect(text).toContain('282.43K')
+    expect(text).toContain('Cache: 278.28K')
+    expect(text).toContain('Cache Token Breakdown')
+    expect(text).toMatch(/Cache Creation\s*4/)
+    expect(text).toMatch(/Cache Read\s*278\.27K/)
+    expect(text).not.toContain('usage.cacheTotal')
+    expect(text).not.toContain('usage.cacheBreakdown')
+    expect(text).not.toContain('usage.cacheCreationTokensLabel')
+    expect(text).not.toContain('usage.cacheReadTokensLabel')
   })
 
   it('exports csv with current filters and without admin-only fields', async () => {

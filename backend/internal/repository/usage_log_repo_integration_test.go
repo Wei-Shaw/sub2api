@@ -880,6 +880,63 @@ func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
 	s.Require().InEpsilon(150.0, stats.AverageDurationMs, 0.0001)
 }
 
+func (s *UsageLogRepoSuite) TestGetUserStatsAggregated_ReturnsSplitCacheTokens() {
+	now := time.Now().UTC()
+	start := now.Add(-2 * time.Hour)
+	end := now.Add(2 * time.Hour)
+
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "stats-cache@test.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-stats-cache", Name: "k"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-stats-cache"})
+
+	_, err := s.repo.Create(s.ctx, &service.UsageLog{
+		UserID:              user.ID,
+		APIKeyID:            apiKey.ID,
+		AccountID:           account.ID,
+		RequestID:           uuid.NewString(),
+		Model:               "claude-3",
+		InputTokens:         10,
+		OutputTokens:        20,
+		CacheCreationTokens: 3,
+		CacheReadTokens:     4,
+		TotalCost:           1.0,
+		ActualCost:          0.8,
+		CreatedAt:           now,
+	})
+	s.Require().NoError(err)
+
+	_, err = s.repo.Create(s.ctx, &service.UsageLog{
+		UserID:              user.ID,
+		APIKeyID:            apiKey.ID,
+		AccountID:           account.ID,
+		RequestID:           uuid.NewString(),
+		Model:               "claude-3",
+		InputTokens:         1,
+		OutputTokens:        1,
+		CacheCreationTokens: 10,
+		CacheReadTokens:     10,
+		TotalCost:           1.0,
+		ActualCost:          1.0,
+		CreatedAt:           start.Add(-time.Minute),
+	})
+	s.Require().NoError(err)
+
+	stats, err := s.repo.GetUserStatsAggregated(s.ctx, user.ID, start, end)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), stats.TotalRequests)
+	s.Require().Equal(int64(10), stats.TotalInputTokens)
+	s.Require().Equal(int64(20), stats.TotalOutputTokens)
+	s.Require().Equal(int64(7), stats.TotalCacheTokens)
+	s.Require().Equal(int64(3), stats.TotalCacheCreationTokens)
+	s.Require().Equal(int64(4), stats.TotalCacheReadTokens)
+	s.Require().Equal(int64(37), stats.TotalTokens)
+
+	apiKeyStats, err := s.repo.GetAPIKeyStatsAggregated(s.ctx, apiKey.ID, start, end)
+	s.Require().NoError(err)
+	s.Require().Equal(stats.TotalCacheCreationTokens, apiKeyStats.TotalCacheCreationTokens)
+	s.Require().Equal(stats.TotalCacheReadTokens, apiKeyStats.TotalCacheReadTokens)
+}
+
 // --- GetUserDashboardStats ---
 
 func (s *UsageLogRepoSuite) TestGetUserDashboardStats() {
