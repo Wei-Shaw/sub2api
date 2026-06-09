@@ -850,6 +850,9 @@ func (s *emailBindUserRepoStub) UnbindUserAuthProvider(context.Context, int64, s
 func (s *emailBindUserRepoStub) UpdateTotpSecret(context.Context, int64, *string) error { return nil }
 func (s *emailBindUserRepoStub) EnableTotp(context.Context, int64) error                { return nil }
 func (s *emailBindUserRepoStub) DisableTotp(context.Context, int64) error               { return nil }
+func (s *emailBindUserRepoStub) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
+	return s.GetByID(ctx, id)
+}
 
 func cloneEmailBindUser(user *service.User) *service.User {
 	if user == nil {

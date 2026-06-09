@@ -110,6 +110,9 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 	filter.Source = strings.TrimSpace(c.Query("error_source"))
 	filter.Query = strings.TrimSpace(c.Query("q"))
 	filter.UserQuery = strings.TrimSpace(c.Query("user_query"))
+	// Model 过滤：admin 走精确匹配（ModelFuzzy 默认 false，保持管理端语义）。
+	// buildOpsErrorLogsWhere 以 COALESCE(requested_model, model) 比对。
+	filter.Model = strings.TrimSpace(c.Query("model"))
 
 	// Force request errors: client-visible status >= 400.
 	// buildOpsErrorLogsWhere already applies this for non-upstream phase.
@@ -137,6 +140,22 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 		filter.AccountID = &id
 	}
 
+	if v := strings.TrimSpace(c.Query("user_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		filter.UserID = &id
+	}
+	if v := strings.TrimSpace(c.Query("api_key_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid api_key_id")
+			return
+		}
+		filter.APIKeyID = &id
+	}
 	if v := strings.TrimSpace(c.Query("resolved")); v != "" {
 		switch strings.ToLower(v) {
 		case "1", "true", "yes":
@@ -211,6 +230,9 @@ func (h *OpsHandler) ListRequestErrors(c *gin.Context) {
 	filter.Source = strings.TrimSpace(c.Query("error_source"))
 	filter.Query = strings.TrimSpace(c.Query("q"))
 	filter.UserQuery = strings.TrimSpace(c.Query("user_query"))
+	// Model 过滤：admin 走精确匹配（ModelFuzzy 默认 false，保持管理端语义）。
+	// buildOpsErrorLogsWhere 以 COALESCE(requested_model, model) 比对。
+	filter.Model = strings.TrimSpace(c.Query("model"))
 
 	// Force request errors: client-visible status >= 400.
 	// buildOpsErrorLogsWhere already applies this for non-upstream phase.

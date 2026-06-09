@@ -222,6 +222,14 @@ const metricDefinitions = computed(() => {
       unit: '%'
     },
     {
+      type: 'account_temp_unscheduled_count',
+      group: 'account',
+      label: t('admin.ops.alertRules.metrics.accountTempUnscheduledCount'),
+      description: t('admin.ops.alertRules.metricDescriptions.accountTempUnscheduledCount'),
+      recommendedOperator: '>',
+      recommendedThreshold: 0
+    },
+    {
       type: 'overload_account_count',
       group: 'account',
       label: t('admin.ops.alertRules.metrics.overloadAccountCount'),
