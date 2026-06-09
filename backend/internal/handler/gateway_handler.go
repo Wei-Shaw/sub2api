@@ -477,12 +477,17 @@ REDACTED
 						return
 				REDACTED
 			REDACTED
-				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+				wroteFallback := false
+				if !upstreamErrorAlreadyCommunicated {
+					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+			REDACTED
 				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),
 					zap.String("account_name", account.Name),
 					zap.String("account_platform", account.Platform),
 					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 					zap.Error(err),
 			REDACTED
 				if account.Proxy != nil {
@@ -874,12 +879,17 @@ REDACTED
 						return
 				REDACTED
 			REDACTED
-				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+				wroteFallback := false
+				if !upstreamErrorAlreadyCommunicated {
+					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+			REDACTED
 				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),
 					zap.String("account_name", account.Name),
 					zap.String("account_platform", account.Platform),
 					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 					zap.Error(err),
 			REDACTED
 				if account.Proxy != nil {
@@ -1610,6 +1620,31 @@ REDACTED
 REDACTED
 	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", streamStarted)
 	return true
+REDACTED
+
+// gatewayForwardErrorAlreadyCommunicated reports whether a Forward implementation
+// has already written a complete error response to the client before returning
+// an error to the handler.
+//
+// This is intentionally narrower than "writer size changed": a stream may have
+// only emitted keepalive pings or partial data, in which case the handler still
+// needs to append a protocol-level terminal error. Non-SSE output from Forward
+// is different: service-level helpers such as handleErrorResponse/writeClaudeError
+// already wrote the client-visible JSON body, so adding the generic streaming
+// fallback would corrupt the response by appending a second `data: ...` frame.
+func gatewayForwardErrorAlreadyCommunicated(c *gin.Context, writerSizeBeforeForward int, err error) bool {
+	if err == nil || c == nil || c.Writer == nil {
+		return false
+REDACTED
+	if c.Writer.Size() == writerSizeBeforeForward {
+		return false
+REDACTED
+
+	contentType := strings.ToLower(strings.TrimSpace(c.Writer.Header().Get("Content-Type")))
+	if contentType == "" {
+		return false
+REDACTED
+	return !strings.Contains(contentType, "text/event-stream")
 REDACTED
 
 // checkClaudeCodeVersion 检查 Claude Code 客户端版本是否满足版本要求
