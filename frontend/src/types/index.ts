@@ -1155,6 +1155,38 @@ export interface AdminDataImportResult {
   errors?: AdminDataImportError[]
 }
 
+export interface AdminDataInspectItem {
+  index: number
+  name?: string
+  platform?: AccountPlatform
+  type?: AccountType
+  proxy_key?: string
+  healthy: boolean
+  reasons?: string[]
+}
+
+export interface AdminDataInspectResult {
+  total: number
+  healthy: number
+  unhealthy: number
+  results: AdminDataInspectItem[]
+  valid_proxy_keys?: string[]
+}
+
+export type AdminDataInspectStreamEvent =
+  | {
+      type: 'item'
+      item: AdminDataInspectItem
+    }
+  | {
+      type: 'done'
+      result: AdminDataInspectResult
+    }
+  | {
+      type: 'error'
+      message: string
+    }
+
 export interface CodexSessionImportRequest {
   content?: string
   contents?: string[]

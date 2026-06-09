@@ -370,7 +370,13 @@
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
-    <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
+    <ImportDataModal
+      :show="showImportData"
+      :groups="groups"
+      @close="showImportData = false"
+      @imported="handleDataImported"
+      @group-created="handleImportGroupCreated"
+    />
     <BulkEditAccountModal
       :show="showBulkEdit"
       :account-ids="selIds"
@@ -1414,6 +1420,11 @@ const handleBulkUpdated = () => {
   reload()
 }
 const handleDataImported = () => { showImportData.value = false; reload() }
+const handleImportGroupCreated = (group: AdminGroup) => {
+  if (!groups.value.some((item) => item.id === group.id)) {
+    groups.value = [...groups.value, group]
+  }
+}
 const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
 const ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE = '__unset__'
 const buildAccountQueryFilters = () => ({

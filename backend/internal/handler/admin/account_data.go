@@ -2,10 +2,14 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"log/slog"
@@ -18,10 +22,12 @@ import (
 )
 
 const (
-	dataType       = "sub2api-data"
-	legacyDataType = "sub2api-bundle"
-	dataVersion    = 1
-	dataPageCap    = 1000
+	dataType                        = "sub2api-data"
+	legacyDataType                  = "sub2api-bundle"
+	dataVersion                     = 1
+	dataPageCap                     = 1000
+	dataInspectLiveProbeConcurrency = 5
+	dataInspectLiveProbeTimeout     = 15 * time.Second
 )
 
 type DataPayload struct {
@@ -68,6 +74,7 @@ type DataAccount struct {
 type DataImportRequest struct {
 	Data                 DataPayload `json:"data"`
 	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+	GroupIDs             []int64     `json:"group_ids"`
 }
 
 type DataImportResult struct {
@@ -84,6 +91,35 @@ type DataImportError struct {
 	Name     string `json:"name,omitempty"`
 	ProxyKey string `json:"proxy_key,omitempty"`
 	Message  string `json:"message"`
+}
+
+type DataInspectRequest struct {
+	Data           DataPayload `json:"data"`
+	ValidProxyKeys []string    `json:"valid_proxy_keys,omitempty"`
+}
+
+type DataInspectResult struct {
+	Total          int               `json:"total"`
+	Healthy        int               `json:"healthy"`
+	Unhealthy      int               `json:"unhealthy"`
+	Results        []DataInspectItem `json:"results"`
+	ValidProxyKeys []string          `json:"valid_proxy_keys,omitempty"`
+}
+
+type DataInspectItem struct {
+	Index    int      `json:"index"`
+	Name     string   `json:"name,omitempty"`
+	Platform string   `json:"platform,omitempty"`
+	Type     string   `json:"type,omitempty"`
+	ProxyKey string   `json:"proxy_key,omitempty"`
+	Healthy  bool     `json:"healthy"`
+	Reasons  []string `json:"reasons,omitempty"`
+}
+
+type DataInspectStreamEvent struct {
+	Type   string             `json:"type"`
+	Item   *DataInspectItem   `json:"item,omitempty"`
+	Result *DataInspectResult `json:"result,omitempty"`
 }
 
 func buildProxyKey(protocol, host string, port int, username, password string) string {
@@ -216,11 +252,90 @@ func (h *AccountHandler) ImportData(c *gin.Context) {
 	})
 }
 
+func (h *AccountHandler) InspectData(c *gin.Context) {
+	var req DataInspectRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	if err := validateDataHeader(req.Data); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	existingProxies, err := h.listAllProxies(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if h.accountTestService == nil {
+		response.Success(c, inspectDataPayload(req.Data, existingProxies, req.ValidProxyKeys, time.Now()))
+		return
+	}
+
+	response.Success(c, h.inspectDataPayloadWithLiveProbe(c.Request.Context(), req.Data, existingProxies, req.ValidProxyKeys, time.Now()))
+}
+
+func (h *AccountHandler) InspectDataStream(c *gin.Context) {
+	var req DataInspectRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	if err := validateDataHeader(req.Data); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	existingProxies, err := h.listAllProxies(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+
+	flusher, _ := c.Writer.(http.Flusher)
+	var writeMu sync.Mutex
+	writeEvent := func(event DataInspectStreamEvent) {
+		payload, marshalErr := json.Marshal(event)
+		if marshalErr != nil {
+			return
+		}
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", payload)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	onItem := func(item DataInspectItem) {
+		itemCopy := item
+		writeEvent(DataInspectStreamEvent{Type: "item", Item: &itemCopy})
+	}
+
+	var result DataInspectResult
+	if h.accountTestService == nil {
+		result = inspectDataPayloadWithItemCallback(req.Data, existingProxies, req.ValidProxyKeys, time.Now(), onItem)
+	} else {
+		result = h.inspectDataPayloadWithLiveProbeAndItemCallback(c.Request.Context(), req.Data, existingProxies, req.ValidProxyKeys, time.Now(), onItem)
+	}
+	writeEvent(DataInspectStreamEvent{Type: "done", Result: &result})
+}
+
 func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) (DataImportResult, error) {
 	skipDefaultGroupBind := true
 	if req.SkipDefaultGroupBind != nil {
 		skipDefaultGroupBind = *req.SkipDefaultGroupBind
 	}
+	groupIDs := singleDataImportGroupIDs(req.GroupIDs)
 
 	dataPayload := req.Data
 	result := DataImportResult{}
@@ -414,7 +529,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Concurrency:          item.Concurrency,
 			Priority:             item.Priority,
 			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
+			GroupIDs:             groupIDs,
 			ExpiresAt:            item.ExpiresAt,
 			AutoPauseOnExpired:   item.AutoPauseOnExpired,
 			SkipDefaultGroupBind: skipDefaultGroupBind,
@@ -455,6 +570,381 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	}
 
 	return result, nil
+}
+
+func singleDataImportGroupIDs(groupIDs []int64) []int64 {
+	for _, groupID := range groupIDs {
+		if groupID > 0 {
+			return []int64{groupID}
+		}
+	}
+	return nil
+}
+
+func inspectDataPayload(payload DataPayload, existingProxies []service.Proxy, validProxyKeysFromRequest []string, now time.Time) DataInspectResult {
+	return buildDataInspectResult(context.Background(), payload, existingProxies, validProxyKeysFromRequest, now, nil, nil)
+}
+
+func inspectDataPayloadWithItemCallback(payload DataPayload, existingProxies []service.Proxy, validProxyKeysFromRequest []string, now time.Time, onItem func(DataInspectItem)) DataInspectResult {
+	return buildDataInspectResult(context.Background(), payload, existingProxies, validProxyKeysFromRequest, now, nil, onItem)
+}
+
+func (h *AccountHandler) inspectDataPayloadWithLiveProbe(ctx context.Context, payload DataPayload, existingProxies []service.Proxy, validProxyKeysFromRequest []string, now time.Time) DataInspectResult {
+	return h.inspectDataPayloadWithLiveProbeAndItemCallback(ctx, payload, existingProxies, validProxyKeysFromRequest, now, nil)
+}
+
+func (h *AccountHandler) inspectDataPayloadWithLiveProbeAndItemCallback(ctx context.Context, payload DataPayload, existingProxies []service.Proxy, validProxyKeysFromRequest []string, now time.Time, onItem func(DataInspectItem)) DataInspectResult {
+	probe := func(ctx context.Context, item DataAccount, proxy *service.Proxy) []string {
+		if h == nil || h.accountTestService == nil {
+			return []string{"live probe failed: account test service is not configured"}
+		}
+		account := temporaryServiceAccount(item, proxy)
+		probeCtx, cancel := context.WithTimeout(ctx, dataInspectLiveProbeTimeout)
+		defer cancel()
+		result := h.accountTestService.ProbeTemporaryAccount(probeCtx, account, "")
+		if result.Healthy {
+			return nil
+		}
+		message := strings.TrimSpace(result.Message)
+		if message == "" {
+			message = "unknown error"
+		}
+		return []string{"live probe failed: " + message}
+	}
+	return buildDataInspectResult(ctx, payload, existingProxies, validProxyKeysFromRequest, now, probe, onItem)
+}
+
+type dataAccountProbeFunc func(context.Context, DataAccount, *service.Proxy) []string
+
+func buildDataInspectResult(ctx context.Context, payload DataPayload, existingProxies []service.Proxy, validProxyKeysFromRequest []string, now time.Time, probe dataAccountProbeFunc, onItem func(DataInspectItem)) DataInspectResult {
+	validProxyKeys := make(map[string]struct{}, len(existingProxies)+len(payload.Proxies))
+	proxiesByKey := make(map[string]service.Proxy, len(existingProxies)+len(payload.Proxies))
+	for i := range existingProxies {
+		p := existingProxies[i]
+		key := buildProxyKey(p.Protocol, p.Host, p.Port, p.Username, p.Password)
+		validProxyKeys[key] = struct{}{}
+		proxiesByKey[key] = p
+	}
+	carriedProxyKeys := make(map[string]struct{}, len(validProxyKeysFromRequest)+len(payload.Proxies))
+	for _, key := range validProxyKeysFromRequest {
+		key = strings.TrimSpace(key)
+		if key != "" {
+			validProxyKeys[key] = struct{}{}
+			carriedProxyKeys[key] = struct{}{}
+		}
+	}
+	for i := range payload.Proxies {
+		item := payload.Proxies[i]
+		key := item.ProxyKey
+		if key == "" {
+			key = buildProxyKey(item.Protocol, item.Host, item.Port, item.Username, item.Password)
+		}
+		if err := validateDataProxy(item); err == nil {
+			validProxyKeys[key] = struct{}{}
+			carriedProxyKeys[key] = struct{}{}
+			proxiesByKey[key] = dataProxyToServiceProxy(item)
+		}
+	}
+
+	result := DataInspectResult{
+		Total:   len(payload.Accounts),
+		Results: make([]DataInspectItem, len(payload.Accounts)),
+	}
+	if len(carriedProxyKeys) > 0 {
+		result.ValidProxyKeys = make([]string, 0, len(carriedProxyKeys))
+		for key := range carriedProxyKeys {
+			result.ValidProxyKeys = append(result.ValidProxyKeys, key)
+		}
+		sort.Strings(result.ValidProxyKeys)
+	}
+
+	probeIndexes := make([]int, 0, len(payload.Accounts))
+	for i := range payload.Accounts {
+		account := payload.Accounts[i]
+		reasons := inspectDataAccount(account, validProxyKeys, now)
+		item := DataInspectItem{
+			Index:    i,
+			Name:     account.Name,
+			Platform: account.Platform,
+			Type:     account.Type,
+			Healthy:  len(reasons) == 0,
+			Reasons:  reasons,
+		}
+		if account.ProxyKey != nil {
+			item.ProxyKey = *account.ProxyKey
+		}
+		result.Results[i] = item
+		if item.Healthy && probe != nil {
+			probeIndexes = append(probeIndexes, i)
+			continue
+		}
+		if onItem != nil {
+			onItem(item)
+		}
+	}
+
+	if probe != nil && len(probeIndexes) > 0 {
+		runDataInspectLiveProbes(ctx, payload.Accounts, proxiesByKey, result.Results, probeIndexes, probe, onItem)
+	}
+
+	for i := range result.Results {
+		if result.Results[i].Healthy {
+			result.Healthy++
+		} else {
+			result.Unhealthy++
+		}
+	}
+	return result
+}
+
+func runDataInspectLiveProbes(ctx context.Context, accounts []DataAccount, proxiesByKey map[string]service.Proxy, results []DataInspectItem, indexes []int, probe dataAccountProbeFunc, onItem func(DataInspectItem)) {
+	workerCount := dataInspectLiveProbeConcurrency
+	if workerCount > len(indexes) {
+		workerCount = len(indexes)
+	}
+	if workerCount < 1 {
+		workerCount = 1
+	}
+
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for worker := 0; worker < workerCount; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				if ctx.Err() != nil {
+					results[index].Healthy = false
+					results[index].Reasons = append(results[index].Reasons, ctx.Err().Error())
+					if onItem != nil {
+						onItem(results[index])
+					}
+					continue
+				}
+				var proxy *service.Proxy
+				if accounts[index].ProxyKey != nil {
+					key := strings.TrimSpace(*accounts[index].ProxyKey)
+					if key != "" {
+						if p, ok := proxiesByKey[key]; ok {
+							proxy = &p
+						} else {
+							results[index].Healthy = false
+							results[index].Reasons = append(results[index].Reasons, "proxy_key not available for live probe")
+							if onItem != nil {
+								onItem(results[index])
+							}
+							continue
+						}
+					}
+				}
+				if reasons := probe(ctx, accounts[index], proxy); len(reasons) > 0 {
+					results[index].Healthy = false
+					results[index].Reasons = append(results[index].Reasons, reasons...)
+				}
+				if onItem != nil {
+					onItem(results[index])
+				}
+			}
+		}()
+	}
+	for _, index := range indexes {
+		jobs <- index
+	}
+	close(jobs)
+	wg.Wait()
+}
+
+func dataProxyToServiceProxy(item DataProxy) service.Proxy {
+	status := normalizeProxyStatus(item.Status)
+	if status == "" {
+		status = service.StatusActive
+	}
+	var expiresAt *time.Time
+	if item.ExpiresAt != nil {
+		t := time.Unix(*item.ExpiresAt, 0).UTC()
+		expiresAt = &t
+	}
+	fallbackMode := item.FallbackMode
+	if fallbackMode == "" {
+		fallbackMode = service.FallbackModeNone
+	}
+	return service.Proxy{
+		Name:           defaultProxyName(item.Name),
+		Protocol:       strings.TrimSpace(item.Protocol),
+		Host:           strings.TrimSpace(item.Host),
+		Port:           item.Port,
+		Username:       strings.TrimSpace(item.Username),
+		Password:       strings.TrimSpace(item.Password),
+		Status:         status,
+		ExpiresAt:      expiresAt,
+		FallbackMode:   fallbackMode,
+		ExpiryWarnDays: item.ExpiryWarnDays,
+	}
+}
+
+func temporaryServiceAccount(item DataAccount, proxy *service.Proxy) *service.Account {
+	concurrency := item.Concurrency
+	if concurrency <= 0 {
+		concurrency = 1
+	}
+	var expiresAt *time.Time
+	if item.ExpiresAt != nil {
+		t := time.Unix(*item.ExpiresAt, 0).UTC()
+		expiresAt = &t
+	}
+	account := &service.Account{
+		Name:               strings.TrimSpace(item.Name),
+		Notes:              item.Notes,
+		Platform:           strings.TrimSpace(item.Platform),
+		Type:               strings.TrimSpace(item.Type),
+		Credentials:        item.Credentials,
+		Extra:              item.Extra,
+		Concurrency:        concurrency,
+		Priority:           item.Priority,
+		RateMultiplier:     item.RateMultiplier,
+		Status:             service.StatusActive,
+		ExpiresAt:          expiresAt,
+		AutoPauseOnExpired: false,
+		Schedulable:        true,
+	}
+	if item.AutoPauseOnExpired != nil {
+		account.AutoPauseOnExpired = *item.AutoPauseOnExpired
+	}
+	if proxy != nil {
+		account.Proxy = proxy
+		proxyID := proxy.ID
+		if proxyID == 0 {
+			proxyID = -1
+		}
+		account.ProxyID = &proxyID
+	}
+	return account
+}
+
+func inspectDataAccount(item DataAccount, validProxyKeys map[string]struct{}, now time.Time) []string {
+	var reasons []string
+	if strings.TrimSpace(item.Name) == "" {
+		reasons = append(reasons, "account name is required")
+	}
+	platform := strings.TrimSpace(item.Platform)
+	if platform == "" {
+		reasons = append(reasons, "account platform is required")
+	} else if !isSupportedImportPlatform(platform) {
+		reasons = append(reasons, fmt.Sprintf("account platform is invalid: %s", platform))
+	}
+	accountType := strings.TrimSpace(item.Type)
+	if accountType == "" {
+		reasons = append(reasons, "account type is required")
+	} else if !isSupportedImportAccountType(accountType) {
+		reasons = append(reasons, fmt.Sprintf("account type is invalid: %s", accountType))
+	}
+	if len(item.Credentials) == 0 {
+		reasons = append(reasons, "account credentials is required")
+	}
+	if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
+		reasons = append(reasons, "rate_multiplier must be >= 0")
+	}
+	if item.Concurrency < 0 {
+		reasons = append(reasons, "concurrency must be >= 0")
+	}
+	if item.Priority < 0 {
+		reasons = append(reasons, "priority must be >= 0")
+	}
+	if item.ExpiresAt != nil && *item.ExpiresAt > 0 && time.Unix(*item.ExpiresAt, 0).Before(now) {
+		reasons = append(reasons, "account expired")
+	}
+	if item.ProxyKey != nil && strings.TrimSpace(*item.ProxyKey) != "" {
+		if _, ok := validProxyKeys[*item.ProxyKey]; !ok {
+			reasons = append(reasons, "proxy_key not found")
+		}
+	}
+
+	reasons = append(reasons, inspectDataAccountCredentials(item)...)
+	return reasons
+}
+
+func isSupportedImportPlatform(platform string) bool {
+	switch platform {
+	case service.PlatformAnthropic, service.PlatformOpenAI, service.PlatformGemini, service.PlatformAntigravity:
+		return true
+	default:
+		return false
+	}
+}
+
+func isSupportedImportAccountType(accountType string) bool {
+	switch accountType {
+	case service.AccountTypeOAuth, service.AccountTypeSetupToken, service.AccountTypeAPIKey, service.AccountTypeUpstream, service.AccountTypeBedrock, service.AccountTypeServiceAccount:
+		return true
+	default:
+		return false
+	}
+}
+
+func inspectDataAccountCredentials(item DataAccount) []string {
+	switch item.Type {
+	case service.AccountTypeAPIKey:
+		if credentialString(item, "api_key") == "" {
+			return []string{"api_key is required"}
+		}
+	case service.AccountTypeUpstream:
+		var reasons []string
+		if credentialString(item, "base_url") == "" {
+			reasons = append(reasons, "base_url is required")
+		}
+		if credentialString(item, "api_key") == "" {
+			reasons = append(reasons, "api_key is required")
+		}
+		return reasons
+	case service.AccountTypeOAuth, service.AccountTypeSetupToken:
+		if credentialString(item, "access_token") == "" && credentialString(item, "refresh_token") == "" {
+			return []string{"access_token or refresh_token is required"}
+		}
+	case service.AccountTypeBedrock:
+		if credentialString(item, "auth_mode") == "apikey" {
+			if credentialString(item, "api_key") == "" {
+				return []string{"api_key is required"}
+			}
+			return nil
+		}
+		var reasons []string
+		if credentialString(item, "aws_access_key_id") == "" {
+			reasons = append(reasons, "aws_access_key_id is required")
+		}
+		if credentialString(item, "aws_secret_access_key") == "" {
+			reasons = append(reasons, "aws_secret_access_key is required")
+		}
+		return reasons
+	case service.AccountTypeServiceAccount:
+		if !credentialPresent(item, "service_account_json") && !credentialPresent(item, "service_account") {
+			return []string{"service_account_json or service_account is required"}
+		}
+	}
+	return nil
+}
+
+func credentialPresent(item DataAccount, key string) bool {
+	if credentialString(item, key) != "" {
+		return true
+	}
+	if item.Credentials == nil {
+		return false
+	}
+	value, ok := item.Credentials[key]
+	if !ok || value == nil {
+		return false
+	}
+	switch v := value.(type) {
+	case map[string]any:
+		return len(v) > 0
+	default:
+		return false
+	}
+}
+
+func credentialString(item DataAccount, key string) string {
+	account := service.Account{Credentials: item.Credentials}
+	return strings.TrimSpace(account.GetCredential(key))
 }
 
 func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, error) {
@@ -661,9 +1151,7 @@ func validateDataAccount(item DataAccount) error {
 	if len(item.Credentials) == 0 {
 		return errors.New("account credentials is required")
 	}
-	switch item.Type {
-	case service.AccountTypeOAuth, service.AccountTypeSetupToken, service.AccountTypeAPIKey, service.AccountTypeUpstream:
-	default:
+	if !isSupportedImportAccountType(strings.TrimSpace(item.Type)) {
 		return fmt.Errorf("account type is invalid: %s", item.Type)
 	}
 	if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
