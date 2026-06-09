@@ -3552,6 +3552,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	account *Account,
 	requestBody []byte,
 ) error {
+	MarkResponseCommitted(c)
 	body := s.readUpstreamErrorBody(resp)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
@@ -4359,6 +4360,8 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		}
 	}
 
+	MarkResponseCommitted(c)
+
 	// Return appropriate error response
 	var errType, errMsg string
 	var statusCode int
@@ -4497,6 +4500,8 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 		}
 	}
+
+	MarkResponseCommitted(c)
 
 	// Map status code to error type and write response
 	errType := "api_error"

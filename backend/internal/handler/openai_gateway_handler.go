@@ -1847,11 +1847,9 @@ func (h *OpenAIGatewayHandler) ensureForwardErrorResponse(c *gin.Context, stream
 	if c == nil || c.Writer == nil {
 		return false
 	}
-	// 旧实现在 Writer.Written 时直接 return false，导致 ping 已 flush 之后的
-	// 上游错误（http2 timeout、连接中断等）完全无法把错误传给客户端——
-	// HTTP 200 已锁死，TCP 直接 EOF，Codex CLI 报 "stream closed before response.completed"。
-	// 这里改成：Writer 已写过时强制走 streamStarted 分支，让
-	// handleStreamingAwareError 通过 SSE 发协议合规的 response.failed。
+	if service.IsResponseCommitted(c) {
+		return false
+	}
 	if c.Writer.Written() {
 		streamStarted = true
 	}

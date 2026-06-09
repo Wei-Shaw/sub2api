@@ -3657,6 +3657,7 @@ func (s *AntigravityGatewayService) WriteMappedClaudeError(c *gin.Context, accou
 }
 
 func (s *AntigravityGatewayService) writeMappedClaudeError(c *gin.Context, account *Account, upstreamStatus int, upstreamRequestID string, body []byte) error {
+	MarkResponseCommitted(c)
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 	logBody, maxBytes := s.getLogConfig()
