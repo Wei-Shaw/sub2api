@@ -107,7 +107,11 @@ func (r *apiKeyRepository) GetKeyAndOwnerID(ctx context.Context, id int64) (stri
 func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
 	m, err := r.activeQuery().
 		Where(apikey.KeyEQ(key)).
-		WithUser().
+		WithUser(func(q *dbent.UserQuery) {
+			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
+				gq.Select(group.FieldID)
+			})
+		}).
 		WithGroup().
 		Only(ctx)
 	if err != nil {
@@ -156,12 +160,16 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldLastActiveAt,
 				user.FieldRpmLimit,
 			)
+			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
+				gq.Select(group.FieldID)
+			})
 		}).
 		WithGroup(func(q *dbent.GroupQuery) {
 			q.Select(
 				group.FieldID,
 				group.FieldName,
 				group.FieldPlatform,
+				group.FieldIsExclusive,
 				group.FieldStatus,
 				group.FieldSubscriptionType,
 				group.FieldRateMultiplier,
@@ -313,6 +321,10 @@ func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error {
 	tombstoneKey := fmt.Sprintf("__deleted__%d__%d", id, time.Now().UnixNano())
 
+	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		return r.deleteWithAudit(ctx, existingTx.Client(), id, tombstoneKey)
+	}
+
 	tx, err := r.client.Tx(ctx)
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
 		return err
@@ -322,8 +334,18 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 		defer func() { _ = tx.Rollback() }()
 		exec = tx.Client()
 	}
-	// err == dbent.ErrTxStarted 时复用当前事务(exec = r.client)。
 
+	if err := r.deleteWithAudit(ctx, exec, id, tombstoneKey); err != nil {
+		return err
+	}
+
+	if tx != nil {
+		return tx.Commit()
+	}
+	return nil
+}
+
+func (r *apiKeyRepository) deleteWithAudit(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
 	// 1. 审计:数据源即 api_keys 当前行;WHERE deleted_at IS NULL 保证只对未删除行写一次。
 	if _, err := exec.ExecContext(ctx, `
 		INSERT INTO deleted_api_key_audits (key, api_key_id, user_id, key_name, deleted_at)
@@ -357,10 +379,6 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 			return nil
 		}
 		return service.ErrAPIKeyNotFound
-	}
-
-	if tx != nil {
-		return tx.Commit()
 	}
 	return nil
 }
@@ -706,6 +724,14 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
+		if allowed := m.Edges.User.Edges.AllowedGroups; len(allowed) > 0 {
+			out.User.AllowedGroups = make([]int64, 0, len(allowed))
+			for _, g := range allowed {
+				if g != nil {
+					out.User.AllowedGroups = append(out.User.AllowedGroups, g.ID)
+				}
+			}
+		}
 	}
 	if m.Edges.Group != nil {
 		out.Group = groupEntityToService(m.Edges.Group)

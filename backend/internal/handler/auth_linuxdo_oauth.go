@@ -322,6 +322,47 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 		return
 	}
+	emailVerificationRequired := h != nil && h.authService != nil && h.authService.IsEmailVerifyEnabled(c.Request.Context())
+	forceEmailOnSignup := h.isForceEmailOnThirdPartySignup(c.Request.Context())
+	if compatEmailUser == nil && !emailVerificationRequired && !forceEmailOnSignup {
+		if err := h.ensureBackendModeAllowsNewUserLogin(c.Request.Context()); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+			return
+		}
+		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, "", "", "linuxdo")
+		if err == nil {
+			if err := applyPendingOAuthBinding(
+				c.Request.Context(),
+				h.entClient(),
+				h.authService,
+				h.userService,
+				&dbent.PendingAuthSession{
+					Intent:                 oauthIntentLogin,
+					ProviderType:           identityKey.ProviderType,
+					ProviderKey:            identityKey.ProviderKey,
+					ProviderSubject:        identityKey.ProviderSubject,
+					ResolvedEmail:          email,
+					UpstreamIdentityClaims: upstreamClaims,
+				},
+				nil,
+				&user.ID,
+				true,
+				false,
+			); err != nil {
+				redirectOAuthError(c, frontendCallback, "session_error", "failed to bind oauth identity", "")
+				return
+			}
+			h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+			clearOAuthPendingSessionCookie(c, secureCookie)
+			clearOAuthPendingBrowserCookie(c, secureCookie)
+			redirectOAuthTokenPair(c, frontendCallback, tokenPair, redirectTo)
+			return
+		}
+		if !errors.Is(err, service.ErrOAuthInvitationRequired) {
+			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+			return
+		}
+	}
 	if err := h.createLinuxDoOAuthChoicePendingSession(
 		c,
 		identityKey,
@@ -332,7 +373,7 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 		upstreamClaims,
 		compatEmail,
 		compatEmailUser,
-		h.isForceEmailOnThirdPartySignup(c.Request.Context()),
+		forceEmailOnSignup,
 	); err != nil {
 		redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
 		return
@@ -740,6 +781,35 @@ func redirectOAuthError(c *gin.Context, frontendCallback string, code string, me
 	}
 	if strings.TrimSpace(description) != "" {
 		fragment.Set("error_description", truncateFragmentValue(description))
+	}
+	redirectWithFragment(c, frontendCallback, fragment)
+}
+
+func redirectOAuthTokenPair(c *gin.Context, frontendCallback string, tokenPair *service.TokenPair, redirectTo string) {
+	fragment := url.Values{}
+	if tokenPair != nil {
+		fragment.Set("access_token", truncateFragmentValue(tokenPair.AccessToken))
+		fragment.Set("refresh_token", truncateFragmentValue(tokenPair.RefreshToken))
+		fragment.Set("expires_in", strconv.Itoa(tokenPair.ExpiresIn))
+		fragment.Set("token_type", "Bearer")
+	}
+	if redirect := strings.TrimSpace(redirectTo); redirect != "" {
+		originalRedirect := redirect
+		for range 2 {
+			decoded, err := url.QueryUnescape(redirect)
+			if err != nil || decoded == redirect {
+				break
+			}
+			redirect = decoded
+		}
+		if redirect != originalRedirect {
+			if sanitized := sanitizeFrontendRedirectPath(redirect); sanitized != "" {
+				redirect = sanitized
+			} else {
+				redirect = originalRedirect
+			}
+		}
+		fragment.Set("redirect", truncateFragmentValue(redirect))
 	}
 	redirectWithFragment(c, frontendCallback, fragment)
 }

@@ -818,13 +818,16 @@ func TestGatewayService_AnthropicOAuth_ForwardPreservesBillingHeaderSystemBlock(
 			require.True(t, system.Exists())
 			require.True(t, system.IsArray(), "system should be an array")
 			arr := system.Array()
-			require.Len(t, arr, 2, "system array should have billing block + cc prompt block")
+			require.Len(t, arr, 3, "system array should have billing block + cc prompt block + expansion block")
 
 			require.Contains(t, arr[0].Get("text").String(), "x-anthropic-billing-header:")
 			require.Contains(t, arr[0].Get("text").String(), "cc_version=")
 
 			require.Equal(t, claudeCodeSystemPrompt, arr[1].Get("text").String())
-			require.Equal(t, "ephemeral", arr[1].Get("cache_control.type").String())
+			require.False(t, arr[1].Get("cache_control").Exists(), "身份前缀 block 不应带 cache_control")
+
+			require.Equal(t, claudeCodeSystemPromptExpansion, arr[2].Get("text").String())
+			require.Equal(t, "ephemeral", arr[2].Get("cache_control.type").String())
 
 			// 原始 system prompt 应迁移至 messages 中
 			messages := gjson.GetBytes(upstream.lastBody, "messages")
