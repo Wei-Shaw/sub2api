@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -127,9 +128,16 @@ func openAIWSPassthroughPolicyModelFromSessionFrame(account *Account, payload []
 type openAIWSPassthroughUsageMeta struct {
 	serviceTier     atomic.Pointer[string]
 	reasoningEffort atomic.Pointer[string]
+	imageBilling    atomic.Pointer[openAIWSPassthroughImageBillingMeta]
 
 	// 仅在 client->upstream filter goroutine 中读写；Load 侧通过上方原子指针同步。
 	sessionRequestModel string
+}
+
+type openAIWSPassthroughImageBillingMeta struct {
+	BillingModel string
+	SizeTier     string
+	InputSize    string
 }
 
 func newOpenAIWSPassthroughUsageMeta(initialRequestModel string, firstFrame []byte) *openAIWSPassthroughUsageMeta {
@@ -142,12 +150,13 @@ func newOpenAIWSPassthroughUsageMeta(initialRequestModel string, firstFrame []by
 	return meta
 }
 
-func (m *openAIWSPassthroughUsageMeta) initFromFirstFrame(policyOutput []byte) {
+func (m *openAIWSPassthroughUsageMeta) initFromFirstFrame(policyOutput []byte, apiKey *APIKey) error {
 	if m == nil {
-		return
+		return nil
 	}
 	m.serviceTier.Store(extractOpenAIServiceTierFromBody(policyOutput))
 	m.reasoningEffort.Store(extractOpenAIReasoningEffortFromBody(policyOutput, m.sessionRequestModel))
+	return m.updateImageBillingFromResponseCreate(policyOutput, m.sessionRequestModel, apiKey)
 }
 
 func (m *openAIWSPassthroughUsageMeta) updateSessionRequestModel(payload []byte) {
@@ -169,12 +178,58 @@ func (m *openAIWSPassthroughUsageMeta) requestModelForFrame(payload []byte) stri
 	return m.sessionRequestModel
 }
 
-func (m *openAIWSPassthroughUsageMeta) updateFromResponseCreate(policyOutput []byte, requestModelForFrame string) {
+func (m *openAIWSPassthroughUsageMeta) updateFromResponseCreate(policyOutput []byte, requestModelForFrame string, apiKey *APIKey) error {
 	if m == nil {
-		return
+		return nil
 	}
 	m.serviceTier.Store(extractOpenAIServiceTierFromBody(policyOutput))
 	m.reasoningEffort.Store(extractOpenAIReasoningEffortFromBody(policyOutput, requestModelForFrame))
+	return m.updateImageBillingFromResponseCreate(policyOutput, requestModelForFrame, apiKey)
+}
+
+func (m *openAIWSPassthroughUsageMeta) updateImageBillingFromResponseCreate(policyOutput []byte, requestModelForFrame string, apiKey *APIKey) error {
+	if m == nil {
+		return nil
+	}
+	requestModelForFrame = strings.TrimSpace(requestModelForFrame)
+	if requestModelForFrame == "" {
+		requestModelForFrame = m.sessionRequestModel
+	}
+	if !IsImageGenerationIntent(openAIResponsesEndpoint, requestModelForFrame, policyOutput) {
+		m.imageBilling.Store(nil)
+		return nil
+	}
+	if !GroupAllowsImageGeneration(apiKeyGroup(apiKey)) {
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, ImageGenerationPermissionMessage(), nil)
+	}
+	imageCfg, err := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(policyOutput, requestModelForFrame)
+	if err != nil {
+		return err
+	}
+	m.imageBilling.Store(&openAIWSPassthroughImageBillingMeta{
+		BillingModel: imageCfg.Model,
+		SizeTier:     imageCfg.SizeTier,
+		InputSize:    imageCfg.InputSize,
+	})
+	return nil
+}
+
+func applyOpenAIWSPassthroughImageBillingResult(result *OpenAIForwardResult, counter *openAIImageOutputCounter, meta *openAIWSPassthroughImageBillingMeta) {
+	if result == nil || counter == nil {
+		return
+	}
+	imageCount := counter.Count()
+	if imageCount <= 0 {
+		return
+	}
+	result.ImageCount = imageCount
+	result.ImageOutputSizes = counter.Sizes()
+	if meta == nil {
+		return
+	}
+	result.BillingModel = strings.TrimSpace(meta.BillingModel)
+	result.ImageSize = strings.TrimSpace(meta.SizeTier)
+	result.ImageInputSize = strings.TrimSpace(meta.InputSize)
 }
 
 func openAIWSPassthroughRequestModelForFrame(payload []byte) string {
@@ -189,6 +244,49 @@ func openAIWSPassthroughRequestModelFromSessionFrame(payload []byte) string {
 		return ""
 	}
 	return strings.TrimSpace(gjson.GetBytes(payload, "session.model").String())
+}
+
+func (s *OpenAIGatewayService) applyCodexImageGenerationBridgeToWSResponseCreate(
+	ctx context.Context,
+	account *Account,
+	apiKey *APIKey,
+	frame []byte,
+	isCodexCLI bool,
+) ([]byte, bool, error) {
+	if len(frame) == 0 || !gjson.ValidBytes(frame) {
+		return frame, false, nil
+	}
+	if strings.TrimSpace(gjson.GetBytes(frame, "type").String()) != "response.create" {
+		return frame, false, nil
+	}
+	if !isCodexCLI || !GroupAllowsImageGeneration(apiKeyGroup(apiKey)) || !s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey) {
+		return frame, false, nil
+	}
+
+	payloadMap := make(map[string]any)
+	if err := json.Unmarshal(frame, &payloadMap); err != nil {
+		return frame, false, err
+	}
+	modified := false
+	if ensureOpenAIResponsesImageGenerationTool(payloadMap) {
+		modified = true
+		logOpenAIWSModeInfo("ingress_ws_passthrough_codex_image_tool_injected account_id=%d", account.ID)
+	}
+	if normalizeOpenAIResponsesImageGenerationTools(payloadMap) {
+		modified = true
+	}
+	if applyCodexImageGenerationBridgeInstructions(payloadMap) {
+		modified = true
+		logOpenAIWSModeInfo("ingress_ws_passthrough_codex_image_bridge_instructions_added account_id=%d", account.ID)
+	}
+	if !modified {
+		return frame, false, nil
+	}
+	rebuilt, err := json.Marshal(payloadMap)
+	if err != nil {
+		return frame, false, err
+	}
+	return rebuilt, true, nil
 }
 
 const openaiWSV2PassthroughModeFields = "ws_mode=passthrough ws_router=v2"
@@ -246,6 +344,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if strings.TrimSpace(token) == "" {
 		return errors.New("token is empty")
 	}
+	apiKey := getAPIKeyFromContext(c)
+	isCodexCLI := false
+	if c != nil {
+		isCodexCLI = openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
+	}
+	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+		isCodexCLI = true
+	}
 	requestModel := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String())
 	requestPreviousResponseID := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "previous_response_id").String())
 	logOpenAIWSV2Passthrough(
@@ -257,10 +363,10 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		len(firstClientMessage),
 	)
 
-	// Apply OpenAI Fast Policy on the first response.create frame. Subsequent
-	// frames are filtered via a wrapping FrameConn below so every client→
-	// upstream frame goes through the same policy evaluator/normalize/scope as
-	// HTTP entrypoints.
+	// Apply the Codex image bridge and OpenAI Fast Policy on the first
+	// response.create frame. Subsequent frames are filtered via a wrapping
+	// FrameConn below so every client→upstream frame goes through the same
+	// bridge/policy path as HTTP entrypoints.
 	//
 	// We capture the session-level model from the first frame here so the
 	// per-frame filter (below) can fall back to it when a follow-up frame
@@ -269,6 +375,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	// negotiated at session.update time. Without this fallback, an empty
 	// model would miss any admin-configured model whitelist and be silently
 	// passed through, defeating that policy on every frame after the first.
+	bridgedFirst, _, bridgeErr := s.applyCodexImageGenerationBridgeToWSResponseCreate(ctx, account, apiKey, firstClientMessage, isCodexCLI)
+	if bridgeErr != nil {
+		return fmt.Errorf("apply codex image generation bridge on first ws frame: %w", bridgeErr)
+	}
+	firstClientMessage = bridgedFirst
 	capturedSessionModel := openAIWSPassthroughPolicyModelForFrame(account, firstClientMessage)
 	initialRequestModel := ""
 	if hooks != nil {
@@ -311,7 +422,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	// 因此使用 atomic.Pointer[string] 在 filter（runClientToUpstream
 	// goroutine）和 OnTurnComplete / final result（runUpstreamToClient
 	// goroutine）之间同步当前 turn 的 usage metadata。
-	usageMeta.initFromFirstFrame(firstClientMessage)
+	if err := usageMeta.initFromFirstFrame(firstClientMessage, apiKey); err != nil {
+		return err
+	}
 	promptCacheKey := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "prompt_cache_key").String())
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
@@ -332,13 +445,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		account.ProxyID != nil && account.Proxy != nil,
 	)
 
-	isCodexCLI := false
-	if c != nil {
-		isCodexCLI = openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
-	}
-	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
-		isCodexCLI = true
-	}
 	turnState := ""
 	turnMetadata := ""
 	if c != nil {
@@ -401,6 +507,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if msgType != coderws.MessageText {
 				return payload, nil, nil
 			}
+			bridgedPayload, _, bridgeErr := s.applyCodexImageGenerationBridgeToWSResponseCreate(ctx, account, apiKey, payload, isCodexCLI)
+			if bridgeErr != nil {
+				return payload, nil, bridgeErr
+			}
+			payload = bridgedPayload
 			if strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" && hooks != nil && hooks.BeforeRequest != nil {
 				turnNo := int(completedTurns.Load()) + 1
 				if turnNo < 2 {
@@ -452,7 +563,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil &&
 				strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
-				usageMeta.updateFromResponseCreate(out, requestModelForThisFrame)
+				if err := usageMeta.updateFromResponseCreate(out, requestModelForThisFrame, apiKey); err != nil {
+					return out, nil, err
+				}
 			}
 			return out, blocked, policyErr
 		},
@@ -498,6 +611,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		}
 	}
 
+	turnImageCounter := newOpenAIImageOutputCounter()
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
 		ClientConn:         policyClientConn,
@@ -537,6 +651,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					Duration:        turn.Duration,
 					FirstTokenMs:    turn.FirstTokenMs,
 				}
+				applyOpenAIWSPassthroughImageBillingResult(turnResult, turnImageCounter, usageMeta.imageBilling.Load())
 				logOpenAIWSV2Passthrough(
 					"relay_turn_completed account_id=%d turn=%d request_id=%s terminal_event=%s duration_ms=%d first_token_ms=%d input_tokens=%d output_tokens=%d cache_read_tokens=%d",
 					account.ID,
@@ -552,8 +667,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if hooks != nil && hooks.AfterTurn != nil {
 					hooks.AfterTurn(turnNo, turnResult, nil)
 				}
+				turnImageCounter = newOpenAIImageOutputCounter()
 			},
 			BeforeWriteClient: func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error {
+				if msgType == coderws.MessageText {
+					turnImageCounter.AddSSEData(payload)
+				}
 				if msgType != coderws.MessageText || wroteDownstream {
 					return nil
 				}
@@ -612,6 +731,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		Duration:        relayResult.Duration,
 		FirstTokenMs:    relayResult.FirstTokenMs,
 	}
+	applyOpenAIWSPassthroughImageBillingResult(result, turnImageCounter, usageMeta.imageBilling.Load())
 
 	turnCount := int(completedTurns.Load())
 	if relayExit == nil {
