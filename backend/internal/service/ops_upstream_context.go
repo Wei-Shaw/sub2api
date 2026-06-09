@@ -51,7 +51,11 @@ func MarkResponseCommitted(c *gin.Context) { c.Set(ResponseCommittedKey, true) }
 
 func IsResponseCommitted(c *gin.Context) bool {
 	v, ok := c.Get(ResponseCommittedKey)
-	return ok && v.(bool)
+	if !ok {
+		return false
+	}
+	b, _ := v.(bool)
+	return b
 }
 
 func SetOpsLatencyMs(c *gin.Context, key string, value int64) {

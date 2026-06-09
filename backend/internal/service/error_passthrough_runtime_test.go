@@ -298,7 +298,8 @@ func TestHandleErrorResponse_PassthroughRuleSetsCommitted(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
-	errField := payload["error"].(map[string]any)
+	errField, ok := payload["error"].(map[string]any)
+	require.True(t, ok)
 	assert.Equal(t, "参数错误", errField["message"])
 }
 
