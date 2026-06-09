@@ -770,18 +770,19 @@ type GatewayConfig struct {
 	// MaxLineSize: 上游 SSE 单行最大字节数（0使用默认值）
 	MaxLineSize int `mapstructure:"max_line_size"`
 
-	// AntigravityRefusalRetry: 对 antigravity(Gemini-backed Claude) 静默拒绝
-	// (blocking finishReason 且无内容) 在切换账号后透明重试。默认关闭。
-	AntigravityRefusalRetryEnabled bool `mapstructure:"antigravity_refusal_retry_enabled"`
-	// AntigravityRefusalFinishReasons: 视为拒绝的 Gemini finishReason 列表
+	// RefusalRetryEnabled: 对上游静默拒绝（native Anthropic stop_reason=refusal
+	// 或 antigravity/Gemini blocking finishReason 且无内容）在切换账号后透明
+	// 重试。覆盖 native Anthropic 与 antigravity 两条流式路径。默认关闭。
+	RefusalRetryEnabled bool `mapstructure:"refusal_retry_enabled"`
+	// RefusalFinishReasons: antigravity(Gemini) 路径下视为拒绝的 finishReason 列表
 	// (留空使用默认 SAFETY/RECITATION/PROHIBITED_CONTENT/BLOCKLIST/SPII)
-	AntigravityRefusalFinishReasons []string `mapstructure:"antigravity_refusal_finish_reasons"`
-	// AntigravityRefusalHoldTimeoutMs: 缓冲保持上限(毫秒)，超时则释放(默认 15000)
-	AntigravityRefusalHoldTimeoutMs int `mapstructure:"antigravity_refusal_hold_timeout_ms"`
-	// AntigravityRefusalHoldMaxBytes: 缓冲字节上限，超过则释放(默认 65536)
-	AntigravityRefusalHoldMaxBytes int `mapstructure:"antigravity_refusal_hold_max_bytes"`
-	// AntigravityRefusalMaxRetries: 拒绝触发的账号切换次数上限(默认 2)
-	AntigravityRefusalMaxRetries int `mapstructure:"antigravity_refusal_max_retries"`
+	RefusalFinishReasons []string `mapstructure:"refusal_finish_reasons"`
+	// RefusalHoldTimeoutMs: 缓冲保持上限(毫秒)，超时则释放(默认 15000)
+	RefusalHoldTimeoutMs int `mapstructure:"refusal_hold_timeout_ms"`
+	// RefusalHoldMaxBytes: 缓冲字节上限，超过则释放(默认 65536)
+	RefusalHoldMaxBytes int `mapstructure:"refusal_hold_max_bytes"`
+	// RefusalMaxRetries: 拒绝触发的账号切换次数上限(默认 2，0 表示不限制)
+	RefusalMaxRetries int `mapstructure:"refusal_max_retries"`
 
 	// 是否记录上游错误响应体摘要（避免输出请求内容）
 	LogUpstreamErrorBody bool `mapstructure:"log_upstream_error_body"`

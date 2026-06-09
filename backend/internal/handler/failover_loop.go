@@ -66,18 +66,16 @@ func NewFailoverState(maxSwitches int, hasBoundSession bool) *FailoverState {
 	}
 }
 
-// WithRefusalCap sets the antigravity silent-refusal account-switch cap.
+// WithRefusalCap sets the silent-refusal account-switch cap.
 func (s *FailoverState) WithRefusalCap(maxRefusalSwitches int) *FailoverState {
 	s.MaxRefusalSwitches = maxRefusalSwitches
 	return s
 }
 
-// isSilentRefusal reports whether the failover was triggered by our antigravity
-// silent-refusal detector (distinct from generic empty-stream/5xx failover).
+// isSilentRefusal reports whether the failover was triggered by an upstream
+// silent refusal (distinct from generic empty-stream/5xx failover).
 func isSilentRefusal(failoverErr *service.UpstreamFailoverError) bool {
-	return failoverErr != nil && !failoverErr.RetryableOnSameAccount &&
-		failoverErr.StatusCode == http.StatusBadGateway &&
-		string(failoverErr.ResponseBody) == `{"error":"antigravity_silent_refusal"}`
+	return failoverErr != nil && failoverErr.SilentRefusal
 }
 
 // HandleFailoverError 处理 UpstreamFailoverError，返回下一步动作。

@@ -583,6 +583,7 @@ type UpstreamFailoverError struct {
 	ResponseHeaders        http.Header // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
 	ForceCacheBilling      bool        // Antigravity 粘性会话切换时设为 true
 	RetryableOnSameAccount bool        // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
+	SilentRefusal          bool        // 上游静默拒绝（Anthropic stop_reason=refusal 或 Gemini SAFETY 等）且未产生任何内容，应切换账号重试
 }
 
 func (e *UpstreamFailoverError) Error() string {
@@ -6081,10 +6082,52 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	}
 	inPartialEvent := false
 
+	// Refusal-retry buffered hold (Anthropic API-key passthrough path). Holds
+	// raw SSE lines until meaningful content / byte cap / time bound, so a
+	// silent refusal (stop_reason=refusal, no content) can fail over before any
+	// byte reaches the client.
+	refusalDetector := newAnthropicRefusalDetector(s.refusalRetryEnabled())
+	clientOutputStarted := !refusalDetector.Enabled()
+	var pendingRefusalLines []string
+	pendingRefusalBytes := 0
+	refusalHoldDeadline := time.Now().Add(refusalHoldTimeout(s.cfg))
+	refusalHoldMax := refusalHoldMaxBytes(s.cfg)
+
+	flushRefusalHold := func() bool {
+		clientOutputStarted = true
+		for _, held := range pendingRefusalLines {
+			restored := string(reverseToolNamesIfPresent(c, []byte(held)))
+			if _, err := io.WriteString(w, restored); err != nil {
+				return false
+			}
+			if _, err := io.WriteString(w, "\n"); err != nil {
+				return false
+			}
+		}
+		pendingRefusalLines = nil
+		pendingRefusalBytes = 0
+		flusher.Flush()
+		return true
+	}
+
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if !clientDisconnected && !clientOutputStarted && refusalDetector.IsSilentRefusal() {
+					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] silent refusal (stop_reason=refusal, no content), triggering account failover (account=%d)", account.ID)
+					return nil, &UpstreamFailoverError{
+						StatusCode:             http.StatusBadGateway,
+						ResponseBody:           []byte(`{"error":"upstream_silent_refusal"}`),
+						RetryableOnSameAccount: false,
+						SilentRefusal:          true,
+					}
+				}
+				if !clientDisconnected && !clientOutputStarted {
+					if !flushRefusalHold() {
+						clientDisconnected = true
+					}
+				}
 				if !clientDisconnected {
 					// 兜底补刷，确保最后一个未以空行结尾的事件也能及时送达客户端。
 					flusher.Flush()
@@ -6128,10 +6171,42 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					firstTokenMs = &ms
 				}
 				s.parseSSEUsagePassthrough(data, usage)
+				if refusalDetector.Enabled() && !clientOutputStarted && trimmed != "" && trimmed != "[DONE]" {
+					var event map[string]any
+					if err := json.Unmarshal([]byte(trimmed), &event); err == nil {
+						eventType, _ := event["type"].(string)
+						refusalDetector.ObserveEvent(eventType, event)
+					}
+				}
 			} else {
 				trimmed := strings.TrimSpace(line)
 				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
 					sawTerminalEvent = true
+				}
+			}
+
+			if !clientDisconnected {
+				// While the refusal hold is active, buffer raw lines instead of
+				// writing, so a silent refusal can still fail over (zero bytes
+				// written). Release on meaningful content, byte cap, or time bound.
+				if !clientOutputStarted {
+					release := refusalDetector.HasMeaningfulContent() ||
+						pendingRefusalBytes+len(line) > refusalHoldMax ||
+						time.Now().After(refusalHoldDeadline)
+					if !release {
+						pendingRefusalLines = append(pendingRefusalLines, line)
+						pendingRefusalBytes += len(line)
+						if line == "" {
+							inPartialEvent = false
+						} else {
+							inPartialEvent = true
+						}
+						continue
+					}
+					if !flushRefusalHold() {
+						clientDisconnected = true
+						logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected flushing refusal hold: account=%d", account.ID)
+					}
 				}
 			}
 
@@ -6174,6 +6249,10 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			}
 			if inPartialEvent {
 				resetKeepaliveTimer()
+				continue
+			}
+			// 拒绝缓冲保持期间不得写入任何字节（failover 要求零字节），抑制 ping。
+			if !clientOutputStarted {
 				continue
 			}
 			if time.Since(lastDataAt) < keepaliveInterval {
@@ -8348,6 +8427,18 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 	pendingEventLines := make([]string, 0, 4)
 
+	// Refusal-retry buffered hold (native Anthropic path). While armed and no
+	// meaningful content has been written, hold output blocks so a silent
+	// refusal (stop_reason=refusal, no content) can trigger account failover
+	// before any byte reaches the client. Released on first meaningful content,
+	// a byte cap, or a wall-clock bound.
+	refusalDetector := newAnthropicRefusalDetector(s.refusalRetryEnabled())
+	clientOutputStarted := !refusalDetector.Enabled()
+	var pendingRefusalBlocks []string
+	pendingRefusalBytes := 0
+	refusalHoldDeadline := time.Now().Add(refusalHoldTimeout(s.cfg))
+	refusalHoldMax := refusalHoldMaxBytes(s.cfg)
+
 	processSSEEvent := func(lines []string) ([]string, string, *sseUsagePatch, error) {
 		if len(lines) == 0 {
 			return nil, "", nil, nil
@@ -8399,6 +8490,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		if eventName == "" {
 			eventName = eventType
 		}
+		refusalDetector.ObserveEvent(eventType, event)
 		eventChanged := false
 
 		if useNoopDeltaKeepalive {
@@ -8508,10 +8600,69 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		return []string{block}, string(newData), usagePatch, nil
 	}
 
+	// writeBlock either writes a transformed SSE block to the client or, while
+	// the refusal hold is active, buffers it. Returns false if the client
+	// disconnected mid-write. The hold releases on meaningful content, a byte
+	// cap, or a wall-clock bound (see refusalDetector / refusalHold*).
+	writeBlock := func(block string) bool {
+		if !clientOutputStarted {
+			release := !refusalDetector.IsSilentRefusal() &&
+				(refusalDetector.HasMeaningfulContent() ||
+					pendingRefusalBytes+len(block) > refusalHoldMax ||
+					time.Now().After(refusalHoldDeadline))
+			if !release {
+				pendingRefusalBlocks = append(pendingRefusalBlocks, block)
+				pendingRefusalBytes += len(block)
+				return true
+			}
+			clientOutputStarted = true
+			for _, held := range pendingRefusalBlocks {
+				restored := reverseToolNamesIfPresent(c, []byte(held))
+				if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
+					return false
+				}
+			}
+			pendingRefusalBlocks = nil
+			pendingRefusalBytes = 0
+		}
+		restored := reverseToolNamesIfPresent(c, []byte(block))
+		if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				// 上游静默拒绝（stop_reason=refusal 且无内容），且尚未向客户端写入
+				// 任何字节：切换账号重试（不在同账号重试，绕过临时封禁）。
+				if !clientOutputStarted && !clientDisconnected && refusalDetector.IsSilentRefusal() {
+					logger.LegacyPrintf("service.gateway", "[anthropic-stream] silent refusal (stop_reason=refusal, no content), triggering account failover (account=%d)", account.ID)
+					return nil, &UpstreamFailoverError{
+						StatusCode:             http.StatusBadGateway,
+						ResponseBody:           []byte(`{"error":"upstream_silent_refusal"}`),
+						RetryableOnSameAccount: false,
+						SilentRefusal:          true,
+					}
+				}
+				// 正常结束：冲刷可能仍被缓冲的事件（非拒绝场景）。
+				if !clientOutputStarted {
+					clientOutputStarted = true
+					for _, held := range pendingRefusalBlocks {
+						restored := reverseToolNamesIfPresent(c, []byte(held))
+						if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
+							clientDisconnected = true
+							break
+						}
+					}
+					if !clientDisconnected {
+						flusher.Flush()
+					}
+					pendingRefusalBlocks = nil
+				}
 				// 上游完成，返回结果
 				if !sawTerminalEvent {
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
@@ -8580,13 +8731,11 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 				for _, block := range outputBlocks {
 					if !clientDisconnected {
-						restored := reverseToolNamesIfPresent(c, []byte(block))
-						if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
+						if !writeBlock(block) {
 							clientDisconnected = true
 							logger.LegacyPrintf("service.gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 							break
 						}
-						flusher.Flush()
 						lastDataAt = time.Now()
 						resetKeepaliveTimer()
 					}
@@ -8623,6 +8772,11 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 		case <-keepaliveCh:
 			if clientDisconnected {
+				continue
+			}
+			// 拒绝缓冲保持期间不得写入任何字节（failover 要求零字节），抑制 ping；
+			// 保持有 wall-clock 上限，会在空闲超时前自动释放。
+			if !clientOutputStarted {
 				continue
 			}
 			if time.Since(lastDataAt) < keepaliveInterval {

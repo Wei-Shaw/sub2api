@@ -16,8 +16,9 @@ func (noopTempUnscheduler) TempUnscheduleRetryableError(context.Context, int64, 
 func refusalErr() *service.UpstreamFailoverError {
 	return &service.UpstreamFailoverError{
 		StatusCode:             http.StatusBadGateway,
-		ResponseBody:           []byte(`{"error":"antigravity_silent_refusal"}`),
+		ResponseBody:           []byte(`{"error":"upstream_silent_refusal"}`),
 		RetryableOnSameAccount: false,
+		SilentRefusal:          true,
 	}
 }
 

@@ -3973,23 +3973,15 @@ func (s *AntigravityGatewayService) newAntigravityRefusalDetector() *antigravity
 		return newAntigravityRefusalDetector(false, nil)
 	}
 	g := s.settingService.cfg.Gateway
-	return newAntigravityRefusalDetector(g.AntigravityRefusalRetryEnabled, g.AntigravityRefusalFinishReasons)
+	return newAntigravityRefusalDetector(g.RefusalRetryEnabled, g.RefusalFinishReasons)
 }
 
 func (s *AntigravityGatewayService) antigravityRefusalHoldTimeout() time.Duration {
-	ms := 15000
-	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.AntigravityRefusalHoldTimeoutMs > 0 {
-		ms = s.settingService.cfg.Gateway.AntigravityRefusalHoldTimeoutMs
-	}
-	return time.Duration(ms) * time.Millisecond
+	return refusalHoldTimeout(s.settingService.cfg)
 }
 
 func (s *AntigravityGatewayService) antigravityRefusalHoldMaxBytes() int {
-	n := 64 * 1024
-	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.AntigravityRefusalHoldMaxBytes > 0 {
-		n = s.settingService.cfg.Gateway.AntigravityRefusalHoldMaxBytes
-	}
-	return n
+	return refusalHoldMaxBytes(s.settingService.cfg)
 }
 
 func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
@@ -4176,8 +4168,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 					logger.LegacyPrintf("service.antigravity_gateway", "[antigravity-Claude-Stream] silent refusal (finishReason=%s, no content), triggering account failover", processor.LastFinishReason())
 					return nil, &UpstreamFailoverError{
 						StatusCode:             http.StatusBadGateway,
-						ResponseBody:           []byte(`{"error":"antigravity_silent_refusal"}`),
+						ResponseBody:           []byte(`{"error":"upstream_silent_refusal"}`),
 						RetryableOnSameAccount: false,
+						SilentRefusal:          true,
 					}
 				}
 				if len(finalEvents) > 0 {
