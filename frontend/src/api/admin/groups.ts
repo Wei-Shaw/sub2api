@@ -58,6 +58,17 @@ export async function getAll(platform?: GroupPlatform): Promise<AdminGroup[]> {
 REDACTED
 
 /**
+ * Get ALL groups including disabled ones — used by the API Key group filter so
+ * that admins can filter users whose keys are still bound to a now-disabled group.
+ */
+export async function getAllIncludingInactive(): Promise<AdminGroup[]> {
+  const { data REDACTED = await apiClient.get<AdminGroup[]>('/admin/groups/all', {
+    params: { include_inactive: true REDACTED
+  REDACTED)
+  return data
+REDACTED
+
+/**
  * Get active groups by platform
  * @param platform - Platform to filter by
  * @returns List of groups for the specified platform
@@ -322,6 +333,7 @@ export const groupsAPI = {
   list,
   getAll,
   getByPlatform,
+  getAllIncludingInactive,
   getById,
   getModelsListCandidates,
   create,
