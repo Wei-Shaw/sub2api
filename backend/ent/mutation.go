@@ -34942,6 +34942,7 @@ type UsageLogMutation struct {
 	image_size_source           *string
 	image_size_breakdown        *map[string]int
 	cache_ttl_overridden        *bool
+	metadata                    *map[string]interface{}
 	created_at                  *time.Time
 	clearedFields               map[string]struct{}
 	user                        *int64
@@ -37115,6 +37116,55 @@ func (m *UsageLogMutation) ResetCacheTTLOverridden() {
 	m.cache_ttl_overridden = nil
 }
 
+// SetMetadata sets the "metadata" field.
+func (m *UsageLogMutation) SetMetadata(value map[string]interface{}) {
+	m.metadata = &value
+}
+
+// Metadata returns the value of the "metadata" field in the mutation.
+func (m *UsageLogMutation) Metadata() (r map[string]interface{}, exists bool) {
+	v := m.metadata
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetadata returns the old "metadata" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldMetadata(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetadata is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetadata requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetadata: %w", err)
+	}
+	return oldValue.Metadata, nil
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (m *UsageLogMutation) ClearMetadata() {
+	m.metadata = nil
+	m.clearedFields[usagelog.FieldMetadata] = struct{}{}
+}
+
+// MetadataCleared returns if the "metadata" field was cleared in this mutation.
+func (m *UsageLogMutation) MetadataCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldMetadata]
+	return ok
+}
+
+// ResetMetadata resets all changes to the "metadata" field.
+func (m *UsageLogMutation) ResetMetadata() {
+	m.metadata = nil
+	delete(m.clearedFields, usagelog.FieldMetadata)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *UsageLogMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -37320,7 +37370,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 41)
+	fields := make([]string, 0, 42)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -37441,6 +37491,9 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.cache_ttl_overridden != nil {
 		fields = append(fields, usagelog.FieldCacheTTLOverridden)
 	}
+	if m.metadata != nil {
+		fields = append(fields, usagelog.FieldMetadata)
+	}
 	if m.created_at != nil {
 		fields = append(fields, usagelog.FieldCreatedAt)
 	}
@@ -37532,6 +37585,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.ImageSizeBreakdown()
 	case usagelog.FieldCacheTTLOverridden:
 		return m.CacheTTLOverridden()
+	case usagelog.FieldMetadata:
+		return m.Metadata()
 	case usagelog.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -37623,6 +37678,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldImageSizeBreakdown(ctx)
 	case usagelog.FieldCacheTTLOverridden:
 		return m.OldCacheTTLOverridden(ctx)
+	case usagelog.FieldMetadata:
+		return m.OldMetadata(ctx)
 	case usagelog.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -37913,6 +37970,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCacheTTLOverridden(v)
+		return nil
+	case usagelog.FieldMetadata:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetadata(v)
 		return nil
 	case usagelog.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -38236,6 +38300,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldImageSizeBreakdown) {
 		fields = append(fields, usagelog.FieldImageSizeBreakdown)
 	}
+	if m.FieldCleared(usagelog.FieldMetadata) {
+		fields = append(fields, usagelog.FieldMetadata)
+	}
 	return fields
 }
 
@@ -38303,6 +38370,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldImageSizeBreakdown:
 		m.ClearImageSizeBreakdown()
+		return nil
+	case usagelog.FieldMetadata:
+		m.ClearMetadata()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog nullable field %s", name)
@@ -38431,6 +38501,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		m.ResetCacheTTLOverridden()
+		return nil
+	case usagelog.FieldMetadata:
+		m.ResetMetadata()
 		return nil
 	case usagelog.FieldCreatedAt:
 		m.ResetCreatedAt()

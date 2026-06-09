@@ -153,6 +153,13 @@ func (UsageLog) Fields() []ent.Field {
 		field.Bool("cache_ttl_overridden").
 			Default(false),
 
+		// metadata: 调用方通过 X-Usage-Metadata header 传入的请求级元数据
+		// （归因标签，如 source/uid/feature）。用于按业务/用户/功能维度做用量与成本归因。
+		field.JSON("metadata", map[string]any{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("调用方提供的请求级元数据（归因标签）"),
+
 		// 时间戳（只有 created_at，日志不可修改）
 		field.Time("created_at").
 			Default(time.Now).

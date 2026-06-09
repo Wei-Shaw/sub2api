@@ -39,3 +39,16 @@ func TestOpenAISubmitUsageRecordTaskCopiesRequestContext(t *testing.T) {
 	require.Equal(t, "openai-client-request-123", gotClientRequestID)
 	require.Equal(t, "openai-request-456", gotRequestID)
 }
+
+func TestSubmitUsageRecordTaskCopiesUsageMetadata(t *testing.T) {
+	want := map[string]any{"source": "agent", "uid": "u_123"}
+	parent := context.WithValue(context.Background(), ctxkey.UsageMetadata, want)
+
+	var got map[string]any
+	h := &GatewayHandler{}
+	h.submitUsageRecordTask(parent, func(ctx context.Context) {
+		got, _ = ctx.Value(ctxkey.UsageMetadata).(map[string]any)
+	})
+
+	require.Equal(t, want, got)
+}
