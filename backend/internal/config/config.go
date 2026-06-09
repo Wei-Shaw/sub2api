@@ -1854,6 +1854,12 @@ func setDefaults() {
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.4")
+	// Silent-refusal retry (native Anthropic + antigravity). Disabled by default.
+	viper.SetDefault("gateway.refusal_retry_enabled", false)
+	viper.SetDefault("gateway.refusal_finish_reasons", []string{})
+	viper.SetDefault("gateway.refusal_hold_timeout_ms", 15000)
+	viper.SetDefault("gateway.refusal_hold_max_bytes", 64*1024)
+	viper.SetDefault("gateway.refusal_max_retries", 2)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
 	viper.SetDefault("gateway.openai_ws.mode_router_v2_enabled", false)
