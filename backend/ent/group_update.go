@@ -616,6 +616,20 @@ func (_u *GroupUpdate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMe
 	return _u
 }
 
+// SetModelsListConfig sets the "models_list_config" field.
+func (_u *GroupUpdate) SetModelsListConfig(v domain.GroupModelsListConfig) *GroupUpdate {
+	_u.mutation.SetModelsListConfig(v)
+	return _u
+}
+
+// SetNillableModelsListConfig sets the "models_list_config" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableModelsListConfig(v *domain.GroupModelsListConfig) *GroupUpdate {
+	if v != nil {
+		_u.SetModelsListConfig(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdate) SetRpmLimit(v int) *GroupUpdate {
 	_u.mutation.ResetRpmLimit()
@@ -1111,6 +1125,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ModelsListConfig(); ok {
+		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -2012,6 +2029,20 @@ func (_u *GroupUpdateOne) SetNillableMessagesDispatchModelConfig(v *domain.OpenA
 	return _u
 }
 
+// SetModelsListConfig sets the "models_list_config" field.
+func (_u *GroupUpdateOne) SetModelsListConfig(v domain.GroupModelsListConfig) *GroupUpdateOne {
+	_u.mutation.SetModelsListConfig(v)
+	return _u
+}
+
+// SetNillableModelsListConfig sets the "models_list_config" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableModelsListConfig(v *domain.GroupModelsListConfig) *GroupUpdateOne {
+	if v != nil {
+		_u.SetModelsListConfig(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdateOne) SetRpmLimit(v int) *GroupUpdateOne {
 	_u.mutation.ResetRpmLimit()
@@ -2537,6 +2568,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ModelsListConfig(); ok {
+		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)

@@ -116,6 +116,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	if err != nil {
 		return nil, fmt.Errorf("build upstream request: %w", err)
 	}
+	upstreamReq = upstreamReq.WithContext(WithHTTPUpstreamProfile(upstreamReq.Context(), HTTPUpstreamProfileOpenAI))
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	upstreamReq.Header.Set("Authorization", "Bearer "+apiKey)
 	if clientStream {
@@ -141,28 +142,15 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
-		safeErr := sanitizeUpstreamErrorMessage(err.Error())
-		setOpsUpstreamError(c, 0, safeErr, "")
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: 0,
-			Kind:               "request_error",
-			Message:            safeErr,
-		})
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error": gin.H{
-				"type":    "upstream_error",
-				"message": "Upstream request failed",
-			},
-		})
-		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+		// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
+		// a failover so the handler switches to a healthy account, and temporarily
+		// unschedule the account on durable faults (e.g. rejected proxy credentials).
+		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		respBody := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
@@ -187,16 +175,14 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 			})
-			if s.rateLimitService != nil {
-				s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-			}
+			s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && (isPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+				RetryableOnSameAccount: account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 			}
 		}
-		return s.handleErrorResponse(ctx, resp, c, account, chatBody)
+		return s.handleErrorResponse(ctx, resp, c, account, chatBody, billingModel)
 	}
 
 	if clientStream {

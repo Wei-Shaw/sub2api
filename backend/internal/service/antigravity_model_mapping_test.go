@@ -89,6 +89,18 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			expected:       "claude-sonnet-4-5",
 		},
 		{
+			name:           "默认映射透传 - claude-opus-4-8",
+			requestedModel: "claude-opus-4-8",
+			accountMapping: nil,
+			expected:       "claude-opus-4-8",
+		},
+		{
+			name:           "默认映射透传 - claude-opus-4-7",
+			requestedModel: "claude-opus-4-7",
+			accountMapping: nil,
+			expected:       "claude-opus-4-7",
+		},
+		{
 			name:           "默认映射透传 - claude-opus-4-6-thinking",
 			requestedModel: "claude-opus-4-6-thinking",
 			accountMapping: nil,
@@ -210,6 +222,7 @@ func TestAntigravityGatewayService_IsModelSupported(t *testing.T) {
 		{"直接支持 - gemini-3-flash", "gemini-3-flash", true},
 
 		// 可映射（有明确前缀映射）
+		{"可映射 - claude-opus-4-8", "claude-opus-4-8", true},
 		{"可映射 - claude-opus-4-6", "claude-opus-4-6", true},
 
 		// 前缀透传（claude 和 gemini 前缀）

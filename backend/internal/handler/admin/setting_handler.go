@@ -142,6 +142,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TurnstileEnabled:                       settings.TurnstileEnabled,
 		TurnstileSiteKey:                       settings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:           settings.TurnstileSecretKeyConfigured,
+		APIKeyACLTrustForwardedIP:              settings.APIKeyACLTrustForwardedIP,
 		LinuxDoConnectEnabled:                  settings.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                 settings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured:   settings.LinuxDoConnectClientSecretConfigured,
@@ -255,6 +256,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		RewriteMessageCacheControl:             settings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            settings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                   settings.OpenAICodexUserAgent,
+		OpenAIAllowClaudeCodeCodexPlugin:       settings.OpenAIAllowClaudeCodeCodexPlugin,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
 		PaymentVisibleMethodAlipaySource:       settings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        settings.PaymentVisibleMethodWxpaySource,
@@ -264,6 +266,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		BalanceLowNotifyEnabled:                settings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:              settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:            settings.BalanceLowNotifyRechargeURL,
+		SubscriptionExpiryNotifyEnabled:        settings.SubscriptionExpiryNotifyEnabled,
 		AccountQuotaNotifyEnabled:              settings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:               dto.NotifyEmailEntriesFromService(settings.AccountQuotaNotifyEmails),
 		PaymentEnabled:                         paymentCfg.Enabled,
@@ -294,6 +297,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
+
+		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)
@@ -301,6 +306,13 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
 	} else if fastPolicy != nil {
 		payload.OpenAIFastPolicySettings = openaiFastPolicySettingsToDTO(fastPolicy)
+	}
+
+	// Default platform quotas（JSON map）
+	if platformQuotas, err := h.settingService.GetDefaultPlatformQuotas(c.Request.Context()); err != nil {
+		slog.Error("default_platform_quotas_get_failed", "error", err)
+	} else {
+		payload.DefaultPlatformQuotas = platformQuotas
 	}
 
 	response.Success(c, systemSettingsResponseData(payload, authSourceDefaults))
@@ -398,6 +410,9 @@ type UpdateSettingsRequest struct {
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey   string `json:"turnstile_site_key"`
 	TurnstileSecretKey string `json:"turnstile_secret_key"`
+
+	// API Key IP 访问控制设置
+	APIKeyACLTrustForwardedIP *bool `json:"api_key_acl_trust_forwarded_ip"`
 
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled      bool   `json:"linuxdo_connect_enabled"`
@@ -572,6 +587,7 @@ type UpdateSettingsRequest struct {
 	RewriteMessageCacheControl         *bool   `json:"rewrite_message_cache_control"`
 	AntigravityUserAgentVersion        *string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent               *string `json:"openai_codex_user_agent"`
+	OpenAIAllowClaudeCodeCodexPlugin   *bool   `json:"openai_allow_claude_code_codex_plugin"`
 
 	// Payment visible method routing
 	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
@@ -582,12 +598,13 @@ type UpdateSettingsRequest struct {
 	// OpenAI account scheduling
 	OpenAIAdvancedSchedulerEnabled *bool `json:"openai_advanced_scheduler_enabled"`
 
-	// Balance low notification
-	BalanceLowNotifyEnabled     *bool                   `json:"balance_low_notify_enabled"`
-	BalanceLowNotifyThreshold   *float64                `json:"balance_low_notify_threshold"`
-	BalanceLowNotifyRechargeURL *string                 `json:"balance_low_notify_recharge_url"`
-	AccountQuotaNotifyEnabled   *bool                   `json:"account_quota_notify_enabled"`
-	AccountQuotaNotifyEmails    *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
+	// 余额不足提醒
+	BalanceLowNotifyEnabled         *bool                   `json:"balance_low_notify_enabled"`
+	BalanceLowNotifyThreshold       *float64                `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL     *string                 `json:"balance_low_notify_recharge_url"`
+	SubscriptionExpiryNotifyEnabled *bool                   `json:"subscription_expiry_notify_enabled"`
+	AccountQuotaNotifyEnabled       *bool                   `json:"account_quota_notify_enabled"`
+	AccountQuotaNotifyEmails        *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// Payment configuration (integrated into settings, full replace)
 	PaymentEnabled                   *bool    `json:"payment_enabled"`
@@ -631,6 +648,20 @@ type UpdateSettingsRequest struct {
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
+
+	// 系统全局 platform quota 默认值（整体替换语义：nil = 不修改，non-nil = 整体覆盖）。
+	DefaultPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
+
+	// auth-source 层 platform quota 覆盖（override 语义：nil = 不修改，non-nil = 整体覆盖该 source 的 quota 配置）。
+	AuthSourceEmailPlatformQuotas    map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_email_platform_quotas"`
+	AuthSourceLinuxDoPlatformQuotas  map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_linuxdo_platform_quotas"`
+	AuthSourceOIDCPlatformQuotas     map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_oidc_platform_quotas"`
+	AuthSourceWeChatPlatformQuotas   map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_wechat_platform_quotas"`
+	AuthSourceGitHubPlatformQuotas   map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_github_platform_quotas"`
+	AuthSourceGooglePlatformQuotas   map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_google_platform_quotas"`
+	AuthSourceDingTalkPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_dingtalk_platform_quotas"`
+
+	AllowUserViewErrorRequests *bool `json:"allow_user_view_error_requests"`
 }
 
 // UpdateSettings 更新系统设置
@@ -1432,28 +1463,37 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 
 	settings := &service.SystemSettings{
-		RegistrationEnabled:                    req.RegistrationEnabled,
-		EmailVerifyEnabled:                     req.EmailVerifyEnabled,
-		RegistrationEmailSuffixWhitelist:       req.RegistrationEmailSuffixWhitelist,
-		PromoCodeEnabled:                       req.PromoCodeEnabled,
-		PasswordResetEnabled:                   req.PasswordResetEnabled,
-		FrontendURL:                            req.FrontendURL,
-		InvitationCodeEnabled:                  req.InvitationCodeEnabled,
-		TotpEnabled:                            req.TotpEnabled,
-		LoginAgreementEnabled:                  req.LoginAgreementEnabled,
-		LoginAgreementMode:                     loginAgreementMode,
-		LoginAgreementUpdatedAt:                loginAgreementUpdatedAt,
-		LoginAgreementDocuments:                loginAgreementDocuments,
-		SMTPHost:                               req.SMTPHost,
-		SMTPPort:                               req.SMTPPort,
-		SMTPUsername:                           req.SMTPUsername,
-		SMTPPassword:                           req.SMTPPassword,
-		SMTPFrom:                               req.SMTPFrom,
-		SMTPFromName:                           req.SMTPFromName,
-		SMTPUseTLS:                             req.SMTPUseTLS,
-		TurnstileEnabled:                       req.TurnstileEnabled,
-		TurnstileSiteKey:                       req.TurnstileSiteKey,
-		TurnstileSecretKey:                     req.TurnstileSecretKey,
+		// 系统全局 platform quota 默认值（整体替换语义）
+		DefaultPlatformQuotas: req.DefaultPlatformQuotas,
+
+		RegistrationEnabled:              req.RegistrationEnabled,
+		EmailVerifyEnabled:               req.EmailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist: req.RegistrationEmailSuffixWhitelist,
+		PromoCodeEnabled:                 req.PromoCodeEnabled,
+		PasswordResetEnabled:             req.PasswordResetEnabled,
+		FrontendURL:                      req.FrontendURL,
+		InvitationCodeEnabled:            req.InvitationCodeEnabled,
+		TotpEnabled:                      req.TotpEnabled,
+		LoginAgreementEnabled:            req.LoginAgreementEnabled,
+		LoginAgreementMode:               loginAgreementMode,
+		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
+		LoginAgreementDocuments:          loginAgreementDocuments,
+		SMTPHost:                         req.SMTPHost,
+		SMTPPort:                         req.SMTPPort,
+		SMTPUsername:                     req.SMTPUsername,
+		SMTPPassword:                     req.SMTPPassword,
+		SMTPFrom:                         req.SMTPFrom,
+		SMTPFromName:                     req.SMTPFromName,
+		SMTPUseTLS:                       req.SMTPUseTLS,
+		TurnstileEnabled:                 req.TurnstileEnabled,
+		TurnstileSiteKey:                 req.TurnstileSiteKey,
+		TurnstileSecretKey:               req.TurnstileSecretKey,
+		APIKeyACLTrustForwardedIP: func() bool {
+			if req.APIKeyACLTrustForwardedIP != nil {
+				return *req.APIKeyACLTrustForwardedIP
+			}
+			return previousSettings.APIKeyACLTrustForwardedIP
+		}(),
 		LinuxDoConnectEnabled:                  req.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                 req.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecret:             req.LinuxDoConnectClientSecret,
@@ -1555,6 +1595,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MaxClaudeCodeVersion:                   req.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:            req.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                     req.BackendModeEnabled,
+		AllowUserViewErrorRequests: func() bool {
+			if req.AllowUserViewErrorRequests != nil {
+				return *req.AllowUserViewErrorRequests
+			}
+			return previousSettings.AllowUserViewErrorRequests
+		}(),
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -1621,6 +1667,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexUserAgent
 		}(),
+		OpenAIAllowClaudeCodeCodexPlugin: func() bool {
+			if req.OpenAIAllowClaudeCodeCodexPlugin != nil {
+				return *req.OpenAIAllowClaudeCodeCodexPlugin
+			}
+			return previousSettings.OpenAIAllowClaudeCodeCodexPlugin
+		}(),
 		PaymentVisibleMethodAlipaySource: func() string {
 			if req.PaymentVisibleMethodAlipaySource != nil {
 				return strings.TrimSpace(*req.PaymentVisibleMethodAlipaySource)
@@ -1669,6 +1721,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.BalanceLowNotifyRechargeURL
 		}(),
+		SubscriptionExpiryNotifyEnabled: func() bool {
+			if req.SubscriptionExpiryNotifyEnabled != nil {
+				return *req.SubscriptionExpiryNotifyEnabled
+			}
+			return previousSettings.SubscriptionExpiryNotifyEnabled
+		}(),
 		AccountQuotaNotifyEnabled: func() bool {
 			if req.AccountQuotaNotifyEnabled != nil {
 				return *req.AccountQuotaNotifyEnabled
@@ -1713,6 +1771,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}(),
 	}
 
+	// req.AuthSourceXxxPlatformQuotas 为 nil 表示本次请求未包含该 source 的 quota 配置（保留 previousAuthSourceDefaults 中的值）；
+	// non-nil（含 empty map）表示整体覆盖：empty map = 清空该 source 的所有 quota 配置。
 	authSourceDefaults := &service.AuthSourceDefaultSettings{
 		Email: service.ProviderDefaultGrantSettings{
 			Balance:          float64ValueOrDefault(req.AuthSourceDefaultEmailBalance, previousAuthSourceDefaults.Email.Balance),
@@ -1720,6 +1780,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultEmailSubscriptions, previousAuthSourceDefaults.Email.Subscriptions),
 			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultEmailGrantOnSignup, previousAuthSourceDefaults.Email.GrantOnSignup),
 			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultEmailGrantOnFirstBind, previousAuthSourceDefaults.Email.GrantOnFirstBind),
+			PlatformQuotas:   platformQuotasValueOrDefault(req.AuthSourceEmailPlatformQuotas, previousAuthSourceDefaults.Email.PlatformQuotas),
 		},
 		LinuxDo: service.ProviderDefaultGrantSettings{
 			Balance:          float64ValueOrDefault(req.AuthSourceDefaultLinuxDoBalance, previousAuthSourceDefaults.LinuxDo.Balance),
@@ -1727,6 +1788,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultLinuxDoSubscriptions, previousAuthSourceDefaults.LinuxDo.Subscriptions),
 			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultLinuxDoGrantOnSignup, previousAuthSourceDefaults.LinuxDo.GrantOnSignup),
 			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultLinuxDoGrantOnFirstBind, previousAuthSourceDefaults.LinuxDo.GrantOnFirstBind),
+			PlatformQuotas:   platformQuotasValueOrDefault(req.AuthSourceLinuxDoPlatformQuotas, previousAuthSourceDefaults.LinuxDo.PlatformQuotas),
 		},
 		OIDC: service.ProviderDefaultGrantSettings{
 			Balance:          float64ValueOrDefault(req.AuthSourceDefaultOIDCBalance, previousAuthSourceDefaults.OIDC.Balance),
@@ -1734,6 +1796,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultOIDCSubscriptions, previousAuthSourceDefaults.OIDC.Subscriptions),
 			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultOIDCGrantOnSignup, previousAuthSourceDefaults.OIDC.GrantOnSignup),
 			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultOIDCGrantOnFirstBind, previousAuthSourceDefaults.OIDC.GrantOnFirstBind),
+			PlatformQuotas:   platformQuotasValueOrDefault(req.AuthSourceOIDCPlatformQuotas, previousAuthSourceDefaults.OIDC.PlatformQuotas),
 		},
 		WeChat: service.ProviderDefaultGrantSettings{
 			Balance:          float64ValueOrDefault(req.AuthSourceDefaultWeChatBalance, previousAuthSourceDefaults.WeChat.Balance),
@@ -1741,6 +1804,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultWeChatSubscriptions, previousAuthSourceDefaults.WeChat.Subscriptions),
 			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultWeChatGrantOnSignup, previousAuthSourceDefaults.WeChat.GrantOnSignup),
 			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultWeChatGrantOnFirstBind, previousAuthSourceDefaults.WeChat.GrantOnFirstBind),
+			PlatformQuotas:   platformQuotasValueOrDefault(req.AuthSourceWeChatPlatformQuotas, previousAuthSourceDefaults.WeChat.PlatformQuotas),
 		},
 		GitHub: service.ProviderDefaultGrantSettings{
 			Balance:          float64ValueOrDefault(req.AuthSourceDefaultGitHubBalance, previousAuthSourceDefaults.GitHub.Balance),
@@ -1748,6 +1812,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultGitHubSubscriptions, previousAuthSourceDefaults.GitHub.Subscriptions),
 			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultGitHubGrantOnSignup, previousAuthSourceDefaults.GitHub.GrantOnSignup),
 			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultGitHubGrantOnFirstBind, previousAuthSourceDefaults.GitHub.GrantOnFirstBind),
+			PlatformQuotas:   platformQuotasValueOrDefault(req.AuthSourceGitHubPlatformQuotas, previousAuthSourceDefaults.GitHub.PlatformQuotas),
 		},
 		Google: service.ProviderDefaultGrantSettings{
 			Balance:          float64ValueOrDefault(req.AuthSourceDefaultGoogleBalance, previousAuthSourceDefaults.Google.Balance),
@@ -1755,6 +1820,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultGoogleSubscriptions, previousAuthSourceDefaults.Google.Subscriptions),
 			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultGoogleGrantOnSignup, previousAuthSourceDefaults.Google.GrantOnSignup),
 			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultGoogleGrantOnFirstBind, previousAuthSourceDefaults.Google.GrantOnFirstBind),
+			PlatformQuotas:   platformQuotasValueOrDefault(req.AuthSourceGooglePlatformQuotas, previousAuthSourceDefaults.Google.PlatformQuotas),
 		},
 		DingTalk: service.ProviderDefaultGrantSettings{
 			Balance:          float64ValueOrDefault(req.AuthSourceDefaultDingTalkBalance, previousAuthSourceDefaults.DingTalk.Balance),
@@ -1762,6 +1828,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultDingTalkSubscriptions, previousAuthSourceDefaults.DingTalk.Subscriptions),
 			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultDingTalkGrantOnSignup, previousAuthSourceDefaults.DingTalk.GrantOnSignup),
 			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultDingTalkGrantOnFirstBind, previousAuthSourceDefaults.DingTalk.GrantOnFirstBind),
+			PlatformQuotas:   platformQuotasValueOrDefault(req.AuthSourceDingTalkPlatformQuotas, previousAuthSourceDefaults.DingTalk.PlatformQuotas),
 		},
 		ForceEmailOnThirdPartySignup: boolValueOrDefault(req.ForceEmailOnThirdPartySignup, previousAuthSourceDefaults.ForceEmailOnThirdPartySignup),
 	}
@@ -1869,6 +1936,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TurnstileEnabled:                       updatedSettings.TurnstileEnabled,
 		TurnstileSiteKey:                       updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:           updatedSettings.TurnstileSecretKeyConfigured,
+		APIKeyACLTrustForwardedIP:              updatedSettings.APIKeyACLTrustForwardedIP,
 		LinuxDoConnectEnabled:                  updatedSettings.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                 updatedSettings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured:   updatedSettings.LinuxDoConnectClientSecretConfigured,
@@ -1981,6 +2049,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RewriteMessageCacheControl:             updatedSettings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            updatedSettings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                   updatedSettings.OpenAICodexUserAgent,
+		OpenAIAllowClaudeCodeCodexPlugin:       updatedSettings.OpenAIAllowClaudeCodeCodexPlugin,
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
@@ -1989,6 +2058,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		BalanceLowNotifyEnabled:                updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:              updatedSettings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:            updatedSettings.BalanceLowNotifyRechargeURL,
+		SubscriptionExpiryNotifyEnabled:        updatedSettings.SubscriptionExpiryNotifyEnabled,
 		AccountQuotaNotifyEnabled:              updatedSettings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:               dto.NotifyEmailEntriesFromService(updatedSettings.AccountQuotaNotifyEmails),
 		PaymentEnabled:                         updatedPaymentCfg.Enabled,
@@ -2020,12 +2090,20 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
-		RiskControlEnabled: updatedSettings.RiskControlEnabled,
+		RiskControlEnabled:         updatedSettings.RiskControlEnabled,
+		AllowUserViewErrorRequests: updatedSettings.AllowUserViewErrorRequests,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
 	} else if fastPolicy != nil {
 		payload.OpenAIFastPolicySettings = openaiFastPolicySettingsToDTO(fastPolicy)
+	}
+
+	// Default platform quotas（JSON map）—— 与 GetSettings 一致，避免保存后响应缺失该字段
+	if platformQuotas, err := h.settingService.GetDefaultPlatformQuotas(c.Request.Context()); err != nil {
+		slog.Error("default_platform_quotas_get_failed", "error", err)
+	} else {
+		payload.DefaultPlatformQuotas = platformQuotas
 	}
 	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
 }
@@ -2144,6 +2222,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if req.TurnstileSecretKey != "" {
 		changed = append(changed, "turnstile_secret_key")
+	}
+	if before.APIKeyACLTrustForwardedIP != after.APIKeyACLTrustForwardedIP {
+		changed = append(changed, "api_key_acl_trust_forwarded_ip")
 	}
 	if before.LinuxDoConnectEnabled != after.LinuxDoConnectEnabled {
 		changed = append(changed, "linuxdo_connect_enabled")
@@ -2439,6 +2520,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAICodexUserAgent != after.OpenAICodexUserAgent {
 		changed = append(changed, "openai_codex_user_agent")
 	}
+	if before.OpenAIAllowClaudeCodeCodexPlugin != after.OpenAIAllowClaudeCodeCodexPlugin {
+		changed = append(changed, "openai_allow_claude_code_codex_plugin")
+	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")
 	}
@@ -2454,7 +2538,7 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAIAdvancedSchedulerEnabled != after.OpenAIAdvancedSchedulerEnabled {
 		changed = append(changed, "openai_advanced_scheduler_enabled")
 	}
-	// Balance & quota notification
+	// 余额、订阅到期与账号限额通知
 	if before.BalanceLowNotifyEnabled != after.BalanceLowNotifyEnabled {
 		changed = append(changed, "balance_low_notify_enabled")
 	}
@@ -2463,6 +2547,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.BalanceLowNotifyRechargeURL != after.BalanceLowNotifyRechargeURL {
 		changed = append(changed, "balance_low_notify_recharge_url")
+	}
+	if before.SubscriptionExpiryNotifyEnabled != after.SubscriptionExpiryNotifyEnabled {
+		changed = append(changed, "subscription_expiry_notify_enabled")
 	}
 	if before.AccountQuotaNotifyEnabled != after.AccountQuotaNotifyEnabled {
 		changed = append(changed, "account_quota_notify_enabled")
@@ -2484,6 +2571,10 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")
+	}
+	// Default platform quotas（JSON map，整体比较）
+	if !equalPlatformQuotaSettings(before.DefaultPlatformQuotas, after.DefaultPlatformQuotas) {
+		changed = append(changed, service.SettingKeyDefaultPlatformQuotas)
 	}
 	changed = appendAuthSourceDefaultChanges(changed, beforeAuthSourceDefaults, afterAuthSourceDefaults)
 	return changed
@@ -2527,6 +2618,10 @@ func appendAuthSourceDefaultChanges(changed []string, before *service.AuthSource
 		}
 		if field.before.GrantOnFirstBind != field.after.GrantOnFirstBind {
 			changed = append(changed, "auth_source_default_"+field.name+"_grant_on_first_bind")
+		}
+		// Platform quotas diff：整体替换语义，发单个 JSON key。
+		if !equalPlatformQuotaSettings(field.before.PlatformQuotas, field.after.PlatformQuotas) {
+			changed = append(changed, service.SettingKeyAuthSourcePlatformQuotas(field.name))
 		}
 	}
 	if before.ForceEmailOnThirdPartySignup != after.ForceEmailOnThirdPartySignup {
@@ -2595,6 +2690,17 @@ func defaultSubscriptionsValueOrDefault(input *[]dto.DefaultSubscriptionSetting,
 	return result
 }
 
+// platformQuotasValueOrDefault 处理 auth-source platform quota 的 nil 语义：
+// nil = 请求未包含该字段（保留 fallback），non-nil（含 empty map）= 整体覆盖。
+// 注意：JSON null 与字段省略等价——两者均反序列化为 nil map，因此都保留旧值；
+// 若要清空某 source 的所有 quota 配置，须显式发空对象 {}。
+func platformQuotasValueOrDefault(value, fallback map[string]*service.DefaultPlatformQuotaSetting) map[string]*service.DefaultPlatformQuotaSetting {
+	if value == nil {
+		return fallback
+	}
+	return value
+}
+
 func systemSettingsResponseData(settings dto.SystemSettings, authSourceDefaults *service.AuthSourceDefaultSettings) map[string]any {
 	data := make(map[string]any)
 	raw, err := json.Marshal(settings)
@@ -2640,6 +2746,13 @@ func systemSettingsResponseData(settings dto.SystemSettings, authSourceDefaults 
 	data["auth_source_default_google_subscriptions"] = authSourceDefaults.Google.Subscriptions
 	data["auth_source_default_google_grant_on_signup"] = authSourceDefaults.Google.GrantOnSignup
 	data["auth_source_default_google_grant_on_first_bind"] = authSourceDefaults.Google.GrantOnFirstBind
+	data["auth_source_default_email_platform_quotas"] = authSourceDefaults.Email.PlatformQuotas
+	data["auth_source_default_linuxdo_platform_quotas"] = authSourceDefaults.LinuxDo.PlatformQuotas
+	data["auth_source_default_oidc_platform_quotas"] = authSourceDefaults.OIDC.PlatformQuotas
+	data["auth_source_default_wechat_platform_quotas"] = authSourceDefaults.WeChat.PlatformQuotas
+	data["auth_source_default_github_platform_quotas"] = authSourceDefaults.GitHub.PlatformQuotas
+	data["auth_source_default_google_platform_quotas"] = authSourceDefaults.Google.PlatformQuotas
+	data["auth_source_default_dingtalk_platform_quotas"] = authSourceDefaults.DingTalk.PlatformQuotas
 	data["force_email_on_third_party_signup"] = authSourceDefaults.ForceEmailOnThirdPartySignup
 
 	return data
@@ -3472,6 +3585,8 @@ func emailTemplateEventOptionsToDTO(events []service.NotificationEmailEventInfo)
 			Value:       event.Event,
 			Label:       event.Label,
 			Description: event.Description,
+			Category:    event.Category,
+			Optional:    event.Optional,
 		})
 	}
 	return items
@@ -3523,4 +3638,49 @@ func emailTemplatePlaceholderUnion(events []service.NotificationEmailEventInfo) 
 		}
 	}
 	return placeholders
+}
+
+// equalNullableFloat compares two *float64 values treating nil as a distinct case.
+func equalNullableFloat(a, b *float64) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
+// slotOf returns the *float64 for the given window from a DefaultPlatformQuotaSetting.
+func slotOf(s *service.DefaultPlatformQuotaSetting, win string) *float64 {
+	if s == nil {
+		return nil
+	}
+	switch win {
+	case "daily":
+		return s.DailyLimitUSD
+	case "weekly":
+		return s.WeeklyLimitUSD
+	case "monthly":
+		return s.MonthlyLimitUSD
+	}
+	return nil
+}
+
+// equalPlatformQuotaSettings reports whether two platform-quota maps are identical across all 12 slots.
+func equalPlatformQuotaSettings(before, after map[string]*service.DefaultPlatformQuotaSetting) bool {
+	for _, platform := range service.AllowedQuotaPlatforms {
+		b := before[platform]
+		a := after[platform]
+		if !equalNullableFloat(slotOf(b, "daily"), slotOf(a, "daily")) {
+			return false
+		}
+		if !equalNullableFloat(slotOf(b, "weekly"), slotOf(a, "weekly")) {
+			return false
+		}
+		if !equalNullableFloat(slotOf(b, "monthly"), slotOf(a, "monthly")) {
+			return false
+		}
+	}
+	return true
 }

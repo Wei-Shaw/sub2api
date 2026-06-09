@@ -236,6 +236,91 @@ func (r *redeemCodeRepository) Update(ctx context.Context, code *service.RedeemC
 	return nil
 }
 
+func (r *redeemCodeRepository) BatchUpdate(ctx context.Context, ids []int64, fields service.RedeemCodeBatchUpdateFields) (int64, error) {
+	uniqueIDs := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+	if len(uniqueIDs) == 0 {
+		return 0, nil
+	}
+
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return r.batchUpdate(ctx, tx.Client(), uniqueIDs, fields)
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return 0, err
+	}
+	txCtx := dbent.NewTxContext(ctx, tx)
+	defer func() { _ = tx.Rollback() }()
+
+	updated, err := r.batchUpdate(txCtx, tx.Client(), uniqueIDs, fields)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return updated, nil
+}
+
+func (r *redeemCodeRepository) batchUpdate(ctx context.Context, client *dbent.Client, ids []int64, fields service.RedeemCodeBatchUpdateFields) (int64, error) {
+	existing, err := client.RedeemCode.Query().
+		Where(redeemcode.IDIn(ids...)).
+		All(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(existing) != len(ids) {
+		return 0, service.ErrRedeemCodeNotFound
+	}
+	if fields.TouchesUsedSensitiveFields() {
+		for _, code := range existing {
+			if code.Status == service.StatusUsed {
+				return 0, service.ErrRedeemCodeUsed
+			}
+		}
+	}
+
+	up := client.RedeemCode.Update().Where(redeemcode.IDIn(ids...))
+	if fields.Status != nil {
+		up.SetStatus(*fields.Status)
+	}
+	if fields.Notes != nil {
+		up.SetNotes(*fields.Notes)
+	}
+	if fields.ExpiresAt.Set {
+		if fields.ExpiresAt.Value != nil {
+			up.SetExpiresAt(*fields.ExpiresAt.Value)
+		} else {
+			up.ClearExpiresAt()
+		}
+	}
+	if fields.GroupID.Set {
+		if fields.GroupID.Value != nil {
+			up.SetGroupID(*fields.GroupID.Value)
+		} else {
+			up.ClearGroupID()
+		}
+	}
+
+	affected, err := up.Save(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if affected != len(ids) {
+		return 0, service.ErrRedeemCodeNotFound
+	}
+	return int64(affected), nil
+}
+
 func (r *redeemCodeRepository) Use(ctx context.Context, id, userID int64) error {
 	now := time.Now()
 	client := clientFromContext(ctx, r.client)

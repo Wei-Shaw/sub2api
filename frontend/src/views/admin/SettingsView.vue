@@ -1415,7 +1415,6 @@
                       :key="suffix"
                       class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs font-mono text-gray-700 dark:bg-dark-600 dark:text-gray-200"
                     >
-                      <span class="text-gray-400 dark:text-gray-500">@</span>
                       <span>{{ suffix }}</span>
                       <button
                         type="button"
@@ -1436,10 +1435,6 @@
                     <div
                       class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-300 dark:focus-within:border-primary-700"
                     >
-                      <span
-                        class="font-mono text-sm text-gray-400 dark:text-gray-500"
-                        >@</span
-                      >
                       <input
                         v-model="registrationEmailSuffixWhitelistDraft"
                         type="text"
@@ -1560,6 +1555,33 @@
                   v-model="form.totp_enabled"
                   :disabled="!form.totp_encryption_key_configured"
                 />
+              </div>
+            </div>
+          </div>
+
+          <!-- API Key IP ACL Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.apiKeyAcl.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.apiKeyAcl.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.apiKeyAcl.trustForwardedIp") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.apiKeyAcl.trustForwardedIpHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.api_key_acl_trust_forwarded_ip" />
               </div>
             </div>
           </div>
@@ -3240,6 +3262,71 @@
                   </div>
                 </div>
               </div>
+
+              <!-- ★ 新增：系统全局默认平台限额矩阵 -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="mb-3">
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.defaults.defaultPlatformQuotas") }}
+                  </label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.defaults.defaultPlatformQuotasHint") }}
+                  </p>
+                  <p class="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
+                    {{ t("admin.settings.defaults.platformQuotaNotice") }}
+                  </p>
+                </div>
+                <div class="overflow-x-auto">
+                  <table class="min-w-full text-sm">
+                    <thead>
+                      <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                        <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.platform") }}</th>
+                        <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.daily") }}</th>
+                        <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.weekly") }}</th>
+                        <th class="pb-2 font-medium">{{ t("admin.settings.platformQuota.monthly") }}</th>
+                      </tr>
+                    </thead>
+                    <tbody class="space-y-2">
+                      <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity'] as const)" :key="p" class="align-top">
+                        <td class="pr-4 py-1">
+                          <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
+                        </td>
+                        <td class="pr-4 py-1">
+                          <input
+                            v-model.number="form.default_platform_quotas[p]!.daily"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="input h-8 w-28 text-sm"
+                            :placeholder="t('admin.settings.platformQuota.placeholder')"
+                          />
+                        </td>
+                        <td class="pr-4 py-1">
+                          <input
+                            v-model.number="form.default_platform_quotas[p]!.weekly"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="input h-8 w-28 text-sm"
+                            :placeholder="t('admin.settings.platformQuota.placeholder')"
+                          />
+                        </td>
+                        <td class="py-1">
+                          <input
+                            v-model.number="form.default_platform_quotas[p]!.monthly"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="input h-8 w-28 text-sm"
+                            :placeholder="t('admin.settings.platformQuota.placeholder')"
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <!-- /全局平台限额矩阵 -->
             </div>
           </div>
 
@@ -3513,6 +3600,68 @@
                         </div>
                       </div>
                     </div>
+
+                    <!-- ★ 新增：auth source 平台限额覆盖区块 -->
+                    <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                      <div class="mb-3">
+                        <label class="font-medium text-gray-900 dark:text-white">
+                          {{ t("admin.settings.authSourceDefaults.platformQuotasOverride") }}
+                        </label>
+                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.authSourceDefaults.platformQuotasOverrideHint") }}
+                        </p>
+                      </div>
+                      <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                          <thead>
+                            <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                              <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.platform") }}</th>
+                              <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.daily") }}</th>
+                              <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.weekly") }}</th>
+                              <th class="pb-2 font-medium">{{ t("admin.settings.platformQuota.monthly") }}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity'] as const)" :key="`${authSource.source}-pq-${p}`" class="align-top">
+                              <td class="pr-4 py-1">
+                                <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
+                              </td>
+                              <td class="pr-4 py-1">
+                                <input
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.daily"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  class="input h-8 w-28 text-sm"
+                                  :placeholder="t('admin.settings.platformQuota.placeholder')"
+                                />
+                              </td>
+                              <td class="pr-4 py-1">
+                                <input
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.weekly"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  class="input h-8 w-28 text-sm"
+                                  :placeholder="t('admin.settings.platformQuota.placeholder')"
+                                />
+                              </td>
+                              <td class="py-1">
+                                <input
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.monthly"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  class="input h-8 w-28 text-sm"
+                                  :placeholder="t('admin.settings.platformQuota.placeholder')"
+                                />
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    <!-- /auth source 平台限额覆盖区块 -->
                   </div>
                 </div>
               </div>
@@ -3798,6 +3947,19 @@
                     )
                   }}
                 </p>
+              </div>
+
+              <!-- 是否允许在 Claude Code 中使用 Codex 插件（全局开关） -->
+              <div class="flex items-center justify-between">
+                <div class="pr-4">
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPlugin") }}
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPluginDesc") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.openai_allow_claude_code_codex_plugin" />
               </div>
             </div>
           </div>
@@ -4236,6 +4398,35 @@
               </div>
             </div>
           </div>
+
+        <!-- Usage Records Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.usageRecords.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.usageRecords.description') }}
+            </p>
+          </div>
+          <div class="space-y-4 p-6">
+            <!-- User error requests visibility -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.user_error_view.label') }}
+                </label>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.user_error_view.description') }}
+                </p>
+              </div>
+              <label class="toggle">
+                <input v-model="form.allow_user_view_error_requests" type="checkbox" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
         </div>
         <!-- /Tab: Gateway — Claude Code, Scheduling -->
 
@@ -6256,6 +6447,35 @@
             </div>
           </div>
 
+          <!-- 订阅到期提醒 -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h3 class="text-base font-medium text-gray-900 dark:text-white">
+                {{ t("admin.settings.subscriptionExpiryNotify.title") }}
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.subscriptionExpiryNotify.description") }}
+              </p>
+            </div>
+            <div class="px-6 py-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label
+                    class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.subscriptionExpiryNotify.enabled") }}
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.subscriptionExpiryNotify.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.subscription_expiry_notify_enabled" />
+              </div>
+            </div>
+          </div>
+
           <EmailTemplateEditor />
 
           <!-- Balance Low Notification -->
@@ -6479,6 +6699,8 @@ import { adminAPI } from "@/api";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
   buildAuthSourceDefaultsState,
+  normalizePlatformQuotasMap,
+  sanitizePlatformQuotasMap,
   defaultWeChatConnectScopesForMode,
   deriveWeChatConnectStoredMode,
   normalizeDefaultSubscriptionSettings,
@@ -6490,6 +6712,7 @@ import type {
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
+  DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
   WeChatConnectMode,
   WebSearchEmulationConfig,
@@ -6784,6 +7007,8 @@ type SettingsForm = Omit<
   google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_advanced_scheduler_enabled: boolean;
+  // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
+  default_platform_quotas: DefaultPlatformQuotasMap;
 };
 
 const form = reactive<SettingsForm>({
@@ -6800,6 +7025,7 @@ const form = reactive<SettingsForm>({
   login_agreement_updated_at: "2026-03-31",
   login_agreement_documents: defaultLoginAgreementDocuments(),
   default_balance: 0,
+  default_platform_quotas: normalizePlatformQuotasMap() as DefaultPlatformQuotasMap,
   affiliate_rebate_rate: 20,
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
@@ -6868,6 +7094,7 @@ const form = reactive<SettingsForm>({
   turnstile_site_key: "",
   turnstile_secret_key: "",
   turnstile_secret_key_configured: false,
+  api_key_acl_trust_forwarded_ip: false,
   // LinuxDo Connect OAuth 登录
   linuxdo_connect_enabled: false,
   linuxdo_connect_client_id: "",
@@ -6977,10 +7204,12 @@ const form = reactive<SettingsForm>({
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
-  // Balance & quota notification
+  openai_allow_claude_code_codex_plugin: false,
+  // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
   balance_low_notify_recharge_url: "",
+  subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as NotifyEmailEntry[],
   // Channel Monitor feature switch
@@ -6990,6 +7219,8 @@ const form = reactive<SettingsForm>({
   available_channels_enabled: false,
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
+  // Allow user view error requests
+  allow_user_view_error_requests: false,
 });
 
 const authSourceDefaults = reactive<AuthSourceDefaultsState>(
@@ -7606,6 +7837,7 @@ async function loadSettings() {
           }))
         : defaultLoginAgreementDocuments();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
+    form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
@@ -7925,8 +8157,8 @@ async function saveSettings() {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
       registration_email_suffix_whitelist:
-        registrationEmailSuffixWhitelistTags.value.map(
-          (suffix) => `@${suffix}`,
+        registrationEmailSuffixWhitelistTags.value.map((suffix) =>
+          suffix.startsWith("*.") ? suffix : `@${suffix}`,
         ),
       promo_code_enabled: form.promo_code_enabled,
       invitation_code_enabled: form.invitation_code_enabled,
@@ -7972,6 +8204,7 @@ async function saveSettings() {
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,
+      api_key_acl_trust_forwarded_ip: form.api_key_acl_trust_forwarded_ip,
       linuxdo_connect_enabled: form.linuxdo_connect_enabled,
       linuxdo_connect_client_id: form.linuxdo_connect_client_id,
       linuxdo_connect_client_secret:
@@ -8079,6 +8312,7 @@ async function saveSettings() {
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
+      openai_allow_claude_code_codex_plugin: form.openai_allow_claude_code_codex_plugin,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,
@@ -8108,12 +8342,14 @@ async function saveSettings() {
         form.payment_cancel_rate_limit_window_mode,
       payment_alipay_force_qrcode: form.payment_alipay_force_qrcode,
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
-      // Balance & quota notification
+      // 余额、订阅到期与账号限额通知
       balance_low_notify_enabled: form.balance_low_notify_enabled,
       balance_low_notify_threshold:
         Number(form.balance_low_notify_threshold) || 0,
       balance_low_notify_recharge_url: (form.balance_low_notify_recharge_url =
         form.balance_low_notify_recharge_url || currentOrigin),
+      subscription_expiry_notify_enabled:
+        form.subscription_expiry_notify_enabled,
       account_quota_notify_enabled: form.account_quota_notify_enabled,
       account_quota_notify_emails: (
         form.account_quota_notify_emails || []
@@ -8126,6 +8362,7 @@ async function saveSettings() {
       available_channels_enabled: form.available_channels_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
+      allow_user_view_error_requests: form.allow_user_view_error_requests,
     };
 
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，
@@ -8156,6 +8393,7 @@ async function saveSettings() {
       };
     }
 
+    payload.default_platform_quotas = sanitizePlatformQuotasMap(form.default_platform_quotas);
     appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults);
 
     const updated = await adminAPI.settings.updateSettings(payload);
@@ -8166,6 +8404,7 @@ async function saveSettings() {
       }
     }
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
+    form.default_platform_quotas = normalizePlatformQuotasMap(updated.default_platform_quotas);
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         updated.registration_email_suffix_whitelist,

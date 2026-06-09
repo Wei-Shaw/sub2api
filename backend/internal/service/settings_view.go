@@ -38,6 +38,7 @@ type SystemSettings struct {
 	TurnstileSiteKey             string
 	TurnstileSecretKey           string
 	TurnstileSecretKeyConfigured bool
+	APIKeyACLTrustForwardedIP    bool
 
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled                bool
@@ -194,6 +195,7 @@ type SystemSettings struct {
 	RewriteMessageCacheControl         bool   // 是否改写 messages[*].content[*].cache_control（默认 false）
 	AntigravityUserAgentVersion        string // Antigravity 上游 User-Agent 版本号；空值使用配置/默认值
 	OpenAICodexUserAgent               string // OpenAI Codex 上游完整 User-Agent；空值使用内置默认
+	OpenAIAllowClaudeCodeCodexPlugin   bool   // 全局开关：是否额外放行 Claude Code 的 Codex 插件（默认 false）
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool // 是否启用 web search 模拟
@@ -204,17 +206,26 @@ type SystemSettings struct {
 	PaymentVisibleMethodAlipayEnabled bool
 	PaymentVisibleMethodWxpayEnabled  bool
 
-	// OpenAI account scheduling
+	// OpenAI 账号调度
 	OpenAIAdvancedSchedulerEnabled bool
 
-	// Balance low notification
+	// 余额不足提醒
 	BalanceLowNotifyEnabled     bool
 	BalanceLowNotifyThreshold   float64
 	BalanceLowNotifyRechargeURL string
 
-	// Account quota notification
+	// 订阅到期提醒
+	SubscriptionExpiryNotifyEnabled bool
+
+	// 账号限额通知
 	AccountQuotaNotifyEnabled bool
 	AccountQuotaNotifyEmails  []NotifyEmailEntry
+
+	// 系统全局默认平台配额（key = platform，nil/缺省 = 不限制）
+	DefaultPlatformQuotas map[string]*DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
+
+	// 允许终端用户在用量页查看自己的失败请求
+	AllowUserViewErrorRequests bool
 }
 
 type DefaultSubscriptionSetting struct {
@@ -285,6 +296,9 @@ type PublicSettings struct {
 
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
+
+	// 允许终端用户在用量页查看自己的失败请求
+	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
 }
 
 type LoginAgreementDocument struct {

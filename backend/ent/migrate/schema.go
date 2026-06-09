@@ -105,6 +105,7 @@ var (
 		{Name: "type", Type: field.TypeString, Size: 20},
 		{Name: "credentials", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "extra", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "proxy_fallback_origin_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "concurrency", Type: field.TypeInt, Default: 3},
 		{Name: "load_factor", Type: field.TypeInt, Nullable: true},
 		{Name: "priority", Type: field.TypeInt, Default: 50},
@@ -133,7 +134,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "accounts_proxies_proxy",
-				Columns:    []*schema.Column{AccountsColumns[28]},
+				Columns:    []*schema.Column{AccountsColumns[29]},
 				RefColumns: []*schema.Column{ProxiesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -152,52 +153,52 @@ var (
 			{
 				Name:    "account_status",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[14]},
+				Columns: []*schema.Column{AccountsColumns[15]},
 			},
 			{
 				Name:    "account_proxy_id",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[28]},
+				Columns: []*schema.Column{AccountsColumns[29]},
 			},
 			{
 				Name:    "account_priority",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[12]},
+				Columns: []*schema.Column{AccountsColumns[13]},
 			},
 			{
 				Name:    "account_last_used_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[16]},
+				Columns: []*schema.Column{AccountsColumns[17]},
 			},
 			{
 				Name:    "account_schedulable",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[19]},
+				Columns: []*schema.Column{AccountsColumns[20]},
 			},
 			{
 				Name:    "account_rate_limited_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[20]},
+				Columns: []*schema.Column{AccountsColumns[21]},
 			},
 			{
 				Name:    "account_rate_limit_reset_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[21]},
+				Columns: []*schema.Column{AccountsColumns[22]},
 			},
 			{
 				Name:    "account_overload_until",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[22]},
+				Columns: []*schema.Column{AccountsColumns[23]},
 			},
 			{
 				Name:    "account_platform_priority",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[6], AccountsColumns[12]},
+				Columns: []*schema.Column{AccountsColumns[6], AccountsColumns[13]},
 			},
 			{
 				Name:    "account_priority_status",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[12], AccountsColumns[14]},
+				Columns: []*schema.Column{AccountsColumns[13], AccountsColumns[15]},
 			},
 			{
 				Name:    "account_deleted_at",
@@ -669,6 +670,7 @@ var (
 		{Name: "require_privacy_set", Type: field.TypeBool, Default: false},
 		{Name: "default_mapped_model", Type: field.TypeString, Size: 100, Default: ""},
 		{Name: "messages_dispatch_model_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "models_list_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
 	}
 	// GroupsTable holds the schema information for the "groups" table.
@@ -1103,12 +1105,24 @@ var (
 		{Name: "username", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "password", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "fallback_mode", Type: field.TypeString, Size: 20, Default: "none"},
+		{Name: "expiry_warn_days", Type: field.TypeInt, Default: 7},
+		{Name: "backup_proxy_id", Type: field.TypeInt64, Unique: true, Nullable: true},
 	}
 	// ProxiesTable holds the schema information for the "proxies" table.
 	ProxiesTable = &schema.Table{
 		Name:       "proxies",
 		Columns:    ProxiesColumns,
 		PrimaryKey: []*schema.Column{ProxiesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "proxies_proxies_backup_proxy",
+				Columns:    []*schema.Column{ProxiesColumns[14]},
+				RefColumns: []*schema.Column{ProxiesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
 		Indexes: []*schema.Index{
 			{
 				Name:    "proxy_status",
@@ -1119,6 +1133,16 @@ var (
 				Name:    "proxy_deleted_at",
 				Unique:  false,
 				Columns: []*schema.Column{ProxiesColumns[3]},
+			},
+			{
+				Name:    "proxy_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProxiesColumns[11]},
+			},
+			{
+				Name:    "proxy_backup_proxy_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProxiesColumns[14]},
 			},
 		},
 	}
@@ -1612,6 +1636,53 @@ var (
 			},
 		},
 	}
+	// UserPlatformQuotasColumns holds the columns for the "user_platform_quotas" table.
+	UserPlatformQuotasColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "platform", Type: field.TypeString, Size: 32},
+		{Name: "daily_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "weekly_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "monthly_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "daily_usage_usd", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "weekly_usage_usd", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "monthly_usage_usd", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "daily_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "weekly_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "monthly_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// UserPlatformQuotasTable holds the schema information for the "user_platform_quotas" table.
+	UserPlatformQuotasTable = &schema.Table{
+		Name:       "user_platform_quotas",
+		Columns:    UserPlatformQuotasColumns,
+		PrimaryKey: []*schema.Column{UserPlatformQuotasColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_platform_quotas_users_platform_quotas",
+				Columns:    []*schema.Column{UserPlatformQuotasColumns[14]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userplatformquota_user_id_platform",
+				Unique:  true,
+				Columns: []*schema.Column{UserPlatformQuotasColumns[14], UserPlatformQuotasColumns[4]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "deleted_at IS NULL",
+				},
+			},
+			{
+				Name:    "userplatformquota_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserPlatformQuotasColumns[14]},
+			},
+		},
+	}
 	// UserSubscriptionsColumns holds the columns for the "user_subscriptions" table.
 	UserSubscriptionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1736,6 +1807,7 @@ var (
 		UserAllowedGroupsTable,
 		UserAttributeDefinitionsTable,
 		UserAttributeValuesTable,
+		UserPlatformQuotasTable,
 		UserSubscriptionsTable,
 	}
 )
@@ -1822,6 +1894,7 @@ func init() {
 	PromoCodeUsagesTable.Annotation = &entsql.Annotation{
 		Table: "promo_code_usages",
 	}
+	ProxiesTable.ForeignKeys[0].RefTable = ProxiesTable
 	ProxiesTable.Annotation = &entsql.Annotation{
 		Table: "proxies",
 	}
@@ -1868,6 +1941,10 @@ func init() {
 	UserAttributeValuesTable.ForeignKeys[1].RefTable = UserAttributeDefinitionsTable
 	UserAttributeValuesTable.Annotation = &entsql.Annotation{
 		Table: "user_attribute_values",
+	}
+	UserPlatformQuotasTable.ForeignKeys[0].RefTable = UsersTable
+	UserPlatformQuotasTable.Annotation = &entsql.Annotation{
+		Table: "user_platform_quotas",
 	}
 	UserSubscriptionsTable.ForeignKeys[0].RefTable = GroupsTable
 	UserSubscriptionsTable.ForeignKeys[1].RefTable = UsersTable

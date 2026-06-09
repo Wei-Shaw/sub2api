@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -9,16 +11,32 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/google/uuid"
+)
+
+const (
+	// subscriptionExpiryReminderLeaderLockKey gates the per-cycle reminder scan so
+	// that only one instance walks all active subscriptions and sends reminder
+	// emails, avoiding redundant full scans and duplicate emails.
+	subscriptionExpiryReminderLeaderLockKey = "subscription:expiry:reminder:leader"
+	// subscriptionExpiryReminderLeaderLockTTL bounds crash recovery; the scan can
+	// page through many subscriptions, so keep it comfortably above one cycle.
+	subscriptionExpiryReminderLeaderLockTTL = 5 * time.Minute
 )
 
 // SubscriptionExpiryService periodically updates expired subscription status.
 type SubscriptionExpiryService struct {
 	userSubRepo              UserSubscriptionRepository
+	settingRepo              SettingRepository
 	notificationEmailService *NotificationEmailService
 	interval                 time.Duration
 	stopCh                   chan struct{}
 	stopOnce                 sync.Once
 	wg                       sync.WaitGroup
+
+	lockCache  LeaderLockCache
+	db         *sql.DB
+	instanceID string
 }
 
 func NewSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, interval time.Duration) *SubscriptionExpiryService {
@@ -26,7 +44,23 @@ func NewSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, interv
 		userSubRepo: userSubRepo,
 		interval:    interval,
 		stopCh:      make(chan struct{}),
+		instanceID:  uuid.NewString(),
 	}
+}
+
+// SetLeaderLock injects the leader-lock cache and DB used to elect a single
+// instance for the periodic expiry-reminder scan. When both are nil the scan runs
+// ungated (single-instance / test behavior).
+func (s *SubscriptionExpiryService) SetLeaderLock(lockCache LeaderLockCache, db *sql.DB) {
+	if s == nil {
+		return
+	}
+	s.lockCache = lockCache
+	s.db = db
+}
+
+func (s *SubscriptionExpiryService) SetSettingRepository(settingRepo SettingRepository) {
+	s.settingRepo = settingRepo
 }
 
 func (s *SubscriptionExpiryService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
@@ -84,6 +118,17 @@ func (s *SubscriptionExpiryService) sendExpiryReminders(ctx context.Context) {
 	if s == nil || s.userSubRepo == nil || s.notificationEmailService == nil {
 		return
 	}
+	if !s.expiryReminderEnabled(ctx) {
+		return
+	}
+
+	// Multi-instance guard: only the leader walks every active subscription and
+	// sends reminders, avoiding N× full scans and duplicate reminder emails.
+	release, ok := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, subscriptionExpiryReminderLeaderLockKey, s.instanceID, subscriptionExpiryReminderLeaderLockTTL)
+	if !ok {
+		return
+	}
+	defer release()
 	for page := 1; ; page++ {
 		subs, pag, err := s.userSubRepo.List(ctx, pagination.PaginationParams{Page: page, PageSize: 200}, nil, nil, SubscriptionStatusActive, "", "expires_at", "asc")
 		if err != nil {
@@ -97,6 +142,21 @@ func (s *SubscriptionExpiryService) sendExpiryReminders(ctx context.Context) {
 			return
 		}
 	}
+}
+
+func (s *SubscriptionExpiryService) expiryReminderEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return true
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySubscriptionExpiryNotifyEnabled)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return true
+		}
+		log.Printf("[SubscriptionExpiry] Read expiry reminder switch failed: %v", err)
+		return false
+	}
+	return !isFalseSettingValue(value)
 }
 
 func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context, sub *UserSubscription) {

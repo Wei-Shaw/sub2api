@@ -952,6 +952,8 @@ func TestOpenAITokenProvider_NoRefreshTokenExpired_DisablesAccount(t *testing.T)
 	cache.getErr = errors.New("simulated cache miss")
 
 	provider := NewOpenAITokenProvider(repo, cache, nil)
+	blocker := &runtimeBlockRecorder{}
+	provider.SetAccountRuntimeBlocker(blocker)
 
 	token, err := provider.GetAccessToken(context.Background(), account)
 	require.Error(t, err)
@@ -960,4 +962,7 @@ func TestOpenAITokenProvider_NoRefreshTokenExpired_DisablesAccount(t *testing.T)
 
 	require.Equal(t, 1, repo.setErrorCalls, "account should be disabled via SetError exactly once")
 	require.Contains(t, repo.lastErrorMsg, "refresh_token is missing")
+	require.Len(t, blocker.accounts, 1)
+	require.Equal(t, account.ID, blocker.accounts[0].ID)
+	require.Equal(t, "missing_refresh_token", blocker.reasons[0])
 }

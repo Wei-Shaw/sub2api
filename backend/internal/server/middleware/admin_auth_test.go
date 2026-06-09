@@ -20,7 +20,7 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 1}}
-	authService := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil)
+	authService := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	admin := &service.User{
 		ID:           1,
@@ -235,4 +235,8 @@ func (s *stubUserRepo) EnableTotp(ctx context.Context, userID int64) error {
 
 func (s *stubUserRepo) DisableTotp(ctx context.Context, userID int64) error {
 	panic("unexpected DisableTotp call")
+}
+
+func (s *stubUserRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
+	panic("unexpected GetByIDIncludeDeleted call")
 }

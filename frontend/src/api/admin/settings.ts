@@ -16,6 +16,47 @@ export interface DefaultSubscriptionSetting {
   validity_days: number;
 }
 
+// ── 平台限额类型 ──────────────────────────────────────────────────
+export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity"
+export type QuotaWindowType = "daily" | "weekly" | "monthly"
+
+/** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
+export interface PlatformQuotaLimits {
+  daily:   number | null
+  weekly:  number | null
+  monthly: number | null
+}
+
+/** 全平台默认限额 map（key = PlatformType） */
+export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>>
+
+const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity"]
+
+/** 归一化为全 4 平台 × 3 窗口（缺失填 null），供模板非空绑定 */
+export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
+  const result: DefaultPlatformQuotasMap = {}
+  for (const p of PLATFORMS) {
+    const src = input?.[p]
+    result[p] = {
+      daily:   typeof src?.daily === "number" ? src.daily : null,
+      weekly:  typeof src?.weekly === "number" ? src.weekly : null,
+      monthly: typeof src?.monthly === "number" ? src.monthly : null,
+    }
+  }
+  return result
+}
+
+/** 提交前清洗：非有限数/负数/空字符串 → null（保留 0 = 显式禁用），返回全 4 平台嵌套 map */
+export function sanitizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
+  const clean = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null)
+  const result: DefaultPlatformQuotasMap = {}
+  for (const p of PLATFORMS) {
+    const src = input?.[p]
+    result[p] = { daily: clean(src?.daily), weekly: clean(src?.weekly), monthly: clean(src?.monthly) }
+  }
+  return result
+}
+
 export type AuthSourceType =
   | "email"
   | "linuxdo"
@@ -31,6 +72,8 @@ export interface AuthSourceDefaultsValue {
   subscriptions: DefaultSubscriptionSetting[];
   grant_on_signup: boolean;
   grant_on_first_bind: boolean;
+  // ★ 新增：平台限额覆盖（key = PlatformType）
+  platform_quotas: DefaultPlatformQuotasMap;
 }
 
 export type AuthSourceDefaultsState = Record<
@@ -193,6 +236,7 @@ export function buildAuthSourceDefaultsState(
         raw[`auth_source_default_${source}_grant_on_signup`] === true,
       grant_on_first_bind:
         raw[`auth_source_default_${source}_grant_on_first_bind`] === true,
+      platform_quotas: normalizePlatformQuotasMap(raw[`auth_source_default_${source}_platform_quotas`] as DefaultPlatformQuotasMap | undefined),
     };
     return acc;
   }, {} as AuthSourceDefaultsState);
@@ -220,6 +264,7 @@ export function appendAuthSourceDefaultsToUpdateRequest(
       current.grant_on_signup;
     target[`auth_source_default_${source}_grant_on_first_bind`] =
       current.grant_on_first_bind;
+    target[`auth_source_default_${source}_platform_quotas`] = sanitizePlatformQuotasMap(current.platform_quotas)
   }
 
   return payload;
@@ -370,6 +415,15 @@ export interface SystemSettings {
   auth_source_default_google_grant_on_signup?: boolean;
   auth_source_default_google_grant_on_first_bind?: boolean;
   force_email_on_third_party_signup?: boolean;
+  // ── 平台限额（嵌套 JSON，系统层 + 7 auth-source 层）────────────────────────────────
+  default_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_email_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_linuxdo_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_oidc_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_wechat_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_github_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_google_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_dingtalk_platform_quotas?: DefaultPlatformQuotasMap;
   // OEM settings
   site_name: string;
   site_logo: string;
@@ -396,6 +450,7 @@ export interface SystemSettings {
   turnstile_enabled: boolean;
   turnstile_site_key: string;
   turnstile_secret_key_configured: boolean;
+  api_key_acl_trust_forwarded_ip: boolean;
 
   // LinuxDo Connect OAuth settings
   linuxdo_connect_enabled: boolean;
@@ -505,6 +560,7 @@ export interface SystemSettings {
   rewrite_message_cache_control: boolean;
   antigravity_user_agent_version: string;
   openai_codex_user_agent: string;
+  openai_allow_claude_code_codex_plugin: boolean;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -536,10 +592,11 @@ export interface SystemSettings {
   payment_visible_method_wxpay_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
 
-  // Balance & quota notification
+  // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: boolean;
   balance_low_notify_threshold: number;
   balance_low_notify_recharge_url: string;
+  subscription_expiry_notify_enabled: boolean;
   account_quota_notify_enabled: boolean;
   account_quota_notify_emails: NotifyEmailEntry[];
 
@@ -555,6 +612,9 @@ export interface SystemSettings {
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
+
+  // Allow user view error requests
+  allow_user_view_error_requests: boolean;
 }
 
 export interface UpdateSettingsRequest {
@@ -614,6 +674,15 @@ export interface UpdateSettingsRequest {
   auth_source_default_google_grant_on_signup?: boolean;
   auth_source_default_google_grant_on_first_bind?: boolean;
   force_email_on_third_party_signup?: boolean;
+  // ── 平台限额（嵌套 JSON，系统层 + 7 auth-source 层）────────────────────────────────
+  default_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_email_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_linuxdo_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_oidc_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_wechat_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_github_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_google_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_dingtalk_platform_quotas?: DefaultPlatformQuotasMap;
   site_name?: string;
   site_logo?: string;
   site_subtitle?: string;
@@ -637,6 +706,7 @@ export interface UpdateSettingsRequest {
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;
+  api_key_acl_trust_forwarded_ip?: boolean;
   linuxdo_connect_enabled?: boolean;
   linuxdo_connect_client_id?: string;
   linuxdo_connect_client_secret?: string;
@@ -726,6 +796,7 @@ export interface UpdateSettingsRequest {
   rewrite_message_cache_control?: boolean;
   antigravity_user_agent_version?: string;
   openai_codex_user_agent?: string;
+  openai_allow_claude_code_codex_plugin?: boolean;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;
@@ -754,10 +825,11 @@ export interface UpdateSettingsRequest {
   payment_visible_method_alipay_enabled?: boolean;
   payment_visible_method_wxpay_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
-  // Balance & quota notification
+  // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled?: boolean;
   balance_low_notify_threshold?: number;
   balance_low_notify_recharge_url?: string;
+  subscription_expiry_notify_enabled?: boolean;
   account_quota_notify_enabled?: boolean;
   account_quota_notify_emails?: NotifyEmailEntry[];
 
@@ -773,6 +845,8 @@ export interface UpdateSettingsRequest {
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
+
+  allow_user_view_error_requests?: boolean;
 }
 
 /**
@@ -860,6 +934,8 @@ export interface EmailTemplateOption {
   value: string;
   label?: string;
   description?: string;
+  category?: string;
+  optional?: boolean;
 }
 
 export type EmailTemplateEventOption = string | EmailTemplateOption;

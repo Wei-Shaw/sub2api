@@ -2,6 +2,12 @@ import { apiClient } from '../client'
 
 export type ModerationMode = 'off' | 'observe' | 'pre_block'
 export type KeywordBlockingMode = 'keyword_only' | 'keyword_and_api' | 'api_only'
+export type ContentModerationModelFilterType = 'all' | 'include' | 'exclude'
+
+export interface ContentModerationModelFilter {
+  type: ContentModerationModelFilterType
+  models: string[]
+}
 
 export interface ContentModerationConfig {
   enabled: boolean
@@ -18,6 +24,7 @@ export interface ContentModerationConfig {
   all_groups: boolean
   group_ids: number[]
   record_non_hits: boolean
+  thresholds: Record<string, number>
   worker_count: number
   queue_size: number
   block_status: number
@@ -32,6 +39,7 @@ export interface ContentModerationConfig {
   pre_hash_check_enabled: boolean
   blocked_keywords: string[]
   keyword_blocking_mode: KeywordBlockingMode
+  model_filter: ContentModerationModelFilter
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -91,6 +99,7 @@ export interface UpdateContentModerationConfig {
   all_groups?: boolean
   group_ids?: number[]
   record_non_hits?: boolean
+  thresholds?: Record<string, number>
   worker_count?: number
   queue_size?: number
   block_status?: number
@@ -105,6 +114,7 @@ export interface UpdateContentModerationConfig {
   pre_hash_check_enabled?: boolean
   blocked_keywords?: string[]
   keyword_blocking_mode?: KeywordBlockingMode
+  model_filter?: ContentModerationModelFilter
 }
 
 export interface ContentModerationRuntimeStatus {
@@ -122,11 +132,35 @@ export interface ContentModerationRuntimeStatus {
   dropped: number
   processed: number
   errors: number
+  pre_block_active: number
+  pre_block_checked: number
+  pre_block_allowed: number
+  pre_block_blocked: number
+  pre_block_errors: number
+  pre_block_avg_latency_ms: number
+  pre_block_api_key_active: number
+  pre_block_api_key_available_count: number
+  pre_block_api_key_total_calls: number
+  pre_block_api_key_loads: ContentModerationAPIKeyLoad[]
   api_key_statuses: ContentModerationAPIKeyStatus[]
   flagged_hash_count: number
   last_cleanup_at?: string
   last_cleanup_deleted_hit: number
   last_cleanup_deleted_non_hit: number
+}
+
+export interface ContentModerationAPIKeyLoad {
+  index: number
+  key_hash: string
+  masked: string
+  status: ContentModerationAPIKeyStatusValue
+  active: number
+  total: number
+  success: number
+  errors: number
+  avg_latency_ms: number
+  last_latency_ms: number
+  last_http_status: number
 }
 
 export interface ContentModerationLog {
