@@ -59,12 +59,13 @@ type GatewayHandler struct {
 
 // refusalMaxRetries returns the cap on refusal-driven account switches
 // (anti-amplification), shared by the native Anthropic and antigravity paths.
-// Default 2; 0 disables the cap.
+// The viper default is 2 (set in config); an explicit 0 means unbounded and is
+// passed through verbatim. nil cfg falls back to the default 2.
 func (h *GatewayHandler) refusalMaxRetries() int {
-	if h.cfg != nil && h.cfg.Gateway.RefusalMaxRetries > 0 {
-		return h.cfg.Gateway.RefusalMaxRetries
+	if h.cfg == nil {
+		return 2
 	}
-	return 2
+	return h.cfg.Gateway.RefusalMaxRetries
 }
 
 // NewGatewayHandler creates a new GatewayHandler

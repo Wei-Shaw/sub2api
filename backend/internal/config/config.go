@@ -777,7 +777,8 @@ type GatewayConfig struct {
 	// RefusalFinishReasons: antigravity(Gemini) 路径下视为拒绝的 finishReason 列表
 	// (留空使用默认 SAFETY/RECITATION/PROHIBITED_CONTENT/BLOCKLIST/SPII)
 	RefusalFinishReasons []string `mapstructure:"refusal_finish_reasons"`
-	// RefusalHoldTimeoutMs: 缓冲保持上限(毫秒)，超时则释放(默认 15000)
+	// RefusalHoldTimeoutMs: 缓冲保持上限(毫秒)，超时则释放(默认 10000，
+	// 保持在常见客户端首字节预算之内，期间抑制 keepalive)
 	RefusalHoldTimeoutMs int `mapstructure:"refusal_hold_timeout_ms"`
 	// RefusalHoldMaxBytes: 缓冲字节上限，超过则释放(默认 65536)
 	RefusalHoldMaxBytes int `mapstructure:"refusal_hold_max_bytes"`
@@ -1857,7 +1858,7 @@ func setDefaults() {
 	// Silent-refusal retry (native Anthropic + antigravity). Disabled by default.
 	viper.SetDefault("gateway.refusal_retry_enabled", false)
 	viper.SetDefault("gateway.refusal_finish_reasons", []string{})
-	viper.SetDefault("gateway.refusal_hold_timeout_ms", 15000)
+	viper.SetDefault("gateway.refusal_hold_timeout_ms", 10000)
 	viper.SetDefault("gateway.refusal_hold_max_bytes", 64*1024)
 	viper.SetDefault("gateway.refusal_max_retries", 2)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
