@@ -82,6 +82,7 @@ func provideCleanup(
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
 	oauthPreemptivePause *service.OAuthPreemptivePauseService,
+	proxyExpiry *service.ProxyExpiryService,
 	subscriptionExpiry *service.SubscriptionExpiryService,
 	usageCleanup *service.UsageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
@@ -178,6 +179,12 @@ func provideCleanup(
 			{"OAuthPreemptivePauseService", func() error {
 				if oauthPreemptivePause != nil {
 					oauthPreemptivePause.Stop()
+				}
+				return nil
+			}},
+			{"ProxyExpiryService", func() error {
+				if proxyExpiry != nil {
+					proxyExpiry.Stop()
 				}
 				return nil
 			}},

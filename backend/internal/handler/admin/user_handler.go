@@ -48,14 +48,14 @@ func NewUserHandler(
 
 // CreateUserRequest represents admin create user request
 type CreateUserRequest struct {
-	Email         string  `json:"email" binding:"required,email"`
-	Password      string  `json:"password" binding:"required,min=6"`
-	Username      string  `json:"username"`
-	Notes         string  `json:"notes"`
-	Balance       float64 `json:"balance"`
-	Concurrency   int     `json:"concurrency"`
-	RPMLimit      int     `json:"rpm_limit"`
-	AllowedGroups []int64 `json:"allowed_groups"`
+	Email         string   `json:"email" binding:"required,email"`
+	Password      string   `json:"password" binding:"required,min=6"`
+	Username      string   `json:"username"`
+	Notes         string   `json:"notes"`
+	Balance       *float64 `json:"balance"`
+	Concurrency   int      `json:"concurrency"`
+	RPMLimit      int      `json:"rpm_limit"`
+	AllowedGroups []int64  `json:"allowed_groups"`
 }
 
 // UpdateUserRequest represents admin update user request
@@ -106,6 +106,7 @@ type BindUserAuthIdentityChannelRequest struct {
 //   - search: search in email, username
 //   - attr[{id}]: filter by custom attribute value, e.g. attr[1]=company
 //   - group_name: fuzzy filter by allowed group name
+//   - api_key_group_id: filter by the exact group bound to the user's API keys
 func (h *UserHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 
@@ -122,6 +123,11 @@ func (h *UserHandler) List(c *gin.Context) {
 		Search:     search,
 		GroupName:  strings.TrimSpace(c.Query("group_name")),
 		Attributes: parseAttributeFilters(c),
+	}
+	if raw := strings.TrimSpace(c.Query("api_key_group_id")); raw != "" {
+		if id, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil && id > 0 {
+			filters.APIKeyGroupID = id
+		}
 	}
 	sortBy := c.DefaultQuery("sort_by", "created_at")
 	sortOrder := c.DefaultQuery("sort_order", "desc")
@@ -195,7 +201,12 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	user, err := h.adminService.GetUser(c.Request.Context(), userID)
+	var user *service.User
+	if c.Query("include_deleted") == "true" {
+		user, err = h.adminService.GetUserIncludeDeleted(c.Request.Context(), userID)
+	} else {
+		user, err = h.adminService.GetUser(c.Request.Context(), userID)
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

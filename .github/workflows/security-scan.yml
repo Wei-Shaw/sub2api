@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.3'
+          go version | grep -q 'go1.26.4'
       - name: Run govulncheck
         working-directory: backend
         run: |

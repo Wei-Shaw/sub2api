@@ -406,6 +406,10 @@ type ResponsesStreamEvent struct {
 	// Reuses Text/Delta fields above, SummaryIndex identifies which summary part
 	SummaryIndex int `json:"summary_index,omitempty"`
 
+	// response.content_part.added / done and
+	// response.reasoning_summary_part.added / done
+	Part *ResponsesContentPart `json:"part,omitempty"`
+
 	// error event fields
 	Code  string `json:"code,omitempty"`
 	Param string `json:"param,omitempty"`

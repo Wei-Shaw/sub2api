@@ -85,9 +85,42 @@ describe('PendingOAuthCreateAccountForm', () => {
     expect(wrapper.text()).toContain('auth.alreadyHaveAccount')
   })
 
+  it('hides email verification controls when public settings disable email verification', async () => {
+    getPublicSettings.mockResolvedValue({
+      email_verify_enabled: false,
+      turnstile_enabled: false,
+      turnstile_site_key: ''
+    })
+
+    const wrapper = mount(PendingOAuthCreateAccountForm, {
+      props: {
+        testIdPrefix: 'linuxdo',
+        initialEmail: 'prefill@example.com',
+        isSubmitting: false
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    await wrapper.get('form').trigger('submit.prevent')
+
+    expect(wrapper.find('[data-testid="linuxdo-create-account-verify-code"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="linuxdo-create-account-send-code"]').exists()).toBe(false)
+    expect(wrapper.emitted('submit')).toEqual([
+      [
+        {
+          email: 'prefill@example.com',
+          password: 'secret-123',
+          verifyCode: ''
+        }
+      ]
+    ])
+  })
+
   it('shows and emits invitation code when invitation-only signup is enabled', async () => {
     getPublicSettings.mockResolvedValue({
       invitation_code_enabled: true,
+      email_verify_enabled: true,
       turnstile_enabled: false,
       turnstile_site_key: ''
     })
