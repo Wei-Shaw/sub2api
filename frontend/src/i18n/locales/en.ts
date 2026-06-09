@@ -4483,6 +4483,82 @@ export default {
       deleteConfirm: 'Are you sure you want to delete this announcement? This action cannot be undone.'
     },
 
+    // Bulk announcement email broadcasts
+    emailBroadcast: {
+      title: 'Announcement Email Broadcast',
+      description: 'Compose and bulk-send an announcement email to selected users or all registered users, useful when users cannot see in-app popups before they log in.',
+      openComposer: 'Compose announcement email',
+      form: {
+        subject: 'Subject',
+        subjectPlaceholder: 'e.g. Scheduled maintenance this Sunday',
+        body: 'Body',
+        bodyFormat: 'Format',
+        bodyFormatText: 'Plain text',
+        bodyPlaceholderHtml: 'Basic HTML allowed: <p>, <strong>, <em>, <ul>/<ol>/<li>, <a>. The server sanitizes for XSS before sending.',
+        bodyPlaceholderText: 'Plain text; line breaks are preserved.',
+        bodyHint: 'HTML is sanitized for XSS; in plain-text mode line breaks are converted automatically.',
+        recipients: 'Recipients',
+        sendToAll: 'Send to all registered users',
+        sendToAllHint: 'When enabled, manually picked recipients below are ignored.',
+        searchRecipientsPlaceholder: 'Search by email or username…',
+        noRecipientsFound: 'No matching users',
+        noRecipientsSelected: 'Pick at least one recipient, or enable "Send to all registered users".',
+        send: 'Send broadcast',
+        sending: 'Sending…'
+      },
+      recipientsMode: {
+        all: 'All users',
+        selected: 'Selected recipients'
+      },
+      status: {
+        pending: 'Queued',
+        sending: 'Sending',
+        completed: 'Completed',
+        failed: 'Failed'
+      },
+      preview: {
+        title: 'Live preview',
+        refreshing: 'Refreshing…',
+        error: 'Failed to render preview',
+        hint: 'Preview matches the final delivered email exactly, including the card layout and site-name header.',
+        iframeTitle: 'Broadcast email preview',
+        placeholderSubject: '(Fill in subject on the left)',
+        placeholderBody: '(Compose the body on the left in HTML or plain text. The preview updates as you type.)'
+      },
+      toolbar: {
+        p: 'Paragraph (wrap selection in <p>)',
+        b: 'Bold (wrap selection in <strong>)',
+        i: 'Italic (wrap selection in <em>)',
+        a: 'Insert link (wrap selection in <a href>)',
+        ul: 'Bullet list (insert <ul><li>)',
+        h2: 'Heading 2 (wrap selection in <h2>)',
+        hr: 'Horizontal rule (insert <hr>)',
+        br: 'Line break (insert <br>)'
+      },
+      history: {
+        title: 'Recent broadcasts (last 10)',
+        empty: 'No broadcasts sent yet',
+        preview: 'Preview',
+        delete: 'Delete',
+        backToList: 'Back to history',
+        deleteConfirmTitle: 'Delete broadcast',
+        deleteConfirm: 'Delete the broadcast "{subject}"? This action cannot be undone.',
+        detail: {
+          subject: 'Subject',
+          status: 'Status',
+          recipients: 'Recipients',
+          sentAt: 'Sent at',
+          errorMessage: 'Error',
+          iframeTitle: 'Historical broadcast preview'
+        }
+      },
+      notifications: {
+        sendQueued: 'Broadcast #{id} queued for delivery. Watch progress in the history list.',
+        loadHistoryFailed: 'Failed to load broadcast history',
+        deleteSuccess: 'Broadcast deleted'
+      }
+    },
+
     // Promo Codes
     promo: {
       title: 'Promo Code Management',

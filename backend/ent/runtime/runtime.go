@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/ent/emailbroadcast"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -690,6 +691,76 @@ func init() {
 	channelmonitorrequesttemplate.DefaultBodyOverrideMode = channelmonitorrequesttemplateDescBodyOverrideMode.Default.(string)
 	// channelmonitorrequesttemplate.BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
 	channelmonitorrequesttemplate.BodyOverrideModeValidator = channelmonitorrequesttemplateDescBodyOverrideMode.Validators[0].(func(string) error)
+	emailbroadcastFields := schema.EmailBroadcast{}.Fields()
+	_ = emailbroadcastFields
+	// emailbroadcastDescSubject is the schema descriptor for subject field.
+	emailbroadcastDescSubject := emailbroadcastFields[0].Descriptor()
+	// emailbroadcast.SubjectValidator is a validator for the "subject" field. It is called by the builders before save.
+	emailbroadcast.SubjectValidator = func() func(string) error {
+		validators := emailbroadcastDescSubject.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(subject string) error {
+			for _, fn := range fns {
+				if err := fn(subject); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// emailbroadcastDescBody is the schema descriptor for body field.
+	emailbroadcastDescBody := emailbroadcastFields[1].Descriptor()
+	// emailbroadcast.BodyValidator is a validator for the "body" field. It is called by the builders before save.
+	emailbroadcast.BodyValidator = emailbroadcastDescBody.Validators[0].(func(string) error)
+	// emailbroadcastDescBodyFormat is the schema descriptor for body_format field.
+	emailbroadcastDescBodyFormat := emailbroadcastFields[2].Descriptor()
+	// emailbroadcast.DefaultBodyFormat holds the default value on creation for the body_format field.
+	emailbroadcast.DefaultBodyFormat = emailbroadcastDescBodyFormat.Default.(string)
+	// emailbroadcast.BodyFormatValidator is a validator for the "body_format" field. It is called by the builders before save.
+	emailbroadcast.BodyFormatValidator = emailbroadcastDescBodyFormat.Validators[0].(func(string) error)
+	// emailbroadcastDescRecipientsMode is the schema descriptor for recipients_mode field.
+	emailbroadcastDescRecipientsMode := emailbroadcastFields[3].Descriptor()
+	// emailbroadcast.DefaultRecipientsMode holds the default value on creation for the recipients_mode field.
+	emailbroadcast.DefaultRecipientsMode = emailbroadcastDescRecipientsMode.Default.(string)
+	// emailbroadcast.RecipientsModeValidator is a validator for the "recipients_mode" field. It is called by the builders before save.
+	emailbroadcast.RecipientsModeValidator = emailbroadcastDescRecipientsMode.Validators[0].(func(string) error)
+	// emailbroadcastDescStatus is the schema descriptor for status field.
+	emailbroadcastDescStatus := emailbroadcastFields[5].Descriptor()
+	// emailbroadcast.DefaultStatus holds the default value on creation for the status field.
+	emailbroadcast.DefaultStatus = emailbroadcastDescStatus.Default.(string)
+	// emailbroadcast.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	emailbroadcast.StatusValidator = emailbroadcastDescStatus.Validators[0].(func(string) error)
+	// emailbroadcastDescTotalCount is the schema descriptor for total_count field.
+	emailbroadcastDescTotalCount := emailbroadcastFields[6].Descriptor()
+	// emailbroadcast.DefaultTotalCount holds the default value on creation for the total_count field.
+	emailbroadcast.DefaultTotalCount = emailbroadcastDescTotalCount.Default.(int)
+	// emailbroadcast.TotalCountValidator is a validator for the "total_count" field. It is called by the builders before save.
+	emailbroadcast.TotalCountValidator = emailbroadcastDescTotalCount.Validators[0].(func(int) error)
+	// emailbroadcastDescSuccessCount is the schema descriptor for success_count field.
+	emailbroadcastDescSuccessCount := emailbroadcastFields[7].Descriptor()
+	// emailbroadcast.DefaultSuccessCount holds the default value on creation for the success_count field.
+	emailbroadcast.DefaultSuccessCount = emailbroadcastDescSuccessCount.Default.(int)
+	// emailbroadcast.SuccessCountValidator is a validator for the "success_count" field. It is called by the builders before save.
+	emailbroadcast.SuccessCountValidator = emailbroadcastDescSuccessCount.Validators[0].(func(int) error)
+	// emailbroadcastDescFailedCount is the schema descriptor for failed_count field.
+	emailbroadcastDescFailedCount := emailbroadcastFields[8].Descriptor()
+	// emailbroadcast.DefaultFailedCount holds the default value on creation for the failed_count field.
+	emailbroadcast.DefaultFailedCount = emailbroadcastDescFailedCount.Default.(int)
+	// emailbroadcast.FailedCountValidator is a validator for the "failed_count" field. It is called by the builders before save.
+	emailbroadcast.FailedCountValidator = emailbroadcastDescFailedCount.Validators[0].(func(int) error)
+	// emailbroadcastDescCreatedAt is the schema descriptor for created_at field.
+	emailbroadcastDescCreatedAt := emailbroadcastFields[13].Descriptor()
+	// emailbroadcast.DefaultCreatedAt holds the default value on creation for the created_at field.
+	emailbroadcast.DefaultCreatedAt = emailbroadcastDescCreatedAt.Default.(func() time.Time)
+	// emailbroadcastDescUpdatedAt is the schema descriptor for updated_at field.
+	emailbroadcastDescUpdatedAt := emailbroadcastFields[14].Descriptor()
+	// emailbroadcast.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	emailbroadcast.DefaultUpdatedAt = emailbroadcastDescUpdatedAt.Default.(func() time.Time)
+	// emailbroadcast.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	emailbroadcast.UpdateDefaultUpdatedAt = emailbroadcastDescUpdatedAt.UpdateDefault.(func() time.Time)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0

@@ -183,19 +183,32 @@ func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) 
 const smtpDialTimeout = 10 * time.Second
 const smtpIOTimeout = 20 * time.Second
 
-// SendEmailWithConfig 使用指定配置发送邮件
+// SendEmailWithConfig 使用指定配置发送邮件 (默认 text/html 内容类型，保持向后兼容).
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
+	return s.SendEmailWithConfigAndContentType(config, to, subject, body, "text/html; charset=UTF-8")
+}
+
+// SendEmailWithConfigAndContentType 允许调用方指定 MIME Content-Type，
+// 例如 "text/plain; charset=UTF-8" 用于纯文本邮件。
+//
+// SendEmailWithConfigAndContentType lets callers pick the MIME content type
+// (e.g. "text/plain; charset=UTF-8" for plain-text mails).
+func (s *EmailService) SendEmailWithConfigAndContentType(config *SMTPConfig, to, subject, body, contentType string) error {
 	// Sanitize all SMTP header fields to prevent header injection (CR/LF removal).
 	to = sanitizeEmailHeader(to)
 	subject = sanitizeEmailHeader(subject)
+	contentType = sanitizeEmailHeader(contentType)
+	if contentType == "" {
+		contentType = "text/html; charset=UTF-8"
+	}
 
 	from := sanitizeEmailHeader(config.From)
 	if config.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", sanitizeEmailHeader(config.FromName), sanitizeEmailHeader(config.From))
 	}
 
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
-		from, to, subject, body)
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: %s\r\n\r\n%s",
+		from, to, subject, contentType, body)
 
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)

@@ -597,6 +597,48 @@ var (
 			},
 		},
 	}
+	// EmailBroadcastsColumns holds the columns for the "email_broadcasts" table.
+	EmailBroadcastsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "subject", Type: field.TypeString, Size: 200},
+		{Name: "body", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "body_format", Type: field.TypeString, Size: 10, Default: "html"},
+		{Name: "recipients_mode", Type: field.TypeString, Size: 20, Default: "selected"},
+		{Name: "recipient_user_ids", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "pending"},
+		{Name: "total_count", Type: field.TypeInt, Default: 0},
+		{Name: "success_count", Type: field.TypeInt, Default: 0},
+		{Name: "failed_count", Type: field.TypeInt, Default: 0},
+		{Name: "error_message", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "created_by", Type: field.TypeInt64, Nullable: true},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// EmailBroadcastsTable holds the schema information for the "email_broadcasts" table.
+	EmailBroadcastsTable = &schema.Table{
+		Name:       "email_broadcasts",
+		Columns:    EmailBroadcastsColumns,
+		PrimaryKey: []*schema.Column{EmailBroadcastsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "emailbroadcast_status",
+				Unique:  false,
+				Columns: []*schema.Column{EmailBroadcastsColumns[6]},
+			},
+			{
+				Name:    "emailbroadcast_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{EmailBroadcastsColumns[14]},
+			},
+			{
+				Name:    "emailbroadcast_created_by",
+				Unique:  false,
+				Columns: []*schema.Column{EmailBroadcastsColumns[11]},
+			},
+		},
+	}
 	// ErrorPassthroughRulesColumns holds the columns for the "error_passthrough_rules" table.
 	ErrorPassthroughRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1785,6 +1827,7 @@ var (
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
+		EmailBroadcastsTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -1857,6 +1900,9 @@ func init() {
 	}
 	ChannelMonitorRequestTemplatesTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitor_request_templates",
+	}
+	EmailBroadcastsTable.Annotation = &entsql.Annotation{
+		Table: "email_broadcasts",
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

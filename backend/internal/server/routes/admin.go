@@ -32,6 +32,9 @@ func RegisterAdminRoutes(
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
 
+		// 公告邮件批量发送
+		registerEmailBroadcastRoutes(admin, h)
+
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
 
@@ -337,6 +340,20 @@ func registerAnnouncementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		announcements.PUT("/:id", h.Admin.Announcement.Update)
 		announcements.DELETE("/:id", h.Admin.Announcement.Delete)
 		announcements.GET("/:id/read-status", h.Admin.Announcement.ListReadStatus)
+	}
+}
+
+// registerEmailBroadcastRoutes 注册管理员"批量公告邮件"相关路由。
+// registerEmailBroadcastRoutes wires the admin bulk-announcement email endpoints.
+func registerEmailBroadcastRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	broadcasts := admin.Group("/email-broadcasts")
+	{
+		broadcasts.GET("", h.Admin.EmailBroadcast.List)
+		broadcasts.POST("", h.Admin.EmailBroadcast.Create)
+		broadcasts.POST("/preview", h.Admin.EmailBroadcast.Preview)
+		broadcasts.GET("/:id", h.Admin.EmailBroadcast.Get)
+		broadcasts.DELETE("/:id", h.Admin.EmailBroadcast.Delete)
+		broadcasts.GET("/recipients/search", h.Admin.EmailBroadcast.SearchRecipients)
 	}
 }
 

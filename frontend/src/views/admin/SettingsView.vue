@@ -6447,6 +6447,30 @@
             </div>
           </div>
 
+          <!-- 批量公告邮件 - 仅在邮件功能开启时显示 -->
+          <div v-if="form.email_verify_enabled" class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.emailBroadcast.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.emailBroadcast.description") }}
+              </p>
+            </div>
+            <div class="p-6">
+              <button
+                type="button"
+                class="btn btn-primary"
+                :disabled="loadFailed"
+                @click="emailBroadcastDialogOpen = true"
+              >
+                {{ t("admin.emailBroadcast.openComposer") }}
+              </button>
+            </div>
+          </div>
+
           <!-- 订阅到期提醒 -->
           <div class="card">
             <div
@@ -6688,6 +6712,13 @@
         @confirm="handleAffiliateConfirm"
         @cancel="cancelAffiliateConfirm"
       />
+
+      <!-- 批量公告邮件编辑器 -->
+      <EmailBroadcastDialog
+        :show="emailBroadcastDialogOpen"
+        @close="emailBroadcastDialogOpen = false"
+        @sent="emailBroadcastDialogOpen = false"
+      />
     </div>
   </AppLayout>
 </template>
@@ -6732,6 +6763,7 @@ import Select from "@/components/common/Select.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
+import EmailBroadcastDialog from "@/components/admin/email-broadcasts/EmailBroadcastDialog.vue";
 import GroupBadge from "@/components/common/GroupBadge.vue";
 import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import Toggle from "@/components/common/Toggle.vue";
@@ -6855,6 +6887,7 @@ const testingSmtp = ref(false);
 const sendingTestEmail = ref(false);
 const smtpPasswordManuallyEdited = ref(false);
 const testEmailAddress = ref("");
+const emailBroadcastDialogOpen = ref(false);
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");

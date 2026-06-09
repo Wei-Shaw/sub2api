@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/ent/emailbroadcast"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -71,6 +72,7 @@ const (
 	TypeChannelMonitorDailyRollup     = "ChannelMonitorDailyRollup"
 	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
 	TypeChannelMonitorRequestTemplate = "ChannelMonitorRequestTemplate"
+	TypeEmailBroadcast                = "EmailBroadcast"
 	TypeErrorPassthroughRule          = "ErrorPassthroughRule"
 	TypeGroup                         = "Group"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
@@ -13634,6 +13636,1339 @@ func (m *ChannelMonitorRequestTemplateMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitorRequestTemplate edge %s", name)
+}
+
+// EmailBroadcastMutation represents an operation that mutates the EmailBroadcast nodes in the graph.
+type EmailBroadcastMutation struct {
+	config
+	op                       Op
+	typ                      string
+	id                       *int64
+	subject                  *string
+	body                     *string
+	body_format              *string
+	recipients_mode          *string
+	recipient_user_ids       *[]int64
+	appendrecipient_user_ids []int64
+	status                   *string
+	total_count              *int
+	addtotal_count           *int
+	success_count            *int
+	addsuccess_count         *int
+	failed_count             *int
+	addfailed_count          *int
+	error_message            *string
+	created_by               *int64
+	addcreated_by            *int64
+	started_at               *time.Time
+	finished_at              *time.Time
+	created_at               *time.Time
+	updated_at               *time.Time
+	clearedFields            map[string]struct{}
+	done                     bool
+	oldValue                 func(context.Context) (*EmailBroadcast, error)
+	predicates               []predicate.EmailBroadcast
+}
+
+var _ ent.Mutation = (*EmailBroadcastMutation)(nil)
+
+// emailbroadcastOption allows management of the mutation configuration using functional options.
+type emailbroadcastOption func(*EmailBroadcastMutation)
+
+// newEmailBroadcastMutation creates new mutation for the EmailBroadcast entity.
+func newEmailBroadcastMutation(c config, op Op, opts ...emailbroadcastOption) *EmailBroadcastMutation {
+	m := &EmailBroadcastMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeEmailBroadcast,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withEmailBroadcastID sets the ID field of the mutation.
+func withEmailBroadcastID(id int64) emailbroadcastOption {
+	return func(m *EmailBroadcastMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *EmailBroadcast
+		)
+		m.oldValue = func(ctx context.Context) (*EmailBroadcast, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().EmailBroadcast.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withEmailBroadcast sets the old EmailBroadcast of the mutation.
+func withEmailBroadcast(node *EmailBroadcast) emailbroadcastOption {
+	return func(m *EmailBroadcastMutation) {
+		m.oldValue = func(context.Context) (*EmailBroadcast, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m EmailBroadcastMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m EmailBroadcastMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *EmailBroadcastMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *EmailBroadcastMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().EmailBroadcast.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSubject sets the "subject" field.
+func (m *EmailBroadcastMutation) SetSubject(s string) {
+	m.subject = &s
+}
+
+// Subject returns the value of the "subject" field in the mutation.
+func (m *EmailBroadcastMutation) Subject() (r string, exists bool) {
+	v := m.subject
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubject returns the old "subject" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldSubject(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubject is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubject requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubject: %w", err)
+	}
+	return oldValue.Subject, nil
+}
+
+// ResetSubject resets all changes to the "subject" field.
+func (m *EmailBroadcastMutation) ResetSubject() {
+	m.subject = nil
+}
+
+// SetBody sets the "body" field.
+func (m *EmailBroadcastMutation) SetBody(s string) {
+	m.body = &s
+}
+
+// Body returns the value of the "body" field in the mutation.
+func (m *EmailBroadcastMutation) Body() (r string, exists bool) {
+	v := m.body
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBody returns the old "body" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldBody(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBody is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBody requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBody: %w", err)
+	}
+	return oldValue.Body, nil
+}
+
+// ResetBody resets all changes to the "body" field.
+func (m *EmailBroadcastMutation) ResetBody() {
+	m.body = nil
+}
+
+// SetBodyFormat sets the "body_format" field.
+func (m *EmailBroadcastMutation) SetBodyFormat(s string) {
+	m.body_format = &s
+}
+
+// BodyFormat returns the value of the "body_format" field in the mutation.
+func (m *EmailBroadcastMutation) BodyFormat() (r string, exists bool) {
+	v := m.body_format
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBodyFormat returns the old "body_format" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldBodyFormat(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBodyFormat is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBodyFormat requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBodyFormat: %w", err)
+	}
+	return oldValue.BodyFormat, nil
+}
+
+// ResetBodyFormat resets all changes to the "body_format" field.
+func (m *EmailBroadcastMutation) ResetBodyFormat() {
+	m.body_format = nil
+}
+
+// SetRecipientsMode sets the "recipients_mode" field.
+func (m *EmailBroadcastMutation) SetRecipientsMode(s string) {
+	m.recipients_mode = &s
+}
+
+// RecipientsMode returns the value of the "recipients_mode" field in the mutation.
+func (m *EmailBroadcastMutation) RecipientsMode() (r string, exists bool) {
+	v := m.recipients_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRecipientsMode returns the old "recipients_mode" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldRecipientsMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRecipientsMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRecipientsMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRecipientsMode: %w", err)
+	}
+	return oldValue.RecipientsMode, nil
+}
+
+// ResetRecipientsMode resets all changes to the "recipients_mode" field.
+func (m *EmailBroadcastMutation) ResetRecipientsMode() {
+	m.recipients_mode = nil
+}
+
+// SetRecipientUserIds sets the "recipient_user_ids" field.
+func (m *EmailBroadcastMutation) SetRecipientUserIds(i []int64) {
+	m.recipient_user_ids = &i
+	m.appendrecipient_user_ids = nil
+}
+
+// RecipientUserIds returns the value of the "recipient_user_ids" field in the mutation.
+func (m *EmailBroadcastMutation) RecipientUserIds() (r []int64, exists bool) {
+	v := m.recipient_user_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRecipientUserIds returns the old "recipient_user_ids" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldRecipientUserIds(ctx context.Context) (v []int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRecipientUserIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRecipientUserIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRecipientUserIds: %w", err)
+	}
+	return oldValue.RecipientUserIds, nil
+}
+
+// AppendRecipientUserIds adds i to the "recipient_user_ids" field.
+func (m *EmailBroadcastMutation) AppendRecipientUserIds(i []int64) {
+	m.appendrecipient_user_ids = append(m.appendrecipient_user_ids, i...)
+}
+
+// AppendedRecipientUserIds returns the list of values that were appended to the "recipient_user_ids" field in this mutation.
+func (m *EmailBroadcastMutation) AppendedRecipientUserIds() ([]int64, bool) {
+	if len(m.appendrecipient_user_ids) == 0 {
+		return nil, false
+	}
+	return m.appendrecipient_user_ids, true
+}
+
+// ClearRecipientUserIds clears the value of the "recipient_user_ids" field.
+func (m *EmailBroadcastMutation) ClearRecipientUserIds() {
+	m.recipient_user_ids = nil
+	m.appendrecipient_user_ids = nil
+	m.clearedFields[emailbroadcast.FieldRecipientUserIds] = struct{}{}
+}
+
+// RecipientUserIdsCleared returns if the "recipient_user_ids" field was cleared in this mutation.
+func (m *EmailBroadcastMutation) RecipientUserIdsCleared() bool {
+	_, ok := m.clearedFields[emailbroadcast.FieldRecipientUserIds]
+	return ok
+}
+
+// ResetRecipientUserIds resets all changes to the "recipient_user_ids" field.
+func (m *EmailBroadcastMutation) ResetRecipientUserIds() {
+	m.recipient_user_ids = nil
+	m.appendrecipient_user_ids = nil
+	delete(m.clearedFields, emailbroadcast.FieldRecipientUserIds)
+}
+
+// SetStatus sets the "status" field.
+func (m *EmailBroadcastMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *EmailBroadcastMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *EmailBroadcastMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetTotalCount sets the "total_count" field.
+func (m *EmailBroadcastMutation) SetTotalCount(i int) {
+	m.total_count = &i
+	m.addtotal_count = nil
+}
+
+// TotalCount returns the value of the "total_count" field in the mutation.
+func (m *EmailBroadcastMutation) TotalCount() (r int, exists bool) {
+	v := m.total_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalCount returns the old "total_count" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldTotalCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalCount: %w", err)
+	}
+	return oldValue.TotalCount, nil
+}
+
+// AddTotalCount adds i to the "total_count" field.
+func (m *EmailBroadcastMutation) AddTotalCount(i int) {
+	if m.addtotal_count != nil {
+		*m.addtotal_count += i
+	} else {
+		m.addtotal_count = &i
+	}
+}
+
+// AddedTotalCount returns the value that was added to the "total_count" field in this mutation.
+func (m *EmailBroadcastMutation) AddedTotalCount() (r int, exists bool) {
+	v := m.addtotal_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTotalCount resets all changes to the "total_count" field.
+func (m *EmailBroadcastMutation) ResetTotalCount() {
+	m.total_count = nil
+	m.addtotal_count = nil
+}
+
+// SetSuccessCount sets the "success_count" field.
+func (m *EmailBroadcastMutation) SetSuccessCount(i int) {
+	m.success_count = &i
+	m.addsuccess_count = nil
+}
+
+// SuccessCount returns the value of the "success_count" field in the mutation.
+func (m *EmailBroadcastMutation) SuccessCount() (r int, exists bool) {
+	v := m.success_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSuccessCount returns the old "success_count" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldSuccessCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSuccessCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSuccessCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSuccessCount: %w", err)
+	}
+	return oldValue.SuccessCount, nil
+}
+
+// AddSuccessCount adds i to the "success_count" field.
+func (m *EmailBroadcastMutation) AddSuccessCount(i int) {
+	if m.addsuccess_count != nil {
+		*m.addsuccess_count += i
+	} else {
+		m.addsuccess_count = &i
+	}
+}
+
+// AddedSuccessCount returns the value that was added to the "success_count" field in this mutation.
+func (m *EmailBroadcastMutation) AddedSuccessCount() (r int, exists bool) {
+	v := m.addsuccess_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSuccessCount resets all changes to the "success_count" field.
+func (m *EmailBroadcastMutation) ResetSuccessCount() {
+	m.success_count = nil
+	m.addsuccess_count = nil
+}
+
+// SetFailedCount sets the "failed_count" field.
+func (m *EmailBroadcastMutation) SetFailedCount(i int) {
+	m.failed_count = &i
+	m.addfailed_count = nil
+}
+
+// FailedCount returns the value of the "failed_count" field in the mutation.
+func (m *EmailBroadcastMutation) FailedCount() (r int, exists bool) {
+	v := m.failed_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFailedCount returns the old "failed_count" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldFailedCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFailedCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFailedCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFailedCount: %w", err)
+	}
+	return oldValue.FailedCount, nil
+}
+
+// AddFailedCount adds i to the "failed_count" field.
+func (m *EmailBroadcastMutation) AddFailedCount(i int) {
+	if m.addfailed_count != nil {
+		*m.addfailed_count += i
+	} else {
+		m.addfailed_count = &i
+	}
+}
+
+// AddedFailedCount returns the value that was added to the "failed_count" field in this mutation.
+func (m *EmailBroadcastMutation) AddedFailedCount() (r int, exists bool) {
+	v := m.addfailed_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFailedCount resets all changes to the "failed_count" field.
+func (m *EmailBroadcastMutation) ResetFailedCount() {
+	m.failed_count = nil
+	m.addfailed_count = nil
+}
+
+// SetErrorMessage sets the "error_message" field.
+func (m *EmailBroadcastMutation) SetErrorMessage(s string) {
+	m.error_message = &s
+}
+
+// ErrorMessage returns the value of the "error_message" field in the mutation.
+func (m *EmailBroadcastMutation) ErrorMessage() (r string, exists bool) {
+	v := m.error_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorMessage returns the old "error_message" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldErrorMessage(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorMessage: %w", err)
+	}
+	return oldValue.ErrorMessage, nil
+}
+
+// ClearErrorMessage clears the value of the "error_message" field.
+func (m *EmailBroadcastMutation) ClearErrorMessage() {
+	m.error_message = nil
+	m.clearedFields[emailbroadcast.FieldErrorMessage] = struct{}{}
+}
+
+// ErrorMessageCleared returns if the "error_message" field was cleared in this mutation.
+func (m *EmailBroadcastMutation) ErrorMessageCleared() bool {
+	_, ok := m.clearedFields[emailbroadcast.FieldErrorMessage]
+	return ok
+}
+
+// ResetErrorMessage resets all changes to the "error_message" field.
+func (m *EmailBroadcastMutation) ResetErrorMessage() {
+	m.error_message = nil
+	delete(m.clearedFields, emailbroadcast.FieldErrorMessage)
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (m *EmailBroadcastMutation) SetCreatedBy(i int64) {
+	m.created_by = &i
+	m.addcreated_by = nil
+}
+
+// CreatedBy returns the value of the "created_by" field in the mutation.
+func (m *EmailBroadcastMutation) CreatedBy() (r int64, exists bool) {
+	v := m.created_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedBy returns the old "created_by" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldCreatedBy(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
+	}
+	return oldValue.CreatedBy, nil
+}
+
+// AddCreatedBy adds i to the "created_by" field.
+func (m *EmailBroadcastMutation) AddCreatedBy(i int64) {
+	if m.addcreated_by != nil {
+		*m.addcreated_by += i
+	} else {
+		m.addcreated_by = &i
+	}
+}
+
+// AddedCreatedBy returns the value that was added to the "created_by" field in this mutation.
+func (m *EmailBroadcastMutation) AddedCreatedBy() (r int64, exists bool) {
+	v := m.addcreated_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (m *EmailBroadcastMutation) ClearCreatedBy() {
+	m.created_by = nil
+	m.addcreated_by = nil
+	m.clearedFields[emailbroadcast.FieldCreatedBy] = struct{}{}
+}
+
+// CreatedByCleared returns if the "created_by" field was cleared in this mutation.
+func (m *EmailBroadcastMutation) CreatedByCleared() bool {
+	_, ok := m.clearedFields[emailbroadcast.FieldCreatedBy]
+	return ok
+}
+
+// ResetCreatedBy resets all changes to the "created_by" field.
+func (m *EmailBroadcastMutation) ResetCreatedBy() {
+	m.created_by = nil
+	m.addcreated_by = nil
+	delete(m.clearedFields, emailbroadcast.FieldCreatedBy)
+}
+
+// SetStartedAt sets the "started_at" field.
+func (m *EmailBroadcastMutation) SetStartedAt(t time.Time) {
+	m.started_at = &t
+}
+
+// StartedAt returns the value of the "started_at" field in the mutation.
+func (m *EmailBroadcastMutation) StartedAt() (r time.Time, exists bool) {
+	v := m.started_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStartedAt returns the old "started_at" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldStartedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStartedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStartedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStartedAt: %w", err)
+	}
+	return oldValue.StartedAt, nil
+}
+
+// ClearStartedAt clears the value of the "started_at" field.
+func (m *EmailBroadcastMutation) ClearStartedAt() {
+	m.started_at = nil
+	m.clearedFields[emailbroadcast.FieldStartedAt] = struct{}{}
+}
+
+// StartedAtCleared returns if the "started_at" field was cleared in this mutation.
+func (m *EmailBroadcastMutation) StartedAtCleared() bool {
+	_, ok := m.clearedFields[emailbroadcast.FieldStartedAt]
+	return ok
+}
+
+// ResetStartedAt resets all changes to the "started_at" field.
+func (m *EmailBroadcastMutation) ResetStartedAt() {
+	m.started_at = nil
+	delete(m.clearedFields, emailbroadcast.FieldStartedAt)
+}
+
+// SetFinishedAt sets the "finished_at" field.
+func (m *EmailBroadcastMutation) SetFinishedAt(t time.Time) {
+	m.finished_at = &t
+}
+
+// FinishedAt returns the value of the "finished_at" field in the mutation.
+func (m *EmailBroadcastMutation) FinishedAt() (r time.Time, exists bool) {
+	v := m.finished_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFinishedAt returns the old "finished_at" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldFinishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinishedAt: %w", err)
+	}
+	return oldValue.FinishedAt, nil
+}
+
+// ClearFinishedAt clears the value of the "finished_at" field.
+func (m *EmailBroadcastMutation) ClearFinishedAt() {
+	m.finished_at = nil
+	m.clearedFields[emailbroadcast.FieldFinishedAt] = struct{}{}
+}
+
+// FinishedAtCleared returns if the "finished_at" field was cleared in this mutation.
+func (m *EmailBroadcastMutation) FinishedAtCleared() bool {
+	_, ok := m.clearedFields[emailbroadcast.FieldFinishedAt]
+	return ok
+}
+
+// ResetFinishedAt resets all changes to the "finished_at" field.
+func (m *EmailBroadcastMutation) ResetFinishedAt() {
+	m.finished_at = nil
+	delete(m.clearedFields, emailbroadcast.FieldFinishedAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *EmailBroadcastMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *EmailBroadcastMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *EmailBroadcastMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *EmailBroadcastMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *EmailBroadcastMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the EmailBroadcast entity.
+// If the EmailBroadcast object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EmailBroadcastMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *EmailBroadcastMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the EmailBroadcastMutation builder.
+func (m *EmailBroadcastMutation) Where(ps ...predicate.EmailBroadcast) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the EmailBroadcastMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *EmailBroadcastMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.EmailBroadcast, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *EmailBroadcastMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *EmailBroadcastMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (EmailBroadcast).
+func (m *EmailBroadcastMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *EmailBroadcastMutation) Fields() []string {
+	fields := make([]string, 0, 15)
+	if m.subject != nil {
+		fields = append(fields, emailbroadcast.FieldSubject)
+	}
+	if m.body != nil {
+		fields = append(fields, emailbroadcast.FieldBody)
+	}
+	if m.body_format != nil {
+		fields = append(fields, emailbroadcast.FieldBodyFormat)
+	}
+	if m.recipients_mode != nil {
+		fields = append(fields, emailbroadcast.FieldRecipientsMode)
+	}
+	if m.recipient_user_ids != nil {
+		fields = append(fields, emailbroadcast.FieldRecipientUserIds)
+	}
+	if m.status != nil {
+		fields = append(fields, emailbroadcast.FieldStatus)
+	}
+	if m.total_count != nil {
+		fields = append(fields, emailbroadcast.FieldTotalCount)
+	}
+	if m.success_count != nil {
+		fields = append(fields, emailbroadcast.FieldSuccessCount)
+	}
+	if m.failed_count != nil {
+		fields = append(fields, emailbroadcast.FieldFailedCount)
+	}
+	if m.error_message != nil {
+		fields = append(fields, emailbroadcast.FieldErrorMessage)
+	}
+	if m.created_by != nil {
+		fields = append(fields, emailbroadcast.FieldCreatedBy)
+	}
+	if m.started_at != nil {
+		fields = append(fields, emailbroadcast.FieldStartedAt)
+	}
+	if m.finished_at != nil {
+		fields = append(fields, emailbroadcast.FieldFinishedAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, emailbroadcast.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, emailbroadcast.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *EmailBroadcastMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case emailbroadcast.FieldSubject:
+		return m.Subject()
+	case emailbroadcast.FieldBody:
+		return m.Body()
+	case emailbroadcast.FieldBodyFormat:
+		return m.BodyFormat()
+	case emailbroadcast.FieldRecipientsMode:
+		return m.RecipientsMode()
+	case emailbroadcast.FieldRecipientUserIds:
+		return m.RecipientUserIds()
+	case emailbroadcast.FieldStatus:
+		return m.Status()
+	case emailbroadcast.FieldTotalCount:
+		return m.TotalCount()
+	case emailbroadcast.FieldSuccessCount:
+		return m.SuccessCount()
+	case emailbroadcast.FieldFailedCount:
+		return m.FailedCount()
+	case emailbroadcast.FieldErrorMessage:
+		return m.ErrorMessage()
+	case emailbroadcast.FieldCreatedBy:
+		return m.CreatedBy()
+	case emailbroadcast.FieldStartedAt:
+		return m.StartedAt()
+	case emailbroadcast.FieldFinishedAt:
+		return m.FinishedAt()
+	case emailbroadcast.FieldCreatedAt:
+		return m.CreatedAt()
+	case emailbroadcast.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *EmailBroadcastMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case emailbroadcast.FieldSubject:
+		return m.OldSubject(ctx)
+	case emailbroadcast.FieldBody:
+		return m.OldBody(ctx)
+	case emailbroadcast.FieldBodyFormat:
+		return m.OldBodyFormat(ctx)
+	case emailbroadcast.FieldRecipientsMode:
+		return m.OldRecipientsMode(ctx)
+	case emailbroadcast.FieldRecipientUserIds:
+		return m.OldRecipientUserIds(ctx)
+	case emailbroadcast.FieldStatus:
+		return m.OldStatus(ctx)
+	case emailbroadcast.FieldTotalCount:
+		return m.OldTotalCount(ctx)
+	case emailbroadcast.FieldSuccessCount:
+		return m.OldSuccessCount(ctx)
+	case emailbroadcast.FieldFailedCount:
+		return m.OldFailedCount(ctx)
+	case emailbroadcast.FieldErrorMessage:
+		return m.OldErrorMessage(ctx)
+	case emailbroadcast.FieldCreatedBy:
+		return m.OldCreatedBy(ctx)
+	case emailbroadcast.FieldStartedAt:
+		return m.OldStartedAt(ctx)
+	case emailbroadcast.FieldFinishedAt:
+		return m.OldFinishedAt(ctx)
+	case emailbroadcast.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case emailbroadcast.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown EmailBroadcast field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EmailBroadcastMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case emailbroadcast.FieldSubject:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubject(v)
+		return nil
+	case emailbroadcast.FieldBody:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBody(v)
+		return nil
+	case emailbroadcast.FieldBodyFormat:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBodyFormat(v)
+		return nil
+	case emailbroadcast.FieldRecipientsMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRecipientsMode(v)
+		return nil
+	case emailbroadcast.FieldRecipientUserIds:
+		v, ok := value.([]int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRecipientUserIds(v)
+		return nil
+	case emailbroadcast.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case emailbroadcast.FieldTotalCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalCount(v)
+		return nil
+	case emailbroadcast.FieldSuccessCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSuccessCount(v)
+		return nil
+	case emailbroadcast.FieldFailedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFailedCount(v)
+		return nil
+	case emailbroadcast.FieldErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorMessage(v)
+		return nil
+	case emailbroadcast.FieldCreatedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedBy(v)
+		return nil
+	case emailbroadcast.FieldStartedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStartedAt(v)
+		return nil
+	case emailbroadcast.FieldFinishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFinishedAt(v)
+		return nil
+	case emailbroadcast.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case emailbroadcast.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EmailBroadcast field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *EmailBroadcastMutation) AddedFields() []string {
+	var fields []string
+	if m.addtotal_count != nil {
+		fields = append(fields, emailbroadcast.FieldTotalCount)
+	}
+	if m.addsuccess_count != nil {
+		fields = append(fields, emailbroadcast.FieldSuccessCount)
+	}
+	if m.addfailed_count != nil {
+		fields = append(fields, emailbroadcast.FieldFailedCount)
+	}
+	if m.addcreated_by != nil {
+		fields = append(fields, emailbroadcast.FieldCreatedBy)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *EmailBroadcastMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case emailbroadcast.FieldTotalCount:
+		return m.AddedTotalCount()
+	case emailbroadcast.FieldSuccessCount:
+		return m.AddedSuccessCount()
+	case emailbroadcast.FieldFailedCount:
+		return m.AddedFailedCount()
+	case emailbroadcast.FieldCreatedBy:
+		return m.AddedCreatedBy()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EmailBroadcastMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case emailbroadcast.FieldTotalCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTotalCount(v)
+		return nil
+	case emailbroadcast.FieldSuccessCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSuccessCount(v)
+		return nil
+	case emailbroadcast.FieldFailedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFailedCount(v)
+		return nil
+	case emailbroadcast.FieldCreatedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCreatedBy(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EmailBroadcast numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *EmailBroadcastMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(emailbroadcast.FieldRecipientUserIds) {
+		fields = append(fields, emailbroadcast.FieldRecipientUserIds)
+	}
+	if m.FieldCleared(emailbroadcast.FieldErrorMessage) {
+		fields = append(fields, emailbroadcast.FieldErrorMessage)
+	}
+	if m.FieldCleared(emailbroadcast.FieldCreatedBy) {
+		fields = append(fields, emailbroadcast.FieldCreatedBy)
+	}
+	if m.FieldCleared(emailbroadcast.FieldStartedAt) {
+		fields = append(fields, emailbroadcast.FieldStartedAt)
+	}
+	if m.FieldCleared(emailbroadcast.FieldFinishedAt) {
+		fields = append(fields, emailbroadcast.FieldFinishedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *EmailBroadcastMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *EmailBroadcastMutation) ClearField(name string) error {
+	switch name {
+	case emailbroadcast.FieldRecipientUserIds:
+		m.ClearRecipientUserIds()
+		return nil
+	case emailbroadcast.FieldErrorMessage:
+		m.ClearErrorMessage()
+		return nil
+	case emailbroadcast.FieldCreatedBy:
+		m.ClearCreatedBy()
+		return nil
+	case emailbroadcast.FieldStartedAt:
+		m.ClearStartedAt()
+		return nil
+	case emailbroadcast.FieldFinishedAt:
+		m.ClearFinishedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown EmailBroadcast nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *EmailBroadcastMutation) ResetField(name string) error {
+	switch name {
+	case emailbroadcast.FieldSubject:
+		m.ResetSubject()
+		return nil
+	case emailbroadcast.FieldBody:
+		m.ResetBody()
+		return nil
+	case emailbroadcast.FieldBodyFormat:
+		m.ResetBodyFormat()
+		return nil
+	case emailbroadcast.FieldRecipientsMode:
+		m.ResetRecipientsMode()
+		return nil
+	case emailbroadcast.FieldRecipientUserIds:
+		m.ResetRecipientUserIds()
+		return nil
+	case emailbroadcast.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case emailbroadcast.FieldTotalCount:
+		m.ResetTotalCount()
+		return nil
+	case emailbroadcast.FieldSuccessCount:
+		m.ResetSuccessCount()
+		return nil
+	case emailbroadcast.FieldFailedCount:
+		m.ResetFailedCount()
+		return nil
+	case emailbroadcast.FieldErrorMessage:
+		m.ResetErrorMessage()
+		return nil
+	case emailbroadcast.FieldCreatedBy:
+		m.ResetCreatedBy()
+		return nil
+	case emailbroadcast.FieldStartedAt:
+		m.ResetStartedAt()
+		return nil
+	case emailbroadcast.FieldFinishedAt:
+		m.ResetFinishedAt()
+		return nil
+	case emailbroadcast.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case emailbroadcast.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown EmailBroadcast field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *EmailBroadcastMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *EmailBroadcastMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *EmailBroadcastMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *EmailBroadcastMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *EmailBroadcastMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *EmailBroadcastMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *EmailBroadcastMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown EmailBroadcast unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *EmailBroadcastMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown EmailBroadcast edge %s", name)
 }
 
 // ErrorPassthroughRuleMutation represents an operation that mutates the ErrorPassthroughRule nodes in the graph.

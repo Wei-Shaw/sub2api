@@ -4636,6 +4636,82 @@ export default {
       deleteConfirm: '确定要删除该公告吗？此操作无法撤销。'
     },
 
+    // Bulk announcement email broadcasts
+    emailBroadcast: {
+      title: '批量公告邮件',
+      description: '通过邮箱将公告内容批量发送给指定用户或所有已注册用户，绕过登录后才能看到弹窗公告的限制。',
+      openComposer: '撰写并发送公告邮件',
+      form: {
+        subject: '邮件主题',
+        subjectPlaceholder: '例如：本周日凌晨服务维护通知',
+        body: '邮件正文',
+        bodyFormat: '正文格式',
+        bodyFormatText: '纯文本',
+        bodyPlaceholderHtml: '可使用基本 HTML 标签：<p>、<strong>、<em>、<ul>/<ol>/<li>、<a> 等。发送前服务端会做安全清洗。',
+        bodyPlaceholderText: '直接输入纯文本即可，换行会保留。',
+        bodyHint: 'HTML 模式下会进行 XSS 安全清洗；纯文本模式下换行会自动转换。',
+        recipients: '收件人',
+        sendToAll: '发送给全部已注册用户',
+        sendToAllHint: '勾选后将忽略下方手动选择的收件人。',
+        searchRecipientsPlaceholder: '按邮箱或用户名搜索…',
+        noRecipientsFound: '没有匹配的用户',
+        noRecipientsSelected: '请至少选择一位收件人，或勾选"发送给全部已注册用户"。',
+        send: '发送公告邮件',
+        sending: '发送中…'
+      },
+      recipientsMode: {
+        all: '全部用户',
+        selected: '指定收件人'
+      },
+      status: {
+        pending: '排队中',
+        sending: '发送中',
+        completed: '已完成',
+        failed: '失败'
+      },
+      preview: {
+        title: '实时预览',
+        refreshing: '更新中…',
+        error: '预览生成失败',
+        hint: '预览结果与最终投递的邮件完全一致，已应用统一卡片排版与站点名头部。',
+        iframeTitle: '公告邮件预览',
+        placeholderSubject: '（在左侧填写邮件主题）',
+        placeholderBody: '（在左侧填写邮件正文，HTML 或纯文本格式均支持。预览实时刷新。）'
+      },
+      toolbar: {
+        p: '段落（包裹选中文本为 <p>）',
+        b: '加粗（包裹为 <strong>）',
+        i: '斜体（包裹为 <em>）',
+        a: '插入链接（包裹为 <a href>）',
+        ul: '无序列表（插入 <ul><li>）',
+        h2: '二级标题（包裹为 <h2>）',
+        hr: '分隔线（插入 <hr>）',
+        br: '换行（插入 <br>）'
+      },
+      history: {
+        title: '发送历史（最近 10 条）',
+        empty: '尚无发送记录',
+        preview: '预览',
+        delete: '删除',
+        backToList: '返回历史列表',
+        deleteConfirmTitle: '删除发送记录',
+        deleteConfirm: '确定要删除「{subject}」的发送记录吗？此操作无法撤销。',
+        detail: {
+          subject: '主题',
+          status: '状态',
+          recipients: '收件人',
+          sentAt: '发送时间',
+          errorMessage: '错误信息',
+          iframeTitle: '历史邮件预览'
+        }
+      },
+      notifications: {
+        sendQueued: '公告邮件已加入发送队列（#{id}），可稍后在历史中查看进度。',
+        loadHistoryFailed: '加载发送历史失败',
+        deleteSuccess: '已删除发送记录'
+      }
+    },
+
     // Promo Codes
     promo: {
       title: '优惠码管理',
