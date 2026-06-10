@@ -143,7 +143,12 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+              <ModelWhitelistSelector
+                v-model="allowedModels"
+                :platform="account?.platform || 'anthropic'"
+                :account-id="account?.id"
+                :sync-credentials="editAPIKeySyncCredentials"
+              />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -2476,6 +2481,33 @@ const isEditingGeminiCompatibleRelay = computed(() => {
     return false
   }
   return isGeminiCompatibleRelay(props.account.credentials as Record<string, unknown> | undefined, editBaseUrl.value)
+})
+
+const editAPIKeySyncCredentials = computed(() => {
+  if (!props.account || props.account.type !== 'apikey') return undefined
+
+  const credentials: {
+    platform: string
+    type: string
+    base_url?: string
+    api_key?: string
+    upstream_type?: string
+  } = {
+    platform: props.account.platform,
+    type: props.account.type,
+    base_url: editBaseUrl.value.trim() || defaultBaseUrl.value
+  }
+
+  const apiKey = editApiKey.value.trim()
+  if (apiKey) {
+    credentials.api_key = apiKey
+  }
+
+  if (props.account.platform === 'gemini' && isEditingGeminiCompatibleRelay.value) {
+    credentials.upstream_type = GEMINI_COMPATIBLE_RELAY_TIER_ID
+  }
+
+  return credentials
 })
 
 // Platform-specific hint for Base URL

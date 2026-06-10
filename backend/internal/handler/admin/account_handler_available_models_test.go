@@ -38,11 +38,15 @@ func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
 }
 
 type syncUpstreamHTTPUpstream struct {
-	resp *http.Response
-	err  error
+	resp     *http.Response
+	err      error
+	lastReq  *http.Request
+	requests []*http.Request
 }
 
 func (u *syncUpstreamHTTPUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	u.lastReq = req
+	u.requests = append(u.requests, req)
 	if u.err != nil {
 		return nil, u.err
 	}
@@ -194,4 +198,44 @@ func TestAccountHandlerSyncUpstreamModels_UpstreamErrorDoesNotExposeBody(t *test
 	require.Equal(t, http.StatusBadGateway, rec.Code)
 	require.Contains(t, rec.Body.String(), "Upstream model list request failed with HTTP 502")
 	require.NotContains(t, rec.Body.String(), "SECRET_TOKEN")
+}
+
+func TestAccountHandlerSyncUpstreamModels_GeminiRelayEditOverridesBaseURLAndKeepsSavedKey(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       46,
+			Name:     "gemini-relay",
+			Platform: service.PlatformGemini,
+			Type:     service.AccountTypeAPIKey,
+			Status:   service.StatusActive,
+			Credentials: map[string]any{
+				"api_key":  "saved-key",
+				"base_url": "https://old-relay.example.com",
+			},
+		},
+	}
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"gemini-3.1-pro"},{"id":"gemini-3.5-flash"}]}`)),
+	}}
+	router := setupSyncUpstreamModelsRouter(svc, upstream)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/admin/accounts/46/models/sync-upstream",
+		strings.NewReader(`{"base_url":"https://iacc.cc","api_key":"","upstream_type":"compatible_relay"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer saved-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+	require.Contains(t, rec.Body.String(), "gemini-3.1-pro")
+	require.Contains(t, rec.Body.String(), "gemini-3.5-flash")
 }

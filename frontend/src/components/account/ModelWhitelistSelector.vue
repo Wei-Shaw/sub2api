@@ -133,7 +133,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
-import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
+import type { SyncUpstreamModelsParams, SyncUpstreamPreviewParams } from '@/api/admin/accounts'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
@@ -149,7 +149,7 @@ const props = defineProps<{
     platform: string
     type: string
     base_url?: string
-    api_key: string
+    api_key?: string
     upstream_type?: string
   }
 }>()
@@ -269,8 +269,9 @@ const syncUpstreamModels = async () => {
   try {
     let result
     if (props.accountId) {
-      result = await accountsAPI.syncUpstreamModels(props.accountId)
+      result = await accountsAPI.syncUpstreamModels(props.accountId, props.syncCredentials as SyncUpstreamModelsParams | undefined)
     } else if (props.syncCredentials) {
+      if (!props.syncCredentials.api_key) return
       result = await accountsAPI.syncUpstreamModelsPreview(props.syncCredentials as SyncUpstreamPreviewParams)
     } else {
       return

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -2145,12 +2146,48 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		return
 	}
 
+	var req struct {
+		BaseURL      *string `json:"base_url"`
+		APIKey       *string `json:"api_key"`
+		UpstreamType *string `json:"upstream_type"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	syncAccount := account
+	if req.BaseURL != nil || req.APIKey != nil || req.UpstreamType != nil {
+		overrides := map[string]any{}
+		if req.BaseURL != nil {
+			overrides["base_url"] = strings.TrimSpace(*req.BaseURL)
+		}
+		if req.APIKey != nil {
+			if apiKey := strings.TrimSpace(*req.APIKey); apiKey != "" {
+				overrides["api_key"] = apiKey
+			}
+		}
+		if req.UpstreamType != nil {
+			overrides["upstream_type"] = strings.TrimSpace(*req.UpstreamType)
+		}
+
+		accountCopy := *account
+		credentials := make(map[string]any, len(account.Credentials)+len(overrides))
+		for key, value := range account.Credentials {
+			credentials[key] = value
+		}
+		for key, value := range overrides {
+			credentials[key] = value
+		}
+		accountCopy.Credentials = service.NormalizeGeminiAPIKeyCredentials(accountCopy.Platform, accountCopy.Type, credentials)
+		syncAccount = &accountCopy
+	}
+
 	if h.accountTestService == nil {
 		response.InternalError(c, "Account test service is not configured")
 		return
 	}
 
-	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account)
+	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), syncAccount)
 	if err != nil {
 		var syncErr *service.UpstreamModelSyncError
 		if errors.As(err, &syncErr) {
@@ -2190,11 +2227,11 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 	tempAccount := &service.Account{
 		Platform: req.Platform,
 		Type:     req.Type,
-		Credentials: map[string]any{
+		Credentials: service.NormalizeGeminiAPIKeyCredentials(req.Platform, req.Type, map[string]any{
 			"api_key":       req.APIKey,
 			"base_url":      req.BaseURL,
 			"upstream_type": req.UpstreamType,
-		},
+		}),
 	}
 
 	if h.accountTestService == nil {
