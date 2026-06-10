@@ -568,7 +568,10 @@ const shouldFetchUsage = computed(() => {
 })
 
 const showGeminiTodayStats = computed(() => {
-  return props.account.platform === 'gemini' && props.account.type === 'service_account'
+  return props.account.platform === 'gemini' && (
+    props.account.type === 'service_account' ||
+    isGeminiCompatibleRelay.value
+  )
 })
 
 const geminiUsageAvailable = computed(() => {
@@ -1253,7 +1256,10 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
-  requestAutoLoad()
+  _usageCache.delete(props.account.id)
+  loadUsage({ bypassCache: true }).catch((e) => {
+    console.error('Failed to refresh OpenAI usage after account row update:', e)
+  })
 })
 
 watch(
