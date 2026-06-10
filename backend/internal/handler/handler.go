@@ -38,6 +38,7 @@ type AdminHandlers struct {
 	Affiliate              *admin.AffiliateHandler
 	Monitoring             *admin.MonitoringHandler
 	ModelPricing           *admin.ModelPricingHandler
+	Compliance             *admin.ComplianceHandler
 }
 
 // Handlers contains all HTTP handlers

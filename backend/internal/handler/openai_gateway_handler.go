@@ -47,6 +47,30 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 	return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))
 }
 
+type openAIModelBodyReplaceFunc func([]byte, string) []byte
+
+func openAIModelMappedBody(body []byte, mapped bool, mappedModel string, replace openAIModelBodyReplaceFunc) []byte {
+	if !mapped || replace == nil {
+		return body
+	}
+	return replace(body, mappedModel)
+}
+
+func newOpenAIModelMappedBodyCache(body []byte, replace openAIModelBodyReplaceFunc) func(bool, string) []byte {
+	replacedBodies := make(map[string][]byte)
+	return func(mapped bool, mappedModel string) []byte {
+		if !mapped {
+			return body
+		}
+		if cachedBody, ok := replacedBodies[mappedModel]; ok {
+			return cachedBody
+		}
+		replacedBody := openAIModelMappedBody(body, true, mappedModel, replace)
+		replacedBodies[mappedModel] = replacedBody
+		return replacedBody
+	}
+}
+
 func usageRecordContext(parent context.Context, base context.Context) context.Context {
 	if base == nil {
 		base = context.Background()
@@ -241,6 +265,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
 	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
@@ -353,11 +378,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		// 应用渠道模型映射到请求体
-		forwardBody := body
-		if channelMapping.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
-		}
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -660,6 +680,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMappingMsg, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	mappedBodyForMessages := newOpenAIModelMappedBodyCache(body, h.gatewayService.ReplaceModelInBody)
 
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
 	if h.errorPassthroughService != nil {
@@ -758,10 +779,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
 		// 应用渠道模型映射到请求体
-		forwardBody := body
-		if channelMappingMsg.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMappingMsg.MappedModel)
-		}
+		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -1847,11 +1865,9 @@ func (h *OpenAIGatewayHandler) ensureForwardErrorResponse(c *gin.Context, stream
 	if c == nil || c.Writer == nil {
 		return false
 	}
-	// 旧实现在 Writer.Written 时直接 return false，导致 ping 已 flush 之后的
-	// 上游错误（http2 timeout、连接中断等）完全无法把错误传给客户端——
-	// HTTP 200 已锁死，TCP 直接 EOF，Codex CLI 报 "stream closed before response.completed"。
-	// 这里改成：Writer 已写过时强制走 streamStarted 分支，让
-	// handleStreamingAwareError 通过 SSE 发协议合规的 response.failed。
+	if service.IsResponseCommitted(c) {
+		return false
+	}
 	if c.Writer.Written() {
 		streamStarted = true
 	}
