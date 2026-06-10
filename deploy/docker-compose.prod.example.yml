@@ -1,5 +1,5 @@
 # =============================================================================
-# Sub2API Production Docker Compose (prebuilt image + nginx)
+# Sub2API Production Docker Compose (prebuilt image, app only)
 # =============================================================================
 # Usage on server:
 #   IMAGE_REPO=ghcr.io/<owner>/sub2api IMAGE_TAG=<tag> docker compose -f docker-compose.prod.yml up -d
@@ -7,7 +7,7 @@
 # Notes:
 #   - Keep deploy/.env on server; this file does not overwrite it.
 #   - sub2api binds only to 127.0.0.1:${SERVER_PORT:-8080} on host.
-#   - nginx publishes port 80/443 and proxies traffic to sub2api.
+#   - Put host nginx/certbot outside Docker in server infra, not in this Compose stack.
 # =============================================================================
 
 services:
@@ -139,46 +139,6 @@ services:
       retries: 5
       start_period: 5s
 
-  # ===========================================================================
-  # Nginx Reverse Proxy (SSL termination + streaming)
-  # ===========================================================================
-  # Setup:
-  #   1. Copy deploy/nginx/nginx.conf.example → ./nginx/nginx.conf
-  #   2. Copy deploy/nginx/conf.d/sub2api.conf.example → ./nginx/conf.d/yourdomain.conf
-  #      and replace YOUR_DOMAIN with your actual domain
-  #   3. Ensure SSL certs exist (e.g. certbot)
-  #
-  # IMPORTANT: ulimits must be set to avoid ERR_HTTP2_PING_FAILED under load.
-  # Alpine default is 1024 which is too low for production traffic.
-  # ===========================================================================
-  nginx:
-    image: nginx:1.27-alpine
-    container_name: sub2api-nginx
-    restart: unless-stopped
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
-    depends_on:
-      sub2api:
-        condition: service_healthy
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    networks:
-      - sub2api-network
-    healthcheck:
-      # NOTE: Must hit backend directly via internal network.
-      # Do NOT use http://127.0.0.1/health — port 80 redirects to HTTPS → always fails.
-      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://sub2api:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
 networks:
   sub2api-network:

@@ -84,13 +84,12 @@ jobs:
           script: |
             set -euo pipefail
             APP_DIR_CLEAN="$(printf '%s' "$APP_DIR" | sed 's/[[:space:]]*$//')"
-            DEPLOY_DIR="${APP_DIR_CLEAN:-/home/deploy/apps/sub2api}/deploy"
+            DEPLOY_DIR="${APP_DIR_CLEAN:-/home/ubuntu/apps/sub2api}/deploy"
             cd "$DEPLOY_DIR"
-            mkdir -p data postgres_data redis_data nginx/conf.d
+            mkdir -p data postgres_data redis_data
             test -f .env
             test -f docker-compose.prod.yml
             echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
-            IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.prod.yml pull
-            IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.prod.yml up -d
+            IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.prod.yml pull sub2api
+            IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.prod.yml up -d sub2api
             curl --fail --retry 10 --retry-delay 5 http://127.0.0.1:${SERVER_PORT:-8080}/health || curl --fail --retry 10 --retry-delay 5 http://127.0.0.1:8080/health
-            curl --fail --retry 10 --retry-delay 5 http://127.0.0.1/health
