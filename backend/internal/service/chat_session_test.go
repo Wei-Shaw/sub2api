@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
@@ -14,6 +16,9 @@ type chatSessionRepoScopeStub struct {
 	detailAPIKeyID int64
 	recentUserID   int64
 	recentAPIKeyID int64
+	deletedCutoffs []time.Time
+	deleteLimit    int
+	deleteBatches  []int64
 }
 
 func (s *chatSessionRepoScopeStub) CreateSessionWithMessages(context.Context, *ChatSessionRecordInput) error {
@@ -44,6 +49,17 @@ func (s *chatSessionRepoScopeStub) ListRecentMessagesByAPIKey(_ context.Context,
 	return []ChatMessage{}, nil
 }
 
+func (s *chatSessionRepoScopeStub) DeleteSessionsBefore(_ context.Context, cutoff time.Time, limit int) (int64, error) {
+	s.deletedCutoffs = append(s.deletedCutoffs, cutoff)
+	s.deleteLimit = limit
+	if len(s.deleteBatches) == 0 {
+		return 0, nil
+	}
+	deleted := s.deleteBatches[0]
+	s.deleteBatches = s.deleteBatches[1:]
+	return deleted, nil
+}
+
 func TestChatSessionServiceScopesQueriesByUserAndAPIKey(t *testing.T) {
 	t.Parallel()
 
@@ -69,5 +85,31 @@ func TestChatSessionServiceScopesQueriesByUserAndAPIKey(t *testing.T) {
 	}
 	if repo.recentUserID != 66 || repo.recentAPIKeyID != 77 {
 		t.Fatalf("recent scope = user %d key %d, want user 66 key 77", repo.recentUserID, repo.recentAPIKeyID)
+	}
+}
+
+func TestChatSessionRetentionServiceRunOnceDeletesUntilBatchShort(t *testing.T) {
+	repo := &chatSessionRepoScopeStub{deleteBatches: []int64{2, 1}}
+	svc := NewChatSessionRetentionService(repo, &config.Config{
+		ChatSessionRetention: config.ChatSessionRetentionConfig{
+			Enabled:            true,
+			RetentionDays:      90,
+			BatchSize:          2,
+			IntervalSeconds:    86400,
+			TaskTimeoutSeconds: 10,
+		},
+	})
+
+	svc.runOnce()
+
+	if got := len(repo.deletedCutoffs); got != 2 {
+		t.Fatalf("DeleteSessionsBefore calls = %d, want 2", got)
+	}
+	if repo.deleteLimit != 2 {
+		t.Fatalf("delete limit = %d, want 2", repo.deleteLimit)
+	}
+	cutoffAge := time.Since(repo.deletedCutoffs[0])
+	if cutoffAge < 89*24*time.Hour || cutoffAge > 91*24*time.Hour {
+		t.Fatalf("cutoff age = %s, want about 90d", cutoffAge)
 	}
 }

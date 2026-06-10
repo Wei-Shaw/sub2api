@@ -81,6 +81,46 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	}
 }
 
+func TestLoadPprofConfigFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("PPROF_ENABLED", "true")
+	t.Setenv("PPROF_ADDR", "127.0.0.1:6060")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Pprof.Enabled)
+	require.Equal(t, "127.0.0.1:6060", cfg.Pprof.Addr)
+}
+
+func TestValidateInternalListenAddress(t *testing.T) {
+	tests := []struct {
+		name    string
+		addr    string
+		wantErr bool
+	}{
+		{name: "localhost", addr: "localhost:6060"},
+		{name: "loopback ipv4", addr: "127.0.0.1:6060"},
+		{name: "loopback ipv6", addr: "[::1]:6060"},
+		{name: "private 10", addr: "10.0.0.1:6060"},
+		{name: "private 172", addr: "172.16.0.1:6060"},
+		{name: "private 192", addr: "192.168.1.1:6060"},
+		{name: "wildcard rejected", addr: "0.0.0.0:6060", wantErr: true},
+		{name: "public rejected", addr: "8.8.8.8:6060", wantErr: true},
+		{name: "missing host rejected", addr: ":6060", wantErr: true},
+		{name: "hostname rejected", addr: "example.com:6060", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateInternalListenAddress(tt.addr)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

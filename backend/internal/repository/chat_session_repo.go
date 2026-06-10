@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -44,19 +45,27 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 	if err != nil {
 		return err
 	}
-	lastMsg, err := r.getLastChatMessage(ctx, tx, sessionID)
-	if err != nil {
-		return err
-	}
-	existingMessages, err := r.getRecentChatMessageFingerprints(ctx, tx, sessionID, 1000)
-	if err != nil {
-		return err
-	}
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO chat_messages (
-			session_id, seq, role, direction, content_text, content_json, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			session_id, seq, role, direction, content_text, content_json, dedupe_hash, created_at
+		) VALUES (
+			$1, $2, $3::text, $4::text, $5::text, $6::jsonb,
+			encode(
+				digest(
+					length(trim($3::text))::text || ':' || trim($3::text) || '|' ||
+					length(trim($4::text))::text || ':' || trim($4::text) || '|' ||
+					length(trim($5::text))::text || ':' || trim($5::text) || '|' ||
+					length(COALESCE($6::jsonb::text, ''))::text || ':' || COALESCE($6::jsonb::text, ''),
+					'sha256'
+				),
+				'hex'
+			),
+			$7
+		)
+		ON CONFLICT (session_id, dedupe_hash)
+		WHERE dedupe_hash IS NOT NULL
+		DO NOTHING
 	`)
 	if err != nil {
 		return err
@@ -68,23 +77,11 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 		role := strings.TrimSpace(msg.Role)
 		direction := strings.TrimSpace(msg.Direction)
 		contentText := strings.TrimSpace(msg.ContentText)
-		contentJSONFingerprint := strings.TrimSpace(string(msg.ContentJSON))
-		if lastMsg != nil &&
-			lastMsg.Role == role &&
-			lastMsg.Direction == direction &&
-			strings.TrimSpace(lastMsg.ContentText) == contentText &&
-			strings.TrimSpace(string(lastMsg.ContentJSON)) == contentJSONFingerprint {
-			continue
-		}
-		fingerprint := chatMessageFingerprint(role, direction, contentText, contentJSONFingerprint)
-		if existingMessages[fingerprint] {
-			continue
-		}
 		var contentJSON any
 		if len(msg.ContentJSON) > 0 {
 			contentJSON = msg.ContentJSON
 		}
-		if _, err := stmt.ExecContext(
+		result, err := stmt.ExecContext(
 			ctx,
 			sessionID,
 			messageBaseSeq+insertedMessages,
@@ -93,17 +90,17 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 			contentText,
 			contentJSON,
 			input.CreatedAt,
-		); err != nil {
+		)
+		if err != nil {
 			return err
 		}
-		lastMsg = &service.ChatMessage{
-			Role:        role,
-			Direction:   direction,
-			ContentText: contentText,
-			ContentJSON: msg.ContentJSON,
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
 		}
-		existingMessages[fingerprint] = true
-		insertedMessages++
+		if affected > 0 {
+			insertedMessages++
+		}
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -298,54 +295,6 @@ func (r *chatSessionRepository) nextMessageSeq(ctx context.Context, tx *sql.Tx, 
 		return 0, err
 	}
 	return maxSeq + 1, nil
-}
-
-func (r *chatSessionRepository) getLastChatMessage(ctx context.Context, tx *sql.Tx, sessionID int64) (*service.ChatMessage, error) {
-	row := tx.QueryRowContext(ctx, `
-		SELECT role, direction, content_text, content_json
-		FROM chat_messages
-		WHERE session_id = $1
-		ORDER BY seq DESC, id DESC
-		LIMIT 1
-	`, sessionID)
-	msg := &service.ChatMessage{}
-	var contentJSON []byte
-	if err := row.Scan(&msg.Role, &msg.Direction, &msg.ContentText, &contentJSON); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	msg.ContentJSON = json.RawMessage(contentJSON)
-	return msg, nil
-}
-
-func (r *chatSessionRepository) getRecentChatMessageFingerprints(ctx context.Context, tx *sql.Tx, sessionID int64, limit int) (map[string]bool, error) {
-	if limit <= 0 {
-		limit = 1000
-	}
-	rows, err := tx.QueryContext(ctx, `
-		SELECT role, direction, content_text, content_json
-		FROM chat_messages
-		WHERE session_id = $1
-		ORDER BY seq DESC, id DESC
-		LIMIT $2
-	`, sessionID, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	out := make(map[string]bool)
-	for rows.Next() {
-		var role, direction, contentText string
-		var contentJSON []byte
-		if err := rows.Scan(&role, &direction, &contentText, &contentJSON); err != nil {
-			return nil, err
-		}
-		out[chatMessageFingerprint(role, direction, contentText, strings.TrimSpace(string(contentJSON)))] = true
-	}
-	return out, rows.Err()
 }
 
 func (r *chatSessionRepository) ListSessionsByAPIKey(ctx context.Context, userID, apiKeyID int64, params pagination.PaginationParams) ([]*service.ChatSession, int64, error) {
@@ -686,10 +635,6 @@ func buildChatSessionPreviews(messages []service.ChatMessageRecordInput) (*strin
 	return userPreview, assistantPreview
 }
 
-func chatMessageFingerprint(role string, direction string, contentText string, contentJSON string) string {
-	return strings.TrimSpace(role) + "\x00" + strings.TrimSpace(direction) + "\x00" + strings.TrimSpace(contentText) + "\x00" + strings.TrimSpace(contentJSON)
-}
-
 func truncateChatPreview(value string, maxLen int) string {
 	value = strings.TrimSpace(value)
 	if value == "" || maxLen <= 0 {
@@ -714,6 +659,30 @@ func nullableInt64(value *int64) any {
 		return nil
 	}
 	return *value
+}
+
+func (r *chatSessionRepository) DeleteSessionsBefore(ctx context.Context, cutoff time.Time, limit int) (int64, error) {
+	if r == nil || r.sql == nil || cutoff.IsZero() {
+		return 0, nil
+	}
+	if limit <= 0 {
+		limit = 1000
+	}
+
+	result, err := r.sql.ExecContext(ctx, `
+		DELETE FROM chat_sessions
+		WHERE id IN (
+			SELECT id
+			FROM chat_sessions
+			WHERE created_at < $1
+			ORDER BY created_at ASC, id ASC
+			LIMIT $2
+		)
+	`, cutoff, limit)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 var _ service.ChatSessionRepository = (*chatSessionRepository)(nil)

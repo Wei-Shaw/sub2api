@@ -105,10 +105,16 @@ func TestEnqueueChatSessionRecordDropsWhenQueueFull(t *testing.T) {
 	chatSessionRecordQueueOnce = sync.Once{}
 	chatSessionRecordQueueOnce.Do(func() {})
 
-	enqueueChatSessionRecord(service.NewChatSessionService(nil), &service.ChatSessionRecordInput{
-		UserID:   1,
-		APIKeyID: 2,
-	})
+	enqueueChatSessionRecord(
+		service.NewChatSessionService(nil),
+		&service.ChatSessionRecordInput{
+			UserID:   1,
+			APIKeyID: 2,
+		},
+		nil,
+		"",
+		nil,
+	)
 }
 
 func TestRecordChatSessionWithTimeoutIgnoresNilInputs(t *testing.T) {

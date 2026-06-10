@@ -161,6 +161,13 @@ func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *Timing
 	return svc
 }
 
+// ProvideChatSessionRetentionService creates and starts chat session retention cleanup.
+func ProvideChatSessionRetentionService(repo ChatSessionRepository, cfg *config.Config) *ChatSessionRetentionService {
+	svc := NewChatSessionRetentionService(repo, cfg)
+	svc.Start()
+	return svc
+}
+
 // ProvideAccountExpiryService creates and starts AccountExpiryService.
 func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
@@ -573,6 +580,7 @@ var ProviderSet = wire.NewSet(
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,
 	ProvideUsageCleanupService,
+	ProvideChatSessionRetentionService,
 	ProvideDeferredService,
 	NewAntigravityQuotaFetcher,
 	NewUserAttributeService,

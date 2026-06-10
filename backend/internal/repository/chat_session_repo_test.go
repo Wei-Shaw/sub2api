@@ -80,12 +80,6 @@ func TestChatSessionRepositoryAppendRefreshesSessionCreatedAt(t *testing.T) {
 	mock.ExpectQuery("SELECT COALESCE\\(MAX\\(seq\\), 0\\) FROM chat_messages WHERE session_id = \\$1").
 		WithArgs(int64(99)).
 		WillReturnRows(sqlmock.NewRows([]string{"max"}).AddRow(2))
-	mock.ExpectQuery("SELECT role, direction, content_text, content_json\\s+FROM chat_messages").
-		WithArgs(int64(99)).
-		WillReturnError(sql.ErrNoRows)
-	mock.ExpectQuery("SELECT role, direction, content_text, content_json\\s+FROM chat_messages").
-		WithArgs(int64(99), 1000).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "direction", "content_text", "content_json"}))
 	mock.ExpectPrepare("INSERT INTO chat_messages").
 		ExpectExec().
 		WithArgs(int64(99), 3, "user", "inbound", "new question", nil, createdAt).
@@ -100,5 +94,23 @@ func TestChatSessionRepositoryAppendRefreshesSessionCreatedAt(t *testing.T) {
 
 	err = repo.CreateSessionWithMessages(context.Background(), input)
 	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestChatSessionRepositoryDeleteSessionsBefore(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	repo := &chatSessionRepository{sql: db}
+	cutoff := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectExec("DELETE FROM chat_sessions").
+		WithArgs(cutoff, 500).
+		WillReturnResult(sqlmock.NewResult(0, 12))
+
+	deleted, err := repo.DeleteSessionsBefore(context.Background(), cutoff, 500)
+	require.NoError(t, err)
+	require.Equal(t, int64(12), deleted)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/observability"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/tidwall/gjson"
@@ -22,8 +23,11 @@ const (
 )
 
 type chatSessionRecordTask struct {
-	recorder *service.ChatSessionService
-	payload  *service.ChatSessionRecordInput
+	recorder        *service.ChatSessionService
+	payload         *service.ChatSessionRecordInput
+	requestBody     []byte
+	finalOutputText string
+	finalOutputJSON json.RawMessage
 }
 
 var (
@@ -55,24 +59,33 @@ func recordChatSessionAsync(
 		input.CreatedAt = time.Now()
 	}
 
-	messages, _ := buildChatSessionMessages(input.InboundEndpoint, requestBody, finalOutputText, finalOutputJSON)
-	if len(messages) == 0 {
-		return
-	}
-	input.Messages = messages
-	input.Events = nil
-
-	enqueueChatSessionRecord(recorder, input)
+	enqueueChatSessionRecord(recorder, input, requestBody, finalOutputText, finalOutputJSON)
 }
 
-func enqueueChatSessionRecord(recorder *service.ChatSessionService, payload *service.ChatSessionRecordInput) {
+func enqueueChatSessionRecord(
+	recorder *service.ChatSessionService,
+	payload *service.ChatSessionRecordInput,
+	requestBody []byte,
+	finalOutputText string,
+	finalOutputJSON json.RawMessage,
+) {
 	if recorder == nil || payload == nil {
 		return
 	}
 	chatSessionRecordQueueOnce.Do(startChatSessionRecordWorkers)
 	select {
-	case chatSessionRecordQueue <- chatSessionRecordTask{recorder: recorder, payload: payload}:
+	case chatSessionRecordQueue <- chatSessionRecordTask{
+		recorder:        recorder,
+		payload:         payload,
+		requestBody:     requestBody,
+		finalOutputText: finalOutputText,
+		finalOutputJSON: finalOutputJSON,
+	}:
+		observability.IncChatSessionCaptureEnqueued()
+		observability.SetChatSessionCaptureQueueStats(len(chatSessionRecordQueue), cap(chatSessionRecordQueue))
 	default:
+		observability.IncChatSessionCaptureDropped()
+		observability.SetChatSessionCaptureQueueStats(len(chatSessionRecordQueue), cap(chatSessionRecordQueue))
 		fields := []zap.Field{
 			zap.Int64("user_id", payload.UserID),
 			zap.Int64("api_key_id", payload.APIKeyID),
@@ -89,13 +102,34 @@ func enqueueChatSessionRecord(recorder *service.ChatSessionService, payload *ser
 
 func startChatSessionRecordWorkers() {
 	chatSessionRecordQueue = make(chan chatSessionRecordTask, chatSessionRecordQueueSize)
+	observability.SetChatSessionCaptureQueueStats(0, chatSessionRecordQueueSize)
 	for i := 0; i < chatSessionRecordWorkers; i++ {
 		go func() {
 			for task := range chatSessionRecordQueue {
-				recordChatSessionWithTimeout(task.recorder, task.payload)
+				observability.SetChatSessionCaptureQueueStats(len(chatSessionRecordQueue), cap(chatSessionRecordQueue))
+				recordChatSessionTaskWithTimeout(task)
+				observability.SetChatSessionCaptureQueueStats(len(chatSessionRecordQueue), cap(chatSessionRecordQueue))
 			}
 		}()
 	}
+}
+
+func recordChatSessionTaskWithTimeout(task chatSessionRecordTask) {
+	if task.recorder == nil || task.payload == nil {
+		return
+	}
+	messages, events := buildChatSessionMessages(
+		task.payload.InboundEndpoint,
+		task.requestBody,
+		task.finalOutputText,
+		task.finalOutputJSON,
+	)
+	if len(messages) == 0 && len(events) == 0 {
+		return
+	}
+	task.payload.Messages = messages
+	task.payload.Events = events
+	recordChatSessionWithTimeout(task.recorder, task.payload)
 }
 
 func recordChatSessionWithTimeout(recorder *service.ChatSessionService, payload *service.ChatSessionRecordInput) {
@@ -104,18 +138,41 @@ func recordChatSessionWithTimeout(recorder *service.ChatSessionService, payload 
 	}
 	taskCtx, cancel := context.WithTimeout(context.Background(), chatSessionRecordTimeout)
 	defer cancel()
+	startedAt := time.Now()
 	if err := recorder.RecordSession(taskCtx, payload); err != nil {
+		duration := time.Since(startedAt)
+		observability.ObserveChatSessionCaptureFailure(duration, err)
 		fields := []zap.Field{
 			zap.Int64("user_id", payload.UserID),
 			zap.Int64("api_key_id", payload.APIKeyID),
 			zap.String("session_key", payload.SessionKey),
 			zap.String("request_id", payload.RequestID),
+			zap.Int64("duration_ms", duration.Milliseconds()),
 			zap.Error(err),
 		}
 		if payload.AccountID != nil {
 			fields = append(fields, zap.Int64("account_id", *payload.AccountID))
 		}
 		logger.L().Warn("chat_session.record_failed", fields...)
+		return
+	}
+	duration := time.Since(startedAt)
+	observability.ObserveChatSessionCaptureSuccess(duration)
+	if duration >= observability.ChatSessionCaptureSlowThreshold {
+		observability.ObserveChatSessionCaptureSlow(duration)
+		fields := []zap.Field{
+			zap.Int64("user_id", payload.UserID),
+			zap.Int64("api_key_id", payload.APIKeyID),
+			zap.String("session_key", payload.SessionKey),
+			zap.String("request_id", payload.RequestID),
+			zap.Int64("duration_ms", duration.Milliseconds()),
+			zap.Int("message_count", len(payload.Messages)),
+			zap.Int("event_count", len(payload.Events)),
+		}
+		if payload.AccountID != nil {
+			fields = append(fields, zap.Int64("account_id", *payload.AccountID))
+		}
+		logger.L().Warn("chat_session.record_slow", fields...)
 	}
 }
 

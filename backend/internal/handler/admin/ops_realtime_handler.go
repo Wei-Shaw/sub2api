@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/observability"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -61,6 +62,20 @@ func (h *OpsHandler) GetConcurrencyStats(c *gin.Context) {
 		payload["timestamp"] = collectedAt.UTC()
 	}
 	response.Success(c, payload)
+}
+
+// GetChatSessionCaptureStats returns runtime stats for async chat session capture.
+// GET /api/v1/admin/ops/chat-session-capture
+func (h *OpsHandler) GetChatSessionCaptureStats(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, observability.ChatSessionCaptureSnapshot(observability.ChatSessionCaptureSlowThreshold))
 }
 
 // GetUserConcurrencyStats returns real-time concurrency usage for all active users.

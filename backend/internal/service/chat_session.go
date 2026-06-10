@@ -116,6 +116,7 @@ type ChatSessionRepository interface {
 	GetSessionDetail(ctx context.Context, userID, apiKeyID, sessionID int64, params pagination.PaginationParams) (*ChatSessionDetail, error)
 	GetChatMessageDetail(ctx context.Context, userID, apiKeyID, sessionID, messageID int64) (*ChatMessage, error)
 	ListRecentMessagesByAPIKey(ctx context.Context, userID, apiKeyID int64, limit int) ([]ChatMessage, error)
+	DeleteSessionsBefore(ctx context.Context, cutoff time.Time, limit int) (int64, error)
 }
 
 type ChatSessionService struct {

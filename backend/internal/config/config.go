@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -86,6 +87,7 @@ type Config struct {
 	Dashboard               DashboardCacheConfig          `mapstructure:"dashboard_cache"`
 	DashboardAgg            DashboardAggregationConfig    `mapstructure:"dashboard_aggregation"`
 	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
+	ChatSessionRetention    ChatSessionRetentionConfig    `mapstructure:"chat_session_retention"`
 	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
 	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
 	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
@@ -93,6 +95,7 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	Pprof                   PprofConfig                   `mapstructure:"pprof"`
 }
 
 type LogConfig struct {
@@ -544,6 +547,11 @@ type PricingConfig struct {
 	UpdateIntervalHours int `mapstructure:"update_interval_hours"`
 	// 哈希校验间隔（分钟）
 	HashCheckIntervalMinutes int `mapstructure:"hash_check_interval_minutes"`
+}
+
+type PprofConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Addr    string `mapstructure:"addr"`
 }
 
 type ServerConfig struct {
@@ -1339,6 +1347,20 @@ type UsageCleanupConfig struct {
 	TaskTimeoutSeconds int `mapstructure:"task_timeout_seconds"`
 }
 
+// ChatSessionRetentionConfig controls automatic cleanup for captured chat sessions.
+type ChatSessionRetentionConfig struct {
+	// Enabled: whether the background retention worker is enabled.
+	Enabled bool `mapstructure:"enabled"`
+	// RetentionDays: session rows older than this are deleted. Child message/event rows cascade.
+	RetentionDays int `mapstructure:"retention_days"`
+	// BatchSize: maximum chat_sessions rows deleted per batch.
+	BatchSize int `mapstructure:"batch_size"`
+	// IntervalSeconds: how often the retention worker runs.
+	IntervalSeconds int `mapstructure:"interval_seconds"`
+	// TaskTimeoutSeconds: maximum time for one cleanup run.
+	TaskTimeoutSeconds int `mapstructure:"task_timeout_seconds"`
+}
+
 func NormalizeRunMode(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
@@ -1408,6 +1430,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 
 	cfg.RunMode = NormalizeRunMode(cfg.RunMode)
+	cfg.Pprof.Addr = strings.TrimSpace(cfg.Pprof.Addr)
 	cfg.Server.Mode = strings.ToLower(strings.TrimSpace(cfg.Server.Mode))
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "debug"
@@ -1799,6 +1822,13 @@ func setDefaults() {
 	viper.SetDefault("usage_cleanup.worker_interval_seconds", 10)
 	viper.SetDefault("usage_cleanup.task_timeout_seconds", 1800)
 
+	// Chat session retention
+	viper.SetDefault("chat_session_retention.enabled", true)
+	viper.SetDefault("chat_session_retention.retention_days", 90)
+	viper.SetDefault("chat_session_retention.batch_size", 1000)
+	viper.SetDefault("chat_session_retention.interval_seconds", 86400)
+	viper.SetDefault("chat_session_retention.task_timeout_seconds", 300)
+
 	// Idempotency
 	viper.SetDefault("idempotency.observe_only", true)
 	viper.SetDefault("idempotency.default_ttl_seconds", 86400)
@@ -1808,6 +1838,10 @@ func setDefaults() {
 	viper.SetDefault("idempotency.max_stored_response_len", 64*1024)
 	viper.SetDefault("idempotency.cleanup_interval_seconds", 60)
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
+
+	// Pprof is disabled by default and should only bind to localhost or a private network address.
+	viper.SetDefault("pprof.enabled", false)
+	viper.SetDefault("pprof.addr", "127.0.0.1:6060")
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
@@ -2025,6 +2059,11 @@ func (c *Config) Validate() error {
 		}
 		if c.Log.Sampling.Thereafter < 0 {
 			return fmt.Errorf("log.sampling.thereafter must be non-negative")
+		}
+	}
+	if c.Pprof.Enabled {
+		if err := ValidateInternalListenAddress(c.Pprof.Addr); err != nil {
+			return fmt.Errorf("pprof.addr is not an internal listen address: %w", err)
 		}
 	}
 
@@ -2411,6 +2450,33 @@ func (c *Config) Validate() error {
 		}
 		if c.UsageCleanup.TaskTimeoutSeconds < 0 {
 			return fmt.Errorf("usage_cleanup.task_timeout_seconds must be non-negative")
+		}
+	}
+	if c.ChatSessionRetention.Enabled {
+		if c.ChatSessionRetention.RetentionDays <= 0 {
+			return fmt.Errorf("chat_session_retention.retention_days must be positive")
+		}
+		if c.ChatSessionRetention.BatchSize <= 0 {
+			return fmt.Errorf("chat_session_retention.batch_size must be positive")
+		}
+		if c.ChatSessionRetention.IntervalSeconds <= 0 {
+			return fmt.Errorf("chat_session_retention.interval_seconds must be positive")
+		}
+		if c.ChatSessionRetention.TaskTimeoutSeconds <= 0 {
+			return fmt.Errorf("chat_session_retention.task_timeout_seconds must be positive")
+		}
+	} else {
+		if c.ChatSessionRetention.RetentionDays < 0 {
+			return fmt.Errorf("chat_session_retention.retention_days must be non-negative")
+		}
+		if c.ChatSessionRetention.BatchSize < 0 {
+			return fmt.Errorf("chat_session_retention.batch_size must be non-negative")
+		}
+		if c.ChatSessionRetention.IntervalSeconds < 0 {
+			return fmt.Errorf("chat_session_retention.interval_seconds must be non-negative")
+		}
+		if c.ChatSessionRetention.TaskTimeoutSeconds < 0 {
+			return fmt.Errorf("chat_session_retention.task_timeout_seconds must be non-negative")
 		}
 	}
 	if c.Idempotency.DefaultTTLSeconds <= 0 {
@@ -2878,6 +2944,35 @@ func GetServerAddress() string {
 	host := v.GetString("server.host")
 	port := v.GetInt("server.port")
 	return fmt.Sprintf("%s:%d", host, port)
+}
+
+func ValidateInternalListenAddress(addr string) error {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return fmt.Errorf("empty address")
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(port) == "" {
+		return fmt.Errorf("missing port")
+	}
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return fmt.Errorf("missing host")
+	}
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("host must be localhost or an IP address")
+	}
+	if ip.IsLoopback() || ip.IsPrivate() {
+		return nil
+	}
+	return fmt.Errorf("host must be loopback or private network IP")
 }
 
 // ValidateAbsoluteHTTPURL 验证是否为有效的绝对 HTTP(S) URL

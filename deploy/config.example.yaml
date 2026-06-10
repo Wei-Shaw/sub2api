@@ -55,6 +55,19 @@ server:
     max_upload_buffer_per_stream: 524288
 
 # =============================================================================
+# Pprof Configuration
+# Go runtime profiling. Keep disabled unless diagnosing CPU/memory issues.
+# Go 运行时性能分析。仅在排查 CPU/内存问题时开启。
+# =============================================================================
+pprof:
+  # Disabled by default. Can also be set with PPROF_ENABLED=true.
+  # 默认关闭。也可通过 PPROF_ENABLED=true 设置。
+  enabled: false
+  # Must be localhost, loopback, or RFC1918 private IP. Never bind 0.0.0.0.
+  # 必须是 localhost、回环地址或 RFC1918 内网 IP。不要监听 0.0.0.0。
+  addr: "127.0.0.1:6060"
+
+# =============================================================================
 # Run Mode Configuration
 # 运行模式配置
 # =============================================================================
@@ -731,6 +744,27 @@ usage_cleanup:
   # Task execution timeout (seconds)
   # 单次任务最大执行时长（秒）
   task_timeout_seconds: 1800
+
+# =============================================================================
+# Chat Session Retention Configuration
+# 聊天会话记录保留配置（重启生效）
+# =============================================================================
+chat_session_retention:
+  # Enable automatic cleanup for captured chat sessions
+  # 启用聊天会话记录自动清理
+  enabled: true
+  # Keep sessions for N days. Child messages/events are deleted by cascade.
+  # 会话保留天数；子消息/事件通过级联删除
+  retention_days: 90
+  # Batch delete size
+  # 单批删除会话数量
+  batch_size: 1000
+  # Cleanup interval (seconds), default 24h
+  # 清理间隔（秒），默认 24 小时
+  interval_seconds: 86400
+  # Single cleanup run timeout (seconds)
+  # 单次清理最大执行时长（秒）
+  task_timeout_seconds: 300
 
 # =============================================================================
 # HTTP 写接口幂等配置
