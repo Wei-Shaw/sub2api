@@ -344,6 +344,34 @@ export default {
     }
   },
 
+  adminCompliance: {
+    title: '部署与运营合规确认',
+    blockingNotice: '继续使用控制台前，须完成部署与运营合规确认。',
+    riskNotice: '本确认用于以清晰、显著、可留痕的方式提示自部署实例的合规义务与运营风险。',
+    version: '协议版本',
+    openDocument: '在 GitHub 查看协议文件',
+    documentSource: '协议正文来自本项目仓库中的 Markdown 文件。修改协议内容时必须同步递增协议版本；已确认的旧版本将失效，控制台使用者须重新确认。',
+    inputLabel: '请逐字输入以下确认短语',
+    inputPlaceholder: '输入确认短语以继续',
+    inputMismatch: '确认短语不匹配，请逐字输入提示内容。',
+    legalNote: '本确认用于明确自部署实例与开源项目、著作权人、贡献者及维护者之间的非关联关系和责任边界；部署、运营或控制相关实例的主体应独立承担其适用义务。',
+    logout: '退出登录',
+    accept: '确认并继续',
+    accepted: '合规确认已记录',
+    acceptFailed: '提交确认失败'
+  },
+
+  legal: {
+    loadFailed: '文档加载失败',
+    retryLater: '请稍后刷新页面重试。',
+    notFound: '文档不存在',
+    notFoundDescription: '当前条款文档不存在或已被管理员移除。',
+    updatedAt: '更新日期：{date}',
+    empty: '暂无正文内容',
+    loginAgreement: '登录条款',
+    adminCompliance: '部署与运营合规承诺'
+  },
+
   // Navigation
   nav: {
     dashboard: '仪表盘',
@@ -1820,6 +1848,16 @@ export default {
       allGroups: '全部分组',
       searchGroups: '搜索分组...',
       fuzzySearch: '模糊搜索',
+      apiKeyGroupFilter: 'API Key 分组',
+      apiKeyGroupExclusive: '专用分组',
+      apiKeyGroupPublic: '公开分组',
+      apiKeyGroupSubscription: '订阅分组',
+      apiKeyGroupDisabled: '已禁用分组',
+      authorizedGroupFilter: '授权分组',
+      allAuthorizedGroups: '全部授权分组',
+      searchAuthorizedGroups: '搜索授权分组...',
+      allApiKeyGroups: '全部 API Key 分组',
+      searchApiKeyGroups: '搜索 API Key 分组...',
       statusFilter: '状态筛选',
       allStatuses: '全部状态',
       admin: '管理员',
