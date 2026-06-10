@@ -101,6 +101,7 @@
                 class="input"
                 @input="concurrency = Math.max(1, concurrency || 1)"
               />
+              <p class="input-hint">{{ t('admin.accounts.dataImportConcurrencyHint') }}</p>
             </div>
             <div>
               <label class="input-label">{{ t('admin.accounts.loadFactor') }}</label>
@@ -475,16 +476,18 @@ const importing = ref(false)
 const file = ref<File | null>(null)
 const filePayload = ref<AdminDataImportPayload | null>(null)
 const result = ref<AdminDataImportResult | null>(null)
+const defaultImportConcurrency = 1
+const defaultImportSchedulable = false
 const selectedBatchId = ref<number | null>(null)
 const proxyId = ref<number | null>(null)
 const groupIds = ref<number[]>([])
-const concurrency = ref(10)
+const concurrency = ref(defaultImportConcurrency)
 const loadFactor = ref<number | null>(null)
 const priority = ref(1)
 const rateMultiplier = ref(1)
 const expiresAt = ref<number | null>(null)
 const autoPauseOnExpired = ref(true)
-const schedulable = ref(true)
+const schedulable = ref(defaultImportSchedulable)
 const autoDetectModels = ref(false)
 const allowedModels = ref<string[]>([])
 const interceptWarmupRequests = ref(false)
@@ -581,13 +584,13 @@ const resetState = () => {
   selectedBatchId.value = null
   proxyId.value = null
   groupIds.value = []
-  concurrency.value = 10
+  concurrency.value = defaultImportConcurrency
   loadFactor.value = null
   priority.value = 1
   rateMultiplier.value = 1
   expiresAt.value = null
   autoPauseOnExpired.value = true
-  schedulable.value = true
+  schedulable.value = defaultImportSchedulable
   autoDetectModels.value = false
   allowedModels.value = []
   interceptWarmupRequests.value = false

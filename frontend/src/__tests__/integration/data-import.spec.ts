@@ -143,6 +143,8 @@ describe('ImportDataModal', () => {
     expect(adminAPI.accounts.importData).toHaveBeenCalledWith(
       expect.objectContaining({
         batch_id: 7,
+        concurrency: 1,
+        schedulable: false,
         auto_detect_models: true,
         credential_extras: {
           model_mapping: {

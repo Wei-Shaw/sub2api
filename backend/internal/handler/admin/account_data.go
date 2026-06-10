@@ -26,6 +26,8 @@ const (
 	dataVersion    = 1
 	dataPageCap    = 1000
 
+	dataImportDefaultSchedulable = false
+
 	cockpitAccountTransferSchema = "cockpit-tools.account-transfer"
 	cockpitDataTransferSchema    = "cockpit-tools.data-transfer"
 )
@@ -1065,7 +1067,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			BatchID:               req.BatchID,
 			ExpiresAt:             resolveImportInt64(req.ExpiresAt, item.ExpiresAt),
 			AutoPauseOnExpired:    resolveImportBool(req.AutoPauseOnExpired, item.AutoPauseOnExpired),
-			Schedulable:           req.Schedulable,
+			Schedulable:           resolveImportSchedulable(req.Schedulable),
 			SkipDefaultGroupBind:  skipDefaultGroupBind,
 			SkipMixedChannelCheck: skipMixedChannelCheck,
 			LoadFactor:            resolveImportIntPtr(req.LoadFactor, item.LoadFactor),
@@ -1266,6 +1268,15 @@ func resolveImportBool(override *bool, fallback *bool) *bool {
 		return &value
 	}
 	return fallback
+}
+
+func resolveImportSchedulable(override *bool) *bool {
+	if override != nil {
+		value := *override
+		return &value
+	}
+	value := dataImportDefaultSchedulable
+	return &value
 }
 
 func mergeImportMaps(base map[string]any, override map[string]any) map[string]any {
