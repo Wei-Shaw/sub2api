@@ -1,5 +1,7 @@
 package service
 
+import "strings"
+
 // SensitiveCredentialKeys 列出 Account.Credentials JSON map 中绝不允许返回到前端的子键。
 // dto 层做响应脱敏、service 层做更新合并都引用此清单——新增凭证类型时务必同步。
 var SensitiveCredentialKeys = []string{
@@ -26,6 +28,40 @@ func IsSensitiveCredentialKey(key string) bool {
 	return ok
 }
 
+// IsSensitiveCredentialPlaceholder reports whether a submitted secret is a UI/browser placeholder
+// instead of a real credential. Treat these as "not provided" so saved secrets are preserved.
+func IsSensitiveCredentialPlaceholder(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return true
+	}
+	if len([]rune(value)) <= 32 && (strings.Contains(value, "...") || strings.Contains(value, "***")) {
+		return true
+	}
+
+	runes := []rune(value)
+	if len(runes) < 4 {
+		return false
+	}
+	for _, r := range runes {
+		switch r {
+		case '*', '•', '●', '∙', '·', '':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func isSensitiveCredentialPlaceholderValue(value any) bool {
+	s, ok := value.(string)
+	if !ok {
+		return false
+	}
+	return IsSensitiveCredentialPlaceholder(s)
+}
+
 // MergePreservingSensitiveCreds 把 incoming 写入 existing 之上，但敏感子键采用"incoming 没提供就保留 existing"
 // 的语义。返回新的 map，不修改入参。
 //
@@ -36,10 +72,13 @@ func IsSensitiveCredentialKey(key string) bool {
 func MergePreservingSensitiveCreds(existing, incoming map[string]any) map[string]any {
 	out := make(map[string]any, len(incoming)+len(SensitiveCredentialKeys))
 	for k, v := range incoming {
+		if IsSensitiveCredentialKey(k) && isSensitiveCredentialPlaceholderValue(v) {
+			continue
+		}
 		out[k] = v
 	}
 	for _, key := range SensitiveCredentialKeys {
-		if _, hasIncoming := incoming[key]; hasIncoming {
+		if _, hasIncoming := out[key]; hasIncoming {
 			continue
 		}
 		if existingVal, ok := existing[key]; ok {

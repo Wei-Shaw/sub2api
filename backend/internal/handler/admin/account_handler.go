@@ -2163,7 +2163,9 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		}
 		if req.APIKey != nil {
 			if apiKey := strings.TrimSpace(*req.APIKey); apiKey != "" {
-				overrides["api_key"] = apiKey
+				if !service.IsSensitiveCredentialPlaceholder(apiKey) {
+					overrides["api_key"] = apiKey
+				}
 			}
 		}
 		if req.UpstreamType != nil {

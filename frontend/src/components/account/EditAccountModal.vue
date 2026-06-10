@@ -58,6 +58,11 @@
             data-1p-ignore
             data-lpignore="true"
             data-bwignore="true"
+            @focus="editApiKeyFocused = true"
+            @blur="editApiKeyFocused = false"
+            @keydown="markEditApiKeyKeydown"
+            @paste="markEditApiKeyEdited"
+            @drop="markEditApiKeyEdited"
             :placeholder="
               account.platform === 'openai'
                 ? 'sk-proj-...'
@@ -583,6 +588,11 @@
             type="password"
             class="input font-mono"
             placeholder="sk-..."
+            @focus="editApiKeyFocused = true"
+            @blur="editApiKeyFocused = false"
+            @keydown="markEditApiKeyKeydown"
+            @paste="markEditApiKeyEdited"
+            @drop="markEditApiKeyEdited"
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
@@ -2450,6 +2460,27 @@ const GEMINI_COMPATIBLE_RELAY_TIER_ID = 'compatible_relay'
 
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editApiKeyFocused = ref(false)
+const editApiKeyEdited = ref(false)
+
+const markEditApiKeyEdited = () => {
+  if (editApiKeyFocused.value) {
+    editApiKeyEdited.value = true
+  }
+}
+
+const markEditApiKeyKeydown = (event: KeyboardEvent) => {
+  if (!editApiKeyFocused.value) return
+  if (event.ctrlKey || event.metaKey || event.altKey) return
+  if (event.key.length === 1 || event.key === 'Backspace' || event.key === 'Delete') {
+    editApiKeyEdited.value = true
+  }
+}
+
+const getEditedApiKey = () => {
+  if (!editApiKeyEdited.value) return ''
+  return editApiKey.value.trim()
+}
 
 const isOfficialGeminiBaseURL = (value?: unknown) => {
   const raw = (typeof value === 'string' ? value : '').trim()
@@ -2498,7 +2529,7 @@ const editAPIKeySyncCredentials = computed(() => {
     base_url: editBaseUrl.value.trim() || defaultBaseUrl.value
   }
 
-  const apiKey = editApiKey.value.trim()
+  const apiKey = getEditedApiKey()
   if (apiKey) {
     credentials.api_key = apiKey
   }
@@ -3259,6 +3290,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+  editApiKeyFocused.value = false
+  editApiKeyEdited.value = false
 }
 
 async function loadTLSProfiles() {
@@ -3791,8 +3824,9 @@ const handleSubmit = async () => {
       // 两者都无才报错。
       const hasExistingApiKey =
         props.account.credentials_status?.has_api_key ?? Boolean(currentCredentials.api_key)
-      if (editApiKey.value.trim()) {
-        newCredentials.api_key = editApiKey.value.trim()
+      const editedApiKey = getEditedApiKey()
+      if (editedApiKey) {
+        newCredentials.api_key = editedApiKey
       } else if (!hasExistingApiKey) {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
@@ -3857,8 +3891,9 @@ const handleSubmit = async () => {
 
       newCredentials.base_url = editBaseUrl.value.trim()
 
-      if (editApiKey.value.trim()) {
-        newCredentials.api_key = editApiKey.value.trim()
+      const editedApiKey = getEditedApiKey()
+      if (editedApiKey) {
+        newCredentials.api_key = editedApiKey
       }
 
       // Add intercept warmup requests setting
