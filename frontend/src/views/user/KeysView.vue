@@ -311,6 +311,20 @@
 
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
+              <!-- Config Script Button -->
+              <button
+                :ref="(el) => setConfigScriptButtonRef(row.id, el)"
+                @click.stop="openConfigScriptMenu(row)"
+                :class="[
+                  'config-script-trigger flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors',
+                  configScriptMenuKeyId === row.id
+                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400'
+                    : 'text-gray-500 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400'
+                ]"
+              >
+                <Icon name="download" size="sm" />
+                <span class="text-xs">{{ t('keys.configScript') }}</span>
+              </button>
               <!-- Use Key Button -->
               <button
                 @click="openUseKeyModal(row)"
@@ -1041,6 +1055,37 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Config Script Dropdown (Teleported to body to avoid overflow clipping) -->
+    <Teleport to="body">
+      <div
+        v-if="configScriptMenuKeyId !== null && configScriptMenuPosition"
+        ref="configScriptMenuRef"
+        class="config-script-menu-content fixed z-[100000020] w-[450px] max-w-[calc(100vw-24px)] overflow-hidden rounded-3xl bg-white p-3 shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
+        :style="{
+          top: configScriptMenuPosition.top + 'px',
+          left: configScriptMenuPosition.left + 'px'
+        }"
+        @click.stop
+      >
+        <div class="space-y-1">
+          <button
+            v-for="item in configScriptClientItems"
+            :key="item.id"
+            type="button"
+            :disabled="!isConfigScriptMenuItemAvailable(item.id)"
+            class="flex w-full items-center gap-4 rounded-2xl px-6 py-3 text-left text-2xl font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-200 dark:hover:bg-dark-700"
+            @click="downloadConfigScript(item.id)"
+          >
+            <Icon name="terminal" size="lg" class="shrink-0 text-gray-700 dark:text-gray-300" />
+            <span>{{ item.label }}</span>
+          </button>
+        </div>
+        <div class="mt-3 border-t border-gray-100 px-6 py-4 text-xl leading-relaxed text-gray-500 dark:border-dark-700 dark:text-gray-400">
+          {{ configScriptDownloadHint }}
+        </div>
+      </div>
+    </Teleport>
   </AppLayout>
 </template>
 
@@ -1077,6 +1122,12 @@ import {
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
 } from '@/utils/ccswitchImport'
+import {
+  downloadAPIKeyConfigScript,
+  getConfigScriptOS,
+  isConfigScriptClientAvailable,
+  type ConfigScriptClient
+} from '@/utils/configScriptDownload'
 
 // Helper to format date for datetime-local input
 const formatDateTimeLocal = (isoDate: string): string => {
@@ -1148,10 +1199,14 @@ const pendingCcsRow = ref<ApiKey | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
+const configScriptMenuKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
+const configScriptMenuRef = ref<HTMLElement | null>(null)
+const configScriptMenuPosition = ref<{ top: number; left: number } | null>(null)
+const configScriptButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
 
 // Get the currently selected key for group change
@@ -1160,11 +1215,24 @@ const selectedKeyForGroup = computed(() => {
   return apiKeys.value.find((k) => k.id === groupSelectorKeyId.value) || null
 })
 
+const selectedKeyForConfigScript = computed(() => {
+  if (configScriptMenuKeyId.value === null) return null
+  return apiKeys.value.find((k) => k.id === configScriptMenuKeyId.value) || null
+})
+
 const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance | null) => {
   if (el instanceof HTMLElement) {
     groupButtonRefs.value.set(keyId, el)
   } else {
     groupButtonRefs.value.delete(keyId)
+  }
+}
+
+const setConfigScriptButtonRef = (keyId: number, el: Element | ComponentPublicInstance | null) => {
+  if (el instanceof HTMLElement) {
+    configScriptButtonRefs.value.set(keyId, el)
+  } else {
+    configScriptButtonRefs.value.delete(keyId)
   }
 }
 
@@ -1225,6 +1293,18 @@ const statusFilterOptions = computed(() => [
   { value: 'quota_exhausted', label: t('keys.status.quota_exhausted') },
   { value: 'expired', label: t('keys.status.expired') }
 ])
+
+const configScriptClientItems = computed(() => [
+  { id: 'codex' as ConfigScriptClient, label: t('keys.configScriptMenu.codexCli') },
+  { id: 'claude' as ConfigScriptClient, label: t('keys.configScriptMenu.claudeCode') },
+  { id: 'opencode' as ConfigScriptClient, label: t('keys.configScriptMenu.opencode') }
+])
+
+const configScriptDownloadHint = computed(() =>
+  getConfigScriptOS() === 'win'
+    ? t('keys.configScriptMenu.hintWindows')
+    : t('keys.configScriptMenu.hintMac')
+)
 
 const onFilterChange = () => {
   pagination.value.page = 1
@@ -1427,6 +1507,7 @@ const toggleKeyStatus = async (key: ApiKey) => {
 }
 
 const openGroupSelector = (key: ApiKey) => {
+  closeConfigScriptMenu()
   if (groupSelectorKeyId.value === key.id) {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
@@ -1457,6 +1538,79 @@ const openGroupSelector = (key: ApiKey) => {
   }
 }
 
+const closeConfigScriptMenu = () => {
+  configScriptMenuKeyId.value = null
+  configScriptMenuPosition.value = null
+}
+
+const openConfigScriptMenu = (key: ApiKey) => {
+  groupSelectorKeyId.value = null
+  dropdownPosition.value = null
+
+  if (configScriptMenuKeyId.value === key.id) {
+    closeConfigScriptMenu()
+    return
+  }
+
+  const buttonEl = configScriptButtonRefs.value.get(key.id)
+  if (!buttonEl) return
+
+  const rect = buttonEl.getBoundingClientRect()
+  const padding = 12
+  const menuHeight = 280
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+  const menuWidth = Math.max(0, Math.min(450, viewportWidth - padding * 2))
+  let left = rect.left + rect.width / 2 - menuWidth / 2
+  left = Math.max(padding, Math.min(left, viewportWidth - menuWidth - padding))
+  let top = rect.bottom + 8
+  if (top + menuHeight > viewportHeight - padding && rect.top > menuHeight) {
+    top = rect.top - menuHeight - 8
+  }
+  top = Math.max(padding, Math.min(top, viewportHeight - menuHeight - padding))
+
+  configScriptMenuPosition.value = { top, left }
+  configScriptMenuKeyId.value = key.id
+}
+
+const isConfigScriptMenuItemAvailable = (client: ConfigScriptClient) => {
+  const key = selectedKeyForConfigScript.value
+  if (!key?.group?.platform) return false
+  return isConfigScriptClientAvailable({
+    client,
+    platform: key.group.platform,
+    allowMessagesDispatch: key.group.allow_messages_dispatch || false
+  })
+}
+
+const downloadConfigScript = (client: ConfigScriptClient) => {
+  const key = selectedKeyForConfigScript.value
+  if (!key?.group?.platform) {
+    appStore.showError(t('keys.useKeyModal.noGroupTitle'))
+    return
+  }
+  if (!isConfigScriptMenuItemAvailable(client)) {
+    appStore.showError(t('keys.configScriptMenu.unsupportedClient'))
+    return
+  }
+
+  try {
+    downloadAPIKeyConfigScript({
+      client,
+      platform: key.group.platform,
+      allowMessagesDispatch: key.group.allow_messages_dispatch || false,
+      baseUrl: publicSettings.value?.api_base_url || window.location.origin,
+      apiKey: key.key,
+      siteName: publicSettings.value?.site_name || 'look2eye'
+    })
+    appStore.showSuccess(t('keys.configScriptMenu.downloadStarted'))
+    closeConfigScriptMenu()
+  } catch (error) {
+    console.error('Failed to download config script:', error)
+    appStore.showError(t('keys.configScriptMenu.downloadFailed'))
+  }
+}
+
 const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
   groupSelectorKeyId.value = null
   dropdownPosition.value = null
@@ -1477,6 +1631,13 @@ const closeGroupSelector = (event: MouseEvent) => {
   if (!target.closest('.group\\/dropdown') && !dropdownRef.value?.contains(target)) {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
+  }
+  if (
+    !target.closest('.config-script-trigger') &&
+    !target.closest('.config-script-menu-content') &&
+    !configScriptMenuRef.value?.contains(target)
+  ) {
+    closeConfigScriptMenu()
   }
 }
 
