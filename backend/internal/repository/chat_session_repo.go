@@ -1,23 +1,37 @@
 package repository
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 type chatSessionRepository struct {
-	sql *sql.DB
+	sql          *sql.DB
+	payloadStore *chatSessionPayloadStore
 }
 
-func NewChatSessionRepository(sqlDB *sql.DB) service.ChatSessionRepository {
-	return &chatSessionRepository{sql: sqlDB}
+func NewChatSessionRepository(sqlDB *sql.DB, cfg *config.Config) service.ChatSessionRepository {
+	return &chatSessionRepository{
+		sql:          sqlDB,
+		payloadStore: newChatSessionPayloadStore(cfg),
+	}
 }
 
 func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, input *service.ChatSessionRecordInput) error {
@@ -56,7 +70,16 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 					length(trim($3::text))::text || ':' || trim($3::text) || '|' ||
 					length(trim($4::text))::text || ':' || trim($4::text) || '|' ||
 					length(trim($5::text))::text || ':' || trim($5::text) || '|' ||
-					length(COALESCE($6::jsonb::text, ''))::text || ':' || COALESCE($6::jsonb::text, ''),
+					length(
+						CASE
+							WHEN $6::jsonb ->> 'storage' = 'file' THEN COALESCE(NULLIF($6::jsonb ->> 'sha256', ''), $6::jsonb::text)
+							ELSE COALESCE($6::jsonb::text, '')
+						END
+					)::text || ':' ||
+					CASE
+						WHEN $6::jsonb ->> 'storage' = 'file' THEN COALESCE(NULLIF($6::jsonb ->> 'sha256', ''), $6::jsonb::text)
+						ELSE COALESCE($6::jsonb::text, '')
+					END,
 					'sha256'
 				),
 				'hex'
@@ -79,7 +102,7 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 		contentText := strings.TrimSpace(msg.ContentText)
 		var contentJSON any
 		if len(msg.ContentJSON) > 0 {
-			contentJSON = msg.ContentJSON
+			contentJSON = r.prepareContentJSON(ctx, msg.ContentJSON, input.CreatedAt, "message")
 		}
 		result, err := stmt.ExecContext(
 			ctx,
@@ -133,7 +156,7 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 		for i, ev := range input.Events {
 			var contentJSON any
 			if len(ev.ContentJSON) > 0 {
-				contentJSON = ev.ContentJSON
+				contentJSON = r.prepareContentJSON(ctx, ev.ContentJSON, input.CreatedAt, "event")
 			}
 			if _, err := eventStmt.ExecContext(
 				ctx,
@@ -474,7 +497,9 @@ func (r *chatSessionRepository) GetChatMessageDetail(ctx context.Context, userID
 	); err != nil {
 		return nil, err
 	}
-	msg.ContentJSON = json.RawMessage(contentJSON)
+	msg.ContentJSON = r.resolveContentJSON(ctx, contentJSON)
+	msg.HasContentJSON = len(msg.ContentJSON) > 0
+	msg.ContentJSONBytes = int64(len(msg.ContentJSON))
 	return &msg, nil
 }
 
@@ -524,7 +549,7 @@ func (r *chatSessionRepository) ListRecentMessagesByAPIKey(ctx context.Context, 
 		); err != nil {
 			return nil, err
 		}
-		msg.ContentJSON = json.RawMessage(contentJSON)
+		msg.ContentJSON = r.resolveContentJSON(ctx, contentJSON)
 		out = append(out, msg)
 	}
 	return out, rows.Err()
@@ -682,7 +707,258 @@ func (r *chatSessionRepository) DeleteSessionsBefore(ctx context.Context, cutoff
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if deleted > 0 && r.payloadStore != nil {
+		r.payloadStore.DeleteDateDirsBefore(cutoff)
+	}
+	return deleted, nil
+}
+
+type chatSessionPayloadStore struct {
+	baseDir        string
+	inlineMaxBytes int
+}
+
+type chatSessionPayloadRef struct {
+	Storage          string `json:"storage"`
+	Path             string `json:"path"`
+	SHA256           string `json:"sha256"`
+	Bytes            int64  `json:"bytes"`
+	StoredBytes      int64  `json:"stored_bytes,omitempty"`
+	Compression      string `json:"compression,omitempty"`
+	CompressionLevel int    `json:"compression_level,omitempty"`
+}
+
+const (
+	chatSessionPayloadStorageFile = "file"
+	chatSessionPayloadCompression = "gzip"
+)
+
+func newChatSessionPayloadStore(cfg *config.Config) *chatSessionPayloadStore {
+	retention := config.ChatSessionRetentionConfig{
+		PayloadDir:            "./data/chat_session_payloads",
+		PayloadInlineMaxBytes: 256 * 1024,
+	}
+	if cfg != nil {
+		retention = cfg.ChatSessionRetention
+	}
+	baseDir := strings.TrimSpace(retention.PayloadDir)
+	if baseDir == "" {
+		baseDir = "./data/chat_session_payloads"
+	}
+	return &chatSessionPayloadStore{
+		baseDir:        filepath.Clean(baseDir),
+		inlineMaxBytes: retention.PayloadInlineMaxBytes,
+	}
+}
+
+func (r *chatSessionRepository) prepareContentJSON(ctx context.Context, raw json.RawMessage, createdAt time.Time, kind string) any {
+	if len(raw) == 0 || r == nil || r.payloadStore == nil {
+		return raw
+	}
+	stored, err := r.payloadStore.Store(ctx, raw, createdAt, kind)
+	if err != nil {
+		return raw
+	}
+	return stored
+}
+
+func (r *chatSessionRepository) resolveContentJSON(ctx context.Context, raw []byte) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	if r == nil || r.payloadStore == nil {
+		return json.RawMessage(raw)
+	}
+	resolved, err := r.payloadStore.Load(ctx, raw)
+	if err != nil {
+		return json.RawMessage(raw)
+	}
+	return resolved
+}
+
+func (s *chatSessionPayloadStore) Store(ctx context.Context, raw json.RawMessage, createdAt time.Time, kind string) (any, error) {
+	if s == nil || len(raw) == 0 || s.inlineMaxBytes < 0 || len(raw) <= s.inlineMaxBytes {
+		return raw, nil
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
+	sum := sha256.Sum256(raw)
+	sumHex := hex.EncodeToString(sum[:])
+	compressed, err := gzipChatSessionPayload(raw)
+	if err != nil {
+		return nil, err
+	}
+	dateDir := createdAt.UTC().Format("2006-01-02")
+	relPath := filepath.ToSlash(filepath.Join(dateDir, sumHex+"-"+randomHex(8)+"-"+sanitizeChatSessionPayloadKind(kind)+".json.gz"))
+	fullPath, err := s.safePath(relPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0750); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(fullPath, compressed, 0640); err != nil {
+		return nil, err
+	}
+	return chatSessionPayloadRef{
+		Storage:          chatSessionPayloadStorageFile,
+		Path:             relPath,
+		SHA256:           sumHex,
+		Bytes:            int64(len(raw)),
+		StoredBytes:      int64(len(compressed)),
+		Compression:      chatSessionPayloadCompression,
+		CompressionLevel: gzip.BestSpeed,
+	}, nil
+}
+
+func (s *chatSessionPayloadStore) Load(ctx context.Context, raw []byte) (json.RawMessage, error) {
+	ref, ok := decodeChatSessionPayloadRef(raw)
+	if !ok {
+		return json.RawMessage(raw), nil
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	fullPath, err := s.safePath(ref.Path)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return nil, err
+	}
+	if ref.Compression == chatSessionPayloadCompression {
+		data, err = gunzipChatSessionPayload(data)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if ref.SHA256 != "" {
+		sum := sha256.Sum256(data)
+		if hex.EncodeToString(sum[:]) != ref.SHA256 {
+			return nil, errors.New("chat session payload sha256 mismatch")
+		}
+	}
+	return json.RawMessage(data), nil
+}
+
+func (s *chatSessionPayloadStore) DeleteDateDirsBefore(cutoff time.Time) {
+	if s == nil || strings.TrimSpace(s.baseDir) == "" || cutoff.IsZero() {
+		return
+	}
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		return
+	}
+	cutoffDay := time.Date(cutoff.UTC().Year(), cutoff.UTC().Month(), cutoff.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		day, err := time.Parse("2006-01-02", entry.Name())
+		if err != nil || !day.Before(cutoffDay) {
+			continue
+		}
+		fullPath, err := s.safePath(entry.Name())
+		if err != nil {
+			continue
+		}
+		_ = os.RemoveAll(fullPath)
+	}
+}
+
+func (s *chatSessionPayloadStore) safePath(relPath string) (string, error) {
+	if s == nil || strings.TrimSpace(s.baseDir) == "" {
+		return "", errors.New("chat session payload store not configured")
+	}
+	cleanRel := filepath.Clean(filepath.FromSlash(strings.TrimSpace(relPath)))
+	if cleanRel == "." || filepath.IsAbs(cleanRel) || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) || cleanRel == ".." {
+		return "", errors.New("invalid chat session payload path")
+	}
+	baseAbs, err := filepath.Abs(s.baseDir)
+	if err != nil {
+		return "", err
+	}
+	fullPath := filepath.Join(baseAbs, cleanRel)
+	fullAbs, err := filepath.Abs(fullPath)
+	if err != nil {
+		return "", err
+	}
+	if fullAbs != baseAbs && !strings.HasPrefix(fullAbs, baseAbs+string(filepath.Separator)) {
+		return "", errors.New("chat session payload path escapes base dir")
+	}
+	return fullAbs, nil
+}
+
+func decodeChatSessionPayloadRef(raw []byte) (chatSessionPayloadRef, bool) {
+	var ref chatSessionPayloadRef
+	if len(raw) == 0 || json.Unmarshal(raw, &ref) != nil {
+		return chatSessionPayloadRef{}, false
+	}
+	if strings.TrimSpace(ref.Storage) != chatSessionPayloadStorageFile || strings.TrimSpace(ref.Path) == "" {
+		return chatSessionPayloadRef{}, false
+	}
+	ref.Path = strings.TrimSpace(ref.Path)
+	ref.SHA256 = strings.TrimSpace(ref.SHA256)
+	return ref, true
+}
+
+func gzipChatSessionPayload(raw []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	writer, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := writer.Write(raw); err != nil {
+		_ = writer.Close()
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func gunzipChatSessionPayload(raw []byte) ([]byte, error) {
+	reader, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	return io.ReadAll(reader)
+}
+
+func sanitizeChatSessionPayloadKind(kind string) string {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	switch kind {
+	case "message", "event":
+		return kind
+	default:
+		return "payload"
+	}
+}
+
+func randomHex(n int) string {
+	if n <= 0 {
+		n = 8
+	}
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(buf)
 }
 
 var _ service.ChatSessionRepository = (*chatSessionRepository)(nil)

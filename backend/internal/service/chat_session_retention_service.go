@@ -137,7 +137,7 @@ func (s *ChatSessionRetentionService) retentionConfig() config.ChatSessionRetent
 	}
 	return config.ChatSessionRetentionConfig{
 		Enabled:            true,
-		RetentionDays:      90,
+		RetentionDays:      30,
 		BatchSize:          1000,
 		IntervalSeconds:    int((24 * time.Hour).Seconds()),
 		TaskTimeoutSeconds: int((5 * time.Minute).Seconds()),

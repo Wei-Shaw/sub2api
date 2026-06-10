@@ -755,7 +755,13 @@ chat_session_retention:
   enabled: true
   # Keep sessions for N days. Child messages/events are deleted by cascade.
   # 会话保留天数；子消息/事件通过级联删除
-  retention_days: 90
+  retention_days: 30
+  # Large content_json payload storage directory. Large files are grouped by day and gzip-compressed.
+  # 大 content_json 落盘目录；大文件按天分目录存放并 gzip 压缩
+  payload_dir: ./data/chat_session_payloads
+  # content_json at or below this size stays in DB. Set 0 to store all content_json on disk.
+  # 小于等于该字节数的 content_json 仍存数据库；设为 0 可让所有 content_json 落盘
+  payload_inline_max_bytes: 262144
   # Batch delete size
   # 单批删除会话数量
   batch_size: 1000

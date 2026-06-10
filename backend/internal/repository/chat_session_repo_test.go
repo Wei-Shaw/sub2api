@@ -3,10 +3,15 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -113,4 +118,64 @@ func TestChatSessionRepositoryDeleteSessionsBefore(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(12), deleted)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestChatSessionPayloadStoreStoresLargePayloadsByDay(t *testing.T) {
+	baseDir := t.TempDir()
+	store := newChatSessionPayloadStore(&config.Config{
+		ChatSessionRetention: config.ChatSessionRetentionConfig{
+			PayloadDir:            baseDir,
+			PayloadInlineMaxBytes: 8,
+		},
+	})
+	raw := json.RawMessage(`{"text":"large payload"}`)
+	createdAt := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+
+	stored, err := store.Store(context.Background(), raw, createdAt, "message")
+	require.NoError(t, err)
+
+	ref, ok := stored.(chatSessionPayloadRef)
+	require.True(t, ok)
+	require.Equal(t, chatSessionPayloadStorageFile, ref.Storage)
+	require.Equal(t, chatSessionPayloadCompression, ref.Compression)
+	require.Contains(t, ref.Path, "2026-06-10/")
+	require.True(t, strings.HasSuffix(ref.Path, ".json.gz"), "path = %s", ref.Path)
+	require.Equal(t, int64(len(raw)), ref.Bytes)
+	require.Positive(t, ref.StoredBytes)
+	require.FileExists(t, filepath.Join(baseDir, filepath.FromSlash(ref.Path)))
+
+	refJSON, err := json.Marshal(ref)
+	require.NoError(t, err)
+	resolved, err := store.Load(context.Background(), refJSON)
+	require.NoError(t, err)
+	require.JSONEq(t, string(raw), string(resolved))
+}
+
+func TestChatSessionPayloadStoreKeepsSmallPayloadInline(t *testing.T) {
+	store := newChatSessionPayloadStore(&config.Config{
+		ChatSessionRetention: config.ChatSessionRetentionConfig{
+			PayloadDir:            t.TempDir(),
+			PayloadInlineMaxBytes: 1024,
+		},
+	})
+	raw := json.RawMessage(`{"ok":true}`)
+
+	stored, err := store.Store(context.Background(), raw, time.Now(), "message")
+	require.NoError(t, err)
+	require.Equal(t, raw, stored)
+}
+
+func TestChatSessionPayloadStoreDeleteDateDirsBefore(t *testing.T) {
+	baseDir := t.TempDir()
+	store := &chatSessionPayloadStore{baseDir: baseDir, inlineMaxBytes: 0}
+	require.NoError(t, os.MkdirAll(filepath.Join(baseDir, "2026-05-01"), 0750))
+	require.NoError(t, os.MkdirAll(filepath.Join(baseDir, "2026-06-09"), 0750))
+	require.NoError(t, os.MkdirAll(filepath.Join(baseDir, "2026-06-10"), 0750))
+	require.NoError(t, os.WriteFile(filepath.Join(baseDir, "2026-05-01", "payload.json"), []byte(`{}`), 0640))
+
+	store.DeleteDateDirsBefore(time.Date(2026, 6, 10, 15, 0, 0, 0, time.UTC))
+
+	require.NoDirExists(t, filepath.Join(baseDir, "2026-05-01"))
+	require.NoDirExists(t, filepath.Join(baseDir, "2026-06-09"))
+	require.DirExists(t, filepath.Join(baseDir, "2026-06-10"))
 }

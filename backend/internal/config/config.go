@@ -1353,6 +1353,10 @@ type ChatSessionRetentionConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 	// RetentionDays: session rows older than this are deleted. Child message/event rows cascade.
 	RetentionDays int `mapstructure:"retention_days"`
+	// PayloadDir: base directory for large chat message/event JSON payload files.
+	PayloadDir string `mapstructure:"payload_dir"`
+	// PayloadInlineMaxBytes: content_json at or below this size stays in database.
+	PayloadInlineMaxBytes int `mapstructure:"payload_inline_max_bytes"`
 	// BatchSize: maximum chat_sessions rows deleted per batch.
 	BatchSize int `mapstructure:"batch_size"`
 	// IntervalSeconds: how often the retention worker runs.
@@ -1824,7 +1828,9 @@ func setDefaults() {
 
 	// Chat session retention
 	viper.SetDefault("chat_session_retention.enabled", true)
-	viper.SetDefault("chat_session_retention.retention_days", 90)
+	viper.SetDefault("chat_session_retention.retention_days", 30)
+	viper.SetDefault("chat_session_retention.payload_dir", "./data/chat_session_payloads")
+	viper.SetDefault("chat_session_retention.payload_inline_max_bytes", 256*1024)
 	viper.SetDefault("chat_session_retention.batch_size", 1000)
 	viper.SetDefault("chat_session_retention.interval_seconds", 86400)
 	viper.SetDefault("chat_session_retention.task_timeout_seconds", 300)
@@ -2456,6 +2462,12 @@ func (c *Config) Validate() error {
 		if c.ChatSessionRetention.RetentionDays <= 0 {
 			return fmt.Errorf("chat_session_retention.retention_days must be positive")
 		}
+		if strings.TrimSpace(c.ChatSessionRetention.PayloadDir) == "" {
+			return fmt.Errorf("chat_session_retention.payload_dir is required")
+		}
+		if c.ChatSessionRetention.PayloadInlineMaxBytes < 0 {
+			return fmt.Errorf("chat_session_retention.payload_inline_max_bytes must be non-negative")
+		}
 		if c.ChatSessionRetention.BatchSize <= 0 {
 			return fmt.Errorf("chat_session_retention.batch_size must be positive")
 		}
@@ -2468,6 +2480,9 @@ func (c *Config) Validate() error {
 	} else {
 		if c.ChatSessionRetention.RetentionDays < 0 {
 			return fmt.Errorf("chat_session_retention.retention_days must be non-negative")
+		}
+		if c.ChatSessionRetention.PayloadInlineMaxBytes < 0 {
+			return fmt.Errorf("chat_session_retention.payload_inline_max_bytes must be non-negative")
 		}
 		if c.ChatSessionRetention.BatchSize < 0 {
 			return fmt.Errorf("chat_session_retention.batch_size must be non-negative")
