@@ -440,8 +440,20 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	}
 
 	if finalResponse == nil {
-		writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
-		return nil, fmt.Errorf("upstream stream ended without terminal event")
+		// Some OpenAI-compatible upstreams (e.g. newapi) close the stream or
+		// send [DONE] without emitting a terminal event like response.completed.
+		// Fall back to a synthetic response built from accumulated deltas.
+		if acc.HasContent() {
+			finalResponse = &apicompat.ResponsesResponse{
+				ID:     "resp_synthetic",
+				Object: "response",
+				Status: "completed",
+				Output: acc.BuildOutput(),
+			}
+		} else {
+			writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
+			return nil, fmt.Errorf("upstream stream ended without terminal event")
+		}
 	}
 
 	// When the terminal event has an empty output array, reconstruct from
