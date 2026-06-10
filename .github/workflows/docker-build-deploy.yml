@@ -86,10 +86,64 @@ jobs:
             APP_DIR_CLEAN="$(printf '%s' "$APP_DIR" | sed 's/[[:space:]]*$//')"
             DEPLOY_DIR="${APP_DIR_CLEAN:-/home/ubuntu/apps/sub2api}/deploy"
             cd "$DEPLOY_DIR"
+            trap 'rm -f docker-compose.deploy.override.yml' EXIT
             mkdir -p data postgres_data redis_data
             test -f .env
             test -f docker-compose.prod.yml
             echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
-            IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.prod.yml pull sub2api
-            IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.prod.yml up -d sub2api
-            curl --fail --retry 10 --retry-delay 5 http://127.0.0.1:${SERVER_PORT:-8080}/health || curl --fail --retry 10 --retry-delay 5 http://127.0.0.1:8080/health
+            cat > docker-compose.deploy.override.yml <<EOF
+            services:
+              sub2api:
+                image: ${IMAGE_REPO}:${IMAGE_TAG}
+            EOF
+            docker compose -f docker-compose.prod.yml -f docker-compose.deploy.override.yml config --quiet
+
+            docker compose -f docker-compose.prod.yml -f docker-compose.deploy.override.yml pull sub2api
+            docker compose -f docker-compose.prod.yml -f docker-compose.deploy.override.yml up -d --no-deps --force-recreate sub2api
+
+            container_id="$(docker compose -f docker-compose.prod.yml -f docker-compose.deploy.override.yml ps -q sub2api)"
+            test -n "$container_id"
+
+            expected_image="$IMAGE_REPO:$IMAGE_TAG"
+            actual_image="$(docker inspect "$container_id" --format '{{.Config.Image}}')"
+            if [ "$actual_image" != "$expected_image" ]; then
+              echo "Unexpected sub2api image: expected=$expected_image actual=$actual_image" >&2
+              docker compose -f docker-compose.prod.yml -f docker-compose.deploy.override.yml ps sub2api >&2 || true
+              exit 1
+            fi
+
+            echo "Waiting for sub2api container health: $container_id ($expected_image)"
+            ready="false"
+            for attempt in $(seq 1 60); do
+              status="$(docker inspect "$container_id" --format '{{.State.Status}}')"
+              health="$(docker inspect "$container_id" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}')"
+              echo "sub2api status attempt=$attempt status=$status health=$health"
+
+              if [ "$status" = "exited" ] || [ "$status" = "dead" ]; then
+                docker logs --tail 200 "$container_id" >&2 || true
+                exit 1
+              fi
+
+              if [ "$health" = "healthy" ]; then
+                ready="true"
+                break
+              fi
+
+              if curl --fail --silent --show-error --max-time 5 "http://127.0.0.1:${SERVER_PORT:-8080}/health" >/dev/null 2>&1 || \
+                 curl --fail --silent --show-error --max-time 5 "http://127.0.0.1:8080/health" >/dev/null 2>&1; then
+                ready="true"
+                break
+              fi
+
+              sleep 5
+            done
+
+            if [ "$ready" != "true" ]; then
+              echo "sub2api did not become healthy in time" >&2
+              docker inspect "$container_id" --format '{{range .State.Health.Log}}{{.Start}} exit={{.ExitCode}} output={{.Output}}{{println}}{{end}}' >&2 || true
+              docker logs --tail 200 "$container_id" >&2 || true
+              exit 1
+            fi
+
+            curl --fail --retry 30 --retry-delay 2 --retry-all-errors --max-time 10 "http://127.0.0.1:${SERVER_PORT:-8080}/health" || \
+              curl --fail --retry 30 --retry-delay 2 --retry-all-errors --max-time 10 "http://127.0.0.1:8080/health"
