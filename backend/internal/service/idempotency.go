@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
@@ -454,9 +455,19 @@ func (c *IdempotencyCoordinator) marshalStoredResponse(data any) (string, error)
 	}
 	redacted := logredact.RedactText(string(raw))
 	if c.cfg.MaxStoredResponseLen > 0 && len(redacted) > c.cfg.MaxStoredResponseLen {
-		redacted = redacted[:c.cfg.MaxStoredResponseLen] + "...(truncated)"
+		redacted = truncateUTF8(redacted, c.cfg.MaxStoredResponseLen) + "...(truncated)"
 	}
 	return redacted, nil
+}
+
+func truncateUTF8(s string, maxBytes int) string {
+	if maxBytes <= 0 || len(s) <= maxBytes {
+		return s
+	}
+	for maxBytes > 0 && !utf8.ValidString(s[:maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
 }
 
 func (c *IdempotencyCoordinator) decodeStoredResponse(stored *string) (any, error) {
