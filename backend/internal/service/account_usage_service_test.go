@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	xaipkg "github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 type accountUsageCodexProbeRepo struct {
@@ -176,9 +178,9 @@ func TestAccountUsageService_GetXAIUsageFetchesMonthlyBilling(t *testing.T) {
 	}))
 	defer server.Close()
 
-	oldURL := xaiBillingEndpointURL
-	xaiBillingEndpointURL = server.URL
-	defer func() { xaiBillingEndpointURL = oldURL }()
+	oldURL := xaipkg.BillingRESTEndpoint
+	xaipkg.BillingRESTEndpoint = server.URL
+	defer func() { xaipkg.BillingRESTEndpoint = oldURL }()
 
 	repo := stubOpenAIAccountRepo{
 		accounts: []Account{{
@@ -226,9 +228,9 @@ func TestAccountUsageService_GetXAIUsageReturnsDegradedError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	oldURL := xaiBillingEndpointURL
-	xaiBillingEndpointURL = server.URL
-	defer func() { xaiBillingEndpointURL = oldURL }()
+	oldURL := xaipkg.BillingRESTEndpoint
+	xaipkg.BillingRESTEndpoint = server.URL
+	defer func() { xaipkg.BillingRESTEndpoint = oldURL }()
 
 	repo := stubOpenAIAccountRepo{
 		accounts: []Account{{

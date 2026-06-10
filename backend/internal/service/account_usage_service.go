@@ -4,14 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	xaipkg "github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 )
@@ -106,6 +104,13 @@ type antigravityUsageCache struct {
 	timestamp time.Time
 }
 
+// xaiBillingCache 缓存 Grok/xAI 月度账单数据（含负缓存）
+type xaiBillingCache struct {
+	summary   *XAIBillingSummary
+	err       error
+	timestamp time.Time
+}
+
 const (
 	apiCacheTTL             = 3 * time.Minute
 	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
@@ -114,18 +119,17 @@ const (
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
 	openAICodexProbeVersion = "0.125.0"
-	xaiBillingTimeout       = 15 * time.Second
 )
-
-var xaiBillingEndpointURL = "https://cli-chat-proxy.grok.com/v1/billing"
 
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
 	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
+	xaiBillingCache   sync.Map           // accountID -> *xaiBillingCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
+	xaiBillingFlight  singleflight.Group // 防止同一 xAI 账号的并发请求击穿缓存
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 }
 
@@ -578,10 +582,13 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 func (s *AccountUsageService) getXAIUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
 	now := time.Now()
 	usage := &UsageInfo{UpdatedAt: &now}
+	if account == nil {
+		return usage, nil
+	}
 
-	billing, err := s.fetchXAIBilling(ctx, account)
+	billing, err := s.fetchXAIBillingCached(ctx, account)
 	if err != nil {
-		usage.ErrorCode = classifyXAIBillingError(err)
+		usage.ErrorCode = xaipkg.ClassifyBillingError(err)
 		usage.NeedsReauth = usage.ErrorCode == "unauthenticated"
 		usage.Error = fmt.Sprintf("xAI billing API error: %v", err)
 		return usage, nil
@@ -590,39 +597,64 @@ func (s *AccountUsageService) getXAIUsage(ctx context.Context, account *Account)
 	return usage, nil
 }
 
-type xaiBillingHTTPError struct {
-	StatusCode int
-	Body       string
+func (s *AccountUsageService) fetchXAIBillingCached(ctx context.Context, account *Account) (*XAIBillingSummary, error) {
+	if s == nil || s.cache == nil || account == nil {
+		return s.fetchXAIBilling(ctx, account)
+	}
+
+	accountID := account.ID
+	if cached, ok := s.cache.xaiBillingCache.Load(accountID); ok {
+		if cache, ok := cached.(*xaiBillingCache); ok {
+			ttl := xaiBillingCacheTTL(cache)
+			if time.Since(cache.timestamp) < ttl {
+				if cache.err != nil {
+					return nil, cache.err
+				}
+				return cache.summary, nil
+			}
+		}
+	}
+
+	flightKey := fmt.Sprintf("xai-billing:%d", accountID)
+	result, flightErr, _ := s.cache.xaiBillingFlight.Do(flightKey, func() (any, error) {
+		if cached, ok := s.cache.xaiBillingCache.Load(accountID); ok {
+			if cache, ok := cached.(*xaiBillingCache); ok {
+				ttl := xaiBillingCacheTTL(cache)
+				if time.Since(cache.timestamp) < ttl {
+					if cache.err != nil {
+						return nil, cache.err
+					}
+					return cache.summary, nil
+				}
+			}
+		}
+
+		summary, err := s.fetchXAIBilling(ctx, account)
+		s.cache.xaiBillingCache.Store(accountID, &xaiBillingCache{
+			summary:   summary,
+			err:       err,
+			timestamp: time.Now(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return summary, nil
+	})
+	if flightErr != nil {
+		return nil, flightErr
+	}
+	summary, _ := result.(*XAIBillingSummary)
+	return summary, nil
 }
 
-func (e *xaiBillingHTTPError) Error() string {
-	if e == nil {
-		return ""
+func xaiBillingCacheTTL(cache *xaiBillingCache) time.Duration {
+	if cache == nil {
+		return apiErrorCacheTTL
 	}
-	body := strings.TrimSpace(e.Body)
-	if body == "" {
-		return fmt.Sprintf("HTTP %d", e.StatusCode)
+	if cache.err != nil {
+		return apiErrorCacheTTL
 	}
-	if len(body) > 300 {
-		body = body[:300] + "..."
-	}
-	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, body)
-}
-
-type xaiBillingEnvelope struct {
-	Config *xaiBillingConfig `json:"config"`
-}
-
-type xaiBillingConfig struct {
-	MonthlyLimit            any    `json:"monthlyLimit"`
-	MonthlyLimitSnake       any    `json:"monthly_limit"`
-	Used                    any    `json:"used"`
-	OnDemandCap             any    `json:"onDemandCap"`
-	OnDemandCapSnake        any    `json:"on_demand_cap"`
-	BillingPeriodStart      string `json:"billingPeriodStart"`
-	BillingPeriodStartSnake string `json:"billing_period_start"`
-	BillingPeriodEnd        string `json:"billingPeriodEnd"`
-	BillingPeriodEndSnake   string `json:"billing_period_end"`
+	return apiCacheTTL
 }
 
 func (s *AccountUsageService) fetchXAIBilling(ctx context.Context, account *Account) (*XAIBillingSummary, error) {
@@ -634,54 +666,30 @@ func (s *AccountUsageService) fetchXAIBilling(ctx context.Context, account *Acco
 		return nil, err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, xaiBillingTimeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, xaiBillingEndpointURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create xAI billing request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Accept", "application/json")
-
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	client, err := httppool.GetClient(httppool.Options{
-		ProxyURL:              proxyURL,
-		Timeout:               xaiBillingTimeout,
-		ResponseHeaderTimeout: 10 * time.Second,
-	})
+
+	summary, err := xaipkg.FetchBillingSummary(ctx, accessToken, proxyURL)
 	if err != nil {
-		return nil, fmt.Errorf("build xAI billing client: %w", err)
+		return nil, err
 	}
+	return convertXAIBillingSummary(summary), nil
+}
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("xAI billing request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, &xaiBillingHTTPError{
-			StatusCode: resp.StatusCode,
-			Body:       string(body),
-		}
-	}
-
-	var envelope xaiBillingEnvelope
-	decoder := json.NewDecoder(resp.Body)
-	decoder.UseNumber()
-	if err := decoder.Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("decode xAI billing response: %w", err)
-	}
-	summary := buildXAIBillingSummary(envelope.Config)
+func convertXAIBillingSummary(summary *xaipkg.BillingSummary) *XAIBillingSummary {
 	if summary == nil {
-		return nil, fmt.Errorf("xAI billing response missing config")
+		return nil
 	}
-	return summary, nil
+	return &XAIBillingSummary{
+		MonthlyLimitCents:  summary.MonthlyLimitCents,
+		UsedCents:          summary.UsedCents,
+		OnDemandCapCents:   summary.OnDemandCapCents,
+		BillingPeriodStart: summary.BillingPeriodStart,
+		BillingPeriodEnd:   summary.BillingPeriodEnd,
+		UsedPercent:        summary.UsedPercent,
+	}
 }
 
 func (s *AccountUsageService) resolveXAIBillingAccessToken(ctx context.Context, account *Account) (string, error) {
@@ -701,102 +709,6 @@ func (s *AccountUsageService) resolveXAIBillingAccessToken(ctx context.Context, 
 		return "", fmt.Errorf("no access token available")
 	}
 	return accessToken, nil
-}
-
-func buildXAIBillingSummary(config *xaiBillingConfig) *XAIBillingSummary {
-	if config == nil {
-		return nil
-	}
-	monthlyLimit := parseXAICentValue(firstNonNil(config.MonthlyLimit, config.MonthlyLimitSnake))
-	used := parseXAICentValue(config.Used)
-	onDemandCap := parseXAICentValue(firstNonNil(config.OnDemandCap, config.OnDemandCapSnake))
-	periodStart := parseXAIBillingTime(firstNonEmptyXAIString(config.BillingPeriodStart, config.BillingPeriodStartSnake))
-	periodEnd := parseXAIBillingTime(firstNonEmptyXAIString(config.BillingPeriodEnd, config.BillingPeriodEndSnake))
-
-	summary := &XAIBillingSummary{
-		MonthlyLimitCents:  monthlyLimit,
-		UsedCents:          used,
-		OnDemandCapCents:   onDemandCap,
-		BillingPeriodStart: periodStart,
-		BillingPeriodEnd:   periodEnd,
-	}
-	if monthlyLimit != nil && *monthlyLimit > 0 && used != nil {
-		usedPercent := (*used / *monthlyLimit) * 100
-		summary.UsedPercent = &usedPercent
-	}
-	return summary
-}
-
-func parseXAICentValue(value any) *float64 {
-	switch v := value.(type) {
-	case nil:
-		return nil
-	case map[string]any:
-		return parseXAICentValue(v["val"])
-	case json.Number:
-		if f, err := v.Float64(); err == nil {
-			return &f
-		}
-	case float64:
-		return &v
-	case float32:
-		f := float64(v)
-		return &f
-	case int:
-		f := float64(v)
-		return &f
-	case int64:
-		f := float64(v)
-		return &f
-	case int32:
-		f := float64(v)
-		return &f
-	case uint:
-		f := float64(v)
-		return &f
-	case uint64:
-		f := float64(v)
-		return &f
-	case uint32:
-		f := float64(v)
-		return &f
-	case string:
-		trimmed := strings.TrimSpace(v)
-		if trimmed == "" {
-			return nil
-		}
-		if f, err := strconv.ParseFloat(trimmed, 64); err == nil {
-			return &f
-		}
-	}
-	return nil
-}
-
-func parseXAIBillingTime(value string) *time.Time {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
-	}
-	t, err := parseTime(trimmed)
-	if err != nil {
-		return nil
-	}
-	return &t
-}
-
-func classifyXAIBillingError(err error) string {
-	var httpErr *xaiBillingHTTPError
-	if errors.As(err, &httpErr) {
-		switch httpErr.StatusCode {
-		case http.StatusUnauthorized:
-			return "unauthenticated"
-		case http.StatusForbidden:
-			return "forbidden"
-		case http.StatusTooManyRequests:
-			return "rate_limited"
-		}
-	}
-	return "network_error"
 }
 
 func firstNonNil(values ...any) any {
