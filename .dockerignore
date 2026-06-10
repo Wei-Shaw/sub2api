@@ -11,6 +11,9 @@
 *.md
 !deploy/DOCKER.md
 docs/
+# Frontend embeds these legal docs via `?raw` imports — keep them in the build context
+!docs/legal/
+!docs/legal/*.md
 
 # IDE
 .idea/

@@ -27,8 +27,14 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# Copy frontend source and build
+# Copy frontend source
 COPY frontend/ ./
+
+# Legal docs are imported by the frontend via `?raw` (LegalDocumentView.vue,
+# AdminComplianceDialog.vue). They live at repo-root docs/legal/ and resolve to
+# /app/docs/legal/ relative to the source files, so they must exist in the build stage.
+COPY docs/legal/ /app/docs/legal/
+
 RUN pnpm run build
 
 # -----------------------------------------------------------------------------
