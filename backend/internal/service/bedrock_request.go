@@ -348,6 +348,9 @@ var claudeVersionRe = regexp.MustCompile(`claude-(?:haiku|sonnet|opus)-(\d+)[-.]
 // Claude 4.5+ 支持 cache_control 中的 ttl 字段（"5m" 和 "1h"）
 func isBedrockClaude45OrNewer(modelID string) bool {
 	lower := strings.ToLower(modelID)
+	if isBedrockFable5(lower) {
+		return true
+REDACTED
 	matches := claudeVersionRe.FindStringSubmatch(lower)
 	if matches == nil {
 		return false
@@ -658,9 +661,14 @@ REDACTED
 	return major > 4 || (major == 4 && minor >= 7)
 REDACTED
 
+func isBedrockFable5(modelID string) bool {
+	return strings.Contains(strings.ToLower(modelID), "claude-fable-5")
+REDACTED
+
 const defaultThinkingBudgetTokens = 10000
 
 // sanitizeBedrockThinking 修复 thinking 字段的 Bedrock 兼容性问题：
+//   - Fable 5: 仅使用 always-on adaptive thinking，不支持手动 budget_tokens
 //   - Opus 4.7+: 仅支持 "adaptive"，将 "enabled" 转换为 "adaptive" 并移除 budget_tokens
 //   - 其他模型: "enabled" 必须带 budget_tokens，缺失时补充默认值
 func sanitizeBedrockThinking(body []byte, modelID string) []byte {
@@ -671,6 +679,16 @@ REDACTED
 
 	thinkingType := thinking.Get("type").String()
 	if thinkingType == "" {
+		return body
+REDACTED
+
+	if isBedrockFable5(modelID) {
+		if thinkingType == "enabled" {
+			body, _ = sjson.SetBytes(body, "thinking.type", "adaptive")
+	REDACTED
+		if thinkingType == "enabled" || thinkingType == "adaptive" {
+			body, _ = sjson.DeleteBytes(body, "thinking.budget_tokens")
+	REDACTED
 		return body
 REDACTED
 
