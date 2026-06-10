@@ -49,6 +49,22 @@ func TestModelsFromIDsUsesDefaultsAndCustomFallbacks(t *testing.T) {
 	require.Equal(t, "Grok 4.3 Fast", models[1].DisplayName)
 }
 
+func TestDefaultModelsIncludeGrokCLIAliases(t *testing.T) {
+	require.Subset(t, DefaultModelIDs(), []string{
+		"grok-build",
+		"grok-composer-2.5-fast",
+	})
+}
+
+func TestDefaultModelsV2ResponseMatchesGrokCLIShape(t *testing.T) {
+	resp := DefaultModelsV2Response()
+	require.Equal(t, "list", resp.Object)
+	require.Len(t, resp.Data, 2)
+	require.Equal(t, "grok-build", resp.Data[1].ID)
+	require.Equal(t, 512000, resp.Data[1].ContextWindow)
+	require.Equal(t, "responses", resp.Data[1].APIBackend)
+}
+
 func TestDefaultModelsIncludeXAIMediaModels(t *testing.T) {
 	require.Subset(t, DefaultModelIDs(), []string{
 		"grok-imagine-image",

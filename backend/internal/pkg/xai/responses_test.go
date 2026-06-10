@@ -33,7 +33,7 @@ func TestNormalizeResponsesBodyMapDropsUnsupportedFieldsAndNormalizesTools(t *te
 		},
 	}
 
-	NormalizeResponsesBodyMap(req, "grok-4.3-fast", true, "session-1")
+	NormalizeResponsesBodyMap(req, "grok-4.3-fast", true, "session-1", false)
 
 	require.Equal(t, "grok-4.3-fast", req["model"])
 	require.Equal(t, true, req["stream"])
@@ -71,7 +71,7 @@ func TestNormalizeResponsesBodyMapDropsEmptyToolsAndToolChoice(t *testing.T) {
 		"parallel_tool_calls": true,
 	}
 
-	NormalizeResponsesBodyMap(req, "grok-4.3", true, "")
+	NormalizeResponsesBodyMap(req, "grok-4.3", true, "", false)
 
 	require.NotContains(t, req, "tools")
 	require.NotContains(t, req, "tool_choice")
@@ -85,7 +85,7 @@ func TestNormalizeResponsesBodyMapFiltersReasoningForUnsupportedModel(t *testing
 		"include":   []any{"reasoning.encrypted_content", "output_text"},
 	}
 
-	NormalizeResponsesBodyMap(req, "", true, "")
+	NormalizeResponsesBodyMap(req, "", true, "", false)
 
 	require.NotContains(t, req, "reasoning")
 	require.Equal(t, []any{"output_text"}, req["include"])
@@ -102,7 +102,7 @@ func TestNormalizeResponsesBodyMapKeepsAndMergesReasoningForSupportedModel(t *te
 		},
 	}
 
-	NormalizeResponsesBodyMap(req, "", true, "")
+	NormalizeResponsesBodyMap(req, "", true, "", false)
 
 	require.Equal(t, map[string]any{"effort": "high"}, req["reasoning"])
 	input := req["input"].([]any)
@@ -130,6 +130,26 @@ func TestOutputItemCollectorPatchesCompletedEvent(t *testing.T) {
 	output := response["output"].([]any)
 	require.Equal(t, "item_a", output[0].(map[string]any)["id"])
 	require.Equal(t, "item_b", output[1].(map[string]any)["id"])
+}
+
+func TestNormalizeResponsesBodyMapKeepsGrokCLIFields(t *testing.T) {
+	req := map[string]any{
+		"previous_response_id":   "resp_123",
+		"prompt_cache_retention": "24h",
+		"safety_identifier":      "user-1",
+		"stream_options":         map[string]any{"include_usage": true},
+		"tools": []any{
+			map[string]any{"type": "image_generation"},
+		},
+	}
+
+	NormalizeResponsesBodyMap(req, "grok-build", true, "session-1", true)
+
+	require.NotContains(t, req, "previous_response_id")
+	require.Equal(t, "24h", req["prompt_cache_retention"])
+	require.Equal(t, "user-1", req["safety_identifier"])
+	require.Equal(t, map[string]any{"include_usage": true}, req["stream_options"])
+	require.Len(t, req["tools"].([]any), 1)
 }
 
 func TestPatchSSEBodyWithOutputItems(t *testing.T) {

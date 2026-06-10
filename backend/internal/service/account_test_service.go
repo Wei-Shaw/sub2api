@@ -922,7 +922,7 @@ func (s *AccountTestService) testXAIAccountConnection(c *gin.Context, account *A
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
-	payloadBytes, err = xai.NormalizeResponsesBody(payloadBytes, testModelID, true, "")
+	payloadBytes, err = xai.NormalizeResponsesBody(payloadBytes, testModelID, true, "", false)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to normalize request: %s", err.Error()))
 	}

@@ -549,6 +549,9 @@ func checkRestricted(lk *channelLookup, groupID int64, model string) bool {
 	if !lk.channel.RestrictModels {
 		return false
 	}
+	if isXAIGrokCLIModel(lk.platform, model) {
+		return false
+	}
 	modelLower := strings.ToLower(model)
 	// 使用与查找定价相同的跨平台逻辑
 	if lookupPricingAcrossPlatforms(lk.cache, groupID, lk.platform, modelLower) != nil {

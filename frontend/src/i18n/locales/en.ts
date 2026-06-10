@@ -753,9 +753,21 @@ export default {
       cliTabs: {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
+        grokCli: 'Grok CLI',
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         opencode: 'OpenCode',
+      },
+      xai: {
+        description:
+          'Use environment variables for a quick setup, or edit ~/.grok/config.toml for a persistent setup. Pick one approach.',
+        modelComment: 'Defaults to grok-build; you can also use grok-composer-2.5-fast',
+        logoutHint: 'If you previously ran grok login, run grok logout first or Grok will prefer the official OAuth session over your sub2api key.',
+        note: 'Method 1 (env vars): paste into your terminal, or add to ~/.bashrc, ~/.zshrc, or ~/.config/fish/config.fish. Method 2 (config file): run mkdir -p ~/.grok, create or edit ~/.grok/config.toml with the content below, save, reopen your terminal, then run grok.',
+        noteWindows:
+          'Method 1 (env vars): paste into CMD or PowerShell. Method 2 (config file): press Win+R, enter %userprofile%\\.grok, create the folder if needed, edit config.toml with the content below, save, reopen your terminal, then run grok.',
+        configTomlHint: 'Method 2: save the following to ~/.grok/config.toml (create the file if it does not exist). Run grok logout, then start grok again.',
+        envHint: 'Method 1: run in your terminal, or add to your shell profile',
       },
       antigravity: {
         description: 'Configure API access for Antigravity group. Select the configuration method based on your client.',

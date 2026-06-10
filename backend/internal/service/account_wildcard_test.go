@@ -206,6 +206,28 @@ func TestAccountIsModelSupported(t *testing.T) {
 			requestedModel: "gemini-3-flash",
 			expected:       false,
 		},
+		{
+			name:     "xai grok cli model supported despite restrictive mapping",
+			platform: PlatformXAI,
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"grok-4.3": "grok-4.3",
+				},
+			},
+			requestedModel: "grok-composer-2.5-fast",
+			expected:       true,
+		},
+		{
+			name:     "xai grok build supported despite restrictive mapping",
+			platform: PlatformXAI,
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"grok-build-0.1": "grok-build-0.1",
+				},
+			},
+			requestedModel: "grok-build",
+			expected:       true,
+		},
 	}
 
 	for _, tt := range tests {

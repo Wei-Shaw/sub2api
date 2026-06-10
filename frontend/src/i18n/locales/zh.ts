@@ -754,9 +754,21 @@ export default {
       cliTabs: {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
+        grokCli: 'Grok CLI',
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         opencode: 'OpenCode'
+      },
+      xai: {
+        description:
+          '推荐先用环境变量快速接入；如需长期固定配置，再编辑 ~/.grok/config.toml。两种方式二选一即可。',
+        modelComment: '默认使用 grok-build；也可改为 grok-composer-2.5-fast',
+        logoutHint: '若已 grok login 登录过官方账号，请先运行 grok logout，否则会优先使用官方 OAuth 而非 sub2api 密钥。',
+        note: '方式一（环境变量）：复制到终端即可生效；要永久保存，写入 ~/.bashrc、~/.zshrc 或 ~/.config/fish/config.fish。方式二（配置文件）：先创建目录 mkdir -p ~/.grok，再新建或编辑 ~/.grok/config.toml，把下方内容粘贴进去后保存，重新打开终端运行 grok。',
+        noteWindows:
+          '方式一（环境变量）：复制到 CMD / PowerShell 即可生效。方式二（配置文件）：按 Win+R 输入 %userprofile%\\.grok 打开目录（不存在则先创建），编辑 config.toml 粘贴下方内容后保存，再重新打开终端运行 grok。',
+        configTomlHint: '方式二：将以下内容写入 ~/.grok/config.toml（不存在则新建）。保存后执行 grok logout，再运行 grok。',
+        envHint: '方式一：在终端执行以下命令（或写入 shell 配置文件）'
       },
       antigravity: {
         description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',

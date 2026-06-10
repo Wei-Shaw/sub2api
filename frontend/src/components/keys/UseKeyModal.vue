@@ -195,7 +195,7 @@ const defaultClientTab = computed(() => {
     case 'openai':
       return 'codex-ws'
     case 'xai':
-      return 'codex'
+      return 'grok'
     case 'gemini':
       return 'gemini'
     case 'antigravity':
@@ -288,7 +288,7 @@ const clientTabs = computed((): TabConfig[] => {
     }
     case 'xai':
       return [
-        { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
+        { id: 'grok', label: t('keys.useKeyModal.cliTabs.grokCli'), icon: TerminalIcon },
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
       ]
     case 'gemini':
@@ -327,8 +327,8 @@ const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
 
 const currentTabs = computed(() => {
   if (!showShellTabs.value) return []
-  if (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws') {
-    return openaiTabs
+  if (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws' || activeClientTab.value === 'grok') {
+    return activeClientTab.value === 'grok' ? shellTabs : openaiTabs
   }
   return shellTabs
 })
@@ -341,7 +341,7 @@ const platformDescription = computed(() => {
       }
       return t('keys.useKeyModal.openai.description')
     case 'xai':
-      return t('keys.useKeyModal.openai.description')
+      return t('keys.useKeyModal.xai.description')
     case 'gemini':
       return t('keys.useKeyModal.gemini.description')
     case 'antigravity':
@@ -361,9 +361,9 @@ const platformNote = computed(() => {
         ? t('keys.useKeyModal.openai.noteWindows')
         : t('keys.useKeyModal.openai.note')
     case 'xai':
-      return activeTab.value === 'windows'
-        ? t('keys.useKeyModal.openai.noteWindows')
-        : t('keys.useKeyModal.openai.note')
+      return activeTab.value === 'cmd' || activeTab.value === 'powershell'
+        ? t('keys.useKeyModal.xai.noteWindows')
+        : t('keys.useKeyModal.xai.note')
     case 'gemini':
       return t('keys.useKeyModal.gemini.note')
     case 'antigravity':
@@ -421,7 +421,7 @@ const currentFiles = computed((): FileConfig[] => {
       case 'openai':
         return [generateOpenCodeConfig('openai', apiBase, apiKey)]
       case 'xai':
-        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
+        return [generateOpenCodeConfig('xai', apiBase, apiKey)]
       case 'gemini':
         return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
       case 'antigravity':
@@ -444,7 +444,7 @@ const currentFiles = computed((): FileConfig[] => {
       }
       return generateOpenAIFiles(baseUrl, apiKey)
     case 'xai':
-      return generateOpenAIFiles(baseUrl, apiKey)
+      return generateGrokCliFiles(baseUrl, apiKey)
     case 'gemini':
       return [generateGeminiCliContent(baseUrl, apiKey)]
     case 'antigravity':
@@ -501,6 +501,79 @@ $env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
   return [
     { path, content },
     { path: vscodeSettingsPath, content: vscodeContent, hint: 'VSCode Claude Code' }
+  ]
+}
+
+function generateGrokCliFiles(baseUrl: string, apiKey: string): FileConfig[] {
+  const trimmed = baseUrl.replace(/\/+$/, '')
+  const proxyBase = trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`
+  const model = 'grok-build'
+  const modelComment = t('keys.useKeyModal.xai.modelComment')
+  const logoutHint = t('keys.useKeyModal.xai.logoutHint')
+  let path: string
+  let content: string
+  let highlighted: string
+
+  switch (activeTab.value) {
+    case 'unix':
+      path = 'Terminal'
+      content = `# ${logoutHint}
+export GROK_CLI_CHAT_PROXY_BASE_URL="${proxyBase}"
+export XAI_API_KEY="${apiKey}"`
+      highlighted = `${comment(`# ${logoutHint}`)}
+${keyword('export')} ${variable('GROK_CLI_CHAT_PROXY_BASE_URL')}${operator('=')}${string(`"${proxyBase}"`)}
+${keyword('export')} ${variable('XAI_API_KEY')}${operator('=')}${string(`"${apiKey}"`)}`
+      break
+    case 'cmd':
+      path = 'Command Prompt'
+      content = `REM ${logoutHint}
+set GROK_CLI_CHAT_PROXY_BASE_URL=${proxyBase}
+set XAI_API_KEY=${apiKey}`
+      highlighted = `${comment(`REM ${logoutHint}`)}
+${keyword('set')} ${variable('GROK_CLI_CHAT_PROXY_BASE_URL')}${operator('=')}${string(proxyBase)}
+${keyword('set')} ${variable('XAI_API_KEY')}${operator('=')}${string(apiKey)}`
+      break
+    case 'powershell':
+      path = 'PowerShell'
+      content = `# ${logoutHint}
+$env:GROK_CLI_CHAT_PROXY_BASE_URL="${proxyBase}"
+$env:XAI_API_KEY="${apiKey}"`
+      highlighted = `${comment(`# ${logoutHint}`)}
+${keyword('$env:')}${variable('GROK_CLI_CHAT_PROXY_BASE_URL')}${operator('=')}${string(`"${proxyBase}"`)}
+${keyword('$env:')}${variable('XAI_API_KEY')}${operator('=')}${string(`"${apiKey}"`)}`
+      break
+    default:
+      path = 'Terminal'
+      content = ''
+      highlighted = ''
+  }
+
+  const configDir = activeTab.value === 'unix' ? '~/.grok' : '%userprofile%\\.grok'
+  const configContent = `[models]
+default = "${model}"  # ${modelComment}
+
+[model.grok-build]
+base_url = "${proxyBase}"
+api_key = "${apiKey}"
+api_backend = "responses"
+
+[model.grok-composer-2.5-fast]
+base_url = "${proxyBase}"
+api_key = "${apiKey}"
+api_backend = "responses"`
+
+  return [
+    {
+      path,
+      content,
+      highlighted,
+      hint: t('keys.useKeyModal.xai.envHint')
+    },
+    {
+      path: `${configDir}/config.toml`,
+      content: configContent,
+      hint: t('keys.useKeyModal.xai.configTomlHint')
+    }
   ]
 }
 
@@ -759,6 +832,36 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         baseURL: baseUrl,
         apiKey
+      }
+    }
+  }
+  const grokModels = {
+    'grok-build': {
+      name: 'Grok Build',
+      limit: {
+        context: 512000,
+        output: 128000
+      }
+    },
+    'grok-composer-2.5-fast': {
+      name: 'Composer 2.5',
+      limit: {
+        context: 200000,
+        output: 128000
+      }
+    },
+    'grok-4.3': {
+      name: 'Grok 4.3',
+      limit: {
+        context: 256000,
+        output: 128000
+      }
+    },
+    'grok-4.3-fast': {
+      name: 'Grok 4.3 Fast',
+      limit: {
+        context: 256000,
+        output: 128000
       }
     }
   }
@@ -1179,10 +1282,13 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     provider[platform].models = antigravityGeminiModels
   } else if (platform === 'openai') {
     provider[platform].models = openaiModels
+  } else if (platform === 'xai') {
+    provider[platform].name = 'xAI (Grok)'
+    provider[platform].models = grokModels
   }
 
   const agent =
-    platform === 'openai'
+    platform === 'openai' || platform === 'xai'
       ? {
           build: {
             options: {

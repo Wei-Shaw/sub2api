@@ -755,6 +755,9 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 	if account.Platform == PlatformOpenAI {
 		return s.handleOpenAI403(ctx, account, upstreamMsg, responseBody)
 	}
+	if account.Platform == PlatformXAI {
+		return s.handleXAI403(ctx, account, upstreamMsg, responseBody)
+	}
 	// 非 Antigravity 平台：保持原有行为
 	msg := buildForbiddenErrorMessage(
 		"Access forbidden (403):",
@@ -807,6 +810,61 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 		"until", until,
 		"count", count,
 		"threshold", openAI403DisableThreshold,
+	)
+	return true
+}
+
+func isXAISubscriptionOrQuota403(upstreamMsg string, responseBody []byte) bool {
+	lower := strings.ToLower(strings.TrimSpace(upstreamMsg))
+	if strings.Contains(lower, "supergrok") ||
+		strings.Contains(lower, "out of credits") ||
+		strings.Contains(lower, "grok subscription") ||
+		strings.Contains(lower, "spending-limit") {
+		return true
+	}
+
+	rawBody := bytes.TrimSpace(responseBody)
+	if len(rawBody) == 0 || !json.Valid(rawBody) {
+		return false
+	}
+	var payload any
+	if err := json.Unmarshal(rawBody, &payload); err != nil {
+		return false
+	}
+	bodyMsg := strings.ToLower(extractJSONErrorMessage(payload))
+	code := strings.ToLower(extractJSONStringByKeys(payload, "code"))
+	return strings.Contains(bodyMsg, "supergrok") ||
+		strings.Contains(bodyMsg, "out of credits") ||
+		strings.Contains(bodyMsg, "grok subscription") ||
+		strings.Contains(code, "spending-limit")
+}
+
+func (s *RateLimitService) handleXAI403(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) (shouldDisable bool) {
+	msg := buildForbiddenErrorMessage(
+		"Access forbidden (403):",
+		upstreamMsg,
+		responseBody,
+		"account may be suspended or lack permissions",
+	)
+	if !isXAISubscriptionOrQuota403(upstreamMsg, responseBody) {
+		s.handleAuthError(ctx, account, msg)
+		return true
+	}
+
+	until := time.Now().Add(time.Duration(openAI403CooldownMinutesDefault) * time.Minute)
+	reason := fmt.Sprintf("xAI subscription/quota 403: %s", msg)
+	s.notifyAccountSchedulingBlocked(account, until, "xai_quota_temp")
+	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
+		slog.Warn("xai_403_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
+		s.handleAuthError(ctx, account, msg)
+		return true
+	}
+
+	slog.Warn(
+		"xai_403_temp_unschedulable",
+		"account_id", account.ID,
+		"until", until,
+		"error", msg,
 	)
 	return true
 }

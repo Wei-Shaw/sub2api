@@ -171,7 +171,16 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 	if account.Platform == PlatformXAI {
 		if isResponsesShape {
-			normalizedBody, err := xai.NormalizeResponsesBody(responsesBody, upstreamModel, true, promptCacheKey)
+			userAgent := ""
+			if c != nil && c.Request != nil {
+				userAgent = c.Request.UserAgent()
+			}
+			var headers http.Header
+			if c != nil && c.Request != nil {
+				headers = c.Request.Header
+			}
+			grokCLI := xai.ShouldUseGrokCLINormalize(account.GetXAIBaseURL(), userAgent, upstreamModel, headers)
+			normalizedBody, err := xai.NormalizeResponsesBody(responsesBody, upstreamModel, true, promptCacheKey, grokCLI)
 			if err != nil {
 				return nil, fmt.Errorf("normalize xai responses-shape body: %w", err)
 			}

@@ -7,16 +7,16 @@ import (
 	"strings"
 )
 
-func NormalizeResponsesBody(body []byte, model string, stream bool, promptCacheKey string) ([]byte, error) {
+func NormalizeResponsesBody(body []byte, model string, stream bool, promptCacheKey string, grokCLI bool) ([]byte, error) {
 	var req map[string]any
 	if err := json.Unmarshal(body, &req); err != nil {
 		return nil, err
 	}
-	NormalizeResponsesBodyMap(req, model, stream, promptCacheKey)
+	NormalizeResponsesBodyMap(req, model, stream, promptCacheKey, grokCLI)
 	return json.Marshal(req)
 }
 
-func NormalizeResponsesBodyMap(req map[string]any, model string, stream bool, promptCacheKey string) {
+func NormalizeResponsesBodyMap(req map[string]any, model string, stream bool, promptCacheKey string, grokCLI bool) {
 	if req == nil {
 		return
 	}
@@ -24,18 +24,22 @@ func NormalizeResponsesBodyMap(req map[string]any, model string, stream bool, pr
 		req["model"] = strings.TrimSpace(model)
 	}
 	req["stream"] = stream
+	// Grok CLI may send previous_response_id, but xAI HTTP /v1/responses rejects it.
+	// The CLI also sends full input history, so stripping is safe for multi-turn HTTP proxying.
 	delete(req, "previous_response_id")
-	delete(req, "prompt_cache_retention")
-	delete(req, "safety_identifier")
-	delete(req, "stream_options")
+	if !grokCLI {
+		delete(req, "prompt_cache_retention")
+		delete(req, "safety_identifier")
+		delete(req, "stream_options")
+	}
 	if strings.TrimSpace(promptCacheKey) != "" {
 		req["prompt_cache_key"] = strings.TrimSpace(promptCacheKey)
 	}
-	normalizeTools(req)
+	normalizeTools(req, grokCLI)
 	normalizeReasoning(req)
 }
 
-func normalizeTools(req map[string]any) {
+func normalizeTools(req map[string]any, grokCLI bool) {
 	rawTools, ok := req["tools"].([]any)
 	if !ok || len(rawTools) == 0 {
 		delete(req, "tools")
@@ -45,7 +49,7 @@ func normalizeTools(req map[string]any) {
 	}
 	tools := make([]any, 0, len(rawTools))
 	for _, raw := range rawTools {
-		tools = append(tools, normalizeTool(raw)...)
+		tools = append(tools, normalizeTool(raw, grokCLI)...)
 	}
 	if len(tools) == 0 {
 		delete(req, "tools")
@@ -56,7 +60,7 @@ func normalizeTools(req map[string]any) {
 	req["tools"] = tools
 }
 
-func normalizeTool(raw any) []any {
+func normalizeTool(raw any, grokCLI bool) []any {
 	tool, ok := raw.(map[string]any)
 	if !ok || tool == nil {
 		return nil
@@ -64,13 +68,18 @@ func normalizeTool(raw any) []any {
 	clone := cloneMap(tool)
 	toolType := strings.ToLower(strings.TrimSpace(stringValue(clone["type"])))
 	switch toolType {
-	case "tool_search", "image_generation":
+	case "tool_search":
+		return nil
+	case "image_generation":
+		if grokCLI {
+			return []any{clone}
+		}
 		return nil
 	case "namespace":
 		nested, _ := clone["tools"].([]any)
 		out := make([]any, 0, len(nested))
 		for _, item := range nested {
-			out = append(out, normalizeTool(item)...)
+			out = append(out, normalizeTool(item, grokCLI)...)
 		}
 		return out
 	case "custom":

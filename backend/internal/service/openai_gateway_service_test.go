@@ -2216,6 +2216,35 @@ func TestXAIBuildUpstreamRequestSetsResponsesURLAndHeaders(t *testing.T) {
 	require.Empty(t, req.Header.Get("x-grok-conv-id"))
 }
 
+func TestBuildXAIUpstreamRequestUsesAccountBaseForGrokCLI(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader([]byte(`{"model":"grok-build"}`)))
+	c.Request.Header.Set("User-Agent", "xai-grok-cli/0.2.39")
+	c.Request.Header.Set("X-Grok-Client-Version", "0.2.39")
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{
+		Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+		},
+	}}
+	account := &Account{
+		Platform:    PlatformXAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"base_url": "https://api.x.ai/v1"},
+	}
+
+	req, err := svc.buildXAIUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"grok-build"}`), "xai-token", true, "conv-1")
+	require.NoError(t, err)
+	require.Equal(t, "https://api.x.ai/v1/responses", req.URL.String())
+	require.Equal(t, "0.2.39", req.Header.Get("X-Grok-Client-Version"))
+	require.Equal(t, "conv-1", req.Header.Get("x-grok-conv-id"))
+
+	req, err = svc.buildXAIUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"grok-composer-2.5-fast"}`), "xai-token", true, "conv-2")
+	require.NoError(t, err)
+	require.Equal(t, "https://api.x.ai/v1/responses", req.URL.String())
+}
+
 func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

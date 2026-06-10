@@ -12,6 +12,10 @@ import (
 //   - content-length: 由 ResponseWriter 根据实际写入数据自动设置
 //   - transfer-encoding: 由 HTTP 库根据需要自动添加/移除
 //   - connection: 由 HTTP 库管理连接复用
+var defaultAllowedPrefixes = []string{
+	"x-grok-",
+}
+
 var defaultAllowed = map[string]struct{}{
 	"content-type":                   {},
 	"content-encoding":               {},
@@ -32,6 +36,7 @@ var defaultAllowed = map[string]struct{}{
 	"retry-after":                    {},
 	"location":                       {},
 	"www-authenticate":               {},
+	"x-zero-data-retention":          {},
 }
 
 // hopByHopHeaders 是跳过的 hop-by-hop 头部，这些头部由 HTTP 库自动处理
@@ -82,6 +87,18 @@ func CompileHeaderFilter(cfg config.ResponseHeaderConfig) *CompiledHeaderFilter 
 	}
 }
 
+func isAllowedHeaderKey(lower string, allowed map[string]struct{}) bool {
+	if _, ok := allowed[lower]; ok {
+		return true
+	}
+	for _, prefix := range defaultAllowedPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func FilterHeaders(src http.Header, filter *CompiledHeaderFilter) http.Header {
 	if filter == nil {
 		filter = defaultCompiledHeaderFilter
@@ -93,7 +110,7 @@ func FilterHeaders(src http.Header, filter *CompiledHeaderFilter) http.Header {
 		if _, blocked := filter.forceRemove[lower]; blocked {
 			continue
 		}
-		if _, ok := filter.allowed[lower]; !ok {
+		if !isAllowedHeaderKey(lower, filter.allowed) {
 			continue
 		}
 		// 跳过 hop-by-hop 头部，这些由 HTTP 库自动处理

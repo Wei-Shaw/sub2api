@@ -38,7 +38,30 @@ type ModelListItem struct {
 	Name        string `json:"name"`
 }
 
+type ModelV2Item struct {
+	ID                          string   `json:"id"`
+	Object                      string   `json:"object"`
+	OwnedBy                     string   `json:"owned_by"`
+	Model                       string   `json:"model"`
+	Name                        string   `json:"name"`
+	Description                 string   `json:"description,omitempty"`
+	ContextWindow               int      `json:"context_window,omitempty"`
+	AutoCompactThresholdPercent *int     `json:"auto_compact_threshold_percent,omitempty"`
+	Temperature                 *float64 `json:"temperature,omitempty"`
+	TopP                        *float64 `json:"top_p,omitempty"`
+	APIBackend                  string   `json:"api_backend,omitempty"`
+	SupportsBackendSearch       bool     `json:"supports_backend_search,omitempty"`
+	AgentType                   string   `json:"agent_type,omitempty"`
+}
+
+type ModelV2ListResponse struct {
+	Object string        `json:"object"`
+	Data   []ModelV2Item `json:"data"`
+}
+
 var DefaultModels = []Model{
+	{ID: "grok-build", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Build", Name: "Grok Build"},
+	{ID: "grok-composer-2.5-fast", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Composer 2.5", Name: "Composer 2.5"},
 	{ID: "grok-4.3", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.3", Name: "Grok 4.3"},
 	{ID: "grok-4.3-fast", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.3 Fast", Name: "Grok 4.3 Fast"},
 	{ID: "grok-4.3-mini", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.3 Mini", Name: "Grok 4.3 Mini"},
@@ -53,6 +76,43 @@ var DefaultModels = []Model{
 	{ID: "grok-imagine-image-quality", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Imagine Image Quality", Name: "Grok Imagine Image Quality"},
 	{ID: "grok-imagine-video", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Imagine Video", Name: "Grok Imagine Video"},
 	{ID: "grok-imagine-video-1.5-preview", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Imagine Video 1.5 Preview", Name: "Grok Imagine Video 1.5 Preview"},
+}
+
+func DefaultModelsV2Response() ModelV2ListResponse {
+	autoCompact := 80
+	tempBuild := 0.7
+	topPBuild := 0.95
+	return ModelV2ListResponse{
+		Object: "list",
+		Data: []ModelV2Item{
+			{
+				ID:            "grok-composer-2.5-fast",
+				Object:        "model",
+				OwnedBy:       "xAI",
+				Model:         "grok-composer-2.5-fast",
+				Name:          "Composer 2.5",
+				Description:   "Cursor's latest coding model",
+				ContextWindow: 200000,
+				APIBackend:    "responses",
+				AgentType:     "cursor",
+			},
+			{
+				ID:                          "grok-build",
+				Object:                      "model",
+				OwnedBy:                     "xAI",
+				Model:                       "grok-build",
+				Name:                        "Grok Build",
+				Description:                 "Best for advanced coding tasks",
+				ContextWindow:               512000,
+				AutoCompactThresholdPercent: &autoCompact,
+				Temperature:                 &tempBuild,
+				TopP:                        &topPBuild,
+				APIBackend:                  "responses",
+				SupportsBackendSearch:       true,
+				AgentType:                   "grok-build-plan",
+			},
+		},
+	}
 }
 
 func DefaultModelIDs() []string {

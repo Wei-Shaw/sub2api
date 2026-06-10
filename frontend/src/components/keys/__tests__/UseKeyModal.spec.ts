@@ -81,7 +81,43 @@ describe('UseKeyModal', () => {
     expect(configToml).toContain('[features]\nresponses_websockets_v2 = true\ngoals = true')
   })
 
-  it('renders GPT-5.4 mini entry in OpenCode config', async () => {
+  it('renders Grok CLI proxy env vars for xAI platform', () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'xai'
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
+    const envBlock = codeBlocks.find((content) => content.includes('GROK_CLI_CHAT_PROXY_BASE_URL'))
+
+    expect(envBlock).toBeDefined()
+    expect(envBlock).toContain('export GROK_CLI_CHAT_PROXY_BASE_URL="https://example.com/v1"')
+    expect(envBlock).toContain('export XAI_API_KEY="sk-test"')
+    expect(envBlock).not.toContain('model_provider = "OpenAI"')
+    expect(envBlock).not.toContain('OPENAI_API_KEY')
+
+    const configToml = codeBlocks.find((content) => content.includes('[model.grok-build]'))
+    expect(configToml).toBeDefined()
+    expect(configToml).toContain('base_url = "https://example.com/v1"')
+    expect(configToml).toContain('api_key = "sk-test"')
+    expect(configToml).toContain('api_backend = "responses"')
+  })
+
+  it('renders Grok Build entry in xAI OpenCode config', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -111,8 +147,8 @@ describe('UseKeyModal', () => {
 
     const codeBlock = wrapper.find('pre code')
     expect(codeBlock.exists()).toBe(true)
-    expect(codeBlock.text()).toContain('"name": "GPT-5.4 Mini"')
-    expect(codeBlock.text()).not.toContain('"name": "GPT-5.4 Nano"')
+    expect(codeBlock.text()).toContain('"name": "Grok Build"')
+    expect(codeBlock.text()).not.toContain('"name": "GPT-5.4 Mini"')
   })
 
   it('renders Claude Fable 5 OpenCode config with adaptive thinking', async () => {

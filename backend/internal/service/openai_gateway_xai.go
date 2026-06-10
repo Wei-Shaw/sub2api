@@ -48,7 +48,16 @@ func (s *OpenAIGatewayService) ForwardXAIResponses(
 		upstreamModel = reqModel
 	}
 
-	xai.NormalizeResponsesBodyMap(reqBody, upstreamModel, reqStream, promptCacheKey)
+	userAgent := ""
+	if c != nil && c.Request != nil {
+		userAgent = c.Request.UserAgent()
+	}
+	var headers http.Header
+	if c != nil && c.Request != nil {
+		headers = c.Request.Header
+	}
+	grokCLI := xai.ShouldUseGrokCLINormalize(account.GetXAIBaseURL(), userAgent, upstreamModel, headers)
+	xai.NormalizeResponsesBodyMap(reqBody, upstreamModel, reqStream, promptCacheKey, grokCLI)
 	normalizedBody, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("serialize xai request body: %w", err)
@@ -175,7 +184,7 @@ func (s *OpenAIGatewayService) buildXAIUpstreamRequest(
 	isStream bool,
 	promptCacheKey string,
 ) (*http.Request, error) {
-	baseURL := account.GetXAIBaseURL()
+	baseURL := xai.ResolveInferenceBaseURL(account.GetXAIBaseURL())
 	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 	if err != nil {
 		return nil, err
@@ -192,19 +201,10 @@ func (s *OpenAIGatewayService) buildXAIUpstreamRequest(
 		req.Header.Set("Accept", "application/json")
 	}
 	req.Header.Set("Connection", "Keep-Alive")
-	if strings.TrimSpace(promptCacheKey) != "" {
-		req.Header.Set("x-grok-conv-id", strings.TrimSpace(promptCacheKey))
-	}
 	if c != nil && c.Request != nil {
-		for key, values := range c.Request.Header {
-			lowerKey := strings.ToLower(key)
-			if lowerKey != "accept-language" && lowerKey != "user-agent" {
-				continue
-			}
-			for _, value := range values {
-				req.Header.Add(key, value)
-			}
-		}
+		xai.ForwardGrokCLIRequestHeaders(req.Header, c.Request.Header, promptCacheKey)
+	} else if strings.TrimSpace(promptCacheKey) != "" {
+		req.Header.Set("x-grok-conv-id", strings.TrimSpace(promptCacheKey))
 	}
 	return req, nil
 }
@@ -368,7 +368,16 @@ func (s *OpenAIGatewayService) forwardXAIResponsesAsChatCompletions(
 	if err != nil {
 		return nil, fmt.Errorf("marshal xai chat responses request: %w", err)
 	}
-	normalizedBody, err := xai.NormalizeResponsesBody(responsesBody, upstreamModel, true, promptCacheKey)
+	userAgent := ""
+	if c != nil && c.Request != nil {
+		userAgent = c.Request.UserAgent()
+	}
+	var headers http.Header
+	if c != nil && c.Request != nil {
+		headers = c.Request.Header
+	}
+	grokCLI := xai.ShouldUseGrokCLINormalize(account.GetXAIBaseURL(), userAgent, upstreamModel, headers)
+	normalizedBody, err := xai.NormalizeResponsesBody(responsesBody, upstreamModel, true, promptCacheKey, grokCLI)
 	if err != nil {
 		return nil, fmt.Errorf("normalize xai chat responses request: %w", err)
 	}
@@ -402,7 +411,16 @@ func (s *OpenAIGatewayService) forwardXAIResponsesAsAnthropic(
 	if err != nil {
 		return nil, fmt.Errorf("marshal xai messages responses request: %w", err)
 	}
-	normalizedBody, err := xai.NormalizeResponsesBody(responsesBody, upstreamModel, true, promptCacheKey)
+	userAgent := ""
+	if c != nil && c.Request != nil {
+		userAgent = c.Request.UserAgent()
+	}
+	var headers http.Header
+	if c != nil && c.Request != nil {
+		headers = c.Request.Header
+	}
+	grokCLI := xai.ShouldUseGrokCLINormalize(account.GetXAIBaseURL(), userAgent, upstreamModel, headers)
+	normalizedBody, err := xai.NormalizeResponsesBody(responsesBody, upstreamModel, true, promptCacheKey, grokCLI)
 	if err != nil {
 		return nil, fmt.Errorf("normalize xai messages responses request: %w", err)
 	}

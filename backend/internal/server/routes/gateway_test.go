@@ -64,6 +64,16 @@ func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesXAIModelsV2PathIsRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouterForPlatform(service.PlatformXAI)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models-v2", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code, "/v1/models-v2 should hit xAI models-v2 handler")
+}
+
 func TestGatewayRoutesXAIVideosPathIsRegistered(t *testing.T) {
 	router := newGatewayRoutesTestRouterForPlatform(service.PlatformXAI)
 
