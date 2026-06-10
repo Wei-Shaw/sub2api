@@ -37,8 +37,8 @@ func TestApplyClaudeCodeMimicHeaders_DoesNotOverrideExistingFingerprintHeaders(t
 	applyClaudeCodeMimicHeaders(req, true)
 
 	// Cached fingerprint values must have been preserved, not reverted to
-	// claude.DefaultHeaders (which is the stale 2.1.116 / 0.70.0 / Linux
-	// / v22.11.0 set).
+	// the built-in claude.DefaultHeaders fallback (Linux / arm64 / the
+	// pinned default CLI tuple), since a live client capture can be newer.
 	for k, want := range realFP {
 		require.Equal(t, want, getHeaderRaw(req.Header, k),
 			"cached fingerprint header %q must not be overridden by DefaultHeaders", k)

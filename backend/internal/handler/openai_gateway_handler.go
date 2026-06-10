@@ -542,10 +542,19 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				continue
 			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-			wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+			// 若 Forward 已经把上游的终止错误（如 Responses 流上游返回 HTTP 200 +
+			// response.failed，或非流式协议错误的 JSON body）原样写给了客户端，就不能
+			// 再追加我们自己的兜底 response.failed —— 否则严格客户端会看到重复终止事件，
+			// 或 application/json body 后再跟一帧 SSE error 的混合体。
+			upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+			wroteFallback := false
+			if !upstreamErrorAlreadyCommunicated {
+				wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+			}
 			fields := []zap.Field{
 				zap.Int64("account_id", account.ID),
 				zap.Bool("fallback_error_response_written", wroteFallback),
+				zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 				zap.Error(err),
 			}
 			if shouldLogOpenAIForwardFailureAsWarn(c, wroteFallback) {
@@ -999,6 +1008,17 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					return
 				}
 				continue
+			}
+			// 客户端在流式传输途中断开后，ForwardAsAnthropic 仍会继续 drain 上游用于
+			// 计费；若上游随后超时/未收到终止帧，会带着 err 返回 result.ClientDisconnect。
+			// 这不是账号的错误，不能据此惩罚账号健康分（ReportOpenAIAccountScheduleResult
+			// false），也无需再往已断开的连接写兜底错误。
+			if result != nil && result.ClientDisconnect {
+				reqLog.Info("openai_messages.client_disconnected",
+					zap.Int64("account_id", account.ID),
+					zap.Error(err),
+				)
+				return
 			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 			wroteFallback := h.ensureAnthropicErrorResponse(c, streamStarted)

@@ -134,7 +134,7 @@ const DefaultCacheControlTTL = "5m"
 // **源码不变量**：CLIDefaultVersion 必须与 DefaultHeaders["User-Agent"] 中的版本号严格
 // 一致；不一致 init() 直接 panic。升级流程：在同一个 PR 里修改下面两处常量，并跑一次
 // `go test ./internal/pkg/claude/...`。
-const CLIDefaultVersion = "2.1.116"
+const CLIDefaultVersion = "2.1.161"
 
 // CLICurrentVersion Deprecated：保留以兼容老调用方；返回当前运行时版本。
 // 新代码请使用 GetCLICurrentVersion()。
@@ -212,34 +212,37 @@ func FullClaudeCodeMimicryBetas() []string {
 // DefaultHeaders 是 Claude Code 客户端默认请求头。
 //
 // Sync against real Claude CLI traffic so Anthropic does not reject OAuth
-// requests as "non-CLI" third-party usage. See docs/superpowers/plans/
-// 2026-04-23-claude-code-mimic-refresh.md for the audit that motivated
-// the current values.
+// requests as "non-CLI" third-party usage.
 //
-// Reference capture: Claude Code CLI 2.1.17 on 2026-01-25 (external):
-//
-//	X-Stainless-Runtime-Version: v20.19.5
-//	X-Stainless-Package-Version: 0.70.0
-//	X-Stainless-Os:              MacOS
+// Reference capture: Claude Code CLI 2.1.161 (external) — the x-stainless
+// values below were verified against the installed Bun-compiled binary
+// (package-version 0.94.0, runtime-version v24.3.0), and independently
+// corroborated by public CLI captures (e.g. claude-cli/2.1.83 also reports
+// X-Stainless-Runtime-Version: v24.3.0).
 //
 // Rules of thumb:
-//   - Runtime-Version must be a real Node LTS the bundled CLI ships
-//     (20/22 at time of writing — NEVER an odd-numbered "current" release
-//     like v23/v25; those mark the request as "clearly not the bundled CLI").
-//   - Package-Version should track @anthropic-ai/sdk's actual npm releases.
-//   - Do NOT send Anthropic-Dangerous-Direct-Browser-Access — that header
-//     is for browser-origin SDK use; the CLI does not emit it.
+//   - Runtime-Version must be the real Node version the bundled CLI ships.
+//     Recent CLI builds run Node v24 (LTS-track, even-numbered); only the
+//     odd-numbered "current" releases (v23/v25) would mark the request as
+//     "clearly not the bundled CLI".
+//   - Package-Version should track @anthropic-ai/sdk's actual npm releases
+//     for the impersonated CLI version (0.94.0 for 2.1.161).
+//   - DO send anthropic-dangerous-direct-browser-access: the real CLI
+//     constructs its SDK client with dangerouslyAllowBrowser: true, so the
+//     SDK emits this header on every request. Omitting it is a third-party
+//     tell. (Wire casing is all-lowercase; see service.resolveWireCasing.)
 var DefaultHeaders = map[string]string{
-	"User-Agent":                  "claude-cli/2.1.116 (external, cli)",
+	"User-Agent":                  "claude-cli/2.1.161 (external, cli)",
 	"X-Stainless-Lang":            "js",
-	"X-Stainless-Package-Version": "0.70.0",
+	"X-Stainless-Package-Version": "0.94.0",
 	"X-Stainless-OS":              "Linux",
 	"X-Stainless-Arch":            "arm64",
 	"X-Stainless-Runtime":         "node",
-	"X-Stainless-Runtime-Version": "v22.11.0",
+	"X-Stainless-Runtime-Version": "v24.3.0",
 	"X-Stainless-Retry-Count":     "0",
 	"X-Stainless-Timeout":         "600",
 	"X-App":                       "cli",
+	"Anthropic-Dangerous-Direct-Browser-Access": "true",
 }
 
 // Model 表示一个 Claude 模型

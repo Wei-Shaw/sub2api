@@ -16,7 +16,7 @@ type RegistrationFingerprint struct {
 	OS             string `json:"os,omitempty"`              // e.g. "MacOS", "Windows", "Linux"
 	Arch           string `json:"arch,omitempty"`            // e.g. "x64", "arm64"
 	Runtime        string `json:"runtime,omitempty"`         // e.g. "node"
-	RuntimeVersion string `json:"runtime_version,omitempty"` // e.g. "v22.11.0"
+	RuntimeVersion string `json:"runtime_version,omitempty"` // e.g. "v24.3.0"
 	UserAgent      string `json:"user_agent,omitempty"`      // raw UA string for audit
 	CapturedAt     int64  `json:"captured_at,omitempty"`     // unix timestamp
 }
@@ -29,7 +29,7 @@ const ExtraKeyRegistrationFingerprint = "registration_fingerprint"
 // Best-effort: unknown fields stay empty (caller falls back to defaults).
 // Returns nil if UA is empty.
 //
-// Runtime is intentionally always set to "node"/"v22.11.0" (matching defaultFingerprint),
+// Runtime is intentionally always set to "node"/"v24.3.0" (matching defaultFingerprint),
 // because we ultimately mimic the Claude CLI — using a browser's real runtime would expose
 // us as a proxy. We only capture the OS/arch since those are the most exposed dimensions
 // in Anthropic's account-vs-client correlation.
@@ -42,7 +42,7 @@ func ParseRegistrationFingerprintFromUA(ua string) *RegistrationFingerprint {
 	fp := &RegistrationFingerprint{
 		UserAgent:      ua,
 		Runtime:        "node",
-		RuntimeVersion: "v22.11.0",
+		RuntimeVersion: "v24.3.0",
 		CapturedAt:     time.Now().Unix(),
 	}
 

@@ -28,13 +28,13 @@ var (
 // 默认指纹值（当客户端未提供时使用）。
 // Must stay in sync with claude.DefaultHeaders to avoid fingerprint mismatch.
 var defaultFingerprint = Fingerprint{
-	UserAgent:               "claude-cli/2.1.116 (external, cli)",
+	UserAgent:               "claude-cli/2.1.161 (external, cli)",
 	StainlessLang:           "js",
 	StainlessPackageVersion: "0.94.0",
 	StainlessOS:             "Linux",
 	StainlessArch:           "arm64",
 	StainlessRuntime:        "node",
-	StainlessRuntimeVersion: "v22.11.0",
+	StainlessRuntimeVersion: "v24.3.0",
 }
 
 // Fingerprint represents account fingerprint data
@@ -132,7 +132,7 @@ func (s *IdentityService) getOrCreateFingerprintInternal(ctx context.Context, ac
 				if regFp.Arch != "" {
 					fp.StainlessArch = regFp.Arch
 				}
-				// runtime/runtime_version 故意保持 default (node/v22.11.0)，因为我们要
+				// runtime/runtime_version 故意保持 default (node/v24.3.0)，因为我们要
 				// mimic Claude CLI；浏览器真实 runtime 反而会暴露代理身份。
 			}
 		} else {

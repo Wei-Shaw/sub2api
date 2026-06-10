@@ -8495,9 +8495,10 @@ var defaultDroppedBetasSet = buildBetaTokenSet(claude.DroppedBetas)
 // 请求上还没有该头时才写入硬编码 fallback 值。
 //
 // 之所以不覆盖:调用点 (buildUpstreamRequest) 先走 ApplyFingerprint,把 per-account
-// 缓存的真实 Claude Code 指纹 (UA=claude-cli/2.1.118 等当前值) 写到 req。然后这里
-// 用硬编码 claude.DefaultHeaders (停留在 claude-cli/2.1.116 + Package 0.70.0 +
-// Runtime v22.11.0) 强覆盖 → 上游看到的是过时指纹 → Anthropic 判第三方 → 400。
+// 缓存的真实 Claude Code 指纹 (UA=claude-cli/2.1.118 等当前值) 写到 req。即便
+// claude.DefaultHeaders 已对齐到最新核实值,真实客户端缓存往往比我们的内置默认更新;
+// 若用 DefaultHeaders 强覆盖会把更新的 cached 指纹打回旧值 → 上游看到过时指纹 →
+// Anthropic 判第三方 → 400。
 //
 // 正确顺序是让 cached fingerprint 胜出;本函数只填 cache 没覆盖到的空位
 // (或完全 cache-miss 时整体兜底)。

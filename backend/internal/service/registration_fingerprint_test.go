@@ -98,7 +98,7 @@ func TestParseRegistrationFingerprintFromUA(t *testing.T) {
 			require.Equal(t, tt.wantOS, fp.OS, "OS mismatch")
 			require.Equal(t, tt.wantArch, fp.Arch, "Arch mismatch")
 			require.Equal(t, "node", fp.Runtime, "runtime should always default to node for CLI mimicry")
-			require.Equal(t, "v22.11.0", fp.RuntimeVersion)
+			require.Equal(t, "v24.3.0", fp.RuntimeVersion)
 			require.Equal(t, tt.ua, fp.UserAgent)
 			require.Greater(t, fp.CapturedAt, int64(0), "CapturedAt should be set")
 		})
