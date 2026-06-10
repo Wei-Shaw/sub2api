@@ -114,6 +114,11 @@ const paidOrder = ref<PaymentOrder | null>(null)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let countdownTimer: ReturnType<typeof setInterval> | null = null
+let verifyAttempts = 0
+let lastVerifyAt = 0
+
+const VERIFY_RETRY_INTERVAL_MS = 15000
+const VERIFY_RETRY_MAX_ATTEMPTS = 6
 
 const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
@@ -186,8 +191,9 @@ async function renderQR() {
 
 async function pollStatus() {
   if (!props.orderId) return
-  const order = await paymentStore.pollOrderStatus(props.orderId)
+  let order = await paymentStore.pollOrderStatus(props.orderId)
   if (!order) return
+  order = await tryRecoverPendingOrder(order)
   if (order.status === 'COMPLETED' || order.status === 'PAID') {
     cleanup()
     paidOrder.value = order
@@ -196,6 +202,27 @@ async function pollStatus() {
   } else if (order.status === 'EXPIRED' || order.status === 'CANCELLED' || order.status === 'FAILED') {
     cleanup()
     expired.value = true
+  }
+}
+
+async function tryRecoverPendingOrder(order: PaymentOrder): Promise<PaymentOrder> {
+  if (!isWxpay.value) return order
+  const outTradeNo = String(order.out_trade_no || '').trim()
+  if (!outTradeNo) return order
+  const normalizedStatus = String(order.status || '').trim().toUpperCase()
+  if (normalizedStatus !== 'PENDING') return order
+  const now = Date.now()
+  if (verifyAttempts >= VERIFY_RETRY_MAX_ATTEMPTS || now - lastVerifyAt < VERIFY_RETRY_INTERVAL_MS) {
+    return order
+  }
+
+  lastVerifyAt = now
+  verifyAttempts += 1
+  try {
+    const result = await paymentAPI.verifyOrder(outTradeNo)
+    return result.data ?? order
+  } catch {
+    return order
   }
 }
 
@@ -250,6 +277,8 @@ function init() {
   expired.value = false
   cancelling.value = false
   qrUrl.value = props.qrCode
+  verifyAttempts = 0
+  lastVerifyAt = 0
 
   let seconds = 30 * 60
   if (props.expiresAt) {

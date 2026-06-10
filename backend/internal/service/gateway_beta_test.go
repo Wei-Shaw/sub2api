@@ -124,6 +124,24 @@ func TestMergeAnthropicBetaDropping_DroppedBetas(t *testing.T) {
 	require.Contains(t, got, "fast-mode-2026-02-01")
 }
 
+func TestFullClaudeCodeMimicryBetas_DoesNotDefaultRedactThinking(t *testing.T) {
+	required := claude.FullClaudeCodeMimicryBetas()
+
+	require.NotContains(t, required, claude.BetaRedactThinking)
+	require.Contains(t, required, claude.BetaClaudeCode)
+	require.Contains(t, required, claude.BetaOAuth)
+	require.Contains(t, required, claude.BetaInterleavedThinking)
+}
+
+func TestMergeAnthropicBetaDropping_PreservesIncomingRedactThinking(t *testing.T) {
+	required := claude.FullClaudeCodeMimicryBetas()
+	incoming := claude.BetaRedactThinking
+
+	got := mergeAnthropicBetaDropping(required, incoming, droppedBetaSet())
+
+	require.Contains(t, got, claude.BetaRedactThinking)
+}
+
 func TestDroppedBetaSet(t *testing.T) {
 	// Base set contains DroppedBetas (now empty — filtering moved to configurable beta policy)
 	base := droppedBetaSet()

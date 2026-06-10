@@ -47,6 +47,8 @@ const (
 
 	// providerOpenAIPath OpenAI Chat Completions 路径。
 	providerOpenAIPath = "/v1/chat/completions"
+	// providerOpenAIResponsesPath OpenAI Responses API 路径。
+	providerOpenAIResponsesPath = "/v1/responses"
 	// providerAnthropicPath Anthropic Messages 路径。
 	providerAnthropicPath = "/v1/messages"
 	// providerGeminiPathTemplate Gemini generateContent 路径模板（含 model 占位）。
@@ -111,6 +113,12 @@ var (
 	)
 	ErrChannelMonitorInvalidProvider = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_PROVIDER", "provider must be one of openai/anthropic/gemini",
+	)
+	ErrChannelMonitorInvalidAPIMode = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_API_MODE", "api_mode must be chat_completions or responses; responses is only supported for openai",
+	)
+	ErrChannelMonitorInvalidRequestBody = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_REQUEST_BODY", "openai replace-mode body_override must include non-empty messages for chat_completions or non-empty instructions and input for responses",
 	)
 	ErrChannelMonitorInvalidInterval = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_INTERVAL", "interval_seconds must be in [15, 3600]",

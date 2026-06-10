@@ -15,11 +15,23 @@ const (
 	MonitorBodyOverrideModeReplace = "replace"
 )
 
+// MonitorAPIMode 描述 OpenAI provider 的请求协议。
+//
+//   - chat_completions  OpenAI-compatible Chat Completions: /v1/chat/completions + messages
+//   - responses         OpenAI Responses API: /v1/responses + instructions/input
+//
+// 非 OpenAI provider 固定使用 chat_completions 作为占位默认值，避免为每个 provider 单独扩表。
+const (
+	MonitorAPIModeChatCompletions = "chat_completions"
+	MonitorAPIModeResponses       = "responses"
+)
+
 // ChannelMonitor 渠道监控配置（service 层模型，不直接暴露 ent 类型）。
 type ChannelMonitor struct {
 	ID              int64
 	Name            string
 	Provider        string
+	APIMode         string
 	Endpoint        string
 	APIKey          string // 解密后的明文 API Key（仅在 service 内部使用，handler 层不应直接序列化返回）
 	PrimaryModel    string
@@ -56,6 +68,7 @@ type ChannelMonitorListParams struct {
 type ChannelMonitorCreateParams struct {
 	Name             string
 	Provider         string
+	APIMode          string
 	Endpoint         string
 	APIKey           string
 	PrimaryModel     string
@@ -74,6 +87,7 @@ type ChannelMonitorCreateParams struct {
 type ChannelMonitorUpdateParams struct {
 	Name            *string
 	Provider        *string
+	APIMode         *string
 	Endpoint        *string
 	APIKey          *string // 空字符串表示不修改；非空字符串覆盖
 	PrimaryModel    *string

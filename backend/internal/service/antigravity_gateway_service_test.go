@@ -42,6 +42,15 @@ func newAntigravityTestService(cfg *config.Config) *AntigravityGatewayService {
 	}
 }
 
+func TestAntigravityUpstreamErrorBodyReadLimit_RespectsDiagnosticLimit(t *testing.T) {
+	svc := newAntigravityTestService(&config.Config{Gateway: config.GatewayConfig{
+		LogUpstreamErrorBody:         true,
+		LogUpstreamErrorBodyMaxBytes: int(gatewayUpstreamErrorBodyReadLimit) + 1024,
+	}})
+
+	require.Equal(t, int64(svc.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes), svc.upstreamErrorBodyReadLimit())
+}
+
 func TestStripSignatureSensitiveBlocksFromClaudeRequest(t *testing.T) {
 	req := &antigravity.ClaudeRequest{
 		Model: "claude-sonnet-4-5",
@@ -489,6 +498,86 @@ func TestAntigravityGatewayService_ForwardGemini_StickySessionForceCacheBilling(
 	require.ErrorAs(t, err, &failoverErr, "error should be UpstreamFailoverError to trigger account switch")
 	require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
 	require.True(t, failoverErr.ForceCacheBilling, "ForceCacheBilling should be true for sticky session switch")
+}
+
+func TestAntigravityGatewayService_ForwardGemini_ClearsStickySessionOnGeminiRateLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+
+	body, err := json.Marshal(map[string]any{
+		"contents": []map[string]any{
+			{"role": "user", "parts": []map[string]any{{"text": "hi"}}},
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3-flash-preview:generateContent", bytes.NewReader(body))
+	c.Request = req
+
+	respBody := []byte(`{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"}, "reason": "RATE_LIMIT_EXCEEDED"},
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "15s"}
+			]
+		}
+	}`)
+	upstream := &httpUpstreamStub{resp: &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{},
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+	}}
+	repo := &stubAntigravityAccountRepo{}
+	cache := &stubSmartRetryCache{}
+	svc := &AntigravityGatewayService{
+		tokenProvider: &AntigravityTokenProvider{},
+		httpUpstream:  upstream,
+		accountRepo:   repo,
+		cache:         cache,
+	}
+
+	account := &Account{
+		ID:          44,
+		Name:        "acc-gemini-runtime-rate-limited",
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "token",
+			"expires_at":   time.Now().Add(time.Hour).Format(time.RFC3339),
+			"project_id":   "proj",
+		},
+		Extra: map[string]any{
+			"mixed_scheduling": true,
+		},
+	}
+
+	result, err := svc.ForwardGemini(
+		context.Background(),
+		c,
+		account,
+		"gemini-3-flash-preview",
+		"generateContent",
+		false,
+		body,
+		true,
+		WithForwardGeminiSession(77, "gemini:sticky-runtime"),
+	)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
+	require.Len(t, repo.modelRateLimitCalls, 2)
+	require.Equal(t, "gemini-3-flash", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, antigravityGeminiModelRateLimitKey, repo.modelRateLimitCalls[1].modelKey)
+	require.Len(t, cache.deleteCalls, 1)
+	require.Equal(t, int64(77), cache.deleteCalls[0].groupID)
+	require.Equal(t, "gemini:sticky-runtime", cache.deleteCalls[0].sessionHash)
 }
 
 // TestAntigravityGatewayService_Forward_BillsWithMappedModel
@@ -1301,6 +1390,19 @@ func TestExtractSSEUsage(t *testing.T) {
 			line:     `data: {"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":5,"cache_creation_input_tokens":3}}`,
 			expected: ClaudeUsage{InputTokens: 10, OutputTokens: 20, CacheReadInputTokens: 5, CacheCreationInputTokens: 3},
 		},
+		{
+			// Anthropic message_start 把 usage 嵌套在 message.usage 下，
+			// 必须从这里提取输入侧字段（含 cache_read/cache_creation_input_tokens）。
+			name:     "message_start nested usage with input/cache tokens",
+			line:     `data: {"type":"message_start","message":{"id":"msg_01","usage":{"input_tokens":35576,"cache_creation_input_tokens":0,"cache_read_input_tokens":12000,"output_tokens":1}}}`,
+			expected: ClaudeUsage{InputTokens: 35576, OutputTokens: 1, CacheReadInputTokens: 12000},
+		},
+		{
+			// message_start.message.usage.cache_creation 内的 5m/1h 明细也要解析。
+			name:     "message_start nested usage with cache_creation breakdown",
+			line:     `data: {"type":"message_start","message":{"usage":{"input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":30,"ephemeral_1h_input_tokens":70}}}}`,
+			expected: ClaudeUsage{InputTokens: 100, CacheCreation5mTokens: 30, CacheCreation1hTokens: 70},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1309,6 +1411,29 @@ func TestExtractSSEUsage(t *testing.T) {
 			require.Equal(t, tt.expected, *usage)
 		})
 	}
+}
+
+// TestExtractSSEUsage_StreamingSequence 复现 issue #2332：完整的 Anthropic streaming
+// 序列（message_start → message_delta）必须把两类事件中的 usage 字段都汇入同一份累计值，
+// 否则透传账号产出的 usage_logs 会出现 input_tokens=0、仅有 output_tokens 的"残缺"记录。
+func TestExtractSSEUsage_StreamingSequence(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+	usage := &ClaudeUsage{}
+
+	// 1) message_start：携带完整输入侧 usage（input_tokens + cache_read）
+	svc.extractSSEUsage(
+		`data: {"type":"message_start","message":{"id":"msg_01","type":"message","role":"assistant","content":[],"model":"claude-opus-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":35576,"cache_creation_input_tokens":0,"cache_read_input_tokens":12000,"output_tokens":1}}}`,
+		usage,
+	)
+	// 2) message_delta：流结束时只带 output_tokens（无 input_tokens 字段）
+	svc.extractSSEUsage(
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":816}}`,
+		usage,
+	)
+
+	require.Equal(t, 35576, usage.InputTokens, "message_start 的 input_tokens 必须被记录，否则记账会缺失输入侧 token (#2332)")
+	require.Equal(t, 12000, usage.CacheReadInputTokens, "message_start 的 cache_read_input_tokens 必须被记录")
+	require.Equal(t, 816, usage.OutputTokens, "message_delta 的最终 output_tokens 必须被记录")
 }
 
 // TestAntigravityClientWriter 验证 antigravityClientWriter 的断开检测

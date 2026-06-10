@@ -11,6 +11,8 @@ const {
   updateWebSearchEmulationConfig,
   getAdminApiKey,
   getOverloadCooldownSettings,
+  getRateLimit429CooldownSettings,
+  updateRateLimit429CooldownSettings,
   getStreamTimeoutSettings,
   getRectifierSettings,
   getBetaPolicySettings,
@@ -31,6 +33,8 @@ const {
   updateWebSearchEmulationConfig: vi.fn(),
   getAdminApiKey: vi.fn(),
   getOverloadCooldownSettings: vi.fn(),
+  getRateLimit429CooldownSettings: vi.fn(),
+  updateRateLimit429CooldownSettings: vi.fn(),
   getStreamTimeoutSettings: vi.fn(),
   getRectifierSettings: vi.fn(),
   getBetaPolicySettings: vi.fn(),
@@ -57,6 +61,8 @@ vi.mock("@/api", () => ({
       updateWebSearchEmulationConfig,
       getAdminApiKey,
       getOverloadCooldownSettings,
+      getRateLimit429CooldownSettings,
+      updateRateLimit429CooldownSettings,
       getStreamTimeoutSettings,
       getRectifierSettings,
       getBetaPolicySettings,
@@ -157,6 +163,16 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
+    "admin.settings.platformQuota.platform": "平台",
+    "admin.settings.platformQuota.daily": "日限额 (USD)",
+    "admin.settings.platformQuota.weekly": "周限额 (USD)",
+    "admin.settings.platformQuota.monthly": "月限额 (USD, 30天滚动)",
+    "admin.settings.platformQuota.placeholder": "不限",
+    "admin.settings.defaults.defaultPlatformQuotas": "默认平台限额（注册时分配）",
+    "admin.settings.defaults.defaultPlatformQuotasHint": "新用户注册时自动写入平台限额记录；已有用户不受影响。留空 = 该平台该窗口不限制。",
+    "admin.settings.defaults.platformQuotaNotice": "月限额为 30 天滚动窗口，非自然月",
+    "admin.settings.authSourceDefaults.platformQuotasOverride": "平台限额覆盖",
+    "admin.settings.authSourceDefaults.platformQuotasOverrideHint": "留空的字段继承「系统默认平台限额」；填 0 表示禁止该窗口使用。",
   };
   return {
     ...actual,
@@ -362,6 +378,10 @@ const baseSettingsResponse = {
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
+  enable_anthropic_cache_ttl_1h_injection: false,
+  rewrite_message_cache_control: false,
+  antigravity_user_agent_version: "",
+  openai_codex_user_agent: "",
   payment_enabled: true,
   payment_min_amount: 1,
   payment_max_amount: 10000,
@@ -390,8 +410,16 @@ const baseSettingsResponse = {
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
   balance_low_notify_recharge_url: "",
+  subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [],
+  // 平台限额嵌套字段（新后端契约）
+  default_platform_quotas: {
+    anthropic:   { daily: null, weekly: null, monthly: null },
+    openai:      { daily: null, weekly: 12.5, monthly: null },
+    gemini:      { daily: null, weekly: null, monthly: 200 },
+    antigravity: { daily: null, weekly: null, monthly: null },
+  },
 };
 
 function mountView() {
@@ -453,6 +481,8 @@ describe("admin SettingsView payment visible method controls", () => {
     updateWebSearchEmulationConfig.mockReset();
     getAdminApiKey.mockReset();
     getOverloadCooldownSettings.mockReset();
+    getRateLimit429CooldownSettings.mockReset();
+    updateRateLimit429CooldownSettings.mockReset();
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
@@ -489,6 +519,11 @@ describe("admin SettingsView payment visible method controls", () => {
       enabled: true,
       cooldown_minutes: 10,
     });
+    getRateLimit429CooldownSettings.mockResolvedValue({
+      enabled: true,
+      cooldown_seconds: 5,
+    });
+    updateRateLimit429CooldownSettings.mockImplementation(async (payload) => payload);
     getStreamTimeoutSettings.mockResolvedValue({
       enabled: true,
       action: "temp_unsched",
@@ -565,6 +600,66 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_source");
     expect(payload).not.toHaveProperty("payment_visible_method_alipay_enabled");
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_enabled");
+  });
+
+  it("submits Anthropic cache TTL injection gateway setting", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      enable_anthropic_cache_ttl_1h_injection: true,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enable_anthropic_cache_ttl_1h_injection: true,
+      }),
+    );
+  });
+
+  it("submits message cache_control rewrite gateway setting", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      rewrite_message_cache_control: true,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rewrite_message_cache_control: true,
+      }),
+    );
+  });
+
+  it("submits Antigravity user agent version gateway setting", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      antigravity_user_agent_version: "1.23.2",
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        antigravity_user_agent_version: "1.23.2",
+      }),
+    );
   });
 
   it("updates provider enablement immediately and reloads providers", async () => {
@@ -669,6 +764,8 @@ describe("admin SettingsView wechat connect controls", () => {
     updateWebSearchEmulationConfig.mockReset();
     getAdminApiKey.mockReset();
     getOverloadCooldownSettings.mockReset();
+    getRateLimit429CooldownSettings.mockReset();
+    updateRateLimit429CooldownSettings.mockReset();
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
@@ -708,6 +805,11 @@ describe("admin SettingsView wechat connect controls", () => {
       enabled: true,
       cooldown_minutes: 10,
     });
+    getRateLimit429CooldownSettings.mockResolvedValue({
+      enabled: true,
+      cooldown_seconds: 5,
+    });
+    updateRateLimit429CooldownSettings.mockImplementation(async (payload) => payload);
     getStreamTimeoutSettings.mockResolvedValue({
       enabled: true,
       action: "temp_unsched",
@@ -774,6 +876,24 @@ describe("admin SettingsView wechat connect controls", () => {
           .element as HTMLInputElement
       ).value,
     ).toBe("/auth/wechat/callback");
+  });
+
+  it("links GitHub OAuth Apps guide to GitHub developer settings", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      github_oauth_enabled: true,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const link = wrapper.get('[data-testid="github-oauth-apps-guide-link"]');
+    expect(link.text()).toContain("OAuth Apps");
+    expect(link.attributes("href")).toBe("https://github.com/settings/developers");
+    expect(link.attributes("target")).toBe("_blank");
+    expect(link.attributes("rel")).toContain("noopener");
   });
 
   it("saves WeChat Connect fields using the backend contract and clears the secret after save", async () => {
@@ -879,5 +999,159 @@ describe("admin SettingsView wechat connect controls", () => {
         oidc_connect_validate_id_token: false,
       }),
     );
+  });
+});
+
+describe("admin SettingsView platform quota matrix", () => {
+  beforeEach(() => {
+    getSettings.mockReset();
+    updateSettings.mockReset();
+    getWebSearchEmulationConfig.mockReset();
+    updateWebSearchEmulationConfig.mockReset();
+    getAdminApiKey.mockReset();
+    getOverloadCooldownSettings.mockReset();
+    getRateLimit429CooldownSettings.mockReset();
+    updateRateLimit429CooldownSettings.mockReset();
+    getStreamTimeoutSettings.mockReset();
+    getRectifierSettings.mockReset();
+    getBetaPolicySettings.mockReset();
+    getGroups.mockReset();
+    listProxies.mockReset();
+    getProviders.mockReset();
+    updateProvider.mockReset();
+    createProvider.mockReset();
+    deleteProvider.mockReset();
+    fetchPublicSettings.mockReset();
+    adminSettingsFetch.mockReset();
+    showError.mockReset();
+    showSuccess.mockReset();
+    localeRef.value = "zh-CN";
+
+    getSettings.mockResolvedValue({ ...baseSettingsResponse });
+    updateSettings.mockImplementation(async (payload) => ({
+      ...baseSettingsResponse,
+      ...payload,
+    }));
+    getWebSearchEmulationConfig.mockResolvedValue({ enabled: false, providers: [] });
+    updateWebSearchEmulationConfig.mockResolvedValue({ enabled: false, providers: [] });
+    getAdminApiKey.mockResolvedValue({ exists: false, masked_key: "" });
+    getOverloadCooldownSettings.mockResolvedValue({});
+    getRateLimit429CooldownSettings.mockResolvedValue({});
+    updateRateLimit429CooldownSettings.mockResolvedValue({});
+    getStreamTimeoutSettings.mockResolvedValue({});
+    getRectifierSettings.mockResolvedValue({});
+    getBetaPolicySettings.mockResolvedValue({});
+    getGroups.mockResolvedValue([]);
+    listProxies.mockResolvedValue({ items: [] });
+    getProviders.mockResolvedValue({ data: [] });
+  });
+
+  it("从 baseSettings 加载默认平台配额数据并在 Users tab 渲染 4 平台行", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openUsersTab(wrapper);
+
+    expect(getSettings).toHaveBeenCalled();
+
+    const html = wrapper.html();
+    // 表格行的平台字段：font-mono 渲染纯英文 platform key
+    expect(html).toContain("anthropic");
+    expect(html).toContain("openai");
+    expect(html).toContain("gemini");
+    expect(html).toContain("antigravity");
+  });
+
+  it("保存时 updateSettings payload 应包含嵌套 default_platform_quotas 对象（含全 4 平台）", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openUsersTab(wrapper);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalled();
+    const lastCallArgs = updateSettings.mock.calls.at(-1);
+    expect(lastCallArgs).toBeDefined();
+    const payload = lastCallArgs![0] as Record<string, unknown>;
+
+    // 应携带嵌套对象，而非扁平字段
+    expect(payload).toHaveProperty("default_platform_quotas");
+    const quotas = payload["default_platform_quotas"] as Record<string, unknown>;
+    const platforms = ["anthropic", "openai", "gemini", "antigravity"];
+    for (const p of platforms) {
+      expect(quotas).toHaveProperty(p);
+      const pq = quotas[p] as Record<string, unknown>;
+      expect(pq).toHaveProperty("daily");
+      expect(pq).toHaveProperty("weekly");
+      expect(pq).toHaveProperty("monthly");
+    }
+
+    // 不应存在旧扁平字段
+    expect(payload).not.toHaveProperty("default_platform_quota_anthropic_daily");
+    expect(payload).not.toHaveProperty("default_platform_quota_openai_weekly");
+  });
+
+  it("加载后 form.default_platform_quotas 含全 4 平台，从嵌套 JSON 正确读取数值", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      default_platform_quotas: {
+        anthropic: { daily: 5, weekly: null, monthly: null },
+        openai:    { daily: null, weekly: 12.5, monthly: null },
+        // gemini / antigravity 缺失 → 应被归一化为全 null
+      },
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+    await openUsersTab(wrapper);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    const payload = updateSettings.mock.calls.at(-1)![0] as Record<string, unknown>;
+    const quotas = payload["default_platform_quotas"] as Record<string, Record<string, unknown>>;
+
+    expect(quotas["anthropic"]?.["daily"]).toBe(5);
+    expect(quotas["openai"]?.["weekly"]).toBe(12.5);
+    // 缺失平台应补全为 null
+    expect(quotas["gemini"]).toEqual({ daily: null, weekly: null, monthly: null });
+    expect(quotas["antigravity"]).toEqual({ daily: null, weekly: null, monthly: null });
+  });
+
+  it("空输入（v-model.number 产出 \"\"）在提交时清洗为 null 而非空字符串", async () => {
+    // 模拟后端返回带有 anthropic daily 值的配额
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      default_platform_quotas: {
+        anthropic: { daily: 10, weekly: null, monthly: null },
+        openai:    { daily: null, weekly: null, monthly: null },
+        gemini:    { daily: null, weekly: null, monthly: null },
+        antigravity: { daily: null, weekly: null, monthly: null },
+      },
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+    await openUsersTab(wrapper);
+
+    // 找到 anthropic daily 输入框并清空（模拟用户删除值）
+    const inputs = wrapper.findAll('input[type="number"]');
+    const anthropicDailyInput = inputs.find((i) => {
+      const parent = i.element.closest("tr");
+      return parent?.textContent?.includes("anthropic");
+    });
+
+    if (anthropicDailyInput) {
+      // 设置为空字符串，模拟 v-model.number 在清空时产出 ""
+      await anthropicDailyInput.setValue("");
+    }
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    const payload = updateSettings.mock.calls.at(-1)![0] as Record<string, unknown>;
+    const quotas = payload["default_platform_quotas"] as Record<string, Record<string, unknown>>;
+    // 不管输入是什么，提交值应为 null（而非 "" 或 NaN）
+    expect(quotas["anthropic"]?.["daily"]).toBe(null);
   });
 });

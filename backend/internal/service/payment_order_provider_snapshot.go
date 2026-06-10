@@ -188,6 +188,38 @@ func validateProviderSnapshotMetadata(order *dbent.PaymentOrder, providerKey str
 				return fmt.Errorf("easypay pid mismatch: expected %s, got %s", expected, actual)
 			}
 		}
+	case payment.TypeStripe:
+		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
+			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
+			if actual == "" {
+				return fmt.Errorf("stripe notification missing currency")
+			}
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("stripe currency mismatch: expected %s, got %s", expected, actual)
+			}
+		}
+	case payment.TypeAirwallex:
+		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
+			actual := strings.TrimSpace(metadata["account_id"])
+			if actual == "" {
+				return fmt.Errorf("airwallex account_id missing")
+			}
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("airwallex account_id mismatch: expected %s, got %s", expected, actual)
+			}
+		}
+		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
+			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
+			if actual == "" {
+				return fmt.Errorf("airwallex notification missing currency")
+			}
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("airwallex currency mismatch: expected %s, got %s", expected, actual)
+			}
+		}
+		if actual := strings.TrimSpace(metadata["status"]); actual != "" && !strings.EqualFold(actual, "SUCCEEDED") {
+			return fmt.Errorf("airwallex status mismatch: expected SUCCEEDED, got %s", actual)
+		}
 	}
 
 	return nil

@@ -101,11 +101,19 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 		})
 		return fmt.Errorf("invalid paid amount from provider: %v", paid)
 	}
-	if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
+	if math.Abs(paid-o.PayAmount) > paymentAmountToleranceForCurrency(PaymentOrderCurrency(o)) {
 		s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNo})
-		return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
+		return fmt.Errorf("amount mismatch: expected %s, got %s", strconv.FormatFloat(o.PayAmount, 'f', -1, 64), strconv.FormatFloat(paid, 'f', -1, 64))
 	}
 	return s.toPaid(ctx, o, tradeNo, paid, pk)
+}
+
+func paymentAmountToleranceForCurrency(currency string) float64 {
+	minorUnit := payment.CurrencyMinorUnit(currency)
+	if minorUnit <= 2 {
+		return amountToleranceCNY
+	}
+	return math.Pow10(-minorUnit) / 2
 }
 
 func isValidProviderAmount(amount float64) bool {
@@ -282,7 +290,7 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	case redeemActionRedeem:
 		// Code exists but unused — skip creation, proceed to redeem
 	}
-	if _, err := s.redeemService.Redeem(ctx, o.UserID, o.RechargeCode); err != nil {
+	if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(ctx), o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
@@ -302,7 +310,85 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		"creditedAmount": o.Amount,
 		"payAmount":      o.PayAmount,
 	})
+	s.dispatchPaymentFulfillmentNotification(o, auditAction)
 	return nil
+}
+
+func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.PaymentOrder, auditAction string) {
+	if s == nil || s.notificationEmailService == nil || o == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
+		defer cancel()
+		var err error
+		switch auditAction {
+		case "RECHARGE_SUCCESS":
+			err = s.sendBalanceRechargeSuccessNotification(ctx, o)
+		case "SUBSCRIPTION_SUCCESS":
+			err = s.sendSubscriptionPurchaseSuccessNotification(ctx, o)
+		default:
+			return
+		}
+		if err != nil {
+			slog.Warn("payment fulfillment notification email failed", "order_id", o.ID, "action", auditAction, "err", err.Error())
+		}
+	}()
+}
+
+func (s *PaymentService) sendBalanceRechargeSuccessNotification(ctx context.Context, o *dbent.PaymentOrder) error {
+	currentBalance := ""
+	if s.userRepo != nil {
+		if user, err := s.userRepo.GetByID(ctx, o.UserID); err == nil && user != nil {
+			currentBalance = fmt.Sprintf("%.2f", user.Balance)
+		}
+	}
+	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventBalanceRechargeSuccess,
+		RecipientEmail: o.UserEmail,
+		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
+		UserID:         o.UserID,
+		SourceType:     "payment_order",
+		SourceID:       strconv.FormatInt(o.ID, 10),
+		Variables: map[string]string{
+			"recharge_amount": fmt.Sprintf("%.2f", o.Amount),
+			"current_balance": currentBalance,
+			"order_id":        strconv.FormatInt(o.ID, 10),
+		},
+	})
+}
+
+func (s *PaymentService) sendSubscriptionPurchaseSuccessNotification(ctx context.Context, o *dbent.PaymentOrder) error {
+	variables := map[string]string{
+		"subscription_group": "Subscription",
+		"subscription_days":  "",
+		"expiry_time":        "",
+		"order_id":           strconv.FormatInt(o.ID, 10),
+	}
+	if o.SubscriptionDays != nil {
+		variables["subscription_days"] = strconv.Itoa(*o.SubscriptionDays)
+	}
+	if o.SubscriptionGroupID != nil {
+		if s.groupRepo != nil {
+			if group, err := s.groupRepo.GetByID(ctx, *o.SubscriptionGroupID); err == nil && group != nil && strings.TrimSpace(group.Name) != "" {
+				variables["subscription_group"] = group.Name
+			}
+		}
+		if s.subscriptionSvc != nil {
+			if sub, err := s.subscriptionSvc.GetActiveSubscription(ctx, o.UserID, *o.SubscriptionGroupID); err == nil && sub != nil {
+				variables["expiry_time"] = sub.ExpiresAt.Format("2006-01-02 15:04")
+			}
+		}
+	}
+	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventSubscriptionPurchaseSuccess,
+		RecipientEmail: o.UserEmail,
+		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
+		UserID:         o.UserID,
+		SourceType:     "payment_order",
+		SourceID:       strconv.FormatInt(o.ID, 10),
+		Variables:      variables,
+	})
 }
 
 func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid int64) error {
@@ -394,7 +480,8 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 		return nil
 	}
 
-	rebateAmount, err := s.affiliateService.AccrueInviteRebate(txCtx, o.UserID, o.Amount)
+	sourceOrderID := o.ID
+	rebateAmount, err := s.affiliateService.AccrueInviteRebateForOrder(txCtx, o.UserID, o.Amount, &sourceOrderID)
 	if err != nil {
 		s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
 			"error": err.Error(),

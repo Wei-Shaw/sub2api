@@ -217,6 +217,48 @@ func (_c *GroupCreate) SetNillableDefaultValidityDays(v *int) *GroupCreate {
 	return _c
 }
 
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (_c *GroupCreate) SetAllowImageGeneration(v bool) *GroupCreate {
+	_c.mutation.SetAllowImageGeneration(v)
+	return _c
+}
+
+// SetNillableAllowImageGeneration sets the "allow_image_generation" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowImageGeneration(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowImageGeneration(*v)
+	}
+	return _c
+}
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (_c *GroupCreate) SetImageRateIndependent(v bool) *GroupCreate {
+	_c.mutation.SetImageRateIndependent(v)
+	return _c
+}
+
+// SetNillableImageRateIndependent sets the "image_rate_independent" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageRateIndependent(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageRateIndependent(*v)
+	}
+	return _c
+}
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (_c *GroupCreate) SetImageRateMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetImageRateMultiplier(v)
+	return _c
+}
+
+// SetNillableImageRateMultiplier sets the "image_rate_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageRateMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetImageRateMultiplier(*v)
+	}
+	return _c
+}
+
 // SetImagePrice1k sets the "image_price_1k" field.
 func (_c *GroupCreate) SetImagePrice1k(v float64) *GroupCreate {
 	_c.mutation.SetImagePrice1k(v)
@@ -425,6 +467,20 @@ func (_c *GroupCreate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMe
 	return _c
 }
 
+// SetModelsListConfig sets the "models_list_config" field.
+func (_c *GroupCreate) SetModelsListConfig(v domain.GroupModelsListConfig) *GroupCreate {
+	_c.mutation.SetModelsListConfig(v)
+	return _c
+}
+
+// SetNillableModelsListConfig sets the "models_list_config" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableModelsListConfig(v *domain.GroupModelsListConfig) *GroupCreate {
+	if v != nil {
+		_c.SetModelsListConfig(*v)
+	}
+	return _c
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_c *GroupCreate) SetRpmLimit(v int) *GroupCreate {
 	_c.mutation.SetRpmLimit(v)
@@ -604,6 +660,18 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultDefaultValidityDays
 		_c.mutation.SetDefaultValidityDays(v)
 	}
+	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
+		v := group.DefaultAllowImageGeneration
+		_c.mutation.SetAllowImageGeneration(v)
+	}
+	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
+		v := group.DefaultImageRateIndependent
+		_c.mutation.SetImageRateIndependent(v)
+	}
+	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
+		v := group.DefaultImageRateMultiplier
+		_c.mutation.SetImageRateMultiplier(v)
+	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
@@ -643,6 +711,10 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.MessagesDispatchModelConfig(); !ok {
 		v := group.DefaultMessagesDispatchModelConfig
 		_c.mutation.SetMessagesDispatchModelConfig(v)
+	}
+	if _, ok := _c.mutation.ModelsListConfig(); !ok {
+		v := group.DefaultModelsListConfig
+		_c.mutation.SetModelsListConfig(v)
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := group.DefaultRpmLimit
@@ -700,6 +772,15 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		return &ValidationError{Name: "default_validity_days", err: errors.New(`ent: missing required field "Group.default_validity_days"`)}
 	}
+	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
+		return &ValidationError{Name: "allow_image_generation", err: errors.New(`ent: missing required field "Group.allow_image_generation"`)}
+	}
+	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
+		return &ValidationError{Name: "image_rate_independent", err: errors.New(`ent: missing required field "Group.image_rate_independent"`)}
+	}
+	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
+		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
+	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
 	}
@@ -734,6 +815,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.MessagesDispatchModelConfig(); !ok {
 		return &ValidationError{Name: "messages_dispatch_model_config", err: errors.New(`ent: missing required field "Group.messages_dispatch_model_config"`)}
+	}
+	if _, ok := _c.mutation.ModelsListConfig(); !ok {
+		return &ValidationError{Name: "models_list_config", err: errors.New(`ent: missing required field "Group.models_list_config"`)}
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
@@ -821,6 +905,18 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)
 		_node.DefaultValidityDays = value
 	}
+	if value, ok := _c.mutation.AllowImageGeneration(); ok {
+		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+		_node.AllowImageGeneration = value
+	}
+	if value, ok := _c.mutation.ImageRateIndependent(); ok {
+		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
+		_node.ImageRateIndependent = value
+	}
+	if value, ok := _c.mutation.ImageRateMultiplier(); ok {
+		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
+		_node.ImageRateMultiplier = value
+	}
 	if value, ok := _c.mutation.ImagePrice1k(); ok {
 		_spec.SetField(group.FieldImagePrice1k, field.TypeFloat64, value)
 		_node.ImagePrice1k = &value
@@ -884,6 +980,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
 		_node.MessagesDispatchModelConfig = value
+	}
+	if value, ok := _c.mutation.ModelsListConfig(); ok {
+		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+		_node.ModelsListConfig = value
 	}
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -1261,6 +1361,48 @@ func (u *GroupUpsert) AddDefaultValidityDays(v int) *GroupUpsert {
 	return u
 }
 
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *GroupUpsert) SetAllowImageGeneration(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowImageGeneration, v)
+	return u
+}
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowImageGeneration() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowImageGeneration)
+	return u
+}
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (u *GroupUpsert) SetImageRateIndependent(v bool) *GroupUpsert {
+	u.Set(group.FieldImageRateIndependent, v)
+	return u
+}
+
+// UpdateImageRateIndependent sets the "image_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageRateIndependent() *GroupUpsert {
+	u.SetExcluded(group.FieldImageRateIndependent)
+	return u
+}
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (u *GroupUpsert) SetImageRateMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldImageRateMultiplier, v)
+	return u
+}
+
+// UpdateImageRateMultiplier sets the "image_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageRateMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldImageRateMultiplier)
+	return u
+}
+
+// AddImageRateMultiplier adds v to the "image_rate_multiplier" field.
+func (u *GroupUpsert) AddImageRateMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldImageRateMultiplier, v)
+	return u
+}
+
 // SetImagePrice1k sets the "image_price_1k" field.
 func (u *GroupUpsert) SetImagePrice1k(v float64) *GroupUpsert {
 	u.Set(group.FieldImagePrice1k, v)
@@ -1522,6 +1664,18 @@ func (u *GroupUpsert) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDisp
 // UpdateMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateMessagesDispatchModelConfig() *GroupUpsert {
 	u.SetExcluded(group.FieldMessagesDispatchModelConfig)
+	return u
+}
+
+// SetModelsListConfig sets the "models_list_config" field.
+func (u *GroupUpsert) SetModelsListConfig(v domain.GroupModelsListConfig) *GroupUpsert {
+	u.Set(group.FieldModelsListConfig, v)
+	return u
+}
+
+// UpdateModelsListConfig sets the "models_list_config" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateModelsListConfig() *GroupUpsert {
+	u.SetExcluded(group.FieldModelsListConfig)
 	return u
 }
 
@@ -1840,6 +1994,55 @@ func (u *GroupUpsertOne) UpdateDefaultValidityDays() *GroupUpsertOne {
 	})
 }
 
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *GroupUpsertOne) SetAllowImageGeneration(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowImageGeneration(v)
+	})
+}
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowImageGeneration() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowImageGeneration()
+	})
+}
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (u *GroupUpsertOne) SetImageRateIndependent(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageRateIndependent(v)
+	})
+}
+
+// UpdateImageRateIndependent sets the "image_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageRateIndependent() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageRateIndependent()
+	})
+}
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (u *GroupUpsertOne) SetImageRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageRateMultiplier(v)
+	})
+}
+
+// AddImageRateMultiplier adds v to the "image_rate_multiplier" field.
+func (u *GroupUpsertOne) AddImageRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImageRateMultiplier(v)
+	})
+}
+
+// UpdateImageRateMultiplier sets the "image_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageRateMultiplier()
+	})
+}
+
 // SetImagePrice1k sets the "image_price_1k" field.
 func (u *GroupUpsertOne) SetImagePrice1k(v float64) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -2145,6 +2348,20 @@ func (u *GroupUpsertOne) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesD
 func (u *GroupUpsertOne) UpdateMessagesDispatchModelConfig() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMessagesDispatchModelConfig()
+	})
+}
+
+// SetModelsListConfig sets the "models_list_config" field.
+func (u *GroupUpsertOne) SetModelsListConfig(v domain.GroupModelsListConfig) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelsListConfig(v)
+	})
+}
+
+// UpdateModelsListConfig sets the "models_list_config" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateModelsListConfig() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelsListConfig()
 	})
 }
 
@@ -2632,6 +2849,55 @@ func (u *GroupUpsertBulk) UpdateDefaultValidityDays() *GroupUpsertBulk {
 	})
 }
 
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *GroupUpsertBulk) SetAllowImageGeneration(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowImageGeneration(v)
+	})
+}
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowImageGeneration() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowImageGeneration()
+	})
+}
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (u *GroupUpsertBulk) SetImageRateIndependent(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageRateIndependent(v)
+	})
+}
+
+// UpdateImageRateIndependent sets the "image_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageRateIndependent() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageRateIndependent()
+	})
+}
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (u *GroupUpsertBulk) SetImageRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageRateMultiplier(v)
+	})
+}
+
+// AddImageRateMultiplier adds v to the "image_rate_multiplier" field.
+func (u *GroupUpsertBulk) AddImageRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImageRateMultiplier(v)
+	})
+}
+
+// UpdateImageRateMultiplier sets the "image_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageRateMultiplier()
+	})
+}
+
 // SetImagePrice1k sets the "image_price_1k" field.
 func (u *GroupUpsertBulk) SetImagePrice1k(v float64) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -2937,6 +3203,20 @@ func (u *GroupUpsertBulk) SetMessagesDispatchModelConfig(v domain.OpenAIMessages
 func (u *GroupUpsertBulk) UpdateMessagesDispatchModelConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMessagesDispatchModelConfig()
+	})
+}
+
+// SetModelsListConfig sets the "models_list_config" field.
+func (u *GroupUpsertBulk) SetModelsListConfig(v domain.GroupModelsListConfig) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelsListConfig(v)
+	})
+}
+
+// UpdateModelsListConfig sets the "models_list_config" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateModelsListConfig() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelsListConfig()
 	})
 }
 

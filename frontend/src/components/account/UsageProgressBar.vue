@@ -149,7 +149,7 @@ const shouldShowResetTime = computed(() => {
 const formatResetTime = computed(() => {
   // For rolling windows, when utilization is 0%, treat as immediately available.
   if (props.showNowWhenIdle && props.utilization <= 0) {
-    return '现在'
+    return t('usage.resetNow')
   }
 
   if (!props.resetsAt) return '-'
@@ -157,7 +157,11 @@ const formatResetTime = computed(() => {
   const date = new Date(props.resetsAt)
   const diffMs = date.getTime() - now.value.getTime()
 
-  if (diffMs <= 0) return '现在'
+  // resetsAt 已过期：utilization>0 说明后端窗口数据还没刷新（active poll 没回写），
+  // 显示「待刷新」以区别于真正可用的「现在」。
+  if (diffMs <= 0) {
+    return props.utilization > 0 ? t('usage.resetPending') : t('usage.resetNow')
+  }
 
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))

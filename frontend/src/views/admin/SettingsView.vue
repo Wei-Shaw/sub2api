@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-4xl space-y-6">
+    <div class="mx-auto max-w-6xl space-y-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-12">
         <div
@@ -11,23 +11,36 @@
       <!-- Settings Form -->
       <form v-else @submit.prevent="saveSettings" class="space-y-6" novalidate>
         <!-- Tab Navigation -->
-        <div class="sticky top-0 z-10 overflow-x-auto settings-tabs-scroll">
-          <nav class="settings-tabs">
-            <button
-              v-for="tab in settingsTabs"
-              :key="tab.key"
-              type="button"
-              :class="[
-                'settings-tab',
-                activeTab === tab.key && 'settings-tab-active',
-              ]"
-              @click="activeTab = tab.key"
-            >
-              <span class="settings-tab-icon">
-                <Icon :name="tab.icon" size="sm" />
-              </span>
-              <span>{{ t(`admin.settings.tabs.${tab.key}`) }}</span>
-            </button>
+        <div class="settings-tabs-shell">
+          <nav
+            class="settings-tabs-scroll"
+            role="tablist"
+            :aria-label="t('admin.settings.title')"
+          >
+            <div class="settings-tabs">
+              <button
+                v-for="tab in settingsTabs"
+                :key="tab.key"
+                :id="`settings-tab-${tab.key}`"
+                type="button"
+                role="tab"
+                :aria-selected="activeTab === tab.key"
+                :tabindex="activeTab === tab.key ? 0 : -1"
+                :class="[
+                  'settings-tab',
+                  activeTab === tab.key && 'settings-tab-active',
+                ]"
+                @click="selectSettingsTab(tab.key)"
+                @keydown="handleSettingsTabKeydown($event, tab.key)"
+              >
+                <span class="settings-tab-icon">
+                  <Icon :name="tab.icon" size="sm" />
+                </span>
+                <span class="settings-tab-label">{{
+                  t(`admin.settings.tabs.${tab.key}`)
+                }}</span>
+              </button>
+            </div>
           </nav>
         </div>
 
@@ -282,6 +295,113 @@
                     </svg>
                     {{
                       overloadCooldownSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Rate Limit Cooldown (429) Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.rateLimit429Cooldown.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.rateLimit429Cooldown.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="rateLimit429CooldownLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.rateLimit429Cooldown.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.rateLimit429Cooldown.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="rateLimit429CooldownForm.enabled" />
+                </div>
+
+                <div
+                  v-if="rateLimit429CooldownForm.enabled"
+                  class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{
+                        t(
+                          "admin.settings.rateLimit429Cooldown.cooldownSeconds",
+                        )
+                      }}
+                    </label>
+                    <input
+                      v-model.number="rateLimit429CooldownForm.cooldown_seconds"
+                      type="number"
+                      min="1"
+                      max="7200"
+                      class="input w-32"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{
+                        t(
+                          "admin.settings.rateLimit429Cooldown.cooldownSecondsHint",
+                        )
+                      }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    @click="saveRateLimit429CooldownSettings"
+                    :disabled="rateLimit429CooldownSaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    <svg
+                      v-if="rateLimit429CooldownSaving"
+                      class="mr-1 h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {{
+                      rateLimit429CooldownSaving
                         ? t("common.saving")
                         : t("common.save")
                     }}
@@ -949,6 +1069,285 @@
               </template>
             </div>
           </div>
+          <!-- OpenAI Fast/Flex Policy Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.openaiFastPolicy.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.openaiFastPolicy.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <!-- Empty state -->
+              <div
+                v-if="openaiFastPolicyForm.rules.length === 0"
+                class="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+              >
+                {{ t("admin.settings.openaiFastPolicy.empty") }}
+              </div>
+
+              <!-- Rule Cards -->
+              <div
+                v-for="(rule, ruleIndex) in openaiFastPolicyForm.rules"
+                :key="ruleIndex"
+                class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+              >
+                <div class="mb-3 flex items-center justify-between">
+                  <span
+                    class="text-sm font-medium text-gray-900 dark:text-white"
+                  >
+                    {{
+                      t("admin.settings.openaiFastPolicy.ruleHeader", {
+                        index: ruleIndex + 1,
+                      })
+                    }}
+                  </span>
+                  <button
+                    type="button"
+                    @click="removeOpenAIFastPolicyRule(ruleIndex)"
+                    class="rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    :title="t('admin.settings.openaiFastPolicy.removeRule')"
+                  >
+                    <svg
+                      class="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <!-- Service Tier -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.serviceTier") }}
+                    </label>
+                    <Select
+                      :modelValue="rule.service_tier"
+                      @update:modelValue="
+                        rule.service_tier = $event as
+                          | 'all'
+                          | 'priority'
+                          | 'flex'
+                      "
+                      :options="openaiFastPolicyTierOptions"
+                    />
+                  </div>
+
+                  <!-- Action -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.action") }}
+                    </label>
+                    <Select
+                      :modelValue="rule.action"
+                      @update:modelValue="
+                        rule.action = $event as 'pass' | 'filter' | 'block'
+                      "
+                      :options="openaiFastPolicyActionOptions"
+                    />
+                  </div>
+
+                  <!-- Scope -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.scope") }}
+                    </label>
+                    <Select
+                      :modelValue="rule.scope"
+                      @update:modelValue="
+                        rule.scope = $event as
+                          | 'all'
+                          | 'oauth'
+                          | 'apikey'
+                          | 'bedrock'
+                      "
+                      :options="openaiFastPolicyScopeOptions"
+                    />
+                  </div>
+                </div>
+
+                <!-- Error Message (only when action=block) -->
+                <div v-if="rule.action === 'block'" class="mt-3">
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.errorMessage") }}
+                  </label>
+                  <input
+                    v-model="rule.error_message"
+                    type="text"
+                    class="input"
+                    :placeholder="
+                      t(
+                        'admin.settings.openaiFastPolicy.errorMessagePlaceholder',
+                      )
+                    "
+                  />
+                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t("admin.settings.openaiFastPolicy.errorMessageHint") }}
+                  </p>
+                </div>
+
+                <!-- Model Whitelist -->
+                <div class="mt-3">
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.modelWhitelist") }}
+                  </label>
+                  <p class="mb-2 text-xs text-gray-400 dark:text-gray-500">
+                    {{
+                      t("admin.settings.openaiFastPolicy.modelWhitelistHint")
+                    }}
+                  </p>
+                  <div
+                    v-for="(_, patternIdx) in rule.model_whitelist || []"
+                    :key="patternIdx"
+                    class="mb-1.5 flex items-center gap-2"
+                  >
+                    <input
+                      v-model="rule.model_whitelist![patternIdx]"
+                      type="text"
+                      class="input input-sm flex-1"
+                      :placeholder="
+                        t(
+                          'admin.settings.openaiFastPolicy.modelPatternPlaceholder',
+                        )
+                      "
+                    />
+                    <button
+                      type="button"
+                      @click="
+                        removeOpenAIFastPolicyModelPattern(rule, patternIdx)
+                      "
+                      class="shrink-0 rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    >
+                      <svg
+                        class="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    @click="addOpenAIFastPolicyModelPattern(rule)"
+                    class="mb-2 inline-flex items-center gap-1 text-xs text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                  >
+                    <svg
+                      class="h-3.5 w-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    {{ t("admin.settings.openaiFastPolicy.addModelPattern") }}
+                  </button>
+                </div>
+
+                <!-- Fallback Action (only when model_whitelist is non-empty) -->
+                <div
+                  v-if="
+                    rule.model_whitelist && rule.model_whitelist.length > 0
+                  "
+                  class="mt-3"
+                >
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.fallbackAction") }}
+                  </label>
+                  <Select
+                    :modelValue="rule.fallback_action || 'pass'"
+                    @update:modelValue="
+                      rule.fallback_action = $event as
+                        | 'pass'
+                        | 'filter'
+                        | 'block'
+                    "
+                    :options="openaiFastPolicyActionOptions"
+                  />
+                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {{
+                      t("admin.settings.openaiFastPolicy.fallbackActionHint")
+                    }}
+                  </p>
+                  <div v-if="rule.fallback_action === 'block'" class="mt-2">
+                    <input
+                      v-model="rule.fallback_error_message"
+                      type="text"
+                      class="input"
+                      :placeholder="
+                        t(
+                          'admin.settings.openaiFastPolicy.fallbackErrorMessagePlaceholder',
+                        )
+                      "
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Add Rule Button -->
+              <div>
+                <button
+                  type="button"
+                  @click="addOpenAIFastPolicyRule"
+                  class="btn btn-secondary btn-sm inline-flex items-center gap-1"
+                >
+                  <svg
+                    class="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  {{ t("admin.settings.openaiFastPolicy.addRule") }}
+                </button>
+                <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                  {{ t("admin.settings.openaiFastPolicy.saveHint") }}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
         <!-- /Tab: Gateway -->
 
@@ -1016,7 +1415,6 @@
                       :key="suffix"
                       class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs font-mono text-gray-700 dark:bg-dark-600 dark:text-gray-200"
                     >
-                      <span class="text-gray-400 dark:text-gray-500">@</span>
                       <span>{{ suffix }}</span>
                       <button
                         type="button"
@@ -1037,10 +1435,6 @@
                     <div
                       class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-300 dark:focus-within:border-primary-700"
                     >
-                      <span
-                        class="font-mono text-sm text-gray-400 dark:text-gray-500"
-                        >@</span
-                      >
                       <input
                         v-model="registrationEmailSuffixWhitelistDraft"
                         type="text"
@@ -1161,6 +1555,33 @@
                   v-model="form.totp_enabled"
                   :disabled="!form.totp_encryption_key_configured"
                 />
+              </div>
+            </div>
+          </div>
+
+          <!-- API Key IP ACL Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.apiKeyAcl.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.apiKeyAcl.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.apiKeyAcl.trustForwardedIp") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.apiKeyAcl.trustForwardedIpHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.api_key_acl_trust_forwarded_ip" />
               </div>
             </div>
           </div>
@@ -1360,6 +1781,232 @@
                     <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                       {{ t("admin.settings.linuxdo.redirectUrlHint") }}
                     </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- GitHub / Google 邮箱快捷登录 -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ localText("邮箱快捷登录", "Email OAuth Sign-in") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{
+                  localText(
+                    "开启 GitHub 或 Google 邮箱授权登录后，系统会读取已验证邮箱，存在则直接登录，不存在则自动注册。",
+                    "After GitHub or Google email OAuth is enabled, the system reads a verified email, signs in matching users, and auto-registers missing users.",
+                  )
+                }}
+              </p>
+            </div>
+            <div class="space-y-6 p-6">
+              <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+                  <div class="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 class="font-medium text-gray-900 dark:text-white">
+                        GitHub
+                      </h3>
+                      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {{
+                          localText(
+                            "GitHub OAuth App 需要 read:user user:email 权限，回调地址填写下方后端地址。",
+                            "GitHub OAuth App needs read:user user:email scopes. Use the backend callback URL below.",
+                          )
+                        }}
+                      </p>
+                    </div>
+                    <Toggle v-model="form.github_oauth_enabled" />
+                  </div>
+
+                  <div v-if="form.github_oauth_enabled" class="mt-4 space-y-4">
+                    <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300">
+                      <template v-if="isZhLocale">
+                        开通引导：GitHub Settings → Developer settings →
+                        <a
+                          data-testid="github-oauth-apps-guide-link"
+                          href="https://github.com/settings/developers"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                        >OAuth Apps</a>
+                        → New OAuth App；Homepage URL 填站点域名，Authorization callback URL 填下面的后端回调地址。
+                      </template>
+                      <template v-else>
+                        Setup guide: GitHub Settings → Developer settings →
+                        <a
+                          data-testid="github-oauth-apps-guide-link"
+                          href="https://github.com/settings/developers"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                        >OAuth Apps</a>
+                        → New OAuth App. Use your site origin as Homepage URL and the backend callback URL below as Authorization callback URL.
+                      </template>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Client ID</label>
+                        <input
+                          v-model="form.github_oauth_client_id"
+                          type="text"
+                          class="input font-mono text-sm"
+                          placeholder="GitHub OAuth Client ID"
+                        />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Client Secret</label>
+                        <input
+                          v-model="form.github_oauth_client_secret"
+                          type="password"
+                          class="input font-mono text-sm"
+                          :placeholder="
+                            form.github_oauth_client_secret_configured
+                              ? localText('密钥已配置，留空以保留当前值。', 'Secret configured. Leave empty to keep the current value.')
+                              : 'GitHub OAuth Client Secret'
+                          "
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ localText("后端回调地址", "Backend Callback URL") }}
+                      </label>
+                      <input
+                        v-model="form.github_oauth_redirect_url"
+                        type="url"
+                        class="input font-mono text-sm"
+                        placeholder="https://your-domain.com/api/v1/auth/oauth/github/callback"
+                      />
+                      <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm w-fit"
+                          @click="setAndCopyEmailOAuthRedirectUrl('github')"
+                        >
+                          {{ localText("生成并复制", "Generate and copy") }}
+                        </button>
+                        <code
+                          v-if="githubOAuthRedirectUrlSuggestion"
+                          class="select-all break-all rounded bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300"
+                        >
+                          {{ githubOAuthRedirectUrlSuggestion }}
+                        </code>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ localText("前端回跳地址", "Frontend Callback URL") }}
+                      </label>
+                      <input
+                        v-model="form.github_oauth_frontend_redirect_url"
+                        type="text"
+                        class="input font-mono text-sm"
+                        placeholder="/auth/oauth/callback"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+                  <div class="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 class="font-medium text-gray-900 dark:text-white">
+                        Google
+                      </h3>
+                      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {{
+                          localText(
+                            "Google OAuth 客户端需要 openid email profile 范围，并在凭据里登记后端回调地址。",
+                            "Google OAuth client needs openid email profile scopes and the backend callback URL registered in credentials.",
+                          )
+                        }}
+                      </p>
+                    </div>
+                    <Toggle v-model="form.google_oauth_enabled" />
+                  </div>
+
+                  <div v-if="form.google_oauth_enabled" class="mt-4 space-y-4">
+                    <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300">
+                      {{
+                        localText(
+                          "开通引导：Google Cloud Console → APIs & Services → OAuth consent screen 完成同意屏幕；Credentials → Create Credentials → OAuth client ID，类型选择 Web application，并把下面地址加入 Authorized redirect URIs。",
+                          "Setup guide: Google Cloud Console → APIs & Services → OAuth consent screen, then Credentials → Create Credentials → OAuth client ID, choose Web application, and add the URL below to Authorized redirect URIs.",
+                        )
+                      }}
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Client ID</label>
+                        <input
+                          v-model="form.google_oauth_client_id"
+                          type="text"
+                          class="input font-mono text-sm"
+                          placeholder="Google OAuth Client ID"
+                        />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Client Secret</label>
+                        <input
+                          v-model="form.google_oauth_client_secret"
+                          type="password"
+                          class="input font-mono text-sm"
+                          :placeholder="
+                            form.google_oauth_client_secret_configured
+                              ? localText('密钥已配置，留空以保留当前值。', 'Secret configured. Leave empty to keep the current value.')
+                              : 'Google OAuth Client Secret'
+                          "
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ localText("后端回调地址", "Backend Callback URL") }}
+                      </label>
+                      <input
+                        v-model="form.google_oauth_redirect_url"
+                        type="url"
+                        class="input font-mono text-sm"
+                        placeholder="https://your-domain.com/api/v1/auth/oauth/google/callback"
+                      />
+                      <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm w-fit"
+                          @click="setAndCopyEmailOAuthRedirectUrl('google')"
+                        >
+                          {{ localText("生成并复制", "Generate and copy") }}
+                        </button>
+                        <code
+                          v-if="googleOAuthRedirectUrlSuggestion"
+                          class="select-all break-all rounded bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300"
+                        >
+                          {{ googleOAuthRedirectUrlSuggestion }}
+                        </code>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ localText("前端回跳地址", "Frontend Callback URL") }}
+                      </label>
+                      <input
+                        v-model="form.google_oauth_frontend_redirect_url"
+                        type="text"
+                        class="input font-mono text-sm"
+                        placeholder="/auth/oauth/callback"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1703,6 +2350,294 @@
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.wechatConnect.frontendRedirectUrlHint") }}
                   </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DingTalk Connect OAuth 登录 -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.dingtalk.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.dingtalk.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.dingtalk.enable")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.dingtalk.enableHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.dingtalk_connect_enabled" />
+              </div>
+
+              <div
+                v-if="form.dingtalk_connect_enabled"
+                class="border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div class="grid grid-cols-1 gap-6">
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.dingtalk.clientId") }}
+                    </label>
+                    <input
+                      v-model="form.dingtalk_connect_client_id"
+                      type="text"
+                      class="input font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.dingtalk.clientIdPlaceholder')
+                      "
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.dingtalk.clientIdHint") }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.dingtalk.clientSecret") }}
+                    </label>
+                    <input
+                      v-model="form.dingtalk_connect_client_secret"
+                      type="password"
+                      class="input font-mono text-sm"
+                      :placeholder="
+                        form.dingtalk_connect_client_secret_configured
+                          ? t(
+                              'admin.settings.dingtalk.clientSecretConfiguredPlaceholder',
+                            )
+                          : t('admin.settings.dingtalk.clientSecretPlaceholder')
+                      "
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{
+                        form.dingtalk_connect_client_secret_configured
+                          ? t(
+                              "admin.settings.dingtalk.clientSecretConfiguredHint",
+                            )
+                          : t("admin.settings.dingtalk.clientSecretHint")
+                      }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.dingtalk.redirectUrl") }}
+                    </label>
+                    <input
+                      v-model="form.dingtalk_connect_redirect_url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.dingtalk.redirectUrlPlaceholder')
+                      "
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.dingtalk.redirectUrlHint") }}
+                    </p>
+                  </div>
+
+                  <!-- Corp Restriction Policy -->
+                  <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.dingtalk.corpPolicy.label") }}
+                    </label>
+                    <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.dingtalk.corpPolicy.hint") }}
+                    </p>
+                    <div class="space-y-2">
+                      <label class="flex cursor-pointer items-center gap-3">
+                        <input
+                          v-model="form.dingtalk_connect_corp_restriction_policy"
+                          type="radio"
+                          value="none"
+                          class="h-4 w-4 text-primary-600"
+                        />
+                        <span class="text-sm text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.dingtalk.corpPolicy.none") }}
+                        </span>
+                      </label>
+                      <label class="flex cursor-pointer items-center gap-3">
+                        <input
+                          v-model="form.dingtalk_connect_corp_restriction_policy"
+                          type="radio"
+                          value="internal_only"
+                          class="h-4 w-4 text-primary-600"
+                        />
+                        <span class="text-sm text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.dingtalk.corpPolicy.internalOnly") }}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <!-- bypass_registration toggle（仅 internal_only 模式下可见可用） -->
+                  <div
+                    v-if="form.dingtalk_connect_corp_restriction_policy === 'internal_only'"
+                    class="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-dark-700"
+                  >
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">{{
+                        t("admin.settings.dingtalk.bypassRegistration")
+                      }}</label>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.dingtalk.bypassRegistrationHint") }}
+                      </p>
+                    </div>
+                    <Toggle v-model="form.dingtalk_connect_bypass_registration" />
+                  </div>
+
+                  <!-- 身份同步开关（仅 internal_only 模式下可见） -->
+                  <div
+                    v-if="form.dingtalk_connect_corp_restriction_policy === 'internal_only'"
+                    class="pt-4 border-t border-gray-100 dark:border-dark-700 space-y-2"
+                  >
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <label class="font-medium text-gray-900 dark:text-white">{{
+                          t("admin.settings.dingtalk.syncDisplayName")
+                        }}</label>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.dingtalk.syncDisplayNameHint") }}
+                        </p>
+                      </div>
+                      <Toggle v-model="form.dingtalk_connect_sync_display_name" />
+                    </div>
+                    <div v-if="form.dingtalk_connect_sync_display_name" class="space-y-2">
+                      <div class="flex items-center gap-2">
+                        <label class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap min-w-[5rem]">
+                          {{ t("admin.settings.dingtalk.syncDisplayNameTarget") }}
+                        </label>
+                        <input
+                          v-model="form.dingtalk_connect_sync_display_name_attr_key"
+                          type="text"
+                          placeholder="dingtalk_name"
+                          class="input text-sm flex-1 max-w-xs"
+                        />
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <label class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap min-w-[5rem]">
+                          {{ t("admin.settings.dingtalk.syncAttrDisplayName") }}
+                        </label>
+                        <input
+                          v-model="form.dingtalk_connect_sync_display_name_attr_name"
+                          type="text"
+                          placeholder="钉钉姓名"
+                          class="input text-sm flex-1 max-w-xs"
+                        />
+                      </div>
+                    </div>
+                    <p v-if="form.dingtalk_connect_sync_display_name" class="text-xs text-gray-400 dark:text-gray-500">
+                      {{ t("admin.settings.dingtalk.syncDisplayNameTargetHint") }}
+                    </p>
+                  </div>
+                  <div
+                    v-if="form.dingtalk_connect_corp_restriction_policy === 'internal_only'"
+                    class="pt-4 border-t border-gray-100 dark:border-dark-700 space-y-2"
+                  >
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <label class="font-medium text-gray-900 dark:text-white">{{
+                          t("admin.settings.dingtalk.syncCorpEmail")
+                        }}</label>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.dingtalk.syncCorpEmailHint") }}
+                        </p>
+                        <p class="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                          {{ t("admin.settings.dingtalk.syncCorpEmailPermissionHint") }}
+                        </p>
+                      </div>
+                      <Toggle v-model="form.dingtalk_connect_sync_corp_email" />
+                    </div>
+                    <div v-if="form.dingtalk_connect_sync_corp_email" class="space-y-2">
+                      <div class="flex items-center gap-2">
+                        <label class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap min-w-[5rem]">
+                          {{ t("admin.settings.dingtalk.syncCorpEmailTarget") }}
+                        </label>
+                        <input
+                          v-model="form.dingtalk_connect_sync_corp_email_attr_key"
+                          type="text"
+                          placeholder="dingtalk_email"
+                          class="input text-sm flex-1 max-w-xs"
+                        />
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <label class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap min-w-[5rem]">
+                          {{ t("admin.settings.dingtalk.syncAttrDisplayName") }}
+                        </label>
+                        <input
+                          v-model="form.dingtalk_connect_sync_corp_email_attr_name"
+                          type="text"
+                          placeholder="钉钉企业邮箱"
+                          class="input text-sm flex-1 max-w-xs"
+                        />
+                      </div>
+                    </div>
+                    <p v-if="form.dingtalk_connect_sync_corp_email" class="text-xs text-gray-400 dark:text-gray-500">
+                      {{ t("admin.settings.dingtalk.syncCorpEmailTargetHint") }}
+                    </p>
+                  </div>
+                  <div
+                    v-if="form.dingtalk_connect_corp_restriction_policy === 'internal_only'"
+                    class="pt-4 border-t border-gray-100 dark:border-dark-700 space-y-2"
+                  >
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <label class="font-medium text-gray-900 dark:text-white">{{
+                          t("admin.settings.dingtalk.syncDept")
+                        }}</label>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.dingtalk.syncDeptHint") }}
+                        </p>
+                        <p class="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                          {{ t("admin.settings.dingtalk.syncDeptPermissionHint") }}
+                        </p>
+                      </div>
+                      <Toggle v-model="form.dingtalk_connect_sync_dept" />
+                    </div>
+                    <div v-if="form.dingtalk_connect_sync_dept" class="space-y-2">
+                      <div class="flex items-center gap-2">
+                        <label class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap min-w-[5rem]">
+                          {{ t("admin.settings.dingtalk.syncDeptTarget") }}
+                        </label>
+                        <input
+                          v-model="form.dingtalk_connect_sync_dept_attr_key"
+                          type="text"
+                          placeholder="dingtalk_department"
+                          class="input text-sm flex-1 max-w-xs"
+                        />
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <label class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap min-w-[5rem]">
+                          {{ t("admin.settings.dingtalk.syncAttrDisplayName") }}
+                        </label>
+                        <input
+                          v-model="form.dingtalk_connect_sync_dept_attr_name"
+                          type="text"
+                          placeholder="钉钉部门"
+                          class="input text-sm flex-1 max-w-xs"
+                        />
+                      </div>
+                    </div>
+                    <p v-if="form.dingtalk_connect_sync_dept" class="text-xs text-gray-400 dark:text-gray-500">
+                      {{ t("admin.settings.dingtalk.syncDeptTargetHint") }}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2327,6 +3262,71 @@
                   </div>
                 </div>
               </div>
+
+              <!-- ★ 新增：系统全局默认平台限额矩阵 -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="mb-3">
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.defaults.defaultPlatformQuotas") }}
+                  </label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.defaults.defaultPlatformQuotasHint") }}
+                  </p>
+                  <p class="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
+                    {{ t("admin.settings.defaults.platformQuotaNotice") }}
+                  </p>
+                </div>
+                <div class="overflow-x-auto">
+                  <table class="min-w-full text-sm">
+                    <thead>
+                      <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                        <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.platform") }}</th>
+                        <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.daily") }}</th>
+                        <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.weekly") }}</th>
+                        <th class="pb-2 font-medium">{{ t("admin.settings.platformQuota.monthly") }}</th>
+                      </tr>
+                    </thead>
+                    <tbody class="space-y-2">
+                      <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity'] as const)" :key="p" class="align-top">
+                        <td class="pr-4 py-1">
+                          <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
+                        </td>
+                        <td class="pr-4 py-1">
+                          <input
+                            v-model.number="form.default_platform_quotas[p]!.daily"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="input h-8 w-28 text-sm"
+                            :placeholder="t('admin.settings.platformQuota.placeholder')"
+                          />
+                        </td>
+                        <td class="pr-4 py-1">
+                          <input
+                            v-model.number="form.default_platform_quotas[p]!.weekly"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="input h-8 w-28 text-sm"
+                            :placeholder="t('admin.settings.platformQuota.placeholder')"
+                          />
+                        </td>
+                        <td class="py-1">
+                          <input
+                            v-model.number="form.default_platform_quotas[p]!.monthly"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="input h-8 w-28 text-sm"
+                            :placeholder="t('admin.settings.platformQuota.placeholder')"
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <!-- /全局平台限额矩阵 -->
             </div>
           </div>
 
@@ -2600,6 +3600,68 @@
                         </div>
                       </div>
                     </div>
+
+                    <!-- ★ 新增：auth source 平台限额覆盖区块 -->
+                    <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                      <div class="mb-3">
+                        <label class="font-medium text-gray-900 dark:text-white">
+                          {{ t("admin.settings.authSourceDefaults.platformQuotasOverride") }}
+                        </label>
+                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.authSourceDefaults.platformQuotasOverrideHint") }}
+                        </p>
+                      </div>
+                      <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                          <thead>
+                            <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                              <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.platform") }}</th>
+                              <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.daily") }}</th>
+                              <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.weekly") }}</th>
+                              <th class="pb-2 font-medium">{{ t("admin.settings.platformQuota.monthly") }}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity'] as const)" :key="`${authSource.source}-pq-${p}`" class="align-top">
+                              <td class="pr-4 py-1">
+                                <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
+                              </td>
+                              <td class="pr-4 py-1">
+                                <input
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.daily"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  class="input h-8 w-28 text-sm"
+                                  :placeholder="t('admin.settings.platformQuota.placeholder')"
+                                />
+                              </td>
+                              <td class="pr-4 py-1">
+                                <input
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.weekly"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  class="input h-8 w-28 text-sm"
+                                  :placeholder="t('admin.settings.platformQuota.placeholder')"
+                                />
+                              </td>
+                              <td class="py-1">
+                                <input
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.monthly"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  class="input h-8 w-28 text-sm"
+                                  :placeholder="t('admin.settings.platformQuota.placeholder')"
+                                />
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    <!-- /auth source 平台限额覆盖区块 -->
                   </div>
                 </div>
               </div>
@@ -2777,6 +3839,127 @@
                   </p>
                 </div>
                 <Toggle v-model="form.enable_cch_signing" />
+              </div>
+
+              <!-- Anthropic Cache TTL 1h Injection -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.anthropicCacheTTL1hInjection",
+                      )
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.anthropicCacheTTL1hInjectionHint",
+                      )
+                    }}
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.enable_anthropic_cache_ttl_1h_injection"
+                />
+              </div>
+
+              <!-- messages cache_control 改写 -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.rewriteMessageCacheControl",
+                      )
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.rewriteMessageCacheControlHint",
+                      )
+                    }}
+                  </p>
+                </div>
+                <Toggle v-model="form.rewrite_message_cache_control" />
+              </div>
+
+              <!-- Antigravity UA 版本 -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.antigravityUserAgentVersion",
+                    )
+                  }}
+                </label>
+                <input
+                  v-model="form.antigravity_user_agent_version"
+                  type="text"
+                  class="input max-w-xs font-mono text-sm"
+                  :placeholder="
+                    t(
+                      'admin.settings.gatewayForwarding.antigravityUserAgentVersionPlaceholder',
+                    )
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.antigravityUserAgentVersionHint",
+                    )
+                  }}
+                </p>
+              </div>
+
+              <!-- OpenAI Codex UA -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.openaiCodexUserAgent",
+                    )
+                  }}
+                </label>
+                <input
+                  v-model="form.openai_codex_user_agent"
+                  type="text"
+                  class="input w-full font-mono text-sm"
+                  :placeholder="
+                    t(
+                      'admin.settings.gatewayForwarding.openaiCodexUserAgentPlaceholder',
+                    )
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.openaiCodexUserAgentHint",
+                    )
+                  }}
+                </p>
+              </div>
+
+              <!-- 是否允许在 Claude Code 中使用 Codex 插件（全局开关） -->
+              <div class="flex items-center justify-between">
+                <div class="pr-4">
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPlugin") }}
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPluginDesc") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.openai_allow_claude_code_codex_plugin" />
               </div>
             </div>
           </div>
@@ -3215,6 +4398,35 @@
               </div>
             </div>
           </div>
+
+        <!-- Usage Records Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.usageRecords.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.usageRecords.description') }}
+            </p>
+          </div>
+          <div class="space-y-4 p-6">
+            <!-- User error requests visibility -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.user_error_view.label') }}
+                </label>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.user_error_view.description') }}
+                </p>
+              </div>
+              <label class="toggle">
+                <input v-model="form.allow_user_view_error_requests" type="checkbox" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
         </div>
         <!-- /Tab: Gateway — Claude Code, Scheduling -->
 
@@ -3244,11 +4456,11 @@
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.site.backendModeDescription") }}
                   </p>
-                </div>
-                <Toggle v-model="form.backend_mode_enabled" />
-              </div>
+	                </div>
+	                <Toggle v-model="form.backend_mode_enabled" />
+	              </div>
 
-              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+	              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
                   <label
                     class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -3764,10 +4976,212 @@
               </button>
             </div>
           </div>
-        </div>
-        <!-- /Tab: General -->
+	        </div>
+	        <!-- /Tab: General -->
 
-        <!-- Tab: Features (功能开关) -->
+	        <!-- Tab: Login Agreement -->
+	        <div v-show="activeTab === 'agreement'" class="space-y-6">
+	          <div class="card">
+	            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+	              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+	                <div>
+	                  <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+	                    {{ localText("登录条款确认", "Login agreement") }}
+	                  </h2>
+	                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+	                    {{
+	                      localText(
+	                        "控制登录页是否要求用户先阅读并同意服务条款、隐私政策或其他 Markdown 文档。",
+	                        "Control whether the login page requires users to accept Markdown policy documents first.",
+	                      )
+	                    }}
+	                  </p>
+	                </div>
+	                <div class="flex items-center gap-3">
+	                  <span class="text-sm text-gray-600 dark:text-gray-300">
+	                    {{ form.login_agreement_enabled ? localText("已启用", "Enabled") : localText("未启用", "Disabled") }}
+	                  </span>
+	                  <Toggle v-model="form.login_agreement_enabled" />
+	                </div>
+	              </div>
+	            </div>
+
+	            <div class="space-y-6 p-6">
+	              <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_220px]">
+	                <div>
+	                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+	                    {{ localText("展示形式", "Display mode") }}
+	                  </label>
+	                  <div class="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+                    <button
+                      type="button"
+                      class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+                      :class="
+                        form.login_agreement_mode === 'modal'
+                          ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
+                          : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
+                      "
+                      @click="form.login_agreement_mode = 'modal'"
+                    >
+                      <Icon name="shield" size="sm" />
+                      {{ localText("弹窗", "Modal") }}
+                    </button>
+                    <button
+                      type="button"
+                      class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+                      :class="
+                        form.login_agreement_mode === 'checkbox'
+                          ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
+                          : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
+                      "
+                      @click="form.login_agreement_mode = 'checkbox'"
+                    >
+                      <Icon name="checkCircle" size="sm" />
+                      {{ localText("复选框", "Checkbox") }}
+                    </button>
+                  </div>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      form.login_agreement_mode === "checkbox"
+                        ? localText("复选框会显示在登录按钮下方，未勾选前所有登录入口禁用。", "The checkbox appears below the login button and gates all login actions.")
+                        : localText("弹窗会在登录页打开，用户拒绝后所有登录入口保持禁用。", "The modal opens on the login page and gates all login actions until accepted.")
+                    }}
+                  </p>
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ localText("条款更新日期", "Updated date") }}
+                  </label>
+                  <input
+                    v-model="form.login_agreement_updated_at"
+                    type="date"
+                    class="input"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ localText("日期或文档内容变化后，用户需要重新同意。", "Changing the date or content requires fresh consent.") }}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                      {{ localText("协议文档", "Agreement documents") }}
+                    </h3>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{
+                        localText(
+                          "文档名称可自定义，内容按 Markdown 保存。可参考：服务条款、使用政策、支持的国家和地区、服务特定条款。",
+                          "Document titles are customizable and content is saved as Markdown.",
+                        )
+                      }}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm inline-flex items-center gap-1.5"
+                    @click="addLoginAgreementDocument"
+                  >
+                    <Icon name="plus" size="sm" />
+                    {{ localText("添加文档", "Add document") }}
+                  </button>
+                </div>
+
+                <div class="mt-4 space-y-3">
+                  <div
+                    v-for="(doc, index) in form.login_agreement_documents"
+                    :key="doc.id || index"
+                    class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800/60"
+                  >
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                      <div class="flex min-w-0 items-center gap-3">
+                        <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-dark-200">
+                          <Icon
+                            :name="
+                              index === 1
+                                ? 'shield'
+                                : index === 2
+                                  ? 'globe'
+                                  : index === 3
+                                    ? 'cog'
+                                    : 'document'
+                            "
+                            size="sm"
+                          />
+                        </span>
+                        <div class="min-w-0">
+                          <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                            {{ doc.title || localText("未命名文档", "Untitled document") }}
+                          </p>
+                          <p class="truncate text-xs text-gray-500 dark:text-gray-400">
+                            {{ loginAgreementRoutePath(doc, index) }}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        class="rounded-md p-2 text-red-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-900/20"
+                        :disabled="
+                          form.login_agreement_enabled &&
+                          form.login_agreement_documents.length <= 1
+                        "
+                        @click="removeLoginAgreementDocument(index)"
+                      >
+                        <Icon name="trash" size="sm" />
+                      </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ localText("文档名称", "Document title") }}
+                        </label>
+                        <input
+                          v-model="doc.title"
+                          type="text"
+                          class="input text-sm"
+                          :placeholder="localText('例如：服务条款', 'Example: Terms of Service')"
+                        />
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ localText("路由标识", "Route slug") }}
+                        </label>
+                        <div class="flex overflow-hidden rounded-lg border border-gray-300 bg-white focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500 dark:border-dark-600 dark:bg-dark-900">
+                          <span class="inline-flex flex-shrink-0 items-center border-r border-gray-200 bg-gray-50 px-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-400">
+                            /legal/
+                          </span>
+                          <input
+                            v-model="doc.id"
+                            type="text"
+                            class="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:ring-0 dark:text-white dark:placeholder:text-dark-500"
+                            placeholder="usage-policy"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mt-3">
+                      <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                        {{ localText("Markdown 内容", "Markdown content") }}
+                      </label>
+                        <textarea
+                          v-model="doc.content_md"
+                          rows="8"
+                          class="input font-mono text-sm"
+                          :placeholder="localText('在这里填写正式 Markdown 内容。', 'Write the final Markdown content here.')"
+                        ></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- /Tab: Login Agreement -->
+
+	        <!-- Tab: Features (功能开关) -->
         <div v-show="activeTab === 'features'" class="space-y-6">
 
         <div class="card">
@@ -3849,6 +5263,39 @@
                 </p>
               </div>
               <Toggle v-model="form.available_channels_enabled" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.riskControl.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.riskControl.description') }}
+            </p>
+            <p class="mt-1.5 text-xs">
+              <router-link
+                to="/admin/risk-control"
+                class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
+              >
+                {{ t('admin.settings.features.riskControl.configureLink') }}
+                <span aria-hidden="true">→</span>
+              </router-link>
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.riskControl.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.riskControl.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.risk_control_enabled" />
             </div>
           </div>
         </div>
@@ -4617,6 +6064,38 @@
                       >
                     </div>
                   </div>
+                  <div>
+                    <label class="input-label">{{
+                      t("admin.settings.payment.alipayForceQRCode")
+                    }}</label>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        :class="[
+                          'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                          form.payment_alipay_force_qrcode
+                            ? 'bg-primary-500'
+                            : 'bg-gray-300 dark:bg-dark-600',
+                        ]"
+                        @click="
+                          form.payment_alipay_force_qrcode =
+                            !form.payment_alipay_force_qrcode
+                        "
+                      >
+                        <span
+                          :class="[
+                            'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                            form.payment_alipay_force_qrcode
+                              ? 'translate-x-5'
+                              : 'translate-x-0',
+                          ]"
+                        />
+                      </button>
+                      <span class="text-sm text-gray-500 dark:text-gray-400">{{
+                        t("admin.settings.payment.alipayForceQRCodeHint")
+                      }}</span>
+                    </div>
+                  </div>
                 </div>
                 <!-- Row 4: Enabled payment types (provider badges like sub2apipay) -->
                 <div>
@@ -4967,6 +6446,38 @@
               </div>
             </div>
           </div>
+
+          <!-- 订阅到期提醒 -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h3 class="text-base font-medium text-gray-900 dark:text-white">
+                {{ t("admin.settings.subscriptionExpiryNotify.title") }}
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.subscriptionExpiryNotify.description") }}
+              </p>
+            </div>
+            <div class="px-6 py-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label
+                    class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.subscriptionExpiryNotify.enabled") }}
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.subscriptionExpiryNotify.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.subscription_expiry_notify_enabled" />
+              </div>
+            </div>
+          </div>
+
+          <EmailTemplateEditor />
+
           <!-- Balance Low Notification -->
           <div class="card">
             <div
@@ -5188,6 +6699,8 @@ import { adminAPI } from "@/api";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
   buildAuthSourceDefaultsState,
+  normalizePlatformQuotasMap,
+  sanitizePlatformQuotasMap,
   defaultWeChatConnectScopesForMode,
   deriveWeChatConnectStoredMode,
   normalizeDefaultSubscriptionSettings,
@@ -5199,12 +6712,19 @@ import type {
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
+  DefaultPlatformQuotasMap,
+  OpenAIFastPolicyRule,
   WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
 } from "@/api/admin/settings";
-import type { AdminGroup, Proxy, NotifyEmailEntry } from "@/types";
+import type {
+  AdminGroup,
+  LoginAgreementDocument,
+  NotifyEmailEntry,
+  Proxy,
+} from "@/types";
 import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
@@ -5218,6 +6738,7 @@ import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
+import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
@@ -5234,9 +6755,10 @@ import {
 const { t, locale } = useI18n();
 const appStore = useAppStore();
 const adminSettingsStore = useAdminSettingsStore();
+const isZhLocale = computed(() => locale.value.startsWith("zh"));
 
 function localText(zh: string, en: string): string {
-  return locale.value.startsWith("zh") ? zh : en;
+  return isZhLocale.value ? zh : en;
 }
 
 const paymentGuideHref = computed(() =>
@@ -5253,6 +6775,7 @@ const paymentMethodsHref = computed(() =>
 
 type SettingsTab =
   | "general"
+  | "agreement"
   | "features"
   | "security"
   | "users"
@@ -5263,6 +6786,7 @@ type SettingsTab =
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
+  { key: "agreement" as SettingsTab, icon: "document" as const },
   { key: "features" as SettingsTab, icon: "bolt" as const },
   { key: "security" as SettingsTab, icon: "shield" as const },
   { key: "users" as SettingsTab, icon: "user" as const },
@@ -5271,6 +6795,57 @@ const settingsTabs = [
   { key: "email" as SettingsTab, icon: "mail" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
 ];
+
+const settingsTabKeyboardActions = {
+  ArrowLeft: -1,
+  ArrowUp: -1,
+  ArrowRight: 1,
+  ArrowDown: 1,
+  Home: "first",
+  End: "last",
+} as const;
+
+function selectSettingsTab(tab: SettingsTab): void {
+  activeTab.value = tab;
+}
+
+function focusSettingsTab(tab: SettingsTab): void {
+  window.requestAnimationFrame(() => {
+    document.getElementById(`settings-tab-${tab}`)?.focus();
+  });
+}
+
+function handleSettingsTabKeydown(event: KeyboardEvent, tab: SettingsTab): void {
+  const action =
+    settingsTabKeyboardActions[
+      event.key as keyof typeof settingsTabKeyboardActions
+    ];
+  if (action === undefined) {
+    return;
+  }
+
+  event.preventDefault();
+  const currentIndex = settingsTabs.findIndex((item) => item.key === tab);
+  let nextIndex = currentIndex < 0 ? 0 : currentIndex;
+
+  if (action === "first") {
+    nextIndex = 0;
+  } else if (action === "last") {
+    nextIndex = settingsTabs.length - 1;
+  } else {
+    nextIndex =
+      (nextIndex + action + settingsTabs.length) % settingsTabs.length;
+  }
+
+  const nextTab = settingsTabs[nextIndex]?.key;
+  if (!nextTab) {
+    return;
+  }
+
+  selectSettingsTab(nextTab);
+  focusSettingsTab(nextTab);
+}
+
 const { copyToClipboard } = useClipboard();
 
 const loading = ref(true);
@@ -5298,6 +6873,14 @@ const overloadCooldownSaving = ref(false);
 const overloadCooldownForm = reactive({
   enabled: true,
   cooldown_minutes: 10,
+});
+
+// Rate Limit Cooldown (429) 状态
+const rateLimit429CooldownLoading = ref(true);
+const rateLimit429CooldownSaving = ref(false);
+const rateLimit429CooldownForm = reactive({
+  enabled: true,
+  cooldown_seconds: 5,
 });
 
 // Stream Timeout 状态
@@ -5337,9 +6920,60 @@ const betaPolicyForm = reactive({
   }>,
 });
 
+// OpenAI Fast/Flex Policy 状态
+const openaiFastPolicyForm = reactive({
+  rules: [] as OpenAIFastPolicyRule[],
+});
+// 标记 openai_fast_policy_settings 是否已成功从后端加载，
+// 避免后端 GET 出错或字段缺失时，保存把默认规则覆盖成空数组。
+const openaiFastPolicyLoaded = ref(false);
+
 const tablePageSizeMin = 5;
 const tablePageSizeMax = 1000;
 const tablePageSizeDefault = 20;
+
+function defaultLoginAgreementDocuments(): LoginAgreementDocument[] {
+  return [
+    {
+      id: "terms",
+      title: "服务条款",
+      content_md: "",
+    },
+    {
+      id: "usage-policy",
+      title: "使用政策",
+      content_md: "",
+    },
+    {
+      id: "supported-regions",
+      title: "支持的国家和地区",
+      content_md: "",
+    },
+    {
+      id: "service-specific-terms",
+      title: "服务特定条款",
+      content_md: "",
+    },
+  ];
+}
+
+function normalizeLoginAgreementDocumentId(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/[-_]{2,}/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "");
+}
+
+function loginAgreementRoutePath(
+  doc: LoginAgreementDocument,
+  index: number,
+): string {
+  const id =
+    normalizeLoginAgreementDocumentId(doc.id || doc.title) || `doc-${index + 1}`;
+  return `/legal/${id}`;
+}
 
 interface DefaultSubscriptionGroupOption {
   value: number;
@@ -5360,6 +6994,7 @@ type SettingsForm = Omit<
   smtp_password: string;
   turnstile_secret_key: string;
   linuxdo_connect_client_secret: string;
+  dingtalk_connect_client_secret: string;
   wechat_connect_app_secret: string;
   wechat_connect_open_app_secret: string;
   wechat_connect_mp_app_secret: string;
@@ -5368,8 +7003,12 @@ type SettingsForm = Omit<
   wechat_connect_mp_enabled: boolean;
   wechat_connect_mobile_enabled: boolean;
   oidc_connect_client_secret: string;
+  github_oauth_client_secret: string;
+  google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_advanced_scheduler_enabled: boolean;
+  // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
+  default_platform_quotas: DefaultPlatformQuotasMap;
 };
 
 const form = reactive<SettingsForm>({
@@ -5381,7 +7020,12 @@ const form = reactive<SettingsForm>({
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
+  login_agreement_enabled: false,
+  login_agreement_mode: "modal",
+  login_agreement_updated_at: "2026-03-31",
+  login_agreement_documents: defaultLoginAgreementDocuments(),
   default_balance: 0,
+  default_platform_quotas: normalizePlatformQuotasMap() as DefaultPlatformQuotasMap,
   affiliate_rebate_rate: 20,
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
@@ -5400,6 +7044,7 @@ const form = reactive<SettingsForm>({
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
   payment_enabled: false,
+  risk_control_enabled: false,
   payment_min_amount: 1,
   payment_max_amount: 10000,
   payment_daily_limit: 50000,
@@ -5419,6 +7064,7 @@ const form = reactive<SettingsForm>({
   payment_cancel_rate_limit_window: 1,
   payment_cancel_rate_limit_unit: "day",
   payment_cancel_rate_limit_window_mode: "rolling",
+  payment_alipay_force_qrcode: false,
   table_default_page_size: tablePageSizeDefault,
   table_page_size_options: [10, 20, 50, 100],
   custom_menu_items: [] as Array<{
@@ -5448,12 +7094,31 @@ const form = reactive<SettingsForm>({
   turnstile_site_key: "",
   turnstile_secret_key: "",
   turnstile_secret_key_configured: false,
+  api_key_acl_trust_forwarded_ip: false,
   // LinuxDo Connect OAuth 登录
   linuxdo_connect_enabled: false,
   linuxdo_connect_client_id: "",
   linuxdo_connect_client_secret: "",
   linuxdo_connect_client_secret_configured: false,
   linuxdo_connect_redirect_url: "",
+  // DingTalk Connect OAuth 登录
+  dingtalk_connect_enabled: false,
+  dingtalk_connect_client_id: "",
+  dingtalk_connect_client_secret: "",
+  dingtalk_connect_client_secret_configured: false,
+  dingtalk_connect_redirect_url: "",
+  dingtalk_connect_corp_restriction_policy: "none",
+  dingtalk_connect_internal_corp_id: "",
+  dingtalk_connect_bypass_registration: false,
+  dingtalk_connect_sync_corp_email: false,
+  dingtalk_connect_sync_display_name: false,
+  dingtalk_connect_sync_dept: false,
+  dingtalk_connect_sync_corp_email_attr_key: "dingtalk_email",
+  dingtalk_connect_sync_display_name_attr_key: "dingtalk_name",
+  dingtalk_connect_sync_dept_attr_key: "dingtalk_department",
+  dingtalk_connect_sync_corp_email_attr_name: "钉钉企业邮箱",
+  dingtalk_connect_sync_display_name_attr_name: "钉钉姓名",
+  dingtalk_connect_sync_dept_attr_name: "钉钉部门",
   wechat_connect_enabled: false,
   wechat_connect_app_id: "",
   wechat_connect_app_secret: "",
@@ -5498,6 +7163,19 @@ const form = reactive<SettingsForm>({
   oidc_connect_userinfo_email_path: "",
   oidc_connect_userinfo_id_path: "",
   oidc_connect_userinfo_username_path: "",
+  // GitHub / Google 邮箱快捷登录
+  github_oauth_enabled: false,
+  github_oauth_client_id: "",
+  github_oauth_client_secret: "",
+  github_oauth_client_secret_configured: false,
+  github_oauth_redirect_url: "",
+  github_oauth_frontend_redirect_url: "/auth/oauth/callback",
+  google_oauth_enabled: false,
+  google_oauth_client_id: "",
+  google_oauth_client_secret: "",
+  google_oauth_client_secret_configured: false,
+  google_oauth_redirect_url: "",
+  google_oauth_frontend_redirect_url: "/auth/oauth/callback",
   // Model fallback
   enable_model_fallback: false,
   fallback_model_anthropic: "claude-3-5-sonnet-20241022",
@@ -5522,10 +7200,16 @@ const form = reactive<SettingsForm>({
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
-  // Balance & quota notification
+  enable_anthropic_cache_ttl_1h_injection: false,
+  rewrite_message_cache_control: false,
+  antigravity_user_agent_version: "",
+  openai_codex_user_agent: "",
+  openai_allow_claude_code_codex_plugin: false,
+  // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
   balance_low_notify_recharge_url: "",
+  subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as NotifyEmailEntry[],
   // Channel Monitor feature switch
@@ -5535,6 +7219,8 @@ const form = reactive<SettingsForm>({
   available_channels_enabled: false,
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
+  // Allow user view error requests
+  allow_user_view_error_requests: false,
 });
 
 const authSourceDefaults = reactive<AuthSourceDefaultsState>(
@@ -5561,6 +7247,30 @@ const authSourceDefaultsMeta = computed(() => [
     source: "wechat" as AuthSourceType,
     title: t("admin.settings.authSourceDefaults.sources.wechat.title"),
     description: t("admin.settings.authSourceDefaults.sources.wechat.description"),
+  },
+  {
+    source: "github" as AuthSourceType,
+    title: "GitHub",
+    description: localText(
+      "通过 GitHub 已验证邮箱首次注册或首次绑定时应用。",
+      "Applied on first signup or first bind through a verified GitHub email.",
+    ),
+  },
+  {
+    source: "google" as AuthSourceType,
+    title: "Google",
+    description: localText(
+      "通过 Google 已验证邮箱首次注册或首次绑定时应用。",
+      "Applied on first signup or first bind through a verified Google email.",
+    ),
+  },
+  {
+    source: "dingtalk" as AuthSourceType,
+    title: "钉钉",
+    description: localText(
+      "通过钉钉首次注册或首次绑定时应用。",
+      "Applied on first signup or first bind through DingTalk.",
+    ),
   },
 ]);
 
@@ -5869,6 +7579,42 @@ async function setAndCopyLinuxdoRedirectUrl() {
   );
 }
 
+type EmailOAuthProvider = "github" | "google";
+
+const githubOAuthRedirectUrlSuggestion = computed(() => {
+  if (typeof window === "undefined") return "";
+  const origin =
+    window.location.origin ||
+    `${window.location.protocol}//${window.location.host}`;
+  return `${origin}/api/v1/auth/oauth/github/callback`;
+});
+
+const googleOAuthRedirectUrlSuggestion = computed(() => {
+  if (typeof window === "undefined") return "";
+  const origin =
+    window.location.origin ||
+    `${window.location.protocol}//${window.location.host}`;
+  return `${origin}/api/v1/auth/oauth/google/callback`;
+});
+
+async function setAndCopyEmailOAuthRedirectUrl(provider: EmailOAuthProvider) {
+  const url =
+    provider === "github"
+      ? githubOAuthRedirectUrlSuggestion.value
+      : googleOAuthRedirectUrlSuggestion.value;
+  if (!url) return;
+
+  if (provider === "github") {
+    form.github_oauth_redirect_url = url;
+  } else {
+    form.google_oauth_redirect_url = url;
+  }
+  await copyToClipboard(
+    url,
+    localText("回调地址已写入并复制。", "Callback URL set and copied."),
+  );
+}
+
 const wechatRedirectUrlSuggestion = computed(() => {
   if (typeof window === "undefined") return "";
   const origin =
@@ -5996,6 +7742,43 @@ function removeEndpoint(index: number) {
   form.custom_endpoints.splice(index, 1);
 }
 
+function addLoginAgreementDocument() {
+  form.login_agreement_documents.push({
+    id: `custom-${Date.now().toString(36)}`,
+    title: "",
+    content_md: "",
+  });
+}
+
+function removeLoginAgreementDocument(index: number) {
+  form.login_agreement_documents.splice(index, 1);
+}
+
+function normalizeLoginAgreementDocumentsForSave(): LoginAgreementDocument[] {
+  return form.login_agreement_documents
+    .map((doc, index) => ({
+      id:
+        normalizeLoginAgreementDocumentId(doc.id || doc.title) ||
+        `doc-${index + 1}`,
+      title: doc.title.trim(),
+      content_md: doc.content_md.trim(),
+    }))
+    .filter((doc) => doc.title || doc.content_md);
+}
+
+function findDuplicateLoginAgreementDocumentId(
+  documents: LoginAgreementDocument[],
+): string | null {
+  const seen = new Set<string>();
+  for (const doc of documents) {
+    if (seen.has(doc.id)) {
+      return doc.id;
+    }
+    seen.add(doc.id);
+  }
+  return null;
+}
+
 function formatTablePageSizeOptions(options: number[]): string {
   return options.join(", ");
 }
@@ -6040,7 +7823,21 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.login_agreement_mode =
+      settings.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
+    form.login_agreement_updated_at =
+      settings.login_agreement_updated_at || "2026-03-31";
+    form.login_agreement_documents =
+      Array.isArray(settings.login_agreement_documents) &&
+      settings.login_agreement_documents.length > 0
+        ? settings.login_agreement_documents.map((doc) => ({
+            id: doc.id || "",
+            title: doc.title || "",
+            content_md: doc.content_md || "",
+          }))
+        : defaultLoginAgreementDocuments();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
+    form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
@@ -6059,6 +7856,9 @@ async function loadSettings() {
     smtpPasswordManuallyEdited.value = false;
     form.turnstile_secret_key = "";
     form.linuxdo_connect_client_secret = "";
+    form.dingtalk_connect_client_secret = "";
+    form.github_oauth_client_secret = "";
+    form.google_oauth_client_secret = "";
     form.wechat_connect_app_secret = "";
     form.wechat_connect_open_app_secret = "";
     form.wechat_connect_mp_app_secret = "";
@@ -6115,6 +7915,23 @@ async function loadSettings() {
       form.wechat_connect_mode,
     );
     form.oidc_connect_client_secret = "";
+
+    // Load OpenAI fast/flex policy rules from bulk settings.
+    // 仅当 payload 真的包含该字段时填充并标记为已加载；否则保持表单空值，
+    // 让 saveSettings 在未加载时跳过该字段，防止覆盖后端默认规则。
+    if (
+      settings.openai_fast_policy_settings &&
+      Array.isArray(settings.openai_fast_policy_settings.rules)
+    ) {
+      openaiFastPolicyForm.rules =
+        settings.openai_fast_policy_settings.rules.map((rule) => ({
+          ...rule,
+          model_whitelist: rule.model_whitelist
+            ? [...rule.model_whitelist]
+            : [],
+        }));
+      openaiFastPolicyLoaded.value = true;
+    }
 
     // Load web search emulation config separately
     await loadWebSearchConfig();
@@ -6232,6 +8049,44 @@ async function saveSettings() {
     form.table_default_page_size = normalizedTableDefaultPageSize;
     form.table_page_size_options = normalizedTablePageSizeOptions;
 
+    const normalizedLoginAgreementDocuments =
+      normalizeLoginAgreementDocumentsForSave();
+    if (form.login_agreement_enabled && normalizedLoginAgreementDocuments.length === 0) {
+      appStore.showError(
+        localText(
+          "启用登录条款确认时，至少需要保留一份文档。",
+          "At least one document is required when login agreement is enabled.",
+        ),
+      );
+      return;
+    }
+    const emptyTitleDocument = normalizedLoginAgreementDocuments.find(
+      (doc) => !doc.title,
+    );
+    if (emptyTitleDocument) {
+      appStore.showError(
+        localText(
+          "登录条款文档名称不能为空。",
+          "Login agreement document title cannot be empty.",
+        ),
+      );
+      return;
+    }
+    const duplicateLoginAgreementDocumentId =
+      findDuplicateLoginAgreementDocumentId(normalizedLoginAgreementDocuments);
+    if (duplicateLoginAgreementDocumentId) {
+      appStore.showError(
+        localText(
+          `登录条款文档路由不能重复：/legal/${duplicateLoginAgreementDocumentId}`,
+          `Login agreement document routes cannot be duplicated: /legal/${duplicateLoginAgreementDocumentId}`,
+        ),
+      );
+      return;
+    }
+    form.login_agreement_mode =
+      form.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
+    form.login_agreement_documents = normalizedLoginAgreementDocuments;
+
     const normalizedDefaultSubscriptions = normalizeDefaultSubscriptionSettings(
       form.default_subscriptions,
     );
@@ -6302,13 +8157,17 @@ async function saveSettings() {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
       registration_email_suffix_whitelist:
-        registrationEmailSuffixWhitelistTags.value.map(
-          (suffix) => `@${suffix}`,
+        registrationEmailSuffixWhitelistTags.value.map((suffix) =>
+          suffix.startsWith("*.") ? suffix : `@${suffix}`,
         ),
       promo_code_enabled: form.promo_code_enabled,
       invitation_code_enabled: form.invitation_code_enabled,
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
+      login_agreement_enabled: form.login_agreement_enabled,
+      login_agreement_mode: form.login_agreement_mode,
+      login_agreement_updated_at: form.login_agreement_updated_at,
+      login_agreement_documents: form.login_agreement_documents,
       default_balance: form.default_balance,
       affiliate_rebate_rate: Math.min(
         100,
@@ -6345,11 +8204,30 @@ async function saveSettings() {
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,
+      api_key_acl_trust_forwarded_ip: form.api_key_acl_trust_forwarded_ip,
       linuxdo_connect_enabled: form.linuxdo_connect_enabled,
       linuxdo_connect_client_id: form.linuxdo_connect_client_id,
       linuxdo_connect_client_secret:
         form.linuxdo_connect_client_secret || undefined,
       linuxdo_connect_redirect_url: form.linuxdo_connect_redirect_url,
+      dingtalk_connect_enabled: form.dingtalk_connect_enabled,
+      dingtalk_connect_client_id: form.dingtalk_connect_client_id,
+      dingtalk_connect_client_secret:
+        form.dingtalk_connect_client_secret || undefined,
+      dingtalk_connect_redirect_url: form.dingtalk_connect_redirect_url,
+      dingtalk_connect_corp_restriction_policy:
+        form.dingtalk_connect_corp_restriction_policy,
+      dingtalk_connect_internal_corp_id: form.dingtalk_connect_internal_corp_id,
+      dingtalk_connect_bypass_registration: form.dingtalk_connect_bypass_registration,
+      dingtalk_connect_sync_corp_email: form.dingtalk_connect_sync_corp_email,
+      dingtalk_connect_sync_display_name: form.dingtalk_connect_sync_display_name,
+      dingtalk_connect_sync_dept: form.dingtalk_connect_sync_dept,
+      dingtalk_connect_sync_corp_email_attr_key: form.dingtalk_connect_sync_corp_email_attr_key,
+      dingtalk_connect_sync_display_name_attr_key: form.dingtalk_connect_sync_display_name_attr_key,
+      dingtalk_connect_sync_dept_attr_key: form.dingtalk_connect_sync_dept_attr_key,
+      dingtalk_connect_sync_corp_email_attr_name: form.dingtalk_connect_sync_corp_email_attr_name,
+      dingtalk_connect_sync_display_name_attr_name: form.dingtalk_connect_sync_display_name_attr_name,
+      dingtalk_connect_sync_dept_attr_name: form.dingtalk_connect_sync_dept_attr_name,
       wechat_connect_enabled: form.wechat_connect_enabled,
       wechat_connect_app_id:
         form.wechat_connect_open_app_id ||
@@ -6400,6 +8278,20 @@ async function saveSettings() {
       oidc_connect_userinfo_id_path: form.oidc_connect_userinfo_id_path,
       oidc_connect_userinfo_username_path:
         form.oidc_connect_userinfo_username_path,
+      github_oauth_enabled: form.github_oauth_enabled,
+      github_oauth_client_id: form.github_oauth_client_id,
+      github_oauth_client_secret:
+        form.github_oauth_client_secret || undefined,
+      github_oauth_redirect_url: form.github_oauth_redirect_url,
+      github_oauth_frontend_redirect_url:
+        form.github_oauth_frontend_redirect_url,
+      google_oauth_enabled: form.google_oauth_enabled,
+      google_oauth_client_id: form.google_oauth_client_id,
+      google_oauth_client_secret:
+        form.google_oauth_client_secret || undefined,
+      google_oauth_redirect_url: form.google_oauth_redirect_url,
+      google_oauth_frontend_redirect_url:
+        form.google_oauth_frontend_redirect_url,
       enable_model_fallback: form.enable_model_fallback,
       fallback_model_anthropic: form.fallback_model_anthropic,
       fallback_model_openai: form.fallback_model_openai,
@@ -6413,8 +8305,17 @@ async function saveSettings() {
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
+      enable_anthropic_cache_ttl_1h_injection:
+        form.enable_anthropic_cache_ttl_1h_injection,
+      rewrite_message_cache_control: form.rewrite_message_cache_control,
+      antigravity_user_agent_version:
+        form.antigravity_user_agent_version?.trim() || "",
+      openai_codex_user_agent:
+        form.openai_codex_user_agent?.trim() || "",
+      openai_allow_claude_code_codex_plugin: form.openai_allow_claude_code_codex_plugin,
       // Payment configuration
       payment_enabled: form.payment_enabled,
+      risk_control_enabled: form.risk_control_enabled,
       payment_min_amount: Number(form.payment_min_amount) || 0,
       payment_max_amount: Number(form.payment_max_amount) || 0,
       payment_daily_limit: Number(form.payment_daily_limit) || 0,
@@ -6439,13 +8340,16 @@ async function saveSettings() {
       payment_cancel_rate_limit_unit: form.payment_cancel_rate_limit_unit,
       payment_cancel_rate_limit_window_mode:
         form.payment_cancel_rate_limit_window_mode,
+      payment_alipay_force_qrcode: form.payment_alipay_force_qrcode,
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
-      // Balance & quota notification
+      // 余额、订阅到期与账号限额通知
       balance_low_notify_enabled: form.balance_low_notify_enabled,
       balance_low_notify_threshold:
         Number(form.balance_low_notify_threshold) || 0,
       balance_low_notify_recharge_url: (form.balance_low_notify_recharge_url =
         form.balance_low_notify_recharge_url || currentOrigin),
+      subscription_expiry_notify_enabled:
+        form.subscription_expiry_notify_enabled,
       account_quota_notify_enabled: form.account_quota_notify_enabled,
       account_quota_notify_emails: (
         form.account_quota_notify_emails || []
@@ -6458,17 +8362,49 @@ async function saveSettings() {
       available_channels_enabled: form.available_channels_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
+      allow_user_view_error_requests: form.allow_user_view_error_requests,
     };
 
+    // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，
+    // 否则省略整个字段，让后端保留既有规则（含默认值）。
+    if (openaiFastPolicyLoaded.value) {
+      payload.openai_fast_policy_settings = {
+        rules: openaiFastPolicyForm.rules.map((rule) => {
+          const whitelist = (rule.model_whitelist || [])
+            .map((p) => p.trim())
+            .filter((p) => p !== "");
+          const hasWhitelist = whitelist.length > 0;
+          return {
+            service_tier: rule.service_tier,
+            action: rule.action,
+            scope: rule.scope,
+            error_message:
+              rule.action === "block" ? rule.error_message : undefined,
+            model_whitelist: hasWhitelist ? whitelist : undefined,
+            fallback_action: hasWhitelist
+              ? rule.fallback_action || "pass"
+              : undefined,
+            fallback_error_message:
+              hasWhitelist && rule.fallback_action === "block"
+                ? rule.fallback_error_message
+                : undefined,
+          };
+        }),
+      };
+    }
+
+    payload.default_platform_quotas = sanitizePlatformQuotasMap(form.default_platform_quotas);
     appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults);
 
     const updated = await adminAPI.settings.updateSettings(payload);
     for (const [key, value] of Object.entries(updated)) {
+      if (key === "openai_fast_policy_settings") continue;
       if (value !== null && value !== undefined) {
         (form as Record<string, unknown>)[key] = value;
       }
     }
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
+    form.default_platform_quotas = normalizePlatformQuotasMap(updated.default_platform_quotas);
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         updated.registration_email_suffix_whitelist,
@@ -6483,6 +8419,9 @@ async function saveSettings() {
     smtpPasswordManuallyEdited.value = false;
     form.turnstile_secret_key = "";
     form.linuxdo_connect_client_secret = "";
+    form.dingtalk_connect_client_secret = "";
+    form.github_oauth_client_secret = "";
+    form.google_oauth_client_secret = "";
     form.wechat_connect_app_secret = "";
     form.wechat_connect_open_app_secret = "";
     form.wechat_connect_mp_app_secret = "";
@@ -6507,6 +8446,20 @@ async function saveSettings() {
       form.wechat_connect_mode,
     );
     form.oidc_connect_client_secret = "";
+    // Refresh OpenAI fast/flex policy from server response
+    if (
+      updated.openai_fast_policy_settings &&
+      Array.isArray(updated.openai_fast_policy_settings.rules)
+    ) {
+      openaiFastPolicyForm.rules =
+        updated.openai_fast_policy_settings.rules.map((rule) => ({
+          ...rule,
+          model_whitelist: rule.model_whitelist
+            ? [...rule.model_whitelist]
+            : [],
+        }));
+      openaiFastPolicyLoaded.value = true;
+    }
     // Save web search emulation config separately (errors handled internally)
     const wsOk = await saveWebSearchConfig();
     // Refresh cached settings so sidebar/header update immediately
@@ -6678,6 +8631,40 @@ async function saveOverloadCooldownSettings() {
   }
 }
 
+// Rate Limit Cooldown (429) 方法
+async function loadRateLimit429CooldownSettings() {
+  rateLimit429CooldownLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getRateLimit429CooldownSettings();
+    Object.assign(rateLimit429CooldownForm, settings);
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    rateLimit429CooldownLoading.value = false;
+  }
+}
+
+async function saveRateLimit429CooldownSettings() {
+  rateLimit429CooldownSaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateRateLimit429CooldownSettings({
+      enabled: rateLimit429CooldownForm.enabled,
+      cooldown_seconds: rateLimit429CooldownForm.cooldown_seconds,
+    });
+    Object.assign(rateLimit429CooldownForm, updated);
+    appStore.showSuccess(t("admin.settings.rateLimit429Cooldown.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.rateLimit429Cooldown.saveFailed"),
+      ),
+    );
+  } finally {
+    rateLimit429CooldownSaving.value = false;
+  }
+}
+
 // Stream Timeout 方法
 async function loadStreamTimeoutSettings() {
   streamTimeoutLoading.value = true;
@@ -6846,6 +8833,61 @@ async function loadBetaPolicySettings() {
   }
 }
 
+// ==================== OpenAI Fast/Flex Policy ====================
+
+const openaiFastPolicyTierOptions = computed(() => [
+  { value: "all", label: t("admin.settings.openaiFastPolicy.tierAll") },
+  {
+    value: "priority",
+    label: t("admin.settings.openaiFastPolicy.tierPriority"),
+  },
+  { value: "flex", label: t("admin.settings.openaiFastPolicy.tierFlex") },
+]);
+
+const openaiFastPolicyActionOptions = computed(() => [
+  { value: "pass", label: t("admin.settings.openaiFastPolicy.actionPass") },
+  { value: "filter", label: t("admin.settings.openaiFastPolicy.actionFilter") },
+  { value: "block", label: t("admin.settings.openaiFastPolicy.actionBlock") },
+]);
+
+const openaiFastPolicyScopeOptions = computed(() => [
+  { value: "all", label: t("admin.settings.openaiFastPolicy.scopeAll") },
+  { value: "oauth", label: t("admin.settings.openaiFastPolicy.scopeOAuth") },
+  { value: "apikey", label: t("admin.settings.openaiFastPolicy.scopeAPIKey") },
+  {
+    value: "bedrock",
+    label: t("admin.settings.openaiFastPolicy.scopeBedrock"),
+  },
+]);
+
+function addOpenAIFastPolicyRule() {
+  openaiFastPolicyForm.rules.push({
+    service_tier: "priority",
+    action: "filter",
+    scope: "all",
+    error_message: "",
+    model_whitelist: [],
+    fallback_action: "pass",
+    fallback_error_message: "",
+  });
+}
+
+function removeOpenAIFastPolicyRule(index: number) {
+  openaiFastPolicyForm.rules.splice(index, 1);
+}
+
+function addOpenAIFastPolicyModelPattern(rule: OpenAIFastPolicyRule) {
+  if (!rule.model_whitelist) rule.model_whitelist = [];
+  rule.model_whitelist.push("");
+}
+
+function removeOpenAIFastPolicyModelPattern(
+  rule: OpenAIFastPolicyRule,
+  idx: number,
+) {
+  rule.model_whitelist?.splice(idx, 1);
+}
+
 async function saveBetaPolicySettings() {
   betaPolicySaving.value = true;
   try {
@@ -6889,6 +8931,7 @@ const allPaymentTypes = computed(() => [
   { value: "alipay", label: t("payment.methods.alipay") },
   { value: "wxpay", label: t("payment.methods.wxpay") },
   { value: "stripe", label: t("payment.methods.stripe") },
+  { value: "airwallex", label: t("payment.methods.airwallex") },
 ]);
 
 function isPaymentTypeEnabled(type: string): boolean {
@@ -6945,6 +8988,7 @@ const providerKeyOptions = computed(() => [
   { value: "alipay", label: t("admin.settings.payment.providerAlipay") },
   { value: "wxpay", label: t("admin.settings.payment.providerWxpay") },
   { value: "stripe", label: t("admin.settings.payment.providerStripe") },
+  { value: "airwallex", label: t("admin.settings.payment.providerAirwallex") },
 ]);
 
 const enabledProviderKeyOptions = computed(() => {
@@ -7234,6 +9278,7 @@ onMounted(() => {
   loadSubscriptionGroups();
   loadAdminApiKey();
   loadOverloadCooldownSettings();
+  loadRateLimit429CooldownSettings();
   loadStreamTimeoutSettings();
   loadRectifierSettings();
   loadBetaPolicySettings();
@@ -7592,6 +9637,21 @@ watch(
     }
   },
 );
+
+// bypass_registration 与身份同步三开关仅在 internal_only 模式下生效。切换 policy 到其它值时，
+// 立即把相关字段重置为 false，避免保存请求里残留旧值。后端 admin handler 与
+// 配置加载层都有 coerce 兜底，这里是 UX 层的同步而非安全防线。
+watch(
+  () => form.dingtalk_connect_corp_restriction_policy,
+  (policy) => {
+    if (policy !== "internal_only") {
+      if (form.dingtalk_connect_bypass_registration) form.dingtalk_connect_bypass_registration = false;
+      if (form.dingtalk_connect_sync_corp_email) form.dingtalk_connect_sync_corp_email = false;
+      if (form.dingtalk_connect_sync_display_name) form.dingtalk_connect_sync_display_name = false;
+      if (form.dingtalk_connect_sync_dept) form.dingtalk_connect_sync_dept = false;
+    }
+  },
+);
 </script>
 
 <style scoped>
@@ -7603,94 +9663,121 @@ watch(
   @apply h-[42px];
 }
 
-/* ============ Settings Tab Navigation ============ */
+/* ============ 系统设置 Tab 导航 ============ */
+.settings-tabs-shell {
+  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl;
+  top: 4.75rem;
+  box-shadow:
+    0 12px 28px rgb(15 23 42 / 0.07),
+    0 1px 0 rgb(255 255 255 / 0.9) inset;
+}
 
-/* Scroll container: thin scrollbar on PC, auto-hide on mobile */
 .settings-tabs-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
+  @apply overflow-x-auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
-.settings-tabs-scroll:hover {
-  scrollbar-color: rgb(0 0 0 / 0.15) transparent;
-}
-:root.dark .settings-tabs-scroll:hover {
-  scrollbar-color: rgb(255 255 255 / 0.2) transparent;
-}
+
 .settings-tabs-scroll::-webkit-scrollbar {
-  height: 3px;
-}
-.settings-tabs-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.settings-tabs-scroll::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 3px;
-}
-.settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
-  background: rgb(0 0 0 / 0.15);
-}
-:root.dark .settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 0.2);
+  display: none;
 }
 
 .settings-tabs {
-  @apply inline-flex min-w-full gap-0.5 rounded-2xl
-         border border-gray-100 bg-white/80 p-1 backdrop-blur-sm
-         dark:border-dark-700/50 dark:bg-dark-800/80;
-  box-shadow:
-    0 1px 3px rgb(0 0 0 / 0.04),
-    0 1px 2px rgb(0 0 0 / 0.02);
-}
-
-@media (min-width: 640px) {
-  .settings-tabs {
-    @apply flex;
-  }
+  @apply flex min-w-max items-center gap-1;
 }
 
 .settings-tab {
-  @apply relative flex flex-1 items-center justify-center gap-1.5
-         whitespace-nowrap rounded-xl px-2.5 py-2
-         text-sm font-medium
-         text-gray-500 dark:text-dark-400
-         transition-all duration-200 ease-out;
+  @apply relative isolate flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 text-sm font-medium text-gray-600 outline-none transition-colors duration-200 ease-out dark:text-gray-300;
 }
 
-.settings-tab:hover:not(.settings-tab-active) {
-  @apply text-gray-700 dark:text-gray-300;
-  background: rgb(0 0 0 / 0.03);
+@media (min-width: 768px) {
+  .settings-tabs {
+    @apply min-w-full;
+  }
+
+  .settings-tab {
+    @apply min-w-0 flex-1 basis-0 overflow-hidden px-2 text-[13px];
+  }
+
+  .settings-tab-icon {
+    @apply h-6 w-6;
+  }
 }
 
-:root.dark .settings-tab:hover:not(.settings-tab-active) {
-  background: rgb(255 255 255 / 0.04);
+.settings-tab::before {
+  @apply absolute inset-0 -z-10 rounded-xl opacity-0 transition-opacity duration-200;
+  content: "";
+  background: linear-gradient(135deg, rgb(248 250 252 / 0.95), rgb(241 245 249 / 0.8));
+}
+
+.settings-tab:hover::before,
+.settings-tab:focus-visible::before {
+  opacity: 1;
+}
+
+.settings-tab:focus-visible {
+  @apply ring-2 ring-primary-500/40 ring-offset-2 ring-offset-white dark:ring-offset-dark-900;
 }
 
 .settings-tab-active {
-  @apply text-primary-600 dark:text-primary-400;
-  background: linear-gradient(
-    135deg,
-    rgba(20, 184, 166, 0.08),
-    rgba(20, 184, 166, 0.03)
-  );
-  box-shadow: 0 1px 2px rgba(20, 184, 166, 0.1);
+  @apply border-primary-200/80 bg-white text-primary-700 shadow-sm dark:border-primary-400/30 dark:bg-dark-700/95 dark:text-primary-200;
+  box-shadow:
+    0 8px 18px rgb(15 23 42 / 0.08),
+    0 1px 0 rgb(255 255 255 / 0.92) inset;
 }
 
-:root.dark .settings-tab-active {
-  background: linear-gradient(
-    135deg,
-    rgba(45, 212, 191, 0.12),
-    rgba(45, 212, 191, 0.05)
-  );
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+.settings-tab-active::before {
+  opacity: 0;
+}
+
+.settings-tab-active::after {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.25rem;
+  left: 0.75rem;
+  height: 2px;
+  border-radius: 9999px;
+  content: "";
+  background: linear-gradient(90deg, #14b8a6, #0ea5e9);
 }
 
 .settings-tab-icon {
-  @apply flex h-6 w-6 items-center justify-center rounded-lg
-         transition-all duration-200;
+  @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors duration-200 dark:text-gray-400;
+}
+
+.settings-tab:hover .settings-tab-icon,
+.settings-tab:focus-visible .settings-tab-icon {
+  @apply text-gray-700 dark:text-gray-200;
 }
 
 .settings-tab-active .settings-tab-icon {
-  @apply bg-primary-500/15 text-primary-600
-         dark:bg-primary-400/15 dark:text-primary-400;
+  @apply bg-primary-50 text-primary-600 dark:bg-primary-400/10 dark:text-primary-300;
+}
+
+.settings-tab-label {
+  @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-none;
+}
+</style>
+
+<style>
+/* Dark-mode overrides for the settings tabs shell. Kept in an UNSCOPED block
+   because Vue's scoped-CSS compiler was dropping the `:global(.dark) ...`
+   rules in the production build, leaving inactive tabs unreadable on dark. */
+.dark .settings-tabs-shell {
+  border-color: rgb(51 65 85 / 0.65);
+  background: rgb(15 23 42 / 0.86);
+  box-shadow:
+    0 16px 36px rgb(0 0 0 / 0.28),
+    0 1px 0 rgb(255 255 255 / 0.06) inset;
+}
+
+.dark .settings-tab::before {
+  background: linear-gradient(135deg, rgb(30 41 59 / 0.9), rgb(51 65 85 / 0.62));
+}
+
+.dark .settings-tab-active {
+  box-shadow:
+    0 12px 26px rgb(0 0 0 / 0.22),
+    0 1px 0 rgb(255 255 255 / 0.08) inset;
 }
 </style>

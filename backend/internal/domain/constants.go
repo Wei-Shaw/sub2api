@@ -26,11 +26,12 @@ const (
 
 // Account type constants
 const (
-	AccountTypeOAuth      = "oauth"       // OAuth类型账号（full scope: profile + inference）
-	AccountTypeSetupToken = "setup-token" // Setup Token类型账号（inference only scope）
-	AccountTypeAPIKey     = "apikey"      // API Key类型账号
-	AccountTypeUpstream   = "upstream"    // 上游透传类型账号（通过 Base URL + API Key 连接上游）
-	AccountTypeBedrock    = "bedrock"     // AWS Bedrock 类型账号（通过 SigV4 签名或 API Key 连接 Bedrock，由 credentials.auth_mode 区分）
+	AccountTypeOAuth          = "oauth"           // OAuth类型账号（full scope: profile + inference）
+	AccountTypeSetupToken     = "setup-token"     // Setup Token类型账号（inference only scope）
+	AccountTypeAPIKey         = "apikey"          // API Key类型账号
+	AccountTypeUpstream       = "upstream"        // 上游透传类型账号（通过 Base URL + API Key 连接上游）
+	AccountTypeBedrock        = "bedrock"         // AWS Bedrock 类型账号（通过 SigV4 签名或 API Key 连接 Bedrock，由 credentials.auth_mode 区分）
+	AccountTypeServiceAccount = "service_account" // Google Service Account 类型账号（用于 Vertex AI）
 )
 
 // Redeem type constants
@@ -71,6 +72,8 @@ const (
 // 与前端 useModelWhitelist.ts 中的 antigravityDefaultMappings 保持一致
 var DefaultAntigravityModelMapping = map[string]string{
 	// Claude 白名单
+	"claude-fable-5":             "claude-fable-5",           // 官方模型
+	"claude-opus-4-8":            "claude-opus-4-8",          // 官方模型
 	"claude-opus-4-7":            "claude-opus-4-7",          // 官方模型
 	"claude-opus-4-6-thinking":   "claude-opus-4-6-thinking", // 官方模型
 	"claude-opus-4-6":            "claude-opus-4-6-thinking", // 简称映射
@@ -120,7 +123,10 @@ var DefaultAntigravityModelMapping = map[string]string{
 // 注意：此处的 "us." 前缀仅为默认值，ResolveBedrockModelID 会根据账号配置的
 // aws_region 自动调整为匹配的区域前缀（如 eu.、apac.、jp. 等）
 var DefaultBedrockModelMapping = map[string]string{
+	// Claude Fable
+	"claude-fable-5": "anthropic.claude-fable-5",
 	// Claude Opus
+	"claude-opus-4-8":          "us.anthropic.claude-opus-4-8-v1",
 	"claude-opus-4-7":          "us.anthropic.claude-opus-4-7-v1",
 	"claude-opus-4-6-thinking": "us.anthropic.claude-opus-4-6-v1",
 	"claude-opus-4-6":          "us.anthropic.claude-opus-4-6-v1",

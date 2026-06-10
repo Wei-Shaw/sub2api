@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -195,6 +196,14 @@ func (h *AuthHandler) createOAuthPendingSession(c *gin.Context, payload oauthPen
 		},
 	})
 	if err != nil {
+		slog.Error("pending auth session create failed",
+			"intent", strings.TrimSpace(payload.Intent),
+			"provider_type", strings.TrimSpace(payload.Identity.ProviderType),
+			"provider_key", strings.TrimSpace(payload.Identity.ProviderKey),
+			"provider_subject_len", len(strings.TrimSpace(payload.Identity.ProviderSubject)),
+			"resolved_email_len", len(strings.TrimSpace(payload.ResolvedEmail)),
+			"has_target_user", payload.TargetUserID != nil,
+			"error", err.Error())
 		return infraerrors.InternalServer("PENDING_AUTH_SESSION_CREATE_FAILED", "failed to create pending auth session").WithCause(err)
 	}
 
@@ -264,6 +273,22 @@ func pendingSessionStringValue(values map[string]any, key string) string {
 
 func pendingSessionWantsInvitation(payload map[string]any) bool {
 	return strings.EqualFold(strings.TrimSpace(pendingSessionStringValue(payload, "error")), "invitation_required")
+}
+
+// pendingSessionRequiresEmailCompletion 判断 callback 写入的 completion payload 是否处于"补邮箱"状态。
+// 钉钉跨组织/staff 邮箱缺失时进入此状态：前端跳到补邮箱页，exchange 不应走 adoption apply。
+func pendingSessionRequiresEmailCompletion(payload map[string]any) bool {
+	if v, ok := payload["requires_email_completion"].(bool); ok && v {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(pendingSessionStringValue(payload, "step")), "email_completion")
+}
+
+// pendingSessionRequiresBindLogin 判断 callback 写入的 completion payload 是否处于"必须绑定已有账户"状态。
+// 钉钉 signupBlocked=true（注册关 + 钉钉企业豁免关）时进入此状态：前端渲染 bind_login 表单，
+// exchange 不应消费 session，否则后续 /pending/bind-login 找不到 session。
+func pendingSessionRequiresBindLogin(payload map[string]any) bool {
+	return strings.EqualFold(strings.TrimSpace(pendingSessionStringValue(payload, "step")), "bind_login_required")
 }
 
 func pendingOAuthCompletionCanIssueTokenPair(session *dbent.PendingAuthSession, payload map[string]any) bool {
@@ -520,7 +545,7 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 		return
 	}
 
-	result, err := h.authService.SendPendingOAuthVerifyCode(c.Request.Context(), req.Email)
+	result, err := h.authService.SendPendingOAuthVerifyCode(c.Request.Context(), req.Email, c.GetHeader("Accept-Language"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -1467,8 +1492,10 @@ func normalizePendingOAuthCompletionResponse(payload map[string]any) map[string]
 		delete(normalized, key)
 	}
 	step := strings.ToLower(strings.TrimSpace(pendingSessionStringValue(normalized, "step")))
+	// 把多种 choice 别名归一为 oauthPendingChoiceStep；bind_login_required 是独立终态
+	// （前端渲染 needsBindLogin 而非 needsChooser），故不能并入归一化列表。
 	switch step {
-	case "choice", "choose_account_action", "choose_account", "choose", "email_required", "bind_login_required":
+	case "choice", "choose_account_action", "choose_account", "choose", "email_required":
 		normalized["step"] = oauthPendingChoiceStep
 	}
 	if strings.EqualFold(strings.TrimSpace(pendingSessionStringValue(normalized, "step")), oauthPendingChoiceStep) {
@@ -1594,6 +1621,8 @@ func (h *AuthHandler) bindPendingOAuthLogin(c *gin.Context, provider string) {
 	}
 
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+	// bindPendingOAuthLogin = 绑定已有账户登录，不动 users.username（用户已有自己的名字）
+	h.maybeSyncDingTalkAfterLogin(c.Request.Context(), session, user.ID)
 	tokenPair, err := h.authService.GenerateTokenPair(c.Request.Context(), user, "")
 	if err != nil {
 		response.InternalError(c, "Failed to generate token pair")
@@ -1792,6 +1821,8 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 	}
 
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+	// createPendingOAuthAccount = 注册新账户，需要把钉钉昵称同步到 users.username 作为初始值
+	h.maybeSyncDingTalkAfterRegistration(c.Request.Context(), session, user.ID)
 	clearCookies()
 	writeOAuthTokenPairResponse(c, tokenPair)
 }
@@ -1890,6 +1921,14 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 			}
 			_ = decision
 		}
+		response.Success(c, payload)
+		return
+	}
+	if pendingSessionRequiresEmailCompletion(payload) {
+		response.Success(c, payload)
+		return
+	}
+	if pendingSessionRequiresBindLogin(payload) {
 		response.Success(c, payload)
 		return
 	}

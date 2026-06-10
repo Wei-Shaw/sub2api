@@ -47,6 +47,12 @@ type Group struct {
 	MonthlyLimitUsd *float64 `json:"monthly_limit_usd,omitempty"`
 	// DefaultValidityDays holds the value of the "default_validity_days" field.
 	DefaultValidityDays int `json:"default_validity_days,omitempty"`
+	// 是否允许该分组使用图片生成能力
+	AllowImageGeneration bool `json:"allow_image_generation,omitempty"`
+	// 图片生成是否使用独立倍率；false 表示共享分组有效倍率
+	ImageRateIndependent bool `json:"image_rate_independent,omitempty"`
+	// 图片生成独立倍率，仅 image_rate_independent=true 时生效
+	ImageRateMultiplier float64 `json:"image_rate_multiplier,omitempty"`
 	// ImagePrice1k holds the value of the "image_price_1k" field.
 	ImagePrice1k *float64 `json:"image_price_1k,omitempty"`
 	// ImagePrice2k holds the value of the "image_price_2k" field.
@@ -79,6 +85,8 @@ type Group struct {
 	DefaultMappedModel string `json:"default_mapped_model,omitempty"`
 	// OpenAI Messages 调度模型配置：按 Claude 系列/精确模型映射到目标 GPT 模型
 	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
+	// 自定义 /v1/models 展示列表配置；仅影响模型列表响应，不影响调度
+	ModelsListConfig domain.GroupModelsListConfig `json:"models_list_config,omitempty"`
 	// 分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流
 	RpmLimit int `json:"rpm_limit,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -187,11 +195,11 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig:
+		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
+		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
+		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
@@ -309,6 +317,24 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.DefaultValidityDays = int(value.Int64)
 			}
+		case group.FieldAllowImageGeneration:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_image_generation", values[i])
+			} else if value.Valid {
+				_m.AllowImageGeneration = value.Bool
+			}
+		case group.FieldImageRateIndependent:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_rate_independent", values[i])
+			} else if value.Valid {
+				_m.ImageRateIndependent = value.Bool
+			}
+		case group.FieldImageRateMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field image_rate_multiplier", values[i])
+			} else if value.Valid {
+				_m.ImageRateMultiplier = value.Float64
+			}
 		case group.FieldImagePrice1k:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field image_price_1k", values[i])
@@ -414,6 +440,14 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.MessagesDispatchModelConfig); err != nil {
 					return fmt.Errorf("unmarshal field messages_dispatch_model_config: %w", err)
+				}
+			}
+		case group.FieldModelsListConfig:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field models_list_config", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ModelsListConfig); err != nil {
+					return fmt.Errorf("unmarshal field models_list_config: %w", err)
 				}
 			}
 		case group.FieldRpmLimit:
@@ -550,6 +584,15 @@ func (_m *Group) String() string {
 	builder.WriteString("default_validity_days=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DefaultValidityDays))
 	builder.WriteString(", ")
+	builder.WriteString("allow_image_generation=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowImageGeneration))
+	builder.WriteString(", ")
+	builder.WriteString("image_rate_independent=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageRateIndependent))
+	builder.WriteString(", ")
+	builder.WriteString("image_rate_multiplier=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageRateMultiplier))
+	builder.WriteString(", ")
 	if v := _m.ImagePrice1k; v != nil {
 		builder.WriteString("image_price_1k=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
@@ -607,6 +650,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("messages_dispatch_model_config=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MessagesDispatchModelConfig))
+	builder.WriteString(", ")
+	builder.WriteString("models_list_config=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ModelsListConfig))
 	builder.WriteString(", ")
 	builder.WriteString("rpm_limit=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RpmLimit))

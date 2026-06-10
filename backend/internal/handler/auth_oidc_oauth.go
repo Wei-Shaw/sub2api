@@ -454,6 +454,24 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 		}
 	}
 
+	// 快捷路径：当上游返回已验证邮箱、部署不要求额外确认且本地没有同邮箱账号时，
+	// 直接信任上游身份完成注册/登录，避免展示 choice 页。
+	if compatEmailUser == nil &&
+		strings.TrimSpace(compatEmail) != "" &&
+		emailVerified != nil && *emailVerified {
+		if handled := h.tryOIDCVerifiedEmailFastPath(
+			c,
+			frontendCallback,
+			redirectTo,
+			identityRef,
+			compatEmail,
+			username,
+			upstreamClaims,
+		); handled {
+			return
+		}
+	}
+
 	if h.isForceEmailOnThirdPartySignup(c.Request.Context()) {
 		if err := h.createOIDCOAuthChoicePendingSession(
 			c,
@@ -502,7 +520,8 @@ func (h *AuthHandler) findOIDCCompatEmailUser(ctx context.Context, email string)
 	if email == "" ||
 		strings.HasSuffix(email, service.LinuxDoConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(email, service.OIDCConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) {
+		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(email, service.DingTalkConnectSyntheticEmailDomain) {
 		return nil, nil
 	}
 
@@ -666,7 +685,7 @@ func (h *AuthHandler) CompleteOIDCOAuthRegistration(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode)
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode, "oidc")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -1188,4 +1207,71 @@ func oidcClearCookie(c *gin.Context, name string, secure bool) {
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// tryOIDCVerifiedEmailFastPath 在 OIDC 上游已返回已验证邮箱时尝试跳过 choice/pending 页。
+// 返回 true 表示已经写出重定向响应；返回 false 表示调用方应继续回退到常规 choice 流程。
+func (h *AuthHandler) tryOIDCVerifiedEmailFastPath(
+	c *gin.Context,
+	frontendCallback string,
+	redirectTo string,
+	identity service.PendingAuthIdentityKey,
+	compatEmail string,
+	username string,
+	upstreamClaims map[string]any,
+) bool {
+	if h == nil || h.authService == nil || h.settingSvc == nil {
+		return false
+	}
+	ctx := c.Request.Context()
+	if h.isForceEmailOnThirdPartySignup(ctx) {
+		return false
+	}
+	if h.settingSvc.IsInvitationCodeEnabled(ctx) {
+		return false
+	}
+	if err := h.ensureBackendModeAllowsNewUserLogin(ctx); err != nil {
+		log.Printf("[OIDC OAuth] verified-email fast path blocked by backend mode: reason=%s", infraerrors.Reason(err))
+		clearOAuthPendingSessionCookie(c, isRequestHTTPS(c))
+		clearOAuthPendingBrowserCookie(c, isRequestHTTPS(c))
+		redirectOAuthError(c, frontendCallback, "login_blocked", infraerrors.Reason(err), infraerrors.Message(err))
+		return true
+	}
+
+	verifiedEmail := strings.TrimSpace(strings.ToLower(compatEmail))
+	upstreamMetadata := make(map[string]any, len(upstreamClaims)+1)
+	for k, v := range upstreamClaims {
+		upstreamMetadata[k] = v
+	}
+	if syntheticEmail := pendingSessionStringValue(upstreamClaims, "email"); syntheticEmail != "" && !strings.EqualFold(syntheticEmail, verifiedEmail) {
+		upstreamMetadata["synthetic_email"] = syntheticEmail
+	}
+	upstreamMetadata["email"] = verifiedEmail
+	input := service.EmailOAuthIdentityInput{
+		ProviderType:     strings.TrimSpace(identity.ProviderType),
+		ProviderKey:      strings.TrimSpace(identity.ProviderKey),
+		ProviderSubject:  strings.TrimSpace(identity.ProviderSubject),
+		Email:            verifiedEmail,
+		EmailVerified:    true,
+		Username:         strings.TrimSpace(username),
+		DisplayName:      pendingSessionStringValue(upstreamClaims, "suggested_display_name"),
+		AvatarURL:        pendingSessionStringValue(upstreamClaims, "suggested_avatar_url"),
+		UpstreamMetadata: upstreamMetadata,
+	}
+	tokenPair, _, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(ctx, input, "", "")
+	if err != nil {
+		log.Printf("[OIDC OAuth] verified-email fast path skipped: reason=%s", infraerrors.Reason(err))
+		return false
+	}
+
+	fragment := url.Values{}
+	fragment.Set("access_token", tokenPair.AccessToken)
+	fragment.Set("refresh_token", tokenPair.RefreshToken)
+	fragment.Set("expires_in", fmt.Sprintf("%d", tokenPair.ExpiresIn))
+	fragment.Set("token_type", "Bearer")
+	fragment.Set("redirect", redirectTo)
+	clearOAuthPendingSessionCookie(c, isRequestHTTPS(c))
+	clearOAuthPendingBrowserCookie(c, isRequestHTTPS(c))
+	redirectWithFragment(c, frontendCallback, fragment)
+	return true
 }

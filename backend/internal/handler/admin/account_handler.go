@@ -98,7 +98,7 @@ type CreateAccountRequest struct {
 	Name                    string         `json:"name" binding:"required"`
 	Notes                   *string        `json:"notes"`
 	Platform                string         `json:"platform" binding:"required"`
-	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock"`
+	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
 	Credentials             map[string]any `json:"credentials" binding:"required"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -117,7 +117,7 @@ type CreateAccountRequest struct {
 type UpdateAccountRequest struct {
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock"`
+	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -134,19 +134,29 @@ type UpdateAccountRequest struct {
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
-	AccountIDs              []int64        `json:"account_ids" binding:"required,min=1"`
-	Name                    string         `json:"name"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             *int           `json:"concurrency"`
-	Priority                *int           `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
-	Schedulable             *bool          `json:"schedulable"`
-	GroupIDs                *[]int64       `json:"group_ids"`
-	Credentials             map[string]any `json:"credentials"`
-	Extra                   map[string]any `json:"extra"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	AccountIDs              []int64                   `json:"account_ids"`
+	Filters                 *BulkUpdateAccountFilters `json:"filters"`
+	Name                    string                    `json:"name"`
+	ProxyID                 *int64                    `json:"proxy_id"`
+	Concurrency             *int                      `json:"concurrency"`
+	Priority                *int                      `json:"priority"`
+	RateMultiplier          *float64                  `json:"rate_multiplier"`
+	LoadFactor              *int                      `json:"load_factor"`
+	Status                  string                    `json:"status" binding:"omitempty,oneof=active inactive error"`
+	Schedulable             *bool                     `json:"schedulable"`
+	GroupIDs                *[]int64                  `json:"group_ids"`
+	Credentials             map[string]any            `json:"credentials"`
+	Extra                   map[string]any            `json:"extra"`
+	ConfirmMixedChannelRisk *bool                     `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+}
+
+type BulkUpdateAccountFilters struct {
+	Platform    string `json:"platform"`
+	Type        string `json:"type"`
+	Status      string `json:"status"`
+	Group       string `json:"group"`
+	Search      string `json:"search"`
+	PrivacyMode string `json:"privacy_mode"`
 }
 
 // CheckMixedChannelRequest represents check mixed channel risk request
@@ -518,6 +528,10 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
+	// 捕获闭包内创建的账号引用，用于创建成功后触发异步探测。
+	// 幂等重放时闭包不会执行 → createdAccount 为 nil → 不重复调度。
+	var createdAccount *service.Account
+
 	result, err := executeAdminIdempotent(c, "admin.accounts.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 			Name:                  req.Name,
@@ -539,6 +553,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		if execErr != nil {
 			return nil, execErr
 		}
+		createdAccount = account
 		// Antigravity OAuth: 新账号直接设置隐私
 		h.adminService.ForceAntigravityPrivacy(ctx, account)
 		// OpenAI OAuth: 新账号直接设置隐私
@@ -567,6 +582,9 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	if result != nil && result.Replayed {
 		c.Header("X-Idempotency-Replayed", "true")
 	}
+	// OpenAI APIKey 账号创建后异步探测上游 /v1/responses 能力。
+	// 探测失败不影响账号创建响应。
+	h.scheduleOpenAIResponsesProbe(createdAccount)
 	response.Success(c, result.Data)
 }
 
@@ -627,7 +645,37 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		return
 	}
 
+	// OpenAI APIKey: credentials 修改后重新探测上游能力（base_url/api_key 可能变更）。
+	// 异步执行，探测失败不影响账号更新响应。
+	if len(req.Credentials) > 0 {
+		h.scheduleOpenAIResponsesProbe(account)
+	}
+
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+// scheduleOpenAIResponsesProbe 异步触发 OpenAI APIKey 账号的 Responses API 能力探测。
+//
+// 仅对 platform=openai && type=apikey 账号生效；其他账号无操作。
+// 探测本身在 goroutine 中执行（会发一次 HTTP 请求到上游），不会阻塞
+// 当前请求。探测错误仅记录日志，不向上下文传播：探测失败时标记保持缺失，
+// 网关会按"现状即证据"默认走 Responses。
+func (h *AccountHandler) scheduleOpenAIResponsesProbe(account *service.Account) {
+	if account == nil || account.Platform != service.PlatformOpenAI || account.Type != service.AccountTypeAPIKey {
+		return
+	}
+	if h.accountTestService == nil {
+		return
+	}
+	accountID := account.ID
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("openai_responses_probe_panic", "account_id", accountID, "recover", r)
+			}
+		}()
+		h.accountTestService.ProbeOpenAIAPIKeyResponsesSupport(context.Background(), accountID)
+	}()
 }
 
 // Delete handles deleting an account
@@ -933,6 +981,100 @@ func (h *AccountHandler) Refresh(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), updatedAccount))
 }
 
+// ApplyOAuthCredentialsRequest is the payload for persisting re-authorized OAuth credentials.
+type ApplyOAuthCredentialsRequest struct {
+	Type        string         `json:"type" binding:"required,oneof=oauth setup-token"`
+	Credentials map[string]any `json:"credentials" binding:"required"`
+	Extra       map[string]any `json:"extra"`
+}
+
+// ApplyOAuthCredentials 将"重新授权"得到的新凭据原子落库。
+// POST /api/v1/admin/accounts/:id/apply-oauth-credentials
+//
+// 与通用 PUT /:id (Update) 接口的关键区别：
+//   - 仅接收 type / credentials / extra 三个字段（不接受 concurrency / rpm / quota_* 等可能误传的字段）
+//   - Extra 走 UpdateAccountExtra(JSONB key 级合并)，**绝不**全量覆盖；
+//     避免 base_rpm / window_cost_limit / max_sessions / quota_* / privacy_mode
+//     等持久化配置在重新授权后丢失
+//   - 内置 ClearError + InvalidateToken，避免前端额外两次调用，
+//     并修复旧路径未失效 token 缓存导致重新授权后立即 401 的隐性 bug
+//
+// 与 /refresh 的区别：/refresh 用现有 refresh_token 换 access_token（无用户交互），
+// 本接口承接前端完成完整 OAuth 流程后的落库步骤。
+func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	var req ApplyOAuthCredentialsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// 预检查账号存在 + OAuth 类型（与 Refresh handler 语义一致，提供更友好的错误信息）。
+	existing, err := h.adminService.GetAccount(ctx, accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+	if !existing.IsOAuth() {
+		response.ErrorFrom(c, infraerrors.BadRequest("NOT_OAUTH", "cannot apply oauth credentials to non-OAuth account"))
+		return
+	}
+
+	updatedAccount, err := h.adminService.UpdateAccount(ctx, accountID, &service.UpdateAccountInput{
+		Type:        req.Type,
+		Credentials: req.Credentials,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	// 增量合并 Extra（JSONB key 级 merge，绝不覆盖 base_rpm / window_cost_limit /
+	// max_sessions / quota_* / privacy_mode 等持久化键）。
+	// best-effort：失败仅记日志；下方 ClearAccountError 会从 DB 重新读取最新 account，
+	// 因此响应里的 extra 始终以 DB 为准——这里不需要手动维护内存快照。
+	if len(req.Extra) > 0 {
+		if extraErr := h.adminService.UpdateAccountExtra(ctx, accountID, req.Extra); extraErr != nil {
+			extraKeys := make([]string, 0, len(req.Extra))
+			for k := range req.Extra {
+				extraKeys = append(extraKeys, k)
+			}
+			slog.Error("apply_oauth_credentials.update_extra_failed",
+				"account_id", accountID,
+				"extra_keys", extraKeys,
+				"err", extraErr,
+			)
+		}
+	}
+
+	if cleared, clearErr := h.adminService.ClearAccountError(ctx, accountID); clearErr != nil {
+		slog.Warn("apply_oauth_credentials.clear_error_failed",
+			"account_id", accountID,
+			"err", clearErr,
+		)
+	} else if cleared != nil {
+		updatedAccount = cleared
+	}
+
+	if h.tokenCacheInvalidator != nil && updatedAccount.IsOAuth() {
+		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(ctx, updatedAccount); invalidateErr != nil {
+			slog.Warn("apply_oauth_credentials.invalidate_token_failed",
+				"account_id", accountID,
+				"err", invalidateErr,
+			)
+		}
+	}
+
+	response.Success(c, h.buildAccountResponseWithRuntime(ctx, updatedAccount))
+}
+
 // GetStats handles getting account statistics
 // GET /api/v1/admin/accounts/:id/stats
 func (h *AccountHandler) GetStats(c *gin.Context) {
@@ -988,6 +1130,21 @@ func (h *AccountHandler) ClearError(c *gin.Context) {
 	}
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+// RevertProxyFallback handles reverting account proxy to original before fallback.
+// POST /api/v1/admin/accounts/:id/revert-proxy-fallback
+func (h *AccountHandler) RevertProxyFallback(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if err := h.adminService.RevertAccountProxyFallback(c.Request.Context(), id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "reverted"})
 }
 
 // BatchClearError handles batch clearing account errors
@@ -1221,6 +1378,8 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 					openaiPrivacyAccounts = append(openaiPrivacyAccounts, account)
 				}
 			}
+			// OpenAI APIKey 账号异步探测 /v1/responses 能力。
+			h.scheduleOpenAIResponsesProbe(account)
 			success++
 			results = append(results, gin.H{
 				"name":    item.Name,
@@ -1369,6 +1528,10 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
 	}
+	if len(req.AccountIDs) == 0 && req.Filters == nil {
+		response.BadRequest(c, "account_ids or filters is required")
+		return
+	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 
@@ -1394,6 +1557,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 
 	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
 		AccountIDs:            req.AccountIDs,
+		Filters:               toServiceBulkUpdateAccountFilters(req.Filters),
 		Name:                  req.Name,
 		ProxyID:               req.ProxyID,
 		Concurrency:           req.Concurrency,
@@ -1427,6 +1591,20 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 	}
 
 	response.Success(c, result)
+}
+
+func toServiceBulkUpdateAccountFilters(filters *BulkUpdateAccountFilters) *service.BulkUpdateAccountFilters {
+	if filters == nil {
+		return nil
+	}
+	return &service.BulkUpdateAccountFilters{
+		Platform:    filters.Platform,
+		Type:        filters.Type,
+		Status:      filters.Status,
+		Group:       filters.Group,
+		Search:      filters.Search,
+		PrivacyMode: filters.PrivacyMode,
+	}
 }
 
 // ========== OAuth Handlers ==========
@@ -1574,7 +1752,7 @@ func (h *OAuthHandler) SetupTokenCookieAuth(c *gin.Context) {
 }
 
 // GetUsage handles getting account usage information
-// GET /api/v1/admin/accounts/:id/usage?source=passive|active
+// GET /api/v1/admin/accounts/:id/usage?source=passive|active&force=true
 func (h *AccountHandler) GetUsage(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -1583,12 +1761,13 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 	}
 
 	source := c.DefaultQuery("source", "active")
+	force := c.Query("force") == "true"
 
 	var usage *service.UsageInfo
 	if source == "passive" {
 		usage, err = h.accountUsageService.GetPassiveUsage(c.Request.Context(), accountID)
 	} else {
-		usage, err = h.accountUsageService.GetUsage(c.Request.Context(), accountID)
+		usage, err = h.accountUsageService.GetUsage(c.Request.Context(), accountID, force)
 	}
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -1923,6 +2102,98 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	}
 
 	response.Success(c, models)
+}
+
+// SyncUpstreamModels handles syncing live supported models from an account's upstream.
+// POST /api/v1/admin/accounts/:id/models/sync-upstream
+func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+
+	if h.accountTestService == nil {
+		response.InternalError(c, "Account test service is not configured")
+		return
+	}
+
+	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account)
+	if err != nil {
+		var syncErr *service.UpstreamModelSyncError
+		if errors.As(err, &syncErr) {
+			switch syncErr.Kind {
+			case service.UpstreamModelSyncErrorConfiguration, service.UpstreamModelSyncErrorUnsupported:
+				response.BadRequest(c, syncErr.SafeMessage())
+			default:
+				slog.Warn("sync_upstream_models_failed", "account_id", accountID, "kind", syncErr.Kind)
+				response.Error(c, http.StatusBadGateway, syncErr.SafeMessage())
+			}
+			return
+		}
+
+		slog.Warn("sync_upstream_models_failed", "account_id", accountID)
+		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
+		return
+	}
+
+	response.Success(c, gin.H{"models": models})
+}
+
+// SyncUpstreamModelsPreview handles syncing live supported models using provided credentials (no account ID needed).
+// POST /api/v1/admin/accounts/models/sync-upstream-preview
+func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
+	var req struct {
+		Platform string `json:"platform" binding:"required"`
+		Type     string `json:"type" binding:"required"`
+		BaseURL  string `json:"base_url"`
+		APIKey   string `json:"api_key" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	tempAccount := &service.Account{
+		Platform: req.Platform,
+		Type:     req.Type,
+		Credentials: map[string]any{
+			"api_key":  req.APIKey,
+			"base_url": req.BaseURL,
+		},
+	}
+
+	if h.accountTestService == nil {
+		response.InternalError(c, "Account test service is not configured")
+		return
+	}
+
+	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), tempAccount)
+	if err != nil {
+		var syncErr *service.UpstreamModelSyncError
+		if errors.As(err, &syncErr) {
+			switch syncErr.Kind {
+			case service.UpstreamModelSyncErrorConfiguration, service.UpstreamModelSyncErrorUnsupported:
+				response.BadRequest(c, syncErr.SafeMessage())
+			default:
+				slog.Warn("sync_upstream_models_preview_failed", "platform", req.Platform, "kind", syncErr.Kind)
+				response.Error(c, http.StatusBadGateway, syncErr.SafeMessage())
+			}
+			return
+		}
+
+		slog.Warn("sync_upstream_models_preview_failed", "platform", req.Platform)
+		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
+		return
+	}
+
+	response.Success(c, gin.H{"models": models})
 }
 
 // SetPrivacy handles setting privacy for a single OpenAI/Antigravity OAuth account

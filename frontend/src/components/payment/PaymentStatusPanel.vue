@@ -22,11 +22,11 @@
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
-                <span class="font-medium text-gray-900 dark:text-white">{{ paidOrder.order_type === 'balance' ? '$' : '¥' }}{{ paidOrder.amount.toFixed(2) }}</span>
+                <span class="font-medium text-gray-900 dark:text-white">{{ paidOrder.order_type === 'balance' ? '$' + paidOrder.amount.toFixed(2) : formatGatewayAmount(paidOrder.amount) }}</span>
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
-                <span class="font-medium text-gray-900 dark:text-white">¥{{ paidOrder.pay_amount.toFixed(2) }}</span>
+                <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(paidOrder.pay_amount) }}</span>
               </div>
             </div>
           </div>
@@ -129,6 +129,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { getPaymentPopupFeatures } from '@/components/payment/providerConfig'
+import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentOrder } from '@/types/payment'
 import Icon from '@/components/icons/Icon.vue'
 import QRCode from 'qrcode'
@@ -142,13 +143,15 @@ const props = defineProps<{
   paymentType: string
   payUrl?: string
   orderType?: string
+  currency?: string
 }>()
 
 type PaymentOutcome = 'success' | 'cancelled' | 'expired'
 
 const emit = defineEmits<{ done: []; success: []; settled: [outcome: PaymentOutcome] }>()
 
-const { t } = useI18n()
+const i18n = useI18n()
+const { t } = i18n
 const paymentStore = usePaymentStore()
 const appStore = useAppStore()
 
@@ -157,12 +160,26 @@ const qrUrl = ref('')
 const remainingSeconds = ref(0)
 const cancelling = ref(false)
 const paidOrder = ref<PaymentOrder | null>(null)
+const paymentCurrency = computed(() => normalizePaymentCurrency(props.currency))
+const localeCode = computed(() => {
+  const raw = i18n.locale as unknown
+  if (typeof raw === 'string') return raw
+  if (raw && typeof raw === 'object' && 'value' in raw) {
+    return String((raw as { value?: string }).value || '')
+  }
+  return undefined
+})
 
 // Terminal outcome: null = still active, 'success' | 'cancelled' | 'expired'
 const outcome = ref<PaymentOutcome | null>(null)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let countdownTimer: ReturnType<typeof setInterval> | null = null
+let verifyAttempts = 0
+let lastVerifyAt = 0
+
+const VERIFY_RETRY_INTERVAL_MS = 15000
+const VERIFY_RETRY_MAX_ATTEMPTS = 6
 
 const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
@@ -197,6 +214,10 @@ const countdownDisplay = computed(() => {
   return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0')
 })
 
+function formatGatewayAmount(value: number): string {
+  return formatPaymentAmount(value, paymentCurrency.value, localeCode.value)
+}
+
 function isSuccessStatus(status: string | null | undefined): boolean {
   return status === 'COMPLETED' || status === 'PAID' || status === 'RECHARGING'
 }
@@ -225,10 +246,32 @@ async function renderQR() {
   })
 }
 
+async function tryRecoverPendingOrder(order: PaymentOrder): Promise<PaymentOrder> {
+  if (!isWxpay.value) return order
+  const outTradeNo = String(order.out_trade_no || '').trim()
+  if (!outTradeNo) return order
+  const normalizedStatus = String(order.status || '').trim().toUpperCase()
+  if (normalizedStatus !== 'PENDING') return order
+  const now = Date.now()
+  if (verifyAttempts >= VERIFY_RETRY_MAX_ATTEMPTS || now - lastVerifyAt < VERIFY_RETRY_INTERVAL_MS) {
+    return order
+  }
+
+  lastVerifyAt = now
+  verifyAttempts += 1
+  try {
+    const result = await paymentAPI.verifyOrder(outTradeNo)
+    return result.data ?? order
+  } catch {
+    return order
+  }
+}
+
 async function pollStatus() {
   if (!props.orderId || outcome.value) return
-  const order = await paymentStore.pollOrderStatus(props.orderId)
+  let order = await paymentStore.pollOrderStatus(props.orderId)
   if (!order) return
+  order = await tryRecoverPendingOrder(order)
   if (isSuccessStatus(order.status)) {
     cleanup()
     paidOrder.value = order
@@ -275,6 +318,8 @@ function cleanup() {
 
 // Initialize on mount
 qrUrl.value = props.qrCode
+verifyAttempts = 0
+lastVerifyAt = 0
 let seconds = 30 * 60
 if (props.expiresAt) {
   seconds = Math.floor((new Date(props.expiresAt).getTime() - Date.now()) / 1000)

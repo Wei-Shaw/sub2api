@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type upstreamContextTestKey string
+
 func TestGatewayService_StreamingReusesScannerBufferAndStillParsesUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
@@ -49,4 +51,15 @@ func TestGatewayService_StreamingReusesScannerBufferAndStillParsesUsage(t *testi
 	require.NotNil(t, result.usage)
 	require.Equal(t, 3, result.usage.InputTokens)
 	require.Equal(t, 7, result.usage.OutputTokens)
+}
+
+func TestDetachUpstreamContextIgnoresClientCancel(t *testing.T) {
+	parent, cancel := context.WithCancel(context.WithValue(context.Background(), upstreamContextTestKey("test-key"), "test-value"))
+	upstreamCtx, release := detachUpstreamContext(parent)
+	defer release()
+
+	cancel()
+
+	require.NoError(t, upstreamCtx.Err())
+	require.Equal(t, "test-value", upstreamCtx.Value(upstreamContextTestKey("test-key")))
 }
