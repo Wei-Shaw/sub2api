@@ -69,7 +69,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		if normalized != originalModel {
 			mappedModel = normalized
 		}
-	} else if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
+	} else if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey && !account.IsBedrock() {
 		normalized := claude.NormalizeModelID(originalModel)
 		if normalized != originalModel {
 			mappedModel = normalized
@@ -104,6 +104,20 @@ func (s *GatewayService) ForwardAsChatCompletions(
 
 	// 7. Enforce cache_control block limit
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
+	reasoningEffort := extractCCReasoningEffortFromBody(body)
+
+	if account.IsBedrock() {
+		resp, bedrockModel, err := s.forwardCompatBedrockAnthropicStream(ctx, c, account, anthropicBody, mappedModel, reqStream, writeGatewayCCError)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		if clientStream {
+			return s.handleCCStreamingFromAnthropic(resp, c, originalModel, bedrockModel, reasoningEffort, startTime, includeUsage)
+		}
+		return s.handleCCBufferedFromAnthropic(resp, c, originalModel, bedrockModel, reasoningEffort, startTime)
+	}
 
 	// 8. Get access token
 	token, tokenType, err := s.GetAccessToken(ctx, account)
@@ -177,9 +191,6 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		writeGatewayCCError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", upstreamMsg)
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
-
-	// 13. Extract reasoning effort from CC request body
-	reasoningEffort := extractCCReasoningEffortFromBody(body)
 
 	// 14. Handle normal response
 	// Read Anthropic SSE → convert to Responses events → convert to CC format
