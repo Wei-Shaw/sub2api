@@ -174,6 +174,74 @@ func TestEnqueueChatSessionRecordExternalizesLargePayloads(t *testing.T) {
 	}
 }
 
+func TestEnqueueChatSessionRecordDropsLargePayloadWhenExternalizeFails(t *testing.T) {
+	oldQueue := chatSessionRecordQueue
+	oldOnce := chatSessionRecordQueueOnce
+	t.Cleanup(func() {
+		chatSessionRecordQueue = oldQueue
+		chatSessionRecordQueueOnce = oldOnce
+	})
+	payloadDir := filepath.Join(t.TempDir(), "payloads")
+	if err := os.WriteFile(payloadDir, []byte("not a directory"), 0600); err != nil {
+		t.Fatalf("write payload dir placeholder: %v", err)
+	}
+	t.Setenv("CHAT_SESSION_RETENTION_PAYLOAD_DIR", payloadDir)
+
+	chatSessionRecordQueue = make(chan chatSessionRecordTask, 1)
+	chatSessionRecordQueueOnce = sync.Once{}
+	chatSessionRecordQueueOnce.Do(func() {})
+
+	endpoint := "/v1/responses"
+	largeText := strings.Repeat("y", chatSessionInlineMaxBytes+1024)
+	body := []byte(`{"input":[{"role":"user","content":[{"type":"input_text","text":"` + largeText + `"}]}]}`)
+
+	enqueueChatSessionRecord(
+		service.NewChatSessionService(nil),
+		&service.ChatSessionRecordInput{
+			UserID:          1,
+			APIKeyID:        2,
+			InboundEndpoint: &endpoint,
+			CreatedAt:       time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC),
+		},
+		body,
+		"",
+		nil,
+	)
+
+	task := <-chatSessionRecordQueue
+	if len(task.requestBody) != 0 {
+		t.Fatalf("requestBody retained in queue after externalize failure: %d bytes", len(task.requestBody))
+	}
+	if len(task.requestBodyRef) != 0 {
+		t.Fatalf("requestBodyRef = %s, want empty after externalize failure", task.requestBodyRef)
+	}
+	if !strings.Contains(task.requestBodySummary, strings.Repeat("y", 16)) {
+		t.Fatalf("summary does not include request text")
+	}
+
+	messages, events := buildChatSessionMessages(
+		task.payload.InboundEndpoint,
+		task.requestBody,
+		task.requestBodyRef,
+		task.requestBodySummary,
+		task.finalOutputText,
+		task.finalOutputJSON,
+		task.finalOutputJSONRef,
+	)
+	if len(events) != 0 {
+		t.Fatalf("events len = %d, want 0", len(events))
+	}
+	if len(messages) != 1 {
+		t.Fatalf("messages len = %d, want 1: %#v", len(messages), messages)
+	}
+	if messages[0].Role != "user" || messages[0].Direction != "inbound" || !strings.Contains(messages[0].ContentText, strings.Repeat("y", 16)) {
+		t.Fatalf("message = %#v, want inbound summary", messages[0])
+	}
+	if len(messages[0].ContentJSON) != 0 {
+		t.Fatalf("ContentJSON retained after externalize failure: %d bytes", len(messages[0].ContentJSON))
+	}
+}
+
 func TestRecordChatSessionWithTimeoutIgnoresNilInputs(t *testing.T) {
 	recordChatSessionWithTimeout(nil, nil)
 }

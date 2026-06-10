@@ -95,7 +95,7 @@ func enqueueChatSessionRecord(
 			return summarizeInboundRequestBody(endpoint, raw)
 		},
 	)
-	if len(requestBodyRef) > 0 {
+	if len(requestBodyRef) > 0 || shouldDropInlineChatSessionCapturePayload(requestBody) {
 		requestBody = nil
 	}
 	finalOutputJSONRef, finalOutputSummary := maybeExternalizeChatSessionCapturePayload(
@@ -104,7 +104,7 @@ func enqueueChatSessionRecord(
 		"response",
 		func(raw []byte) string { return summarizeChatContentJSON(raw) },
 	)
-	if len(finalOutputJSONRef) > 0 {
+	if len(finalOutputJSONRef) > 0 || shouldDropInlineChatSessionCapturePayload(finalOutputJSON) {
 		finalOutputJSON = nil
 		if strings.TrimSpace(finalOutputText) == "" {
 			finalOutputText = finalOutputSummary
@@ -241,6 +241,12 @@ func buildChatSessionMessages(
 			Direction:   "inbound",
 			ContentText: strings.TrimSpace(requestBodySummary),
 			ContentJSON: requestBodyRef,
+		}}
+	} else if len(requestBody) == 0 && strings.TrimSpace(requestBodySummary) != "" {
+		inboundMessages = []service.ChatMessageRecordInput{{
+			Role:        "user",
+			Direction:   "inbound",
+			ContentText: strings.TrimSpace(requestBodySummary),
 		}}
 	} else {
 		inboundMessages, _ = parseInboundChatMessages(endpoint, requestBody)
@@ -658,7 +664,7 @@ type chatSessionCapturePayloadRef struct {
 
 func maybeExternalizeChatSessionCapturePayload(raw []byte, createdAt time.Time, kind string, summarize func([]byte) string) (json.RawMessage, string) {
 	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 || len(raw) <= chatSessionInlineMaxBytes || !json.Valid(raw) {
+	if !shouldDropInlineChatSessionCapturePayload(raw) || !json.Valid(raw) {
 		return nil, ""
 	}
 	if createdAt.IsZero() {
@@ -682,6 +688,10 @@ func maybeExternalizeChatSessionCapturePayload(raw []byte, createdAt time.Time, 
 		return nil, summary
 	}
 	return json.RawMessage(body), summary
+}
+
+func shouldDropInlineChatSessionCapturePayload(raw []byte) bool {
+	return len(bytes.TrimSpace(raw)) > chatSessionInlineMaxBytes
 }
 
 func writeChatSessionCapturePayload(raw []byte, createdAt time.Time, kind string) (chatSessionCapturePayloadRef, error) {
