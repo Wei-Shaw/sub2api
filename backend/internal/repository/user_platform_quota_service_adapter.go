@@ -94,6 +94,29 @@ func (a *userPlatformQuotaServiceAdapter) ResetExpiredWindow(ctx context.Context
 	return err
 }
 
+// BatchSnapshotUsage 转换 []service.UserPlatformQuotaSnapshot → []UserPlatformQuotaSnapshot，
+// 调底层 repo，并将 repository FK sentinel 包装为 service sentinel。
+func (a *userPlatformQuotaServiceAdapter) BatchSnapshotUsage(ctx context.Context, snapshots []service.UserPlatformQuotaSnapshot, now time.Time) error {
+	repoSnaps := make([]UserPlatformQuotaSnapshot, len(snapshots))
+	for i, s := range snapshots {
+		repoSnaps[i] = UserPlatformQuotaSnapshot{
+			UserID:             s.UserID,
+			Platform:           s.Platform,
+			DailyUsageUSD:      s.DailyUsageUSD,
+			WeeklyUsageUSD:     s.WeeklyUsageUSD,
+			MonthlyUsageUSD:    s.MonthlyUsageUSD,
+			DailyWindowStart:   s.DailyWindowStart,
+			WeeklyWindowStart:  s.WeeklyWindowStart,
+			MonthlyWindowStart: s.MonthlyWindowStart,
+		}
+	}
+	err := a.inner.BatchSnapshotUsage(ctx, repoSnaps, now)
+	if errors.Is(err, ErrUserPlatformQuotaFKViolation) {
+		return fmt.Errorf("%w: %v", service.ErrUserPlatformQuotaFKViolation, err)
+	}
+	return err
+}
+
 // genericUserPlatformQuotaAdapter 通过通用接口适配（用于测试 fake 或非标准实现）。
 type genericUserPlatformQuotaAdapter struct {
 	inner UserPlatformQuotaRepository
@@ -163,6 +186,29 @@ func (a *genericUserPlatformQuotaAdapter) ResetExpiredWindow(ctx context.Context
 	err := a.inner.ResetExpiredWindow(ctx, userID, platform, window, newStart)
 	if errors.Is(err, ErrUserPlatformQuotaNotFound) {
 		return fmt.Errorf("%w: %w", service.ErrUserPlatformQuotaNotFound, err)
+	}
+	return err
+}
+
+// BatchSnapshotUsage 转换 []service.UserPlatformQuotaSnapshot → []UserPlatformQuotaSnapshot（通用 adapter），
+// 并将 repository FK sentinel 包装为 service sentinel。
+func (a *genericUserPlatformQuotaAdapter) BatchSnapshotUsage(ctx context.Context, snapshots []service.UserPlatformQuotaSnapshot, now time.Time) error {
+	repoSnaps := make([]UserPlatformQuotaSnapshot, len(snapshots))
+	for i, s := range snapshots {
+		repoSnaps[i] = UserPlatformQuotaSnapshot{
+			UserID:             s.UserID,
+			Platform:           s.Platform,
+			DailyUsageUSD:      s.DailyUsageUSD,
+			WeeklyUsageUSD:     s.WeeklyUsageUSD,
+			MonthlyUsageUSD:    s.MonthlyUsageUSD,
+			DailyWindowStart:   s.DailyWindowStart,
+			WeeklyWindowStart:  s.WeeklyWindowStart,
+			MonthlyWindowStart: s.MonthlyWindowStart,
+		}
+	}
+	err := a.inner.BatchSnapshotUsage(ctx, repoSnaps, now)
+	if errors.Is(err, ErrUserPlatformQuotaFKViolation) {
+		return fmt.Errorf("%w: %v", service.ErrUserPlatformQuotaFKViolation, err)
 	}
 	return err
 }

@@ -20,14 +20,15 @@ type fakeIncrCache struct {
 }
 
 type incrCall struct {
-	userID   int64
-	platform string
-	cost     float64
-	ttl      time.Duration
+	userID    int64
+	platform  string
+	cost      float64
+	ttl       time.Duration
+	markDirty bool
 }
 
-func (f *fakeIncrCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration) error {
-	f.calls = append(f.calls, incrCall{userID, platform, cost, ttl})
+func (f *fakeIncrCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration, markDirty bool) error {
+	f.calls = append(f.calls, incrCall{userID, platform, cost, ttl, markDirty})
 	return nil
 }
 
@@ -49,10 +50,10 @@ func TestIncrementUserPlatformQuotaUsage_SyncCallsCache(t *testing.T) {
 	if len(fake.calls) != 2 {
 		t.Fatalf("expected 2 incr calls, got %d", len(fake.calls))
 	}
-	if fake.calls[0] != (incrCall{101, "anthropic", 0.25, 120 * time.Second}) {
+	if fake.calls[0] != (incrCall{userID: 101, platform: "anthropic", cost: 0.25, ttl: 120 * time.Second, markDirty: false}) {
 		t.Errorf("call[0] = %+v", fake.calls[0])
 	}
-	if fake.calls[1] != (incrCall{101, "openai", 0.50, 120 * time.Second}) {
+	if fake.calls[1] != (incrCall{userID: 101, platform: "openai", cost: 0.50, ttl: 120 * time.Second, markDirty: false}) {
 		t.Errorf("call[1] = %+v", fake.calls[1])
 	}
 }
@@ -88,13 +89,23 @@ func (f *fakeQuotaRepo) ResetExpiredWindow(_ context.Context, _ int64, _ string,
 	return nil
 }
 
-// fakeFullCache 同时支持 Get + Set + Incr + Delete。
+func (f *fakeQuotaRepo) BatchSnapshotUsage(_ context.Context, _ []UserPlatformQuotaSnapshot, _ time.Time) error {
+	return nil
+}
+
+// fakeFullCache 同时支持 Get + Set + Incr + Delete + Pop/Readd/BatchGet（脏集读写）。
 // mu 保护 entry 和 deleteCalls，防止异步 goroutine 与主 goroutine 之间的 data race。
 type fakeFullCache struct {
 	BillingCache
 	mu          sync.Mutex
 	entry       *UserPlatformQuotaCacheEntry
 	deleteCalls int
+	setCalls    int           // SetUserPlatformQuotaCache 调用次数
+	lastSetTTL  time.Duration // 最近一次 Set 的 ttl
+	getErr      error         // 非 nil 时 Get 先返回 (nil,false,getErr)
+	setErr      error         // 非 nil 时 Set 返回该 err(setCalls 仍+1)
+	// dirty 模拟脏集，供 flusher 测试使用。
+	dirty map[UserPlatformQuotaKey]struct{}
 }
 
 // getDeleteCalls 线程安全地读取 deleteCalls。
@@ -111,19 +122,41 @@ func (f *fakeFullCache) getEntry() *UserPlatformQuotaCacheEntry {
 	return f.entry
 }
 
+// getSetCalls 线程安全地读取 setCalls。
+func (f *fakeFullCache) getSetCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.setCalls
+}
+
+// getLastSetTTL 线程安全地读取 lastSetTTL。
+func (f *fakeFullCache) getLastSetTTL() time.Duration {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastSetTTL
+}
+
 func (f *fakeFullCache) GetUserPlatformQuotaCache(_ context.Context, _ int64, _ string) (*UserPlatformQuotaCacheEntry, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.getErr != nil {
+		return nil, false, f.getErr
+	}
 	if f.entry == nil {
 		return nil, false, nil
 	}
 	return f.entry, true, nil
 }
 
-func (f *fakeFullCache) SetUserPlatformQuotaCache(_ context.Context, _ int64, _ string, e *UserPlatformQuotaCacheEntry, _ time.Duration) error {
+func (f *fakeFullCache) SetUserPlatformQuotaCache(_ context.Context, _ int64, _ string, e *UserPlatformQuotaCacheEntry, ttl time.Duration) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.setCalls++
+	if f.setErr != nil {
+		return f.setErr
+	}
 	f.entry = e
+	f.lastSetTTL = ttl
 	return nil
 }
 
@@ -133,6 +166,48 @@ func (f *fakeFullCache) DeleteUserPlatformQuotaCache(_ context.Context, _ int64,
 	f.deleteCalls++
 	f.entry = nil
 	return nil
+}
+
+func (f *fakeFullCache) PopDirtyUserPlatformQuotaKeys(_ context.Context, n int) ([]UserPlatformQuotaKey, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.dirty) == 0 {
+		return nil, nil
+	}
+	keys := make([]UserPlatformQuotaKey, 0, n)
+	for k := range f.dirty {
+		if len(keys) >= n {
+			break
+		}
+		keys = append(keys, k)
+		delete(f.dirty, k)
+	}
+	return keys, nil
+}
+
+func (f *fakeFullCache) ReaddDirtyUserPlatformQuotaKeys(_ context.Context, keys []UserPlatformQuotaKey) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.dirty == nil {
+		f.dirty = make(map[UserPlatformQuotaKey]struct{})
+	}
+	for _, k := range keys {
+		f.dirty[k] = struct{}{}
+	}
+	return nil
+}
+
+// BatchGetUserPlatformQuotaCache 对每个 key 返回 f.entry（MISS → nil），
+// 保持与输入 keys 顺序/长度对齐。注意此处所有 key 共享同一个 entry，
+// 仅用于测试场景。
+func (f *fakeFullCache) BatchGetUserPlatformQuotaCache(_ context.Context, keys []UserPlatformQuotaKey) ([]*UserPlatformQuotaCacheEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	results := make([]*UserPlatformQuotaCacheEntry, len(keys))
+	for i := range keys {
+		results[i] = f.entry
+	}
+	return results, nil
 }
 
 func newServiceForPreflight(t *testing.T, repo UserPlatformQuotaRepository, cache BillingCache) *BillingCacheService {
@@ -589,6 +664,168 @@ func TestMonthlyQuotaWindowExpired_BoundaryTable(t *testing.T) {
 			if got != tc.expired {
 				t.Errorf("monthlyQuotaWindowExpired(start=%v, now=%v) = %v, want %v",
 					tc.start, tc.now, got, tc.expired)
+			}
+		})
+	}
+}
+
+// TestCheckUserPlatformQuotaEligibility_NoRow_WritesSentinel 验证:
+// cache MISS + DB 无行时,回填 sentinel entry(三 limit 全 nil,三 window_start 全 non-nil),
+// TTL = UserPlatformQuotaSentinelTTLSeconds,函数返回 nil(fail-open)。
+func TestCheckUserPlatformQuotaEligibility_NoRow_WritesSentinel(t *testing.T) {
+	repo := &fakeQuotaRepo{rec: nil} // DB 无行
+	cache := &fakeFullCache{}        // entry=nil → Get 返回 MISS
+	svc := newServiceForPreflight(t, repo, cache)
+	svc.cfg.Billing.UserPlatformQuotaSentinelTTLSeconds = 3600
+
+	if err := svc.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic"); err != nil {
+		t.Fatalf("expected nil (fail-open), got %v", err)
+	}
+	if cache.getSetCalls() != 1 {
+		t.Fatalf("expected 1 SetUserPlatformQuotaCache call for sentinel, got %d", cache.getSetCalls())
+	}
+	sentinel := cache.getEntry()
+	if sentinel == nil {
+		t.Fatal("expected sentinel entry backfilled")
+	}
+	if sentinel.DailyLimitUSD != nil || sentinel.WeeklyLimitUSD != nil || sentinel.MonthlyLimitUSD != nil {
+		t.Errorf("sentinel must have all-nil limits")
+	}
+	if sentinel.DailyWindowStart == nil || sentinel.WeeklyWindowStart == nil || sentinel.MonthlyWindowStart == nil {
+		t.Errorf("sentinel must have non-nil window_start to avoid refresh churn")
+	}
+	if sentinel.SchemaVersion != UserPlatformQuotaCacheSchemaV1 {
+		t.Errorf("sentinel schema = %d, want V1", sentinel.SchemaVersion)
+	}
+	if cache.getLastSetTTL() != 3600*time.Second {
+		t.Errorf("sentinel ttl = %v, want 3600s", cache.getLastSetTTL())
+	}
+}
+
+// TestCheckUserPlatformQuotaEligibility_RedisGetError_NoSentinelBackfill 验证:
+// Redis GET 故障(cacheErr!=nil)+ DB 无行时,不应回填 sentinel(与 "Redis 故障时不回填" 一致),且 fail-open。
+func TestCheckUserPlatformQuotaEligibility_RedisGetError_NoSentinelBackfill(t *testing.T) {
+	repo := &fakeQuotaRepo{rec: nil}
+	cache := &fakeFullCache{getErr: errors.New("redis get down")}
+	svc := newServiceForPreflight(t, repo, cache)
+	svc.cfg.Billing.UserPlatformQuotaSentinelTTLSeconds = 3600
+
+	if err := svc.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic"); err != nil {
+		t.Fatalf("redis 故障应 fail-open, got %v", err)
+	}
+	if cache.getSetCalls() != 0 {
+		t.Errorf("redis-get-error 时不应回填 sentinel, got %d set calls", cache.getSetCalls())
+	}
+}
+
+// TestCheckUserPlatformQuotaEligibility_NoRow_SentinelSetFailsFailOpen 验证:
+// sentinel SET 失败时 fail-open(返回 nil)且计 metric。
+func TestCheckUserPlatformQuotaEligibility_NoRow_SentinelSetFailsFailOpen(t *testing.T) {
+	before := userPlatformQuotaSentinelSetCacheErrorTotal.Load()
+	repo := &fakeQuotaRepo{rec: nil}
+	cache := &fakeFullCache{setErr: errors.New("redis set timeout")}
+	svc := newServiceForPreflight(t, repo, cache)
+	svc.cfg.Billing.UserPlatformQuotaSentinelTTLSeconds = 3600
+
+	if err := svc.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic"); err != nil {
+		t.Fatalf("sentinel set 失败应 fail-open, got %v", err)
+	}
+	if cache.getSetCalls() != 1 {
+		t.Errorf("应尝试 set sentinel 恰好一次, got %d", cache.getSetCalls())
+	}
+	if got := userPlatformQuotaSentinelSetCacheErrorTotal.Load() - before; got != 1 {
+		t.Errorf("set 失败应使 metric +1, got delta %d", got)
+	}
+}
+
+// TestCheckUserPlatformQuotaEligibility_SentinelCrossDay_NoRefresh 验证:
+// 命中 sentinel(三 limit 全 nil)且跨窗口(daily/weekly 过期)时,不应触发 refresh SetCache
+// (否则会把短 sentinel TTL 误升级为 quota cache 默认 86400s)。
+func TestCheckUserPlatformQuotaEligibility_SentinelCrossDay_NoRefresh(t *testing.T) {
+	yesterday := timezone.StartOfDay(time.Now().AddDate(0, 0, -1))
+	lastWeek := timezone.StartOfWeek(time.Now().AddDate(0, 0, -7))
+	monthAgoOK := time.Now().AddDate(0, 0, -5) // <30d, monthly 不过期
+	sentinel := &UserPlatformQuotaCacheEntry{
+		SchemaVersion:      UserPlatformQuotaCacheSchemaV1,
+		DailyWindowStart:   &yesterday, // 跨日 → daily windowExpired = true
+		WeeklyWindowStart:  &lastWeek,  // 跨周 → weekly windowExpired = true
+		MonthlyWindowStart: &monthAgoOK,
+		// limits 全 nil → sentinel
+	}
+	cache := &fakeFullCache{entry: sentinel} // entry 非 nil → Get HIT
+	svc := newServiceForPreflight(t, &fakeQuotaRepo{}, cache)
+
+	if err := svc.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic"); err != nil {
+		t.Fatalf("sentinel = no limit, expected nil, got %v", err)
+	}
+	if cache.getSetCalls() != 0 {
+		t.Errorf("sentinel cross-window must NOT trigger refresh SetCache, got %d calls", cache.getSetCalls())
+	}
+}
+
+// ── TestHasUserPlatformQuotaLimit ────────────────────────────────────────────
+
+func TestHasUserPlatformQuotaLimit(t *testing.T) {
+	daily := 5.0
+
+	tests := []struct {
+		name    string
+		setup   func() *BillingCacheService
+		want    bool
+	}{
+		{
+			name: "has_limit",
+			setup: func() *BillingCacheService {
+				entry := &UserPlatformQuotaCacheEntry{DailyLimitUSD: &daily}
+				svc := newServiceForPreflight(t, &fakeQuotaRepo{}, &fakeFullCache{entry: entry})
+				return svc
+			},
+			want: true,
+		},
+		{
+			name: "sentinel_no_limit",
+			setup: func() *BillingCacheService {
+				entry := &UserPlatformQuotaCacheEntry{} // 三个 limit 字段全 nil
+				svc := newServiceForPreflight(t, &fakeQuotaRepo{}, &fakeFullCache{entry: entry})
+				return svc
+			},
+			want: false,
+		},
+		{
+			name: "cache_miss",
+			setup: func() *BillingCacheService {
+				// entry==nil → GetUserPlatformQuotaCache 返回 (nil,false,nil)
+				svc := newServiceForPreflight(t, &fakeQuotaRepo{}, &fakeFullCache{})
+				return svc
+			},
+			want: true, // fail-safe
+		},
+		{
+			name: "redis_err",
+			setup: func() *BillingCacheService {
+				svc := newServiceForPreflight(t, &fakeQuotaRepo{}, &fakeFullCache{getErr: errors.New("redis down")})
+				return svc
+			},
+			want: true, // fail-safe
+		},
+		{
+			name: "simple_mode",
+			setup: func() *BillingCacheService {
+				entry := &UserPlatformQuotaCacheEntry{DailyLimitUSD: &daily}
+				svc := newServiceForPreflight(t, &fakeQuotaRepo{}, &fakeFullCache{entry: entry})
+				svc.cfg.RunMode = config.RunModeSimple
+				return svc
+			},
+			want: false, // simple 模式始终跳过
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := tt.setup()
+			got := svc.HasUserPlatformQuotaLimit(context.Background(), 1, "anthropic")
+			if got != tt.want {
+				t.Errorf("HasUserPlatformQuotaLimit() = %v, want %v", got, tt.want)
 			}
 		})
 	}

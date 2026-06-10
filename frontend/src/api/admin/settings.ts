@@ -626,6 +626,8 @@ export interface SystemSettings {
   upstream_passthrough_defaults?: UpstreamPassthroughDefaults;
   upstream_passthrough_global_override?: UpstreamPassthroughGlobalOverride;
   upstream_policy_v1_enabled?: boolean;
+  // Allow user view error requests
+  allow_user_view_error_requests: boolean;
 }
 
 export interface UpdateSettingsRequest {
@@ -870,6 +872,8 @@ export interface UpdateSettingsRequest {
   upstream_passthrough_defaults?: UpstreamPassthroughDefaults;
   upstream_passthrough_global_override?: UpstreamPassthroughGlobalOverride;
   upstream_policy_v1_enabled?: boolean;
+  // Allow user view error requests
+  allow_user_view_error_requests?: boolean;
 }
 
 /**

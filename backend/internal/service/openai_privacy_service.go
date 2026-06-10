@@ -95,6 +95,8 @@ type ChatGPTAccountInfo struct {
 
 const chatGPTAccountsCheckURL = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
 
+var chatGPTSubscriptionsURL = "https://chatgpt.com/backend-api/subscriptions"
+
 // fetchChatGPTAccountInfo calls ChatGPT backend-api to get account info (plan_type, etc.).
 // Used as fallback when id_token doesn't contain these fields (e.g., Mobile RT).
 // orgID is used to match the correct account when multiple accounts exist (e.g., personal + team).
@@ -197,6 +199,62 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 
 	slog.Info("chatgpt_account_check_success", "plan_type", info.PlanType, "subscription_expires_at", info.SubscriptionExpiresAt, "org_id", orgID)
 	return info
+}
+
+// fetchChatGPTSubscriptionExpiresAt reads the lightweight subscription endpoint used by
+// ChatGPT/Codex clients. Some Plus accounts no longer expose entitlement.expires_at in
+// accounts/check, but this endpoint still returns active_until.
+func fetchChatGPTSubscriptionExpiresAt(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL, accountID string) string {
+	accountID = strings.TrimSpace(accountID)
+	if accessToken == "" || accountID == "" || clientFactory == nil {
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	client, err := clientFactory(proxyURL)
+	if err != nil {
+		slog.Debug("chatgpt_subscription_client_error", "error", err.Error())
+		return ""
+	}
+
+	var result struct {
+		PlanType    string `json:"plan_type"`
+		ActiveUntil string `json:"active_until"`
+		WillRenew   bool   `json:"will_renew"`
+		ID          string `json:"id"`
+	}
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetHeader("Origin", "https://chatgpt.com").
+		SetHeader("Referer", "https://chatgpt.com/").
+		SetHeader("Accept", "application/json").
+		SetSuccessResult(&result).
+		SetQueryParam("account_id", accountID).
+		Get(chatGPTSubscriptionsURL)
+	if err != nil {
+		slog.Debug("chatgpt_subscription_request_error", "error", err.Error())
+		return ""
+	}
+	if !resp.IsSuccessState() {
+		slog.Debug("chatgpt_subscription_failed", "status", resp.StatusCode, "body", truncate(resp.String(), 200))
+		return ""
+	}
+
+	activeUntil := strings.TrimSpace(result.ActiveUntil)
+	if activeUntil == "" {
+		slog.Debug("chatgpt_subscription_no_active_until", "plan_type", result.PlanType, "has_subscription_id", strings.TrimSpace(result.ID) != "", "will_renew", result.WillRenew)
+		return ""
+	}
+	if _, err := time.Parse(time.RFC3339, activeUntil); err != nil {
+		slog.Debug("chatgpt_subscription_bad_active_until", "active_until", activeUntil, "error", err.Error())
+		return ""
+	}
+
+	slog.Info("chatgpt_subscription_success", "plan_type", result.PlanType, "subscription_expires_at", activeUntil, "account_id", accountID)
+	return activeUntil
 }
 
 // fillAccountInfo 从单个 account 对象中提取 plan_type 和 subscription_expires_at

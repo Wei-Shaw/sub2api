@@ -381,6 +381,34 @@ export default {
     }
   },
 
+  adminCompliance: {
+    title: '部署与运营合规确认',
+    blockingNotice: '继续使用控制台前，须完成部署与运营合规确认。',
+    riskNotice: '本确认用于以清晰、显著、可留痕的方式提示自部署实例的合规义务与运营风险。',
+    version: '协议版本',
+    openDocument: '在 GitHub 查看协议文件',
+    documentSource: '协议正文来自本项目仓库中的 Markdown 文件。修改协议内容时必须同步递增协议版本；已确认的旧版本将失效，控制台使用者须重新确认。',
+    inputLabel: '请逐字输入以下确认短语',
+    inputPlaceholder: '输入确认短语以继续',
+    inputMismatch: '确认短语不匹配，请逐字输入提示内容。',
+    legalNote: '本确认用于明确自部署实例与开源项目、著作权人、贡献者及维护者之间的非关联关系和责任边界；部署、运营或控制相关实例的主体应独立承担其适用义务。',
+    logout: '退出登录',
+    accept: '确认并继续',
+    accepted: '合规确认已记录',
+    acceptFailed: '提交确认失败'
+  },
+
+  legal: {
+    loadFailed: '文档加载失败',
+    retryLater: '请稍后刷新页面重试。',
+    notFound: '文档不存在',
+    notFoundDescription: '当前条款文档不存在或已被管理员移除。',
+    updatedAt: '更新日期：{date}',
+    empty: '暂无正文内容',
+    loginAgreement: '登录条款',
+    adminCompliance: '部署与运营合规承诺'
+  },
+
   // Navigation
   nav: {
     dashboard: '仪表盘',
@@ -907,6 +935,8 @@ export default {
     accountCost: '成本',
     userBilled: '用户扣费',
     accountBilled: '账号计费',
+    resetNow: '现在',
+    resetPending: '待刷新',
     accountMultiplier: '账号倍率',
     avgDuration: '平均耗时',
     inSelectedRange: '所选范围内',
@@ -947,6 +977,9 @@ export default {
     unknown: '未知',
     in: '输入',
     out: '输出',
+    cacheHit: '缓存命中',
+    cacheCreate: '缓存创建',
+    cacheHitRate: '缓存命中率',
     inputTokenPrice: '输入单价',
     outputTokenPrice: '输出单价',
     perMillionTokens: '/ 1M Token',
@@ -957,6 +990,9 @@ export default {
     imageBillingSize: '计费尺寸',
     imageInputSize: '输入尺寸',
     imageOutputSize: '输出尺寸',
+    imageOutputTokens: '图片输出 Token',
+    imageOutputTokenPrice: '图片输出单价',
+    imageOutputCost: '图片输出成本',
     imageSizeSource: '尺寸来源',
     imageSizeBreakdown: '尺寸明细',
     imageSizeSourceOutput: '上游输出',
@@ -984,7 +1020,26 @@ export default {
     exportExcelSuccess: '使用数据导出成功（Excel格式）',
     exportExcelFailed: '使用数据导出失败',
     imageUnit: '张',
-    userAgent: 'User-Agent'
+    userAgent: 'User-Agent',
+    tabs: { usage: '用量明细', errors: '错误请求' },
+    errors: {
+      time: '时间', model: '模型', endpoint: '端点', status: '状态码',
+      category: '分类', platform: '平台', message: '错误信息',
+      keyName: 'Key 名称', keyDeleted: '已删除', allKeys: '全部 Key',
+      modelPlaceholder: '搜索模型', allCategories: '全部分类',
+      empty: '暂无错误请求', failedToLoad: '加载错误请求失败',
+      categories: {
+        auth: '认证失败', rate_limit: '限流', quota: '余额/订阅',
+        invalid_request: '参数错误', service_unavailable: '服务暂时不可用',
+        upstream: '上游错误', internal: '平台错误', other: '其他',
+      },
+      detail: {
+        title: '错误请求详情',
+        responseBody: '上游响应内容',
+        upstreamStatus: '上游状态码',
+        loadFailed: '加载详情失败，请稍后重试',
+      },
+    },
   },
 
   // Shared keys for channel monitor (admin + user views)
@@ -1840,6 +1895,16 @@ export default {
       allGroups: '全部分组',
       searchGroups: '搜索分组...',
       fuzzySearch: '模糊搜索',
+      apiKeyGroupFilter: 'API Key 分组',
+      apiKeyGroupExclusive: '专用分组',
+      apiKeyGroupPublic: '公开分组',
+      apiKeyGroupSubscription: '订阅分组',
+      apiKeyGroupDisabled: '已禁用分组',
+      authorizedGroupFilter: '授权分组',
+      allAuthorizedGroups: '全部授权分组',
+      searchAuthorizedGroups: '搜索授权分组...',
+      allApiKeyGroups: '全部 API Key 分组',
+      searchApiKeyGroups: '搜索 API Key 分组...',
       statusFilter: '状态筛选',
       allStatuses: '全部状态',
       admin: '管理员',
@@ -3191,6 +3256,7 @@ export default {
         expiresAt: '过期时间',
         actions: '操作'
       },
+      usageWindowsHint: '“5h / 7d”是上游账号（如 OpenAI ChatGPT、Claude）官方的滚动用量窗口限制，由上游对账号设定，并非 sub2api 配置，也与你映射的模型无关。窗口滚动到期后用量会自动重置，无法在 sub2api 端解除该限制。',
       allPrivacyModes: '全部Privacy状态',
       privacyUnset: '未设置',
       privacyTrainingOff: '已关闭训练数据共享',
@@ -3471,6 +3537,11 @@ export default {
       recoverStateHint: '用于恢复错误、限流和临时不可调度等可恢复状态。',
       recoverStateSuccess: '账号状态已恢复',
       recoverStateFailed: '恢复账号状态失败',
+      fallbackActive: '已回退',
+      fallbackActiveTip: '原代理 {origin} 已到期，当前使用备用代理',
+      revertProxy: '切回原代理',
+      revertProxySuccess: '已成功切回原代理',
+      revertProxyFailed: '切回原代理失败',
       resetStatus: '重置状态',
       statusReset: '账号状态已重置',
       failedToResetStatus: '重置账号状态失败',
@@ -4328,6 +4399,8 @@ export default {
         status: '状态',
         accounts: '账号数',
         latency: '延迟',
+        expiry: '有效期',
+        createdAt: '创建时间',
         actions: '操作',
         nameLabel: '名称',
         namePlaceholder: '请输入代理名称',
@@ -4463,7 +4536,21 @@ export default {
       nameRequired: '请输入代理名称',
       hostRequired: '请输入主机地址',
       portInvalid: '端口必须在 1-65535 之间',
-      deleteConfirm: "确定要删除代理 '{name}' 吗？使用此代理的账号将被移除代理设置。"
+      deleteConfirm: "确定要删除代理 '{name}' 吗？使用此代理的账号将被移除代理设置。",
+      neverExpires: '永不过期',
+      expired: '已过期',
+      overdueDays: '已超期 {days} 天',
+      expiringInDays: '{days} 天后到期',
+      remainingDays: '剩余 {days} 天',
+      expiresAt: '有效期',
+      nDays: '{days} 天',
+      expiryDaysPlaceholder: '自定义天数，留空 = 永不过期',
+      expiryWarnDays: '到期提醒提前天数',
+      fallbackMode: '失败回退',
+      fallbackNone: '不回退',
+      fallbackProxy: '指定备用代理',
+      fallbackDirect: '回退直连',
+      backupProxy: '备用代理',
     },
 
     // Redeem Codes Management
@@ -4772,6 +4859,7 @@ export default {
       ipAddress: 'IP',
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',
+      userDeletedBadge: '已删除',
       cleanup: {
         button: '清理',
         title: '清理使用记录',
@@ -5009,6 +5097,8 @@ export default {
         group: '分组',
         user: '用户',
         userId: '用户 ID',
+        apiKey: 'API Key',
+        keyDeletedBadge: 'Key 已删除',
         account: '账号',
         accountId: '账号 ID',
         status: '状态码',
@@ -5135,7 +5225,11 @@ export default {
         suggestRequest: '⚠️ 客户端请求错误，建议：联系客户修正请求参数 / 手动标记已解决',
         suggestAuth: '⚠️ 认证失败，建议：检查 API Key 是否有效 / 联系客户更新凭证',
         suggestPlatform: '🚨 平台错误，建议立即排查修复',
-        suggestGeneric: '查看详情了解更多信息'
+        suggestGeneric: '查看详情了解更多信息',
+        apiKeyPrefix: 'Key 前缀',
+        attemptedKeyPrefix: '尝试的 Key 前缀',
+        deletedKeyOwner: '已删除 Key 所有者',
+        keyDeletedBadge: 'Key 已删除'
       },
       requestDetails: {
         title: '请求明细',
@@ -5249,6 +5343,7 @@ export default {
           accountRateLimitedCount: '限流账号数',
           accountErrorCount: '错误账号数（不含临时不可调度）',
           accountErrorRatio: '错误账号比例 (%)',
+          accountTempUnscheduledCount: '临时不可调度账号数',
           overloadAccountCount: '过载账号数'
         },
         metricDescriptions: {
@@ -5266,6 +5361,7 @@ export default {
           accountRateLimitedCount: '统计窗口内被限流的账号数量。',
           accountErrorCount: '统计窗口内产生错误的账号数量（不含临时不可调度）。',
           accountErrorRatio: '统计窗口内错误账号占比（0~100）。',
+          accountTempUnscheduledCount: '当前处于临时不可调度状态的账号数量（如代理/凭据故障被自动摘除）。',
           overloadAccountCount: '统计窗口内过载账号数量。'
         },
         hints: {
@@ -6620,6 +6716,14 @@ export default {
       openaiExperimentalScheduler: {
         title: 'OpenAI 实验调度策略',
         description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。'
+      },
+      usageRecords: {
+        title: '使用记录',
+        description: '与终端用户可见的用量及失败请求记录相关的设置。',
+      },
+      user_error_view: {
+        label: '允许用户查看自己的错误请求',
+        description: '开启后，用户可在用量页查看自己失败请求的精简信息（不含内部/上游错误细节）。需运维监控开启才有数据。',
       },
       saveSettings: '保存设置',
       saving: '保存中...',

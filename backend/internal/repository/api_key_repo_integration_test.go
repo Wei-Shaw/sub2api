@@ -555,3 +555,46 @@ func TestIncrementQuotaUsed_Concurrent(t *testing.T) {
 	require.Equal(t, float64(goroutines)*increment, got.QuotaUsed,
 		"并发递增后总和应为 %v，实际为 %v", float64(goroutines)*increment, got.QuotaUsed)
 }
+
+func (s *APIKeyRepoSuite) TestDeleteWithAudit_WritesAuditAndSoftDeletes() {
+	user := s.mustCreateUser("delwithaudit@test.com")
+	key := &service.APIKey{
+		UserID: user.ID,
+		Key:    "sk-del-audit-1",
+		Name:   "Audit Me",
+		Status: service.StatusActive,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, key))
+
+	s.Require().NoError(s.repo.DeleteWithAudit(s.ctx, key.ID))
+
+	_, err := s.repo.GetByID(s.ctx, key.ID)
+	s.Require().Error(err)
+
+	rows, qErr := s.client.QueryContext(s.ctx,
+		`SELECT key, key_name, user_id, api_key_id FROM deleted_api_key_audits WHERE api_key_id = $1`, key.ID)
+	s.Require().NoError(qErr)
+	defer rows.Close()
+	s.Require().True(rows.Next(), "expected one audit row")
+	var auditKey, auditName string
+	var auditUserID, auditAPIKeyID int64
+	s.Require().NoError(rows.Scan(&auditKey, &auditName, &auditUserID, &auditAPIKeyID))
+	s.Require().Equal("sk-del-audit-1", auditKey)
+	s.Require().Equal("Audit Me", auditName)
+	s.Require().Equal(user.ID, auditUserID)
+	s.Require().Equal(key.ID, auditAPIKeyID)
+}
+
+func (s *APIKeyRepoSuite) TestDeleteWithAudit_RepeatIsIdempotent() {
+	user := s.mustCreateUser("delwithaudit-idem@test.com")
+	key := &service.APIKey{UserID: user.ID, Key: "sk-del-audit-2", Name: "K", Status: service.StatusActive}
+	s.Require().NoError(s.repo.Create(s.ctx, key))
+
+	s.Require().NoError(s.repo.DeleteWithAudit(s.ctx, key.ID))
+	s.Require().NoError(s.repo.DeleteWithAudit(s.ctx, key.ID))
+}
+
+func (s *APIKeyRepoSuite) TestDeleteWithAudit_NotFound() {
+	err := s.repo.DeleteWithAudit(s.ctx, 999999)
+	s.Require().ErrorIs(err, service.ErrAPIKeyNotFound)
+}
