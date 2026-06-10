@@ -1880,6 +1880,13 @@ export default {
         created: 'Created',
         actions: 'Actions'
       },
+      bulkActions: {
+        selected: '{count} users selected',
+        selectCurrentPage: 'Select page',
+        clear: 'Clear selection',
+        selectAllVisible: 'Select visible users',
+        selectUser: 'Select user {email}'
+      },
       today: 'Today',
       total: 'Last 30d',
       sortBy: 'Sort By',
