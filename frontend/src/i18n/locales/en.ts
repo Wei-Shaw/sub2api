@@ -344,6 +344,34 @@ export default {
     }
   },
 
+  adminCompliance: {
+    title: 'Deployment and Operation Compliance Acknowledgment',
+    blockingNotice: 'Deployment and operation compliance acknowledgment is required before continuing to use the console.',
+    riskNotice: 'This acknowledgment provides clear, conspicuous, and reproducible notice of compliance obligations and operation risks for self-hosted instances.',
+    version: 'Document Version',
+    openDocument: 'Open the GitHub document',
+    documentSource: 'The agreement text comes from Markdown files in this project repository. When the agreement content changes, the document version must be incremented; acknowledgments of older versions become invalid and console users must acknowledge again.',
+    inputLabel: 'Type the following confirmation phrase exactly',
+    inputPlaceholder: 'Type the confirmation phrase to continue',
+    inputMismatch: 'The confirmation phrase does not match. Type the displayed text exactly.',
+    legalNote: 'This acknowledgment defines the no-affiliation relationship and responsibility boundary between self-hosted instances and the open-source project, copyright holders, contributors, and maintainers. The party that deploys, operates, or controls the relevant instance remains independently responsible for its applicable obligations.',
+    logout: 'Log out',
+    accept: 'Acknowledge and Continue',
+    accepted: 'Compliance acknowledgment recorded',
+    acceptFailed: 'Failed to submit acknowledgment'
+  },
+
+  legal: {
+    loadFailed: 'Failed to load document',
+    retryLater: 'Refresh the page and try again later.',
+    notFound: 'Document not found',
+    notFoundDescription: 'This legal document does not exist or has been removed by an administrator.',
+    updatedAt: 'Updated: {date}',
+    empty: 'No content',
+    loginAgreement: 'Login Agreement',
+    adminCompliance: 'Deployment and Operation Compliance Commitment'
+  },
+
   // Navigation
   nav: {
     dashboard: 'Dashboard',
