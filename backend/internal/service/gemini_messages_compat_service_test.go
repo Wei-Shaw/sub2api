@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type geminiCompatHTTPUpstreamStub struct {
@@ -168,6 +169,125 @@ func TestGeminiForwardAsChatCompletions_StreamsOpenAIChunksFromGeminiSSE(t *test
 	require.Contains(t, out, `"content":"lo"`)
 	require.Contains(t, out, `"usage":{"prompt_tokens":2,"completion_tokens":2,"total_tokens":4}`)
 	require.Contains(t, out, "data: [DONE]")
+}
+
+func TestGeminiForwardAsChatCompletions_CompatibleRelayUsesOpenAIChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamBody := `{"id":"chatcmpl_iacc","object":"chat.completion","model":"gemini-3.1-pro","choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6,"prompt_tokens_details":{"cached_tokens":1}}}`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_iacc"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       103,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "sk-iacc",
+			"base_url":      "https://iacc.cc",
+			"upstream_type": GeminiUpstreamCompatibleRelay,
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-3.1-pro","messages":[{"role":"user","content":"ping"}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "gemini-3.1-pro", result.Model)
+	require.Equal(t, "gemini-3.1-pro", result.UpstreamModel)
+	require.Equal(t, 4, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+	require.Equal(t, 1, result.Usage.CacheReadInputTokens)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://iacc.cc/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
+	require.Equal(t, "Bearer sk-iacc", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+	require.JSONEq(t, string(body), string(upstream.lastBody))
+	require.JSONEq(t, upstreamBody, rec.Body.String())
+}
+
+func TestGeminiForwardMessages_CompatibleRelayUsesOpenAIChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamBody := `{"id":"chatcmpl_iacc_messages","object":"chat.completion","model":"gemini-3.1-pro","choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6,"prompt_tokens_details":{"cached_tokens":1}}}`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_iacc_messages"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       104,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "sk-iacc",
+			"base_url":      "https://iacc.cc",
+			"upstream_type": GeminiUpstreamCompatibleRelay,
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-3.1-pro","max_tokens":128,"messages":[{"role":"user","content":"ping"}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "gemini-3.1-pro", result.Model)
+	require.Equal(t, "gemini-3.1-pro", result.UpstreamModel)
+	require.Equal(t, 4, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+	require.Equal(t, 1, result.Usage.CacheReadInputTokens)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://iacc.cc/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
+	require.Equal(t, "Bearer sk-iacc", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+	require.Equal(t, "gemini-3.1-pro", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "user", gjson.GetBytes(upstream.lastBody, "messages.0.role").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning_effort").Exists())
+	require.NotContains(t, upstream.lastReq.URL.String(), "/v1beta/")
+
+	require.Equal(t, "message", gjson.Get(rec.Body.String(), "type").String())
+	require.Equal(t, "pong", gjson.Get(rec.Body.String(), "content.0.text").String())
+}
+
+func TestGeminiCompatibleRelayMessagesChatBodyPreservesImageInput(t *testing.T) {
+	body := []byte(`{"model":"gemini-3.1-pro","max_tokens":128,"messages":[{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="}},{"type":"text","text":"describe this"}]}]}`)
+
+	upstreamBody, stream, reasoningEffort, err := buildGeminiCompatibleRelayMessagesChatBody(body, "gemini-3.1-pro")
+	require.NoError(t, err)
+	require.False(t, stream)
+	require.Nil(t, reasoningEffort)
+	require.Equal(t, "gemini-3.1-pro", gjson.GetBytes(upstreamBody, "model").String())
+	require.Equal(t, "user", gjson.GetBytes(upstreamBody, "messages.0.role").String())
+	require.Equal(t, "image_url", gjson.GetBytes(upstreamBody, "messages.0.content.0.type").String())
+	require.Equal(t, "data:image/png;base64,aGVsbG8=", gjson.GetBytes(upstreamBody, "messages.0.content.0.image_url.url").String())
+	require.Equal(t, "text", gjson.GetBytes(upstreamBody, "messages.0.content.1.type").String())
+	require.Equal(t, "describe this", gjson.GetBytes(upstreamBody, "messages.0.content.1.text").String())
+	require.False(t, gjson.GetBytes(upstreamBody, "reasoning_effort").Exists())
 }
 
 // TestConvertClaudeToolsToGeminiTools_CustomType 测试custom类型工具转换

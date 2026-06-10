@@ -642,6 +642,18 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	normalizedBaseURL string,
 	authToken string,
 ) error {
+	return s.testOpenAIChatCompletionsConnectionWithOptions(c, account, testModelID, prompt, normalizedBaseURL, authToken, false)
+}
+
+func (s *AccountTestService) testOpenAIChatCompletionsConnectionWithOptions(
+	c *gin.Context,
+	account *Account,
+	testModelID string,
+	prompt string,
+	normalizedBaseURL string,
+	authToken string,
+	allowUnsupportedFallback bool,
+) error {
 	ctx := c.Request.Context()
 	apiURL := buildOpenAIChatCompletionsURL(normalizedBaseURL)
 
@@ -679,6 +691,10 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		if allowUnsupportedFallback && isOpenAIChatCompletionsEndpointUnsupported(resp.StatusCode) {
+			s.sendEvent(c, TestEvent{Type: "status", Text: "/v1/chat/completions 不可用，回退到 Gemini 原生接口"})
+			return errGeminiCompatibleRelayOpenAIPathUnsupported
+		}
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
@@ -690,6 +706,10 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	}
 
 	return s.processOpenAIChatCompletionsStream(c, resp.Body)
+}
+
+func isOpenAIChatCompletionsEndpointUnsupported(statusCode int) bool {
+	return statusCode == http.StatusNotFound || statusCode == http.StatusMethodNotAllowed
 }
 
 // testOpenAICompactConnection probes /responses/compact and persists the
@@ -890,12 +910,32 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 		}
 	}
 
+	openAICompatibleProbeStarted := false
+	if account.IsGeminiCompatibleRelay() {
+		apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+		if apiKey == "" {
+			return s.sendErrorAndEnd(c, "No API key available")
+		}
+		baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+		}
+		err = s.testOpenAIChatCompletionsConnectionWithOptions(c, account, testModelID, prompt, normalizedBaseURL, apiKey, true)
+		if !errors.Is(err, errGeminiCompatibleRelayOpenAIPathUnsupported) {
+			return err
+		}
+		openAICompatibleProbeStarted = true
+	}
+
 	// Set SSE headers
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.Flush()
+	if !openAICompatibleProbeStarted {
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("X-Accel-Buffering", "no")
+		c.Writer.Flush()
+	}
 
 	// Create test payload (Gemini format)
 	payload := createGeminiTestPayload(testModelID, prompt)
@@ -920,7 +960,9 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 	}
 
 	// Send test_start event
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	if !openAICompatibleProbeStarted {
+		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	}
 
 	// Get proxy and execute request
 	proxyURL := ""

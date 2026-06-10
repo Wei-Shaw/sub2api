@@ -430,6 +430,103 @@ func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsP
 	require.NotContains(t, body, "当前测试接口仅支持 Responses API 路径")
 }
 
+func TestAccountTestService_GeminiCompatibleRelayUsesOpenAIChatCompletionsPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_gemini_relay","object":"chat.completion.chunk","model":"gemini-3.1-pro","choices":[{"index":0,"delta":{"role":"assistant","content":"pong"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_gemini_relay","object":"chat.completion.chunk","model":"gemini-3.1-pro","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          95,
+		Platform:    PlatformGemini,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":       "sk-iacc",
+			"base_url":      "https://iacc.cc",
+			"upstream_type": GeminiUpstreamCompatibleRelay,
+		},
+	}
+
+	err := svc.testGeminiAccountConnection(ctx, account, "gemini-3.1-pro", "hello")
+	require.NoError(t, err)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
+	require.Equal(t, "https://iacc.cc/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-iacc", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
+	require.Equal(t, "gemini-3.1-pro", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.Equal(t, "hello", gjson.GetBytes(upstream.lastBody, "messages.0.content").String())
+	require.NotContains(t, upstream.lastReq.URL.String(), "/v1beta/")
+	body := recorder.Body.String()
+	require.Contains(t, body, "pong")
+	require.Contains(t, body, "已通过 /v1/chat/completions 验证")
+	require.Contains(t, body, `"success":true`)
+}
+
+func TestAccountTestService_GeminiCompatibleRelayFallsBackToNativeTestPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	nativeBody := strings.Join([]string{
+		`data: {"candidates":[{"content":{"parts":[{"text":"native pong"}]},"finishReason":"STOP"}]}`,
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newJSONResponse(http.StatusNotFound, `{"error":{"message":"not found"}}`),
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(nativeBody)),
+		},
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          96,
+		Platform:    PlatformGemini,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":       "gemini-key",
+			"base_url":      "https://native-relay.example",
+			"upstream_type": GeminiUpstreamCompatibleRelay,
+		},
+	}
+
+	err := svc.testGeminiAccountConnection(ctx, account, "gemini-native", "hello")
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://native-relay.example/v1/chat/completions", upstream.requests[0].URL.String())
+	require.Equal(t, "Bearer gemini-key", upstream.requests[0].Header.Get("Authorization"))
+	require.Empty(t, upstream.requests[0].Header.Get("x-goog-api-key"))
+	require.Equal(t, "https://native-relay.example/v1beta/models/gemini-native:streamGenerateContent?alt=sse", upstream.requests[1].URL.String())
+	require.Equal(t, "gemini-key", upstream.requests[1].Header.Get("x-goog-api-key"))
+	require.Empty(t, upstream.requests[1].Header.Get("Authorization"))
+	body := recorder.Body.String()
+	require.Contains(t, body, "/v1/chat/completions 不可用")
+	require.Contains(t, body, "native pong")
+	require.Contains(t, body, `"success":true`)
+}
+
 func TestAccountTestService_OpenAIChatCompletionsPathReturns4xx(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()

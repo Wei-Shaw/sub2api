@@ -19,6 +19,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var errGeminiCompatibleRelayOpenAIPathUnsupported = errors.New("gemini compatible relay openai chat completions path unsupported")
+
 // ForwardAsChatCompletions serves OpenAI Chat Completions clients through
 // Gemini accounts. It keeps the client-facing response in Chat Completions
 // format while routing the upstream call through Gemini native endpoints.
@@ -42,6 +44,13 @@ func (s *GeminiMessagesCompatService) ForwardAsChatCompletions(
 	clientStream := ccReq.Stream
 	includeUsage := ccReq.StreamOptions != nil && ccReq.StreamOptions.IncludeUsage
 
+	if account != nil && account.IsGeminiCompatibleRelay() {
+		result, err := s.forwardCompatibleRelayAsRawChatCompletions(ctx, c, account, body, startTime)
+		if !errors.Is(err, errGeminiCompatibleRelayOpenAIPathUnsupported) {
+			return result, err
+		}
+	}
+
 	responsesReq, err := apicompat.ChatCompletionsToResponses(&ccReq)
 	if err != nil {
 		return nil, s.writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
@@ -59,6 +68,333 @@ func (s *GeminiMessagesCompatService) ForwardAsChatCompletions(
 	}
 
 	return s.forwardClaudeBodyAsChatCompletions(ctx, c, account, claudeBody, originalModel, clientStream, includeUsage, startTime, body)
+}
+
+func (s *GeminiMessagesCompatService) forwardCompatibleRelayAsRawChatCompletions(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	startTime time.Time,
+) (*ForwardResult, error) {
+	var ccReq apicompat.ChatCompletionsRequest
+	if err := json.Unmarshal(body, &ccReq); err != nil {
+		return nil, s.writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+	}
+	originalModel := strings.TrimSpace(ccReq.Model)
+	if originalModel == "" {
+		return nil, s.writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+	}
+
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" {
+		return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "gemini compatible relay api_key not configured")
+	}
+	baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", err.Error())
+	}
+
+	upstreamModel := originalModel
+	if account.Type == AccountTypeAPIKey {
+		upstreamModel = account.GetMappedModel(originalModel)
+	}
+	upstreamBody := body
+	if upstreamModel != originalModel {
+		upstreamBody = ReplaceModelInBody(body, upstreamModel)
+	}
+	if ccReq.Stream {
+		updated, usageErr := ensureOpenAIChatStreamUsage(upstreamBody)
+		if usageErr != nil {
+			return nil, fmt.Errorf("enable stream usage: %w", usageErr)
+		}
+		upstreamBody = updated
+	}
+
+	targetURL := buildOpenAIChatCompletionsURL(normalizedBaseURL)
+	upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(upstreamBody))
+	if err != nil {
+		return nil, fmt.Errorf("build compatible relay chat completions request: %w", err)
+	}
+	upstreamReq = upstreamReq.WithContext(WithHTTPUpstreamProfile(upstreamReq.Context(), HTTPUpstreamProfileOpenAI))
+	upstreamReq.Header.Set("Content-Type", "application/json")
+	upstreamReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if ccReq.Stream {
+		upstreamReq.Header.Set("Accept", "text/event-stream")
+	} else {
+		upstreamReq.Header.Set("Accept", "application/json")
+	}
+
+	for key, values := range c.Request.Header {
+		if openaiCCRawAllowedHeaders[strings.ToLower(key)] {
+			for _, value := range values {
+				upstreamReq.Header.Add(key, value)
+			}
+		}
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		setOpsUpstreamError(c, 0, safeErr, "")
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: 0,
+			Kind:               "request_error",
+			Message:            safeErr,
+		})
+		return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, gatewayUpstreamErrorBodyReadLimit))
+		return nil, errGeminiCompatibleRelayOpenAIPathUnsupported
+	}
+
+	requestID := resp.Header.Get("x-request-id")
+	if requestID != "" {
+		c.Header("x-request-id", requestID)
+	}
+	reasoningEffort := extractOpenAIReasoningEffortFromBody(body, originalModel)
+
+	if resp.StatusCode >= 400 {
+		respBody := s.readUpstreamErrorBody(resp)
+		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, "")
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  requestID,
+			Kind:               "http_error",
+			Message:            upstreamMsg,
+		})
+		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
+		}
+		if s.responseHeaderFilter != nil {
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		}
+		if ct := resp.Header.Get("Content-Type"); ct != "" {
+			c.Writer.Header().Set("Content-Type", ct)
+		} else {
+			c.Writer.Header().Set("Content-Type", "application/json")
+		}
+		MarkResponseCommitted(c)
+		c.Writer.WriteHeader(resp.StatusCode)
+		_, _ = c.Writer.Write(respBody)
+		if upstreamMsg == "" {
+			upstreamMsg = fmt.Sprintf("upstream returned HTTP %d", resp.StatusCode)
+		}
+		return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+	}
+
+	if ccReq.Stream {
+		return s.streamCompatibleRelayRawChatCompletions(c, resp, account, originalModel, upstreamModel, reasoningEffort, startTime, len(body))
+	}
+	return s.bufferCompatibleRelayRawChatCompletions(c, resp, originalModel, upstreamModel, reasoningEffort, startTime)
+}
+
+func (s *GeminiMessagesCompatService) streamCompatibleRelayRawChatCompletions(
+	c *gin.Context,
+	resp *http.Response,
+	account *Account,
+	originalModel string,
+	upstreamModel string,
+	reasoningEffort *string,
+	startTime time.Time,
+	requestBodyLen int,
+) (*ForwardResult, error) {
+	requestID := resp.Header.Get("x-request-id")
+
+	headersWritten := false
+	writeStreamHeaders := func() {
+		if headersWritten {
+			return
+		}
+		headersWritten = true
+		if s.responseHeaderFilter != nil {
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		}
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("X-Accel-Buffering", "no")
+		c.Writer.WriteHeader(http.StatusOK)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	maxLineSize := defaultMaxLineSize
+	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+		maxLineSize = s.cfg.Gateway.MaxLineSize
+	}
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
+
+	var usage ClaudeUsage
+	var firstTokenMs *int
+	clientDisconnected := false
+	clientOutputStarted := false
+	pendingLines := make([]string, 0, 8)
+	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
+
+	writeLine := func(line string) {
+		if clientDisconnected {
+			return
+		}
+		if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+			pendingLines = append(pendingLines, line)
+			return
+		}
+		if !clientOutputStarted {
+			writeStreamHeaders()
+			for _, pending := range pendingLines {
+				if _, werr := c.Writer.WriteString(pending + "\n"); werr != nil {
+					clientDisconnected = true
+					return
+				}
+			}
+			pendingLines = pendingLines[:0]
+			clientOutputStarted = true
+		}
+		if _, werr := c.Writer.WriteString(line + "\n"); werr != nil {
+			clientDisconnected = true
+		}
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		refusalDetector.ObserveSSELine(line)
+		if payload, ok := extractOpenAISSEDataLine(line); ok {
+			trimmedPayload := strings.TrimSpace(payload)
+			if trimmedPayload != "[DONE]" {
+				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
+				if u := extractCCStreamUsage(payload); u != nil {
+					usage = claudeUsageFromOpenAIUsage(*u)
+				}
+				if firstTokenMs == nil && !usageOnlyChunk {
+					elapsed := int(time.Since(startTime).Milliseconds())
+					firstTokenMs = &elapsed
+				}
+			}
+		}
+
+		writeLine(line)
+		if line == "" {
+			if !clientDisconnected && clientOutputStarted {
+				c.Writer.Flush()
+			}
+			continue
+		}
+		if !clientDisconnected && clientOutputStarted {
+			c.Writer.Flush()
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("read compatible relay stream: %w", err)
+		}
+	} else if !clientDisconnected && !clientOutputStarted {
+		if refusalDetector.IsSilentRefusal() {
+			return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
+		}
+		if len(pendingLines) > 0 {
+			writeStreamHeaders()
+			for _, pending := range pendingLines {
+				if _, werr := c.Writer.WriteString(pending + "\n"); werr != nil {
+					clientDisconnected = true
+					break
+				}
+			}
+			if !clientDisconnected {
+				c.Writer.Flush()
+				clientOutputStarted = true
+			}
+		}
+	}
+
+	return &ForwardResult{
+		RequestID:        requestID,
+		Usage:            usage,
+		Model:            originalModel,
+		UpstreamModel:    upstreamModel,
+		Stream:           true,
+		Duration:         time.Since(startTime),
+		FirstTokenMs:     firstTokenMs,
+		ClientDisconnect: clientDisconnected,
+		ReasoningEffort:  reasoningEffort,
+	}, nil
+}
+
+func (s *GeminiMessagesCompatService) bufferCompatibleRelayRawChatCompletions(
+	c *gin.Context,
+	resp *http.Response,
+	originalModel string,
+	upstreamModel string,
+	reasoningEffort *string,
+	startTime time.Time,
+) (*ForwardResult, error) {
+	requestID := resp.Header.Get("x-request-id")
+
+	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
+		}
+		return nil, fmt.Errorf("read compatible relay response body: %w", err)
+	}
+
+	var ccResp apicompat.ChatCompletionsResponse
+	usage := ClaudeUsage{}
+	if err := json.Unmarshal(respBody, &ccResp); err == nil && ccResp.Usage != nil {
+		usage.InputTokens = ccResp.Usage.PromptTokens
+		usage.OutputTokens = ccResp.Usage.CompletionTokens
+		if ccResp.Usage.PromptTokensDetails != nil {
+			usage.CacheReadInputTokens = ccResp.Usage.PromptTokensDetails.CachedTokens
+		}
+	}
+
+	if s.responseHeaderFilter != nil {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "" {
+		c.Writer.Header().Set("Content-Type", ct)
+	} else {
+		c.Writer.Header().Set("Content-Type", "application/json")
+	}
+	c.Writer.WriteHeader(http.StatusOK)
+	_, _ = c.Writer.Write(respBody)
+
+	return &ForwardResult{
+		RequestID:       requestID,
+		Usage:           usage,
+		Model:           originalModel,
+		UpstreamModel:   upstreamModel,
+		Stream:          false,
+		Duration:        time.Since(startTime),
+		ReasoningEffort: reasoningEffort,
+	}, nil
+}
+
+func claudeUsageFromOpenAIUsage(usage OpenAIUsage) ClaudeUsage {
+	return ClaudeUsage{
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+		CacheReadInputTokens:     usage.CacheReadInputTokens,
+		ImageOutputTokens:        usage.ImageOutputTokens,
+	}
 }
 
 func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(

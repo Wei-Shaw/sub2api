@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
@@ -599,6 +600,13 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		mappedModel = account.GetMappedModel(req.Model)
 	}
 
+	if account != nil && account.IsGeminiCompatibleRelay() {
+		result, err := s.forwardCompatibleRelayMessagesAsChatCompletions(ctx, c, account, body, originalModel, mappedModel, startTime)
+		if !errors.Is(err, errGeminiCompatibleRelayOpenAIPathUnsupported) {
+			return result, err
+		}
+	}
+
 	geminiReq, err := convertClaudeMessagesToGeminiGenerateContent(body)
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
@@ -1095,6 +1103,400 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		ImageCount:     imageCount,
 		ImageSize:      imageSize,
 		ImageInputSize: imageInputSize,
+	}, nil
+}
+
+func (s *GeminiMessagesCompatService) forwardCompatibleRelayMessagesAsChatCompletions(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	originalModel string,
+	upstreamModel string,
+	startTime time.Time,
+) (*ForwardResult, error) {
+	upstreamBody, clientStream, reasoningEffort, err := buildGeminiCompatibleRelayMessagesChatBody(body, upstreamModel)
+	if err != nil {
+		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+	}
+
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" {
+		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "gemini compatible relay api_key not configured")
+	}
+	baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", err.Error())
+	}
+
+	targetURL := buildOpenAIChatCompletionsURL(normalizedBaseURL)
+	upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(upstreamBody))
+	if err != nil {
+		return nil, fmt.Errorf("build compatible relay messages request: %w", err)
+	}
+	upstreamReq = upstreamReq.WithContext(WithHTTPUpstreamProfile(upstreamReq.Context(), HTTPUpstreamProfileOpenAI))
+	upstreamReq.Header.Set("Content-Type", "application/json")
+	upstreamReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if clientStream {
+		upstreamReq.Header.Set("Accept", "text/event-stream")
+	} else {
+		upstreamReq.Header.Set("Accept", "application/json")
+	}
+
+	for key, values := range c.Request.Header {
+		if openaiCCRawAllowedHeaders[strings.ToLower(key)] {
+			for _, value := range values {
+				upstreamReq.Header.Add(key, value)
+			}
+		}
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		setOpsUpstreamError(c, 0, safeErr, "")
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: 0,
+			Kind:               "request_error",
+			Message:            safeErr,
+		})
+		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if isOpenAIChatCompletionsEndpointUnsupported(resp.StatusCode) {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, gatewayUpstreamErrorBodyReadLimit))
+		return nil, errGeminiCompatibleRelayOpenAIPathUnsupported
+	}
+
+	requestID := resp.Header.Get("x-request-id")
+	if requestID != "" {
+		c.Header("x-request-id", requestID)
+	}
+
+	if resp.StatusCode >= 400 {
+		respBody := s.readUpstreamErrorBody(resp)
+		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		if upstreamMsg == "" {
+			upstreamMsg = fmt.Sprintf("upstream returned HTTP %d", resp.StatusCode)
+		}
+		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, "")
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  requestID,
+			Kind:               "http_error",
+			Message:            upstreamMsg,
+		})
+		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
+		}
+		return nil, s.writeClaudeError(c, resp.StatusCode, "upstream_error", upstreamMsg)
+	}
+
+	if clientStream {
+		return s.streamCompatibleRelayMessagesChatCompletions(c, resp, account, originalModel, upstreamModel, reasoningEffort, startTime, body)
+	}
+	return s.bufferCompatibleRelayMessagesChatCompletions(c, resp, originalModel, upstreamModel, reasoningEffort, startTime, body)
+}
+
+func buildGeminiCompatibleRelayMessagesChatBody(body []byte, upstreamModel string) ([]byte, bool, *string, error) {
+	var anthropicReq apicompat.AnthropicRequest
+	if err := json.Unmarshal(body, &anthropicReq); err != nil {
+		return nil, false, nil, fmt.Errorf("parse Anthropic request: %w", err)
+	}
+
+	responsesReq, err := apicompat.AnthropicToResponses(&anthropicReq)
+	if err != nil {
+		return nil, false, nil, fmt.Errorf("convert Anthropic request to Responses: %w", err)
+	}
+	chatReq, err := apicompat.ResponsesToChatCompletionsRequest(responsesReq)
+	if err != nil {
+		return nil, false, nil, fmt.Errorf("convert Responses request to Chat Completions: %w", err)
+	}
+
+	if strings.TrimSpace(upstreamModel) != "" {
+		chatReq.Model = upstreamModel
+	}
+	chatReq.Stream = anthropicReq.Stream
+	if !shouldForwardAnthropicReasoningToGeminiCompatibleRelay(&anthropicReq) {
+		chatReq.ReasoningEffort = ""
+	}
+	if chatReq.Stream {
+		if chatReq.StreamOptions == nil {
+			chatReq.StreamOptions = &apicompat.ChatStreamOptions{}
+		}
+		chatReq.StreamOptions.IncludeUsage = true
+	}
+
+	var reasoningEffort *string
+	if strings.TrimSpace(chatReq.ReasoningEffort) != "" {
+		value := chatReq.ReasoningEffort
+		reasoningEffort = &value
+	}
+
+	upstreamBody, err := json.Marshal(chatReq)
+	if err != nil {
+		return nil, false, nil, fmt.Errorf("marshal Chat Completions request: %w", err)
+	}
+	return upstreamBody, chatReq.Stream, reasoningEffort, nil
+}
+
+func shouldForwardAnthropicReasoningToGeminiCompatibleRelay(req *apicompat.AnthropicRequest) bool {
+	if req == nil {
+		return false
+	}
+	if req.OutputConfig != nil && strings.TrimSpace(req.OutputConfig.Effort) != "" {
+		return true
+	}
+	if req.Thinking == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(req.Thinking.Type)) {
+	case "enabled", "adaptive":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *GeminiMessagesCompatService) streamCompatibleRelayMessagesChatCompletions(
+	c *gin.Context,
+	resp *http.Response,
+	account *Account,
+	originalModel string,
+	upstreamModel string,
+	reasoningEffort *string,
+	startTime time.Time,
+	originalBody []byte,
+) (*ForwardResult, error) {
+	requestID := resp.Header.Get("x-request-id")
+
+	headersWritten := false
+	writeStreamHeaders := func() {
+		if headersWritten {
+			return
+		}
+		headersWritten = true
+		if s.responseHeaderFilter != nil {
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		}
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("X-Accel-Buffering", "no")
+		c.Writer.WriteHeader(http.StatusOK)
+	}
+
+	chatState := apicompat.NewChatCompletionsToResponsesStreamState(originalModel)
+	anthropicState := apicompat.NewResponsesEventToAnthropicState()
+	anthropicState.Model = originalModel
+
+	var usage ClaudeUsage
+	var firstTokenMs *int
+	clientDisconnected := false
+	clientOutputStarted := false
+	refusalDetector := newOpenAIChatSilentRefusalDetector(len(originalBody))
+
+	writeResponsesEvents := func(events []apicompat.ResponsesStreamEvent) {
+		if clientDisconnected || len(events) == 0 {
+			return
+		}
+		for _, responseEvent := range events {
+			anthropicEvents := apicompat.ResponsesEventToAnthropicEvents(&responseEvent, anthropicState)
+			for _, anthropicEvent := range anthropicEvents {
+				sse, err := apicompat.ResponsesAnthropicEventToSSE(anthropicEvent)
+				if err != nil {
+					continue
+				}
+				writeStreamHeaders()
+				clientOutputStarted = true
+				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
+					clientDisconnected = true
+					return
+				}
+			}
+			if responseEvent.Usage != nil {
+				usage = claudeUsageFromOpenAIUsage(copyOpenAIUsageFromResponsesUsage(responseEvent.Usage))
+			}
+			if responseEvent.Response != nil && responseEvent.Response.Usage != nil {
+				usage = claudeUsageFromOpenAIUsage(copyOpenAIUsageFromResponsesUsage(responseEvent.Response.Usage))
+			}
+		}
+		if !clientDisconnected && clientOutputStarted {
+			c.Writer.Flush()
+		}
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	maxLineSize := defaultMaxLineSize
+	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+		maxLineSize = s.cfg.Gateway.MaxLineSize
+	}
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
+
+	sawDone := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		refusalDetector.ObserveSSELine(line)
+		payload, ok := extractOpenAISSEDataLine(line)
+		if !ok {
+			continue
+		}
+		payload = strings.TrimSpace(payload)
+		if payload == "" {
+			continue
+		}
+		if payload == "[DONE]" {
+			sawDone = true
+			break
+		}
+
+		if u := extractCCStreamUsage(payload); u != nil {
+			usage = claudeUsageFromOpenAIUsage(*u)
+		}
+
+		var chunk apicompat.ChatCompletionsChunk
+		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			continue
+		}
+		if firstTokenMs == nil && !isOpenAIChatUsageOnlyStreamChunk(payload) && chatChunkStartsResponsesOutput(&chunk) {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
+		}
+		writeResponsesEvents(apicompat.ChatCompletionsChunkToResponsesEvents(&chunk, chatState))
+	}
+
+	if err := scanner.Err(); err != nil {
+		result := &ForwardResult{
+			RequestID:        requestID,
+			Usage:            usage,
+			Model:            originalModel,
+			UpstreamModel:    upstreamModel,
+			Stream:           true,
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ReasoningEffort:  reasoningEffort,
+			ClientDisconnect: clientDisconnected,
+		}
+		if !clientOutputStarted && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
+		}
+		return result, fmt.Errorf("read compatible relay messages stream: %w", err)
+	}
+
+	if !sawDone && !clientOutputStarted && refusalDetector.IsSilentRefusal() {
+		return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
+	}
+
+	writeResponsesEvents(apicompat.FinalizeChatCompletionsResponsesStream(chatState))
+	if finalEvents := apicompat.FinalizeResponsesAnthropicStream(anthropicState); len(finalEvents) > 0 && !clientDisconnected {
+		for _, event := range finalEvents {
+			sse, err := apicompat.ResponsesAnthropicEventToSSE(event)
+			if err != nil {
+				continue
+			}
+			writeStreamHeaders()
+			clientOutputStarted = true
+			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
+				clientDisconnected = true
+				break
+			}
+		}
+		if !clientDisconnected && clientOutputStarted {
+			c.Writer.Flush()
+		}
+	}
+
+	imageCount := 0
+	imageInputSize := s.extractImageInputSize(originalBody)
+	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
+	if isImageGenerationModel(originalModel) {
+		imageCount = 1
+	}
+
+	return &ForwardResult{
+		RequestID:        requestID,
+		Usage:            usage,
+		Model:            originalModel,
+		UpstreamModel:    upstreamModel,
+		Stream:           true,
+		Duration:         time.Since(startTime),
+		FirstTokenMs:     firstTokenMs,
+		ReasoningEffort:  reasoningEffort,
+		ImageCount:       imageCount,
+		ImageSize:        imageSize,
+		ImageInputSize:   imageInputSize,
+		ClientDisconnect: clientDisconnected,
+	}, nil
+}
+
+func (s *GeminiMessagesCompatService) bufferCompatibleRelayMessagesChatCompletions(
+	c *gin.Context,
+	resp *http.Response,
+	originalModel string,
+	upstreamModel string,
+	reasoningEffort *string,
+	startTime time.Time,
+	originalBody []byte,
+) (*ForwardResult, error) {
+	requestID := resp.Header.Get("x-request-id")
+
+	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
+	if err != nil {
+		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
+		}
+		return nil, fmt.Errorf("read compatible relay messages response body: %w", err)
+	}
+
+	var chatResp apicompat.ChatCompletionsResponse
+	if err := json.Unmarshal(respBody, &chatResp); err != nil {
+		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+	}
+
+	responsesResp := apicompat.ChatCompletionsResponseToResponses(&chatResp, originalModel)
+	anthropicResp := apicompat.ResponsesToAnthropic(responsesResp, originalModel)
+
+	if s.responseHeaderFilter != nil {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	}
+	c.JSON(http.StatusOK, anthropicResp)
+
+	usage := ClaudeUsage{}
+	if responsesResp.Usage != nil {
+		usage = claudeUsageFromOpenAIUsage(copyOpenAIUsageFromResponsesUsage(responsesResp.Usage))
+	}
+	imageCount := 0
+	imageInputSize := s.extractImageInputSize(originalBody)
+	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
+	if isImageGenerationModel(originalModel) {
+		imageCount = 1
+	}
+
+	return &ForwardResult{
+		RequestID:       requestID,
+		Usage:           usage,
+		Model:           originalModel,
+		UpstreamModel:   upstreamModel,
+		Stream:          false,
+		Duration:        time.Since(startTime),
+		ReasoningEffort: reasoningEffort,
+		ImageCount:      imageCount,
+		ImageSize:       imageSize,
+		ImageInputSize:  imageInputSize,
 	}, nil
 }
 

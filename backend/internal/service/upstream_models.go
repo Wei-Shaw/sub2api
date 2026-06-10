@@ -89,11 +89,18 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 		return nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
 	}
 
+	if account.IsGeminiCompatibleRelay() {
+		return s.fetchGeminiCompatibleRelayUpstreamModels(ctx, account)
+	}
+
 	req, err := s.buildUpstreamModelsRequest(ctx, account)
 	if err != nil {
 		return nil, err
 	}
+	return s.fetchUpstreamModelsWithRequest(req, account)
+}
 
+func (s *AccountTestService) fetchUpstreamModelsWithRequest(req *http.Request, account *Account) ([]string, error) {
 	proxyURL := upstreamModelsProxyURL(account)
 	resp, err := s.doUpstreamModelsRequest(req, proxyURL, account)
 	if err != nil {
@@ -125,6 +132,27 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 	}
 
 	return models, nil
+}
+
+func (s *AccountTestService) fetchGeminiCompatibleRelayUpstreamModels(ctx context.Context, account *Account) ([]string, error) {
+	openAIReq, err := s.buildGeminiCompatibleRelayOpenAIModelsRequest(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	models, openAIErr := s.fetchUpstreamModelsWithRequest(openAIReq, account)
+	if openAIErr == nil {
+		return models, nil
+	}
+
+	geminiReq, err := s.buildGeminiUpstreamModelsRequest(ctx, account)
+	if err != nil {
+		return nil, openAIErr
+	}
+	models, geminiErr := s.fetchUpstreamModelsWithRequest(geminiReq, account)
+	if geminiErr == nil {
+		return models, nil
+	}
+	return nil, openAIErr
 }
 
 func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
@@ -321,6 +349,35 @@ func (s *AccountTestService) buildGeminiUpstreamModelsRequest(ctx context.Contex
 		)
 	}
 
+	return req, nil
+}
+
+func (s *AccountTestService) buildGeminiCompatibleRelayOpenAIModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	if account.Type != AccountTypeAPIKey {
+		return nil, newUpstreamModelSyncUnsupportedError(
+			fmt.Sprintf("Unsupported Gemini compatible relay account type for upstream model sync: %s", account.Type), nil,
+		)
+	}
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" {
+		return nil, newUpstreamModelSyncConfigError("No Gemini compatible relay API key is available", nil)
+	}
+
+	baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+	if strings.TrimSpace(baseURL) == "" {
+		return nil, newUpstreamModelSyncConfigError("Gemini compatible relay base URL is required for upstream model sync", nil)
+	}
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid Gemini compatible relay base URL", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildOpenAIModelsURL(normalizedBaseURL), nil)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid Gemini compatible relay model list URL", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	return req, nil
 }
 
