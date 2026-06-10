@@ -5280,7 +5280,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}
 
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx) {
-		passthroughBody := parsed.Body
+		passthroughBody := parsed.Body.Bytes()
 		passthroughModel := parsed.Model
 		if passthroughModel != "" {
 			if mappedModel := account.GetMappedModelForUpstream(ctx, passthroughModel); mappedModel != passthroughModel {
@@ -5565,6 +5565,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	// 重试循环
 	var resp *http.Response
+	var err error
 	lastWireBody := body
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
@@ -6369,7 +6370,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		if baseURL != "" {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			targetURL = strings.TrimRight(validatedURL, "/") + "/v1/messages" + upstreamBetaQuerySuffix(account)
 		} else {
@@ -6423,7 +6424,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	if account.IsClaudePlatformAWS() {
 		workspaceID := claudePlatformAWSWorkspaceID(account)
 		if workspaceID == "" {
-			return nil, errors.New("workspace_id not found in credentials")
+			return nil, nil, errors.New("workspace_id not found in credentials")
 		}
 		setHeaderRaw(req.Header, "anthropic-workspace-id", workspaceID)
 	}
@@ -7268,8 +7269,7 @@ func (s *GatewayService) forwardVertex(
 ) (*ForwardResult, error) {
 	reqModel := parsed.Model
 	reqStream := parsed.Stream
-	body := parsed.Body
-
+	body := parsed.Body.Bytes()
 	projectID := vertexProjectID(account)
 	if projectID == "" {
 		return nil, fmt.Errorf("vertex: gcp_project_id not configured for account %d", account.ID)
@@ -11175,7 +11175,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	}
 
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx) {
-		passthroughBody := parsed.Body
+		passthroughBody := parsed.Body.Bytes()
 		if reqModel := parsed.Model; reqModel != "" {
 			if mappedModel := account.GetMappedModelForUpstream(ctx, reqModel); mappedModel != reqModel {
 				passthroughBody = s.replaceModelInBody(passthroughBody, mappedModel)

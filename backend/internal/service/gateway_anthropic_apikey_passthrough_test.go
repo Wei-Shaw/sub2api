@@ -98,7 +98,7 @@ func TestGatewayService_ClaudePlatformAWS_ForwardUsesNativeAnthropicEndpoint(t *
 
 	body := []byte(`{"model":"claude-sonnet-4-6","stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
 	parsed := &ParsedRequest{
-		Body:   body,
+		Body:   NewRequestBodyRef(body),
 		Model:  "claude-sonnet-4-6",
 		Stream: false,
 	}
@@ -141,7 +141,7 @@ func TestGatewayService_ClaudePlatformAWS_ForwardCountTokensUsesWorkspaceHeader(
 
 	body := []byte(`{"model":"claude-haiku-4-5","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
 	parsed := &ParsedRequest{
-		Body:  body,
+		Body:  NewRequestBodyRef(body),
 		Model: "claude-haiku-4-5",
 	}
 

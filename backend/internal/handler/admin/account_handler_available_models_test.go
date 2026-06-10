@@ -53,6 +53,10 @@ func (u *syncUpstreamHTTPUpstream) DoWithTLS(req *http.Request, proxyURL string,
 	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
+func (u *syncUpstreamHTTPUpstream) Prewarm(_ context.Context, _ string, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) error {
+	return nil
+}
+
 func setupSyncUpstreamModelsRouter(adminSvc service.AdminService, upstream service.HTTPUpstream) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

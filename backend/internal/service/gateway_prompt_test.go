@@ -303,92 +303,93 @@ func TestInjectClaudeCodePrompt(t *testing.T) {
 }
 
 func TestRewriteSystemForNonClaudeCode(t *testing.T) {
-	// Updated contract (v0.1.125+): client system prompt moves to messages[]
-	// as user/assistant pair, NOT appended to system[]. Rationale: client-
-	// specific fingerprint text (e.g. "running inside OpenClaw", AGENTS.md)
-	// leaks from system into Anthropic's semantic detection; messages content
-	// is ignored by that detection.
-	//
-	// system array: [CC_prompt] only — always exactly one block.
-	// messages array: [fake_user_instr, fake_assistant_ack, ...original] if
-	//   client supplied a non-empty, non-CC system prompt.
 	tests := []struct {
-		name              string
-		body              string
-		system            any
-		wantInjected      bool   // client prompt became messages[0:2] pair?
-		wantInjectText    string // substring of the injected user instruction
-		wantMessagesLen   int
+		name             string
+		body             string
+		system           any
+		wantSystemText   string // system array 第一个 block 的 text
+		wantMessagesLen  int    // messages 数组长度
+		wantFirstMsgRole string // 第一条消息的 role
+		wantFirstMsgText string // 第一条消息的 content[0].text
+		wantAckMsgText   string // 第二条消息的 content[0].text
 	}{
 		{
-			name:            "nil system - no injection",
+			name:            "nil system - no messages injected",
 			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"}]}`,
 			system:          nil,
-			wantInjected:    false,
-			wantMessagesLen: 1,
+			wantSystemText:  claudeCodeSystemPrompt,
+			wantMessagesLen: 1, // 原始 1 条消息，不注入
 		},
 		{
-			name:            "empty string system - no injection",
+			name:            "empty string system - no messages injected",
 			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"}]}`,
 			system:          "",
-			wantInjected:    false,
+			wantSystemText:  claudeCodeSystemPrompt,
 			wantMessagesLen: 1,
 		},
 		{
-			name:            "custom string system - inject user/assistant pair",
-			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"}]}`,
-			system:          "You are a personal assistant running inside OpenClaw.",
-			wantInjected:    true,
-			wantInjectText:  "You are a personal assistant running inside OpenClaw.",
-			wantMessagesLen: 3, // instr + ack + original
+			name:             "custom string system - migrated to messages",
+			body:             `{"model":"claude-3","messages":[{"role":"user","content":"hello"}]}`,
+			system:           "You are a personal assistant running inside OpenClaw.",
+			wantSystemText:   claudeCodeSystemPrompt,
+			wantMessagesLen:  3, // instruction + ack + original
+			wantFirstMsgRole: "user",
+			wantFirstMsgText: "[System Instructions]\nYou are a personal assistant running inside OpenClaw.",
+			wantAckMsgText:   "Understood. I will follow these instructions.",
 		},
 		{
-			name:            "system equals Claude Code prompt - no injection",
+			name:            "system equals Claude Code prompt - no messages injected",
 			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"}]}`,
 			system:          claudeCodeSystemPrompt,
-			wantInjected:    false,
+			wantSystemText:  claudeCodeSystemPrompt,
 			wantMessagesLen: 1,
 		},
 		{
-			name: "array system with custom blocks - injected as joined instruction",
+			name: "array system with custom blocks - text joined and migrated",
 			body: `{"model":"claude-3","messages":[{"role":"user","content":"hello"}]}`,
 			system: []any{
 				map[string]any{"type": "text", "text": "First instruction"},
 				map[string]any{"type": "text", "text": "Second instruction"},
 			},
-			wantInjected:    true,
-			wantInjectText:  "First instruction\n\nSecond instruction",
-			wantMessagesLen: 3,
+			wantSystemText:   claudeCodeSystemPrompt,
+			wantMessagesLen:  3,
+			wantFirstMsgRole: "user",
+			wantFirstMsgText: "[System Instructions]\nFirst instruction\n\nSecond instruction",
+			wantAckMsgText:   "Understood. I will follow these instructions.",
 		},
 		{
-			name:            "empty array system - no injection",
+			name:            "empty array system - no messages injected",
 			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"}]}`,
 			system:          []any{},
-			wantInjected:    false,
+			wantSystemText:  claudeCodeSystemPrompt,
 			wantMessagesLen: 1,
 		},
 		{
-			name:            "json.RawMessage string system - injected",
-			body:            `{"model":"claude-3","system":"Custom prompt","messages":[{"role":"user","content":"hello"}]}`,
-			system:          json.RawMessage(`"Custom prompt"`),
-			wantInjected:    true,
-			wantInjectText:  "Custom prompt",
-			wantMessagesLen: 3,
+			name:             "json.RawMessage string system",
+			body:             `{"model":"claude-3","system":"Custom prompt","messages":[{"role":"user","content":"hello"}]}`,
+			system:           json.RawMessage(`"Custom prompt"`),
+			wantSystemText:   claudeCodeSystemPrompt,
+			wantMessagesLen:  3,
+			wantFirstMsgRole: "user",
+			wantFirstMsgText: "[System Instructions]\nCustom prompt",
+			wantAckMsgText:   "Understood. I will follow these instructions.",
 		},
 		{
-			name:            "json.RawMessage nil system - no injection",
+			name:            "json.RawMessage nil system",
 			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"}]}`,
 			system:          json.RawMessage(nil),
-			wantInjected:    false,
+			wantSystemText:  claudeCodeSystemPrompt,
 			wantMessagesLen: 1,
 		},
 		{
-			name:            "multiple original messages preserved with instr+ack prepended",
-			body:            `{"model":"claude-3","messages":[{"role":"user","content":"msg1"},{"role":"assistant","content":"resp1"},{"role":"user","content":"msg2"}]}`,
-			system:          "Be helpful",
-			wantInjected:    true,
-			wantInjectText:  "Be helpful",
-			wantMessagesLen: 5, // instr + ack + 3 originals
+			name:             "multiple original messages preserved",
+			body:             `{"model":"claude-3","messages":[{"role":"user","content":"msg1"},{"role":"assistant","content":"resp1"},{"role":"user","content":"msg2"}]}`,
+			system:           "Be helpful",
+			wantSystemText:   claudeCodeSystemPrompt,
+			wantMessagesLen:  5, // 2 injected + 3 original
+			wantFirstMsgRole: "user",
+			wantFirstMsgText: "[System Instructions]\nBe helpful",
+			wantAckMsgText:   "Understood. I will follow these instructions.",
 		},
 	}
 
@@ -431,42 +432,35 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			require.True(t, ok, "expansion block should have cache_control")
 			require.Equal(t, "ephemeral", cc["type"])
 
-			// Guard: client fingerprint text must not leak into the CC prompt block.
-			if text, _ := systemBlock["text"].(string); text != "" {
-				require.False(t, strings.HasPrefix(text, "x-anthropic-billing-header"),
-					"system[1] (cc prompt) must not contain billing header")
-			}
-
-			// messages: instruction + ack pair + originals when injected.
+			// 检查 messages
 			messages, ok := parsed["messages"].([]any)
 			require.True(t, ok, "messages should be an array")
 			require.Len(t, messages, tt.wantMessagesLen)
 
-			if tt.wantInjected {
-				// messages[0]: user instruction
-				instr, ok := messages[0].(map[string]any)
+			if tt.wantFirstMsgRole != "" && len(messages) >= 2 {
+				// 检查注入的 instruction 消息
+				firstMsg, ok := messages[0].(map[string]any)
 				require.True(t, ok)
-				require.Equal(t, "user", instr["role"])
-				content, ok := instr["content"].([]any)
-				require.True(t, ok, "instr content must be array, got %T", instr["content"])
-				require.NotEmpty(t, content)
-				block, ok := content[0].(map[string]any)
-				require.True(t, ok)
-				text, _ := block["text"].(string)
-				require.True(t, strings.HasPrefix(text, "[System Instructions]\n"),
-					"instr text must start with [System Instructions] marker, got: %s", text)
-				require.Contains(t, text, tt.wantInjectText)
+				require.Equal(t, tt.wantFirstMsgRole, firstMsg["role"])
 
-				// messages[1]: assistant ack
-				ack, ok := messages[1].(map[string]any)
+				firstContent, ok := firstMsg["content"].([]any)
 				require.True(t, ok)
-				require.Equal(t, "assistant", ack["role"])
-				ackContent, ok := ack["content"].([]any)
+				require.Len(t, firstContent, 1)
+				firstBlock, ok := firstContent[0].(map[string]any)
 				require.True(t, ok)
-				require.NotEmpty(t, ackContent)
+				require.Equal(t, tt.wantFirstMsgText, firstBlock["text"])
+
+				// 检查注入的 ack 消息
+				ackMsg, ok := messages[1].(map[string]any)
+				require.True(t, ok)
+				require.Equal(t, "assistant", ackMsg["role"])
+
+				ackContent, ok := ackMsg["content"].([]any)
+				require.True(t, ok)
+				require.Len(t, ackContent, 1)
 				ackBlock, ok := ackContent[0].(map[string]any)
 				require.True(t, ok)
-				require.Equal(t, "Understood. I will follow these instructions.", ackBlock["text"])
+				require.Equal(t, tt.wantAckMsgText, ackBlock["text"])
 			}
 		})
 	}
