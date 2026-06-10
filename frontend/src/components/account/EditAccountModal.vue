@@ -38,7 +38,9 @@
               account.platform === 'openai'
                 ? 'https://api.openai.com'
                 : account.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
+                  ? isEditingGeminiCompatibleRelay
+                    ? 'https://your-relay.example.com'
+                    : GEMINI_OFFICIAL_BASE_URL
                   : account.platform === 'antigravity'
                     ? 'https://cloudcode-pa.googleapis.com'
                     : 'https://api.anthropic.com'
@@ -60,7 +62,9 @@
               account.platform === 'openai'
                 ? 'sk-proj-...'
                 : account.platform === 'gemini'
-                  ? 'AIza...'
+                  ? isEditingGeminiCompatibleRelay
+                    ? 'sk-...'
+                    : 'AIza...'
                   : account.platform === 'antigravity'
                     ? 'sk-...'
                     : 'sk-ant-...'
@@ -2436,10 +2440,51 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
+const GEMINI_OFFICIAL_BASE_URL = 'https://generativelanguage.googleapis.com'
+const GEMINI_COMPATIBLE_RELAY_TIER_ID = 'compatible_relay'
+
+const editBaseUrl = ref('https://api.anthropic.com')
+const editApiKey = ref('')
+
+const isOfficialGeminiBaseURL = (value?: unknown) => {
+  const raw = (typeof value === 'string' ? value : '').trim()
+  if (!raw) return true
+  try {
+    return new URL(raw).hostname.toLowerCase() === 'generativelanguage.googleapis.com'
+  } catch {
+    return raw.replace(/\/+$/, '').toLowerCase().startsWith(`${GEMINI_OFFICIAL_BASE_URL}/`) ||
+      raw.replace(/\/+$/, '').toLowerCase() === GEMINI_OFFICIAL_BASE_URL
+  }
+}
+
+const hasGeminiCompatibleRelayMarker = (credentials?: Record<string, unknown>) => {
+  const upstreamType = String(credentials?.upstream_type || '').trim().toLowerCase()
+  const tierID = String(credentials?.tier_id || '').trim().toLowerCase()
+  return upstreamType === GEMINI_COMPATIBLE_RELAY_TIER_ID || tierID === GEMINI_COMPATIBLE_RELAY_TIER_ID
+}
+
+const isGeminiCompatibleRelay = (credentials?: Record<string, unknown>, baseURL?: string) => {
+  if (baseURL !== undefined) {
+    return !isOfficialGeminiBaseURL(baseURL)
+  }
+  if (hasGeminiCompatibleRelayMarker(credentials)) return true
+  return !isOfficialGeminiBaseURL(credentials?.base_url)
+}
+
+const isEditingGeminiCompatibleRelay = computed(() => {
+  if (!props.account || props.account.platform !== 'gemini' || props.account.type !== 'apikey') {
+    return false
+  }
+  return isGeminiCompatibleRelay(props.account.credentials as Record<string, unknown> | undefined, editBaseUrl.value)
+})
+
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (props.account.platform === 'gemini' && isEditingGeminiCompatibleRelay.value) {
+    return t('admin.accounts.gemini.relayBaseUrlHint')
+  }
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
@@ -2462,8 +2507,6 @@ interface TempUnschedRuleForm {
 
 // State
 const submitting = ref(false)
-const editBaseUrl = ref('https://api.anthropic.com')
-const editApiKey = ref('')
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -2841,7 +2884,7 @@ const tempUnschedPresets = computed(() => [
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
-  if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
+  if (props.account?.platform === 'gemini') return GEMINI_OFFICIAL_BASE_URL
   return 'https://api.anthropic.com'
 })
 
@@ -3691,6 +3734,22 @@ const handleSubmit = async () => {
       const newCredentials: Record<string, unknown> = {
         ...currentCredentials,
         base_url: newBaseUrl
+      }
+
+      if (props.account.platform === 'gemini') {
+        const isRelay = isGeminiCompatibleRelay(currentCredentials, newBaseUrl)
+        if (isRelay) {
+          newCredentials.tier_id = GEMINI_COMPATIBLE_RELAY_TIER_ID
+          newCredentials.upstream_type = GEMINI_COMPATIBLE_RELAY_TIER_ID
+        } else {
+          delete newCredentials.upstream_type
+          if (
+            String(newCredentials.tier_id || '').trim().toLowerCase() === GEMINI_COMPATIBLE_RELAY_TIER_ID ||
+            !newCredentials.tier_id
+          ) {
+            newCredentials.tier_id = 'aistudio_free'
+          }
+        }
       }
 
       // Handle API key

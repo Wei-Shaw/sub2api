@@ -3882,6 +3882,9 @@ export default {
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)',
+        relayBaseUrlHint: 'Enter a Gemini-native compatible relay base URL, for example https://example.com',
+        relayApiKeyHint: 'Enter the API key issued by your relay. Requests are still forwarded as Gemini native API calls.',
+        relayBaseUrlRequired: 'Please enter the compatible relay base URL',
         tier: {
           label: 'Account Tier',
           hint: 'Tip: The system will try to auto-detect the tier first; if auto-detection is unavailable or fails, your selected tier is used as a fallback (simulated quota).',
@@ -3909,7 +3912,11 @@ export default {
           apiKeyNote:
             'Best for light testing. Free tier has strict rate limits and data may be used for training.',
           apiKeyLink: 'Get API Key',
-          quotaLink: 'Quota guide'
+          quotaLink: 'Quota guide',
+          relayTitle: 'Compatible Relay API Key',
+          relayDesc: 'Use a third-party Gemini-compatible endpoint and relay API key.',
+          relayNote:
+            'Use this for Gemini-native compatible relays such as NewAPI or One API. These accounts do not use Google official simulated local quotas; actual limits come from the relay.'
         },
         oauthType: {
           builtInTitle: 'Built-in OAuth (Gemini CLI / Code Assist)',
@@ -3990,6 +3997,10 @@ export default {
               paid: 'Billing enabled (pay-as-you-go)',
               limitsFree: 'RPD 50; RPM 2 (Pro) / 15 (Flash)',
               limitsPaid: 'RPD unlimited; RPM 1000 (Pro) / 2000 (Flash) (per model)'
+            },
+            compatibleRelay: {
+              channel: 'Gemini Compatible Relay API Key',
+              limits: 'Quota, RPM/RPD, and billing rules are decided by the relay. Google official simulated local quotas are not applied.'
             },
             customOAuth: {
               channel: 'Custom OAuth Client (GCP)',

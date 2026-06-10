@@ -25,6 +25,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 )
 
 // sseDataPrefix matches SSE data lines with optional whitespace after colon.
@@ -619,10 +620,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
-		// 401 Unauthorized: 标记账号为永久错误
+		// 401 Unauthorized: OpenAI OAuth with refresh_token gets a refresh window; others keep SetError behavior.
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+			s.handleOpenAIAccountTestUnauthorized(ctx, account, body, errMsg)
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
@@ -683,7 +684,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 		}
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Chat Completions authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+			s.handleOpenAIAccountTestUnauthorized(ctx, account, body, errMsg)
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) returned %d: %s", resp.StatusCode, string(body)))
 	}
@@ -797,7 +798,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+			s.handleOpenAIAccountTestUnauthorized(ctx, account, body, errMsg)
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
@@ -805,6 +806,33 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	s.sendEvent(c, TestEvent{Type: "content", Text: "Compact probe succeeded"})
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 	return nil
+}
+
+func (s *AccountTestService) handleOpenAIAccountTestUnauthorized(ctx context.Context, account *Account, body []byte, errMsg string) {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return
+	}
+
+	if !account.IsOpenAIOAuth() ||
+		strings.TrimSpace(account.GetOpenAIRefreshToken()) == "" ||
+		isOpenAIAccountTestPermanentUnauthorized(body) {
+		_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		return
+	}
+
+	cooldownMinutes := 10
+	if s.cfg != nil && s.cfg.RateLimit.OAuth401CooldownMinutes > 0 {
+		cooldownMinutes = s.cfg.RateLimit.OAuth401CooldownMinutes
+	}
+	until := time.Now().Add(time.Duration(cooldownMinutes) * time.Minute)
+	_ = s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, errMsg)
+}
+
+func isOpenAIAccountTestPermanentUnauthorized(body []byte) bool {
+	openai401Code := extractUpstreamErrorCode(body)
+	return openai401Code == "token_invalidated" ||
+		openai401Code == "token_revoked" ||
+		gjson.GetBytes(body, "detail").String() == "Unauthorized"
 }
 
 func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, account *Account, headers http.Header, body []byte) {

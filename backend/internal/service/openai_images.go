@@ -273,13 +273,18 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 		v := int(partialImages.Int())
 		req.PartialImages = &v
 	}
-	if imageURL := normalizeOpenAIImagesJSONInputImage(gjson.GetBytes(body, "image")); imageURL != "" {
-		req.InputImageURLs = append(req.InputImageURLs, imageURL)
+	for _, path := range []string{"image", "image_url", "url", "b64_json", "base64", "image_base64", "input_image"} {
+		if imageURL := normalizeOpenAIImagesJSONInputImage(gjson.GetBytes(body, path)); imageURL != "" {
+			req.InputImageURLs = append(req.InputImageURLs, imageURL)
+		}
 	}
-	images := gjson.GetBytes(body, "images")
-	if images.Exists() {
+	for _, path := range []string{"images", "input_images"} {
+		images := gjson.GetBytes(body, path)
+		if !images.Exists() {
+			continue
+		}
 		if !images.IsArray() {
-			return fmt.Errorf("invalid images field type")
+			return fmt.Errorf("invalid %s field type", path)
 		}
 		for _, item := range images.Array() {
 			if imageURL := normalizeOpenAIImagesJSONInputImage(item); imageURL != "" {
@@ -287,7 +292,7 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 				continue
 			}
 			if item.Get("file_id").Exists() {
-				return fmt.Errorf("images[].file_id is not supported (use images[].image_url instead)")
+				return fmt.Errorf("%s[].file_id is not supported (use %s[].image_url instead)", path, path)
 			}
 		}
 	}

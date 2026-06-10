@@ -6,6 +6,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -176,6 +177,8 @@ func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
 }
 
+const GeminiUpstreamCompatibleRelay = "compatible_relay"
+
 func (a *Account) GeminiOAuthType() string {
 	if a.Platform != PlatformGemini || a.Type != AccountTypeOAuth {
 		return ""
@@ -201,6 +204,20 @@ func (a *Account) IsGeminiCodeAssist() bool {
 		return strings.TrimSpace(a.GetCredential("project_id")) != ""
 	}
 	return oauthType == "code_assist"
+}
+
+func (a *Account) IsGeminiCompatibleRelay() bool {
+	if a == nil || a.Platform != PlatformGemini || a.Type != AccountTypeAPIKey {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(a.GetCredential("upstream_type")), GeminiUpstreamCompatibleRelay) {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(a.GetCredential("tier_id")), GeminiUpstreamCompatibleRelay) {
+		return true
+	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	return baseURL != "" && !isOfficialGeminiBaseURL(baseURL)
 }
 
 func (a *Account) CanGetUsage() bool {
@@ -756,6 +773,19 @@ func (a *Account) GetGeminiBaseURL(defaultBaseURL string) string {
 		return strings.TrimRight(baseURL, "/") + "/antigravity"
 	}
 	return baseURL
+}
+
+func isOfficialGeminiBaseURL(baseURL string) bool {
+	raw := strings.TrimSpace(baseURL)
+	if raw == "" {
+		return true
+	}
+	if parsed, err := url.Parse(raw); err == nil && parsed.Hostname() != "" {
+		return strings.EqualFold(parsed.Hostname(), "generativelanguage.googleapis.com")
+	}
+	normalized := strings.ToLower(strings.TrimRight(raw, "/"))
+	return normalized == "https://generativelanguage.googleapis.com" ||
+		strings.HasPrefix(normalized, "https://generativelanguage.googleapis.com/")
 }
 
 func (a *Account) GetExtraString(key string) string {

@@ -2,11 +2,13 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
@@ -197,4 +199,78 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyDefaultBase
 	require.NoError(t, err)
 	require.Equal(t, "https://api.openai.com/v1/responses/compact", upstream.lastReq.URL.String())
 	<-updateCalls
+}
+
+type openAICompactAuthStateRepo struct {
+	snapshotUpdateAccountRepo
+	setErrorID              int64
+	setErrorMsg             string
+	tempUnschedulableID     int64
+	tempUnschedulableUntil  *time.Time
+	tempUnschedulableReason string
+}
+
+func (r *openAICompactAuthStateRepo) SetError(_ context.Context, id int64, errorMsg string) error {
+	r.setErrorID = id
+	r.setErrorMsg = errorMsg
+	return nil
+}
+
+func (r *openAICompactAuthStateRepo) SetTempUnschedulable(_ context.Context, id int64, until time.Time, reason string) error {
+	r.tempUnschedulableID = id
+	r.tempUnschedulableUntil = &until
+	r.tempUnschedulableReason = reason
+	return nil
+}
+
+func TestAccountTestService_TestAccountConnection_OpenAICompactOAuth401WithRefreshTokenTempUnschedulable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	updateCalls := make(chan map[string]any, 1)
+	account := Account{
+		ID:          5,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"refresh_token":      "oauth-refresh",
+			"chatgpt_account_id": "chatgpt-acc",
+		},
+	}
+	repo := &openAICompactAuthStateRepo{
+		snapshotUpdateAccountRepo: snapshotUpdateAccountRepo{
+			stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+			updateExtraCalls:      updateCalls,
+		},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusUnauthorized,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"expired token"}}`)),
+	}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          &config.Config{RateLimit: config.RateLimitConfig{OAuth401CooldownMinutes: 2}},
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/5/test", bytes.NewReader(nil))
+
+	err := svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeCompact)
+	require.Error(t, err)
+
+	updates := <-updateCalls
+	require.Equal(t, http.StatusUnauthorized, updates["openai_compact_last_status"])
+	require.Zero(t, repo.setErrorID)
+	require.Equal(t, account.ID, repo.tempUnschedulableID)
+	require.Contains(t, repo.tempUnschedulableReason, "Authentication failed (401)")
+	require.NotNil(t, repo.tempUnschedulableUntil)
+	require.WithinDuration(t, time.Now().Add(2*time.Minute), *repo.tempUnschedulableUntil, 5*time.Second)
+	require.Contains(t, rec.Body.String(), `"type":"error"`)
 }

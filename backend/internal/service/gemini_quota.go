@@ -373,6 +373,9 @@ func geminiQuotaTierKeyForAccount(account *Account) string {
 	if account == nil || account.Platform != PlatformGemini {
 		return ""
 	}
+	if account.IsGeminiCompatibleRelay() {
+		return ""
+	}
 
 	// Note: GeminiOAuthType() already defaults legacy (project_id present) to code_assist.
 	oauthType := strings.ToLower(strings.TrimSpace(account.GeminiOAuthType()))

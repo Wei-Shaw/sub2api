@@ -194,25 +194,18 @@ func extractOpenAIEmbeddingsUsage(body []byte) OpenAIUsage {
 	if !usage.Exists() || !usage.IsObject() {
 		return OpenAIUsage{}
 	}
-	inputTokens := firstPositiveGJSONInt(
-		usage.Get("prompt_tokens"),
-		usage.Get("input_tokens"),
-		usage.Get("total_tokens"),
+	inputTokens, _, _ := firstPositiveGJSONInt(usage, "prompt_tokens", "input_tokens", "total_tokens")
+	outputTokens, _, _ := firstPositiveGJSONInt(usage, "completion_tokens", "output_tokens")
+	cacheReadTokens, _, _ := firstPositiveGJSONInt(usage,
+		"prompt_tokens_details.cached_tokens",
+		"input_tokens_details.cached_tokens",
+		"cache_read_tokens",
+		"cache_read_input_tokens",
 	)
-	outputTokens := firstPositiveGJSONInt(
-		usage.Get("completion_tokens"),
-		usage.Get("output_tokens"),
-	)
-	cacheReadTokens := firstPositiveGJSONInt(
-		usage.Get("prompt_tokens_details.cached_tokens"),
-		usage.Get("input_tokens_details.cached_tokens"),
-		usage.Get("cache_read_tokens"),
-		usage.Get("cache_read_input_tokens"),
-	)
-	cacheCreationTokens := firstPositiveGJSONInt(
-		usage.Get("cache_creation_tokens"),
-		usage.Get("cache_creation_input_tokens"),
-		usage.Get("input_tokens_details.cache_creation_tokens"),
+	cacheCreationTokens, _, _ := firstPositiveGJSONInt(usage,
+		"cache_creation_tokens",
+		"cache_creation_input_tokens",
+		"input_tokens_details.cache_creation_tokens",
 	)
 	return OpenAIUsage{
 		InputTokens:              inputTokens,
@@ -220,19 +213,6 @@ func extractOpenAIEmbeddingsUsage(body []byte) OpenAIUsage {
 		CacheReadInputTokens:     cacheReadTokens,
 		CacheCreationInputTokens: cacheCreationTokens,
 	}
-}
-
-func firstPositiveGJSONInt(values ...gjson.Result) int {
-	for _, value := range values {
-		if !value.Exists() {
-			continue
-		}
-		n := int(value.Int())
-		if n > 0 {
-			return n
-		}
-	}
-	return 0
 }
 
 func buildOpenAIEmbeddingsURL(base string) string {

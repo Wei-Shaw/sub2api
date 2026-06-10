@@ -4010,6 +4010,9 @@ export default {
         modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
         baseUrlHint: '留空使用官方 Gemini API',
         apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
+        relayBaseUrlHint: '填写兼容 Gemini 原生接口的中转站 Base URL，例如 https://example.com',
+        relayApiKeyHint: '填写中转站提供的 API Key，保存后仍按 Gemini 原生协议转发请求。',
+        relayBaseUrlRequired: '请填写兼容中转站的 Base URL',
         tier: {
           label: '账号等级',
           hint: '提示：系统会优先尝试自动识别账号等级；若自动识别不可用或失败，则使用你选择的等级作为回退（本地模拟配额）。',
@@ -4036,7 +4039,10 @@ export default {
           apiKeyDesc: '最快接入方式，使用 AIza API Key。',
           apiKeyNote: '适合轻量测试。免费层限流严格，数据可能用于训练。',
           apiKeyLink: '获取 API Key',
-          quotaLink: '配额说明'
+          quotaLink: '配额说明',
+          relayTitle: '兼容中转 API Key',
+          relayDesc: '使用第三方 Gemini 兼容接口和中转站 API Key。',
+          relayNote: '适合接入 NewAPI、One API 等 Gemini 原生兼容中转。此类账号不套用 Google 官方本地模拟配额，实际限制以中转站为准。'
         },
         oauthType: {
           builtInTitle: '内置授权（Gemini CLI / Code Assist）',
@@ -4117,6 +4123,10 @@ export default {
               paid: '已绑卡（按量付费）',
               limitsFree: 'RPD 50；RPM 2（Pro）/ 15（Flash）',
               limitsPaid: 'RPD 不限；RPM 1000（Pro）/ 2000（Flash）（按模型配额）'
+            },
+            compatibleRelay: {
+              channel: 'Gemini 兼容中转 API Key',
+              limits: '额度、RPM/RPD 与计费规则由中转站决定；本地不套用 Google 官方模拟配额。'
             },
             customOAuth: {
               channel: 'Custom OAuth Client（GCP）',

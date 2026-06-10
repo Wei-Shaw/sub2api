@@ -577,6 +577,49 @@ func TestImportDataAcceptsCockpitDataTransferBundle(t *testing.T) {
 	require.Equal(t, "https://api.openai.com", created.Credentials["base_url"])
 }
 
+func TestConvertCockpitCodexOAuthPreservesTokenExpiry(t *testing.T) {
+	item := map[string]any{
+		"email":     "codex-oauth@example.com",
+		"auth_mode": "oauth",
+		"tokens": map[string]any{
+			"access_token":     "codex-at",
+			"refresh_token":    "codex-rt",
+			"expiry_timestamp": int64(1893456000),
+		},
+	}
+
+	account, err := convertCockpitCodexAccount(item, 1)
+	require.NoError(t, err)
+	require.Equal(t, service.PlatformOpenAI, account.Platform)
+	require.Equal(t, service.AccountTypeOAuth, account.Type)
+	require.Equal(t, "codex-rt", account.Credentials["refresh_token"])
+	require.Equal(t, openai.ClientID, account.Credentials["client_id"])
+	require.Equal(t, "2030-01-01T00:00:00Z", account.Credentials["expires_at"])
+	require.Nil(t, account.ExpiresAt)
+	require.Nil(t, account.AutoPauseOnExpired)
+}
+
+func TestConvertCockpitCodexOAuthWithoutRefreshTokenAutoPausesAtExpiry(t *testing.T) {
+	item := map[string]any{
+		"email":     "codex-at-only@example.com",
+		"auth_mode": "oauth",
+		"tokens": map[string]any{
+			"access_token": "codex-at",
+			"expires_at":   int64(1893456000),
+		},
+	}
+
+	account, err := convertCockpitCodexAccount(item, 1)
+	require.NoError(t, err)
+	require.Equal(t, "2030-01-01T00:00:00Z", account.Credentials["expires_at"])
+	require.NotNil(t, account.ExpiresAt)
+	require.Equal(t, int64(1893456000), *account.ExpiresAt)
+	require.NotNil(t, account.AutoPauseOnExpired)
+	require.True(t, *account.AutoPauseOnExpired)
+	require.NotContains(t, account.Credentials, "refresh_token")
+	require.NotContains(t, account.Credentials, "client_id")
+}
+
 func TestImportDataAutoDetectsModelsIntoModelMapping(t *testing.T) {
 	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
 		StatusCode: http.StatusOK,

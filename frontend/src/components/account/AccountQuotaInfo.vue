@@ -41,6 +41,9 @@ const { t } = useI18n()
 const now = ref(new Date())
 let timer: ReturnType<typeof setInterval> | null = null
 
+const GEMINI_OFFICIAL_BASE_URL = 'https://generativelanguage.googleapis.com'
+const GEMINI_COMPATIBLE_RELAY_TIER_ID = 'compatible_relay'
+
 // 是否为 Code Assist OAuth
 // 判断逻辑与后端保持一致：project_id 存在即为 Code Assist
 const isCodeAssist = computed(() => {
@@ -60,9 +63,35 @@ const shouldShowQuota = computed(() => {
   return props.account.platform === 'gemini'
 })
 
+const isOfficialGeminiBaseURL = (value?: string | null) => {
+  const raw = (value || '').trim()
+  if (!raw) return true
+  try {
+    return new URL(raw).hostname.toLowerCase() === 'generativelanguage.googleapis.com'
+  } catch {
+    const normalized = raw.replace(/\/+$/, '').toLowerCase()
+    return normalized === GEMINI_OFFICIAL_BASE_URL ||
+      normalized.startsWith(`${GEMINI_OFFICIAL_BASE_URL}/`)
+  }
+}
+
+const isCompatibleRelay = computed(() => {
+  if (props.account.platform !== 'gemini' || props.account.type !== 'apikey') return false
+  const creds = props.account.credentials as GeminiCredentials | undefined
+  const upstreamType = (creds?.upstream_type || '').toString().trim().toLowerCase()
+  if (upstreamType === GEMINI_COMPATIBLE_RELAY_TIER_ID) return true
+  const tier = (creds?.tier_id || '').toString().trim().toLowerCase()
+  if (tier === GEMINI_COMPATIBLE_RELAY_TIER_ID) return true
+  return !isOfficialGeminiBaseURL(creds?.base_url)
+})
+
 // Tier 标签文本
 const tierLabel = computed(() => {
   const creds = props.account.credentials as GeminiCredentials | undefined
+
+  if (isCompatibleRelay.value) {
+    return t('admin.accounts.gemini.accountType.relayTitle')
+  }
 
   if (isCodeAssist.value) {
     const tier = (creds?.tier_id || '').toString().trim().toLowerCase()
@@ -98,6 +127,10 @@ const tierLabel = computed(() => {
 // Tier Badge 样式（统一样式）
 const tierBadgeClass = computed(() => {
   const creds = props.account.credentials as GeminiCredentials | undefined
+
+  if (isCompatibleRelay.value) {
+    return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+  }
 
   if (isCodeAssist.value) {
     const tier = (creds?.tier_id || '').toString().trim().toLowerCase()

@@ -567,32 +567,53 @@ func convertCockpitCodexAccount(item map[string]any, index int) (DataAccount, er
 	if accessToken == "" {
 		return DataAccount{}, errors.New("cockpit-tools Codex OAuth account missing tokens.access_token")
 	}
+	refreshToken := firstImportString(cockpitString(tokens, "refresh_token"), cockpitString(item, "refresh_token"))
 	credentials := map[string]any{
 		"access_token": accessToken,
 	}
-	setImportString(credentials, "refresh_token", firstImportString(cockpitString(tokens, "refresh_token"), cockpitString(item, "refresh_token")))
+	setImportString(credentials, "refresh_token", refreshToken)
 	setImportString(credentials, "id_token", firstImportString(cockpitString(tokens, "id_token"), cockpitString(item, "id_token")))
 	setImportString(credentials, "email", cockpitString(item, "email"))
 	setImportString(credentials, "chatgpt_account_id", firstImportString(cockpitString(item, "account_id"), cockpitString(item, "chatgpt_account_id")))
 	setImportString(credentials, "chatgpt_user_id", firstImportString(cockpitString(item, "user_id"), cockpitString(item, "chatgpt_user_id")))
 	setImportString(credentials, "organization_id", cockpitString(item, "organization_id"))
 	setImportString(credentials, "plan_type", cockpitString(item, "plan_type"))
-	if credentials["refresh_token"] != nil {
+	if refreshToken != "" {
 		credentials["client_id"] = openai.ClientID
 	}
 
 	extra := cockpitImportExtra("cockpit-tools", "codex", item)
 	setImportString(extra, "account_name", cockpitString(item, "account_name"))
 	setImportString(extra, "account_structure", cockpitString(item, "account_structure"))
+	var expiresAt *int64
+	var autoPauseOnExpired *bool
+	if tokenExpiresAt, ok, err := cockpitCodexTokenExpiresAt(tokens, item, accessToken); err != nil {
+		return DataAccount{}, err
+	} else if ok {
+		credentials["expires_at"] = tokenExpiresAt.Format(time.RFC3339)
+		if refreshToken == "" {
+			if tokenExpiresAt.Unix() <= time.Now().UTC().Unix()-codexImportClockSkewSeconds {
+				return DataAccount{}, fmt.Errorf("cockpit-tools Codex OAuth access_token expired at %s", tokenExpiresAt.Format(time.RFC3339))
+			}
+			v := tokenExpiresAt.Unix()
+			expiresAt = &v
+			autoPause := true
+			autoPauseOnExpired = &autoPause
+		}
+	} else if refreshToken == "" {
+		return DataAccount{}, errors.New("cockpit-tools Codex OAuth account missing refresh_token and access token expiry")
+	}
 	return DataAccount{
-		Name:        cockpitAccountName("codex", item, index),
-		Notes:       cockpitNotes(item),
-		Platform:    service.PlatformOpenAI,
-		Type:        service.AccountTypeOAuth,
-		Credentials: credentials,
-		Extra:       extra,
-		Concurrency: 3,
-		Priority:    50,
+		Name:               cockpitAccountName("codex", item, index),
+		Notes:              cockpitNotes(item),
+		Platform:           service.PlatformOpenAI,
+		Type:               service.AccountTypeOAuth,
+		Credentials:        credentials,
+		Extra:              extra,
+		Concurrency:        3,
+		Priority:           50,
+		ExpiresAt:          expiresAt,
+		AutoPauseOnExpired: autoPauseOnExpired,
 	}, nil
 }
 
@@ -743,6 +764,40 @@ func cockpitExpiresAtString(values ...any) string {
 		}
 	}
 	return ""
+}
+
+func cockpitFirstTimeValue(values ...any) (time.Time, bool) {
+	for _, value := range values {
+		if parsed, ok := cockpitTimeValue(value); ok {
+			return parsed.UTC(), true
+		}
+	}
+	return time.Time{}, false
+}
+
+func cockpitCodexTokenExpiresAt(tokens, item map[string]any, accessToken string) (time.Time, bool, error) {
+	if parsed, ok := cockpitFirstTimeValue(
+		cockpitAny(tokens, "expires_at"),
+		cockpitAny(tokens, "expiresAt"),
+		cockpitAny(tokens, "expiry_timestamp"),
+		cockpitAny(tokens, "expiryTimestamp"),
+		cockpitAny(tokens, "expiry_date"),
+		cockpitAny(tokens, "expiryDate"),
+		cockpitAny(item, "expires_at"),
+		cockpitAny(item, "expiresAt"),
+		cockpitAny(item, "expiry_timestamp"),
+		cockpitAny(item, "expiryTimestamp"),
+		cockpitAny(item, "expiry_date"),
+		cockpitAny(item, "expiryDate"),
+	); ok {
+		return parsed.UTC(), true, nil
+	}
+
+	claims, err := decodeCodexJWTClaims(accessToken)
+	if err != nil || claims.Exp <= 0 {
+		return time.Time{}, false, nil
+	}
+	return time.Unix(claims.Exp, 0).UTC(), true, nil
 }
 
 func cockpitTimeValue(value any) (time.Time, bool) {
