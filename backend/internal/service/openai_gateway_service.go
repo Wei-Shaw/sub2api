@@ -2473,12 +2473,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	var reqBody map[string]any
 	fullDecodeUsed := false
 	fullDecodeDuration := time.Duration(0)
-	fullDecodeReason := ""
+	currentDecodeReason := ""
+	firstFullDecodeReason := ""
 	fullMarshalUsed := false
 	fullMarshalDuration := time.Duration(0)
 	fullMarshalReason := ""
 	patchApplyUsed := false
 	patchApplyDuration := time.Duration(0)
+	shouldWarnJSONHotPath := func(duration time.Duration) bool {
+		return len(originalBody) >= 16<<20 || duration >= openAIForwardJSONSlowLogThreshold
+	}
 	logJSONHotPath := func(stage string, duration time.Duration, outputBytes int, reason string) {
 		if len(originalBody) < openAIForwardJSONLargeBodyLogThreshold && duration < openAIForwardJSONSlowLogThreshold {
 			return
@@ -2503,7 +2507,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if apiKeyID != 0 {
 			fields = append(fields, zap.Int64("api_key_id", apiKeyID))
 		}
-		logger.L().Warn("openai.responses_json_hotpath", fields...)
+		if shouldWarnJSONHotPath(duration) {
+			logger.L().Warn("openai.responses_json_hotpath", fields...)
+			return
+		}
+		logger.L().Info("openai.responses_json_hotpath", fields...)
+	}
+	setDecodeReason := func(reason string) {
+		currentDecodeReason = strings.TrimSpace(reason)
 	}
 	ensureReqBody := func() (map[string]any, error) {
 		if requestView.HasPatches() {
@@ -2532,10 +2543,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		fullDecodeUsed = true
 		fullDecodeDuration += decodeDuration
-		if fullDecodeReason == "" {
-			fullDecodeReason = "ensure_req_body"
+		reason := currentDecodeReason
+		if reason == "" {
+			reason = "ensure_req_body"
 		}
-		logJSONHotPath("decode", decodeDuration, len(body), fullDecodeReason)
+		if firstFullDecodeReason == "" {
+			firstFullDecodeReason = reason
+		}
+		logJSONHotPath("decode", decodeDuration, len(body), reason)
 		reqBody = decoded
 		return reqBody, nil
 	}
@@ -2630,7 +2645,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	if imageGenerationAllowed && (codexImageGenerationBridgeEnabled || isOpenAIImageGenerationModel(requestView.Model) || openAIRequestBodyImageGenerationToolNeedsNormalization(body) || isOpenAIImageGenerationModel(upstreamModel)) {
-		fullDecodeReason = "image_generation_normalize"
+		setDecodeReason("image_generation_normalize")
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
 			return nil, decodeErr
@@ -2669,7 +2684,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	if isCodexSparkModel(upstreamModel) && openAIRequestBodyMayContainImageInput(body) {
-		fullDecodeReason = "codex_spark_image_validate"
+		setDecodeReason("codex_spark_image_validate")
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
 			return nil, decodeErr
@@ -2682,7 +2697,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	if account.Type == AccountTypeOAuth {
-		fullDecodeReason = "oauth_codex_transform"
+		setDecodeReason("oauth_codex_transform")
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
 			return nil, decodeErr
@@ -2723,7 +2738,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					markPatchDelete("max_output_tokens")
 				}
 			case PlatformAnthropic:
-				fullDecodeReason = "anthropic_max_tokens_compat"
+				setDecodeReason("anthropic_max_tokens_compat")
 				decoded, decodeErr := ensureReqBody()
 				if decodeErr != nil {
 					return nil, decodeErr
@@ -2752,7 +2767,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchDelete("previous_response_id")
 	}
 	if openAIRequestBodyMayContainEmptyBase64InputImage(body) {
-		fullDecodeReason = "empty_base64_input_image_sanitize"
+		setDecodeReason("empty_base64_input_image_sanitize")
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
 			return nil, decodeErr
@@ -2799,7 +2814,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 		}
 		if bodyModified {
-			fullDecodeReason = "final_body_modified_marshal"
+			setDecodeReason("final_body_modified_marshal")
 			decoded, decodeErr := ensureReqBody()
 			if decodeErr != nil {
 				return nil, decodeErr
@@ -2814,14 +2829,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			fullMarshalUsed = true
 			fullMarshalDuration += marshalDuration
 			if fullMarshalReason == "" {
-				fullMarshalReason = fullDecodeReason
+				fullMarshalReason = currentDecodeReason
 			}
 			logJSONHotPath("marshal", marshalDuration, len(body), fullMarshalReason)
 			requestView = newOpenAIRequestView(body)
 		}
 	}
 	if len(originalBody) >= openAIForwardJSONLargeBodyLogThreshold && (patchApplyUsed || fullDecodeUsed || fullMarshalUsed) {
-		logger.L().Warn("openai.responses_json_path_summary",
+		fields := []zap.Field{
 			zap.Int64("account_id", account.ID),
 			zap.String("account_type", string(account.Type)),
 			zap.String("platform", account.Platform),
@@ -2833,14 +2848,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			zap.Bool("patch_apply_used", patchApplyUsed),
 			zap.Bool("full_decode_used", fullDecodeUsed),
 			zap.Bool("full_marshal_used", fullMarshalUsed),
-			zap.String("full_decode_reason", fullDecodeReason),
+			zap.String("full_decode_reason", firstFullDecodeReason),
 			zap.String("full_marshal_reason", fullMarshalReason),
 			zap.Int("request_bytes", len(originalBody)),
 			zap.Int("final_body_bytes", len(body)),
 			zap.Int64("patch_duration_ms", patchApplyDuration.Milliseconds()),
 			zap.Int64("full_decode_duration_ms", fullDecodeDuration.Milliseconds()),
 			zap.Int64("full_marshal_duration_ms", fullMarshalDuration.Milliseconds()),
-		)
+		}
+		if shouldWarnJSONHotPath(fullDecodeDuration) || shouldWarnJSONHotPath(fullMarshalDuration) {
+			logger.L().Warn("openai.responses_json_path_summary", fields...)
+		} else {
+			logger.L().Info("openai.responses_json_path_summary", fields...)
+		}
 	}
 	imageBillingModel := ""
 	imageSizeTier := ""
