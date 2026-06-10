@@ -247,6 +247,50 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool
+
+	// 客服与工单（D1/D7）：enabled 是 PublicSettings 唯一暴露的字段，
+	// categories / default_priority 是 admin-only 的工单元配置（用户端通过单独的
+	// /api/v1/support/categories 端点拉取，不进入 PublicSettings 防止漂移）。
+	SupportTicketEnabled         bool
+	SupportTicketCategories      []string
+	SupportTicketDefaultPriority string
+
+	// 客服聊天浮窗（add-support-chat-widget）。
+	// 三个公开字段（enabled / excluded_routes / anonymous_llm）会通过 PublicSettings 暴露给前端；
+	// 其余字段都是 admin-only，通过单独的 system settings 接口读写。
+	SupportChatEnabled         bool
+	SupportChatExcludedRoutes  []string
+	SupportChatAnonymousLLM    bool
+	SupportChatTitle           string
+	SupportChatWelcome         string
+	SupportChatIcon            string
+	SupportChatLLMEnabled      bool
+	// 外部 OpenAI-compatible upstream 凭据（embedding + chat 共用一对）。
+	// 由 change-support-chat-external-llm 引入，替代旧的 SupportChatAPIKeyID。
+	// SupportChatLLMAPIKey 在 parseSettings/GetSystemSettings 入口里持有的是"掩码值"
+	// （admin GET 响应不暴露明文）；运行时所需明文请走 SupportChatRuntime（见
+	// support_chat_service.go 的 GetSupportChatRuntime）。
+	SupportChatLLMBaseURL      string
+	SupportChatLLMAPIKey       string
+	SupportChatModel           string
+	SupportChatSystemPrompt    string
+	SupportChatMaxTurns        int
+	SupportChatMaxRequestTokens int
+	SupportChatRLUserPerDay    int
+	SupportChatRLUserPerMin    int
+	SupportChatRLIPPerHour     int
+	SupportChatFAQs            []SupportChatFAQ
+
+	// 客服知识库 RAG（add-support-knowledge-rag）：8 项 admin-only 配置；不进 PublicSettings。
+	// SupportChatRAGEnabled = false 时浮窗 chat handler 退回到 chat-widget 行为。
+	SupportChatRAGEnabled      bool
+	SupportChatRAGDocURL       string
+	SupportChatRAGDocDepth     int
+	SupportChatRAGDocCron      string
+	SupportChatRAGEmbedModel   string
+	SupportChatRAGTopK         int
+	SupportChatRAGChunkSize    int
+	SupportChatRAGChunkOverlap int
 }
 
 type DefaultSubscriptionSetting struct {
@@ -323,6 +367,19 @@ type PublicSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+
+	// 客服与工单（公开开关；categories / default_priority 不进 PublicSettings，由专用接口提供）。
+	SupportTicketEnabled bool `json:"support_ticket_enabled"`
+
+	// 客服浮窗（add-support-chat-widget）：除三个开关字段外，外观字段（title/welcome/icon）
+	// 也属于"匿名访客可见"的渲染配置，必须进 PublicSettings；否则前端 bubble/panel 读到
+	// undefined 永远走默认值，admin 配置完全不生效。LLM 凭据 / 限流 / FAQ 仍是 admin-only。
+	SupportChatEnabled        bool     `json:"support_chat_enabled"`
+	SupportChatExcludedRoutes []string `json:"support_chat_excluded_routes"`
+	SupportChatAnonymousLLM   bool     `json:"support_chat_anonymous_llm"`
+	SupportChatTitle          string   `json:"support_chat_title"`
+	SupportChatWelcome        string   `json:"support_chat_welcome"`
+	SupportChatIcon           string   `json:"support_chat_icon"`
 }
 
 type LoginAgreementDocument struct {

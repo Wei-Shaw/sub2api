@@ -597,6 +597,17 @@ var ProviderSet = wire.NewSet(
 	ProvideUserPlatformQuotaUsageFlusher,
 	NewPlazaService,
 	wire.Bind(new(PlazaPaymentConfigSource), new(*PaymentConfigService)),
+	// 工单系统：service 依赖 SupportTicketSettingsReader 接口，将其绑定到 *SettingService。
+	NewSupportTicketService,
+	wire.Bind(new(SupportTicketSettingsReader), new(*SettingService)),
+	// 客服知识库 RAG：embedding service + FAQ service + 检索编排服务 + 文档抓取管线 + 定时调度。
+	NewSupportChatEmbeddingService, // 返回 EmbeddingService 接口
+	NewSupportFaqService,
+	NewSupportChatRAGRetrievalService, // 编排 embed query → UNION ALL → 阈值过滤
+	NewSupportDocPipeline,             // 文档抓取/切片/索引管线
+	ProvideSupportDocIndexerCron,      // 03:00 cron entry + fire-time 决策
+	ProvideSupportFaqMigrationService, // 启动迁移：legacy setting → support_faq_items
+	ProvideSupportChatLegacyDetector,  // 启动检测：legacy support_chat_api_key_id → warn log
 )
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。

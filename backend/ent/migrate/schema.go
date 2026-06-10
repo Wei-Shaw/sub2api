@@ -1302,6 +1302,119 @@ var (
 			},
 		},
 	}
+	// SupportDocChunksColumns holds the columns for the "support_doc_chunks" table.
+	SupportDocChunksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "source_url", Type: field.TypeString, Size: 500},
+		{Name: "chunk_text", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "content_hash", Type: field.TypeString, Size: 64},
+		{Name: "fetched_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// SupportDocChunksTable holds the schema information for the "support_doc_chunks" table.
+	SupportDocChunksTable = &schema.Table{
+		Name:       "support_doc_chunks",
+		Columns:    SupportDocChunksColumns,
+		PrimaryKey: []*schema.Column{SupportDocChunksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "supportdocchunk_source_url",
+				Unique:  false,
+				Columns: []*schema.Column{SupportDocChunksColumns[1]},
+			},
+			{
+				Name:    "supportdocchunk_source_url_content_hash",
+				Unique:  true,
+				Columns: []*schema.Column{SupportDocChunksColumns[1], SupportDocChunksColumns[3]},
+			},
+		},
+	}
+	// SupportFaqItemsColumns holds the columns for the "support_faq_items" table.
+	SupportFaqItemsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "question", Type: field.TypeString, Size: 200},
+		{Name: "answer", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "tags", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "text[]"}},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
+	}
+	// SupportFaqItemsTable holds the schema information for the "support_faq_items" table.
+	SupportFaqItemsTable = &schema.Table{
+		Name:       "support_faq_items",
+		Columns:    SupportFaqItemsColumns,
+		PrimaryKey: []*schema.Column{SupportFaqItemsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "supportfaqitem_sort_order_id",
+				Unique:  false,
+				Columns: []*schema.Column{SupportFaqItemsColumns[7], SupportFaqItemsColumns[0]},
+			},
+		},
+	}
+	// SupportTicketsColumns holds the columns for the "support_tickets" table.
+	SupportTicketsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "title", Type: field.TypeString, Size: 200},
+		{Name: "content", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "category", Type: field.TypeString, Size: 50},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "open"},
+		{Name: "priority", Type: field.TypeString, Size: 20, Default: "normal"},
+		{Name: "chat_context", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "closed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// SupportTicketsTable holds the schema information for the "support_tickets" table.
+	SupportTicketsTable = &schema.Table{
+		Name:       "support_tickets",
+		Columns:    SupportTicketsColumns,
+		PrimaryKey: []*schema.Column{SupportTicketsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "supportticket_user_id_status_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SupportTicketsColumns[3], SupportTicketsColumns[7], SupportTicketsColumns[1]},
+			},
+			{
+				Name:    "supportticket_status_priority_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SupportTicketsColumns[7], SupportTicketsColumns[8], SupportTicketsColumns[1]},
+			},
+		},
+	}
+	// SupportTicketRepliesColumns holds the columns for the "support_ticket_replies" table.
+	SupportTicketRepliesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "author_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "is_admin", Type: field.TypeBool, Default: false},
+		{Name: "content", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "ticket_id", Type: field.TypeInt64},
+	}
+	// SupportTicketRepliesTable holds the schema information for the "support_ticket_replies" table.
+	SupportTicketRepliesTable = &schema.Table{
+		Name:       "support_ticket_replies",
+		Columns:    SupportTicketRepliesColumns,
+		PrimaryKey: []*schema.Column{SupportTicketRepliesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "support_ticket_replies_support_tickets_replies",
+				Columns:    []*schema.Column{SupportTicketRepliesColumns[5]},
+				RefColumns: []*schema.Column{SupportTicketsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "supportticketreply_ticket_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SupportTicketRepliesColumns[5], SupportTicketRepliesColumns[4]},
+			},
+		},
+	}
 	// TLSFingerprintProfilesColumns holds the columns for the "tls_fingerprint_profiles" table.
 	TLSFingerprintProfilesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1838,6 +1951,10 @@ var (
 		SecuritySecretsTable,
 		SettingsTable,
 		SubscriptionPlansTable,
+		SupportDocChunksTable,
+		SupportFaqItemsTable,
+		SupportTicketsTable,
+		SupportTicketRepliesTable,
 		TLSFingerprintProfilesTable,
 		UsageCleanupTasksTable,
 		UsageLogsTable,
@@ -1952,6 +2069,19 @@ func init() {
 	}
 	SubscriptionPlansTable.Annotation = &entsql.Annotation{
 		Table: "subscription_plans",
+	}
+	SupportDocChunksTable.Annotation = &entsql.Annotation{
+		Table: "support_doc_chunks",
+	}
+	SupportFaqItemsTable.Annotation = &entsql.Annotation{
+		Table: "support_faq_items",
+	}
+	SupportTicketsTable.Annotation = &entsql.Annotation{
+		Table: "support_tickets",
+	}
+	SupportTicketRepliesTable.ForeignKeys[0].RefTable = SupportTicketsTable
+	SupportTicketRepliesTable.Annotation = &entsql.Annotation{
+		Table: "support_ticket_replies",
 	}
 	TLSFingerprintProfilesTable.Annotation = &entsql.Annotation{
 		Table: "tls_fingerprint_profiles",

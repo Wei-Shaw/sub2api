@@ -5,6 +5,7 @@ import Toast from '@/components/common/Toast.vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
 import { resolveDocumentTitle } from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
+import SupportChatWidget from '@/components/support/SupportChatWidget.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 
@@ -116,4 +117,7 @@ onMounted(async () => {
   <RouterView />
   <Toast />
   <AnnouncementPopup />
+  <!-- 客服浮窗（add-support-chat-widget D2）：自带 shouldRender 判定，
+       关闭 / 路由排除时不渲染任何节点。 -->
+  <SupportChatWidget />
 </template>

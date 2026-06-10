@@ -280,6 +280,46 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+
+	// 客服工单系统（D1）。`SupportTicketEnabled` 同时镜像到 PublicSettings，
+	// 用于前端 sidebar 入口与 POST /support/tickets 的 404 守卫。
+	SupportTicketEnabled         bool     `json:"support_ticket_enabled"`
+	SupportTicketCategories      []string `json:"support_ticket_categories"`
+	SupportTicketDefaultPriority string   `json:"support_ticket_default_priority"`
+
+	// 客服聊天浮窗（add-support-chat-widget）。
+	// 三个 *_enabled / excluded_routes / anonymous_llm 字段同时镜像到 PublicSettings；
+	// 其余为 admin-only。FAQ 走单独的 JSON 数组结构（service.SupportChatFAQ）。
+	SupportChatEnabled          bool                     `json:"support_chat_enabled"`
+	SupportChatExcludedRoutes   []string                 `json:"support_chat_excluded_routes"`
+	SupportChatAnonymousLLM     bool                     `json:"support_chat_anonymous_llm"`
+	SupportChatTitle            string                   `json:"support_chat_title"`
+	SupportChatWelcome          string                   `json:"support_chat_welcome"`
+	SupportChatIcon             string                   `json:"support_chat_icon"`
+	SupportChatLLMEnabled       bool                     `json:"support_chat_llm_enabled"`
+	// 外部 OpenAI-compatible upstream 凭据。SupportChatLLMAPIKey 在 GET 响应中返回掩码值
+	// （非空时形如 "sk-***" + last4，长度<4 时返回 "***"，空值返回 ""）；
+	// PUT 时若请求值等于当前存储的掩码，则视为"未修改"——后端不会回写该字段。
+	SupportChatLLMBaseURL       string                   `json:"support_chat_llm_base_url"`
+	SupportChatLLMAPIKey        string                   `json:"support_chat_llm_api_key"`
+	SupportChatModel            string                   `json:"support_chat_model"`
+	SupportChatSystemPrompt     string                   `json:"support_chat_system_prompt"`
+	SupportChatMaxTurns         int                      `json:"support_chat_max_turns"`
+	SupportChatMaxRequestTokens int                      `json:"support_chat_max_request_tokens"`
+	SupportChatRLUserPerDay     int                      `json:"support_chat_rl_user_per_day"`
+	SupportChatRLUserPerMin     int                      `json:"support_chat_rl_user_per_min"`
+	SupportChatRLIPPerHour      int                      `json:"support_chat_rl_ip_per_hour"`
+	SupportChatFAQs             []service.SupportChatFAQ `json:"support_chat_faqs"`
+
+	// 客服知识库 RAG（add-support-knowledge-rag）：8 项 admin-only 配置；不暴露给 PublicSettings。
+	SupportChatRAGEnabled      bool   `json:"support_chat_rag_enabled"`
+	SupportChatRAGDocURL       string `json:"support_chat_rag_doc_url"`
+	SupportChatRAGDocDepth     int    `json:"support_chat_rag_doc_depth"`
+	SupportChatRAGDocCron      string `json:"support_chat_rag_doc_cron"`
+	SupportChatRAGEmbedModel   string `json:"support_chat_rag_embed_model"`
+	SupportChatRAGTopK         int    `json:"support_chat_rag_top_k"`
+	SupportChatRAGChunkSize    int    `json:"support_chat_rag_chunk_size"`
+	SupportChatRAGChunkOverlap int    `json:"support_chat_rag_chunk_overlap"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -349,6 +389,18 @@ type PublicSettings struct {
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+
+	// 客服工单功能开关（categories / default_priority 不在 PublicSettings 暴露）。
+	SupportTicketEnabled bool `json:"support_ticket_enabled"`
+
+	// 客服浮窗（add-support-chat-widget）：与 service.PublicSettings 6 字段保持一致，
+	// 用于浮窗渲染守卫、匿名 LLM 策略，以及 bubble/panel 的外观（标题/欢迎语/图标）。
+	SupportChatEnabled        bool     `json:"support_chat_enabled"`
+	SupportChatExcludedRoutes []string `json:"support_chat_excluded_routes"`
+	SupportChatAnonymousLLM   bool     `json:"support_chat_anonymous_llm"`
+	SupportChatTitle          string   `json:"support_chat_title"`
+	SupportChatWelcome        string   `json:"support_chat_welcome"`
+	SupportChatIcon           string   `json:"support_chat_icon"`
 }
 
 type LoginAgreementDocument struct {

@@ -451,7 +451,189 @@ const (
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
+
+	// =========================
+	// Support Ticket (客服工单)
+	// =========================
+
+	// SettingKeySupportTicketEnabled 是工单总开关；关闭时入口隐藏，POST 工单接口直接 404。
+	SettingKeySupportTicketEnabled = "support_ticket_enabled"
+	// SettingKeySupportTicketCategories 是工单分类列表（JSON 数组）。
+	SettingKeySupportTicketCategories = "support_ticket_categories"
+	// SettingKeySupportTicketDefaultPriority 是新建工单默认优先级（low/normal/high）。
+	SettingKeySupportTicketDefaultPriority = "support_ticket_default_priority"
 )
+
+// 工单优先级枚举
+const (
+	SupportTicketPriorityLow    = "low"
+	SupportTicketPriorityNormal = "normal"
+	SupportTicketPriorityHigh   = "high"
+)
+
+// 工单分类配置约束
+const (
+	// SupportTicketCategoryMaxCount 是 categories 数组的最大长度。
+	SupportTicketCategoryMaxCount = 20
+	// SupportTicketCategoryMaxLen 是单个 category 字符串的最大长度（按 rune 数计）。
+	SupportTicketCategoryMaxLen = 20
+)
+
+// SupportTicketDefaultCategories 是初始默认分类，用于 EnsureDefaults 与单测。
+// 注意：order 与 spec 文档保持一致，便于 UI 直接渲染。
+var SupportTicketDefaultCategories = []string{"充值", "账号", "API", "Bug", "其他"}
+
+// =========================
+// Support Chat Widget (客服聊天浮窗)
+// =========================
+//
+// 这一组 key 由 add-support-chat-widget change 引入。三个 PUBLIC 字段会同步到
+// PublicSettings + PublicSettingsInjectionPayload（前端 SSR 注入），其它字段是
+// admin-only。详细语义见 openspec/specs/support-chat (待 archive 后落地)。
+const (
+	// 公开（PublicSettings）：
+	SettingKeySupportChatEnabled         = "support_chat_enabled"          // 总开关；关闭时浮窗不渲染、SSE 端点 404
+	SettingKeySupportChatExcludedRoutes  = "support_chat_excluded_routes"  // JSON []string，admin 可配的额外排除路由
+	SettingKeySupportChatAnonymousLLM    = "support_chat_anonymous_llm"    // 是否允许未登录调 LLM（默认 false）
+
+	// 外观（admin-only）：
+	SettingKeySupportChatTitle   = "support_chat_title"
+	SettingKeySupportChatWelcome = "support_chat_welcome"
+	SettingKeySupportChatIcon    = "support_chat_icon"
+
+	// LLM（admin-only）：
+	SettingKeySupportChatLLMEnabled       = "support_chat_llm_enabled"
+	// 外部 OpenAI-compatible upstream 凭据：base_url + api_key（embedding 与 chat 共用）。
+	// 由 change-support-chat-external-llm 引入，替代旧的 support_chat_api_key_id。
+	SettingKeySupportChatLLMBaseURL       = "support_chat_llm_base_url"
+	SettingKeySupportChatLLMAPIKey        = "support_chat_llm_api_key"
+	SettingKeySupportChatModel            = "support_chat_model"
+	SettingKeySupportChatSystemPrompt     = "support_chat_system_prompt"
+	SettingKeySupportChatMaxTurns         = "support_chat_max_turns"
+	SettingKeySupportChatMaxRequestTokens = "support_chat_max_request_tokens"
+
+	// 限流（admin-only）：
+	SettingKeySupportChatRLUserPerDay = "support_chat_rl_user_per_day"
+	SettingKeySupportChatRLUserPerMin = "support_chat_rl_user_per_min"
+	SettingKeySupportChatRLIPPerHour  = "support_chat_rl_ip_per_hour"
+
+	// FAQ（admin-only）：JSON 数组，结构 {question, answer, sort_order, enabled}
+	SettingKeySupportChatFAQs = "support_chat_faqs"
+)
+
+// Support Chat 配置约束。
+const (
+	SupportChatMaxTurnsMin         = 1
+	SupportChatMaxTurnsMax         = 20
+	SupportChatMaxTurnsDefault     = 5
+	SupportChatMaxRequestTokensMin = 1000
+	SupportChatMaxRequestTokensMax = 200000
+	SupportChatMaxRequestTokensDef = 16000
+	SupportChatRateLimitMin        = 1
+	SupportChatRateLimitMax        = 100000
+	SupportChatRLUserPerDayDefault = 50
+	SupportChatRLUserPerMinDefault = 5
+	SupportChatRLIPPerHourDefault  = 20
+
+	SupportChatExcludedRouteMaxLen   = 200
+	SupportChatExcludedRoutesMaxItem = 50
+
+	SupportChatFAQQuestionMaxLen = 200
+	SupportChatFAQAnswerMaxLen   = 5000
+	SupportChatFAQMaxItems       = 50
+)
+
+// SupportChatDefaultExcludedRoutes 是 admin 可配的默认排除路由（不含硬编码黑名单，
+// 硬编码列表在前端生效，详见 design D2）。
+var SupportChatDefaultExcludedRoutes = []string{"/payment", "/purchase", "/admin/*"}
+
+// SupportChatDefaultTitle / Welcome / Icon 用于 EnsureDefaults。
+const (
+	SupportChatDefaultTitle   = "客服小助手"
+	SupportChatDefaultWelcome = "你好，请问有什么可以帮助你？"
+	SupportChatDefaultIcon    = "💬"
+	SupportChatDefaultModel   = "gpt-4o-mini"
+)
+
+// 客服知识库 RAG (add-support-knowledge-rag)：8 个 admin-only setting key。
+// 不进 PublicSettings —— 用户端只感知 chat-widget 已暴露的 3 个公开字段。
+const (
+	SettingKeySupportChatRAGEnabled      = "support_chat_rag_enabled"       // 总开关：false 时跳过 embed + 退回 chat-widget 行为
+	SettingKeySupportChatRAGDocURL       = "support_chat_rag_doc_url"       // 抓取入口 URL；空字符串时 doc pipeline 不工作
+	SettingKeySupportChatRAGDocDepth     = "support_chat_rag_doc_depth"     // 0/1/2，默认 1（仅同域名）
+	SettingKeySupportChatRAGDocCron      = "support_chat_rag_doc_cron"      // daily-03 / weekly / manual
+	SettingKeySupportChatRAGEmbedModel   = "support_chat_rag_embed_model"   // 默认 text-embedding-3-small；M1 写死 1536 维
+	SettingKeySupportChatRAGTopK         = "support_chat_rag_top_k"         // 1..20，默认 5
+	SettingKeySupportChatRAGChunkSize    = "support_chat_rag_chunk_size"    // 200..2000 字符，默认 800
+	SettingKeySupportChatRAGChunkOverlap = "support_chat_rag_chunk_overlap" // 0..500 字符，默认 80
+
+	// SettingKeySupportChatRAGDocIndexStatus 不暴露给 admin 表单，只有
+	// pipeline / status handler 读写，存 JSON 状态对象（last_run_at / chunks / errors）。
+	SettingKeySupportChatRAGDocIndexStatus = "support_chat_rag_doc_index_status"
+)
+
+// 客服 RAG 配置约束。
+const (
+	SupportChatRAGTopKMin     = 1
+	SupportChatRAGTopKMax     = 20
+	SupportChatRAGTopKDefault = 5
+
+	SupportChatRAGChunkSizeMin     = 200
+	SupportChatRAGChunkSizeMax     = 2000
+	SupportChatRAGChunkSizeDefault = 800
+
+	SupportChatRAGChunkOverlapMin     = 0
+	SupportChatRAGChunkOverlapMax     = 500
+	SupportChatRAGChunkOverlapDefault = 80
+
+	SupportChatRAGDocDepthMin     = 0
+	SupportChatRAGDocDepthMax     = 2
+	SupportChatRAGDocDepthDefault = 1
+
+	SupportChatRAGDocURLMaxLen = 500
+
+	// 抓取硬上限（admin 不可配；防止误把根域名拖一遍）
+	SupportChatRAGFetchPageHardCap = 50
+
+	// 单次 embedding 批次上限（OpenAI 单 request 200 上限，留出余量）
+	SupportChatRAGEmbedBatchSize = 100
+
+	// 检索相似度阈值（cosine similarity = 1 - distance）
+	SupportChatRAGSimilarityThreshold = 0.3
+
+	// 最小 chunk 字符数（短于此长度的视为噪声 / TOC，丢弃）
+	SupportChatRAGChunkMinChars = 50
+
+	// embedding 维度（与 text-embedding-3-small 对齐；切换模型需 ALTER TABLE）
+	SupportChatRAGEmbedDimension = 1536
+)
+
+// SupportChatRAGEmbedModelDefault 是 M1 默认 embedding 模型；admin 可改但不建议。
+const SupportChatRAGEmbedModelDefault = "text-embedding-3-small"
+
+// SupportChatRAGDocCron 枚举值。
+const (
+	SupportChatRAGDocCronDaily03 = "daily-03"
+	SupportChatRAGDocCronWeekly  = "weekly"
+	SupportChatRAGDocCronManual  = "manual"
+)
+
+// SupportChatRAGAllowedDocCrons 是合法的 cron 取值（用于 NormalizeSupportChatRAGDocCron）。
+var SupportChatRAGAllowedDocCrons = []string{
+	SupportChatRAGDocCronDaily03,
+	SupportChatRAGDocCronWeekly,
+	SupportChatRAGDocCronManual,
+}
+
+// IsSupportChatRAGAllowedDocCron 报告 v 是否合法。
+func IsSupportChatRAGAllowedDocCron(v string) bool {
+	for _, c := range SupportChatRAGAllowedDocCrons {
+		if c == v {
+			return true
+		}
+	}
+	return false
+}
 
 // SettingKeyDefaultPlatformQuotas —— 系统全局：每用户 × 平台日/周/月 USD 上限（JSON）。
 // 值为 map[platform]{daily,weekly,monthly}，null/缺省 = 不限制；0 = 禁用；>0 = USD 上限。

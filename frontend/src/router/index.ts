@@ -253,6 +253,46 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'redeem.description'
     }
   },
+  // ==================== Support Tickets (D1) ====================
+  // 用户侧工单：列表 / 新建 / 详情。三条路由都要求登录，但不要求 admin。
+  // feature_disabled 时入口由 sidebar 隐藏；用户若直接访问 URL 也不会泄露
+  // 任何工单数据（后端列表/详情接口在 feature_disabled 下返回 404，由页面
+  // 的错误状态渲染兜底）。
+  {
+    path: '/support/tickets',
+    name: 'SupportTickets',
+    component: () => import('@/views/support/SupportTicketsListView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Support Tickets',
+      titleKey: 'support.list.title',
+      descriptionKey: 'support.list.description',
+    },
+  },
+  {
+    path: '/support/tickets/new',
+    name: 'SupportTicketNew',
+    component: () => import('@/views/support/SupportTicketNewView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'New Support Ticket',
+      titleKey: 'support.new.title',
+      descriptionKey: 'support.new.description',
+    },
+  },
+  {
+    path: '/support/tickets/:id',
+    name: 'SupportTicketDetail',
+    component: () => import('@/views/support/SupportTicketDetailView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Support Ticket Detail',
+      titleKey: 'support.detail.title',
+    },
+  },
   {
     path: '/affiliate',
     name: 'Affiliate',
@@ -609,6 +649,35 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'admin.usage.title',
       descriptionKey: 'admin.usage.description'
     }
+  },
+  // ==================== Admin Support Tickets (D1) ====================
+  // admin 工单管理。后端 admin 路由不卡 feature_enabled——管理员可以提前
+  // 编辑 settings 或处理存量工单；sidebar 入口由 support_ticket_enabled 控制。
+  {
+    path: '/admin/support/tickets',
+    name: 'AdminSupportTickets',
+    component: () => import('@/views/admin/AdminSupportTicketsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Tickets',
+      titleKey: 'admin.tickets.title',
+      descriptionKey: 'admin.tickets.description',
+    },
+  },
+  // ==================== Admin Support Knowledge / FAQ (add-support-knowledge-rag §12 §13) ====================
+  // 客服知识库管理（FAQ + 文档索引状态）。RAG 配置仍在 SettingsView 的 supportChat tab。
+  {
+    path: '/admin/support/knowledge',
+    name: 'AdminSupportFaq',
+    component: () => import('@/views/admin/AdminSupportFaqView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Support Knowledge Base',
+      titleKey: 'admin.supportFaq.title',
+      descriptionKey: 'admin.supportFaq.subtitle',
+    },
   },
   {
     path: '/admin/affiliates',

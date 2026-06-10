@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
@@ -764,6 +765,19 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
+		SettingKeySupportTicketEnabled,
+		SettingKeySupportChatEnabled,
+		SettingKeySupportChatExcludedRoutes,
+		SettingKeySupportChatAnonymousLLM,
+		// 客服浮窗外观（title/welcome/icon）也是匿名访客可见的渲染配置，
+		// 必须随 PublicSettings 暴露，否则前端 cachedPublicSettings 读不到。
+		SettingKeySupportChatTitle,
+		SettingKeySupportChatWelcome,
+		SettingKeySupportChatIcon,
+		// 注意：support_chat_llm_base_url / support_chat_llm_api_key 是 admin-only 凭据，
+		// 严禁加进 PublicSettings keys / 投影 / PublicSettingsInjectionPayload —— 这两条会
+		// 出现在每个匿名访问者的 HTML 注入里，泄漏即等于把外部 LLM key 公开。详见
+		// change-support-chat-external-llm/design.md。
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -882,6 +896,19 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 
 		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
+
+		SupportTicketEnabled: settings[SettingKeySupportTicketEnabled] == "true",
+
+		SupportChatEnabled:        settings[SettingKeySupportChatEnabled] == "true",
+		SupportChatExcludedRoutes: ParseSupportChatExcludedRoutes(settings[SettingKeySupportChatExcludedRoutes]),
+		SupportChatAnonymousLLM:   settings[SettingKeySupportChatAnonymousLLM] == "true",
+		// 故意不在这里 fallback 到 SupportChatDefault*：admin GET 响应（parseSystemSettings）
+		// 会把后端默认 "💬" / "客服小助手" / "你好…" 回填到 admin 的 input 里；但 PublicSettings
+		// 是给匿名访客用的，应该忠实反映"admin 是否显式配过"。空字符串让前端 bubble 落回内置
+		// PNG 头像、panel 落回 i18n welcome 文案，比硬塞后端默认值更符合视觉预期。
+		SupportChatTitle:   strings.TrimSpace(settings[SettingKeySupportChatTitle]),
+		SupportChatWelcome: strings.TrimSpace(settings[SettingKeySupportChatWelcome]),
+		SupportChatIcon:    strings.TrimSpace(settings[SettingKeySupportChatIcon]),
 	}, nil
 }
 
@@ -1131,6 +1158,45 @@ func (s *SettingService) IsUserErrorViewAllowed(ctx context.Context) bool {
 	return vals[SettingKeyAllowUserViewErrorRequests] == "true"
 }
 
+// SupportTicketRuntime 是工单系统的运行时配置投影。
+//
+// 只读快照：调用方拿到的 Categories 切片应被视为不可变（共享自 ParseSupportTicketCategories
+// 的回退默认值时切片底层可能与 SupportTicketDefaultCategories 不同——已 clone 过——
+// 但语义上仍按只读对待）。
+type SupportTicketRuntime struct {
+	Enabled         bool
+	Categories      []string
+	DefaultPriority string
+}
+
+// GetSupportTicketRuntime 直接从 settings store 读取工单系统的三项配置：
+//   - support_ticket_enabled (bool, default false)
+//   - support_ticket_categories (JSON string[], default SupportTicketDefaultCategories)
+//   - support_ticket_default_priority (low|normal|high, default normal)
+//
+// 失败时 fail-closed：返回 Enabled=false + 默认 categories + normal 优先级。
+// 与 GetCaptchaRuntime / IsUserErrorViewAllowed 等相同的轻量 runtime 风格。
+func (s *SettingService) GetSupportTicketRuntime(ctx context.Context) SupportTicketRuntime {
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeySupportTicketEnabled,
+		SettingKeySupportTicketCategories,
+		SettingKeySupportTicketDefaultPriority,
+	})
+	if err != nil {
+		slog.Warn("failed to get support ticket runtime settings, defaulting to disabled", "error", err)
+		return SupportTicketRuntime{
+			Enabled:         false,
+			Categories:      cloneSupportTicketDefaultCategories(),
+			DefaultPriority: SupportTicketPriorityNormal,
+		}
+	}
+	return SupportTicketRuntime{
+		Enabled:         vals[SettingKeySupportTicketEnabled] == "true",
+		Categories:      ParseSupportTicketCategories(vals[SettingKeySupportTicketCategories]),
+		DefaultPriority: NormalizeSupportTicketPriority(vals[SettingKeySupportTicketDefaultPriority]),
+	}
+}
+
 // GetAntigravityUserAgentVersion 返回 Antigravity 上游请求使用的版本号。
 // 后台设置优先；为空、缺失或非法时回退到 ANTIGRAVITY_USER_AGENT_VERSION / 内置默认值。
 func (s *SettingService) GetAntigravityUserAgentVersion(ctx context.Context) string {
@@ -1359,7 +1425,14 @@ type PublicSettingsInjectionPayload struct {
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
-	AllowUserViewErrorRequests           bool `json:"allow_user_view_error_requests"`
+	AllowUserViewErrorRequests           bool     `json:"allow_user_view_error_requests"`
+	SupportTicketEnabled                 bool     `json:"support_ticket_enabled"`
+	SupportChatEnabled                   bool     `json:"support_chat_enabled"`
+	SupportChatExcludedRoutes            []string `json:"support_chat_excluded_routes"`
+	SupportChatAnonymousLLM              bool     `json:"support_chat_anonymous_llm"`
+	SupportChatTitle                     string   `json:"support_chat_title"`
+	SupportChatWelcome                   string   `json:"support_chat_welcome"`
+	SupportChatIcon                      string   `json:"support_chat_icon"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -1426,6 +1499,13 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
+		SupportTicketEnabled:                 settings.SupportTicketEnabled,
+		SupportChatEnabled:                   settings.SupportChatEnabled,
+		SupportChatExcludedRoutes:            settings.SupportChatExcludedRoutes,
+		SupportChatAnonymousLLM:              settings.SupportChatAnonymousLLM,
+		SupportChatTitle:                     settings.SupportChatTitle,
+		SupportChatWelcome:                   settings.SupportChatWelcome,
+		SupportChatIcon:                      settings.SupportChatIcon,
 	}, nil
 }
 
@@ -2140,6 +2220,235 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 
 	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
+
+	// 客服工单系统：仅当调用方显式提供了 categories 或 default_priority 时才写库。
+	// SystemSettings 是 PUT 全量结构，绝大多数路径都会带上完整字段；
+	// 但 service 内部 / 单测可能只关心局部字段（构造稀疏 SystemSettings），此时支持
+	// 工单相关 key 应该按"未触碰"处理，避免空 categories 触发严格校验导致整体失败。
+	if len(settings.SupportTicketCategories) > 0 || strings.TrimSpace(settings.SupportTicketDefaultPriority) != "" {
+		normalizedCategories, err := NormalizeSupportTicketCategories(settings.SupportTicketCategories)
+		if err != nil {
+			return nil, err
+		}
+		settings.SupportTicketCategories = normalizedCategories
+		categoriesJSON, err := MarshalSupportTicketCategories(normalizedCategories)
+		if err != nil {
+			return nil, err
+		}
+		normalizedPriority, err := ValidateSupportTicketPriority(settings.SupportTicketDefaultPriority)
+		if err != nil {
+			return nil, err
+		}
+		settings.SupportTicketDefaultPriority = normalizedPriority
+		updates[SettingKeySupportTicketEnabled] = strconv.FormatBool(settings.SupportTicketEnabled)
+		updates[SettingKeySupportTicketCategories] = categoriesJSON
+		updates[SettingKeySupportTicketDefaultPriority] = normalizedPriority
+	}
+
+	// 客服浮窗（add-support-chat-widget）：sparse-payload 检测同 ticket。MaxTurns 是
+	// 必填范围限定字段（>=1），sparse 结构中天然为 0，正好作为 "未触碰" 标志。
+	if settings.SupportChatMaxTurns > 0 || settings.SupportChatMaxRequestTokens > 0 ||
+		strings.TrimSpace(settings.SupportChatTitle) != "" ||
+		strings.TrimSpace(settings.SupportChatWelcome) != "" ||
+		strings.TrimSpace(settings.SupportChatIcon) != "" ||
+		strings.TrimSpace(settings.SupportChatModel) != "" {
+
+		excluded, err := NormalizeSupportChatExcludedRoutes(settings.SupportChatExcludedRoutes)
+		if err != nil {
+			return nil, err
+		}
+		settings.SupportChatExcludedRoutes = excluded
+		excludedJSON, err := MarshalSupportChatExcludedRoutes(excluded)
+		if err != nil {
+			return nil, err
+		}
+
+		title := strings.TrimSpace(settings.SupportChatTitle)
+		if utf8.RuneCountInString(title) < 1 || utf8.RuneCountInString(title) > 100 {
+			return nil, infraerrors.BadRequest("INVALID_SUPPORT_CHAT_TITLE", "title must be 1..100 characters")
+		}
+		welcome := strings.TrimSpace(settings.SupportChatWelcome)
+		if utf8.RuneCountInString(welcome) > 1000 {
+			return nil, infraerrors.BadRequest("INVALID_SUPPORT_CHAT_WELCOME", "welcome must be at most 1000 characters")
+		}
+		icon := strings.TrimSpace(settings.SupportChatIcon)
+		if utf8.RuneCountInString(icon) > 100 {
+			return nil, infraerrors.BadRequest("INVALID_SUPPORT_CHAT_ICON", "icon must be at most 100 characters")
+		}
+		model := strings.TrimSpace(settings.SupportChatModel)
+		if utf8.RuneCountInString(model) < 1 || utf8.RuneCountInString(model) > 200 {
+			return nil, infraerrors.BadRequest("INVALID_SUPPORT_CHAT_MODEL", "model must be 1..200 characters")
+		}
+		systemPrompt := settings.SupportChatSystemPrompt
+		if utf8.RuneCountInString(systemPrompt) > 20000 {
+			return nil, infraerrors.BadRequest("INVALID_SUPPORT_CHAT_SYSTEM_PROMPT", "system_prompt must be at most 20000 characters")
+		}
+
+		// 外部 OpenAI-compatible upstream 凭据（embedding + chat 共用一对）的校验。
+		// 由 change-support-chat-external-llm 引入，替代旧的 SupportChatAPIKeyID 校验。
+		// 我们要在这里读一次"当前存储值"以支撑两件事：
+		//   1. 计算 effective api_key（leave-unchanged 语义下生效的实际值）；
+		//   2. 决定是否要回写 api_key 字段（避免把掩码字符串当成新值写入存储）。
+		llmCredVals, err := s.settingRepo.GetMultiple(ctx, []string{
+			SettingKeySupportChatLLMBaseURL,
+			SettingKeySupportChatLLMAPIKey,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("read existing support_chat llm credentials: %w", err)
+		}
+		storedAPIKey := strings.TrimSpace(llmCredVals[SettingKeySupportChatLLMAPIKey])
+
+		baseURL := strings.TrimSpace(settings.SupportChatLLMBaseURL)
+		if utf8.RuneCountInString(baseURL) > 500 {
+			return nil, infraerrors.BadRequest("INVALID_SUPPORT_CHAT_LLM_BASE_URL", "base_url must be at most 500 characters")
+		}
+		if baseURL != "" && !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+			return nil, infraerrors.BadRequest("INVALID_SUPPORT_CHAT_LLM_BASE_URL", "base_url must start with http:// or https://")
+		}
+
+		reqAPIKey := strings.TrimSpace(settings.SupportChatLLMAPIKey)
+		if utf8.RuneCountInString(reqAPIKey) > 500 {
+			return nil, infraerrors.BadRequest("INVALID_SUPPORT_CHAT_LLM_API_KEY", "api_key must be at most 500 characters")
+		}
+
+		// leave-unchanged 检测：当请求里的 api_key 等于"当前存储值的掩码"时，视为"未改动"。
+		// storedAPIKey 为空 → maskedStored 为空 → 仅当 reqAPIKey 也为空才匹配，
+		// 此时走显式"清空"分支，apiKeyUntouched=false（reqAPIKey == "" 时该字段无需特殊处理）。
+		maskedStored := MaskSupportChatLLMAPIKey(storedAPIKey)
+		apiKeyUntouched := reqAPIKey != "" && reqAPIKey == maskedStored
+
+		effectiveAPIKey := reqAPIKey
+		if apiKeyUntouched {
+			effectiveAPIKey = storedAPIKey
+		}
+		if settings.SupportChatLLMEnabled {
+			if baseURL == "" || effectiveAPIKey == "" {
+				return nil, infraerrors.BadRequest("INVALID_SUPPORT_CHAT_LLM_CREDENTIALS",
+					"support_chat_llm_base_url and support_chat_llm_api_key are required when llm_enabled = true")
+			}
+		}
+
+		maxTurns, err := ValidateSupportChatMaxTurns(settings.SupportChatMaxTurns)
+		if err != nil {
+			return nil, err
+		}
+		maxReqTokens, err := ValidateSupportChatMaxRequestTokens(settings.SupportChatMaxRequestTokens)
+		if err != nil {
+			return nil, err
+		}
+		rlUserPerDay, err := ValidateSupportChatRateLimit(settings.SupportChatRLUserPerDay, "rl_user_per_day")
+		if err != nil {
+			return nil, err
+		}
+		rlUserPerMin, err := ValidateSupportChatRateLimit(settings.SupportChatRLUserPerMin, "rl_user_per_min")
+		if err != nil {
+			return nil, err
+		}
+		rlIPPerHour, err := ValidateSupportChatRateLimit(settings.SupportChatRLIPPerHour, "rl_ip_per_hour")
+		if err != nil {
+			return nil, err
+		}
+
+		faqs, err := NormalizeSupportChatFAQs(settings.SupportChatFAQs)
+		if err != nil {
+			return nil, err
+		}
+		settings.SupportChatFAQs = faqs
+		faqsJSON, err := MarshalSupportChatFAQs(faqs)
+		if err != nil {
+			return nil, err
+		}
+
+		updates[SettingKeySupportChatEnabled] = strconv.FormatBool(settings.SupportChatEnabled)
+		updates[SettingKeySupportChatExcludedRoutes] = excludedJSON
+		updates[SettingKeySupportChatAnonymousLLM] = strconv.FormatBool(settings.SupportChatAnonymousLLM)
+		updates[SettingKeySupportChatTitle] = title
+		updates[SettingKeySupportChatWelcome] = welcome
+		updates[SettingKeySupportChatIcon] = icon
+		updates[SettingKeySupportChatLLMEnabled] = strconv.FormatBool(settings.SupportChatLLMEnabled)
+		// 外部 LLM 凭据：base_url 始终原样写入；api_key 若被识别为"未改动的掩码"则跳过写入，
+		// 保留存储中的明文不被覆盖（避免把掩码当成新值落库）。
+		updates[SettingKeySupportChatLLMBaseURL] = baseURL
+		if !apiKeyUntouched {
+			updates[SettingKeySupportChatLLMAPIKey] = reqAPIKey
+		}
+		updates[SettingKeySupportChatModel] = model
+		updates[SettingKeySupportChatSystemPrompt] = systemPrompt
+		updates[SettingKeySupportChatMaxTurns] = strconv.Itoa(maxTurns)
+		updates[SettingKeySupportChatMaxRequestTokens] = strconv.Itoa(maxReqTokens)
+		updates[SettingKeySupportChatRLUserPerDay] = strconv.Itoa(rlUserPerDay)
+		updates[SettingKeySupportChatRLUserPerMin] = strconv.Itoa(rlUserPerMin)
+		updates[SettingKeySupportChatRLIPPerHour] = strconv.Itoa(rlIPPerHour)
+		updates[SettingKeySupportChatFAQs] = faqsJSON
+	}
+
+	// 客服知识库 RAG（add-support-knowledge-rag）：与 chat-widget 块解耦，
+	// admin 可单独保存 RAG 配置而不触碰外观/限流/FAQ。sparse-payload 检测：
+	// embed_model 非空 / doc_cron 非空 / top_k > 0 任一即视为"显式提交了 RAG 块"。
+	if settings.SupportChatRAGTopK > 0 ||
+		strings.TrimSpace(settings.SupportChatRAGEmbedModel) != "" ||
+		strings.TrimSpace(settings.SupportChatRAGDocCron) != "" ||
+		settings.SupportChatRAGChunkSize > 0 {
+
+		docURL, err := NormalizeSupportChatRAGDocURL(settings.SupportChatRAGDocURL)
+		if err != nil {
+			return nil, err
+		}
+		settings.SupportChatRAGDocURL = docURL
+
+		docDepth, err := ValidateSupportChatRAGDocDepth(settings.SupportChatRAGDocDepth)
+		if err != nil {
+			return nil, err
+		}
+
+		docCron, err := NormalizeSupportChatRAGDocCron(settings.SupportChatRAGDocCron)
+		if err != nil {
+			return nil, err
+		}
+		settings.SupportChatRAGDocCron = docCron
+
+		embedModel, err := NormalizeSupportChatRAGEmbedModel(settings.SupportChatRAGEmbedModel)
+		if err != nil {
+			return nil, err
+		}
+		settings.SupportChatRAGEmbedModel = embedModel
+
+		topK, err := ValidateSupportChatRAGTopK(settings.SupportChatRAGTopK)
+		if err != nil {
+			return nil, err
+		}
+
+		chunkSize, err := ValidateSupportChatRAGChunkSize(settings.SupportChatRAGChunkSize)
+		if err != nil {
+			return nil, err
+		}
+
+		chunkOverlap, err := ValidateSupportChatRAGChunkOverlap(settings.SupportChatRAGChunkOverlap)
+		if err != nil {
+			return nil, err
+		}
+
+		// 交叉校验：overlap 必须严格小于 size，避免切片陷入死循环。
+		if chunkOverlap >= chunkSize {
+			return nil, infraerrors.BadRequest(
+				"INVALID_SUPPORT_CHAT_RAG_CHUNK_OVERLAP",
+				"chunk_overlap must be strictly less than chunk_size",
+			)
+		}
+
+		// rag_enabled 守卫：开启时 doc_url 可为空（admin 可只用 FAQ 检索），
+		// 但若强行开 RAG 又 doc_url 空，pipeline 状态会显示 empty_doc_url——这是合规的。
+		// 不在这里强制 doc_url 非空。
+
+		updates[SettingKeySupportChatRAGEnabled] = strconv.FormatBool(settings.SupportChatRAGEnabled)
+		updates[SettingKeySupportChatRAGDocURL] = docURL
+		updates[SettingKeySupportChatRAGDocDepth] = strconv.Itoa(docDepth)
+		updates[SettingKeySupportChatRAGDocCron] = docCron
+		updates[SettingKeySupportChatRAGEmbedModel] = embedModel
+		updates[SettingKeySupportChatRAGTopK] = strconv.Itoa(topK)
+		updates[SettingKeySupportChatRAGChunkSize] = strconv.Itoa(chunkSize)
+		updates[SettingKeySupportChatRAGChunkOverlap] = strconv.Itoa(chunkOverlap)
+	}
 
 	return updates, nil
 }
@@ -3035,6 +3344,46 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		openAIAdvancedSchedulerSettingKey:            "false",
 
 		SettingKeyAllowUserViewErrorRequests: "false",
+
+		// 客服工单系统默认值：开关默认关闭，分类使用 SupportTicketDefaultCategories，优先级默认 normal。
+		SettingKeySupportTicketEnabled:         "false",
+		SettingKeySupportTicketCategories:      defaultSupportTicketCategoriesJSON(),
+		SettingKeySupportTicketDefaultPriority: SupportTicketPriorityNormal,
+
+		// 客服浮窗（add-support-chat-widget）默认值：总开关默认关闭，
+		// 排除路由复用 SupportChatDefaultExcludedRoutes，匿名 LLM 默认禁用，
+		// LLM 默认禁用（admin 必须显式填入外部 base_url + api_key 才能开启）。
+		SettingKeySupportChatEnabled:          "false",
+		SettingKeySupportChatExcludedRoutes:   defaultSupportChatExcludedRoutesJSON(),
+		SettingKeySupportChatAnonymousLLM:     "false",
+		SettingKeySupportChatTitle:            SupportChatDefaultTitle,
+		SettingKeySupportChatWelcome:          SupportChatDefaultWelcome,
+		SettingKeySupportChatIcon:             SupportChatDefaultIcon,
+		SettingKeySupportChatLLMEnabled:       "false",
+		// 外部 OpenAI-compatible upstream 凭据默认空：admin 必须显式填入 base_url + api_key
+		// 才能开启 LLM；fresh-install 时即便误开 llm_enabled 也会被 buildSystemSettingsUpdates 拦截。
+		SettingKeySupportChatLLMBaseURL:       "",
+		SettingKeySupportChatLLMAPIKey:        "",
+		SettingKeySupportChatModel:            SupportChatDefaultModel,
+		SettingKeySupportChatSystemPrompt:     "",
+		SettingKeySupportChatMaxTurns:         strconv.Itoa(SupportChatMaxTurnsDefault),
+		SettingKeySupportChatMaxRequestTokens: strconv.Itoa(SupportChatMaxRequestTokensDef),
+		SettingKeySupportChatRLUserPerDay:     strconv.Itoa(SupportChatRLUserPerDayDefault),
+		SettingKeySupportChatRLUserPerMin:     strconv.Itoa(SupportChatRLUserPerMinDefault),
+		SettingKeySupportChatRLIPPerHour:      strconv.Itoa(SupportChatRLIPPerHourDefault),
+		SettingKeySupportChatFAQs:             "[]",
+
+		// 客服知识库 RAG（add-support-knowledge-rag）：默认整体禁用，
+		// 让 chat-widget 路径保持原行为，admin 显式开启后才生效。
+		SettingKeySupportChatRAGEnabled:        "false",
+		SettingKeySupportChatRAGDocURL:         "",
+		SettingKeySupportChatRAGDocDepth:       strconv.Itoa(SupportChatRAGDocDepthDefault),
+		SettingKeySupportChatRAGDocCron:        SupportChatRAGDocCronDaily03,
+		SettingKeySupportChatRAGEmbedModel:     SupportChatRAGEmbedModelDefault,
+		SettingKeySupportChatRAGTopK:           strconv.Itoa(SupportChatRAGTopKDefault),
+		SettingKeySupportChatRAGChunkSize:      strconv.Itoa(SupportChatRAGChunkSizeDefault),
+		SettingKeySupportChatRAGChunkOverlap:   strconv.Itoa(SupportChatRAGChunkOverlapDefault),
+		SettingKeySupportChatRAGDocIndexStatus: "{}",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -3603,6 +3952,94 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
+
+	// 客服工单（默认 enabled = false; categories 与 default_priority 走 ParseSupportTicketCategories
+	// / NormalizeSupportTicketPriority，确保即使持久值损坏也能拿到合法回退）。
+	result.SupportTicketEnabled = settings[SettingKeySupportTicketEnabled] == "true"
+	result.SupportTicketCategories = ParseSupportTicketCategories(settings[SettingKeySupportTicketCategories])
+	result.SupportTicketDefaultPriority = NormalizeSupportTicketPriority(settings[SettingKeySupportTicketDefaultPriority])
+
+	// 客服浮窗（add-support-chat-widget）。所有解析走 Parse*/Clamp* helper，
+	// 持久值损坏时回退到合法默认（GET 路径承诺非 nil / 合法范围）。
+	result.SupportChatEnabled = settings[SettingKeySupportChatEnabled] == "true"
+	result.SupportChatExcludedRoutes = ParseSupportChatExcludedRoutes(settings[SettingKeySupportChatExcludedRoutes])
+	result.SupportChatAnonymousLLM = settings[SettingKeySupportChatAnonymousLLM] == "true"
+	result.SupportChatTitle = strings.TrimSpace(settings[SettingKeySupportChatTitle])
+	if result.SupportChatTitle == "" {
+		result.SupportChatTitle = SupportChatDefaultTitle
+	}
+	result.SupportChatWelcome = strings.TrimSpace(settings[SettingKeySupportChatWelcome])
+	if result.SupportChatWelcome == "" {
+		result.SupportChatWelcome = SupportChatDefaultWelcome
+	}
+	result.SupportChatIcon = strings.TrimSpace(settings[SettingKeySupportChatIcon])
+	if result.SupportChatIcon == "" {
+		result.SupportChatIcon = SupportChatDefaultIcon
+	}
+	result.SupportChatLLMEnabled = settings[SettingKeySupportChatLLMEnabled] == "true"
+	// 外部 OpenAI-compatible upstream 凭据：base_url 直接读出；api_key 在 admin GET 响应里
+	// 始终掩码——MaskSupportChatLLMAPIKey 在长度<4 时返回 "***"，长度≥4 时返回 "sk-***"+last4，
+	// 空值返回 ""。运行时所需明文请走 GetSupportChatRuntime / GetSupportChatLLMCredentials。
+	result.SupportChatLLMBaseURL = strings.TrimSpace(settings[SettingKeySupportChatLLMBaseURL])
+	result.SupportChatLLMAPIKey = MaskSupportChatLLMAPIKey(strings.TrimSpace(settings[SettingKeySupportChatLLMAPIKey]))
+	result.SupportChatModel = strings.TrimSpace(settings[SettingKeySupportChatModel])
+	if result.SupportChatModel == "" {
+		result.SupportChatModel = SupportChatDefaultModel
+	}
+	result.SupportChatSystemPrompt = settings[SettingKeySupportChatSystemPrompt]
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatMaxTurns])); err == nil {
+		result.SupportChatMaxTurns = ClampSupportChatMaxTurns(v)
+	} else {
+		result.SupportChatMaxTurns = SupportChatMaxTurnsDefault
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatMaxRequestTokens])); err == nil {
+		result.SupportChatMaxRequestTokens = ClampSupportChatMaxRequestTokens(v)
+	} else {
+		result.SupportChatMaxRequestTokens = SupportChatMaxRequestTokensDef
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRLUserPerDay])); err == nil {
+		result.SupportChatRLUserPerDay = ClampSupportChatRateLimit(v, SupportChatRLUserPerDayDefault)
+	} else {
+		result.SupportChatRLUserPerDay = SupportChatRLUserPerDayDefault
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRLUserPerMin])); err == nil {
+		result.SupportChatRLUserPerMin = ClampSupportChatRateLimit(v, SupportChatRLUserPerMinDefault)
+	} else {
+		result.SupportChatRLUserPerMin = SupportChatRLUserPerMinDefault
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRLIPPerHour])); err == nil {
+		result.SupportChatRLIPPerHour = ClampSupportChatRateLimit(v, SupportChatRLIPPerHourDefault)
+	} else {
+		result.SupportChatRLIPPerHour = SupportChatRLIPPerHourDefault
+	}
+	result.SupportChatFAQs = ParseSupportChatFAQs(settings[SettingKeySupportChatFAQs])
+
+	// 客服知识库 RAG（add-support-knowledge-rag）：8 个字段全部 lenient 解析，
+	// 库里损坏 / 缺失时回退到 Default 常量；GET 路径永远返回合法值。
+	result.SupportChatRAGEnabled = settings[SettingKeySupportChatRAGEnabled] == "true"
+	result.SupportChatRAGDocURL = ParseSupportChatRAGDocURL(settings[SettingKeySupportChatRAGDocURL])
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRAGDocDepth])); err == nil {
+		result.SupportChatRAGDocDepth = ClampSupportChatRAGDocDepth(v)
+	} else {
+		result.SupportChatRAGDocDepth = SupportChatRAGDocDepthDefault
+	}
+	result.SupportChatRAGDocCron = ParseSupportChatRAGDocCron(settings[SettingKeySupportChatRAGDocCron])
+	result.SupportChatRAGEmbedModel = ParseSupportChatRAGEmbedModel(settings[SettingKeySupportChatRAGEmbedModel])
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRAGTopK])); err == nil {
+		result.SupportChatRAGTopK = ClampSupportChatRAGTopK(v)
+	} else {
+		result.SupportChatRAGTopK = SupportChatRAGTopKDefault
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRAGChunkSize])); err == nil {
+		result.SupportChatRAGChunkSize = ClampSupportChatRAGChunkSize(v)
+	} else {
+		result.SupportChatRAGChunkSize = SupportChatRAGChunkSizeDefault
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRAGChunkOverlap])); err == nil {
+		result.SupportChatRAGChunkOverlap = ClampSupportChatRAGChunkOverlap(v)
+	} else {
+		result.SupportChatRAGChunkOverlap = SupportChatRAGChunkOverlapDefault
+	}
 
 	return result
 }

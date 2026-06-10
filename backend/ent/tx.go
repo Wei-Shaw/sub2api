@@ -68,6 +68,14 @@ type Tx struct {
 	Setting *SettingClient
 	// SubscriptionPlan is the client for interacting with the SubscriptionPlan builders.
 	SubscriptionPlan *SubscriptionPlanClient
+	// SupportDocChunk is the client for interacting with the SupportDocChunk builders.
+	SupportDocChunk *SupportDocChunkClient
+	// SupportFaqItem is the client for interacting with the SupportFaqItem builders.
+	SupportFaqItem *SupportFaqItemClient
+	// SupportTicket is the client for interacting with the SupportTicket builders.
+	SupportTicket *SupportTicketClient
+	// SupportTicketReply is the client for interacting with the SupportTicketReply builders.
+	SupportTicketReply *SupportTicketReplyClient
 	// TLSFingerprintProfile is the client for interacting with the TLSFingerprintProfile builders.
 	TLSFingerprintProfile *TLSFingerprintProfileClient
 	// UsageCleanupTask is the client for interacting with the UsageCleanupTask builders.
@@ -244,6 +252,10 @@ func (tx *Tx) init() {
 	tx.SecuritySecret = NewSecuritySecretClient(tx.config)
 	tx.Setting = NewSettingClient(tx.config)
 	tx.SubscriptionPlan = NewSubscriptionPlanClient(tx.config)
+	tx.SupportDocChunk = NewSupportDocChunkClient(tx.config)
+	tx.SupportFaqItem = NewSupportFaqItemClient(tx.config)
+	tx.SupportTicket = NewSupportTicketClient(tx.config)
+	tx.SupportTicketReply = NewSupportTicketReplyClient(tx.config)
 	tx.TLSFingerprintProfile = NewTLSFingerprintProfileClient(tx.config)
 	tx.UsageCleanupTask = NewUsageCleanupTaskClient(tx.config)
 	tx.UsageLog = NewUsageLogClient(tx.config)

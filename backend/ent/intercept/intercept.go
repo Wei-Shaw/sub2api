@@ -36,6 +36,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	"github.com/Wei-Shaw/sub2api/ent/supportdocchunk"
+	"github.com/Wei-Shaw/sub2api/ent/supportfaqitem"
+	"github.com/Wei-Shaw/sub2api/ent/supportticket"
+	"github.com/Wei-Shaw/sub2api/ent/supportticketreply"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -832,6 +836,114 @@ func (f TraverseSubscriptionPlan) Traverse(ctx context.Context, q ent.Query) err
 	return fmt.Errorf("unexpected query type %T. expect *ent.SubscriptionPlanQuery", q)
 }
 
+// The SupportDocChunkFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SupportDocChunkFunc func(context.Context, *ent.SupportDocChunkQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SupportDocChunkFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SupportDocChunkQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SupportDocChunkQuery", q)
+}
+
+// The TraverseSupportDocChunk type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSupportDocChunk func(context.Context, *ent.SupportDocChunkQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSupportDocChunk) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSupportDocChunk) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SupportDocChunkQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SupportDocChunkQuery", q)
+}
+
+// The SupportFaqItemFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SupportFaqItemFunc func(context.Context, *ent.SupportFaqItemQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SupportFaqItemFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SupportFaqItemQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SupportFaqItemQuery", q)
+}
+
+// The TraverseSupportFaqItem type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSupportFaqItem func(context.Context, *ent.SupportFaqItemQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSupportFaqItem) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSupportFaqItem) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SupportFaqItemQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SupportFaqItemQuery", q)
+}
+
+// The SupportTicketFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SupportTicketFunc func(context.Context, *ent.SupportTicketQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SupportTicketFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SupportTicketQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SupportTicketQuery", q)
+}
+
+// The TraverseSupportTicket type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSupportTicket func(context.Context, *ent.SupportTicketQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSupportTicket) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSupportTicket) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SupportTicketQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SupportTicketQuery", q)
+}
+
+// The SupportTicketReplyFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SupportTicketReplyFunc func(context.Context, *ent.SupportTicketReplyQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SupportTicketReplyFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SupportTicketReplyQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SupportTicketReplyQuery", q)
+}
+
+// The TraverseSupportTicketReply type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSupportTicketReply func(context.Context, *ent.SupportTicketReplyQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSupportTicketReply) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSupportTicketReply) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SupportTicketReplyQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SupportTicketReplyQuery", q)
+}
+
 // The TLSFingerprintProfileFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TLSFingerprintProfileFunc func(context.Context, *ent.TLSFingerprintProfileQuery) (ent.Value, error)
 
@@ -1132,6 +1244,14 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.SettingQuery, predicate.Setting, setting.OrderOption]{typ: ent.TypeSetting, tq: q}, nil
 	case *ent.SubscriptionPlanQuery:
 		return &query[*ent.SubscriptionPlanQuery, predicate.SubscriptionPlan, subscriptionplan.OrderOption]{typ: ent.TypeSubscriptionPlan, tq: q}, nil
+	case *ent.SupportDocChunkQuery:
+		return &query[*ent.SupportDocChunkQuery, predicate.SupportDocChunk, supportdocchunk.OrderOption]{typ: ent.TypeSupportDocChunk, tq: q}, nil
+	case *ent.SupportFaqItemQuery:
+		return &query[*ent.SupportFaqItemQuery, predicate.SupportFaqItem, supportfaqitem.OrderOption]{typ: ent.TypeSupportFaqItem, tq: q}, nil
+	case *ent.SupportTicketQuery:
+		return &query[*ent.SupportTicketQuery, predicate.SupportTicket, supportticket.OrderOption]{typ: ent.TypeSupportTicket, tq: q}, nil
+	case *ent.SupportTicketReplyQuery:
+		return &query[*ent.SupportTicketReplyQuery, predicate.SupportTicketReply, supportticketreply.OrderOption]{typ: ent.TypeSupportTicketReply, tq: q}, nil
 	case *ent.TLSFingerprintProfileQuery:
 		return &query[*ent.TLSFingerprintProfileQuery, predicate.TLSFingerprintProfile, tlsfingerprintprofile.OrderOption]{typ: ent.TypeTLSFingerprintProfile, tq: q}, nil
 	case *ent.UsageCleanupTaskQuery:

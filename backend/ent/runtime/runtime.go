@@ -33,6 +33,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	"github.com/Wei-Shaw/sub2api/ent/supportdocchunk"
+	"github.com/Wei-Shaw/sub2api/ent/supportfaqitem"
+	"github.com/Wei-Shaw/sub2api/ent/supportticket"
+	"github.com/Wei-Shaw/sub2api/ent/supportticketreply"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -1592,6 +1596,172 @@ func init() {
 	subscriptionplan.DefaultUpdatedAt = subscriptionplanDescUpdatedAt.Default.(func() time.Time)
 	// subscriptionplan.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	subscriptionplan.UpdateDefaultUpdatedAt = subscriptionplanDescUpdatedAt.UpdateDefault.(func() time.Time)
+	supportdocchunkFields := schema.SupportDocChunk{}.Fields()
+	_ = supportdocchunkFields
+	// supportdocchunkDescSourceURL is the schema descriptor for source_url field.
+	supportdocchunkDescSourceURL := supportdocchunkFields[0].Descriptor()
+	// supportdocchunk.SourceURLValidator is a validator for the "source_url" field. It is called by the builders before save.
+	supportdocchunk.SourceURLValidator = func() func(string) error {
+		validators := supportdocchunkDescSourceURL.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(source_url string) error {
+			for _, fn := range fns {
+				if err := fn(source_url); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// supportdocchunkDescChunkText is the schema descriptor for chunk_text field.
+	supportdocchunkDescChunkText := supportdocchunkFields[1].Descriptor()
+	// supportdocchunk.ChunkTextValidator is a validator for the "chunk_text" field. It is called by the builders before save.
+	supportdocchunk.ChunkTextValidator = supportdocchunkDescChunkText.Validators[0].(func(string) error)
+	// supportdocchunkDescContentHash is the schema descriptor for content_hash field.
+	supportdocchunkDescContentHash := supportdocchunkFields[2].Descriptor()
+	// supportdocchunk.ContentHashValidator is a validator for the "content_hash" field. It is called by the builders before save.
+	supportdocchunk.ContentHashValidator = supportdocchunkDescContentHash.Validators[0].(func(string) error)
+	// supportdocchunkDescFetchedAt is the schema descriptor for fetched_at field.
+	supportdocchunkDescFetchedAt := supportdocchunkFields[3].Descriptor()
+	// supportdocchunk.DefaultFetchedAt holds the default value on creation for the fetched_at field.
+	supportdocchunk.DefaultFetchedAt = supportdocchunkDescFetchedAt.Default.(func() time.Time)
+	// supportdocchunkDescCreatedAt is the schema descriptor for created_at field.
+	supportdocchunkDescCreatedAt := supportdocchunkFields[4].Descriptor()
+	// supportdocchunk.DefaultCreatedAt holds the default value on creation for the created_at field.
+	supportdocchunk.DefaultCreatedAt = supportdocchunkDescCreatedAt.Default.(func() time.Time)
+	supportfaqitemMixin := schema.SupportFaqItem{}.Mixin()
+	supportfaqitemMixinFields0 := supportfaqitemMixin[0].Fields()
+	_ = supportfaqitemMixinFields0
+	supportfaqitemFields := schema.SupportFaqItem{}.Fields()
+	_ = supportfaqitemFields
+	// supportfaqitemDescCreatedAt is the schema descriptor for created_at field.
+	supportfaqitemDescCreatedAt := supportfaqitemMixinFields0[0].Descriptor()
+	// supportfaqitem.DefaultCreatedAt holds the default value on creation for the created_at field.
+	supportfaqitem.DefaultCreatedAt = supportfaqitemDescCreatedAt.Default.(func() time.Time)
+	// supportfaqitemDescUpdatedAt is the schema descriptor for updated_at field.
+	supportfaqitemDescUpdatedAt := supportfaqitemMixinFields0[1].Descriptor()
+	// supportfaqitem.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	supportfaqitem.DefaultUpdatedAt = supportfaqitemDescUpdatedAt.Default.(func() time.Time)
+	// supportfaqitem.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	supportfaqitem.UpdateDefaultUpdatedAt = supportfaqitemDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// supportfaqitemDescQuestion is the schema descriptor for question field.
+	supportfaqitemDescQuestion := supportfaqitemFields[0].Descriptor()
+	// supportfaqitem.QuestionValidator is a validator for the "question" field. It is called by the builders before save.
+	supportfaqitem.QuestionValidator = func() func(string) error {
+		validators := supportfaqitemDescQuestion.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(question string) error {
+			for _, fn := range fns {
+				if err := fn(question); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// supportfaqitemDescAnswer is the schema descriptor for answer field.
+	supportfaqitemDescAnswer := supportfaqitemFields[1].Descriptor()
+	// supportfaqitem.AnswerValidator is a validator for the "answer" field. It is called by the builders before save.
+	supportfaqitem.AnswerValidator = supportfaqitemDescAnswer.Validators[0].(func(string) error)
+	// supportfaqitemDescTags is the schema descriptor for tags field.
+	supportfaqitemDescTags := supportfaqitemFields[2].Descriptor()
+	// supportfaqitem.DefaultTags holds the default value on creation for the tags field.
+	supportfaqitem.DefaultTags = supportfaqitemDescTags.Default.([]string)
+	// supportfaqitemDescEnabled is the schema descriptor for enabled field.
+	supportfaqitemDescEnabled := supportfaqitemFields[3].Descriptor()
+	// supportfaqitem.DefaultEnabled holds the default value on creation for the enabled field.
+	supportfaqitem.DefaultEnabled = supportfaqitemDescEnabled.Default.(bool)
+	// supportfaqitemDescSortOrder is the schema descriptor for sort_order field.
+	supportfaqitemDescSortOrder := supportfaqitemFields[4].Descriptor()
+	// supportfaqitem.DefaultSortOrder holds the default value on creation for the sort_order field.
+	supportfaqitem.DefaultSortOrder = supportfaqitemDescSortOrder.Default.(int)
+	supportticketMixin := schema.SupportTicket{}.Mixin()
+	supportticketMixinFields0 := supportticketMixin[0].Fields()
+	_ = supportticketMixinFields0
+	supportticketFields := schema.SupportTicket{}.Fields()
+	_ = supportticketFields
+	// supportticketDescCreatedAt is the schema descriptor for created_at field.
+	supportticketDescCreatedAt := supportticketMixinFields0[0].Descriptor()
+	// supportticket.DefaultCreatedAt holds the default value on creation for the created_at field.
+	supportticket.DefaultCreatedAt = supportticketDescCreatedAt.Default.(func() time.Time)
+	// supportticketDescUpdatedAt is the schema descriptor for updated_at field.
+	supportticketDescUpdatedAt := supportticketMixinFields0[1].Descriptor()
+	// supportticket.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	supportticket.DefaultUpdatedAt = supportticketDescUpdatedAt.Default.(func() time.Time)
+	// supportticket.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	supportticket.UpdateDefaultUpdatedAt = supportticketDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// supportticketDescTitle is the schema descriptor for title field.
+	supportticketDescTitle := supportticketFields[1].Descriptor()
+	// supportticket.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	supportticket.TitleValidator = func() func(string) error {
+		validators := supportticketDescTitle.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(title string) error {
+			for _, fn := range fns {
+				if err := fn(title); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// supportticketDescContent is the schema descriptor for content field.
+	supportticketDescContent := supportticketFields[2].Descriptor()
+	// supportticket.ContentValidator is a validator for the "content" field. It is called by the builders before save.
+	supportticket.ContentValidator = supportticketDescContent.Validators[0].(func(string) error)
+	// supportticketDescCategory is the schema descriptor for category field.
+	supportticketDescCategory := supportticketFields[3].Descriptor()
+	// supportticket.CategoryValidator is a validator for the "category" field. It is called by the builders before save.
+	supportticket.CategoryValidator = func() func(string) error {
+		validators := supportticketDescCategory.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(category string) error {
+			for _, fn := range fns {
+				if err := fn(category); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// supportticketDescStatus is the schema descriptor for status field.
+	supportticketDescStatus := supportticketFields[4].Descriptor()
+	// supportticket.DefaultStatus holds the default value on creation for the status field.
+	supportticket.DefaultStatus = supportticketDescStatus.Default.(string)
+	// supportticket.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	supportticket.StatusValidator = supportticketDescStatus.Validators[0].(func(string) error)
+	// supportticketDescPriority is the schema descriptor for priority field.
+	supportticketDescPriority := supportticketFields[5].Descriptor()
+	// supportticket.DefaultPriority holds the default value on creation for the priority field.
+	supportticket.DefaultPriority = supportticketDescPriority.Default.(string)
+	// supportticket.PriorityValidator is a validator for the "priority" field. It is called by the builders before save.
+	supportticket.PriorityValidator = supportticketDescPriority.Validators[0].(func(string) error)
+	supportticketreplyFields := schema.SupportTicketReply{}.Fields()
+	_ = supportticketreplyFields
+	// supportticketreplyDescIsAdmin is the schema descriptor for is_admin field.
+	supportticketreplyDescIsAdmin := supportticketreplyFields[2].Descriptor()
+	// supportticketreply.DefaultIsAdmin holds the default value on creation for the is_admin field.
+	supportticketreply.DefaultIsAdmin = supportticketreplyDescIsAdmin.Default.(bool)
+	// supportticketreplyDescContent is the schema descriptor for content field.
+	supportticketreplyDescContent := supportticketreplyFields[3].Descriptor()
+	// supportticketreply.ContentValidator is a validator for the "content" field. It is called by the builders before save.
+	supportticketreply.ContentValidator = supportticketreplyDescContent.Validators[0].(func(string) error)
+	// supportticketreplyDescCreatedAt is the schema descriptor for created_at field.
+	supportticketreplyDescCreatedAt := supportticketreplyFields[4].Descriptor()
+	// supportticketreply.DefaultCreatedAt holds the default value on creation for the created_at field.
+	supportticketreply.DefaultCreatedAt = supportticketreplyDescCreatedAt.Default.(func() time.Time)
 	tlsfingerprintprofileMixin := schema.TLSFingerprintProfile{}.Mixin()
 	tlsfingerprintprofileMixinFields0 := tlsfingerprintprofileMixin[0].Fields()
 	_ = tlsfingerprintprofileMixinFields0

@@ -119,6 +119,13 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Affiliate',
   }),
+  // D1 客服工单：opt-in。后端关掉时 sidebar 入口隐藏，且 POST 工单接口
+  // 返回 404；admin 端的工单管理不受此开关影响（处理存量场景）。
+  supportTicket: defineFlag({
+    key: 'support_ticket_enabled',
+    mode: 'opt-in',
+    label: 'Support Tickets',
+  }),
 } as const
 
 export type RegisteredFeatureFlag = keyof typeof FeatureFlags

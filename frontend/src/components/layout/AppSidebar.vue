@@ -514,6 +514,23 @@ const TicketIcon = {
     )
 }
 
+// SupportIcon —— D1 客服工单菜单图标。沿用 Heroicons outline `chat-bubble-bottom-center-text`，
+// 三个气泡点暗示"对话"与"消息"，与现有 Cog/Ticket 图标在视觉上区分明显。
+const SupportIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z'
+        })
+      ]
+    )
+}
+
 const CogIcon = {
   render: () =>
     h(
@@ -697,6 +714,8 @@ const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
+// D1 客服工单：opt-in flag。后端关闭时 sidebar 入口隐藏。
+const flagSupportTicket = makeSidebarFlag(FeatureFlags.supportTicket)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 
@@ -729,6 +748,8 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
+    // D1 客服工单：用户侧入口。featureFlag 关掉时整条菜单隐藏。
+    { path: '/support/tickets', label: t('nav.support'), icon: SupportIcon, featureFlag: flagSupportTicket },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
@@ -794,6 +815,13 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/admin/recharge-promos', label: t('nav.rechargePromos'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: flagAdminPayment },
+    // D1 客服工单：admin 入口，紧跟在通知/促销组之后、affiliate / orders 之前。
+    // featureFlag 关闭时也隐藏入口（后端虽然不卡 feature_enabled，但 sidebar
+    // 入口仍跟随开关：保留 admin 直接访问 URL 处理存量的能力）。
+    { path: '/admin/support/tickets', label: t('nav.adminTickets'), icon: SupportIcon, featureFlag: flagSupportTicket },
+    // add-support-knowledge-rag §12 §13：客服知识库管理（FAQ + 文档索引状态）。
+    // 复用 supportChat 的 enabled 开关 —— 浮窗关掉时知识库入口也无意义。
+    { path: '/admin/support/knowledge', label: t('nav.adminSupportFaq'), icon: SupportIcon, featureFlag: flagSupportTicket },
     {
       path: '/admin/affiliates',
       label: t('nav.affiliateManagement'),
@@ -822,7 +850,6 @@ const adminNavItems = computed((): NavItem[] => {
     },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon }
   ]
-
   const visible = applyFeatureFlags(baseItems)
 
   // 简单模式下，在系统设置前插入 API密钥

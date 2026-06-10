@@ -363,6 +363,13 @@ export const useAppStore = defineStore('app', () => {
         risk_control_enabled: false,
         service_quota_enabled: false,
         affiliate_enabled: false,
+        support_ticket_enabled: false,
+        support_chat_enabled: false,
+        support_chat_excluded_routes: [],
+        support_chat_anonymous_llm: false,
+        support_chat_title: '',
+        support_chat_welcome: '',
+        support_chat_icon: '',
         allow_user_view_error_requests: false,
       }
     }

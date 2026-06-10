@@ -247,6 +247,20 @@ export interface PublicSettings {
   available_channels_enabled: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean
+  /** D1 客服工单总开关；关闭时 sidebar 入口隐藏，POST 工单接口直接 404。 */
+  support_ticket_enabled: boolean
+  /** 客服浮窗总开关；为 false 时浮窗组件不渲染。 */
+  support_chat_enabled: boolean
+  /** 客服浮窗排除路由列表（admin 配 + 前端硬编码合并去重）。每项支持 `*` 后缀通配。 */
+  support_chat_excluded_routes: string[]
+  /** 客服浮窗匿名 LLM 开关；false 时未登录用户输入禁用。 */
+  support_chat_anonymous_llm: boolean
+  /** 浮窗 panel header 标题；空字符串时前端回退到 i18n 默认。 */
+  support_chat_title?: string
+  /** 浮窗 panel 欢迎语；空字符串时前端回退到 i18n 默认。 */
+  support_chat_welcome?: string
+  /** 浮窗 bubble/panel 图标；支持 emoji 或图片 URL；空字符串时前端回退到内置默认头像。 */
+  support_chat_icon?: string
   allow_user_view_error_requests?: boolean
 }
 

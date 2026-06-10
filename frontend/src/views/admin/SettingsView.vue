@@ -5840,6 +5840,108 @@
           </div>
         </div>
 
+        <!-- Support Tickets（客服工单）feature card -->
+        <!--
+          说明：与 Affiliate / Channel Monitor / Available Channels 等 feature 开关同放在 Features Tab，
+          原 task §11.1 文案中的"general tab"为早期约定，与现有信息架构不一致；feature 类开关统一归并到本 tab。
+          关闭后前端 sidebar / 路由（用户端 + admin 端）入口隐藏；admin 直接打开 URL 仍可处理存量（spec §7.2）。
+        -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.support.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.support.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.support.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.support.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.support_ticket_enabled" />
+            </div>
+
+            <div v-if="form.support_ticket_enabled" class="space-y-6">
+              <!-- 默认优先级 -->
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.support.defaultPriority') }}
+                </label>
+                <select
+                  v-model="form.support_ticket_default_priority"
+                  class="input"
+                >
+                  <option value="low">
+                    {{ t('support.priorityLabel.low') }}
+                  </option>
+                  <option value="normal">
+                    {{ t('support.priorityLabel.normal') }}
+                  </option>
+                  <option value="high">
+                    {{ t('support.priorityLabel.high') }}
+                  </option>
+                </select>
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t('admin.settings.features.support.defaultPriorityHint') }}
+                </p>
+              </div>
+
+              <!-- 分类列表（数组编辑器） -->
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.support.categories') }}
+                </label>
+                <div class="space-y-2">
+                  <div
+                    v-for="(_, index) in form.support_ticket_categories || []"
+                    :key="index"
+                    class="flex items-center gap-2"
+                  >
+                    <input
+                      v-model="form.support_ticket_categories[index]"
+                      type="text"
+                      :maxlength="supportTicketCategoryMaxLength"
+                      class="input flex-1"
+                      :placeholder="t('admin.settings.features.support.categoryPlaceholder')"
+                    />
+                    <button
+                      type="button"
+                      class="btn btn-secondary px-2"
+                      :title="t('common.delete')"
+                      @click="removeSupportTicketCategory(index)"
+                    >
+                      <Icon name="x" size="xs" class="h-4 w-4" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    :disabled="(form.support_ticket_categories || []).length >= supportTicketCategoryMaxItems"
+                    @click="addSupportTicketCategory"
+                  >
+                    + {{ t('admin.settings.features.support.addCategory') }}
+                  </button>
+                </div>
+                <p class="mt-1 text-xs text-gray-400">
+                  {{
+                    t('admin.settings.features.support.categoriesHint', {
+                      max: supportTicketCategoryMaxItems,
+                      len: supportTicketCategoryMaxLength,
+                    })
+                  }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         </div><!-- /Tab: Features -->
 
         <!-- Tab: Email -->
@@ -6775,6 +6877,360 @@
         </div>
         <!-- /Tab: Email -->
 
+        <!-- Tab: Support Chat（客服浮窗 add-support-chat-widget D2）。
+             用户视角：右下角浮窗 + FAQ + 多轮 LLM 对话 + 提交工单兜底。
+             管理员在此页配置开关 / 外观 / 显示范围 / LLM 接入 / 限流 / FAQ。
+             16 个字段独立 partial-update，对应后端 service.SettingKeySupportChat*。 -->
+        <div v-show="activeTab === 'supportChat'" class="space-y-6">
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.supportChat.title') }}</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.description') }}</p>
+            </div>
+            <div class="space-y-6 p-6">
+              <!-- 总开关 -->
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.settings.supportChat.enabledLabel') }}</div>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.enabledHint') }}</p>
+                </div>
+                <Toggle v-model="form.support_chat_enabled" />
+              </div>
+
+              <div v-if="form.support_chat_enabled" class="space-y-8">
+                <!-- 外观 -->
+                <section class="space-y-4">
+                  <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.settings.supportChat.appearance') }}</h3>
+                  <div class="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.titleLabel') }}</label>
+                      <input v-model="form.support_chat_title" type="text" maxlength="64" class="input" />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.iconLabel') }}</label>
+                      <input v-model="form.support_chat_icon" type="text" maxlength="100" class="input" :placeholder="t('admin.settings.supportChat.iconPlaceholder')" />
+                      <p class="mt-1 text-xs text-gray-500">{{ t('admin.settings.supportChat.iconHint') }}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.welcomeLabel') }}</label>
+                    <textarea v-model="form.support_chat_welcome" rows="2" maxlength="256" class="input"></textarea>
+                  </div>
+                </section>
+
+                <!-- 显示范围 -->
+                <section class="space-y-3">
+                  <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.settings.supportChat.scope') }}</h3>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.excludedRoutesHint') }}</p>
+                  <div class="space-y-2">
+                    <div v-for="(_, index) in form.support_chat_excluded_routes" :key="index" class="flex items-center gap-2">
+                      <input v-model="form.support_chat_excluded_routes[index]" type="text" maxlength="200" class="input flex-1" placeholder="/admin/*" />
+                      <button type="button" class="btn btn-secondary px-2" :title="t('common.delete')" @click="form.support_chat_excluded_routes.splice(index, 1)">
+                        <Icon name="x" size="xs" class="h-4 w-4" />
+                      </button>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" :disabled="form.support_chat_excluded_routes.length >= 50" @click="form.support_chat_excluded_routes.push('')">
+                      + {{ t('admin.settings.supportChat.addExcludedRoute') }}
+                    </button>
+                  </div>
+                </section>
+
+                <!-- LLM 配置 -->
+                <section class="space-y-4">
+                  <div class="flex items-center justify-between gap-4">
+                    <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.settings.supportChat.llmSection') }}</h3>
+                    <Toggle v-model="form.support_chat_llm_enabled" />
+                  </div>
+                  <div v-if="form.support_chat_llm_enabled" class="space-y-4">
+                    <!-- 凭据缺失横幅：启用 LLM 但 base_url 为空（或 api_key 既未改也无已存值，
+                         体现为后端下发空字符串）。change-support-chat-external-llm spec scenario:
+                         "Saving with llm_enabled=true but missing credentials returns 400" 在前端
+                         二次防御——先拦在 UI 上避免提交后被后端 400。 -->
+                    <div
+                      v-if="supportChatLLMCredsMissingWarn"
+                      class="rounded border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-700 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300"
+                    >
+                      {{ t('admin.settings.supportChat.llm.credentialsMissingWarn') }}
+                    </div>
+
+                    <!-- base_url：外部 OpenAI-compatible 服务前缀（不含 /chat/completions） -->
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.llm.baseUrlLabel') }}</label>
+                      <input
+                        v-model="form.support_chat_llm_base_url"
+                        type="text"
+                        maxlength="500"
+                        class="input"
+                        placeholder="https://api.openai.com/v1"
+                      />
+                      <p class="mt-1 text-xs text-gray-500">{{ t('admin.settings.supportChat.llm.baseUrlHint') }}</p>
+                    </div>
+
+                    <!-- api_key：密码输入 + 显示/隐藏 + 测试连接。 -->
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.llm.apiKeyLabel') }}</label>
+                      <div class="flex items-stretch gap-2">
+                        <input
+                          v-model="form.support_chat_llm_api_key"
+                          :type="supportChatLLMApiKeyVisible ? 'text' : 'password'"
+                          maxlength="500"
+                          class="input flex-1"
+                          autocomplete="off"
+                          @input="supportChatLLMApiKeyChanged = true"
+                        />
+                        <button
+                          type="button"
+                          class="btn btn-secondary px-3"
+                          @click="supportChatLLMApiKeyVisible = !supportChatLLMApiKeyVisible"
+                        >
+                          {{ supportChatLLMApiKeyVisible ? t('admin.settings.supportChat.llm.hide') : t('admin.settings.supportChat.llm.show') }}
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-secondary px-3"
+                          :disabled="!form.support_chat_llm_base_url || supportChatLLMTestLoading"
+                          @click="testSupportChatLLMConnection"
+                        >
+                          {{ supportChatLLMTestLoading
+                            ? t('admin.settings.supportChat.llm.testing')
+                            : t('admin.settings.supportChat.llm.testBtn') }}
+                        </button>
+                      </div>
+                      <p class="mt-1 text-xs text-gray-500">{{ t('admin.settings.supportChat.llm.apiKeyHint') }}</p>
+                      <p
+                        v-if="supportChatLLMTestBanner"
+                        :class="[
+                          'mt-2 text-xs',
+                          supportChatLLMTestBanner.ok
+                            ? 'text-green-700 dark:text-green-300'
+                            : 'text-red-700 dark:text-red-300',
+                        ]"
+                      >
+                        {{ supportChatLLMTestBanner.text }}
+                      </p>
+                    </div>
+
+                    <div class="grid gap-4 md:grid-cols-3">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.modelLabel') }}</label>
+                        <input v-model="form.support_chat_model" type="text" maxlength="128" class="input" />
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.maxTurnsLabel') }}</label>
+                        <input v-model.number="form.support_chat_max_turns" type="number" min="1" max="20" class="input" />
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.maxRequestTokensLabel') }}</label>
+                        <input v-model.number="form.support_chat_max_request_tokens" type="number" min="1000" max="200000" class="input" />
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="form.support_chat_llm_enabled">
+                    <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.systemPromptLabel') }}</label>
+                    <p class="mb-1 text-xs text-amber-600 dark:text-amber-400">{{ t('admin.settings.supportChat.systemPromptSafetyNote') }}</p>
+                    <textarea v-model="form.support_chat_system_prompt" rows="6" maxlength="8000" class="input font-mono text-xs"></textarea>
+                  </div>
+                  <div v-if="form.support_chat_llm_enabled" class="flex items-center justify-between gap-4">
+                    <div>
+                      <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.settings.supportChat.anonymousLlmLabel') }}</div>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.anonymousLlmHint') }}</p>
+                    </div>
+                    <Toggle v-model="form.support_chat_anonymous_llm" />
+                  </div>
+                </section>
+
+                <!-- 限流 -->
+                <section class="space-y-3">
+                  <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.settings.supportChat.rateLimit') }}</h3>
+                  <div class="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rlUserPerDayLabel') }}</label>
+                      <input v-model.number="form.support_chat_rl_user_per_day" type="number" min="1" max="100000" class="input" />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rlUserPerMinLabel') }}</label>
+                      <input v-model.number="form.support_chat_rl_user_per_min" type="number" min="1" max="100000" class="input" />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rlIpPerHourLabel') }}</label>
+                      <input v-model.number="form.support_chat_rl_ip_per_hour" type="number" min="1" max="100000" class="input" />
+                    </div>
+                  </div>
+                </section>
+
+                <!-- FAQ 管理（add-support-knowledge-rag §12）：迁移到独立 admin 页 -->
+                <section class="space-y-2 rounded-lg border border-blue-100 bg-blue-50 p-3 dark:border-blue-900/40 dark:bg-blue-900/10">
+                  <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.settings.supportChat.faqs') }}</h3>
+                  <p class="text-xs text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.supportChat.faqsMovedHint') }}
+                  </p>
+                  <p class="mt-1 text-xs">
+                    <router-link
+                      to="/admin/support/knowledge"
+                      class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                    >
+                      {{ t('admin.settings.supportChat.faqsManageLink') }}
+                      <span aria-hidden="true">→</span>
+                    </router-link>
+                  </p>
+                </section>
+
+                <!-- 知识库 RAG（add-support-knowledge-rag §13）：8 项配置 -->
+                <section class="space-y-3">
+                  <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.settings.supportChat.rag.title') }}</h3>
+                    <label class="flex items-center gap-2 text-sm">
+                      <input v-model="form.support_chat_rag_enabled" type="checkbox" class="h-4 w-4" />
+                      {{ t('admin.settings.supportChat.rag.enabledLabel') }}
+                    </label>
+                  </div>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.rag.hint') }}</p>
+                  <div :class="form.support_chat_rag_enabled ? '' : 'pointer-events-none opacity-50'" class="space-y-3">
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.docUrlLabel') }}</label>
+                      <input v-model="form.support_chat_rag_doc_url" type="text" class="input" placeholder="https://docs.example.com/" />
+                      <p class="mt-1 text-xs text-gray-500">{{ t('admin.settings.supportChat.rag.docUrlHint') }}</p>
+                    </div>
+
+                    <!-- 立即抓取 + 状态简显（沿用 admin/support/doc-index/{rebuild,status} 端点） -->
+                    <div class="rounded border border-gray-200 bg-gray-50 p-3 dark:border-dark-600 dark:bg-dark-700/40">
+                      <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div class="text-xs text-gray-600 dark:text-gray-300">
+                          <span class="font-medium">{{ t('admin.settings.supportChat.rag.crawlNowTitle') }}</span>
+                          <span class="ml-2 text-gray-500">{{ t('admin.settings.supportChat.rag.crawlNowHint') }}</span>
+                        </div>
+                        <button
+                          type="button"
+                          class="btn btn-secondary px-3 text-xs"
+                          :disabled="ragRebuildBtnDisabled"
+                          :title="!form.support_chat_rag_enabled
+                            ? t('admin.settings.supportChat.rag.crawlNowDisabledRagOff')
+                            : !(form.support_chat_rag_doc_url || '').trim()
+                              ? t('admin.settings.supportChat.rag.crawlNowDisabledNoUrl')
+                              : ragDocIndexStatus?.state === 'running'
+                                ? t('admin.settings.supportChat.rag.crawlNowDisabledRunning')
+                                : ''"
+                          @click="triggerRAGRebuild"
+                        >
+                          {{ ragRebuildLoading || ragDocIndexStatus?.state === 'running'
+                            ? t('admin.settings.supportChat.rag.crawling')
+                            : t('admin.settings.supportChat.rag.crawlNowBtn') }}
+                        </button>
+                      </div>
+
+                      <!-- 状态网格：仅在已有 status 数据时显示。 -->
+                      <div
+                        v-if="ragDocIndexStatus"
+                        class="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4"
+                      >
+                        <div>
+                          <div class="text-gray-500">{{ t('admin.settings.supportChat.rag.state') }}</div>
+                          <div
+                            class="mt-0.5 font-medium"
+                            :class="{
+                              'text-blue-600': ragDocIndexStatus.state === 'running',
+                              'text-green-600': ragDocIndexStatus.state === 'completed',
+                              'text-red-600': ragDocIndexStatus.state === 'failed',
+                              'text-gray-600': !['running','completed','failed'].includes(ragDocIndexStatus.state),
+                            }"
+                          >
+                            {{ t(`admin.settings.supportChat.rag.states.${ragDocIndexStatus.state}`, ragDocIndexStatus.state) }}
+                          </div>
+                        </div>
+                        <div>
+                          <div class="text-gray-500">{{ t('admin.settings.supportChat.rag.lastRunAt') }}</div>
+                          <div class="mt-0.5">{{ formatRAGRunTime(ragDocIndexStatus.last_run_at) }}</div>
+                        </div>
+                        <div>
+                          <div class="text-gray-500">{{ t('admin.settings.supportChat.rag.pages') }}</div>
+                          <div class="mt-0.5">
+                            {{ ragDocIndexStatus.pages_visited }}
+                            <span v-if="ragDocIndexStatus.pages_cap_hit" class="ml-1 text-orange-500">
+                              ({{ t('admin.settings.supportChat.rag.capHit') }})
+                            </span>
+                          </div>
+                        </div>
+                        <div>
+                          <div class="text-gray-500">{{ t('admin.settings.supportChat.rag.chunksTotal') }}</div>
+                          <div class="mt-0.5 font-medium">{{ ragDocIndexStatus.chunks_total }}</div>
+                        </div>
+                      </div>
+
+                      <!-- rebuild 触发反馈横幅（5s 自动消失）。 -->
+                      <p
+                        v-if="ragRebuildBanner"
+                        :class="[
+                          'mt-2 text-xs',
+                          ragRebuildBanner.ok
+                            ? 'text-green-700 dark:text-green-300'
+                            : 'text-red-700 dark:text-red-300',
+                        ]"
+                      >
+                        {{ ragRebuildBanner.text }}
+                      </p>
+
+                      <!-- pipeline 错误明细（最多 3 条预览，超出折行进 details）。 -->
+                      <details
+                        v-if="ragDocIndexStatus?.errors?.length"
+                        class="mt-2 text-xs"
+                      >
+                        <summary class="cursor-pointer text-red-600">
+                          {{ t('admin.settings.supportChat.rag.errorsCount', { n: ragDocIndexStatus.errors.length }) }}
+                        </summary>
+                        <div class="mt-1 max-h-32 overflow-y-auto rounded border border-red-200 bg-red-50 p-2 dark:border-red-900/40 dark:bg-red-900/10">
+                          <div v-for="(e, i) in ragDocIndexStatus.errors" :key="i" class="py-0.5">
+                            <span class="text-gray-700 dark:text-gray-300">{{ e.url || '(global)' }}:</span>
+                            <span class="ml-1 text-red-600">{{ e.message }}</span>
+                          </div>
+                        </div>
+                      </details>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.docDepthLabel') }}</label>
+                        <select v-model.number="form.support_chat_rag_doc_depth" class="input">
+                          <option :value="0">0 — single page</option>
+                          <option :value="1">1 — same-host links</option>
+                          <option :value="2">2 — two hops</option>
+                          <option :value="3">3 — three hops</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.docCronLabel') }}</label>
+                        <select v-model="form.support_chat_rag_doc_cron" class="input">
+                          <option value="manual">{{ t('admin.settings.supportChat.rag.cronManual') }}</option>
+                          <option value="daily-03">{{ t('admin.settings.supportChat.rag.cronDaily') }}</option>
+                          <option value="weekly">{{ t('admin.settings.supportChat.rag.cronWeekly') }}</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.embedModelLabel') }}</label>
+                        <input :value="form.support_chat_rag_embed_model || 'text-embedding-3-small'" type="text" class="input" disabled />
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.topKLabel') }}</label>
+                        <input v-model.number="form.support_chat_rag_top_k" type="number" min="1" max="20" class="input" />
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.chunkSizeLabel') }}</label>
+                        <input v-model.number="form.support_chat_rag_chunk_size" type="number" min="200" max="4000" class="input" />
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.chunkOverlapLabel') }}</label>
+                        <input v-model.number="form.support_chat_rag_chunk_overlap" type="number" min="0" max="500" class="input" />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- /Tab: Support Chat -->
+
         <!-- Tab: Backup -->
         <div v-show="activeTab === 'backup'">
           <BackupSettings />
@@ -6852,7 +7308,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from "vue";
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
 import {
@@ -6864,7 +7320,13 @@ import {
   deriveWeChatConnectStoredMode,
   normalizeDefaultSubscriptionSettings,
   resolveWeChatConnectModeCapabilities,
+  adminTestSupportChatLLMConnection,
 } from "@/api/admin/settings";
+import {
+  adminRebuildDocIndex,
+  adminGetDocIndexStatus,
+  type AdminSupportDocIndexStatus,
+} from "@/api/admin/supportFaq";
 import type {
   AuthSourceDefaultsState,
   AuthSourceType,
@@ -6954,6 +7416,7 @@ type SettingsTab =
   | "gateway"
   | "payment"
   | "email"
+  | "supportChat"
   | "backup";
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
@@ -6965,6 +7428,8 @@ const settingsTabs = [
   { key: "gateway" as SettingsTab, icon: "server" as const },
   { key: "payment" as SettingsTab, icon: "creditCard" as const },
   { key: "email" as SettingsTab, icon: "mail" as const },
+  // 客服浮窗（add-support-chat-widget D2）：独立二级 tab。
+  { key: "supportChat" as SettingsTab, icon: "chat" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
 ];
 
@@ -7099,6 +7564,206 @@ const openaiFastPolicyForm = reactive({
 // 标记 openai_fast_policy_settings 是否已成功从后端加载，
 // 避免后端 GET 出错或字段缺失时，保存把默认规则覆盖成空数组。
 const openaiFastPolicyLoaded = ref(false);
+
+// ── 客服浮窗外部 LLM 配置（change-support-chat-external-llm §6） ──
+//
+// supportChatLLMApiKeyChanged：admin 是否动过 api_key 输入框（@input → true）。
+// 默认 false——后端 GET 下发的是掩码（"sk-***xxxx"），把它原样回写没有意义且有风险，
+// 因此 buildPayload 仅在该 flag 为 true 时才把 support_chat_llm_api_key 包进 PUT。
+//
+// supportChatLLMApiKeyVisible：show/hide 切换状态（type=password ↔ type=text）。
+//
+// supportChatLLMTestLoading + supportChatLLMTestBanner：Test connection 按钮的 UI 状态
+// （发送中 / 上次结果横幅）。横幅 5 秒后自动隐藏（见 testSupportChatLLMConnection）。
+const supportChatLLMApiKeyChanged = ref(false);
+const supportChatLLMApiKeyVisible = ref(false);
+const supportChatLLMTestLoading = ref(false);
+const supportChatLLMTestBanner = ref<{ ok: boolean; text: string } | null>(null);
+let supportChatLLMTestBannerTimer: ReturnType<typeof setTimeout> | null = null;
+
+// supportChatLLMCredsMissingWarn：客服 LLM 已启用但凭据残缺时的黄色横幅信号。
+//
+// 触发条件：support_chat_llm_enabled = true 且
+//   (a) base_url 为空，或
+//   (b) api_key 既未改动且当前显示值为空（说明后端那边也没存）。
+// 当 admin 改动了 api_key 输入（即使输了空字符串）就视为"用户在主动操作"，
+// 横幅暂时不显示，避免在编辑过程中闪烁；提交时后端 INVALID_SUPPORT_CHAT_LLM_CREDENTIALS
+// 会再做一次兜底。
+const supportChatLLMCredsMissingWarn = computed(() => {
+  if (!form.support_chat_llm_enabled) {
+    return false;
+  }
+  const baseURLEmpty = !(form.support_chat_llm_base_url || "").trim();
+  const apiKeyEmpty =
+    !supportChatLLMApiKeyChanged.value &&
+    !(form.support_chat_llm_api_key || "").trim();
+  return baseURLEmpty || apiKeyEmpty;
+});
+
+// testSupportChatLLMConnection：admin 点 "Test connection" 时调用后端探活端点。
+//
+// 行为：
+//  - 立刻把 loading flag 置 true、清掉旧 banner；
+//  - 用 form 当前 base_url + api_key + model 调用 /admin/support/chat/test-llm-connection；
+//    api_key 字段：admin 没改时仍是后端下发的掩码——后端会识别掩码并替换为已存 cleartext。
+//  - 后端永远返回 HTTP 200 + body.ok 字段，因此只在 catch 兜底网络/解析错误。
+//  - 结果横幅 5 秒后自动隐藏；用户点击下一次测试或重新加载会重置 timer。
+async function testSupportChatLLMConnection() {
+  if (supportChatLLMTestLoading.value) {
+    return;
+  }
+  if (supportChatLLMTestBannerTimer !== null) {
+    clearTimeout(supportChatLLMTestBannerTimer);
+    supportChatLLMTestBannerTimer = null;
+  }
+  supportChatLLMTestLoading.value = true;
+  supportChatLLMTestBanner.value = null;
+  try {
+    const result = await adminTestSupportChatLLMConnection({
+      base_url: (form.support_chat_llm_base_url || "").trim(),
+      api_key: form.support_chat_llm_api_key || "",
+      model: (form.support_chat_model || "").trim() || undefined,
+    });
+    if (result.ok) {
+      supportChatLLMTestBanner.value = {
+        ok: true,
+        text: t("admin.settings.supportChat.llm.testOk", {
+          latency: result.latency_ms,
+        }),
+      };
+    } else {
+      supportChatLLMTestBanner.value = {
+        ok: false,
+        text: t("admin.settings.supportChat.llm.testFailed", {
+          error: result.error || "unknown",
+        }),
+      };
+    }
+  } catch (err) {
+    // 一般是 401 / 500 / 网络中断；后端 200+ok=false 已涵盖大部分场景，这里兜底其它。
+    const msg = err instanceof Error ? err.message : String(err);
+    supportChatLLMTestBanner.value = {
+      ok: false,
+      text: t("admin.settings.supportChat.llm.testFailed", { error: msg }),
+    };
+  } finally {
+    supportChatLLMTestLoading.value = false;
+    supportChatLLMTestBannerTimer = setTimeout(() => {
+      supportChatLLMTestBanner.value = null;
+      supportChatLLMTestBannerTimer = null;
+    }, 5000);
+  }
+}
+
+// ── 客服知识库 RAG 文档索引立即抓取（add-support-knowledge-rag §13 + 当前需求） ──
+//
+// 让 admin 在 Settings 页 RAG 配置块里直接点「立即抓取」触发 pipeline，避免必须
+// 切到 AdminSupportFaqView 才能 rebuild。状态展示沿用既有
+//   - POST /api/v1/admin/support/doc-index/rebuild  → 202 + {accepted:true}
+//   - GET  /api/v1/admin/support/doc-index/status   → SupportDocIndexStatusResponse
+// 两个端点（advisory lock 已在后端保证不并发）。
+//
+// 字段语义：
+//   - ragDocIndexStatus：最近一次拉到的 status；null 表示尚未加载或未配置。
+//   - ragRebuildLoading：rebuild HTTP 调用本身是否 in-flight（避免连点）。
+//   - ragRebuildBanner：上次 rebuild 触发的反馈横幅（5s 自动消失）。
+//   - ragStatusPollTimer：state==='running' 时每 5s 轮询一次 status；其它状态不轮询，
+//     避免对后端 setting 表造成无谓压力。
+const ragDocIndexStatus = ref<AdminSupportDocIndexStatus | null>(null);
+const ragRebuildLoading = ref(false);
+const ragRebuildBanner = ref<{ ok: boolean; text: string } | null>(null);
+let ragRebuildBannerTimer: ReturnType<typeof setTimeout> | null = null;
+let ragStatusPollTimer: ReturnType<typeof setInterval> | null = null;
+const RAG_STATUS_POLL_INTERVAL_MS = 5_000;
+
+// 触发「立即抓取」按钮的禁用条件：
+//   - RAG 未启用（form.support_chat_rag_enabled = false）
+//   - doc_url 为空（pipeline 第一步就会因 SUPPORT_DOC_URL_EMPTY 失败）
+//   - 已有 pipeline 在 running（advisory lock 也会拦，但前端先拒一次更友好）
+//   - rebuild HTTP 本身 in-flight
+const ragRebuildBtnDisabled = computed(() => {
+  if (!form.support_chat_rag_enabled) return true;
+  if (!(form.support_chat_rag_doc_url || "").trim()) return true;
+  if (ragDocIndexStatus.value?.state === "running") return true;
+  if (ragRebuildLoading.value) return true;
+  return false;
+});
+
+// 把 last_run_at（RFC3339；零值 "0001-01-01T00:00:00Z"）格式化为本地可读串。
+function formatRAGRunTime(s?: string): string {
+  if (!s) return "—";
+  if (s.startsWith("0001-")) return "—";
+  try {
+    return new Date(s).toLocaleString();
+  } catch {
+    return s;
+  }
+}
+
+// 拉一次 status，静默忽略错误（未配置 / 尚未抓过 / 后端 503）。
+async function fetchRAGDocIndexStatus() {
+  try {
+    ragDocIndexStatus.value = await adminGetDocIndexStatus();
+  } catch {
+    /* 静默 —— 后端在 pipeline 未就绪时可能 5xx，不打扰用户 */
+  }
+}
+
+function startRAGStatusPolling() {
+  if (ragStatusPollTimer !== null) return;
+  ragStatusPollTimer = setInterval(async () => {
+    await fetchRAGDocIndexStatus();
+    // 跑完了就停：completed/failed/idle 都不需要继续轮询。
+    if (ragDocIndexStatus.value?.state !== "running") {
+      stopRAGStatusPolling();
+    }
+  }, RAG_STATUS_POLL_INTERVAL_MS);
+}
+
+function stopRAGStatusPolling() {
+  if (ragStatusPollTimer !== null) {
+    clearInterval(ragStatusPollTimer);
+    ragStatusPollTimer = null;
+  }
+}
+
+// triggerRAGRebuild：admin 点「立即抓取」时调用。
+//
+// 行为：
+//  - rebuild HTTP 完成后立刻 fetch 一次 status，确认 state 切到 running；
+//  - 启动轮询直到 state ≠ running；
+//  - 横幅 5s 后自动隐藏；
+//  - 异常 catch 兜底（如 500、网络中断）。
+async function triggerRAGRebuild() {
+  if (ragRebuildBtnDisabled.value) return;
+  if (ragRebuildBannerTimer !== null) {
+    clearTimeout(ragRebuildBannerTimer);
+    ragRebuildBannerTimer = null;
+  }
+  ragRebuildLoading.value = true;
+  ragRebuildBanner.value = null;
+  try {
+    await adminRebuildDocIndex();
+    ragRebuildBanner.value = {
+      ok: true,
+      text: t("admin.settings.supportChat.rag.crawlStarted"),
+    };
+    await fetchRAGDocIndexStatus();
+    startRAGStatusPolling();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ragRebuildBanner.value = {
+      ok: false,
+      text: t("admin.settings.supportChat.rag.crawlFailed", { error: msg }),
+    };
+  } finally {
+    ragRebuildLoading.value = false;
+    ragRebuildBannerTimer = setTimeout(() => {
+      ragRebuildBanner.value = null;
+      ragRebuildBannerTimer = null;
+    }, 5000);
+  }
+}
 
 const tablePageSizeMin = 5;
 const tablePageSizeMax = 1000;
@@ -7410,6 +8075,49 @@ const form = reactive<SettingsForm>({
   available_channels_enabled: false,
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
+  // Support Ticket（客服工单）feature switches & defaults
+  // - support_ticket_enabled：开关；关闭时整套用户路由 / 管理员菜单隐藏，并触发后端 §7 的 feature_disabled 拦截
+  // - support_ticket_categories：用户提交工单时的分类下拉选项；后端 strict 校验：去空格、≤32 项、单项 ≤32 字符、不允许重复
+  // - support_ticket_default_priority：用户提交时若未指定优先级则使用该默认值（low / normal / high）
+  support_ticket_enabled: false,
+  support_ticket_categories: [] as string[],
+  support_ticket_default_priority: "normal",
+  // Support Chat（客服浮窗 add-support-chat-widget D2）：16 项默认值，与后端
+  // service.EnsureDefaults 一致；loadSettings 会用真实值覆盖。
+  support_chat_enabled: false,
+  support_chat_excluded_routes: ["/payment", "/purchase", "/admin/*"] as string[],
+  support_chat_anonymous_llm: false,
+  support_chat_title: "客服小助手",
+  support_chat_welcome: "你好，请问有什么可以帮助你？",
+  support_chat_icon: "💬",
+  support_chat_llm_enabled: false,
+  // change-support-chat-external-llm：替代旧的 support_chat_api_key_id（int → 内部 admin api_keys 行）。
+  // base_url：admin 录入的外部 OpenAI-compatible 服务前缀（例 "https://api.openai.com/v1"）。
+  // api_key：从后端 GET 返回时是掩码（"sk-***xxxx"）；未改动时不应回写到 PUT 请求。
+  support_chat_llm_base_url: "",
+  support_chat_llm_api_key: "",
+  support_chat_model: "gpt-4o-mini",
+  support_chat_system_prompt: "",
+  support_chat_max_turns: 5,
+  support_chat_max_request_tokens: 16000,
+  support_chat_rl_user_per_day: 50,
+  support_chat_rl_user_per_min: 5,
+  support_chat_rl_ip_per_hour: 20,
+  support_chat_faqs: [] as Array<{
+    question: string;
+    answer: string;
+    sort_order: number;
+    enabled: boolean;
+  }>,
+  // 客服知识库 RAG（add-support-knowledge-rag §10/§13）：admin-only 8 项配置
+  support_chat_rag_enabled: false,
+  support_chat_rag_doc_url: "",
+  support_chat_rag_doc_depth: 1,
+  support_chat_rag_doc_cron: "manual",
+  support_chat_rag_embed_model: "text-embedding-3-small",
+  support_chat_rag_top_k: 5,
+  support_chat_rag_chunk_size: 1200,
+  support_chat_rag_chunk_overlap: 150,
   // Allow user view error requests
   allow_user_view_error_requests: false,
 });
@@ -7747,6 +8455,45 @@ const addQuotaNotifyEmail = () => {
   });
 };
 
+// ---------------- 客服工单：分类列表编辑 ----------------
+// 后端约束（service.NormalizeSupportTicketCategories）：
+//   - 总数 ≤ 32
+//   - 单项去空格后非空、长度 ≤ 32
+//   - 不允许重复
+// 这里的 add/remove 仅做本地 UI 操作，最终提交时 saveSettings() 会再做一遍 trim+filter。
+const supportTicketCategoryMaxItems = 32;
+const supportTicketCategoryMaxLength = 32;
+
+const addSupportTicketCategory = () => {
+  if (!Array.isArray(form.support_ticket_categories)) {
+    form.support_ticket_categories = [];
+  }
+  if (
+    form.support_ticket_categories.length >= supportTicketCategoryMaxItems
+  ) {
+    appStore.showError(
+      t("admin.settings.features.support.categoriesMaxItemsError", {
+        max: supportTicketCategoryMaxItems,
+      }),
+    );
+    return;
+  }
+  form.support_ticket_categories.push("");
+};
+
+const removeSupportTicketCategory = (index: number) => {
+  if (!Array.isArray(form.support_ticket_categories)) {
+    return;
+  }
+  form.support_ticket_categories.splice(index, 1);
+};
+
+// ---------------- 客服浮窗：FAQ 列表编辑（add-support-chat-widget D2）----------------
+// add-support-knowledge-rag §12 之后 inline FAQ 编辑器已迁移到独立 admin 页
+// (/admin/support/knowledge)，原本的 addSupportChatFaq / moveSupportChatFaq helper
+// 也随之移除。这里保留 form.support_chat_faqs 字段（仅用于 round-trip 加载/保存
+// legacy setting 兜底，不再被任何 UI 控件触达）。
+
 const currentOrigin =
   typeof window !== "undefined" ? window.location.origin : "";
 
@@ -8045,6 +8792,14 @@ async function loadSettings() {
     registrationEmailSuffixWhitelistDraft.value = "";
     form.smtp_password = "";
     smtpPasswordManuallyEdited.value = false;
+    // 客服 LLM api_key 是从后端 GET 拿到的掩码（保留可视化）；重置 changed flag——
+    // 接下来 admin 只要不动这个输入框，buildPayload 就不会把掩码回写到 PUT。
+    supportChatLLMApiKeyChanged.value = false;
+    supportChatLLMTestBanner.value = null;
+    if (supportChatLLMTestBannerTimer !== null) {
+      clearTimeout(supportChatLLMTestBannerTimer);
+      supportChatLLMTestBannerTimer = null;
+    }
     form.turnstile_secret_key = "";
     form.captcha_config = {
       enabled: settings.captcha_enabled ? "true" : "false",
@@ -8595,8 +9350,68 @@ async function saveSettings() {
       available_channels_enabled: form.available_channels_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
+      // 客服工单：仅传清洗后的分类数组，避免无意中提交空白项导致后端 INVALID_SUPPORT_TICKET_CATEGORIES。
+      // 默认优先级保持后端枚举一致（low/normal/high），UI 已限制取值。
+      support_ticket_enabled: form.support_ticket_enabled,
+      support_ticket_categories: (form.support_ticket_categories || [])
+        .map((s) => (s || "").trim())
+        .filter((s) => s !== ""),
+      support_ticket_default_priority:
+        form.support_ticket_default_priority || "normal",
+      // 客服浮窗（D2）：16 项一并提交。后端 BuildSettingsUpdates 会再做 Normalize/Validate；
+      // 这里仅做轻量清洗：excluded_routes / faqs 去掉显式空项，避免触发 strict 校验。
+      support_chat_enabled: form.support_chat_enabled,
+      support_chat_excluded_routes: (form.support_chat_excluded_routes || [])
+        .map((s) => (s || "").trim())
+        .filter((s) => s !== ""),
+      support_chat_anonymous_llm: form.support_chat_anonymous_llm,
+      support_chat_title: (form.support_chat_title || "").trim(),
+      support_chat_welcome: (form.support_chat_welcome || "").trim(),
+      support_chat_icon: (form.support_chat_icon || "").trim(),
+      support_chat_llm_enabled: form.support_chat_llm_enabled,
+      // base_url 始终回写（后端会校验 ≤500 chars + http(s):// 前缀）；
+      // api_key 仅当 supportChatLLMApiKeyChanged.value=true 时才追加（见下方 if 块），
+      // 否则后端会把请求里的掩码当作 leave-unchanged 信号而跳过写入——前端 omit-on-unchanged
+      // 是更显式的契约，避免把掩码值写回 DB 的边角风险。
+      support_chat_llm_base_url: (form.support_chat_llm_base_url || "").trim(),
+      support_chat_model: (form.support_chat_model || "").trim(),
+      support_chat_system_prompt: form.support_chat_system_prompt || "",
+      support_chat_max_turns: Number(form.support_chat_max_turns) || 5,
+      support_chat_max_request_tokens:
+        Number(form.support_chat_max_request_tokens) || 16000,
+      support_chat_rl_user_per_day:
+        Number(form.support_chat_rl_user_per_day) || 50,
+      support_chat_rl_user_per_min:
+        Number(form.support_chat_rl_user_per_min) || 5,
+      support_chat_rl_ip_per_hour:
+        Number(form.support_chat_rl_ip_per_hour) || 20,
+      support_chat_faqs: (form.support_chat_faqs || [])
+        .map((f, idx) => ({
+          question: (f.question || "").trim(),
+          answer: (f.answer || "").trim(),
+          sort_order: Number.isFinite(f.sort_order) ? f.sort_order : idx,
+          enabled: !!f.enabled,
+        }))
+        .filter((f) => f.question !== "" && f.answer !== ""),
+      // 知识库 RAG 配置（add-support-knowledge-rag §13）：8 项
+      support_chat_rag_enabled: !!form.support_chat_rag_enabled,
+      support_chat_rag_doc_url: (form.support_chat_rag_doc_url || "").trim(),
+      support_chat_rag_doc_depth: Number(form.support_chat_rag_doc_depth) || 1,
+      support_chat_rag_doc_cron: form.support_chat_rag_doc_cron || "manual",
+      support_chat_rag_embed_model:
+        (form.support_chat_rag_embed_model || "").trim() ||
+        "text-embedding-3-small",
+      support_chat_rag_top_k: Number(form.support_chat_rag_top_k) || 5,
+      support_chat_rag_chunk_size: Number(form.support_chat_rag_chunk_size) || 1200,
+      support_chat_rag_chunk_overlap: Number(form.support_chat_rag_chunk_overlap) || 150,
       allow_user_view_error_requests: form.allow_user_view_error_requests,
     };
+
+    // 客服 LLM api_key：仅当 admin 真的在 UI 上改过这个字段时才包进 PUT。
+    // 否则保留 omit，等价于 leave-unchanged（后端识别掩码哨兵也兼容，但前端显式 omit 更安全）。
+    if (supportChatLLMApiKeyChanged.value) {
+      payload.support_chat_llm_api_key = form.support_chat_llm_api_key || "";
+    }
 
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，
     // 否则省略整个字段，让后端保留既有规则（含默认值）。
@@ -8650,6 +9465,9 @@ async function saveSettings() {
     registrationEmailSuffixWhitelistDraft.value = "";
     form.smtp_password = "";
     smtpPasswordManuallyEdited.value = false;
+    // change-support-chat-external-llm：保存成功后后端会下发新的掩码，重置 changed flag
+    // 让下次 admin 不动 api_key 输入时不会再次把它写进 PUT。
+    supportChatLLMApiKeyChanged.value = false;
     form.turnstile_secret_key = "";
     form.linuxdo_connect_client_secret = "";
     form.dingtalk_connect_client_secret = "";
@@ -9516,6 +10334,26 @@ onMounted(() => {
   loadRectifierSettings();
   loadBetaPolicySettings();
   loadProviders();
+  // 客服 RAG 文档索引状态：进入页面就拉一次，state==='running' 时自动续期轮询。
+  // 失败静默——RAG 未配置时后端可能 5xx，不打扰 admin。
+  fetchRAGDocIndexStatus().then(() => {
+    if (ragDocIndexStatus.value?.state === "running") {
+      startRAGStatusPolling();
+    }
+  });
+});
+
+// 离开 Settings 页时清理 RAG 状态相关定时器，避免内存泄漏 / 后台无效请求。
+onUnmounted(() => {
+  stopRAGStatusPolling();
+  if (ragRebuildBannerTimer !== null) {
+    clearTimeout(ragRebuildBannerTimer);
+    ragRebuildBannerTimer = null;
+  }
+  if (supportChatLLMTestBannerTimer !== null) {
+    clearTimeout(supportChatLLMTestBannerTimer);
+    supportChatLLMTestBannerTimer = null;
+  }
 });
 
 // =========================

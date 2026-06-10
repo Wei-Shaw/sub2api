@@ -87,6 +87,18 @@ type Setting func(*sql.Selector)
 // SubscriptionPlan is the predicate function for subscriptionplan builders.
 type SubscriptionPlan func(*sql.Selector)
 
+// SupportDocChunk is the predicate function for supportdocchunk builders.
+type SupportDocChunk func(*sql.Selector)
+
+// SupportFaqItem is the predicate function for supportfaqitem builders.
+type SupportFaqItem func(*sql.Selector)
+
+// SupportTicket is the predicate function for supportticket builders.
+type SupportTicket func(*sql.Selector)
+
+// SupportTicketReply is the predicate function for supportticketreply builders.
+type SupportTicketReply func(*sql.Selector)
+
 // TLSFingerprintProfile is the predicate function for tlsfingerprintprofile builders.
 type TLSFingerprintProfile func(*sql.Selector)
 

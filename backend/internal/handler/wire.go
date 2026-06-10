@@ -40,6 +40,9 @@ func ProvideAdminHandlers(
 	paymentHandler *admin.PaymentHandler,
 	rechargePromoHandler *admin.RechargePromoHandler,
 	affiliateHandler *admin.AffiliateHandler,
+	supportTicketHandler *admin.SupportTicketHandler,
+	supportFaqHandler *admin.SupportFaqHandler,
+	supportDocIndexHandler *admin.SupportDocIndexHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -73,6 +76,9 @@ func ProvideAdminHandlers(
 		Payment:                paymentHandler,
 		RechargePromo:          rechargePromoHandler,
 		Affiliate:              affiliateHandler,
+		SupportTicket:          supportTicketHandler,
+		SupportFaq:             supportFaqHandler,
+		SupportDocIndex:        supportDocIndexHandler,
 	}
 }
 
@@ -114,6 +120,8 @@ func ProvideHandlers(
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
 	plazaHandler *PlazaHandler,
+	supportTicketHandler *SupportTicketHandler,
+	supportChatHandler *SupportChatHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -135,6 +143,8 @@ func ProvideHandlers(
 		PaymentWebhook:   paymentWebhookHandler,
 		AvailableChannel: availableChannelHandler,
 		Plaza:            plazaHandler,
+		SupportTicket:    supportTicketHandler,
+		SupportChat:      supportChatHandler,
 	}
 }
 
@@ -157,6 +167,8 @@ var ProviderSet = wire.NewSet(
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewPlazaHandler,
+	NewSupportTicketHandler, // 工单系统：用户端
+	NewSupportChatHandler,   // 客服浮窗：用户端 SSE / FAQ
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -190,6 +202,9 @@ var ProviderSet = wire.NewSet(
 	admin.NewPaymentHandler,
 	admin.NewRechargePromoHandler,
 	admin.NewAffiliateHandler,
+	admin.NewSupportTicketHandler, // 工单系统：admin 端
+	admin.NewSupportFaqHandler,    // 客服知识库 RAG：admin FAQ CRUD
+	admin.NewSupportDocIndexHandler, // 客服知识库 RAG：admin 文档索引控制
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

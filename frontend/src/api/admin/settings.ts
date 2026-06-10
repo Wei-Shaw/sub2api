@@ -354,6 +354,18 @@ export function deriveWeChatConnectStoredMode(
 }
 
 /**
+ * Support Chat FAQ entry（add-support-chat-widget D2）。
+ * 与后端 service.SupportChatFAQ 字段名严格对齐：question / answer 用户可见，
+ * sort_order 用于排序，enabled 控制是否对用户展示。
+ */
+export interface SupportChatFAQ {
+  question: string;
+  answer: string;
+  sort_order: number;
+  enabled: boolean;
+}
+
+/**
  * System settings interface
  */
 export interface SystemSettings {
@@ -622,6 +634,46 @@ export interface SystemSettings {
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
 
+  // Support Ticket（客服工单）feature switches & defaults
+  // 与后端 dto.SettingsResponse 的 SupportTicket* 字段一一对应
+  support_ticket_enabled: boolean;
+  support_ticket_categories: string[];
+  support_ticket_default_priority: string;
+
+  // Support Chat（客服浮窗 add-support-chat-widget D2）：admin 端完整 16 字段。
+  // 与后端 dto.SettingsResponse 的 SupportChat* 字段一一对应。
+  support_chat_enabled: boolean;
+  support_chat_excluded_routes: string[];
+  support_chat_anonymous_llm: boolean;
+  support_chat_title: string;
+  support_chat_welcome: string;
+  support_chat_icon: string;
+  support_chat_llm_enabled: boolean;
+  // 由 change-support-chat-external-llm 引入：替代旧的 support_chat_api_key_id。
+  // base_url：admin 录入的外部 OpenAI-compatible 服务前缀（不含 /chat/completions）。
+  // api_key：后端 GET 时返回掩码（"sk-***xxxx"），前端不应该把它作为 cleartext 直接发回。
+  support_chat_llm_base_url: string;
+  support_chat_llm_api_key: string;
+  support_chat_model: string;
+  support_chat_system_prompt: string;
+  support_chat_max_turns: number;
+  support_chat_max_request_tokens: number;
+  support_chat_rl_user_per_day: number;
+  support_chat_rl_user_per_min: number;
+  support_chat_rl_ip_per_hour: number;
+  support_chat_faqs: SupportChatFAQ[];
+
+  // 客服知识库 RAG（add-support-knowledge-rag §10）：admin-only 8 项配置。
+  // 与后端 dto.SettingsResponse.SupportChatRAG* 一一对应；不暴露给 PublicSettings。
+  support_chat_rag_enabled: boolean;
+  support_chat_rag_doc_url: string;
+  support_chat_rag_doc_depth: number;
+  support_chat_rag_doc_cron: string;
+  support_chat_rag_embed_model: string;
+  support_chat_rag_top_k: number;
+  support_chat_rag_chunk_size: number;
+  support_chat_rag_chunk_overlap: number;
+
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
 
@@ -858,6 +910,47 @@ export interface UpdateSettingsRequest {
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;
+
+  // Support Ticket（客服工单）feature switches & defaults
+  // 后端 admin.UpdateSettingsRequest 使用指针类型实现 PATCH 语义；
+  // 前端通过可选属性表达"未提交即不修改"。
+  support_ticket_enabled?: boolean;
+  support_ticket_categories?: string[];
+  support_ticket_default_priority?: string;
+
+  // Support Chat（客服浮窗 add-support-chat-widget D2）：admin 端完整 16 字段，
+  // 全部为可选 partial-update。
+  support_chat_enabled?: boolean;
+  support_chat_excluded_routes?: string[];
+  support_chat_anonymous_llm?: boolean;
+  support_chat_title?: string;
+  support_chat_welcome?: string;
+  support_chat_icon?: string;
+  support_chat_llm_enabled?: boolean;
+  // change-support-chat-external-llm：base_url + api_key 替换 api_key_id。
+  // api_key 为可选 partial-update：当 admin 没改动 api_key 输入时，前端应**不要**包含此字段
+  // （避免把掩码值回写到 DB）。后端识别"请求值等于已存值的掩码"作为 leave-unchanged 信号，
+  // 前端做 omit-on-unchanged 是更显式的契约。
+  support_chat_llm_base_url?: string;
+  support_chat_llm_api_key?: string;
+  support_chat_model?: string;
+  support_chat_system_prompt?: string;
+  support_chat_max_turns?: number;
+  support_chat_max_request_tokens?: number;
+  support_chat_rl_user_per_day?: number;
+  support_chat_rl_user_per_min?: number;
+  support_chat_rl_ip_per_hour?: number;
+  support_chat_faqs?: SupportChatFAQ[];
+
+  // 客服知识库 RAG（add-support-knowledge-rag §10）：admin-only partial-update。
+  support_chat_rag_enabled?: boolean;
+  support_chat_rag_doc_url?: string;
+  support_chat_rag_doc_depth?: number;
+  support_chat_rag_doc_cron?: string;
+  support_chat_rag_embed_model?: string;
+  support_chat_rag_top_k?: number;
+  support_chat_rag_chunk_size?: number;
+  support_chat_rag_chunk_overlap?: number;
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
@@ -1344,6 +1437,38 @@ export async function resetWebSearchUsage(payload: {
     "/admin/settings/web-search-emulation/reset-usage",
     payload,
   );
+}
+
+// ── Support Chat：外部 LLM 凭据探活（change-support-chat-external-llm §4） ──
+//
+// 让 admin 在 Settings 页里点 "Test connection" 探测一下当前填的 base_url + api_key
+// 是否能 reach 到一个 OpenAI-compatible 上游。后端会 5s 超时 POST 一个 max_tokens=1
+// 的 ping payload，并把结果归一化成 ok/latency/status_code/error 四字段返回。
+export interface TestSupportChatLLMConnectionRequest {
+  base_url: string;
+  /** 可以是 cleartext，也可以是后端 GET 下发的掩码——后端会识别掩码并替换为已存值。 */
+  api_key: string;
+  /** 可选：缺省时后端取 support_chat_model（gpt-4o-mini）。 */
+  model?: string;
+}
+
+export interface TestSupportChatLLMConnectionResult {
+  ok: boolean;
+  latency_ms: number;
+  /** 没真正发出 HTTP（如 invalid_base_url）时为 null。 */
+  status_code: number | null;
+  /** 归一化错误码：timeout / dns_lookup_failed / connection_refused / tls_error / invalid_base_url / missing_api_key / upstream non-2xx / 或上游 error.message 原文。 */
+  error?: string;
+}
+
+export async function adminTestSupportChatLLMConnection(
+  payload: TestSupportChatLLMConnectionRequest,
+): Promise<TestSupportChatLLMConnectionResult> {
+  const { data } = await apiClient.post<TestSupportChatLLMConnectionResult>(
+    "/admin/support/chat/test-llm-connection",
+    payload,
+  );
+  return data;
 }
 
 export const settingsAPI = {
