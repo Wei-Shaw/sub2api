@@ -632,7 +632,7 @@ func (h *GatewayHandler) handleGeminiFailoverExhausted(c *gin.Context, failoverE
 
 	// 记录原始上游状态码，以便 ops 错误日志捕获真实的上游错误
 	upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
-	service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
+	service.SetOpsUpstreamError(c, statusCode, upstreamMsg, upstreamErrorDetailFromBody(h.cfg, responseBody))
 
 	// 使用默认的错误映射
 	status, message := mapGeminiUpstreamError(statusCode)
