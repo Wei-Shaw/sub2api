@@ -12,8 +12,8 @@
 
 services:
   sub2api:
-    image: weishaw/sub2api:latest
-    container_name: sub2api
+    image: "${AIBRIDGE_IMAGE:-aibridge:latest}"
+    container_name: aibridge
     restart: unless-stopped
     ulimits:
       nofile:
@@ -22,7 +22,7 @@ services:
     ports:
       - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
     volumes:
-      - sub2api_data:/app/data
+      - aibridge_data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -120,5 +120,5 @@ services:
       start_period: 30s
 
 volumes:
-  sub2api_data:
+  aibridge_data:
     driver: local

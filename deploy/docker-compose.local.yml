@@ -24,8 +24,8 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api:latest
-    container_name: sub2api
+    image: "${AIBRIDGE_IMAGE:-aibridge:latest}"
+    container_name: aibridge
     restart: unless-stopped
     ulimits:
       nofile:
@@ -171,7 +171,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - sub2api-network
+      - aibridge-network
     healthcheck:
       test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
       interval: 30s
@@ -184,7 +184,7 @@ services:
   # ===========================================================================
   postgres:
     image: postgres:18-alpine
-    container_name: sub2api-postgres
+    container_name: aibridge-postgres
     restart: unless-stopped
     ulimits:
       nofile:
@@ -200,7 +200,7 @@ services:
       - PGDATA=/var/lib/postgresql/data
       - TZ=${TZ:-Asia/Shanghai}
     networks:
-      - sub2api-network
+      - aibridge-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}"]
       interval: 10s
@@ -215,7 +215,7 @@ services:
   # ===========================================================================
   redis:
     image: redis:8-alpine
-    container_name: sub2api-redis
+    container_name: aibridge-redis
     restart: unless-stopped
     ulimits:
       nofile:
@@ -236,7 +236,7 @@ services:
       # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)
       - REDISCLI_AUTH=${REDIS_PASSWORD:-}
     networks:
-      - sub2api-network
+      - aibridge-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -248,5 +248,5 @@ services:
 # Networks
 # =============================================================================
 networks:
-  sub2api-network:
+  aibridge-network:
     driver: bridge
