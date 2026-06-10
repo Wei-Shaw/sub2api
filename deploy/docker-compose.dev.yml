@@ -9,7 +9,7 @@
 # =============================================================================
 
 services:
-  sub2api:
+  aibridge:
     build:
       context: ..
       dockerfile: Dockerfile

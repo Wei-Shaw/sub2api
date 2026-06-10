@@ -11,7 +11,7 @@
 # =============================================================================
 
 services:
-  sub2api:
+  aibridge:
     image: "${AIBRIDGE_IMAGE:-aibridge:latest}"
     container_name: aibridge
     restart: unless-stopped
