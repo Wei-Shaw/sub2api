@@ -534,6 +534,7 @@ REDACTED{
 		{name: "invalid_client", err: errors.New("invalid_client"), expected: trueREDACTED,
 		{name: "invalid_refresh_token", err: errors.New(`OPENAI_OAUTH_TOKEN_REFRESH_FAILED: token refresh failed: status 401, body: {"error":{"code":"invalid_refresh_token"REDACTEDREDACTED`), expected: trueREDACTED,
 		{name: "refresh_token_reused", err: errors.New(`OPENAI_OAUTH_TOKEN_REFRESH_FAILED: token refresh failed: status 401, body: {"error":{"code":"refresh_token_reused"REDACTEDREDACTED`), expected: trueREDACTED,
+		{name: "app_session_terminated", err: errors.New(`OPENAI_OAUTH_TOKEN_REFRESH_FAILED: token refresh failed: status 401, body: {"error": {"code": "app_session_terminated"REDACTEDREDACTED`), expected: trueREDACTED,
 		{name: "unauthorized_client", err: errors.New("unauthorized_client"), expected: trueREDACTED,
 		{name: "access_denied", err: errors.New("access_denied"), expected: trueREDACTED,
 		{name: "no_refresh_token", err: errors.New("no refresh token available"), expected: trueREDACTED,
