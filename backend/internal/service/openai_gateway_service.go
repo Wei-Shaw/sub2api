@@ -54,6 +54,9 @@ const (
 	openAIWSReconnectRetryLimit = 5
 	// 上游错误体只需要提取错误 JSON/日志摘要，默认 512KiB 避免错误风暴叠加大请求体。
 	openAIUpstreamErrorBodyReadLimit int64 = 512 << 10
+	// 大请求进入 full JSON decode/marshal 时记录结构化日志，方便定位绕过 raw patch 的分支。
+	openAIForwardJSONLargeBodyLogThreshold = 1 << 20
+	openAIForwardJSONSlowLogThreshold      = 200 * time.Millisecond
 	// OpenAI WS Mode 重连退避默认值（可由配置覆盖）。
 	openAIWSRetryBackoffInitialDefault = 120 * time.Millisecond
 	openAIWSRetryBackoffMaxDefault     = 2 * time.Second
@@ -2417,6 +2420,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	requestView := newOpenAIRequestView(body)
 	reqModel, reqStream, promptCacheKey := requestView.Model, requestView.Stream, requestView.PromptCacheKey
 	originalModel := reqModel
+	upstreamModel := ""
 
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
@@ -2467,12 +2471,51 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	bodyModified := false
 	var reqBody map[string]any
+	fullDecodeUsed := false
+	fullDecodeDuration := time.Duration(0)
+	fullDecodeReason := ""
+	fullMarshalUsed := false
+	fullMarshalDuration := time.Duration(0)
+	fullMarshalReason := ""
+	patchApplyUsed := false
+	patchApplyDuration := time.Duration(0)
+	logJSONHotPath := func(stage string, duration time.Duration, outputBytes int, reason string) {
+		if len(originalBody) < openAIForwardJSONLargeBodyLogThreshold && duration < openAIForwardJSONSlowLogThreshold {
+			return
+		}
+		fields := []zap.Field{
+			zap.String("stage", stage),
+			zap.Int64("account_id", account.ID),
+			zap.String("account_type", string(account.Type)),
+			zap.String("platform", account.Platform),
+			zap.String("model", reqModel),
+			zap.String("upstream_model", upstreamModel),
+			zap.Bool("stream", reqStream),
+			zap.Bool("is_codex_cli", isCodexCLI),
+			zap.Bool("compat_messages_bridge", compatMessagesBridge),
+			zap.Bool("patches_disabled", requestView.patchesDisabled),
+			zap.String("reason", strings.TrimSpace(reason)),
+			zap.Int("request_bytes", len(originalBody)),
+			zap.Int("current_body_bytes", len(body)),
+			zap.Int("output_bytes", outputBytes),
+			zap.Int64("duration_ms", duration.Milliseconds()),
+		}
+		if apiKeyID != 0 {
+			fields = append(fields, zap.Int64("api_key_id", apiKeyID))
+		}
+		logger.L().Warn("openai.responses_json_hotpath", fields...)
+	}
 	ensureReqBody := func() (map[string]any, error) {
 		if requestView.HasPatches() {
+			patchStarted := time.Now()
 			patchedBody, patchErr := requestView.ApplyPatches()
+			patchDuration := time.Since(patchStarted)
 			if patchErr != nil {
 				return nil, patchErr
 			}
+			patchApplyUsed = true
+			patchApplyDuration += patchDuration
+			logJSONHotPath("patch", patchDuration, len(patchedBody), "ensure_req_body_pending_patches")
 			body = patchedBody
 			requestView = newOpenAIRequestView(body)
 			reqBody = nil
@@ -2481,10 +2524,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if reqBody != nil {
 			return reqBody, nil
 		}
+		decodeStarted := time.Now()
 		decoded, decodeErr := requestView.Decode(c)
+		decodeDuration := time.Since(decodeStarted)
 		if decodeErr != nil {
 			return nil, decodeErr
 		}
+		fullDecodeUsed = true
+		fullDecodeDuration += decodeDuration
+		if fullDecodeReason == "" {
+			fullDecodeReason = "ensure_req_body"
+		}
+		logJSONHotPath("decode", decodeDuration, len(body), fullDecodeReason)
 		reqBody = decoded
 		return reqBody, nil
 	}
@@ -2541,7 +2592,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		reqModel = billingModel
 		markPatchSet("model", billingModel)
 	}
-	upstreamModel := billingModel
+	upstreamModel = billingModel
 	isCompactRequest := isOpenAIResponsesCompactPath(c)
 	compactMapped := false
 	if isCompactRequest {
@@ -2579,6 +2630,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	if imageGenerationAllowed && (codexImageGenerationBridgeEnabled || isOpenAIImageGenerationModel(requestView.Model) || openAIRequestBodyImageGenerationToolNeedsNormalization(body) || isOpenAIImageGenerationModel(upstreamModel)) {
+		fullDecodeReason = "image_generation_normalize"
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
 			return nil, decodeErr
@@ -2617,6 +2669,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	if isCodexSparkModel(upstreamModel) && openAIRequestBodyMayContainImageInput(body) {
+		fullDecodeReason = "codex_spark_image_validate"
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
 			return nil, decodeErr
@@ -2629,6 +2682,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	if account.Type == AccountTypeOAuth {
+		fullDecodeReason = "oauth_codex_transform"
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
 			return nil, decodeErr
@@ -2669,6 +2723,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					markPatchDelete("max_output_tokens")
 				}
 			case PlatformAnthropic:
+				fullDecodeReason = "anthropic_max_tokens_compat"
 				decoded, decodeErr := ensureReqBody()
 				if decodeErr != nil {
 					return nil, decodeErr
@@ -2697,6 +2752,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchDelete("previous_response_id")
 	}
 	if openAIRequestBodyMayContainEmptyBase64InputImage(body) {
+		fullDecodeReason = "empty_base64_input_image_sanitize"
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
 			return nil, decodeErr
@@ -2730,7 +2786,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	if bodyModified {
 		if requestView.HasPatches() {
+			patchStarted := time.Now()
 			if patchedBody, patchErr := requestView.ApplyPatches(); patchErr == nil {
+				patchDuration := time.Since(patchStarted)
+				patchApplyUsed = true
+				patchApplyDuration += patchDuration
+				logJSONHotPath("patch", patchDuration, len(patchedBody), "final_body_modified_patches")
 				body = patchedBody
 				requestView = newOpenAIRequestView(body)
 				reqBody = nil
@@ -2738,17 +2799,48 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 		}
 		if bodyModified {
+			fullDecodeReason = "final_body_modified_marshal"
 			decoded, decodeErr := ensureReqBody()
 			if decodeErr != nil {
 				return nil, decodeErr
 			}
 			var marshalErr error
+			marshalStarted := time.Now()
 			body, marshalErr = marshalOpenAIUpstreamJSON(decoded)
+			marshalDuration := time.Since(marshalStarted)
 			if marshalErr != nil {
 				return nil, fmt.Errorf("serialize request body: %w", marshalErr)
 			}
+			fullMarshalUsed = true
+			fullMarshalDuration += marshalDuration
+			if fullMarshalReason == "" {
+				fullMarshalReason = fullDecodeReason
+			}
+			logJSONHotPath("marshal", marshalDuration, len(body), fullMarshalReason)
 			requestView = newOpenAIRequestView(body)
 		}
+	}
+	if len(originalBody) >= openAIForwardJSONLargeBodyLogThreshold && (patchApplyUsed || fullDecodeUsed || fullMarshalUsed) {
+		logger.L().Warn("openai.responses_json_path_summary",
+			zap.Int64("account_id", account.ID),
+			zap.String("account_type", string(account.Type)),
+			zap.String("platform", account.Platform),
+			zap.String("model", reqModel),
+			zap.String("upstream_model", upstreamModel),
+			zap.Bool("stream", reqStream),
+			zap.Bool("is_codex_cli", isCodexCLI),
+			zap.Bool("compat_messages_bridge", compatMessagesBridge),
+			zap.Bool("patch_apply_used", patchApplyUsed),
+			zap.Bool("full_decode_used", fullDecodeUsed),
+			zap.Bool("full_marshal_used", fullMarshalUsed),
+			zap.String("full_decode_reason", fullDecodeReason),
+			zap.String("full_marshal_reason", fullMarshalReason),
+			zap.Int("request_bytes", len(originalBody)),
+			zap.Int("final_body_bytes", len(body)),
+			zap.Int64("patch_duration_ms", patchApplyDuration.Milliseconds()),
+			zap.Int64("full_decode_duration_ms", fullDecodeDuration.Milliseconds()),
+			zap.Int64("full_marshal_duration_ms", fullMarshalDuration.Milliseconds()),
+		)
 	}
 	imageBillingModel := ""
 	imageSizeTier := ""
@@ -3033,10 +3125,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					return nil, decodeErr
 				}
 				if trimOpenAIEncryptedReasoningItems(decoded) {
+					marshalStarted := time.Now()
 					body, err = marshalOpenAIUpstreamJSON(decoded)
+					marshalDuration := time.Since(marshalStarted)
 					if err != nil {
 						return nil, fmt.Errorf("serialize invalid_encrypted_content retry body: %w", err)
 					}
+					fullMarshalUsed = true
+					fullMarshalDuration += marshalDuration
+					logJSONHotPath("marshal", marshalDuration, len(body), "invalid_encrypted_content_retry")
 					httpInvalidEncryptedContentRetryTried = true
 					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content (account: %s)", account.Name)
 					continue
