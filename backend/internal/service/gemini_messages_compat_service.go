@@ -600,7 +600,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		mappedModel = account.GetMappedModel(req.Model)
 	}
 
-	if account != nil && account.IsGeminiCompatibleRelay() {
+	if account != nil && account.IsGeminiOpenAICompatibleUpstream() {
 		result, err := s.forwardCompatibleRelayMessagesAsChatCompletions(ctx, c, account, body, originalModel, mappedModel, startTime)
 		if !errors.Is(err, errGeminiCompatibleRelayOpenAIPathUnsupported) {
 			return result, err
@@ -636,6 +636,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			}
 
 			baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+			baseURL = geminiNativeBaseURLFromOpenAICompatible(baseURL)
 			normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
 				return nil, "", err
@@ -714,6 +715,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			} else {
 				// Mode 2: AI Studio API with OAuth (like API key mode, but using Bearer token)
 				baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+				baseURL = geminiNativeBaseURLFromOpenAICompatible(baseURL)
 				normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 				if err != nil {
 					return nil, "", err
@@ -2528,7 +2530,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		mappedModel = account.GetMappedModel(originalModel)
 	}
 
-	if account != nil && account.IsGeminiCompatibleRelay() {
+	if account != nil && account.IsGeminiOpenAICompatibleUpstream() {
 		result, err := s.forwardCompatibleRelayNativeAsChatCompletions(ctx, c, account, originalModel, mappedModel, action, stream, body, startTime)
 		if !errors.Is(err, errGeminiCompatibleRelayOpenAIPathUnsupported) {
 			return result, err
@@ -2561,6 +2563,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			}
 
 			baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+			baseURL = geminiNativeBaseURLFromOpenAICompatible(baseURL)
 			normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
 				return nil, "", err
@@ -2629,6 +2632,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			} else {
 				// Mode 2: AI Studio API with OAuth (like API key mode, but using Bearer token)
 				baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+				baseURL = geminiNativeBaseURLFromOpenAICompatible(baseURL)
 				normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 				if err != nil {
 					return nil, "", err
@@ -4037,7 +4041,7 @@ func (s *GeminiMessagesCompatService) ForwardAIStudioGET(ctx context.Context, ac
 		return nil, errors.New("invalid path")
 	}
 
-	if account.IsGeminiCompatibleRelay() {
+	if account.IsGeminiOpenAICompatibleUpstream() {
 		result, err := s.forwardCompatibleRelayAIStudioGET(ctx, account, path)
 		if !errors.Is(err, errGeminiCompatibleRelayOpenAIPathUnsupported) {
 			return result, err
@@ -4045,6 +4049,7 @@ func (s *GeminiMessagesCompatService) ForwardAIStudioGET(ctx context.Context, ac
 	}
 
 	baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+	baseURL = geminiNativeBaseURLFromOpenAICompatible(baseURL)
 	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 	if err != nil {
 		return nil, err

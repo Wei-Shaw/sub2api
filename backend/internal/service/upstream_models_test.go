@@ -37,6 +37,15 @@ func TestBuildGeminiModelsURL(t *testing.T) {
 	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/models", buildGeminiModelsURL("https://generativelanguage.googleapis.com/v1beta/models"))
 }
 
+func TestBuildOpenAIModelsURL(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "https://openai.example.com/v1/models", buildOpenAIModelsURL("https://openai.example.com"))
+	require.Equal(t, "https://openai.example.com/v1/models", buildOpenAIModelsURL("https://openai.example.com/v1"))
+	require.Equal(t, "https://openai.example.com/api/v4/models", buildOpenAIModelsURL("https://openai.example.com/api/v4"))
+	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/openai/models", buildOpenAIModelsURL("https://generativelanguage.googleapis.com/v1beta/openai"))
+}
+
 func TestExtractUpstreamModelIDs(t *testing.T) {
 	t.Parallel()
 
@@ -223,6 +232,35 @@ func TestFetchUpstreamSupportedModelsGeminiCompatibleRelayUsesOpenAIModels(t *te
 	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
 }
 
+func TestFetchUpstreamSupportedModelsGeminiOfficialOpenAICompatibleUsesOpenAIModels(t *testing.T) {
+	t.Parallel()
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"gemini-3.1-pro"},{"id":"gemini-2.5-flash"}]}`)),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+	}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       19,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "gemini-key",
+			"base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gemini-2.5-flash", "gemini-3.1-pro"}, models)
+	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/openai/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer gemini-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+}
+
 func TestFetchUpstreamSupportedModelsGeminiCompatibleRelayFallsBackToNativeModels(t *testing.T) {
 	t.Parallel()
 
@@ -260,6 +298,46 @@ func TestFetchUpstreamSupportedModelsGeminiCompatibleRelayFallsBackToNativeModel
 	require.Equal(t, "Bearer gemini-key", upstream.requests[0].Header.Get("Authorization"))
 	require.Equal(t, "https://native-relay.example/v1beta/models", upstream.requests[1].URL.String())
 	require.Equal(t, "gemini-key", upstream.requests[1].Header.Get("x-goog-api-key"))
+}
+
+func TestFetchUpstreamSupportedModelsGeminiOfficialOpenAICompatibleFallsBackToNativeModels(t *testing.T) {
+	t.Parallel()
+
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusNotFound,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"not found"}}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"models":[{"name":"models/gemini-native"}]}`)),
+		},
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+	}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       20,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "gemini-key",
+			"base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gemini-native"}, models)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/openai/models", upstream.requests[0].URL.String())
+	require.Equal(t, "Bearer gemini-key", upstream.requests[0].Header.Get("Authorization"))
+	require.Empty(t, upstream.requests[0].Header.Get("x-goog-api-key"))
+	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/models", upstream.requests[1].URL.String())
+	require.Equal(t, "gemini-key", upstream.requests[1].Header.Get("x-goog-api-key"))
+	require.Empty(t, upstream.requests[1].Header.Get("Authorization"))
 }
 
 func TestFetchUpstreamSupportedModelsDoesNotExposeUpstreamBody(t *testing.T) {

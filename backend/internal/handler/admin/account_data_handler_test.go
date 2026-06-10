@@ -654,6 +654,41 @@ func TestConvertCockpitCodexOAuthWithoutRefreshTokenAutoPausesAtExpiry(t *testin
 	require.NotContains(t, account.Credentials, "client_id")
 }
 
+func TestConvertCockpitGeminiAPIKeyAccount(t *testing.T) {
+	item := map[string]any{
+		"email":          "gemini-key@example.com",
+		"auth_mode":      "apikey",
+		"gemini_api_key": "gemini-key",
+		"api_base_url":   "https://generativelanguage.googleapis.com/v1beta/openai",
+	}
+
+	account, err := convertCockpitGeminiAccount(item, 1)
+	require.NoError(t, err)
+	require.Equal(t, service.PlatformGemini, account.Platform)
+	require.Equal(t, service.AccountTypeAPIKey, account.Type)
+	require.Equal(t, "gemini-key", account.Credentials["api_key"])
+	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/openai", account.Credentials["base_url"])
+	require.Equal(t, service.GeminiTierAIStudioFree, account.Credentials["tier_id"])
+	require.NotContains(t, account.Credentials, "upstream_type")
+}
+
+func TestConvertCockpitGeminiAPIKeyRelayAccount(t *testing.T) {
+	item := map[string]any{
+		"email":        "gemini-relay@example.com",
+		"api_key":      "relay-key",
+		"api_base_url": "https://relay.example.com",
+	}
+
+	account, err := convertCockpitGeminiAccount(item, 1)
+	require.NoError(t, err)
+	require.Equal(t, service.PlatformGemini, account.Platform)
+	require.Equal(t, service.AccountTypeAPIKey, account.Type)
+	require.Equal(t, "relay-key", account.Credentials["api_key"])
+	require.Equal(t, "https://relay.example.com", account.Credentials["base_url"])
+	require.Equal(t, service.GeminiUpstreamCompatibleRelay, account.Credentials["tier_id"])
+	require.Equal(t, service.GeminiUpstreamCompatibleRelay, account.Credentials["upstream_type"])
+}
+
 func TestImportDataAutoDetectsModelsIntoModelMapping(t *testing.T) {
 	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
 		StatusCode: http.StatusOK,

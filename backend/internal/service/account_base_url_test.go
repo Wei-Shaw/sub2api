@@ -176,6 +176,15 @@ func TestIsGeminiCompatibleRelay(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "official openai compatible apikey without marker is not relay",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"base_url": "https://generativelanguage.googleapis.com/v1beta/openai"},
+			},
+			want: false,
+		},
+		{
 			name: "explicit upstream type marker is relay",
 			account: Account{
 				Type:        AccountTypeAPIKey,
@@ -226,6 +235,65 @@ func TestIsGeminiCompatibleRelay(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.account.IsGeminiCompatibleRelay(); got != tt.want {
 				t.Fatalf("IsGeminiCompatibleRelay() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGeminiOpenAICompatibleUpstream(t *testing.T) {
+	tests := []struct {
+		name       string
+		account    Account
+		want       bool
+		wantRelay  bool
+		wantNative string
+	}{
+		{
+			name: "official native",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"base_url": "https://generativelanguage.googleapis.com/v1beta"},
+			},
+			want:       false,
+			wantRelay:  false,
+			wantNative: "https://generativelanguage.googleapis.com/v1beta",
+		},
+		{
+			name: "official openai compatible",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"base_url": "https://generativelanguage.googleapis.com/v1beta/openai"},
+			},
+			want:       true,
+			wantRelay:  false,
+			wantNative: "https://generativelanguage.googleapis.com/v1beta",
+		},
+		{
+			name: "third party relay",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"base_url": "https://relay.example.com"},
+			},
+			want:       true,
+			wantRelay:  true,
+			wantNative: "https://relay.example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.account.IsGeminiOpenAICompatibleUpstream(); got != tt.want {
+				t.Fatalf("IsGeminiOpenAICompatibleUpstream() = %v, want %v", got, tt.want)
+			}
+			if got := tt.account.IsGeminiCompatibleRelay(); got != tt.wantRelay {
+				t.Fatalf("IsGeminiCompatibleRelay() = %v, want %v", got, tt.wantRelay)
+			}
+			baseURL := tt.account.GetGeminiBaseURL("https://generativelanguage.googleapis.com")
+			if got := geminiNativeBaseURLFromOpenAICompatible(baseURL); got != tt.wantNative {
+				t.Fatalf("geminiNativeBaseURLFromOpenAICompatible() = %q, want %q", got, tt.wantNative)
 			}
 		})
 	}

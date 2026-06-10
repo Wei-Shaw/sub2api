@@ -3480,12 +3480,22 @@ const apiKeyValue = ref('')
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
-  return {
+  const credentials: {
+    platform: string
+    type: AccountType
+    base_url?: string
+    api_key: string
+    upstream_type?: string
+  } = {
     platform: form.platform,
     type: form.type,
     base_url: apiKeyBaseUrl.value || undefined,
     api_key: apiKeyValue.value
   }
+  if (form.platform === 'gemini' && geminiAPIKeyMode.value === 'compatible_relay') {
+    credentials.upstream_type = 'compatible_relay'
+  }
+  return credentials
 })
 
 const geminiAPIKeyMode = ref<GeminiAPIKeyMode>('ai_studio')

@@ -911,7 +911,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 	}
 
 	openAICompatibleProbeStarted := false
-	if account.IsGeminiCompatibleRelay() {
+	if account.IsGeminiOpenAICompatibleUpstream() {
 		apiKey := strings.TrimSpace(account.GetCredential("api_key"))
 		if apiKey == "" {
 			return s.sendErrorAndEnd(c, "No API key available")
@@ -1048,6 +1048,7 @@ func (s *AccountTestService) buildGeminiAPIKeyRequest(ctx context.Context, accou
 	if baseURL == "" {
 		baseURL = geminicli.AIStudioBaseURL
 	}
+	baseURL = geminiNativeBaseURLFromOpenAICompatible(baseURL)
 	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 	if err != nil {
 		return nil, err

@@ -620,6 +620,54 @@ func convertCockpitCodexAccount(item map[string]any, index int) (DataAccount, er
 }
 
 func convertCockpitGeminiAccount(item map[string]any, index int) (DataAccount, error) {
+	authMode := strings.ToLower(firstImportString(
+		cockpitString(item, "auth_mode"),
+		cockpitString(item, "authMode"),
+		cockpitString(item, "selected_auth_type"),
+		cockpitString(item, "selectedAuthType"),
+	))
+	apiKey := firstImportString(
+		cockpitString(item, "gemini_api_key"),
+		cockpitString(item, "GEMINI_API_KEY"),
+		cockpitString(item, "google_api_key"),
+		cockpitString(item, "GOOGLE_API_KEY"),
+		cockpitString(item, "api_key"),
+		cockpitString(item, "API_KEY"),
+	)
+	if authMode == service.AccountTypeAPIKey || authMode == "api-key" || authMode == "apikey" || apiKey != "" {
+		if apiKey == "" {
+			return DataAccount{}, errors.New("cockpit-tools Gemini API key account missing gemini_api_key")
+		}
+		baseURL := firstImportString(
+			cockpitString(item, "api_base_url"),
+			cockpitString(item, "base_url"),
+			cockpitString(item, "gemini_api_base_url"),
+			cockpitString(item, "GOOGLE_API_BASE_URL"),
+			"https://generativelanguage.googleapis.com",
+		)
+		credentials := map[string]any{
+			"api_key":  apiKey,
+			"base_url": baseURL,
+			"tier_id":  service.GeminiTierAIStudioFree,
+		}
+		setImportString(credentials, "provider_id", cockpitString(item, "api_provider_id"))
+		setImportString(credentials, "provider_name", cockpitString(item, "api_provider_name"))
+		if !service.IsOfficialGeminiBaseURL(baseURL) {
+			credentials["tier_id"] = service.GeminiUpstreamCompatibleRelay
+			credentials["upstream_type"] = service.GeminiUpstreamCompatibleRelay
+		}
+		return DataAccount{
+			Name:        cockpitAccountName("gemini", item, index),
+			Notes:       cockpitNotes(item),
+			Platform:    service.PlatformGemini,
+			Type:        service.AccountTypeAPIKey,
+			Credentials: credentials,
+			Extra:       cockpitImportExtra("cockpit-tools", "gemini", item),
+			Concurrency: 3,
+			Priority:    50,
+		}, nil
+	}
+
 	accessToken := cockpitString(item, "access_token")
 	refreshToken := cockpitString(item, "refresh_token")
 	if accessToken == "" && refreshToken == "" {

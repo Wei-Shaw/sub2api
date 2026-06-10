@@ -89,7 +89,7 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 		return nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
 	}
 
-	if account.IsGeminiCompatibleRelay() {
+	if account.IsGeminiOpenAICompatibleUpstream() {
 		return s.fetchGeminiCompatibleRelayUpstreamModels(ctx, account)
 	}
 
@@ -309,6 +309,7 @@ func (s *AccountTestService) buildGeminiUpstreamModelsRequest(ctx context.Contex
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = geminicli.AIStudioBaseURL
 	}
+	baseURL = geminiNativeBaseURLFromOpenAICompatible(baseURL)
 	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Invalid Gemini base URL", err)
@@ -440,14 +441,7 @@ func buildV1ModelsURL(base string) string {
 }
 
 func buildOpenAIModelsURL(base string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(normalized, "/v1/models") {
-		return normalized
-	}
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + "/models"
-	}
-	return normalized + "/v1/models"
+	return buildOpenAIEndpointURL(base, "/v1/models")
 }
 
 func buildGeminiModelsURL(base string) string {

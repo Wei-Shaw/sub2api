@@ -12,35 +12,53 @@ func buildOpenAIEndpointURL(base string, endpoint string) string {
 	if strings.HasSuffix(normalized, endpoint) || strings.HasSuffix(normalized, relative) {
 		return normalized
 	}
-	if openAIBaseURLHasVersionSuffix(normalized) {
+	if openAIBaseURLHasVersionSuffix(normalized) || openAIBaseURLHasVersionedOpenAISuffix(normalized) {
 		return normalized + relative
 	}
 	return normalized + endpoint
 }
 
 func openAIBaseURLHasVersionSuffix(raw string) bool {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return false
-	}
-
-	pathValue := ""
-	if parsed, err := url.Parse(trimmed); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-		pathValue = parsed.Path
-	} else if slash := strings.Index(trimmed, "/"); slash >= 0 {
-		pathValue = trimmed[slash:]
-	}
-
-	pathValue = strings.TrimRight(pathValue, "/")
+	pathValue := openAIBaseURLPath(raw)
 	if pathValue == "" {
 		return false
 	}
-	lastSlash := strings.LastIndex(pathValue, "/")
-	segment := pathValue
-	if lastSlash >= 0 {
-		segment = pathValue[lastSlash+1:]
+	segments := strings.Split(strings.Trim(pathValue, "/"), "/")
+	if len(segments) == 0 {
+		return false
 	}
-	return isOpenAIAPIVersionSegment(segment)
+	return isOpenAIAPIVersionSegment(segments[len(segments)-1])
+}
+
+func openAIBaseURLHasVersionedOpenAISuffix(raw string) bool {
+	pathValue := openAIBaseURLPath(raw)
+	if pathValue == "" {
+		return false
+	}
+	segments := strings.Split(strings.Trim(pathValue, "/"), "/")
+	if len(segments) < 2 {
+		return false
+	}
+	last := strings.ToLower(strings.TrimSpace(segments[len(segments)-1]))
+	if last != "openai" {
+		return false
+	}
+	return isOpenAIAPIVersionSegment(segments[len(segments)-2])
+}
+
+func openAIBaseURLPath(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+
+	if parsed, err := url.Parse(trimmed); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		return strings.TrimRight(parsed.EscapedPath(), "/")
+	}
+	if slash := strings.Index(trimmed, "/"); slash >= 0 {
+		return strings.TrimRight(trimmed[slash:], "/")
+	}
+	return ""
 }
 
 func isOpenAIAPIVersionSegment(segment string) bool {

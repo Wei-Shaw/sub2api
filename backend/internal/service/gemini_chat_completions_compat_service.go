@@ -44,7 +44,7 @@ func (s *GeminiMessagesCompatService) ForwardAsChatCompletions(
 	clientStream := ccReq.Stream
 	includeUsage := ccReq.StreamOptions != nil && ccReq.StreamOptions.IncludeUsage
 
-	if account != nil && account.IsGeminiCompatibleRelay() {
+	if account != nil && account.IsGeminiOpenAICompatibleUpstream() {
 		result, err := s.forwardCompatibleRelayAsRawChatCompletions(ctx, c, account, body, startTime)
 		if !errors.Is(err, errGeminiCompatibleRelayOpenAIPathUnsupported) {
 			return result, err
@@ -636,6 +636,7 @@ func (s *GeminiMessagesCompatService) buildGeminiChatCompletionsUpstreamRequestF
 			}
 
 			baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+			baseURL = geminiNativeBaseURLFromOpenAICompatible(baseURL)
 			normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
 				return nil, "", err
@@ -707,6 +708,7 @@ func (s *GeminiMessagesCompatService) buildGeminiChatCompletionsUpstreamRequestF
 			}
 
 			baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+			baseURL = geminiNativeBaseURLFromOpenAICompatible(baseURL)
 			normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
 				return nil, "", err
