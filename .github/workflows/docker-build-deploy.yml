@@ -91,11 +91,11 @@ jobs:
             test -f .env
             test -f docker-compose.prod.yml
             echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
-            cat > docker-compose.deploy.override.yml <<EOF
-            services:
-              sub2api:
-                image: ${IMAGE_REPO}:${IMAGE_TAG}
-            EOF
+            image_repo="${IMAGE_REPO:-ghcr.io/${GHCR_USERNAME}/sub2api}"
+            image_tag="${IMAGE_TAG:-sha-${{ github.sha }}}"
+            image_ref="${image_repo}:${image_tag}"
+            test "$image_ref" != ":"
+            printf 'services:\n  sub2api:\n    image: "%s"\n' "$image_ref" > docker-compose.deploy.override.yml
             docker compose -f docker-compose.prod.yml -f docker-compose.deploy.override.yml config --quiet
 
             docker compose -f docker-compose.prod.yml -f docker-compose.deploy.override.yml pull sub2api
@@ -104,7 +104,7 @@ jobs:
             container_id="$(docker compose -f docker-compose.prod.yml -f docker-compose.deploy.override.yml ps -q sub2api)"
             test -n "$container_id"
 
-            expected_image="$IMAGE_REPO:$IMAGE_TAG"
+            expected_image="$image_ref"
             actual_image="$(docker inspect "$container_id" --format '{{.Config.Image}}')"
             if [ "$actual_image" != "$expected_image" ]; then
               echo "Unexpected sub2api image: expected=$expected_image actual=$actual_image" >&2
