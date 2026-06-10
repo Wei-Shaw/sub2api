@@ -175,6 +175,27 @@ func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
 }
 
+const (
+	GeminiAPIModeAIStudio = "ai_studio"
+	GeminiAPIModeVertex   = "vertex"
+)
+
+func (a *Account) GeminiAPIMode() string {
+	if a.Platform != PlatformGemini || a.Type != AccountTypeAPIKey {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(a.GetCredential("api_mode"))) {
+	case GeminiAPIModeVertex:
+		return GeminiAPIModeVertex
+	default:
+		return GeminiAPIModeAIStudio
+	}
+}
+
+func (a *Account) IsGeminiVertexAPIKey() bool {
+	return a.GeminiAPIMode() == GeminiAPIModeVertex
+}
+
 func (a *Account) GeminiOAuthType() string {
 	if a.Platform != PlatformGemini || a.Type != AccountTypeOAuth {
 		return ""

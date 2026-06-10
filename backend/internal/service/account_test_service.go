@@ -974,18 +974,10 @@ func (s *AccountTestService) buildGeminiAPIKeyRequest(ctx context.Context, accou
 		return nil, fmt.Errorf("no API key available")
 	}
 
-	baseURL := account.GetCredential("base_url")
-	if baseURL == "" {
-		baseURL = geminicli.AIStudioBaseURL
-	}
-	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	fullURL, err := buildGeminiAPIKeyUpstreamURL(account, s.validateUpstreamBaseURL, modelID, "streamGenerateContent", true)
 	if err != nil {
 		return nil, err
 	}
-
-	// Use streamGenerateContent for real-time feedback
-	fullURL := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse",
-		strings.TrimRight(normalizedBaseURL, "/"), modelID)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", fullURL, bytes.NewReader(payload))
 	if err != nil {

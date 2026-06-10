@@ -158,3 +158,54 @@ func TestGetGeminiBaseURL(t *testing.T) {
 		})
 	}
 }
+
+func TestGeminiAPIMode(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  Account
+		expected string
+		vertex   bool
+	}{
+		{
+			name: "gemini apikey defaults to ai studio",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{},
+			},
+			expected: GeminiAPIModeAIStudio,
+			vertex:   false,
+		},
+		{
+			name: "gemini apikey vertex mode",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"api_mode": "vertex"},
+			},
+			expected: GeminiAPIModeVertex,
+			vertex:   true,
+		},
+		{
+			name: "non gemini account returns empty mode",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformOpenAI,
+				Credentials: map[string]any{"api_mode": "vertex"},
+			},
+			expected: "",
+			vertex:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.account.GeminiAPIMode(); got != tt.expected {
+				t.Fatalf("GeminiAPIMode() = %q, want %q", got, tt.expected)
+			}
+			if got := tt.account.IsGeminiVertexAPIKey(); got != tt.vertex {
+				t.Fatalf("IsGeminiVertexAPIKey() = %v, want %v", got, tt.vertex)
+			}
+		})
+	}
+}
