@@ -1,9 +1,13 @@
 package handler
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/tidwall/gjson"
@@ -23,7 +27,7 @@ func TestBuildChatSessionMessagesRecordsUserAndAssistantTurn(t *testing.T) {
 		]
 	}`)
 
-	messages, events := buildChatSessionMessages(&endpoint, body, "latest assistant response", nil)
+	messages, events := buildChatSessionMessages(&endpoint, body, nil, "", "latest assistant response", nil, nil)
 	if len(events) != 0 {
 		t.Fatalf("events len = %d, want 0", len(events))
 	}
@@ -45,7 +49,7 @@ func TestBuildChatSessionMessagesSkipsEmptyAssistantTurn(t *testing.T) {
 	endpoint := "/v1/responses"
 	body := []byte(`{"input":[{"role":"user","content":[{"type":"input_text","text":"hello"}]}]}`)
 
-	messages, _ := buildChatSessionMessages(&endpoint, body, "  ", nil)
+	messages, _ := buildChatSessionMessages(&endpoint, body, nil, "", "  ", nil, nil)
 	if len(messages) != 1 {
 		t.Fatalf("messages len = %d, want 1: %#v", len(messages), messages)
 	}
@@ -75,7 +79,7 @@ func TestBuildChatSessionMessagesKeepsToolAndImageJSON(t *testing.T) {
 		]
 	}`)
 
-	messages, _ := buildChatSessionMessages(&endpoint, body, "", outputJSON)
+	messages, _ := buildChatSessionMessages(&endpoint, body, nil, "", "", outputJSON, nil)
 	if len(messages) != 2 {
 		t.Fatalf("messages len = %d, want 2: %#v", len(messages), messages)
 	}
@@ -115,6 +119,59 @@ func TestEnqueueChatSessionRecordDropsWhenQueueFull(t *testing.T) {
 		"",
 		nil,
 	)
+}
+
+func TestEnqueueChatSessionRecordExternalizesLargePayloads(t *testing.T) {
+	oldQueue := chatSessionRecordQueue
+	oldOnce := chatSessionRecordQueueOnce
+	t.Cleanup(func() {
+		chatSessionRecordQueue = oldQueue
+		chatSessionRecordQueueOnce = oldOnce
+	})
+	payloadDir := t.TempDir()
+	t.Setenv("CHAT_SESSION_RETENTION_PAYLOAD_DIR", payloadDir)
+
+	chatSessionRecordQueue = make(chan chatSessionRecordTask, 1)
+	chatSessionRecordQueueOnce = sync.Once{}
+	chatSessionRecordQueueOnce.Do(func() {})
+
+	endpoint := "/v1/responses"
+	largeText := strings.Repeat("x", chatSessionInlineMaxBytes+1024)
+	body := []byte(`{"input":[{"role":"user","content":[{"type":"input_text","text":"` + largeText + `"}]}]}`)
+
+	enqueueChatSessionRecord(
+		service.NewChatSessionService(nil),
+		&service.ChatSessionRecordInput{
+			UserID:          1,
+			APIKeyID:        2,
+			InboundEndpoint: &endpoint,
+			CreatedAt:       time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC),
+		},
+		body,
+		"",
+		nil,
+	)
+
+	task := <-chatSessionRecordQueue
+	if len(task.requestBody) != 0 {
+		t.Fatalf("requestBody retained in queue: %d bytes", len(task.requestBody))
+	}
+	if len(task.requestBodyRef) == 0 {
+		t.Fatalf("requestBodyRef is empty")
+	}
+	var ref chatSessionCapturePayloadRef
+	if err := json.Unmarshal(task.requestBodyRef, &ref); err != nil {
+		t.Fatalf("invalid requestBodyRef: %v", err)
+	}
+	if ref.Storage != "file" || ref.Compression != "gzip" || ref.Bytes <= int64(chatSessionInlineMaxBytes) {
+		t.Fatalf("unexpected ref: %#v", ref)
+	}
+	if _, err := os.Stat(filepath.Join(payloadDir, filepath.FromSlash(ref.Path))); err != nil {
+		t.Fatalf("payload file missing: %v", err)
+	}
+	if !strings.Contains(task.requestBodySummary, strings.Repeat("x", 16)) {
+		t.Fatalf("summary does not include request text")
+	}
 }
 
 func TestRecordChatSessionWithTimeoutIgnoresNilInputs(t *testing.T) {

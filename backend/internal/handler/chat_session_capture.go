@@ -2,9 +2,16 @@ package handler
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,14 +27,18 @@ const (
 	chatSessionRecordQueueSize = 2048
 	chatSessionRecordWorkers   = 4
 	chatSessionRecordTimeout   = 5 * time.Second
+	chatSessionInlineMaxBytes  = 256 * 1024
 )
 
 type chatSessionRecordTask struct {
-	recorder        *service.ChatSessionService
-	payload         *service.ChatSessionRecordInput
-	requestBody     []byte
-	finalOutputText string
-	finalOutputJSON json.RawMessage
+	recorder           *service.ChatSessionService
+	payload            *service.ChatSessionRecordInput
+	requestBody        []byte
+	requestBodyRef     json.RawMessage
+	requestBodySummary string
+	finalOutputText    string
+	finalOutputJSON    json.RawMessage
+	finalOutputJSONRef json.RawMessage
 }
 
 var (
@@ -72,14 +83,44 @@ func enqueueChatSessionRecord(
 	if recorder == nil || payload == nil {
 		return
 	}
+	requestBodyRef, requestBodySummary := maybeExternalizeChatSessionCapturePayload(
+		requestBody,
+		payload.CreatedAt,
+		"request",
+		func(raw []byte) string {
+			endpoint := ""
+			if payload.InboundEndpoint != nil {
+				endpoint = *payload.InboundEndpoint
+			}
+			return summarizeInboundRequestBody(endpoint, raw)
+		},
+	)
+	if len(requestBodyRef) > 0 {
+		requestBody = nil
+	}
+	finalOutputJSONRef, finalOutputSummary := maybeExternalizeChatSessionCapturePayload(
+		finalOutputJSON,
+		payload.CreatedAt,
+		"response",
+		func(raw []byte) string { return summarizeChatContentJSON(raw) },
+	)
+	if len(finalOutputJSONRef) > 0 {
+		finalOutputJSON = nil
+		if strings.TrimSpace(finalOutputText) == "" {
+			finalOutputText = finalOutputSummary
+		}
+	}
 	chatSessionRecordQueueOnce.Do(startChatSessionRecordWorkers)
 	select {
 	case chatSessionRecordQueue <- chatSessionRecordTask{
-		recorder:        recorder,
-		payload:         payload,
-		requestBody:     requestBody,
-		finalOutputText: finalOutputText,
-		finalOutputJSON: finalOutputJSON,
+		recorder:           recorder,
+		payload:            payload,
+		requestBody:        requestBody,
+		requestBodyRef:     requestBodyRef,
+		requestBodySummary: requestBodySummary,
+		finalOutputText:    finalOutputText,
+		finalOutputJSON:    finalOutputJSON,
+		finalOutputJSONRef: finalOutputJSONRef,
 	}:
 		observability.IncChatSessionCaptureEnqueued()
 		observability.SetChatSessionCaptureQueueStats(len(chatSessionRecordQueue), cap(chatSessionRecordQueue))
@@ -121,8 +162,11 @@ func recordChatSessionTaskWithTimeout(task chatSessionRecordTask) {
 	messages, events := buildChatSessionMessages(
 		task.payload.InboundEndpoint,
 		task.requestBody,
+		task.requestBodyRef,
+		task.requestBodySummary,
 		task.finalOutputText,
 		task.finalOutputJSON,
+		task.finalOutputJSONRef,
 	)
 	if len(messages) == 0 && len(events) == 0 {
 		return
@@ -176,22 +220,44 @@ func recordChatSessionWithTimeout(recorder *service.ChatSessionService, payload 
 	}
 }
 
-func buildChatSessionMessages(inboundEndpoint *string, requestBody []byte, finalOutputText string, finalOutputJSON json.RawMessage) ([]service.ChatMessageRecordInput, []service.ChatMessageEventRecordInput) {
+func buildChatSessionMessages(
+	inboundEndpoint *string,
+	requestBody []byte,
+	requestBodyRef json.RawMessage,
+	requestBodySummary string,
+	finalOutputText string,
+	finalOutputJSON json.RawMessage,
+	finalOutputJSONRef json.RawMessage,
+) ([]service.ChatMessageRecordInput, []service.ChatMessageEventRecordInput) {
 	endpoint := ""
 	if inboundEndpoint != nil {
 		endpoint = strings.TrimSpace(*inboundEndpoint)
 	}
 
-	inboundMessages, _ := parseInboundChatMessages(endpoint, requestBody)
-	inboundMessages = keepLatestInboundMessages(inboundMessages)
+	var inboundMessages []service.ChatMessageRecordInput
+	if len(requestBodyRef) > 0 {
+		inboundMessages = []service.ChatMessageRecordInput{{
+			Role:        "user",
+			Direction:   "inbound",
+			ContentText: strings.TrimSpace(requestBodySummary),
+			ContentJSON: requestBodyRef,
+		}}
+	} else {
+		inboundMessages, _ = parseInboundChatMessages(endpoint, requestBody)
+		inboundMessages = keepLatestInboundMessages(inboundMessages)
+	}
 	messages := make([]service.ChatMessageRecordInput, 0, len(inboundMessages)+1)
 	messages = append(messages, inboundMessages...)
 	if text := strings.TrimSpace(finalOutputText); text != "" {
+		contentJSON := chooseAssistantContentJSON(finalOutputJSON, text)
+		if len(finalOutputJSONRef) > 0 {
+			contentJSON = finalOutputJSONRef
+		}
 		messages = append(messages, service.ChatMessageRecordInput{
 			Role:        "assistant",
 			Direction:   "outbound",
 			ContentText: text,
-			ContentJSON: chooseAssistantContentJSON(finalOutputJSON, text),
+			ContentJSON: contentJSON,
 		})
 	} else if len(finalOutputJSON) > 0 {
 		messages = append(messages, service.ChatMessageRecordInput{
@@ -199,6 +265,12 @@ func buildChatSessionMessages(inboundEndpoint *string, requestBody []byte, final
 			Direction:   "outbound",
 			ContentText: summarizeChatContentJSON(finalOutputJSON),
 			ContentJSON: cloneChatRawJSON(finalOutputJSON),
+		})
+	} else if len(finalOutputJSONRef) > 0 {
+		messages = append(messages, service.ChatMessageRecordInput{
+			Role:        "assistant",
+			Direction:   "outbound",
+			ContentJSON: finalOutputJSONRef,
 		})
 	}
 	return messages, nil
@@ -572,6 +644,225 @@ func summarizeChatContentJSON(raw json.RawMessage) string {
 		return typ
 	}
 	return ""
+}
+
+type chatSessionCapturePayloadRef struct {
+	Storage          string `json:"storage"`
+	Path             string `json:"path"`
+	SHA256           string `json:"sha256"`
+	Bytes            int64  `json:"bytes"`
+	StoredBytes      int64  `json:"stored_bytes,omitempty"`
+	Compression      string `json:"compression,omitempty"`
+	CompressionLevel int    `json:"compression_level,omitempty"`
+}
+
+func maybeExternalizeChatSessionCapturePayload(raw []byte, createdAt time.Time, kind string, summarize func([]byte) string) (json.RawMessage, string) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || len(raw) <= chatSessionInlineMaxBytes || !json.Valid(raw) {
+		return nil, ""
+	}
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
+	summary := ""
+	if summarize != nil {
+		summary = strings.TrimSpace(summarize(raw))
+	}
+	ref, err := writeChatSessionCapturePayload(raw, createdAt, kind)
+	if err != nil {
+		logger.L().Warn("chat_session.capture_payload_externalize_failed",
+			zap.String("kind", kind),
+			zap.Int("bytes", len(raw)),
+			zap.Error(err),
+		)
+		return nil, summary
+	}
+	body, err := json.Marshal(ref)
+	if err != nil || !json.Valid(body) {
+		return nil, summary
+	}
+	return json.RawMessage(body), summary
+}
+
+func writeChatSessionCapturePayload(raw []byte, createdAt time.Time, kind string) (chatSessionCapturePayloadRef, error) {
+	sum := sha256.Sum256(raw)
+	sumHex := hex.EncodeToString(sum[:])
+	compressed, err := gzipChatSessionCapturePayload(raw)
+	if err != nil {
+		return chatSessionCapturePayloadRef{}, err
+	}
+	dateDir := createdAt.UTC().Format("2006-01-02")
+	relPath := filepath.ToSlash(filepath.Join(dateDir, sumHex+"-"+randomChatSessionCaptureHex(8)+"-"+sanitizeChatSessionCapturePayloadKind(kind)+".json.gz"))
+	baseDir := chatSessionCapturePayloadBaseDir()
+	fullPath, err := safeChatSessionCapturePayloadPath(baseDir, relPath)
+	if err != nil {
+		return chatSessionCapturePayloadRef{}, err
+	}
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0750); err != nil {
+		return chatSessionCapturePayloadRef{}, err
+	}
+	if err := os.WriteFile(fullPath, compressed, 0640); err != nil {
+		return chatSessionCapturePayloadRef{}, err
+	}
+	return chatSessionCapturePayloadRef{
+		Storage:          "file",
+		Path:             relPath,
+		SHA256:           sumHex,
+		Bytes:            int64(len(raw)),
+		StoredBytes:      int64(len(compressed)),
+		Compression:      "gzip",
+		CompressionLevel: gzip.BestSpeed,
+	}, nil
+}
+
+func chatSessionCapturePayloadBaseDir() string {
+	if value := strings.TrimSpace(os.Getenv("CHAT_SESSION_RETENTION_PAYLOAD_DIR")); value != "" {
+		return value
+	}
+	return "./data/chat_session_payloads"
+}
+
+func safeChatSessionCapturePayloadPath(baseDir string, relPath string) (string, error) {
+	baseDir = strings.TrimSpace(baseDir)
+	if baseDir == "" {
+		return "", os.ErrInvalid
+	}
+	cleanRel := filepath.Clean(filepath.FromSlash(strings.TrimSpace(relPath)))
+	if cleanRel == "." || filepath.IsAbs(cleanRel) || cleanRel == ".." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) {
+		return "", os.ErrInvalid
+	}
+	baseAbs, err := filepath.Abs(filepath.Clean(baseDir))
+	if err != nil {
+		return "", err
+	}
+	fullAbs, err := filepath.Abs(filepath.Join(baseAbs, cleanRel))
+	if err != nil {
+		return "", err
+	}
+	if fullAbs != baseAbs && !strings.HasPrefix(fullAbs, baseAbs+string(filepath.Separator)) {
+		return "", os.ErrInvalid
+	}
+	return fullAbs, nil
+}
+
+func gzipChatSessionCapturePayload(raw []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	writer, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := writer.Write(raw); err != nil {
+		_ = writer.Close()
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func randomChatSessionCaptureHex(n int) string {
+	if n <= 0 {
+		n = 8
+	}
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(buf)
+}
+
+func sanitizeChatSessionCapturePayloadKind(kind string) string {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	switch kind {
+	case "request", "response", "message", "event":
+		return kind
+	default:
+		return "payload"
+	}
+}
+
+func summarizeInboundRequestBody(endpoint string, body []byte) string {
+	switch {
+	case strings.Contains(endpoint, "/chat/completions"):
+		return summarizeChatCompletionsRequestBody(body)
+	case strings.Contains(endpoint, "/responses"):
+		return summarizeResponsesRequestBody(body)
+	case strings.Contains(endpoint, "/messages"):
+		return summarizeAnthropicRequestBody(body)
+	default:
+		return strings.TrimSpace(gjson.GetBytes(body, "text").String())
+	}
+}
+
+func summarizeChatCompletionsRequestBody(body []byte) string {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
+		return ""
+	}
+	var text string
+	for _, msg := range messages.Array() {
+		role := strings.TrimSpace(msg.Get("role").String())
+		if role != "" && role != "user" {
+			continue
+		}
+		if candidate := extractChatCompletionsMessageText(msg); candidate != "" {
+			text = candidate
+		}
+	}
+	return truncateChatSessionCapturePreview(text, 4000)
+}
+
+func summarizeResponsesRequestBody(body []byte) string {
+	input := gjson.GetBytes(body, "input")
+	switch {
+	case input.Type == gjson.String:
+		return truncateChatSessionCapturePreview(input.String(), 4000)
+	case input.IsArray():
+		var text string
+		for _, item := range input.Array() {
+			role := strings.TrimSpace(item.Get("role").String())
+			if role != "" && role != "user" {
+				continue
+			}
+			if candidate := extractResponsesContent(item); candidate != "" {
+				text = candidate
+			}
+		}
+		return truncateChatSessionCapturePreview(text, 4000)
+	default:
+		return truncateChatSessionCapturePreview(gjson.GetBytes(body, "prompt").String(), 4000)
+	}
+}
+
+func summarizeAnthropicRequestBody(body []byte) string {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
+		return ""
+	}
+	var text string
+	for _, msg := range messages.Array() {
+		role := strings.TrimSpace(msg.Get("role").String())
+		if role != "" && role != "user" {
+			continue
+		}
+		if candidate := extractAnthropicContent(msg.Get("content")); candidate != "" {
+			text = candidate
+		}
+	}
+	return truncateChatSessionCapturePreview(text, 4000)
+}
+
+func truncateChatSessionCapturePreview(value string, maxLen int) string {
+	value = strings.TrimSpace(value)
+	if value == "" || maxLen <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= maxLen {
+		return value
+	}
+	return string(runes[:maxLen]) + "..."
 }
 
 func summarizeToolCalls(result gjson.Result) string {
