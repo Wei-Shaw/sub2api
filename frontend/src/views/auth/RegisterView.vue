@@ -255,7 +255,6 @@
         <EmailOAuthButtons
           :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
-          :github-enabled="githubOAuthEnabled"
           :google-enabled="googleOAuthEnabled"
           :show-divider="false"
         />
@@ -353,12 +352,11 @@ const promoCodeEnabled = ref<boolean>(true)
 const invitationCodeEnabled = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
-const siteName = ref<string>('Sub2API')
+const siteName = ref<string>('AI Bridge')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
-const githubOAuthEnabled = ref<boolean>(false)
 const googleOAuthEnabled = ref<boolean>(false)
 const registrationEmailSuffixWhitelist = ref<string[]>([])
 const loginAgreementEnabled = ref<boolean>(false)
@@ -422,7 +420,6 @@ const showOAuthLogin = computed(
     linuxdoOAuthEnabled.value ||
     wechatOAuthEnabled.value ||
     oidcOAuthEnabled.value ||
-    githubOAuthEnabled.value ||
     googleOAuthEnabled.value
 )
 
@@ -461,12 +458,11 @@ onMounted(async () => {
     invitationCodeEnabled.value = settings.invitation_code_enabled
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
-    siteName.value = settings.site_name || 'Sub2API'
+    siteName.value = settings.site_name || 'AI Bridge'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
-    githubOAuthEnabled.value = settings.github_oauth_enabled
     googleOAuthEnabled.value = settings.google_oauth_enabled
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []

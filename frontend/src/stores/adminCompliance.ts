@@ -57,8 +57,8 @@ export const useAdminComplianceStore = defineStore('adminCompliance', () => {
       version: partialStatus?.version || status.value?.version || 'v2026.06.10',
       document_path_zh: partialStatus?.document_path_zh || status.value?.document_path_zh || 'docs/legal/admin-compliance.zh.md',
       document_path_en: partialStatus?.document_path_en || status.value?.document_path_en || 'docs/legal/admin-compliance.en.md',
-      document_url_zh: partialStatus?.document_url_zh || status.value?.document_url_zh || 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.zh.md',
-      document_url_en: partialStatus?.document_url_en || status.value?.document_url_en || 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.en.md',
+      document_url_zh: partialStatus?.document_url_zh || status.value?.document_url_zh || '',
+      document_url_en: partialStatus?.document_url_en || status.value?.document_url_en || '',
       ack_phrase_zh: partialStatus?.ack_phrase_zh || status.value?.ack_phrase_zh || FALLBACK_ZH_PHRASE,
       ack_phrase_en: partialStatus?.ack_phrase_en || status.value?.ack_phrase_en || FALLBACK_EN_PHRASE,
       acknowledgement: status.value?.acknowledgement

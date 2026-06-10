@@ -40,12 +40,10 @@ describe('EmailOAuthButtons', () => {
   it('passes the affiliate code to the email oauth start URL', async () => {
     const wrapper = mount(EmailOAuthButtons, {
       props: {
-        githubEnabled: true,
-        googleEnabled: false,
+        googleEnabled: true,
       },
       global: {
         stubs: {
-          GitHubMark: true,
           GoogleMark: true,
         },
       },
@@ -54,50 +52,40 @@ describe('EmailOAuthButtons', () => {
     await wrapper.get('button').trigger('click')
 
     expect(locationState.current.href).toBe(
-      '/api/v1/auth/oauth/github/start?redirect=%2Fbilling%3Fplan%3Dpro&aff_code=AFF123'
+      '/api/v1/auth/oauth/google/start?redirect=%2Fbilling%3Fplan%3Dpro&aff_code=AFF123'
     )
     expect(window.sessionStorage.getItem('oauth_aff_code')).toBe('AFF123')
-    expect(window.sessionStorage.getItem('email_oauth_pending_provider')).toBe('github')
+    expect(window.sessionStorage.getItem('email_oauth_pending_provider')).toBe('google')
   })
 
-  it('uses a full-width descriptive button when only GitHub is enabled', () => {
+  it('uses a full-width descriptive button when Google is enabled', () => {
     const wrapper = mount(EmailOAuthButtons, {
       props: {
-        githubEnabled: true,
-        googleEnabled: false,
+        googleEnabled: true,
       },
       global: {
         stubs: {
-          GitHubMark: true,
           GoogleMark: true,
         },
       },
     })
 
     expect(wrapper.find('.grid').classes()).not.toContain('sm:grid-cols-2')
-    expect(wrapper.get('button').text()).toContain('使用 GitHub 登录')
+    expect(wrapper.get('button').text()).toContain('使用 Google 登录')
   })
 
-  it('uses compact labels and two columns when GitHub and Google are both enabled', () => {
+  it('renders nothing when no provider is enabled', () => {
     const wrapper = mount(EmailOAuthButtons, {
       props: {
-        githubEnabled: true,
-        googleEnabled: true,
+        googleEnabled: false,
       },
       global: {
         stubs: {
-          GitHubMark: true,
           GoogleMark: true,
         },
       },
     })
 
-    expect(wrapper.find('.grid').classes()).toContain('sm:grid-cols-2')
-    const buttons = wrapper.findAll('button')
-    expect(buttons).toHaveLength(2)
-    expect(buttons[0].text()).toContain('GitHub')
-    expect(buttons[0].text()).not.toContain('使用 GitHub 登录')
-    expect(buttons[1].text()).toContain('Google')
-    expect(buttons[1].text()).not.toContain('使用 Google 登录')
+    expect(wrapper.find('button').exists()).toBe(false)
   })
 })

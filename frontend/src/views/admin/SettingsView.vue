@@ -1810,116 +1810,6 @@
                   <div class="flex items-start justify-between gap-4">
                     <div>
                       <h3 class="font-medium text-gray-900 dark:text-white">
-                        GitHub
-                      </h3>
-                      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        {{
-                          localText(
-                            "GitHub OAuth App 需要 read:user user:email 权限，回调地址填写下方后端地址。",
-                            "GitHub OAuth App needs read:user user:email scopes. Use the backend callback URL below.",
-                          )
-                        }}
-                      </p>
-                    </div>
-                    <Toggle v-model="form.github_oauth_enabled" />
-                  </div>
-
-                  <div v-if="form.github_oauth_enabled" class="mt-4 space-y-4">
-                    <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300">
-                      <template v-if="isZhLocale">
-                        开通引导：GitHub Settings → Developer settings →
-                        <a
-                          data-testid="github-oauth-apps-guide-link"
-                          href="https://github.com/settings/developers"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="font-medium text-primary-600 hover:underline dark:text-primary-400"
-                        >OAuth Apps</a>
-                        → New OAuth App；Homepage URL 填站点域名，Authorization callback URL 填下面的后端回调地址。
-                      </template>
-                      <template v-else>
-                        Setup guide: GitHub Settings → Developer settings →
-                        <a
-                          data-testid="github-oauth-apps-guide-link"
-                          href="https://github.com/settings/developers"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="font-medium text-primary-600 hover:underline dark:text-primary-400"
-                        >OAuth Apps</a>
-                        → New OAuth App. Use your site origin as Homepage URL and the backend callback URL below as Authorization callback URL.
-                      </template>
-                    </div>
-
-                    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                      <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Client ID</label>
-                        <input
-                          v-model="form.github_oauth_client_id"
-                          type="text"
-                          class="input font-mono text-sm"
-                          placeholder="GitHub OAuth Client ID"
-                        />
-                      </div>
-                      <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Client Secret</label>
-                        <input
-                          v-model="form.github_oauth_client_secret"
-                          type="password"
-                          class="input font-mono text-sm"
-                          :placeholder="
-                            form.github_oauth_client_secret_configured
-                              ? localText('密钥已配置，留空以保留当前值。', 'Secret configured. Leave empty to keep the current value.')
-                              : 'GitHub OAuth Client Secret'
-                          "
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {{ localText("后端回调地址", "Backend Callback URL") }}
-                      </label>
-                      <input
-                        v-model="form.github_oauth_redirect_url"
-                        type="url"
-                        class="input font-mono text-sm"
-                        placeholder="https://your-domain.com/api/v1/auth/oauth/github/callback"
-                      />
-                      <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                        <button
-                          type="button"
-                          class="btn btn-secondary btn-sm w-fit"
-                          @click="setAndCopyEmailOAuthRedirectUrl('github')"
-                        >
-                          {{ localText("生成并复制", "Generate and copy") }}
-                        </button>
-                        <code
-                          v-if="githubOAuthRedirectUrlSuggestion"
-                          class="select-all break-all rounded bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300"
-                        >
-                          {{ githubOAuthRedirectUrlSuggestion }}
-                        </code>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {{ localText("前端回跳地址", "Frontend Callback URL") }}
-                      </label>
-                      <input
-                        v-model="form.github_oauth_frontend_redirect_url"
-                        type="text"
-                        class="input font-mono text-sm"
-                        placeholder="/auth/oauth/callback"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
-                  <div class="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 class="font-medium text-gray-900 dark:text-white">
                         Google
                       </h3>
                       <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -5715,27 +5605,6 @@
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 {{ t("admin.settings.payment.description") }}
-                <a
-                  :href="paymentGuideHref"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="ml-2 inline-flex items-center text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-                >
-                  <svg
-                    class="mr-0.5 h-3.5 w-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
-                  {{ t("admin.settings.payment.configGuide") }}
-                </a>
               </p>
             </div>
             <div class="space-y-4 p-6">
@@ -6120,27 +5989,6 @@
                   </div>
                   <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
                     {{ t("admin.settings.payment.enabledPaymentTypesHint") }}
-                    <a
-                      :href="paymentMethodsHref"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="ml-1 text-primary-500 hover:text-primary-600 dark:text-primary-400 dark:hover:text-primary-300"
-                    >
-                      {{ t("admin.settings.payment.findProvider") }}
-                      <svg
-                        class="mb-0.5 ml-0.5 inline h-3 w-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                        />
-                      </svg>
-                    </a>
                   </p>
                 </div>
                 <!-- Row 5: Help image + text -->
@@ -6761,18 +6609,6 @@ function localText(zh: string, en: string): string {
   return isZhLocale.value ? zh : en;
 }
 
-const paymentGuideHref = computed(() =>
-  locale.value.startsWith("zh")
-    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md"
-    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md",
-);
-
-const paymentMethodsHref = computed(() =>
-  locale.value.startsWith("zh")
-    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#支持的支付方式"
-    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md#supported-payment-methods",
-);
-
 type SettingsTab =
   | "general"
   | "agreement"
@@ -7247,14 +7083,6 @@ const authSourceDefaultsMeta = computed(() => [
     source: "wechat" as AuthSourceType,
     title: t("admin.settings.authSourceDefaults.sources.wechat.title"),
     description: t("admin.settings.authSourceDefaults.sources.wechat.description"),
-  },
-  {
-    source: "github" as AuthSourceType,
-    title: "GitHub",
-    description: localText(
-      "通过 GitHub 已验证邮箱首次注册或首次绑定时应用。",
-      "Applied on first signup or first bind through a verified GitHub email.",
-    ),
   },
   {
     source: "google" as AuthSourceType,

@@ -562,7 +562,7 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(wrapper.text()).not.toContain("支付来源");
   });
 
-  it("links payment guidance to README sections instead of removed payment docs", async () => {
+  it("does not render external payment documentation links", async () => {
     const wrapper = mountView();
 
     await flushPromises();
@@ -574,16 +574,12 @@ describe("admin SettingsView payment visible method controls", () => {
         ["查看支付配置说明", "查看支持的支付方式"].includes(node.text()),
       );
 
-    expect(paymentLinks).toHaveLength(2);
-    expect(paymentLinks[0]?.attributes("href")).toBe(
-      "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md",
-    );
-    expect(paymentLinks[1]?.attributes("href")).toBe(
-      "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#支持的支付方式",
-    );
-    for (const link of paymentLinks) {
-      expect(link.attributes("href")).toContain("docs/PAYMENT");
-    }
+    expect(paymentLinks).toHaveLength(0);
+    expect(
+      wrapper.findAll("a").some((node) =>
+        (node.attributes("href") ?? "").includes("docs/PAYMENT"),
+      ),
+    ).toBe(false);
   });
 
   it("does not submit legacy visible payment method settings", async () => {
@@ -876,24 +872,6 @@ describe("admin SettingsView wechat connect controls", () => {
           .element as HTMLInputElement
       ).value,
     ).toBe("/auth/wechat/callback");
-  });
-
-  it("links GitHub OAuth Apps guide to GitHub developer settings", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      github_oauth_enabled: true,
-    });
-
-    const wrapper = mountView();
-
-    await flushPromises();
-    await openSecurityTab(wrapper);
-
-    const link = wrapper.get('[data-testid="github-oauth-apps-guide-link"]');
-    expect(link.text()).toContain("OAuth Apps");
-    expect(link.attributes("href")).toBe("https://github.com/settings/developers");
-    expect(link.attributes("target")).toBe("_blank");
-    expect(link.attributes("rel")).toContain("noopener");
   });
 
   it("saves WeChat Connect fields using the backend contract and clears the secret after save", async () => {

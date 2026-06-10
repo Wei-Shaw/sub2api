@@ -142,7 +142,6 @@
 
           <EmailOAuthButtons
             :disabled="authActionDisabled"
-            :github-enabled="githubOAuthEnabled"
             :google-enabled="googleOAuthEnabled"
             :show-divider="false"
           />
@@ -242,7 +241,6 @@ const wechatOAuthEnabled = ref<boolean>(false)
 const backendModeEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
-const githubOAuthEnabled = ref<boolean>(false)
 const googleOAuthEnabled = ref<boolean>(false)
 const passwordResetEnabled = ref<boolean>(false)
 const loginAgreementEnabled = ref<boolean>(false)
@@ -293,7 +291,6 @@ const showOAuthLogin = computed(
       dingtalkOAuthEnabled.value ||
       wechatOAuthEnabled.value ||
       oidcOAuthEnabled.value ||
-      githubOAuthEnabled.value ||
       googleOAuthEnabled.value)
 )
 
@@ -324,7 +321,6 @@ onMounted(async () => {
     backendModeEnabled.value = settings.backend_mode_enabled
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
-    githubOAuthEnabled.value = settings.github_oauth_enabled
     googleOAuthEnabled.value = settings.google_oauth_enabled
     backendModeEnabled.value = settings.backend_mode_enabled
     passwordResetEnabled.value = settings.password_reset_enabled
