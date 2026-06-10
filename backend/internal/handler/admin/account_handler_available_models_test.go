@@ -71,6 +71,7 @@ func setupSyncUpstreamModelsRouter(adminSvc service.AdminService, upstream servi
 	)
 	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, accountTestSvc, nil, nil, nil, nil, nil)
 	router.POST("/api/v1/admin/accounts/:id/models/sync-upstream", handler.SyncUpstreamModels)
+	router.POST("/api/v1/admin/accounts/models/sync-upstream-preview", handler.SyncUpstreamModelsPreview)
 	return router
 }
 
@@ -276,4 +277,115 @@ func TestAccountHandlerSyncUpstreamModels_IgnoresMaskedAPIKeyOverride(t *testing
 	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer saved-key", upstream.lastReq.Header.Get("Authorization"))
 	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+}
+
+func TestAccountHandlerSyncUpstreamModels_GeminiRelaySavedAsOAuthStillUsesOpenAICompatibleModels(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       48,
+			Name:     "legacy-gemini-relay",
+			Platform: service.PlatformGemini,
+			Type:     service.AccountTypeOAuth,
+			Status:   service.StatusActive,
+			Credentials: map[string]any{
+				"api_key":  "saved-key",
+				"base_url": "https://iacc.cc",
+			},
+		},
+	}
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"gemini-3.1-pro"}]}`)),
+	}}
+	router := setupSyncUpstreamModelsRouter(svc, upstream)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/48/models/sync-upstream", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer saved-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+	require.Contains(t, rec.Body.String(), "gemini-3.1-pro")
+}
+
+func TestAccountHandlerSyncUpstreamModelsPreview_GeminiRelayTreatsAPIKeyPayloadAsOpenAICompatible(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"claude-opus-4-6"},{"id":"gpt-image-2"}]}`)),
+	}}
+	router := setupSyncUpstreamModelsRouter(newStubAdminService(), upstream)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/admin/accounts/models/sync-upstream-preview",
+		strings.NewReader(`{"platform":"gemini","type":"oauth","base_url":"https://iacc.cc","api_key":"sk-test","upstream_type":"compatible_relay"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+	require.Contains(t, rec.Body.String(), "claude-opus-4-6")
+	require.Contains(t, rec.Body.String(), "gpt-image-2")
+}
+
+func TestAccountHandlerSyncUpstreamModelsPreview_GeminiRelayWithoutTypeUsesOpenAICompatibleModels(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":["gemini-3.1-pro"]}`)),
+	}}
+	router := setupSyncUpstreamModelsRouter(newStubAdminService(), upstream)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/admin/accounts/models/sync-upstream-preview",
+		strings.NewReader(`{"platform":"gemini","base_url":"https://iacc.cc","api_key":"sk-test"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+	require.Contains(t, rec.Body.String(), "gemini-3.1-pro")
+}
+
+func TestAccountHandlerSyncUpstreamModelsPreview_GeminiRelayAcceptsOpenAIClientAliases(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"gemini-3.1-pro"},{"id":"gpt-image-2"}]}`)),
+	}}
+	router := setupSyncUpstreamModelsRouter(newStubAdminService(), upstream)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/admin/accounts/models/sync-upstream-preview",
+		strings.NewReader(`{"platform":"gemini","type":"oauth","baseURL":"https://iacc.cc/v1/models","apiKey":"sk-test"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+	require.Contains(t, rec.Body.String(), "gemini-3.1-pro")
+	require.Contains(t, rec.Body.String(), "gpt-image-2")
 }

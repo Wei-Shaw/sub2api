@@ -744,6 +744,136 @@ func TestImportDataAutoDetectsModelsIntoModelMapping(t *testing.T) {
 	require.Equal(t, "gpt-image-2", modelMapping["gpt-image-2"])
 }
 
+func TestImportDataAutoDetectsGeminiRelayModelsViaOpenAICompatibleEndpoint(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":["claude-opus-4-6","gpt-image-2"]}`)),
+	}}
+	router, adminSvc := setupAccountDataRouterWithModelSync(upstream)
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":     "gemini-relay-key",
+					"platform": service.PlatformGemini,
+					"type":     service.AccountTypeOAuth,
+					"credentials": map[string]any{
+						"api_key":  "sk-test",
+						"base_url": "https://iacc.cc",
+					},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+		"auto_detect_models": true,
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Code int              `json:"code"`
+		Data DataImportResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, 1, resp.Data.AccountCreated)
+	require.Equal(t, 1, resp.Data.ModelSyncSucceeded)
+	require.Equal(t, 0, resp.Data.ModelSyncFailed)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+
+	created := requireCreatedAccount(t, adminSvc, "gemini-relay-key")
+	require.Equal(t, service.AccountTypeAPIKey, created.Type)
+	require.Equal(t, service.GeminiUpstreamCompatibleRelay, created.Credentials["tier_id"])
+	require.Equal(t, service.GeminiUpstreamCompatibleRelay, created.Credentials["upstream_type"])
+
+	require.Len(t, adminSvc.updatedAccounts, 1)
+	modelMapping, ok := adminSvc.updatedAccounts[0].Credentials["model_mapping"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "claude-opus-4-6", modelMapping["claude-opus-4-6"])
+	require.Equal(t, "gpt-image-2", modelMapping["gpt-image-2"])
+}
+
+func TestImportDataAutoDetectsGeminiRelayModelsWithOpenAIClientAliases(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"gemini-3.1-pro"},{"id":"gpt-image-2"}]}`)),
+	}}
+	router, adminSvc := setupAccountDataRouterWithModelSync(upstream)
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":     "gemini-relay-openai-client",
+					"platform": service.PlatformGemini,
+					"type":     service.AccountTypeOAuth,
+					"credentials": map[string]any{
+						"apiKey":  "sk-test",
+						"baseURL": "https://iacc.cc/v1/models",
+					},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+		"auto_detect_models": true,
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Code int              `json:"code"`
+		Data DataImportResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, 1, resp.Data.AccountCreated)
+	require.Equal(t, 1, resp.Data.ModelSyncSucceeded)
+	require.Equal(t, 0, resp.Data.ModelSyncFailed)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+
+	created := requireCreatedAccount(t, adminSvc, "gemini-relay-openai-client")
+	require.Equal(t, service.AccountTypeAPIKey, created.Type)
+	require.Equal(t, "sk-test", created.Credentials["api_key"])
+	require.Equal(t, "https://iacc.cc/v1", created.Credentials["base_url"])
+	require.Equal(t, service.GeminiUpstreamCompatibleRelay, created.Credentials["tier_id"])
+	require.Equal(t, service.GeminiUpstreamCompatibleRelay, created.Credentials["upstream_type"])
+
+	require.Len(t, adminSvc.updatedAccounts, 1)
+	modelMapping, ok := adminSvc.updatedAccounts[0].Credentials["model_mapping"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "gemini-3.1-pro", modelMapping["gemini-3.1-pro"])
+	require.Equal(t, "gpt-image-2", modelMapping["gpt-image-2"])
+}
+
 func requireCreatedAccount(t *testing.T, adminSvc *stubAdminService, name string) *service.CreateAccountInput {
 	t.Helper()
 	for _, account := range adminSvc.createdAccounts {

@@ -1097,10 +1097,12 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		enrichCredentialsFromIDToken(&item)
+		mergedCredentials := mergeImportMaps(item.Credentials, req.CredentialExtras)
+		accountType := service.NormalizeGeminiAPIKeyAccountType(item.Platform, item.Type, mergedCredentials)
 		credentials := service.NormalizeGeminiAPIKeyCredentials(
 			item.Platform,
-			item.Type,
-			mergeImportMaps(item.Credentials, req.CredentialExtras),
+			accountType,
+			mergedCredentials,
 		)
 		extra := mergeImportMaps(item.Extra, req.Extra)
 
@@ -1108,7 +1110,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Name:                  item.Name,
 			Notes:                 item.Notes,
 			Platform:              item.Platform,
-			Type:                  item.Type,
+			Type:                  accountType,
 			Credentials:           credentials,
 			Extra:                 extra,
 			ProxyID:               proxyID,

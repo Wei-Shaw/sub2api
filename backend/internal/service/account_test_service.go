@@ -179,6 +179,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
+	account = NormalizeGeminiAPIKeyAccount(account)
 
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
@@ -892,6 +893,7 @@ func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, accoun
 
 // testGeminiAccountConnection tests a Gemini account's connection
 func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	account = NormalizeGeminiAPIKeyAccount(account)
 	ctx := c.Request.Context()
 
 	// Determine the model to use

@@ -207,7 +207,10 @@ func (a *Account) IsGeminiCodeAssist() bool {
 }
 
 func (a *Account) IsGeminiCompatibleRelay() bool {
-	if a == nil || a.Platform != PlatformGemini || a.Type != AccountTypeAPIKey {
+	if a == nil || a.Platform != PlatformGemini {
+		return false
+	}
+	if NormalizeGeminiAPIKeyAccountType(a.Platform, a.Type, a.Credentials) != AccountTypeAPIKey {
 		return false
 	}
 	if strings.EqualFold(strings.TrimSpace(a.GetCredential("upstream_type")), GeminiUpstreamCompatibleRelay) {
@@ -221,7 +224,10 @@ func (a *Account) IsGeminiCompatibleRelay() bool {
 }
 
 func (a *Account) IsGeminiOpenAICompatibleUpstream() bool {
-	if a == nil || a.Platform != PlatformGemini || a.Type != AccountTypeAPIKey {
+	if a == nil || a.Platform != PlatformGemini {
+		return false
+	}
+	if NormalizeGeminiAPIKeyAccountType(a.Platform, a.Type, a.Credentials) != AccountTypeAPIKey {
 		return false
 	}
 	return a.IsGeminiCompatibleRelay() || isOfficialGeminiOpenAICompatibleBaseURL(a.GetCredential("base_url"))

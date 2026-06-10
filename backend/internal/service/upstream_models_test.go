@@ -69,6 +69,36 @@ func TestExtractUpstreamModelIDs(t *testing.T) {
 			body: `[{"id":"z-model"},{"name":"models/a-model"}]`,
 			want: []string{"a-model", "z-model"},
 		},
+		{
+			name: "openai compatible data string array",
+			body: `{"data":["gpt-4o","gpt-4o-mini","gpt-4o"]}`,
+			want: []string{"gpt-4o", "gpt-4o-mini"},
+		},
+		{
+			name: "openai compatible model and value fields",
+			body: `{"data":[{"model":"gemini-2.5-flash"},{"value":"gemini-2.5-pro"}]}`,
+			want: []string{"gemini-2.5-flash", "gemini-2.5-pro"},
+		},
+		{
+			name: "models string array",
+			body: `{"models":["models/gemini-3.1-pro","gemini-3.1-flash-image"]}`,
+			want: []string{"gemini-3.1-flash-image", "gemini-3.1-pro"},
+		},
+		{
+			name: "openai compatible data object keyed by model id",
+			body: `{"object":"list","data":{"gpt-4o":{"owned_by":"relay"},"gemini-2.5-flash":{"status":"ready"}}}`,
+			want: []string{"gemini-2.5-flash", "gpt-4o"},
+		},
+		{
+			name: "nested available models",
+			body: `{"result":{"available_models":["claude-sonnet-4-6","gpt-image-2"]}}`,
+			want: []string{"claude-sonnet-4-6", "gpt-image-2"},
+		},
+		{
+			name: "ignore top level metadata strings",
+			body: `{"object":"list","owned_by":"relay","data":[{"id":"gpt-4o","object":"model","owned_by":"relay"}]}`,
+			want: []string{"gpt-4o"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -227,6 +257,35 @@ func TestFetchUpstreamSupportedModelsGeminiCompatibleRelayUsesOpenAIModels(t *te
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"gemini-2.5-flash", "gemini-3.1-pro"}, models)
+	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-iacc", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+}
+
+func TestFetchUpstreamSupportedModelsGeminiLegacyOAuthAPIKeyUsesOpenAIModels(t *testing.T) {
+	t.Parallel()
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":["claude-opus-4-6","gemini-3.1-pro"]}`)),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+	}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       21,
+		Platform: PlatformGemini,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"api_key":  "sk-iacc",
+			"base_url": "https://iacc.cc",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"claude-opus-4-6", "gemini-3.1-pro"}, models)
 	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer sk-iacc", upstream.lastReq.Header.Get("Authorization"))
 	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))

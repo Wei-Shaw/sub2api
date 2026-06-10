@@ -13,6 +13,10 @@ import (
 type accountRepoStubForAdminList struct {
 	accountRepoStub
 
+	getByIDAccount          *Account
+	getByIDErr              error
+	getByIDsAccounts        []*Account
+	getByIDsErr             error
 	listWithFiltersCalls    int
 	listWithFiltersParams   pagination.PaginationParams
 	listWithFiltersPlatform string
@@ -23,6 +27,23 @@ type accountRepoStubForAdminList struct {
 	listWithFiltersAccounts []Account
 	listWithFiltersResult   *pagination.PaginationResult
 	listWithFiltersErr      error
+}
+
+func (s *accountRepoStubForAdminList) GetByID(_ context.Context, _ int64) (*Account, error) {
+	if s.getByIDErr != nil {
+		return nil, s.getByIDErr
+	}
+	if s.getByIDAccount != nil {
+		return s.getByIDAccount, nil
+	}
+	return nil, ErrAccountNotFound
+}
+
+func (s *accountRepoStubForAdminList) GetByIDs(_ context.Context, _ []int64) ([]*Account, error) {
+	if s.getByIDsErr != nil {
+		return nil, s.getByIDsErr
+	}
+	return s.getByIDsAccounts, nil
 }
 
 func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
@@ -182,6 +203,80 @@ func TestAdminService_ListAccounts_WithSearch(t *testing.T) {
 		require.Equal(t, StatusActive, repo.listWithFiltersStatus)
 		require.Equal(t, "acc", repo.listWithFiltersSearch)
 	})
+}
+
+func TestAdminService_ListAccounts_NormalizesLegacyGeminiAPIKeyAccounts(t *testing.T) {
+	repo := &accountRepoStubForAdminList{
+		listWithFiltersAccounts: []Account{
+			{
+				ID:       11,
+				Name:     "legacy-gemini-relay",
+				Platform: PlatformGemini,
+				Type:     AccountTypeOAuth,
+				Credentials: map[string]any{
+					"api_key":  "sk-test",
+					"base_url": "https://iacc.cc",
+				},
+			},
+		},
+		listWithFiltersResult: &pagination.PaginationResult{Total: 1},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformGemini, AccountTypeOAuth, "", "", 0, "", "", "", 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, accounts, 1)
+	require.Equal(t, AccountTypeAPIKey, accounts[0].Type)
+	require.Equal(t, GeminiUpstreamCompatibleRelay, accounts[0].Credentials["upstream_type"])
+	require.Equal(t, GeminiUpstreamCompatibleRelay, accounts[0].Credentials["tier_id"])
+	require.Equal(t, AccountTypeOAuth, repo.listWithFiltersType)
+}
+
+func TestAdminService_GetAccount_NormalizesLegacyGeminiAPIKeyAccount(t *testing.T) {
+	stored := &Account{
+		ID:       12,
+		Name:     "legacy-gemini-relay",
+		Platform: PlatformGemini,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://iacc.cc",
+		},
+	}
+	repo := &accountRepoStubForAdminList{getByIDAccount: stored}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	account, err := svc.GetAccount(context.Background(), stored.ID)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, AccountTypeAPIKey, account.Type)
+	require.Equal(t, GeminiUpstreamCompatibleRelay, account.Credentials["upstream_type"])
+	require.Equal(t, AccountTypeOAuth, stored.Type)
+}
+
+func TestAdminService_GetAccountsByIDs_NormalizesLegacyGeminiAPIKeyAccounts(t *testing.T) {
+	repo := &accountRepoStubForAdminList{
+		getByIDsAccounts: []*Account{
+			{
+				ID:       13,
+				Name:     "legacy-gemini-relay",
+				Platform: PlatformGemini,
+				Type:     AccountTypeOAuth,
+				Credentials: map[string]any{
+					"api_key":  "sk-test",
+					"base_url": "https://iacc.cc",
+				},
+			},
+		},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	accounts, err := svc.GetAccountsByIDs(context.Background(), []int64{13})
+	require.NoError(t, err)
+	require.Len(t, accounts, 1)
+	require.Equal(t, AccountTypeAPIKey, accounts[0].Type)
+	require.Equal(t, GeminiUpstreamCompatibleRelay, accounts[0].Credentials["upstream_type"])
 }
 
 func TestAdminService_ListAccounts_WithPrivacyMode(t *testing.T) {

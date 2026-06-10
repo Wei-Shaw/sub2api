@@ -2148,41 +2148,34 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 
 	var req struct {
 		BaseURL      *string `json:"base_url"`
+		BaseURLAlt   *string `json:"baseURL"`
+		BaseURLAlt2  *string `json:"baseUrl"`
+		APIBaseURL   *string `json:"api_base_url"`
+		APIBaseURL2  *string `json:"apiBaseUrl"`
 		APIKey       *string `json:"api_key"`
+		APIKeyAlt    *string `json:"apiKey"`
+		APIKeyAlt2   *string `json:"key"`
 		UpstreamType *string `json:"upstream_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	syncAccount := account
-	if req.BaseURL != nil || req.APIKey != nil || req.UpstreamType != nil {
-		overrides := map[string]any{}
-		if req.BaseURL != nil {
-			overrides["base_url"] = strings.TrimSpace(*req.BaseURL)
-		}
-		if req.APIKey != nil {
-			if apiKey := strings.TrimSpace(*req.APIKey); apiKey != "" {
-				if !service.IsSensitiveCredentialPlaceholder(apiKey) {
-					overrides["api_key"] = apiKey
-				}
+	overrides := map[string]any{}
+	if baseURL, ok := firstStringPtr(req.BaseURL, req.BaseURLAlt, req.BaseURLAlt2, req.APIBaseURL, req.APIBaseURL2); ok {
+		overrides["base_url"] = strings.TrimSpace(baseURL)
+	}
+	if apiKeyRaw, ok := firstStringPtr(req.APIKey, req.APIKeyAlt, req.APIKeyAlt2); ok {
+		if apiKey := strings.TrimSpace(apiKeyRaw); apiKey != "" {
+			if !service.IsSensitiveCredentialPlaceholder(apiKey) {
+				overrides["api_key"] = apiKey
 			}
 		}
-		if req.UpstreamType != nil {
-			overrides["upstream_type"] = strings.TrimSpace(*req.UpstreamType)
-		}
-
-		accountCopy := *account
-		credentials := make(map[string]any, len(account.Credentials)+len(overrides))
-		for key, value := range account.Credentials {
-			credentials[key] = value
-		}
-		for key, value := range overrides {
-			credentials[key] = value
-		}
-		accountCopy.Credentials = service.NormalizeGeminiAPIKeyCredentials(accountCopy.Platform, accountCopy.Type, credentials)
-		syncAccount = &accountCopy
 	}
+	if req.UpstreamType != nil {
+		overrides["upstream_type"] = strings.TrimSpace(*req.UpstreamType)
+	}
+	syncAccount := normalizeGeminiAPIKeyAccountForSync(account, overrides)
 
 	if h.accountTestService == nil {
 		response.InternalError(c, "Account test service is not configured")
@@ -2215,25 +2208,43 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 // POST /api/v1/admin/accounts/models/sync-upstream-preview
 func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 	var req struct {
-		Platform     string `json:"platform" binding:"required"`
-		Type         string `json:"type" binding:"required"`
-		BaseURL      string `json:"base_url"`
-		APIKey       string `json:"api_key" binding:"required"`
-		UpstreamType string `json:"upstream_type"`
+		Platform     string  `json:"platform" binding:"required"`
+		Type         string  `json:"type"`
+		BaseURL      string  `json:"base_url"`
+		BaseURLAlt   string  `json:"baseURL"`
+		BaseURLAlt2  string  `json:"baseUrl"`
+		APIBaseURL   string  `json:"api_base_url"`
+		APIBaseURL2  string  `json:"apiBaseUrl"`
+		APIKey       *string `json:"api_key"`
+		APIKeyAlt    *string `json:"apiKey"`
+		APIKeyAlt2   *string `json:"key"`
+		UpstreamType string  `json:"upstream_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
 
+	accountType := strings.TrimSpace(req.Type)
+	platform := strings.TrimSpace(req.Platform)
+	baseURL := strings.TrimSpace(firstNonEmptyString(req.BaseURL, req.BaseURLAlt, req.BaseURLAlt2, req.APIBaseURL, req.APIBaseURL2))
+	apiKey := strings.TrimSpace(firstNonEmptyStringPtr(req.APIKey, req.APIKeyAlt, req.APIKeyAlt2))
+	if apiKey == "" {
+		response.BadRequest(c, "No API key is available")
+		return
+	}
+	upstreamType := strings.TrimSpace(req.UpstreamType)
+	credentials := map[string]any{
+		"api_key":       apiKey,
+		"base_url":      baseURL,
+		"upstream_type": upstreamType,
+	}
+	accountType = service.NormalizeGeminiAPIKeyAccountType(platform, accountType, credentials)
+
 	tempAccount := &service.Account{
-		Platform: req.Platform,
-		Type:     req.Type,
-		Credentials: service.NormalizeGeminiAPIKeyCredentials(req.Platform, req.Type, map[string]any{
-			"api_key":       req.APIKey,
-			"base_url":      req.BaseURL,
-			"upstream_type": req.UpstreamType,
-		}),
+		Platform:    platform,
+		Type:        accountType,
+		Credentials: service.NormalizeGeminiAPIKeyCredentials(platform, accountType, credentials),
 	}
 
 	if h.accountTestService == nil {
@@ -2261,6 +2272,52 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"models": models})
+}
+
+func normalizeGeminiAPIKeyAccountForSync(account *service.Account, overrides map[string]any) *service.Account {
+	if account == nil {
+		return nil
+	}
+
+	accountCopy := *account
+	credentials := make(map[string]any, len(account.Credentials)+len(overrides))
+	for key, value := range account.Credentials {
+		credentials[key] = value
+	}
+	for key, value := range overrides {
+		credentials[key] = value
+	}
+
+	accountCopy.Type = service.NormalizeGeminiAPIKeyAccountType(accountCopy.Platform, accountCopy.Type, credentials)
+	accountCopy.Credentials = service.NormalizeGeminiAPIKeyCredentials(accountCopy.Platform, accountCopy.Type, credentials)
+	return &accountCopy
+}
+
+func firstStringPtr(values ...*string) (string, bool) {
+	for _, value := range values {
+		if value != nil {
+			return *value, true
+		}
+	}
+	return "", false
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyStringPtr(values ...*string) string {
+	for _, value := range values {
+		if value != nil && strings.TrimSpace(*value) != "" {
+			return *value
+		}
+	}
+	return ""
 }
 
 // SetPrivacy handles setting privacy for a single OpenAI/Antigravity OAuth account

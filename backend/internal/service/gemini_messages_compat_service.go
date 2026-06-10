@@ -581,6 +581,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx cont
 }
 
 func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+	account = NormalizeGeminiAPIKeyAccount(account)
 	startTime := time.Now()
 
 	var req struct {
@@ -2497,6 +2498,7 @@ func isGeminiSignatureRelatedError(respBody []byte) bool {
 }
 
 func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte) (*ForwardResult, error) {
+	account = NormalizeGeminiAPIKeyAccount(account)
 	startTime := time.Now()
 
 	if strings.TrimSpace(originalModel) == "" {
@@ -4036,6 +4038,7 @@ func (s *GeminiMessagesCompatService) ForwardAIStudioGET(ctx context.Context, ac
 	if account == nil {
 		return nil, errors.New("account is nil")
 	}
+	account = NormalizeGeminiAPIKeyAccount(account)
 	path = strings.TrimSpace(path)
 	if path == "" || !strings.HasPrefix(path, "/") {
 		return nil, errors.New("invalid path")

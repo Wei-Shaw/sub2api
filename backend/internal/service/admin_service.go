@@ -2559,6 +2559,7 @@ func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int,
 	if err != nil {
 		return nil, 0, err
 	}
+	accounts = NormalizeGeminiAPIKeyAccounts(accounts)
 	if result == nil {
 		return accounts, int64(len(accounts)), nil
 	}
@@ -2577,6 +2578,7 @@ func (s *adminServiceImpl) listAccountsByBatch(ctx context.Context, params pagin
 			return nil, 0, err
 		}
 		for _, acc := range accounts {
+			acc = NormalizeGeminiAPIKeyAccountValue(acc)
 			if acc.BatchID != nil && *acc.BatchID == batchID {
 				filtered = append(filtered, acc)
 			}
@@ -2600,7 +2602,11 @@ func (s *adminServiceImpl) listAccountsByBatch(ctx context.Context, params pagin
 }
 
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
-	return s.accountRepo.GetByID(ctx, id)
+	account, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return NormalizeGeminiAPIKeyAccount(account), nil
 }
 
 func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error) {
@@ -2613,7 +2619,7 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 		return nil, fmt.Errorf("failed to get accounts by IDs: %w", err)
 	}
 
-	return accounts, nil
+	return NormalizeGeminiAPIKeyAccountPointers(accounts), nil
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
@@ -2640,12 +2646,15 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 	}
 
+	accountType := NormalizeGeminiAPIKeyAccountType(input.Platform, input.Type, input.Credentials)
+	credentials := NormalizeGeminiAPIKeyCredentials(input.Platform, accountType, input.Credentials)
+
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
 		Platform:    input.Platform,
-		Type:        input.Type,
-		Credentials: NormalizeGeminiAPIKeyCredentials(input.Platform, input.Type, input.Credentials),
+		Type:        accountType,
+		Credentials: credentials,
 		Extra:       input.Extra,
 		ProxyID:     input.ProxyID,
 		Concurrency: input.Concurrency,
@@ -2744,10 +2753,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if len(input.Credentials) > 0 {
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
+		mergedCredentials := MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		account.Type = NormalizeGeminiAPIKeyAccountType(account.Platform, account.Type, mergedCredentials)
 		account.Credentials = NormalizeGeminiAPIKeyCredentials(
 			account.Platform,
 			account.Type,
-			MergePreservingSensitiveCreds(account.Credentials, input.Credentials),
+			mergedCredentials,
 		)
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。

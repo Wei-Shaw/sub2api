@@ -3478,6 +3478,22 @@ const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 
+const selectedAccountType = computed<AccountType>(() => {
+  if (form.platform === 'antigravity' && antigravityAccountType.value === 'upstream') {
+    return 'apikey'
+  }
+  if (form.platform === 'anthropic' && accountCategory.value === 'bedrock') {
+    return 'bedrock'
+  }
+  if ((form.platform === 'gemini' || form.platform === 'anthropic') && accountCategory.value === 'service_account') {
+    return 'service_account'
+  }
+  if (accountCategory.value === 'oauth-based') {
+    return addMethod.value as AccountType
+  }
+  return 'apikey'
+})
+
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
   const credentials: {
@@ -3488,7 +3504,7 @@ const syncPreviewCredentials = computed(() => {
     upstream_type?: string
   } = {
     platform: form.platform,
-    type: form.type,
+    type: selectedAccountType.value,
     base_url: apiKeyBaseUrl.value || undefined,
     api_key: apiKeyValue.value
   }
@@ -3916,24 +3932,8 @@ watch(
 // Sync form.type based on accountCategory, addMethod, and platform-specific type
 watch(
   [accountCategory, addMethod, antigravityAccountType, () => form.platform],
-  ([category, method, agType]) => {
-    // Antigravity upstream 类型（实际创建为 apikey）
-    if (form.platform === 'antigravity' && agType === 'upstream') {
-      form.type = 'apikey'
-      return
-    }
-    // Bedrock 类型
-    if (form.platform === 'anthropic' && category === 'bedrock') {
-      form.type = 'bedrock' as AccountType
-      return
-    }
-    if ((form.platform === 'gemini' || form.platform === 'anthropic') && category === 'service_account') {
-      form.type = 'service_account' as AccountType
-    } else if (category === 'oauth-based') {
-      form.type = method as AccountType // 'oauth' or 'setup-token'
-    } else {
-      form.type = 'apikey'
-    }
+  () => {
+    form.type = selectedAccountType.value
   },
   { immediate: true }
 )

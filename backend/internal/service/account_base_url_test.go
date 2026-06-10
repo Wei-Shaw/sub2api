@@ -212,6 +212,15 @@ func TestIsGeminiCompatibleRelay(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "legacy oauth api key with custom base url is relay",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://relay.example.com"},
+			},
+			want: true,
+		},
+		{
 			name: "gemini oauth with custom base url is not relay",
 			account: Account{
 				Type:        AccountTypeOAuth,
@@ -276,6 +285,17 @@ func TestGeminiOpenAICompatibleUpstream(t *testing.T) {
 				Type:        AccountTypeAPIKey,
 				Platform:    PlatformGemini,
 				Credentials: map[string]any{"base_url": "https://relay.example.com"},
+			},
+			want:       true,
+			wantRelay:  true,
+			wantNative: "https://relay.example.com",
+		},
+		{
+			name: "legacy oauth api key third party relay",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://relay.example.com"},
 			},
 			want:       true,
 			wantRelay:  true,
