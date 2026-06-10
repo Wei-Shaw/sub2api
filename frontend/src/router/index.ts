@@ -7,6 +7,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw REDACTED from 'vue-
 import { useAuthStore REDACTED from '@/stores/auth'
 import { useAppStore REDACTED from '@/stores/app'
 import { useAdminSettingsStore REDACTED from '@/stores/adminSettings'
+import { useAdminComplianceStore REDACTED from '@/stores/adminCompliance'
 import { useNavigationLoadingState REDACTED from '@/composables/useNavigationLoading'
 import { useRoutePrefetch REDACTED from '@/composables/useRoutePrefetch'
 import { getSetupStatus REDACTED from '@/api/setup'
@@ -45,7 +46,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: false,
       title: 'Login',
-      titleKey: 'common.login'
+      titleKey: 'home.login'
     REDACTED
   REDACTED,
   {
@@ -805,6 +806,20 @@ router.beforeEach(async (to, _from, next) => {
     // User is authenticated but not admin, redirect to user dashboard
     next('/dashboard')
     return
+  REDACTED
+
+  if (requiresAdmin && authStore.isAdmin) {
+    const adminComplianceStore = useAdminComplianceStore()
+    if (!adminComplianceStore.initialized) {
+      try {
+        await adminComplianceStore.fetchStatus()
+      REDACTED catch (error) {
+        const err = error as { status?: number; code?: string; metadata?: Record<string, string> REDACTED
+        if (err.status === 423 && err.code === 'ADMIN_COMPLIANCE_ACK_REQUIRED') {
+          adminComplianceStore.requireAcknowledgement(err.metadata)
+        REDACTED
+      REDACTED
+    REDACTED
   REDACTED
 
 

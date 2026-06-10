@@ -14,3 +14,8 @@ declare module '*.vue' {
   const component: DefineComponent<{REDACTED, {REDACTED, any>
   export default component
 REDACTED
+
+declare module '*.md?raw' {
+  const content: string
+  export default content
+REDACTED

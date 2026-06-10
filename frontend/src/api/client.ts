@@ -148,6 +148,23 @@ apiClient.interceptors.response.use(
         REDACTED)
       REDACTED
 
+      if (status === 423 && apiData.code === 'ADMIN_COMPLIANCE_ACK_REQUIRED') {
+        try {
+          window.dispatchEvent(new CustomEvent('admin-compliance-required', {
+            detail: apiData.metadata || {REDACTED
+          REDACTED))
+        REDACTED catch {
+          // ignore event failures
+        REDACTED
+
+        return Promise.reject({
+          status,
+          code: apiData.code,
+          message: apiData.message || error.message,
+          metadata: apiData.metadata,
+        REDACTED)
+      REDACTED
+
       // 401: Try to refresh the token if we have a refresh token
       // This handles TOKEN_EXPIRED, INVALID_TOKEN, TOKEN_REVOKED, etc.
       if (status === 401 && !originalRequest._retry) {
