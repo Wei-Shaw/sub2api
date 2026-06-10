@@ -32,6 +32,12 @@ type PublicSettingsProvider interface {
 	GetPublicSettingsForInjection(ctx context.Context) (any, error)
 }
 
+// ThemeCSSProvider provides the active theme's CSS injection info
+type ThemeCSSProvider interface {
+	GetActiveThemeShort(ctx context.Context) string
+	GetThemeConfigCSS(ctx context.Context) string
+}
+
 // FrontendServer serves the embedded frontend with settings injection
 type FrontendServer struct {
 	distFS      fs.FS
@@ -39,11 +45,12 @@ type FrontendServer struct {
 	baseHTML    []byte
 	cache       *HTMLCache
 	settings    PublicSettingsProvider
+	themeCSS    ThemeCSSProvider
 	overrideDir string // local file override directory
 }
 
 // NewFrontendServer creates a new frontend server with settings injection
-func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer, error) {
+func NewFrontendServer(settingsProvider PublicSettingsProvider, themeCSSProvider ThemeCSSProvider) (*FrontendServer, error) {
 	distFS, err := fs.Sub(frontendFS, "dist")
 	if err != nil {
 		return nil, err
@@ -70,6 +77,7 @@ func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer
 		baseHTML:    baseHTML,
 		cache:       cache,
 		settings:    settingsProvider,
+		themeCSS:    themeCSSProvider,
 		overrideDir: filepath.Join("data", "public"),
 	}, nil
 }
@@ -183,7 +191,16 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 		return
 	}
 
-	rendered := s.injectSettings(settingsJSON)
+	// Fetch theme CSS info
+	var themeShort, themeConfigCSS string
+	if s.themeCSS != nil {
+		themeShort = s.themeCSS.GetActiveThemeShort(ctx)
+		if themeShort != "" {
+			themeConfigCSS = s.themeCSS.GetThemeConfigCSS(ctx)
+		}
+	}
+
+	rendered := s.injectSettings(settingsJSON, themeShort, themeConfigCSS)
 	s.cache.Set(rendered, settingsJSON)
 
 	// Replace nonce placeholder with actual nonce before serving
@@ -198,14 +215,28 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	c.Abort()
 }
 
-func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
+func (s *FrontendServer) injectSettings(settingsJSON []byte, themeShort, themeConfigCSS string) []byte {
 	// Create the script tag to inject with nonce placeholder
 	// The placeholder will be replaced with actual nonce at request time
 	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + string(settingsJSON) + `;</script>`)
 
 	// Inject before </head>
 	headClose := []byte("</head>")
-	result := bytes.Replace(s.baseHTML, headClose, append(script, headClose...), 1)
+	inject := script
+
+	// Inject theme CSS if a theme is active
+	if themeShort != "" {
+		// Inject theme config CSS variables
+		if themeConfigCSS != "" {
+			styleTag := []byte(`<style nonce="` + NonceHTMLPlaceholder + `">` + themeConfigCSS + `</style>`)
+			inject = append(inject, styleTag...)
+		}
+		// Inject theme stylesheet link
+		linkTag := []byte(`<link rel="stylesheet" href="/api/v1/themes/assets/` + themeShort + `/style.css">`)
+		inject = append(inject, linkTag...)
+	}
+
+	result := bytes.Replace(s.baseHTML, headClose, append(inject, headClose...), 1)
 
 	// Replace <title> with custom site name so the browser tab shows it immediately
 	result = injectSiteTitle(result, settingsJSON)
@@ -307,7 +338,8 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 		trimmed == "/health" ||
 		trimmed == "/responses" ||
 		strings.HasPrefix(trimmed, "/responses/") ||
-		strings.HasPrefix(trimmed, "/images/")
+		strings.HasPrefix(trimmed, "/images/") ||
+		strings.HasPrefix(trimmed, "/api/v1/themes/")
 }
 
 func serveIndexHTML(c *gin.Context, fsys fs.FS) {

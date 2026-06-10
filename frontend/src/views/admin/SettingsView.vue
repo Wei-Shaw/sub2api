@@ -5702,6 +5702,11 @@
 
         </div><!-- /Tab: Features -->
 
+        <!-- Tab: Theme -->
+        <div v-show="activeTab === 'theme'" class="space-y-6">
+          <ThemeManager />
+        </div><!-- /Tab: Theme -->
+
         <!-- Tab: Email -->
         <!-- Tab: Payment -->
         <div v-show="activeTab === 'payment'" class="space-y-6">
@@ -6731,6 +6736,7 @@ import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
+import ThemeManager from "@/components/admin/ThemeManager.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
 import GroupBadge from "@/components/common/GroupBadge.vue";
 import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
@@ -6777,6 +6783,7 @@ type SettingsTab =
   | "general"
   | "agreement"
   | "features"
+  | "theme"
   | "security"
   | "users"
   | "gateway"
@@ -6788,6 +6795,7 @@ const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
   { key: "features" as SettingsTab, icon: "bolt" as const },
+  { key: "theme" as SettingsTab, icon: "paintBrush" as const },
   { key: "security" as SettingsTab, icon: "shield" as const },
   { key: "users" as SettingsTab, icon: "user" as const },
   { key: "gateway" as SettingsTab, icon: "server" as const },
