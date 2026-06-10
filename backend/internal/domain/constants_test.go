@@ -25,26 +25,38 @@ func TestDefaultAntigravityModelMapping_ImageCompatibilityAliases(t *testing.T) 
 	}
 }
 
-func TestDefaultAntigravityModelMapping_ContainsOpus48(t *testing.T) {
+func TestDefaultAntigravityModelMapping_ContainsNewClaudeModels(t *testing.T) {
 	t.Parallel()
 
-	got, ok := DefaultAntigravityModelMapping["claude-opus-4-8"]
-	if !ok {
-		t.Fatal("expected mapping for claude-opus-4-8 to exist")
+	cases := map[string]string{
+		"claude-fable-5":  "claude-fable-5",
+		"claude-opus-4-8": "claude-opus-4-8",
 	}
-	if got != "claude-opus-4-8" {
-		t.Fatalf("unexpected claude-opus-4-8 mapping: got %q", got)
+	for from, want := range cases {
+		got, ok := DefaultAntigravityModelMapping[from]
+		if !ok {
+			t.Fatalf("expected mapping for %q to exist", from)
+		}
+		if got != want {
+			t.Fatalf("unexpected mapping for %q: got %q want %q", from, got, want)
+		}
 	}
 }
 
-func TestDefaultBedrockModelMapping_ContainsOpus48(t *testing.T) {
+func TestDefaultBedrockModelMapping_ContainsNewClaudeModels(t *testing.T) {
 	t.Parallel()
 
-	got, ok := DefaultBedrockModelMapping["claude-opus-4-8"]
-	if !ok {
-		t.Fatal("expected Bedrock mapping for claude-opus-4-8 to exist")
+	cases := map[string]string{
+		"claude-fable-5":  "anthropic.claude-fable-5",
+		"claude-opus-4-8": "us.anthropic.claude-opus-4-8-v1",
 	}
-	if got != "us.anthropic.claude-opus-4-8-v1" {
-		t.Fatalf("unexpected Bedrock claude-opus-4-8 mapping: got %q", got)
+	for from, want := range cases {
+		got, ok := DefaultBedrockModelMapping[from]
+		if !ok {
+			t.Fatalf("expected Bedrock mapping for %q to exist", from)
+		}
+		if got != want {
+			t.Fatalf("unexpected Bedrock mapping for %q: got %q want %q", from, got, want)
+		}
 	}
 }
