@@ -243,6 +243,21 @@
             </div>
 
             <!-- Create User Button (full width on mobile, auto width on desktop) -->
+            <button
+              @click="showDisabledUsers"
+              class="btn btn-secondary flex-1 md:flex-initial"
+              type="button"
+            >
+              只看封禁用户
+            </button>
+            <button
+              @click="importDisabledUsageIps"
+              :disabled="importingBlockedIps"
+              class="btn btn-secondary flex-1 md:flex-initial"
+              type="button"
+            >
+              {{ importingBlockedIps ? '提取中...' : '提取封禁用户 IP' }}
+            </button>
             <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.users.createUser') }}
@@ -996,6 +1011,7 @@ const columns = computed<Column[]>(() =>
 
 const users = ref<AdminUser[]>([])
 const loading = ref(false)
+const importingBlockedIps = ref(false)
 const searchQuery = ref('')
 const USER_SORT_STORAGE_KEY = 'admin-users-table-sort'
 const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' } => {
@@ -1583,6 +1599,29 @@ const handleSearch = () => {
     pagination.page = 1
     loadUsers()
   }, 300)
+}
+
+const showDisabledUsers = () => {
+  visibleFilters.add('status')
+  filters.status = 'disabled'
+  pagination.page = 1
+  saveFiltersToStorage()
+  loadUsers()
+}
+
+const importDisabledUsageIps = async () => {
+  importingBlockedIps.value = true
+  try {
+    const result = await adminAPI.users.importDisabledUsageIpsToApiBlocklist()
+    appStore.showSuccess(
+      `已从 ${result.disabled_user_count} 个封禁用户中提取 ${result.scanned_ip_count} 个 IP，新增封禁 ${result.added_ip_count} 个`
+    )
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || error.message || '提取封禁用户 IP 失败')
+    console.error('Error importing disabled user IPs:', error)
+  } finally {
+    importingBlockedIps.value = false
+  }
 }
 
 const handlePageChange = (page: number) => {

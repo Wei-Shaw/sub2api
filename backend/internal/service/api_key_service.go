@@ -240,6 +240,22 @@ func (s *APIKeyService) SetRateLimitCacheInvalidator(inv RateLimitCacheInvalidat
 	s.rateLimitCacheInvalid = inv
 }
 
+func (s *APIKeyService) DisableUserForIPBlock(ctx context.Context, userID int64) error {
+	if s == nil || s.userRepo == nil || userID <= 0 {
+		return nil
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	user.Status = StatusDisabled
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return err
+	}
+	s.InvalidateAuthCacheByUserID(ctx, userID)
+	return nil
+}
+
 func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {
 	if apiKey == nil {
 		return

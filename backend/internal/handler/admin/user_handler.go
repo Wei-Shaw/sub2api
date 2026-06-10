@@ -48,14 +48,14 @@ func NewUserHandler(
 
 // CreateUserRequest represents admin create user request
 type CreateUserRequest struct {
-	Email         string   `json:"email" binding:"required,email"`
-	Password      string   `json:"password" binding:"required,min=6"`
-	Username      string   `json:"username"`
-	Notes         string   `json:"notes"`
-	Balance       *float64 `json:"balance"`
-	Concurrency   int      `json:"concurrency"`
-	RPMLimit      int      `json:"rpm_limit"`
-	AllowedGroups []int64  `json:"allowed_groups"`
+	Email         string  `json:"email" binding:"required,email"`
+	Password      string  `json:"password" binding:"required,min=6"`
+	Username      string  `json:"username"`
+	Notes         string  `json:"notes"`
+	Balance       float64 `json:"balance"`
+	Concurrency   int     `json:"concurrency"`
+	RPMLimit      int     `json:"rpm_limit"`
+	AllowedGroups []int64 `json:"allowed_groups"`
 }
 
 // UpdateUserRequest represents admin update user request
@@ -169,6 +169,17 @@ func (h *UserHandler) List(c *gin.Context) {
 	response.Paginated(c, out, total, page, pageSize)
 }
 
+// ImportDisabledUsageIPsToAPIBlocklist extracts client IPs from disabled users' usage logs
+// and appends them to the global API request IP blocklist.
+func (h *UserHandler) ImportDisabledUsageIPsToAPIBlocklist(c *gin.Context) {
+	result, err := h.adminService.ImportAPIRequestIPBlocklistFromDisabledUsers(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 // parseAttributeFilters extracts attribute filters from query params
 // Format: attr[{attributeID}]=value, e.g. attr[1]=company&attr[2]=developer
 func parseAttributeFilters(c *gin.Context) map[int64]string {
@@ -201,12 +212,7 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	var user *service.User
-	if c.Query("include_deleted") == "true" {
-		user, err = h.adminService.GetUserIncludeDeleted(c.Request.Context(), userID)
-	} else {
-		user, err = h.adminService.GetUser(c.Request.Context(), userID)
-	}
+	user, err := h.adminService.GetUser(c.Request.Context(), userID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -754,7 +760,7 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 	if h.billingCache != nil {
 		for _, p := range service.AllowedQuotaPlatforms {
 			if err := h.billingCache.DeleteUserPlatformQuotaCache(ctx, userID, p); err != nil {
-				slog.Error("ALERT: quota cache invalidation failed after UpsertForUser; limit 生效可能延迟至 sentinel TTL(最长 1h),需人工确认或重试失效", "user_id", userID, "platform", p, "err", err)
+				slog.Warn("quota cache invalidation failed", "user_id", userID, "platform", p, "err", err)
 			}
 		}
 	}
@@ -838,7 +844,7 @@ func (h *UserHandler) ResetUserPlatformQuotaWindow(c *gin.Context) {
 
 	if h.billingCache != nil {
 		if err := h.billingCache.DeleteUserPlatformQuotaCache(ctx, userID, req.Platform); err != nil {
-			slog.Error("ALERT: quota cache invalidation failed after ResetExpiredWindow; 窗口重置可能延迟至 sentinel TTL(最长 1h)", "user_id", userID, "platform", req.Platform, "err", err)
+			slog.Warn("quota cache invalidation failed", "user_id", userID, "platform", req.Platform, "err", err)
 		}
 	}
 
