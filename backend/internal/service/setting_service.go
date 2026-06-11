@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -163,6 +164,42 @@ const openAIQuotaAutoPauseSettingsDBTimeout = 5 * time.Second
 
 const openAIQuotaAutoPauseSettingsRefreshKey = "openai_quota_auto_pause_settings"
 
+const settingValueCacheTTL = 30 * time.Second
+
+type cachedSettingValue struct {
+	value     string
+	expiresAt int64
+}
+
+var settingValueCacheableKeys = map[string]struct{}{
+	SettingKeyRegistrationEnabled:              {},
+	SettingKeyEmailVerifyEnabled:               {},
+	SettingKeyRegistrationEmailSuffixWhitelist: {},
+	SettingKeyPromoCodeEnabled:                 {},
+	SettingKeyInvitationCodeEnabled:            {},
+	SettingKeyCustomMenuItems:                  {},
+	SettingKeyAffiliateEnabled:                 {},
+	SettingKeyAffiliateRebateRate:              {},
+	SettingKeyAffiliateRebateFreezeHours:       {},
+	SettingKeyAffiliateRebateDurationDays:      {},
+	SettingKeyAffiliateRebatePerInviteeCap:     {},
+	SettingKeyPasswordResetEnabled:             {},
+	SettingKeyTotpEnabled:                      {},
+	SettingKeySiteName:                         {},
+	SettingKeyDefaultConcurrency:               {},
+	SettingKeyDefaultBalance:                   {},
+	SettingKeyDefaultUserRPMLimit:              {},
+	SettingKeyDefaultSubscriptions:             {},
+	SettingKeyTurnstileEnabled:                 {},
+	SettingKeyEnableIdentityPatch:              {},
+	SettingKeyIdentityPatchPrompt:              {},
+	SettingKeyEnableModelFallback:              {},
+	SettingKeyFallbackModelAnthropic:           {},
+	SettingKeyFallbackModelOpenAI:              {},
+	SettingKeyFallbackModelGemini:              {},
+	SettingKeyFallbackModelAntigravity:         {},
+}
+
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
@@ -196,6 +233,11 @@ type SettingService struct {
 	// instance owns its own cache, no shared package-level state.
 	openAIQuotaAutoPauseSettingsCache atomic.Value // *cachedOpenAIQuotaAutoPauseSettings
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
+
+	settingValueCacheMu sync.RWMutex
+	settingValueCache   map[string]cachedSettingValue
+	settingValueSF      singleflight.Group
+	settingValueGen     atomic.Int64
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）
@@ -641,9 +683,129 @@ func (s *SettingService) effectiveWeChatConnectOAuthConfig(settings map[string]s
 // NewSettingService 创建系统设置服务实例
 func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *SettingService {
 	return &SettingService{
-		settingRepo: settingRepo,
-		cfg:         cfg,
+		settingRepo:       settingRepo,
+		cfg:               cfg,
+		settingValueCache: make(map[string]cachedSettingValue),
 	}
+}
+
+func (s *SettingService) getCachedSettingValue(ctx context.Context, key string) (string, error) {
+	if !isSettingValueCacheable(key) {
+		return s.settingRepo.GetValue(ctx, key)
+	}
+	now := time.Now().UnixNano()
+	s.settingValueCacheMu.RLock()
+	entry, ok := s.settingValueCache[key]
+	s.settingValueCacheMu.RUnlock()
+	if ok && now < entry.expiresAt {
+		return entry.value, nil
+	}
+
+	loadGen := s.settingValueGen.Load()
+	value, err, _ := s.settingValueSF.Do(key, func() (any, error) {
+		now := time.Now().UnixNano()
+		s.settingValueCacheMu.RLock()
+		entry, ok := s.settingValueCache[key]
+		s.settingValueCacheMu.RUnlock()
+		if ok && now < entry.expiresAt {
+			return entry.value, nil
+		}
+
+		value, err := s.settingRepo.GetValue(ctx, key)
+		if err != nil {
+			return "", err
+		}
+		s.setCachedSettingValueIfFresh(key, value, loadGen)
+		return value, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if typed, ok := value.(string); ok {
+		return typed, nil
+	}
+	return "", ErrSettingNotFound
+}
+
+func (s *SettingService) setCachedSettingValue(key, value string) {
+	s.setCachedSettingValueIfFresh(key, value, s.settingValueGen.Load())
+}
+
+func (s *SettingService) setCachedSettingValueIfFresh(key, value string, expectedGen int64) {
+	if !isSettingValueCacheable(key) {
+		s.invalidateSettingValueCache(key)
+		return
+	}
+	if s.settingValueGen.Load() != expectedGen {
+		return
+	}
+	s.settingValueCacheMu.Lock()
+	if s.settingValueCache == nil {
+		s.settingValueCache = make(map[string]cachedSettingValue)
+	}
+	s.settingValueCache[key] = cachedSettingValue{
+		value:     value,
+		expiresAt: time.Now().Add(settingValueCacheTTL).UnixNano(),
+	}
+	s.settingValueCacheMu.Unlock()
+	s.settingValueSF.Forget(key)
+}
+
+func isSettingValueCacheable(key string) bool {
+	_, ok := settingValueCacheableKeys[key]
+	return ok
+}
+
+func (s *SettingService) refreshSettingValueCache(values map[string]string) {
+	for key, value := range values {
+		s.setCachedSettingValue(key, value)
+	}
+}
+
+func (s *SettingService) invalidateSettingValueCache(keys ...string) {
+	s.settingValueCacheMu.Lock()
+	if len(keys) == 0 {
+		s.settingValueCache = make(map[string]cachedSettingValue)
+	} else {
+		for _, key := range keys {
+			delete(s.settingValueCache, key)
+		}
+	}
+	s.settingValueCacheMu.Unlock()
+	if len(keys) == 0 {
+		s.settingValueSF = singleflight.Group{}
+		return
+	}
+	for _, key := range keys {
+		s.settingValueSF.Forget(key)
+	}
+}
+
+func (s *SettingService) setSettingValue(ctx context.Context, key, value string) error {
+	if err := s.settingRepo.Set(ctx, key, value); err != nil {
+		return err
+	}
+	s.settingValueGen.Add(1)
+	s.setCachedSettingValue(key, value)
+	return nil
+}
+
+func (s *SettingService) setMultipleSettingValues(ctx context.Context, values map[string]string) error {
+	if err := s.settingRepo.SetMultiple(ctx, values); err != nil {
+		return err
+	}
+	s.settingValueGen.Add(1)
+	s.refreshSettingValueCache(values)
+	return nil
+}
+
+func (s *SettingService) deleteSettingValue(ctx context.Context, key string) error {
+	if err := s.settingRepo.Delete(ctx, key); err != nil {
+		return err
+	}
+	s.settingValueGen.Add(1)
+	s.invalidateSettingValueCache(key)
+	return nil
 }
 
 // SetDefaultSubscriptionGroupReader injects an optional group reader for default subscription validation.
@@ -1559,7 +1721,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 		return err
 	}
 
-	err = s.settingRepo.SetMultiple(ctx, updates)
+	err = s.setMultipleSettingValues(ctx, updates)
 	if err == nil {
 		s.refreshCachedSettings(settings)
 	}
@@ -1603,7 +1765,7 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Contex
 		updates[key] = value
 	}
 
-	err = s.settingRepo.SetMultiple(ctx, updates)
+	err = s.setMultipleSettingValues(ctx, updates)
 	if err == nil {
 		s.refreshCachedSettings(settings)
 	}
@@ -2189,7 +2351,7 @@ func (s *SettingService) GetEmailOAuthProviderConfig(ctx context.Context, provid
 
 // IsRegistrationEnabled 检查是否开放注册
 func (s *SettingService) IsRegistrationEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEnabled)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyRegistrationEnabled)
 	if err != nil {
 		// 安全默认：如果设置不存在或查询出错，默认关闭注册
 		return false
@@ -2345,7 +2507,7 @@ func (s *SettingService) IsRewriteMessageCacheControlEnabled(ctx context.Context
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
 func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyEmailVerifyEnabled)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyEmailVerifyEnabled)
 	if err != nil {
 		return false
 	}
@@ -2354,7 +2516,7 @@ func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
 
 // GetRegistrationEmailSuffixWhitelist returns normalized registration email suffix whitelist.
 func (s *SettingService) GetRegistrationEmailSuffixWhitelist(ctx context.Context) []string {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEmailSuffixWhitelist)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyRegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return []string{}
 	}
@@ -2363,7 +2525,7 @@ func (s *SettingService) GetRegistrationEmailSuffixWhitelist(ctx context.Context
 
 // IsPromoCodeEnabled 检查是否启用优惠码功能
 func (s *SettingService) IsPromoCodeEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyPromoCodeEnabled)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyPromoCodeEnabled)
 	if err != nil {
 		return true // 默认启用
 	}
@@ -2372,7 +2534,7 @@ func (s *SettingService) IsPromoCodeEnabled(ctx context.Context) bool {
 
 // IsInvitationCodeEnabled 检查是否启用邀请码注册功能
 func (s *SettingService) IsInvitationCodeEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyInvitationCodeEnabled)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyInvitationCodeEnabled)
 	if err != nil {
 		return false // 默认关闭
 	}
@@ -2381,7 +2543,7 @@ func (s *SettingService) IsInvitationCodeEnabled(ctx context.Context) bool {
 
 // GetCustomMenuItemsRaw returns the raw JSON string of custom_menu_items setting.
 func (s *SettingService) GetCustomMenuItemsRaw(ctx context.Context) string {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyCustomMenuItems)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyCustomMenuItems)
 	if err != nil {
 		return "[]"
 	}
@@ -2390,7 +2552,7 @@ func (s *SettingService) GetCustomMenuItemsRaw(ctx context.Context) string {
 
 // IsAffiliateEnabled 检查是否启用邀请返利功能（总开关）
 func (s *SettingService) IsAffiliateEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateEnabled)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyAffiliateEnabled)
 	if err != nil {
 		return false // 默认关闭
 	}
@@ -2401,7 +2563,7 @@ func (s *SettingService) IsAffiliateEnabled(ctx context.Context) bool {
 // 解析失败、缺失或越界都回退到 AffiliateRebateRateDefault — 该比例从不抛错，
 // 调用方只关心一个可用的数值。
 func (s *SettingService) GetAffiliateRebateRatePercent(ctx context.Context) float64 {
-	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateRebateRate)
+	raw, err := s.getCachedSettingValue(ctx, SettingKeyAffiliateRebateRate)
 	if err != nil {
 		return AffiliateRebateRateDefault
 	}
@@ -2415,7 +2577,7 @@ func (s *SettingService) GetAffiliateRebateRatePercent(ctx context.Context) floa
 // GetAffiliateRebateFreezeHours 返回返利冻结期（小时）。
 // 返回 0 表示不冻结（向后兼容）。
 func (s *SettingService) GetAffiliateRebateFreezeHours(ctx context.Context) int {
-	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateRebateFreezeHours)
+	raw, err := s.getCachedSettingValue(ctx, SettingKeyAffiliateRebateFreezeHours)
 	if err != nil {
 		return AffiliateRebateFreezeHoursDefault
 	}
@@ -2432,7 +2594,7 @@ func (s *SettingService) GetAffiliateRebateFreezeHours(ctx context.Context) int 
 // GetAffiliateRebateDurationDays 返回返利有效期（天）。
 // 返回 0 表示永久有效。
 func (s *SettingService) GetAffiliateRebateDurationDays(ctx context.Context) int {
-	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateRebateDurationDays)
+	raw, err := s.getCachedSettingValue(ctx, SettingKeyAffiliateRebateDurationDays)
 	if err != nil {
 		return AffiliateRebateDurationDaysDefault
 	}
@@ -2449,7 +2611,7 @@ func (s *SettingService) GetAffiliateRebateDurationDays(ctx context.Context) int
 // GetAffiliateRebatePerInviteeCap 返回单人返利上限。
 // 返回 0 表示无上限。
 func (s *SettingService) GetAffiliateRebatePerInviteeCap(ctx context.Context) float64 {
-	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateRebatePerInviteeCap)
+	raw, err := s.getCachedSettingValue(ctx, SettingKeyAffiliateRebatePerInviteeCap)
 	if err != nil {
 		return AffiliateRebatePerInviteeCapDefault
 	}
@@ -2467,7 +2629,7 @@ func (s *SettingService) IsPasswordResetEnabled(ctx context.Context) bool {
 	if !s.IsEmailVerifyEnabled(ctx) {
 		return false
 	}
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyPasswordResetEnabled)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyPasswordResetEnabled)
 	if err != nil {
 		return false // 默认关闭
 	}
@@ -2476,7 +2638,7 @@ func (s *SettingService) IsPasswordResetEnabled(ctx context.Context) bool {
 
 // IsTotpEnabled 检查是否启用 TOTP 双因素认证功能
 func (s *SettingService) IsTotpEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyTotpEnabled)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyTotpEnabled)
 	if err != nil {
 		return false // 默认关闭
 	}
@@ -2491,7 +2653,7 @@ func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
 
 // GetSiteName 获取网站名称
 func (s *SettingService) GetSiteName(ctx context.Context) string {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeySiteName)
+	value, err := s.getCachedSettingValue(ctx, SettingKeySiteName)
 	if err != nil || value == "" {
 		return "Sub2API"
 	}
@@ -2500,7 +2662,7 @@ func (s *SettingService) GetSiteName(ctx context.Context) string {
 
 // GetDefaultConcurrency 获取默认并发量
 func (s *SettingService) GetDefaultConcurrency(ctx context.Context) int {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultConcurrency)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyDefaultConcurrency)
 	if err != nil {
 		return s.cfg.Default.UserConcurrency
 	}
@@ -2512,7 +2674,7 @@ func (s *SettingService) GetDefaultConcurrency(ctx context.Context) int {
 
 // GetDefaultBalance 获取默认余额
 func (s *SettingService) GetDefaultBalance(ctx context.Context) float64 {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultBalance)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyDefaultBalance)
 	if err != nil {
 		return s.cfg.Default.UserBalance
 	}
@@ -2524,7 +2686,7 @@ func (s *SettingService) GetDefaultBalance(ctx context.Context) float64 {
 
 // GetDefaultUserRPMLimit 获取新用户默认 RPM 限制（0 = 不限制）。未配置则返回 0。
 func (s *SettingService) GetDefaultUserRPMLimit(ctx context.Context) int {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultUserRPMLimit)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyDefaultUserRPMLimit)
 	if err != nil || value == "" {
 		return 0
 	}
@@ -2536,7 +2698,7 @@ func (s *SettingService) GetDefaultUserRPMLimit(ctx context.Context) int {
 
 // GetDefaultSubscriptions 获取新用户默认订阅配置列表。
 func (s *SettingService) GetDefaultSubscriptions(ctx context.Context) []DefaultSubscriptionSetting {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultSubscriptions)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyDefaultSubscriptions)
 	if err != nil {
 		return nil
 	}
@@ -2644,7 +2806,7 @@ func (s *SettingService) UpdateAuthSourceDefaultSettings(ctx context.Context, se
 		return nil
 	}
 
-	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
+	if err := s.setMultipleSettingValues(ctx, updates); err != nil {
 		return fmt.Errorf("update auth source default settings: %w", err)
 	}
 	return nil
@@ -2838,7 +3000,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAllowUserViewErrorRequests: "false",
 	}
 
-	return s.settingRepo.SetMultiple(ctx, defaults)
+	return s.setMultipleSettingValues(ctx, defaults)
 }
 
 // parseSettings 解析设置到结构体
@@ -3607,7 +3769,7 @@ func (s *SettingService) getStringOrDefault(settings map[string]string, key, def
 
 // IsTurnstileEnabled 检查是否启用 Turnstile 验证
 func (s *SettingService) IsTurnstileEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyTurnstileEnabled)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyTurnstileEnabled)
 	if err != nil {
 		return false
 	}
@@ -3625,7 +3787,7 @@ func (s *SettingService) GetTurnstileSecretKey(ctx context.Context) string {
 
 // IsIdentityPatchEnabled 检查是否启用身份补丁（Claude -> Gemini systemInstruction 注入）
 func (s *SettingService) IsIdentityPatchEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyEnableIdentityPatch)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyEnableIdentityPatch)
 	if err != nil {
 		// 默认开启，保持兼容
 		return true
@@ -3635,7 +3797,7 @@ func (s *SettingService) IsIdentityPatchEnabled(ctx context.Context) bool {
 
 // GetIdentityPatchPrompt 获取自定义身份补丁提示词（为空表示使用内置默认模板）
 func (s *SettingService) GetIdentityPatchPrompt(ctx context.Context) string {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyIdentityPatchPrompt)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyIdentityPatchPrompt)
 	if err != nil {
 		return ""
 	}
@@ -3653,7 +3815,7 @@ func (s *SettingService) GenerateAdminAPIKey(ctx context.Context) (string, error
 	key := AdminAPIKeyPrefix + hex.EncodeToString(bytes)
 
 	// 存储到 settings 表
-	if err := s.settingRepo.Set(ctx, SettingKeyAdminAPIKey, key); err != nil {
+	if err := s.setSettingValue(ctx, SettingKeyAdminAPIKey, key); err != nil {
 		return "", fmt.Errorf("save admin api key: %w", err)
 	}
 
@@ -3699,12 +3861,12 @@ func (s *SettingService) GetAdminAPIKey(ctx context.Context) (string, error) {
 
 // DeleteAdminAPIKey 删除管理员 API Key
 func (s *SettingService) DeleteAdminAPIKey(ctx context.Context) error {
-	return s.settingRepo.Delete(ctx, SettingKeyAdminAPIKey)
+	return s.deleteSettingValue(ctx, SettingKeyAdminAPIKey)
 }
 
 // IsModelFallbackEnabled 检查是否启用模型兜底机制
 func (s *SettingService) IsModelFallbackEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyEnableModelFallback)
+	value, err := s.getCachedSettingValue(ctx, SettingKeyEnableModelFallback)
 	if err != nil {
 		return false // Default: disabled
 	}
@@ -3733,7 +3895,7 @@ func (s *SettingService) GetFallbackModel(ctx context.Context, platform string) 
 		return ""
 	}
 
-	value, err := s.settingRepo.GetValue(ctx, key)
+	value, err := s.getCachedSettingValue(ctx, key)
 	if err != nil || value == "" {
 		return defaultModel
 	}
