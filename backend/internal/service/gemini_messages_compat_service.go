@@ -2204,6 +2204,472 @@ func parseChatToolArguments(raw string) any {
 	return map[string]any{"_arguments": raw}
 }
 
+func trimmedStringFromAny(raw any) string {
+	s, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(s)
+}
+
+func normalizeGeminiNativeRequestBody(body []byte) ([]byte, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("failed to parse request body: %w", err)
+	}
+
+	if contents, ok := payload["contents"].([]any); ok && len(contents) > 0 {
+		return body, nil
+	}
+	if _, ok := payload["messages"]; !ok {
+		return body, nil
+	}
+
+	return openAIChatPayloadToGeminiNative(payload)
+}
+
+func openAIChatPayloadToGeminiNative(req map[string]any) ([]byte, error) {
+	rawMessages, ok := req["messages"].([]any)
+	if !ok {
+		return nil, errors.New("OpenAI messages must be an array")
+	}
+	if len(rawMessages) == 0 {
+		return nil, errors.New("OpenAI messages must include at least one message")
+	}
+
+	out := make(map[string]any)
+	for _, key := range []string{"systemInstruction", "safetySettings", "cachedContent"} {
+		if value, exists := req[key]; exists {
+			out[key] = value
+		}
+	}
+
+	systemTexts := make([]string, 0)
+	if text := strings.TrimSpace(openAIChatContentText(req["instructions"])); text != "" {
+		systemTexts = append(systemTexts, text)
+	}
+
+	toolCallIDToName := make(map[string]string)
+	contents := make([]any, 0, len(rawMessages))
+	for _, rawMessage := range rawMessages {
+		message, ok := rawMessage.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		role := strings.ToLower(trimmedStringFromAny(message["role"]))
+		switch role {
+		case "system", "developer":
+			if text := strings.TrimSpace(openAIChatContentText(message["content"])); text != "" {
+				systemTexts = append(systemTexts, text)
+			}
+			continue
+		}
+
+		geminiRole := "user"
+		if role == "assistant" {
+			geminiRole = "model"
+		}
+
+		parts := openAIChatMessageToGeminiParts(message, role, toolCallIDToName)
+		if len(parts) == 0 {
+			parts = append(parts, map[string]any{"text": ""})
+		}
+		contents = append(contents, map[string]any{
+			"role":  geminiRole,
+			"parts": parts,
+		})
+	}
+	if len(contents) == 0 {
+		return nil, errors.New("OpenAI messages must include at least one non-system message")
+	}
+
+	if _, exists := out["systemInstruction"]; !exists && len(systemTexts) > 0 {
+		out["systemInstruction"] = map[string]any{
+			"parts": []any{map[string]any{"text": strings.Join(systemTexts, "\n\n")}},
+		}
+	}
+	out["contents"] = contents
+
+	if generationConfig := openAIChatGenerationConfigToGemini(req); len(generationConfig) > 0 {
+		out["generationConfig"] = generationConfig
+	}
+	if tools := openAIChatToolsToGeminiTools(req); len(tools) > 0 {
+		out["tools"] = tools
+	}
+	if toolConfig, exists := req["toolConfig"]; exists {
+		out["toolConfig"] = toolConfig
+	} else if toolConfig := openAIChatToolChoiceToGeminiToolConfig(req["tool_choice"]); len(toolConfig) > 0 {
+		out["toolConfig"] = toolConfig
+	}
+
+	return json.Marshal(out)
+}
+
+func openAIChatMessageToGeminiParts(message map[string]any, role string, toolCallIDToName map[string]string) []any {
+	if role == "tool" || role == "function" {
+		name := trimmedStringFromAny(message["name"])
+		if name == "" {
+			if id := trimmedStringFromAny(message["tool_call_id"]); id != "" {
+				name = toolCallIDToName[id]
+			}
+		}
+		if name == "" {
+			name = "tool"
+		}
+		return []any{map[string]any{
+			"functionResponse": map[string]any{
+				"name": name,
+				"response": map[string]any{
+					"content": openAIChatContentText(message["content"]),
+				},
+			},
+		}}
+	}
+
+	parts := openAIChatContentToGeminiParts(message["content"])
+	if role == "assistant" {
+		parts = append(parts, openAIChatFunctionCallsToGeminiParts(message, toolCallIDToName)...)
+	}
+	return parts
+}
+
+func openAIChatFunctionCallsToGeminiParts(message map[string]any, toolCallIDToName map[string]string) []any {
+	parts := make([]any, 0)
+	if rawCalls, ok := message["tool_calls"].([]any); ok {
+		for _, rawCall := range rawCalls {
+			call, ok := rawCall.(map[string]any)
+			if !ok {
+				continue
+			}
+			fn, _ := call["function"].(map[string]any)
+			name := trimmedStringFromAny(fn["name"])
+			if name == "" {
+				name = "tool"
+			}
+			if id := trimmedStringFromAny(call["id"]); id != "" {
+				toolCallIDToName[id] = name
+			}
+			parts = append(parts, map[string]any{
+				"functionCall": map[string]any{
+					"name": name,
+					"args": openAIChatToolArguments(fn["arguments"]),
+				},
+			})
+		}
+	}
+
+	if fn, ok := message["function_call"].(map[string]any); ok {
+		name := trimmedStringFromAny(fn["name"])
+		if name == "" {
+			name = "tool"
+		}
+		parts = append(parts, map[string]any{
+			"functionCall": map[string]any{
+				"name": name,
+				"args": openAIChatToolArguments(fn["arguments"]),
+			},
+		})
+	}
+	return parts
+}
+
+func openAIChatToolArguments(raw any) any {
+	switch v := raw.(type) {
+	case nil:
+		return map[string]any{}
+	case string:
+		return parseChatToolArguments(v)
+	default:
+		return v
+	}
+}
+
+func openAIChatContentToGeminiParts(content any) []any {
+	switch v := content.(type) {
+	case nil:
+		return nil
+	case string:
+		return []any{map[string]any{"text": v}}
+	case []any:
+		parts := make([]any, 0, len(v))
+		for _, rawPart := range v {
+			part, ok := rawPart.(map[string]any)
+			if !ok {
+				continue
+			}
+			partType := strings.ToLower(trimmedStringFromAny(part["type"]))
+			switch partType {
+			case "text", "input_text", "output_text":
+				if text, ok := part["text"].(string); ok {
+					parts = append(parts, map[string]any{"text": text})
+				}
+			case "image_url", "input_image", "image":
+				if imagePart := openAIChatImagePartToGemini(part); imagePart != nil {
+					parts = append(parts, imagePart)
+				}
+			default:
+				if text, ok := part["text"].(string); ok {
+					parts = append(parts, map[string]any{"text": text})
+				}
+			}
+		}
+		return parts
+	default:
+		if b, err := json.Marshal(v); err == nil {
+			return []any{map[string]any{"text": string(b)}}
+		}
+		return []any{map[string]any{"text": fmt.Sprint(v)}}
+	}
+}
+
+func openAIChatContentText(content any) string {
+	switch v := content.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case []any:
+		texts := make([]string, 0, len(v))
+		for _, rawPart := range v {
+			part, ok := rawPart.(map[string]any)
+			if !ok {
+				continue
+			}
+			if text, ok := part["text"].(string); ok && text != "" {
+				texts = append(texts, text)
+			}
+		}
+		return strings.Join(texts, "\n")
+	default:
+		if b, err := json.Marshal(v); err == nil {
+			return string(b)
+		}
+		return fmt.Sprint(v)
+	}
+}
+
+func openAIChatImagePartToGemini(part map[string]any) map[string]any {
+	if src, ok := part["source"].(map[string]any); ok {
+		srcType := strings.ToLower(trimmedStringFromAny(src["type"]))
+		mediaType := trimmedStringFromAny(src["media_type"])
+		data := trimmedStringFromAny(src["data"])
+		if srcType == "base64" && mediaType != "" && data != "" {
+			return map[string]any{"inlineData": map[string]any{"mimeType": mediaType, "data": data}}
+		}
+	}
+
+	imageURL := extractOpenAIChatImageURL(part)
+	if imageURL == "" {
+		return nil
+	}
+	if mimeType, data, ok := parseImageDataURL(imageURL); ok {
+		return map[string]any{"inlineData": map[string]any{"mimeType": mimeType, "data": data}}
+	}
+	return map[string]any{"fileData": map[string]any{"mimeType": guessImageMimeType(imageURL), "fileUri": imageURL}}
+}
+
+func extractOpenAIChatImageURL(part map[string]any) string {
+	for _, key := range []string{"image_url", "image", "url"} {
+		value, exists := part[key]
+		if !exists || value == nil {
+			continue
+		}
+		switch v := value.(type) {
+		case string:
+			if strings.TrimSpace(v) != "" {
+				return strings.TrimSpace(v)
+			}
+		case map[string]any:
+			if url, ok := v["url"].(string); ok && strings.TrimSpace(url) != "" {
+				return strings.TrimSpace(url)
+			}
+		}
+	}
+	return ""
+}
+
+func parseImageDataURL(raw string) (mimeType string, data string, ok bool) {
+	if !strings.HasPrefix(raw, "data:") {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(raw, "data:")
+	semi := strings.Index(rest, ";")
+	if semi < 0 {
+		return "", "", false
+	}
+	mimeType = strings.TrimSpace(rest[:semi])
+	rest = rest[semi+1:]
+	if !strings.HasPrefix(rest, "base64,") {
+		return "", "", false
+	}
+	data = strings.TrimSpace(strings.TrimPrefix(rest, "base64,"))
+	if mimeType == "" || data == "" {
+		return "", "", false
+	}
+	return mimeType, data, true
+}
+
+func guessImageMimeType(rawURL string) string {
+	lower := strings.ToLower(rawURL)
+	if idx := strings.IndexAny(lower, "?#"); idx >= 0 {
+		lower = lower[:idx]
+	}
+	switch {
+	case strings.HasSuffix(lower, ".png"):
+		return "image/png"
+	case strings.HasSuffix(lower, ".webp"):
+		return "image/webp"
+	case strings.HasSuffix(lower, ".gif"):
+		return "image/gif"
+	case strings.HasSuffix(lower, ".jpg"), strings.HasSuffix(lower, ".jpeg"):
+		return "image/jpeg"
+	default:
+		return "image/jpeg"
+	}
+}
+
+func openAIChatGenerationConfigToGemini(req map[string]any) map[string]any {
+	out := make(map[string]any)
+	if existing, ok := req["generationConfig"].(map[string]any); ok {
+		for key, value := range existing {
+			out[key] = value
+		}
+	}
+	if _, exists := out["temperature"]; !exists {
+		if v, ok := numericValueFromAny(req["temperature"]); ok {
+			out["temperature"] = v
+		}
+	}
+	if _, exists := out["topP"]; !exists {
+		if v, ok := numericValueFromAny(req["top_p"]); ok {
+			out["topP"] = v
+		}
+	}
+	if _, exists := out["maxOutputTokens"]; !exists {
+		if v, ok := asInt(req["max_completion_tokens"]); ok && v > 0 {
+			out["maxOutputTokens"] = v
+		} else if v, ok := asInt(req["max_tokens"]); ok && v > 0 {
+			out["maxOutputTokens"] = v
+		}
+	}
+	if _, exists := out["stopSequences"]; !exists {
+		if stopSeqs := openAIStopToGeminiStopSequences(req["stop"]); len(stopSeqs) > 0 {
+			out["stopSequences"] = stopSeqs
+		}
+	}
+	return out
+}
+
+func numericValueFromAny(v any) (float64, bool) {
+	ptr, ok := numericPointerFromAny(v)
+	if !ok || ptr == nil {
+		return 0, false
+	}
+	return *ptr, true
+}
+
+func openAIStopToGeminiStopSequences(raw any) []any {
+	switch v := raw.(type) {
+	case string:
+		if v == "" {
+			return nil
+		}
+		return []any{v}
+	case []any:
+		out := make([]any, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func openAIChatToolsToGeminiTools(req map[string]any) []any {
+	decls := make([]any, 0)
+	if tools, ok := req["tools"].([]any); ok {
+		for _, rawTool := range tools {
+			tool, ok := rawTool.(map[string]any)
+			if !ok {
+				continue
+			}
+			if strings.ToLower(trimmedStringFromAny(tool["type"])) != "function" {
+				continue
+			}
+			if decl := openAIChatFunctionToGeminiDeclaration(tool["function"]); decl != nil {
+				decls = append(decls, decl)
+			}
+		}
+	}
+	if functions, ok := req["functions"].([]any); ok {
+		for _, rawFunction := range functions {
+			if decl := openAIChatFunctionToGeminiDeclaration(rawFunction); decl != nil {
+				decls = append(decls, decl)
+			}
+		}
+	}
+	if len(decls) == 0 {
+		return nil
+	}
+	return []any{map[string]any{"functionDeclarations": decls}}
+}
+
+func openAIChatFunctionToGeminiDeclaration(raw any) map[string]any {
+	fn, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	name := trimmedStringFromAny(fn["name"])
+	if name == "" {
+		return nil
+	}
+	decl := map[string]any{"name": name}
+	if desc, ok := fn["description"].(string); ok && desc != "" {
+		decl["description"] = desc
+	}
+	if params, exists := fn["parameters"]; exists && params != nil {
+		decl["parameters"] = params
+	}
+	return decl
+}
+
+func openAIChatToolChoiceToGeminiToolConfig(raw any) map[string]any {
+	switch v := raw.(type) {
+	case string:
+		mode := ""
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "none":
+			mode = "NONE"
+		case "auto":
+			mode = "AUTO"
+		case "required":
+			mode = "ANY"
+		}
+		if mode == "" {
+			return nil
+		}
+		return map[string]any{"functionCallingConfig": map[string]any{"mode": mode}}
+	case map[string]any:
+		fn, _ := v["function"].(map[string]any)
+		name := trimmedStringFromAny(fn["name"])
+		if name == "" {
+			return nil
+		}
+		return map[string]any{
+			"functionCallingConfig": map[string]any{
+				"mode":                 "ANY",
+				"allowedFunctionNames": []string{name},
+			},
+		}
+	default:
+		return nil
+	}
+}
+
 func openAIFinishReasonToGemini(reason string) string {
 	switch strings.ToLower(strings.TrimSpace(reason)) {
 	case "length":
@@ -2509,6 +2975,12 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	}
 	if len(body) == 0 {
 		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Request body is empty")
+	}
+
+	if normalizedBody, err := normalizeGeminiNativeRequestBody(body); err != nil {
+		return nil, s.writeGoogleError(c, http.StatusBadRequest, err.Error())
+	} else {
+		body = normalizedBody
 	}
 
 	// 过滤掉 parts 为空的消息（Gemini API 不接受空 parts）

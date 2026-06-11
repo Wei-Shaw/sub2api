@@ -411,6 +411,104 @@ func TestGeminiForwardNative_CompatibleRelayStreamGenerateContentConvertsOpenAIS
 	require.Contains(t, out, `"usageMetadata"`)
 }
 
+func TestGeminiForwardNative_AcceptsOpenAIChatBodyOnV1BetaCompatibleRelay(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamBody := `data: {"id":"chatcmpl_native_stream","object":"chat.completion.chunk","model":"gemini-3.1-pro-preview","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}` + "\n\n" +
+		`data: {"id":"chatcmpl_native_stream","object":"chat.completion.chunk","model":"gemini-3.1-pro-preview","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\n" +
+		`data: {"id":"chatcmpl_native_stream","object":"chat.completion.chunk","model":"gemini-3.1-pro-preview","choices":[],"usage":{"prompt_tokens":6,"completion_tokens":1,"total_tokens":7}}` + "\n\n" +
+		"data: [DONE]\n\n"
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_openai_body_native_stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       108,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "sk-iacc",
+			"base_url":      "https://iacc.cc",
+			"upstream_type": GeminiUpstreamCompatibleRelay,
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-3.1-pro-preview","messages":[{"role":"user","content":"请输出一段大约300字的中文内容。"}],"stream":true,"max_tokens":1024}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent", bytes.NewReader(body))
+
+	result, err := svc.ForwardNative(context.Background(), c, account, "gemini-3.1-pro-preview", "streamGenerateContent", true, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, result.Stream)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://iacc.cc/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "gemini-3.1-pro-preview", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "user", gjson.GetBytes(upstream.lastBody, "messages.0.role").String())
+	require.Equal(t, "请输出一段大约300字的中文内容。", gjson.GetBytes(upstream.lastBody, "messages.0.content").String())
+	require.Equal(t, int64(1024), gjson.GetBytes(upstream.lastBody, "max_tokens").Int())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
+	require.Contains(t, rec.Body.String(), `"text":"ok"`)
+	require.Contains(t, rec.Body.String(), `"usageMetadata"`)
+}
+
+func TestGeminiForwardNative_AcceptsOpenAIChatBodyOnV1BetaNativeUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamBody := `data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1}}` + "\n\n" +
+		"data: [DONE]\n\n"
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_native_openai_body"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       109,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "sk-gemini",
+			"base_url": "https://generativelanguage.googleapis.com",
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-3.1-pro-preview","messages":[{"role":"user","content":"请输出一段大约300字的中文内容。"}],"stream":true,"temperature":0.7,"max_tokens":1024}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent", bytes.NewReader(body))
+
+	result, err := svc.ForwardNative(context.Background(), c, account, "gemini-3.1-pro-preview", "streamGenerateContent", true, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, result.Stream)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent?alt=sse", upstream.lastReq.URL.String())
+	require.Equal(t, "sk-gemini", upstream.lastReq.Header.Get("x-goog-api-key"))
+	require.Equal(t, "user", gjson.GetBytes(upstream.lastBody, "contents.0.role").String())
+	require.Equal(t, "请输出一段大约300字的中文内容。", gjson.GetBytes(upstream.lastBody, "contents.0.parts.0.text").String())
+	require.Equal(t, float64(0.7), gjson.GetBytes(upstream.lastBody, "generationConfig.temperature").Float())
+	require.Equal(t, int64(1024), gjson.GetBytes(upstream.lastBody, "generationConfig.maxOutputTokens").Int())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+	require.Contains(t, rec.Body.String(), `"text":"ok"`)
+}
+
 func TestGeminiForwardNative_CompatibleRelayCountTokensUsesLocalEstimate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
