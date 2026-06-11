@@ -519,6 +519,38 @@ func TestApplyCodexOAuthTransform_NormalizeCodexTools_PreservesResponsesFunction
 	require.Equal(t, "bash", first["name"])
 }
 
+func TestStripEncryptedTools(t *testing.T) {
+	reqBody := map[string]any{
+		"tools": []any{
+			map[string]any{
+				"type": "function",
+				"name": "functions.spawn_agent",
+			},
+			map[string]any{
+				"type": "function",
+				"function": map[string]any{
+					"name": "spawn_agent",
+				},
+			},
+			map[string]any{
+				"type": "function",
+				"name": "bash",
+			},
+		},
+	}
+
+	modified := stripEncryptedTools(reqBody)
+	require.True(t, modified)
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 1)
+
+	first, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "bash", first["name"])
+}
+
 func TestNormalizeOpenAIResponsesImageGenerationTools_RewritesLegacyFields(t *testing.T) {
 	reqBody := map[string]any{
 		"tools": []any{

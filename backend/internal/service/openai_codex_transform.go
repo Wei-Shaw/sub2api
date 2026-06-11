@@ -1232,6 +1232,54 @@ func codexInputItemRequiresName(typ string) bool {
 	}
 }
 
+func stripEncryptedTools(reqBody map[string]any) bool {
+	rawTools, ok := reqBody["tools"]
+	if !ok || rawTools == nil {
+		return false
+	}
+	tools, ok := rawTools.([]any)
+	if !ok {
+		return false
+	}
+
+	modified := false
+	validTools := make([]any, 0, len(tools))
+
+	for _, tool := range tools {
+		toolMap, ok := tool.(map[string]any)
+		if !ok {
+			validTools = append(validTools, tool)
+			continue
+		}
+
+		toolName := ""
+		if name, ok := toolMap["name"].(string); ok {
+			toolName = strings.TrimSpace(name)
+		}
+		if toolName == "" {
+			if functionValue, ok := toolMap["function"]; ok && functionValue != nil {
+				if function, ok := functionValue.(map[string]any); ok && function != nil {
+					if name, ok := function["name"].(string); ok {
+						toolName = strings.TrimSpace(name)
+					}
+				}
+			}
+		}
+
+		if toolName == "spawn_agent" || toolName == "functions.spawn_agent" {
+			modified = true
+			continue
+		}
+
+		validTools = append(validTools, toolMap)
+	}
+
+	if modified {
+		reqBody["tools"] = validTools
+	}
+	return modified
+}
+
 func normalizeCodexTools(reqBody map[string]any) bool {
 	rawTools, ok := reqBody["tools"]
 	if !ok || rawTools == nil {
