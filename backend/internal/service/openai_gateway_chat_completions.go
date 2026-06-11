@@ -450,7 +450,13 @@ REDACTED
 			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", clientMsg)
 			return nil, fmt.Errorf("openai cyber_policy: %s", msg)
 	REDACTED
-		return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, openAICompatFailedResponseMessage(finalResponse))
+		message := openAICompatFailedResponseMessage(finalResponse)
+		if openAIStreamFailedEventShouldFailover(payload, message) {
+			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
+	REDACTED
+		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
+		writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", message)
+		return nil, fmt.Errorf("upstream response failed: %s", message)
 REDACTED
 
 	// When the terminal event has an empty output array, reconstruct from
@@ -524,6 +530,7 @@ REDACTED
 	pendingSSE := make([]string, 0, 4)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var streamFailoverErr *UpstreamFailoverError
+	var streamNonFailoverErr error
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -618,10 +625,34 @@ REDACTED
 					clientDisconnected = true
 			REDACTED
 				return true
-		REDACTED else {
+		REDACTED
+			if openAIStreamFailedEventShouldFailover(payloadBytes, message) {
 				streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message)
 				return true
 		REDACTED
+			message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
+			errorPayload, _ := json.Marshal(gin.H{
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": message,
+			REDACTED,
+		REDACTED)
+			if c != nil && c.Writer != nil && !c.Writer.Written() {
+				writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", message)
+				clientOutputStarted = true
+		REDACTED else if c != nil && c.Writer != nil && !clientDisconnected {
+				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err != nil {
+					clientDisconnected = true
+					logger.L().Info("openai chat_completions stream: client disconnected while writing upstream error",
+						zap.String("request_id", requestID),
+					)
+			REDACTED
+		REDACTED
+			if !clientDisconnected {
+				c.Writer.Flush()
+		REDACTED
+			streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", message)
+			return true
 	REDACTED
 
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
@@ -678,6 +709,9 @@ REDACTED
 				return nil, streamFailoverErr
 		REDACTED
 			return resultWithUsage(), streamFailoverErr
+	REDACTED
+		if streamNonFailoverErr != nil {
+			return resultWithUsage(), streamNonFailoverErr
 	REDACTED
 		if finalChunks := apicompat.FinalizeResponsesChatStream(state); len(finalChunks) > 0 && !clientDisconnected {
 			for _, chunk := range finalChunks {
