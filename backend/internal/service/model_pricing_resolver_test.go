@@ -97,6 +97,28 @@ func TestGetIntervalPricing_MatchesInterval(t *testing.T) {
 	require.InDelta(t, 3e-6, result2.InputPricePerToken, 1e-12)
 }
 
+func TestGetIntervalPricing_PreservesBaseImageInputPrice(t *testing.T) {
+	bs := newTestBillingServiceForResolver()
+	r := NewModelPricingResolver(&ChannelService{}, bs)
+
+	resolved := &ResolvedPricing{
+		Mode: BillingModeToken,
+		BasePricing: &ModelPricing{
+			InputPricePerToken:      5e-6,
+			ImageInputPricePerToken: 8e-6,
+			OutputPricePerToken:     10e-6,
+		},
+		Intervals: []PricingInterval{
+			{MinTokens: 0, MaxTokens: nil, InputPrice: testPtrFloat64(6e-6), OutputPrice: testPtrFloat64(12e-6)},
+		},
+	}
+
+	result := r.GetIntervalPricing(resolved, 277)
+	require.NotNil(t, result)
+	require.InDelta(t, 6e-6, result.InputPricePerToken, 1e-12)
+	require.InDelta(t, 8e-6, result.ImageInputPricePerToken, 1e-12)
+}
+
 func TestGetIntervalPricing_NoMatch_FallsBackToBase(t *testing.T) {
 	bs := newTestBillingServiceForResolver()
 	r := NewModelPricingResolver(&ChannelService{}, bs)

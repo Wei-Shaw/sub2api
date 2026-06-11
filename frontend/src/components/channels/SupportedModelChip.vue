@@ -73,6 +73,13 @@
                 :scale="perMillionScale"
               />
               <PricingRow
+                v-if="model.pricing.image_input_price != null && model.pricing.image_input_price > 0"
+                :label="t(prefixKey('imageInputPrice'))"
+                :value="model.pricing.image_input_price"
+                :unit="t(prefixKey('unitPerMillion'))"
+                :scale="perMillionScale"
+              />
+              <PricingRow
                 :label="t(prefixKey('outputPrice'))"
                 :value="model.pricing.output_price"
                 :unit="t(prefixKey('unitPerMillion'))"

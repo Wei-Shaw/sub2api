@@ -65,6 +65,7 @@ type userAvailableGroup struct {
 type userSupportedModelPricing struct {
 	BillingMode      string                   `json:"billing_mode"`
 	InputPrice       *float64                 `json:"input_price"`
+	ImageInputPrice  *float64                 `json:"image_input_price"`
 	OutputPrice      *float64                 `json:"output_price"`
 	CacheWritePrice  *float64                 `json:"cache_write_price"`
 	CacheReadPrice   *float64                 `json:"cache_read_price"`
@@ -273,6 +274,7 @@ func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
 	return &userSupportedModelPricing{
 		BillingMode:      billingMode,
 		InputPrice:       p.InputPrice,
+		ImageInputPrice:  p.ImageInputPrice,
 		OutputPrice:      p.OutputPrice,
 		CacheWritePrice:  p.CacheWritePrice,
 		CacheReadPrice:   p.CacheReadPrice,

@@ -25,6 +25,7 @@ type Usage struct {
 	OutputTokens             int
 	CacheCreationInputTokens int
 	CacheReadInputTokens     int
+	ImageInputTokens         int
 	ImageOutputTokens        int
 }
 
@@ -768,6 +769,10 @@ func parseUsageAndAccumulate(
 	if !cachedResult.Exists() {
 		cachedResult = gjson.GetBytes(message, "response.usage.prompt_tokens_details.cached_tokens")
 	}
+	imageInputTokens := usageResult.Get("input_tokens_details.image_tokens").Int()
+	if imageInputTokens == 0 {
+		imageInputTokens = usageResult.Get("prompt_tokens_details.image_tokens").Int()
+	}
 	imageTokens := usageResult.Get("output_tokens_details.image_tokens").Int()
 	if imageTokens == 0 {
 		imageTokens = usageResult.Get("completion_tokens_details.image_tokens").Int()
@@ -789,6 +794,7 @@ func parseUsageAndAccumulate(
 		OutputTokens:             outputTokens,
 		CacheCreationInputTokens: int(usageResult.Get("cache_creation_input_tokens").Int()),
 		CacheReadInputTokens:     cachedTokens,
+		ImageInputTokens:         int(imageInputTokens),
 		ImageOutputTokens:        int(imageTokens),
 	}
 
@@ -796,6 +802,7 @@ func parseUsageAndAccumulate(
 	state.usage.OutputTokens += parsedUsage.OutputTokens
 	state.usage.CacheCreationInputTokens += parsedUsage.CacheCreationInputTokens
 	state.usage.CacheReadInputTokens += parsedUsage.CacheReadInputTokens
+	state.usage.ImageInputTokens += parsedUsage.ImageInputTokens
 	state.usage.ImageOutputTokens += parsedUsage.ImageOutputTokens
 	return parsedUsage
 }

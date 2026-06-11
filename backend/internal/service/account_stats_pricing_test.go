@@ -246,6 +246,23 @@ func TestCalculateStatsCost_TokenBilling_WithImageOutput(t *testing.T) {
 	require.InDelta(t, 0.28, *result, 1e-12)
 }
 
+func TestCalculateStatsCost_TokenBilling_WithImageInput(t *testing.T) {
+	pricing := &ChannelModelPricing{
+		BillingMode:     BillingModeToken,
+		InputPrice:      testPtrFloat64(0.001),
+		ImageInputPrice: testPtrFloat64(0.008),
+	}
+	tokens := UsageTokens{
+		InputTokens:      100,
+		ImageInputTokens: 40,
+	}
+	result := calculateStatsCost(pricing, tokens, 1)
+	require.NotNil(t, result)
+	// InputTokens includes ImageInputTokens, so text input is 100 - 40 = 60.
+	// 60*0.001 + 40*0.008 = 0.38
+	require.InDelta(t, 0.38, *result, 1e-12)
+}
+
 func TestCalculateStatsCost_TokenBilling_PartialPricesNil(t *testing.T) {
 	pricing := &ChannelModelPricing{
 		BillingMode: BillingModeToken,
@@ -526,6 +543,26 @@ func TestTryModelFilePricing_ImageOutputTokensAreNotDoubleCountedAsTextOutput(t 
 	result := tryModelFilePricing(bs, "claude-sonnet-4", tokens)
 	require.NotNil(t, result)
 	require.InDelta(t, 0.058915, *result, 1e-12)
+}
+
+func TestTryModelFilePricing_ImageInputTokensUseImageInputPrice(t *testing.T) {
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": {
+			InputPricePerToken:       5e-6,
+			ImageInputPricePerToken:  8e-6,
+			OutputPricePerToken:      10e-6,
+			ImageOutputPricePerToken: 30e-6,
+		},
+	})
+	tokens := UsageTokens{
+		InputTokens:       277,
+		ImageInputTokens:  256,
+		OutputTokens:      196,
+		ImageOutputTokens: 196,
+	}
+	result := tryModelFilePricing(bs, "claude-sonnet-4", tokens)
+	require.NotNil(t, result)
+	require.InDelta(t, 0.008033, *result, 1e-12)
 }
 
 func TestTryModelFilePricing_WithCacheTokens(t *testing.T) {

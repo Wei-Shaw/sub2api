@@ -61,6 +61,7 @@ type channelModelPricingRequest struct {
 	Models           []string                 `json:"models" binding:"required,min=1,max=100"`
 	BillingMode      string                   `json:"billing_mode" binding:"omitempty,oneof=token per_request image"`
 	InputPrice       *float64                 `json:"input_price" binding:"omitempty,min=0"`
+	ImageInputPrice  *float64                 `json:"image_input_price" binding:"omitempty,min=0"`
 	OutputPrice      *float64                 `json:"output_price" binding:"omitempty,min=0"`
 	CacheWritePrice  *float64                 `json:"cache_write_price" binding:"omitempty,min=0"`
 	CacheReadPrice   *float64                 `json:"cache_read_price" binding:"omitempty,min=0"`
@@ -112,6 +113,7 @@ type channelModelPricingResponse struct {
 	Models           []string                  `json:"models"`
 	BillingMode      string                    `json:"billing_mode"`
 	InputPrice       *float64                  `json:"input_price"`
+	ImageInputPrice  *float64                  `json:"image_input_price"`
 	OutputPrice      *float64                  `json:"output_price"`
 	CacheWritePrice  *float64                  `json:"cache_write_price"`
 	CacheReadPrice   *float64                  `json:"cache_read_price"`
@@ -219,6 +221,7 @@ func pricingToResponse(p *service.ChannelModelPricing) channelModelPricingRespon
 		Models:           models,
 		BillingMode:      billingMode,
 		InputPrice:       p.InputPrice,
+		ImageInputPrice:  p.ImageInputPrice,
 		OutputPrice:      p.OutputPrice,
 		CacheWritePrice:  p.CacheWritePrice,
 		CacheReadPrice:   p.CacheReadPrice,
@@ -270,6 +273,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 			Models:           r.Models,
 			BillingMode:      billingMode,
 			InputPrice:       r.InputPrice,
+			ImageInputPrice:  r.ImageInputPrice,
 			OutputPrice:      r.OutputPrice,
 			CacheWritePrice:  r.CacheWritePrice,
 			CacheReadPrice:   r.CacheReadPrice,
@@ -495,6 +499,7 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 	response.Success(c, gin.H{
 		"found":              true,
 		"input_price":        pricing.InputPricePerToken,
+		"image_input_price":  pricing.ImageInputPricePerToken,
 		"output_price":       pricing.OutputPricePerToken,
 		"cache_write_price":  pricing.CacheCreationPricePerToken,
 		"cache_read_price":   pricing.CacheReadPricePerToken,

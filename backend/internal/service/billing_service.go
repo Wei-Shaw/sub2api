@@ -91,6 +91,7 @@ type BillingCache interface {
 type ModelPricing struct {
 	InputPricePerToken             float64 // 每token输入价格 (USD)
 	InputPricePerTokenPriority     float64 // priority service tier 下每token输入价格 (USD)
+	ImageInputPricePerToken        float64 // 图片输入 token 价格 (USD)
 	OutputPricePerToken            float64 // 每token输出价格 (USD)
 	OutputPricePerTokenPriority    float64 // priority service tier 下每token输出价格 (USD)
 	CacheCreationPricePerToken     float64 // 缓存创建每token价格 (USD)
@@ -142,12 +143,14 @@ type UsageTokens struct {
 	CacheReadTokens       int
 	CacheCreation5mTokens int
 	CacheCreation1hTokens int
+	ImageInputTokens      int
 	ImageOutputTokens     int
 }
 
 // CostBreakdown 费用明细
 type CostBreakdown struct {
 	InputCost         float64
+	ImageInputCost    float64
 	OutputCost        float64
 	ImageOutputCost   float64
 	CacheCreationCost float64
@@ -383,6 +386,7 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 			return s.applyModelSpecificPricingPolicy(model, &ModelPricing{
 				InputPricePerToken:             litellmPricing.InputCostPerToken,
 				InputPricePerTokenPriority:     litellmPricing.InputCostPerTokenPriority,
+				ImageInputPricePerToken:        litellmPricing.InputCostPerImageToken,
 				OutputPricePerToken:            litellmPricing.OutputCostPerToken,
 				OutputPricePerTokenPriority:    litellmPricing.OutputCostPerTokenPriority,
 				CacheCreationPricePerToken:     litellmPricing.CacheCreationInputTokenCost,
@@ -422,6 +426,9 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 	if channelPricing.InputPrice != nil {
 		pricing.InputPricePerToken = *channelPricing.InputPrice
 		pricing.InputPricePerTokenPriority = *channelPricing.InputPrice
+	}
+	if channelPricing.ImageInputPrice != nil {
+		pricing.ImageInputPricePerToken = *channelPricing.ImageInputPrice
 	}
 	if channelPricing.OutputPrice != nil {
 		pricing.OutputPricePerToken = *channelPricing.OutputPrice
@@ -562,7 +569,18 @@ func (s *BillingService) computeTokenBreakdown(
 	}
 
 	bd := &CostBreakdown{}
-	bd.InputCost = float64(tokens.InputTokens) * inputPrice
+	textInputTokens := tokens.InputTokens - tokens.ImageInputTokens
+	if textInputTokens < 0 {
+		textInputTokens = 0
+	}
+	bd.InputCost = float64(textInputTokens) * inputPrice
+	if tokens.ImageInputTokens > 0 {
+		imageInputPrice := pricing.ImageInputPricePerToken
+		if imageInputPrice == 0 {
+			imageInputPrice = inputPrice
+		}
+		bd.ImageInputCost = float64(tokens.ImageInputTokens) * imageInputPrice
+	}
 
 	// 分离图片输出 token 与文本输出 token
 	textOutputTokens := tokens.OutputTokens - tokens.ImageOutputTokens
@@ -587,13 +605,14 @@ func (s *BillingService) computeTokenBreakdown(
 
 	if tierMultiplier != 1.0 {
 		bd.InputCost *= tierMultiplier
+		bd.ImageInputCost *= tierMultiplier
 		bd.OutputCost *= tierMultiplier
 		bd.ImageOutputCost *= tierMultiplier
 		bd.CacheCreationCost *= tierMultiplier
 		bd.CacheReadCost *= tierMultiplier
 	}
 
-	bd.TotalCost = bd.InputCost + bd.OutputCost + bd.ImageOutputCost +
+	bd.TotalCost = bd.InputCost + bd.ImageInputCost + bd.OutputCost + bd.ImageOutputCost +
 		bd.CacheCreationCost + bd.CacheReadCost
 	bd.ActualCost = bd.TotalCost * rateMultiplier
 
@@ -767,6 +786,7 @@ func (s *BillingService) CalculateCostWithLongContext(model string, tokens Usage
 		CacheReadTokens:       inRangeCacheTokens,
 		CacheCreation5mTokens: tokens.CacheCreation5mTokens,
 		CacheCreation1hTokens: tokens.CacheCreation1hTokens,
+		ImageInputTokens:      tokens.ImageInputTokens,
 		ImageOutputTokens:     tokens.ImageOutputTokens,
 	}
 	inRangeCost, err := s.CalculateCost(model, inRangeTokens, rateMultiplier)
@@ -787,6 +807,7 @@ func (s *BillingService) CalculateCostWithLongContext(model string, tokens Usage
 	// 合并成本
 	return &CostBreakdown{
 		InputCost:         inRangeCost.InputCost + outRangeCost.InputCost,
+		ImageInputCost:    inRangeCost.ImageInputCost,
 		OutputCost:        inRangeCost.OutputCost,
 		ImageOutputCost:   inRangeCost.ImageOutputCost,
 		CacheCreationCost: inRangeCost.CacheCreationCost,

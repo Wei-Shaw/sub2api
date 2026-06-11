@@ -151,6 +151,9 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 		if resolved.BasePricing == nil {
 			resolved.BasePricing = &ModelPricing{}
 		}
+		if chPricing.ImageInputPrice != nil {
+			resolved.BasePricing.ImageInputPricePerToken = *chPricing.ImageInputPrice
+		}
 		if chPricing.ImageOutputPrice != nil {
 			resolved.BasePricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice
 		} else {
@@ -168,6 +171,9 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 	if chPricing.InputPrice != nil {
 		resolved.BasePricing.InputPricePerToken = *chPricing.InputPrice
 		resolved.BasePricing.InputPricePerTokenPriority = *chPricing.InputPrice
+	}
+	if chPricing.ImageInputPrice != nil {
+		resolved.BasePricing.ImageInputPricePerToken = *chPricing.ImageInputPrice
 	}
 	if chPricing.OutputPrice != nil {
 		resolved.BasePricing.OutputPricePerToken = *chPricing.OutputPrice
@@ -225,17 +231,23 @@ func (r *ModelPricingResolver) GetIntervalPricing(resolved *ResolvedPricing, tot
 		return resolved.BasePricing
 	}
 
-	return intervalToModelPricing(iv, resolved.SupportsCacheBreakdown, resolved.channelPricing)
+	return intervalToModelPricing(iv, resolved.BasePricing, resolved.SupportsCacheBreakdown, resolved.channelPricing)
 }
 
 // intervalToModelPricing 将区间定价转换为 ModelPricing
-func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool, chPricing *ChannelModelPricing) *ModelPricing {
+func intervalToModelPricing(iv *PricingInterval, basePricing *ModelPricing, supportsCacheBreakdown bool, chPricing *ChannelModelPricing) *ModelPricing {
 	pricing := &ModelPricing{
 		SupportsCacheBreakdown: supportsCacheBreakdown,
+	}
+	if basePricing != nil {
+		pricing.ImageInputPricePerToken = basePricing.ImageInputPricePerToken
 	}
 	if iv.InputPrice != nil {
 		pricing.InputPricePerToken = *iv.InputPrice
 		pricing.InputPricePerTokenPriority = *iv.InputPrice
+	}
+	if chPricing != nil && chPricing.ImageInputPrice != nil {
+		pricing.ImageInputPricePerToken = *chPricing.ImageInputPrice
 	}
 	if iv.OutputPrice != nil {
 		pricing.OutputPricePerToken = *iv.OutputPrice

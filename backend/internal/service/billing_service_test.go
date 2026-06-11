@@ -709,6 +709,7 @@ func TestBillingServiceGetModelPricing_UsesDynamicPriorityFields(t *testing.T) {
 			"gpt-5.4": {
 				InputCostPerToken:               2.5e-6,
 				InputCostPerTokenPriority:       5e-6,
+				InputCostPerImageToken:          8e-6,
 				OutputCostPerToken:              15e-6,
 				OutputCostPerTokenPriority:      30e-6,
 				CacheCreationInputTokenCost:     2.5e-6,
@@ -726,6 +727,7 @@ func TestBillingServiceGetModelPricing_UsesDynamicPriorityFields(t *testing.T) {
 	require.NoError(t, err)
 	require.InDelta(t, 2.5e-6, pricing.InputPricePerToken, 1e-12)
 	require.InDelta(t, 5e-6, pricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 8e-6, pricing.ImageInputPricePerToken, 1e-12)
 	require.InDelta(t, 15e-6, pricing.OutputPricePerToken, 1e-12)
 	require.InDelta(t, 30e-6, pricing.OutputPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 0.25e-6, pricing.CacheReadPricePerToken, 1e-12)
@@ -1008,4 +1010,28 @@ func TestComputeTokenBreakdown_NonExplicitZeroImagePrice_FallsBackToOutput(t *te
 	require.InDelta(t, 50*15e-6, bd.ImageOutputCost, 1e-12)
 	// textOutputTokens = 200 - 50 = 150
 	require.InDelta(t, 150*15e-6, bd.OutputCost, 1e-12)
+}
+
+func TestComputeTokenBreakdown_SplitsImageInputTokens(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing := &ModelPricing{
+		InputPricePerToken:       5e-6,
+		ImageInputPricePerToken:  8e-6,
+		OutputPricePerToken:      10e-6,
+		ImageOutputPricePerToken: 30e-6,
+	}
+	tokens := UsageTokens{
+		InputTokens:       277,
+		ImageInputTokens:  256,
+		OutputTokens:      196,
+		ImageOutputTokens: 196,
+	}
+	bd := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
+
+	require.InDelta(t, 21*5e-6, bd.InputCost, 1e-12)
+	require.InDelta(t, 256*8e-6, bd.ImageInputCost, 1e-12)
+	require.InDelta(t, 0.0, bd.OutputCost, 1e-12)
+	require.InDelta(t, 196*30e-6, bd.ImageOutputCost, 1e-12)
+	require.InDelta(t, 0.008033, bd.TotalCost, 1e-12)
 }
