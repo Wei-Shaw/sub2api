@@ -35,6 +35,10 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
 
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIContextWindowError("", responseBody) {
+		return false
+	}
+
 	if isOpenAIImageRateLimitError(statusCode, responseBody) {
 		if s != nil && s.rateLimitService != nil {
 			_ = s.rateLimitService.HandleOpenAIImageRateLimit(stateCtx, account, statusCode, headers, responseBody)
