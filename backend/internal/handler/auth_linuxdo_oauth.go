@@ -110,6 +110,7 @@ REDACTED
 	setCookie(c, linuxDoOAuthRedirectCookie, encodeCookieValue(redirectTo), linuxDoOAuthCookieMaxAgeSec, secureCookie)
 	intent := normalizeOAuthIntent(c.Query("intent"))
 	setCookie(c, linuxDoOAuthIntentCookieName, encodeCookieValue(intent), linuxDoOAuthCookieMaxAgeSec, secureCookie)
+	captureOAuthPromoCode(c, secureCookie)
 	setOAuthPendingBrowserCookie(c, browserSessionKey, secureCookie)
 	clearOAuthPendingSessionCookie(c, secureCookie)
 	if intent == oauthIntentBindCurrentUser {
@@ -182,6 +183,7 @@ REDACTED
 		clearCookie(c, linuxDoOAuthRedirectCookie, secureCookie)
 		clearCookie(c, linuxDoOAuthIntentCookieName, secureCookie)
 		clearCookie(c, linuxDoOAuthBindUserCookieName, secureCookie)
+		clearOAuthPromoCodeCookie(c, secureCookie)
 REDACTED()
 
 	expectedState, err := readCookieDecoded(c, linuxDoOAuthStateCookieName)
@@ -329,7 +331,15 @@ REDACTED
 			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 			return
 	REDACTED
-		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, "", "", "linuxdo")
+		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPairAndPromoCode(
+			c.Request.Context(),
+			email,
+			username,
+			"",
+			"",
+			readOAuthPromoCode(c),
+			"linuxdo",
+		)
 		if err == nil {
 			if err := applyPendingOAuthBinding(
 				c.Request.Context(),
@@ -561,7 +571,15 @@ REDACTED)
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode, "linuxdo")
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPairAndPromoCode(
+		c.Request.Context(),
+		email,
+		username,
+		req.InvitationCode,
+		req.AffCode,
+		pendingOAuthPromoCode(session),
+		"linuxdo",
+	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

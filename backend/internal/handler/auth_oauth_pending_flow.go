@@ -32,10 +32,12 @@ const (
 	oauthPendingBrowserCookieName = "oauth_pending_browser_session"
 	oauthPendingSessionCookiePath = "/api/v1/auth/oauth"
 	oauthPendingSessionCookieName = "oauth_pending_session"
+	oauthPromoCodeCookieName      = "oauth_promo_code"
 	oauthPendingCookieMaxAgeSec   = 10 * 60
 	oauthPendingChoiceStep        = "choose_account_action_required"
 
 	oauthCompletionResponseKey = "completion_response"
+	oauthPromoCodeStateKey     = "promo_code"
 )
 
 var pendingOAuthCreateAccountPreCommitHook func(context.Context, *dbent.PendingAuthSession) error
@@ -161,6 +163,53 @@ func readOAuthPendingSessionCookie(c *gin.Context) (string, error) {
 	return readCookieDecoded(c, oauthPendingSessionCookieName)
 REDACTED
 
+func captureOAuthPromoCode(c *gin.Context, secure bool) {
+	promoCode := strings.TrimSpace(c.Query("promo_code"))
+	if promoCode == "" {
+		clearOAuthPromoCodeCookie(c, secure)
+		return
+REDACTED
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     oauthPromoCodeCookieName,
+		Value:    encodeCookieValue(promoCode),
+		Path:     oauthPendingBrowserCookiePath,
+		MaxAge:   oauthPendingCookieMaxAgeSec,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+REDACTED)
+REDACTED
+
+func clearOAuthPromoCodeCookie(c *gin.Context, secure bool) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     oauthPromoCodeCookieName,
+		Value:    "",
+		Path:     oauthPendingBrowserCookiePath,
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+REDACTED)
+REDACTED
+
+func readOAuthPromoCode(c *gin.Context) string {
+	if c == nil {
+		return ""
+REDACTED
+	promoCode, err := readCookieDecoded(c, oauthPromoCodeCookieName)
+	if err != nil {
+		return ""
+REDACTED
+	return strings.TrimSpace(promoCode)
+REDACTED
+
+func pendingOAuthPromoCode(session *dbent.PendingAuthSession) string {
+	if session == nil {
+		return ""
+REDACTED
+	return pendingSessionStringValue(session.LocalFlowState, oauthPromoCodeStateKey)
+REDACTED
+
 func redirectToFrontendCallback(c *gin.Context, frontendCallback string) {
 	u, err := url.Parse(frontendCallback)
 	if err != nil {
@@ -183,6 +232,13 @@ func (h *AuthHandler) createOAuthPendingSession(c *gin.Context, payload oauthPen
 		return err
 REDACTED
 
+	localFlowState := map[string]any{
+		oauthCompletionResponseKey: payload.CompletionResponse,
+REDACTED
+	if promoCode := readOAuthPromoCode(c); promoCode != "" {
+		localFlowState[oauthPromoCodeStateKey] = promoCode
+REDACTED
+
 	session, err := svc.CreatePendingSession(c.Request.Context(), service.CreatePendingAuthSessionInput{
 		Intent:                 strings.TrimSpace(payload.Intent),
 		Identity:               payload.Identity,
@@ -191,9 +247,7 @@ REDACTED
 		RedirectTo:             strings.TrimSpace(payload.RedirectTo),
 		BrowserSessionKey:      strings.TrimSpace(payload.BrowserSessionKey),
 		UpstreamIdentityClaims: payload.UpstreamIdentityClaims,
-		LocalFlowState: map[string]any{
-			oauthCompletionResponseKey: payload.CompletionResponse,
-	REDACTED,
+		LocalFlowState:         localFlowState,
 REDACTED)
 	if err != nil {
 		slog.Error("pending auth session create failed",
@@ -1820,6 +1874,7 @@ REDACTED
 		return
 REDACTED
 
+	h.authService.ApplyOAuthSignupPromoCode(c.Request.Context(), user.ID, pendingOAuthPromoCode(session))
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	// createPendingOAuthAccount = 注册新账户，需要把钉钉昵称同步到 users.username 作为初始值
 	h.maybeSyncDingTalkAfterRegistration(c.Request.Context(), session, user.ID)
