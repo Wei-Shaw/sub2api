@@ -65,8 +65,9 @@ func tryModelFilePricing(billingService *BillingService, model string, tokens Us
 	if err != nil || pricing == nil {
 		return nil
 	}
+	textOutputTokens := accountStatsTextOutputTokens(tokens)
 	cost := float64(tokens.InputTokens)*pricing.InputPricePerToken +
-		float64(tokens.OutputTokens)*pricing.OutputPricePerToken +
+		float64(textOutputTokens)*pricing.OutputPricePerToken +
 		float64(tokens.CacheCreationTokens)*pricing.CacheCreationPricePerToken +
 		float64(tokens.CacheReadTokens)*pricing.CacheReadPricePerToken +
 		float64(tokens.ImageOutputTokens)*pricing.ImageOutputPricePerToken
@@ -203,8 +204,9 @@ func calculateTokenStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) *
 		}
 		return *ptr
 	}
+	textOutputTokens := accountStatsTextOutputTokens(tokens)
 	cost := float64(tokens.InputTokens)*deref(p.InputPrice) +
-		float64(tokens.OutputTokens)*deref(p.OutputPrice) +
+		float64(textOutputTokens)*deref(p.OutputPrice) +
 		float64(tokens.CacheCreationTokens)*deref(p.CacheWritePrice) +
 		float64(tokens.CacheReadTokens)*deref(p.CacheReadPrice) +
 		float64(tokens.ImageOutputTokens)*deref(p.ImageOutputPrice)
@@ -212,6 +214,14 @@ func calculateTokenStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) *
 		return nil
 	}
 	return &cost
+}
+
+func accountStatsTextOutputTokens(tokens UsageTokens) int {
+	textOutputTokens := tokens.OutputTokens - tokens.ImageOutputTokens
+	if textOutputTokens < 0 {
+		return 0
+	}
+	return textOutputTokens
 }
 
 // applyAccountStatsCost resolves the account stats cost for a usage log entry.
