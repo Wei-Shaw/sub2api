@@ -25,7 +25,7 @@ func (h *AuthHandler) updateWeComMobilePendingSession(
 	}
 	localState := clonePendingMap(session.LocalFlowState)
 	localState[weComMobileOAuthStatusKey] = weComMobileOAuthStatusCompleted
-	localState[oauthCompletionResponseKey] = clonePendingMap(completionResponse)
+	localState[oauthCompletionResponseKey] = scrubPendingOAuthCompletionResponseForStorage(completionResponse)
 	update := client.PendingAuthSession.UpdateOneID(session.ID).
 		SetProviderSubject(resolved.providerSubject).
 		SetResolvedEmail(strings.TrimSpace(resolvedEmail)).

@@ -366,6 +366,36 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	return out
 }
 
+func UsageViewerAccountFromService(a *service.Account) *UsageViewerAccount {
+	if a == nil {
+		return nil
+	}
+	return &UsageViewerAccount{
+		ID:                     a.ID,
+		Name:                   a.Name,
+		Platform:               a.Platform,
+		Type:                   a.Type,
+		Concurrency:            a.Concurrency,
+		LoadFactor:             a.LoadFactor,
+		Priority:               a.Priority,
+		RateMultiplier:         a.BillingRateMultiplier(),
+		Status:                 a.Status,
+		LastUsedAt:             a.LastUsedAt,
+		ExpiresAt:              timeToUnixSeconds(a.ExpiresAt),
+		AutoPauseOnExpired:     a.AutoPauseOnExpired,
+		CreatedAt:              a.CreatedAt,
+		UpdatedAt:              a.UpdatedAt,
+		Schedulable:            a.Schedulable,
+		RateLimitedAt:          a.RateLimitedAt,
+		RateLimitResetAt:       a.RateLimitResetAt,
+		OverloadUntil:          a.OverloadUntil,
+		TempUnschedulableUntil: a.TempUnschedulableUntil,
+		SessionWindowStart:     a.SessionWindowStart,
+		SessionWindowEnd:       a.SessionWindowEnd,
+		SessionWindowStatus:    a.SessionWindowStatus,
+	}
+}
+
 func AccountFromService(a *service.Account) *Account {
 	if a == nil {
 		return nil

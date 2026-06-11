@@ -196,7 +196,7 @@ func (h *AuthHandler) createOAuthPendingSession(c *gin.Context, payload oauthPen
 		BrowserSessionKey:      strings.TrimSpace(payload.BrowserSessionKey),
 		UpstreamIdentityClaims: payload.UpstreamIdentityClaims,
 		LocalFlowState: map[string]any{
-			oauthCompletionResponseKey: payload.CompletionResponse,
+			oauthCompletionResponseKey: scrubPendingOAuthCompletionResponseForStorage(payload.CompletionResponse),
 		},
 	})
 	if err != nil {
@@ -239,6 +239,14 @@ func clonePendingMap(values map[string]any) map[string]any {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func scrubPendingOAuthCompletionResponseForStorage(payload map[string]any) map[string]any {
+	scrubbed := clonePendingMap(payload)
+	for _, key := range []string{"access_token", "refresh_token", "expires_in", "token_type"} {
+		delete(scrubbed, key)
+	}
+	return scrubbed
 }
 
 func mergePendingCompletionResponse(session *dbent.PendingAuthSession, overrides map[string]any) map[string]any {
@@ -650,7 +658,7 @@ func updatePendingOAuthSessionProgress(
 	}
 
 	localFlowState := clonePendingMap(session.LocalFlowState)
-	localFlowState[oauthCompletionResponseKey] = clonePendingMap(completionResponse)
+	localFlowState[oauthCompletionResponseKey] = scrubPendingOAuthCompletionResponseForStorage(completionResponse)
 
 	update := client.PendingAuthSession.UpdateOneID(session.ID).
 		SetIntent(strings.TrimSpace(intent)).

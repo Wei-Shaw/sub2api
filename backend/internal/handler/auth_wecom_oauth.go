@@ -439,7 +439,7 @@ func (h *AuthHandler) CompleteWeComOAuthRegistration(c *gin.Context) {
 }
 func (h *AuthHandler) BindWeComOAuthLogin(c *gin.Context) { h.bindPendingOAuthLogin(c, "wecom") }
 func (h *AuthHandler) CreateWeComOAuthAccount(c *gin.Context) {
-	h.createPendingOAuthAccountWithOptions(c, "wecom", createPendingOAuthAccountOptions{TrustEnteredEmail: true})
+	h.createPendingOAuthAccount(c, "wecom")
 }
 
 func (h *AuthHandler) getWeComOAuthConfig(ctx context.Context) (weComOAuthConfig, error) {

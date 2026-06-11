@@ -178,6 +178,15 @@ type AccountWithConcurrency struct {
 	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
 }
 
+type UsageViewerAccountWithConcurrency struct {
+	*dto.UsageViewerAccount
+	CurrentConcurrency int `json:"current_concurrency"`
+	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
+	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
+	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
+	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
+}
+
 const accountListGroupUngroupedQueryValue = "ungrouped"
 
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
@@ -287,13 +296,24 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 		response.BadRequest(c, "Invalid account ID")
 		return
 	}
-	if !h.ensureUsageViewerAccountAllowed(c, accountID) {
+
+	allowedIDs, scoped, err := h.usageViewerAllowedAccountIDs(c)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if scoped && !usageViewerAccountIDAllowed(allowedIDs, accountID) {
+		response.ErrorFrom(c, errUsageViewerAccountForbidden)
 		return
 	}
 
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+	if scoped {
+		response.Success(c, h.buildUsageViewerAccountResponseWithRuntime(c.Request.Context(), account))
 		return
 	}
 

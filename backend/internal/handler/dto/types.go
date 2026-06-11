@@ -261,6 +261,36 @@ type Account struct {
 	Groups   []*Group `json:"groups,omitempty"`
 }
 
+type UsageViewerAccount struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Platform string `json:"platform"`
+	Type     string `json:"type"`
+
+	Concurrency    int     `json:"concurrency"`
+	LoadFactor     *int    `json:"load_factor,omitempty"`
+	Priority       int     `json:"priority"`
+	RateMultiplier float64 `json:"rate_multiplier"`
+	Status         string  `json:"status"`
+
+	LastUsedAt         *time.Time `json:"last_used_at"`
+	ExpiresAt          *int64     `json:"expires_at"`
+	AutoPauseOnExpired bool       `json:"auto_pause_on_expired"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+
+	Schedulable      bool       `json:"schedulable"`
+	RateLimitedAt    *time.Time `json:"rate_limited_at"`
+	RateLimitResetAt *time.Time `json:"rate_limit_reset_at"`
+	OverloadUntil    *time.Time `json:"overload_until"`
+
+	TempUnschedulableUntil *time.Time `json:"temp_unschedulable_until"`
+
+	SessionWindowStart  *time.Time `json:"session_window_start"`
+	SessionWindowEnd    *time.Time `json:"session_window_end"`
+	SessionWindowStatus string     `json:"session_window_status"`
+}
+
 type AccountGroup struct {
 	AccountID int64     `json:"account_id"`
 	GroupID   int64     `json:"group_id"`

@@ -382,7 +382,7 @@ const totpError = ref('')
 const totpUserEmailMasked = ref('')
 const bindSuccessMessage = t('profile.authBindings.bindSuccess')
 
-const isWeComCallback = computed(() => route.path.includes('/auth/wecom/'))
+const isWeComCallback = computed(() => String(route.path || '').includes('/auth/wecom/'))
 const providerName = computed(() => isWeComCallback.value ? t('auth.wecomProviderName') : t('auth.wechatProviderName'))
 const oauthProviderPath = computed(() => isWeComCallback.value ? 'wecom' : 'wechat')
 const showBackToChooser = computed(

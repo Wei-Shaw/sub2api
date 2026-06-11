@@ -1,6 +1,10 @@
 package admin
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -65,12 +69,19 @@ func (h *AccountHandler) ensureUsageViewerAccountAllowed(c *gin.Context, account
 	if !scoped {
 		return true
 	}
+	if usageViewerAccountIDAllowed(allowedIDs, accountID) {
+		return true
+	}
+	response.ErrorFrom(c, errUsageViewerAccountForbidden)
+	return false
+}
+
+func usageViewerAccountIDAllowed(allowedIDs []int64, accountID int64) bool {
 	for _, id := range allowedIDs {
 		if id == accountID {
 			return true
 		}
 	}
-	response.ErrorFrom(c, errUsageViewerAccountForbidden)
 	return false
 }
 
@@ -172,10 +183,21 @@ func (h *AccountHandler) listUsageViewerAccounts(c *gin.Context, allowedIDs []in
 		}
 	}
 	pageAccounts, total := paginateUsageViewerAccounts(filtered, params.page, params.pageSize, params.sortBy, params.sortOrder)
-	h.respondAccountList(c, pageAccounts, total, params.page, params.pageSize, params.platform, params.accountType, params.status, params.search, params.lite)
+	h.respondUsageViewerAccountList(c, pageAccounts, total, params)
 }
 
-func (h *AccountHandler) respondAccountList(c *gin.Context, accounts []service.Account, total int64, page, pageSize int, platform, accountType, status, search string, lite bool) {
+func (h *AccountHandler) respondAccountList(
+	c *gin.Context,
+	accounts []service.Account,
+	total int64,
+	page int,
+	pageSize int,
+	platform string,
+	accountType string,
+	status string,
+	search string,
+	lite bool,
+) {
 	accountIDs := make([]int64, len(accounts))
 	for i, acc := range accounts {
 		accountIDs[i] = acc.ID
@@ -220,6 +242,142 @@ func (h *AccountHandler) respondAccountList(c *gin.Context, accounts []service.A
 		}
 	}
 	response.Paginated(c, result, total, page, pageSize)
+}
+
+func (h *AccountHandler) respondUsageViewerAccountList(c *gin.Context, accounts []service.Account, total int64, params usageViewerAccountListParams) {
+	accountIDs := make([]int64, len(accounts))
+	for i, acc := range accounts {
+		accountIDs[i] = acc.ID
+	}
+
+	concurrencyCounts := map[int64]int{}
+	if h.concurrencyService != nil {
+		if cc, err := h.concurrencyService.GetAccountConcurrencyBatch(c.Request.Context(), accountIDs); err == nil && cc != nil {
+			concurrencyCounts = cc
+		}
+	}
+
+	windowCosts := h.accountWindowCosts(c, accounts)
+	activeSessions := h.accountActiveSessions(c, accounts)
+	rpmCounts := h.accountRPMCounts(c, accounts)
+
+	result := make([]UsageViewerAccountWithConcurrency, len(accounts))
+	for i := range accounts {
+		acc := &accounts[i]
+		result[i] = h.buildUsageViewerAccountResponse(acc, concurrencyCounts, windowCosts, activeSessions, rpmCounts)
+	}
+
+	etag := buildUsageViewerAccountsListETag(result, total, params)
+	if etag != "" {
+		c.Header("ETag", etag)
+		c.Header("Vary", "If-None-Match")
+		if ifNoneMatchMatched(c.GetHeader("If-None-Match"), etag) {
+			c.Status(http.StatusNotModified)
+			return
+		}
+	}
+	response.Paginated(c, result, total, params.page, params.pageSize)
+}
+
+func (h *AccountHandler) buildUsageViewerAccountResponseWithRuntime(ctx context.Context, account *service.Account) UsageViewerAccountWithConcurrency {
+	item := UsageViewerAccountWithConcurrency{
+		UsageViewerAccount: dto.UsageViewerAccountFromService(account),
+		CurrentConcurrency: 0,
+	}
+	if account == nil {
+		return item
+	}
+
+	if h.concurrencyService != nil {
+		if counts, err := h.concurrencyService.GetAccountConcurrencyBatch(ctx, []int64{account.ID}); err == nil {
+			item.CurrentConcurrency = counts[account.ID]
+		}
+	}
+
+	if account.IsAnthropicOAuthOrSetupToken() {
+		if h.accountUsageService != nil && account.GetWindowCostLimit() > 0 {
+			startTime := account.GetCurrentWindowStartTime()
+			if stats, err := h.accountUsageService.GetAccountWindowStats(ctx, account.ID, startTime); err == nil && stats != nil {
+				cost := stats.StandardCost
+				item.CurrentWindowCost = &cost
+			}
+		}
+
+		if h.sessionLimitCache != nil && account.GetMaxSessions() > 0 {
+			idleTimeout := time.Duration(account.GetSessionIdleTimeoutMinutes()) * time.Minute
+			idleTimeouts := map[int64]time.Duration{account.ID: idleTimeout}
+			if sessions, err := h.sessionLimitCache.GetActiveSessionCountBatch(ctx, []int64{account.ID}, idleTimeouts); err == nil {
+				if count, ok := sessions[account.ID]; ok {
+					item.ActiveSessions = &count
+				}
+			}
+		}
+
+		if h.rpmCache != nil && account.GetBaseRPM() > 0 {
+			if rpms, err := h.rpmCache.GetRPMBatch(ctx, []int64{account.ID}); err == nil {
+				if rpm, ok := rpms[account.ID]; ok {
+					item.CurrentRPM = &rpm
+				}
+			}
+		}
+	}
+	return item
+}
+
+func (h *AccountHandler) buildUsageViewerAccountResponse(
+	account *service.Account,
+	concurrencyCounts map[int64]int,
+	windowCosts map[int64]float64,
+	activeSessions map[int64]int,
+	rpmCounts map[int64]int,
+) UsageViewerAccountWithConcurrency {
+	item := UsageViewerAccountWithConcurrency{
+		UsageViewerAccount: dto.UsageViewerAccountFromService(account),
+	}
+	if account == nil {
+		return item
+	}
+	item.CurrentConcurrency = concurrencyCounts[account.ID]
+	if cost, ok := windowCosts[account.ID]; ok {
+		item.CurrentWindowCost = &cost
+	}
+	if count, ok := activeSessions[account.ID]; ok {
+		item.ActiveSessions = &count
+	}
+	if rpm, ok := rpmCounts[account.ID]; ok {
+		item.CurrentRPM = &rpm
+	}
+	return item
+}
+
+func buildUsageViewerAccountsListETag(items []UsageViewerAccountWithConcurrency, total int64, params usageViewerAccountListParams) string {
+	payload := struct {
+		Total       int64                               `json:"total"`
+		Page        int                                 `json:"page"`
+		PageSize    int                                 `json:"page_size"`
+		Platform    string                              `json:"platform"`
+		AccountType string                              `json:"type"`
+		Status      string                              `json:"status"`
+		Search      string                              `json:"search"`
+		Lite        bool                                `json:"lite"`
+		Items       []UsageViewerAccountWithConcurrency `json:"items"`
+	}{
+		Total:       total,
+		Page:        params.page,
+		PageSize:    params.pageSize,
+		Platform:    params.platform,
+		AccountType: params.accountType,
+		Status:      params.status,
+		Search:      params.search,
+		Lite:        params.lite,
+		Items:       items,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return "\"" + hex.EncodeToString(sum[:]) + "\""
 }
 
 func (h *AccountHandler) accountWindowCosts(c *gin.Context, accounts []service.Account) map[int64]float64 {

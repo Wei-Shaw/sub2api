@@ -40,6 +40,7 @@ const {
   showErrorMock: vi.fn(),
   fetchPublicSettingsMock: vi.fn(),
   routeState: {
+    path: '/auth/wechat/callback',
     query: {} as Record<string, unknown>,
   },
   locationState: {
@@ -168,6 +169,7 @@ describe('WechatCallbackView', () => {
     prepareOAuthBindAccessTokenCookieMock.mockReset()
     getAuthTokenMock.mockReset()
     fetchPublicSettingsMock.mockReset()
+    routeState.path = '/auth/wechat/callback'
     routeState.query = {}
     appStoreState.cachedPublicSettings = null
     appStoreState.publicSettingsLoaded = false

@@ -116,7 +116,9 @@ function unmountLoginPanel(): void {
 
 async function completeLoginPanelAuth(code: string, state: string): Promise<void> {
   const params = new URLSearchParams({ code, state })
-  const resp = await fetch(`/api/v1/auth/oauth/wecom/mobile/callback?${params.toString()}`, {
+  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
+  const normalized = apiBase.replace(/\/$/, '')
+  const resp = await fetch(`${normalized}/auth/oauth/wecom/mobile/callback?${params.toString()}`, {
     credentials: 'include'
   })
   if (!resp.ok) {

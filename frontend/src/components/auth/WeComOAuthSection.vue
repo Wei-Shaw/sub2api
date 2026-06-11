@@ -56,7 +56,9 @@ function startLogin(): void {
   const params = new URLSearchParams({ redirect: redirectTo })
   const start = resolveWeComOAuthStart(appStore.cachedPublicSettings)
   if (start.mode === 'webview') {
-    window.location.href = `/api/v1/auth/oauth/wecom/start?mode=webview&${params.toString()}`
+    const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
+    const normalized = apiBase.replace(/\/$/, '')
+    window.location.href = `${normalized}/auth/oauth/wecom/start?mode=webview&${params.toString()}`
     return
   }
   window.location.href = `/auth/wecom/mobile?${params.toString()}`

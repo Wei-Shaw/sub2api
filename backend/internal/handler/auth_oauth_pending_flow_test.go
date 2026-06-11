@@ -63,6 +63,27 @@ func TestApplySuggestedProfileToCompletionResponseKeepsExistingPayloadValues(t *
 	require.Equal(t, true, payload["adoption_required"])
 }
 
+func TestScrubPendingOAuthCompletionResponseForStorageRemovesTokenPair(t *testing.T) {
+	payload := map[string]any{
+		"access_token":  "access-secret",
+		"refresh_token": "refresh-secret",
+		"expires_in":    3600,
+		"token_type":    "Bearer",
+		"redirect":      "/dashboard",
+		"step":          oauthPendingChoiceStep,
+	}
+
+	got := scrubPendingOAuthCompletionResponseForStorage(payload)
+
+	require.NotContains(t, got, "access_token")
+	require.NotContains(t, got, "refresh_token")
+	require.NotContains(t, got, "expires_in")
+	require.NotContains(t, got, "token_type")
+	require.Equal(t, "/dashboard", got["redirect"])
+	require.Equal(t, oauthPendingChoiceStep, got["step"])
+	require.Equal(t, "access-secret", payload["access_token"])
+}
+
 func TestSetOAuthPendingSessionCookieUsesProviderCompletionPathPrefix(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
@@ -1049,7 +1070,7 @@ func TestCreateOIDCOAuthAccountCreatesUserBindsIdentityAndConsumesSession(t *tes
 	require.NotNil(t, storedSession.ConsumedAt)
 }
 
-func TestCreateWeComOAuthAccountTrustsEnteredEmailWithoutVerifyCode(t *testing.T) {
+func TestCreateWeComOAuthAccountRequiresVerifyCode(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()
 
@@ -1086,27 +1107,21 @@ func TestCreateWeComOAuthAccountTrustsEnteredEmailWithoutVerifyCode(t *testing.T
 
 	handler.CreateWeComOAuthAccount(ginCtx)
 
-	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NotEqual(t, http.StatusOK, recorder.Code)
 
-	var payload map[string]any
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
-	require.NotEmpty(t, payload["access_token"])
-	require.NotEmpty(t, payload["refresh_token"])
-
-	createdUser, err := client.User.Query().Where(dbuser.EmailEQ("fresh-wecom@example.com")).Only(ctx)
+	createdUserCount, err := client.User.Query().Where(dbuser.EmailEQ("fresh-wecom@example.com")).Count(ctx)
 	require.NoError(t, err)
-	require.Equal(t, "wecom", createdUser.SignupSource)
-	require.Equal(t, "张三", createdUser.Username)
+	require.Equal(t, 0, createdUserCount)
 
-	identity, err := client.AuthIdentity.Query().
+	identityCount, err := client.AuthIdentity.Query().
 		Where(
 			authidentity.ProviderTypeEQ("wecom"),
 			authidentity.ProviderKeyEQ("wecom-main"),
 			authidentity.ProviderSubjectEQ("wwcorp/user-123"),
 		).
-		Only(ctx)
+		Count(ctx)
 	require.NoError(t, err)
-	require.Equal(t, createdUser.ID, identity.UserID)
+	require.Equal(t, 0, identityCount)
 }
 
 func TestCreateOIDCOAuthAccountExistingEmailReturnsChoicePendingSessionState(t *testing.T) {
