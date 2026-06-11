@@ -1266,7 +1266,8 @@ func stripEncryptedTools(reqBody map[string]any) bool {
 			}
 		}
 
-		if toolName == "spawn_agent" || toolName == "functions.spawn_agent" {
+		if toolName == "spawn_agent" || toolName == "functions.spawn_agent" ||
+			toolName == "followup_task" || toolName == "functions.followup_task" {
 			modified = true
 			continue
 		}

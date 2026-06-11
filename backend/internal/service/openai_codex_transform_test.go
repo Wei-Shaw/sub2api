@@ -534,6 +534,16 @@ func TestStripEncryptedTools(t *testing.T) {
 			},
 			map[string]any{
 				"type": "function",
+				"name": "functions.followup_task",
+			},
+			map[string]any{
+				"type": "function",
+				"function": map[string]any{
+					"name": "followup_task",
+				},
+			},
+			map[string]any{
+				"type": "function",
 				"name": "bash",
 			},
 		},
