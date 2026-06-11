@@ -1275,6 +1275,10 @@ func extractTextFromSSEResponse(respBody []byte) string {
 
 // injectIdentityPatchToGeminiRequest 为 Gemini 格式请求注入身份提示词
 // 如果请求中已包含 "You are Antigravity" 则不重复注入
+//
+// Antigravity upstream protobuf 对 system_instruction 有 oneof 约束，
+// 当请求同时携带 tools 时不能使用 systemInstruction 字段。
+// 此时将 systemInstruction 内容合并到 contents 的第一条 user 消息前。
 func injectIdentityPatchToGeminiRequest(body []byte) ([]byte, error) {
 	var request map[string]any
 	if err := json.Unmarshal(body, &request); err != nil {
@@ -1282,14 +1286,15 @@ func injectIdentityPatchToGeminiRequest(body []byte) ([]byte, error) {
 	}
 
 	// 检查现有 systemInstruction 是否已包含身份提示词
+	alreadyHasIdentity := false
 	if sysInst, ok := request["systemInstruction"].(map[string]any); ok {
 		if parts, ok := sysInst["parts"].([]any); ok {
 			for _, part := range parts {
 				if partMap, ok := part.(map[string]any); ok {
 					if text, ok := partMap["text"].(string); ok {
 						if strings.Contains(text, "You are Antigravity") {
-							// 已包含身份提示词，直接返回原始请求
-							return body, nil
+							alreadyHasIdentity = true
+							break
 						}
 					}
 				}
@@ -1297,23 +1302,47 @@ func injectIdentityPatchToGeminiRequest(body []byte) ([]byte, error) {
 		}
 	}
 
-	// 获取默认身份提示词
 	identityPatch := antigravity.GetDefaultIdentityPatch()
+	identityPart := map[string]any{"text": identityPatch}
 
-	// 构建新的 systemInstruction
-	newPart := map[string]any{"text": identityPatch}
+	hasTools := false
+	if tools, ok := request["tools"].([]any); ok && len(tools) > 0 {
+		hasTools = true
+	}
 
-	if existing, ok := request["systemInstruction"].(map[string]any); ok {
-		// 已有 systemInstruction，在开头插入身份提示词
-		if parts, ok := existing["parts"].([]any); ok {
-			existing["parts"] = append([]any{newPart}, parts...)
-		} else {
-			existing["parts"] = []any{newPart}
+	if hasTools {
+		// tools 存在时不能使用 systemInstruction 字段（Antigravity protobuf oneof 约束）。
+		// 将 identity + 原有 systemInstruction 合并到 contents 前面作为一条 user 消息。
+		var sysParts []any
+		if !alreadyHasIdentity {
+			sysParts = append(sysParts, identityPart)
+		}
+		if sysInst, ok := request["systemInstruction"].(map[string]any); ok {
+			if parts, ok := sysInst["parts"].([]any); ok {
+				sysParts = append(sysParts, parts...)
+			}
+		}
+		delete(request, "systemInstruction")
+
+		if len(sysParts) > 0 {
+			sysContent := map[string]any{"role": "user", "parts": sysParts}
+			contents, _ := request["contents"].([]any)
+			request["contents"] = append([]any{sysContent}, contents...)
 		}
 	} else {
-		// 没有 systemInstruction，创建新的
-		request["systemInstruction"] = map[string]any{
-			"parts": []any{newPart},
+		if alreadyHasIdentity {
+			return body, nil
+		}
+		if existing, ok := request["systemInstruction"].(map[string]any); ok {
+			if parts, ok := existing["parts"].([]any); ok {
+				existing["parts"] = append([]any{identityPart}, parts...)
+			} else {
+				existing["parts"] = []any{identityPart}
+			}
+		} else {
+			request["systemInstruction"] = map[string]any{
+				"parts": []any{identityPart},
+			}
 		}
 	}
 
@@ -3309,8 +3338,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 	var firstTokenMs *int
 	var last map[string]any
 	var lastWithParts map[string]any
-	var collectedImageParts []map[string]any // 收集所有包含图片的 parts
-	var collectedTextParts []string          // 收集所有文本片段
+	var collectedParts []map[string]any
 
 	type scanEvent struct {
 		line string
@@ -3425,19 +3453,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 				}
 			}
 
-			// 保留最后一个有 parts 的响应
 			if parts := extractGeminiParts(parsed); len(parts) > 0 {
 				lastWithParts = parsed
-				// 收集包含图片和文本的 parts
-				for _, part := range parts {
-					if inlineData, ok := part["inlineData"].(map[string]any); ok {
-						collectedImageParts = append(collectedImageParts, part)
-						_ = inlineData // 避免 unused 警告
-					}
-					if text, ok := part["text"].(string); ok && text != "" {
-						collectedTextParts = append(collectedTextParts, text)
-					}
-				}
+				collectedParts = append(collectedParts, parts...)
 			}
 
 		case <-intervalCh:
@@ -3464,14 +3482,8 @@ returnResponse:
 		}
 	}
 
-	// 如果收集到了图片 parts，需要合并到最终响应中
-	if len(collectedImageParts) > 0 {
-		finalResponse = mergeImagePartsToResponse(finalResponse, collectedImageParts)
-	}
-
-	// 如果收集到了文本，需要合并到最终响应中
-	if len(collectedTextParts) > 0 {
-		finalResponse = mergeTextPartsToResponse(finalResponse, collectedTextParts)
+	if len(collectedParts) > 0 {
+		finalResponse = mergeCollectedPartsToResponse(finalResponse, collectedParts)
 	}
 
 	respBody, err := json.Marshal(finalResponse)

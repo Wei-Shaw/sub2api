@@ -146,8 +146,12 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 		// 总是生成 sessionId，基于用户消息内容
 		SessionID: generateStableSessionID(contents),
 	}
+	applyToolChoiceToFunctionCallingConfig(claudeReq.ToolChoice, innerRequest.ToolConfig.FunctionCallingConfig)
 
-	if systemInstruction != nil {
+	if systemInstruction != nil && len(tools) > 0 {
+		contents = prependSystemInstructionToContents(systemInstruction, contents)
+		innerRequest.Contents = contents
+	} else if systemInstruction != nil {
 		innerRequest.SystemInstruction = systemInstruction
 	}
 	if generationConfig != nil {
@@ -173,6 +177,64 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 	}
 
 	return json.Marshal(v1Req)
+}
+
+func applyToolChoiceToFunctionCallingConfig(toolChoice json.RawMessage, cfg *GeminiFunctionCallingConfig) {
+	if len(toolChoice) == 0 || cfg == nil {
+		return
+	}
+
+	var choice struct {
+		Type     string `json:"type"`
+		Name     string `json:"name"`
+		Function *struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	}
+	if err := json.Unmarshal(toolChoice, &choice); err != nil {
+		return
+	}
+
+	switch choice.Type {
+	case "auto":
+		cfg.Mode = "AUTO"
+		cfg.AllowedFunctionNames = nil
+	case "any":
+		cfg.Mode = "ANY"
+		cfg.AllowedFunctionNames = nil
+	case "tool":
+		cfg.Mode = "ANY"
+		if choice.Name != "" {
+			cfg.AllowedFunctionNames = []string{choice.Name}
+		}
+	case "function":
+		cfg.Mode = "ANY"
+		if choice.Function != nil && choice.Function.Name != "" {
+			cfg.AllowedFunctionNames = []string{choice.Function.Name}
+		}
+	case "none":
+		cfg.Mode = "NONE"
+		cfg.AllowedFunctionNames = nil
+	}
+}
+
+func prependSystemInstructionToContents(systemInstruction *GeminiContent, contents []GeminiContent) []GeminiContent {
+	if systemInstruction == nil || len(systemInstruction.Parts) == 0 {
+		return contents
+	}
+
+	merged := make([]GeminiContent, 0, len(contents)+1)
+	if len(contents) > 0 && contents[0].Role == "user" {
+		first := contents[0]
+		first.Parts = append(append([]GeminiPart{}, systemInstruction.Parts...), first.Parts...)
+		merged = append(merged, first)
+		merged = append(merged, contents[1:]...)
+		return merged
+	}
+
+	merged = append(merged, *systemInstruction)
+	merged = append(merged, contents...)
+	return merged
 }
 
 // antigravityIdentity Antigravity identity 提示词
