@@ -684,6 +684,17 @@ const (
 	ImageConcurrencyOverflowModeWait   = "wait"
 )
 
+// GatewayCodexGoalBridgeConfig controls the experimental Codex /goal bridge.
+type GatewayCodexGoalBridgeConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	CodexCommand    string `mapstructure:"codex_command"`
+	RequiredVersion string `mapstructure:"required_version"`
+	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`
+	CWD             string `mapstructure:"cwd"`
+	Model           string `mapstructure:"model"`
+	ReasoningEffort string `mapstructure:"reasoning_effort"`
+}
+
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
@@ -714,6 +725,9 @@ type GatewayConfig struct {
 	// ForcedCodexInstructionsTemplate: 启动时从模板文件读取并缓存的模板内容。
 	// 该字段不直接参与配置反序列化，仅用于请求热路径避免重复读盘。
 	ForcedCodexInstructionsTemplate string `mapstructure:"-"`
+	// CodexGoalBridge: 将兼容 API 文本请求转为 Codex 0.130.0 /goal 调用的实验桥接。
+	// 默认关闭；启用后文本端点会优先由 Codex app-server 处理。
+	CodexGoalBridge GatewayCodexGoalBridgeConfig `mapstructure:"codex_goal_bridge"`
 	// OpenAIPassthroughAllowTimeoutHeaders: OpenAI 透传模式是否放行客户端超时头
 	// 关闭（默认）可避免 x-stainless-timeout 等头导致上游提前断流。
 	OpenAIPassthroughAllowTimeoutHeaders bool `mapstructure:"openai_passthrough_allow_timeout_headers"`
@@ -1820,6 +1834,13 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
+	viper.SetDefault("gateway.codex_goal_bridge.enabled", false)
+	viper.SetDefault("gateway.codex_goal_bridge.codex_command", "codex")
+	viper.SetDefault("gateway.codex_goal_bridge.required_version", "0.130.0")
+	viper.SetDefault("gateway.codex_goal_bridge.timeout_seconds", 600)
+	viper.SetDefault("gateway.codex_goal_bridge.cwd", ".")
+	viper.SetDefault("gateway.codex_goal_bridge.model", "")
+	viper.SetDefault("gateway.codex_goal_bridge.reasoning_effort", "")
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)

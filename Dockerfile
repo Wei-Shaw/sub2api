@@ -12,6 +12,8 @@ ARG ALPINE_IMAGE=alpine:3.21
 ARG POSTGRES_IMAGE=postgres:18-alpine
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
+ARG CODEX_NPM_VERSION=0.130.0
+ARG MCP_REMOTE_NPM_VERSION=0.1.38
 
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
@@ -29,6 +31,7 @@ RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build
 COPY frontend/ ./
+COPY docs/legal/admin-compliance.*.md /app/docs/legal/
 RUN pnpm run build
 
 # -----------------------------------------------------------------------------
@@ -83,6 +86,9 @@ FROM ${POSTGRES_IMAGE} AS pg-client
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
 
+ARG CODEX_NPM_VERSION
+ARG MCP_REMOTE_NPM_VERSION
+
 # Labels
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
 LABEL description="Sub2API - AI API Gateway Platform"
@@ -93,6 +99,8 @@ RUN apk add --no-cache \
     ca-certificates \
     tzdata \
     su-exec \
+    nodejs \
+    npm \
     libpq \
     zstd-libs \
     lz4-libs \
@@ -100,6 +108,11 @@ RUN apk add --no-cache \
     libldap \
     libedit \
     && rm -rf /var/cache/apk/*
+
+# Install Codex CLI for the experimental /goal bridge. Pin the version because
+# the bridge uses the Codex app-server contract introduced in 0.130.0.
+RUN npm install -g --omit=dev "@openai/codex@${CODEX_NPM_VERSION}" "mcp-remote@${MCP_REMOTE_NPM_VERSION}" \
+    && codex --version
 
 # Copy pg_dump and psql from the same postgres image used in docker-compose
 # This ensures version consistency between backup tools and the database server
@@ -123,7 +136,8 @@ RUN mkdir -p /app/data && chown sub2api:sub2api /app/data
 
 # Copy entrypoint script (fixes volume permissions then drops to sub2api)
 COPY deploy/docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+COPY deploy/codex-mcp-sse-proxy.mjs /usr/local/bin/codex-mcp-sse-proxy
+RUN chmod +x /app/docker-entrypoint.sh /usr/local/bin/codex-mcp-sse-proxy
 
 # Expose port (can be overridden by SERVER_PORT env var)
 EXPOSE 8080

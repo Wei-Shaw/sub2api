@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -26,6 +27,15 @@ func RegisterGatewayRoutes(
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
+	tryCodexGoal := func(c *gin.Context, protocol, endpoint string) bool {
+		return h != nil && h.CodexGoalBridge != nil && h.CodexGoalBridge.TryHandle(c, protocol, endpoint)
+	}
+	tryCodexGoalResponsesWS := func(c *gin.Context) bool {
+		return h != nil && h.CodexGoalBridge != nil && h.CodexGoalBridge.TryHandleResponsesWebSocket(c)
+	}
+	rejectCodexGoalUnsupported := func(c *gin.Context, protocol, code, message string) bool {
+		return h != nil && h.CodexGoalBridge != nil && h.CodexGoalBridge.RejectUnsupportedIfEnabled(c, protocol, code, message)
+	}
 
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
@@ -42,6 +52,9 @@ func RegisterGatewayRoutes(
 	{
 		// /v1/messages: auto-route based on group platform
 		gateway.POST("/messages", func(c *gin.Context) {
+			if tryCodexGoal(c, service.CodexGoalProtocolAnthropic, c.FullPath()) {
+				return
+			}
 			if getGroupPlatform(c) == service.PlatformOpenAI {
 				h.OpenAIGateway.Messages(c)
 				return
@@ -50,6 +63,9 @@ func RegisterGatewayRoutes(
 		})
 		// /v1/messages/count_tokens: OpenAI groups get 404
 		gateway.POST("/messages/count_tokens", func(c *gin.Context) {
+			if rejectCodexGoalUnsupported(c, service.CodexGoalProtocolAnthropic, "codex_goal_unsupported_endpoint", "Codex goal bridge cannot preserve token-counting semantics") {
+				return
+			}
 			if getGroupPlatform(c) == service.PlatformOpenAI {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 				c.JSON(http.StatusNotFound, gin.H{
@@ -65,8 +81,25 @@ func RegisterGatewayRoutes(
 		})
 		gateway.GET("/models", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
+		gateway.POST("/files", func(c *gin.Context) {
+			if h != nil && h.CodexGoalBridge != nil {
+				h.CodexGoalBridge.UploadFile(c)
+				return
+			}
+			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Files API is not available"}})
+		})
+		gateway.GET("/files/:file_id", func(c *gin.Context) {
+			if h != nil && h.CodexGoalBridge != nil {
+				h.CodexGoalBridge.GetFile(c)
+				return
+			}
+			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Files API is not available"}})
+		})
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
+			if tryCodexGoal(c, service.CodexGoalProtocolOpenAIResponses, c.FullPath()) {
+				return
+			}
 			if getGroupPlatform(c) == service.PlatformOpenAI {
 				h.OpenAIGateway.Responses(c)
 				return
@@ -74,15 +107,26 @@ func RegisterGatewayRoutes(
 			h.Gateway.Responses(c)
 		})
 		gateway.POST("/responses/*subpath", func(c *gin.Context) {
+			if rejectCodexGoalUnsupported(c, service.CodexGoalProtocolOpenAIResponses, "codex_goal_unsupported_endpoint", "Codex goal bridge only supports creating Responses, not Responses subpaths") {
+				return
+			}
 			if getGroupPlatform(c) == service.PlatformOpenAI {
 				h.OpenAIGateway.Responses(c)
 				return
 			}
 			h.Gateway.Responses(c)
 		})
-		gateway.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
+		gateway.GET("/responses", func(c *gin.Context) {
+			if tryCodexGoalResponsesWS(c) {
+				return
+			}
+			h.OpenAIGateway.ResponsesWebSocket(c)
+		})
 		// OpenAI Chat Completions API: auto-route based on group platform
 		gateway.POST("/chat/completions", func(c *gin.Context) {
+			if tryCodexGoal(c, service.CodexGoalProtocolOpenAIChat, c.FullPath()) {
+				return
+			}
 			if getGroupPlatform(c) == service.PlatformOpenAI {
 				h.OpenAIGateway.ChatCompletions(c)
 				return
@@ -90,6 +134,9 @@ func RegisterGatewayRoutes(
 			h.Gateway.ChatCompletions(c)
 		})
 		gateway.POST("/embeddings", func(c *gin.Context) {
+			if rejectCodexGoalUnsupported(c, service.CodexGoalProtocolOpenAIResponses, "codex_goal_unsupported_endpoint", "Codex goal bridge cannot preserve embeddings semantics") {
+				return
+			}
 			if getGroupPlatform(c) != service.PlatformOpenAI {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 				c.JSON(http.StatusNotFound, gin.H{
@@ -103,6 +150,9 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.Embeddings(c)
 		})
 		gateway.POST("/images/generations", func(c *gin.Context) {
+			if rejectCodexGoalUnsupported(c, service.CodexGoalProtocolOpenAIResponses, "codex_goal_unsupported_endpoint", "Codex goal bridge cannot preserve image-generation semantics") {
+				return
+			}
 			if getGroupPlatform(c) != service.PlatformOpenAI {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 				c.JSON(http.StatusNotFound, gin.H{
@@ -116,6 +166,9 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.Images(c)
 		})
 		gateway.POST("/images/edits", func(c *gin.Context) {
+			if rejectCodexGoalUnsupported(c, service.CodexGoalProtocolOpenAIResponses, "codex_goal_unsupported_endpoint", "Codex goal bridge cannot preserve image-edit semantics") {
+				return
+			}
 			if getGroupPlatform(c) != service.PlatformOpenAI {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 				c.JSON(http.StatusNotFound, gin.H{
@@ -142,11 +195,28 @@ func RegisterGatewayRoutes(
 		gemini.GET("/models", h.Gateway.GeminiV1BetaListModels)
 		gemini.GET("/models/:model", h.Gateway.GeminiV1BetaGetModel)
 		// Gin treats ":" as a param marker, but Gemini uses "{model}:{action}" in the same segment.
-		gemini.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
+		gemini.POST("/models/*modelAction", func(c *gin.Context) {
+			modelAction := c.Param("modelAction")
+			if isCodexGoalGeminiAction(modelAction) && tryCodexGoal(c, service.CodexGoalProtocolGemini, modelAction) {
+				return
+			}
+			if isCodexGoalGeminiUnsupportedInputAction(modelAction) &&
+				rejectCodexGoalUnsupported(c, service.CodexGoalProtocolGemini, "codex_goal_unsupported_endpoint", "Codex goal bridge cannot preserve Gemini countTokens semantics") {
+				return
+			}
+			h.Gateway.GeminiV1BetaModels(c)
+		})
 	}
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
 	responsesHandler := func(c *gin.Context) {
+		if isCodexGoalResponsesCreate(c) && tryCodexGoal(c, service.CodexGoalProtocolOpenAIResponses, c.FullPath()) {
+			return
+		}
+		if !isCodexGoalResponsesCreate(c) &&
+			rejectCodexGoalUnsupported(c, service.CodexGoalProtocolOpenAIResponses, "codex_goal_unsupported_endpoint", "Codex goal bridge only supports creating Responses, not Responses subpaths") {
+			return
+		}
 		if getGroupPlatform(c) == service.PlatformOpenAI {
 			h.OpenAIGateway.Responses(c)
 			return
@@ -155,16 +225,43 @@ func RegisterGatewayRoutes(
 	}
 	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesHandler)
 	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesHandler)
-	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ResponsesWebSocket)
+	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if tryCodexGoalResponsesWS(c) {
+			return
+		}
+		h.OpenAIGateway.ResponsesWebSocket(c)
+	})
+	r.POST("/files", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if h != nil && h.CodexGoalBridge != nil {
+			h.CodexGoalBridge.UploadFile(c)
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Files API is not available"}})
+	})
+	r.GET("/files/:file_id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if h != nil && h.CodexGoalBridge != nil {
+			h.CodexGoalBridge.GetFile(c)
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Files API is not available"}})
+	})
 	codexDirect := r.Group("/backend-api/codex")
 	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic)
 	{
 		codexDirect.POST("/responses", responsesHandler)
 		codexDirect.POST("/responses/*subpath", responsesHandler)
-		codexDirect.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
+		codexDirect.GET("/responses", func(c *gin.Context) {
+			if tryCodexGoalResponsesWS(c) {
+				return
+			}
+			h.OpenAIGateway.ResponsesWebSocket(c)
+		})
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if tryCodexGoal(c, service.CodexGoalProtocolOpenAIChat, c.FullPath()) {
+			return
+		}
 		if getGroupPlatform(c) == service.PlatformOpenAI {
 			h.OpenAIGateway.ChatCompletions(c)
 			return
@@ -172,6 +269,9 @@ func RegisterGatewayRoutes(
 		h.Gateway.ChatCompletions(c)
 	})
 	r.POST("/embeddings", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if rejectCodexGoalUnsupported(c, service.CodexGoalProtocolOpenAIResponses, "codex_goal_unsupported_endpoint", "Codex goal bridge cannot preserve embeddings semantics") {
+			return
+		}
 		if getGroupPlatform(c) != service.PlatformOpenAI {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{
@@ -185,6 +285,9 @@ func RegisterGatewayRoutes(
 		h.OpenAIGateway.Embeddings(c)
 	})
 	r.POST("/images/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if rejectCodexGoalUnsupported(c, service.CodexGoalProtocolOpenAIResponses, "codex_goal_unsupported_endpoint", "Codex goal bridge cannot preserve image-generation semantics") {
+			return
+		}
 		if getGroupPlatform(c) != service.PlatformOpenAI {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{
@@ -198,6 +301,9 @@ func RegisterGatewayRoutes(
 		h.OpenAIGateway.Images(c)
 	})
 	r.POST("/images/edits", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if rejectCodexGoalUnsupported(c, service.CodexGoalProtocolOpenAIResponses, "codex_goal_unsupported_endpoint", "Codex goal bridge cannot preserve image-edit semantics") {
+			return
+		}
 		if getGroupPlatform(c) != service.PlatformOpenAI {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{
@@ -224,8 +330,18 @@ func RegisterGatewayRoutes(
 	antigravityV1.Use(gin.HandlerFunc(apiKeyAuth))
 	antigravityV1.Use(requireGroupAnthropic)
 	{
-		antigravityV1.POST("/messages", h.Gateway.Messages)
-		antigravityV1.POST("/messages/count_tokens", h.Gateway.CountTokens)
+		antigravityV1.POST("/messages", func(c *gin.Context) {
+			if tryCodexGoal(c, service.CodexGoalProtocolAnthropic, c.FullPath()) {
+				return
+			}
+			h.Gateway.Messages(c)
+		})
+		antigravityV1.POST("/messages/count_tokens", func(c *gin.Context) {
+			if rejectCodexGoalUnsupported(c, service.CodexGoalProtocolAnthropic, "codex_goal_unsupported_endpoint", "Codex goal bridge cannot preserve token-counting semantics") {
+				return
+			}
+			h.Gateway.CountTokens(c)
+		})
 		antigravityV1.GET("/models", h.Gateway.AntigravityModels)
 		antigravityV1.GET("/usage", h.Gateway.Usage)
 	}
@@ -241,7 +357,17 @@ func RegisterGatewayRoutes(
 	{
 		antigravityV1Beta.GET("/models", h.Gateway.GeminiV1BetaListModels)
 		antigravityV1Beta.GET("/models/:model", h.Gateway.GeminiV1BetaGetModel)
-		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
+		antigravityV1Beta.POST("/models/*modelAction", func(c *gin.Context) {
+			modelAction := c.Param("modelAction")
+			if isCodexGoalGeminiAction(modelAction) && tryCodexGoal(c, service.CodexGoalProtocolGemini, modelAction) {
+				return
+			}
+			if isCodexGoalGeminiUnsupportedInputAction(modelAction) &&
+				rejectCodexGoalUnsupported(c, service.CodexGoalProtocolGemini, "codex_goal_unsupported_endpoint", "Codex goal bridge cannot preserve Gemini countTokens semantics") {
+				return
+			}
+			h.Gateway.GeminiV1BetaModels(c)
+		})
 	}
 
 }
@@ -253,4 +379,19 @@ func getGroupPlatform(c *gin.Context) string {
 		return ""
 	}
 	return apiKey.Group.Platform
+}
+
+func isCodexGoalResponsesCreate(c *gin.Context) bool {
+	fullPath := c.FullPath()
+	return strings.HasSuffix(fullPath, "/responses")
+}
+
+func isCodexGoalGeminiAction(modelAction string) bool {
+	action := strings.ToLower(modelAction)
+	return strings.Contains(action, ":generatecontent") || strings.Contains(action, ":streamgeneratecontent")
+}
+
+func isCodexGoalGeminiUnsupportedInputAction(modelAction string) bool {
+	action := strings.ToLower(modelAction)
+	return strings.Contains(action, ":counttokens")
 }

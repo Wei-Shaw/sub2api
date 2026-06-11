@@ -11,6 +11,9 @@
 *.md
 !deploy/DOCKER.md
 docs/
+!docs/
+!docs/legal/
+!docs/legal/admin-compliance.*.md
 
 # IDE
 .idea/
