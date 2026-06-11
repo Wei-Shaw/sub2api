@@ -13,7 +13,7 @@ type schedulerOutboxRepository struct {
 	db *sql.DB
 REDACTED
 
-const schedulerOutboxDedupWindow = time.Second
+const schedulerOutboxDedupWindow = 10 * time.Second
 
 func NewSchedulerOutboxRepository(db *sql.DB) service.SchedulerOutboxRepository {
 	return &schedulerOutboxRepository{db: dbREDACTED
