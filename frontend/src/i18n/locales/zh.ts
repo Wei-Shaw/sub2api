@@ -927,6 +927,7 @@ export default {
     ws: 'WS',
     stream: '流式',
     sync: '同步',
+    cyber: '安全策略',
     unknown: '未知',
     in: '输入',
     out: '输出',
@@ -984,7 +985,7 @@ export default {
       categories: {
         auth: '认证失败', rate_limit: '限流', quota: '余额/订阅',
         invalid_request: '参数错误', service_unavailable: '服务暂时不可用',
-        upstream: '上游错误', internal: '平台错误', other: '其他',
+        upstream: '上游错误', internal: '平台错误', other: '其他', cyber: '安全策略',
       REDACTED,
       detail: {
         title: '错误请求详情',
@@ -2704,6 +2705,9 @@ export default {
       emailOnHitHint: '开启后每次达到阈值都会向用户发送风控提醒邮件；自动封禁通知始终发送。',
       autoBan: '自动封禁用户',
       autoBanHint: '命中次数达到阈值后将禁用用户账号、刷新认证缓存并发送封禁通知邮件。',
+      cyberPolicyExcludeBan: 'cyber_policy 不计入封号次数',
+      cyberPolicyExcludeBanHint: '开启后，cyber_policy 拦截不再计入自动封号的违规次数：当次不判定封号，历史累计亦排除。风控日志与通知邮件照常。',
+      violationNotCounted: '未计入封号',
       banThreshold: '封禁触发次数',
       violationWindowHours: '累计窗口（小时）',
       hitRetentionDays: '命中记录保留（天）',
@@ -2848,6 +2852,7 @@ export default {
       action: {
         block: '拦截',
         keywordBlock: '关键词拦截',
+        cyberPolicy: '网络安全策略',
         error: '异常',
       REDACTED,
     REDACTED,
@@ -5598,6 +5603,9 @@ export default {
           configureLink: '前往 风控中心 配置内容审计',
           enabled: '启用风控中心',
           enabledHint: '关闭后管理员侧边栏入口隐藏，网关内容审计不会执行。',
+          cyberSessionBlock: 'cyber 会话自动屏蔽',
+          cyberSessionBlockHint: '开启后,被上游网络安全策略(cyber_policy)拦截的会话将在 TTL 内被本地屏蔽,不再发往上游。仅屏蔽该会话,不影响同 Key 其他会话。',
+          cyberSessionBlockTTL: '屏蔽时长(秒)',
         REDACTED,
         affiliate: {
           title: '邀请返利',

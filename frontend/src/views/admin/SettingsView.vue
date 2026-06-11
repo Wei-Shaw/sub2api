@@ -5297,6 +5297,31 @@
               </div>
               <Toggle v-model="form.risk_control_enabled" />
             </div>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.riskControl.cyberSessionBlock') REDACTEDREDACTED
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.riskControl.cyberSessionBlockHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.cyber_session_block_enabled" />
+            </div>
+
+            <div v-if="form.cyber_session_block_enabled">
+              <label class="input-label">
+                {{ t('admin.settings.features.riskControl.cyberSessionBlockTTL') REDACTEDREDACTED
+                <span class="text-red-500">*</span>
+              </label>
+              <input
+                v-model.number="form.cyber_session_block_ttl_seconds"
+                type="number"
+                min="1"
+                class="input"
+              />
+            </div>
           </div>
         </div>
 
@@ -7045,6 +7070,8 @@ const form = reactive<SettingsForm>({
   hide_ccs_import_button: false,
   payment_enabled: false,
   risk_control_enabled: false,
+  cyber_session_block_enabled: false,
+  cyber_session_block_ttl_seconds: 3600,
   payment_min_amount: 1,
   payment_max_amount: 10000,
   payment_daily_limit: 50000,
@@ -8316,6 +8343,9 @@ async function saveSettings() {
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,
+      cyber_session_block_enabled: form.cyber_session_block_enabled,
+      cyber_session_block_ttl_seconds:
+        Number(form.cyber_session_block_ttl_seconds) || 3600,
       payment_min_amount: Number(form.payment_min_amount) || 0,
       payment_max_amount: Number(form.payment_max_amount) || 0,
       payment_daily_limit: Number(form.payment_daily_limit) || 0,
