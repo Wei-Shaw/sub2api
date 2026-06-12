@@ -82,15 +82,22 @@ REDACTED
 //
 // 此 block 不带 cache_control（与真实 CLI 一致；cache breakpoint 由后续的
 // Claude Code prompt block 承担）。
-func buildBillingAttributionBlockJSON(body []byte, cliVersion string) ([]byte, error) {
+func buildBillingAttributionText(body []byte, cliVersion string) (string, error) {
 	if cliVersion == "" {
-		return nil, fmt.Errorf("cliVersion required")
+		return "", fmt.Errorf("cliVersion required")
 REDACTED
 	fp := computeClaudeCodeFingerprint(body, cliVersion)
-	text := fmt.Sprintf(
+	return fmt.Sprintf(
 		"x-anthropic-billing-header: cc_version=%s.%s; cc_entrypoint=cli; cch=00000;",
 		cliVersion, fp,
-	)
+	), nil
+REDACTED
+
+func buildBillingAttributionBlockJSON(body []byte, cliVersion string) ([]byte, error) {
+	text, err := buildBillingAttributionText(body, cliVersion)
+	if err != nil {
+		return nil, err
+REDACTED
 	return json.Marshal(map[string]string{
 		"type": "text",
 		"text": text,
