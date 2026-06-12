@@ -75,6 +75,22 @@ func (RedeemCode) Fields() []ent.Field {
 			Nillable(),
 		field.Int("validity_days").
 			Default(30),
+		field.String("usage_policy").
+			MaxLen(32).
+			Default(domain.RedeemUsagePolicySingleUse),
+		field.String("usage_scope").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.Int("max_total_uses").
+			Optional().
+			Nillable().
+			Default(1),
+		field.Int("max_uses_per_user").
+			Optional().
+			Nillable(),
+		field.Int("used_count").
+			Default(0),
 	}
 }
 
@@ -92,6 +108,7 @@ func (RedeemCode) Edges() []ent.Edge {
 			Ref("created_redeem_codes").
 			Field("created_by").
 			Unique(),
+		edge.To("usages", RedeemCodeUsage.Type),
 		edge.To("claimed_devices", UserDevice.Type),
 		edge.To("login_devices", UserDevice.Type),
 	}
@@ -105,5 +122,7 @@ func (RedeemCode) Indexes() []ent.Index {
 		index.Fields("group_id"),
 		index.Fields("created_by"),
 		index.Fields("expires_at"),
+		index.Fields("usage_policy"),
+		index.Fields("usage_scope"),
 	}
 }

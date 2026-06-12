@@ -43,6 +43,16 @@ type RedeemCode struct {
 	GroupID *int64 `json:"group_id,omitempty"`
 	// ValidityDays holds the value of the "validity_days" field.
 	ValidityDays int `json:"validity_days,omitempty"`
+	// UsagePolicy holds the value of the "usage_policy" field.
+	UsagePolicy string `json:"usage_policy,omitempty"`
+	// UsageScope holds the value of the "usage_scope" field.
+	UsageScope *string `json:"usage_scope,omitempty"`
+	// MaxTotalUses holds the value of the "max_total_uses" field.
+	MaxTotalUses *int `json:"max_total_uses,omitempty"`
+	// MaxUsesPerUser holds the value of the "max_uses_per_user" field.
+	MaxUsesPerUser *int `json:"max_uses_per_user,omitempty"`
+	// UsedCount holds the value of the "used_count" field.
+	UsedCount int `json:"used_count,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the RedeemCodeQuery when eager-loading is set.
 	Edges        RedeemCodeEdges `json:"edges"`
@@ -57,13 +67,15 @@ type RedeemCodeEdges struct {
 	Group *Group `json:"group,omitempty"`
 	// Creator holds the value of the creator edge.
 	Creator *User `json:"creator,omitempty"`
+	// Usages holds the value of the usages edge.
+	Usages []*RedeemCodeUsage `json:"usages,omitempty"`
 	// ClaimedDevices holds the value of the claimed_devices edge.
 	ClaimedDevices []*UserDevice `json:"claimed_devices,omitempty"`
 	// LoginDevices holds the value of the login_devices edge.
 	LoginDevices []*UserDevice `json:"login_devices,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [5]bool
+	loadedTypes [6]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -99,10 +111,19 @@ func (e RedeemCodeEdges) CreatorOrErr() (*User, error) {
 	return nil, &NotLoadedError{edge: "creator"}
 }
 
+// UsagesOrErr returns the Usages value or an error if the edge
+// was not loaded in eager-loading.
+func (e RedeemCodeEdges) UsagesOrErr() ([]*RedeemCodeUsage, error) {
+	if e.loadedTypes[3] {
+		return e.Usages, nil
+	}
+	return nil, &NotLoadedError{edge: "usages"}
+}
+
 // ClaimedDevicesOrErr returns the ClaimedDevices value or an error if the edge
 // was not loaded in eager-loading.
 func (e RedeemCodeEdges) ClaimedDevicesOrErr() ([]*UserDevice, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[4] {
 		return e.ClaimedDevices, nil
 	}
 	return nil, &NotLoadedError{edge: "claimed_devices"}
@@ -111,7 +132,7 @@ func (e RedeemCodeEdges) ClaimedDevicesOrErr() ([]*UserDevice, error) {
 // LoginDevicesOrErr returns the LoginDevices value or an error if the edge
 // was not loaded in eager-loading.
 func (e RedeemCodeEdges) LoginDevicesOrErr() ([]*UserDevice, error) {
-	if e.loadedTypes[4] {
+	if e.loadedTypes[5] {
 		return e.LoginDevices, nil
 	}
 	return nil, &NotLoadedError{edge: "login_devices"}
@@ -124,9 +145,9 @@ func (*RedeemCode) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case redeemcode.FieldValue:
 			values[i] = new(sql.NullFloat64)
-		case redeemcode.FieldID, redeemcode.FieldUsedBy, redeemcode.FieldCreatedBy, redeemcode.FieldGroupID, redeemcode.FieldValidityDays:
+		case redeemcode.FieldID, redeemcode.FieldUsedBy, redeemcode.FieldCreatedBy, redeemcode.FieldGroupID, redeemcode.FieldValidityDays, redeemcode.FieldMaxTotalUses, redeemcode.FieldMaxUsesPerUser, redeemcode.FieldUsedCount:
 			values[i] = new(sql.NullInt64)
-		case redeemcode.FieldCode, redeemcode.FieldType, redeemcode.FieldStatus, redeemcode.FieldNotes:
+		case redeemcode.FieldCode, redeemcode.FieldType, redeemcode.FieldStatus, redeemcode.FieldNotes, redeemcode.FieldUsagePolicy, redeemcode.FieldUsageScope:
 			values[i] = new(sql.NullString)
 		case redeemcode.FieldUsedAt, redeemcode.FieldCreatedAt, redeemcode.FieldExpiresAt:
 			values[i] = new(sql.NullTime)
@@ -229,6 +250,39 @@ func (_m *RedeemCode) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ValidityDays = int(value.Int64)
 			}
+		case redeemcode.FieldUsagePolicy:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field usage_policy", values[i])
+			} else if value.Valid {
+				_m.UsagePolicy = value.String
+			}
+		case redeemcode.FieldUsageScope:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field usage_scope", values[i])
+			} else if value.Valid {
+				_m.UsageScope = new(string)
+				*_m.UsageScope = value.String
+			}
+		case redeemcode.FieldMaxTotalUses:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field max_total_uses", values[i])
+			} else if value.Valid {
+				_m.MaxTotalUses = new(int)
+				*_m.MaxTotalUses = int(value.Int64)
+			}
+		case redeemcode.FieldMaxUsesPerUser:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field max_uses_per_user", values[i])
+			} else if value.Valid {
+				_m.MaxUsesPerUser = new(int)
+				*_m.MaxUsesPerUser = int(value.Int64)
+			}
+		case redeemcode.FieldUsedCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field used_count", values[i])
+			} else if value.Valid {
+				_m.UsedCount = int(value.Int64)
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -255,6 +309,11 @@ func (_m *RedeemCode) QueryGroup() *GroupQuery {
 // QueryCreator queries the "creator" edge of the RedeemCode entity.
 func (_m *RedeemCode) QueryCreator() *UserQuery {
 	return NewRedeemCodeClient(_m.config).QueryCreator(_m)
+}
+
+// QueryUsages queries the "usages" edge of the RedeemCode entity.
+func (_m *RedeemCode) QueryUsages() *RedeemCodeUsageQuery {
+	return NewRedeemCodeClient(_m.config).QueryUsages(_m)
 }
 
 // QueryClaimedDevices queries the "claimed_devices" edge of the RedeemCode entity.
@@ -337,6 +396,27 @@ func (_m *RedeemCode) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("validity_days=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ValidityDays))
+	builder.WriteString(", ")
+	builder.WriteString("usage_policy=")
+	builder.WriteString(_m.UsagePolicy)
+	builder.WriteString(", ")
+	if v := _m.UsageScope; v != nil {
+		builder.WriteString("usage_scope=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.MaxTotalUses; v != nil {
+		builder.WriteString("max_total_uses=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.MaxUsesPerUser; v != nil {
+		builder.WriteString("max_uses_per_user=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("used_count=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UsedCount))
 	builder.WriteByte(')')
 	return builder.String()
 }

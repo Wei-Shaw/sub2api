@@ -38,12 +38,24 @@ const (
 	FieldGroupID = "group_id"
 	// FieldValidityDays holds the string denoting the validity_days field in the database.
 	FieldValidityDays = "validity_days"
+	// FieldUsagePolicy holds the string denoting the usage_policy field in the database.
+	FieldUsagePolicy = "usage_policy"
+	// FieldUsageScope holds the string denoting the usage_scope field in the database.
+	FieldUsageScope = "usage_scope"
+	// FieldMaxTotalUses holds the string denoting the max_total_uses field in the database.
+	FieldMaxTotalUses = "max_total_uses"
+	// FieldMaxUsesPerUser holds the string denoting the max_uses_per_user field in the database.
+	FieldMaxUsesPerUser = "max_uses_per_user"
+	// FieldUsedCount holds the string denoting the used_count field in the database.
+	FieldUsedCount = "used_count"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
 	EdgeGroup = "group"
 	// EdgeCreator holds the string denoting the creator edge name in mutations.
 	EdgeCreator = "creator"
+	// EdgeUsages holds the string denoting the usages edge name in mutations.
+	EdgeUsages = "usages"
 	// EdgeClaimedDevices holds the string denoting the claimed_devices edge name in mutations.
 	EdgeClaimedDevices = "claimed_devices"
 	// EdgeLoginDevices holds the string denoting the login_devices edge name in mutations.
@@ -71,6 +83,13 @@ const (
 	CreatorInverseTable = "users"
 	// CreatorColumn is the table column denoting the creator relation/edge.
 	CreatorColumn = "created_by"
+	// UsagesTable is the table that holds the usages relation/edge.
+	UsagesTable = "redeem_code_usages"
+	// UsagesInverseTable is the table name for the RedeemCodeUsage entity.
+	// It exists in this package in order to avoid circular dependency with the "redeemcodeusage" package.
+	UsagesInverseTable = "redeem_code_usages"
+	// UsagesColumn is the table column denoting the usages relation/edge.
+	UsagesColumn = "redeem_code_id"
 	// ClaimedDevicesTable is the table that holds the claimed_devices relation/edge.
 	ClaimedDevicesTable = "user_devices"
 	// ClaimedDevicesInverseTable is the table name for the UserDevice entity.
@@ -102,6 +121,11 @@ var Columns = []string{
 	FieldExpiresAt,
 	FieldGroupID,
 	FieldValidityDays,
+	FieldUsagePolicy,
+	FieldUsageScope,
+	FieldMaxTotalUses,
+	FieldMaxUsesPerUser,
+	FieldUsedCount,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -131,6 +155,14 @@ var (
 	DefaultCreatedAt func() time.Time
 	// DefaultValidityDays holds the default value on creation for the "validity_days" field.
 	DefaultValidityDays int
+	// DefaultUsagePolicy holds the default value on creation for the "usage_policy" field.
+	DefaultUsagePolicy string
+	// UsagePolicyValidator is a validator for the "usage_policy" field. It is called by the builders before save.
+	UsagePolicyValidator func(string) error
+	// DefaultMaxTotalUses holds the default value on creation for the "max_total_uses" field.
+	DefaultMaxTotalUses int
+	// DefaultUsedCount holds the default value on creation for the "used_count" field.
+	DefaultUsedCount int
 )
 
 // OrderOption defines the ordering options for the RedeemCode queries.
@@ -201,6 +233,31 @@ func ByValidityDays(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldValidityDays, opts...).ToFunc()
 }
 
+// ByUsagePolicy orders the results by the usage_policy field.
+func ByUsagePolicy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsagePolicy, opts...).ToFunc()
+}
+
+// ByUsageScope orders the results by the usage_scope field.
+func ByUsageScope(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsageScope, opts...).ToFunc()
+}
+
+// ByMaxTotalUses orders the results by the max_total_uses field.
+func ByMaxTotalUses(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMaxTotalUses, opts...).ToFunc()
+}
+
+// ByMaxUsesPerUser orders the results by the max_uses_per_user field.
+func ByMaxUsesPerUser(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMaxUsesPerUser, opts...).ToFunc()
+}
+
+// ByUsedCount orders the results by the used_count field.
+func ByUsedCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsedCount, opts...).ToFunc()
+}
+
 // ByUserField orders the results by user field.
 func ByUserField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -219,6 +276,20 @@ func ByGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
 func ByCreatorField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newCreatorStep(), sql.OrderByField(field, opts...))
+	}
+}
+
+// ByUsagesCount orders the results by usages count.
+func ByUsagesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUsagesStep(), opts...)
+	}
+}
+
+// ByUsages orders the results by usages terms.
+func ByUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUsagesStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 
@@ -268,6 +339,13 @@ func newCreatorStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(CreatorInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, CreatorTable, CreatorColumn),
+	)
+}
+func newUsagesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UsagesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, UsagesTable, UsagesColumn),
 	)
 }
 func newClaimedDevicesStep() *sqlgraph.Step {

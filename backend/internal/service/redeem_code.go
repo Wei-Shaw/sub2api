@@ -25,9 +25,31 @@ type RedeemCode struct {
 	GroupID      *int64
 	ValidityDays int
 
+	UsagePolicy    string
+	UsageScope     string
+	MaxTotalUses   *int
+	MaxUsesPerUser *int
+	UsedCount      int
+
 	User          *User
 	Group         *Group
 	CreatedByUser *User
+}
+
+type RedeemCodeUsage struct {
+	ID                   int64
+	RedeemCodeID         int64
+	UsageScope           string
+	UserID               int64
+	CodeSnapshot         string
+	TypeSnapshot         string
+	ValueSnapshot        float64
+	GroupIDSnapshot      *int64
+	ValidityDaysSnapshot int
+	UsedAt               time.Time
+	Metadata             map[string]any
+	RedeemCode           *RedeemCode
+	User                 *User
 }
 
 func (r *RedeemCode) IsUsed() bool {
@@ -50,6 +72,49 @@ func (r *RedeemCode) IsExpiredAt(now time.Time) bool {
 
 func (r *RedeemCode) CanUse() bool {
 	return r.Status == StatusUnused && !r.IsExpired()
+}
+
+func NormalizeRedeemUsagePolicy(policy string) string {
+	switch strings.TrimSpace(strings.ToLower(policy)) {
+	case "", RedeemUsagePolicySingleUse:
+		return RedeemUsagePolicySingleUse
+	case RedeemUsagePolicyOncePerUser:
+		return RedeemUsagePolicyOncePerUser
+	default:
+		return strings.TrimSpace(strings.ToLower(policy))
+	}
+}
+
+func NormalizeRedeemUsageScope(scope string) string {
+	return strings.TrimSpace(scope)
+}
+
+func (r *RedeemCode) EffectiveUsagePolicy() string {
+	if r == nil {
+		return RedeemUsagePolicySingleUse
+	}
+	return NormalizeRedeemUsagePolicy(r.UsagePolicy)
+}
+
+func (r *RedeemCode) EffectiveUsageScope() string {
+	if r == nil {
+		return ""
+	}
+	scope := NormalizeRedeemUsageScope(r.UsageScope)
+	if scope != "" {
+		return scope
+	}
+	return NormalizeRedeemCode(r.Code)
+}
+
+func (r *RedeemCode) HasTotalUsageRemaining() bool {
+	if r == nil {
+		return false
+	}
+	if r.MaxTotalUses == nil || *r.MaxTotalUses <= 0 {
+		return true
+	}
+	return r.UsedCount < *r.MaxTotalUses
 }
 
 func GenerateRedeemCode() (string, error) {

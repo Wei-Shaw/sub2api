@@ -3,21 +3,29 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import RedeemView from '../RedeemView.vue'
 
-const { listRedeemCodes, batchUpdateRedeemCodes, getAllGroups, showSuccess, showError, showInfo } =
-  vi.hoisted(() => ({
-    listRedeemCodes: vi.fn(),
-    batchUpdateRedeemCodes: vi.fn(),
-    getAllGroups: vi.fn(),
-    showSuccess: vi.fn(),
-    showError: vi.fn(),
-    showInfo: vi.fn()
-  }))
+const {
+  listRedeemCodes,
+  generateRedeemCodes,
+  batchUpdateRedeemCodes,
+  getAllGroups,
+  showSuccess,
+  showError,
+  showInfo
+} = vi.hoisted(() => ({
+  listRedeemCodes: vi.fn(),
+  generateRedeemCodes: vi.fn(),
+  batchUpdateRedeemCodes: vi.fn(),
+  getAllGroups: vi.fn(),
+  showSuccess: vi.fn(),
+  showError: vi.fn(),
+  showInfo: vi.fn()
+}))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     redeem: {
       list: listRedeemCodes,
-      generate: vi.fn(),
+      generate: generateRedeemCodes,
       delete: vi.fn(),
       batchDelete: vi.fn(),
       batchUpdate: batchUpdateRedeemCodes,
@@ -105,6 +113,7 @@ describe('admin RedeemView batch update', () => {
     document.body.innerHTML = ''
 
     listRedeemCodes.mockReset()
+    generateRedeemCodes.mockReset()
     batchUpdateRedeemCodes.mockReset()
     getAllGroups.mockReset()
     showSuccess.mockReset()
@@ -141,6 +150,24 @@ describe('admin RedeemView batch update', () => {
       page_size: 20,
       pages: 1
     })
+    generateRedeemCodes.mockResolvedValue([
+      {
+        id: 3,
+        code: 'CAMPAIGN-CODE',
+        type: 'balance',
+        value: 10,
+        status: 'unused',
+        used_by: null,
+        used_at: null,
+        created_at: '2026-01-01T00:00:00Z',
+        expires_at: null,
+        usage_policy: 'once_per_user',
+        usage_scope: 'campaign-2026',
+        max_total_uses: 50,
+        max_uses_per_user: 1,
+        used_count: 0
+      }
+    ])
     batchUpdateRedeemCodes.mockResolvedValue({ updated: 1, message: 'ok' })
     getAllGroups.mockResolvedValue([])
   })
@@ -183,5 +210,45 @@ describe('admin RedeemView batch update', () => {
       notes: 'maintenance'
     })
     expect(showSuccess).toHaveBeenCalledWith('admin.redeem.batchUpdateSuccess')
+  })
+
+  it('submits once-per-user generation policy fields', async () => {
+    const wrapper = mount(RedeemView, {
+      attachTo: document.body,
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          Select: SelectStub,
+          GroupBadge: true,
+          GroupOptionItem: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="generate-open"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="generate-usage-policy"]').setValue('once_per_user')
+    await flushPromises()
+    await wrapper.get('[data-test="generate-usage-scope"]').setValue('campaign-2026')
+    await wrapper.get('[data-test="generate-max-total-uses"]').setValue('50')
+    await wrapper.get('[data-test="generate-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(generateRedeemCodes).toHaveBeenCalledWith(1, 'balance', 10, undefined, undefined, undefined, {
+      usage_policy: 'once_per_user',
+      usage_scope: 'campaign-2026',
+      max_total_uses: 50,
+      max_uses_per_user: 1
+    })
   })
 })

@@ -43,6 +43,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
@@ -121,6 +122,8 @@ type Client struct {
 	Proxy *ProxyClient
 	// RedeemCode is the client for interacting with the RedeemCode builders.
 	RedeemCode *RedeemCodeClient
+	// RedeemCodeUsage is the client for interacting with the RedeemCodeUsage builders.
+	RedeemCodeUsage *RedeemCodeUsageClient
 	// SecuritySecret is the client for interacting with the SecuritySecret builders.
 	SecuritySecret *SecuritySecretClient
 	// Setting is the client for interacting with the Setting builders.
@@ -186,6 +189,7 @@ func (c *Client) init() {
 	c.PromoCodeUsage = NewPromoCodeUsageClient(c.config)
 	c.Proxy = NewProxyClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
+	c.RedeemCodeUsage = NewRedeemCodeUsageClient(c.config)
 	c.SecuritySecret = NewSecuritySecretClient(c.config)
 	c.Setting = NewSettingClient(c.config)
 	c.SubscriptionPlan = NewSubscriptionPlanClient(c.config)
@@ -319,6 +323,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
 		Proxy:                         NewProxyClient(cfg),
 		RedeemCode:                    NewRedeemCodeClient(cfg),
+		RedeemCodeUsage:               NewRedeemCodeUsageClient(cfg),
 		SecuritySecret:                NewSecuritySecretClient(cfg),
 		Setting:                       NewSettingClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
@@ -379,6 +384,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
 		Proxy:                         NewProxyClient(cfg),
 		RedeemCode:                    NewRedeemCodeClient(cfg),
+		RedeemCodeUsage:               NewRedeemCodeUsageClient(cfg),
 		SecuritySecret:                NewSecuritySecretClient(cfg),
 		Setting:                       NewSettingClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
@@ -428,10 +434,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
 		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
-		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserDevice, c.UserPlatformQuota, c.UserSubscription,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.RedeemCodeUsage, c.SecuritySecret,
+		c.Setting, c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask,
+		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
+		c.UserAttributeValue, c.UserDevice, c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -448,10 +454,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
 		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
-		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserDevice, c.UserPlatformQuota, c.UserSubscription,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.RedeemCodeUsage, c.SecuritySecret,
+		c.Setting, c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask,
+		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
+		c.UserAttributeValue, c.UserDevice, c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -516,6 +522,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Proxy.mutate(ctx, m)
 	case *RedeemCodeMutation:
 		return c.RedeemCode.mutate(ctx, m)
+	case *RedeemCodeUsageMutation:
+		return c.RedeemCodeUsage.mutate(ctx, m)
 	case *SecuritySecretMutation:
 		return c.SecuritySecret.mutate(ctx, m)
 	case *SettingMutation:
@@ -4959,6 +4967,22 @@ func (c *RedeemCodeClient) QueryCreator(_m *RedeemCode) *UserQuery {
 	return query
 }
 
+// QueryUsages queries the usages edge of a RedeemCode.
+func (c *RedeemCodeClient) QueryUsages(_m *RedeemCode) *RedeemCodeUsageQuery {
+	query := (&RedeemCodeUsageClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(redeemcode.Table, redeemcode.FieldID, id),
+			sqlgraph.To(redeemcodeusage.Table, redeemcodeusage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, redeemcode.UsagesTable, redeemcode.UsagesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryClaimedDevices queries the claimed_devices edge of a RedeemCode.
 func (c *RedeemCodeClient) QueryClaimedDevices(_m *RedeemCode) *UserDeviceQuery {
 	query := (&UserDeviceClient{config: c.config}).Query()
@@ -5013,6 +5037,171 @@ func (c *RedeemCodeClient) mutate(ctx context.Context, m *RedeemCodeMutation) (V
 		return (&RedeemCodeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown RedeemCode mutation op: %q", m.Op())
+	}
+}
+
+// RedeemCodeUsageClient is a client for the RedeemCodeUsage schema.
+type RedeemCodeUsageClient struct {
+	config
+}
+
+// NewRedeemCodeUsageClient returns a client for the RedeemCodeUsage from the given config.
+func NewRedeemCodeUsageClient(c config) *RedeemCodeUsageClient {
+	return &RedeemCodeUsageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `redeemcodeusage.Hooks(f(g(h())))`.
+func (c *RedeemCodeUsageClient) Use(hooks ...Hook) {
+	c.hooks.RedeemCodeUsage = append(c.hooks.RedeemCodeUsage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `redeemcodeusage.Intercept(f(g(h())))`.
+func (c *RedeemCodeUsageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RedeemCodeUsage = append(c.inters.RedeemCodeUsage, interceptors...)
+}
+
+// Create returns a builder for creating a RedeemCodeUsage entity.
+func (c *RedeemCodeUsageClient) Create() *RedeemCodeUsageCreate {
+	mutation := newRedeemCodeUsageMutation(c.config, OpCreate)
+	return &RedeemCodeUsageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RedeemCodeUsage entities.
+func (c *RedeemCodeUsageClient) CreateBulk(builders ...*RedeemCodeUsageCreate) *RedeemCodeUsageCreateBulk {
+	return &RedeemCodeUsageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RedeemCodeUsageClient) MapCreateBulk(slice any, setFunc func(*RedeemCodeUsageCreate, int)) *RedeemCodeUsageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RedeemCodeUsageCreateBulk{err: fmt.Errorf("calling to RedeemCodeUsageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RedeemCodeUsageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RedeemCodeUsageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RedeemCodeUsage.
+func (c *RedeemCodeUsageClient) Update() *RedeemCodeUsageUpdate {
+	mutation := newRedeemCodeUsageMutation(c.config, OpUpdate)
+	return &RedeemCodeUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RedeemCodeUsageClient) UpdateOne(_m *RedeemCodeUsage) *RedeemCodeUsageUpdateOne {
+	mutation := newRedeemCodeUsageMutation(c.config, OpUpdateOne, withRedeemCodeUsage(_m))
+	return &RedeemCodeUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RedeemCodeUsageClient) UpdateOneID(id int64) *RedeemCodeUsageUpdateOne {
+	mutation := newRedeemCodeUsageMutation(c.config, OpUpdateOne, withRedeemCodeUsageID(id))
+	return &RedeemCodeUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RedeemCodeUsage.
+func (c *RedeemCodeUsageClient) Delete() *RedeemCodeUsageDelete {
+	mutation := newRedeemCodeUsageMutation(c.config, OpDelete)
+	return &RedeemCodeUsageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RedeemCodeUsageClient) DeleteOne(_m *RedeemCodeUsage) *RedeemCodeUsageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RedeemCodeUsageClient) DeleteOneID(id int64) *RedeemCodeUsageDeleteOne {
+	builder := c.Delete().Where(redeemcodeusage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RedeemCodeUsageDeleteOne{builder}
+}
+
+// Query returns a query builder for RedeemCodeUsage.
+func (c *RedeemCodeUsageClient) Query() *RedeemCodeUsageQuery {
+	return &RedeemCodeUsageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRedeemCodeUsage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RedeemCodeUsage entity by its id.
+func (c *RedeemCodeUsageClient) Get(ctx context.Context, id int64) (*RedeemCodeUsage, error) {
+	return c.Query().Where(redeemcodeusage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RedeemCodeUsageClient) GetX(ctx context.Context, id int64) *RedeemCodeUsage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRedeemCode queries the redeem_code edge of a RedeemCodeUsage.
+func (c *RedeemCodeUsageClient) QueryRedeemCode(_m *RedeemCodeUsage) *RedeemCodeQuery {
+	query := (&RedeemCodeClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(redeemcodeusage.Table, redeemcodeusage.FieldID, id),
+			sqlgraph.To(redeemcode.Table, redeemcode.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, redeemcodeusage.RedeemCodeTable, redeemcodeusage.RedeemCodeColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUser queries the user edge of a RedeemCodeUsage.
+func (c *RedeemCodeUsageClient) QueryUser(_m *RedeemCodeUsage) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(redeemcodeusage.Table, redeemcodeusage.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, redeemcodeusage.UserTable, redeemcodeusage.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RedeemCodeUsageClient) Hooks() []Hook {
+	return c.hooks.RedeemCodeUsage
+}
+
+// Interceptors returns the client interceptors.
+func (c *RedeemCodeUsageClient) Interceptors() []Interceptor {
+	return c.inters.RedeemCodeUsage
+}
+
+func (c *RedeemCodeUsageClient) mutate(ctx context.Context, m *RedeemCodeUsageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RedeemCodeUsageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RedeemCodeUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RedeemCodeUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RedeemCodeUsageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RedeemCodeUsage mutation op: %q", m.Op())
 	}
 }
 
@@ -6162,6 +6351,22 @@ func (c *UserClient) QueryAttributeValues(_m *User) *UserAttributeValueQuery {
 	return query
 }
 
+// QueryRedeemCodeUsages queries the redeem_code_usages edge of a User.
+func (c *UserClient) QueryRedeemCodeUsages(_m *User) *RedeemCodeUsageQuery {
+	query := (&RedeemCodeUsageClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(redeemcodeusage.Table, redeemcodeusage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.RedeemCodeUsagesTable, user.RedeemCodeUsagesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryPromoCodeUsages queries the promo_code_usages edge of a User.
 func (c *UserClient) QueryPromoCodeUsages(_m *User) *PromoCodeUsageQuery {
 	query := (&PromoCodeUsageClient{config: c.config}).Query()
@@ -7273,7 +7478,8 @@ type (
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
 		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
-		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		PromoCode, PromoCodeUsage, Proxy, RedeemCode, RedeemCodeUsage, SecuritySecret,
+		Setting,
 		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
 		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue, UserDevice,
 		UserPlatformQuota, UserSubscription []ent.Hook
@@ -7285,7 +7491,8 @@ type (
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
 		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
-		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		PromoCode, PromoCodeUsage, Proxy, RedeemCode, RedeemCodeUsage, SecuritySecret,
+		Setting,
 		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
 		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue, UserDevice,
 		UserPlatformQuota, UserSubscription []ent.Interceptor

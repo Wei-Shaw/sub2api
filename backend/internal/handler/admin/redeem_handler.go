@@ -35,13 +35,17 @@ func NewRedeemHandler(adminService service.AdminService, redeemService *service.
 
 // GenerateRedeemCodesRequest represents generate redeem codes request
 type GenerateRedeemCodesRequest struct {
-	Count         int        `json:"count" binding:"required,min=1,max=100"`
-	Type          string     `json:"type" binding:"required,oneof=balance concurrency subscription invitation"`
-	Value         float64    `json:"value"`
-	GroupID       *int64     `json:"group_id"`      // 订阅类型必填
-	ValidityDays  int        `json:"validity_days"` // 订阅类型使用，正数增加/负数退款扣减
-	ExpiresAt     *time.Time `json:"expires_at"`
-	ExpiresInDays *int       `json:"expires_in_days" binding:"omitempty,min=1,max=3650"`
+	Count          int        `json:"count" binding:"required,min=1,max=100"`
+	Type           string     `json:"type" binding:"required,oneof=balance concurrency subscription invitation"`
+	Value          float64    `json:"value"`
+	GroupID        *int64     `json:"group_id"`      // 订阅类型必填
+	ValidityDays   int        `json:"validity_days"` // 订阅类型使用，正数增加/负数退款扣减
+	ExpiresAt      *time.Time `json:"expires_at"`
+	ExpiresInDays  *int       `json:"expires_in_days" binding:"omitempty,min=1,max=3650"`
+	UsagePolicy    string     `json:"usage_policy" binding:"omitempty,oneof=single_use once_per_user"`
+	UsageScope     string     `json:"usage_scope" binding:"omitempty,max=128"`
+	MaxTotalUses   *int       `json:"max_total_uses" binding:"omitempty,min=0"`
+	MaxUsesPerUser *int       `json:"max_uses_per_user" binding:"omitempty,min=1"`
 }
 
 // CreateAndRedeemCodeRequest represents creating a fixed code and redeeming it for a target user.
@@ -151,13 +155,17 @@ func (h *RedeemHandler) Generate(c *gin.Context) {
 
 	executeAdminIdempotentJSON(c, "admin.redeem_codes.generate", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		codes, execErr := h.adminService.GenerateRedeemCodes(ctx, &service.GenerateRedeemCodesInput{
-			Count:        req.Count,
-			Type:         req.Type,
-			Value:        req.Value,
-			GroupID:      req.GroupID,
-			ValidityDays: req.ValidityDays,
-			ExpiresAt:    expiresAt,
-			CreatedBy:    createdBy,
+			Count:          req.Count,
+			Type:           req.Type,
+			Value:          req.Value,
+			GroupID:        req.GroupID,
+			ValidityDays:   req.ValidityDays,
+			ExpiresAt:      expiresAt,
+			CreatedBy:      createdBy,
+			UsagePolicy:    req.UsagePolicy,
+			UsageScope:     req.UsageScope,
+			MaxTotalUses:   req.MaxTotalUses,
+			MaxUsesPerUser: req.MaxUsesPerUser,
 		})
 		if execErr != nil {
 			return nil, execErr

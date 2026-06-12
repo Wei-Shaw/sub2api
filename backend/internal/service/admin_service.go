@@ -498,6 +498,11 @@ type GenerateRedeemCodesInput struct {
 	ValidityDays int    // 订阅类型专用：有效天数
 	ExpiresAt    *time.Time
 	CreatedBy    *int64 // 后台创建人，用于审计 marketing/admin 批量生成
+
+	UsagePolicy    string
+	UsageScope     string
+	MaxTotalUses   *int
+	MaxUsesPerUser *int
 }
 
 type ProxyBatchDeleteResult struct {

@@ -83,6 +83,8 @@ const (
 	EdgeUsageLogs = "usage_logs"
 	// EdgeAttributeValues holds the string denoting the attribute_values edge name in mutations.
 	EdgeAttributeValues = "attribute_values"
+	// EdgeRedeemCodeUsages holds the string denoting the redeem_code_usages edge name in mutations.
+	EdgeRedeemCodeUsages = "redeem_code_usages"
 	// EdgePromoCodeUsages holds the string denoting the promo_code_usages edge name in mutations.
 	EdgePromoCodeUsages = "promo_code_usages"
 	// EdgePaymentOrders holds the string denoting the payment_orders edge name in mutations.
@@ -167,6 +169,13 @@ const (
 	AttributeValuesInverseTable = "user_attribute_values"
 	// AttributeValuesColumn is the table column denoting the attribute_values relation/edge.
 	AttributeValuesColumn = "user_id"
+	// RedeemCodeUsagesTable is the table that holds the redeem_code_usages relation/edge.
+	RedeemCodeUsagesTable = "redeem_code_usages"
+	// RedeemCodeUsagesInverseTable is the table name for the RedeemCodeUsage entity.
+	// It exists in this package in order to avoid circular dependency with the "redeemcodeusage" package.
+	RedeemCodeUsagesInverseTable = "redeem_code_usages"
+	// RedeemCodeUsagesColumn is the table column denoting the redeem_code_usages relation/edge.
+	RedeemCodeUsagesColumn = "user_id"
 	// PromoCodeUsagesTable is the table that holds the promo_code_usages relation/edge.
 	PromoCodeUsagesTable = "promo_code_usages"
 	// PromoCodeUsagesInverseTable is the table name for the PromoCodeUsage entity.
@@ -587,6 +596,20 @@ func ByAttributeValues(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByRedeemCodeUsagesCount orders the results by redeem_code_usages count.
+func ByRedeemCodeUsagesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newRedeemCodeUsagesStep(), opts...)
+	}
+}
+
+// ByRedeemCodeUsages orders the results by redeem_code_usages terms.
+func ByRedeemCodeUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newRedeemCodeUsagesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByPromoCodeUsagesCount orders the results by promo_code_usages count.
 func ByPromoCodeUsagesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -752,6 +775,13 @@ func newAttributeValuesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AttributeValuesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, AttributeValuesTable, AttributeValuesColumn),
+	)
+}
+func newRedeemCodeUsagesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(RedeemCodeUsagesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, RedeemCodeUsagesTable, RedeemCodeUsagesColumn),
 	)
 }
 func newPromoCodeUsagesStep() *sqlgraph.Step {

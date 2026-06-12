@@ -1586,6 +1586,7 @@ export interface CodexSessionImportResult {
 // ==================== Usage & Redeem Types ====================
 
 export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
+export type RedeemUsagePolicy = 'single_use' | 'once_per_user'
 export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber' | 'live'
 export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
 export type ImageSizeBreakdown = Record<string, number>
@@ -1730,6 +1731,11 @@ export interface RedeemCode {
   notes?: string
   group_id?: number | null // 订阅类型专用
   validity_days?: number // 订阅类型专用
+  usage_policy?: RedeemUsagePolicy
+  usage_scope?: string
+  max_total_uses?: number | null
+  max_uses_per_user?: number | null
+  used_count?: number
   user?: User
   group?: Group // 关联的分组
 }
@@ -1742,6 +1748,10 @@ export interface GenerateRedeemCodesRequest {
   validity_days?: number // 订阅类型专用
   expires_at?: string | null
   expires_in_days?: number
+  usage_policy?: RedeemUsagePolicy
+  usage_scope?: string
+  max_total_uses?: number | null
+  max_uses_per_user?: number | null
 }
 
 export interface BatchUpdateRedeemCodeFields {

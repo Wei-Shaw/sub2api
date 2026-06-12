@@ -141,6 +141,39 @@ func TestCreateAndRedeem_BalanceIgnoresSubscriptionFields(t *testing.T) {
 		"balance type should not require group_id or validity_days")
 }
 
+func TestGenerate_PassesUsagePolicyFieldsToService(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := newStubAdminService()
+	h := &RedeemHandler{adminService: stub}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	body := map[string]any{
+		"count":             3,
+		"type":              "balance",
+		"value":             25.0,
+		"usage_policy":      service.RedeemUsagePolicyOncePerUser,
+		"usage_scope":       "campaign-2026",
+		"max_total_uses":    50,
+		"max_uses_per_user": 1,
+	}
+	jsonBytes, err := json.Marshal(body)
+	require.NoError(t, err)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/admin/redeem-codes/generate", bytes.NewReader(jsonBytes))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.Generate(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, stub.lastGenerateRedeemCodesInput)
+	require.Equal(t, service.RedeemUsagePolicyOncePerUser, stub.lastGenerateRedeemCodesInput.UsagePolicy)
+	require.Equal(t, "campaign-2026", stub.lastGenerateRedeemCodesInput.UsageScope)
+	require.NotNil(t, stub.lastGenerateRedeemCodesInput.MaxTotalUses)
+	require.Equal(t, 50, *stub.lastGenerateRedeemCodesInput.MaxTotalUses)
+	require.NotNil(t, stub.lastGenerateRedeemCodesInput.MaxUsesPerUser)
+	require.Equal(t, 1, *stub.lastGenerateRedeemCodesInput.MaxUsesPerUser)
+}
+
 func TestResolveRedeemCodeExpiresAt_FromDays(t *testing.T) {
 	days := 3
 	expiresAt, err := resolveRedeemCodeExpiresAt(nil, &days)

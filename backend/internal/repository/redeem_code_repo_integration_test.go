@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcodeusage"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
@@ -70,6 +71,38 @@ func (s *RedeemCodeRepoSuite) TestCreate() {
 	s.Require().Equal("TEST-CREATE", got.Code)
 	s.Require().NotNil(got.ExpiresAt)
 	s.Require().WithinDuration(expiresAt, *got.ExpiresAt, time.Second)
+}
+
+func (s *RedeemCodeRepoSuite) TestCreateUsedCodeWritesUsageLedger() {
+	user := s.createUser(uniqueTestValue(s.T(), "create-used") + "@example.com")
+	usedAt := time.Now().UTC().Add(-time.Minute)
+	code := &service.RedeemCode{
+		Code:   "CREATE-USED-LEDGER",
+		Type:   service.AdjustmentTypeAdminBalance,
+		Value:  12.5,
+		Status: service.StatusUsed,
+		UsedBy: &user.ID,
+		UsedAt: &usedAt,
+		Notes:  "admin adjustment record",
+	}
+
+	s.Require().NoError(s.repo.Create(s.ctx, code), "Create")
+
+	usageCount, err := s.client.RedeemCodeUsage.Query().
+		Where(
+			redeemcodeusage.RedeemCodeID(code.ID),
+			redeemcodeusage.UserID(user.ID),
+		).
+		Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Equal(1, usageCount)
+
+	history, err := s.repo.ListByUser(s.ctx, user.ID, 10)
+	s.Require().NoError(err)
+	s.Require().Len(history, 1)
+	s.Require().Equal(code.Code, history[0].Code)
+	s.Require().Equal(service.AdjustmentTypeAdminBalance, history[0].Type)
+	s.Require().Equal("admin adjustment record", history[0].Notes)
 }
 
 func (s *RedeemCodeRepoSuite) TestCreateBatch() {
@@ -404,28 +437,48 @@ func (s *RedeemCodeRepoSuite) TestListByUser() {
 	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 
 	usedAt1 := base
-	_, err := s.client.RedeemCode.Create().
+	code1, err := s.client.RedeemCode.Create().
 		SetCode("USER-1").
 		SetType(service.RedeemTypeBalance).
-		SetStatus(service.StatusUsed).
+		SetStatus(service.StatusUnused).
 		SetValue(0).
 		SetNotes("").
 		SetValidityDays(30).
-		SetUsedBy(user.ID).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	_, err = s.client.RedeemCodeUsage.Create().
+		SetRedeemCodeID(code1.ID).
+		SetUsageScope(code1.Code).
+		SetUserID(user.ID).
+		SetCodeSnapshot(code1.Code).
+		SetTypeSnapshot(code1.Type).
+		SetValueSnapshot(code1.Value).
+		SetValidityDaysSnapshot(code1.ValidityDays).
 		SetUsedAt(usedAt1).
+		SetMetadata(map[string]any{}).
 		Save(s.ctx)
 	s.Require().NoError(err)
 
 	usedAt2 := base.Add(1 * time.Hour)
-	_, err = s.client.RedeemCode.Create().
+	code2, err := s.client.RedeemCode.Create().
 		SetCode("USER-2").
 		SetType(service.RedeemTypeBalance).
-		SetStatus(service.StatusUsed).
+		SetStatus(service.StatusUnused).
 		SetValue(0).
 		SetNotes("").
 		SetValidityDays(30).
-		SetUsedBy(user.ID).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	_, err = s.client.RedeemCodeUsage.Create().
+		SetRedeemCodeID(code2.ID).
+		SetUsageScope(code2.Code).
+		SetUserID(user.ID).
+		SetCodeSnapshot(code2.Code).
+		SetTypeSnapshot(code2.Type).
+		SetValueSnapshot(code2.Value).
+		SetValidityDaysSnapshot(code2.ValidityDays).
 		SetUsedAt(usedAt2).
+		SetMetadata(map[string]any{}).
 		Save(s.ctx)
 	s.Require().NoError(err)
 
@@ -441,16 +494,28 @@ func (s *RedeemCodeRepoSuite) TestListByUser_WithGroupPreload() {
 	user := s.createUser(uniqueTestValue(s.T(), "grp") + "@example.com")
 	group := s.createGroup(uniqueTestValue(s.T(), "g-listby"))
 
-	_, err := s.client.RedeemCode.Create().
+	code, err := s.client.RedeemCode.Create().
 		SetCode("WITH-GRP").
 		SetType(service.RedeemTypeSubscription).
-		SetStatus(service.StatusUsed).
+		SetStatus(service.StatusUnused).
 		SetValue(0).
 		SetNotes("").
 		SetValidityDays(30).
-		SetUsedBy(user.ID).
-		SetUsedAt(time.Now()).
 		SetGroupID(group.ID).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	_, err = s.client.RedeemCodeUsage.Create().
+		SetRedeemCodeID(code.ID).
+		SetUsageScope("WITH-GRP").
+		SetUserID(user.ID).
+		SetCodeSnapshot("WITH-GRP").
+		SetTypeSnapshot(service.RedeemTypeSubscription).
+		SetValueSnapshot(0).
+		SetGroupIDSnapshot(group.ID).
+		SetValidityDaysSnapshot(30).
+		SetUsedAt(time.Now()).
+		SetMetadata(map[string]any{}).
 		Save(s.ctx)
 	s.Require().NoError(err)
 
@@ -459,19 +524,30 @@ func (s *RedeemCodeRepoSuite) TestListByUser_WithGroupPreload() {
 	s.Require().Len(codes, 1)
 	s.Require().NotNil(codes[0].Group)
 	s.Require().Equal(group.ID, codes[0].Group.ID)
+	s.Require().Equal(group.Name, codes[0].Group.Name)
 }
 
 func (s *RedeemCodeRepoSuite) TestListByUser_DefaultLimit() {
 	user := s.createUser(uniqueTestValue(s.T(), "deflimit") + "@example.com")
-	_, err := s.client.RedeemCode.Create().
+	code, err := s.client.RedeemCode.Create().
 		SetCode("DEF-LIM").
 		SetType(service.RedeemTypeBalance).
-		SetStatus(service.StatusUsed).
+		SetStatus(service.StatusUnused).
 		SetValue(0).
 		SetNotes("").
 		SetValidityDays(30).
-		SetUsedBy(user.ID).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	_, err = s.client.RedeemCodeUsage.Create().
+		SetRedeemCodeID(code.ID).
+		SetUsageScope(code.Code).
+		SetUserID(user.ID).
+		SetCodeSnapshot(code.Code).
+		SetTypeSnapshot(code.Type).
+		SetValueSnapshot(code.Value).
+		SetValidityDaysSnapshot(code.ValidityDays).
 		SetUsedAt(time.Now()).
+		SetMetadata(map[string]any{}).
 		Save(s.ctx)
 	s.Require().NoError(err)
 
@@ -512,12 +588,20 @@ func (s *RedeemCodeRepoSuite) TestCreateBatch_Filters_Use_Idempotency_ListByUser
 	s.Require().NoError(err, "GetByCode")
 
 	// Use fixed time instead of time.Sleep for deterministic ordering.
-	_, err = s.client.RedeemCode.UpdateOneID(codeB.ID).
+	_, err = s.client.RedeemCodeUsage.Update().
+		Where(
+			redeemcodeusage.RedeemCodeIDEQ(codeB.ID),
+			redeemcodeusage.UserIDEQ(user.ID),
+		).
 		SetUsedAt(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)).
 		Save(s.ctx)
 	s.Require().NoError(err)
 	s.Require().NoError(s.repo.Use(s.ctx, codeA.ID, user.ID), "Use codeA")
-	_, err = s.client.RedeemCode.UpdateOneID(codeA.ID).
+	_, err = s.client.RedeemCodeUsage.Update().
+		Where(
+			redeemcodeusage.RedeemCodeIDEQ(codeA.ID),
+			redeemcodeusage.UserIDEQ(user.ID),
+		).
 		SetUsedAt(time.Date(2025, 1, 1, 13, 0, 0, 0, time.UTC)).
 		Save(s.ctx)
 	s.Require().NoError(err)

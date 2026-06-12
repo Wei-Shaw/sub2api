@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
@@ -504,6 +505,21 @@ func (_c *UserCreate) AddAttributeValues(v ...*UserAttributeValue) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddAttributeValueIDs(ids...)
+}
+
+// AddRedeemCodeUsageIDs adds the "redeem_code_usages" edge to the RedeemCodeUsage entity by IDs.
+func (_c *UserCreate) AddRedeemCodeUsageIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddRedeemCodeUsageIDs(ids...)
+	return _c
+}
+
+// AddRedeemCodeUsages adds the "redeem_code_usages" edges to the RedeemCodeUsage entity.
+func (_c *UserCreate) AddRedeemCodeUsages(v ...*RedeemCodeUsage) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddRedeemCodeUsageIDs(ids...)
 }
 
 // AddPromoCodeUsageIDs adds the "promo_code_usages" edge to the PromoCodeUsage entity by IDs.
@@ -1072,6 +1088,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(userattributevalue.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.RedeemCodeUsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RedeemCodeUsagesTable,
+			Columns: []string{user.RedeemCodeUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

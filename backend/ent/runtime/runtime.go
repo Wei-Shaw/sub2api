@@ -33,6 +33,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -1833,6 +1834,42 @@ func init() {
 	redeemcodeDescValidityDays := redeemcodeFields[11].Descriptor()
 	// redeemcode.DefaultValidityDays holds the default value on creation for the validity_days field.
 	redeemcode.DefaultValidityDays = redeemcodeDescValidityDays.Default.(int)
+	// redeemcodeDescUsagePolicy is the schema descriptor for usage_policy field.
+	redeemcodeDescUsagePolicy := redeemcodeFields[12].Descriptor()
+	// redeemcode.DefaultUsagePolicy holds the default value on creation for the usage_policy field.
+	redeemcode.DefaultUsagePolicy = redeemcodeDescUsagePolicy.Default.(string)
+	// redeemcode.UsagePolicyValidator is a validator for the "usage_policy" field. It is called by the builders before save.
+	redeemcode.UsagePolicyValidator = redeemcodeDescUsagePolicy.Validators[0].(func(string) error)
+	// redeemcodeDescMaxTotalUses is the schema descriptor for max_total_uses field.
+	redeemcodeDescMaxTotalUses := redeemcodeFields[14].Descriptor()
+	// redeemcode.DefaultMaxTotalUses holds the default value on creation for the max_total_uses field.
+	redeemcode.DefaultMaxTotalUses = redeemcodeDescMaxTotalUses.Default.(int)
+	// redeemcodeDescUsedCount is the schema descriptor for used_count field.
+	redeemcodeDescUsedCount := redeemcodeFields[16].Descriptor()
+	// redeemcode.DefaultUsedCount holds the default value on creation for the used_count field.
+	redeemcode.DefaultUsedCount = redeemcodeDescUsedCount.Default.(int)
+	redeemcodeusageFields := schema.RedeemCodeUsage{}.Fields()
+	_ = redeemcodeusageFields
+	// redeemcodeusageDescCodeSnapshot is the schema descriptor for code_snapshot field.
+	redeemcodeusageDescCodeSnapshot := redeemcodeusageFields[3].Descriptor()
+	// redeemcodeusage.CodeSnapshotValidator is a validator for the "code_snapshot" field. It is called by the builders before save.
+	redeemcodeusage.CodeSnapshotValidator = redeemcodeusageDescCodeSnapshot.Validators[0].(func(string) error)
+	// redeemcodeusageDescTypeSnapshot is the schema descriptor for type_snapshot field.
+	redeemcodeusageDescTypeSnapshot := redeemcodeusageFields[4].Descriptor()
+	// redeemcodeusage.TypeSnapshotValidator is a validator for the "type_snapshot" field. It is called by the builders before save.
+	redeemcodeusage.TypeSnapshotValidator = redeemcodeusageDescTypeSnapshot.Validators[0].(func(string) error)
+	// redeemcodeusageDescValueSnapshot is the schema descriptor for value_snapshot field.
+	redeemcodeusageDescValueSnapshot := redeemcodeusageFields[5].Descriptor()
+	// redeemcodeusage.DefaultValueSnapshot holds the default value on creation for the value_snapshot field.
+	redeemcodeusage.DefaultValueSnapshot = redeemcodeusageDescValueSnapshot.Default.(float64)
+	// redeemcodeusageDescValidityDaysSnapshot is the schema descriptor for validity_days_snapshot field.
+	redeemcodeusageDescValidityDaysSnapshot := redeemcodeusageFields[7].Descriptor()
+	// redeemcodeusage.DefaultValidityDaysSnapshot holds the default value on creation for the validity_days_snapshot field.
+	redeemcodeusage.DefaultValidityDaysSnapshot = redeemcodeusageDescValidityDaysSnapshot.Default.(int)
+	// redeemcodeusageDescUsedAt is the schema descriptor for used_at field.
+	redeemcodeusageDescUsedAt := redeemcodeusageFields[8].Descriptor()
+	// redeemcodeusage.DefaultUsedAt holds the default value on creation for the used_at field.
+	redeemcodeusage.DefaultUsedAt = redeemcodeusageDescUsedAt.Default.(func() time.Time)
 	securitysecretMixin := schema.SecuritySecret{}.Mixin()
 	securitysecretMixinFields0 := securitysecretMixin[0].Fields()
 	_ = securitysecretMixinFields0

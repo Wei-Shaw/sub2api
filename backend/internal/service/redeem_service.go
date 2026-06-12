@@ -205,10 +205,14 @@ func (s *RedeemService) GenerateCodes(ctx context.Context, req GenerateCodesRequ
 		}
 
 		codes = append(codes, RedeemCode{
-			Code:   code,
-			Type:   codeType,
-			Value:  value,
-			Status: StatusUnused,
+			Code:         code,
+			Type:         codeType,
+			Value:        value,
+			Status:       StatusUnused,
+			UsagePolicy:  RedeemUsagePolicySingleUse,
+			UsageScope:   NormalizeRedeemCode(code),
+			MaxTotalUses: intPtr(1),
+			UsedCount:    0,
 		})
 	}
 
@@ -239,6 +243,24 @@ func (s *RedeemService) CreateCode(ctx context.Context, code *RedeemCode) error 
 	}
 	if code.Status == "" {
 		code.Status = StatusUnused
+	}
+	if code.UsagePolicy == "" {
+		code.UsagePolicy = RedeemUsagePolicySingleUse
+	}
+	if code.UsageScope == "" {
+		code.UsageScope = NormalizeRedeemCode(code.Code)
+	}
+	if code.MaxTotalUses == nil {
+		code.MaxTotalUses = intPtr(1)
+	}
+	if code.UsagePolicy == RedeemUsagePolicyOncePerUser && code.MaxUsesPerUser == nil {
+		code.MaxUsesPerUser = intPtr(1)
+	}
+	if code.UsagePolicy == RedeemUsagePolicySingleUse && code.MaxUsesPerUser == nil {
+		code.MaxUsesPerUser = nil
+	}
+	if code.UsedCount < 0 {
+		code.UsedCount = 0
 	}
 	if code.IsExpired() {
 		return ErrRedeemCodeExpired

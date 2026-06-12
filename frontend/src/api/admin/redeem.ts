@@ -9,6 +9,7 @@ import type {
   GenerateRedeemCodesRequest,
   BatchUpdateRedeemCodeFields,
   RedeemCodeType,
+  RedeemUsagePolicy,
   PaginatedResponse
 } from '@/types'
 
@@ -70,7 +71,13 @@ export async function generate(
   value: number,
   groupId?: number | null,
   validityDays?: number,
-  expiresInDays?: number | null
+  expiresInDays?: number | null,
+  usage?: {
+    usage_policy?: RedeemUsagePolicy
+    usage_scope?: string
+    max_total_uses?: number | null
+    max_uses_per_user?: number | null
+  }
 ): Promise<RedeemCode[]> {
   const payload: GenerateRedeemCodesRequest = {
     count,
@@ -87,6 +94,18 @@ export async function generate(
   }
   if (expiresInDays && expiresInDays > 0) {
     payload.expires_in_days = expiresInDays
+  }
+  if (usage?.usage_policy) {
+    payload.usage_policy = usage.usage_policy
+  }
+  if (usage?.usage_scope?.trim()) {
+    payload.usage_scope = usage.usage_scope.trim()
+  }
+  if (usage?.max_total_uses !== undefined) {
+    payload.max_total_uses = usage.max_total_uses
+  }
+  if (usage?.max_uses_per_user !== undefined) {
+    payload.max_uses_per_user = usage.max_uses_per_user
   }
 
   const { data } = await apiClient.post<RedeemCode[]>('/admin/redeem-codes/generate', payload)

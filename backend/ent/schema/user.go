@@ -131,6 +131,7 @@ func (User) Edges() []ent.Edge {
 			Through("user_allowed_groups", UserAllowedGroup.Type),
 		edge.To("usage_logs", UsageLog.Type),
 		edge.To("attribute_values", UserAttributeValue.Type),
+		edge.To("redeem_code_usages", RedeemCodeUsage.Type),
 		edge.To("promo_code_usages", PromoCodeUsage.Type),
 		edge.To("payment_orders", PaymentOrder.Type),
 		edge.To("devices", UserDevice.Type),

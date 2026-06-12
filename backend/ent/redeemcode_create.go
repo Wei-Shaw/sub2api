@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 )
@@ -185,6 +186,76 @@ func (_c *RedeemCodeCreate) SetNillableValidityDays(v *int) *RedeemCodeCreate {
 	return _c
 }
 
+// SetUsagePolicy sets the "usage_policy" field.
+func (_c *RedeemCodeCreate) SetUsagePolicy(v string) *RedeemCodeCreate {
+	_c.mutation.SetUsagePolicy(v)
+	return _c
+}
+
+// SetNillableUsagePolicy sets the "usage_policy" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableUsagePolicy(v *string) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetUsagePolicy(*v)
+	}
+	return _c
+}
+
+// SetUsageScope sets the "usage_scope" field.
+func (_c *RedeemCodeCreate) SetUsageScope(v string) *RedeemCodeCreate {
+	_c.mutation.SetUsageScope(v)
+	return _c
+}
+
+// SetNillableUsageScope sets the "usage_scope" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableUsageScope(v *string) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetUsageScope(*v)
+	}
+	return _c
+}
+
+// SetMaxTotalUses sets the "max_total_uses" field.
+func (_c *RedeemCodeCreate) SetMaxTotalUses(v int) *RedeemCodeCreate {
+	_c.mutation.SetMaxTotalUses(v)
+	return _c
+}
+
+// SetNillableMaxTotalUses sets the "max_total_uses" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableMaxTotalUses(v *int) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetMaxTotalUses(*v)
+	}
+	return _c
+}
+
+// SetMaxUsesPerUser sets the "max_uses_per_user" field.
+func (_c *RedeemCodeCreate) SetMaxUsesPerUser(v int) *RedeemCodeCreate {
+	_c.mutation.SetMaxUsesPerUser(v)
+	return _c
+}
+
+// SetNillableMaxUsesPerUser sets the "max_uses_per_user" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableMaxUsesPerUser(v *int) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetMaxUsesPerUser(*v)
+	}
+	return _c
+}
+
+// SetUsedCount sets the "used_count" field.
+func (_c *RedeemCodeCreate) SetUsedCount(v int) *RedeemCodeCreate {
+	_c.mutation.SetUsedCount(v)
+	return _c
+}
+
+// SetNillableUsedCount sets the "used_count" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableUsedCount(v *int) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetUsedCount(*v)
+	}
+	return _c
+}
+
 // SetUserID sets the "user" edge to the User entity by ID.
 func (_c *RedeemCodeCreate) SetUserID(id int64) *RedeemCodeCreate {
 	_c.mutation.SetUserID(id)
@@ -226,6 +297,21 @@ func (_c *RedeemCodeCreate) SetNillableCreatorID(id *int64) *RedeemCodeCreate {
 // SetCreator sets the "creator" edge to the User entity.
 func (_c *RedeemCodeCreate) SetCreator(v *User) *RedeemCodeCreate {
 	return _c.SetCreatorID(v.ID)
+}
+
+// AddUsageIDs adds the "usages" edge to the RedeemCodeUsage entity by IDs.
+func (_c *RedeemCodeCreate) AddUsageIDs(ids ...int64) *RedeemCodeCreate {
+	_c.mutation.AddUsageIDs(ids...)
+	return _c
+}
+
+// AddUsages adds the "usages" edges to the RedeemCodeUsage entity.
+func (_c *RedeemCodeCreate) AddUsages(v ...*RedeemCodeUsage) *RedeemCodeCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddUsageIDs(ids...)
 }
 
 // AddClaimedDeviceIDs adds the "claimed_devices" edge to the UserDevice entity by IDs.
@@ -313,6 +399,18 @@ func (_c *RedeemCodeCreate) defaults() {
 		v := redeemcode.DefaultValidityDays
 		_c.mutation.SetValidityDays(v)
 	}
+	if _, ok := _c.mutation.UsagePolicy(); !ok {
+		v := redeemcode.DefaultUsagePolicy
+		_c.mutation.SetUsagePolicy(v)
+	}
+	if _, ok := _c.mutation.MaxTotalUses(); !ok {
+		v := redeemcode.DefaultMaxTotalUses
+		_c.mutation.SetMaxTotalUses(v)
+	}
+	if _, ok := _c.mutation.UsedCount(); !ok {
+		v := redeemcode.DefaultUsedCount
+		_c.mutation.SetUsedCount(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -349,6 +447,17 @@ func (_c *RedeemCodeCreate) check() error {
 	}
 	if _, ok := _c.mutation.ValidityDays(); !ok {
 		return &ValidationError{Name: "validity_days", err: errors.New(`ent: missing required field "RedeemCode.validity_days"`)}
+	}
+	if _, ok := _c.mutation.UsagePolicy(); !ok {
+		return &ValidationError{Name: "usage_policy", err: errors.New(`ent: missing required field "RedeemCode.usage_policy"`)}
+	}
+	if v, ok := _c.mutation.UsagePolicy(); ok {
+		if err := redeemcode.UsagePolicyValidator(v); err != nil {
+			return &ValidationError{Name: "usage_policy", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.usage_policy": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.UsedCount(); !ok {
+		return &ValidationError{Name: "used_count", err: errors.New(`ent: missing required field "RedeemCode.used_count"`)}
 	}
 	return nil
 }
@@ -413,6 +522,26 @@ func (_c *RedeemCodeCreate) createSpec() (*RedeemCode, *sqlgraph.CreateSpec) {
 		_spec.SetField(redeemcode.FieldValidityDays, field.TypeInt, value)
 		_node.ValidityDays = value
 	}
+	if value, ok := _c.mutation.UsagePolicy(); ok {
+		_spec.SetField(redeemcode.FieldUsagePolicy, field.TypeString, value)
+		_node.UsagePolicy = value
+	}
+	if value, ok := _c.mutation.UsageScope(); ok {
+		_spec.SetField(redeemcode.FieldUsageScope, field.TypeString, value)
+		_node.UsageScope = &value
+	}
+	if value, ok := _c.mutation.MaxTotalUses(); ok {
+		_spec.SetField(redeemcode.FieldMaxTotalUses, field.TypeInt, value)
+		_node.MaxTotalUses = &value
+	}
+	if value, ok := _c.mutation.MaxUsesPerUser(); ok {
+		_spec.SetField(redeemcode.FieldMaxUsesPerUser, field.TypeInt, value)
+		_node.MaxUsesPerUser = &value
+	}
+	if value, ok := _c.mutation.UsedCount(); ok {
+		_spec.SetField(redeemcode.FieldUsedCount, field.TypeInt, value)
+		_node.UsedCount = value
+	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -462,6 +591,22 @@ func (_c *RedeemCodeCreate) createSpec() (*RedeemCode, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.CreatedBy = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.UsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.ClaimedDevicesIDs(); len(nodes) > 0 {
@@ -728,6 +873,102 @@ func (u *RedeemCodeUpsert) AddValidityDays(v int) *RedeemCodeUpsert {
 	return u
 }
 
+// SetUsagePolicy sets the "usage_policy" field.
+func (u *RedeemCodeUpsert) SetUsagePolicy(v string) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldUsagePolicy, v)
+	return u
+}
+
+// UpdateUsagePolicy sets the "usage_policy" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateUsagePolicy() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldUsagePolicy)
+	return u
+}
+
+// SetUsageScope sets the "usage_scope" field.
+func (u *RedeemCodeUpsert) SetUsageScope(v string) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldUsageScope, v)
+	return u
+}
+
+// UpdateUsageScope sets the "usage_scope" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateUsageScope() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldUsageScope)
+	return u
+}
+
+// ClearUsageScope clears the value of the "usage_scope" field.
+func (u *RedeemCodeUpsert) ClearUsageScope() *RedeemCodeUpsert {
+	u.SetNull(redeemcode.FieldUsageScope)
+	return u
+}
+
+// SetMaxTotalUses sets the "max_total_uses" field.
+func (u *RedeemCodeUpsert) SetMaxTotalUses(v int) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldMaxTotalUses, v)
+	return u
+}
+
+// UpdateMaxTotalUses sets the "max_total_uses" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateMaxTotalUses() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldMaxTotalUses)
+	return u
+}
+
+// AddMaxTotalUses adds v to the "max_total_uses" field.
+func (u *RedeemCodeUpsert) AddMaxTotalUses(v int) *RedeemCodeUpsert {
+	u.Add(redeemcode.FieldMaxTotalUses, v)
+	return u
+}
+
+// ClearMaxTotalUses clears the value of the "max_total_uses" field.
+func (u *RedeemCodeUpsert) ClearMaxTotalUses() *RedeemCodeUpsert {
+	u.SetNull(redeemcode.FieldMaxTotalUses)
+	return u
+}
+
+// SetMaxUsesPerUser sets the "max_uses_per_user" field.
+func (u *RedeemCodeUpsert) SetMaxUsesPerUser(v int) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldMaxUsesPerUser, v)
+	return u
+}
+
+// UpdateMaxUsesPerUser sets the "max_uses_per_user" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateMaxUsesPerUser() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldMaxUsesPerUser)
+	return u
+}
+
+// AddMaxUsesPerUser adds v to the "max_uses_per_user" field.
+func (u *RedeemCodeUpsert) AddMaxUsesPerUser(v int) *RedeemCodeUpsert {
+	u.Add(redeemcode.FieldMaxUsesPerUser, v)
+	return u
+}
+
+// ClearMaxUsesPerUser clears the value of the "max_uses_per_user" field.
+func (u *RedeemCodeUpsert) ClearMaxUsesPerUser() *RedeemCodeUpsert {
+	u.SetNull(redeemcode.FieldMaxUsesPerUser)
+	return u
+}
+
+// SetUsedCount sets the "used_count" field.
+func (u *RedeemCodeUpsert) SetUsedCount(v int) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldUsedCount, v)
+	return u
+}
+
+// UpdateUsedCount sets the "used_count" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateUsedCount() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldUsedCount)
+	return u
+}
+
+// AddUsedCount adds v to the "used_count" field.
+func (u *RedeemCodeUpsert) AddUsedCount(v int) *RedeemCodeUpsert {
+	u.Add(redeemcode.FieldUsedCount, v)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -980,6 +1221,118 @@ func (u *RedeemCodeUpsertOne) AddValidityDays(v int) *RedeemCodeUpsertOne {
 func (u *RedeemCodeUpsertOne) UpdateValidityDays() *RedeemCodeUpsertOne {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.UpdateValidityDays()
+	})
+}
+
+// SetUsagePolicy sets the "usage_policy" field.
+func (u *RedeemCodeUpsertOne) SetUsagePolicy(v string) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetUsagePolicy(v)
+	})
+}
+
+// UpdateUsagePolicy sets the "usage_policy" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateUsagePolicy() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateUsagePolicy()
+	})
+}
+
+// SetUsageScope sets the "usage_scope" field.
+func (u *RedeemCodeUpsertOne) SetUsageScope(v string) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetUsageScope(v)
+	})
+}
+
+// UpdateUsageScope sets the "usage_scope" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateUsageScope() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateUsageScope()
+	})
+}
+
+// ClearUsageScope clears the value of the "usage_scope" field.
+func (u *RedeemCodeUpsertOne) ClearUsageScope() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearUsageScope()
+	})
+}
+
+// SetMaxTotalUses sets the "max_total_uses" field.
+func (u *RedeemCodeUpsertOne) SetMaxTotalUses(v int) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetMaxTotalUses(v)
+	})
+}
+
+// AddMaxTotalUses adds v to the "max_total_uses" field.
+func (u *RedeemCodeUpsertOne) AddMaxTotalUses(v int) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddMaxTotalUses(v)
+	})
+}
+
+// UpdateMaxTotalUses sets the "max_total_uses" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateMaxTotalUses() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateMaxTotalUses()
+	})
+}
+
+// ClearMaxTotalUses clears the value of the "max_total_uses" field.
+func (u *RedeemCodeUpsertOne) ClearMaxTotalUses() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearMaxTotalUses()
+	})
+}
+
+// SetMaxUsesPerUser sets the "max_uses_per_user" field.
+func (u *RedeemCodeUpsertOne) SetMaxUsesPerUser(v int) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetMaxUsesPerUser(v)
+	})
+}
+
+// AddMaxUsesPerUser adds v to the "max_uses_per_user" field.
+func (u *RedeemCodeUpsertOne) AddMaxUsesPerUser(v int) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddMaxUsesPerUser(v)
+	})
+}
+
+// UpdateMaxUsesPerUser sets the "max_uses_per_user" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateMaxUsesPerUser() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateMaxUsesPerUser()
+	})
+}
+
+// ClearMaxUsesPerUser clears the value of the "max_uses_per_user" field.
+func (u *RedeemCodeUpsertOne) ClearMaxUsesPerUser() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearMaxUsesPerUser()
+	})
+}
+
+// SetUsedCount sets the "used_count" field.
+func (u *RedeemCodeUpsertOne) SetUsedCount(v int) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetUsedCount(v)
+	})
+}
+
+// AddUsedCount adds v to the "used_count" field.
+func (u *RedeemCodeUpsertOne) AddUsedCount(v int) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddUsedCount(v)
+	})
+}
+
+// UpdateUsedCount sets the "used_count" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateUsedCount() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateUsedCount()
 	})
 }
 
@@ -1401,6 +1754,118 @@ func (u *RedeemCodeUpsertBulk) AddValidityDays(v int) *RedeemCodeUpsertBulk {
 func (u *RedeemCodeUpsertBulk) UpdateValidityDays() *RedeemCodeUpsertBulk {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.UpdateValidityDays()
+	})
+}
+
+// SetUsagePolicy sets the "usage_policy" field.
+func (u *RedeemCodeUpsertBulk) SetUsagePolicy(v string) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetUsagePolicy(v)
+	})
+}
+
+// UpdateUsagePolicy sets the "usage_policy" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateUsagePolicy() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateUsagePolicy()
+	})
+}
+
+// SetUsageScope sets the "usage_scope" field.
+func (u *RedeemCodeUpsertBulk) SetUsageScope(v string) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetUsageScope(v)
+	})
+}
+
+// UpdateUsageScope sets the "usage_scope" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateUsageScope() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateUsageScope()
+	})
+}
+
+// ClearUsageScope clears the value of the "usage_scope" field.
+func (u *RedeemCodeUpsertBulk) ClearUsageScope() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearUsageScope()
+	})
+}
+
+// SetMaxTotalUses sets the "max_total_uses" field.
+func (u *RedeemCodeUpsertBulk) SetMaxTotalUses(v int) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetMaxTotalUses(v)
+	})
+}
+
+// AddMaxTotalUses adds v to the "max_total_uses" field.
+func (u *RedeemCodeUpsertBulk) AddMaxTotalUses(v int) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddMaxTotalUses(v)
+	})
+}
+
+// UpdateMaxTotalUses sets the "max_total_uses" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateMaxTotalUses() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateMaxTotalUses()
+	})
+}
+
+// ClearMaxTotalUses clears the value of the "max_total_uses" field.
+func (u *RedeemCodeUpsertBulk) ClearMaxTotalUses() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearMaxTotalUses()
+	})
+}
+
+// SetMaxUsesPerUser sets the "max_uses_per_user" field.
+func (u *RedeemCodeUpsertBulk) SetMaxUsesPerUser(v int) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetMaxUsesPerUser(v)
+	})
+}
+
+// AddMaxUsesPerUser adds v to the "max_uses_per_user" field.
+func (u *RedeemCodeUpsertBulk) AddMaxUsesPerUser(v int) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddMaxUsesPerUser(v)
+	})
+}
+
+// UpdateMaxUsesPerUser sets the "max_uses_per_user" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateMaxUsesPerUser() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateMaxUsesPerUser()
+	})
+}
+
+// ClearMaxUsesPerUser clears the value of the "max_uses_per_user" field.
+func (u *RedeemCodeUpsertBulk) ClearMaxUsesPerUser() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearMaxUsesPerUser()
+	})
+}
+
+// SetUsedCount sets the "used_count" field.
+func (u *RedeemCodeUpsertBulk) SetUsedCount(v int) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetUsedCount(v)
+	})
+}
+
+// AddUsedCount adds v to the "used_count" field.
+func (u *RedeemCodeUpsertBulk) AddUsedCount(v int) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddUsedCount(v)
+	})
+}
+
+// UpdateUsedCount sets the "used_count" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateUsedCount() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateUsedCount()
 	})
 }
 

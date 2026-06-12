@@ -48,7 +48,7 @@
               <Icon name="edit" size="md" class="mr-2" />
               {{ t('admin.redeem.batchUpdate') }}
             </button>
-            <button @click="showGenerateDialog = true" class="btn btn-primary">
+            <button data-test="generate-open" @click="showGenerateDialog = true" class="btn btn-primary">
               {{ t('admin.redeem.generateCodes') }}
             </button>
           </div>
@@ -153,6 +153,18 @@
               ]"
             >
               {{ t('admin.redeem.status.' + value) }}
+            </span>
+          </template>
+
+          <template #cell-usage_policy="{ value }">
+            <span class="badge badge-primary">
+              {{ t('admin.redeem.usagePolicies.' + (value || 'single_use')) }}
+            </span>
+          </template>
+
+          <template #cell-used_count="{ value, row }">
+            <span class="text-sm text-gray-500 dark:text-dark-400">
+              {{ value ?? 0 }}<template v-if="row.max_total_uses != null">/{{ row.max_total_uses === 0 ? '∞' : row.max_total_uses }}</template>
             </span>
           </template>
 
@@ -285,12 +297,12 @@
       <div v-if="showGenerateDialog" class="fixed inset-0 z-50 flex items-center justify-center">
         <div class="fixed inset-0 bg-black/50" @click="showGenerateDialog = false"></div>
         <div
-          class="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-dark-800"
+          class="relative z-10 w-full max-w-lg rounded-xl bg-white p-6 shadow-xl dark:bg-dark-800"
         >
           <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('admin.redeem.generateCodesTitle') }}
           </h2>
-          <form @submit.prevent="handleGenerateCodes" class="space-y-4">
+          <form data-test="generate-form" @submit.prevent="handleGenerateCodes" class="space-y-4">
             <div>
               <label class="input-label">{{ t('admin.redeem.codeType') }}</label>
               <Select v-model="generateForm.type" :options="typeOptions" />
@@ -392,6 +404,60 @@
                 class="input mt-2"
                 :placeholder="t('admin.redeem.customExpiryDays')"
               />
+            </div>
+            <div class="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+              <div>
+                <label class="input-label">{{ t('admin.redeem.usagePolicy') }}</label>
+                <Select
+                  v-model="generateForm.usage_policy"
+                  data-test="generate-usage-policy"
+                  :options="usagePolicyOptions"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.redeem.usagePolicyHint') }}
+                </p>
+              </div>
+              <template v-if="generateForm.usage_policy === 'once_per_user'">
+                <div>
+                  <label class="input-label">{{ t('admin.redeem.usageScope') }}</label>
+                  <input
+                    v-model.trim="generateForm.usage_scope"
+                    data-test="generate-usage-scope"
+                    type="text"
+                    maxlength="128"
+                    class="input"
+                    :placeholder="t('admin.redeem.usageScopePlaceholder')"
+                  />
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label class="input-label">{{ t('admin.redeem.maxTotalUses') }}</label>
+                    <input
+                      v-model.number="generateForm.max_total_uses"
+                      data-test="generate-max-total-uses"
+                      type="number"
+                      min="0"
+                      required
+                      class="input"
+                    />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.redeem.maxTotalUsesHint') }}
+                    </p>
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('admin.redeem.maxUsesPerUser') }}</label>
+                    <input
+                      v-model.number="generateForm.max_uses_per_user"
+                      data-test="generate-max-uses-per-user"
+                      type="number"
+                      min="1"
+                      max="1"
+                      disabled
+                      class="input"
+                    />
+                  </div>
+                </div>
+              </template>
             </div>
             <div>
               <label class="input-label">{{ t('admin.redeem.count') }}</label>
@@ -627,6 +693,7 @@ import { formatDateTime } from '@/utils/format'
 import type {
   RedeemCode,
   RedeemCodeType,
+  RedeemUsagePolicy,
   Group,
   GroupPlatform,
   SubscriptionType,
@@ -733,6 +800,8 @@ const columns = computed<Column[]>(() => [
   { key: 'type', label: t('admin.redeem.columns.type'), sortable: true },
   { key: 'value', label: t('admin.redeem.columns.value'), sortable: true },
   { key: 'status', label: t('admin.redeem.columns.status'), sortable: true },
+  { key: 'usage_policy', label: t('admin.redeem.columns.usagePolicy') },
+  { key: 'used_count', label: t('admin.redeem.columns.usedCount'), sortable: true },
   { key: 'used_by', label: t('admin.redeem.columns.usedBy') },
   { key: 'used_at', label: t('admin.redeem.columns.usedAt'), sortable: true },
   { key: 'expires_at', label: t('admin.redeem.columns.expiresAt'), sortable: true },
@@ -771,6 +840,11 @@ const batchStatusOptions = computed(() => [
 const batchExpiryModeOptions = computed(() => [
   { value: 'clear', label: t('admin.redeem.neverExpires') },
   { value: 'custom', label: t('admin.redeem.customExpiry') }
+])
+
+const usagePolicyOptions = computed(() => [
+  { value: 'single_use', label: t('admin.redeem.usagePolicies.single_use') },
+  { value: 'once_per_user', label: t('admin.redeem.usagePolicies.once_per_user') }
 ])
 
 const codes = ref<RedeemCode[]>([])
@@ -843,7 +917,11 @@ const generateForm = reactive({
   group_id: null as number | null,
   validity_days: 30,
   expiry_option: 'never' as RedeemCodeExpiryOption,
-  custom_expiry_days: 7
+  custom_expiry_days: 7,
+  usage_policy: 'single_use' as RedeemUsagePolicy,
+  usage_scope: '',
+  max_total_uses: 1,
+  max_uses_per_user: 1
 })
 
 // 监听类型变化，邀请码类型时自动设置 value 为 0
@@ -855,6 +933,20 @@ watch(
     } else if (generateForm.value === 0) {
       generateForm.value = 10
     }
+  }
+)
+
+watch(
+  () => generateForm.usage_policy,
+  (policy) => {
+    if (policy === 'once_per_user') {
+      generateForm.max_total_uses = 0
+      generateForm.max_uses_per_user = 1
+      return
+    }
+    generateForm.usage_scope = ''
+    generateForm.max_total_uses = 1
+    generateForm.max_uses_per_user = 1
   }
 )
 
@@ -1019,11 +1111,28 @@ const buildBatchUpdateFields = (): BatchUpdateRedeemCodeFields | null => {
     fields.notes = batchUpdateForm.notes
   }
   if (batchUpdateForm.update_group_id) {
-    fields.group_id =
-      batchUpdateForm.group_id == null ? null : Number(batchUpdateForm.group_id)
+    fields.group_id = batchUpdateForm.group_id == null ? null : Number(batchUpdateForm.group_id)
   }
 
   return Object.keys(fields).length > 0 ? fields : null
+}
+
+const buildGenerateUsageOptions = () => {
+  if (generateForm.usage_policy !== 'once_per_user') {
+    return { usage_policy: 'single_use' as RedeemUsagePolicy, max_total_uses: 1 }
+  }
+
+  if (!Number.isFinite(generateForm.max_total_uses) || generateForm.max_total_uses < 0) {
+    appStore.showError(t('admin.redeem.maxTotalUsesInvalid'))
+    return null
+  }
+
+  return {
+    usage_policy: 'once_per_user' as RedeemUsagePolicy,
+    usage_scope: generateForm.usage_scope.trim() || undefined,
+    max_total_uses: Math.floor(generateForm.max_total_uses),
+    max_uses_per_user: 1
+  }
 }
 
 const handleGenerateCodes = async () => {
@@ -1039,6 +1148,11 @@ const handleGenerateCodes = async () => {
     return
   }
 
+  const usageOptions = buildGenerateUsageOptions()
+  if (!usageOptions) {
+    return
+  }
+
   generating.value = true
   try {
     const result = await adminAPI.redeem.generate(
@@ -1047,7 +1161,8 @@ const handleGenerateCodes = async () => {
       generateForm.value,
       generateForm.type === 'subscription' ? generateForm.group_id : undefined,
       generateForm.type === 'subscription' ? generateForm.validity_days : undefined,
-      expiresInDays
+      expiresInDays,
+      usageOptions
     )
     showGenerateDialog.value = false
     generatedCodes.value = result
@@ -1057,6 +1172,10 @@ const handleGenerateCodes = async () => {
     generateForm.validity_days = 30
     generateForm.expiry_option = 'never'
     generateForm.custom_expiry_days = 7
+    generateForm.usage_policy = 'single_use'
+    generateForm.usage_scope = ''
+    generateForm.max_total_uses = 1
+    generateForm.max_uses_per_user = 1
     loadCodes()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToGenerate'))

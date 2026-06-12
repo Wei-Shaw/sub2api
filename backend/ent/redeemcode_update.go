@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 )
@@ -235,6 +236,115 @@ func (_u *RedeemCodeUpdate) AddValidityDays(v int) *RedeemCodeUpdate {
 	return _u
 }
 
+// SetUsagePolicy sets the "usage_policy" field.
+func (_u *RedeemCodeUpdate) SetUsagePolicy(v string) *RedeemCodeUpdate {
+	_u.mutation.SetUsagePolicy(v)
+	return _u
+}
+
+// SetNillableUsagePolicy sets the "usage_policy" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableUsagePolicy(v *string) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetUsagePolicy(*v)
+	}
+	return _u
+}
+
+// SetUsageScope sets the "usage_scope" field.
+func (_u *RedeemCodeUpdate) SetUsageScope(v string) *RedeemCodeUpdate {
+	_u.mutation.SetUsageScope(v)
+	return _u
+}
+
+// SetNillableUsageScope sets the "usage_scope" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableUsageScope(v *string) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetUsageScope(*v)
+	}
+	return _u
+}
+
+// ClearUsageScope clears the value of the "usage_scope" field.
+func (_u *RedeemCodeUpdate) ClearUsageScope() *RedeemCodeUpdate {
+	_u.mutation.ClearUsageScope()
+	return _u
+}
+
+// SetMaxTotalUses sets the "max_total_uses" field.
+func (_u *RedeemCodeUpdate) SetMaxTotalUses(v int) *RedeemCodeUpdate {
+	_u.mutation.ResetMaxTotalUses()
+	_u.mutation.SetMaxTotalUses(v)
+	return _u
+}
+
+// SetNillableMaxTotalUses sets the "max_total_uses" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableMaxTotalUses(v *int) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetMaxTotalUses(*v)
+	}
+	return _u
+}
+
+// AddMaxTotalUses adds value to the "max_total_uses" field.
+func (_u *RedeemCodeUpdate) AddMaxTotalUses(v int) *RedeemCodeUpdate {
+	_u.mutation.AddMaxTotalUses(v)
+	return _u
+}
+
+// ClearMaxTotalUses clears the value of the "max_total_uses" field.
+func (_u *RedeemCodeUpdate) ClearMaxTotalUses() *RedeemCodeUpdate {
+	_u.mutation.ClearMaxTotalUses()
+	return _u
+}
+
+// SetMaxUsesPerUser sets the "max_uses_per_user" field.
+func (_u *RedeemCodeUpdate) SetMaxUsesPerUser(v int) *RedeemCodeUpdate {
+	_u.mutation.ResetMaxUsesPerUser()
+	_u.mutation.SetMaxUsesPerUser(v)
+	return _u
+}
+
+// SetNillableMaxUsesPerUser sets the "max_uses_per_user" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableMaxUsesPerUser(v *int) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetMaxUsesPerUser(*v)
+	}
+	return _u
+}
+
+// AddMaxUsesPerUser adds value to the "max_uses_per_user" field.
+func (_u *RedeemCodeUpdate) AddMaxUsesPerUser(v int) *RedeemCodeUpdate {
+	_u.mutation.AddMaxUsesPerUser(v)
+	return _u
+}
+
+// ClearMaxUsesPerUser clears the value of the "max_uses_per_user" field.
+func (_u *RedeemCodeUpdate) ClearMaxUsesPerUser() *RedeemCodeUpdate {
+	_u.mutation.ClearMaxUsesPerUser()
+	return _u
+}
+
+// SetUsedCount sets the "used_count" field.
+func (_u *RedeemCodeUpdate) SetUsedCount(v int) *RedeemCodeUpdate {
+	_u.mutation.ResetUsedCount()
+	_u.mutation.SetUsedCount(v)
+	return _u
+}
+
+// SetNillableUsedCount sets the "used_count" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableUsedCount(v *int) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetUsedCount(*v)
+	}
+	return _u
+}
+
+// AddUsedCount adds value to the "used_count" field.
+func (_u *RedeemCodeUpdate) AddUsedCount(v int) *RedeemCodeUpdate {
+	_u.mutation.AddUsedCount(v)
+	return _u
+}
+
 // SetUserID sets the "user" edge to the User entity by ID.
 func (_u *RedeemCodeUpdate) SetUserID(id int64) *RedeemCodeUpdate {
 	_u.mutation.SetUserID(id)
@@ -276,6 +386,21 @@ func (_u *RedeemCodeUpdate) SetNillableCreatorID(id *int64) *RedeemCodeUpdate {
 // SetCreator sets the "creator" edge to the User entity.
 func (_u *RedeemCodeUpdate) SetCreator(v *User) *RedeemCodeUpdate {
 	return _u.SetCreatorID(v.ID)
+}
+
+// AddUsageIDs adds the "usages" edge to the RedeemCodeUsage entity by IDs.
+func (_u *RedeemCodeUpdate) AddUsageIDs(ids ...int64) *RedeemCodeUpdate {
+	_u.mutation.AddUsageIDs(ids...)
+	return _u
+}
+
+// AddUsages adds the "usages" edges to the RedeemCodeUsage entity.
+func (_u *RedeemCodeUpdate) AddUsages(v ...*RedeemCodeUsage) *RedeemCodeUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddUsageIDs(ids...)
 }
 
 // AddClaimedDeviceIDs adds the "claimed_devices" edge to the UserDevice entity by IDs.
@@ -329,6 +454,27 @@ func (_u *RedeemCodeUpdate) ClearGroup() *RedeemCodeUpdate {
 func (_u *RedeemCodeUpdate) ClearCreator() *RedeemCodeUpdate {
 	_u.mutation.ClearCreator()
 	return _u
+}
+
+// ClearUsages clears all "usages" edges to the RedeemCodeUsage entity.
+func (_u *RedeemCodeUpdate) ClearUsages() *RedeemCodeUpdate {
+	_u.mutation.ClearUsages()
+	return _u
+}
+
+// RemoveUsageIDs removes the "usages" edge to RedeemCodeUsage entities by IDs.
+func (_u *RedeemCodeUpdate) RemoveUsageIDs(ids ...int64) *RedeemCodeUpdate {
+	_u.mutation.RemoveUsageIDs(ids...)
+	return _u
+}
+
+// RemoveUsages removes "usages" edges to RedeemCodeUsage entities.
+func (_u *RedeemCodeUpdate) RemoveUsages(v ...*RedeemCodeUsage) *RedeemCodeUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveUsageIDs(ids...)
 }
 
 // ClearClaimedDevices clears all "claimed_devices" edges to the UserDevice entity.
@@ -417,6 +563,11 @@ func (_u *RedeemCodeUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UsagePolicy(); ok {
+		if err := redeemcode.UsagePolicyValidator(v); err != nil {
+			return &ValidationError{Name: "usage_policy", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.usage_policy": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -470,6 +621,39 @@ func (_u *RedeemCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if value, ok := _u.mutation.AddedValidityDays(); ok {
 		_spec.AddField(redeemcode.FieldValidityDays, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.UsagePolicy(); ok {
+		_spec.SetField(redeemcode.FieldUsagePolicy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UsageScope(); ok {
+		_spec.SetField(redeemcode.FieldUsageScope, field.TypeString, value)
+	}
+	if _u.mutation.UsageScopeCleared() {
+		_spec.ClearField(redeemcode.FieldUsageScope, field.TypeString)
+	}
+	if value, ok := _u.mutation.MaxTotalUses(); ok {
+		_spec.SetField(redeemcode.FieldMaxTotalUses, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxTotalUses(); ok {
+		_spec.AddField(redeemcode.FieldMaxTotalUses, field.TypeInt, value)
+	}
+	if _u.mutation.MaxTotalUsesCleared() {
+		_spec.ClearField(redeemcode.FieldMaxTotalUses, field.TypeInt)
+	}
+	if value, ok := _u.mutation.MaxUsesPerUser(); ok {
+		_spec.SetField(redeemcode.FieldMaxUsesPerUser, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxUsesPerUser(); ok {
+		_spec.AddField(redeemcode.FieldMaxUsesPerUser, field.TypeInt, value)
+	}
+	if _u.mutation.MaxUsesPerUserCleared() {
+		_spec.ClearField(redeemcode.FieldMaxUsesPerUser, field.TypeInt)
+	}
+	if value, ok := _u.mutation.UsedCount(); ok {
+		_spec.SetField(redeemcode.FieldUsedCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedUsedCount(); ok {
+		_spec.AddField(redeemcode.FieldUsedCount, field.TypeInt, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -551,6 +735,51 @@ func (_u *RedeemCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.UsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedUsagesIDs(); len(nodes) > 0 && !_u.mutation.UsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.UsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -872,6 +1101,115 @@ func (_u *RedeemCodeUpdateOne) AddValidityDays(v int) *RedeemCodeUpdateOne {
 	return _u
 }
 
+// SetUsagePolicy sets the "usage_policy" field.
+func (_u *RedeemCodeUpdateOne) SetUsagePolicy(v string) *RedeemCodeUpdateOne {
+	_u.mutation.SetUsagePolicy(v)
+	return _u
+}
+
+// SetNillableUsagePolicy sets the "usage_policy" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableUsagePolicy(v *string) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetUsagePolicy(*v)
+	}
+	return _u
+}
+
+// SetUsageScope sets the "usage_scope" field.
+func (_u *RedeemCodeUpdateOne) SetUsageScope(v string) *RedeemCodeUpdateOne {
+	_u.mutation.SetUsageScope(v)
+	return _u
+}
+
+// SetNillableUsageScope sets the "usage_scope" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableUsageScope(v *string) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetUsageScope(*v)
+	}
+	return _u
+}
+
+// ClearUsageScope clears the value of the "usage_scope" field.
+func (_u *RedeemCodeUpdateOne) ClearUsageScope() *RedeemCodeUpdateOne {
+	_u.mutation.ClearUsageScope()
+	return _u
+}
+
+// SetMaxTotalUses sets the "max_total_uses" field.
+func (_u *RedeemCodeUpdateOne) SetMaxTotalUses(v int) *RedeemCodeUpdateOne {
+	_u.mutation.ResetMaxTotalUses()
+	_u.mutation.SetMaxTotalUses(v)
+	return _u
+}
+
+// SetNillableMaxTotalUses sets the "max_total_uses" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableMaxTotalUses(v *int) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetMaxTotalUses(*v)
+	}
+	return _u
+}
+
+// AddMaxTotalUses adds value to the "max_total_uses" field.
+func (_u *RedeemCodeUpdateOne) AddMaxTotalUses(v int) *RedeemCodeUpdateOne {
+	_u.mutation.AddMaxTotalUses(v)
+	return _u
+}
+
+// ClearMaxTotalUses clears the value of the "max_total_uses" field.
+func (_u *RedeemCodeUpdateOne) ClearMaxTotalUses() *RedeemCodeUpdateOne {
+	_u.mutation.ClearMaxTotalUses()
+	return _u
+}
+
+// SetMaxUsesPerUser sets the "max_uses_per_user" field.
+func (_u *RedeemCodeUpdateOne) SetMaxUsesPerUser(v int) *RedeemCodeUpdateOne {
+	_u.mutation.ResetMaxUsesPerUser()
+	_u.mutation.SetMaxUsesPerUser(v)
+	return _u
+}
+
+// SetNillableMaxUsesPerUser sets the "max_uses_per_user" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableMaxUsesPerUser(v *int) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetMaxUsesPerUser(*v)
+	}
+	return _u
+}
+
+// AddMaxUsesPerUser adds value to the "max_uses_per_user" field.
+func (_u *RedeemCodeUpdateOne) AddMaxUsesPerUser(v int) *RedeemCodeUpdateOne {
+	_u.mutation.AddMaxUsesPerUser(v)
+	return _u
+}
+
+// ClearMaxUsesPerUser clears the value of the "max_uses_per_user" field.
+func (_u *RedeemCodeUpdateOne) ClearMaxUsesPerUser() *RedeemCodeUpdateOne {
+	_u.mutation.ClearMaxUsesPerUser()
+	return _u
+}
+
+// SetUsedCount sets the "used_count" field.
+func (_u *RedeemCodeUpdateOne) SetUsedCount(v int) *RedeemCodeUpdateOne {
+	_u.mutation.ResetUsedCount()
+	_u.mutation.SetUsedCount(v)
+	return _u
+}
+
+// SetNillableUsedCount sets the "used_count" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableUsedCount(v *int) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetUsedCount(*v)
+	}
+	return _u
+}
+
+// AddUsedCount adds value to the "used_count" field.
+func (_u *RedeemCodeUpdateOne) AddUsedCount(v int) *RedeemCodeUpdateOne {
+	_u.mutation.AddUsedCount(v)
+	return _u
+}
+
 // SetUserID sets the "user" edge to the User entity by ID.
 func (_u *RedeemCodeUpdateOne) SetUserID(id int64) *RedeemCodeUpdateOne {
 	_u.mutation.SetUserID(id)
@@ -913,6 +1251,21 @@ func (_u *RedeemCodeUpdateOne) SetNillableCreatorID(id *int64) *RedeemCodeUpdate
 // SetCreator sets the "creator" edge to the User entity.
 func (_u *RedeemCodeUpdateOne) SetCreator(v *User) *RedeemCodeUpdateOne {
 	return _u.SetCreatorID(v.ID)
+}
+
+// AddUsageIDs adds the "usages" edge to the RedeemCodeUsage entity by IDs.
+func (_u *RedeemCodeUpdateOne) AddUsageIDs(ids ...int64) *RedeemCodeUpdateOne {
+	_u.mutation.AddUsageIDs(ids...)
+	return _u
+}
+
+// AddUsages adds the "usages" edges to the RedeemCodeUsage entity.
+func (_u *RedeemCodeUpdateOne) AddUsages(v ...*RedeemCodeUsage) *RedeemCodeUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddUsageIDs(ids...)
 }
 
 // AddClaimedDeviceIDs adds the "claimed_devices" edge to the UserDevice entity by IDs.
@@ -966,6 +1319,27 @@ func (_u *RedeemCodeUpdateOne) ClearGroup() *RedeemCodeUpdateOne {
 func (_u *RedeemCodeUpdateOne) ClearCreator() *RedeemCodeUpdateOne {
 	_u.mutation.ClearCreator()
 	return _u
+}
+
+// ClearUsages clears all "usages" edges to the RedeemCodeUsage entity.
+func (_u *RedeemCodeUpdateOne) ClearUsages() *RedeemCodeUpdateOne {
+	_u.mutation.ClearUsages()
+	return _u
+}
+
+// RemoveUsageIDs removes the "usages" edge to RedeemCodeUsage entities by IDs.
+func (_u *RedeemCodeUpdateOne) RemoveUsageIDs(ids ...int64) *RedeemCodeUpdateOne {
+	_u.mutation.RemoveUsageIDs(ids...)
+	return _u
+}
+
+// RemoveUsages removes "usages" edges to RedeemCodeUsage entities.
+func (_u *RedeemCodeUpdateOne) RemoveUsages(v ...*RedeemCodeUsage) *RedeemCodeUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveUsageIDs(ids...)
 }
 
 // ClearClaimedDevices clears all "claimed_devices" edges to the UserDevice entity.
@@ -1067,6 +1441,11 @@ func (_u *RedeemCodeUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UsagePolicy(); ok {
+		if err := redeemcode.UsagePolicyValidator(v); err != nil {
+			return &ValidationError{Name: "usage_policy", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.usage_policy": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1137,6 +1516,39 @@ func (_u *RedeemCodeUpdateOne) sqlSave(ctx context.Context) (_node *RedeemCode, 
 	}
 	if value, ok := _u.mutation.AddedValidityDays(); ok {
 		_spec.AddField(redeemcode.FieldValidityDays, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.UsagePolicy(); ok {
+		_spec.SetField(redeemcode.FieldUsagePolicy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UsageScope(); ok {
+		_spec.SetField(redeemcode.FieldUsageScope, field.TypeString, value)
+	}
+	if _u.mutation.UsageScopeCleared() {
+		_spec.ClearField(redeemcode.FieldUsageScope, field.TypeString)
+	}
+	if value, ok := _u.mutation.MaxTotalUses(); ok {
+		_spec.SetField(redeemcode.FieldMaxTotalUses, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxTotalUses(); ok {
+		_spec.AddField(redeemcode.FieldMaxTotalUses, field.TypeInt, value)
+	}
+	if _u.mutation.MaxTotalUsesCleared() {
+		_spec.ClearField(redeemcode.FieldMaxTotalUses, field.TypeInt)
+	}
+	if value, ok := _u.mutation.MaxUsesPerUser(); ok {
+		_spec.SetField(redeemcode.FieldMaxUsesPerUser, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxUsesPerUser(); ok {
+		_spec.AddField(redeemcode.FieldMaxUsesPerUser, field.TypeInt, value)
+	}
+	if _u.mutation.MaxUsesPerUserCleared() {
+		_spec.ClearField(redeemcode.FieldMaxUsesPerUser, field.TypeInt)
+	}
+	if value, ok := _u.mutation.UsedCount(); ok {
+		_spec.SetField(redeemcode.FieldUsedCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedUsedCount(); ok {
+		_spec.AddField(redeemcode.FieldUsedCount, field.TypeInt, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1218,6 +1630,51 @@ func (_u *RedeemCodeUpdateOne) sqlSave(ctx context.Context) (_node *RedeemCode, 
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.UsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedUsagesIDs(); len(nodes) > 0 && !_u.mutation.UsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.UsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

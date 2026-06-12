@@ -345,6 +345,18 @@ func (f RedeemCodeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RedeemCodeMutation", m)
 }
 
+// The RedeemCodeUsageFunc type is an adapter to allow the use of ordinary
+// function as RedeemCodeUsage mutator.
+type RedeemCodeUsageFunc func(context.Context, *ent.RedeemCodeUsageMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RedeemCodeUsageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RedeemCodeUsageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RedeemCodeUsageMutation", m)
+}
+
 // The SecuritySecretFunc type is an adapter to allow the use of ordinary
 // function as SecuritySecret mutator.
 type SecuritySecretFunc func(context.Context, *ent.SecuritySecretMutation) (ent.Value, error)
