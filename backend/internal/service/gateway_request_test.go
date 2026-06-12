@@ -1228,3 +1228,110 @@ func BenchmarkParseGatewayRequest_New_Large(b *testing.B) {
 		_, _ = ParseGatewayRequest(NewRequestBodyRef(data), "")
 	}
 }
+
+func TestNormalizeChineseLLMThinking(t *testing.T) {
+	tests := []struct {
+		name          string
+		model         string
+		input         string
+		wantApplied   bool
+		wantTypeValue string // expected thinking.type after rewrite; "" = must not exist
+		wantUnchanged bool   // body must be byte-for-byte unchanged
+	}{
+		// MiniMax M3 / M2.x — passback-required path: rewrite enabled -> adaptive
+		{
+			name:          "minimax m3 enabled -> adaptive",
+			model:         "MiniMax-M3",
+			input:         `{"model":"MiniMax-M3","thinking":{"type":"enabled","budget_tokens":8192},"messages":[]}`,
+			wantApplied:   true,
+			wantTypeValue: "adaptive",
+		},
+		{
+			name:          "minimax m2.7 enabled -> adaptive",
+			model:         "MiniMax-M2.7",
+			input:         `{"model":"MiniMax-M2.7","thinking":{"type":"enabled","budget_tokens":4096},"messages":[]}`,
+			wantApplied:   true,
+			wantTypeValue: "adaptive",
+		},
+		{
+			name:          "minimax m3 adaptive is left alone",
+			model:         "MiniMax-M3",
+			input:         `{"model":"MiniMax-M3","thinking":{"type":"adaptive","budget_tokens":8192},"messages":[]}`,
+			wantApplied:   false,
+			wantUnchanged: true,
+		},
+		{
+			name:          "minimax m3 disabled is left alone",
+			model:         "MiniMax-M3",
+			input:         `{"model":"MiniMax-M3","thinking":{"type":"disabled"},"messages":[]}`,
+			wantApplied:   false,
+			wantUnchanged: true,
+		},
+		{
+			name:          "minimax m3 with no thinking field is no-op",
+			model:         "MiniMax-M3",
+			input:         `{"model":"MiniMax-M3","messages":[]}`,
+			wantApplied:   false,
+			wantUnchanged: true,
+		},
+		// Non-MiniMax Chinese LLMs: no-op (Kimi/GLM/DeepSeek accept enabled as-is)
+		{
+			name:          "kimi k2.6 with enabled left alone",
+			model:         "kimi-k2.6",
+			input:         `{"model":"kimi-k2.6","thinking":{"type":"enabled","budget_tokens":8192},"messages":[]}`,
+			wantApplied:   false,
+			wantUnchanged: true,
+		},
+		{
+			name:          "glm-5.1 with enabled left alone",
+			model:         "glm-5.1",
+			input:         `{"model":"glm-5.1","thinking":{"type":"enabled"},"messages":[]}`,
+			wantApplied:   false,
+			wantUnchanged: true,
+		},
+		{
+			name:          "deepseek v4-pro with enabled left alone",
+			model:         "deepseek-v4-pro",
+			input:         `{"model":"deepseek-v4-pro","thinking":{"type":"enabled"},"messages":[]}`,
+			wantApplied:   false,
+			wantUnchanged: true,
+		},
+		// Anthropic-strict model: never rewritten even though prefix would not match anyway
+		{
+			name:          "claude opus 4.6 with enabled left alone",
+			model:         "claude-opus-4.6-20260201",
+			input:         `{"model":"claude-opus-4.6-20260201","thinking":{"type":"enabled","budget_tokens":8192},"messages":[]}`,
+			wantApplied:   false,
+			wantUnchanged: true,
+		},
+		// Edge case: invalid JSON — fail-safe return original
+		{
+			name:          "invalid json returned unchanged",
+			model:         "MiniMax-M3",
+			input:         `{not json`,
+			wantApplied:   false,
+			wantUnchanged: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, applied := NormalizeChineseLLMThinking([]byte(tt.input), tt.model)
+			require.Equal(t, tt.wantApplied, applied, "applied mismatch")
+
+			if tt.wantUnchanged {
+				require.Equal(t, tt.input, string(got), "body must be byte-for-byte unchanged")
+				return
+			}
+
+			// Parsed-back validation: output must be valid JSON with the expected thinking.type
+			var parsed struct {
+				Thinking struct {
+					Type string `json:"type"`
+				} `json:"thinking"`
+			}
+			require.NoError(t, json.Unmarshal(got, &parsed), "output must be valid JSON")
+			require.Equal(t, tt.wantTypeValue, parsed.Thinking.Type)
+		})
+	}
+}
