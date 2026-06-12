@@ -383,7 +383,211 @@ REDACTED{
 			expectedOutput:    2.8e-7,
 			expectedCacheRead: 2.8e-9,
 	REDACTED,
-		{name: "non supported family", model: "qwen-max", expectNilPricing: trueREDACTED,
+
+		// ---- 智谱 GLM（z.ai USD 口径）----
+		{
+			name:              "glm 5.1 flagship",
+			model:             "glm-5.1",
+			expectedInput:     1.4e-6,
+			expectedOutput:    4.4e-6,
+			expectedCacheRead: 0.26e-6,
+	REDACTED,
+		{
+			name:              "glm 5 base",
+			model:             "glm-5",
+			expectedInput:     1e-6,
+			expectedOutput:    3.2e-6,
+			expectedCacheRead: 0.2e-6,
+	REDACTED,
+		{
+			name:              "glm 5 turbo",
+			model:             "glm-5-turbo",
+			expectedInput:     1.2e-6,
+			expectedOutput:    4e-6,
+			expectedCacheRead: 0.24e-6,
+	REDACTED,
+		{
+			name:              "glm 4.7",
+			model:             "glm-4.7",
+			expectedInput:     0.6e-6,
+			expectedOutput:    2.2e-6,
+			expectedCacheRead: 0.11e-6,
+	REDACTED,
+		{
+			name:              "glm 4.6",
+			model:             "glm-4.6",
+			expectedInput:     0.6e-6,
+			expectedOutput:    2.2e-6,
+			expectedCacheRead: 0.11e-6,
+	REDACTED,
+		{
+			name:              "glm 4.5",
+			model:             "glm-4.5",
+			expectedInput:     0.6e-6,
+			expectedOutput:    2.2e-6,
+			expectedCacheRead: 0.11e-6,
+	REDACTED,
+		{
+			name:              "glm 4.5-x premium",
+			model:             "glm-4.5-x",
+			expectedInput:     2.2e-6,
+			expectedOutput:    8.9e-6,
+			expectedCacheRead: 0.45e-6,
+	REDACTED,
+		{
+			name:              "glm 4.5-air lightweight",
+			model:             "glm-4.5-air",
+			expectedInput:     0.2e-6,
+			expectedOutput:    1.1e-6,
+			expectedCacheRead: 0.03e-6,
+	REDACTED,
+		{
+			name:              "glm 4.7-flashx",
+			model:             "glm-4.7-flashx",
+			expectedInput:     0.07e-6,
+			expectedOutput:    0.4e-6,
+			expectedCacheRead: 0.01e-6,
+	REDACTED,
+		{
+			name:              "glm 4.5-flash free tier",
+			model:             "glm-4.5-flash",
+			expectedInput:     0, // Free tier on z.ai
+			expectedOutput:    0,
+			expectedCacheRead: 0,
+	REDACTED,
+		{
+			name:              "glm 4.7-flash free tier",
+			model:             "glm-4.7-flash",
+			expectedInput:     0,
+			expectedOutput:    0,
+			expectedCacheRead: 0,
+	REDACTED,
+		{
+			name:              "glm 4-32b legacy",
+			model:             "glm-4-32b-0414-128k",
+			expectedInput:     0.1e-6,
+			expectedOutput:    0.1e-6,
+			expectedCacheRead: 0,
+	REDACTED,
+		// 关键：5.1 必须先于 5 匹配（避免被 glm-5 抢走）
+		{
+			name:              "glm 5.1 vs glm 5 ordering (verbatim 5.1)",
+			model:             "glm-5.1",
+			expectedInput:     1.4e-6, // = glm-5.1 价格
+			expectedOutput:    4.4e-6,
+			expectedCacheRead: 0.26e-6,
+	REDACTED,
+		{
+			name:              "glm 4.5-air vs glm 4.5 ordering",
+			model:             "glm-4.5-air",
+			expectedInput:     0.2e-6, // = glm-4.5-air 价格（不是 glm-4.5 的 0.6e-6）
+			expectedOutput:    1.1e-6,
+			expectedCacheRead: 0.03e-6,
+	REDACTED,
+
+		// ---- 月之暗面 Kimi ----
+		{
+			name:              "kimi k2.6 flagship",
+			model:             "kimi-k2.6",
+			expectedInput:     0.95e-6,
+			expectedOutput:    4e-6,
+			expectedCacheRead: 0.15e-6,
+	REDACTED,
+		{
+			name:              "kimi k2.5",
+			model:             "kimi-k2.5",
+			expectedInput:     0.60e-6,
+			expectedOutput:    3e-6,
+			expectedCacheRead: 0.098e-6,
+	REDACTED,
+		{
+			name:              "kimi k2-thinking",
+			model:             "kimi-k2-thinking",
+			expectedInput:     0.56e-6,
+			expectedOutput:    2.24e-6,
+			expectedCacheRead: 0.14e-6,
+	REDACTED,
+		{
+			name:              "kimi k2 base",
+			model:             "kimi-k2",
+			expectedInput:     0.56e-6,
+			expectedOutput:    2.24e-6,
+			expectedCacheRead: 0.14e-6,
+	REDACTED,
+		// 关键：k2.6 / k2.5 / k2-thinking 必须先于 k2 匹配
+		{
+			name:              "kimi k2.6 vs k2 ordering",
+			model:             "kimi-k2.6",
+			expectedInput:     0.95e-6, // = k2.6 不是 k2 的 0.56e-6
+			expectedOutput:    4e-6,
+			expectedCacheRead: 0.15e-6,
+	REDACTED,
+		{
+			name:              "kimi k2 thinking hyphenated variant",
+			model:             "kimi-k2-thinking-preview",
+			expectedInput:     0.56e-6,
+			expectedOutput:    2.24e-6,
+			expectedCacheRead: 0.14e-6,
+	REDACTED,
+
+		// ---- MiniMax M 系列 ----
+		{
+			name:              "minimax m3",
+			model:             "minimax-m3",
+			expectedInput:     0.60e-6,
+			expectedOutput:    2.40e-6,
+			expectedCacheRead: 0.12e-6,
+	REDACTED,
+		{
+			name:              "minimax m3 long ctx boundary keep standard tier",
+			model:             "minimax-m3-long", // 仍按 standard tier (≤512K)
+			expectedInput:     0.60e-6,
+			expectedOutput:    2.40e-6,
+			expectedCacheRead: 0.12e-6,
+	REDACTED,
+		{
+			name:              "minimax m2.7",
+			model:             "minimax-m2.7",
+			expectedInput:     0.30e-6,
+			expectedOutput:    1.20e-6,
+			expectedCacheRead: 0.06e-6,
+	REDACTED,
+		{
+			name:              "minimax m2.7 highspeed",
+			model:             "minimax-m2.7-highspeed",
+			expectedInput:     0.60e-6,
+			expectedOutput:    2.40e-6,
+			expectedCacheRead: 0.06e-6,
+	REDACTED,
+		{
+			name:              "minimax m2.5",
+			model:             "minimax-m2.5",
+			expectedInput:     0.30e-6,
+			expectedOutput:    1.20e-6,
+			expectedCacheRead: 0.03e-6,
+	REDACTED,
+		{
+			name:              "minimax m2 legacy",
+			model:             "minimax-m2",
+			expectedInput:     0.30e-6,
+			expectedOutput:    1.20e-6,
+			expectedCacheRead: 0.03e-6,
+	REDACTED,
+
+		// ---- 负向用例：未覆盖的国产厂商 / alias 不应误计价 ----
+		{name: "qwen unknown no fallback", model: "qwen-max", expectNilPricing: trueREDACTED,
+		{name: "doubao unknown no fallback", model: "doubao-pro", expectNilPricing: trueREDACTED,
+		{name: "hunyuan unknown no fallback", model: "hunyuan-t1", expectNilPricing: trueREDACTED,
+		{name: "moonshot v1 not covered", model: "moonshot-v1-8k", expectNilPricing: trueREDACTED,
+		// kimi-k2-0905 / kimi-k2-0711 官方未公布独立价，走 kimi-k2 隐性回退（接受）——
+		// 如未来官方公布独立价，需在 getFallbackPricing 加显式分支。
+		{
+			name:              "kimi k2-0905-preview implicit fallback to k2",
+			model:             "kimi-k2-0905-preview",
+			expectedInput:     0.56e-6,
+			expectedOutput:    2.24e-6,
+			expectedCacheRead: 0.14e-6,
+	REDACTED,
 REDACTED
 
 	for _, tt := range tests {
