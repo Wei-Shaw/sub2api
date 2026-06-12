@@ -26,9 +26,15 @@ const (
 	ThinkingProtocolPassbackRequired
 )
 
-// ResolveThinkingProtocol 根据「实际发给上游的模型 ID」推断 thinking 协议族。
-// 必须传入映射后的模型 ID（mappedModel），不要传客户端原始请求模型 ID（reqModel），
-// 否则用户配置「claude-sonnet-4-6 → deepseek-v4-pro」时会判错。
+// ResolveThinkingProtocol 根据「作为 thinking block 处理参考的模型 ID」推断 thinking 协议族。
+//
+// 传入参数的语义随调用路径不同：
+//   - **Anthropic gateway**（转发原始 Anthropic 请求）：传 mappedModel（账号级 model mapping
+//     后的上游 model ID）。例：用户配置「claude-sonnet-4-6 → deepseek-v4-pro」后，
+//     传 deepseek-v4-pro 才能被正确判为 passback-required。
+//   - **Gemini messages compat**（Anthropic body → Gemini upstream）：传 originalModel
+//     （客户端 Anthropic 请求的 model ID）。原因：此场景下上游是 Gemini，但被剥
+//     离的 body 是 Anthropic 格式，需按客户端请求的 Anthropic 子协议族判定剥离行为。
 //
 // 匹配规则按厂商前缀硬编码：
 //   - anthropic-strict: claude-* / opus-* / sonnet-* / haiku-*

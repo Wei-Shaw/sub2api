@@ -1294,10 +1294,10 @@ REDACTED
 // NormalizeChineseLLMThinking rewrites the top-level `thinking` object for Chinese
 // LLM providers that use Anthropic-compatible endpoints but have different accepted
 // values for `thinking.type`. Currently scoped to:
-//   - MiniMax M3 / M3.x (`MiniMax-m*`): official docs accept only `thinking.type`
-//     of "adaptive" or "disabled"; "enabled" is not a valid value and may be
-//     rejected/ignored. Pi-ai and other Anthropic-SDK clients default to "enabled"
-//     (Anthropic-original) and never auto-rewrite for non-Anthropic models.
+//   - MiniMax M-series (`MiniMax-m*`, covering M2.x / M3 / M3.x): official docs accept
+//     only `thinking.type` of "adaptive" or "disabled"; "enabled" is not a valid value
+//     and may be rejected/ignored. Pi-ai and other Anthropic-SDK clients default to
+//     "enabled" (Anthropic-original) and never auto-rewrite for non-Anthropic models.
 //
 // Non-MiniMax models (Kimi/GLM/DeepSeek) currently accept "enabled" as-is, so this
 // function is intentionally a no-op for them. New Chinese LLM quirks should be
