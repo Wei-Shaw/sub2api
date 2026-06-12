@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 const (
@@ -234,18 +235,103 @@ func (s *BotSalesFulfillmentService) Fulfill(ctx context.Context, req BotSalesTo
 	if apiKeyUserID <= 0 {
 		apiKeyUserID = buyer.ID
 	}
-	if !resp.paymentReplayed && shouldIssueBotSalesAPIKey(req.DeliveryPolicy) && s.apiKeyService != nil {
-		apiKey, err := s.apiKeyService.Create(ctx, apiKeyUserID, CreateAPIKeyRequest{
-			Name:    fmt.Sprintf("bot-sales-%s", req.ExternalOrderID),
-			GroupID: &resp.Entitlement.GroupID,
-		})
+	if !resp.paymentReplayed && s.apiKeyService != nil {
+		apiKey, err := s.issueBotSalesAPIKeyForPolicy(ctx, apiKeyUserID, resp.Entitlement.GroupID, req)
 		if err != nil {
 			return nil, err
 		}
-		resp.Delivery.APIKey = &BotSalesDeliveryAPIKey{ID: apiKey.ID, Key: apiKey.Key, GroupID: apiKey.GroupID}
+		if apiKey != nil {
+			resp.Delivery.APIKey = &BotSalesDeliveryAPIKey{ID: apiKey.ID, Key: apiKey.Key, GroupID: apiKey.GroupID}
+		}
 	}
 
 	return resp, nil
+}
+
+func (s *BotSalesFulfillmentService) issueBotSalesAPIKeyForPolicy(ctx context.Context, userID int64, targetGroupID int64, req BotSalesTokenFulfillmentRequest) (*APIKey, error) {
+	policy := strings.TrimSpace(req.DeliveryPolicy.IssueAPIKey)
+	switch policy {
+	case "", BotSalesIssueAPIKeyAlways:
+		return s.createBotSalesAPIKey(ctx, userID, targetGroupID, req.ExternalOrderID)
+	case BotSalesIssueAPIKeyIfMissing:
+		apiKey, err := s.findReusableBotSalesAPIKey(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		if apiKey != nil {
+			return s.rebindBotSalesAPIKeyIfNeeded(ctx, apiKey, userID, targetGroupID)
+		}
+		return s.createBotSalesAPIKey(ctx, userID, targetGroupID, req.ExternalOrderID)
+	case BotSalesIssueAPIKeyNever:
+		return nil, nil
+	default:
+		return nil, nil
+	}
+}
+
+func (s *BotSalesFulfillmentService) createBotSalesAPIKey(ctx context.Context, userID int64, targetGroupID int64, externalOrderID string) (*APIKey, error) {
+	if s == nil || s.apiKeyService == nil {
+		return nil, nil
+	}
+	return s.apiKeyService.Create(ctx, userID, CreateAPIKeyRequest{
+		Name:    fmt.Sprintf("bot-sales-%s", externalOrderID),
+		GroupID: &targetGroupID,
+	})
+}
+
+func (s *BotSalesFulfillmentService) findReusableBotSalesAPIKey(ctx context.Context, userID int64) (*APIKey, error) {
+	if s == nil || s.apiKeyService == nil || userID <= 0 {
+		return nil, nil
+	}
+	keys, _, err := s.apiKeyService.List(ctx, userID, pagination.PaginationParams{Page: 1, PageSize: 1000, SortBy: "created_at", SortOrder: pagination.SortOrderAsc}, APIKeyListFilters{Status: StatusAPIKeyActive})
+	if err != nil {
+		return nil, err
+	}
+	for i := range keys {
+		candidate := &keys[i]
+		if isReusableBotSalesAPIKey(candidate) {
+			return candidate, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *BotSalesFulfillmentService) rebindBotSalesAPIKeyIfNeeded(ctx context.Context, apiKey *APIKey, userID int64, targetGroupID int64) (*APIKey, error) {
+	if apiKey == nil || targetGroupID <= 0 || apiKey.GroupID != nil && *apiKey.GroupID == targetGroupID {
+		return apiKey, nil
+	}
+	return s.rebindBotSalesAPIKeyGroup(ctx, apiKey, userID, targetGroupID)
+}
+
+func (s *BotSalesFulfillmentService) rebindBotSalesAPIKeyGroup(ctx context.Context, apiKey *APIKey, userID int64, targetGroupID int64) (*APIKey, error) {
+	if s == nil || s.apiKeyService == nil || apiKey == nil {
+		return apiKey, nil
+	}
+	user, err := s.apiKeyService.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	group, err := s.apiKeyService.groupRepo.GetByID(ctx, targetGroupID)
+	if err != nil {
+		return nil, fmt.Errorf("get group: %w", err)
+	}
+	if !s.apiKeyService.canUserBindGroup(ctx, user, group) {
+		return nil, ErrGroupNotAllowed
+	}
+	apiKey.GroupID = &targetGroupID
+	if err := s.apiKeyService.apiKeyRepo.Update(ctx, apiKey); err != nil {
+		return nil, fmt.Errorf("update api key: %w", err)
+	}
+	s.apiKeyService.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+	s.apiKeyService.compileAPIKeyIPRules(apiKey)
+	return apiKey, nil
+}
+
+func isReusableBotSalesAPIKey(apiKey *APIKey) bool {
+	if apiKey == nil || !apiKey.IsActive() {
+		return false
+	}
+	return !apiKey.IsExpired() && !apiKey.IsQuotaExhausted()
 }
 
 func (s *BotSalesFulfillmentService) fulfillSubscription(ctx context.Context, buyer *User, req BotSalesTokenFulfillmentRequest, resp *BotSalesTokenFulfillmentResponse) error {
@@ -895,17 +981,6 @@ func userServiceUserRepo(userService *UserService) UserRepository {
 		return nil
 	}
 	return userService.userRepo
-}
-
-func shouldIssueBotSalesAPIKey(policy BotSalesDeliveryPolicy) bool {
-	switch strings.TrimSpace(policy.IssueAPIKey) {
-	case "", BotSalesIssueAPIKeyAlways, BotSalesIssueAPIKeyIfMissing:
-		return true
-	case BotSalesIssueAPIKeyNever:
-		return false
-	default:
-		return false
-	}
 }
 
 func botSalesBuyerLookupEmails(buyer BotSalesFulfillmentBuyer) []string {

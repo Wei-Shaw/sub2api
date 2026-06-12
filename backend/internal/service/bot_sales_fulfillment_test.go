@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
@@ -183,6 +184,141 @@ func TestBotSalesFulfillmentBalanceNewIssuesDeviceCodeAndTopupCreditsExistingDev
 	require.Equal(t, newResp.Delivery.DeviceCode, topupResp.DeviceCode)
 	require.Equal(t, newResp.Buyer.UserID, topupResp.Buyer.UserID)
 	require.Equal(t, float64(40), client.User.GetX(ctx, newResp.Buyer.UserID).Balance)
+}
+
+func TestBotSalesFulfillmentIfMissingReusesExistingAPIKeyForTopup(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	group := createBotSalesGroup(t, client, "bot-balance-reuse-key", service.SubscriptionTypeNone)
+	pkg := client.BalancePackage.Create().
+		SetCode("standard_reuse_key").
+		SetLabel("Standard Reuse Key").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(group.ID).
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	newResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-reuse-key-new",
+		Operation:          service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-reuse-key-new",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:reuse-key-owner",
+			Provider:       "telegram",
+			ProviderUserID: "reuse-key-owner",
+			TelegramID:     "reuse-key-owner",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways, IssueDeviceCode: true},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, newResp.Delivery.APIKey)
+	issuedKeyID := newResp.Delivery.APIKey.ID
+	require.NotZero(t, issuedKeyID)
+	require.Equal(t, 1, client.APIKey.Query().Where(apikey.UserIDEQ(newResp.Buyer.UserID)).CountX(ctx))
+
+	topupResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-reuse-key-topup",
+		Operation:          service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-reuse-key-topup",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:reuse-key-owner",
+			Provider:       "telegram",
+			ProviderUserID: "reuse-key-owner",
+			TelegramID:     "reuse-key-owner",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyIfMissing},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, topupResp.Delivery.APIKey)
+	require.Equal(t, issuedKeyID, topupResp.Delivery.APIKey.ID)
+	require.Equal(t, group.ID, *topupResp.Delivery.APIKey.GroupID)
+	require.Equal(t, 1, client.APIKey.Query().Where(apikey.UserIDEQ(newResp.Buyer.UserID)).CountX(ctx))
+	require.Equal(t, float64(40), client.User.GetX(ctx, newResp.Buyer.UserID).Balance)
+}
+
+func TestBotSalesFulfillmentIfMissingRebindsExistingAPIKeyToTopupGroup(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	oldGroup := createBotSalesGroup(t, client, "bot-balance-rebind-old", service.SubscriptionTypeNone)
+	newGroup := createBotSalesGroup(t, client, "bot-balance-rebind-new", service.SubscriptionTypeNone)
+	oldPkg := client.BalancePackage.Create().
+		SetCode("standard_rebind_old").
+		SetLabel("Standard Rebind Old").
+		SetAmountLedger(10).
+		SetActualCredits(10000000).
+		SetCreditUnit("tokens").
+		SetGroupID(oldGroup.ID).
+		SetForSale(true).
+		SaveX(ctx)
+	newPkg := client.BalancePackage.Create().
+		SetCode("standard_rebind_new").
+		SetLabel("Standard Rebind New").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(newGroup.ID).
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	firstResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-rebind-key-new",
+		Operation:          service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: oldPkg.Code,
+		ExternalPaymentID:  "bs-pay-rebind-key-new",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:rebind-key-owner",
+			Provider:       "telegram",
+			ProviderUserID: "rebind-key-owner",
+			TelegramID:     "rebind-key-owner",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, firstResp.Delivery.APIKey)
+	issuedKeyID := firstResp.Delivery.APIKey.ID
+	require.NotZero(t, issuedKeyID)
+	require.Equal(t, oldGroup.ID, *firstResp.Delivery.APIKey.GroupID)
+
+	topupResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-rebind-key-topup",
+		Operation:          service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: newPkg.Code,
+		ExternalPaymentID:  "bs-pay-rebind-key-topup",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:rebind-key-owner",
+			Provider:       "telegram",
+			ProviderUserID: "rebind-key-owner",
+			TelegramID:     "rebind-key-owner",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyIfMissing},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, topupResp.Delivery.APIKey)
+	require.Equal(t, issuedKeyID, topupResp.Delivery.APIKey.ID)
+	require.Equal(t, newGroup.ID, *topupResp.Delivery.APIKey.GroupID)
+	require.Equal(t, 1, client.APIKey.Query().Where(apikey.UserIDEQ(firstResp.Buyer.UserID)).CountX(ctx))
+
+	storedKey := client.APIKey.GetX(ctx, issuedKeyID)
+	require.NotNil(t, storedKey.GroupID)
+	require.Equal(t, newGroup.ID, *storedKey.GroupID)
 }
 
 func TestBotSalesFulfillmentBalanceTopupWithoutDeviceCodeCreditsCanonicalBuyerAcrossProviders(t *testing.T) {
