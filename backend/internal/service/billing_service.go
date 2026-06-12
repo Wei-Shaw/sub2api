@@ -294,24 +294,6 @@ REDACTED
 		CacheReadPricePerTokenPriority: 0.35e-6,
 		SupportsCacheBreakdown:         false,
 REDACTED
-	// DeepSeek V4 Pro
-	// Source: https://api-docs.deepseek.com/quick_start/pricing
-	s.fallbackPrices["deepseek-v4-pro"] = &ModelPricing{
-		InputPricePerToken:     4.35e-7,  // $0.435 per MTok
-		OutputPricePerToken:    8.7e-7,   // $0.87 per MTok
-		CacheReadPricePerToken: 3.625e-9, // $0.003625 per MTok
-		SupportsCacheBreakdown: false,
-REDACTED
-
-	// DeepSeek V4 Flash
-	// Source: https://api-docs.deepseek.com/quick_start/pricing
-	s.fallbackPrices["deepseek-v4-flash"] = &ModelPricing{
-		InputPricePerToken:     1.4e-7, // $0.14 per MTok
-		OutputPricePerToken:    2.8e-7, // $0.28 per MTok
-		CacheReadPricePerToken: 2.8e-9, // $0.0028 per MTok
-		SupportsCacheBreakdown: false,
-REDACTED
-
 	// Codex 族兜底统一按 GPT-5.3 Codex 价格计费
 	s.fallbackPrices["gpt-5.3-codex"] = &ModelPricing{
 		InputPricePerToken:             1.5e-6, // $1.5 per MTok
@@ -610,7 +592,7 @@ REDACTED
 REDACTED
 
 	// MiniMax M 系列（M3 / M2.7 / M2.5 / M2.1 / M2；含 highspeed 变体）
-	if strings.Contains(modelLower, "minimax-m3") || strings.Contains(modelLower, "MiniMax-M3") {
+	if strings.Contains(modelLower, "minimax-m3") {
 		return s.fallbackPrices["minimax-m3"]
 REDACTED
 	if strings.Contains(modelLower, "minimax-m2.7-highspeed") || strings.Contains(modelLower, "minimax-m2-7-highspeed") {
