@@ -349,6 +349,34 @@ const messages = {
     }
   },
 
+  adminCompliance: {
+    title: 'Xác nhận tuân thủ triển khai và vận hành',
+    blockingNotice: 'Cần hoàn tất xác nhận tuân thủ triển khai và vận hành trước khi tiếp tục sử dụng bảng điều khiển.',
+    riskNotice: 'Xác nhận này cung cấp thông báo rõ ràng, nổi bật và có thể lưu vết về nghĩa vụ tuân thủ và rủi ro vận hành đối với các phiên bản tự lưu trữ.',
+    version: 'Phiên bản thỏa thuận',
+    openDocument: 'Xem tệp thỏa thuận trên GitHub',
+    documentSource: 'Nội dung thỏa thuận lấy từ tệp Markdown trong kho dự án. Khi sửa nội dung thỏa thuận, phải tăng phiên bản đồng bộ; các phiên bản cũ đã xác nhận sẽ hết hiệu lực và người dùng bảng điều khiển phải xác nhận lại.',
+    inputLabel: 'Vui lòng nhập nguyên văn cụm xác nhận sau',
+    inputPlaceholder: 'Nhập cụm xác nhận để tiếp tục',
+    inputMismatch: 'Cụm xác nhận không khớp, vui lòng nhập đúng từng ký tự theo nội dung gợi ý.',
+    legalNote: 'Xác nhận này làm rõ quan hệ không liên kết và ranh giới trách nhiệm giữa phiên bản tự triển khai với dự án mã nguồn mở, chủ sở hữu bản quyền, cộng tác viên và bảo trì viên; chủ thể triển khai, vận hành hoặc kiểm soát phiên bản liên quan phải tự chịu trách nhiệm về các nghĩa vụ áp dụng.',
+    logout: 'Đăng xuất',
+    accept: 'Xác nhận và tiếp tục',
+    accepted: 'Đã ghi nhận xác nhận tuân thủ',
+    acceptFailed: 'Gửi xác nhận thất bại'
+  },
+
+  legal: {
+    loadFailed: 'Tải tài liệu thất bại',
+    retryLater: 'Vui lòng làm mới trang và thử lại sau.',
+    notFound: 'Không tìm thấy tài liệu',
+    notFoundDescription: 'Tài liệu điều khoản hiện tại không tồn tại hoặc đã bị quản trị viên xóa.',
+    updatedAt: 'Cập nhật: {date}',
+    empty: 'Chưa có nội dung',
+    loginAgreement: 'Điều khoản đăng nhập',
+    adminCompliance: 'Cam kết tuân thủ triển khai và vận hành'
+  },
+
   // Navigation
   nav: {
     dashboard: 'Bảng điều khiển',
@@ -866,6 +894,8 @@ const messages = {
     accountCost: 'Chi phí tài khoản',
     userBilled: 'Số tiền trừ của người dùng',
     accountBilled: 'Chi phí tính cho tài khoản',
+    resetNow: 'Bây giờ',
+    resetPending: 'Đang chờ làm mới',
     accountMultiplier: 'Hệ số tài khoản',
     avgDuration: 'Thời gian trung bình',
     inSelectedRange: 'Trong phạm vi đã chọn',
@@ -4259,9 +4289,13 @@ const messages = {
         'Bạn có chắc muốn xóa proxy \'{name}\' không? Các tài khoản đang dùng proxy này sẽ bị gỡ cấu hình proxy.',
       neverExpires: 'Không bao giờ',
       expired: 'Đã hết hạn',
+      overdueDays: 'Quá hạn {days} ngày',
+      expiringInDays: 'Hết hạn sau {days} ngày',
+      remainingDays: 'Còn {days} ngày',
       nDays: '{days} ngày',
       expiresAt: 'Hiệu lực',
       expiryDaysPlaceholder: 'Số ngày tùy chỉnh, để trống = không hết hạn',
+      expiryWarnDays: 'Cảnh báo trước khi hết hạn (ngày)',
       fallbackMode: 'Fallback khi lỗi',
       fallbackNone: 'Không fallback',
       fallbackProxy: 'Proxy dự phòng',

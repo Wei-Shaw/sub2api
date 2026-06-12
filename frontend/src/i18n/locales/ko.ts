@@ -349,6 +349,34 @@ const messages = {
     }
   },
 
+  adminCompliance: {
+    title: '배포 및 운영 준수 확인',
+    blockingNotice: '콘솔을 계속 사용하려면 배포 및 운영 준수 확인을 완료해야 합니다.',
+    riskNotice: '이 확인은 자체 호스팅 인스턴스의 준수 의무와 운영 리스크를 명확하고 눈에 띄며 기록 가능한 방식으로 안내하기 위한 것입니다.',
+    version: '약관 버전',
+    openDocument: 'GitHub에서 약관 파일 보기',
+    documentSource: '약관 본문은 이 프로젝트 저장소의 Markdown 파일에서 가져옵니다. 약관 내용을 수정할 때는 반드시 약관 버전도 함께 올려야 하며, 이미 확인된 이전 버전은 무효화되어 콘솔 사용자가 다시 확인해야 합니다.',
+    inputLabel: '다음 확인 문구를 그대로 입력하세요',
+    inputPlaceholder: '계속하려면 확인 문구를 입력하세요',
+    inputMismatch: '확인 문구가 일치하지 않습니다. 안내된 문구를 그대로 입력하세요.',
+    legalNote: '이 확인은 자체 배포 인스턴스와 오픈소스 프로젝트, 저작권자, 기여자 및 유지관리자 간의 비연관 관계와 책임 경계를 명확히 하기 위한 것입니다. 관련 인스턴스를 배포, 운영 또는 통제하는 주체는 적용되는 의무를 독립적으로 부담해야 합니다.',
+    logout: '로그아웃',
+    accept: '확인하고 계속',
+    accepted: '준수 확인이 기록되었습니다',
+    acceptFailed: '확인 제출에 실패했습니다'
+  },
+
+  legal: {
+    loadFailed: '문서를 불러오지 못했습니다',
+    retryLater: '페이지를 새로고침한 뒤 나중에 다시 시도하세요.',
+    notFound: '문서를 찾을 수 없습니다',
+    notFoundDescription: '현재 약관 문서가 없거나 관리자가 제거했습니다.',
+    updatedAt: '업데이트: {date}',
+    empty: '내용 없음',
+    loginAgreement: '로그인 약관',
+    adminCompliance: '배포 및 운영 준수 약정'
+  },
+
   // 탐색
   nav: {
     dashboard: '대시보드',
@@ -866,6 +894,8 @@ const messages = {
     accountCost: '원가',
     userBilled: '사용자 과금',
     accountBilled: '계정 과금',
+    resetNow: '지금',
+    resetPending: '새로고침 대기 중',
     accountMultiplier: '계정 배율',
     avgDuration: '평균 소요 시간',
     inSelectedRange: '선택한 범위 내',
@@ -4259,9 +4289,13 @@ const messages = {
         '프록시 \'{name}\' 을(를) 삭제하시겠습니까? 이 프록시를 사용하는 계정은 프록시 설정이 제거됩니다.',
       neverExpires: '만료 없음',
       expired: '만료됨',
+      overdueDays: '{days}일 초과',
+      expiringInDays: '{days}일 후 만료',
+      remainingDays: '{days}일 남음',
       nDays: '{days}일',
       expiresAt: '유효 기간',
       expiryDaysPlaceholder: '사용자 지정 일수, 비워 두면 만료 없음',
+      expiryWarnDays: '만료 경고 사전 일수',
       fallbackMode: '실패 시 폴백',
       fallbackNone: '폴백 없음',
       fallbackProxy: '백업 프록시',

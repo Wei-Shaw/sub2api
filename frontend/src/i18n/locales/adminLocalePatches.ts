@@ -21,6 +21,81 @@ export function cloneLocalePatch<T extends LocalePatch>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
+const emailTemplateMeta = {
+  en: {
+    messageKinds: { optional: 'Optional', transactional: 'Transactional' },
+    categories: { notification: 'Notification', auth: 'Auth', subscription: 'Subscription', billing: 'Billing', admin: 'Admin', riskControl: 'Risk Control', ops: 'Ops' },
+    events: {
+      authVerifyCode: { label: 'Email Verification Code', timing: 'Sent for registration, email binding, OAuth pending email completion, or TOTP email verification.' },
+      authPasswordReset: { label: 'Password Reset', timing: 'Sent when a user requests a password reset link.' },
+      notificationEmailVerifyCode: { label: 'Notification Email Verification', timing: 'Sent when a user adds and verifies an extra notification email address.' },
+      subscriptionPurchaseSuccess: { label: 'Subscription Activated', timing: 'Sent after a subscription order is paid and the subscription is activated or extended.' },
+      subscriptionExpiryReminder: { label: 'Subscription Expiry Reminder', timing: 'Sent by the background job when an active subscription has 7, 3, or 1 day remaining. It can be disabled in Email settings.' },
+      balanceLow: { label: 'Low Balance Alert', timing: "Sent when a user's balance drops below the global or personal reminder threshold." },
+      balanceRechargeSuccess: { label: 'Balance Recharge Success', timing: 'Sent after a balance recharge order is paid and credited.' },
+      accountQuotaAlert: { label: 'Account Quota Alert', timing: 'Sent to admin notification emails when an upstream account reaches the configured quota alert threshold.' },
+      contentModerationViolationNotice: { label: 'Risk Control Violation Notice', timing: 'Sent when a user request triggers content moderation or risk-control rules but the account is not disabled yet.' },
+      contentModerationAccountDisabled: { label: 'Risk Control Account Disabled', timing: 'Sent when content moderation reaches the ban threshold and automatically disables the user account.' },
+      opsAlert: { label: 'Ops Alert', timing: 'Sent to ops recipients when an ops monitoring rule fires and email notification settings allow it.' },
+      opsScheduledReport: { label: 'Ops Scheduled Report', timing: 'Sent when a configured daily, weekly, error digest, or account health report reaches its scheduled send time.' }
+    }
+  },
+  zh: {
+    messageKinds: { optional: '可退订通知', transactional: '事务邮件' },
+    categories: { notification: '通知', auth: '认证安全', subscription: '订阅', billing: '计费', admin: '管理告警', riskControl: '风控', ops: '运维' },
+    events: {
+      authVerifyCode: { label: '邮箱验证码', timing: '注册、绑定邮箱、OAuth 补全邮箱或 TOTP 邮箱校验时发送。' },
+      authPasswordReset: { label: '密码重置', timing: '用户请求密码重置链接时发送。' },
+      notificationEmailVerifyCode: { label: '通知邮箱验证码', timing: '用户添加并验证额外通知邮箱时发送。' },
+      subscriptionPurchaseSuccess: { label: '订阅开通成功', timing: '订阅订单完成支付并成功开通或续期后发送。' },
+      subscriptionExpiryReminder: { label: '订阅到期提醒', timing: '后台任务在订阅仍有效且距离到期剩余 7 天、3 天、1 天时各发送一次，可通过邮件设置中的开关关闭。' },
+      balanceLow: { label: '余额不足提醒', timing: '用户余额低于全局或个人配置的提醒阈值时发送。' },
+      balanceRechargeSuccess: { label: '余额充值成功', timing: '余额充值订单支付完成并入账后发送。' },
+      accountQuotaAlert: { label: '账号限额告警', timing: '上游账号的用量达到配置的额度告警阈值时发送给管理员通知邮箱。' },
+      contentModerationViolationNotice: { label: '内容审计违规提醒', timing: '用户请求命中内容审计或风控规则、但尚未被禁用时发送。' },
+      contentModerationAccountDisabled: { label: '内容审计禁用账号', timing: '内容审计违规次数达到封禁阈值并自动禁用用户账号时发送。' },
+      opsAlert: { label: '运维告警', timing: '运维监控规则触发告警并满足邮件通知配置时发送给运维收件人。' },
+      opsScheduledReport: { label: '运维定时报表', timing: '运维日报、周报、错误摘要或账号健康报表到达配置的发送时间时发送。' }
+    }
+  },
+  vi: {
+    messageKinds: { optional: 'Thông báo có thể hủy đăng ký', transactional: 'Email giao dịch' },
+    categories: { notification: 'Thông báo', auth: 'Bảo mật xác thực', subscription: 'Đăng ký', billing: 'Thanh toán', admin: 'Cảnh báo quản trị', riskControl: 'Kiểm soát rủi ro', ops: 'Vận hành' },
+    events: {
+      authVerifyCode: { label: 'Mã xác minh email', timing: 'Gửi khi đăng ký, liên kết email, hoàn tất email OAuth hoặc xác minh email TOTP.' },
+      authPasswordReset: { label: 'Đặt lại mật khẩu', timing: 'Gửi khi người dùng yêu cầu liên kết đặt lại mật khẩu.' },
+      notificationEmailVerifyCode: { label: 'Mã xác minh email thông báo', timing: 'Gửi khi người dùng thêm và xác minh email nhận thông báo bổ sung.' },
+      subscriptionPurchaseSuccess: { label: 'Đăng ký đã kích hoạt', timing: 'Gửi sau khi đơn đăng ký thanh toán xong và đăng ký được kích hoạt hoặc gia hạn.' },
+      subscriptionExpiryReminder: { label: 'Nhắc đăng ký sắp hết hạn', timing: 'Job nền gửi khi đăng ký còn hiệu lực và còn 7, 3 hoặc 1 ngày; có thể tắt trong cài đặt Email.' },
+      balanceLow: { label: 'Cảnh báo số dư thấp', timing: 'Gửi khi số dư người dùng thấp hơn ngưỡng nhắc toàn cục hoặc cá nhân.' },
+      balanceRechargeSuccess: { label: 'Nạp số dư thành công', timing: 'Gửi sau khi đơn nạp số dư thanh toán xong và được ghi có.' },
+      accountQuotaAlert: { label: 'Cảnh báo hạn mức tài khoản', timing: 'Gửi tới email thông báo quản trị khi tài khoản upstream đạt ngưỡng cảnh báo hạn mức đã cấu hình.' },
+      contentModerationViolationNotice: { label: 'Nhắc vi phạm kiểm soát rủi ro', timing: 'Gửi khi yêu cầu người dùng chạm quy tắc kiểm duyệt nội dung hoặc kiểm soát rủi ro nhưng tài khoản chưa bị vô hiệu hóa.' },
+      contentModerationAccountDisabled: { label: 'Vô hiệu hóa tài khoản do kiểm soát rủi ro', timing: 'Gửi khi số lần vi phạm kiểm duyệt nội dung đạt ngưỡng khóa và tự động vô hiệu hóa tài khoản.' },
+      opsAlert: { label: 'Cảnh báo vận hành', timing: 'Gửi tới người nhận vận hành khi quy tắc giám sát vận hành kích hoạt và cài đặt email cho phép.' },
+      opsScheduledReport: { label: 'Báo cáo vận hành định kỳ', timing: 'Gửi khi báo cáo ngày, tuần, tóm tắt lỗi hoặc sức khỏe tài khoản đến lịch gửi đã cấu hình.' }
+    }
+  },
+  ko: {
+    messageKinds: { optional: '수신 거부 가능 알림', transactional: '트랜잭션 메일' },
+    categories: { notification: '알림', auth: '인증 보안', subscription: '구독', billing: '결제', admin: '관리자 알림', riskControl: '위험 제어', ops: '운영' },
+    events: {
+      authVerifyCode: { label: '이메일 인증 코드', timing: '회원가입, 이메일 연결, OAuth 보류 이메일 완료 또는 TOTP 이메일 인증 시 발송됩니다.' },
+      authPasswordReset: { label: '비밀번호 재설정', timing: '사용자가 비밀번호 재설정 링크를 요청할 때 발송됩니다.' },
+      notificationEmailVerifyCode: { label: '알림 이메일 인증', timing: '사용자가 추가 알림 이메일 주소를 등록하고 인증할 때 발송됩니다.' },
+      subscriptionPurchaseSuccess: { label: '구독 활성화', timing: '구독 주문 결제가 완료되고 구독이 활성화되거나 연장된 뒤 발송됩니다.' },
+      subscriptionExpiryReminder: { label: '구독 만료 알림', timing: '활성 구독이 7일, 3일 또는 1일 남았을 때 백그라운드 작업이 발송합니다. 이메일 설정에서 비활성화할 수 있습니다.' },
+      balanceLow: { label: '잔액 부족 알림', timing: '사용자 잔액이 전역 또는 개인 알림 임계값보다 낮아질 때 발송됩니다.' },
+      balanceRechargeSuccess: { label: '잔액 충전 성공', timing: '잔액 충전 주문 결제가 완료되고 금액이 반영된 뒤 발송됩니다.' },
+      accountQuotaAlert: { label: '계정 한도 알림', timing: '업스트림 계정이 설정된 한도 알림 임계값에 도달하면 관리자 알림 이메일로 발송됩니다.' },
+      contentModerationViolationNotice: { label: '위험 제어 위반 알림', timing: '사용자 요청이 콘텐츠 감사 또는 위험 제어 규칙에 걸렸지만 계정이 아직 비활성화되지 않았을 때 발송됩니다.' },
+      contentModerationAccountDisabled: { label: '위험 제어 계정 비활성화', timing: '콘텐츠 감사 위반 횟수가 차단 임계값에 도달해 계정이 자동 비활성화될 때 발송됩니다.' },
+      opsAlert: { label: '운영 알림', timing: '운영 모니터링 규칙이 트리거되고 이메일 알림 설정이 허용할 때 운영 수신자에게 발송됩니다.' },
+      opsScheduledReport: { label: '운영 정기 보고서', timing: '설정된 일간, 주간, 오류 요약 또는 계정 상태 보고서가 예약된 발송 시간에 도달하면 발송됩니다.' }
+    }
+  }
+} as const
+
 const adminLocalePatchBase = {
   en: {
     admin: {
@@ -179,7 +254,8 @@ const adminLocalePatchBase = {
           restoreConfirm: 'Restore the official template? Your custom changes will be replaced.',
           restoreSuccess: 'Official template restored',
           placeholderCopied: 'Placeholder copied',
-          validationRequired: 'Subject and HTML body are required'
+          validationRequired: 'Subject and HTML body are required',
+          ...emailTemplateMeta.en
         },
         wechatConnect: {
           browserRedirectUrlLabel: 'Browser redirect URL',
@@ -340,7 +416,7 @@ const adminLocalePatchBase = {
           callbackUrlSetAndCopied: '回调地址已生成并复制'
         },
         emailTemplates: {
-          title: '邮件模板', description: '编辑多语言邮件标题和 HTML 模板。', event: '事件', locale: '语言', localeZh: '中文', localeEn: '英文', subject: '标题', subjectPlaceholder: '邮件标题', html: 'HTML 正文', htmlPlaceholder: '邮件 HTML 内容', placeholders: '占位符', placeholdersHelp: '点击占位符可复制到模板。', preview: '预览', previewing: '预览中...', livePreview: '实时预览', noPreview: '暂无预览', previewSecurityHint: '预览内容会先清洗再渲染。', customized: '已自定义', empty: '请选择事件和语言后编辑模板。', save: '保存模板', saving: '保存中...', saveSuccess: '模板已保存', restoreOfficial: '恢复官方模板', restoring: '恢复中...', restoreConfirm: '恢复官方模板？自定义内容会被替换。', restoreSuccess: '官方模板已恢复', placeholderCopied: '占位符已复制', validationRequired: '标题和 HTML 正文为必填项'
+          title: '邮件模板', description: '编辑多语言邮件标题和 HTML 模板。', event: '事件', locale: '语言', localeZh: '中文', localeEn: '英文', subject: '标题', subjectPlaceholder: '邮件标题', html: 'HTML 正文', htmlPlaceholder: '邮件 HTML 内容', placeholders: '占位符', placeholdersHelp: '点击占位符可复制到模板。', preview: '预览', previewing: '预览中...', livePreview: '实时预览', noPreview: '暂无预览', previewSecurityHint: '预览内容会先清洗再渲染。', customized: '已自定义', empty: '请选择事件和语言后编辑模板。', save: '保存模板', saving: '保存中...', saveSuccess: '模板已保存', restoreOfficial: '恢复官方模板', restoring: '恢复中...', restoreConfirm: '恢复官方模板？自定义内容会被替换。', restoreSuccess: '官方模板已恢复', placeholderCopied: '占位符已复制', validationRequired: '标题和 HTML 正文为必填项', ...emailTemplateMeta.zh
         },
         wechatConnect: {
           browserRedirectUrlLabel: '浏览器跳转地址', browserRedirectUrlHint: '普通浏览器 OAuth 完成后跳转到该地址。', unionIdWarning: '除非绑定到同一个微信开放平台账号，否则可能无法获取 UnionID。', mpMobileConflict: '公众号和移动应用模式不应共用同一个 AppID/AppSecret，除非它们属于同一个微信应用。',
@@ -364,7 +440,7 @@ const adminLocalePatchBase = {
       ops: { autoRefreshRemaining: 'Làm mới sau {seconds}s', runtime: { metricThresholds: 'Ngưỡng chỉ số', metricThresholdsHint: 'Điều chỉnh ngưỡng cảnh báo cho dashboard runtime và alert.', requestErrorRateMaxPercent: 'Tỷ lệ lỗi request tối đa (%)', requestErrorRateMaxPercentHint: 'Cảnh báo khi tỷ lệ request của client lỗi vượt quá phần trăm này.', upstreamErrorRateMaxPercent: 'Tỷ lệ lỗi upstream tối đa (%)', upstreamErrorRateMaxPercentHint: 'Cảnh báo khi lỗi upstream/provider vượt quá phần trăm này.', ttftP99MaxMs: 'TTFT P99 tối đa (ms)', ttftP99MaxMsHint: 'Cảnh báo khi P99 time-to-first-token cao hơn giá trị này.', slaMinPercent: 'SLA tối thiểu (%)', slaMinPercentHint: 'Cảnh báo khi độ khả dụng thấp hơn phần trăm này.' } },
       redeem: { batchUpdate: 'Cập nhật hàng loạt', batchUpdateTitle: 'Cập nhật hàng loạt mã redeem', batchUpdateSuccess: 'Đã cập nhật {count} mã redeem', batchFields: { status: 'Trạng thái', group: 'Nhóm', expiresAt: 'Hết hạn', notes: 'Ghi chú' }, batchNotesPlaceholder: 'Ghi chú tùy chọn cho các mã đã chọn', clearGroup: 'Xóa nhóm', clearSelection: 'Bỏ chọn', codeExpiry: 'Thời hạn mã', customExpiry: 'Thời hạn tùy chỉnh', customExpiryDays: 'Số ngày tùy chỉnh', expiryPresetDays: '{days} ngày', neverExpires: 'Không bao giờ hết hạn', noBatchFieldsSelected: 'Chọn ít nhất một trường cần cập nhật', selectCodesFirst: 'Hãy chọn mã redeem trước', selectedCount: 'Đã chọn {count}', expiryDaysRequired: 'Nhập số ngày hợp lệ', failedToBatchUpdate: 'Cập nhật hàng loạt mã redeem thất bại', usagePolicy: 'Chính sách sử dụng', usagePolicyHint: 'Một lần nghĩa là mã chỉ dùng một lần toàn hệ thống. Mỗi người một lần có thể dùng chung phạm vi chiến dịch.', usageScope: 'Phạm vi chiến dịch', usageScopePlaceholder: 'Khóa chiến dịch dùng chung (tùy chọn)', maxTotalUses: 'Tổng lượt dùng tối đa', maxTotalUsesHint: '0 nghĩa là không giới hạn tổng lượt', maxTotalUsesInvalid: 'Tổng lượt dùng tối đa phải từ 0 trở lên', maxUsesPerUser: 'Lượt dùng mỗi user', usagePolicies: { single_use: 'Dùng một lần', once_per_user: 'Mỗi user một lần' }, columns: { expiresAt: 'Hết hạn', usagePolicy: 'Chính sách', usedCount: 'Đã dùng' } },
       riskControl: { action: { keywordBlock: 'Chặn từ khóa' }, keywordBlockingMode: 'Chế độ chặn từ khóa', keywordModeKeywordOnly: 'Chỉ từ khóa', keywordModeKeywordOnlyDesc: 'Chỉ chặn request khi khớp các từ khóa đã cấu hình.', keywordModeKeywordOnlyNotice: 'Chế độ chỉ từ khóa sẽ bỏ qua API kiểm duyệt.', keywordModeApiOnly: 'Chỉ API kiểm duyệt', keywordModeApiOnlyDesc: 'Dùng API kiểm duyệt và không chặn trước bằng từ khóa.', keywordModeApiOnlyNotice: 'Chế độ chỉ API sẽ không áp dụng quy tắc từ khóa.', keywordModeKeywordAndApi: 'Từ khóa + API kiểm duyệt', keywordModeKeywordAndApiDesc: 'Chặn trước bằng từ khóa, sau đó dùng API kiểm duyệt cho request còn lại.', blockedKeywords: 'Từ khóa bị chặn', blockedKeywordCount: '{count} từ khóa bị chặn', blockedKeywordsDescription: 'Request chứa các từ khóa này sẽ bị chặn trước khi tới upstream.', blockedKeywordsLimit: 'Tối đa {max} từ khóa, mỗi dòng một từ/cụm', blockedKeywordsModeWarning: 'Chặn từ khóa đang bật trong chế độ {mode}', blockedKeywordsPlaceholder: 'Mỗi dòng một từ khóa hoặc cụm từ', blockedKeywordsPreBlockHint: 'Từ khóa khớp sẽ bị từ chối ngay trong luồng chặn trước.', defaultBlockMessage: 'Request của bạn đã bị chặn bởi quy tắc kiểm soát rủi ro.' },
-      settings: { authSourceDefaults: { sources: { google: { title: 'Đăng ký Google', description: 'Quota mặc định cho người dùng đăng ký bằng Google OAuth.' }, github: { title: 'Đăng ký GitHub', description: 'Quota mặc định cho người dùng đăng ký bằng GitHub OAuth.' } } }, emailOAuthSettings: { title: 'Cài đặt Email OAuth', description: 'Cấu hình đăng nhập Google và GitHub OAuth cho tài khoản email.', googleSetupGuide: 'Tạo OAuth client trong Google Cloud Console và thêm Callback URL bên dưới.', googleHint: 'Dùng cho đăng nhập Google OAuth và liên kết tài khoản.', githubSetupPrefix: 'Tạo GitHub OAuth App và đặt Callback URL thành ', githubSetupSuffix: '.', githubHint: 'Dùng cho đăng nhập GitHub OAuth và liên kết tài khoản.', secretConfiguredPlaceholder: 'Đã cấu hình secret. Để trống để giữ nguyên.', callbackUrlSetAndCopied: 'Đã tạo và copy Callback URL' }, emailTemplates: { title: 'Mẫu email', description: 'Chỉnh sửa tiêu đề và HTML email theo từng ngôn ngữ.', event: 'Sự kiện', locale: 'Ngôn ngữ', localeZh: 'Tiếng Trung', localeEn: 'Tiếng Anh', subject: 'Tiêu đề', subjectPlaceholder: 'Tiêu đề email', html: 'Nội dung HTML', htmlPlaceholder: 'Nội dung HTML của email', placeholders: 'Biến placeholder', placeholdersHelp: 'Bấm vào placeholder để copy vào mẫu.', preview: 'Xem trước', previewing: 'Đang xem trước...', livePreview: 'Xem trước trực tiếp', noPreview: 'Chưa có bản xem trước', previewSecurityHint: 'Bản xem trước sẽ được sanitize trước khi hiển thị.', customized: 'Đã tùy chỉnh', empty: 'Chọn sự kiện và ngôn ngữ để chỉnh sửa mẫu.', save: 'Lưu mẫu', saving: 'Đang lưu...', saveSuccess: 'Đã lưu mẫu', restoreOfficial: 'Khôi phục mẫu mặc định', restoring: 'Đang khôi phục...', restoreConfirm: 'Khôi phục mẫu mặc định? Nội dung tùy chỉnh sẽ bị thay thế.', restoreSuccess: 'Đã khôi phục mẫu mặc định', placeholderCopied: 'Đã copy placeholder', validationRequired: 'Tiêu đề và nội dung HTML là bắt buộc' }, wechatConnect: { browserRedirectUrlLabel: 'URL chuyển hướng trình duyệt', browserRedirectUrlHint: 'Dùng sau khi OAuth hoàn tất trong trình duyệt thường.', unionIdWarning: 'UnionID có thể không khả dụng nếu tài khoản không cùng WeChat Open Platform.', mpMobileConflict: 'Official Account và Mobile App không nên dùng chung AppID/AppSecret trừ khi thuộc cùng một ứng dụng WeChat.', modes: { open: { title: 'Open Platform', description: 'Dùng quét QR để ủy quyền ngoài WeChat.', appIdLabel: 'App ID Open Platform', appIdPlaceholder: 'WeChat Open Platform App ID', appSecretLabel: 'App Secret Open Platform', appSecretPlaceholder: 'WeChat Open Platform App Secret' }, mp: { title: 'Official Account', description: 'Dùng ủy quyền Official Account trong WeChat.', appIdLabel: 'App ID Official Account', appIdPlaceholder: 'WeChat Official Account App ID', appSecretLabel: 'App Secret Official Account', appSecretPlaceholder: 'WeChat Official Account App Secret' }, mobile: { title: 'Mobile App', description: 'Dùng OAuth Mobile App của WeChat cho desktop/mobile app.', appIdLabel: 'Mobile App ID', appIdPlaceholder: 'WeChat Mobile App ID', appSecretLabel: 'Mobile App Secret', appSecretPlaceholder: 'WeChat Mobile App Secret' } } } },
+      settings: { authSourceDefaults: { sources: { google: { title: 'Đăng ký Google', description: 'Quota mặc định cho người dùng đăng ký bằng Google OAuth.' }, github: { title: 'Đăng ký GitHub', description: 'Quota mặc định cho người dùng đăng ký bằng GitHub OAuth.' } } }, emailOAuthSettings: { title: 'Cài đặt Email OAuth', description: 'Cấu hình đăng nhập Google và GitHub OAuth cho tài khoản email.', googleSetupGuide: 'Tạo OAuth client trong Google Cloud Console và thêm Callback URL bên dưới.', googleHint: 'Dùng cho đăng nhập Google OAuth và liên kết tài khoản.', githubSetupPrefix: 'Tạo GitHub OAuth App và đặt Callback URL thành ', githubSetupSuffix: '.', githubHint: 'Dùng cho đăng nhập GitHub OAuth và liên kết tài khoản.', secretConfiguredPlaceholder: 'Đã cấu hình secret. Để trống để giữ nguyên.', callbackUrlSetAndCopied: 'Đã tạo và copy Callback URL' }, emailTemplates: { title: 'Mẫu email', description: 'Chỉnh sửa tiêu đề và HTML email theo từng ngôn ngữ.', event: 'Sự kiện', locale: 'Ngôn ngữ', localeZh: 'Tiếng Trung', localeEn: 'Tiếng Anh', subject: 'Tiêu đề', subjectPlaceholder: 'Tiêu đề email', html: 'Nội dung HTML', htmlPlaceholder: 'Nội dung HTML của email', placeholders: 'Biến placeholder', placeholdersHelp: 'Bấm vào placeholder để copy vào mẫu.', preview: 'Xem trước', previewing: 'Đang xem trước...', livePreview: 'Xem trước trực tiếp', noPreview: 'Chưa có bản xem trước', previewSecurityHint: 'Bản xem trước sẽ được sanitize trước khi hiển thị.', customized: 'Đã tùy chỉnh', empty: 'Chọn sự kiện và ngôn ngữ để chỉnh sửa mẫu.', save: 'Lưu mẫu', saving: 'Đang lưu...', saveSuccess: 'Đã lưu mẫu', restoreOfficial: 'Khôi phục mẫu mặc định', restoring: 'Đang khôi phục...', restoreConfirm: 'Khôi phục mẫu mặc định? Nội dung tùy chỉnh sẽ bị thay thế.', restoreSuccess: 'Đã khôi phục mẫu mặc định', placeholderCopied: 'Đã copy placeholder', validationRequired: 'Tiêu đề và nội dung HTML là bắt buộc', ...emailTemplateMeta.vi }, wechatConnect: { browserRedirectUrlLabel: 'URL chuyển hướng trình duyệt', browserRedirectUrlHint: 'Dùng sau khi OAuth hoàn tất trong trình duyệt thường.', unionIdWarning: 'UnionID có thể không khả dụng nếu tài khoản không cùng WeChat Open Platform.', mpMobileConflict: 'Official Account và Mobile App không nên dùng chung AppID/AppSecret trừ khi thuộc cùng một ứng dụng WeChat.', modes: { open: { title: 'Open Platform', description: 'Dùng quét QR để ủy quyền ngoài WeChat.', appIdLabel: 'App ID Open Platform', appIdPlaceholder: 'WeChat Open Platform App ID', appSecretLabel: 'App Secret Open Platform', appSecretPlaceholder: 'WeChat Open Platform App Secret' }, mp: { title: 'Official Account', description: 'Dùng ủy quyền Official Account trong WeChat.', appIdLabel: 'App ID Official Account', appIdPlaceholder: 'WeChat Official Account App ID', appSecretLabel: 'App Secret Official Account', appSecretPlaceholder: 'WeChat Official Account App Secret' }, mobile: { title: 'Mobile App', description: 'Dùng OAuth Mobile App của WeChat cho desktop/mobile app.', appIdLabel: 'Mobile App ID', appIdPlaceholder: 'WeChat Mobile App ID', appSecretLabel: 'Mobile App Secret', appSecretPlaceholder: 'WeChat Mobile App Secret' } } } },
       subscriptions: { searchDeviceCode: 'Tìm theo device code...', quotaEndsInMinutes: 'Kết thúc sau {minutes} phút', quotaEndsInHoursMinutes: 'Kết thúc sau {hours} giờ {minutes} phút', quotaEndsInDaysHours: 'Kết thúc sau {days} ngày {hours} giờ' },
       users: { sortBy: 'Sắp xếp theo', sortCurrentPageOnly: 'Sắp xếp chỉ áp dụng cho trang hiện tại', columnAlwaysVisible: 'Luôn hiển thị', passwordCopied: 'Đã copy mật khẩu', columns: { usageOpenAI: 'Mức dùng OpenAI', usageAnthropic: 'Mức dùng Anthropic', usageGemini: 'Mức dùng Gemini', usageAntigravity: 'Mức dùng Antigravity' } }
     },
@@ -378,12 +454,231 @@ const adminLocalePatchBase = {
       ops: { autoRefreshRemaining: '{seconds}초 후 새로고침', runtime: { metricThresholds: '지표 임계값', metricThresholdsHint: '런타임 대시보드와 알림에 사용하는 경고 임계값을 조정합니다.', requestErrorRateMaxPercent: '요청 오류율 최대값 (%)', requestErrorRateMaxPercentHint: '클라이언트 요청 실패율이 이 비율을 넘으면 알림을 보냅니다.', upstreamErrorRateMaxPercent: '업스트림 오류율 최대값 (%)', upstreamErrorRateMaxPercentHint: '업스트림/제공자 실패율이 이 비율을 넘으면 알림을 보냅니다.', ttftP99MaxMs: 'TTFT P99 최대값 (ms)', ttftP99MaxMsHint: '첫 토큰 P99 지연 시간이 이 값보다 높으면 알림을 보냅니다.', slaMinPercent: '최소 SLA (%)', slaMinPercentHint: '가용성이 이 비율보다 낮으면 알림을 보냅니다.' } },
       redeem: { batchUpdate: '일괄 업데이트', batchUpdateTitle: '리딤 코드 일괄 업데이트', batchUpdateSuccess: '{count}개의 리딤 코드를 업데이트했습니다', batchFields: { status: '상태', group: '그룹', expiresAt: '만료', notes: '메모' }, batchNotesPlaceholder: '선택한 코드에 대한 선택 메모', clearGroup: '그룹 지우기', clearSelection: '선택 해제', codeExpiry: '코드 만료', customExpiry: '사용자 지정 만료', customExpiryDays: '사용자 지정 일수', expiryPresetDays: '{days}일', neverExpires: '만료 없음', noBatchFieldsSelected: '업데이트할 필드를 하나 이상 선택하세요', selectCodesFirst: '먼저 리딤 코드를 선택하세요', selectedCount: '{count}개 선택됨', expiryDaysRequired: '유효한 일수를 입력하세요', failedToBatchUpdate: '리딤 코드 일괄 업데이트 실패', usagePolicy: '사용 정책', usagePolicyHint: '단일 사용은 코드 하나가 전체에서 한 번만 사용됩니다. 사용자당 1회는 캠페인 범위를 공유할 수 있습니다.', usageScope: '캠페인 범위', usageScopePlaceholder: '선택적 공유 캠페인 키', maxTotalUses: '총 사용 한도', maxTotalUsesHint: '0은 총 사용 횟수 무제한을 의미합니다', maxTotalUsesInvalid: '총 사용 한도는 0 이상이어야 합니다', maxUsesPerUser: '사용자당 한도', usagePolicies: { single_use: '단일 사용', once_per_user: '사용자당 1회' }, columns: { expiresAt: '만료일', usagePolicy: '정책', usedCount: '사용됨' } },
       riskControl: { action: { keywordBlock: '키워드 차단' }, keywordBlockingMode: '키워드 차단 모드', keywordModeKeywordOnly: '키워드만', keywordModeKeywordOnlyDesc: '설정된 키워드가 일치할 때만 요청을 차단합니다.', keywordModeKeywordOnlyNotice: '키워드 전용 모드에서는 감사 API를 호출하지 않습니다.', keywordModeApiOnly: '감사 API만', keywordModeApiOnlyDesc: '키워드 사전 차단 없이 감사 API를 사용합니다.', keywordModeApiOnlyNotice: 'API 전용 모드에서는 키워드 규칙이 적용되지 않습니다.', keywordModeKeywordAndApi: '키워드 + 감사 API', keywordModeKeywordAndApiDesc: '먼저 키워드 사전 차단을 적용한 뒤 남은 요청에 감사 API를 사용합니다.', blockedKeywords: '차단 키워드', blockedKeywordCount: '차단 키워드 {count}개', blockedKeywordsDescription: '이 키워드를 포함한 요청은 업스트림에 도달하기 전에 차단됩니다.', blockedKeywordsLimit: '최대 {max}개, 한 줄에 하나씩 입력', blockedKeywordsModeWarning: '{mode} 모드에서 키워드 차단이 활성화되어 있습니다', blockedKeywordsPlaceholder: '한 줄에 키워드 또는 문구 하나', blockedKeywordsPreBlockHint: '키워드가 일치하면 사전 차단 경로에서 즉시 거부됩니다.', defaultBlockMessage: '위험 제어 규칙에 의해 요청이 차단되었습니다.' },
-      settings: { authSourceDefaults: { sources: { google: { title: 'Google 가입', description: 'Google OAuth 가입 사용자의 기본 할당량입니다.' }, github: { title: 'GitHub 가입', description: 'GitHub OAuth 가입 사용자의 기본 할당량입니다.' } } }, emailOAuthSettings: { title: '이메일 OAuth 설정', description: '이메일 계정의 Google 및 GitHub OAuth 로그인을 설정합니다.', googleSetupGuide: 'Google Cloud Console에서 OAuth 클라이언트를 만들고 아래 콜백 URL을 추가하세요.', googleHint: 'Google OAuth 로그인과 계정 연결에 사용됩니다.', githubSetupPrefix: 'GitHub OAuth App을 만들고 콜백 URL을 ', githubSetupSuffix: '(으)로 설정하세요.', githubHint: 'GitHub OAuth 로그인과 계정 연결에 사용됩니다.', secretConfiguredPlaceholder: 'Secret이 설정되어 있습니다. 유지하려면 비워 두세요.', callbackUrlSetAndCopied: '콜백 URL을 생성하고 복사했습니다' }, emailTemplates: { title: '이메일 템플릿', description: '언어별 이메일 제목과 HTML 템플릿을 편집합니다.', event: '이벤트', locale: '언어', localeZh: '중국어', localeEn: '영어', subject: '제목', subjectPlaceholder: '이메일 제목', html: 'HTML 본문', htmlPlaceholder: '이메일 HTML 내용', placeholders: '플레이스홀더', placeholdersHelp: '플레이스홀더를 클릭하면 템플릿에 넣을 수 있도록 복사됩니다.', preview: '미리보기', previewing: '미리보는 중...', livePreview: '실시간 미리보기', noPreview: '미리보기가 없습니다', previewSecurityHint: '미리보기는 렌더링 전에 정리됩니다.', customized: '사용자 지정됨', empty: '이벤트와 언어를 선택해 템플릿을 편집하세요.', save: '템플릿 저장', saving: '저장 중...', saveSuccess: '템플릿이 저장되었습니다', restoreOfficial: '공식 템플릿 복원', restoring: '복원 중...', restoreConfirm: '공식 템플릿을 복원할까요? 사용자 지정 내용이 대체됩니다.', restoreSuccess: '공식 템플릿이 복원되었습니다', placeholderCopied: '플레이스홀더가 복사되었습니다', validationRequired: '제목과 HTML 본문은 필수입니다' }, wechatConnect: { browserRedirectUrlLabel: '브라우저 리디렉션 URL', browserRedirectUrlHint: '일반 브라우저에서 OAuth가 완료된 후 이동할 주소입니다.', unionIdWarning: '같은 WeChat Open Platform 계정에 연결되어 있지 않으면 UnionID를 사용할 수 없을 수 있습니다.', mpMobileConflict: 'Official Account와 Mobile App은 같은 WeChat 애플리케이션이 아니라면 동일한 AppID/AppSecret을 공유하지 않는 것이 좋습니다.', modes: { open: { title: 'Open Platform', description: 'WeChat 외부에서 QR 코드 인증을 사용합니다.', appIdLabel: 'Open Platform App ID', appIdPlaceholder: 'WeChat Open Platform App ID', appSecretLabel: 'Open Platform App Secret', appSecretPlaceholder: 'WeChat Open Platform App Secret' }, mp: { title: 'Official Account', description: 'WeChat 내부에서 Official Account 인증을 사용합니다.', appIdLabel: 'Official Account App ID', appIdPlaceholder: 'WeChat Official Account App ID', appSecretLabel: 'Official Account App Secret', appSecretPlaceholder: 'WeChat Official Account App Secret' }, mobile: { title: 'Mobile App', description: '데스크톱/모바일 앱 로그인에 WeChat Mobile App OAuth를 사용합니다.', appIdLabel: 'Mobile App ID', appIdPlaceholder: 'WeChat Mobile App ID', appSecretLabel: 'Mobile App Secret', appSecretPlaceholder: 'WeChat Mobile App Secret' } } } },
+      settings: { authSourceDefaults: { sources: { google: { title: 'Google 가입', description: 'Google OAuth 가입 사용자의 기본 할당량입니다.' }, github: { title: 'GitHub 가입', description: 'GitHub OAuth 가입 사용자의 기본 할당량입니다.' } } }, emailOAuthSettings: { title: '이메일 OAuth 설정', description: '이메일 계정의 Google 및 GitHub OAuth 로그인을 설정합니다.', googleSetupGuide: 'Google Cloud Console에서 OAuth 클라이언트를 만들고 아래 콜백 URL을 추가하세요.', googleHint: 'Google OAuth 로그인과 계정 연결에 사용됩니다.', githubSetupPrefix: 'GitHub OAuth App을 만들고 콜백 URL을 ', githubSetupSuffix: '(으)로 설정하세요.', githubHint: 'GitHub OAuth 로그인과 계정 연결에 사용됩니다.', secretConfiguredPlaceholder: 'Secret이 설정되어 있습니다. 유지하려면 비워 두세요.', callbackUrlSetAndCopied: '콜백 URL을 생성하고 복사했습니다' }, emailTemplates: { title: '이메일 템플릿', description: '언어별 이메일 제목과 HTML 템플릿을 편집합니다.', event: '이벤트', locale: '언어', localeZh: '중국어', localeEn: '영어', subject: '제목', subjectPlaceholder: '이메일 제목', html: 'HTML 본문', htmlPlaceholder: '이메일 HTML 내용', placeholders: '플레이스홀더', placeholdersHelp: '플레이스홀더를 클릭하면 템플릿에 넣을 수 있도록 복사됩니다.', preview: '미리보기', previewing: '미리보는 중...', livePreview: '실시간 미리보기', noPreview: '미리보기가 없습니다', previewSecurityHint: '미리보기는 렌더링 전에 정리됩니다.', customized: '사용자 지정됨', empty: '이벤트와 언어를 선택해 템플릿을 편집하세요.', save: '템플릿 저장', saving: '저장 중...', saveSuccess: '템플릿이 저장되었습니다', restoreOfficial: '공식 템플릿 복원', restoring: '복원 중...', restoreConfirm: '공식 템플릿을 복원할까요? 사용자 지정 내용이 대체됩니다.', restoreSuccess: '공식 템플릿이 복원되었습니다', placeholderCopied: '플레이스홀더가 복사되었습니다', validationRequired: '제목과 HTML 본문은 필수입니다', ...emailTemplateMeta.ko }, wechatConnect: { browserRedirectUrlLabel: '브라우저 리디렉션 URL', browserRedirectUrlHint: '일반 브라우저에서 OAuth가 완료된 후 이동할 주소입니다.', unionIdWarning: '같은 WeChat Open Platform 계정에 연결되어 있지 않으면 UnionID를 사용할 수 없을 수 있습니다.', mpMobileConflict: 'Official Account와 Mobile App은 같은 WeChat 애플리케이션이 아니라면 동일한 AppID/AppSecret을 공유하지 않는 것이 좋습니다.', modes: { open: { title: 'Open Platform', description: 'WeChat 외부에서 QR 코드 인증을 사용합니다.', appIdLabel: 'Open Platform App ID', appIdPlaceholder: 'WeChat Open Platform App ID', appSecretLabel: 'Open Platform App Secret', appSecretPlaceholder: 'WeChat Open Platform App Secret' }, mp: { title: 'Official Account', description: 'WeChat 내부에서 Official Account 인증을 사용합니다.', appIdLabel: 'Official Account App ID', appIdPlaceholder: 'WeChat Official Account App ID', appSecretLabel: 'Official Account App Secret', appSecretPlaceholder: 'WeChat Official Account App Secret' }, mobile: { title: 'Mobile App', description: '데스크톱/모바일 앱 로그인에 WeChat Mobile App OAuth를 사용합니다.', appIdLabel: 'Mobile App ID', appIdPlaceholder: 'WeChat Mobile App ID', appSecretLabel: 'Mobile App Secret', appSecretPlaceholder: 'WeChat Mobile App Secret' } } } },
       subscriptions: { searchDeviceCode: '디바이스 코드로 검색...', quotaEndsInMinutes: '{minutes}분 후 종료', quotaEndsInHoursMinutes: '{hours}시간 {minutes}분 후 종료', quotaEndsInDaysHours: '{days}일 {hours}시간 후 종료' },
       users: { sortBy: '정렬 기준', sortCurrentPageOnly: '정렬은 현재 페이지에만 적용됩니다', columnAlwaysVisible: '항상 표시', passwordCopied: '비밀번호가 복사되었습니다', columns: { usageOpenAI: 'OpenAI 사용량', usageAnthropic: 'Anthropic 사용량', usageGemini: 'Gemini 사용량', usageAntigravity: 'Antigravity 사용량' } }
     },
     payment: { admin: { colDeviceCode: '디바이스 코드' } }
   }
+} as const satisfies Record<string, LocalePatch>
+
+const adminLocaleMissingEnPatches = {
+  en: {
+    admin: {
+      dashboard: {
+        totalApiKeys: 'Total API Keys',
+        activeApiKeys: 'Active API Keys',
+        totalUsers: 'Total Users',
+        totalAccounts: 'Total Accounts',
+        activeAccounts: 'Active Accounts',
+        totalRequests: 'Total Requests',
+        todayCost: 'Today\'s Cost',
+        totalCost: 'Total Cost',
+        input: 'Input',
+        output: 'Output',
+        averageTime: 'Average Time',
+        cache: 'Cache',
+        last7Days: 'Last 7 Days',
+        noUsageRecords: 'No usage records',
+        startUsingApi: 'After you start using the API, usage history will be shown here.',
+        viewAllUsage: 'View All',
+        manageUsers: 'Manage Users',
+        viewUserAccounts: 'View and manage user accounts',
+        manageAccounts: 'Manage Accounts',
+        configureAiAccounts: 'Configure AI Platform Accounts',
+        systemSettings: 'System Settings',
+        configureSystem: 'Configure System Settings',
+      },
+      users: {
+        deleteConfirmMessage: 'Are you sure you want to delete user \'{email}\'? This action cannot be undone.',
+        searchPlaceholder: 'Fuzzy search email/username/notes/API Key/redeem code...',
+        roleFilter: 'Role Filter',
+        statusFilter: 'Status Filter',
+        allStatuses: 'All Statuses',
+        form: {
+          emailLabel: 'Email',
+          emailPlaceholder: 'Please enter email',
+          usernameLabel: 'Username',
+          usernamePlaceholder: 'Please enter username (optional)',
+          notesLabel: 'Notes',
+          notesPlaceholder: 'Please enter notes (admin-only)',
+          notesHint: 'This note is only visible to administrators',
+          passwordLabel: 'Password',
+          passwordPlaceholder: 'Please enter password (leave empty to keep unchanged)',
+          roleLabel: 'Role',
+          selectRole: 'Select role',
+          balanceLabel: 'Balance',
+          concurrencyLabel: 'Concurrency',
+          statusLabel: 'Status',
+          selectStatus: 'Select status',
+        },
+        adjustBalance: 'Adjust Balance',
+        adjustConcurrency: 'Adjust Concurrency',
+        adjustmentAmount: 'Adjustment Amount',
+        adjustmentAmountHint: 'Positive values increase, negative values decrease',
+        currentConcurrency: 'Current Concurrency',
+        saving: 'Saving...',
+        noUsers: 'No users',
+        noUsersDescription: 'Create your first user to start using the system.',
+        userCreatedSuccess: 'User created successfully',
+        userUpdatedSuccess: 'User updated successfully',
+        userDeletedSuccess: 'User deleted successfully',
+        balanceAdjustedSuccess: 'Balance adjusted successfully',
+        concurrencyAdjustedSuccess: 'Concurrency adjusted successfully',
+        failedToSave: 'Failed to save user',
+        failedToAdjust: 'Adjustment failed',
+      },
+      groups: {
+        columns: {
+          exclusive: 'Exclusive',
+          priority: 'Priority',
+          apiKeys: 'API Key Count',
+        },
+        form: {
+          nameLabel: 'Group Name',
+          namePlaceholder: 'Please enter group name',
+          descriptionLabel: 'Description',
+          descriptionPlaceholder: 'Please enter a description (optional)',
+          rateMultiplierLabel: 'Rate Multiplier',
+          rateMultiplierHint: '1.0 = standard rate, 0.5 = half price, 2.0 = double price',
+          exclusiveLabel: 'Exclusive Group',
+          exclusiveHint: 'Exclusive group, can be manually assigned to users',
+          platformLabel: 'Platform Restriction',
+          platformPlaceholder: 'Select platform (leave empty for no restriction)',
+          accountsLabel: 'Assigned Accounts',
+          accountsPlaceholder: 'Select accounts (leave empty for no restriction)',
+          priorityLabel: 'Priority',
+          priorityHint: 'Smaller values indicate higher priority, used for account scheduling',
+          statusLabel: 'Status',
+        },
+        exclusiveObj: {
+          yes: 'Yes',
+          no: 'No',
+        },
+        saving: 'Saving...',
+        noGroups: 'No groups',
+        noGroupsDescription: 'Create groups to better manage API Keys and rates.',
+        groupCreatedSuccess: 'Group created successfully',
+        groupUpdatedSuccess: 'Group updated successfully',
+        groupDeletedSuccess: 'Group deleted successfully',
+        exclusiveFilter: 'Exclusive',
+      },
+      accounts: {
+        deleteConfirmMessage: 'Are you sure you want to delete account \'{name}\'?',
+        refreshCookie: 'Refresh Cookie',
+        testAccount: 'Test Account',
+        types: {
+          api_key: 'API Key',
+          cookie: 'Cookie',
+        },
+        form: {
+          nameLabel: 'Account Name',
+          namePlaceholder: 'Please enter account name',
+          platformLabel: 'Platform',
+          selectPlatform: 'Select platform',
+          typeLabel: 'Type',
+          selectType: 'Select type',
+          credentialsLabel: 'Credentials',
+          credentialsPlaceholder: 'Please enter Cookie or API Key',
+          priorityLabel: 'Priority',
+          priorityHint: 'Smaller values indicate higher priority',
+          weightLabel: 'Weight',
+          weightHint: 'Weight value used for load balancing',
+          statusLabel: 'Status',
+        },
+        filters: {
+          platform: 'Platform',
+          allPlatforms: 'All Platforms',
+          type: 'Type',
+          allTypes: 'All Types',
+          status: 'Status',
+          allStatuses: 'All Statuses',
+        },
+        saving: 'Saving...',
+        refreshing: 'Refreshing...',
+        noAccounts: 'No accounts',
+        noAccountsDescription: 'Add AI platform accounts to start using the API gateway.',
+        accountCreatedSuccess: 'Account added successfully',
+        accountUpdatedSuccess: 'Account updated successfully',
+        accountDeletedSuccess: 'Account deleted successfully',
+        cookieRefreshedSuccess: 'Cookie refreshed successfully',
+        testSuccess: 'Account test passed',
+        failedToSave: 'Failed to save account',
+      },
+      proxies: {
+        deleteConfirmMessage: 'Are you sure you want to delete proxy \'{name}\'?',
+        testProxy: 'Test Proxy',
+        columns: {
+          nameLabel: 'Name',
+          namePlaceholder: 'Please enter proxy name',
+          protocolLabel: 'Protocol',
+          selectProtocol: 'Select protocol',
+          hostLabel: 'Host',
+          hostPlaceholder: 'Please enter host address',
+          portLabel: 'Port',
+          portPlaceholder: 'Please enter port',
+          usernameLabel: 'Username (optional)',
+          usernamePlaceholder: 'Please enter username',
+          passwordLabel: 'Password (optional)',
+          passwordPlaceholder: 'Please enter password',
+          priorityLabel: 'Priority',
+          statusLabel: 'Status',
+        },
+        filters: {
+          protocol: 'Protocol',
+          allProtocols: 'All Protocols',
+          status: 'Status',
+          allStatuses: 'All Statuses',
+        },
+        saving: 'Saving...',
+        testing: 'Testing...',
+        noProxies: 'No proxies',
+        noProxiesDescription: 'Add proxy servers to improve API access stability.',
+        proxyCreatedSuccess: 'Proxy added successfully',
+        proxyUpdatedSuccess: 'Proxy updated successfully',
+        proxyDeletedSuccess: 'Proxy deleted successfully',
+        testSuccess: 'Proxy test passed',
+        failedToSave: 'Failed to save proxy',
+      },
+      redeem: {
+        columns: {
+          createdAt: 'Created At',
+        },
+        form: {
+          typeLabel: 'Type',
+          selectType: 'Select type',
+          valueLabel: 'Value',
+          valuePlaceholder: 'Please enter value',
+          balanceHint: 'Balance amount (USD)',
+          concurrencyHint: 'Concurrency increment',
+          countLabel: 'Count',
+          countPlaceholder: 'Please enter count',
+          countHint: 'Number of redeem codes to generate',
+          prefixLabel: 'Prefix (optional)',
+          prefixPlaceholder: 'e.g.: GIFT',
+          expiresLabel: 'Expiration time (optional)',
+        },
+        filters: {
+          type: 'Type',
+          allTypes: 'All Types',
+          status: 'Status',
+          allStatuses: 'All Statuses',
+          search: 'Search redeem codes',
+        },
+        copyCode: 'Copy',
+        disableCode: 'Disable',
+        enableCode: 'Enable',
+        deleteConfirmMessage: 'Are you sure you want to delete this redeem code?',
+        noCodes: 'No redeem codes',
+        noCodesDescription: 'Generate redeem codes to distribute balance or concurrency to users.',
+        codesGeneratedSuccess: 'Redeem codes generated successfully, {count} total',
+        codeDisabledSuccess: 'Redeem code disabled',
+        codeEnabledSuccess: 'Redeem code enabled',
+        codeDeletedSuccess: 'Redeem code deleted successfully',
+        failedToUpdate: 'Failed to update redeem code',
+      },
+    },
+  },
 } as const satisfies Record<string, LocalePatch>
 
 const adminLocaleCoveragePatches = {
@@ -544,6 +839,9 @@ const adminLocaleCoveragePatches = {
 } as const satisfies Record<string, LocalePatch>
 
 export const adminLocalePatches = mergeLocalePatch(
-  adminLocalePatchBase as unknown as Record<string, LocalePatch>,
+  mergeLocalePatch(
+    adminLocalePatchBase as unknown as Record<string, LocalePatch>,
+    adminLocaleMissingEnPatches
+  ),
   adminLocaleCoveragePatches
 )
