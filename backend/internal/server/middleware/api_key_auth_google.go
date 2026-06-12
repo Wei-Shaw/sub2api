@@ -211,20 +211,43 @@ func APIKeyAuthWithSubscriptionGoogleAndEntitlements(apiKeyService *service.APIK
 				}
 				if err != nil {
 					status := 403
+					code := "SUBSCRIPTION_INVALID"
+					reason := "subscription_invalid"
+					allowProviderChange := false
 					if errors.Is(err, service.ErrDailyLimitExceeded) ||
 						errors.Is(err, service.ErrWeeklyLimitExceeded) ||
 						errors.Is(err, service.ErrMonthlyLimitExceeded) {
 						status = 429
-						code := "USAGE_LIMIT_EXCEEDED"
-						if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "subscription_limit_exceeded", code, true); ok {
-							apiKey = switchedKey
-							subscription = nil
-						} else {
-							abortWithGoogleBillingError(c, status, code, err.Error())
-							return
+						code = "USAGE_LIMIT_EXCEEDED"
+						reason = "subscription_limit_exceeded"
+						allowProviderChange = true
+					}
+					if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, reason, code, allowProviderChange); ok {
+						apiKey = switchedKey
+						subscription = nil
+						if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() && subscriptionService != nil {
+							sub, subErr := subscriptionService.GetActiveSubscription(c.Request.Context(), apiKey.User.ID, apiKey.Group.ID)
+							if subErr != nil {
+								abortWithGoogleError(c, 403, "No active subscription found for this group")
+								return
+							}
+							needsMaintenance, err = subscriptionService.ValidateAndCheckLimits(sub, apiKey.Group)
+							if err != nil {
+								switchedStatus := 403
+								switchedCode := "SUBSCRIPTION_INVALID"
+								if errors.Is(err, service.ErrDailyLimitExceeded) ||
+									errors.Is(err, service.ErrWeeklyLimitExceeded) ||
+									errors.Is(err, service.ErrMonthlyLimitExceeded) {
+									switchedStatus = 429
+									switchedCode = "USAGE_LIMIT_EXCEEDED"
+								}
+								abortWithGoogleBillingError(c, switchedStatus, switchedCode, err.Error())
+								return
+							}
+							subscription = sub
 						}
 					} else {
-						abortWithGoogleError(c, status, err.Error())
+						abortWithGoogleBillingError(c, status, code, err.Error())
 						return
 					}
 				}

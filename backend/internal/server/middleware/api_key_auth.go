@@ -280,17 +280,39 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				if validateErr != nil {
 					code := "SUBSCRIPTION_INVALID"
 					status := 403
+					reason := "subscription_invalid"
+					allowProviderChange := false
 					if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
 						errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
 						errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
 						code = "USAGE_LIMIT_EXCEEDED"
 						status = 429
-						if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "subscription_limit_exceeded", code, true); ok {
-							apiKey = switchedKey
-							subscription = nil
-						} else {
-							AbortWithError(c, status, code, validateErr.Error())
-							return
+						reason = "subscription_limit_exceeded"
+						allowProviderChange = true
+					}
+					if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, reason, code, allowProviderChange); ok {
+						apiKey = switchedKey
+						subscription = nil
+						if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() && subscriptionService != nil {
+							sub, subErr := subscriptionService.GetActiveSubscription(c.Request.Context(), apiKey.User.ID, apiKey.Group.ID)
+							if subErr != nil {
+								AbortWithError(c, 403, "SUBSCRIPTION_NOT_FOUND", "No active subscription found for this group")
+								return
+							}
+							needsMaintenance, validateErr = subscriptionService.ValidateAndCheckLimits(sub, apiKey.Group)
+							if validateErr != nil {
+								switchedCode := "SUBSCRIPTION_INVALID"
+								switchedStatus := 403
+								if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
+									errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
+									errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
+									switchedCode = "USAGE_LIMIT_EXCEEDED"
+									switchedStatus = 429
+								}
+								AbortWithError(c, switchedStatus, switchedCode, validateErr.Error())
+								return
+							}
+							subscription = sub
 						}
 					} else {
 						AbortWithError(c, status, code, validateErr.Error())

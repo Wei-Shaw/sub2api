@@ -841,9 +841,11 @@ func isSubscriptionSwitchTrigger(req AutoSwitchEntitlementRequest) bool {
 		reason == "subscription_not_found" ||
 		reason == "subscription_invalid" ||
 		reason == "subscription_expired" ||
+		reason == "subscription_limit_exceeded" ||
 		code == "SUBSCRIPTION_NOT_FOUND" ||
 		code == "SUBSCRIPTION_INVALID" ||
-		code == "SUBSCRIPTION_EXPIRED"
+		code == "SUBSCRIPTION_EXPIRED" ||
+		code == "USAGE_LIMIT_EXCEEDED"
 }
 
 func (s *EntitlementService) subscriptionSwitchTargets(ctx context.Context, keys []APIKey, currentKey *APIKey, items []EntitlementItem, req AutoSwitchEntitlementRequest) []EntitlementSwitchTarget {

@@ -733,6 +733,39 @@ func TestEntitlementService_AutoSwitchEntitlement_SkipsExhaustedSubscriptionTarg
 	require.Equal(t, validGroupID, *updater.updatedGroup)
 }
 
+func TestEntitlementService_AutoSwitchEntitlement_SubscriptionLimitUsesActiveSameProviderSubscription(t *testing.T) {
+	now := time.Now()
+	later := now.Add(30 * 24 * time.Hour)
+	exhaustedGroupID := int64(8)
+	validGroupID := int64(9)
+	monthlyLimit := 30.0
+	currentAPIKeyID := int64(100)
+	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{{ID: currentAPIKeyID, UserID: 42, Key: "sk-hidden", Name: "desktop", Status: StatusActive, GroupID: &exhaustedGroupID}}}
+	updater := &entitlementAPIKeyUpdaterStub{keys: keyRepo}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 0}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{
+			exhaustedGroupID: {ID: exhaustedGroupID, Name: "OpenAI Subscription Exhausted", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, MonthlyLimitUSD: &monthlyLimit, SupportedModelScopes: []string{"openai"}},
+			validGroupID:     {ID: validGroupID, Name: "OpenAI Subscription Valid", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, MonthlyLimitUSD: &monthlyLimit, SupportedModelScopes: []string{"openai"}},
+		}},
+		updater,
+		keyRepo,
+		&entitlementUserSubRepoStub{subs: []UserSubscription{
+			{ID: 7, UserID: 42, GroupID: exhaustedGroupID, Status: SubscriptionStatusActive, StartsAt: now, ExpiresAt: later, MonthlyUsageUSD: monthlyLimit + 0.01},
+			{ID: 8, UserID: 42, GroupID: validGroupID, Status: SubscriptionStatusActive, StartsAt: now, ExpiresAt: later, MonthlyUsageUSD: 1.5},
+		}},
+	)
+
+	result, err := svc.AutoSwitchEntitlement(context.Background(), 42, AutoSwitchEntitlementRequest{Reason: "subscription_limit_exceeded", ErrorCode: "USAGE_LIMIT_EXCEEDED", CurrentAPIKeyID: &currentAPIKeyID, CurrentGroupID: &exhaustedGroupID, ProviderID: "v-claw-openai", PreferCurrentAPIKey: true})
+	require.NoError(t, err)
+	require.True(t, result.Switched)
+	require.Equal(t, EntitlementSwitchActionGroup, result.Action)
+	require.NotNil(t, result.Target)
+	require.Equal(t, validGroupID, result.Target.GroupID)
+	require.Equal(t, currentAPIKeyID, result.Target.APIKeyID, "gateway self-heal must keep the caller's hidden API key")
+	require.Equal(t, validGroupID, *updater.updatedGroup)
+}
+
 func TestEntitlementService_AutoSwitchEntitlement_CurrentKeyExhaustedUsesAlternateKey(t *testing.T) {
 	balanceGroupID := int64(2)
 	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{
