@@ -1290,3 +1290,35 @@ REDACTED
 
 	return modified, changed
 REDACTED
+
+// NormalizeChineseLLMThinking rewrites the top-level `thinking` object for Chinese
+// LLM providers that use Anthropic-compatible endpoints but have different accepted
+// values for `thinking.type`. Currently scoped to:
+//   - MiniMax M3 / M3.x (`MiniMax-m*`): official docs accept only `thinking.type`
+//     of "adaptive" or "disabled"; "enabled" is not a valid value and may be
+//     rejected/ignored. Pi-ai and other Anthropic-SDK clients default to "enabled"
+//     (Anthropic-original) and never auto-rewrite for non-Anthropic models.
+//
+// Non-MiniMax models (Kimi/GLM/DeepSeek) currently accept "enabled" as-is, so this
+// function is intentionally a no-op for them. New Chinese LLM quirks should be
+// added here as separate case branches.
+//
+// Returns (modified body, true) if a rewrite was applied, or (original body, false)
+// if no rewrite was needed. Caller should be on the Anthropic forward path AFTER
+// FilterThinkingBlocks and BEFORE building the upstream request, only for
+// passback-required models (ResolveThinkingProtocol == PassbackRequired).
+func NormalizeChineseLLMThinking(body []byte, mappedModel string) ([]byte, bool) {
+	modelLower := strings.ToLower(mappedModel)
+	if !strings.HasPrefix(modelLower, "minimax-m") {
+		return body, false
+REDACTED
+	thinkingType := gjson.GetBytes(body, "thinking.type").String()
+	if thinkingType != "enabled" {
+		return body, false
+REDACTED
+	modified, err := sjson.SetBytes(body, "thinking.type", "adaptive")
+	if err != nil {
+		return body, false
+REDACTED
+	return modified, true
+REDACTED

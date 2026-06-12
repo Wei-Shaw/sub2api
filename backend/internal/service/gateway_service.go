@@ -4970,6 +4970,16 @@ REDACTED
 	if err := replaceBody(FilterThinkingBlocks(body, reqModel)); err != nil {
 		return nil, err
 REDACTED
+	// Chinese LLM thinking.type 协议差异补正（如 MiniMax 只接受 adaptive；Anthropic-SDK
+	// 客户端默认发 enabled）。仅对 passback-required 上游生效（claude-* 不会进来）。
+	if ResolveThinkingProtocol(reqModel) == ThinkingProtocolPassbackRequired {
+		if rewritten, applied := NormalizeChineseLLMThinking(body, reqModel); applied {
+			if err := replaceBody(rewritten); err != nil {
+				return nil, err
+		REDACTED
+			logger.LegacyPrintf("service.gateway", "Account %d: rewrote thinking.type for %s (Anthropic-SDK default 'enabled' -> vendor-specific)", account.ID, reqModel)
+	REDACTED
+REDACTED
 
 	// 重试循环
 	var resp *http.Response
