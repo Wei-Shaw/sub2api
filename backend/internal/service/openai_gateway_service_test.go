@@ -1739,6 +1739,114 @@ func TestOpenAIStreamingPassthroughResponseIncompleteWithoutDoneMarkerStillSucce
 	require.Equal(t, 1, result.usage.CacheReadInputTokens)
 }
 
+func TestOpenAIStreamingPassthroughStopsForwardingAfterTerminalEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.output_text.delta","delta":"ok"}`,
+			"",
+			`data: {"type":"response.completed","response":{"id":"resp_1","usage":{"input_tokens":2,"output_tokens":3}}}`,
+			"",
+			`data: {"type":"response.output_text.delta","delta":"after-terminal"}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{},
+	}
+
+	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1}, time.Now(), "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), `"response.completed"`)
+	require.Contains(t, rec.Body.String(), "\"response.completed\",\"response\"")
+	require.Contains(t, rec.Body.String(), "\n\n")
+	require.NotContains(t, rec.Body.String(), "after-terminal")
+}
+
+func TestOpenAIStreamingPassthroughReconstructsEmptyCompletedOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: response.output_item.added`,
+			`data: {"type":"response.output_item.added","item":{"id":"msg_1","type":"message","status":"in_progress","content":[],"role":"assistant"},"output_index":0,"sequence_number":2}`,
+			"",
+			`event: response.output_text.delta`,
+			`data: {"type":"response.output_text.delta","content_index":0,"delta":"OK","item_id":"msg_1","output_index":0,"sequence_number":4}`,
+			"",
+			`event: response.completed`,
+			`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","output":[],"usage":{"input_tokens":2,"output_tokens":3}},"sequence_number":8}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{},
+	}
+
+	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1}, time.Now(), "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), `"response.completed"`)
+	require.Contains(t, rec.Body.String(), `"output":[`)
+	require.Contains(t, rec.Body.String(), `"text":"OK"`)
+	require.NotContains(t, rec.Body.String(), `"output":[]`)
+}
+
+func TestOpenAIStreamingResponseStopsForwardingAfterTerminalEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.output_text.delta","delta":"ok"}`,
+			"",
+			`data: {"type":"response.completed","response":{"id":"resp_1","usage":{"input_tokens":2,"output_tokens":3}}}`,
+			"",
+			`data: {"type":"response.output_text.delta","delta":"after-terminal"}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{},
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1}, time.Now(), "gpt-5.5", "gpt-5.5")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), `"response.completed"`)
+	require.Contains(t, rec.Body.String(), "\"response.completed\",\"response\"")
+	require.Contains(t, rec.Body.String(), "\n\n")
+	require.NotContains(t, rec.Body.String(), "after-terminal")
+}
+
 func TestOpenAIStreamingTooLong(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
@@ -2566,6 +2674,37 @@ func TestHandleNonStreamingResponse_APIKeyFallsBackToSSEBodyWhenContentTypeIsWro
 	require.NotContains(t, rec.Body.String(), "data:")
 	require.Equal(t, "resp_api_key_sse", gjson.Get(rec.Body.String(), "id").String())
 	require.Equal(t, "hello", gjson.Get(rec.Body.String(), "output.0.content.0.text").String())
+}
+
+func TestHandleNonStreamingResponsePassthrough_FallsBackToSSEBodyWhenContentTypeIsWrong(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/responses", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: response.output_text.delta`,
+			`data: {"type":"response.output_text.delta","delta":"OK","output_index":0,"content_index":0}`,
+			``,
+			`event: response.completed`,
+			`data: {"type":"response.completed","response":{"id":"resp_passthrough_sse","object":"response","model":"gpt-5.5","status":"completed","output":[],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}`,
+			``,
+		}, "\n"))),
+	}
+
+	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, "gpt-5.5", "gpt-5.5")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 3, result.InputTokens)
+	require.Equal(t, 2, result.OutputTokens)
+	require.NotContains(t, rec.Body.String(), "event:")
+	require.NotContains(t, rec.Body.String(), "data:")
+	require.Equal(t, "resp_passthrough_sse", gjson.Get(rec.Body.String(), "id").String())
+	require.Equal(t, "OK", gjson.Get(rec.Body.String(), "output.0.content.0.text").String())
 }
 
 func TestHandleSSEToJSON_ReconstructsImageGenerationOutputItemDone(t *testing.T) {

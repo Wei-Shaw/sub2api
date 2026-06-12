@@ -3803,6 +3803,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	pendingLines := make([]string, 0, 8)
+	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
+	streamImageOutputs := make([]json.RawMessage, 0, 1)
+	streamSeenImages := make(map[string]struct{})
 	writePendingLines := func() bool {
 		for _, pending := range pendingLines {
 			if _, err := fmt.Fprintln(w, pending); err != nil {
@@ -3869,6 +3872,21 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
 			}
 			imageCounter.AddSSEData(dataBytes)
+			if imageOutput, ok := extractImageGenerationOutputFromSSEData(dataBytes, streamSeenImages); ok {
+				streamImageOutputs = append(streamImageOutputs, imageOutput)
+			}
+			if responsesStreamEventMayContributeToOutput(eventType) {
+				var streamEvent apicompat.ResponsesStreamEvent
+				if err := json.Unmarshal(dataBytes, &streamEvent); err == nil {
+					streamOutputAccumulator.ProcessEvent(&streamEvent)
+				}
+			}
+			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, streamOutputAccumulator, streamImageOutputs); normalized {
+				dataBytes = normalizedData
+				trimmedData = string(normalizedData)
+				line = "data: " + trimmedData
+				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
 			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
@@ -3892,8 +3910,17 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 			} else {
 				clientOutputStarted = true
+				if sawTerminalEvent {
+					if _, err := fmt.Fprintln(w); err != nil {
+						clientDisconnected = true
+						logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during terminal frame flush, continue draining upstream for usage: account=%d", account.ID)
+					}
+				}
 				flusher.Flush()
 			}
+		}
+		if sawTerminalEvent {
+			return resultWithUsage(), nil
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -3964,7 +3991,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	// Some upstreams (e.g. other sub2api instances) may return SSE even when
 	// stream=false was requested. Without this conversion the client would
 	// receive raw SSE text or a terminal event with empty output.
-	if isEventStreamResponse(resp.Header) {
+	bodyLooksLikeSSE := bytes.Contains(body, []byte("data:")) || bytes.Contains(body, []byte("event:"))
+	if isEventStreamResponse(resp.Header) || bodyLooksLikeSSE {
 		return s.handlePassthroughSSEToJSON(resp, c, body, originalModel, mappedModel)
 	}
 
@@ -4796,6 +4824,13 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				} else if _, err := bufferedWriter.WriteString("\n"); err != nil {
 					clientDisconnected = true
 					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+				} else if sawTerminalEvent {
+					// Complete the SSE frame before returning; clients dispatch an
+					// event only after the blank-line frame separator.
+					if _, err := bufferedWriter.WriteString("\n"); err != nil {
+						clientDisconnected = true
+						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during terminal frame flush, continuing to drain upstream for billing")
+					}
 				} else if shouldFlush {
 					if err := flushBuffered(); err != nil {
 						clientDisconnected = true
@@ -4843,6 +4878,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			processSSELine(scanner.Text(), true)
 			if streamFailoverErr != nil {
 				return resultWithUsage(), streamFailoverErr
+			}
+			if sawTerminalEvent {
+				return finalizeStream()
 			}
 		}
 		if result, err, done := handleScanErr(scanner.Err()); done {
@@ -4895,6 +4933,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			processSSELine(ev.line, len(events) == 0)
 			if streamFailoverErr != nil {
 				return resultWithUsage(), streamFailoverErr
+			}
+			if sawTerminalEvent {
+				return finalizeStream()
 			}
 
 		case <-intervalCh:
