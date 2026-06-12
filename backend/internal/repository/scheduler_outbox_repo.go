@@ -10,7 +10,6 @@ import (
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/lib/pq"
 )
 
 type schedulerOutboxRepository struct {
@@ -21,16 +20,30 @@ func NewSchedulerOutboxRepository(db *sql.DB) service.SchedulerOutboxRepository 
 	return &schedulerOutboxRepository{db: dbREDACTED
 REDACTED
 
-func (r *schedulerOutboxRepository) ListAfter(ctx context.Context, afterID int64, limit int) ([]service.SchedulerOutboxEvent, error) {
+func (r *schedulerOutboxRepository) ListAfterAndReleaseDedup(ctx context.Context, afterID int64, limit int) ([]service.SchedulerOutboxEvent, error) {
 	if limit <= 0 {
 		limit = 100
 REDACTED
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, event_type, account_id, group_id, payload, created_at
-		FROM scheduler_outbox
-		WHERE id > $1
-		ORDER BY id ASC
-		LIMIT $2
+		WITH selected AS MATERIALIZED (
+			SELECT id, event_type, account_id, group_id, payload, created_at
+			FROM scheduler_outbox
+			WHERE id > $1
+			ORDER BY id ASC
+			LIMIT $2
+			FOR UPDATE
+		), released AS (
+			UPDATE scheduler_outbox AS o
+			SET dedup_key = NULL
+			FROM selected AS s
+			WHERE o.id = s.id
+				AND o.dedup_key IS NOT NULL
+			RETURNING o.id
+		)
+		SELECT s.id, s.event_type, s.account_id, s.group_id, s.payload, s.created_at
+		FROM selected AS s
+		CROSS JOIN (SELECT COUNT(*) FROM released) AS release_barrier
+		ORDER BY s.id ASC
 	`, afterID, limit)
 	if err != nil {
 		return nil, err
@@ -79,19 +92,6 @@ func (r *schedulerOutboxRepository) MaxID(ctx context.Context) (int64, error) {
 		return 0, err
 REDACTED
 	return maxID, nil
-REDACTED
-
-func (r *schedulerOutboxRepository) MarkProcessed(ctx context.Context, eventIDs []int64) error {
-	if len(eventIDs) == 0 {
-		return nil
-REDACTED
-	_, err := r.db.ExecContext(ctx, `
-		UPDATE scheduler_outbox
-		SET dedup_key = NULL
-		WHERE id = ANY($1)
-			AND dedup_key IS NOT NULL
-	`, pq.Array(eventIDs))
-	return err
 REDACTED
 
 func enqueueSchedulerOutbox(ctx context.Context, exec sqlExecutor, eventType string, accountID *int64, groupID *int64, payload any) error {

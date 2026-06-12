@@ -16,7 +16,6 @@ REDACTED
 
 // SchedulerOutboxRepository 提供调度 outbox 的读取接口。
 type SchedulerOutboxRepository interface {
-	ListAfter(ctx context.Context, afterID int64, limit int) ([]SchedulerOutboxEvent, error)
+	ListAfterAndReleaseDedup(ctx context.Context, afterID int64, limit int) ([]SchedulerOutboxEvent, error)
 	MaxID(ctx context.Context) (int64, error)
-	MarkProcessed(ctx context.Context, eventIDs []int64) error
 REDACTED
