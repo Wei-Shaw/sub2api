@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"bufio"
 	"compress/flate"
 	"compress/gzip"
 	"context"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
@@ -1178,6 +1180,7 @@ REDACTED
 		return
 REDACTED
 
+	originalBody := resp.Body
 	var reader io.Reader
 	switch ce {
 	case "gzip":
@@ -1190,15 +1193,46 @@ REDACTED
 		reader = brotli.NewReader(resp.Body)
 	case "deflate":
 		reader = flate.NewReader(resp.Body)
+	case "zstd":
+		bufferedBody := bufio.NewReader(resp.Body)
+		resp.Body = &decompressedBody{reader: bufferedBody, closer: originalBodyREDACTED
+
+		headerBytes, _ := bufferedBody.Peek(zstd.HeaderMaxSize)
+		var header zstd.Header
+		if err := header.Decode(headerBytes); err != nil {
+			slog.Warn("zstd_decompress_failed", "error", err)
+			return
+	REDACTED
+
+		zr, err := zstd.NewReader(bufferedBody)
+		if err != nil {
+			slog.Warn("zstd_decompress_failed", "error", err)
+			return
+	REDACTED
+		reader = &zstdResponseReader{ReadCloser: zr.IOReadCloser()REDACTED
 	default:
 		return
 REDACTED
 
-	originalBody := resp.Body
 	resp.Body = &decompressedBody{reader: reader, closer: originalBodyREDACTED
 	resp.Header.Del("Content-Encoding")
 	resp.Header.Del("Content-Length") // 解压后长度不确定
 	resp.ContentLength = -1
+REDACTED
+
+type zstdResponseReader struct {
+	io.ReadCloser
+	warnOnce sync.Once
+REDACTED
+
+func (r *zstdResponseReader) Read(p []byte) (int, error) {
+	n, err := r.ReadCloser.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		r.warnOnce.Do(func() {
+			slog.Warn("zstd_decompress_failed", "error", err)
+	REDACTED)
+REDACTED
+	return n, err
 REDACTED
 
 // decompressedBody 组合解压 reader 和原始 body 的 close。
