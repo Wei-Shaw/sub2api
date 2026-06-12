@@ -57,12 +57,13 @@ func TestEnqueueSchedulerOutbox_DeduplicatesIdempotentEvents(t *testing.T) {
 	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1", service.SchedulerOutboxEventAccountChanged).Scan(&count))
 	require.Equal(t, 1, count)
 
-	require.GreaterOrEqual(t, schedulerOutboxDedupWindow, 10*time.Second)
+	var firstID int64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT id FROM scheduler_outbox WHERE event_type = $1", service.SchedulerOutboxEventAccountChanged).Scan(&firstID))
+	require.NoError(t, NewSchedulerOutboxRepository(integrationDB).MarkProcessed(ctx, []int64{firstIDREDACTED))
 
-	time.Sleep(1200 * time.Millisecond)
 	require.NoError(t, enqueueSchedulerOutbox(ctx, integrationDB, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil))
 	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1", service.SchedulerOutboxEventAccountChanged).Scan(&count))
-	require.Equal(t, 1, count)
+	require.Equal(t, 2, count)
 REDACTED
 
 func TestEnqueueSchedulerOutbox_CoalescesAccountStateBurst(t *testing.T) {
@@ -76,8 +77,23 @@ REDACTED
 
 	var count int
 	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1", service.SchedulerOutboxEventAccountChanged).Scan(&count))
-	t.Logf("same-account account_changed burst: calls=50 inserted=%d dedup_window=%s", count, schedulerOutboxDedupWindow)
+	t.Logf("same-account account_changed burst: calls=50 inserted=%d", count)
 	require.Equal(t, 1, count)
+REDACTED
+
+func TestEnqueueSchedulerOutbox_DoesNotDeduplicateDifferentPayload(t *testing.T) {
+	ctx := context.Background()
+	_, _ = integrationDB.ExecContext(ctx, "TRUNCATE scheduler_outbox RESTART IDENTITY")
+
+	accountID := int64(32345)
+	payload1 := map[string]any{"group_ids": []int64{1REDACTEDREDACTED
+	payload2 := map[string]any{"group_ids": []int64{2REDACTEDREDACTED
+	require.NoError(t, enqueueSchedulerOutbox(ctx, integrationDB, service.SchedulerOutboxEventAccountChanged, &accountID, nil, payload1))
+	require.NoError(t, enqueueSchedulerOutbox(ctx, integrationDB, service.SchedulerOutboxEventAccountChanged, &accountID, nil, payload2))
+
+	var count int
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1", service.SchedulerOutboxEventAccountChanged).Scan(&count))
+	require.Equal(t, 2, count)
 REDACTED
 
 func TestEnqueueSchedulerOutbox_DoesNotDeduplicateLastUsed(t *testing.T) {

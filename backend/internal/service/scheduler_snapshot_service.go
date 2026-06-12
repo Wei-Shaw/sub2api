@@ -253,6 +253,7 @@ REDACTED
 
 	watermarkForCheck := watermark
 	seen := make(map[batchSeenKey]struct{REDACTED)
+	processedIDs := make([]int64, 0, len(events))
 	for _, event := range events {
 		eventCtx, cancel := context.WithTimeout(context.Background(), outboxEventTimeout)
 		err := s.handleOutboxEvent(eventCtx, event, seen)
@@ -261,6 +262,15 @@ REDACTED
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox handle failed: id=%d type=%s err=%v", event.ID, event.EventType, err)
 			return
 	REDACTED
+		processedIDs = append(processedIDs, event.ID)
+REDACTED
+
+	markCtx, markCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	markErr := s.outboxRepo.MarkProcessed(markCtx, processedIDs)
+	markCancel()
+	if markErr != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox mark processed failed: %v", markErr)
+		return
 REDACTED
 
 	lastID := events[len(events)-1].ID
