@@ -1204,6 +1204,71 @@ REDACTED
 REDACTED
 REDACTED
 
+// DefaultEffortForThinkingEnabled 给"开启了 thinking 但协议层没有 effort 档位概念"
+// 的国产模型族返回一个默认 effort 字符串（"high"），用于 usage_log.reasoning_effort
+// 字段，避免该字段长期为 NULL 导致用量分析无法区分 thinking 开/关。
+//
+// 适用范围（按 ResolveThinkingProtocol 的 PassbackRequired 集合做白名单过滤）：
+//   - Kimi (kimi-* / moonshot-*)
+//   - GLM (glm-*)
+//   - MiniMax (minimax-m*)
+//   - Qwen thinking 变体 (qwen[1-4]?-*-thinking)
+//
+// **排除 DeepSeek**：DeepSeek 原生支持 reasoning_effort: high/max，客户端可显式指定，
+// 网关不应注入默认值覆盖客户端意图（即便客户端没发，DeepSeek 上游自己会用 high default
+// ——但那是上游行为，不是我们的语义注入）。
+//
+// 适用场景由调用方守卫：仅当 (1) ResolveThinkingProtocol == PassbackRequired
+// (2) 已确认 thinking 启用（Anthropic: parsed.ThinkingEnabled；OpenAI: 见
+// OpenAIBodyHasThinkingEnabled) (3) 已有 effort 解析返回 nil 三者同时成立时调用。
+//
+// 返回值固定指向 "high"。理由：Kimi/GLM/MiniMax 启用 thinking 都是"深度推理模式"，
+// 等同 Claude/OpenAI 的 high 档位语义；用 high 比 medium/normal 更贴近实际行为，
+// 也与 DeepSeek thinking-enabled 的默认 effort 一致。
+//
+// 未来兼容性：如果这些厂商后续加入真实 effort 档位（如 Kimi 跟进 DeepSeek 的
+// reasoning_effort: high/max），客户端开始显式发 effort 值时，调用方的守卫条件 (3)
+// 会因 extractor 返回非 nil 而不触发本函数，自动让出。
+func DefaultEffortForThinkingEnabled(mappedModel string) *string {
+	if ResolveThinkingProtocol(mappedModel) != ThinkingProtocolPassbackRequired {
+		return nil
+REDACTED
+	// DeepSeek 在 PassbackRequired 集合里但有原生 effort 支持，排除。
+	if strings.HasPrefix(strings.ToLower(mappedModel), "deepseek-") {
+		return nil
+REDACTED
+	effort := "high"
+	return &effort
+REDACTED
+
+// OpenAIBodyHasThinkingEnabled 检测 OpenAI 协议的请求体里是否启用了 thinking。
+//
+// 国产 OpenAI-兼容上游（GLM via thinkingFormat=zai / Kimi 等）在请求体里用
+// `thinking: {type: "enabled"REDACTED` 或 `thinking: {type: "adaptive"REDACTED` 表达启用。
+// 仅 "enabled" / "adaptive" 视为开启；"disabled" 或缺省 → 视为关闭。
+//
+// 配合 DefaultEffortForThinkingEnabled 使用：OpenAI 路径上 reasoning_effort 解析为空
+// 但本函数返回 true 时，给 usage_log 填默认 effort。
+func OpenAIBodyHasThinkingEnabled(body []byte) bool {
+	thinkingType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "thinking.type").String()))
+	return thinkingType == "enabled" || thinkingType == "adaptive"
+REDACTED
+
+// ApplyThinkingEnabledFallback 补丁已解析出的 effort，仅在 effort 为 nil 且
+// 检测到 body 里 thinking 启用 + mappedModel 属于国产 passback-required 上游时，
+// 返回 DefaultEffortForThinkingEnabled 的默认值（"high"）。不覆盖已解析出的值。
+//
+// 适用于 OpenAI 网关的多条路径调用方（避免重复的 if-nil 表达式）。
+func ApplyThinkingEnabledFallback(effort *string, body []byte, mappedModel string) *string {
+	if effort != nil {
+		return effort
+REDACTED
+	if !OpenAIBodyHasThinkingEnabled(body) {
+		return nil
+REDACTED
+	return DefaultEffortForThinkingEnabled(mappedModel)
+REDACTED
+
 // =========================
 // Thinking Budget Rectifier
 // =========================

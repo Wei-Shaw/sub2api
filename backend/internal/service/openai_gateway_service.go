@@ -2433,6 +2433,8 @@ REDACTED
 	if passthroughEnabled {
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, reqModel)
+		// 国产模型默认 effort 补充：也要用 mappedModel 判定是否是 passback-required 上游。
+		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, account.GetMappedModel(reqModel))
 		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime)
 REDACTED
 
@@ -3046,6 +3048,9 @@ REDACTED
 		defer func() { _ = resp.Body.Close() REDACTED()
 
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, originalModel)
+		// 国产模型默认 effort 补充：此处 reqModel 已被 mapping 重写为 billingModel（见
+		// line 2510-2515 的 GetMappedModel + reqModel 赋值），可直接作为 mappedModel。
+		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, reqModel)
 		serviceTier := extractOpenAIServiceTierFromBody(body)
 		// 上游接受后只保留计费需要的标量，避免响应处理期间继续保活完整 input/tools map。
 		reqBody = nil
