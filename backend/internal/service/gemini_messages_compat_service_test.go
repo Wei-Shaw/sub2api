@@ -168,6 +168,7 @@ func TestGeminiForwardAsChatCompletions_StreamsOpenAIChunksFromGeminiSSE(t *test
 	require.Contains(t, out, `"content":"lo"`)
 	require.Contains(t, out, `"usage":{"prompt_tokens":2,"completion_tokens":2,"total_tokens":4}`)
 	require.Contains(t, out, "data: [DONE]")
+	require.Equal(t, "hello", c.GetString("audit_response_body"))
 }
 
 // TestConvertClaudeToolsToGeminiTools_CustomType 测试custom类型工具转换
@@ -896,6 +897,7 @@ func TestGeminiMessagesHandleStreamingResponse_ClosesToolBlockBeforeText(t *test
 	require.True(t, textStarted, "expected a text content block to be emitted after the tool call")
 	require.True(t, toolClosedBeforeText, "tool_use block must be closed before the text block starts")
 	require.Equal(t, -1, open, "stream ended with a content block still open")
+	require.Equal(t, "All done.", c.GetString("audit_response_body"))
 }
 
 type anthropicContentBlockEvent struct {

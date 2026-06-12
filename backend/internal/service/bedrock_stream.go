@@ -9,6 +9,7 @@ import (
 	"hash/crc32"
 	"io"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -47,6 +48,12 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
 	clientDisconnected := false
+	var auditText strings.Builder
+	defer func() {
+		if value := auditText.String(); strings.TrimSpace(value) != "" {
+			c.Set("audit_response_body", value)
+		}
+	}()
 
 	// Bedrock EventStream 使用 application/vnd.amazon.eventstream 二进制格式。
 	// 每个帧结构：total_length(4) + headers_length(4) + prelude_crc(4) + headers + payload + message_crc(4)
@@ -140,6 +147,7 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 
 			// 解析 SSE 事件数据提取 usage
 			s.parseSSEUsagePassthrough(string(sseData), usage)
+			appendAnthropicAuditData(&auditText, string(sseData))
 
 			// 确定 SSE event type
 			eventType := gjson.GetBytes(sseData, "type").String()

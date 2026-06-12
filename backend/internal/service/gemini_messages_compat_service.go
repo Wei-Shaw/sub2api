@@ -1998,6 +1998,12 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	var usage ClaudeUsage
 	finishReason := ""
 	sawToolUse := false
+	var auditText strings.Builder
+	defer func() {
+		if value := auditText.String(); strings.TrimSpace(value) != "" {
+			c.Set("audit_response_body", value)
+		}
+	}()
 
 	nextBlockIndex := 0
 	openBlockIndex := -1
@@ -2067,6 +2073,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 				if delta == "" {
 					continue
 				}
+				_, _ = auditText.WriteString(delta)
 
 				if openBlockType != "text" {
 					if openBlockIndex >= 0 {
@@ -2568,6 +2575,12 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 	reader := bufio.NewReader(resp.Body)
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
+	var auditText strings.Builder
+	defer func() {
+		if value := auditText.String(); strings.TrimSpace(value) != "" {
+			c.Set("audit_response_body", value)
+		}
+	}()
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -2597,6 +2610,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 					if u := extractGeminiUsage(rawBytes); u != nil {
 						usage = u
 					}
+					appendGeminiAuditText(&auditText, rawBytes)
 
 					if firstTokenMs == nil {
 						ms := int(time.Since(startTime).Milliseconds())
@@ -2627,6 +2641,19 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 	}
 
 	return &geminiNativeStreamResult{usage: usage, firstTokenMs: firstTokenMs}, nil
+}
+
+func appendGeminiAuditText(builder *strings.Builder, data []byte) {
+	if builder == nil || len(data) == 0 {
+		return
+	}
+	for _, candidate := range gjson.GetBytes(data, "candidates").Array() {
+		for _, part := range candidate.Get("content.parts").Array() {
+			if text := part.Get("text").String(); text != "" {
+				_, _ = builder.WriteString(text)
+			}
+		}
+	}
 }
 
 // ForwardAIStudioGET forwards a GET request to AI Studio (generativelanguage.googleapis.com) for

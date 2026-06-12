@@ -101,8 +101,18 @@ func RegisterAdminRoutes(
 		// 风控中心
 		registerContentModerationRoutes(admin, h)
 
+		// 大模型请求/回复内容审计
+		registerAuditRoutes(admin, h)
+
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+	}
+}
+
+func registerAuditRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	audit := admin.Group("/audit")
+	{
+		audit.GET("", h.Admin.Audit.List)
 	}
 }
 

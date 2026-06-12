@@ -517,8 +517,15 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	var auditText strings.Builder
+	defer func() {
+		if value := auditText.String(); strings.TrimSpace(value) != "" {
+			c.Set("audit_response_body", value)
+		}
+	}()
 
 	writeChatChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
+		appendChatChunkAuditText(&auditText, chunk)
 		sse, err := apicompat.ChatChunkToSSE(chunk)
 		if err != nil {
 			return false

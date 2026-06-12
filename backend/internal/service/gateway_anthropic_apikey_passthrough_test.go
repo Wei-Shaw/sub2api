@@ -882,6 +882,114 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingStillCollectsUsageAf
 	require.Equal(t, 5, result.usage.OutputTokens)
 }
 
+func TestGatewayService_AnthropicAPIKeyPassthrough_ReturnsAfterTerminalEventWithoutUpstreamClose(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				MaxLineSize: defaultMaxLineSize,
+			},
+		},
+		rateLimitService: &RateLimitService{},
+	}
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+	defer func() { _ = pr.Close() }()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "claude-3-7-sonnet-20250219")
+		errCh <- err
+	}()
+
+	_, err := pw.Write([]byte(strings.Join([]string{
+		`data: {"type":"message_start","message":{"usage":{"input_tokens":11}}}`,
+		"",
+		`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}`,
+		"",
+		`data: {"type":"message_delta","usage":{"output_tokens":5}}`,
+		"",
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+		"",
+		"",
+	}, "\n")))
+	require.NoError(t, err)
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("passthrough stream handler did not return after terminal event")
+	}
+
+	_ = pw.Close()
+	require.Contains(t, rec.Body.String(), "event: message_stop")
+	require.Equal(t, "hello", c.GetString("audit_response_body"))
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_ReturnsAfterTerminalDataWithoutFrameBoundary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				MaxLineSize: defaultMaxLineSize,
+			},
+		},
+		rateLimitService: &RateLimitService{},
+	}
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+	defer func() { _ = pr.Close() }()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "claude-3-7-sonnet-20250219")
+		errCh <- err
+	}()
+
+	_, err := pw.Write([]byte(strings.Join([]string{
+		`data: {"type":"message_start","message":{"usage":{"input_tokens":11}}}`,
+		"",
+		`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}`,
+		"",
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+	}, "\n") + "\n"))
+	require.NoError(t, err)
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("passthrough stream handler did not return after terminal data line without frame boundary")
+	}
+
+	_ = pw.Close()
+	require.Contains(t, rec.Body.String(), "event: message_stop")
+	require.Equal(t, "hello", c.GetString("audit_response_body"))
+}
+
 func TestGatewayService_AnthropicAPIKeyPassthrough_MissingTerminalEventReturnsError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

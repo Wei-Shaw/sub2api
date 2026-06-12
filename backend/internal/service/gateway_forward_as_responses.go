@@ -243,6 +243,12 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	// Accumulate the final Anthropic response from streaming events
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
+	var auditText strings.Builder
+	defer func() {
+		if value := auditText.String(); strings.TrimSpace(value) != "" {
+			c.Set("audit_response_body", value)
+		}
+	}()
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -290,6 +296,9 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 		// Accumulate content blocks
 		if event.Type == "content_block_start" && event.ContentBlock != nil && finalResp != nil {
 			finalResp.Content = append(finalResp.Content, *event.ContentBlock)
+			if event.ContentBlock.Text != "" {
+				_, _ = auditText.WriteString(event.ContentBlock.Text)
+			}
 		}
 		if event.Type == "content_block_delta" && event.Delta != nil && finalResp != nil && event.Index != nil {
 			idx := *event.Index
@@ -297,6 +306,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 				switch event.Delta.Type {
 				case "text_delta":
 					finalResp.Content[idx].Text += event.Delta.Text
+					_, _ = auditText.WriteString(event.Delta.Text)
 				case "thinking_delta":
 					finalResp.Content[idx].Thinking += event.Delta.Thinking
 				case "input_json_delta":
@@ -387,6 +397,12 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	var auditText strings.Builder
+	defer func() {
+		if value := auditText.String(); strings.TrimSpace(value) != "" {
+			c.Set("audit_response_body", value)
+		}
+	}()
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -424,6 +440,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
+		appendAnthropicStreamEventAuditText(&auditText, event)
 
 		// Convert to Responses events
 		events := apicompat.AnthropicEventToResponsesEvents(event, state)
@@ -516,6 +533,22 @@ func appendRawJSON(existing json.RawMessage, fragment string) json.RawMessage {
 		return json.RawMessage(fragment)
 	}
 	return json.RawMessage(string(existing) + fragment)
+}
+
+func appendAnthropicStreamEventAuditText(builder *strings.Builder, event *apicompat.AnthropicStreamEvent) {
+	if builder == nil || event == nil {
+		return
+	}
+	switch event.Type {
+	case "content_block_start":
+		if event.ContentBlock != nil && event.ContentBlock.Text != "" {
+			_, _ = builder.WriteString(event.ContentBlock.Text)
+		}
+	case "content_block_delta":
+		if event.Delta != nil && event.Delta.Text != "" {
+			_, _ = builder.WriteString(event.Delta.Text)
+		}
+	}
 }
 
 // writeResponsesError writes an error response in OpenAI Responses API format.

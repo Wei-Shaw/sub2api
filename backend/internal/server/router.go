@@ -29,6 +29,7 @@ func SetupRouter(
 	apiKeyService *service.APIKeyService,
 	subscriptionService *service.SubscriptionService,
 	opsService *service.OpsService,
+	auditService *service.AuditService,
 	settingService *service.SettingService,
 	cfg *config.Config,
 	redisClient *redis.Client,
@@ -81,7 +82,7 @@ func SetupRouter(
 	}
 
 	// 注册路由
-	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)
+	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, auditService, settingService, cfg, redisClient)
 
 	return r
 }
@@ -96,6 +97,7 @@ func registerRoutes(
 	apiKeyService *service.APIKeyService,
 	subscriptionService *service.SubscriptionService,
 	opsService *service.OpsService,
+	auditService *service.AuditService,
 	settingService *service.SettingService,
 	cfg *config.Config,
 	redisClient *redis.Client,
@@ -110,7 +112,7 @@ func registerRoutes(
 	routes.RegisterAuthRoutes(v1, h, jwtAuth, redisClient, settingService)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, settingService)
 	routes.RegisterAdminRoutes(v1, h, adminAuth, settingService)
-	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
+	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, auditService, settingService, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, settingService)
 
 	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)

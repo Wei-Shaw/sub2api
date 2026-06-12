@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -164,6 +165,90 @@ func TestHandleStreamingResponse_CacheTokens(t *testing.T) {
 	require.Equal(t, 15, result.usage.OutputTokens)
 	require.Equal(t, 20, result.usage.CacheCreationInputTokens)
 	require.Equal(t, 30, result.usage.CacheReadInputTokens)
+}
+
+func TestHandleStreamingResponse_ReturnsAfterTerminalEventWithoutUpstreamClose(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newMinimalGatewayService()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+	defer func() { _ = pr.Close() }()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "model", "model", false)
+		errCh <- err
+	}()
+
+	_, err := pw.Write([]byte(strings.Join([]string{
+		`data: {"type":"message_start","message":{"usage":{"input_tokens":10}}}`,
+		"",
+		`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}`,
+		"",
+		`data: {"type":"message_delta","usage":{"output_tokens":15}}`,
+		"",
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+		"",
+		"",
+	}, "\n")))
+	require.NoError(t, err)
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("stream handler did not return after terminal event")
+	}
+
+	_ = pw.Close()
+	require.Contains(t, rec.Body.String(), "event: message_stop")
+	require.Equal(t, "hello", c.GetString("audit_response_body"))
+}
+
+func TestHandleStreamingResponse_ReturnsAfterTerminalDataWithoutFrameBoundary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newMinimalGatewayService()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+	defer func() { _ = pr.Close() }()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "model", "model", false)
+		errCh <- err
+	}()
+
+	_, err := pw.Write([]byte(strings.Join([]string{
+		`data: {"type":"message_start","message":{"usage":{"input_tokens":10}}}`,
+		"",
+		`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}`,
+		"",
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+	}, "\n") + "\n"))
+	require.NoError(t, err)
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("stream handler did not return after terminal data line without frame boundary")
+	}
+
+	_ = pw.Close()
+	require.Contains(t, rec.Body.String(), "event: message_stop")
+	require.Equal(t, "hello", c.GetString("audit_response_body"))
 }
 
 func TestHandleStreamingResponse_EmptyStream(t *testing.T) {

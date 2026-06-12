@@ -226,6 +226,7 @@ func TestForwardAsChatCompletions_ClientDisconnectDrainsUpstreamUsage(t *testing
 	require.Equal(t, 11, result.Usage.InputTokens)
 	require.Equal(t, 5, result.Usage.OutputTokens)
 	require.Equal(t, 4, result.Usage.CacheReadInputTokens)
+	require.Equal(t, "ok", c.GetString("audit_response_body"))
 }
 
 func TestForwardAsChatCompletions_BufferedResponseFailedTriggersFailover(t *testing.T) {

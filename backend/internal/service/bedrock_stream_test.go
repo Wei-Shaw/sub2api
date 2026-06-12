@@ -2,16 +2,54 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"hash/crc32"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func buildBedrockTestFrame(eventType string, payload []byte) []byte {
+	crc32IeeeTab := crc32.MakeTable(crc32.IEEE)
+	var headersBuf bytes.Buffer
+	_ = headersBuf.WriteByte(byte(len(":event-type")))
+	_, _ = headersBuf.WriteString(":event-type")
+	_ = headersBuf.WriteByte(7)
+	_ = binary.Write(&headersBuf, binary.BigEndian, uint16(len(eventType)))
+	_, _ = headersBuf.WriteString(eventType)
+	_ = headersBuf.WriteByte(byte(len(":message-type")))
+	_, _ = headersBuf.WriteString(":message-type")
+	_ = headersBuf.WriteByte(7)
+	_ = binary.Write(&headersBuf, binary.BigEndian, uint16(len("event")))
+	_, _ = headersBuf.WriteString("event")
+
+	headers := headersBuf.Bytes()
+	headersLen := uint32(len(headers))
+	totalLen := uint32(12 + len(headers) + len(payload) + 4)
+	var preludeBuf bytes.Buffer
+	_ = binary.Write(&preludeBuf, binary.BigEndian, totalLen)
+	_ = binary.Write(&preludeBuf, binary.BigEndian, headersLen)
+	preludeBytes := preludeBuf.Bytes()
+	preludeCRC := crc32.Checksum(preludeBytes, crc32IeeeTab)
+
+	var frame bytes.Buffer
+	_, _ = frame.Write(preludeBytes)
+	_ = binary.Write(&frame, binary.BigEndian, preludeCRC)
+	_, _ = frame.Write(headers)
+	_, _ = frame.Write(payload)
+	messageCRC := crc32.Checksum(frame.Bytes(), crc32IeeeTab)
+	_ = binary.Write(&frame, binary.BigEndian, messageCRC)
+	return frame.Bytes()
+}
 
 func TestExtractBedrockChunkData(t *testing.T) {
 	t.Run("valid base64 payload", func(t *testing.T) {
@@ -71,6 +109,29 @@ func TestTransformBedrockInvocationMetrics(t *testing.T) {
 	})
 }
 
+func TestHandleBedrockStreamingResponseSetsAuditResponseBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	chunk := []byte(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello Bedrock"}}`)
+	payload := []byte(`{"bytes":"` + base64.StdEncoding.EncodeToString(chunk) + `"}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"x-amzn-requestid": []string{"rid-bedrock"}},
+		Body:       io.NopCloser(bytes.NewReader(buildBedrockTestFrame("chunk", payload))),
+	}
+
+	svc := &GatewayService{}
+	result, err := svc.handleBedrockStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "model")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "Hello Bedrock", c.GetString("audit_response_body"))
+	require.Contains(t, rec.Body.String(), "content_block_delta")
+}
+
 func TestExtractEventStreamHeaderValue(t *testing.T) {
 	// Build a header with :event-type = "chunk" (string type = 7)
 	buildStringHeader := func(name, value string) []byte {
@@ -116,48 +177,9 @@ func TestExtractEventStreamHeaderValue(t *testing.T) {
 }
 
 func TestBedrockEventStreamDecoder(t *testing.T) {
-	crc32IeeeTab := crc32.MakeTable(crc32.IEEE)
-
 	// Build a valid EventStream frame with correct CRC32/IEEE checksums.
 	buildFrame := func(eventType string, payload []byte) []byte {
-		// Build headers
-		var headersBuf bytes.Buffer
-		// :event-type header
-		_ = headersBuf.WriteByte(byte(len(":event-type")))
-		_, _ = headersBuf.WriteString(":event-type")
-		_ = headersBuf.WriteByte(7) // string type
-		_ = binary.Write(&headersBuf, binary.BigEndian, uint16(len(eventType)))
-		_, _ = headersBuf.WriteString(eventType)
-		// :message-type header
-		_ = headersBuf.WriteByte(byte(len(":message-type")))
-		_, _ = headersBuf.WriteString(":message-type")
-		_ = headersBuf.WriteByte(7)
-		_ = binary.Write(&headersBuf, binary.BigEndian, uint16(len("event")))
-		_, _ = headersBuf.WriteString("event")
-
-		headers := headersBuf.Bytes()
-		headersLen := uint32(len(headers))
-		// total = 12 (prelude) + headers + payload + 4 (message_crc)
-		totalLen := uint32(12 + len(headers) + len(payload) + 4)
-
-		// Prelude: total_length(4) + headers_length(4)
-		var preludeBuf bytes.Buffer
-		_ = binary.Write(&preludeBuf, binary.BigEndian, totalLen)
-		_ = binary.Write(&preludeBuf, binary.BigEndian, headersLen)
-		preludeBytes := preludeBuf.Bytes()
-		preludeCRC := crc32.Checksum(preludeBytes, crc32IeeeTab)
-
-		// Build frame: prelude + prelude_crc + headers + payload
-		var frame bytes.Buffer
-		_, _ = frame.Write(preludeBytes)
-		_ = binary.Write(&frame, binary.BigEndian, preludeCRC)
-		_, _ = frame.Write(headers)
-		_, _ = frame.Write(payload)
-
-		// Message CRC covers everything before itself
-		messageCRC := crc32.Checksum(frame.Bytes(), crc32IeeeTab)
-		_ = binary.Write(&frame, binary.BigEndian, messageCRC)
-		return frame.Bytes()
+		return buildBedrockTestFrame(eventType, payload)
 	}
 
 	t.Run("decode chunk event", func(t *testing.T) {
