@@ -437,6 +437,7 @@ REDACTED
 		{Name: "group_name", Type: field.TypeString, Nullable: true, Size: 100, Default: ""REDACTED,
 		{Name: "enabled", Type: field.TypeBool, Default: trueREDACTED,
 		{Name: "interval_seconds", Type: field.TypeIntREDACTED,
+		{Name: "jitter_seconds", Type: field.TypeInt, Default: 0REDACTED,
 		{Name: "last_checked_at", Type: field.TypeTime, Nullable: trueREDACTED,
 		{Name: "created_by", Type: field.TypeInt64REDACTED,
 		{Name: "extra_headers", Type: field.TypeJSONREDACTED,
@@ -452,7 +453,7 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
-				Columns:    []*schema.Column{ChannelMonitorsColumns[18]REDACTED,
+				Columns:    []*schema.Column{ChannelMonitorsColumns[19]REDACTED,
 				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
@@ -461,7 +462,7 @@ REDACTED
 			{
 				Name:    "channelmonitor_enabled_last_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[11], ChannelMonitorsColumns[13]REDACTED,
+				Columns: []*schema.Column{ChannelMonitorsColumns[11], ChannelMonitorsColumns[14]REDACTED,
 		REDACTED,
 			{
 				Name:    "channelmonitor_provider",
@@ -481,7 +482,7 @@ REDACTED
 			{
 				Name:    "channelmonitor_template_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[18]REDACTED,
+				Columns: []*schema.Column{ChannelMonitorsColumns[19]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
