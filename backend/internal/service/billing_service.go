@@ -420,6 +420,13 @@ REDACTED
 		CacheReadPricePerToken: 0.15e-6, // $0.15 per MTok (cache hit, ¥1.10)
 		SupportsCacheBreakdown: false,
 REDACTED
+	// kimi-for-coding 走 Kimi Coding endpoint，按当前 K2.6 coding 档位兜底计费。
+	s.fallbackPrices["kimi-for-coding"] = &ModelPricing{
+		InputPricePerToken:     0.95e-6,
+		OutputPricePerToken:    4e-6,
+		CacheReadPricePerToken: 0.15e-6,
+		SupportsCacheBreakdown: false,
+REDACTED
 	s.fallbackPrices["kimi-k2.5"] = &ModelPricing{
 		InputPricePerToken:     0.60e-6, // $0.60 per MTok
 		OutputPricePerToken:    3e-6,    // $3.00 per MTok
@@ -576,8 +583,11 @@ REDACTED
 		return s.fallbackPrices["glm-4-32b-0414-128k"]
 REDACTED
 
-	// 月之暗面 Kimi（kimi-k2.6 / kimi-k2.5 / kimi-k2-thinking / kimi-k2）
+	// 月之暗面 Kimi（kimi-k2.6 / kimi-for-coding / kimi-k2.5 / kimi-k2-thinking / kimi-k2）
 	// K2-0905 / K2-0711 官方未保留定价，不进入 fallback。
+	if strings.Contains(modelLower, "kimi-for-coding") {
+		return s.fallbackPrices["kimi-for-coding"]
+REDACTED
 	if strings.Contains(modelLower, "kimi-k2.6") || strings.Contains(modelLower, "kimi-k2-6") {
 		return s.fallbackPrices["kimi-k2.6"]
 REDACTED

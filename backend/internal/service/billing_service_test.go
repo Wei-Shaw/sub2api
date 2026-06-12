@@ -495,6 +495,13 @@ REDACTED{
 			expectedCacheRead: floatPtr(0.15e-6),
 	REDACTED,
 		{
+			name:              "kimi for coding explicit alias",
+			model:             "kimi-for-coding",
+			expectedInput:     0.95e-6,
+			expectedOutput:    floatPtr(4e-6),
+			expectedCacheRead: floatPtr(0.15e-6),
+	REDACTED,
+		{
 			name:              "kimi k2.5",
 			model:             "kimi-k2.5",
 			expectedInput:     0.60e-6,
