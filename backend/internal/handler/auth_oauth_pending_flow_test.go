@@ -1074,27 +1074,7 @@ func TestCreateWeComOAuthAccountRequiresVerifyCode(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()
 
-	session, err := client.PendingAuthSession.Create().
-		SetSessionToken("wecom-create-account-session-token").
-		SetIntent("login").
-		SetProviderType("wecom").
-		SetProviderKey("wecom-main").
-		SetProviderSubject("wwcorp/user-123").
-		SetBrowserSessionKey("wecom-create-account-browser-session-key").
-		SetUpstreamIdentityClaims(map[string]any{
-			"username":               "张三",
-			"suggested_display_name": "张三",
-		}).
-		SetLocalFlowState(map[string]any{
-			oauthCompletionResponseKey: map[string]any{
-				"step":          oauthPendingChoiceStep,
-				"choice_reason": "wecom_email_missing",
-			},
-		}).
-		SetRedirectTo("/profile").
-		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
-		Save(ctx)
-	require.NoError(t, err)
+	session := createWeComCreateAccountPendingSession(t, client, "wecom-create-account-session-token", "wwcorp/user-123")
 
 	body := bytes.NewBufferString(`{"email":"fresh-wecom@example.com","password":"secret-123","adopt_display_name":true}`)
 	recorder := httptest.NewRecorder()
@@ -1122,6 +1102,107 @@ func TestCreateWeComOAuthAccountRequiresVerifyCode(t *testing.T) {
 		Count(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 0, identityCount)
+}
+
+func TestCreateWeComOAuthAccountDevSimpleModeCanTrustEnteredEmail(t *testing.T) {
+	t.Setenv(weComDevTrustEmailEnv, "true")
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		cfg: &config.Config{RunMode: config.RunModeSimple},
+	})
+	ctx := context.Background()
+
+	session := createWeComCreateAccountPendingSession(t, client, "wecom-dev-create-account-session-token", "wwcorp/dev-user-123")
+
+	body := bytes.NewBufferString(`{"email":"fresh-wecom-dev@example.com","password":"secret-123","adopt_display_name":true}`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/wecom/create-account", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("wecom-create-account-browser-session-key")})
+	ginCtx.Request = req
+
+	handler.CreateWeComOAuthAccount(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.NotEmpty(t, payload["access_token"])
+	require.NotEmpty(t, payload["refresh_token"])
+
+	createdUser, err := client.User.Query().Where(dbuser.EmailEQ("fresh-wecom-dev@example.com")).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "wecom", createdUser.SignupSource)
+	require.Equal(t, "张三", createdUser.Username)
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("wecom"),
+			authidentity.ProviderKeyEQ("wecom-main"),
+			authidentity.ProviderSubjectEQ("wwcorp/dev-user-123"),
+		).
+		Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, createdUser.ID, identity.UserID)
+}
+
+func TestCreateWeComOAuthAccountDevTrustEnvIgnoredOutsideSimpleMode(t *testing.T) {
+	t.Setenv(weComDevTrustEmailEnv, "true")
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		cfg: &config.Config{RunMode: config.RunModeStandard},
+	})
+	ctx := context.Background()
+
+	session := createWeComCreateAccountPendingSession(t, client, "wecom-standard-create-account-session-token", "wwcorp/standard-user-123")
+
+	body := bytes.NewBufferString(`{"email":"fresh-wecom-standard@example.com","password":"secret-123","adopt_display_name":true}`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/wecom/create-account", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("wecom-create-account-browser-session-key")})
+	ginCtx.Request = req
+
+	handler.CreateWeComOAuthAccount(ginCtx)
+
+	require.NotEqual(t, http.StatusOK, recorder.Code)
+
+	createdUserCount, err := client.User.Query().Where(dbuser.EmailEQ("fresh-wecom-standard@example.com")).Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, createdUserCount)
+}
+
+func createWeComCreateAccountPendingSession(
+	t *testing.T,
+	client *dbent.Client,
+	sessionToken string,
+	providerSubject string,
+) *dbent.PendingAuthSession {
+	t.Helper()
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken(sessionToken).
+		SetIntent("login").
+		SetProviderType("wecom").
+		SetProviderKey("wecom-main").
+		SetProviderSubject(providerSubject).
+		SetBrowserSessionKey("wecom-create-account-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "张三",
+			"suggested_display_name": "张三",
+		}).
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"step":          oauthPendingChoiceStep,
+				"choice_reason": "wecom_email_missing",
+			},
+		}).
+		SetRedirectTo("/profile").
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(context.Background())
+	require.NoError(t, err)
+	return session
 }
 
 func TestCreateOIDCOAuthAccountExistingEmailReturnsChoicePendingSessionState(t *testing.T) {
@@ -2194,6 +2275,7 @@ type oauthPendingFlowTestHandlerOptions struct {
 	invitationEnabled  bool
 	emailVerifyEnabled bool
 	emailCache         service.EmailCache
+	cfg                *config.Config
 	settingValues      map[string]string
 	defaultSubAssigner service.DefaultSubscriptionAssigner
 	affiliateService   *service.AffiliateService
@@ -2268,6 +2350,9 @@ CREATE TABLE IF NOT EXISTS user_affiliates (
 			UserConcurrency: 1,
 		},
 	}
+	if options.cfg != nil {
+		cfg.RunMode = options.cfg.RunMode
+	}
 	settingValues := map[string]string{
 		service.SettingKeyRegistrationEnabled:              "true",
 		service.SettingKeyInvitationCodeEnabled:            boolSettingValue(options.invitationEnabled),
@@ -2325,6 +2410,7 @@ CREATE TABLE IF NOT EXISTS user_affiliates (
 	}
 
 	return &AuthHandler{
+		cfg:         cfg,
 		authService: authSvc,
 		userService: userSvc,
 		settingSvc:  settingSvc,

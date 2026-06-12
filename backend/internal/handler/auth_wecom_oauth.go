@@ -11,11 +11,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
@@ -36,6 +38,7 @@ const (
 	weComOAuthDefaultRedirectTo  = "/dashboard"
 	weComOAuthDefaultFrontendCB  = "/auth/wecom/callback"
 	weComOAuthProviderKey        = "wecom-main"
+	weComDevTrustEmailEnv        = "SUB2API_DEV_WECOM_TRUST_ENTERED_EMAIL"
 )
 
 var (
@@ -439,7 +442,16 @@ func (h *AuthHandler) CompleteWeComOAuthRegistration(c *gin.Context) {
 }
 func (h *AuthHandler) BindWeComOAuthLogin(c *gin.Context) { h.bindPendingOAuthLogin(c, "wecom") }
 func (h *AuthHandler) CreateWeComOAuthAccount(c *gin.Context) {
-	h.createPendingOAuthAccount(c, "wecom")
+	h.createPendingOAuthAccountWithOptions(c, "wecom", createPendingOAuthAccountOptions{
+		TrustEnteredEmail: h.allowDevWeComEnteredEmailTrust(),
+	})
+}
+
+func (h *AuthHandler) allowDevWeComEnteredEmailTrust() bool {
+	if h == nil || h.cfg == nil || h.cfg.RunMode != config.RunModeSimple {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(weComDevTrustEmailEnv)), "true")
 }
 
 func (h *AuthHandler) getWeComOAuthConfig(ctx context.Context) (weComOAuthConfig, error) {
