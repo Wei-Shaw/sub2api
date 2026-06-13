@@ -53,29 +53,42 @@
 
       <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
         <div class="mb-2 flex items-center justify-between gap-3">
-          <label class="input-label mb-0">{{ t('admin.accounts.dataImportGroup') }}</label>
+          <label class="input-label mb-0">
+            {{ t('admin.accounts.dataImportGroup') }}
+            <span class="font-normal text-gray-400">
+              {{ t('common.selectedCount', { count: selectedGroupIds.length }) }}
+            </span>
+          </label>
           <button
-            v-if="selectedGroupId !== null"
             type="button"
-            class="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
-            @click="selectedGroupId = null"
+            :disabled="selectedGroupIds.length === 0"
+            :class="[
+              'text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400',
+              selectedGroupIds.length === 0 ? 'invisible pointer-events-none' : ''
+            ]"
+            @click="clearSelectedGroups"
           >
             {{ t('admin.accounts.dataImportClearGroup') }}
           </button>
         </div>
         <div class="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
-          <button
+          <label
             v-for="group in activeGroups"
             :key="group.id"
-            type="button"
             :class="[
-              'flex min-w-0 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors',
-              selectedGroupId === group.id
+              'flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors',
+              isImportGroupSelected(group.id)
                 ? 'border-primary-400 bg-primary-50 dark:border-primary-700 dark:bg-primary-900/20'
                 : 'border-gray-200 bg-white hover:border-gray-300 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-dark-500'
             ]"
-            @click="selectedGroupId = group.id"
           >
+            <input
+              type="checkbox"
+              class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+              :value="group.id"
+              :checked="isImportGroupSelected(group.id)"
+              @change="toggleImportGroup(group.id, ($event.target as HTMLInputElement).checked)"
+            />
             <GroupBadge
               :name="group.name"
               :platform="group.platform"
@@ -83,8 +96,13 @@
               :rate-multiplier="group.rate_multiplier"
               class="min-w-0 flex-1"
             />
-            <span v-if="selectedGroupId === group.id" class="shrink-0 text-xs text-primary-600 dark:text-primary-400">✓</span>
-          </button>
+            <span
+              class="flex h-5 w-5 shrink-0 items-center justify-center text-xs text-primary-600 dark:text-primary-400"
+              aria-hidden="true"
+            >
+              {{ isImportGroupSelected(group.id) ? '✓' : '' }}
+            </span>
+          </label>
           <div
             v-if="activeGroups.length === 0"
             class="rounded-lg border border-dashed border-gray-200 px-3 py-4 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400 sm:col-span-2"
@@ -247,7 +265,7 @@ const dragDepth = ref(0)
 const dragActive = computed(() => dragDepth.value > 0)
 const hasCreatedData = ref(false)
 const result = ref<AdminDataImportResult | null>(null)
-const selectedGroupId = ref<number | null>(null)
+const selectedGroupIds = ref<number[]>([])
 const proxyAssignmentMode = ref<ProxyAssignmentMode>('keep_file')
 const defaultProxyId = ref<number | null>(null)
 
@@ -313,7 +331,7 @@ const clearSelection = () => {
 }
 
 const resetImportOptions = () => {
-  selectedGroupId.value = null
+  selectedGroupIds.value = []
   proxyAssignmentMode.value = 'keep_file'
   defaultProxyId.value = null
 }
@@ -363,9 +381,8 @@ const getImportErrorMessage = (error: unknown, translate: (key: string, params?:
 }
 
 watch(activeGroups, (groups) => {
-  if (selectedGroupId.value !== null && !groups.some((group) => group.id === selectedGroupId.value)) {
-    selectedGroupId.value = null
-  }
+  const activeGroupIdSet = new Set(groups.map((group) => group.id))
+  selectedGroupIds.value = selectedGroupIds.value.filter((groupId) => activeGroupIdSet.has(groupId))
 })
 
 watch(activeProxies, (proxies) => {
@@ -373,6 +390,28 @@ watch(activeProxies, (proxies) => {
     defaultProxyId.value = null
   }
 })
+
+watch(proxyAssignmentMode, (mode) => {
+  if (mode !== 'default_live') {
+    defaultProxyId.value = null
+  }
+})
+
+const isImportGroupSelected = (groupId: number): boolean => selectedGroupIds.value.includes(groupId)
+
+const toggleImportGroup = (groupId: number, checked: boolean) => {
+  if (checked) {
+    if (!selectedGroupIds.value.includes(groupId)) {
+      selectedGroupIds.value = [...selectedGroupIds.value, groupId]
+    }
+    return
+  }
+  selectedGroupIds.value = selectedGroupIds.value.filter((id) => id !== groupId)
+}
+
+const clearSelectedGroups = () => {
+  selectedGroupIds.value = []
+}
 
 const setSelectedFiles = (sourceFiles: FileList | File[] | null | undefined) => {
   if (importing.value) return
@@ -545,10 +584,15 @@ const buildProxyAssignmentPayload = (): AdminDataImportProxyAssignment => ({
   default_proxy_id: proxyAssignmentMode.value === 'default_live' ? defaultProxyId.value : null
 })
 
+const buildSelectedGroupIdsPayload = (): number[] | undefined => {
+  return selectedGroupIds.value.length > 0 ? [...selectedGroupIds.value] : undefined
+}
+
 const importDataPayloads = async (payloads: AdminImportData[]): Promise<ImportAggregateResult> => {
+  const groupIds = buildSelectedGroupIdsPayload()
   const importOptions = {
     skip_default_group_bind: true,
-    group_id: selectedGroupId.value,
+    ...(groupIds ? { group_ids: groupIds } : {}),
     proxy_assignment: buildProxyAssignmentPayload()
   }
   const responses = await Promise.all(payloads.map((data) => adminAPI.accounts.importData({

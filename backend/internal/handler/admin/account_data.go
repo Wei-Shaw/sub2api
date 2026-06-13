@@ -82,6 +82,7 @@ type DataAccount struct {
 type DataImportRequest struct {
 	Data                 DataPayload                `json:"data"`
 	SkipDefaultGroupBind *bool                      `json:"skip_default_group_bind"`
+	GroupIDs             []int64                    `json:"group_ids"`
 	GroupID              *int64                     `json:"group_id"`
 	ProxyAssignment      *DataImportProxyAssignment `json:"proxy_assignment"`
 }
@@ -261,7 +262,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	if req.SkipDefaultGroupBind != nil {
 		skipDefaultGroupBind = *req.SkipDefaultGroupBind
 	}
-	groupIDs, err := h.resolveImportGroupIDs(ctx, req.GroupID)
+	groupIDs, err := h.resolveImportGroupIDs(ctx, req.GroupIDs, req.GroupID)
 	if err != nil {
 		return DataImportResult{}, err
 	}
@@ -507,24 +508,37 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	return result, nil
 }
 
-func (h *AccountHandler) resolveImportGroupIDs(ctx context.Context, groupID *int64) ([]int64, error) {
-	if groupID == nil {
+func (h *AccountHandler) resolveImportGroupIDs(ctx context.Context, groupIDs []int64, legacyGroupID *int64) ([]int64, error) {
+	if len(groupIDs) == 0 && legacyGroupID != nil {
+		groupIDs = []int64{*legacyGroupID}
+	}
+	if len(groupIDs) == 0 {
 		return nil, nil
 	}
-	if *groupID <= 0 {
-		return nil, infraerrors.BadRequest("INVALID_GROUP_ID", "group_id must be positive")
+
+	seen := make(map[int64]struct{}, len(groupIDs))
+	resolved := make([]int64, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			return nil, infraerrors.BadRequest("INVALID_GROUP_ID", "group_ids must contain positive ids")
+		}
+		if _, ok := seen[groupID]; ok {
+			continue
+		}
+		group, err := h.adminService.GetGroup(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		if group == nil {
+			return nil, infraerrors.BadRequest("GROUP_NOT_FOUND", "selected group not found")
+		}
+		if group.Status != "" && group.Status != service.StatusActive {
+			return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "selected group is not active")
+		}
+		seen[groupID] = struct{}{}
+		resolved = append(resolved, groupID)
 	}
-	group, err := h.adminService.GetGroup(ctx, *groupID)
-	if err != nil {
-		return nil, err
-	}
-	if group == nil {
-		return nil, infraerrors.BadRequest("GROUP_NOT_FOUND", "selected group not found")
-	}
-	if group.Status != "" && group.Status != service.StatusActive {
-		return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "selected group is not active")
-	}
-	return []int64{*groupID}, nil
+	return resolved, nil
 }
 
 type resolvedDataImportProxyAssignment struct {

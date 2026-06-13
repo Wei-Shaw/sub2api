@@ -63,6 +63,13 @@ const activeGroup = {
   sort_order: 1
 }
 
+const secondaryGroup = {
+  ...activeGroup,
+  id: 3,
+  name: 'Claude tag',
+  sort_order: 2
+}
+
 const activeProxy = {
   id: 4,
   name: 'Live proxy',
@@ -78,33 +85,31 @@ const activeProxy = {
 
 const defaultImportOptions = {
   skip_default_group_bind: true,
-  group_id: null,
   proxy_assignment: {
     mode: 'keep_file',
     default_proxy_id: null
   }
 }
 
-const mountModal = (props: Record<string, unknown> = {}) =>
-  mount(ImportDataModal, {
-    props: {
-      show: true,
-      groups: [activeGroup],
-      proxies: [activeProxy],
-      ...props
-    },
-    global: {
-      stubs: {
-        BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
-        GroupBadge: { props: ['name'], template: '<span class="group-badge-stub">{{ name }}</span>' },
-        ProxySelector: {
-          props: ['modelValue', 'proxies'],
-          emits: ['update:modelValue'],
-          template: '<button class="proxy-selector-stub" type="button" @click="$emit(\'update:modelValue\', proxies[0]?.id ?? null)">proxy</button>'
-        }
+const mountModal = (props: Record<string, unknown> = {}) => mount(ImportDataModal, {
+  props: {
+    show: true,
+    groups: [activeGroup, secondaryGroup],
+    proxies: [activeProxy],
+    ...props
+  },
+  global: {
+    stubs: {
+      BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+      GroupBadge: { props: ['name'], template: '<span class="group-badge-stub">{{ name }}</span>' },
+      ProxySelector: {
+        props: ['modelValue', 'proxies'],
+        emits: ['update:modelValue'],
+        template: '<button class="proxy-selector-stub" type="button" @click="$emit(\'update:modelValue\', proxies[0]?.id ?? null)">proxy</button>'
       }
     }
-  })
+  }
+})
 
 const makeJsonFile = (name: string, content: string, type = 'application/json') => {
   const file = new File([content], name, { type })
@@ -275,7 +280,7 @@ describe('ImportDataModal', () => {
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 
-  it('hiển thị group tag để chọn và gửi group/proxy assignment trong payload import', async () => {
+  it('hiển thị group tag để chọn nhiều nhóm và gửi group_ids/proxy assignment trong payload import', async () => {
     vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
       proxy_created: 0,
       proxy_reused: 0,
@@ -286,8 +291,11 @@ describe('ImportDataModal', () => {
     })
     const wrapper = mountModal()
     expect(wrapper.text()).toContain('OpenAI tag')
+    expect(wrapper.text()).toContain('Claude tag')
 
-    await wrapper.find('.group-badge-stub').trigger('click')
+    const groupInputs = wrapper.findAll('input[type="checkbox"]')
+    await groupInputs[0].setValue(true)
+    await groupInputs[1].setValue(true)
     const defaultLiveInput = wrapper.find('input[value="default_live"]')
     await defaultLiveInput.setValue(true)
     await wrapper.find('.proxy-selector-stub').trigger('click')
@@ -313,13 +321,17 @@ describe('ImportDataModal', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(adminAPI.accounts.importData).toHaveBeenCalledWith(expect.objectContaining({
-      group_id: 2,
-      skip_default_group_bind: true,
-      proxy_assignment: {
-        mode: 'default_live',
-        default_proxy_id: 4
-      }
-    }))
+    await vi.waitFor(() => {
+      expect(adminAPI.accounts.importData).toHaveBeenCalledWith(expect.objectContaining({
+        group_ids: [2, 3],
+        skip_default_group_bind: true,
+        proxy_assignment: {
+          mode: 'default_live',
+          default_proxy_id: 4
+        }
+      }))
+    })
+    const request = vi.mocked(adminAPI.accounts.importData).mock.calls[0][0]
+    expect(request.group_id).toBeUndefined()
   })
 })

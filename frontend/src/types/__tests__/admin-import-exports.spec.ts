@@ -19,7 +19,7 @@ describe('types index admin import exports', () => {
     }
     const request: AdminDataImportRequest = {
       data: payload,
-      group_id: 7,
+      group_ids: [7, 8],
       skip_default_group_bind: true,
       proxy_assignment: {
         mode: 'default_live',
@@ -29,6 +29,7 @@ describe('types index admin import exports', () => {
 
     expect(payload.proxies).toEqual([])
     expect(result.account_created).toBe(0)
+    expect(request.group_ids).toEqual([7, 8])
     expect(request.proxy_assignment?.mode).toBe('default_live')
   })
 })
