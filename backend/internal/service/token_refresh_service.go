@@ -12,8 +12,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
-// tokenRefreshTempUnschedDuration token 刷新重试耗尽后临时不可调度的持续时间
-const tokenRefreshTempUnschedDuration = 10 * time.Minute
+const (
+	// tokenRefreshTempUnschedDuration token 刷新重试耗尽后临时不可调度的持续时间
+	tokenRefreshTempUnschedDuration = 10 * time.Minute
+
+	tokenRefreshRetryExhaustedReasonPrefix = "token refresh retry exhausted:"
+)
 
 // TokenRefreshService OAuth token自动刷新服务
 // 定期检查并刷新即将过期的token
@@ -255,10 +259,9 @@ REDACTED else {
 REDACTED
 REDACTED
 
-// listActiveAccounts 获取所有active状态的账号
-// 使用ListActive确保刷新所有活跃账号的token（包括临时禁用的）
+// listActiveAccounts 获取后台 OAuth token 刷新候选账号。
 func (s *TokenRefreshService) listActiveAccounts(ctx context.Context) ([]Account, error) {
-	return s.accountRepo.ListActive(ctx)
+	return s.accountRepo.ListOAuthRefreshCandidates(ctx)
 REDACTED
 
 // refreshWithRetry 带重试的刷新
@@ -310,9 +313,6 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 					"error", setErr,
 				)
 		REDACTED
-			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
-			s.ensureOpenAIPrivacy(ctx, account)
-			s.ensureAntigravityPrivacy(ctx, account)
 			return err
 	REDACTED
 
@@ -340,13 +340,9 @@ REDACTED
 		"error", lastErr,
 	)
 
-	// 刷新失败但 access_token 可能仍有效，尝试设置隐私
-	s.ensureOpenAIPrivacy(ctx, account)
-	s.ensureAntigravityPrivacy(ctx, account)
-
 	// 设置临时不可调度 10 分钟（不标记 error，保持 status=active 让下个刷新周期能继续尝试）
 	until := time.Now().Add(tokenRefreshTempUnschedDuration)
-	reason := fmt.Sprintf("token refresh retry exhausted: %v", lastErr)
+	reason := fmt.Sprintf("%s %v", tokenRefreshRetryExhaustedReasonPrefix, lastErr)
 	s.notifyAccountSchedulingBlocked(account, until, "token_refresh_retry_exhausted")
 	if setErr := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); setErr != nil {
 		slog.Warn("token_refresh.set_temp_unschedulable_failed",
