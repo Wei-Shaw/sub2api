@@ -211,39 +211,12 @@ REDACTED
 	// 获取订阅信息（可能为nil）- 提前获取用于后续检查
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 
-	// 0. 检查wait队列是否已满
-	maxWait := service.CalculateMaxWait(subject.Concurrency)
-	canWait, err := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), subject.UserID, maxWait)
-	waitCounted := false
-	if err != nil {
-		reqLog.Warn("gateway.user_wait_counter_increment_failed", zap.Error(err))
-		// On error, allow request to proceed
-REDACTED else if !canWait {
-		reqLog.Info("gateway.user_wait_queue_full", zap.Int("max_wait", maxWait))
-		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later")
-		return
-REDACTED
-	if err == nil && canWait {
-		waitCounted = true
-REDACTED
-	// Ensure we decrement if we exit before acquiring the user slot.
-	defer func() {
-		if waitCounted {
-			h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
-	REDACTED
-REDACTED()
-
 	// 1. 首先获取用户并发槽位
 	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
 	if err != nil {
 		reqLog.Warn("gateway.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", streamStarted)
 		return
-REDACTED
-	// User slot acquired: no longer waiting in the queue.
-	if waitCounted {
-		h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
-		waitCounted = false
 REDACTED
 	// 在请求结束或 Context 取消时确保释放槽位，避免客户端断开造成泄漏
 	userReleaseFunc = wrapReleaseOnDone(c.Request.Context(), userReleaseFunc)
