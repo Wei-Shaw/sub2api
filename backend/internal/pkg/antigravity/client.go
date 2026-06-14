@@ -46,7 +46,7 @@ func NewAPIRequestWithURL(ctx context.Context, baseURL, action, accessToken stri
 	// 基础 Headers（与 Antigravity-Manager 保持一致，只设置这 3 个）
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("User-Agent", GetUserAgent())
+	req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 
 	return req, nil
 }
@@ -254,6 +254,8 @@ const (
 	proxyTLSHandshakeTimeout = 5 * time.Second
 	// clientTimeout 整体请求超时（含连接、发送、等待响应、读取 body）
 	clientTimeout = 10 * time.Second
+	// fetchAvailableModelsBodyLimit limits model-list responses to avoid unbounded memory use.
+	fetchAvailableModelsBodyLimit int64 = 8 << 20
 )
 
 func NewClient(proxyURL string) (*Client, error) {
@@ -440,7 +442,7 @@ func (c *Client) GetUserInfo(ctx context.Context, accessToken string) (*UserInfo
 func (c *Client) LoadCodeAssist(ctx context.Context, accessToken string) (*LoadCodeAssistResponse, map[string]any, error) {
 	reqBody := LoadCodeAssistRequest{}
 	reqBody.Metadata.IDEType = "ANTIGRAVITY"
-	reqBody.Metadata.IDEVersion = "1.20.6"
+	reqBody.Metadata.IDEVersion = GetUserAgentVersionForContext(ctx)
 	reqBody.Metadata.IDEName = "antigravity"
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -461,7 +463,7 @@ func (c *Client) LoadCodeAssist(ctx context.Context, accessToken string) (*LoadC
 		}
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", GetUserAgent())
+		req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -540,7 +542,7 @@ func (c *Client) OnboardUser(ctx context.Context, accessToken, tierID string) (s
 			}
 			req.Header.Set("Authorization", "Bearer "+accessToken)
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("User-Agent", GetUserAgent())
+			req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 
 			resp, err := c.httpClient.Do(req)
 			if err != nil {
@@ -655,6 +657,10 @@ type FetchAvailableModelsResponse struct {
 // FetchAvailableModels 获取可用模型和配额信息，返回解析后的结构体和原始 JSON
 // 支持 URL fallback：sandbox → daily → prod
 func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string) (*FetchAvailableModelsResponse, map[string]any, error) {
+	if c == nil || c.httpClient == nil {
+		return nil, nil, errors.New("antigravity client is not configured")
+	}
+
 	reqBody := FetchAvailableModelsRequest{Project: projectID}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
@@ -664,6 +670,7 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 	// 固定顺序：prod -> daily
 	availableURLs := BaseURLs
 
+	fetchClient := c.fetchAvailableModelsHTTPClient()
 	var lastErr error
 	for urlIdx, baseURL := range availableURLs {
 		apiURL := baseURL + "/v1internal:fetchAvailableModels"
@@ -674,9 +681,9 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 		}
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", GetUserAgent())
+		req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 
-		resp, err := c.httpClient.Do(req)
+		resp, err := fetchClient.Do(req)
 		if err != nil {
 			lastErr = fmt.Errorf("fetchAvailableModels 请求失败: %w", err)
 			if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
@@ -686,10 +693,13 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 			return nil, nil, lastErr
 		}
 
-		respBodyBytes, err := io.ReadAll(resp.Body)
+		respBodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, fetchAvailableModelsBodyLimit+1))
 		_ = resp.Body.Close() // 立即关闭，避免循环内 defer 导致的资源泄漏
 		if err != nil {
 			return nil, nil, fmt.Errorf("读取响应失败: %w", err)
+		}
+		if int64(len(respBodyBytes)) > fetchAvailableModelsBodyLimit {
+			return nil, nil, fmt.Errorf("响应超过 %d 字节", fetchAvailableModelsBodyLimit)
 		}
 
 		// 检查是否需要 URL 降级
@@ -724,6 +734,42 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 	}
 
 	return nil, nil, lastErr
+}
+
+func (c *Client) fetchAvailableModelsHTTPClient() *http.Client {
+	fetchClient := *c.httpClient
+	fetchClient.CheckRedirect = checkFetchAvailableModelsRedirect
+	return &fetchClient
+}
+
+func checkFetchAvailableModelsRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if req == nil || req.URL == nil {
+		return errors.New("redirect url is nil")
+	}
+	if !isAllowedFetchAvailableModelsRedirectHost(req.URL.Hostname()) {
+		return fmt.Errorf("redirect to unsupported host: %s", req.URL.Hostname())
+	}
+	return nil
+}
+
+func isAllowedFetchAvailableModelsRedirectHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return false
+	}
+	for _, baseURL := range BaseURLs {
+		parsed, err := url.Parse(baseURL)
+		if err != nil {
+			continue
+		}
+		if strings.EqualFold(host, parsed.Hostname()) {
+			return true
+		}
+	}
+	return false
 }
 
 // ── Privacy API ──────────────────────────────────────────────────────
@@ -792,7 +838,7 @@ func (c *Client) SetUserSettings(ctx context.Context, accessToken string) (*SetU
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "*/*")
-	req.Header.Set("User-Agent", GetUserAgent())
+	req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 	req.Header.Set("X-Goog-Api-Client", "gl-node/22.21.1")
 	req.Host = "daily-cloudcode-pa.googleapis.com"
 
@@ -835,7 +881,7 @@ func (c *Client) FetchUserInfo(ctx context.Context, accessToken, projectID strin
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "*/*")
-	req.Header.Set("User-Agent", GetUserAgent())
+	req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 	req.Header.Set("X-Goog-Api-Client", "gl-node/22.21.1")
 	req.Host = "daily-cloudcode-pa.googleapis.com"
 

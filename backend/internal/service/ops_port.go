@@ -10,17 +10,15 @@ type OpsRepository interface {
 	BatchInsertErrorLogs(ctx context.Context, inputs []*OpsInsertErrorLogInput) (int64, error)
 	ListErrorLogs(ctx context.Context, filter *OpsErrorLogFilter) (*OpsErrorLogList, error)
 	GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorLogDetail, error)
+	// LookupDeletedKeyAudit 按明文 key 反查最近一条已删除 key 审计;未命中返回 (nil, nil)。
+	LookupDeletedKeyAudit(ctx context.Context, key string) (*DeletedKeyAuditResult, error)
 	ListRequestDetails(ctx context.Context, filter *OpsRequestDetailFilter) ([]*OpsRequestDetail, int64, error)
 	BatchInsertSystemLogs(ctx context.Context, inputs []*OpsInsertSystemLogInput) (int64, error)
 	ListSystemLogs(ctx context.Context, filter *OpsSystemLogFilter) (*OpsSystemLogList, error)
 	DeleteSystemLogs(ctx context.Context, filter *OpsSystemLogCleanupFilter) (int64, error)
 	InsertSystemLogCleanupAudit(ctx context.Context, input *OpsSystemLogCleanupAudit) error
 
-	InsertRetryAttempt(ctx context.Context, input *OpsInsertRetryAttemptInput) (int64, error)
-	UpdateRetryAttempt(ctx context.Context, input *OpsUpdateRetryAttemptInput) error
-	GetLatestRetryAttemptForError(ctx context.Context, sourceErrorID int64) (*OpsRetryAttempt, error)
-	ListRetryAttemptsByErrorID(ctx context.Context, sourceErrorID int64, limit int) ([]*OpsRetryAttempt, error)
-	UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedRetryID *int64, resolvedAt *time.Time) error
+	UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedAt *time.Time) error
 
 	// Lightweight window stats (for realtime WS / quick sampling).
 	GetWindowStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsWindowStats, error)
@@ -63,6 +61,12 @@ type OpsRepository interface {
 	UpsertDailyMetrics(ctx context.Context, startTime, endTime time.Time) error
 	GetLatestHourlyBucketStart(ctx context.Context) (time.Time, bool, error)
 	GetLatestDailyBucketDate(ctx context.Context) (time.Time, bool, error)
+}
+
+// DeletedKeyAuditResult 是按明文 key 反查 deleted_api_key_audits 的结果。
+type DeletedKeyAuditResult struct {
+	UserID  int64
+	KeyName string
 }
 
 type OpsInsertErrorLogInput struct {
@@ -121,49 +125,16 @@ type OpsInsertErrorLogInput struct {
 	ResponseLatencyMs  *int64
 	TimeToFirstTokenMs *int64
 
-	RequestBodyJSON      *string // sanitized json string (not raw bytes)
-	RequestBodyTruncated bool
-	RequestBodyBytes     *int
-	RequestHeadersJSON   *string // optional json string
-
-	IsRetryable bool
-	RetryCount  int
-
 	CreatedAt time.Time
-}
 
-type OpsInsertRetryAttemptInput struct {
-	RequestedByUserID int64
-	SourceErrorID     int64
-	Mode              string
-	PinnedAccountID   *int64
+	// 已删除 key 归因(仅 INVALID_API_KEY 认证失败时可能非空)
+	AttemptedKeyPrefix    string // 提交 key 的脱敏前缀(前 8 位)
+	DeletedKeyOwnerUserID *int64 // 反查命中的原所有者 user_id
+	DeletedKeyName        string // 反查命中的 key 名称
 
-	// running|queued etc.
-	Status    string
-	StartedAt time.Time
-}
-
-type OpsUpdateRetryAttemptInput struct {
-	ID int64
-
-	// succeeded|failed
-	Status     string
-	FinishedAt time.Time
-	DurationMs int64
-
-	// Persisted execution results (best-effort)
-	Success           *bool
-	HTTPStatusCode    *int
-	UpstreamRequestID *string
-	UsedAccountID     *int64
-	ResponsePreview   *string
-	ResponseTruncated *bool
-
-	// Optional correlation (legacy fields kept)
-	ResultRequestID *string
-	ResultErrorID   *int64
-
-	ErrorMessage *string
+	// 有效(未删除)key 报错时快照的 key 脱敏前缀(前 8 位);与 AttemptedKeyPrefix 互斥。
+	// 落库快照而非读时 JOIN:key 之后被删(key 列被 tombstone 覆盖)仍保留当时前缀。
+	APIKeyPrefix string
 }
 
 type OpsInsertSystemMetricsInput struct {

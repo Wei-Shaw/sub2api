@@ -424,8 +424,9 @@ func TestOpenAITokenProvider_CacheGetError(t *testing.T) {
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
-			"access_token": "fallback-token",
-			"expires_at":   expiresAt,
+			"access_token":  "fallback-token",
+			"refresh_token": "refresh-token",
+			"expires_at":    expiresAt,
 		},
 	}
 
@@ -650,8 +651,9 @@ func TestOpenAITokenProvider_Real_LockFailedWait(t *testing.T) {
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
-			"access_token": "fallback-token",
-			"expires_at":   expiresAt,
+			"access_token":  "fallback-token",
+			"refresh_token": "refresh-token",
+			"expires_at":    expiresAt,
 		},
 	}
 
@@ -819,8 +821,9 @@ func TestOpenAITokenProvider_Real_LockRace_PollingHitsCache(t *testing.T) {
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
-			"access_token": "fallback-token",
-			"expires_at":   expiresAt,
+			"access_token":  "fallback-token",
+			"refresh_token": "refresh-token",
+			"expires_at":    expiresAt,
 		},
 	}
 
@@ -848,8 +851,9 @@ func TestOpenAITokenProvider_Real_LockRace_ContextCanceled(t *testing.T) {
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
-			"access_token": "fallback-token",
-			"expires_at":   expiresAt,
+			"access_token":  "fallback-token",
+			"refresh_token": "refresh-token",
+			"expires_at":    expiresAt,
 		},
 	}
 
@@ -875,8 +879,9 @@ func TestOpenAITokenProvider_RuntimeMetrics_LockWaitHitAndSnapshot(t *testing.T)
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
-			"access_token": "fallback-token",
-			"expires_at":   expiresAt,
+			"access_token":  "fallback-token",
+			"refresh_token": "refresh-token",
+			"expires_at":    expiresAt,
 		},
 	}
 	cacheKey := OpenAITokenCacheKey(account)
@@ -911,8 +916,9 @@ func TestOpenAITokenProvider_RuntimeMetrics_LockAcquireFailure(t *testing.T) {
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
-			"access_token": "fallback-token",
-			"expires_at":   expiresAt,
+			"access_token":  "fallback-token",
+			"refresh_token": "refresh-token",
+			"expires_at":    expiresAt,
 		},
 	}
 
@@ -923,4 +929,40 @@ func TestOpenAITokenProvider_RuntimeMetrics_LockAcquireFailure(t *testing.T) {
 	metrics := provider.SnapshotRuntimeMetrics()
 	require.GreaterOrEqual(t, metrics.LockAcquireFailure, int64(1))
 	require.GreaterOrEqual(t, metrics.RefreshRequests, int64(1))
+}
+
+func TestOpenAITokenProvider_NoRefreshTokenExpired_DisablesAccount(t *testing.T) {
+	cache := newOpenAITokenCacheStub()
+	repo := &rateLimitAccountRepoStub{}
+
+	expiresAt := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+	account := &Account{
+		ID:       2881,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "expired-access-token",
+			"expires_at":   expiresAt,
+		},
+	}
+
+	cacheKey := OpenAITokenCacheKey(account)
+	cache.tokens[cacheKey] = "stale-cached-token"
+	// Force the provider past the cache hit branch.
+	cache.getErr = errors.New("simulated cache miss")
+
+	provider := NewOpenAITokenProvider(repo, cache, nil)
+	blocker := &runtimeBlockRecorder{}
+	provider.SetAccountRuntimeBlocker(blocker)
+
+	token, err := provider.GetAccessToken(context.Background(), account)
+	require.Error(t, err)
+	require.Empty(t, token)
+	require.Contains(t, err.Error(), "refresh_token is missing")
+
+	require.Equal(t, 1, repo.setErrorCalls, "account should be disabled via SetError exactly once")
+	require.Contains(t, repo.lastErrorMsg, "refresh_token is missing")
+	require.Len(t, blocker.accounts, 1)
+	require.Equal(t, account.ID, blocker.accounts[0].ID)
+	require.Equal(t, "missing_refresh_token", blocker.reasons[0])
 }

@@ -7,7 +7,9 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -32,6 +34,7 @@ type stubConcurrencyCacheForTest struct {
 	// 记录调用
 	releasedAccountIDs []int64
 	releasedRequestIDs []string
+	loadBatchCalls     atomic.Int64
 }
 
 var _ ConcurrencyCache = (*stubConcurrencyCacheForTest)(nil)
@@ -82,6 +85,7 @@ func (c *stubConcurrencyCacheForTest) DecrementWaitCount(_ context.Context, _ in
 	return nil
 }
 func (c *stubConcurrencyCacheForTest) GetAccountsLoadBatch(_ context.Context, _ []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
+	c.loadBatchCalls.Add(1)
 	return c.loadBatch, c.loadBatchErr
 }
 func (c *stubConcurrencyCacheForTest) GetUsersLoadBatch(_ context.Context, _ []UserWithConcurrency) (map[int64]*UserLoadInfo, error) {
@@ -235,6 +239,47 @@ func TestGetAccountsLoadBatch_NilCache(t *testing.T) {
 	result, err := svc.GetAccountsLoadBatch(context.Background(), nil)
 	require.NoError(t, err)
 	require.Empty(t, result)
+}
+
+func TestGetAccountsLoadBatch_UsesShortTTLCache(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{
+		loadBatch: map[int64]*AccountLoadInfo{
+			1: {AccountID: 1, CurrentConcurrency: 1, LoadRate: 20},
+		},
+	}
+	svc := NewConcurrencyService(cache)
+	svc.SetAccountLoadBatchCacheTTL(time.Second)
+
+	accounts := []AccountWithConcurrency{{ID: 1, MaxConcurrency: 5}}
+	first, err := svc.GetAccountsLoadBatch(context.Background(), accounts)
+	require.NoError(t, err)
+	require.Equal(t, 1, first[int64(1)].CurrentConcurrency)
+
+	cache.loadBatch[1] = &AccountLoadInfo{AccountID: 1, CurrentConcurrency: 4, LoadRate: 80}
+	second, err := svc.GetAccountsLoadBatch(context.Background(), accounts)
+	require.NoError(t, err)
+	require.Equal(t, 1, second[int64(1)].CurrentConcurrency)
+	require.Equal(t, int64(1), cache.loadBatchCalls.Load())
+}
+
+func TestGetAccountsLoadBatchFresh_BypassesShortTTLCache(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{
+		loadBatch: map[int64]*AccountLoadInfo{
+			1: {AccountID: 1, CurrentConcurrency: 1, LoadRate: 20},
+		},
+	}
+	svc := NewConcurrencyService(cache)
+	svc.SetAccountLoadBatchCacheTTL(time.Second)
+
+	accounts := []AccountWithConcurrency{{ID: 1, MaxConcurrency: 5}}
+	_, err := svc.GetAccountsLoadBatch(context.Background(), accounts)
+	require.NoError(t, err)
+
+	cache.loadBatch[1] = &AccountLoadInfo{AccountID: 1, CurrentConcurrency: 4, LoadRate: 80}
+	fresh, err := svc.GetAccountsLoadBatchFresh(context.Background(), accounts)
+	require.NoError(t, err)
+	require.Equal(t, 4, fresh[int64(1)].CurrentConcurrency)
+	require.Equal(t, int64(2), cache.loadBatchCalls.Load())
 }
 
 func TestIncrementWaitCount_Success(t *testing.T) {

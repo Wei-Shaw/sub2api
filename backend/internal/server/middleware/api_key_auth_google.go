@@ -42,6 +42,10 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			return
 		}
 
+		// 同 api_key_auth.go：早退中断前也写入 Ops 回退 key，便于错误日志展示
+		// user/group/platform。
+		SetOpsFallbackAPIKey(c, apiKey)
+
 		if !apiKey.IsActive() {
 			abortWithGoogleError(c, 401, "API key is disabled")
 			return
@@ -52,6 +56,11 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		}
 		if !apiKey.User.IsActive() {
 			abortWithGoogleError(c, 401, "User account is not active")
+			return
+		}
+		if _, message, ok := validateAPIKeyGroupAvailable(apiKey); !ok {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
+			abortWithGoogleError(c, 403, message)
 			return
 		}
 

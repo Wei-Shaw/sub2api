@@ -103,7 +103,11 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 }
 
 // fillGlobalPricingFallback 对未命中渠道定价的支持模型，从全局 LiteLLM 数据合成一份
-// 展示用定价（按 token 计费）。仅用于「可用渠道」展示，不影响真实计费链路。
+// 展示用定价。仅用于「可用渠道」展示，不影响真实计费链路。
+//
+// 触发条件：
+//  1. Pricing == nil（渠道完全没声明该模型的定价条目）
+//  2. Pricing 非 nil 但所有价格字段为空（admin UI 建了条目但没填价格）
 //
 // 当 s.pricingService 为 nil（测试场景），跳过回落。
 func (s *ChannelService) fillGlobalPricingFallback(models []SupportedModel) {
@@ -111,28 +115,72 @@ func (s *ChannelService) fillGlobalPricingFallback(models []SupportedModel) {
 		return
 	}
 	for i := range models {
-		if models[i].Pricing != nil {
+		if !pricingNeedsFallback(models[i].Pricing) {
 			continue
 		}
 		lp := s.pricingService.GetModelPricing(models[i].Name)
 		if lp == nil {
 			continue
 		}
-		models[i].Pricing = synthesizePricingFromLiteLLM(lp)
+		models[i].Pricing = synthesizePricingFromLiteLLM(lp, models[i].Pricing)
 	}
 }
 
+// pricingNeedsFallback 判定一个 ChannelModelPricing 是否需要走全局回落。
+// 价格全部缺失（无 flat 字段且无任何带价 interval）即视为未配置。
+func pricingNeedsFallback(p *ChannelModelPricing) bool {
+	if p == nil {
+		return true
+	}
+	if p.InputPrice != nil || p.OutputPrice != nil ||
+		p.CacheWritePrice != nil || p.CacheReadPrice != nil ||
+		p.ImageOutputPrice != nil || p.PerRequestPrice != nil {
+		return false
+	}
+	for _, iv := range p.Intervals {
+		if iv.InputPrice != nil || iv.OutputPrice != nil ||
+			iv.CacheWritePrice != nil || iv.CacheReadPrice != nil ||
+			iv.PerRequestPrice != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // synthesizePricingFromLiteLLM 把 LiteLLM 的定价数据转成 ChannelModelPricing 形态，
-// 仅用于展示。BillingMode 固定为 token；图片场景的 OutputCostPerImageToken 也归到
-// ImageOutputPrice 字段（与渠道侧"图片输出按 token 计价"语义一致）。
+// 仅用于展示。
+//
+// 计费模式优先级：
+//  1. 渠道已选 BillingMode（admin 在 UI 里选了 image / per_request 但没填价的场景，
+//     按选定模式合成对应字段）
+//  2. LiteLLM mode="image_generation" → image
+//  3. 默认 token
 //
 // LiteLLM 中字段 0 视为未配置，不带入展示。
-func synthesizePricingFromLiteLLM(lp *LiteLLMModelPricing) *ChannelModelPricing {
+func synthesizePricingFromLiteLLM(lp *LiteLLMModelPricing, existing *ChannelModelPricing) *ChannelModelPricing {
 	if lp == nil {
-		return nil
+		return existing
+	}
+
+	mode := BillingModeToken
+	switch {
+	case existing != nil && existing.BillingMode != "":
+		mode = existing.BillingMode
+	case lp.Mode == "image_generation":
+		mode = BillingModeImage
+	}
+
+	if mode == BillingModeImage || mode == BillingModePerRequest {
+		return &ChannelModelPricing{
+			BillingMode:      mode,
+			PerRequestPrice:  nonZeroPtr(lp.OutputCostPerImage),
+			ImageOutputPrice: nonZeroPtr(lp.OutputCostPerImageToken),
+			InputPrice:       nonZeroPtr(lp.InputCostPerToken),
+			OutputPrice:      nonZeroPtr(lp.OutputCostPerToken),
+		}
 	}
 	return &ChannelModelPricing{
-		BillingMode:      BillingModeToken,
+		BillingMode:      mode,
 		InputPrice:       nonZeroPtr(lp.InputCostPerToken),
 		OutputPrice:      nonZeroPtr(lp.OutputCostPerToken),
 		CacheWritePrice:  nonZeroPtr(lp.CacheCreationInputTokenCost),

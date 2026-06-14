@@ -24,13 +24,18 @@ import (
 //   - deleteErr: 模拟 Delete 返回的错误
 //   - deletedIDs: 记录被调用删除的 API Key ID，用于断言验证
 type apiKeyRepoStub struct {
-	apiKey         *APIKey // GetKeyAndOwnerID 的返回值
-	getByIDErr     error   // GetKeyAndOwnerID 的错误返回值
-	deleteErr      error   // Delete 的错误返回值
-	deletedIDs     []int64 // 记录已删除的 API Key ID 列表
-	updateLastUsed func(ctx context.Context, id int64, usedAt time.Time) error
-	touchedIDs     []int64
-	touchedUsedAts []time.Time
+	apiKey             *APIKey // GetKeyAndOwnerID 的返回值
+	getByIDErr         error   // GetKeyAndOwnerID 的错误返回值
+	deleteErr          error   // Delete 的错误返回值
+	deletedIDs         []int64 // 记录已删除的 API Key ID 列表
+	allowListByUserID  bool
+	listByUserIDKeys   []APIKey
+	listByUserIDErr    error
+	listByUserIDCalls  []int64
+	listByUserIDParams []pagination.PaginationParams
+	updateLastUsed     func(ctx context.Context, id int64, usedAt time.Time) error
+	touchedIDs         []int64
+	touchedUsedAts     []time.Time
 }
 
 // 以下方法在本测试中不应被调用，使用 panic 确保测试失败时能快速定位问题
@@ -79,10 +84,30 @@ func (s *apiKeyRepoStub) Delete(ctx context.Context, id int64) error {
 	return s.deleteErr
 }
 
+// DeleteWithAudit 与 Delete 一样记录被删除的 ID,供 service 测试断言。
+func (s *apiKeyRepoStub) DeleteWithAudit(ctx context.Context, id int64) error {
+	s.deletedIDs = append(s.deletedIDs, id)
+	return s.deleteErr
+}
+
 // 以下是接口要求实现但本测试不关心的方法
 
 func (s *apiKeyRepoStub) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
-	panic("unexpected ListByUserID call")
+	if !s.allowListByUserID {
+		panic("unexpected ListByUserID call")
+	}
+	s.listByUserIDCalls = append(s.listByUserIDCalls, userID)
+	s.listByUserIDParams = append(s.listByUserIDParams, params)
+	if s.listByUserIDErr != nil {
+		return nil, nil, s.listByUserIDErr
+	}
+	keys := append([]APIKey(nil), s.listByUserIDKeys...)
+	return keys, &pagination.PaginationResult{
+		Total:    int64(len(keys)),
+		Page:     params.Page,
+		PageSize: params.PageSize,
+		Pages:    1,
+	}, nil
 }
 
 func (s *apiKeyRepoStub) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
@@ -274,8 +299,8 @@ func TestApiKeyService_Delete_NotFound(t *testing.T) {
 // 预期行为：
 //   - GetKeyAndOwnerID 返回正确的所有者 ID
 //   - 所有权验证通过
-//   - 缓存被清除（在删除之前）
-//   - Delete 被调用但返回错误
+//   - DeleteWithAudit 被调用但返回错误
+//   - 删除失败时缓存不被清除（缓存清理在删除成功后执行，消除竞态）
 //   - 返回包含 "delete api key" 的错误信息
 func TestApiKeyService_Delete_DeleteFails(t *testing.T) {
 	repo := &apiKeyRepoStub{
@@ -288,7 +313,7 @@ func TestApiKeyService_Delete_DeleteFails(t *testing.T) {
 	err := svc.Delete(context.Background(), 3, 3) // API Key ID=3, 调用者 userID=3
 	require.Error(t, err)
 	require.ErrorContains(t, err, "delete api key")
-	require.Equal(t, []int64{3}, repo.deletedIDs)   // 验证删除操作被调用
-	require.Equal(t, []int64{3}, cache.invalidated) // 验证缓存已被清除（即使删除失败）
-	require.Equal(t, []string{svc.authCacheKey("k")}, cache.deleteAuthKeys)
+	require.Equal(t, []int64{3}, repo.deletedIDs) // 验证 DeleteWithAudit 被调用
+	require.Empty(t, cache.invalidated)           // 验证删除失败时缓存未被清除（新顺序：先删后清）
+	require.Empty(t, cache.deleteAuthKeys)        // 验证删除失败时 auth 缓存未被清除
 }

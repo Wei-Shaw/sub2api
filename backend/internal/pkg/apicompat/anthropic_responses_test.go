@@ -517,6 +517,33 @@ func TestResponsesEventToAnthropicEvents_ResponseDone(t *testing.T) {
 	assert.Nil(t, FinalizeResponsesAnthropicStream(state))
 }
 
+func TestResponsesEventToAnthropicEvents_TopLevelTerminalUsage(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	state.Model = "gpt-4o"
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.completed",
+		Response: &ResponsesResponse{
+			Status: "completed",
+		},
+		Usage: &ResponsesUsage{
+			InputTokens:  20,
+			OutputTokens: 6,
+			InputTokensDetails: &ResponsesInputTokensDetails{
+				CachedTokens: 5,
+			},
+		},
+	}, state)
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "message_delta", events[0].Type)
+	require.NotNil(t, events[0].Usage)
+	assert.Equal(t, 15, events[0].Usage.InputTokens)
+	assert.Equal(t, 5, events[0].Usage.CacheReadInputTokens)
+	assert.Equal(t, 6, events[0].Usage.OutputTokens)
+	assert.Equal(t, "message_stop", events[1].Type)
+}
+
 func TestResponsesEventToAnthropicEvents_ResponseDoneIncomplete(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 	state.Model = "gpt-4o"
@@ -743,6 +770,10 @@ func TestStreamingReasoning(t *testing.T) {
 	require.Len(t, events, 1)
 	assert.Equal(t, "content_block_start", events[0].Type)
 	assert.Equal(t, "thinking", events[0].ContentBlock.Type)
+
+	sse, err := ResponsesAnthropicEventToSSE(events[0])
+	require.NoError(t, err)
+	assert.Contains(t, sse, `"content_block":{"thinking":"","type":"thinking"}`)
 
 	// reasoning text delta
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
@@ -1519,4 +1550,186 @@ func TestAnthropicToResponses_ToolWithNilSchema(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.Tools[0].Parameters, &params))
 	assert.JSONEq(t, `"object"`, string(params["type"]))
 	assert.JSONEq(t, `{}`, string(params["properties"]))
+}
+
+// ---------------------------------------------------------------------------
+// isReasoningModel / temperature-stripping tests
+// ---------------------------------------------------------------------------
+
+func TestAnthropicToResponses_TemperatureStrippedForReasoningModel(t *testing.T) {
+	temp := 0.7
+	req := &AnthropicRequest{
+		Model:       "gpt-5.2",
+		MaxTokens:   1024,
+		Messages:    []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		Temperature: &temp,
+		TopP:        &temp,
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	assert.Nil(t, resp.Temperature, "reasoning model: temperature must be stripped")
+	assert.Nil(t, resp.TopP, "reasoning model: top_p must be stripped")
+
+	// Verify the fields are absent from the serialised JSON.
+	b, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), `"temperature"`)
+	assert.NotContains(t, string(b), `"top_p"`)
+}
+
+func TestAnthropicToResponses_TemperatureStrippedForAllGpt5Variants(t *testing.T) {
+	temp := 1.0
+	models := []string{"gpt-5.2", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.5"}
+	for _, model := range models {
+		t.Run(model, func(t *testing.T) {
+			req := &AnthropicRequest{
+				Model:       model,
+				MaxTokens:   1024,
+				Messages:    []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+				Temperature: &temp,
+				TopP:        &temp,
+			}
+			resp, err := AnthropicToResponses(req)
+			require.NoError(t, err)
+			assert.Nil(t, resp.Temperature, "model %s: temperature must be stripped", model)
+			assert.Nil(t, resp.TopP, "model %s: top_p must be stripped", model)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AnthropicToResponsesResponse: Anthropic input_tokens excludes cached tokens
+// while OpenAI Responses input_tokens is the total including cached tokens.
+// ---------------------------------------------------------------------------
+
+func TestAnthropicToResponsesResponse_CacheTokensUseOpenAIInputSemantics(t *testing.T) {
+	resp := &AnthropicResponse{
+		ID:    "msg_cache",
+		Model: "claude-sonnet-4-5-20250929",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "ok"},
+		},
+		StopReason: "end_turn",
+		Usage: AnthropicUsage{
+			InputTokens:              3318,
+			OutputTokens:             123,
+			CacheReadInputTokens:     50688,
+			CacheCreationInputTokens: 200,
+		},
+	}
+
+	out := AnthropicToResponsesResponse(resp)
+	require.NotNil(t, out.Usage)
+	// 3318 (uncached) + 50688 (read) + 200 (creation) = 54206
+	assert.Equal(t, 54206, out.Usage.InputTokens)
+	assert.Equal(t, 123, out.Usage.OutputTokens)
+	assert.Equal(t, 54329, out.Usage.TotalTokens)
+	require.NotNil(t, out.Usage.InputTokensDetails)
+	assert.Equal(t, 50688, out.Usage.InputTokensDetails.CachedTokens)
+}
+
+func TestAnthropicToResponsesResponse_NoCacheTokens(t *testing.T) {
+	resp := &AnthropicResponse{
+		ID:    "msg_nocache",
+		Model: "claude-sonnet-4-5-20250929",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "ok"},
+		},
+		StopReason: "end_turn",
+		Usage: AnthropicUsage{
+			InputTokens:  100,
+			OutputTokens: 50,
+		},
+	}
+
+	out := AnthropicToResponsesResponse(resp)
+	require.NotNil(t, out.Usage)
+	assert.Equal(t, 100, out.Usage.InputTokens)
+	assert.Equal(t, 50, out.Usage.OutputTokens)
+	assert.Equal(t, 150, out.Usage.TotalTokens)
+	assert.Nil(t, out.Usage.InputTokensDetails)
+}
+
+func TestAnthropicEventToResponses_CacheTokensRoundTripFromMessageStart(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+
+	// message_start carries cache fields on the initial Usage object.
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_start",
+		Message: &AnthropicResponse{
+			ID:    "msg_stream_cache",
+			Model: "claude-sonnet-4-5-20250929",
+			Usage: AnthropicUsage{
+				InputTokens:              12,
+				CacheReadInputTokens:     9,
+				CacheCreationInputTokens: 3,
+			},
+		},
+	}, state)
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_delta",
+		Usage: &AnthropicUsage{
+			OutputTokens: 7,
+		},
+	}, state)
+
+	events := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{Type: "message_stop"}, state)
+
+	// The terminal response.completed event must include OpenAI-semantic usage.
+	var completed *ResponsesStreamEvent
+	for i := range events {
+		if events[i].Type == "response.completed" {
+			completed = &events[i]
+		}
+	}
+	require.NotNil(t, completed, "response.completed event must be emitted")
+	require.NotNil(t, completed.Response)
+	require.NotNil(t, completed.Response.Usage)
+	// 12 (uncached) + 9 (read) + 3 (creation) = 24
+	assert.Equal(t, 24, completed.Response.Usage.InputTokens)
+	assert.Equal(t, 7, completed.Response.Usage.OutputTokens)
+	assert.Equal(t, 31, completed.Response.Usage.TotalTokens)
+	require.NotNil(t, completed.Response.Usage.InputTokensDetails)
+	assert.Equal(t, 9, completed.Response.Usage.InputTokensDetails.CachedTokens)
+}
+
+func TestAnthropicEventToResponses_CacheTokensFromMessageDelta(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_start",
+		Message: &AnthropicResponse{
+			ID:    "msg_delta_cache",
+			Model: "claude-sonnet-4-5-20250929",
+			Usage: AnthropicUsage{InputTokens: 20},
+		},
+	}, state)
+
+	// Some upstreams only emit cache fields on the final message_delta.
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_delta",
+		Usage: &AnthropicUsage{
+			OutputTokens:             8,
+			CacheReadInputTokens:     11,
+			CacheCreationInputTokens: 4,
+		},
+	}, state)
+
+	events := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{Type: "message_stop"}, state)
+
+	var completed *ResponsesStreamEvent
+	for i := range events {
+		if events[i].Type == "response.completed" {
+			completed = &events[i]
+		}
+	}
+	require.NotNil(t, completed)
+	require.NotNil(t, completed.Response.Usage)
+	// 20 (uncached) + 11 (read) + 4 (creation) = 35
+	assert.Equal(t, 35, completed.Response.Usage.InputTokens)
+	assert.Equal(t, 8, completed.Response.Usage.OutputTokens)
+	require.NotNil(t, completed.Response.Usage.InputTokensDetails)
+	assert.Equal(t, 11, completed.Response.Usage.InputTokensDetails.CachedTokens)
 }

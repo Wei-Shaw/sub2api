@@ -130,13 +130,16 @@ const props = defineProps<{
 /** 充值金额 (base amount before fee) = pay_amount - fee = pay_amount / (1 + fee_rate/100) */
 const baseAmount = computed(() => {
   if (!props.order) return 0
-  if (props.order.fee_rate <= 0) return props.order.pay_amount
-  return props.order.pay_amount / (1 + props.order.fee_rate / 100)
+  const feeRate = Number(props.order.fee_rate) || 0
+  if (feeRate <= 0) return props.order.pay_amount
+  return props.order.pay_amount / (1 + feeRate / 100)
 })
 
 /** 手续费 = pay_amount - baseAmount */
 const feeAmount = computed(() => {
-  if (!props.order || props.order.fee_rate <= 0) return 0
+  if (!props.order) return 0
+  const feeRate = Number(props.order.fee_rate) || 0
+  if (feeRate <= 0) return 0
   return props.order.pay_amount - baseAmount.value
 })
 

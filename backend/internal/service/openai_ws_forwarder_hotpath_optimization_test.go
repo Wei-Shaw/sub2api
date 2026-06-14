@@ -29,6 +29,32 @@ func TestParseOpenAIWSResponseUsageFromCompletedEvent(t *testing.T) {
 	require.Equal(t, 11, usage.InputTokens)
 	require.Equal(t, 7, usage.OutputTokens)
 	require.Equal(t, 3, usage.CacheReadInputTokens)
+
+	parseOpenAIWSResponseUsageFromCompletedEvent(
+		[]byte(`{"type":"response.completed","response":{"usage":{"prompt_tokens":19,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":4}}}}`),
+		usage,
+	)
+	require.Equal(t, 19, usage.InputTokens)
+	require.Equal(t, 5, usage.OutputTokens)
+	require.Equal(t, 4, usage.CacheReadInputTokens)
+}
+
+func TestOpenAIWSEventShouldParseUsageTerminalEvents(t *testing.T) {
+	t.Parallel()
+
+	for _, eventType := range []string{
+		"response.completed",
+		"response.done",
+		"response.failed",
+		"response.incomplete",
+		"response.cancelled",
+		"response.canceled",
+	} {
+		require.True(t, openAIWSEventShouldParseUsage(eventType), eventType)
+		require.True(t, openAIWSEventShouldParseUsage("  "+eventType+"  "), eventType)
+	}
+	require.False(t, openAIWSEventShouldParseUsage("response.output_text.delta"))
+	require.False(t, openAIWSEventShouldParseUsage(""))
 }
 
 func TestOpenAIWSErrorEventHelpers_ConsistentWithWrapper(t *testing.T) {

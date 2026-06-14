@@ -7,6 +7,21 @@
 
 set -e
 
+# Bash 4+ is required for associative arrays used by the localized message table.
+# Keep this guard before any Bash 4-only syntax so older shells fail with a clear hint.
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "Error: This installer must be run with Bash 4.0 or later." >&2
+    echo "Please install Bash 4+ and run it with that interpreter." >&2
+    exit 1
+fi
+
+BASH_MAJOR_VERSION="${BASH_VERSION%%.*}"
+if [ "$BASH_MAJOR_VERSION" -lt 4 ]; then
+    echo "Error: Bash 4.0 or later is required. Current version: $BASH_VERSION" >&2
+    echo "Please install Bash 4+ and retry with that interpreter." >&2
+    exit 1
+fi
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
