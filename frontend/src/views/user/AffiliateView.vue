@@ -8,7 +8,7 @@
       </div>
 
       <template v-else-if="detail">
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div class="card p-5">
             <p class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-dark-400">
               <Icon name="dollar" size="sm" class="text-primary-500" />
@@ -19,6 +19,18 @@
             </p>
             <p class="mt-1 text-xs text-gray-400 dark:text-dark-500">
               {{ t('affiliate.stats.rebateRateHint') }}
+            </p>
+          </div>
+          <div class="card p-5">
+            <p class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-dark-400">
+              <Icon name="dollar" size="sm" class="text-primary-500" />
+              {{ t('affiliate.stats.subscriptionRebateRate') }}
+            </p>
+            <p class="mt-2 text-2xl font-semibold text-primary-600 dark:text-primary-400">
+              {{ formattedSubscriptionRebateRate }}<span class="ml-0.5 text-base font-medium">%</span>
+            </p>
+            <p class="mt-1 text-xs text-gray-400 dark:text-dark-500">
+              {{ t('affiliate.stats.subscriptionRebateRateHint') }}
             </p>
           </div>
           <div class="card p-5">
@@ -171,6 +183,12 @@ const inviteLink = computed(() => {
 // We trim trailing zeros (e.g. 20.00 → "20", 12.50 → "12.5") for a cleaner UI.
 const formattedRebateRate = computed(() => {
   const v = detail.value?.effective_rebate_rate_percent ?? 0
+  const rounded = Math.round(v * 100) / 100
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toString()
+})
+
+const formattedSubscriptionRebateRate = computed(() => {
+  const v = detail.value?.effective_subscription_rebate_rate_percent ?? 0
   const rounded = Math.round(v * 100) / 100
   return Number.isInteger(rounded) ? String(rounded) : rounded.toString()
 })

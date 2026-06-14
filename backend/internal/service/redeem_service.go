@@ -498,6 +498,9 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 {
 		s.tryAccrueAffiliateRebateForRedeem(ctx, userID, redeemCode.Value)
 	}
+	if redeemCode.Type == RedeemTypeSubscription {
+		s.tryAccrueAffiliateSubscriptionRebateForRedeem(ctx, userID, redeemCode)
+	}
 
 	// 重新获取更新后的兑换码
 	redeemCode, err = s.redeemRepo.GetByID(ctx, redeemCode.ID)
@@ -565,6 +568,30 @@ func (s *RedeemService) tryAccrueAffiliateRebateForRedeem(ctx context.Context, u
 	}
 	if rebate > 0 {
 		logger.LegacyPrintf("service.redeem", "[Redeem] affiliate rebate accrued %.8f for inviter of user %d", rebate, userID)
+	}
+}
+
+func (s *RedeemService) tryAccrueAffiliateSubscriptionRebateForRedeem(ctx context.Context, userID int64, redeemCode *RedeemCode) {
+	if ctx.Value(ctxKeySkipRedeemAffiliate{}) != nil {
+		return
+	}
+	if s == nil || s.affiliateService == nil || redeemCode == nil {
+		return
+	}
+	if !s.affiliateService.IsEnabled(ctx) {
+		return
+	}
+	baseAmount := redeemCode.Value
+	if baseAmount <= 0 {
+		return
+	}
+	rebate, err := s.affiliateService.AccrueInviteSubscriptionRebateForOrder(ctx, userID, baseAmount, nil)
+	if err != nil {
+		logger.LegacyPrintf("service.redeem", "[Redeem] affiliate subscription rebate failed for user %d amount %.2f: %v", userID, baseAmount, err)
+		return
+	}
+	if rebate > 0 {
+		logger.LegacyPrintf("service.redeem", "[Redeem] affiliate subscription rebate accrued %.8f for inviter of user %d", rebate, userID)
 	}
 }
 

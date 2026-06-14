@@ -6,7 +6,9 @@ import (
 	"context"
 	"math"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,6 +46,92 @@ func TestResolveRebateRatePercent_PerUserOverride(t *testing.T) {
 	tooLow := -5.0
 	require.InDelta(t, AffiliateRebateRateMin,
 		svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{AffRebateRatePercent: &tooLow}), 1e-9)
+}
+
+func TestResolveSubscriptionRebateRatePercent_UsesEightyPercentOfEffectiveBalanceRate(t *testing.T) {
+	t.Parallel()
+	svc := &AffiliateService{}
+
+	rate := 10.0
+	require.InDelta(t, 8.0,
+		svc.resolveSubscriptionRebateRatePercent(context.Background(), &AffiliateSummary{AffRebateRatePercent: &rate}), 1e-9)
+}
+
+func TestGetAffiliateDetailIncludesEffectiveSubscriptionRebateRate(t *testing.T) {
+	t.Parallel()
+	rate := 10.0
+	repo := &affiliateDetailRepoStub{
+		summary: &AffiliateSummary{
+			UserID:               42,
+			AffCode:              "AFF42",
+			AffRebateRatePercent: &rate,
+		},
+	}
+	svc := &AffiliateService{repo: repo}
+
+	detail, err := svc.GetAffiliateDetail(context.Background(), 42)
+
+	require.NoError(t, err)
+	require.InDelta(t, 10.0, detail.EffectiveRebateRatePercent, 1e-9)
+	require.InDelta(t, 8.0, detail.EffectiveSubscriptionRebateRatePercent, 1e-9)
+}
+
+func TestAccrueInviteSubscriptionRebateUsesSubscriptionRate(t *testing.T) {
+	t.Parallel()
+	inviterID := int64(7)
+	inviteeID := int64(42)
+	rate := 10.0
+	repo := &affiliateDetailRepoStub{
+		summaries: map[int64]*AffiliateSummary{
+			inviteeID: {
+				UserID:    inviteeID,
+				InviterID: &inviterID,
+				CreatedAt: time.Now(),
+			},
+			inviterID: {
+				UserID:               inviterID,
+				AffRebateRatePercent: &rate,
+			},
+		},
+	}
+	svc := &AffiliateService{repo: repo, settingService: affiliateSettingsService(map[string]string{
+		SettingKeyAffiliateEnabled: "true",
+	})}
+	orderID := int64(1001)
+
+	rebate, err := svc.AccrueInviteSubscriptionRebateForOrder(context.Background(), inviteeID, 180, &orderID)
+
+	require.NoError(t, err)
+	require.InDelta(t, 14.4, rebate, 1e-9)
+	require.Equal(t, affiliateAccrueCall{
+		inviterID:     inviterID,
+		inviteeUserID: inviteeID,
+		amount:        14.4,
+		freezeHours:   0,
+		sourceOrderID: &orderID,
+	}, repo.accrueCalls[0])
+}
+
+func TestAccrueInviteSubscriptionRebateSkipsWhenBaseAmountMissing(t *testing.T) {
+	t.Parallel()
+	inviterID := int64(7)
+	inviteeID := int64(42)
+	rate := 10.0
+	repo := &affiliateDetailRepoStub{
+		summaries: map[int64]*AffiliateSummary{
+			inviteeID: {UserID: inviteeID, InviterID: &inviterID, CreatedAt: time.Now()},
+			inviterID: {UserID: inviterID, AffRebateRatePercent: &rate},
+		},
+	}
+	svc := &AffiliateService{repo: repo, settingService: affiliateSettingsService(map[string]string{
+		SettingKeyAffiliateEnabled: "true",
+	})}
+
+	rebate, err := svc.AccrueInviteSubscriptionRebateForOrder(context.Background(), inviteeID, 0, nil)
+
+	require.NoError(t, err)
+	require.Zero(t, rebate)
+	require.Empty(t, repo.accrueCalls)
 }
 
 // TestIsEnabled_NilSettingServiceReturnsDefault verifies that IsEnabled
@@ -128,4 +216,100 @@ func TestIsValidAffiliateCodeFormat(t *testing.T) {
 			require.Equal(t, tc.want, isValidAffiliateCodeFormat(tc.in))
 		})
 	}
+}
+
+type affiliateDetailRepoStub struct {
+	summary     *AffiliateSummary
+	summaries   map[int64]*AffiliateSummary
+	accrueCalls []affiliateAccrueCall
+}
+
+type affiliateAccrueCall struct {
+	inviterID     int64
+	inviteeUserID int64
+	amount        float64
+	freezeHours   int
+	sourceOrderID *int64
+}
+
+func affiliateSettingsService(values map[string]string) *SettingService {
+	return NewSettingService(&affiliateSettingRepoStub{values: values}, &config.Config{})
+}
+
+func (r *affiliateDetailRepoStub) EnsureUserAffiliate(_ context.Context, userID int64) (*AffiliateSummary, error) {
+	if r.summaries != nil {
+		return r.summaries[userID], nil
+	}
+	return r.summary, nil
+}
+
+func (r *affiliateDetailRepoStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
+	return nil, nil
+}
+
+func (r *affiliateDetailRepoStub) ThawFrozenQuota(context.Context, int64) (float64, error) {
+	return 0, nil
+}
+
+func (r *affiliateDetailRepoStub) GetAffiliateByCode(context.Context, string) (*AffiliateSummary, error) {
+	panic("unexpected GetAffiliateByCode call")
+}
+
+func (r *affiliateDetailRepoStub) BindInviter(context.Context, int64, int64) (bool, error) {
+	panic("unexpected BindInviter call")
+}
+
+func (r *affiliateDetailRepoStub) AccrueQuota(_ context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
+	r.accrueCalls = append(r.accrueCalls, affiliateAccrueCall{
+		inviterID:     inviterID,
+		inviteeUserID: inviteeUserID,
+		amount:        amount,
+		freezeHours:   freezeHours,
+		sourceOrderID: sourceOrderID,
+	})
+	return true, nil
+}
+
+func (r *affiliateDetailRepoStub) GetAccruedRebateFromInvitee(context.Context, int64, int64) (float64, error) {
+	panic("unexpected GetAccruedRebateFromInvitee call")
+}
+
+func (r *affiliateDetailRepoStub) TransferQuotaToBalance(context.Context, int64) (float64, float64, error) {
+	panic("unexpected TransferQuotaToBalance call")
+}
+
+func (r *affiliateDetailRepoStub) UpdateUserAffCode(context.Context, int64, string) error {
+	panic("unexpected UpdateUserAffCode call")
+}
+
+func (r *affiliateDetailRepoStub) ResetUserAffCode(context.Context, int64) (string, error) {
+	panic("unexpected ResetUserAffCode call")
+}
+
+func (r *affiliateDetailRepoStub) SetUserRebateRate(context.Context, int64, *float64) error {
+	panic("unexpected SetUserRebateRate call")
+}
+
+func (r *affiliateDetailRepoStub) BatchSetUserRebateRate(context.Context, []int64, *float64) error {
+	panic("unexpected BatchSetUserRebateRate call")
+}
+
+func (r *affiliateDetailRepoStub) ListUsersWithCustomSettings(context.Context, AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error) {
+	panic("unexpected ListUsersWithCustomSettings call")
+}
+
+func (r *affiliateDetailRepoStub) ListAffiliateInviteRecords(context.Context, AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error) {
+	panic("unexpected ListAffiliateInviteRecords call")
+}
+
+func (r *affiliateDetailRepoStub) ListAffiliateRebateRecords(context.Context, AffiliateRecordFilter) ([]AffiliateRebateRecord, int64, error) {
+	panic("unexpected ListAffiliateRebateRecords call")
+}
+
+func (r *affiliateDetailRepoStub) ListAffiliateTransferRecords(context.Context, AffiliateRecordFilter) ([]AffiliateTransferRecord, int64, error) {
+	panic("unexpected ListAffiliateTransferRecords call")
+}
+
+func (r *affiliateDetailRepoStub) GetAffiliateUserOverview(context.Context, int64) (*AffiliateUserOverview, error) {
+	panic("unexpected GetAffiliateUserOverview call")
 }

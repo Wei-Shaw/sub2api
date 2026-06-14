@@ -1118,6 +1118,8 @@ export default {
     stats: {
       rebateRate: 'My Rebate Rate',
       rebateRateHint: 'What you earn each time an invitee recharges',
+      subscriptionRebateRate: 'Subscription Rebate Rate',
+      subscriptionRebateRateHint: 'What you earn when an invitee buys a subscription plan',
       invitedUsers: 'Invited Users',
       availableQuota: 'Available Rebate Quota',
       frozenQuota: 'Frozen',
@@ -5446,6 +5448,8 @@ export default {
           enabledHint: 'When off, the affiliate menu is hidden, the aff parameter is ignored at signup, and new recharges generate no rebate. Existing rebate balances can still be transferred.',
           rebateRate: 'Global Rebate Rate',
           rebateRateHint: 'Default percentage given back to the inviter on recharges (0-100, e.g. 10 = 10%).',
+          subscriptionRebateMultiplier: 'Subscription Rebate Multiplier',
+          subscriptionRebateMultiplierHint: 'Subscription rebate rate = user effective rebate rate × this multiplier. For example, 10% rebate and 80% multiplier gives 8%.',
           freezeHours: 'Rebate Freeze Period (hours)',
           freezeHoursDesc: 'New rebates will be frozen for this period before becoming available for withdrawal. 0 = no freeze.',
           durationDays: 'Rebate Duration (days)',
