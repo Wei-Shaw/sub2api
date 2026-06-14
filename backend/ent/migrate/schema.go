@@ -792,6 +792,184 @@ var (
 			},
 		},
 	}
+	// OidcAccessTokensColumns holds the columns for the "oidc_access_tokens" table.
+	OidcAccessTokensColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "token", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "client_id", Type: field.TypeString, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "scopes", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "refresh_family_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OidcAccessTokensTable holds the schema information for the "oidc_access_tokens" table.
+	OidcAccessTokensTable = &schema.Table{
+		Name:       "oidc_access_tokens",
+		Columns:    OidcAccessTokensColumns,
+		PrimaryKey: []*schema.Column{OidcAccessTokensColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oidcaccesstoken_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAccessTokensColumns[5]},
+			},
+			{
+				Name:    "oidcaccesstoken_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAccessTokensColumns[4]},
+			},
+			{
+				Name:    "oidcaccesstoken_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAccessTokensColumns[8]},
+			},
+			{
+				Name:    "oidcaccesstoken_refresh_family_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAccessTokensColumns[7]},
+			},
+		},
+	}
+	// OidcAuthorizationCodesColumns holds the columns for the "oidc_authorization_codes" table.
+	OidcAuthorizationCodesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "client_id", Type: field.TypeString, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "redirect_uri", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "scopes", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "code_challenge", Type: field.TypeString, Size: 128},
+		{Name: "code_challenge_method", Type: field.TypeString, Size: 10, Default: "S256"},
+		{Name: "nonce", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "consumed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OidcAuthorizationCodesTable holds the schema information for the "oidc_authorization_codes" table.
+	OidcAuthorizationCodesTable = &schema.Table{
+		Name:       "oidc_authorization_codes",
+		Columns:    OidcAuthorizationCodesColumns,
+		PrimaryKey: []*schema.Column{OidcAuthorizationCodesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oidcauthorizationcode_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAuthorizationCodesColumns[11]},
+			},
+			{
+				Name:    "oidcauthorizationcode_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAuthorizationCodesColumns[5]},
+			},
+			{
+				Name:    "oidcauthorizationcode_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAuthorizationCodesColumns[4]},
+			},
+		},
+	}
+	// OidcClientsColumns holds the columns for the "oidc_clients" table.
+	OidcClientsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "client_id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "client_secret_hash", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "client_name", Type: field.TypeString, Size: 100},
+		{Name: "redirect_uris", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "allowed_scopes", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "grant_types", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "consent_required", Type: field.TypeBool, Default: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+	}
+	// OidcClientsTable holds the schema information for the "oidc_clients" table.
+	OidcClientsTable = &schema.Table{
+		Name:       "oidc_clients",
+		Columns:    OidcClientsColumns,
+		PrimaryKey: []*schema.Column{OidcClientsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oidcclient_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{OidcClientsColumns[10]},
+			},
+		},
+	}
+	// OidcConsentsColumns holds the columns for the "oidc_consents" table.
+	OidcConsentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "client_id", Type: field.TypeString, Size: 64},
+		{Name: "granted_scopes", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "granted_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_used_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OidcConsentsTable holds the schema information for the "oidc_consents" table.
+	OidcConsentsTable = &schema.Table{
+		Name:       "oidc_consents",
+		Columns:    OidcConsentsColumns,
+		PrimaryKey: []*schema.Column{OidcConsentsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oidcconsent_user_id_client_id",
+				Unique:  true,
+				Columns: []*schema.Column{OidcConsentsColumns[3], OidcConsentsColumns[4]},
+			},
+			{
+				Name:    "oidcconsent_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcConsentsColumns[4]},
+			},
+		},
+	}
+	// OidcRefreshTokensColumns holds the columns for the "oidc_refresh_tokens" table.
+	OidcRefreshTokensColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "token", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "family_id", Type: field.TypeString, Size: 64},
+		{Name: "client_id", Type: field.TypeString, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "scopes", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "parent_token_hash", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// OidcRefreshTokensTable holds the schema information for the "oidc_refresh_tokens" table.
+	OidcRefreshTokensTable = &schema.Table{
+		Name:       "oidc_refresh_tokens",
+		Columns:    OidcRefreshTokensColumns,
+		PrimaryKey: []*schema.Column{OidcRefreshTokensColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oidcrefreshtoken_family_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcRefreshTokensColumns[4]},
+			},
+			{
+				Name:    "oidcrefreshtoken_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcRefreshTokensColumns[6]},
+			},
+			{
+				Name:    "oidcrefreshtoken_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcRefreshTokensColumns[5]},
+			},
+			{
+				Name:    "oidcrefreshtoken_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OidcRefreshTokensColumns[8]},
+			},
+		},
+	}
 	// PaymentAuditLogsColumns holds the columns for the "payment_audit_logs" table.
 	PaymentAuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1266,6 +1444,47 @@ var (
 		Name:       "settings",
 		Columns:    SettingsColumns,
 		PrimaryKey: []*schema.Column{SettingsColumns[0]},
+	}
+	// SSOSessionsColumns holds the columns for the "sso_sessions" table.
+	SSOSessionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "session_id", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "issued_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_seen_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "totp_verified_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_agent", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "ip_address", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// SSOSessionsTable holds the schema information for the "sso_sessions" table.
+	SSOSessionsTable = &schema.Table{
+		Name:       "sso_sessions",
+		Columns:    SSOSessionsColumns,
+		PrimaryKey: []*schema.Column{SSOSessionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "sso_sessions_users_sso_sessions",
+				Columns:    []*schema.Column{SSOSessionsColumns[11]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ssosession_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{SSOSessionsColumns[11]},
+			},
+			{
+				Name:    "ssosession_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{SSOSessionsColumns[6]},
+			},
+		},
 	}
 	// SubscriptionPlansColumns holds the columns for the "subscription_plans" table.
 	SubscriptionPlansColumns = []*schema.Column{
@@ -1826,6 +2045,11 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		OidcAccessTokensTable,
+		OidcAuthorizationCodesTable,
+		OidcClientsTable,
+		OidcConsentsTable,
+		OidcRefreshTokensTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
@@ -1837,6 +2061,7 @@ var (
 		RedeemCodesTable,
 		SecuritySecretsTable,
 		SettingsTable,
+		SSOSessionsTable,
 		SubscriptionPlansTable,
 		TLSFingerprintProfilesTable,
 		UsageCleanupTasksTable,
@@ -1910,6 +2135,21 @@ func init() {
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
 	}
+	OidcAccessTokensTable.Annotation = &entsql.Annotation{
+		Table: "oidc_access_tokens",
+	}
+	OidcAuthorizationCodesTable.Annotation = &entsql.Annotation{
+		Table: "oidc_authorization_codes",
+	}
+	OidcClientsTable.Annotation = &entsql.Annotation{
+		Table: "oidc_clients",
+	}
+	OidcConsentsTable.Annotation = &entsql.Annotation{
+		Table: "oidc_consents",
+	}
+	OidcRefreshTokensTable.Annotation = &entsql.Annotation{
+		Table: "oidc_refresh_tokens",
+	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",
 	}
@@ -1949,6 +2189,10 @@ func init() {
 	}
 	SettingsTable.Annotation = &entsql.Annotation{
 		Table: "settings",
+	}
+	SSOSessionsTable.ForeignKeys[0].RefTable = UsersTable
+	SSOSessionsTable.Annotation = &entsql.Annotation{
+		Table: "sso_sessions",
 	}
 	SubscriptionPlansTable.Annotation = &entsql.Annotation{
 		Table: "subscription_plans",
