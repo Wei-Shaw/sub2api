@@ -90,8 +90,9 @@ type AffiliateDetail struct {
 	// EffectiveRebateRatePercent 是当前用户作为邀请人时实际生效的返利比例：
 	// 优先用户自己的专属比例（aff_rebate_rate_percent），否则回退到全局比例。
 	// 用于在用户的 /affiliate 页面直观展示「分享后能拿到多少」。
-	EffectiveRebateRatePercent float64            `json:"effective_rebate_rate_percent"`
-	Invitees                   []AffiliateInvitee `json:"invitees"`
+	EffectiveRebateRatePercent             float64            `json:"effective_rebate_rate_percent"`
+	EffectiveSubscriptionRebateRatePercent float64            `json:"effective_subscription_rebate_rate_percent"`
+	Invitees                               []AffiliateInvitee `json:"invitees"`
 }
 
 type AffiliateRepository interface {
@@ -254,15 +255,16 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 		return nil, err
 	}
 	return &AffiliateDetail{
-		UserID:                     summary.UserID,
-		AffCode:                    summary.AffCode,
-		InviterID:                  summary.InviterID,
-		AffCount:                   summary.AffCount,
-		AffQuota:                   summary.AffQuota,
-		AffFrozenQuota:             summary.AffFrozenQuota,
-		AffHistoryQuota:            summary.AffHistoryQuota,
-		EffectiveRebateRatePercent: s.resolveRebateRatePercent(ctx, summary),
-		Invitees:                   invitees,
+		UserID:                                 summary.UserID,
+		AffCode:                                summary.AffCode,
+		InviterID:                              summary.InviterID,
+		AffCount:                               summary.AffCount,
+		AffQuota:                               summary.AffQuota,
+		AffFrozenQuota:                         summary.AffFrozenQuota,
+		AffHistoryQuota:                        summary.AffHistoryQuota,
+		EffectiveRebateRatePercent:             s.resolveRebateRatePercent(ctx, summary),
+		EffectiveSubscriptionRebateRatePercent: s.resolveSubscriptionRebateRatePercent(ctx, summary),
+		Invitees:                               invitees,
 	}, nil
 }
 
@@ -316,10 +318,18 @@ func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID
 }
 
 func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64, sourceOrderID *int64) (float64, error) {
+	return s.accrueInviteRebate(ctx, inviteeUserID, baseRechargeAmount, sourceOrderID, s.resolveRebateRatePercent)
+}
+
+func (s *AffiliateService) AccrueInviteSubscriptionRebateForOrder(ctx context.Context, inviteeUserID int64, subscriptionValue float64, sourceOrderID *int64) (float64, error) {
+	return s.accrueInviteRebate(ctx, inviteeUserID, subscriptionValue, sourceOrderID, s.resolveSubscriptionRebateRatePercent)
+}
+
+func (s *AffiliateService) accrueInviteRebate(ctx context.Context, inviteeUserID int64, baseAmount float64, sourceOrderID *int64, rateResolver func(context.Context, *AffiliateSummary) float64) (float64, error) {
 	if s == nil || s.repo == nil {
 		return 0, nil
 	}
-	if inviteeUserID <= 0 || baseRechargeAmount <= 0 || math.IsNaN(baseRechargeAmount) || math.IsInf(baseRechargeAmount, 0) {
+	if inviteeUserID <= 0 || baseAmount <= 0 || math.IsNaN(baseAmount) || math.IsInf(baseAmount, 0) {
 		return 0, nil
 	}
 	// 总开关关闭时，新充值不再产生返利
@@ -349,8 +359,8 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 		}
 	}
 
-	rebateRatePercent := s.resolveRebateRatePercent(ctx, inviterSummary)
-	rebate := roundTo(baseRechargeAmount*(rebateRatePercent/100), 8)
+	rebateRatePercent := rateResolver(ctx, inviterSummary)
+	rebate := roundTo(baseAmount*(rebateRatePercent/100), 8)
 	if rebate <= 0 {
 		return 0, nil
 	}
@@ -397,6 +407,14 @@ func (s *AffiliateService) resolveRebateRatePercent(ctx context.Context, inviter
 		return clampAffiliateRebateRate(v)
 	}
 	return s.globalRebateRatePercent(ctx)
+}
+
+func (s *AffiliateService) resolveSubscriptionRebateRatePercent(ctx context.Context, inviter *AffiliateSummary) float64 {
+	multiplier := AffiliateSubscriptionRebateMultiplierDefault
+	if s != nil && s.settingService != nil {
+		multiplier = s.settingService.GetAffiliateSubscriptionRebateMultiplierPercent(ctx)
+	}
+	return roundTo(s.resolveRebateRatePercent(ctx, inviter)*(multiplier/100), 8)
 }
 
 // globalRebateRatePercent reads the system-wide rebate rate via SettingService,
