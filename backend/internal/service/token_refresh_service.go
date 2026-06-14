@@ -12,12 +12,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
-const (
-	// tokenRefreshTempUnschedDuration token 刷新重试耗尽后临时不可调度的持续时间
-	tokenRefreshTempUnschedDuration = 10 * time.Minute
-
-	tokenRefreshRetryExhaustedReasonPrefix = "token refresh retry exhausted:"
-)
+// tokenRefreshTempUnschedDuration token 刷新重试耗尽后临时不可调度的持续时间
+const tokenRefreshTempUnschedDuration = 10 * time.Minute
 
 // TokenRefreshService OAuth token自动刷新服务
 // 定期检查并刷新即将过期的token
@@ -342,7 +338,7 @@ REDACTED
 
 	// 设置临时不可调度 10 分钟（不标记 error，保持 status=active 让下个刷新周期能继续尝试）
 	until := time.Now().Add(tokenRefreshTempUnschedDuration)
-	reason := fmt.Sprintf("%s %v", tokenRefreshRetryExhaustedReasonPrefix, lastErr)
+	reason := fmt.Sprintf("token refresh retry exhausted: %v", lastErr)
 	s.notifyAccountSchedulingBlocked(account, until, "token_refresh_retry_exhausted")
 	if setErr := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); setErr != nil {
 		slog.Warn("token_refresh.set_temp_unschedulable_failed",

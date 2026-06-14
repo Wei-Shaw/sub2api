@@ -34,7 +34,7 @@ func (r *tokenRefreshCandidateRepo) ListOAuthRefreshCandidates(context.Context) 
 		refreshToken, _ := account.Credentials["refresh_token"].(string)
 		inRetryCooldown := account.TempUnschedulableUntil != nil &&
 			account.TempUnschedulableUntil.After(now) &&
-			strings.HasPrefix(account.TempUnschedulableReason, tokenRefreshRetryExhaustedReasonPrefix)
+			strings.HasPrefix(account.TempUnschedulableReason, "token refresh retry exhausted:")
 		if account.Status != StatusActive ||
 			account.Type != AccountTypeOAuth ||
 			!isOAuthRefreshPlatform(account.Platform) ||
@@ -119,7 +119,7 @@ func TestTokenRefreshService_ProcessRefreshUsesOAuthRefreshCandidates(t *testing
 				Status:                  StatusActive,
 				Credentials:             map[string]any{"refresh_token": "refresh-token"REDACTED,
 				TempUnschedulableUntil:  &future,
-				TempUnschedulableReason: tokenRefreshRetryExhaustedReasonPrefix + " network timeout",
+				TempUnschedulableReason: "token refresh retry exhausted: network timeout",
 		REDACTED,
 			{
 				ID:          5,
@@ -183,7 +183,7 @@ REDACTED
 		REDACTED else {
 				require.Zero(t, repo.setErrorCalls)
 				require.Equal(t, 1, repo.setTempUnschedCalls)
-				require.True(t, strings.HasPrefix(repo.lastTempUnschedReason, tokenRefreshRetryExhaustedReasonPrefix))
+				require.True(t, strings.HasPrefix(repo.lastTempUnschedReason, "token refresh retry exhausted:"))
 		REDACTED
 	REDACTED)
 REDACTED
