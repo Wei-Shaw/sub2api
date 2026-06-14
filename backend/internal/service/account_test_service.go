@@ -1552,12 +1552,70 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 
 	return &ScheduledTestResult{
 		Status:       status,
+		ModelID:      modelID,
 		ResponseText: responseText,
 		ErrorMessage: errMsg,
 		LatencyMs:    finishedAt.Sub(startedAt).Milliseconds(),
 		StartedAt:    startedAt,
 		FinishedAt:   finishedAt,
 	}, nil
+}
+
+// captureResponseWriter wraps a gin.ResponseWriter, teeing all written bytes
+// into a buffer while still streaming to the original client. This lets the SSE
+// test path capture its own output and persist a result with a SINGLE upstream
+// call (no second RunTestBackground).
+type captureResponseWriter struct {
+	gin.ResponseWriter
+	buf *bytes.Buffer
+}
+
+func (w *captureResponseWriter) Write(b []byte) (int, error) {
+	w.buf.Write(b)
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *captureResponseWriter) WriteString(s string) (int, error) {
+	w.buf.WriteString(s)
+	return io.WriteString(w.ResponseWriter, s)
+}
+
+// TestAccountConnectionAndCapture runs the SSE test exactly once, streaming to
+// the client as usual, while capturing the SSE output to produce a
+// *ScheduledTestResult for persistence. The returned result is never nil on a
+// nil error; on a non-nil error the result is still returned (status=failed)
+// when output was captured.
+func (s *AccountTestService) TestAccountConnectionAndCapture(c *gin.Context, accountID int64, modelID, prompt, mode string) (*ScheduledTestResult, error) {
+	startedAt := time.Now()
+
+	buf := &bytes.Buffer{}
+	original := c.Writer
+	c.Writer = &captureResponseWriter{ResponseWriter: original, buf: buf}
+	defer func() { c.Writer = original }()
+
+	testErr := s.TestAccountConnection(c, accountID, modelID, prompt, mode)
+
+	finishedAt := time.Now()
+	responseText, errMsg := parseTestSSEOutput(buf.String())
+
+	status := "success"
+	if testErr != nil || errMsg != "" {
+		status = "failed"
+		if errMsg == "" && testErr != nil {
+			errMsg = testErr.Error()
+		}
+	}
+
+	result := &ScheduledTestResult{
+		Status:       status,
+		ModelID:      modelID,
+		ResponseText: responseText,
+		ErrorMessage: errMsg,
+		LatencyMs:    finishedAt.Sub(startedAt).Milliseconds(),
+		StartedAt:    startedAt,
+		FinishedAt:   finishedAt,
+	}
+	return result, testErr
 }
 
 // parseTestSSEOutput extracts response text and error message from captured SSE output.

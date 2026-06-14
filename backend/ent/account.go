@@ -75,6 +75,12 @@ type Account struct {
 	SessionWindowEnd *time.Time `json:"session_window_end,omitempty"`
 	// SessionWindowStatus holds the value of the "session_window_status" field.
 	SessionWindowStatus *string `json:"session_window_status,omitempty"`
+	// LastHealthResultStatus holds the value of the "last_health_result_status" field.
+	LastHealthResultStatus *string `json:"last_health_result_status,omitempty"`
+	// LastHealthCheckedAt holds the value of the "last_health_checked_at" field.
+	LastHealthCheckedAt *time.Time `json:"last_health_checked_at,omitempty"`
+	// LastHealthLatencyMs holds the value of the "last_health_latency_ms" field.
+	LastHealthLatencyMs *int64 `json:"last_health_latency_ms,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the AccountQuery when eager-loading is set.
 	Edges        AccountEdges `json:"edges"`
@@ -145,11 +151,11 @@ func (*Account) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case account.FieldRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case account.FieldID, account.FieldProxyID, account.FieldConcurrency, account.FieldLoadFactor, account.FieldPriority:
+		case account.FieldID, account.FieldProxyID, account.FieldConcurrency, account.FieldLoadFactor, account.FieldPriority, account.FieldLastHealthLatencyMs:
 			values[i] = new(sql.NullInt64)
-		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus:
+		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus, account.FieldLastHealthResultStatus:
 			values[i] = new(sql.NullString)
-		case account.FieldCreatedAt, account.FieldUpdatedAt, account.FieldDeletedAt, account.FieldLastUsedAt, account.FieldExpiresAt, account.FieldRateLimitedAt, account.FieldRateLimitResetAt, account.FieldOverloadUntil, account.FieldTempUnschedulableUntil, account.FieldSessionWindowStart, account.FieldSessionWindowEnd:
+		case account.FieldCreatedAt, account.FieldUpdatedAt, account.FieldDeletedAt, account.FieldLastUsedAt, account.FieldExpiresAt, account.FieldRateLimitedAt, account.FieldRateLimitResetAt, account.FieldOverloadUntil, account.FieldTempUnschedulableUntil, account.FieldSessionWindowStart, account.FieldSessionWindowEnd, account.FieldLastHealthCheckedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -359,6 +365,27 @@ func (_m *Account) assignValues(columns []string, values []any) error {
 				_m.SessionWindowStatus = new(string)
 				*_m.SessionWindowStatus = value.String
 			}
+		case account.FieldLastHealthResultStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_health_result_status", values[i])
+			} else if value.Valid {
+				_m.LastHealthResultStatus = new(string)
+				*_m.LastHealthResultStatus = value.String
+			}
+		case account.FieldLastHealthCheckedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field last_health_checked_at", values[i])
+			} else if value.Valid {
+				_m.LastHealthCheckedAt = new(time.Time)
+				*_m.LastHealthCheckedAt = value.Time
+			}
+		case account.FieldLastHealthLatencyMs:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field last_health_latency_ms", values[i])
+			} else if value.Valid {
+				_m.LastHealthLatencyMs = new(int64)
+				*_m.LastHealthLatencyMs = value.Int64
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -527,6 +554,21 @@ func (_m *Account) String() string {
 	if v := _m.SessionWindowStatus; v != nil {
 		builder.WriteString("session_window_status=")
 		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.LastHealthResultStatus; v != nil {
+		builder.WriteString("last_health_result_status=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.LastHealthCheckedAt; v != nil {
+		builder.WriteString("last_health_checked_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.LastHealthLatencyMs; v != nil {
+		builder.WriteString("last_health_latency_ms=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteByte(')')
 	return builder.String()

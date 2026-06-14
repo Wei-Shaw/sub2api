@@ -2763,6 +2763,45 @@ export default {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
+      health: {
+        summaryTitle: 'Health Overview',
+        healthRate: 'health rate',
+        total: '{n} total',
+        noData: 'No data',
+        loadFailed: 'Failed to load health data',
+        allHealth: 'All health',
+        model: 'Model',
+        lastResult: 'Last result',
+        latency: 'Latency',
+        checkedAt: 'Checked at',
+        resultSuccess: 'Success',
+        resultFailed: 'Failed',
+        dimension: {
+          platform: 'By platform',
+          group: 'By group'
+        },
+        status: {
+          healthy: 'Healthy',
+          error: 'Error',
+          limited: 'Limited',
+          paused: 'Paused',
+          untested: 'Untested'
+        },
+        batchModal: {
+          action: 'Batch Scheduled Test',
+          title: 'Batch Configure Scheduled Tests',
+          subtitle: 'A scheduled health-check plan will be created for the {count} selected account(s).',
+          submit: 'Create Plans',
+          conflictStrategy: 'On conflict',
+          conflictOverwrite: 'Overwrite existing',
+          conflictSkip: 'Skip existing',
+          conflictAdd: 'Add new plan',
+          noModels: 'Unable to load available models, please check account status.',
+          resultSummary: 'Success {success}, failed {failed}, skipped {skipped}',
+          success: 'Batch created: {success} succeeded, {skipped} skipped',
+          partial: 'Partially done: {success} succeeded, {failed} failed'
+        }
+      },
       autoRefresh: 'Auto Refresh',
       enableAutoRefresh: 'Enable auto refresh',
       refreshInterval5s: '5 seconds',

@@ -15,6 +15,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -457,10 +459,10 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *accountRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Account, *pagination.PaginationResult, error) {
-	return r.ListWithFilters(ctx, params, "", "", "", "", 0, "")
+	return r.ListWithFilters(ctx, params, "", "", "", "", 0, "", "")
 }
 
-func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
+func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, healthStatus string) ([]service.Account, *pagination.PaginationResult, error) {
 	q := r.client.Account.Query()
 
 	if platform != "" {
@@ -553,6 +555,13 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}))
 	}
 
+	// 健康分类筛选(需求 §7.3)。与 service.EvaluateHealth 一致的 SQL 谓词。
+	if healthStatus != "" {
+		if pred := healthFilterPredicate(healthStatus, int64(service.HealthResultTTL.Seconds())); pred != nil {
+			q = q.Where(dbpredicate.Account(pred))
+		}
+	}
+
 	total, err := q.Count(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -610,6 +619,31 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 	case "created_at":
 		field = dbaccount.FieldCreatedAt
 		defaultOrder = false
+	case "last_health_checked_at":
+		field = dbaccount.FieldLastHealthCheckedAt
+		defaultOrder = false
+	case "last_health_latency_ms":
+		field = dbaccount.FieldLastHealthLatencyMs
+		defaultOrder = false
+	}
+
+	// 健康快照字段可空("未检测"账号为 NULL)。无论升序降序,NULL 统一排末尾,
+	// 避免未检测账号抢占有效检测账号的位置(需求 §7.3 排序稳定且符合字段含义)。
+	if field == dbaccount.FieldLastHealthCheckedAt || field == dbaccount.FieldLastHealthLatencyMs {
+		desc := sortOrder == pagination.SortOrderDesc
+		col := field
+		return []func(*entsql.Selector){
+			func(s *entsql.Selector) {
+				dir := "ASC"
+				if desc {
+					dir = "DESC"
+				}
+				s.OrderExprFunc(func(b *entsql.Builder) {
+					b.Ident(s.C(col)).WriteString(" " + dir + " NULLS LAST")
+				})
+			},
+			dbent.Asc(dbaccount.FieldID),
+		}
 	}
 
 	if sortOrder == pagination.SortOrderDesc {
@@ -619,6 +653,197 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 		return []func(*entsql.Selector){dbent.Asc(dbaccount.FieldName), dbent.Asc(dbaccount.FieldID)}
 	}
 	return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(dbaccount.FieldID)}
+}
+
+// healthFilterPredicate 返回与 service.EvaluateHealth 严格一致的 SQL 谓词,
+// 用于按健康分类筛选账号列表。返回 nil 表示该筛选值无需附加条件(或不识别)。
+//
+// 重要(需求 §15.5):此处 SQL 优先级必须与 service.EvaluateHealth 完全一致:
+//  1. disabled / schedulable=false        → paused
+//  2. status=error                        → error
+//  3. 限流/过载/临时不可调度(任一未到期)  → limited
+//  4. 最近检测 failed 且未过期             → error
+//  5. 最近检测 success 且未过期            → healthy
+//  6. 否则                                → untested
+//
+// 任一侧改动需同步另一侧。ttlSeconds 为检测结果时效门槛(秒),为可信内部常量,
+// 直接以整数字面量嵌入 SQL(避免 ExprP 占位符与 Ent 位置参数编号冲突)。
+func healthFilterPredicate(health string, ttlSeconds int64) func(*entsql.Selector) {
+	const (
+		isPaused  = `(status = 'disabled' OR schedulable = false)`
+		isError   = `(status = 'error')`
+		isLimited = `(` +
+			`(rate_limit_reset_at IS NOT NULL AND rate_limit_reset_at > NOW()) OR ` +
+			`(overload_until IS NOT NULL AND overload_until > NOW()) OR ` +
+			`(temp_unschedulable_until IS NOT NULL AND temp_unschedulable_until > NOW())` +
+			`)`
+	)
+	// 检测结果未过期门槛:last_health_checked_at >= NOW() - (ttl * INTERVAL '1 second')
+	fresh := fmt.Sprintf(
+		`(last_health_checked_at IS NOT NULL AND last_health_checked_at >= NOW() - (%d * INTERVAL '1 second'))`,
+		ttlSeconds,
+	)
+	freshFailed := `(` + fresh + ` AND last_health_result_status = 'failed')`
+	freshSuccess := `(` + fresh + ` AND last_health_result_status = 'success')`
+
+	var expr string
+	switch health {
+	case service.HealthPaused:
+		expr = isPaused
+	case service.HealthError:
+		expr = `NOT ` + isPaused + ` AND (` + isError + ` OR (NOT ` + isLimited + ` AND ` + freshFailed + `))`
+	case service.HealthLimited:
+		expr = `NOT ` + isPaused + ` AND NOT ` + isError + ` AND ` + isLimited
+	case service.HealthHealthy:
+		expr = `NOT ` + isPaused + ` AND NOT ` + isError + ` AND NOT ` + isLimited + ` AND ` + freshSuccess
+	case service.HealthUntested:
+		expr = `NOT ` + isPaused + ` AND NOT ` + isError + ` AND NOT ` + isLimited +
+			` AND NOT (` + freshFailed + ` OR ` + freshSuccess + `)`
+	default:
+		return nil
+	}
+	return func(s *entsql.Selector) {
+		s.Where(entsql.ExprP(expr))
+	}
+}
+
+// healthClassifyCaseSQL 返回与 service.EvaluateHealth 严格一致的 SQL CASE 表达式,
+// 将账号行分类为 healthy/error/limited/paused/untested。
+// tableAlias 为 accounts 表别名(如 "a");ttlSeconds 为检测结果时效门槛(秒,内部常量字面量嵌入)。
+//
+// 重要(需求 §15.5):优先级必须与 EvaluateHealth 及 healthFilterPredicate 完全一致。
+func healthClassifyCaseSQL(tableAlias string, ttlSeconds int64) string {
+	p := tableAlias + "."
+	fresh := fmt.Sprintf(
+		`(%[1]slast_health_checked_at IS NOT NULL AND %[1]slast_health_checked_at >= NOW() - (%[2]d * INTERVAL '1 second'))`,
+		p, ttlSeconds,
+	)
+	return `CASE
+		WHEN (` + p + `status = 'disabled' OR ` + p + `schedulable = false) THEN 'paused'
+		WHEN ` + p + `status = 'error' THEN 'error'
+		WHEN ((` + p + `rate_limit_reset_at IS NOT NULL AND ` + p + `rate_limit_reset_at > NOW())
+			OR (` + p + `overload_until IS NOT NULL AND ` + p + `overload_until > NOW())
+			OR (` + p + `temp_unschedulable_until IS NOT NULL AND ` + p + `temp_unschedulable_until > NOW())) THEN 'limited'
+		WHEN ` + fresh + ` AND ` + p + `last_health_result_status = 'failed' THEN 'error'
+		WHEN ` + fresh + ` AND ` + p + `last_health_result_status = 'success' THEN 'healthy'
+		ELSE 'untested'
+	END`
+}
+
+// GetHealthSummary 返回账号健康聚合(总体 + 按平台 + 按分组)。
+// 分类口径与 service.EvaluateHealth 一致(见 healthClassifyCaseSQL)。
+func (r *accountRepository) GetHealthSummary(ctx context.Context) (*service.AccountHealthSummary, error) {
+	ttl := int64(service.HealthResultTTL.Seconds())
+	caseExpr := healthClassifyCaseSQL("a", ttl)
+
+	out := &service.AccountHealthSummary{}
+
+	// 总体 + 按平台:一次扫描,按 (platform) 分组聚合各分类计数。
+	platformRows, err := r.sql.QueryContext(ctx, `
+		SELECT a.platform, `+caseExpr+` AS health, COUNT(*) AS cnt
+		FROM accounts a
+		GROUP BY a.platform, health
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = platformRows.Close() }()
+
+	platformMap := make(map[string]*service.HealthCounts)
+	for platformRows.Next() {
+		var platform, health string
+		var cnt int
+		if err := platformRows.Scan(&platform, &health, &cnt); err != nil {
+			return nil, err
+		}
+		if platformMap[platform] == nil {
+			platformMap[platform] = &service.HealthCounts{}
+		}
+		addHealthCount(platformMap[platform], health, cnt)
+		addHealthCount(&out.Overall, health, cnt)
+	}
+	if err := platformRows.Err(); err != nil {
+		return nil, err
+	}
+
+	out.ByPlatform = make([]service.HealthSummaryBucket, 0, len(platformMap))
+	for platform, counts := range platformMap {
+		counts.ComputeHealthRate()
+		out.ByPlatform = append(out.ByPlatform, service.HealthSummaryBucket{
+			Key:    platform,
+			Label:  platform,
+			Counts: *counts,
+		})
+	}
+	sort.Slice(out.ByPlatform, func(i, j int) bool { return out.ByPlatform[i].Key < out.ByPlatform[j].Key })
+
+	// 按分组:join account_groups + groups。一个账号可属多个分组,会在各自分组分别计数。
+	groupRows, err := r.sql.QueryContext(ctx, `
+		SELECT g.id, g.name, `+caseExpr+` AS health, COUNT(*) AS cnt
+		FROM accounts a
+		JOIN account_groups ag ON ag.account_id = a.id
+		JOIN groups g ON g.id = ag.group_id
+		GROUP BY g.id, g.name, health
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = groupRows.Close() }()
+
+	type groupAgg struct {
+		name   string
+		counts service.HealthCounts
+	}
+	groupMap := make(map[int64]*groupAgg)
+	groupOrder := make([]int64, 0)
+	for groupRows.Next() {
+		var groupID int64
+		var name, health string
+		var cnt int
+		if err := groupRows.Scan(&groupID, &name, &health, &cnt); err != nil {
+			return nil, err
+		}
+		if groupMap[groupID] == nil {
+			groupMap[groupID] = &groupAgg{name: name}
+			groupOrder = append(groupOrder, groupID)
+		}
+		addHealthCount(&groupMap[groupID].counts, health, cnt)
+	}
+	if err := groupRows.Err(); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(groupOrder, func(i, j int) bool { return groupOrder[i] < groupOrder[j] })
+	out.ByGroup = make([]service.HealthSummaryBucket, 0, len(groupOrder))
+	for _, gid := range groupOrder {
+		agg := groupMap[gid]
+		agg.counts.ComputeHealthRate()
+		out.ByGroup = append(out.ByGroup, service.HealthSummaryBucket{
+			Key:    strconv.FormatInt(gid, 10),
+			Label:  agg.name,
+			Counts: agg.counts,
+		})
+	}
+
+	out.Overall.ComputeHealthRate()
+	return out, nil
+}
+
+// addHealthCount 将某分类计数累加到 HealthCounts(同时累加 Total)。
+func addHealthCount(c *service.HealthCounts, health string, cnt int) {
+	c.Total += cnt
+	switch health {
+	case service.HealthHealthy:
+		c.Healthy += cnt
+	case service.HealthError:
+		c.Error += cnt
+	case service.HealthLimited:
+		c.Limited += cnt
+	case service.HealthPaused:
+		c.Paused += cnt
+	case service.HealthUntested:
+		c.Untested += cnt
+	}
 }
 
 func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -674,6 +899,19 @@ func (r *accountRepository) UpdateLastUsed(ctx context.Context, id int64) error 
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue last used failed: account=%d err=%v", id, err)
 	}
 	return nil
+}
+
+// UpdateHealthSnapshot 写入账号最近一次健康检测快照(供列表健康筛选/排序使用)。
+// status 应为检测结果原始状态("success"/"failed"),不做健康判定;
+// 健康分类由 service.EvaluateHealth 在读取时结合运行态计算。
+func (r *accountRepository) UpdateHealthSnapshot(ctx context.Context, id int64, status string, latencyMs int64, checkedAt time.Time) error {
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetLastHealthResultStatus(status).
+		SetLastHealthLatencyMs(latencyMs).
+		SetLastHealthCheckedAt(checkedAt).
+		Save(ctx)
+	return err
 }
 
 func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
@@ -1750,6 +1988,9 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		SessionWindowStart:      m.SessionWindowStart,
 		SessionWindowEnd:        m.SessionWindowEnd,
 		SessionWindowStatus:     derefString(m.SessionWindowStatus),
+		LastHealthResultStatus:  derefString(m.LastHealthResultStatus),
+		LastHealthCheckedAt:     m.LastHealthCheckedAt,
+		LastHealthLatencyMs:     m.LastHealthLatencyMs,
 	}
 }
 

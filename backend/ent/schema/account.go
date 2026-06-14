@@ -193,6 +193,28 @@ func (Account) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			MaxLen(20),
+
+		// ========== 账号健康监控快照字段 ==========
+		// 这些字段在 migrations/136_health_monitoring.sql 中添加。
+		// 由于账号列表走 Ent ORM，而检测结果表 scheduled_test_results 是裸 SQL 表，
+		// 两者无法跨边界 join，故把"最近一次检测结果"冗余到 accounts 表，
+		// 使健康筛选/排序能在 SQL 查询层正确分页。
+		// 写入点：检测落库后同步更新（SaveManualResult / runner SaveResult）。
+
+		// last_health_result_status: 最近一次健康检测结果(success/failed)
+		field.String("last_health_result_status").
+			Optional().
+			Nillable().
+			MaxLen(20),
+		// last_health_checked_at: 最近一次健康检测时间
+		field.Time("last_health_checked_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		// last_health_latency_ms: 最近一次健康检测耗时(毫秒),用于列表按耗时排序
+		field.Int64("last_health_latency_ms").
+			Optional().
+			Nillable(),
 	}
 }
 
@@ -228,6 +250,8 @@ func (Account) Indexes() []ent.Index {
 		index.Fields("rate_limited_at"),     // 筛选速率限制账户
 		index.Fields("rate_limit_reset_at"), // 筛选速率限制解除时间
 		index.Fields("overload_until"),      // 筛选过载账户
+		index.Fields("last_health_result_status"), // 健康监控:按检测结果筛选
+		index.Fields("last_health_checked_at"),    // 健康监控:按检测时间筛选/排序
 		// 调度热路径复合索引（线上由 SQL 迁移创建部分索引，schema 仅用于模型可读性对齐）
 		index.Fields("platform", "priority"),
 		index.Fields("priority", "status"),

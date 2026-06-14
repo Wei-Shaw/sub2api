@@ -53,6 +53,7 @@ type AccountHandler struct {
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
 	accountTestService      *service.AccountTestService
+	scheduledTestService    *service.ScheduledTestService
 	concurrencyService      *service.ConcurrencyService
 	crsSyncService          *service.CRSSyncService
 	sessionLimitCache       service.SessionLimitCache
@@ -70,6 +71,7 @@ func NewAccountHandler(
 	rateLimitService *service.RateLimitService,
 	accountUsageService *service.AccountUsageService,
 	accountTestService *service.AccountTestService,
+	scheduledTestService *service.ScheduledTestService,
 	concurrencyService *service.ConcurrencyService,
 	crsSyncService *service.CRSSyncService,
 	sessionLimitCache service.SessionLimitCache,
@@ -85,6 +87,7 @@ func NewAccountHandler(
 		rateLimitService:        rateLimitService,
 		accountUsageService:     accountUsageService,
 		accountTestService:      accountTestService,
+		scheduledTestService:    scheduledTestService,
 		concurrencyService:      concurrencyService,
 		crsSyncService:          crsSyncService,
 		sessionLimitCache:       sessionLimitCache,
@@ -174,9 +177,36 @@ type AccountWithConcurrency struct {
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
 	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
+
+	// 健康监控字段(需求 §7.1/§7.3/§7.5)。Health 为结合运行态与最近检测结果计算的分类;
+	// LastHealth* 为最近一次检测快照,供列表展示与悬停提示使用。
+	Health           string   `json:"health"`                       // healthy/error/limited/paused/untested
+	LastHealthStatus string   `json:"last_health_status,omitempty"` // 最近一次检测原始状态 success/failed
+	LastHealthModel  string   `json:"last_health_model,omitempty"`  // 最近一次检测模型
+	LastHealthAt     *int64   `json:"last_health_at,omitempty"`     // 最近一次检测完成时间(Unix 秒)
+	LastHealthLatencyMs *int64 `json:"last_health_latency_ms,omitempty"` // 最近一次检测耗时
+	LastHealthError  string   `json:"last_health_error,omitempty"`  // 最近一次检测失败原因
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
+
+// applyHealthFields 用账号运行态与最近一次检测结果填充健康相关响应字段。
+// latest 可为 nil(无检测记录);now 显式传入以与 service.EvaluateHealth 口径一致。
+func applyHealthFields(item *AccountWithConcurrency, acc *service.Account, latest *service.ScheduledTestResult, now time.Time) {
+	item.Health = service.EvaluateHealth(acc, latest, now)
+	if latest == nil {
+		return
+	}
+	item.LastHealthStatus = latest.Status
+	item.LastHealthModel = latest.ModelID
+	if !latest.FinishedAt.IsZero() {
+		ts := latest.FinishedAt.Unix()
+		item.LastHealthAt = &ts
+	}
+	latency := latest.LatencyMs
+	item.LastHealthLatencyMs = &latency
+	item.LastHealthError = latest.ErrorMessage
+}
 
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
@@ -185,6 +215,16 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	}
 	if account == nil {
 		return item
+	}
+
+	// 健康字段:取该账号最近一次检测结果,结合运行态计算分类。
+	if h.scheduledTestService != nil {
+		now := time.Now()
+		if latestMap, err := h.scheduledTestService.GetLatestResultsByAccounts(ctx, []int64{account.ID}); err == nil {
+			applyHealthFields(&item, account, latestMap[account.ID], now)
+		} else {
+			applyHealthFields(&item, account, nil, now)
+		}
 	}
 
 	if h.concurrencyService != nil {
@@ -222,6 +262,18 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	return item
 }
 
+// HealthSummary handles account health aggregation.
+// GET /api/v1/admin/accounts/health-summary
+// 返回总体 + 按平台 + 按分组的健康分布(需求 §7.2)。
+func (h *AccountHandler) HealthSummary(c *gin.Context) {
+	summary, err := h.adminService.GetAccountHealthSummary(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, summary)
+}
+
 // List handles listing all accounts with pagination
 // GET /api/v1/admin/accounts
 func (h *AccountHandler) List(c *gin.Context) {
@@ -231,6 +283,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("search")
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
+	healthStatus := strings.TrimSpace(c.Query("health"))
 	sortBy := c.DefaultQuery("sort_by", "name")
 	sortOrder := c.DefaultQuery("sort_order", "asc")
 	// 标准化和验证 search 参数
@@ -258,7 +311,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, healthStatus)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -274,6 +327,14 @@ func (h *AccountHandler) List(c *gin.Context) {
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
+
+	// 批量获取每个账号最近一次检测结果(DISTINCT ON,避免 N+1),用于健康分类与悬停展示。
+	var latestResults map[int64]*service.ScheduledTestResult
+	if h.scheduledTestService != nil {
+		if lr, lrErr := h.scheduledTestService.GetLatestResultsByAccounts(c.Request.Context(), accountIDs); lrErr == nil {
+			latestResults = lr
+		}
+	}
 
 	// 始终获取并发数（Redis ZCARD，极低开销）
 	if h.concurrencyService != nil {
@@ -349,12 +410,20 @@ func (h *AccountHandler) List(c *gin.Context) {
 
 	// Build response with concurrency info
 	result := make([]AccountWithConcurrency, len(accounts))
+	now := time.Now()
 	for i := range accounts {
 		acc := &accounts[i]
 		item := AccountWithConcurrency{
 			Account:            dto.AccountFromService(acc),
 			CurrentConcurrency: concurrencyCounts[acc.ID],
 		}
+
+		// 健康字段(需求 §7.3/§7.5)
+		var latest *service.ScheduledTestResult
+		if latestResults != nil {
+			latest = latestResults[acc.ID]
+		}
+		applyHealthFields(&item, acc, latest, now)
 
 		// 添加窗口费用（仅当启用时）
 		if windowCosts != nil {
@@ -730,8 +799,20 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	// Allow empty body, model_id is optional
 	_ = c.ShouldBindJSON(&req)
 
-	// Use AccountTestService to test the account with SSE streaming
-	if err := h.accountTestService.TestAccountConnection(c, accountID, req.ModelID, req.Prompt, req.Mode); err != nil {
+	// Use AccountTestService to test the account with SSE streaming.
+	// 用 capture 变体单次执行:既流式回传给前端,又捕获结果用于持久化(source=manual),
+	// 使手动测试也能刷新账号健康快照,无需二次上游调用。
+	result, testErr := h.accountTestService.TestAccountConnectionAndCapture(c, accountID, req.ModelID, req.Prompt, req.Mode)
+
+	// 持久化手动测试结果(best-effort:落库失败不影响已流式返回的响应)。
+	if result != nil && h.scheduledTestService != nil {
+		// 用后台 context:请求 ctx 在 SSE 结束后可能很快取消,落库应独立完成。
+		if err := h.scheduledTestService.SaveManualResult(context.Background(), accountID, result); err != nil {
+			_ = c.Error(err)
+		}
+	}
+
+	if testErr != nil {
 		// Error already sent via SSE, just log
 		return
 	}
@@ -2107,7 +2188,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc", "")
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return

@@ -79,8 +79,12 @@ func (s *accountRepoStub) List(ctx context.Context, params pagination.Pagination
 	panic("unexpected List call")
 }
 
-func (s *accountRepoStub) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
+func (s *accountRepoStub) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, healthStatus string) ([]Account, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
+}
+
+func (s *accountRepoStub) GetHealthSummary(ctx context.Context) (*AccountHealthSummary, error) {
+	panic("unexpected GetHealthSummary call")
 }
 
 func (s *accountRepoStub) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
@@ -97,6 +101,10 @@ func (s *accountRepoStub) ListByPlatform(ctx context.Context, platform string) (
 
 func (s *accountRepoStub) UpdateLastUsed(ctx context.Context, id int64) error {
 	panic("unexpected UpdateLastUsed call")
+}
+
+func (s *accountRepoStub) UpdateHealthSnapshot(ctx context.Context, id int64, status string, latencyMs int64, checkedAt time.Time) error {
+	panic("unexpected UpdateHealthSnapshot call")
 }
 
 func (s *accountRepoStub) BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {

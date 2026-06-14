@@ -2839,6 +2839,45 @@ export default {
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',
+      health: {
+        summaryTitle: '健康概览',
+        healthRate: '健康率',
+        total: '共 {n}',
+        noData: '暂无数据',
+        loadFailed: '加载健康数据失败',
+        allHealth: '全部健康状态',
+        model: '模型',
+        lastResult: '最近结果',
+        latency: '耗时',
+        checkedAt: '检测时间',
+        resultSuccess: '成功',
+        resultFailed: '失败',
+        dimension: {
+          platform: '按平台',
+          group: '按分组'
+        },
+        status: {
+          healthy: '健康',
+          error: '异常',
+          limited: '受限',
+          paused: '已暂停',
+          untested: '未检测'
+        },
+        batchModal: {
+          action: '批量定时检测',
+          title: '批量配置定时检测',
+          subtitle: '将为选中的 {count} 个账号统一创建定时健康检测计划。',
+          submit: '创建计划',
+          conflictStrategy: '冲突处理',
+          conflictOverwrite: '覆盖已有计划',
+          conflictSkip: '跳过已有计划',
+          conflictAdd: '追加新计划',
+          noModels: '无法获取可用模型,请确认账号状态。',
+          resultSummary: '成功 {success},失败 {failed},跳过 {skipped}',
+          success: '批量创建成功:成功 {success},跳过 {skipped}',
+          partial: '部分完成:成功 {success},失败 {failed}'
+        }
+      },
       autoRefresh: '自动刷新',
       enableAutoRefresh: '启用自动刷新',
       refreshInterval5s: '5 秒',
