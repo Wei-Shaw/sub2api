@@ -161,6 +161,16 @@ watch(
   }
 )
 
+watch(
+  () => props.modelOptions,
+  (options) => {
+    if (props.show && !form.model_id && options.length > 0) {
+      form.model_id = String(options[0].value)
+    }
+  },
+  { deep: true }
+)
+
 const handleClose = () => {
   if (submitting.value) return
   emit('close')
