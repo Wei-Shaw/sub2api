@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -111,6 +113,22 @@ func TestGetModelPricing_OpenAICompactAliasUsesStaticFallback(t *testing.T) {
 	require.InDelta(t, 1.5e-5, got.OutputCostPerToken, 1e-12)
 }
 
+func TestDefaultPricingIncludesCodexAutoReview(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+
+	svc := &PricingService{}
+	pricingData, err := svc.parsePricingData(data)
+	require.NoError(t, err)
+	svc.pricingData = pricingData
+
+	got := svc.GetModelPricing("codex-auto-review")
+	require.NotNil(t, got)
+	require.InDelta(t, 5e-6, got.InputCostPerToken, 1e-12)
+	require.InDelta(t, 3e-5, got.OutputCostPerToken, 1e-12)
+	require.InDelta(t, 5e-7, got.CacheReadInputTokenCost, 1e-12)
+}
+
 func TestGetModelPricing_Gpt54MiniUsesDedicatedStaticFallbackWhenRemoteMissing(t *testing.T) {
 	svc := &PricingService{
 		pricingData: map[string]*LiteLLMModelPricing{
@@ -215,4 +233,61 @@ func TestParsePricingData_PreservesServiceTierPriorityFields(t *testing.T) {
 	require.InDelta(t, 0.00000025, pricing.CacheReadInputTokenCost, 1e-12)
 	require.InDelta(t, 0.0000005, pricing.CacheReadInputTokenCostPriority, 1e-12)
 	require.True(t, pricing.SupportsServiceTier)
+}
+
+// ---------------------------------------------------------------------------
+// ListModelNamesByProvider
+// ---------------------------------------------------------------------------
+
+func TestListModelNamesByProvider_ReturnsMatchingModels(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"claude-opus-4-5-20251101": {LiteLLMProvider: "anthropic", InputCostPerToken: 1.5e-5},
+			"claude-sonnet-4-5":        {LiteLLMProvider: "anthropic", InputCostPerToken: 3e-6},
+			"gpt-4o":                   {LiteLLMProvider: "openai", InputCostPerToken: 5e-6},
+			"gemini-2.5-pro":           {LiteLLMProvider: "google", InputCostPerToken: 1.25e-6},
+		},
+	}
+
+	got := svc.ListModelNamesByProvider("anthropic")
+	require.ElementsMatch(t, []string{"claude-opus-4-5-20251101", "claude-sonnet-4-5"}, got)
+	// Must be sorted
+	require.Equal(t, "claude-opus-4-5-20251101", got[0])
+	require.Equal(t, "claude-sonnet-4-5", got[1])
+}
+
+func TestListModelNamesByProvider_CaseInsensitive(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-4o": {LiteLLMProvider: "OpenAI", InputCostPerToken: 5e-6},
+		},
+	}
+
+	got := svc.ListModelNamesByProvider("openai")
+	require.Equal(t, []string{"gpt-4o"}, got)
+
+	got2 := svc.ListModelNamesByProvider("OPENAI")
+	require.Equal(t, []string{"gpt-4o"}, got2)
+}
+
+func TestListModelNamesByProvider_NoMatch(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-4o": {LiteLLMProvider: "openai", InputCostPerToken: 5e-6},
+		},
+	}
+
+	got := svc.ListModelNamesByProvider("anthropic")
+	require.NotNil(t, got)
+	require.Empty(t, got)
+}
+
+func TestListModelNamesByProvider_EmptyCatalog(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{},
+	}
+
+	got := svc.ListModelNamesByProvider("openai")
+	require.NotNil(t, got)
+	require.Empty(t, got)
 }

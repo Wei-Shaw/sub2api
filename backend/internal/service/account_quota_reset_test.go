@@ -399,6 +399,51 @@ func TestValidateQuotaResetConfig_BoundaryValues(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// NormalizeFixedQuotaWindows
+// ---------------------------------------------------------------------------
+
+func TestNormalizeFixedQuotaWindows_ClearsExpiredWeeklyWindow(t *testing.T) {
+	now := time.Now().UTC()
+	daysSinceMonday := (int(now.Weekday()) + 6) % 7
+	currentWeekStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -daysSinceMonday)
+	staleStart := currentWeekStart.Add(-24 * time.Hour)
+	extra := map[string]any{
+		"quota_weekly_limit":      500.0,
+		"quota_weekly_used":       76.0,
+		"quota_weekly_start":      staleStart.Format(time.RFC3339),
+		"quota_weekly_reset_mode": "fixed",
+		"quota_weekly_reset_day":  float64(1),
+		"quota_weekly_reset_hour": float64(0),
+		"quota_reset_timezone":    "UTC",
+	}
+
+	NormalizeFixedQuotaWindows(extra)
+
+	assert.Equal(t, 0.0, extra["quota_weekly_used"])
+	assert.Equal(t, currentWeekStart.Format(time.RFC3339), extra["quota_weekly_start"])
+}
+
+func TestNormalizeFixedQuotaWindows_KeepsActiveWeeklyWindow(t *testing.T) {
+	now := time.Now().UTC()
+	daysSinceMonday := (int(now.Weekday()) + 6) % 7
+	currentWeekStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -daysSinceMonday)
+	extra := map[string]any{
+		"quota_weekly_limit":      500.0,
+		"quota_weekly_used":       76.0,
+		"quota_weekly_start":      currentWeekStart.Format(time.RFC3339),
+		"quota_weekly_reset_mode": "fixed",
+		"quota_weekly_reset_day":  float64(1),
+		"quota_weekly_reset_hour": float64(0),
+		"quota_reset_timezone":    "UTC",
+	}
+
+	NormalizeFixedQuotaWindows(extra)
+
+	assert.Equal(t, 76.0, extra["quota_weekly_used"])
+	assert.Equal(t, currentWeekStart.Format(time.RFC3339), extra["quota_weekly_start"])
+}
+
+// ---------------------------------------------------------------------------
 // ComputeQuotaResetAt
 // ---------------------------------------------------------------------------
 

@@ -42,15 +42,19 @@ func backendModeAllowsAuthPath(path string) bool {
 		"/auth/oauth/oidc/callback",
 		"/auth/oauth/github/callback",
 		"/auth/oauth/google/callback",
+		"/auth/oauth/dingtalk/callback",
 		"/auth/oauth/linuxdo/complete-registration",
 		"/auth/oauth/wechat/complete-registration",
 		"/auth/oauth/oidc/complete-registration",
+		"/auth/oauth/dingtalk/complete-registration",
 		"/auth/oauth/linuxdo/create-account",
 		"/auth/oauth/wechat/create-account",
 		"/auth/oauth/oidc/create-account",
+		"/auth/oauth/dingtalk/create-account",
 		"/auth/oauth/linuxdo/bind-login",
 		"/auth/oauth/wechat/bind-login",
 		"/auth/oauth/oidc/bind-login",
+		"/auth/oauth/dingtalk/bind-login",
 	} {
 		if strings.HasSuffix(path, suffix) {
 			return true

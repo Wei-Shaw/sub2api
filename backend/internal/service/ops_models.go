@@ -37,14 +37,10 @@ type OpsErrorLog struct {
 	Platform   string `json:"platform"`
 	Model      string `json:"model"`
 
-	IsRetryable bool `json:"is_retryable"`
-	RetryCount  int  `json:"retry_count"`
-
 	Resolved           bool       `json:"resolved"`
 	ResolvedAt         *time.Time `json:"resolved_at"`
 	ResolvedByUserID   *int64     `json:"resolved_by_user_id"`
 	ResolvedByUserName string     `json:"resolved_by_user_name"`
-	ResolvedRetryID    *int64     `json:"resolved_retry_id"`
 	ResolvedStatusRaw  string     `json:"-"`
 
 	ClientRequestID string `json:"client_request_id"`
@@ -68,6 +64,10 @@ type OpsErrorLog struct {
 	RequestedModel   string `json:"requested_model"`
 	UpstreamModel    string `json:"upstream_model"`
 	RequestType      *int16 `json:"request_type"`
+
+	// 关联 api_key 名称（LEFT JOIN api_keys 取得；软删只覆盖 key 列，name 保留，故已删 key 仍有原名）。
+	APIKeyName    string `json:"api_key_name,omitempty"`
+	APIKeyDeleted bool   `json:"api_key_deleted,omitempty"`
 }
 
 type OpsErrorLogDetail struct {
@@ -89,14 +89,17 @@ type OpsErrorLogDetail struct {
 	ResponseLatencyMs  *int64 `json:"response_latency_ms"`
 	TimeToFirstTokenMs *int64 `json:"time_to_first_token_ms"`
 
-	// Retry context
-	RequestBody          string `json:"request_body"`
-	RequestBodyTruncated bool   `json:"request_body_truncated"`
-	RequestBodyBytes     *int   `json:"request_body_bytes"`
-	RequestHeaders       string `json:"request_headers,omitempty"`
-
 	// vNext metric semantics
 	IsBusinessLimited bool `json:"is_business_limited"`
+
+	// Deleted key owner info (populated when INVALID_API_KEY and key was previously deleted)
+	AttemptedKeyPrefix    string `json:"attempted_key_prefix,omitempty"`
+	DeletedKeyOwnerUserID *int64 `json:"deleted_key_owner_user_id,omitempty"`
+	DeletedKeyOwnerEmail  string `json:"deleted_key_owner_email,omitempty"`
+	DeletedKeyName        string `json:"deleted_key_name,omitempty"`
+
+	// Bound (non-deleted) key prefix, snapshotted at error time; mutually exclusive with AttemptedKeyPrefix.
+	APIKeyPrefix string `json:"api_key_prefix,omitempty"`
 }
 
 type OpsErrorLogFilter struct {
@@ -109,7 +112,7 @@ type OpsErrorLogFilter struct {
 
 	StatusCodes      []int
 	StatusCodesOther bool
-	Phase            string
+	Phase            string // Special: Phase=="upstream" bypasses status>=400 clause; do not set together with ErrorPhasesAny.
 	Owner            string
 	Source           string
 	Resolved         *bool
@@ -119,6 +122,32 @@ type OpsErrorLogFilter struct {
 	// Optional correlation keys for exact matching.
 	RequestID       string
 	ClientRequestID string
+
+	// User-scoped filters (used by the user-facing error requests endpoint and
+	// by admin drill-down from the usage page).
+	UserID   *int64
+	APIKeyID *int64
+
+	// MatchDeletedKeyOwner: 用户侧专用。UserID 设置且为 true 时,归属从 user_id=UserID
+	// 放宽为 (user_id=UserID OR deleted_key_owner_user_id=UserID),使原所有者能看到
+	// 自己「已删除 key 认证失败」的记录。admin 路径不设此开关 → 行为不变。
+	MatchDeletedKeyOwner bool
+
+	// Model matches against requested_model first, then model.
+	Model string
+	// ModelFuzzy 为 true 时 Model 走 ILIKE 模糊匹配（仅用户端启用）；false（默认）保持精确 =，管理端语义不变。
+	ModelFuzzy bool
+
+	// ExcludeCountTokens drops count_tokens probe errors (is_count_tokens=true).
+	ExcludeCountTokens bool
+
+	// ErrorPhasesAny / ErrorTypesAny add plain ANY() filters WITHOUT touching the
+	// special-cased single `Phase` field (only Phase=="upstream" bypasses the status>=400 clause).
+	// NOTE: these ANY filters do NOT bypass status>=400; records with error_phase='upstream'
+	// but status_code<400 (recovered upstream errors) remain excluded.
+	// Used to map user-facing coarse categories to backend conditions.
+	ErrorPhasesAny []string
+	ErrorTypesAny  []string
 
 	// View controls error categorization for list endpoints.
 	// - errors: show actionable errors (exclude business-limited / 429 / 529)
@@ -135,56 +164,4 @@ type OpsErrorLogList struct {
 	Total    int            `json:"total"`
 	Page     int            `json:"page"`
 	PageSize int            `json:"page_size"`
-}
-
-type OpsRetryAttempt struct {
-	ID        int64     `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-
-	RequestedByUserID int64  `json:"requested_by_user_id"`
-	SourceErrorID     int64  `json:"source_error_id"`
-	Mode              string `json:"mode"`
-	PinnedAccountID   *int64 `json:"pinned_account_id"`
-	PinnedAccountName string `json:"pinned_account_name"`
-
-	Status     string     `json:"status"`
-	StartedAt  *time.Time `json:"started_at"`
-	FinishedAt *time.Time `json:"finished_at"`
-	DurationMs *int64     `json:"duration_ms"`
-
-	// Persisted execution results (best-effort)
-	Success           *bool   `json:"success"`
-	HTTPStatusCode    *int    `json:"http_status_code"`
-	UpstreamRequestID *string `json:"upstream_request_id"`
-	UsedAccountID     *int64  `json:"used_account_id"`
-	UsedAccountName   string  `json:"used_account_name"`
-	ResponsePreview   *string `json:"response_preview"`
-	ResponseTruncated *bool   `json:"response_truncated"`
-
-	// Optional correlation
-	ResultRequestID *string `json:"result_request_id"`
-	ResultErrorID   *int64  `json:"result_error_id"`
-
-	ErrorMessage *string `json:"error_message"`
-}
-
-type OpsRetryResult struct {
-	AttemptID int64  `json:"attempt_id"`
-	Mode      string `json:"mode"`
-	Status    string `json:"status"`
-
-	PinnedAccountID *int64 `json:"pinned_account_id"`
-	UsedAccountID   *int64 `json:"used_account_id"`
-
-	HTTPStatusCode    int    `json:"http_status_code"`
-	UpstreamRequestID string `json:"upstream_request_id"`
-
-	ResponsePreview   string `json:"response_preview"`
-	ResponseTruncated bool   `json:"response_truncated"`
-
-	ErrorMessage string `json:"error_message"`
-
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at"`
-	DurationMs int64     `json:"duration_ms"`
 }

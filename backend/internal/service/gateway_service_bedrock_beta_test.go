@@ -126,17 +126,17 @@ func TestResolveBedrockBetaTokensForRequest_FiltersAfterBedrockTransform(t *test
 	}
 }
 
-// TestResolveBedrockBetaTokensForRequest_BlocksBodyAutoInjectedThinking 验证：
-// 管理员 block 了 interleaved-thinking，客户端不在 header 中带该 token，
-// 但请求体包含 thinking 字段 → 自动注入后应被 block。
-func TestResolveBedrockBetaTokensForRequest_BlocksBodyAutoInjectedThinking(t *testing.T) {
+// TestResolveBedrockBetaTokensForRequest_BlocksBodyAutoInjectedComputerUse 验证：
+// 管理员 block 了 computer-use，客户端不在 header 中带该 token，
+// 但请求体包含 computer_use 工具 → 自动注入后应被 block。
+func TestResolveBedrockBetaTokensForRequest_BlocksBodyAutoInjectedComputerUse(t *testing.T) {
 	settings := &BetaPolicySettings{
 		Rules: []BetaPolicyRule{
 			{
-				BetaToken:    "interleaved-thinking-2025-05-14",
+				BetaToken:    "computer-use-2025-11-24",
 				Action:       BetaPolicyActionBlock,
 				Scope:        BetaPolicyScopeAll,
-				ErrorMessage: "thinking is blocked",
+				ErrorMessage: "computer use is blocked",
 			},
 		},
 	}
@@ -155,18 +155,18 @@ func TestResolveBedrockBetaTokensForRequest_BlocksBodyAutoInjectedThinking(t *te
 	}
 	account := &Account{Platform: PlatformAnthropic, Type: AccountTypeBedrock}
 
-	// header 中不带 beta token，但 body 中有 thinking 字段
+	// header 中不带 beta token，但 body 中有 computer_use 工具
 	_, err = svc.resolveBedrockBetaTokensForRequest(
 		context.Background(),
 		account,
 		"", // 空 header
-		[]byte(`{"thinking":{"type":"enabled","budget_tokens":10000},"messages":[{"role":"user","content":"hi"}]}`),
+		[]byte(`{"tools":[{"type":"computer_20250124","name":"computer"}],"messages":[{"role":"user","content":"hi"}]}`),
 		"us.anthropic.claude-opus-4-6-v1",
 	)
 	if err == nil {
-		t.Fatal("expected body-injected interleaved-thinking to be blocked")
+		t.Fatal("expected body-injected computer-use to be blocked")
 	}
-	if err.Error() != "thinking is blocked" {
+	if err.Error() != "computer use is blocked" {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -222,10 +222,10 @@ func TestResolveBedrockBetaTokensForRequest_PassesWhenNoBlockRuleMatches(t *test
 	settings := &BetaPolicySettings{
 		Rules: []BetaPolicyRule{
 			{
-				BetaToken:    "computer-use-2025-11-24",
+				BetaToken:    "context-1m-2025-08-07",
 				Action:       BetaPolicyActionBlock,
 				Scope:        BetaPolicyScopeAll,
-				ErrorMessage: "computer use is blocked",
+				ErrorMessage: "context is blocked",
 			},
 		},
 	}
@@ -244,12 +244,12 @@ func TestResolveBedrockBetaTokensForRequest_PassesWhenNoBlockRuleMatches(t *test
 	}
 	account := &Account{Platform: PlatformAnthropic, Type: AccountTypeBedrock}
 
-	// body 中有 thinking（会注入 interleaved-thinking），但 block 规则只针对 computer-use
+	// body 中有 computer_use 工具（会注入 computer-use token），但 block 规则只针对 context-1m
 	tokens, err := svc.resolveBedrockBetaTokensForRequest(
 		context.Background(),
 		account,
 		"",
-		[]byte(`{"thinking":{"type":"enabled","budget_tokens":10000},"messages":[{"role":"user","content":"hi"}]}`),
+		[]byte(`{"tools":[{"type":"computer_20250124","name":"computer"}],"messages":[{"role":"user","content":"hi"}]}`),
 		"us.anthropic.claude-opus-4-6-v1",
 	)
 	if err != nil {
@@ -257,11 +257,11 @@ func TestResolveBedrockBetaTokensForRequest_PassesWhenNoBlockRuleMatches(t *test
 	}
 	found := false
 	for _, token := range tokens {
-		if token == "interleaved-thinking-2025-05-14" {
+		if token == "computer-use-2025-11-24" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatal("expected interleaved-thinking token to be present")
+		t.Fatal("expected computer-use token to be present")
 	}
 }

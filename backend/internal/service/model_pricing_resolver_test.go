@@ -661,3 +661,69 @@ func TestFilterValidIntervals(t *testing.T) {
 		})
 	}
 }
+
+// ===========================================================================
+// 9. ImageOutputPriceExplicit tests
+// ===========================================================================
+
+func TestApplyTokenOverrides_FlatSetsImageOutputPriceExplicit(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(3e-6),
+		OutputPrice: testPtrFloat64(15e-6),
+		// ImageOutputPrice intentionally nil
+	}})
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	require.Equal(t, PricingSourceChannel, resolved.Source)
+	require.True(t, resolved.BasePricing.ImageOutputPriceExplicit)
+	require.Equal(t, 0.0, resolved.BasePricing.ImageOutputPricePerToken)
+}
+
+func TestApplyTokenOverrides_FlatWithImageOutputPriceSetsExplicit(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:         "anthropic",
+		Models:           []string{"claude-sonnet-4"},
+		BillingMode:      BillingModeToken,
+		InputPrice:       testPtrFloat64(3e-6),
+		OutputPrice:      testPtrFloat64(15e-6),
+		ImageOutputPrice: testPtrFloat64(50e-6),
+	}})
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	require.True(t, resolved.BasePricing.ImageOutputPriceExplicit)
+	require.InDelta(t, 50e-6, resolved.BasePricing.ImageOutputPricePerToken, 1e-12)
+}
+
+func TestApplyTokenOverrides_IntervalSetsImageOutputPriceExplicit(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		// No ImageOutputPrice
+		Intervals: []PricingInterval{
+			{MinTokens: 0, MaxTokens: testPtrInt(100000), InputPrice: testPtrFloat64(3e-6), OutputPrice: testPtrFloat64(15e-6)},
+		},
+	}})
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	// BasePricing should have explicit mark (for interval fallback)
+	require.True(t, resolved.BasePricing.ImageOutputPriceExplicit)
+	require.Equal(t, 0.0, resolved.BasePricing.ImageOutputPricePerToken)
+
+	// intervalToModelPricing should also have explicit mark
+	pricing := r.GetIntervalPricing(resolved, 50000)
+	require.True(t, pricing.ImageOutputPriceExplicit)
+	require.Equal(t, 0.0, pricing.ImageOutputPricePerToken)
+}

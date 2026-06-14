@@ -148,6 +148,65 @@ func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *
 	require.Equal(t, "claude-3", adminDTO.Model)
 }
 
+func TestUsageLogFromService_IncludesImageBillingMetadataForUserAndAdmin(t *testing.T) {
+	t.Parallel()
+
+	imageSize := "4K"
+	inputSize := "1024x1024"
+	outputSize := "3840x2160"
+	source := "output"
+	log := &service.UsageLog{
+		RequestID:          "req_image_metadata",
+		Model:              "gpt-image-2",
+		ImageCount:         2,
+		ImageSize:          &imageSize,
+		ImageInputSize:     &inputSize,
+		ImageOutputSize:    &outputSize,
+		ImageSizeSource:    &source,
+		ImageSizeBreakdown: map[string]int{"4K": 2},
+	}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	for _, got := range []*UsageLog{userDTO, &adminDTO.UsageLog} {
+		require.Equal(t, 2, got.ImageCount)
+		require.NotNil(t, got.ImageSize)
+		require.Equal(t, imageSize, *got.ImageSize)
+		require.NotNil(t, got.ImageInputSize)
+		require.Equal(t, inputSize, *got.ImageInputSize)
+		require.NotNil(t, got.ImageOutputSize)
+		require.Equal(t, outputSize, *got.ImageOutputSize)
+		require.NotNil(t, got.ImageSizeSource)
+		require.Equal(t, source, *got.ImageSizeSource)
+		require.Equal(t, map[string]int{"4K": 2}, got.ImageSizeBreakdown)
+	}
+}
+
+func TestUsageLogFromService_PreservesHistoricalMissingImageSize(t *testing.T) {
+	t.Parallel()
+
+	log := &service.UsageLog{
+		RequestID:  "req_legacy_image_missing_size",
+		Model:      "gpt-image-2",
+		ImageCount: 1,
+		ImageSize:  nil,
+	}
+
+	dto := UsageLogFromService(log)
+	require.Equal(t, 1, dto.ImageCount)
+	require.Nil(t, dto.ImageSize)
+	require.Nil(t, dto.ImageInputSize)
+	require.Nil(t, dto.ImageOutputSize)
+	require.Nil(t, dto.ImageSizeSource)
+	require.Nil(t, dto.ImageSizeBreakdown)
+
+	body, err := json.Marshal(dto)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `"image_size":null`)
+	require.NotContains(t, string(body), `"image_size":"2K"`)
+}
+
 func f64Ptr(value float64) *float64 {
 	return &value
 }

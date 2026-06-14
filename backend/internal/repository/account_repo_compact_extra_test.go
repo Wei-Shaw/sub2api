@@ -12,3 +12,14 @@ func TestShouldEnqueueSchedulerOutboxForExtraUpdates_CompactCapabilityKeysAreRel
 		t.Fatalf("expected compact capability updates to enqueue scheduler outbox")
 	}
 }
+
+func TestShouldEnqueueSchedulerOutboxForExtraUpdates_OpenAIResponsesCapabilityKeysAreRelevant(t *testing.T) {
+	updates := map[string]any{
+		"openai_responses_mode":      "force_chat_completions",
+		"openai_responses_supported": false,
+	}
+
+	if !shouldEnqueueSchedulerOutboxForExtraUpdates(updates) {
+		t.Fatalf("expected responses capability updates to enqueue scheduler outbox")
+	}
+}

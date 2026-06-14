@@ -47,6 +47,16 @@ var claudeCodeSystemPrompts = []string{
 	"You are an interactive CLI tool that helps users",
 }
 
+const (
+	// claudeCodeBillingHeaderPrefix 是 Claude Code 在 system 数组首块注入的计费归因块前缀。
+	// 该块存在于所有真实 Claude Code CLI 请求中（含安全监视器等无身份 prose 的子请求），
+	// 格式固定、不随提示词改版漂移，是比身份 prose 更稳定的客户端标识。
+	// 生成见 gateway_billing_block.go；同类识别见 pkg/apicompat/anthropic_to_responses.go。
+	claudeCodeBillingHeaderPrefix = "x-anthropic-billing-header"
+	// claudeCodeCLIEntrypointMarker 标识请求来自 Claude Code CLI 入口。
+	claudeCodeCLIEntrypointMarker = "cc_entrypoint=cli"
+)
+
 // NewClaudeCodeValidator 创建验证器实例
 func NewClaudeCodeValidator() *ClaudeCodeValidator {
 	return &ClaudeCodeValidator{}
@@ -56,7 +66,7 @@ func NewClaudeCodeValidator() *ClaudeCodeValidator {
 // 采用与 claude-relay-service 完全一致的验证策略：
 //
 //	Step 1: User-Agent 检查 (必需) - 必须是 claude-cli/x.x.x
-//	Step 2: 对于非 messages 路径，只要 UA 匹配就通过
+//	Step 2: 对于非 messages 路径和 /messages/count_tokens，只要 UA 匹配就通过
 //	Step 3: 检查 max_tokens=1 + haiku 探测请求绕过（UA 已验证）
 //	Step 4: 对于 messages 路径，进行严格验证：
 //	        - System prompt 相似度检查
@@ -71,9 +81,14 @@ func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) boo
 		return false
 	}
 
-	// Step 2: 非 messages 路径，只要 UA 匹配就通过
+	// Step 2: 非 messages 路径只要 UA 匹配就通过
 	path := r.URL.Path
 	if !strings.Contains(path, "messages") {
+		return true
+	}
+
+	// count_tokens 是 Claude Code 官方辅助请求，通常不携带完整 messages system prompt。
+	if isMessagesCountTokensPath(path) {
 		return true
 	}
 
@@ -128,6 +143,10 @@ func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) boo
 	return true
 }
 
+func isMessagesCountTokensPath(path string) bool {
+	return strings.HasSuffix(path, "/messages/count_tokens")
+}
+
 // hasClaudeCodeSystemPrompt 检查请求是否包含 Claude Code 系统提示词
 // 使用字符串相似度匹配（Dice coefficient）
 func (v *ClaudeCodeValidator) hasClaudeCodeSystemPrompt(body map[string]any) bool {
@@ -156,6 +175,13 @@ func (v *ClaudeCodeValidator) hasClaudeCodeSystemPrompt(body map[string]any) boo
 		text, ok := entryMap["text"].(string)
 		if !ok || text == "" {
 			continue
+		}
+
+		// 计费归因块识别（WHY 见 claudeCodeBillingHeaderPrefix 注释）。先于 Dice 检查，
+		// 大小写敏感：该块由 gateway_billing_block.go 固定小写生成。
+		if strings.HasPrefix(text, claudeCodeBillingHeaderPrefix) &&
+			strings.Contains(text, claudeCodeCLIEntrypointMarker) {
+			return true
 		}
 
 		// 计算与所有模板的最佳相似度
