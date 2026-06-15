@@ -97,6 +97,12 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+
+		// OIDC 客户端管理
+		registerOidcClientRoutes(admin, h)
+
+		// OIDC 签名密钥管理
+		registerOIDCSigningKeysRoutes(admin, h)
 	}
 }
 
@@ -647,5 +653,32 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			users.PUT("/:user_id", h.Admin.Affiliate.UpdateUserSettings)
 			users.DELETE("/:user_id", h.Admin.Affiliate.ClearUserSettings)
 		}
+	}
+}
+
+// registerOidcClientRoutes 注册OIDC客户端管理路由
+func registerOidcClientRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	oidc := admin.Group("/oidc")
+	{
+		clients := oidc.Group("/clients")
+		{
+			clients.GET("", h.Admin.OidcClient.ListOidcClients)
+			clients.POST("", h.Admin.OidcClient.CreateOidcClient)
+			clients.GET("/:id", h.Admin.OidcClient.GetOidcClient)
+			clients.PUT("/:id", h.Admin.OidcClient.UpdateOidcClient)
+			clients.DELETE("/:id", h.Admin.OidcClient.DeleteOidcClient)
+			clients.POST("/:id/reset-secret", h.Admin.OidcClient.ResetOidcClientSecret)
+		}
+	}
+}
+
+// registerOIDCSigningKeysRoutes 注册OIDC签名密钥管理路由
+func registerOIDCSigningKeysRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	signingKeys := admin.Group("/oidc/signing-keys")
+	{
+		signingKeys.GET("", h.Admin.OIDCSigningKeys.ListSigningKeys)
+		signingKeys.POST("/generate", h.Admin.OIDCSigningKeys.GenerateSigningKey)
+		signingKeys.POST("/rotate", h.Admin.OIDCSigningKeys.RotateSigningKey)
+		signingKeys.DELETE("/:kid", h.Admin.OIDCSigningKeys.DeleteSigningKey)
 	}
 }

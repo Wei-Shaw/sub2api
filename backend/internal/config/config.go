@@ -94,6 +94,7 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	SSO                     SSOConfig                     `mapstructure:"sso"`
 }
 
 type LogConfig struct {
@@ -1471,6 +1472,21 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 			return nil, fmt.Errorf("read forced codex instructions template %q: %w", cfg.Gateway.ForcedCodexInstructionsTemplateFile, err)
 		}
 		cfg.Gateway.ForcedCodexInstructionsTemplate = string(content)
+	}
+
+	// SSO 配置默认值
+	cfg.SSO.CookieName = strings.TrimSpace(cfg.SSO.CookieName)
+	if cfg.SSO.CookieName == "" {
+		cfg.SSO.CookieName = "sub2api_sso"
+	}
+	cfg.SSO.CookieDomain = strings.TrimSpace(cfg.SSO.CookieDomain)
+	cfg.SSO.SessionTTLDays = cfg.SSO.SessionTTLDays
+	if cfg.SSO.SessionTTLDays <= 0 {
+		cfg.SSO.SessionTTLDays = 30
+	}
+	// 默认在生产环境中启用 Secure Cookie
+	if !viper.IsSet("sso.cookie_secure") {
+		cfg.SSO.CookieSecure = cfg.Server.Mode == "release"
 	}
 
 	// 兼容旧键 gateway.openai_ws.sticky_previous_response_ttl_seconds。
@@ -2967,4 +2983,16 @@ func warnIfInsecureURL(field, raw string) {
 	if strings.EqualFold(u.Scheme, "http") {
 		slog.Warn("url uses http scheme; use https in production to avoid token leakage", "field", field)
 	}
+}
+
+// SSOConfig SSO Session 配置
+type SSOConfig struct {
+	// CookieName SSO Cookie 名称
+	CookieName string `mapstructure:"cookie_name"`
+	// CookieDomain SSO Cookie 域名
+	CookieDomain string `mapstructure:"cookie_domain"`
+	// CookieSecure SSO Cookie 是否启用 Secure 标志
+	CookieSecure bool `mapstructure:"cookie_secure"`
+	// SessionTTLDays SSO Session 有效期（天）
+	SessionTTLDays int `mapstructure:"session_ttl_days"`
 }

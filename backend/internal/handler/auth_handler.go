@@ -157,6 +157,16 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 		})
 		return
 	}
+
+	// 设置 SSO Cookie
+	if h.authService.ssoSessionService != nil && user != nil {
+		expiresAt := time.Now().Add(time.Duration(h.authService.cfg.SSO.SessionTTLDays) * 24 * time.Hour)
+		err := h.authService.ssoSessionService.Issue(c.Writer, c.Request, user.ID, expiresAt)
+		if err != nil {
+			slog.Error("failed to issue SSO cookie", "error", err, "user_id", user.ID)
+		}
+	}
+
 	response.Success(c, AuthResponse{
 		AccessToken:  tokenPair.AccessToken,
 		RefreshToken: tokenPair.RefreshToken,
@@ -752,6 +762,16 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 			// 不影响登出流程
 		}
 	}
+
+	// 撤销 SSO Cookie
+	if h.authService.ssoSessionService != nil {
+		err := h.authService.ssoSessionService.Revoke(c.Writer, c.Request)
+		if err != nil {
+			slog.Debug("failed to revoke SSO cookie", "error", err)
+			// 不影响登出流程
+		}
+	}
+
 	h.consumePendingOAuthSessionOnLogout(c)
 	clearOAuthLogoutCookies(c)
 
@@ -778,6 +798,15 @@ func (h *AuthHandler) RevokeAllSessions(c *gin.Context) {
 		slog.Error("failed to revoke all sessions", "user_id", subject.UserID, "error", err)
 		response.InternalError(c, "Failed to revoke sessions")
 		return
+	}
+
+	// 撤销 SSO Cookie
+	if h.authService.ssoSessionService != nil {
+		err := h.authService.ssoSessionService.Revoke(c.Writer, c.Request)
+		if err != nil {
+			slog.Debug("failed to revoke SSO cookie", "error", err)
+			// 不影响撤销流程
+		}
 	}
 
 	response.Success(c, RevokeAllSessionsResponse{

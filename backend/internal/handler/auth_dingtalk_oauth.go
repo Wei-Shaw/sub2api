@@ -798,6 +798,16 @@ func (h *AuthHandler) CompleteDingTalkOAuthRegistration(c *gin.Context) {
 		})
 	}
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+
+	// 设置 SSO Cookie
+	if h.authService.ssoSessionService != nil && user != nil {
+		expiresAt := time.Now().Add(time.Duration(h.authService.cfg.SSO.SessionTTLDays) * 24 * time.Hour)
+		err := h.authService.ssoSessionService.Issue(c.Writer, c.Request, user.ID, expiresAt)
+		if err != nil {
+			log.Printf("[DingTalk OAuth] failed to issue SSO cookie: %v", err)
+		}
+	}
+
 	clearOAuthPendingSessionCookie(c, secureCookie)
 	clearOAuthPendingBrowserCookie(c, secureCookie)
 

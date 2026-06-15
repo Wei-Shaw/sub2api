@@ -40,6 +40,8 @@ func ProvideAdminHandlers(
 	paymentHandler *admin.PaymentHandler,
 	rechargePromoHandler *admin.RechargePromoHandler,
 	affiliateHandler *admin.AffiliateHandler,
+	oidcClientHandler *admin.OidcClientHandler,
+	oidcSigningKeysHandler *admin.OIDCSigningKeysHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -73,6 +75,8 @@ func ProvideAdminHandlers(
 		Payment:                paymentHandler,
 		RechargePromo:          rechargePromoHandler,
 		Affiliate:              affiliateHandler,
+		OidcClient:             oidcClientHandler,
+		OIDCSigningKeys:        oidcSigningKeysHandler,
 	}
 }
 
@@ -114,6 +118,7 @@ func ProvideHandlers(
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
 	plazaHandler *PlazaHandler,
+	oidcProviderHandler *OIDCProviderHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -135,6 +140,7 @@ func ProvideHandlers(
 		PaymentWebhook:   paymentWebhookHandler,
 		AvailableChannel: availableChannelHandler,
 		Plaza:            plazaHandler,
+		OIDCProvider:     oidcProviderHandler,
 	}
 }
 
@@ -157,6 +163,7 @@ var ProviderSet = wire.NewSet(
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewPlazaHandler,
+	NewOIDCProviderHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -190,8 +197,20 @@ var ProviderSet = wire.NewSet(
 	admin.NewPaymentHandler,
 	admin.NewRechargePromoHandler,
 	admin.NewAffiliateHandler,
+	ProvideOidcClientHandler,
+	ProvideOIDCSigningKeysHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,
 	ProvideHandlers,
 )
+
+// ProvideOidcClientHandler creates OidcClientHandler
+func ProvideOidcClientHandler(clientService *service.OidcClientService, auditLogService *service.AuditLogService) *admin.OidcClientHandler {
+	return admin.NewOidcClientHandler(clientService)
+}
+
+// ProvideOIDCSigningKeysHandler creates OIDCSigningKeysHandler
+func ProvideOIDCSigningKeysHandler(signingKeyService *service.OIDCSigningKeyService, auditLogService *service.AuditLogService) *admin.OIDCSigningKeysHandler {
+	return admin.NewOIDCSigningKeysHandler(signingKeyService)
+}
