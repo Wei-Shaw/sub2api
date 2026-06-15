@@ -91,6 +91,7 @@ REDACTED
 type ModelPricing struct {
 	InputPricePerToken             float64 // 每token输入价格 (USD)
 	InputPricePerTokenPriority     float64 // priority service tier 下每token输入价格 (USD)
+	ImageInputPricePerToken        float64 // 图片输入 token 价格 (USD)，用于多模态 embedding 等图文不同价场景；为 0 时回退到 InputPricePerToken
 	OutputPricePerToken            float64 // 每token输出价格 (USD)
 	OutputPricePerTokenPriority    float64 // priority service tier 下每token输出价格 (USD)
 	CacheCreationPricePerToken     float64 // 缓存创建每token价格 (USD)
@@ -137,6 +138,7 @@ REDACTED
 // UsageTokens 使用的token数量
 type UsageTokens struct {
 	InputTokens           int
+	ImageInputTokens      int
 	OutputTokens          int
 	CacheCreationTokens   int
 	CacheReadTokens       int
@@ -486,6 +488,17 @@ REDACTED
 		CacheReadPricePerToken: 0.03e-6,
 		SupportsCacheBreakdown: false,
 REDACTED
+
+	// ---- 火山方舟 豆包 Embedding（多模态向量化）----
+	// doubao-embedding-vision 图文向量化：上游 usage 回传 prompt_tokens_details.{text_tokens,image_tokensREDACTED，
+	// 按量付费官方价 文本 ¥0.7/MTok、图片 ¥1.8/MTok；汇率口径 ÷7.14（与本表其他国产模型一致，¥1≈$0.14）。
+	// embedding 无 output，OutputPricePerToken 置 0。
+	s.fallbackPrices["doubao-embedding-vision"] = &ModelPricing{
+		InputPricePerToken:      0.098e-6, // ¥0.7/MTok ≈ $0.098（文本输入）
+		ImageInputPricePerToken: 0.252e-6, // ¥1.8/MTok ≈ $0.252（图片输入）
+		OutputPricePerToken:     0,
+		SupportsCacheBreakdown:  false,
+REDACTED
 REDACTED
 
 // getFallbackPricing 根据模型系列获取回退价格
@@ -619,6 +632,13 @@ REDACTED
 REDACTED
 	if strings.Contains(modelLower, "minimax-m2") || strings.Contains(modelLower, "minimax-m-2") {
 		return s.fallbackPrices["minimax-m2"]
+REDACTED
+
+	// 火山方舟 豆包 Embedding（多模态向量化）。
+	// most-specific-first：放在未来任何 doubao-embedding / doubao 宽匹配之前。
+	// 覆盖带版本后缀的别名（如 doubao-embedding-vision-251215）。
+	if strings.Contains(modelLower, "doubao-embedding-vision") {
+		return s.fallbackPrices["doubao-embedding-vision"]
 REDACTED
 
 	// OpenAI（GPT-5 / Codex 族）：仅匹配已知型号，避免未知 OpenAI 型号误计价。
@@ -839,7 +859,24 @@ REDACTED
 REDACTED
 
 	bd := &CostBreakdown{REDACTED
-	bd.InputCost = float64(tokens.InputTokens) * inputPrice
+	// 分离图片输入 token 与文本输入 token（多模态 embedding 等图文不同价场景）。
+	// ImageInputTokens 为 0 时（绝大多数 chat/vision 流量）走原始单价路径，行为不变。
+	if tokens.ImageInputTokens > 0 {
+		imageInputTokens := tokens.ImageInputTokens
+		textInputTokens := tokens.InputTokens - imageInputTokens
+		if textInputTokens < 0 {
+			textInputTokens = 0
+			imageInputTokens = tokens.InputTokens
+	REDACTED
+		imageInputPrice := pricing.ImageInputPricePerToken
+		if imageInputPrice == 0 {
+			// 未配置图片输入档时回退到文本 input 价（已含 priority / 长上下文调整）
+			imageInputPrice = inputPrice
+	REDACTED
+		bd.InputCost = float64(textInputTokens)*inputPrice + float64(imageInputTokens)*imageInputPrice
+REDACTED else {
+		bd.InputCost = float64(tokens.InputTokens) * inputPrice
+REDACTED
 
 	// 分离图片输出 token 与文本输出 token
 	textOutputTokens := tokens.OutputTokens - tokens.ImageOutputTokens
