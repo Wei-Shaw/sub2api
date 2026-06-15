@@ -181,7 +181,7 @@ func TestBillingCacheService_CheckRPM_OverrideLookupErrorFallsThroughToGroup(t *
 	require.EqualValues(t, 1, atomic.LoadInt32(&repo.calls))
 }
 
-func TestBillingCacheService_CheckRPM_UserLevelFallbackWhenGroupUnlimited(t *testing.T) {
+func TestBillingCacheService_CheckRPM_UserLimitAppliesWhenGroupUnlimited(t *testing.T) {
 	cache := &userRPMCacheStub{userCounts: []int{1, 2, 3}}
 	repo := &rpmOverrideRepoStub{override: nil}
 	svc := newBillingServiceForRPM(t, cache, repo)

@@ -1855,7 +1855,7 @@ export default {
       form: {
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
-        rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.'
+        rpmLimitHint: 'Global requests-per-minute cap for this user across all groups; 0 = unlimited. Group and override RPM limits do not replace this cap.'
       },
       columns: {
         user: 'User',
@@ -2121,7 +2121,7 @@ export default {
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
         rpmOverride: 'RPM Override',
-        rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = unlimited',
+        rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = no group-level cap (the global user RPM cap still applies)',
         rateDefault: 'default',
         rpmDefault: 'default',
         type: 'Type',
@@ -2153,7 +2153,7 @@ export default {
         exclusive: 'Exclusive Group',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
-        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).'
+        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = no group-level cap. The stricter of this limit and the global user RPM cap applies.'
       },
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',

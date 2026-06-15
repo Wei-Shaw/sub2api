@@ -1961,7 +1961,7 @@ export default {
         selectStatus: '选择状态',
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
-        rpmLimitHint: '该用户每分钟最大请求数，0 = 不限制；仅在所用分组未设置 rpm_limit 时作为兜底生效'
+        rpmLimitHint: '该用户跨所有分组的每分钟请求总上限，0 = 不限制；分组 RPM 或专属 RPM 不会覆盖此全局上限'
       },
       adjustBalance: '调整余额',
       adjustConcurrency: '调整并发数',
@@ -2171,7 +2171,7 @@ export default {
         platform: '平台',
         rateMultiplier: '费率倍数',
         rpmOverride: 'RPM 覆盖',
-        rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制',
+        rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制分组级 RPM（用户全局 RPM 仍生效）',
         rateDefault: '默认',
         rpmDefault: '默认',
         exclusive: '独占',
@@ -2210,7 +2210,7 @@ export default {
         rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
-        rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
+        rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制分组级 RPM；与用户全局 RPM 同时生效，取更严格的限制',
         exclusiveLabel: '专属分组',
         exclusiveHint: '专属分组，可以手动指定给用户',
         platformLabel: '平台限制',

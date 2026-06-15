@@ -14,7 +14,7 @@ type UserRPMCache interface {
 	IncrementUserGroupRPM(ctx context.Context, userID, groupID int64) (count int, err error)
 
 	// IncrementUserRPM 原子递增用户级分钟计数并返回最新值。
-	// 用于用户全局 rpm_limit 兜底分支（分组未设且无 override 时）。
+	// 用于始终生效的用户全局 rpm_limit。
 	IncrementUserRPM(ctx context.Context, userID int64) (count int, err error)
 
 	// GetUserGroupRPM 获取 (user, group) 当前分钟已用 RPM（只读，不递增）。
