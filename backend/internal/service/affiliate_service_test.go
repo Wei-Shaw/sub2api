@@ -57,6 +57,101 @@ func TestResolveSubscriptionRebateRatePercent_UsesEightyPercentOfEffectiveBalanc
 		svc.resolveSubscriptionRebateRatePercent(context.Background(), &AffiliateSummary{AffRebateRatePercent: &rate}), 1e-9)
 }
 
+func TestResolveRebateRatePercent_UsesTieredPaidInviteeMultiplier(t *testing.T) {
+	t.Parallel()
+	rate := 10.0
+	tests := []struct {
+		name         string
+		paidInvitees int
+		wantRate     float64
+		wantTier     int
+	}{
+		{name: "first tier below threshold", paidInvitees: 9, wantRate: 10, wantTier: 1},
+		{name: "second tier at threshold", paidInvitees: 10, wantRate: 12, wantTier: 2},
+		{name: "third tier at threshold", paidInvitees: 30, wantRate: 15, wantTier: 3},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := &affiliateDetailRepoStub{paidInviteeCount: tt.paidInvitees}
+			svc := &AffiliateService{
+				repo: repo,
+				settingService: affiliateSettingsService(map[string]string{
+					SettingKeyAffiliateTieredRebateEnabled:          "true",
+					SettingKeyAffiliateTier2MinPaidInvitees:         "10",
+					SettingKeyAffiliateTier3MinPaidInvitees:         "30",
+					SettingKeyAffiliateTier2MultiplierPercent:       "120",
+					SettingKeyAffiliateTier3MultiplierPercent:       "150",
+					SettingKeyAffiliateSubscriptionRebateMultiplier: "80",
+				}),
+			}
+
+			got := svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{
+				UserID:               7,
+				AffRebateRatePercent: &rate,
+			})
+			tier := svc.resolveAffiliateRebateTier(context.Background(), &AffiliateSummary{
+				UserID:               7,
+				AffRebateRatePercent: &rate,
+			})
+
+			require.InDelta(t, tt.wantRate, got, 1e-9)
+			require.Equal(t, tt.wantTier, tier.Level)
+			require.Equal(t, tt.paidInvitees, tier.PaidInviteeCount)
+		})
+	}
+}
+
+func TestResolveRebateRatePercent_TieredDisabledKeepsBaseRate(t *testing.T) {
+	t.Parallel()
+	rate := 10.0
+	repo := &affiliateDetailRepoStub{paidInviteeCount: 30}
+	svc := &AffiliateService{
+		repo: repo,
+		settingService: affiliateSettingsService(map[string]string{
+			SettingKeyAffiliateTieredRebateEnabled:    "false",
+			SettingKeyAffiliateTier3MultiplierPercent: "150",
+		}),
+	}
+
+	got := svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{
+		UserID:               7,
+		AffRebateRatePercent: &rate,
+	})
+	tier := svc.resolveAffiliateRebateTier(context.Background(), &AffiliateSummary{
+		UserID:               7,
+		AffRebateRatePercent: &rate,
+	})
+
+	require.InDelta(t, 10.0, got, 1e-9)
+	require.Equal(t, 1, tier.Level)
+	require.False(t, tier.Enabled)
+}
+
+func TestResolveSubscriptionRebateRatePercent_UsesTieredBalanceRate(t *testing.T) {
+	t.Parallel()
+	rate := 10.0
+	repo := &affiliateDetailRepoStub{paidInviteeCount: 30}
+	svc := &AffiliateService{
+		repo: repo,
+		settingService: affiliateSettingsService(map[string]string{
+			SettingKeyAffiliateTieredRebateEnabled:          "true",
+			SettingKeyAffiliateTier3MinPaidInvitees:         "30",
+			SettingKeyAffiliateTier3MultiplierPercent:       "150",
+			SettingKeyAffiliateSubscriptionRebateMultiplier: "80",
+		}),
+	}
+
+	got := svc.resolveSubscriptionRebateRatePercent(context.Background(), &AffiliateSummary{
+		UserID:               7,
+		AffRebateRatePercent: &rate,
+	})
+
+	require.InDelta(t, 12.0, got, 1e-9)
+}
+
 func TestGetAffiliateDetailIncludesEffectiveSubscriptionRebateRate(t *testing.T) {
 	t.Parallel()
 	rate := 10.0
@@ -74,6 +169,41 @@ func TestGetAffiliateDetailIncludesEffectiveSubscriptionRebateRate(t *testing.T)
 	require.NoError(t, err)
 	require.InDelta(t, 10.0, detail.EffectiveRebateRatePercent, 1e-9)
 	require.InDelta(t, 8.0, detail.EffectiveSubscriptionRebateRatePercent, 1e-9)
+}
+
+func TestGetAffiliateDetailIncludesTieredRebateInfo(t *testing.T) {
+	t.Parallel()
+	rate := 10.0
+	repo := &affiliateDetailRepoStub{
+		paidInviteeCount: 10,
+		summary: &AffiliateSummary{
+			UserID:               42,
+			AffCode:              "AFF42",
+			AffRebateRatePercent: &rate,
+		},
+	}
+	svc := &AffiliateService{
+		repo: repo,
+		settingService: affiliateSettingsService(map[string]string{
+			SettingKeyAffiliateTieredRebateEnabled:          "true",
+			SettingKeyAffiliateTier2MinPaidInvitees:         "10",
+			SettingKeyAffiliateTier3MinPaidInvitees:         "30",
+			SettingKeyAffiliateTier2MultiplierPercent:       "120",
+			SettingKeyAffiliateTier3MultiplierPercent:       "150",
+			SettingKeyAffiliateSubscriptionRebateMultiplier: "80",
+		}),
+	}
+
+	detail, err := svc.GetAffiliateDetail(context.Background(), 42)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, detail.RebateTierLevel)
+	require.Equal(t, 10, detail.PaidInviteeCount)
+	require.InDelta(t, 120.0, detail.RebateTierMultiplierPercent, 1e-9)
+	require.InDelta(t, 12.0, detail.EffectiveRebateRatePercent, 1e-9)
+	require.InDelta(t, 9.6, detail.EffectiveSubscriptionRebateRatePercent, 1e-9)
+	require.Equal(t, 20, detail.NextTierPaidInviteeCount)
+	require.Equal(t, 1, repo.countPaidInviteesCalls)
 }
 
 func TestAccrueInviteSubscriptionRebateUsesSubscriptionRate(t *testing.T) {
@@ -219,9 +349,11 @@ func TestIsValidAffiliateCodeFormat(t *testing.T) {
 }
 
 type affiliateDetailRepoStub struct {
-	summary     *AffiliateSummary
-	summaries   map[int64]*AffiliateSummary
-	accrueCalls []affiliateAccrueCall
+	summary                *AffiliateSummary
+	summaries              map[int64]*AffiliateSummary
+	paidInviteeCount       int
+	countPaidInviteesCalls int
+	accrueCalls            []affiliateAccrueCall
 }
 
 type affiliateAccrueCall struct {
@@ -245,6 +377,11 @@ func (r *affiliateDetailRepoStub) EnsureUserAffiliate(_ context.Context, userID 
 
 func (r *affiliateDetailRepoStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
 	return nil, nil
+}
+
+func (r *affiliateDetailRepoStub) CountPaidInvitees(context.Context, int64) (int, error) {
+	r.countPaidInviteesCalls++
+	return r.paidInviteeCount, nil
 }
 
 func (r *affiliateDetailRepoStub) ThawFrozenQuota(context.Context, int64) (float64, error) {

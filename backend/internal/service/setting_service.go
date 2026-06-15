@@ -1838,6 +1838,23 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
 	settings.AffiliateSubscriptionRebateMultiplier = clampPercentOrDefault(settings.AffiliateSubscriptionRebateMultiplier, AffiliateSubscriptionRebateMultiplierDefault)
 	updates[SettingKeyAffiliateSubscriptionRebateMultiplier] = strconv.FormatFloat(settings.AffiliateSubscriptionRebateMultiplier, 'f', 8, 64)
+	tieredCfg := normalizeAffiliateTieredRebateConfig(AffiliateTieredRebateConfig{
+		Enabled:                settings.AffiliateTieredRebateEnabled,
+		Tier2MinPaidInvitees:   settings.AffiliateTier2MinPaidInvitees,
+		Tier3MinPaidInvitees:   settings.AffiliateTier3MinPaidInvitees,
+		Tier2MultiplierPercent: settings.AffiliateTier2MultiplierPercent,
+		Tier3MultiplierPercent: settings.AffiliateTier3MultiplierPercent,
+	})
+	settings.AffiliateTieredRebateEnabled = tieredCfg.Enabled
+	settings.AffiliateTier2MinPaidInvitees = tieredCfg.Tier2MinPaidInvitees
+	settings.AffiliateTier3MinPaidInvitees = tieredCfg.Tier3MinPaidInvitees
+	settings.AffiliateTier2MultiplierPercent = tieredCfg.Tier2MultiplierPercent
+	settings.AffiliateTier3MultiplierPercent = tieredCfg.Tier3MultiplierPercent
+	updates[SettingKeyAffiliateTieredRebateEnabled] = strconv.FormatBool(tieredCfg.Enabled)
+	updates[SettingKeyAffiliateTier2MinPaidInvitees] = strconv.Itoa(tieredCfg.Tier2MinPaidInvitees)
+	updates[SettingKeyAffiliateTier3MinPaidInvitees] = strconv.Itoa(tieredCfg.Tier3MinPaidInvitees)
+	updates[SettingKeyAffiliateTier2MultiplierPercent] = strconv.FormatFloat(tieredCfg.Tier2MultiplierPercent, 'f', 8, 64)
+	updates[SettingKeyAffiliateTier3MultiplierPercent] = strconv.FormatFloat(tieredCfg.Tier3MultiplierPercent, 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {
 		settings.AffiliateRebateFreezeHours = AffiliateRebateFreezeHoursDefault
 	}
@@ -2431,6 +2448,24 @@ func (s *SettingService) GetAffiliateSubscriptionRebateMultiplierPercent(ctx con
 	return clampPercentOrDefault(value, AffiliateSubscriptionRebateMultiplierDefault)
 }
 
+func (s *SettingService) GetAffiliateTieredRebateConfig(ctx context.Context) AffiliateTieredRebateConfig {
+	cfg := defaultAffiliateTieredRebateConfig()
+	if s == nil || s.settingRepo == nil {
+		return cfg
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyAffiliateTieredRebateEnabled,
+		SettingKeyAffiliateTier2MinPaidInvitees,
+		SettingKeyAffiliateTier3MinPaidInvitees,
+		SettingKeyAffiliateTier2MultiplierPercent,
+		SettingKeyAffiliateTier3MultiplierPercent,
+	})
+	if err != nil {
+		return cfg
+	}
+	return parseAffiliateTieredRebateConfig(values)
+}
+
 // GetAffiliateRebateFreezeHours 返回返利冻结期（小时）。
 // 返回 0 表示不冻结（向后兼容）。
 func (s *SettingService) GetAffiliateRebateFreezeHours(ctx context.Context) int {
@@ -2767,6 +2802,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateSubscriptionRebateMultiplier:     strconv.FormatFloat(AffiliateSubscriptionRebateMultiplierDefault, 'f', 8, 64),
+		SettingKeyAffiliateTieredRebateEnabled:              strconv.FormatBool(AffiliateTieredRebateEnabledDefault),
+		SettingKeyAffiliateTier2MinPaidInvitees:             strconv.Itoa(AffiliateTier2MinPaidInviteesDefault),
+		SettingKeyAffiliateTier3MinPaidInvitees:             strconv.Itoa(AffiliateTier3MinPaidInviteesDefault),
+		SettingKeyAffiliateTier2MultiplierPercent:           strconv.FormatFloat(AffiliateTier2MultiplierPercentDefault, 'f', 8, 64),
+		SettingKeyAffiliateTier3MultiplierPercent:           strconv.FormatFloat(AffiliateTier3MultiplierPercentDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
 		SettingKeyAffiliateRebatePerInviteeCap:              strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
@@ -2950,6 +2990,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.AffiliateSubscriptionRebateMultiplier = AffiliateSubscriptionRebateMultiplierDefault
 	}
+	tieredCfg := parseAffiliateTieredRebateConfig(settings)
+	result.AffiliateTieredRebateEnabled = tieredCfg.Enabled
+	result.AffiliateTier2MinPaidInvitees = tieredCfg.Tier2MinPaidInvitees
+	result.AffiliateTier3MinPaidInvitees = tieredCfg.Tier3MinPaidInvitees
+	result.AffiliateTier2MultiplierPercent = tieredCfg.Tier2MultiplierPercent
+	result.AffiliateTier3MultiplierPercent = tieredCfg.Tier3MultiplierPercent
 	if freezeHours, err := strconv.Atoi(settings[SettingKeyAffiliateRebateFreezeHours]); err == nil && freezeHours >= 0 {
 		if freezeHours > AffiliateRebateFreezeHoursMax {
 			freezeHours = AffiliateRebateFreezeHoursMax
@@ -3445,6 +3491,75 @@ func clampPercentOrDefault(value, fallback float64) float64 {
 	}
 	if value > 100 {
 		return 100
+	}
+	return value
+}
+
+func defaultAffiliateTieredRebateConfig() AffiliateTieredRebateConfig {
+	return AffiliateTieredRebateConfig{
+		Enabled:                AffiliateTieredRebateEnabledDefault,
+		Tier2MinPaidInvitees:   AffiliateTier2MinPaidInviteesDefault,
+		Tier3MinPaidInvitees:   AffiliateTier3MinPaidInviteesDefault,
+		Tier2MultiplierPercent: AffiliateTier2MultiplierPercentDefault,
+		Tier3MultiplierPercent: AffiliateTier3MultiplierPercentDefault,
+	}
+}
+
+func parseAffiliateTieredRebateConfig(settings map[string]string) AffiliateTieredRebateConfig {
+	cfg := defaultAffiliateTieredRebateConfig()
+	if settings == nil {
+		return cfg
+	}
+	if raw, ok := settings[SettingKeyAffiliateTieredRebateEnabled]; ok {
+		cfg.Enabled = strings.EqualFold(strings.TrimSpace(raw), "true")
+	}
+	cfg.Tier2MinPaidInvitees = parsePositiveIntOrDefault(settings[SettingKeyAffiliateTier2MinPaidInvitees], AffiliateTier2MinPaidInviteesDefault)
+	cfg.Tier3MinPaidInvitees = parsePositiveIntOrDefault(settings[SettingKeyAffiliateTier3MinPaidInvitees], AffiliateTier3MinPaidInviteesDefault)
+	cfg.Tier2MultiplierPercent = parseMultiplierPercentOrDefault(settings[SettingKeyAffiliateTier2MultiplierPercent], AffiliateTier2MultiplierPercentDefault)
+	cfg.Tier3MultiplierPercent = parseMultiplierPercentOrDefault(settings[SettingKeyAffiliateTier3MultiplierPercent], AffiliateTier3MultiplierPercentDefault)
+	return normalizeAffiliateTieredRebateConfig(cfg)
+}
+
+func normalizeAffiliateTieredRebateConfig(cfg AffiliateTieredRebateConfig) AffiliateTieredRebateConfig {
+	if cfg.Tier2MinPaidInvitees <= 0 {
+		cfg.Tier2MinPaidInvitees = AffiliateTier2MinPaidInviteesDefault
+	}
+	if cfg.Tier3MinPaidInvitees <= cfg.Tier2MinPaidInvitees {
+		cfg.Tier3MinPaidInvitees = AffiliateTier3MinPaidInviteesDefault
+		if cfg.Tier3MinPaidInvitees <= cfg.Tier2MinPaidInvitees {
+			cfg.Tier3MinPaidInvitees = cfg.Tier2MinPaidInvitees + 1
+		}
+	}
+	cfg.Tier2MultiplierPercent = clampMultiplierPercentOrDefault(cfg.Tier2MultiplierPercent, AffiliateTier2MultiplierPercentDefault)
+	cfg.Tier3MultiplierPercent = clampMultiplierPercentOrDefault(cfg.Tier3MultiplierPercent, AffiliateTier3MultiplierPercentDefault)
+	return cfg
+}
+
+func parsePositiveIntOrDefault(raw string, fallback int) int {
+	v, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || v <= 0 {
+		return fallback
+	}
+	return v
+}
+
+func parseMultiplierPercentOrDefault(raw string, fallback float64) float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil {
+		return fallback
+	}
+	return clampMultiplierPercentOrDefault(v, fallback)
+}
+
+func clampMultiplierPercentOrDefault(value, fallback float64) float64 {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return fallback
+	}
+	if value < 0 {
+		return 0
+	}
+	if value > 200 {
+		return 200
 	}
 	return value
 }

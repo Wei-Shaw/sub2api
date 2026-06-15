@@ -8,7 +8,7 @@
       </div>
 
       <template v-else-if="detail">
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
           <div class="card p-5">
             <p class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-dark-400">
               <Icon name="dollar" size="sm" class="text-primary-500" />
@@ -31,6 +31,18 @@
             </p>
             <p class="mt-1 text-xs text-gray-400 dark:text-dark-500">
               {{ t('affiliate.stats.subscriptionRebateRateHint') }}
+            </p>
+          </div>
+          <div class="card p-5">
+            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.rebateTier') }}</p>
+            <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+              {{ formattedRebateTier }}
+            </p>
+            <p class="mt-1 text-xs text-gray-400 dark:text-dark-500">
+              {{ tierHint }}
+            </p>
+            <p v-if="nextTierHint" class="mt-1 text-xs text-primary-600 dark:text-primary-400">
+              {{ nextTierHint }}
             </p>
           </div>
           <div class="card p-5">
@@ -191,6 +203,28 @@ const formattedSubscriptionRebateRate = computed(() => {
   const v = detail.value?.effective_subscription_rebate_rate_percent ?? 0
   const rounded = Math.round(v * 100) / 100
   return Number.isInteger(rounded) ? String(rounded) : rounded.toString()
+})
+
+const formattedRebateTier = computed(() => {
+  const level = Math.min(3, Math.max(1, detail.value?.rebate_tier_level ?? 1))
+  return t(`affiliate.stats.tier${level}`)
+})
+
+const formattedTierMultiplier = computed(() => {
+  const v = detail.value?.rebate_tier_multiplier_percent ?? 100
+  const rounded = Math.round(v * 100) / 100
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toString()
+})
+
+const tierHint = computed(() => t('affiliate.stats.tierHint', {
+  count: formatCount(detail.value?.paid_invitee_count ?? 0),
+  multiplier: formattedTierMultiplier.value,
+}))
+
+const nextTierHint = computed(() => {
+  const count = detail.value?.next_tier_paid_invitee_count ?? 0
+  if (count <= 0) return ''
+  return t('affiliate.stats.nextTierHint', { count: formatCount(count) })
 })
 
 function formatCount(value: number): string {

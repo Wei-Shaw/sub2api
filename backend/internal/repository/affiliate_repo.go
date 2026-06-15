@@ -50,6 +50,31 @@ LEFT JOIN (
 WHERE ua.user_id = $1
 LIMIT 1`
 
+const countPaidInviteesSQL = `
+SELECT COUNT(DISTINCT ua.user_id)::integer
+FROM user_affiliates ua
+WHERE ua.inviter_id = $1
+  AND (
+    EXISTS (
+      SELECT 1
+      FROM payment_orders po
+      WHERE po.user_id = ua.user_id
+        AND po.status IN ('PAID', 'RECHARGING', 'COMPLETED')
+        AND po.order_type IN ('balance', 'subscription')
+        AND po.pay_amount > 0
+      LIMIT 1
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM redeem_codes rc
+      WHERE rc.used_by = ua.user_id
+        AND rc.type = 'subscription'
+        AND rc.status = 'used'
+        AND rc.value > 0
+      LIMIT 1
+    )
+  )`
+
 type affiliateQueryExecer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -381,6 +406,26 @@ LIMIT $2`, inviterID, limit)
 		return nil, err
 	}
 	return invitees, nil
+}
+
+func (r *affiliateRepository) CountPaidInvitees(ctx context.Context, inviterID int64) (int, error) {
+	if inviterID <= 0 {
+		return 0, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, countPaidInviteesSQL, inviterID)
+	if err != nil {
+		return 0, fmt.Errorf("count paid invitees: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return 0, rows.Err()
+	}
+	var count int
+	if err := rows.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, rows.Err()
 }
 
 func (r *affiliateRepository) ListAffiliateInviteRecords(ctx context.Context, filter service.AffiliateRecordFilter) ([]service.AffiliateInviteRecord, int64, error) {
