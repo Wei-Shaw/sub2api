@@ -3,7 +3,6 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 
 	"github.com/tidwall/gjson"
@@ -71,11 +70,11 @@ REDACTED)
 	return first
 REDACTED
 
-// buildBillingAttributionBlockJSON 构造 system 数组的 billing attribution block。
+// buildBillingAttributionText 构造 system 数组的 billing attribution 文本。
 //
 // 形态严格对齐真实 Claude Code CLI：
 //
-//	{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.161.{fpREDACTED; cc_entrypoint=cli; cch=00000;"REDACTED
+//	x-anthropic-billing-header: cc_version=2.1.161.{fpREDACTED; cc_entrypoint=cli; cch=00000;
 //
 // cch=00000 是签名占位符，由 signBillingHeaderCCH 在 buildUpstreamRequest 阶段
 // 替换为基于完整 body 的 xxhash64 5 位十六进制摘要。
@@ -91,15 +90,4 @@ REDACTED
 		"x-anthropic-billing-header: cc_version=%s.%s; cc_entrypoint=cli; cch=00000;",
 		cliVersion, fp,
 	), nil
-REDACTED
-
-func buildBillingAttributionBlockJSON(body []byte, cliVersion string) ([]byte, error) {
-	text, err := buildBillingAttributionText(body, cliVersion)
-	if err != nil {
-		return nil, err
-REDACTED
-	return json.Marshal(map[string]string{
-		"type": "text",
-		"text": text,
-REDACTED)
 REDACTED
