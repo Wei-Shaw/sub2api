@@ -148,6 +148,11 @@ type SystemSettings struct {
 	AffiliateEnabled                      bool
 	AffiliateRebateRate                   float64
 	AffiliateSubscriptionRebateMultiplier float64
+	AffiliateTieredRebateEnabled          bool
+	AffiliateTier2MinPaidInvitees         int
+	AffiliateTier3MinPaidInvitees         int
+	AffiliateTier2MultiplierPercent       float64
+	AffiliateTier3MultiplierPercent       float64
 	AffiliateRebateFreezeHours            int
 	AffiliateRebateDurationDays           int
 	AffiliateRebatePerInviteeCap          float64
@@ -227,6 +232,14 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool
+}
+
+type AffiliateTieredRebateConfig struct {
+	Enabled                bool
+	Tier2MinPaidInvitees   int
+	Tier3MinPaidInvitees   int
+	Tier2MultiplierPercent float64
+	Tier3MultiplierPercent float64
 }
 
 type DefaultSubscriptionSetting struct {

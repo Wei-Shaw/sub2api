@@ -230,6 +230,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		RiskControlEnabled:                     settings.RiskControlEnabled,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
 		AffiliateSubscriptionRebateMultiplier:  settings.AffiliateSubscriptionRebateMultiplier,
+		AffiliateTieredRebateEnabled:           settings.AffiliateTieredRebateEnabled,
+		AffiliateTier2MinPaidInvitees:          settings.AffiliateTier2MinPaidInvitees,
+		AffiliateTier3MinPaidInvitees:          settings.AffiliateTier3MinPaidInvitees,
+		AffiliateTier2MultiplierPercent:        settings.AffiliateTier2MultiplierPercent,
+		AffiliateTier3MultiplierPercent:        settings.AffiliateTier3MultiplierPercent,
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           settings.AffiliateRebatePerInviteeCap,
@@ -513,6 +518,11 @@ type UpdateSettingsRequest struct {
 	DefaultBalance                            float64                           `json:"default_balance"`
 	AffiliateRebateRate                       *float64                          `json:"affiliate_rebate_rate"`
 	AffiliateSubscriptionRebateMultiplier     *float64                          `json:"affiliate_subscription_rebate_multiplier"`
+	AffiliateTieredRebateEnabled              *bool                             `json:"affiliate_tiered_rebate_enabled"`
+	AffiliateTier2MinPaidInvitees             *int                              `json:"affiliate_tier2_min_paid_invitees"`
+	AffiliateTier3MinPaidInvitees             *int                              `json:"affiliate_tier3_min_paid_invitees"`
+	AffiliateTier2MultiplierPercent           *float64                          `json:"affiliate_tier2_multiplier_percent"`
+	AffiliateTier3MultiplierPercent           *float64                          `json:"affiliate_tier3_multiplier_percent"`
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
 	AffiliateRebatePerInviteeCap              *float64                          `json:"affiliate_rebate_per_invitee_cap"`
@@ -706,6 +716,26 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	affiliateSubscriptionRebateMultiplier := previousSettings.AffiliateSubscriptionRebateMultiplier
 	if req.AffiliateSubscriptionRebateMultiplier != nil {
 		affiliateSubscriptionRebateMultiplier = *req.AffiliateSubscriptionRebateMultiplier
+	}
+	affiliateTieredRebateEnabled := previousSettings.AffiliateTieredRebateEnabled
+	if req.AffiliateTieredRebateEnabled != nil {
+		affiliateTieredRebateEnabled = *req.AffiliateTieredRebateEnabled
+	}
+	affiliateTier2MinPaidInvitees := previousSettings.AffiliateTier2MinPaidInvitees
+	if req.AffiliateTier2MinPaidInvitees != nil {
+		affiliateTier2MinPaidInvitees = *req.AffiliateTier2MinPaidInvitees
+	}
+	affiliateTier3MinPaidInvitees := previousSettings.AffiliateTier3MinPaidInvitees
+	if req.AffiliateTier3MinPaidInvitees != nil {
+		affiliateTier3MinPaidInvitees = *req.AffiliateTier3MinPaidInvitees
+	}
+	affiliateTier2MultiplierPercent := previousSettings.AffiliateTier2MultiplierPercent
+	if req.AffiliateTier2MultiplierPercent != nil {
+		affiliateTier2MultiplierPercent = *req.AffiliateTier2MultiplierPercent
+	}
+	affiliateTier3MultiplierPercent := previousSettings.AffiliateTier3MultiplierPercent
+	if req.AffiliateTier3MultiplierPercent != nil {
+		affiliateTier3MultiplierPercent = *req.AffiliateTier3MultiplierPercent
 	}
 	if affiliateSubscriptionRebateMultiplier < 0 {
 		affiliateSubscriptionRebateMultiplier = 0
@@ -1592,6 +1622,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultBalance:                         req.DefaultBalance,
 		AffiliateRebateRate:                    affiliateRebateRate,
 		AffiliateSubscriptionRebateMultiplier:  affiliateSubscriptionRebateMultiplier,
+		AffiliateTieredRebateEnabled:           affiliateTieredRebateEnabled,
+		AffiliateTier2MinPaidInvitees:          affiliateTier2MinPaidInvitees,
+		AffiliateTier3MinPaidInvitees:          affiliateTier3MinPaidInvitees,
+		AffiliateTier2MultiplierPercent:        affiliateTier2MultiplierPercent,
+		AffiliateTier3MultiplierPercent:        affiliateTier3MultiplierPercent,
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
@@ -2036,6 +2071,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultBalance:                         updatedSettings.DefaultBalance,
 		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
 		AffiliateSubscriptionRebateMultiplier:  updatedSettings.AffiliateSubscriptionRebateMultiplier,
+		AffiliateTieredRebateEnabled:           updatedSettings.AffiliateTieredRebateEnabled,
+		AffiliateTier2MinPaidInvitees:          updatedSettings.AffiliateTier2MinPaidInvitees,
+		AffiliateTier3MinPaidInvitees:          updatedSettings.AffiliateTier3MinPaidInvitees,
+		AffiliateTier2MultiplierPercent:        updatedSettings.AffiliateTier2MultiplierPercent,
+		AffiliateTier3MultiplierPercent:        updatedSettings.AffiliateTier3MultiplierPercent,
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           updatedSettings.AffiliateRebatePerInviteeCap,
@@ -2440,6 +2480,21 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AffiliateSubscriptionRebateMultiplier != after.AffiliateSubscriptionRebateMultiplier {
 		changed = append(changed, "affiliate_subscription_rebate_multiplier")
+	}
+	if before.AffiliateTieredRebateEnabled != after.AffiliateTieredRebateEnabled {
+		changed = append(changed, "affiliate_tiered_rebate_enabled")
+	}
+	if before.AffiliateTier2MinPaidInvitees != after.AffiliateTier2MinPaidInvitees {
+		changed = append(changed, "affiliate_tier2_min_paid_invitees")
+	}
+	if before.AffiliateTier3MinPaidInvitees != after.AffiliateTier3MinPaidInvitees {
+		changed = append(changed, "affiliate_tier3_min_paid_invitees")
+	}
+	if before.AffiliateTier2MultiplierPercent != after.AffiliateTier2MultiplierPercent {
+		changed = append(changed, "affiliate_tier2_multiplier_percent")
+	}
+	if before.AffiliateTier3MultiplierPercent != after.AffiliateTier3MultiplierPercent {
+		changed = append(changed, "affiliate_tier3_multiplier_percent")
 	}
 	if before.AffiliateRebateFreezeHours != after.AffiliateRebateFreezeHours {
 		changed = append(changed, "affiliate_rebate_freeze_hours")

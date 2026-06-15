@@ -146,6 +146,11 @@ type SystemSettings struct {
 	DefaultBalance                        float64                      `json:"default_balance"`
 	AffiliateRebateRate                   float64                      `json:"affiliate_rebate_rate"`
 	AffiliateSubscriptionRebateMultiplier float64                      `json:"affiliate_subscription_rebate_multiplier"`
+	AffiliateTieredRebateEnabled          bool                         `json:"affiliate_tiered_rebate_enabled"`
+	AffiliateTier2MinPaidInvitees         int                          `json:"affiliate_tier2_min_paid_invitees"`
+	AffiliateTier3MinPaidInvitees         int                          `json:"affiliate_tier3_min_paid_invitees"`
+	AffiliateTier2MultiplierPercent       float64                      `json:"affiliate_tier2_multiplier_percent"`
+	AffiliateTier3MultiplierPercent       float64                      `json:"affiliate_tier3_multiplier_percent"`
 	AffiliateRebateFreezeHours            int                          `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays           int                          `json:"affiliate_rebate_duration_days"`
 	AffiliateRebatePerInviteeCap          float64                      `json:"affiliate_rebate_per_invitee_cap"`

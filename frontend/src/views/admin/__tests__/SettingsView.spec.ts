@@ -662,6 +662,28 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
+  it("keeps zero affiliate tier multipliers when submitting settings", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      affiliate_tiered_rebate_enabled: true,
+      affiliate_tier2_multiplier_percent: 0,
+      affiliate_tier3_multiplier_percent: 0,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        affiliate_tier2_multiplier_percent: 0,
+        affiliate_tier3_multiplier_percent: 0,
+      }),
+    );
+  });
+
   it("updates provider enablement immediately and reloads providers", async () => {
     const provider = {
       id: 7,
