@@ -1,0 +1,293 @@
+﻿package handler
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"testing"
+
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+)
+
+func resetOpsErrorLoggerStateForTest(t *testing.T) {
+	t.Helper()
+
+	opsErrorLogMu.Lock()
+	ch := opsErrorLogQueue
+	opsErrorLogQueue = nil
+	opsErrorLogStopping = true
+	opsErrorLogMu.Unlock()
+
+	if ch != nil {
+		close(ch)
+	}
+	opsErrorLogWorkersWg.Wait()
+
+	opsErrorLogOnce = sync.Once{}
+	opsErrorLogStopOnce = sync.Once{}
+	opsErrorLogWorkersWg = sync.WaitGroup{}
+	opsErrorLogMu = sync.RWMutex{}
+	opsErrorLogStopping = false
+
+	opsErrorLogQueueLen.Store(0)
+	opsErrorLogEnqueued.Store(0)
+	opsErrorLogDropped.Store(0)
+	opsErrorLogProcessed.Store(0)
+	opsErrorLogSanitized.Store(0)
+	opsErrorLogLastDropLogAt.Store(0)
+
+	opsErrorLogShutdownCh = make(chan struct{})
+	opsErrorLogShutdownOnce = sync.Once{}
+	opsErrorLogDrained.Store(false)
+}
+
+func TestEnqueueOpsErrorLog_QueueFullDrop(t *testing.T) {
+	resetOpsErrorLoggerStateForTest(t)
+
+	// 绂佹 enqueueOpsErrorLog 瑙﹀彂 workers锛屼娇鐢ㄦ祴璇曢槦鍒楅獙璇佹弧闃熷垪闄嶇骇銆?	opsErrorLogOnce.Do(func() {})
+
+	opsErrorLogMu.Lock()
+	opsErrorLogQueue = make(chan opsErrorLogJob, 1)
+	opsErrorLogMu.Unlock()
+
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	entry := &service.OpsInsertErrorLogInput{ErrorPhase: "upstream", ErrorType: "upstream_error"}
+
+	enqueueOpsErrorLog(ops, entry)
+	enqueueOpsErrorLog(ops, entry)
+
+	require.Equal(t, int64(1), OpsErrorLogEnqueuedTotal())
+	require.Equal(t, int64(1), OpsErrorLogDroppedTotal())
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+}
+
+func TestEnqueueOpsErrorLog_EarlyReturnBranches(t *testing.T) {
+	resetOpsErrorLoggerStateForTest(t)
+
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	entry := &service.OpsInsertErrorLogInput{ErrorPhase: "upstream", ErrorType: "upstream_error"}
+
+	// nil 鍏ュ弬鍒嗘敮
+	enqueueOpsErrorLog(nil, entry)
+	enqueueOpsErrorLog(ops, nil)
+	require.Equal(t, int64(0), OpsErrorLogEnqueuedTotal())
+
+	// shutdown 鍒嗘敮
+	close(opsErrorLogShutdownCh)
+	enqueueOpsErrorLog(ops, entry)
+	require.Equal(t, int64(0), OpsErrorLogEnqueuedTotal())
+
+	// stopping 鍒嗘敮
+	resetOpsErrorLoggerStateForTest(t)
+	opsErrorLogMu.Lock()
+	opsErrorLogStopping = true
+	opsErrorLogMu.Unlock()
+	enqueueOpsErrorLog(ops, entry)
+	require.Equal(t, int64(0), OpsErrorLogEnqueuedTotal())
+
+	// queue nil 鍒嗘敮锛堥槻姝㈠惎鍔?worker 骞叉壈锛?	resetOpsErrorLoggerStateForTest(t)
+	opsErrorLogOnce.Do(func() {})
+	opsErrorLogMu.Lock()
+	opsErrorLogQueue = nil
+	opsErrorLogMu.Unlock()
+	enqueueOpsErrorLog(ops, entry)
+	require.Equal(t, int64(0), OpsErrorLogEnqueuedTotal())
+}
+
+func TestOpsCaptureWriterPool_ResetOnRelease(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/test", nil)
+
+	writer := acquireOpsCaptureWriter(c.Writer)
+	require.NotNil(t, writer)
+	_, err := writer.buf.WriteString("temp-error-body")
+	require.NoError(t, err)
+
+	releaseOpsCaptureWriter(writer)
+
+	reused := acquireOpsCaptureWriter(c.Writer)
+	defer releaseOpsCaptureWriter(reused)
+
+	require.Zero(t, reused.buf.Len(), "writer should be reset before reuse")
+}
+
+func TestOpsErrorLoggerMiddleware_DoesNotBreakOuterMiddlewares(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	r.Use(middleware2.Recovery())
+	r.Use(middleware2.RequestLogger())
+	r.Use(middleware2.Logger())
+	r.GET("/v1/messages", OpsErrorLoggerMiddleware(nil), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/messages", nil)
+
+	require.NotPanics(t, func() {
+		r.ServeHTTP(rec, req)
+	})
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestIsKnownOpsErrorType(t *testing.T) {
+	known := []string{
+		"invalid_request_error",
+		"authentication_error",
+		"rate_limit_error",
+		"billing_error",
+		"subscription_error",
+		"upstream_error",
+		"overloaded_error",
+		"api_error",
+		"not_found_error",
+		"forbidden_error",
+	}
+	for _, k := range known {
+		require.True(t, isKnownOpsErrorType(k), "expected known: %s", k)
+	}
+
+	unknown := []string{"<nil>", "null", "", "random_error", "some_new_type", "<nil>\u003e"}
+	for _, u := range unknown {
+		require.False(t, isKnownOpsErrorType(u), "expected unknown: %q", u)
+	}
+}
+
+func TestNormalizeOpsErrorType(t *testing.T) {
+	tests := []struct {
+		name    string
+		errType string
+		code    string
+		want    string
+	}{
+		// Known types pass through.
+		{"known invalid_request_error", "invalid_request_error", "", "invalid_request_error"},
+		{"known rate_limit_error", "rate_limit_error", "", "rate_limit_error"},
+		{"known upstream_error", "upstream_error", "", "upstream_error"},
+
+		// Unknown/garbage types are rejected and fall through to code-based or default.
+		{"nil literal from upstream", "<nil>", "", "api_error"},
+		{"null string", "null", "", "api_error"},
+		{"random string", "something_weird", "", "api_error"},
+
+		// Unknown type but known code still maps correctly.
+		{"nil with INSUFFICIENT_BALANCE code", "<nil>", "INSUFFICIENT_BALANCE", "billing_error"},
+		{"nil with USAGE_LIMIT_EXCEEDED code", "<nil>", "USAGE_LIMIT_EXCEEDED", "subscription_error"},
+
+		// Empty type falls through to code-based mapping.
+		{"empty type with balance code", "", "INSUFFICIENT_BALANCE", "billing_error"},
+		{"empty type with subscription code", "", "SUBSCRIPTION_NOT_FOUND", "subscription_error"},
+		{"empty type no code", "", "", "api_error"},
+
+		// Known type overrides conflicting code-based mapping.
+		{"known type overrides conflicting code", "rate_limit_error", "INSUFFICIENT_BALANCE", "rate_limit_error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeOpsErrorType(tt.errType, tt.code)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestParseOpsErrorResponsePreservesNestedStringCode(t *testing.T) {
+	parsed := parseOpsErrorResponse([]byte(`{"error":{"type":"permission_error","code":"GROUP_DELETED","message":"API Key 所属分组已删除"}}`))
+
+	require.Equal(t, "permission_error", parsed.ErrorType)
+	require.Equal(t, "GROUP_DELETED", parsed.Code)
+	require.Equal(t, "API Key 所属分组已删除", parsed.Message)
+}
+
+func TestSetOpsEndpointContext_SetsContextKeys(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	setOpsEndpointContext(c, "claude-3-5-sonnet-20241022", int16(2)) // stream
+
+	v, ok := c.Get(opsUpstreamModelKey)
+	require.True(t, ok)
+	vStr, ok := v.(string)
+	require.True(t, ok)
+	require.Equal(t, "claude-3-5-sonnet-20241022", vStr)
+
+	rt, ok := c.Get(opsRequestTypeKey)
+	require.True(t, ok)
+	rtVal, ok := rt.(int16)
+	require.True(t, ok)
+	require.Equal(t, int16(2), rtVal)
+}
+
+func TestSetOpsEndpointContext_EmptyModelNotStored(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	setOpsEndpointContext(c, "", int16(1))
+
+	_, ok := c.Get(opsUpstreamModelKey)
+	require.False(t, ok, "empty upstream model should not be stored")
+
+	rt, ok := c.Get(opsRequestTypeKey)
+	require.True(t, ok)
+	rtVal, ok := rt.(int16)
+	require.True(t, ok)
+	require.Equal(t, int16(1), rtVal)
+}
+
+func TestSetOpsEndpointContext_NilContext(t *testing.T) {
+	require.NotPanics(t, func() {
+		setOpsEndpointContext(nil, "model", int16(1))
+	})
+}
+
+func TestGetOpsAPIKeyFallsBackToOpsFallbackKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	// 主 key 缺席（鉴权早退场景）：返回 nil。
+	require.Nil(t, getOpsAPIKey(c))
+
+	// 写入 ops 专用 fallback key 后应能取到，且带齐 user/group。
+	groupID := int64(55)
+	apiKey := &service.APIKey{
+		ID:      100,
+		GroupID: &groupID,
+		User:    &service.User{ID: 7},
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformAnthropic},
+	}
+	c.Set(string(middleware2.ContextKeyOpsFallbackAPIKey), apiKey)
+
+	got := getOpsAPIKey(c)
+	require.NotNil(t, got)
+	require.Equal(t, int64(100), got.ID)
+	require.NotNil(t, got.User)
+	require.Equal(t, int64(7), got.User.ID)
+	require.NotNil(t, got.Group)
+	require.Equal(t, service.PlatformAnthropic, got.Group.Platform)
+}
+
+func TestGetOpsAPIKeyPrefersPrimaryContextKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	primary := &service.APIKey{ID: 1}
+	fallback := &service.APIKey{ID: 2}
+	c.Set(string(middleware2.ContextKeyAPIKey), primary)
+	c.Set(string(middleware2.ContextKeyOpsFallbackAPIKey), fallback)
+
+	got := getOpsAPIKey(c)
+	require.NotNil(t, got)
+	require.Equal(t, int64(1), got.ID, "宸查壌鏉冭姹傚簲浼樺厛浣跨敤姝ｅ紡 api key")
+}

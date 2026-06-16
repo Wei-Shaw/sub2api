@@ -1,0 +1,499 @@
+﻿syntax = "proto3";
+
+package pluginsdk;
+
+option go_package = "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk";
+
+import "google/protobuf/empty.proto";
+
+// ============================================================
+// PluginLifecycle 鈥?鎻掍欢鎻愪緵锛屾牳蹇冭皟鐢紙浠呯敓鍛藉懆鏈熺鐞嗭級
+// ============================================================
+
+service PluginLifecycle {
+  rpc Init(PluginInitRequest) returns (PluginInitResponse);
+  rpc GetManifest(google.protobuf.Empty) returns (ManifestResponse);
+  rpc HealthCheck(google.protobuf.Empty) returns (HealthResponse);
+  rpc Shutdown(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc GetFrontendBundle(FrontendBundleRequest) returns (stream FileChunk);
+  // GetMigration is used by the host to fetch the SQL body of one migration
+  // declared in ManifestResponse.migrations. The plugin keeps SQL in its own
+  // embed.FS; the host applies the file via plugin/migrations.go after
+  // verifying its checksum against the manifest declaration.
+  rpc GetMigration(GetMigrationRequest) returns (GetMigrationResponse);
+}
+
+// ============================================================
+// Lifecycle Messages
+// ============================================================
+
+message PluginInitRequest {
+  string sdk_address = 1;
+  // reserved: was `map<string, string> config = 2;` 鈥?host-only ops fields
+  // were dropped from the SDK in V5/W6 SETTINGS-V2 (see docs/plugin-
+  // architecture/SETTINGS-V2-DESIGN.md 搂3). The host still uses
+  // PluginRecord.Config for ops escape hatches but it is no longer wired
+  // through the plugin process. Do NOT reuse field number 2 or name "config".
+  reserved 2;
+  reserved "config";
+  // plugin_name is the unique plugin identifier the core uses to scope SDK
+  // resources (e.g. Redis key namespace). The SDK echoes it back to the core
+  // via gRPC metadata on every SDK call so the server can apply per-plugin
+  // policy without having to peer at TCP source addresses.
+  string plugin_name = 3;
+  // capabilities lists the privileged SDK features this plugin is allowed to
+  // use (e.g. "redis_raw_keys" for cross-plugin Redis access). Capabilities
+  // must be declared in the plugin's Manifest; the core forwards the subset
+  // it has approved. Anything not in this list is rejected by the SDK server.
+  repeated string capabilities = 4;
+  // outbound_defaults conveys the host's global outbound HTTP policy (SSRF
+  // block-list, allowed-host list, redirect / timeout / body caps). The SDK
+  // caches these on Init so plugin code can call NewSafeHTTPClient without
+  // re-fetching them. Plugins may layer per-call overrides on top via
+  // OutboundConfig. See V5-DESIGN 搂W4 (SafeOutboundHTTPCapability).
+  OutboundDefaults outbound_defaults = 50;
+}
+
+// OutboundDefaults is the host-side global outbound HTTP policy delivered to
+// plugins at Init time. All fields are optional; the SDK fills sane defaults
+// (RFC1918 + link-local + loopback + CGNAT block, 30s timeout, 1MiB body cap,
+// 3 redirects) when the host leaves them empty.
+message OutboundDefaults {
+  // blocked_cidrs lists CIDR ranges the SDK MUST refuse to dial. Empty means
+  // "use SDK defaults" 鈥?the SDK never falls back to "no block list".
+  repeated string blocked_cidrs = 1;
+  // allowed_hosts is an optional global allow-list of hostnames. When
+  // non-empty the SDK rejects any host not in the list. Empty means "no
+  // host-level allow-list" (block-list still applies).
+  repeated string allowed_hosts = 2;
+  // max_redirects caps the number of HTTP redirects followed. 0 鈫?SDK
+  // default (3).
+  int32 max_redirects = 3;
+  // timeout_nanos is the per-request timeout. 0 鈫?SDK default (30s).
+  int64 timeout_nanos = 4;
+  // max_body_bytes caps response body size. 0 鈫?SDK default (1 MiB).
+  int64 max_body_bytes = 5;
+}
+
+message PluginInitResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message HealthResponse {
+  bool healthy = 1;
+  string message = 2;
+}
+
+message FrontendBundleRequest {
+  string path = 1;
+}
+
+message FileChunk {
+  bytes data = 1;
+  string filename = 2;
+  bool eof = 3;
+}
+
+// ============================================================
+// Manifest
+// ============================================================
+
+message ManifestResponse {
+  string name = 1;
+  string display_name = 2;
+  string version = 3;
+  string description = 4;
+  string author = 5;
+
+  repeated EndpointDeclaration gateway_endpoints = 10;
+  repeated EndpointDeclaration plugin_endpoints = 11;
+  FrontendManifest frontend = 20;
+
+  // DEPRECATED: legacy filename-only declaration. New plugins should populate
+  // `migrations` instead. The host ignores migration_files when migrations
+  // is non-empty.
+  repeated string migration_files = 30;
+
+  // migrations declares the SQL migration files the plugin ships embedded.
+  // The host fetches each file body via PluginLifecycle.GetMigration and
+  // applies it through plugin/migrations.go (advisory lock + checksum check
+  // + plugin_migrations table). Files are applied in lexicographical order
+  // of `filename`.
+  repeated MigrationDecl migrations = 41;
+
+  // capabilities declares the privileged SDK features this plugin requires.
+  // The core checks each entry against an allow-list and forwards the
+  // approved subset back via PluginInitRequest.capabilities. Known values:
+  //   - "redis_raw_keys": allow PluginContext.Redis().Raw() to bypass the
+  //     default per-plugin key namespace. Required for plugins that need to
+  //     read/write keys defined by other components (e.g. the gateway cache
+  //     contract written by channel-management).
+  //   - "settings_extension": opt-in for the SettingsExtension SDK feature
+  //     (plugin-scoped settings stored by the host). When the plugin
+  //     populates settings_schema_json / settings_defaults_json the core
+  //     forwards the capability automatically; declaring it explicitly is
+  //     not required but harmless.
+  repeated string capabilities = 40;
+
+  // settings_schema_json is a JSON Schema (Draft-07) document describing
+  // the plugin's admin-tunable configuration keys. The host parses and
+  // caches the schema, then renders it as a form on the admin Settings
+  // page (vue-json-schema-form). Writes from the admin UI are validated
+  // server-side against this schema. Empty bytes mean the plugin does
+  // not contribute any settings.
+  bytes settings_schema_json = 42;
+
+  // settings_defaults_json is a JSON object (string-keyed) carrying the
+  // default value for each top-level key declared in the schema. The
+  // host applies defaults when a key has not been written yet so plugins
+  // can rely on Settings.Get returning a value immediately after install.
+  bytes settings_defaults_json = 43;
+
+  // settings_schema_version mirrors Manifest.SettingsSchema.Version (see
+  // SETTINGS-V2-DESIGN 搂3.3). Plugins should bump this whenever a property's
+  // type changes shape; the host stamps the value into
+  // plugin_settings.schema_version_at_write on every write so plugin SDKs
+  // can detect stale values via SchemaVersionMismatchError. Empty string is
+  // normalised to "0" host-side.
+  string settings_schema_version = 44;
+
+  // settings_properties_meta_json is a JSON object keyed by top-level
+  // schema property name. Each value is the marker triple
+  // {visibility, deprecated, requires_reload} 鈥?see SETTINGS-V2-DESIGN
+  // 搂1.4 for the precise shape. The plugin SDK derives this from the
+  // SettingsSchemaDoc.PropertyMeta map; plugins may also set the markers
+  // inline as JSON Schema vendor extensions (`x-visibility` etc.) and
+  // leave this field empty 鈥?the host will re-derive it from
+  // settings_schema_json. When both sources disagree, this field wins
+  // (it is the SDK's authoritative serialization).
+  bytes settings_properties_meta_json = 45;
+
+  // icon_svg is the complete SVG markup (including the outer <svg> tag)
+  // that the admin UI renders next to the plugin name on the plugins
+  // management page. Letting plugins ship the SVG removes the need for
+  // the core to maintain a registry of plugin icons. Empty bytes mean
+  // the host falls back to its generic plugin icon. See pluginsdk Icon*
+  // constants for ergonomic helpers.
+  string icon_svg = 46;
+
+  // subscribed_events declares which HostEvent types this plugin wants
+  // to receive. Names use dotted lowercase (e.g. "payment.order.created").
+  // Host validates against capability whitelist on Subscribe; high-frequency
+  // events like "gateway.model.invoked" additionally require capability
+  // "events.subscribe.gateway" (legacy alias: "events.gateway").
+  repeated string subscribed_events = 47;
+
+  // owned_tables lists the host DB tables this plugin owns / reads / writes.
+  // The SQL gate (P12路B-1) rejects plugin SQL touching tables not listed
+  // here unless the plugin also holds db.core.read or db.core.write and
+  // the table is in the host shared whitelist.
+  //
+  // Naming: lowercase, snake_case table names (e.g. "channel_pricings",
+  // "channel_monitors"). Schema-qualified names (e.g. "public.foo") are
+  // matched literally; plugins should avoid schema prefixes unless they
+  // genuinely use a non-default schema.
+  //
+  // Plugins SHOULD list every table they CREATE in migrations and any
+  // shared host table they read/write (the latter requires db.core.read
+  // or db.core.write capability).
+  repeated string owned_tables = 48;
+
+  // public_flags declares public-facing settings flags the host should
+  // expose alongside its own GetPublicSettings response. The host queries
+  // each flag's value without going through the plugin process, so a
+  // degraded / stopped plugin does not break the public bootstrap.
+  //
+  // Used by the payment plugin to expose payment_enabled to the SPA's
+  // route guard / sidebar without coupling the core to plugin status.
+  repeated PublicFlagDecl public_flags = 49;
+
+  // settings_component_path optionally names a Vue component the plugin
+  // frontend exports under the same VIEWS map as route components. When
+  // non-empty, the host's PluginSettingsForm mounts this component instead
+  // of rendering the generic JSON-schema form. Empty string = fall back
+  // to the schema renderer (legacy behaviour).
+  string settings_component_path = 50;
+
+  // platforms declares the account platforms this gateway plugin provides.
+  // Each platform defines display metadata, account types, and UI
+  // customization. The host registers these into the PlatformRegistry on
+  // plugin load and renders them on account management pages.
+  repeated PlatformDeclaration platforms = 60;
+}
+
+// PublicFlagDecl is a single entry in ManifestResponse.public_flags.
+// Mirrors Go-side pluginsdk.PublicFlagDecl - keep field names in sync.
+message PublicFlagDecl {
+  // key is the JSON field name in the PublicSettings response envelope.
+  // SHOULD be snake_case (e.g. "payment_enabled").
+  string key = 1;
+  // source is "settings" (read from plugin's settings store) or
+  // "static" (always return default_value).
+  string source = 2;
+  // settings_key is the path inside the plugin's settings document
+  // (e.g. "enabled" or "stripe.publishable_key"). Required when
+  // source == "settings".
+  string settings_key = 3;
+  // type is "bool" | "string" | "number". Drives JSON encoding.
+  string type = 4;
+  // default_value is JSON-encoded (e.g. "true", a quoted string, or "1.5").
+  // Used when settings_key is unset, source is "static", or the plugin
+  // has not been started yet.
+  string default_value = 5;
+}
+
+message EndpointDeclaration {
+  string path = 1;
+  repeated string methods = 2;
+  string auth_type = 3; // "admin" / "user" / "apikey" / "none"
+}
+
+message FrontendManifest {
+  string entry_js = 1;
+  string entry_css = 2;
+  repeated MenuItem menu_items = 3;
+  repeated RouteDefinition routes = 4;
+  repeated string i18n_namespaces = 5;
+}
+
+message MenuItem {
+  string path = 1;
+  // label_key is the legacy i18n key. New plugins should leave this empty and
+  // populate `labels` instead so the core does not need a translation table for
+  // every plugin. Kept for backward compatibility.
+  string label_key = 2;
+  // icon is the legacy icon hint. Historically this was an icon name (e.g.
+  // "puzzle-piece") that the core had to map to an SVG. New plugins should
+  // populate `icon_svg` instead. For tolerance, the frontend treats `icon` as
+  // raw SVG markup if it begins with `<svg`.
+  string icon = 3;
+  string section = 4;           // "admin" / "user"
+  int32 sort_order = 5;
+  bool requires_admin = 6;
+  bool hide_in_simple_mode = 7;
+  string feature_flag = 8;
+  repeated MenuItem children = 9;
+  // icon_svg is a complete SVG markup string (including the outer <svg> tag)
+  // that the frontend can inject directly via v-html. Letting plugins ship the
+  // SVG removes the need for the core to maintain an icon-name -> SVG table.
+  string icon_svg = 10;
+  // labels maps a locale code (e.g. "zh", "en") to the already-translated
+  // menu label. The frontend picks the entry matching the user's current
+  // locale, falling back to "en" if present, then to label_key as a last
+  // resort. This removes the need for the core's i18n bundle to contain every
+  // plugin's translations.
+  map<string, string> labels = 11;
+
+  // placement_group is the V5/W7 "Placement DSL" sidebar bucket the host
+  // routes this menu item into. Known values: "admin/main", "admin/system",
+  // "admin/end", "user/main", "user/end". Empty defaults to the section's
+  // "<section>/end" bucket so legacy plugins land at the bottom of their
+  // section without further changes. See AppSidebar.mergeByPlacement for
+  // the merge algorithm.
+  string placement_group = 12;
+
+  // placement_order is the relative order *within* placement_group. Lower
+  // values render first; ties fall back to the host's deterministic
+  // declaration order (host items keep their hard-coded position, plugin
+  // items follow plugin-name then path). Mirrors sort_order semantics
+  // but scoped to one Placement bucket.
+  int32 placement_order = 13;
+
+  // descriptions maps a locale code (e.g. "zh", "en") to the already-
+  // translated menu description text the host AppHeader should render
+  // under the page title. Like `labels`, the frontend picks the entry
+  // matching the user's current locale, falling back to "en" then "zh".
+  // Empty map means "no description"; AppHeader leaves the description
+  // line empty rather than rendering placeholder text.
+  //
+  // Plugins ship descriptions through the manifest so plugin views no
+  // longer need to repeat title/description in a per-view
+  // PluginPageLayout header 鈥?the host AppHeader becomes the single
+  // source of truth, matching how host pages already work.
+  map<string, string> descriptions = 14;
+}
+
+message RouteDefinition {
+  string path = 1;
+  string name = 2;
+  string component_path = 3;
+  map<string, string> meta = 4;
+}
+
+// MigrationDecl describes a single SQL migration that the plugin ships
+// embedded. The host pulls the body via PluginLifecycle.GetMigration and
+// re-verifies the SHA-256 against this declaration before executing.
+message MigrationDecl {
+  // Filename is applied in lexicographical order, e.g. "001_create_x.sql".
+  string filename          = 1;
+  // ChecksumSha256 is the hex-encoded SHA-256 of the SQL body the plugin
+  // intends to ship. The host treats a mismatch with the fetched body as
+  // a fatal startup error (drift = potential supply-chain tampering).
+  string checksum_sha256   = 2;
+  // NonTransactional marks migrations that contain statements PostgreSQL
+  // refuses to run inside an explicit transaction (e.g.
+  // CREATE INDEX CONCURRENTLY). The host applies these outside BEGIN/COMMIT.
+  bool   non_transactional = 3;
+  // DownFilename names the down migration the plugin ships alongside the up
+  // body. Empty string means the migration is irreversible 鈥?the host skips
+  // executing it during plugin Purge and only deletes bookkeeping rows.
+  // When non-empty, the host fetches the body via PluginLifecycle.GetMigration
+  // (same RPC, different filename) and caches it on plugin enable so Purge
+  // can run the down SQL even when the plugin process is no longer alive.
+  string down_filename         = 4;
+  // DownChecksumSha256 is the hex-encoded SHA-256 of the down SQL body. The
+  // host re-verifies it against the fetched body to detect supply-chain
+  // tampering 鈥?same contract as ChecksumSha256 above.
+  string down_checksum_sha256  = 5;
+}
+
+// GetMigrationRequest names the migration the host wishes to fetch. The
+// filename must match one declared in ManifestResponse.migrations.
+message GetMigrationRequest {
+  string filename = 1;
+}
+
+// GetMigrationResponse carries the raw SQL body. `sql` is bytes (not
+// string) so any plugin-side BOM or non-UTF8 trailing bytes survive
+// the round-trip; the host treats it as opaque text when executing.
+message GetMigrationResponse {
+  string filename          = 1;
+  bytes  sql               = 2;
+  // ChecksumSha256 is the SHA-256 of `sql` computed by the SDK; the host
+  // re-checks this against MigrationDecl.checksum_sha256 to reject drift.
+  string checksum_sha256   = 3;
+  bool   non_transactional = 4;
+}
+
+// ============================================================
+// Platform Declaration 鈥?account platforms provided by plugins
+// ============================================================
+
+// PlatformDeclaration describes an account platform a gateway plugin provides.
+// The host registers these into PlatformRegistry at plugin load time.
+message PlatformDeclaration {
+  // platform is the unique identifier stored in account.platform column.
+  // Lowercase alphanumeric + hyphens (e.g. "anthropic", "openai").
+  string platform = 1;
+  string display_name = 2;
+  // icon_svg is the complete SVG markup for the platform icon.
+  string icon_svg = 3;
+  // theme_color is CSS color for platform badges (e.g. "#f97316").
+  string theme_color = 4;
+  repeated AccountTypeDeclaration account_types = 5;
+  CapacityDisplayConfig capacity_display = 6;
+  UsageDisplayConfig usage_display = 7;
+  repeated CustomActionDeclaration custom_actions = 8;
+  TestConnectionConfig test_config = 9;
+  // sort_order in platform selector tabs. Lower = first.
+  int32 sort_order = 10;
+  // privacy_states for the Privacy filter dropdown. Empty = N/A.
+  repeated PrivacyState privacy_states = 11;
+  // compatible_gateways declares which gateway protocols this platform
+  // supports. When non-empty the host registers the plugin as a provider
+  // for each listed protocol. When empty the host falls back to
+  // [platform] (single-protocol default).
+  repeated string compatible_gateways = 12;
+  // group_config declares the group-level configuration schema. When set,
+  // the admin group form renders either a JSON-schema form or a custom Vue
+  // component for platform-specific group settings.
+  GroupConfigDeclaration group_config = 13;
+  // frontend_meta is opaque JSON passed through to the frontend unchanged.
+  // The backend does not interpret this field. Plugins use it to declare
+  // UI hints (CLI config, CC switch config, feature flags, etc.) that the
+  // frontend reads to drive data-driven rendering.
+  bytes frontend_meta = 14;
+}
+
+// GroupConfigDeclaration declares group-level configuration for a platform.
+message GroupConfigDeclaration {
+  // group_extra_schema is a JSON Schema (Draft-07) describing the
+  // platform-specific extra fields stored in group_extra.
+  bytes group_extra_schema = 1;
+  // form_component_path names a custom Vue component the plugin ships for
+  // the group config form. Empty = use the JSON schema renderer.
+  string form_component_path = 2;
+  // frontend_meta is opaque JSON passed through to the frontend unchanged.
+  bytes frontend_meta = 3;
+}
+
+// AccountTypeDeclaration describes an account type within a platform.
+message AccountTypeDeclaration {
+  string type = 1;
+  string display_name = 2;
+  string description = 3;
+  string icon_svg = 4;
+  string theme_color = 5;
+  // credential_schema is JSON Schema (Draft-07) for credential fields.
+  // Host renders a form when no custom component is provided.
+  bytes credential_schema = 6;
+  // extra_schema is JSON Schema for extra fields.
+  bytes extra_schema = 7;
+  // form_component_path names a Vue component the plugin ships for
+  // this type's creation/edit form. Empty = use schema renderer.
+  string form_component_path = 8;
+  // sub_types for type sub-options (e.g. "OAuth" vs "Setup Token").
+  repeated SubTypeOption sub_types = 9;
+  int32 sort_order = 10;
+  // badge_label is the short text on the list view type badge.
+  string badge_label = 11;
+  // frontend_meta is opaque JSON passed through to the frontend unchanged.
+  bytes frontend_meta = 12;
+}
+
+message SubTypeOption {
+  string value = 1;
+  string label = 2;
+}
+
+message CapacityDisplayConfig {
+  bool show_concurrency = 1;
+  repeated DisplayRow extra_rows = 2;
+}
+
+message UsageDisplayConfig {
+  string component_path = 1;
+  string window_label = 2;
+  bool show_req_count = 3;
+  bool show_cost = 4;
+  repeated DisplayRow extra_rows = 5;
+}
+
+message DisplayRow {
+  string label = 1;
+  string source = 2;
+  string format = 3;
+}
+
+message CustomActionDeclaration {
+  string action_id = 1;
+  string icon_svg = 2;
+  map<string, string> labels = 3;
+  // action_type: "api_call" | "open_modal"
+  string action_type = 4;
+  string api_endpoint = 5;
+  string component_path = 6;
+  int32 sort_order = 7;
+}
+
+message TestModeOption {
+  string value = 1;
+  string label = 2;
+}
+
+message TestConnectionConfig {
+  bool model_selector = 1;
+  string test_component_path = 2;
+  string default_test_model = 3;
+  repeated TestModeOption test_modes = 4;
+  repeated string image_model_patterns = 5;
+  repeated string prioritized_models = 6;
+}
+
+message PrivacyState {
+  string value = 1;
+  string display_name = 2;
+  string badge_color = 3;
+  bool is_set = 4;
+}

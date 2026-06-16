@@ -1,0 +1,1987 @@
+COMMIT:a22a5b9e7|chore: fix docker pull version tag in TG notification
+.github/workflows/release.yml
+
+COMMIT:3fe4fd4c3|chore: add model gpt-5.5
+backend/internal/service/billing_service.go
+backend/internal/service/openai_codex_transform.go
+backend/internal/service/pricing_service.go
+frontend/src/components/keys/UseKeyModal.vue
+frontend/src/composables/useModelWhitelist.ts
+
+COMMIT:827a4498e|Merge pull request #1829 from ZHOUKAILIAN/feature/codex-oauth-proxy-message
+COMMIT:8dbbd9429|Merge pull request #1836 from wucm667/fix/account-daily-weekly-quota-cache-invalidation
+COMMIT:6b0cf4663|Merge pull request #1815 from james-6-23/feat_rpm
+COMMIT:dc5d42add|feat(rpm): RPM 限流模块优化
+backend/cmd/server/wire_gen.go
+backend/cmd/server/wire_gen_test.go
+backend/ent/group.go
+backend/ent/group/group.go
+backend/ent/group/where.go
+backend/ent/group_create.go
+backend/ent/group_update.go
+backend/ent/migrate/schema.go
+backend/ent/mutation.go
+backend/ent/runtime/runtime.go
+backend/ent/schema/group.go
+backend/ent/schema/user.go
+backend/ent/user.go
+backend/ent/user/user.go
+backend/ent/user/where.go
+backend/ent/user_create.go
+backend/ent/user_update.go
+backend/go.mod
+backend/go.sum
+backend/internal/handler/admin/admin_service_stub_test.go
+backend/internal/handler/admin/group_handler.go
+backend/internal/handler/admin/setting_handler.go
+backend/internal/handler/admin/user_handler.go
+backend/internal/handler/dto/mappers.go
+backend/internal/handler/dto/settings.go
+backend/internal/handler/dto/types.go
+backend/internal/handler/gateway_handler.go
+backend/internal/handler/gateway_handler_billing_error_test.go
+backend/internal/handler/gateway_handler_chat_completions.go
+backend/internal/handler/gateway_handler_responses.go
+backend/internal/handler/gateway_handler_warmup_intercept_unit_test.go
+backend/internal/handler/gemini_v1beta_handler.go
+backend/internal/handler/openai_chat_completions.go
+backend/internal/handler/openai_gateway_handler.go
+backend/internal/handler/openai_images.go
+backend/internal/repository/api_key_repo.go
+backend/internal/repository/group_repo.go
+backend/internal/repository/user_group_rate_repo.go
+backend/internal/repository/user_repo.go
+backend/internal/repository/user_rpm_cache.go
+backend/internal/repository/wire.go
+backend/internal/server/api_contract_test.go
+backend/internal/server/routes/admin.go
+backend/internal/service/admin_service.go
+backend/internal/service/admin_service_group_rate_test.go
+backend/internal/service/admin_service_group_test.go
+backend/internal/service/admin_service_list_users_test.go
+backend/internal/service/admin_service_rpm_status_test.go
+backend/internal/service/admin_service_update_user_rpm_test.go
+backend/internal/service/api_key_auth_cache.go
+backend/internal/service/api_key_auth_cache_impl.go
+backend/internal/service/api_key_service_cache_test.go
+backend/internal/service/auth_service.go
+backend/internal/service/billing_cache_service.go
+backend/internal/service/billing_cache_service_rpm_test.go
+backend/internal/service/billing_cache_service_singleflight_test.go
+backend/internal/service/billing_cache_service_test.go
+backend/internal/service/domain_constants.go
+backend/internal/service/group.go
+backend/internal/service/setting_service.go
+backend/internal/service/settings_view.go
+backend/internal/service/user.go
+backend/internal/service/user_group_rate.go
+backend/internal/service/user_rpm_cache.go
+backend/internal/service/wire.go
+backend/migrations/125_add_group_rpm_limit.sql
+backend/migrations/126_add_user_rpm_limit.sql
+backend/migrations/127_add_user_group_rpm_override.sql
+frontend/src/api/admin/groups.ts
+frontend/src/api/admin/settings.ts
+frontend/src/components/admin/group/GroupRPMOverridesModal.vue
+frontend/src/components/admin/group/GroupRateMultipliersModal.vue
+frontend/src/components/admin/user/UserCreateModal.vue
+frontend/src/components/admin/user/UserEditModal.vue
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/types/index.ts
+frontend/src/views/admin/GroupsView.vue
+frontend/src/views/admin/SettingsView.vue
+
+COMMIT:ef967d8f8|fix: 修复 golangci-lint 报告的 36 个问题
+backend/internal/service/openai_gateway_service.go
+backend/internal/service/openai_images.go
+backend/internal/service/openai_images_responses.go
+
+COMMIT:27ffc7f37|Merge pull request #1828 from wx-11/main
+COMMIT:9e5a6351f|修复计费问题以及模型回显
+backend/internal/service/openai_gateway_record_usage_test.go
+backend/internal/service/openai_gateway_service.go
+backend/internal/service/openai_images_responses.go
+backend/internal/service/openai_images_test.go
+
+COMMIT:bcf4aedcd|fix: 修复账户配额跨越时调度快照入队逻辑
+backend/internal/repository/usage_billing_repo.go
+backend/internal/repository/usage_billing_repo_integration_test.go
+
+COMMIT:11cf23da7|修改403逻辑:  先临时冷却，再根据连续次数决定是否判坏号
+backend/cmd/server/wire_gen.go
+backend/internal/repository/openai_403_counter_cache.go
+backend/internal/repository/wire.go
+backend/internal/service/openai_403_counter.go
+backend/internal/service/openai_gateway_403_reset_test.go
+backend/internal/service/openai_gateway_service.go
+backend/internal/service/ratelimit_service.go
+backend/internal/service/ratelimit_service_401_test.go
+backend/internal/service/ratelimit_service_403_test.go
+backend/internal/service/ratelimit_service_openai_test.go
+backend/internal/service/wire.go
+
+COMMIT:eea6f3888|使用codex的生图接口代替web2api
+backend/internal/service/account.go
+backend/internal/service/account_test_service.go
+backend/internal/service/account_test_service_openai_image_test.go
+backend/internal/service/openai_images.go
+backend/internal/service/openai_images_responses.go
+backend/internal/service/openai_images_test.go
+
+COMMIT:2489ea369|fix: clarify OpenAI OAuth proxy errors
+backend/internal/repository/openai_oauth_service.go
+backend/internal/repository/openai_oauth_service_test.go
+frontend/src/composables/__tests__/useOpenAIOAuth.spec.ts
+frontend/src/composables/useOpenAIOAuth.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+
+COMMIT:0b85a8da8|fix: add io.LimitReader bounds to prevent OOM in image handling
+backend/internal/service/openai_images.go
+
+COMMIT:327da8e26|Merge pull request #1813 from meteor041/meteor041/fix-openai-image-handling
+COMMIT:00778dca3|fix openai image request handling
+backend/internal/service/openai_codex_transform.go
+backend/internal/service/openai_codex_transform_test.go
+backend/internal/service/openai_gateway_service.go
+backend/internal/service/openai_images.go
+backend/internal/service/openai_images_test.go
+backend/internal/service/openai_model_mapping_test.go
+backend/internal/service/pricing_service.go
+backend/internal/service/pricing_service_test.go
+
+COMMIT:79aff2df3|Merge pull request #1810 from IanShaw027/fix/profile-auth-bindings-i18n
+COMMIT:f35e96751|fix payment qr fallback and admin guidance
+backend/internal/payment/provider/alipay.go
+backend/internal/payment/provider/alipay_test.go
+docs/PAYMENT.md
+docs/PAYMENT_CN.md
+frontend/src/components/common/HelpTooltip.vue
+frontend/src/components/common/__tests__/HelpTooltip.spec.ts
+frontend/src/components/payment/PaymentProviderDialog.vue
+frontend/src/components/payment/PaymentStatusPanel.vue
+frontend/src/components/payment/__tests__/PaymentProviderDialog.spec.ts
+frontend/src/components/payment/__tests__/PaymentStatusPanel.spec.ts
+frontend/src/components/payment/__tests__/paymentFlow.spec.ts
+frontend/src/components/payment/__tests__/providerConfig.spec.ts
+frontend/src/components/payment/paymentFlow.ts
+frontend/src/components/payment/providerConfig.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+frontend/src/views/user/PaymentView.vue
+frontend/src/views/user/__tests__/PaymentView.spec.ts
+
+COMMIT:6449da6c8|chore: sync VERSION to 0.1.115 [skip ci]
+backend/cmd/server/VERSION
+
+COMMIT:755c7d502|chore: revert README files to 78f691d2 version
+README.md
+README_CN.md
+README_JA.md
+
+COMMIT:1da4bd72d|Merge pull request #1802 from IanShaw027/fix/profile-auth-bindings-i18n
+COMMIT:555134934|fix: clean up profile auth binding notes
+backend/internal/handler/user_handler_test.go
+backend/internal/server/api_contract_test.go
+backend/internal/service/user_service.go
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/types/index.ts
+
+COMMIT:c6d25f69d|chore: 恢复PAYMENT系列文件
+.gitignore
+docs/ADMIN_PAYMENT_INTEGRATION_API.md
+docs/PAYMENT.md
+docs/PAYMENT_CN.md
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+COMMIT:45065c23d|fix(ci): run 108a migration before 109 in backfill integration test
+backend/internal/repository/auth_identity_compat_backfill_integration_test.go
+
+COMMIT:ddf80f5ea|Merge pull request #1799 from IanShaw027/rebuild/auth-identity-foundation
+COMMIT:c048ca80a|Merge branch 'main' into rebuild/auth-identity-foundation
+COMMIT:22385be51|Merge remote-tracking branch 'upstream/main' into rebuild/auth-identity-foundation
+COMMIT:4d0483f5b|feat: 补充gpt生图模型测试功能
+backend/internal/pkg/openai/constants.go
+backend/internal/service/account_test_service.go
+backend/internal/service/account_test_service_openai_test.go
+backend/internal/service/openai_account_scheduler.go
+backend/internal/service/openai_images.go
+frontend/src/components/account/AccountTestModal.vue
+frontend/src/components/admin/account/AccountTestModal.vue
+frontend/src/components/admin/account/__tests__/AccountTestModal.spec.ts
+frontend/src/composables/useModelWhitelist.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/views/admin/GroupsView.vue
+
+COMMIT:6b1949039|fix(ci): align openai account tests and remove dead wxpay const
+backend/internal/payment/provider/wxpay.go
+backend/internal/service/account_test_service.go
+backend/internal/service/account_test_service_openai_test.go
+
+COMMIT:1e0d46600|feat: 补充gpt生图模型测试功能
+backend/internal/pkg/openai/constants.go
+backend/internal/service/account_test_service.go
+backend/internal/service/account_test_service_openai_test.go
+backend/internal/service/openai_account_scheduler.go
+backend/internal/service/openai_images.go
+frontend/src/components/account/AccountTestModal.vue
+frontend/src/components/admin/account/AccountTestModal.vue
+frontend/src/components/admin/account/__tests__/AccountTestModal.spec.ts
+frontend/src/composables/useModelWhitelist.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/views/admin/GroupsView.vue
+
+COMMIT:9de7a72cc|fix(upgrade): close payment and oidc compatibility gaps
+backend/internal/payment/provider/wxpay.go
+backend/internal/payment/provider/wxpay_test.go
+backend/internal/repository/migrations_runner.go
+backend/internal/repository/migrations_runner_checksum_test.go
+backend/internal/repository/migrations_runner_extra_test.go
+backend/internal/service/payment_order_lifecycle.go
+backend/internal/service/payment_order_lifecycle_test.go
+backend/migrations/124_backfill_legacy_oidc_security_flags.sql
+backend/migrations/auth_identity_payment_migrations_regression_test.go
+deploy/config.example.yaml
+
+COMMIT:66b3acc27|fix(lint): remove embedded response selectors in openai images
+backend/internal/service/openai_images.go
+
+COMMIT:0bc3a521b|Merge branch 'Wei-Shaw:main' into rebuild/auth-identity-foundation
+COMMIT:3419cb011|fix(admin): preserve legacy oidc security write defaults
+backend/internal/handler/admin/setting_handler.go
+backend/internal/service/setting_service.go
+
+COMMIT:a94d89efa|fix(unit): restore secure oidc defaults and wechat alias reuse
+backend/internal/service/admin_service.go
+backend/internal/service/setting_service.go
+backend/internal/service/setting_service_oidc_config_test.go
+
+COMMIT:66680a305|fix(test): update wechat bind start path assertion
+backend/internal/handler/user_handler_test.go
+
+COMMIT:ad4600964|fix(ci): clean up lint and dead code
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/repository/migrations_runner.go
+backend/internal/repository/user_repo.go
+backend/internal/repository/user_repo_email_lookup_unit_test.go
+backend/internal/service/payment_service.go
+backend/internal/service/payment_visible_method_instances.go
+frontend/src/components/layout/__tests__/AppSidebar.spec.ts
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+COMMIT:82259d138|fix(auth): preserve resolved token version on oauth login
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/service/auth_service.go
+backend/internal/service/user.go
+backend/internal/service/user_service.go
+
+COMMIT:ca4e38aa0|fix(profile): stabilize binding compatibility and frontend checks
+.github/workflows/backend-ci.yml
+Makefile
+README.md
+README_CN.md
+README_JA.md
+backend/internal/handler/user_handler.go
+backend/internal/handler/user_handler_test.go
+backend/internal/server/api_contract_test.go
+backend/internal/server/routes/auth.go
+backend/internal/service/auth_email_binding.go
+backend/internal/service/auth_service_email_bind_test.go
+backend/internal/service/user_service.go
+backend/internal/service/user_service_test.go
+frontend/src/api/__tests__/admin.users.spec.ts
+frontend/src/api/__tests__/client.spec.ts
+frontend/src/api/__tests__/user.spec.ts
+frontend/src/api/admin/users.ts
+frontend/src/api/auth.ts
+frontend/src/api/client.ts
+frontend/src/api/user.ts
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts
+frontend/src/components/user/profile/__tests__/ProfileInfoCard.spec.ts
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/LinuxDoCallbackView.spec.ts
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+
+COMMIT:1aab084ec|fix(payment): restore upgrade-safe payment flows
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+backend/internal/payment/provider/wxpay.go
+backend/internal/payment/provider/wxpay_test.go
+backend/internal/service/payment_config_providers.go
+backend/internal/service/payment_config_providers_test.go
+backend/internal/service/payment_resume_service_test.go
+backend/internal/service/payment_service.go
+backend/migrations/120_enforce_payment_orders_out_trade_no_unique_notx.sql
+backend/migrations/auth_identity_payment_migrations_regression_test.go
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/PaymentView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+frontend/src/views/user/__tests__/PaymentView.spec.ts
+
+COMMIT:36aed3595|fix(auth): harden oauth identity upgrade paths
+backend/ent/schema/auth_identity_schema_test.go
+backend/ent/schema/user.go
+backend/internal/config/config.go
+backend/internal/config/config_test.go
+backend/internal/handler/admin/setting_handler_auth_source_defaults_test.go
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_linuxdo_oauth_test.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_oidc_oauth_test.go
+backend/internal/repository/auth_identity_legacy_migration_integration_test.go
+backend/internal/repository/migrations_runner.go
+backend/internal/repository/migrations_runner_checksum_test.go
+backend/internal/repository/migrations_runner_extra_test.go
+backend/internal/repository/migrations_runner_notx_test.go
+backend/internal/repository/migrations_schema_integration_test.go
+backend/internal/repository/user_profile_identity_repo.go
+backend/internal/repository/user_profile_identity_repo_unit_test.go
+backend/internal/repository/user_repo.go
+backend/internal/repository/user_repo_email_lookup_unit_test.go
+backend/internal/service/auth_oauth_email_flow.go
+backend/internal/service/auth_oauth_email_flow_test.go
+backend/internal/service/auth_pending_identity_service.go
+backend/internal/service/auth_pending_identity_service_test.go
+backend/internal/service/auth_service.go
+backend/internal/service/setting_service.go
+backend/internal/service/setting_service_oidc_config_test.go
+backend/migrations/110_pending_auth_and_provider_default_grants.sql
+backend/migrations/115_auth_identity_legacy_external_backfill.sql
+backend/migrations/116_auth_identity_legacy_external_safety_reports.sql
+backend/migrations/123_fix_legacy_auth_source_grant_on_signup_defaults.sql
+
+COMMIT:32107b4f9|Merge pull request #1795 from 0x90000/feat/openai-image-api-sync
+COMMIT:3d29f7c2f|fix(auth): invalidate access tokens on session revoke
+backend/internal/handler/auth_handler.go
+backend/internal/handler/auth_session_revocation_test.go
+backend/internal/handler/auth_wechat_oauth_test.go
+backend/internal/handler/user_handler.go
+backend/internal/handler/user_handler_test.go
+backend/internal/service/auth_service.go
+
+COMMIT:01a991f56|fix(test): restore identity repo integration imports
+backend/internal/repository/user_profile_identity_repo_contract_test.go
+
+COMMIT:6696e61c7|fix(frontend): preserve callback recovery state
+frontend/src/router/__tests__/guards.spec.ts
+frontend/src/router/index.ts
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/OidcCallbackView.vue
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/WechatPaymentCallbackView.vue
+frontend/src/views/auth/__tests__/LinuxDoCallbackView.spec.ts
+frontend/src/views/auth/__tests__/OidcCallbackView.spec.ts
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+frontend/src/views/auth/__tests__/WechatPaymentCallbackView.spec.ts
+
+COMMIT:81c827ee5|fix(profile): stabilize identity binding management
+backend/internal/handler/auth_current_user_test.go
+backend/internal/handler/user_handler.go
+backend/internal/handler/user_handler_test.go
+backend/internal/repository/user_profile_identity_repo.go
+backend/internal/repository/user_profile_identity_repo_contract_test.go
+backend/internal/repository/user_repo.go
+backend/internal/repository/user_repo_email_lookup_unit_test.go
+backend/internal/service/admin_service_auth_identity_binding_test.go
+backend/internal/service/user_service_test.go
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts
+frontend/src/components/user/profile/__tests__/ProfileInfoCard.spec.ts
+
+COMMIT:83cad63ce|fix(auth): harden oauth callback adoption flows
+backend/internal/handler/auth_handler.go
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_linuxdo_oauth_test.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_oauth_test_helpers_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_oidc_oauth_test.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+
+COMMIT:06136af80|fix(upgrade): preserve legacy auth and payment compatibility
+backend/internal/handler/admin/setting_handler.go
+backend/internal/handler/admin/setting_handler_auth_source_defaults_test.go
+backend/internal/repository/migrations_runner.go
+backend/internal/repository/migrations_runner_extra_test.go
+backend/internal/service/payment_config_limits.go
+backend/internal/service/payment_config_limits_test.go
+backend/internal/service/payment_resume_service_test.go
+backend/internal/service/payment_visible_method_instances.go
+backend/internal/service/setting_service.go
+backend/internal/service/setting_service_wechat_config_test.go
+backend/migrations/118_wechat_dual_mode_and_auth_source_defaults.sql
+backend/migrations/120_enforce_payment_orders_out_trade_no_unique_notx.sql
+backend/migrations/123_fix_legacy_auth_source_grant_on_signup_defaults.sql
+backend/migrations/auth_identity_payment_migrations_regression_test.go
+
+COMMIT:6ad333d6b|fix(openai): 修复生图服务 lint 问题
+backend/internal/service/openai_images.go
+
+COMMIT:29caf8510|fix(frontend): stabilize wechat payment resume recovery
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/PaymentView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+frontend/src/views/user/__tests__/PaymentView.spec.ts
+frontend/src/views/user/__tests__/paymentWechatResume.spec.ts
+frontend/src/views/user/paymentWechatResume.ts
+
+COMMIT:d6a04bb77|fix(payment): support source routing and compatible resume signing
+backend/internal/handler/payment_handler_resume_test.go
+backend/internal/service/payment_config_limits.go
+backend/internal/service/payment_config_limits_test.go
+backend/internal/service/payment_config_providers_test.go
+backend/internal/service/payment_order_lifecycle.go
+backend/internal/service/payment_order_result_test.go
+backend/internal/service/payment_resume_lookup.go
+backend/internal/service/payment_resume_lookup_test.go
+backend/internal/service/payment_resume_service.go
+backend/internal/service/payment_resume_service_test.go
+backend/internal/service/payment_service.go
+backend/internal/service/payment_visible_method_instances.go
+
+COMMIT:c54802192|feat(openai): 同步生图 API 支持并接入图片计费调度
+backend/internal/handler/endpoint.go
+backend/internal/handler/endpoint_test.go
+backend/internal/handler/openai_images.go
+backend/internal/handler/ops_error_logger.go
+backend/internal/pkg/openai/constants.go
+backend/internal/server/middleware/security_headers.go
+backend/internal/server/routes/gateway.go
+backend/internal/server/routes/gateway_test.go
+backend/internal/service/account.go
+backend/internal/service/model_pricing_resolver.go
+backend/internal/service/openai_account_scheduler.go
+backend/internal/service/openai_gateway_record_usage_test.go
+backend/internal/service/openai_gateway_service.go
+backend/internal/service/openai_images.go
+backend/internal/service/openai_images_test.go
+backend/internal/service/ops_retry.go
+backend/internal/web/embed_on.go
+
+COMMIT:b2e071219|fix(settings): preserve oauth config compatibility on upgrade
+backend/internal/config/config.go
+backend/internal/config/config_test.go
+backend/internal/handler/admin/setting_handler.go
+backend/internal/server/api_contract_test.go
+backend/internal/service/setting_service.go
+backend/internal/service/setting_service_oidc_config_test.go
+backend/internal/service/setting_service_public_test.go
+backend/internal/service/setting_service_wechat_config_test.go
+
+COMMIT:767f2f2df|fix(auth): harden pending oauth and backend mode flows
+backend/internal/handler/auth_handler.go
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_linuxdo_oauth_test.go
+backend/internal/handler/auth_oauth_logout_test.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_oidc_oauth_test.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+backend/internal/server/middleware/backend_mode_guard.go
+backend/internal/server/middleware/backend_mode_guard_test.go
+
+COMMIT:1ffebbb56|fix(migrations): keep auth identity and payment upgrades safe
+backend/internal/repository/auth_identity_legacy_migration_integration_test.go
+backend/internal/repository/migrations_schema_integration_test.go
+backend/migrations/108a_widen_auth_identity_migration_report_type.sql
+backend/migrations/120a_align_payment_orders_out_trade_no_index_name.sql
+backend/migrations/auth_identity_payment_migrations_regression_test.go
+
+COMMIT:be9df2bea|fix(auth): scrub legacy pending oauth tokens on upgrade
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/service/auth_pending_identity_service.go
+backend/migrations/122_pending_auth_completion_token_cleanup.sql
+backend/migrations/123_fix_legacy_auth_source_grant_on_signup_defaults.sql
+backend/migrations/auth_identity_payment_migrations_regression_test.go
+
+COMMIT:9d5e9bbc1|fix(payment): respect configured visible method source
+backend/internal/service/payment_order_jsapi_test.go
+backend/internal/service/payment_resume_service_test.go
+backend/internal/service/payment_visible_method_instances.go
+
+COMMIT:454873221|test(auth): strengthen pending oauth legacy token assertions
+backend/internal/handler/auth_oauth_pending_flow_test.go
+
+COMMIT:18481a100|fix(migrations): defer online ddl follow-ups safely
+backend/ent/migrate/auth_identity_fk_ondelete_test.go
+backend/internal/repository/migrations_runner.go
+backend/internal/repository/migrations_runner_checksum_test.go
+backend/migrations/109_auth_identity_compat_backfill.sql
+backend/migrations/119_enforce_payment_orders_out_trade_no_unique.sql
+backend/migrations/120_enforce_payment_orders_out_trade_no_unique_notx.sql
+backend/migrations/121_auth_identity_migration_report_type_widen.sql
+backend/migrations/auth_identity_payment_migrations_regression_test.go
+
+COMMIT:ca1f30a91|fix(auth): harden pending oauth session consumption
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/service/auth_pending_identity_service.go
+backend/internal/service/auth_pending_identity_service_test.go
+
+COMMIT:84628108f|fix(auth): preserve backward-compatible oauth defaults
+backend/internal/config/config.go
+backend/internal/config/config_test.go
+backend/internal/handler/admin/setting_handler.go
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_linuxdo_oauth_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_oidc_oauth_test.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+backend/internal/service/setting_service.go
+backend/internal/service/setting_service_oidc_config_test.go
+backend/internal/service/setting_service_public_test.go
+backend/internal/service/user_service.go
+backend/internal/service/user_service_test.go
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+COMMIT:dd314c41e|fix(payment): restore public resume and result flows
+backend/internal/handler/payment_handler.go
+backend/internal/handler/payment_handler_resume_test.go
+backend/internal/server/routes/payment.go
+backend/internal/service/payment_order.go
+backend/internal/service/payment_resume_service.go
+backend/internal/service/payment_resume_service_test.go
+frontend/src/api/__tests__/payment.spec.ts
+frontend/src/api/payment.ts
+frontend/src/components/payment/__tests__/paymentFlow.spec.ts
+frontend/src/components/payment/paymentFlow.ts
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/PaymentView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+frontend/src/views/user/__tests__/PaymentView.spec.ts
+frontend/src/views/user/paymentWechatResume.ts
+
+COMMIT:c229f33e9|fix(review): harden payment, oauth, and migration paths
+backend/ent/migrate/schema.go
+backend/ent/schema/auth_identity.go
+backend/ent/schema/payment_order.go
+backend/ent/schema/pending_auth_session.go
+backend/ent/schema/user.go
+backend/internal/config/config.go
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_linuxdo_oauth_test.go
+backend/internal/payment/wire.go
+backend/internal/payment/wire_test.go
+backend/internal/server/routes/auth.go
+backend/internal/service/payment_fulfillment.go
+backend/internal/service/payment_fulfillment_test.go
+backend/internal/service/payment_order.go
+backend/internal/service/payment_order_lifecycle.go
+backend/internal/service/payment_order_lifecycle_test.go
+backend/internal/service/payment_order_result_test.go
+backend/migrations/112_add_payment_order_provider_key_snapshot.sql
+backend/migrations/118_wechat_dual_mode_and_auth_source_defaults.sql
+backend/migrations/119_enforce_payment_orders_out_trade_no_unique.sql
+backend/migrations/auth_identity_payment_migrations_regression_test.go
+frontend/src/api/__tests__/auth-oauth-adoption.spec.ts
+frontend/src/api/auth.ts
+frontend/src/api/user.ts
+frontend/src/router/__tests__/guards.spec.ts
+frontend/src/router/__tests__/wechat-route.spec.ts
+frontend/src/router/index.ts
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/PaymentView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+frontend/src/views/user/__tests__/PaymentView.spec.ts
+frontend/src/views/user/__tests__/paymentUx.spec.ts
+
+COMMIT:8eb3f9e78|Merge pull request #1785 from IanShaw027/rebuild/auth-identity-foundation
+COMMIT:7fbd5177c|fix(ci): make legacy migration cleanup resilient
+backend/internal/repository/auth_identity_legacy_migration_integration_test.go
+
+COMMIT:fdf72eb51|fix(ci): repair integration repository tests
+backend/internal/repository/auth_identity_legacy_migration_integration_test.go
+backend/internal/repository/user_repo_sort_integration_test.go
+
+COMMIT:b13e34f83|fix(ci): align auth and payment verification tests
+backend/internal/config/config_test.go
+backend/internal/handler/auth_linuxdo_oauth_test.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_oidc_oauth_test.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+backend/internal/handler/dto/settings.go
+backend/internal/payment/provider/alipay.go
+backend/internal/payment/provider/alipay_test.go
+backend/internal/repository/user_profile_identity_repo.go
+backend/internal/server/api_contract_test.go
+backend/internal/service/admin_service.go
+backend/internal/service/auth_pending_identity_service.go
+backend/internal/service/auth_service.go
+backend/internal/service/payment_config_limits.go
+backend/internal/service/payment_config_providers_test.go
+backend/internal/service/payment_resume_service.go
+backend/internal/service/payment_resume_service_test.go
+backend/internal/service/payment_webhook_provider_test.go
+backend/internal/service/user_service.go
+
+COMMIT:6d51834a9|refactor(profile): simplify profile page flow
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/views/user/ProfileView.vue
+frontend/src/views/user/__tests__/ProfileView.spec.ts
+
+COMMIT:863258d78|Always show register password hint
+frontend/src/views/auth/RegisterView.vue
+
+COMMIT:287f2f56d|Show embedded avatar preview after selection
+frontend/src/components/user/profile/ProfileAvatarCard.vue
+frontend/src/components/user/profile/__tests__/ProfileAvatarCard.spec.ts
+
+COMMIT:525a32042|Fix user profile writes on postgres conflicts
+backend/internal/repository/announcement_read_repo.go
+backend/internal/repository/user_profile_identity_repo_contract_test.go
+backend/internal/repository/user_repo.go
+backend/internal/repository/user_repo_integration_test.go
+backend/internal/service/auth_email_binding.go
+backend/internal/service/auth_service.go
+backend/internal/service/sql_errors.go
+
+COMMIT:0f4a8d7be|feat(profile): redesign profile center layout
+frontend/src/api/user.ts
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts
+frontend/src/components/user/profile/__tests__/ProfileInfoCard.spec.ts
+frontend/src/types/index.ts
+frontend/src/views/user/ProfileView.vue
+frontend/src/views/user/__tests__/ProfileView.spec.ts
+
+COMMIT:d4c0a9911|feat(auth): support unbinding third-party identities
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/user_handler.go
+backend/internal/handler/user_handler_test.go
+backend/internal/repository/user_profile_identity_repo.go
+backend/internal/server/api_contract_test.go
+backend/internal/server/middleware/admin_auth_test.go
+backend/internal/server/routes/user.go
+backend/internal/service/admin_service_apikey_test.go
+backend/internal/service/admin_service_delete_test.go
+backend/internal/service/admin_service_email_identity_sync_test.go
+backend/internal/service/billing_cache_service_singleflight_test.go
+backend/internal/service/user_service.go
+backend/internal/service/user_service_test.go
+
+COMMIT:89d09838d|Return bad request for invalid announcements
+backend/internal/service/announcement.go
+backend/internal/service/announcement_service.go
+backend/internal/service/announcement_service_test.go
+
+COMMIT:0d87f94cb|Harden adoption decision reassignment
+backend/internal/repository/user_profile_identity_repo.go
+backend/internal/repository/user_profile_identity_repo_contract_test.go
+
+COMMIT:9bf8ab704|Fix postgres provider grant queries
+backend/internal/service/auth_oauth_first_bind.go
+backend/internal/service/auth_service.go
+
+COMMIT:dcbddef61|Merge remote-tracking branch 'origin/rebuild/auth-identity-foundation' into rebuild/auth-identity-foundation
+COMMIT:906802abe|Fix mobile payment launch detection
+frontend/src/components/payment/__tests__/paymentFlow.spec.ts
+frontend/src/components/payment/paymentFlow.ts
+frontend/src/utils/__tests__/device.spec.ts
+frontend/src/utils/device.ts
+frontend/src/views/user/PaymentView.vue
+
+COMMIT:da1d26001|Merge branch 'main' into rebuild/auth-identity-foundation
+COMMIT:a13ae5a0d|Fix mobile payment launch detection
+frontend/src/components/payment/__tests__/paymentFlow.spec.ts
+frontend/src/components/payment/paymentFlow.ts
+frontend/src/utils/__tests__/device.spec.ts
+frontend/src/utils/device.ts
+frontend/src/views/user/PaymentView.vue
+
+COMMIT:e4cfcae65|fix: reassign oauth adoption decisions on repeat login
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+
+COMMIT:11db3989c|Fix repeated OAuth adoption prompt for existing logins
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+
+COMMIT:40f7e832b|fix: restore wechat settings compatibility after rebase
+backend/internal/service/setting_service_wechat_config_test.go
+frontend/src/components/auth/WechatOAuthSection.vue
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+COMMIT:b22d00e54|feat: drive visible payment methods from enabled providers
+backend/internal/service/payment_config_limits.go
+backend/internal/service/payment_config_limits_test.go
+backend/internal/service/payment_config_providers.go
+backend/internal/service/payment_config_providers_test.go
+backend/internal/service/payment_config_service.go
+backend/internal/service/payment_config_service_test.go
+backend/internal/service/payment_order.go
+backend/internal/service/payment_order_jsapi_test.go
+backend/internal/service/payment_resume_service.go
+backend/internal/service/payment_resume_service_test.go
+backend/internal/service/payment_visible_method_instances.go
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+COMMIT:54dc17672|feat(settings): support per-channel WeChat OAuth and persist payment options
+backend/internal/handler/admin/setting_handler.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/dto/settings.go
+backend/internal/handler/setting_handler.go
+backend/internal/service/domain_constants.go
+backend/internal/service/payment_order.go
+backend/internal/service/setting_service.go
+backend/internal/service/settings_view.go
+frontend/src/api/admin/settings.ts
+frontend/src/components/auth/WechatOAuthSection.vue
+frontend/src/stores/app.ts
+frontend/src/types/index.ts
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/auth/LoginView.vue
+frontend/src/views/auth/RegisterView.vue
+frontend/src/views/auth/WechatCallbackView.vue
+
+COMMIT:d5819181e|feat(auth): reclaim stale identities and refresh profile UI
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/repository/user_repo.go
+backend/internal/repository/user_repo_integration_test.go
+backend/internal/service/auth_pending_identity_service.go
+backend/internal/service/auth_pending_identity_service_test.go
+frontend/src/api/auth.ts
+frontend/src/components/layout/AppHeader.vue
+frontend/src/components/user/profile/ProfileAvatarCard.vue
+frontend/src/components/user/profile/ProfileEditForm.vue
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/components/user/profile/ProfilePasswordForm.vue
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/views/user/ProfileView.vue
+
+COMMIT:c0371e910|frontend: align gateway scheduling toggles
+frontend/src/views/admin/SettingsView.vue
+
+COMMIT:65d3bd728|frontend: normalize payment error presentation
+frontend/src/views/user/PaymentView.vue
+frontend/src/views/user/__tests__/paymentUx.spec.ts
+frontend/src/views/user/paymentUx.ts
+
+COMMIT:20062b44d|frontend: normalize profile and admin i18n cleanup
+frontend/src/components/user/profile/ProfileAvatarCard.vue
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/components/user/profile/ProfilePasswordForm.vue
+frontend/src/components/user/profile/TotpDisableDialog.vue
+frontend/src/components/user/profile/TotpSetupModal.vue
+frontend/src/components/user/profile/__tests__/ProfilePasswordForm.spec.ts
+frontend/src/components/user/profile/__tests__/totp-timer-cleanup.spec.ts
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/UsersView.vue
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+COMMIT:a6b919eb5|frontend: normalize auth oauth i18n and error toasts
+frontend/src/components/auth/PendingOAuthCreateAccountForm.vue
+frontend/src/components/auth/TotpLoginModal.vue
+frontend/src/components/auth/WechatOAuthSection.vue
+frontend/src/components/auth/__tests__/PendingOAuthCreateAccountForm.spec.ts
+frontend/src/components/auth/__tests__/TotpLoginModal.spec.ts
+frontend/src/components/auth/__tests__/WechatOAuthSection.spec.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/router/index.ts
+frontend/src/stores/app.ts
+frontend/src/views/auth/EmailVerifyView.vue
+frontend/src/views/auth/ForgotPasswordView.vue
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/LoginView.vue
+frontend/src/views/auth/OAuthCallbackView.vue
+frontend/src/views/auth/OidcCallbackView.vue
+frontend/src/views/auth/RegisterView.vue
+frontend/src/views/auth/ResetPasswordView.vue
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/WechatPaymentCallbackView.vue
+frontend/src/views/auth/__tests__/LinuxDoCallbackView.spec.ts
+frontend/src/views/auth/__tests__/OAuthCallbackView.spec.ts
+frontend/src/views/auth/__tests__/OidcCallbackView.spec.ts
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+frontend/src/views/auth/__tests__/WechatPaymentCallbackView.spec.ts
+
+COMMIT:4c21320d1|fix(auth): require explicit choice for third-party signup
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/OidcCallbackView.vue
+frontend/src/views/auth/WechatCallbackView.vue
+
+COMMIT:2cebb0dc6|feat(settings): support dual-mode wechat oauth defaults
+backend/internal/handler/admin/setting_handler.go
+backend/internal/handler/dto/settings.go
+backend/internal/handler/setting_handler_public_test.go
+backend/internal/service/domain_constants.go
+backend/internal/service/payment_order.go
+backend/internal/service/setting_service.go
+backend/internal/service/setting_service_auth_source_defaults_test.go
+backend/internal/service/setting_service_public_test.go
+backend/internal/service/setting_service_wechat_config_test.go
+backend/internal/service/settings_view.go
+backend/migrations/118_wechat_dual_mode_and_auth_source_defaults.sql
+frontend/src/api/__tests__/settings.authSourceDefaults.spec.ts
+frontend/src/api/admin/settings.ts
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+COMMIT:17c6348b5|fix(profile): restore source hints and upload-only avatar
+frontend/src/components/user/profile/ProfileAvatarCard.vue
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/components/user/profile/__tests__/ProfileAvatarCard.spec.ts
+frontend/src/components/user/profile/__tests__/ProfileInfoCard.spec.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+
+COMMIT:7309c02f0|refactor(profile): split avatar and bindings cards
+frontend/src/components/user/profile/ProfileAccountBindingsCard.vue
+frontend/src/components/user/profile/ProfileAvatarCard.vue
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/components/user/profile/__tests__/ProfileAvatarCard.spec.ts
+frontend/src/components/user/profile/__tests__/ProfileInfoCard.spec.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/views/user/ProfileView.vue
+frontend/src/views/user/__tests__/ProfileView.spec.ts
+
+COMMIT:ee3f158f4|fix(settings): restore wechat and payment config persistence
+backend/internal/handler/admin/setting_handler.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+backend/internal/handler/dto/settings.go
+backend/internal/handler/setting_handler_public_test.go
+backend/internal/service/domain_constants.go
+backend/internal/service/payment_config_service.go
+backend/internal/service/payment_config_service_test.go
+backend/internal/service/payment_order.go
+backend/internal/service/payment_order_jsapi_test.go
+backend/internal/service/payment_order_result_test.go
+backend/internal/service/setting_service.go
+backend/internal/service/setting_service_public_test.go
+backend/internal/service/setting_service_wechat_config_test.go
+backend/internal/service/settings_view.go
+frontend/src/api/__tests__/settings.wechatConnect.spec.ts
+frontend/src/api/admin/settings.ts
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+COMMIT:d08757ce9|refactor(admin): remove auth migration reports
+backend/internal/handler/admin/admin_basic_handlers_test.go
+backend/internal/handler/admin/admin_service_stub_test.go
+backend/internal/handler/admin/user_handler.go
+backend/internal/handler/admin/user_handler_activity_test.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/dto/mappers.go
+backend/internal/handler/dto/types.go
+backend/internal/handler/dto/user_mapper_activity_test.go
+backend/internal/handler/user_handler_test.go
+backend/internal/repository/auth_identity_migration_report.go
+backend/internal/repository/user_profile_identity_repo_contract_test.go
+backend/internal/repository/user_repo.go
+backend/internal/repository/user_repo_sort_integration_test.go
+backend/internal/server/routes/admin.go
+backend/internal/service/admin_service.go
+backend/internal/service/admin_service_identity_migration_report_test.go
+frontend/src/api/__tests__/users.migrationReports.spec.ts
+frontend/src/api/admin/users.ts
+frontend/src/components/layout/AppSidebar.vue
+frontend/src/components/layout/__tests__/AppSidebar.spec.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/router/index.ts
+frontend/src/types/index.ts
+frontend/src/views/admin/AuthIdentityMigrationReportsView.vue
+frontend/src/views/admin/UsersView.vue
+frontend/src/views/admin/__tests__/AuthIdentityMigrationReportsView.spec.ts
+frontend/src/views/admin/__tests__/UsersView.spec.ts
+
+COMMIT:c624cce88|fix: unblock auth identity compat backfill migration
+backend/internal/repository/auth_identity_compat_backfill_integration_test.go
+backend/internal/repository/migrations_runner.go
+backend/internal/repository/migrations_runner_checksum_test.go
+backend/migrations/109_auth_identity_compat_backfill.sql
+
+COMMIT:78f691d2d|chore: update sponsors
+README.md
+README_CN.md
+README_JA.md
+assets/partners/logos/bestproxy.png
+
+COMMIT:49258dd3f|fix: preserve scheduler transport compatibility defaults
+backend/internal/service/openai_account_scheduler.go
+
+COMMIT:ed01c5991|feat: track authenticated user activity
+backend/internal/server/middleware/admin_auth_test.go
+backend/internal/server/middleware/jwt_auth.go
+backend/internal/server/middleware/jwt_auth_test.go
+backend/internal/service/admin_service_apikey_test.go
+backend/internal/service/admin_service_delete_test.go
+backend/internal/service/admin_service_email_identity_sync_test.go
+backend/internal/service/user_service.go
+backend/internal/service/user_service_test.go
+frontend/src/views/admin/UsersView.vue
+frontend/src/views/admin/__tests__/UsersView.spec.ts
+
+COMMIT:422f3449a|chore: remove local docs from repo
+.gitignore
+docs/ADMIN_PAYMENT_INTEGRATION_API.md
+docs/PAYMENT.md
+docs/PAYMENT_CN.md
+docs/superpowers/plans/2026-04-20-auth-identity-payment-foundation.md
+docs/superpowers/specs/2026-04-20-auth-identity-payment-foundation-design.md
+
+COMMIT:147ed42ad|fix: restrict payment return urls to internal result page
+backend/internal/service/payment_order.go
+backend/internal/service/payment_resume_service.go
+backend/internal/service/payment_resume_service_test.go
+
+COMMIT:62ff2d803|fix: normalize chat completions service tier
+backend/internal/service/openai_gateway_chat_completions.go
+backend/internal/service/openai_gateway_chat_completions_test.go
+
+COMMIT:0fcddce69|fix: reject http responses continuation ids
+backend/internal/handler/openai_gateway_handler.go
+backend/internal/handler/openai_gateway_handler_test.go
+
+COMMIT:ace082066|fix: honor ws transport when scheduler is disabled
+backend/internal/service/openai_account_scheduler.go
+backend/internal/service/openai_account_scheduler_test.go
+
+COMMIT:65efef1ee|feat: support replacing bound primary email
+backend/internal/handler/user_handler.go
+backend/internal/handler/user_handler_test.go
+backend/internal/service/auth_email_binding.go
+backend/internal/service/auth_service_email_bind_test.go
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+
+COMMIT:12f1e19d6|fix: restore wechat oauth legacy callback compatibility
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+
+COMMIT:0934f737d|fix: snapshot merchant identity for alipay and easypay
+backend/internal/payment/provider/alipay.go
+backend/internal/payment/provider/alipay_test.go
+backend/internal/payment/provider/easypay.go
+backend/internal/payment/provider/easypay_sign_test.go
+backend/internal/payment/provider/wxpay_test.go
+backend/internal/payment/types.go
+backend/internal/service/payment_fulfillment.go
+backend/internal/service/payment_fulfillment_test.go
+backend/internal/service/payment_order.go
+backend/internal/service/payment_order_provider_snapshot.go
+backend/internal/service/payment_order_provider_snapshot_test.go
+backend/internal/service/payment_refund.go
+backend/internal/service/payment_refund_test.go
+
+COMMIT:267844ebe|fix: fail closed for legacy refund provider resolution
+backend/internal/service/payment_refund.go
+backend/internal/service/payment_refund_test.go
+
+COMMIT:ebd053c87|docs: clarify openai scheduler flag semantics
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+COMMIT:64e401e22|fix: tighten payment legacy fallback paths
+backend/internal/service/payment_fulfillment.go
+backend/internal/service/payment_fulfillment_test.go
+backend/internal/service/payment_order_lifecycle.go
+backend/internal/service/payment_order_lifecycle_test.go
+
+COMMIT:276ce052a|fix: align payment recovery query refs and resume authority
+backend/internal/service/payment_order_lifecycle.go
+backend/internal/service/payment_order_lifecycle_test.go
+backend/internal/service/payment_resume_lookup.go
+backend/internal/service/payment_resume_lookup_test.go
+
+COMMIT:119f784d1|fix: validate wxpay payments against order snapshots
+backend/internal/payment/provider/wxpay.go
+backend/internal/payment/provider/wxpay_test.go
+backend/internal/payment/types.go
+backend/internal/service/payment_fulfillment.go
+backend/internal/service/payment_fulfillment_test.go
+backend/internal/service/payment_order.go
+backend/internal/service/payment_order_lifecycle.go
+backend/internal/service/payment_order_provider_snapshot.go
+backend/internal/service/payment_order_provider_snapshot_test.go
+
+COMMIT:35aeeaa6e|fix: pin payment read paths to provider snapshots
+backend/internal/service/payment_fulfillment.go
+backend/internal/service/payment_fulfillment_test.go
+backend/internal/service/payment_order_provider_snapshot.go
+backend/internal/service/payment_refund.go
+backend/internal/service/payment_webhook_provider.go
+backend/internal/service/payment_webhook_provider_test.go
+
+COMMIT:561405ab0|feat: add payment order provider snapshots
+backend/ent/migrate/schema.go
+backend/ent/mutation.go
+backend/ent/paymentorder.go
+backend/ent/paymentorder/paymentorder.go
+backend/ent/paymentorder/where.go
+backend/ent/paymentorder_create.go
+backend/ent/paymentorder_update.go
+backend/ent/runtime/runtime.go
+backend/ent/schema/payment_order.go
+backend/internal/handler/admin/payment_handler.go
+backend/internal/handler/payment_handler.go
+backend/internal/service/payment_order.go
+backend/internal/service/payment_order_provider_snapshot_test.go
+backend/migrations/117_add_payment_order_provider_snapshot.sql
+
+COMMIT:960b2bb8e|feat(legal): add CLA with automated GitHub Actions enforcement
+.github/workflows/cla.yml
+CLA.md
+
+COMMIT:440536a93|docs: align wechat payment required fields
+docs/PAYMENT.md
+docs/PAYMENT_CN.md
+
+COMMIT:9742796ee|fix: retire public payment verify and backfill trade no
+backend/internal/handler/payment_handler.go
+backend/internal/handler/payment_handler_resume_test.go
+backend/internal/server/routes/payment.go
+backend/internal/service/payment_order_lifecycle.go
+backend/internal/service/payment_order_lifecycle_test.go
+frontend/src/api/__tests__/payment.spec.ts
+frontend/src/api/payment.ts
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+
+COMMIT:33b208ab6|fix: restore legacy oauth callback fragment compatibility
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/OidcCallbackView.vue
+frontend/src/views/auth/__tests__/LinuxDoCallbackView.spec.ts
+frontend/src/views/auth/__tests__/OidcCallbackView.spec.ts
+
+COMMIT:f39865016|fix: harden oidc compat email and email bind tx
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_oidc_oauth_test.go
+backend/internal/service/auth_email_binding.go
+backend/internal/service/auth_service_email_bind_test.go
+
+COMMIT:7e89bca5e|fix: tighten pending oauth email routing and binding state
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/service/auth_oauth_email_flow.go
+backend/internal/service/user_service.go
+frontend/src/api/auth.ts
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts
+frontend/src/views/auth/EmailVerifyView.vue
+frontend/src/views/auth/__tests__/EmailVerifyView.spec.ts
+
+COMMIT:dcd5c43da|feat: complete email binding and pending oauth verification flows
+backend/cmd/server/wire_gen.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/user_handler.go
+backend/internal/handler/user_handler_test.go
+backend/internal/server/routes/auth.go
+backend/internal/server/routes/auth_rate_limit_test.go
+backend/internal/server/routes/user.go
+backend/internal/service/auth_email_binding.go
+backend/internal/service/auth_oauth_email_flow.go
+backend/internal/service/auth_oauth_email_flow_test.go
+backend/internal/service/auth_service_email_bind_test.go
+frontend/src/api/auth.ts
+frontend/src/api/user.ts
+frontend/src/components/auth/PendingOAuthCreateAccountForm.vue
+frontend/src/components/auth/__tests__/PendingOAuthCreateAccountForm.spec.ts
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/types/index.ts
+frontend/src/views/auth/EmailVerifyView.vue
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/OidcCallbackView.vue
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/EmailVerifyView.spec.ts
+frontend/src/views/auth/__tests__/LinuxDoCallbackView.spec.ts
+frontend/src/views/auth/__tests__/OidcCallbackView.spec.ts
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+
+COMMIT:6da08262d|feat avatar compress uploads to 20kb
+backend/go.mod
+backend/go.sum
+backend/internal/service/user_service.go
+backend/internal/service/user_service_test.go
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/components/user/profile/__tests__/ProfileInfoCard.spec.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+
+COMMIT:ffc9c3872|Merge pull request #1766 from touwaeriol/fix/codex-drop-removed-models
+COMMIT:a8854947c|Merge pull request #1764 from touwaeriol/feat/wxpay-pubkey-hardening
+COMMIT:07f23aaa7|fix wxpay config contract and h5 scene info
+backend/internal/payment/provider/wxpay.go
+backend/internal/payment/provider/wxpay_test.go
+frontend/src/components/payment/__tests__/providerConfig.spec.ts
+frontend/src/components/payment/providerConfig.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+
+COMMIT:2626e8f22|fix legacy email identity backfill grants
+backend/internal/service/auth_service.go
+backend/internal/service/auth_service_identity_sync_test.go
+
+COMMIT:09351e945|fix auth completion and payment resume hardening
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/service/payment_order_lifecycle.go
+backend/internal/service/payment_resume_lookup_test.go
+backend/internal/service/payment_resume_service.go
+backend/internal/service/payment_resume_service_test.go
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+
+COMMIT:f11b7d510|docs: align payment defaults and wechat capability notes
+docs/PAYMENT.md
+docs/PAYMENT_CN.md
+docs/superpowers/specs/2026-04-20-auth-identity-payment-foundation-design.md
+
+COMMIT:07bde2b66|docs: align payment guide with visible routing
+docs/PAYMENT.md
+docs/PAYMENT_CN.md
+
+COMMIT:ebe752441|fix profile activity and migration remediation
+backend/internal/handler/admin/admin_service_stub_test.go
+backend/internal/handler/admin/user_handler_activity_test.go
+backend/internal/handler/auth_current_user_test.go
+backend/internal/handler/user_handler.go
+backend/internal/handler/user_handler_test.go
+backend/internal/service/user_service.go
+backend/internal/service/user_service_test.go
+frontend/src/api/__tests__/users.migrationReports.spec.ts
+frontend/src/api/admin/users.ts
+frontend/src/components/user/profile/__tests__/ProfileInfoCard.spec.ts
+frontend/src/views/admin/AuthIdentityMigrationReportsView.vue
+frontend/src/views/admin/__tests__/AuthIdentityMigrationReportsView.spec.ts
+
+COMMIT:a27a7add3|fix payment resume result consistency
+backend/internal/service/payment_resume_lookup.go
+backend/internal/service/payment_resume_lookup_test.go
+frontend/src/components/payment/PaymentStatusPanel.vue
+frontend/src/components/payment/__tests__/PaymentStatusPanel.spec.ts
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+
+COMMIT:e12599c1b|fix settings auth source default persistence
+backend/internal/handler/admin/setting_handler.go
+backend/internal/handler/admin/setting_handler_auth_source_defaults_test.go
+backend/internal/service/auth_oauth_first_bind.go
+backend/internal/service/auth_service.go
+backend/internal/service/auth_service_identity_sync_test.go
+backend/internal/service/auth_service_register_test.go
+backend/internal/service/setting_service.go
+
+COMMIT:cd0338fba|fix frontend wechat oauth capability recovery
+frontend/src/api/auth.ts
+frontend/src/api/user.ts
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+frontend/src/views/user/ProfileView.vue
+
+COMMIT:7c6491c2d|fix auth pending session hardening
+backend/internal/handler/auth_handler.go
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_linuxdo_oauth_test.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_oidc_oauth_test.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+backend/internal/service/auth_oauth_email_flow.go
+backend/internal/service/auth_service.go
+backend/internal/service/auth_service_identity_sync_test.go
+
+COMMIT:1d8432b8a|fix: harden payment resume and wxpay webhook routing
+backend/internal/handler/payment_webhook_handler.go
+backend/internal/handler/payment_webhook_handler_test.go
+backend/internal/payment/load_balancer.go
+backend/internal/service/payment_order.go
+backend/internal/service/payment_order_jsapi_test.go
+backend/internal/service/payment_resume_service.go
+backend/internal/service/payment_resume_service_test.go
+backend/internal/service/payment_webhook_provider.go
+backend/internal/service/payment_webhook_provider_test.go
+
+COMMIT:0a461d824|fix: harden auth identity legacy migrations
+backend/internal/repository/auth_identity_legacy_migration_integration_test.go
+backend/internal/repository/user_profile_identity_repo.go
+backend/internal/repository/user_profile_identity_repo_contract_test.go
+backend/migrations/115_auth_identity_legacy_external_backfill.sql
+backend/migrations/116_auth_identity_legacy_external_safety_reports.sql
+
+COMMIT:a70f7aca0|fix pending auth session restore
+frontend/src/stores/__tests__/auth.spec.ts
+frontend/src/stores/auth.ts
+
+COMMIT:ea27ac6fd|fix: unify email identity sync and retry first-bind defaults
+backend/internal/repository/user_repo.go
+backend/internal/service/admin_service.go
+backend/internal/service/admin_service_email_identity_sync_test.go
+backend/internal/service/auth_service.go
+backend/internal/service/auth_service_identity_sync_test.go
+backend/internal/service/user_service.go
+backend/internal/service/user_service_email_identity_sync_test.go
+
+COMMIT:7a9488ff3|Add legacy identity safety remediation migration
+backend/internal/repository/auth_identity_legacy_migration_integration_test.go
+backend/migrations/116_auth_identity_legacy_external_safety_reports.sql
+
+COMMIT:c297d0112|Keep pending payment results in processing state
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+
+COMMIT:067eb23d8|Tighten WeChat OAuth capability mode selection
+backend/internal/handler/dto/settings.go
+backend/internal/handler/setting_handler.go
+backend/internal/handler/setting_handler_public_test.go
+backend/internal/service/setting_service.go
+backend/internal/service/setting_service_public_test.go
+backend/internal/service/settings_view.go
+frontend/src/api/auth.ts
+frontend/src/api/user.ts
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts
+frontend/src/stores/app.ts
+frontend/src/types/index.ts
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+frontend/src/views/user/ProfileView.vue
+
+COMMIT:12f4af742|fix auth pending adoption and turnstile flow
+frontend/src/components/auth/PendingOAuthCreateAccountForm.vue
+frontend/src/components/auth/__tests__/PendingOAuthCreateAccountForm.spec.ts
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/OidcCallbackView.vue
+frontend/src/views/auth/__tests__/LinuxDoCallbackView.spec.ts
+frontend/src/views/auth/__tests__/OidcCallbackView.spec.ts
+
+COMMIT:e4fe9fae2|Fix profile refresh identity compatibility
+backend/internal/handler/auth_current_user_test.go
+backend/internal/handler/auth_handler.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/user_handler.go
+backend/internal/handler/user_handler_test.go
+backend/internal/service/user_service.go
+
+COMMIT:030da8c2f|fix: close admin settings review gaps
+frontend/src/api/__tests__/settings.paymentVisibleMethods.spec.ts
+frontend/src/api/admin/settings.ts
+frontend/src/components/layout/AppSidebar.vue
+frontend/src/components/layout/__tests__/AppSidebar.spec.ts
+frontend/src/views/admin/AuthIdentityMigrationReportsView.vue
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/__tests__/AuthIdentityMigrationReportsView.spec.ts
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+COMMIT:55e8dd550|Tighten WeChat payment resume flow
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+backend/internal/handler/payment_handler.go
+backend/internal/handler/payment_handler_resume_test.go
+backend/internal/service/payment_resume_lookup.go
+backend/internal/service/payment_resume_service.go
+backend/internal/service/payment_resume_service_test.go
+frontend/src/types/payment.ts
+frontend/src/views/auth/WechatPaymentCallbackView.vue
+frontend/src/views/auth/__tests__/WechatPaymentCallbackView.spec.ts
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/PaymentView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+frontend/src/views/user/__tests__/paymentWechatResume.spec.ts
+frontend/src/views/user/paymentWechatResume.ts
+
+COMMIT:1521d5039|fix: apply email first-bind defaults on legacy login
+backend/internal/service/auth_service.go
+backend/internal/service/auth_service_identity_sync_test.go
+
+COMMIT:bf3ef2d19|add admin user last used support
+backend/internal/handler/dto/mappers.go
+backend/internal/handler/dto/types.go
+backend/internal/handler/dto/user_mapper_activity_test.go
+backend/internal/repository/user_repo.go
+backend/internal/repository/user_repo_sort_integration_test.go
+backend/internal/service/admin_service.go
+backend/internal/service/admin_service_list_users_test.go
+backend/internal/service/user.go
+frontend/src/types/index.ts
+frontend/src/views/admin/UsersView.vue
+frontend/src/views/admin/__tests__/UsersView.spec.ts
+
+COMMIT:beeab54ae|Implement latest-used user repo queries
+backend/internal/repository/user_repo.go
+
+COMMIT:b79052aaf|Decouple email sync tests from local stubs
+backend/internal/service/admin_service_email_identity_sync_test.go
+backend/internal/service/user_service_email_identity_sync_test.go
+
+COMMIT:16be82b95|fix payment visible methods and resume recovery
+backend/internal/payment/provider/wxpay.go
+backend/internal/payment/provider/wxpay_test.go
+backend/internal/service/payment_config_limits.go
+backend/internal/service/payment_config_limits_test.go
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+
+COMMIT:5d58c7c6f|Add auth identity legacy backfill and email sync
+backend/internal/repository/auth_identity_legacy_migration_integration_test.go
+backend/internal/repository/user_repo.go
+backend/internal/repository/user_repo_email_identity_integration_test.go
+backend/internal/repository/user_repo_integration_test.go
+backend/internal/service/admin_service.go
+backend/internal/service/admin_service_email_identity_sync_test.go
+backend/internal/service/user_service_email_identity_sync_test.go
+backend/migrations/115_auth_identity_legacy_external_backfill.sql
+
+COMMIT:920414574|Close profile identity and avatar loop
+backend/internal/handler/auth_handler.go
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/user_handler.go
+backend/internal/handler/user_handler_test.go
+backend/internal/service/user_service.go
+frontend/src/api/user.ts
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/components/user/profile/__tests__/ProfileInfoCard.spec.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+
+COMMIT:f73117f9b|feat: add admin auth migration reports view
+frontend/src/api/__tests__/users.migrationReports.spec.ts
+frontend/src/api/admin/users.ts
+frontend/src/views/admin/AuthIdentityMigrationReportsView.vue
+frontend/src/views/admin/__tests__/AuthIdentityMigrationReportsView.spec.ts
+
+COMMIT:85fc54b20|fix(frontend): restore pending auth session flow
+frontend/src/router/__tests__/guards.spec.ts
+frontend/src/router/index.ts
+frontend/src/stores/__tests__/auth.spec.ts
+frontend/src/stores/auth.ts
+frontend/src/views/auth/EmailVerifyView.vue
+frontend/src/views/auth/__tests__/EmailVerifyView.spec.ts
+
+COMMIT:4f6966d7b|frontend: route wechat oauth entry by public settings
+frontend/src/api/auth.ts
+frontend/src/components/auth/WechatOAuthSection.vue
+frontend/src/components/auth/__tests__/WechatOAuthSection.spec.ts
+
+COMMIT:9e84e2fd2|fix: persist admin payment visibility and scheduler settings
+backend/internal/handler/admin/setting_handler.go
+backend/internal/handler/admin/setting_handler_auth_source_defaults_test.go
+backend/internal/handler/dto/settings.go
+backend/internal/server/api_contract_test.go
+backend/internal/service/admin_service_apikey_test.go
+backend/internal/service/setting_service.go
+backend/internal/service/setting_service_update_test.go
+backend/internal/service/settings_view.go
+backend/internal/service/user_service_test.go
+
+COMMIT:f83fd59dc|Refine payment UX for wallet flows
+backend/internal/payment/provider/alipay.go
+backend/internal/payment/provider/alipay_test.go
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/PaymentView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+frontend/src/views/user/__tests__/paymentUx.spec.ts
+frontend/src/views/user/paymentUx.ts
+
+COMMIT:4ebdfcd13|test(admin): constrain payment visible method sources
+frontend/src/api/__tests__/settings.paymentVisibleMethods.spec.ts
+frontend/src/api/admin/settings.ts
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+COMMIT:0fa47f18e|feat: complete pending oauth account creation UI
+frontend/src/components/auth/PendingOAuthCreateAccountForm.vue
+frontend/src/components/auth/__tests__/PendingOAuthCreateAccountForm.spec.ts
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/OidcCallbackView.vue
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/LinuxDoCallbackView.spec.ts
+frontend/src/views/auth/__tests__/OidcCallbackView.spec.ts
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+
+COMMIT:7ef7fd19e|fix: restore wechat payment oauth and jsapi flow
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/payment_handler.go
+backend/internal/payment/provider/wxpay.go
+backend/internal/payment/provider/wxpay_test.go
+backend/internal/payment/types.go
+backend/internal/server/routes/auth.go
+backend/internal/service/payment_order.go
+backend/internal/service/payment_order_result_test.go
+backend/internal/service/payment_service.go
+frontend/src/components/payment/__tests__/paymentFlow.spec.ts
+frontend/src/components/payment/paymentFlow.ts
+frontend/src/router/index.ts
+frontend/src/types/payment.ts
+frontend/src/views/auth/WechatPaymentCallbackView.vue
+frontend/src/views/auth/__tests__/WechatPaymentCallbackView.spec.ts
+frontend/src/views/user/PaymentView.vue
+
+COMMIT:6f00efa35|fix: support legacy payment method aliases
+backend/internal/payment/load_balancer.go
+backend/internal/payment/load_balancer_test.go
+
+COMMIT:e1a28848f|fix: clarify wechat existing account binding
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+
+COMMIT:7fdede579|fix: preserve wechat bind resume state
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+
+COMMIT:4d10ba429|fix: complete wechat pending auth callback flows
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+
+COMMIT:bffcc2042|fix: complete oidc pending auth callback flows
+frontend/src/views/auth/OidcCallbackView.vue
+frontend/src/views/auth/__tests__/OidcCallbackView.spec.ts
+
+COMMIT:724f8e89a|feat: resolve auth identity migration reports
+backend/internal/handler/admin/admin_basic_handlers_test.go
+backend/internal/handler/admin/admin_service_stub_test.go
+backend/internal/handler/admin/user_handler.go
+backend/internal/server/routes/admin.go
+backend/internal/service/admin_service.go
+backend/internal/service/admin_service_identity_migration_report_test.go
+backend/migrations/114_auth_identity_migration_report_resolution.sql
+
+COMMIT:452e55a53|feat: add admin auth identity repair binding
+backend/internal/handler/admin/admin_basic_handlers_test.go
+backend/internal/handler/admin/admin_service_stub_test.go
+backend/internal/handler/admin/user_handler.go
+backend/internal/server/routes/admin.go
+backend/internal/service/admin_service.go
+backend/internal/service/admin_service_auth_identity_binding_test.go
+
+COMMIT:3bd302725|feat: expose auth identity migration reports
+backend/internal/handler/admin/admin_basic_handlers_test.go
+backend/internal/handler/admin/admin_service_stub_test.go
+backend/internal/handler/admin/user_handler.go
+backend/internal/server/routes/admin.go
+backend/internal/service/admin_service.go
+backend/internal/service/admin_service_identity_migration_report_test.go
+
+COMMIT:bbc4aed3d|fix(openai): 移除已下线 Codex 模型并修复归一化兜底副作用
+backend/internal/pkg/openai/constants.go
+backend/internal/service/billing_service.go
+backend/internal/service/billing_service_test.go
+backend/internal/service/openai_codex_transform.go
+backend/internal/service/openai_codex_transform_test.go
+backend/internal/service/openai_compat_prompt_cache_key.go
+backend/internal/service/openai_model_mapping_test.go
+frontend/src/components/keys/UseKeyModal.vue
+frontend/src/components/keys/__tests__/UseKeyModal.spec.ts
+frontend/src/composables/__tests__/useModelWhitelist.spec.ts
+frontend/src/composables/useModelWhitelist.ts
+
+COMMIT:aaf4946b2|fix: normalize pending oauth email lookups
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+
+COMMIT:31d0183d4|fix: normalize repository email lookups
+backend/internal/repository/user_repo.go
+backend/internal/repository/user_repo_email_lookup_unit_test.go
+
+COMMIT:b30982219|fix: tighten legacy payment provider resolution
+backend/internal/service/payment_refund.go
+backend/internal/service/payment_webhook_provider_test.go
+
+COMMIT:422f60a14|fix: normalize legacy wechat auth identity keys
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+backend/migrations/113_normalize_legacy_wechat_provider_key.sql
+
+COMMIT:f65429145|fix: route legacy linuxdo users to account binding
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_linuxdo_oauth_test.go
+
+COMMIT:5adefb466|fix: finalize oauth identity bindings
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+
+COMMIT:bdcd3d87e|fix: resolve unique legacy payment providers
+backend/internal/service/payment_order_lifecycle.go
+backend/internal/service/payment_refund.go
+backend/internal/service/payment_webhook_provider.go
+backend/internal/service/payment_webhook_provider_test.go
+
+COMMIT:32059ae9d|fix: backfill email identities on successful login
+backend/internal/service/auth_oauth_email_flow.go
+backend/internal/service/auth_service.go
+backend/internal/service/auth_service_identity_sync_test.go
+
+COMMIT:9bebf1c1a|feat: resolve payment results by resume token
+backend/internal/handler/payment_handler.go
+backend/internal/server/routes/payment.go
+backend/internal/service/payment_resume_lookup.go
+backend/internal/service/payment_resume_lookup_test.go
+frontend/src/api/payment.ts
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+
+COMMIT:c0b24aefb|feat: snapshot payment provider keys on orders
+backend/ent/migrate/schema.go
+backend/ent/mutation.go
+backend/ent/paymentorder.go
+backend/ent/paymentorder/paymentorder.go
+backend/ent/paymentorder/where.go
+backend/ent/paymentorder_create.go
+backend/ent/paymentorder_update.go
+backend/ent/runtime/runtime.go
+backend/ent/schema/payment_order.go
+backend/internal/service/payment_fulfillment.go
+backend/internal/service/payment_fulfillment_test.go
+backend/internal/service/payment_order.go
+backend/internal/service/payment_order_lifecycle.go
+backend/migrations/112_add_payment_order_provider_key_snapshot.sql
+
+COMMIT:e3f69e024|fix: tighten webhook provider resolution
+backend/internal/service/payment_service.go
+backend/internal/service/payment_webhook_provider.go
+backend/internal/service/payment_webhook_provider_test.go
+
+COMMIT:7c7924e9f|fix: guard payment fulfillment provider mismatch
+backend/internal/service/payment_fulfillment.go
+backend/internal/service/payment_fulfillment_test.go
+
+COMMIT:97c9b992c|fix: require wechat unionid for oauth identity
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+
+COMMIT:40d4e167c|feat(payment): i18n payment error codes and label localization
+frontend/src/components/payment/PaymentQRDialog.vue
+frontend/src/components/payment/PaymentStatusPanel.vue
+frontend/src/components/payment/StripePaymentInline.vue
+frontend/src/components/payment/providerConfig.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/utils/apiError.ts
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/admin/orders/AdminOrdersView.vue
+frontend/src/views/admin/orders/AdminPaymentDashboardView.vue
+frontend/src/views/admin/orders/AdminPaymentPlansView.vue
+frontend/src/views/user/PaymentQRCodeView.vue
+frontend/src/views/user/PaymentView.vue
+frontend/src/views/user/StripePaymentView.vue
+frontend/src/views/user/StripePopupView.vue
+frontend/src/views/user/UserOrdersView.vue
+
+COMMIT:58b2cc380|test: harden payment result resume flow
+frontend/src/views/user/PaymentResultView.vue
+frontend/src/views/user/__tests__/PaymentResultView.spec.ts
+
+COMMIT:b51bc7ee2|feat: wire payment return url payloads
+backend/internal/handler/payment_handler.go
+backend/internal/service/payment_order.go
+backend/internal/service/payment_resume_service.go
+backend/internal/service/payment_resume_service_test.go
+frontend/src/components/payment/__tests__/paymentFlow.spec.ts
+frontend/src/components/payment/paymentFlow.ts
+frontend/src/types/payment.ts
+frontend/src/views/user/PaymentView.vue
+
+COMMIT:7826e9880|feat: support linuxdo pending bind 2fa callback
+frontend/src/api/auth.ts
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/__tests__/LinuxDoCallbackView.spec.ts
+
+COMMIT:fb6204ea8|feat: apply oauth first-bind defaults and pending bind 2fa
+backend/internal/handler/auth_handler.go
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/service/auth_oauth_first_bind.go
+backend/internal/service/totp_service.go
+
+COMMIT:79192cf65|feat(payment): harden wxpay config validation with structured errors
+backend/internal/payment/provider/wxpay.go
+backend/internal/payment/provider/wxpay_test.go
+backend/internal/service/payment_config_providers.go
+backend/internal/service/payment_order.go
+
+COMMIT:6ea3f42e2|feat: add oauth callback email binding ui
+frontend/src/api/__tests__/auth-oauth-adoption.spec.ts
+frontend/src/api/auth.ts
+frontend/src/stores/app.ts
+frontend/src/types/index.ts
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/OidcCallbackView.vue
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/LinuxDoCallbackView.spec.ts
+frontend/src/views/auth/__tests__/OidcCallbackView.spec.ts
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+
+COMMIT:6a75bd77e|feat: add pending oauth email onboarding flow
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/dto/settings.go
+backend/internal/handler/setting_handler.go
+backend/internal/handler/setting_handler_public_test.go
+backend/internal/server/routes/auth.go
+backend/internal/service/auth_oauth_email_flow.go
+backend/internal/service/setting_service.go
+backend/internal/service/setting_service_public_test.go
+backend/internal/service/settings_view.go
+
+COMMIT:d47580a14|test: pin email signup defaults in register tests
+backend/internal/service/auth_service_register_test.go
+
+COMMIT:0353c3870|test: update user service stubs for identity summaries
+backend/internal/service/billing_cache_service_singleflight_test.go
+backend/internal/service/user_service_test.go
+
+COMMIT:4e0e69154|feat: apply auth source signup defaults
+backend/internal/service/admin_service_apikey_test.go
+backend/internal/service/admin_service_delete_test.go
+backend/internal/service/auth_service.go
+backend/internal/service/auth_service_register_test.go
+
+COMMIT:c6d859248|feat: add profile auth identity binding flow
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_linuxdo_oauth_test.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_oauth_test_helpers_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_oidc_oauth_test.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+backend/internal/handler/user_handler.go
+backend/internal/handler/user_handler_test.go
+backend/internal/repository/user_profile_identity_repo.go
+backend/internal/server/routes/auth.go
+backend/internal/server/routes/user.go
+backend/internal/service/user_service.go
+frontend/src/api/__tests__/auth-oauth-adoption.spec.ts
+frontend/src/api/auth.ts
+frontend/src/api/user.ts
+frontend/src/components/user/profile/ProfileIdentityBindingsSection.vue
+frontend/src/components/user/profile/ProfileInfoCard.vue
+frontend/src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/types/index.ts
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/OidcCallbackView.vue
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/LinuxDoCallbackView.spec.ts
+frontend/src/views/auth/__tests__/OidcCallbackView.spec.ts
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+frontend/src/views/user/ProfileView.vue
+
+COMMIT:13d9780df|feat: expose user activity timestamps in admin list
+backend/internal/handler/dto/mappers.go
+backend/internal/handler/dto/types.go
+backend/internal/handler/dto/user_mapper_activity_test.go
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+frontend/src/types/index.ts
+frontend/src/views/admin/UsersView.vue
+
+COMMIT:e9de839d8|feat: rebuild auth identity foundation flow
+backend/ent/authidentity.go
+backend/ent/authidentity/authidentity.go
+backend/ent/authidentity/where.go
+backend/ent/authidentity_create.go
+backend/ent/authidentity_delete.go
+backend/ent/authidentity_query.go
+backend/ent/authidentity_update.go
+backend/ent/authidentitychannel.go
+backend/ent/authidentitychannel/authidentitychannel.go
+backend/ent/authidentitychannel/where.go
+backend/ent/authidentitychannel_create.go
+backend/ent/authidentitychannel_delete.go
+backend/ent/authidentitychannel_query.go
+backend/ent/authidentitychannel_update.go
+backend/ent/client.go
+backend/ent/ent.go
+backend/ent/hook/hook.go
+backend/ent/identityadoptiondecision.go
+backend/ent/identityadoptiondecision/identityadoptiondecision.go
+backend/ent/identityadoptiondecision/where.go
+backend/ent/identityadoptiondecision_create.go
+backend/ent/identityadoptiondecision_delete.go
+backend/ent/identityadoptiondecision_query.go
+backend/ent/identityadoptiondecision_update.go
+backend/ent/intercept/intercept.go
+backend/ent/migrate/schema.go
+backend/ent/mutation.go
+backend/ent/pendingauthsession.go
+backend/ent/pendingauthsession/pendingauthsession.go
+backend/ent/pendingauthsession/where.go
+backend/ent/pendingauthsession_create.go
+backend/ent/pendingauthsession_delete.go
+backend/ent/pendingauthsession_query.go
+backend/ent/pendingauthsession_update.go
+backend/ent/predicate/predicate.go
+backend/ent/runtime/runtime.go
+backend/ent/schema/auth_identity.go
+backend/ent/schema/auth_identity_channel.go
+backend/ent/schema/auth_identity_schema_test.go
+backend/ent/schema/identity_adoption_decision.go
+backend/ent/schema/pending_auth_session.go
+backend/ent/schema/user.go
+backend/ent/tx.go
+backend/ent/user.go
+backend/ent/user/user.go
+backend/ent/user/where.go
+backend/ent/user_create.go
+backend/ent/user_query.go
+backend/ent/user_update.go
+backend/internal/config/config.go
+backend/internal/handler/admin/setting_handler.go
+backend/internal/handler/admin/setting_handler_auth_source_defaults_test.go
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_linuxdo_oauth_test.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_oidc_oauth_test.go
+backend/internal/handler/auth_wechat_oauth.go
+backend/internal/handler/auth_wechat_oauth_test.go
+backend/internal/handler/dto/settings.go
+backend/internal/handler/payment_webhook_handler.go
+backend/internal/handler/payment_webhook_handler_test.go
+backend/internal/handler/setting_handler.go
+backend/internal/handler/user_handler.go
+backend/internal/handler/user_handler_test.go
+backend/internal/repository/api_key_repo.go
+backend/internal/repository/auth_identity_migration_report.go
+backend/internal/repository/user_profile_identity_repo.go
+backend/internal/repository/user_profile_identity_repo_contract_test.go
+backend/internal/repository/user_repo.go
+backend/internal/repository/user_repo_sort_integration_test.go
+backend/internal/server/api_contract_test.go
+backend/internal/server/routes/auth.go
+backend/internal/service/admin_service_apikey_test.go
+backend/internal/service/admin_service_delete_test.go
+backend/internal/service/auth_pending_identity_service.go
+backend/internal/service/auth_pending_identity_service_test.go
+backend/internal/service/auth_service.go
+backend/internal/service/auth_service_identity_sync_test.go
+backend/internal/service/auth_service_pending_oauth_test.go
+backend/internal/service/domain_constants.go
+backend/internal/service/openai_account_scheduler.go
+backend/internal/service/openai_account_scheduler_test.go
+backend/internal/service/openai_account_scheduler_ws_snapshot_test.go
+backend/internal/service/payment_config_service.go
+backend/internal/service/payment_config_service_test.go
+backend/internal/service/payment_resume_service.go
+backend/internal/service/payment_resume_service_test.go
+backend/internal/service/payment_service.go
+backend/internal/service/setting_service.go
+backend/internal/service/setting_service_auth_source_defaults_test.go
+backend/internal/service/settings_view.go
+backend/internal/service/user.go
+backend/internal/service/user_service.go
+backend/internal/service/user_service_test.go
+backend/migrations/108_auth_identity_foundation_core.sql
+backend/migrations/109_auth_identity_compat_backfill.sql
+backend/migrations/110_pending_auth_and_provider_default_grants.sql
+backend/migrations/111_payment_routing_and_scheduler_flags.sql
+frontend/src/api/__tests__/auth-oauth-adoption.spec.ts
+frontend/src/api/__tests__/settings.authSourceDefaults.spec.ts
+frontend/src/api/admin/settings.ts
+frontend/src/api/auth.ts
+frontend/src/components/auth/WechatOAuthSection.vue
+frontend/src/components/auth/__tests__/WechatOAuthSection.spec.ts
+frontend/src/components/payment/PaymentStatusPanel.vue
+frontend/src/components/payment/__tests__/paymentFlow.spec.ts
+frontend/src/components/payment/paymentFlow.ts
+frontend/src/router/__tests__/wechat-route.spec.ts
+frontend/src/router/index.ts
+frontend/src/stores/app.ts
+frontend/src/types/index.ts
+frontend/src/views/admin/SettingsView.vue
+frontend/src/views/auth/LinuxDoCallbackView.vue
+frontend/src/views/auth/LoginView.vue
+frontend/src/views/auth/OidcCallbackView.vue
+frontend/src/views/auth/RegisterView.vue
+frontend/src/views/auth/WechatCallbackView.vue
+frontend/src/views/auth/__tests__/LinuxDoCallbackView.spec.ts
+frontend/src/views/auth/__tests__/OidcCallbackView.spec.ts
+frontend/src/views/auth/__tests__/WechatCallbackView.spec.ts
+frontend/src/views/user/PaymentView.vue
+
+COMMIT:fbd0a2e3c|feat: carry suggested third-party profile through pending oauth
+backend/internal/handler/auth_linuxdo_oauth.go
+backend/internal/handler/auth_linuxdo_oauth_test.go
+backend/internal/handler/auth_oauth_pending_flow.go
+backend/internal/handler/auth_oauth_pending_flow_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_oidc_oauth_test.go
+frontend/src/api/auth.ts
+
+COMMIT:d3d426773|fix: harden oidc callback security
+backend/internal/config/config_test.go
+backend/internal/handler/auth_oidc_oauth.go
+backend/internal/handler/auth_oidc_oauth_test.go
+frontend/src/views/admin/SettingsView.vue
+
+COMMIT:584ded218|docs: harden auth identity payment design
+docs/superpowers/plans/2026-04-20-auth-identity-payment-foundation.md
+docs/superpowers/specs/2026-04-20-auth-identity-payment-foundation-design.md
+
+COMMIT:b6751f7eb|docs: add auth identity implementation plan
+docs/superpowers/plans/2026-04-20-auth-identity-payment-foundation.md
+
+COMMIT:721d7ab3a|docs: add audit synthesis to auth identity spec
+docs/superpowers/specs/2026-04-20-auth-identity-payment-foundation-design.md
+
+COMMIT:e01c1eace|docs: add auth identity payment foundation design spec
+docs/superpowers/specs/2026-04-20-auth-identity-payment-foundation-design.md
+
+COMMIT:23def40bc|chore: change license from MIT to LGPL v3.0
+LICENSE
+README.md
+README_CN.md
+README_JA.md
+
+COMMIT:f5ee93796|Merge pull request #1753 from touwaeriol/feat/fix-orphaned-scheduled-tests
+COMMIT:e8be43449|Merge pull request #1752 from touwaeriol/fix/quota-exceeded-scheduling
+COMMIT:061fd48df|Merge pull request #1749 from touwaeriol/fix/xhigh-reasoning-effort
+COMMIT:6579f28b6|fix: delete scheduled test plans when account is deleted
+backend/internal/repository/account_repo.go
+
+COMMIT:258fd145f|fix(account): prevent quota-exceeded API key/Bedrock accounts from being scheduled
+backend/internal/service/account.go
+backend/internal/service/account_quota_schedulable_test.go
+backend/internal/service/gateway_service.go
+backend/internal/service/sticky_session_test.go
+frontend/src/components/account/AccountStatusIndicator.vue
+frontend/src/i18n/locales/en.ts
+frontend/src/i18n/locales/zh.ts
+
+COMMIT:6530776a6|fix: support xhigh reasoning effort in usage records for Claude Messages API
+backend/internal/service/gateway_request.go
+backend/internal/service/gateway_request_test.go
+frontend/src/utils/format.ts
+
+COMMIT:51af8df31|Merge pull request #1731 from touwaeriol/fix/rate-billing-autofill-response-limit
+COMMIT:235f71085|feat(payment): redact provider secrets in admin config API
+backend/internal/service/payment_config_providers.go
+backend/internal/service/payment_config_providers_test.go
+frontend/src/components/payment/PaymentProviderDialog.vue
+
+COMMIT:c3cb0280e|fix(payment): alipay redirect-only flow, H5 detection and popup sizing
+backend/internal/handler/payment_handler.go
+backend/internal/payment/provider/alipay.go
+frontend/src/components/payment/PaymentQRDialog.vue
+frontend/src/components/payment/PaymentStatusPanel.vue
+frontend/src/components/payment/StripePaymentInline.vue
+frontend/src/components/payment/providerConfig.ts
+frontend/src/types/payment.ts
+frontend/src/views/user/PaymentView.vue
+
+COMMIT:6c73b6212|Merge pull request #1734 from touwaeriol/docs/payment-recommend-kyren-topup
+COMMIT:0c538a584|docs: note Kyren Topup $200 account fee waived via referral link
+docs/PAYMENT.md
+docs/PAYMENT_CN.md
+
+COMMIT:6ae1cc8f3|docs: use 易支付 in Chinese coexistence note
+docs/PAYMENT_CN.md
+
+COMMIT:37123cef8|docs(payment): add Kyren Topup as international EasyPay provider option
+docs/PAYMENT.md
+docs/PAYMENT_CN.md
+
+COMMIT:61a008f7e|chore(payment): mark legacy AES ciphertext fallback as deprecated
+backend/internal/payment/crypto.go
+backend/internal/payment/load_balancer.go
+backend/internal/service/payment_config_providers.go
+
+COMMIT:bf0bbe0be|feat(gateway): raise upstream response read limit 8MB -> 128MB (configurable)
+backend/internal/config/config.go
+backend/internal/service/upstream_response_limit.go
+
+COMMIT:df57d2776|fix(billing): reject rate_multiplier <= 0 on save; clamp negatives to 0 in compute
+backend/internal/service/admin_service.go
+backend/internal/service/admin_service_group_test.go
+backend/internal/service/billing_service.go
+backend/internal/service/billing_service_image_test.go
+backend/internal/service/billing_service_rate_multiplier_test.go
+backend/internal/service/billing_service_test.go
+backend/internal/service/billing_service_unified_test.go
+backend/internal/service/group.go
+backend/internal/service/openai_gateway_record_usage_test.go
+frontend/src/components/admin/group/GroupRateMultipliersModal.vue
+frontend/src/components/admin/user/UserAllowedGroupsModal.vue
+
+COMMIT:948d8e6d0|fix(admin): prevent browser password manager from autofilling account API key
+frontend/src/components/account/EditAccountModal.vue
+
+COMMIT:44cdef793|fix(usage): subscription billing honours group rate multiplier
+backend/internal/service/gateway_service.go
+backend/internal/service/gateway_service_subscription_billing_test.go
+
+COMMIT:fd0c9a130|fix(payment): store provider config as plaintext JSON with legacy ciphertext fallback
+backend/internal/payment/crypto.go
+backend/internal/payment/load_balancer.go
+backend/internal/payment/load_balancer_test.go
+backend/internal/service/payment_config_providers.go
+
+COMMIT:6cfdf4ec0|chore: sync VERSION to 0.1.114 [skip ci]
+backend/cmd/server/VERSION
