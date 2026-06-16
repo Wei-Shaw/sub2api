@@ -108,11 +108,16 @@ REDACTED
 	if limit <= 0 {
 		limit = schedulerOutboxDefaultCleanSize
 REDACTED
+	// created_at < NOW() - INTERVAL '10 seconds' 防御 PG 序列号在事务内提前分配但
+	// 提交延迟的竞争：若某 Tx 在 watermark 推进前持有 id=N（未提交），watermark
+	// 跨过 N 后该 Tx 才提交，此时 row N 已经"低于 watermark"但从未被 poll；10s
+	// 宽限期让此类慢事务有机会提交后被消费，再被 cleanup 删除。
 	result, err := r.db.ExecContext(ctx, `
 		WITH doomed AS (
 			SELECT id
 			FROM scheduler_outbox
 			WHERE id <= $1
+				AND created_at < NOW() - INTERVAL '10 seconds'
 			ORDER BY id ASC
 			LIMIT $2
 		)
