@@ -228,6 +228,8 @@ REDACTED
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
+		CyberSessionBlockEnabled:               settings.CyberSessionBlockEnabled,
+		CyberSessionBlockTTLSeconds:            settings.CyberSessionBlockTTLSeconds,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
@@ -651,6 +653,10 @@ type UpdateSettingsRequest struct {
 
 	// 风控中心功能开关
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
+
+	// cyber 会话屏蔽开关 + TTL
+	CyberSessionBlockEnabled    *bool `json:"cyber_session_block_enabled"`
+	CyberSessionBlockTTLSeconds *int  `json:"cyber_session_block_ttl_seconds"`
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
@@ -1468,6 +1474,12 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// cyber 会话屏蔽 TTL 校验：提供时必须 > 0
+	if req.CyberSessionBlockTTLSeconds != nil && *req.CyberSessionBlockTTLSeconds <= 0 {
+		response.BadRequest(c, "cyber_session_block_ttl_seconds must be > 0")
+		return
+REDACTED
+
 	settings := &service.SystemSettings{
 		// 系统全局 platform quota 默认值（整体替换语义）
 		DefaultPlatformQuotas: req.DefaultPlatformQuotas,
@@ -1793,6 +1805,18 @@ REDACTED
 		REDACTED
 			return previousSettings.RiskControlEnabled
 	REDACTED(),
+		CyberSessionBlockEnabled: func() bool {
+			if req.CyberSessionBlockEnabled != nil {
+				return *req.CyberSessionBlockEnabled
+		REDACTED
+			return previousSettings.CyberSessionBlockEnabled
+	REDACTED(),
+		CyberSessionBlockTTLSeconds: func() int {
+			if req.CyberSessionBlockTTLSeconds != nil {
+				return *req.CyberSessionBlockTTLSeconds
+		REDACTED
+			return previousSettings.CyberSessionBlockTTLSeconds
+	REDACTED(),
 REDACTED
 
 	// req.AuthSourceXxxPlatformQuotas 为 nil 表示本次请求未包含该 source 的 quota 配置（保留 previousAuthSourceDefaults 中的值）；
@@ -2117,8 +2141,10 @@ REDACTED
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
-		RiskControlEnabled:         updatedSettings.RiskControlEnabled,
-		AllowUserViewErrorRequests: updatedSettings.AllowUserViewErrorRequests,
+		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
+		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
+		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
+		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
 REDACTED
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
@@ -2607,6 +2633,12 @@ REDACTED
 REDACTED
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")
+REDACTED
+	if before.CyberSessionBlockEnabled != after.CyberSessionBlockEnabled {
+		changed = append(changed, "cyber_session_block_enabled")
+REDACTED
+	if before.CyberSessionBlockTTLSeconds != after.CyberSessionBlockTTLSeconds {
+		changed = append(changed, "cyber_session_block_ttl_seconds")
 REDACTED
 	// Default platform quotas（JSON map，整体比较）
 	if !equalPlatformQuotaSettings(before.DefaultPlatformQuotas, after.DefaultPlatformQuotas) {

@@ -247,6 +247,10 @@ type SystemSettings struct {
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
+	// cyber 会话屏蔽开关 + TTL
+	CyberSessionBlockEnabled    bool `json:"cyber_session_block_enabled"`
+	CyberSessionBlockTTLSeconds int  `json:"cyber_session_block_ttl_seconds"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 

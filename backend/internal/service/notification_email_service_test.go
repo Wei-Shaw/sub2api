@@ -140,6 +140,7 @@ REDACTED{
 		{NotificationEmailEventAccountQuotaAlert, "account_name"REDACTED,
 		{NotificationEmailEventContentModerationViolation, "moderation_category"REDACTED,
 		{NotificationEmailEventContentModerationDisabled, "violation_count"REDACTED,
+		{NotificationEmailEventCyberPolicyNotice, "upstream_message"REDACTED,
 		{NotificationEmailEventOpsAlert, "rule_name"REDACTED,
 		{NotificationEmailEventOpsScheduledReport, "report_html"REDACTED,
 REDACTED
