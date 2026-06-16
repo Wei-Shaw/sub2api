@@ -516,13 +516,22 @@ REDACTED
 
 // FilterThinkingBlocks removes thinking blocks from request body
 // Returns filtered body or original body if filtering fails (fail-safe)
-// This prevents 400 errors from invalid thinking block signatures
+// This prevents 400 errors from invalid thinking block signatures.
 //
-// 策略：
+// mappedModel 是「实际发给上游的模型 ID」(after account model mapping)，用于按
+// 协议族分流。仅 anthropic-strict 走原过滤逻辑；passback-required 与 unknown
+// 一律保留全部 thinking block，避免误伤第三方兼容上游
+// (DeepSeek `/anthropic`、Kimi `/coding`、GLM、Moonshot 等)，详见
+// .pensieve/short-term/knowledge/thinking-block-filter-third-party-upstream-inversion/。
+//
+// 策略 (anthropic-strict only)：
 //   - 当 thinking.type 不是 "enabled"/"adaptive"：移除所有 thinking 相关块
 //   - 当 thinking.type 是 "enabled"/"adaptive"：仅移除缺失/无效 signature 的 thinking 块（避免 400）
 //     (blocks with missing/empty/dummy signatures that would cause 400 errors)
-func FilterThinkingBlocks(body []byte) []byte {
+func FilterThinkingBlocks(body []byte, mappedModel string) []byte {
+	if !ShouldPreFilterThinkingBlocks(mappedModel) {
+		return body
+REDACTED
 	return filterThinkingBlocksInternal(body, false)
 REDACTED
 
@@ -540,7 +549,17 @@ REDACTED
 //   - Convert `thinking` blocks to `text` blocks (preserve the thinking content).
 //   - Remove `redacted_thinking` blocks (cannot be converted to text).
 //   - Ensure no message ends up with empty content.
-func FilterThinkingBlocksForRetry(body []byte) []byte {
+//
+// mappedModel 用于按协议族分流：仅 anthropic-strict 执行上述变形；
+// passback-required (DeepSeek/Kimi/GLM 等) 与 unknown 一律返回原 body，
+// 因为这类上游的契约就是「thinking block 原样回传」（或我们不了解），
+// retry 任何变形都不会修好 400，反而破坏契约。详见 thinking_protocol.go。
+func FilterThinkingBlocksForRetry(body []byte, mappedModel string) []byte {
+	// 仅 anthropic-strict 走整流；passback-required 与 unknown 都返回原 body。
+	if !ShouldApplyRetryFilters(mappedModel) {
+		return body
+REDACTED
+
 	hasThinkingContent := bytes.Contains(body, patternTypeThinking) ||
 		bytes.Contains(body, patternTypeThinkingSpaced) ||
 		bytes.Contains(body, patternTypeRedactedThinking) ||
@@ -883,7 +902,14 @@ REDACTED
 //
 // Use this only when needed: converting tool blocks to text changes model behaviour and can increase the
 // risk of prompt injection (tool output becomes plain conversation text).
-func FilterSignatureSensitiveBlocksForRetry(body []byte) []byte {
+//
+// mappedModel 同 FilterThinkingBlocksForRetry：仅 anthropic-strict 执行变形；
+// passback-required 与 unknown 都返回原 body，避免在不熟悉的上游上盲目变形。
+func FilterSignatureSensitiveBlocksForRetry(body []byte, mappedModel string) []byte {
+	if !ShouldApplyRetryFilters(mappedModel) {
+		return body
+REDACTED
+
 	// Fast path: only run when we see likely relevant constructs.
 	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
 		!bytes.Contains(body, []byte(`"type": "thinking"`)) &&
@@ -1178,6 +1204,71 @@ REDACTED
 REDACTED
 REDACTED
 
+// DefaultEffortForThinkingEnabled 给"开启了 thinking 但协议层没有 effort 档位概念"
+// 的国产模型族返回一个默认 effort 字符串（"high"），用于 usage_log.reasoning_effort
+// 字段，避免该字段长期为 NULL 导致用量分析无法区分 thinking 开/关。
+//
+// 适用范围（按 ResolveThinkingProtocol 的 PassbackRequired 集合做白名单过滤）：
+//   - Kimi (kimi-* / moonshot-*)
+//   - GLM (glm-*)
+//   - MiniMax (minimax-m*)
+//   - Qwen thinking 变体 (qwen[1-4]?-*-thinking)
+//
+// **排除 DeepSeek**：DeepSeek 原生支持 reasoning_effort: high/max，客户端可显式指定，
+// 网关不应注入默认值覆盖客户端意图（即便客户端没发，DeepSeek 上游自己会用 high default
+// ——但那是上游行为，不是我们的语义注入）。
+//
+// 适用场景由调用方守卫：仅当 (1) ResolveThinkingProtocol == PassbackRequired
+// (2) 已确认 thinking 启用（Anthropic: parsed.ThinkingEnabled；OpenAI: 见
+// OpenAIBodyHasThinkingEnabled) (3) 已有 effort 解析返回 nil 三者同时成立时调用。
+//
+// 返回值固定指向 "high"。理由：Kimi/GLM/MiniMax 启用 thinking 都是"深度推理模式"，
+// 等同 Claude/OpenAI 的 high 档位语义；用 high 比 medium/normal 更贴近实际行为，
+// 也与 DeepSeek thinking-enabled 的默认 effort 一致。
+//
+// 未来兼容性：如果这些厂商后续加入真实 effort 档位（如 Kimi 跟进 DeepSeek 的
+// reasoning_effort: high/max），客户端开始显式发 effort 值时，调用方的守卫条件 (3)
+// 会因 extractor 返回非 nil 而不触发本函数，自动让出。
+func DefaultEffortForThinkingEnabled(mappedModel string) *string {
+	if ResolveThinkingProtocol(mappedModel) != ThinkingProtocolPassbackRequired {
+		return nil
+REDACTED
+	// DeepSeek 在 PassbackRequired 集合里但有原生 effort 支持，排除。
+	if strings.HasPrefix(strings.ToLower(mappedModel), "deepseek-") {
+		return nil
+REDACTED
+	effort := "high"
+	return &effort
+REDACTED
+
+// OpenAIBodyHasThinkingEnabled 检测 OpenAI 协议的请求体里是否启用了 thinking。
+//
+// 国产 OpenAI-兼容上游（GLM via thinkingFormat=zai / Kimi 等）在请求体里用
+// `thinking: {type: "enabled"REDACTED` 或 `thinking: {type: "adaptive"REDACTED` 表达启用。
+// 仅 "enabled" / "adaptive" 视为开启；"disabled" 或缺省 → 视为关闭。
+//
+// 配合 DefaultEffortForThinkingEnabled 使用：OpenAI 路径上 reasoning_effort 解析为空
+// 但本函数返回 true 时，给 usage_log 填默认 effort。
+func OpenAIBodyHasThinkingEnabled(body []byte) bool {
+	thinkingType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "thinking.type").String()))
+	return thinkingType == "enabled" || thinkingType == "adaptive"
+REDACTED
+
+// ApplyThinkingEnabledFallback 补丁已解析出的 effort，仅在 effort 为 nil 且
+// 检测到 body 里 thinking 启用 + mappedModel 属于国产 passback-required 上游时，
+// 返回 DefaultEffortForThinkingEnabled 的默认值（"high"）。不覆盖已解析出的值。
+//
+// 适用于 OpenAI 网关的多条路径调用方（避免重复的 if-nil 表达式）。
+func ApplyThinkingEnabledFallback(effort *string, body []byte, mappedModel string) *string {
+	if effort != nil {
+		return effort
+REDACTED
+	if !OpenAIBodyHasThinkingEnabled(body) {
+		return nil
+REDACTED
+	return DefaultEffortForThinkingEnabled(mappedModel)
+REDACTED
+
 // =========================
 // Thinking Budget Rectifier
 // =========================
@@ -1263,4 +1354,36 @@ REDACTED
 REDACTED
 
 	return modified, changed
+REDACTED
+
+// NormalizeChineseLLMThinking rewrites the top-level `thinking` object for Chinese
+// LLM providers that use Anthropic-compatible endpoints but have different accepted
+// values for `thinking.type`. Currently scoped to:
+//   - MiniMax M-series (`MiniMax-m*`, covering M2.x / M3 / M3.x): official docs accept
+//     only `thinking.type` of "adaptive" or "disabled"; "enabled" is not a valid value
+//     and may be rejected/ignored. Pi-ai and other Anthropic-SDK clients default to
+//     "enabled" (Anthropic-original) and never auto-rewrite for non-Anthropic models.
+//
+// Non-MiniMax models (Kimi/GLM/DeepSeek) currently accept "enabled" as-is, so this
+// function is intentionally a no-op for them. New Chinese LLM quirks should be
+// added here as separate case branches.
+//
+// Returns (modified body, true) if a rewrite was applied, or (original body, false)
+// if no rewrite was needed. Caller should be on the Anthropic forward path AFTER
+// FilterThinkingBlocks and BEFORE building the upstream request, only for
+// passback-required models (ResolveThinkingProtocol == PassbackRequired).
+func NormalizeChineseLLMThinking(body []byte, mappedModel string) ([]byte, bool) {
+	modelLower := strings.ToLower(mappedModel)
+	if !strings.HasPrefix(modelLower, "minimax-m") {
+		return body, false
+REDACTED
+	thinkingType := gjson.GetBytes(body, "thinking.type").String()
+	if thinkingType != "enabled" {
+		return body, false
+REDACTED
+	modified, err := sjson.SetBytes(body, "thinking.type", "adaptive")
+	if err != nil {
+		return body, false
+REDACTED
+	return modified, true
 REDACTED

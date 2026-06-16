@@ -277,7 +277,7 @@ REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := FilterThinkingBlocks([]byte(tt.input))
+			result := FilterThinkingBlocks([]byte(tt.input), "claude-sonnet-4-5")
 
 			if tt.expectError {
 				// For invalid JSON, should return original
@@ -313,7 +313,7 @@ func TestFilterThinkingBlocksForRetry_DisablesThinkingAndPreservesAsText(t *test
 		]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -346,7 +346,7 @@ func TestFilterThinkingBlocksForRetry_DisablesThinkingEvenWithoutThinkingBlocks(
 		]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -365,7 +365,7 @@ func TestFilterThinkingBlocksForRetry_RemovesRedactedThinkingAndKeepsValidConten
 		]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -401,7 +401,7 @@ func TestFilterThinkingBlocksForRetry_DropsThinkingBlockWithEmptyContent(t *test
 		]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -424,7 +424,7 @@ func TestFilterThinkingBlocksForRetry_EmptyContentGetsPlaceholder(t *testing.T) 
 		]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -450,7 +450,7 @@ func TestFilterThinkingBlocksForRetry_StripsEmptyTextBlocks(t *testing.T) {
 		]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -485,7 +485,7 @@ func TestFilterThinkingBlocksForRetry_StripsNestedEmptyTextInToolResult(t *testi
 		]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -513,7 +513,7 @@ func TestFilterThinkingBlocksForRetry_NestedAllEmptyGetsEmptySlice(t *testing.T)
 		]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -596,7 +596,7 @@ func TestFilterThinkingBlocksForRetry_PreservesNonEmptyTextBlocks(t *testing.T) 
 		]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	// Fast path: no thinking content, no empty content, no empty text blocks → unchanged
 	require.Equal(t, input, out)
@@ -613,7 +613,7 @@ func TestFilterSignatureSensitiveBlocksForRetry_DowngradesTools(t *testing.T) {
 		]
 REDACTED`)
 
-	out := FilterSignatureSensitiveBlocksForRetry(input)
+	out := FilterSignatureSensitiveBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -700,7 +700,7 @@ func TestFilterThinkingBlocksForRetry_RemovesClearThinkingStrategy_FastPath(t *t
 		]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -726,7 +726,7 @@ func TestFilterThinkingBlocksForRetry_RemovesClearThinkingStrategy_WithThinkingB
 		]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -750,7 +750,7 @@ func TestFilterThinkingBlocksForRetry_NoContextManagement_Unaffected(t *testing.
 		"messages":[{"role":"user","content":[{"type":"text","text":"Hi"REDACTED]REDACTED]
 REDACTED`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -773,7 +773,7 @@ func TestFilterSignatureSensitiveBlocksForRetry_RemovesClearThinkingStrategy(t *
 		]
 REDACTED`)
 
-	out := FilterSignatureSensitiveBlocksForRetry(input)
+	out := FilterSignatureSensitiveBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -804,7 +804,7 @@ func TestFilterSignatureSensitiveBlocksForRetry_PreservesNonThinkingStrategies(t
 		]
 REDACTED`)
 
-	out := FilterSignatureSensitiveBlocksForRetry(input)
+	out := FilterSignatureSensitiveBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -830,7 +830,7 @@ func TestFilterSignatureSensitiveBlocksForRetry_NoThinkingField_ContextManagemen
 		]
 REDACTED`)
 
-	out := FilterSignatureSensitiveBlocksForRetry(input)
+	out := FilterSignatureSensitiveBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -1235,5 +1235,280 @@ func BenchmarkParseGatewayRequest_New_Large(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = ParseGatewayRequest(NewRequestBodyRef(data), "")
+REDACTED
+REDACTED
+
+func TestNormalizeChineseLLMThinking(t *testing.T) {
+	tests := []struct {
+		name          string
+		model         string
+		input         string
+		wantApplied   bool
+		wantTypeValue string // expected thinking.type after rewrite; "" = must not exist
+		wantUnchanged bool   // body must be byte-for-byte unchanged
+REDACTED{
+		// MiniMax M3 / M2.x — passback-required path: rewrite enabled -> adaptive
+		{
+			name:          "minimax m3 enabled -> adaptive",
+			model:         "MiniMax-M3",
+			input:         `{"model":"MiniMax-M3","thinking":{"type":"enabled","budget_tokens":8192REDACTED,"messages":[]REDACTED`,
+			wantApplied:   true,
+			wantTypeValue: "adaptive",
+	REDACTED,
+		{
+			name:          "minimax m2.7 enabled -> adaptive",
+			model:         "MiniMax-M2.7",
+			input:         `{"model":"MiniMax-M2.7","thinking":{"type":"enabled","budget_tokens":4096REDACTED,"messages":[]REDACTED`,
+			wantApplied:   true,
+			wantTypeValue: "adaptive",
+	REDACTED,
+		{
+			name:          "minimax m3 adaptive is left alone",
+			model:         "MiniMax-M3",
+			input:         `{"model":"MiniMax-M3","thinking":{"type":"adaptive","budget_tokens":8192REDACTED,"messages":[]REDACTED`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+		{
+			name:          "minimax m3 disabled is left alone",
+			model:         "MiniMax-M3",
+			input:         `{"model":"MiniMax-M3","thinking":{"type":"disabled"REDACTED,"messages":[]REDACTED`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+		{
+			name:          "minimax m3 with no thinking field is no-op",
+			model:         "MiniMax-M3",
+			input:         `{"model":"MiniMax-M3","messages":[]REDACTED`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+		// Non-MiniMax Chinese LLMs: no-op (Kimi/GLM/DeepSeek accept enabled as-is)
+		{
+			name:          "kimi k2.6 with enabled left alone",
+			model:         "kimi-k2.6",
+			input:         `{"model":"kimi-k2.6","thinking":{"type":"enabled","budget_tokens":8192REDACTED,"messages":[]REDACTED`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+		{
+			name:          "glm-5.1 with enabled left alone",
+			model:         "glm-5.1",
+			input:         `{"model":"glm-5.1","thinking":{"type":"enabled"REDACTED,"messages":[]REDACTED`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+		{
+			name:          "deepseek v4-pro with enabled left alone",
+			model:         "deepseek-v4-pro",
+			input:         `{"model":"deepseek-v4-pro","thinking":{"type":"enabled"REDACTED,"messages":[]REDACTED`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+		// Anthropic-strict model: never rewritten even though prefix would not match anyway
+		{
+			name:          "claude opus 4.6 with enabled left alone",
+			model:         "claude-opus-4.6-20260201",
+			input:         `{"model":"claude-opus-4.6-20260201","thinking":{"type":"enabled","budget_tokens":8192REDACTED,"messages":[]REDACTED`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+		// Edge case: invalid JSON — fail-safe return original
+		{
+			name:          "invalid json returned unchanged",
+			model:         "MiniMax-M3",
+			input:         `{not json`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, applied := NormalizeChineseLLMThinking([]byte(tt.input), tt.model)
+			require.Equal(t, tt.wantApplied, applied, "applied mismatch")
+
+			if tt.wantUnchanged {
+				require.Equal(t, tt.input, string(got), "body must be byte-for-byte unchanged")
+				return
+		REDACTED
+
+			// Parsed-back validation: output must be valid JSON with the expected thinking.type
+			var parsed struct {
+				Thinking struct {
+					Type string `json:"type"`
+			REDACTED `json:"thinking"`
+		REDACTED
+			require.NoError(t, json.Unmarshal(got, &parsed), "output must be valid JSON")
+			require.Equal(t, tt.wantTypeValue, parsed.Thinking.Type)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestDefaultEffortForThinkingEnabled(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		want  *string // nil = expect no fallback
+REDACTED{
+		// passback-required 上游中不支持 effort 档位的国产模型→补默认 high
+		{name: "glm-5.1", model: "glm-5.1", want: strPtr("high")REDACTED,
+		{name: "glm-4.7", model: "glm-4.7", want: strPtr("high")REDACTED,
+		{name: "kimi-k2.6", model: "kimi-k2.6", want: strPtr("high")REDACTED,
+		{name: "kimi-k2-thinking", model: "kimi-k2-thinking", want: strPtr("high")REDACTED,
+		{name: "moonshot-v1-8k", model: "moonshot-v1-8k", want: strPtr("high")REDACTED,
+		{name: "minimax-m3 (lowercase)", model: "minimax-m3", want: strPtr("high")REDACTED,
+		{name: "MiniMax-M3 (mixed case)", model: "MiniMax-M3", want: strPtr("high")REDACTED,
+		{name: "qwen3-thinking variant", model: "qwen3-235b-a22b-thinking-2507", want: strPtr("high")REDACTED,
+
+		// DeepSeek 有原生 effort 支持→不注入默认，让客户端意图透传
+		{name: "deepseek-v4-pro excluded", model: "deepseek-v4-pro", want: nilREDACTED,
+		{name: "deepseek-v4-flash excluded", model: "deepseek-v4-flash", want: nilREDACTED,
+		{name: "deepseek-chat excluded", model: "deepseek-chat", want: nilREDACTED,
+
+		// 非 passback-required 模型一律返回 nil
+		{name: "claude opus 4.6 (anthropic-strict)", model: "claude-opus-4.6-20260201", want: nilREDACTED,
+		{name: "gpt-5.5 (unknown)", model: "gpt-5.5", want: nilREDACTED,
+		{name: "gemini-3.1-pro (unknown)", model: "gemini-3.1-pro", want: nilREDACTED,
+		{name: "empty", model: "", want: nilREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DefaultEffortForThinkingEnabled(tt.model)
+			if tt.want == nil {
+				require.Nil(t, got)
+				return
+		REDACTED
+			require.NotNil(t, got)
+			require.Equal(t, *tt.want, *got)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestOpenAIBodyHasThinkingEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+REDACTED{
+		{name: "enabled", body: `{"thinking":{"type":"enabled"REDACTEDREDACTED`, want: trueREDACTED,
+		{name: "adaptive", body: `{"thinking":{"type":"adaptive"REDACTEDREDACTED`, want: trueREDACTED,
+		{name: "ENABLED (uppercase)", body: `{"thinking":{"type":"ENABLED"REDACTEDREDACTED`, want: trueREDACTED,
+		{name: "disabled", body: `{"thinking":{"type":"disabled"REDACTEDREDACTED`, want: falseREDACTED,
+		{name: "empty body", body: ``, want: falseREDACTED,
+		{name: "no thinking field", body: `{"model":"gpt-5"REDACTED`, want: falseREDACTED,
+		{name: "thinking object but no type", body: `{"thinking":{"budget_tokens":1024REDACTEDREDACTED`, want: falseREDACTED,
+		{name: "invalid json", body: `{not json`, want: falseREDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, OpenAIBodyHasThinkingEnabled([]byte(tt.body)))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestApplyThinkingEnabledFallback(t *testing.T) {
+	tests := []struct {
+		name        string
+		effort      *string
+		body        string
+		model       string
+		want        *string
+		wantPassThr bool // 为 true 时 want 是传入 effort 原指针
+REDACTED{
+		// effort 非 nil → 原值透传，不覆盖
+		{
+			name:        "existing effort never overridden (kimi + thinking)",
+			effort:      strPtr("medium"),
+			body:        `{"thinking":{"type":"enabled"REDACTEDREDACTED`,
+			model:       "kimi-k2.6",
+			wantPassThr: true,
+	REDACTED,
+		{
+			name:        "existing low effort kept for deepseek",
+			effort:      strPtr("low"),
+			body:        `{"thinking":{"type":"enabled"REDACTEDREDACTED`,
+			model:       "deepseek-v4-pro",
+			wantPassThr: true,
+	REDACTED,
+
+		// effort=nil + thinking enabled + passback-required 模型 → 填 high
+		{
+			name:   "glm-5.1 + thinking enabled -> high",
+			effort: nil,
+			body:   `{"thinking":{"type":"enabled"REDACTEDREDACTED`,
+			model:  "glm-5.1",
+			want:   strPtr("high"),
+	REDACTED,
+		{
+			name:   "kimi-k2.6 + adaptive -> high",
+			effort: nil,
+			body:   `{"thinking":{"type":"adaptive"REDACTEDREDACTED`,
+			model:  "kimi-k2.6",
+			want:   strPtr("high"),
+	REDACTED,
+		{
+			name:   "MiniMax-M3 + enabled -> high",
+			effort: nil,
+			body:   `{"thinking":{"type":"enabled"REDACTEDREDACTED`,
+			model:  "MiniMax-M3",
+			want:   strPtr("high"),
+	REDACTED,
+
+		// effort=nil + thinking disabled → nil
+		{
+			name:   "glm + thinking disabled -> nil",
+			effort: nil,
+			body:   `{"thinking":{"type":"disabled"REDACTEDREDACTED`,
+			model:  "glm-5.1",
+			want:   nil,
+	REDACTED,
+		{
+			name:   "glm + no thinking field -> nil",
+			effort: nil,
+			body:   `{"model":"glm-5.1"REDACTED`,
+			model:  "glm-5.1",
+			want:   nil,
+	REDACTED,
+
+		// effort=nil + thinking enabled + non-passback → nil
+		{
+			name:   "deepseek + thinking enabled -> nil (deepseek excluded)",
+			effort: nil,
+			body:   `{"thinking":{"type":"enabled"REDACTEDREDACTED`,
+			model:  "deepseek-v4-pro",
+			want:   nil,
+	REDACTED,
+		{
+			name:   "claude + thinking enabled -> nil (strict not passback)",
+			effort: nil,
+			body:   `{"thinking":{"type":"enabled"REDACTEDREDACTED`,
+			model:  "claude-opus-4.6",
+			want:   nil,
+	REDACTED,
+		{
+			name:   "gpt-5 + thinking enabled -> nil (unknown)",
+			effort: nil,
+			body:   `{"thinking":{"type":"enabled"REDACTEDREDACTED`,
+			model:  "gpt-5.5",
+			want:   nil,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ApplyThinkingEnabledFallback(tt.effort, []byte(tt.body), tt.model)
+			if tt.wantPassThr {
+				require.Same(t, tt.effort, got, "non-nil effort must be returned unchanged (same pointer)")
+				return
+		REDACTED
+			if tt.want == nil {
+				require.Nil(t, got)
+				return
+		REDACTED
+			require.NotNil(t, got)
+			require.Equal(t, *tt.want, *got)
+	REDACTED)
 REDACTED
 REDACTED
