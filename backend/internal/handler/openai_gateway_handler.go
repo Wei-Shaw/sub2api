@@ -1019,45 +1019,11 @@ func (h *OpenAIGatewayHandler) acquireResponsesUserSlot(
 	reqLog *zap.Logger,
 ) (func(), bool) {
 	ctx := c.Request.Context()
-	userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlot(ctx, userID, userConcurrency)
+	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, userID, userConcurrency, reqStream, streamStarted)
 	if err != nil {
 		reqLog.Warn("openai.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", *streamStarted)
 		return nil, false
-REDACTED
-	if userAcquired {
-		return wrapReleaseOnDone(ctx, userReleaseFunc), true
-REDACTED
-
-	maxWait := service.CalculateMaxWait(userConcurrency)
-	canWait, waitErr := h.concurrencyHelper.IncrementWaitCount(ctx, userID, maxWait)
-	if waitErr != nil {
-		reqLog.Warn("openai.user_wait_counter_increment_failed", zap.Error(waitErr))
-		// 按现有降级语义：等待计数异常时放行后续抢槽流程
-REDACTED else if !canWait {
-		reqLog.Info("openai.user_wait_queue_full", zap.Int("max_wait", maxWait))
-		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later")
-		return nil, false
-REDACTED
-
-	waitCounted := waitErr == nil && canWait
-	defer func() {
-		if waitCounted {
-			h.concurrencyHelper.DecrementWaitCount(ctx, userID)
-	REDACTED
-REDACTED()
-
-	userReleaseFunc, err = h.concurrencyHelper.AcquireUserSlotWithWait(c, userID, userConcurrency, reqStream, streamStarted)
-	if err != nil {
-		reqLog.Warn("openai.user_slot_acquire_failed_after_wait", zap.Error(err))
-		h.handleConcurrencyError(c, err, "user", *streamStarted)
-		return nil, false
-REDACTED
-
-	// 槽位获取成功后，立刻退出等待计数。
-	if waitCounted {
-		h.concurrencyHelper.DecrementWaitCount(ctx, userID)
-		waitCounted = false
 REDACTED
 	return wrapReleaseOnDone(ctx, userReleaseFunc), true
 REDACTED

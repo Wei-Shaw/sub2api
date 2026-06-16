@@ -127,6 +127,14 @@ REDACTED
 	return fmt.Sprintf("%s concurrency limit reached", e.SlotType)
 REDACTED
 
+type WaitQueueFullError struct {
+	SlotType string
+REDACTED
+
+func (e *WaitQueueFullError) Error() string {
+	return "Too many pending requests, please retry later"
+REDACTED
+
 // ConcurrencyHelper provides common concurrency slot management for gateway handlers
 type ConcurrencyHelper struct {
 	concurrencyService *service.ConcurrencyService
@@ -220,6 +228,10 @@ REDACTED
 // For streaming requests, sends ping events during the wait.
 // streamStarted is updated if streaming response has begun.
 func (h *ConcurrencyHelper) AcquireUserSlotWithWait(c *gin.Context, userID int64, maxConcurrency int, isStream bool, streamStarted *bool) (func(), error) {
+	return h.acquireUserSlotWithWaitTimeout(c, userID, maxConcurrency, maxConcurrencyWait, isStream, streamStarted)
+REDACTED
+
+func (h *ConcurrencyHelper) acquireUserSlotWithWaitTimeout(c *gin.Context, userID int64, maxConcurrency int, timeout time.Duration, isStream bool, streamStarted *bool) (func(), error) {
 	ctx := c.Request.Context()
 
 	// Try to acquire immediately
@@ -232,8 +244,21 @@ REDACTED
 		return releaseFunc, nil
 REDACTED
 
+	queueLimit := service.CalculateMaxWait(maxConcurrency) - maxConcurrency
+	if queueLimit < 1 {
+		queueLimit = 1
+REDACTED
+	canWait, err := h.IncrementWaitCount(ctx, userID, queueLimit)
+	if err != nil {
+		return nil, err
+REDACTED
+	if !canWait {
+		return nil, &WaitQueueFullError{SlotType: "user"REDACTED
+REDACTED
+	defer h.DecrementWaitCount(ctx, userID)
+
 	// Need to wait - handle streaming ping if needed
-	return h.waitForSlotWithPing(c, "user", userID, maxConcurrency, isStream, streamStarted)
+	return h.waitForSlotWithPingTimeout(c, "user", userID, maxConcurrency, timeout, isStream, streamStarted, false)
 REDACTED
 
 // AcquireAccountSlotWithWait acquires an account concurrency slot, waiting if necessary.
