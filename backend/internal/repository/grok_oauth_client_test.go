@@ -85,3 +85,23 @@ REDACTED))
 REDACTED
 	require.Contains(t, strings.ToUpper(err.Error()), "GROK_OAUTH_ENTITLEMENT_DENIED")
 REDACTED
+
+func TestGrokOAuthClientStatusErrorRedactsSensitiveResponseBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","access_token":"access-secret","refresh_token":"refresh-secret","code_verifier":"verifier-secret"REDACTED`))
+REDACTED))
+	defer server.Close()
+	t.Setenv(xai.EnvTokenURL, server.URL)
+
+	client := NewGrokOAuthClient()
+	_, err := client.RefreshToken(context.Background(), "refresh-secret", "", "client-id")
+REDACTED
+
+	errText := err.Error()
+	require.Contains(t, errText, "status 400")
+	require.Contains(t, errText, `"refresh_token":"***"`)
+	require.NotContains(t, errText, "access-secret")
+	require.NotContains(t, errText, "refresh-secret")
+	require.NotContains(t, errText, "verifier-secret")
+REDACTED

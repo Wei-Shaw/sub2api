@@ -10,6 +10,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/imroc/req/v3"
 )
 
@@ -105,7 +106,7 @@ REDACTED
 	body := ""
 	if resp != nil {
 		upstreamStatus = resp.StatusCode
-		body = resp.String()
+		body = logredact.RedactText(resp.String())
 REDACTED
 	return infraerrors.Newf(statusCode, errorCode, "%s: status %d, body: %s", message, upstreamStatus, body)
 REDACTED

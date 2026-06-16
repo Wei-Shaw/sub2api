@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 )
 
 const (
@@ -130,7 +132,7 @@ func (p *GrokTokenProvider) markTempUnschedulable(account *Account, refreshErr e
 REDACTED
 	now := time.Now()
 	until := now.Add(tokenRefreshTempUnschedDuration)
-	reason := "grok token refresh failed on request path: " + refreshErr.Error()
+	reason := "grok token refresh failed on request path: " + logredact.RedactText(refreshErr.Error())
 	bgCtx := context.Background()
 	if err := p.accountRepo.SetTempUnschedulable(bgCtx, account.ID, until, reason); err != nil {
 		slog.Warn(grokTokenProviderLogComponent+".set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
@@ -151,9 +153,6 @@ REDACTED
 func GrokTokenCacheKey(account *Account) string {
 	if account == nil {
 		return "grok:account:0"
-REDACTED
-	if email := strings.TrimSpace(account.GetCredential("email")); email != "" {
-		return "grok:" + email
 REDACTED
 	return "grok:account:" + strconv.FormatInt(account.ID, 10)
 REDACTED

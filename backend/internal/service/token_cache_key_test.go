@@ -199,6 +199,68 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestGrokTokenCacheKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  *Account
+		expected string
+REDACTED{
+		{
+			name: "basic_account",
+			account: &Account{
+				ID: 350,
+		REDACTED,
+			expected: "grok:account:350",
+	REDACTED,
+		{
+			name: "account_with_email_uses_account_id",
+			account: &Account{
+				ID: 351,
+		REDACTED
+					"email": "same-user@example.com",
+			REDACTED,
+		REDACTED,
+			expected: "grok:account:351",
+	REDACTED,
+		{
+			name: "account_id_zero",
+			account: &Account{
+				ID: 0,
+		REDACTED,
+			expected: "grok:account:0",
+	REDACTED,
+		{
+			name:     "nil_account",
+			account:  nil,
+			expected: "grok:account:0",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GrokTokenCacheKey(tt.account)
+			require.Equal(t, tt.expected, result)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGrokTokenCacheKeySeparatesAccountsWithSameEmail(t *testing.T) {
+	first := &Account{
+		ID: 351,
+REDACTED
+			"email": "same-user@example.com",
+	REDACTED,
+REDACTED
+	second := &Account{
+		ID: 352,
+REDACTED
+			"email": "same-user@example.com",
+	REDACTED,
+REDACTED
+
+	require.NotEqual(t, GrokTokenCacheKey(first), GrokTokenCacheKey(second))
+REDACTED
+
 func TestClaudeTokenCacheKey(t *testing.T) {
 	tests := []struct {
 		name     string

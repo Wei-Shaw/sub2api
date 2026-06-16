@@ -152,7 +152,11 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	return s.tokenInfoFromResponse(tokenResp, clientID, nil), nil
+	tokenInfo := s.tokenInfoFromResponse(tokenResp, clientID, nil)
+	if tokenInfo.RefreshToken == "" {
+		tokenInfo.RefreshToken = refreshToken
+REDACTED
+	return tokenInfo, nil
 REDACTED
 
 func (s *GrokOAuthService) ValidateRefreshToken(ctx context.Context, refreshToken string, proxyID *int64) (*GrokTokenInfo, error) {
