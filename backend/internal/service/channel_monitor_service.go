@@ -128,6 +128,7 @@ REDACTED
 		GroupName:        strings.TrimSpace(p.GroupName),
 		Enabled:          p.Enabled,
 		IntervalSeconds:  p.IntervalSeconds,
+		JitterSeconds:    p.JitterSeconds,
 		CreatedBy:        p.CreatedBy,
 		TemplateID:       p.TemplateID,
 		ExtraHeaders:     emptyHeadersIfNil(p.ExtraHeaders),
@@ -155,6 +156,9 @@ REDACTED
 		return err
 REDACTED
 	if err := validateInterval(p.IntervalSeconds); err != nil {
+		return err
+REDACTED
+	if err := validateJitter(p.JitterSeconds, p.IntervalSeconds); err != nil {
 		return err
 REDACTED
 	if err := validateEndpoint(p.Endpoint); err != nil {
@@ -508,6 +512,15 @@ REDACTED
 			return err
 	REDACTED
 		existing.IntervalSeconds = *p.IntervalSeconds
+REDACTED
+	if p.JitterSeconds != nil {
+		existing.JitterSeconds = *p.JitterSeconds
+REDACTED
+	if p.IntervalSeconds != nil || p.JitterSeconds != nil {
+		// interval 与 jitter 任一变化都需要重新校验组合约束（interval - jitter >= 下限）。
+		if err := validateJitter(existing.JitterSeconds, existing.IntervalSeconds); err != nil {
+			return err
+	REDACTED
 REDACTED
 	return applyMonitorAdvancedUpdate(existing, p, providerChanged)
 REDACTED
