@@ -5347,6 +5347,116 @@
 
               <div>
                 <label class="input-label">
+                  {{ t('admin.settings.features.affiliate.subscriptionRebateMultiplier') }}
+                </label>
+                <div class="relative">
+                  <input
+                    v-model.number="form.affiliate_subscription_rebate_multiplier"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    class="input pr-8"
+                    placeholder="80"
+                  />
+                  <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                </div>
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t('admin.settings.features.affiliate.subscriptionRebateMultiplierHint') }}
+                </p>
+              </div>
+
+              <div class="space-y-4 border-t border-gray-200 pt-5 dark:border-dark-700">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.features.affiliate.tieredEnabled') }}
+                    </label>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.features.affiliate.tieredEnabledHint') }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.affiliate_tiered_rebate_enabled" />
+                </div>
+
+                <div v-if="form.affiliate_tiered_rebate_enabled" class="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label class="input-label">
+                      {{ t('admin.settings.features.affiliate.tier2MinPaidInvitees') }}
+                    </label>
+                    <input
+                      v-model.number="form.affiliate_tier2_min_paid_invitees"
+                      type="number"
+                      step="1"
+                      min="1"
+                      class="input"
+                      placeholder="10"
+                    />
+                    <p class="mt-1 text-xs text-gray-400">
+                      {{ t('admin.settings.features.affiliate.tier2MinPaidInviteesHint') }}
+                    </p>
+                  </div>
+                  <div>
+                    <label class="input-label">
+                      {{ t('admin.settings.features.affiliate.tier3MinPaidInvitees') }}
+                    </label>
+                    <input
+                      v-model.number="form.affiliate_tier3_min_paid_invitees"
+                      type="number"
+                      step="1"
+                      min="2"
+                      class="input"
+                      placeholder="30"
+                    />
+                    <p class="mt-1 text-xs text-gray-400">
+                      {{ t('admin.settings.features.affiliate.tier3MinPaidInviteesHint') }}
+                    </p>
+                  </div>
+                  <div>
+                    <label class="input-label">
+                      {{ t('admin.settings.features.affiliate.tier2MultiplierPercent') }}
+                    </label>
+                    <div class="relative">
+                      <input
+                        v-model.number="form.affiliate_tier2_multiplier_percent"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="200"
+                        class="input pr-8"
+                        placeholder="120"
+                      />
+                      <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-400">
+                      {{ t('admin.settings.features.affiliate.tier2MultiplierPercentHint') }}
+                    </p>
+                  </div>
+                  <div>
+                    <label class="input-label">
+                      {{ t('admin.settings.features.affiliate.tier3MultiplierPercent') }}
+                    </label>
+                    <div class="relative">
+                      <input
+                        v-model.number="form.affiliate_tier3_multiplier_percent"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="200"
+                        class="input pr-8"
+                        placeholder="150"
+                      />
+                      <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-400">
+                      {{ t('admin.settings.features.affiliate.tier3MultiplierPercentHint') }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label class="input-label">
                   {{ t('admin.settings.features.affiliate.freezeHours') }}
                 </label>
                 <input
@@ -7027,6 +7137,12 @@ const form = reactive<SettingsForm>({
   default_balance: 0,
   default_platform_quotas: normalizePlatformQuotasMap() as DefaultPlatformQuotasMap,
   affiliate_rebate_rate: 20,
+  affiliate_subscription_rebate_multiplier: 80,
+  affiliate_tiered_rebate_enabled: false,
+  affiliate_tier2_min_paid_invitees: 10,
+  affiliate_tier3_min_paid_invitees: 30,
+  affiliate_tier2_multiplier_percent: 120,
+  affiliate_tier3_multiplier_percent: 150,
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
@@ -8153,6 +8269,17 @@ async function saveSettings() {
       form.wechat_connect_mode,
     );
 
+    const affiliateTier2MinPaidInvitees = Math.max(
+      1,
+      Math.floor(Number(form.affiliate_tier2_min_paid_invitees) || 10),
+    )
+    const affiliateTier3MinPaidInvitees = Math.max(
+      affiliateTier2MinPaidInvitees + 1,
+      Math.floor(Number(form.affiliate_tier3_min_paid_invitees) || 30),
+    )
+    const affiliateTier2MultiplierPercent = Number(form.affiliate_tier2_multiplier_percent)
+    const affiliateTier3MultiplierPercent = Number(form.affiliate_tier3_multiplier_percent)
+
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
@@ -8172,6 +8299,21 @@ async function saveSettings() {
       affiliate_rebate_rate: Math.min(
         100,
         Math.max(0, Number(form.affiliate_rebate_rate) || 0),
+      ),
+      affiliate_subscription_rebate_multiplier: Math.min(
+        100,
+        Math.max(0, Number(form.affiliate_subscription_rebate_multiplier) || 0),
+      ),
+      affiliate_tiered_rebate_enabled: form.affiliate_tiered_rebate_enabled,
+      affiliate_tier2_min_paid_invitees: affiliateTier2MinPaidInvitees,
+      affiliate_tier3_min_paid_invitees: affiliateTier3MinPaidInvitees,
+      affiliate_tier2_multiplier_percent: Math.min(
+        200,
+        Math.max(0, Number.isFinite(affiliateTier2MultiplierPercent) ? affiliateTier2MultiplierPercent : 120),
+      ),
+      affiliate_tier3_multiplier_percent: Math.min(
+        200,
+        Math.max(0, Number.isFinite(affiliateTier3MultiplierPercent) ? affiliateTier3MultiplierPercent : 150),
       ),
       affiliate_rebate_freeze_hours: Math.max(0, Math.min(720, Number(form.affiliate_rebate_freeze_hours) || 0)),
       affiliate_rebate_duration_days: Math.max(0, Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0))),

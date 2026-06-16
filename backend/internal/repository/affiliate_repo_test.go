@@ -26,3 +26,16 @@ func TestAffiliateRecordQueriesUseLedgerAuditFields(t *testing.T) {
 	require.NotContains(t, content, "parseAffiliateRebateAmount")
 	require.NotContains(t, content, `"current_balance": "u.balance"`)
 }
+
+func TestCountPaidInviteesSQLCountsQualifiedInvitees(t *testing.T) {
+	query := strings.Join(strings.Fields(countPaidInviteesSQL), " ")
+
+	require.Contains(t, query, "payment_orders")
+	require.Contains(t, query, "redeem_codes")
+	require.Contains(t, query, "COUNT(DISTINCT ua.user_id)")
+	require.Contains(t, query, "po.status IN ('PAID', 'RECHARGING', 'COMPLETED')")
+	require.Contains(t, query, "po.order_type IN ('balance', 'subscription')")
+	require.Contains(t, query, "rc.type = 'subscription'")
+	require.Contains(t, query, "rc.status = 'used'")
+	require.Contains(t, query, "rc.value > 0")
+}

@@ -144,6 +144,16 @@ export interface UserAffiliateDetail {
   aff_history_quota: number
   /** 当前用户作为邀请人时实际生效的返利比例（专属覆盖全局）。0-100。 */
   effective_rebate_rate_percent: number
+  /** 当前用户作为邀请人时订阅套餐实际生效的返利比例。0-100。 */
+  effective_subscription_rebate_rate_percent: number
+  /** 当前返利等级，1-3。 */
+  rebate_tier_level: number
+  /** 已产生有效付费行为的被邀请人数。 */
+  paid_invitee_count: number
+  /** 当前等级倍率，100 表示基础比例。 */
+  rebate_tier_multiplier_percent: number
+  /** 升到下一等级还需要的有效付费邀请人数；最高级为 0。 */
+  next_tier_paid_invitee_count: number
   invitees: AffiliateInvitee[]
 }
 

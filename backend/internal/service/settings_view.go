@@ -142,16 +142,22 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	DefaultConcurrency           int
-	DefaultBalance               float64
-	RiskControlEnabled           bool
-	AffiliateEnabled             bool
-	AffiliateRebateRate          float64
-	AffiliateRebateFreezeHours   int
-	AffiliateRebateDurationDays  int
-	AffiliateRebatePerInviteeCap float64
-	DefaultUserRPMLimit          int
-	DefaultSubscriptions         []DefaultSubscriptionSetting
+	DefaultConcurrency                    int
+	DefaultBalance                        float64
+	RiskControlEnabled                    bool
+	AffiliateEnabled                      bool
+	AffiliateRebateRate                   float64
+	AffiliateSubscriptionRebateMultiplier float64
+	AffiliateTieredRebateEnabled          bool
+	AffiliateTier2MinPaidInvitees         int
+	AffiliateTier3MinPaidInvitees         int
+	AffiliateTier2MultiplierPercent       float64
+	AffiliateTier3MultiplierPercent       float64
+	AffiliateRebateFreezeHours            int
+	AffiliateRebateDurationDays           int
+	AffiliateRebatePerInviteeCap          float64
+	DefaultUserRPMLimit                   int
+	DefaultSubscriptions                  []DefaultSubscriptionSetting
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -226,6 +232,14 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool
+}
+
+type AffiliateTieredRebateConfig struct {
+	Enabled                bool
+	Tier2MinPaidInvitees   int
+	Tier3MinPaidInvitees   int
+	Tier2MultiplierPercent float64
+	Tier3MultiplierPercent float64
 }
 
 type DefaultSubscriptionSetting struct {

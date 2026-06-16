@@ -373,6 +373,12 @@ export interface SystemSettings {
   // Default settings
   default_balance: number;
   affiliate_rebate_rate: number;
+  affiliate_subscription_rebate_multiplier: number;
+  affiliate_tiered_rebate_enabled: boolean;
+  affiliate_tier2_min_paid_invitees: number;
+  affiliate_tier3_min_paid_invitees: number;
+  affiliate_tier2_multiplier_percent: number;
+  affiliate_tier3_multiplier_percent: number;
   affiliate_rebate_freeze_hours: number;
   affiliate_rebate_duration_days: number;
   affiliate_rebate_per_invitee_cap: number;
@@ -632,6 +638,12 @@ export interface UpdateSettingsRequest {
   login_agreement_documents?: LoginAgreementDocument[];
   default_balance?: number;
   affiliate_rebate_rate?: number;
+  affiliate_subscription_rebate_multiplier?: number;
+  affiliate_tiered_rebate_enabled?: boolean;
+  affiliate_tier2_min_paid_invitees?: number;
+  affiliate_tier3_min_paid_invitees?: number;
+  affiliate_tier2_multiplier_percent?: number;
+  affiliate_tier3_multiplier_percent?: number;
   affiliate_rebate_freeze_hours?: number;
   affiliate_rebate_duration_days?: number;
   affiliate_rebate_per_invitee_cap?: number;
