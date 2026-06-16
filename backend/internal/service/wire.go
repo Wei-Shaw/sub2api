@@ -10,7 +10,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 )
@@ -598,20 +597,8 @@ var ProviderSet = wire.NewSet(
 	ProvideUserPlatformQuotaUsageFlusher,
 	NewPlazaService,
 	wire.Bind(new(PlazaPaymentConfigSource), new(*PaymentConfigService)),
-	NewOIDCProviderService,
-	NewOidcClientService,
-	NewOidcConsentService,
-	NewOIDCSigningKeyService,
-	ProvideOidcSigningService,
-	NewSSOSessionService,
-	repository.ProviderSet,
-	ProvideAuditLogService,
 )
 
-// ProvideOidcSigningService wires OidcSigningService with dependencies.
-func ProvideOidcSigningService(client *dbent.Client, settingRepo repository.SettingRepository) *OidcSigningService {
-	return NewOidcSigningService(client, settingRepo)
-}
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
 func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache, quotaRepo UserPlatformQuotaRepository, tw *TimingWheelService) *UserPlatformQuotaUsageFlusher {
 	svc := NewUserPlatformQuotaUsageFlusher(cfg, cache, quotaRepo, tw)
@@ -671,9 +658,4 @@ func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *Set
 	svc.SetScheduler(r)
 	r.Start()
 	return r
-}
-
-// ProvideAuditLogService creates AuditLogService
-func ProvideAuditLogService(client *dbent.Client) *AuditLogService {
-	return NewAuditLogService(client)
 }

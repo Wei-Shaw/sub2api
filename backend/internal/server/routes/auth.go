@@ -227,26 +227,4 @@ func RegisterAuthRoutes(
 		authenticated.POST("/auth/revoke-all-sessions", h.Auth.RevokeAllSessions)
 		authenticated.POST("/auth/oauth/bind-token", h.Auth.PrepareOAuthBindAccessTokenCookie)
 	}
-
-	// OIDC Provider endpoints
-	oidc := v1.Group("/oidc")
-	{
-		// OIDC Discovery endpoint
-		oidc.GET("/.well-known/openid-configuration", h.OIDCProvider.Discovery)
-		
-		// OIDC Authorization endpoint
-		oidc.GET("/authorize", h.OIDCProvider.Authorize)
-		
-		// OIDC Token endpoint
-		oidc.POST("/token", h.OIDCProvider.Token)
-		
-		// OIDC UserInfo endpoint
-		oidc.GET("/userinfo", h.OIDCProvider.UserInfo)
-		
-		// OIDC JWKS endpoint
-		oidc.GET("/jwks", h.OIDCProvider.JWKS)
-		
-		// OIDC Revocation endpoint
-		oidc.POST("/revoke", h.OIDCProvider.Revocation)
-	}
 }

@@ -199,15 +199,6 @@ func (h *AuthHandler) emailOAuthCallbackWithProfile(
 		return
 	}
 
-	// 设置 SSO Cookie
-	if h.authService.ssoSessionService != nil && user != nil {
-		expiresAt := time.Now().Add(time.Duration(h.authService.cfg.SSO.SessionTTLDays) * 24 * time.Hour)
-		err := h.authService.ssoSessionService.Issue(c.Writer, c.Request, user.ID, expiresAt)
-		if err != nil {
-			log.Printf("[Email OAuth] failed to issue SSO cookie: %v", err)
-		}
-	}
-
 	fragment := url.Values{}
 	fragment.Set("access_token", tokenPair.AccessToken)
 	fragment.Set("refresh_token", tokenPair.RefreshToken)
@@ -437,16 +428,6 @@ func (h *AuthHandler) completeEmailOAuthRegistration(c *gin.Context, provider st
 		return
 	}
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
-
-	// 设置 SSO Cookie
-	if h.authService.ssoSessionService != nil && user != nil {
-		expiresAt := time.Now().Add(time.Duration(h.authService.cfg.SSO.SessionTTLDays) * 24 * time.Hour)
-		err := h.authService.ssoSessionService.Issue(c.Writer, c.Request, user.ID, expiresAt)
-		if err != nil {
-			log.Printf("[Email OAuth Pending] failed to issue SSO cookie: %v", err)
-		}
-	}
-
 	clearCookies()
 	writeOAuthTokenPairResponse(c, tokenPair)
 }

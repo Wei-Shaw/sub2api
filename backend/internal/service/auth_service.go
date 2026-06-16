@@ -75,7 +75,6 @@ type AuthService struct {
 	affiliateService      *AffiliateService
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
-	ssoSessionService    *SSOSessionService
 }
 
 type DefaultSubscriptionAssigner interface {
@@ -104,7 +103,6 @@ func NewAuthService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	affiliateService *AffiliateService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
-	ssoSessionService *SSOSessionService,
 ) *AuthService {
 	return &AuthService{
 		entClient:             entClient,
@@ -120,7 +118,6 @@ func NewAuthService(
 		affiliateService:      affiliateService,
 		defaultSubAssigner:    defaultSubAssigner,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
-		ssoSessionService:    ssoSessionService,
 	}
 }
 

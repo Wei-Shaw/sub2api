@@ -695,16 +695,6 @@ func (h *AuthHandler) CompleteOIDCOAuthRegistration(c *gin.Context) {
 		return
 	}
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
-
-	// 设置 SSO Cookie
-	if h.authService.ssoSessionService != nil && user != nil {
-		expiresAt := time.Now().Add(time.Duration(h.authService.cfg.SSO.SessionTTLDays) * 24 * time.Hour)
-		err := h.authService.ssoSessionService.Issue(c.Writer, c.Request, user.ID, expiresAt)
-		if err != nil {
-			log.Printf("[OIDC OAuth] failed to issue SSO cookie: %v", err)
-		}
-	}
-
 	clearOAuthPendingSessionCookie(c, secureCookie)
 	clearOAuthPendingBrowserCookie(c, secureCookie)
 
@@ -1268,19 +1258,10 @@ func (h *AuthHandler) tryOIDCVerifiedEmailFastPath(
 		AvatarURL:        pendingSessionStringValue(upstreamClaims, "suggested_avatar_url"),
 		UpstreamMetadata: upstreamMetadata,
 	}
-	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(ctx, input, "", "")
+	tokenPair, _, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(ctx, input, "", "")
 	if err != nil {
 		log.Printf("[OIDC OAuth] verified-email fast path skipped: reason=%s", infraerrors.Reason(err))
 		return false
-	}
-
-	// 设置 SSO Cookie
-	if h.authService.ssoSessionService != nil && user != nil {
-		expiresAt := time.Now().Add(time.Duration(h.authService.cfg.SSO.SessionTTLDays) * 24 * time.Hour)
-		err := h.authService.ssoSessionService.Issue(c.Writer, c.Request, user.ID, expiresAt)
-		if err != nil {
-			log.Printf("[OIDC OAuth] failed to issue SSO cookie: %v", err)
-		}
 	}
 
 	fragment := url.Values{}

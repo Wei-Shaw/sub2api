@@ -120,7 +120,6 @@ type OidcClientListFilters struct {
 // OidcClientService 管理 oidc_clients 表的 CRUD 与 Authenticate。
 type OidcClientService struct {
 	client *ent.Client
-	auditLogService *AuditLogService
 
 	// 注入点 (测试覆写)
 	now              func() time.Time
@@ -131,10 +130,9 @@ type OidcClientService struct {
 }
 
 // NewOidcClientService 构造服务。client 必须非 nil。
-func NewOidcClientService(client *ent.Client, auditLogService *AuditLogService) *OidcClientService {
+func NewOidcClientService(client *ent.Client) *OidcClientService {
 	return &OidcClientService{
 		client:          client,
-		auditLogService: auditLogService,
 		now:             func() time.Time { return time.Now().UTC() },
 		randReadFunc:    rand.Read,
 		bcryptCost:      bcrypt.DefaultCost,
@@ -191,19 +189,7 @@ func (s *OidcClientService) Create(ctx context.Context, req CreateOidcClientRequ
 		return nil, "", fmt.Errorf("oidc client: insert: %w", err)
 	}
 
-	// 返回安全视图 + 一次性明文 secret
-	view := s.toView(client)
-	
-	// 记录审计日志
-	s.auditLogService.WriteOidcClientAuditLog(ctx, client.ID, AuditActionOidcClientCreated, "admin", map[string]any{
-		"client_name":      req.ClientName,
-		"redirect_uris":    req.RedirectURIs,
-		"allowed_scopes":   req.AllowedScopes,
-		"consent_required": req.ConsentRequired,
-		"enabled":          req.Enabled,
-	})
-
-	return view, plainSecret, nil
+	return rowToView(row), plaintextSecret, nil
 }
 
 // ─── List / Get ──────────────────────────────────────────────────────────────
@@ -310,16 +296,6 @@ func (s *OidcClientService) Update(ctx context.Context, id int64, patch UpdateOi
 	if err != nil {
 		return nil, fmt.Errorf("oidc client: update: %w", err)
 	}
-
-	// 记录审计日志
-	s.auditLogService.WriteOidcClientAuditLog(ctx, updated.ID, AuditActionOidcClientUpdated, "admin", map[string]any{
-		"client_name":      patch.ClientName,
-		"redirect_uris":    patch.RedirectURIs,
-		"allowed_scopes":   patch.AllowedScopes,
-		"consent_required": patch.ConsentRequired,
-		"enabled":          patch.Enabled,
-	})
-
 	return rowToView(updated), nil
 }
 
@@ -354,13 +330,6 @@ func (s *OidcClientService) ResetSecret(ctx context.Context, id int64) (string, 
 		Save(ctx); err != nil {
 		return "", fmt.Errorf("oidc client: persist new hash: %w", err)
 	}
-
-	// 记录审计日志
-	s.auditLogService.WriteOidcClientAuditLog(ctx, row.ID, AuditActionOidcClientSecretReset, "admin", map[string]any{
-		"client_id": row.ClientID,
-		"client_name": row.ClientName,
-	})
-
 	return plaintext, nil
 }
 
@@ -419,13 +388,6 @@ func (s *OidcClientService) Delete(ctx context.Context, id int64) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("oidc client: commit delete tx: %w", err)
 	}
-
-	// 记录审计日志
-	s.auditLogService.WriteOidcClientAuditLog(ctx, row.ID, AuditActionOidcClientDeleted, "admin", map[string]any{
-		"client_id": row.ClientID,
-		"client_name": row.ClientName,
-	})
-
 	return nil
 }
 

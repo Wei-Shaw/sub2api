@@ -1634,16 +1634,6 @@ func (h *AuthHandler) bindPendingOAuthLogin(c *gin.Context, provider string) {
 		response.InternalError(c, "Failed to generate token pair")
 		return
 	}
-
-	// 设置 SSO Cookie
-	if h.authService.ssoSessionService != nil {
-		expiresAt := time.Now().Add(time.Duration(h.authService.cfg.SSO.SessionTTLDays) * 24 * time.Hour)
-		err := h.authService.ssoSessionService.Issue(c.Writer, c.Request, user.ID, expiresAt)
-		if err != nil {
-			log.Printf("[OAuth Pending] failed to issue SSO cookie: %v", err)
-		}
-	}
-
 	if _, err := pendingSvc.ConsumeBrowserSession(c.Request.Context(), session.SessionToken, session.BrowserSessionKey); err != nil {
 		clearCookies()
 		response.ErrorFrom(c, err)
@@ -1839,16 +1829,6 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	// createPendingOAuthAccount = 注册新账户，需要把钉钉昵称同步到 users.username 作为初始值
 	h.maybeSyncDingTalkAfterRegistration(c.Request.Context(), session, user.ID)
-
-	// 设置 SSO Cookie
-	if h.authService.ssoSessionService != nil && user != nil {
-		expiresAt := time.Now().Add(time.Duration(h.authService.cfg.SSO.SessionTTLDays) * 24 * time.Hour)
-		err := h.authService.ssoSessionService.Issue(c.Writer, c.Request, user.ID, expiresAt)
-		if err != nil {
-			log.Printf("[OAuth Pending] failed to issue SSO cookie: %v", err)
-		}
-	}
-
 	clearCookies()
 	writeOAuthTokenPairResponse(c, tokenPair)
 }
