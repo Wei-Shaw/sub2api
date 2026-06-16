@@ -586,6 +586,17 @@ func (e *UpstreamFailoverError) Error() string {
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
 REDACTED
 
+// sseStreamErrorEventError 表示上游 SSE 流体内出现 event:error 帧。
+// RawData 是该事件 data: 行的原始 JSON 字符串
+// （Anthropic 标准结构 {"type":"error","error":{"type":"...","message":"..."REDACTEDREDACTED）。
+// Error() 保持原字符串以兼容现有日志/检索；调用方应通过 errors.As
+// 提取 RawData 并构造 UpstreamFailoverError.ResponseBody。
+type sseStreamErrorEventError struct {
+	RawData string
+REDACTED
+
+func (e *sseStreamErrorEventError) Error() string { return "have error in stream" REDACTED
+
 // TempUnscheduleRetryableError 对 RetryableOnSameAccount 类型的 failover 错误触发临时封禁。
 // 由 handler 层在同账号重试全部用尽、切换账号时调用。
 func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *UpstreamFailoverError) {
@@ -5396,9 +5407,46 @@ REDACTED
 	if reqStream {
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, shouldMimicClaudeCode)
 		if err != nil {
-			if err.Error() == "have error in stream" {
+			var sseErr *sseStreamErrorEventError
+			if errors.As(err, &sseErr) {
+				// 上游 HTTP 200 + SSE 流体内出现 event:error 帧。
+				// 保留 StatusCode=403 以兼容既有 failover/客户端响应语义，
+				// 但补全 ResponseBody 与 ops 上下文，让运维日志能反映上游真实错误。
+				body := []byte(sseErr.RawData)
+
+				upstreamMsg := sanitizeUpstreamErrorMessage(
+					strings.TrimSpace(extractUpstreamErrorMessage(body)),
+				)
+
+				upstreamDetail := ""
+				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+					if maxBytes <= 0 {
+						maxBytes = 2048
+				REDACTED
+					upstreamDetail = truncateString(sseErr.RawData, maxBytes)
+			REDACTED
+
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: 403,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "stream_error",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
+
+				logger.LegacyPrintf("service.gateway",
+					"[Forward] SSE error event in stream: Account=%d(%s) RequestID=%s Body=%s",
+					account.ID, account.Name, resp.Header.Get("x-request-id"),
+					truncateString(sseErr.RawData, 1000),
+				)
+
 				return nil, &UpstreamFailoverError{
-					StatusCode: 403,
+					StatusCode:   403,
+					ResponseBody: body,
 			REDACTED
 		REDACTED
 			return nil, err
@@ -8061,7 +8109,7 @@ REDACTED
 	REDACTED
 
 		if eventName == "error" {
-			return nil, dataLine, nil, errors.New("have error in stream")
+			return nil, dataLine, nil, &sseStreamErrorEventError{RawData: dataLineREDACTED
 	REDACTED
 
 		if dataLine == "" {
