@@ -8,6 +8,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type openAIFastPolicyRepoStub struct {
@@ -62,25 +63,33 @@ func newOpenAIGatewayServiceWithSettings(t *testing.T, settings *OpenAIFastPolic
 	}
 }
 
-func TestEvaluateOpenAIFastPolicy_DefaultFiltersAllModelsPriority(t *testing.T) {
+func openAIFastFilterPriorityPolicy() *OpenAIFastPolicySettings {
+	return &OpenAIFastPolicySettings{
+		Rules: []OpenAIFastPolicyRule{{
+			ServiceTier:    OpenAIFastTierPriority,
+			Action:         BetaPolicyActionFilter,
+			Scope:          BetaPolicyScopeAll,
+			ModelWhitelist: []string{},
+			FallbackAction: BetaPolicyActionPass,
+		}},
+	}
+}
+
+func TestEvaluateOpenAIFastPolicy_DefaultPassesKnownTiers(t *testing.T) {
+	require.Empty(t, DefaultOpenAIFastPolicySettings().Rules, "default policy must not rewrite service_tier unless admin configured rules")
+
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 
-	// 默认策略对所有模型生效（whitelist 为空），因为 codex 的 service_tier=fast
-	// 是用户级开关，与 model 正交。
-	// gpt-5.5 + priority → filter
 	action, _ := svc.evaluateOpenAIFastPolicy(context.Background(), account, "gpt-5.5", OpenAIFastTierPriority)
-	require.Equal(t, BetaPolicyActionFilter, action)
+	require.Equal(t, BetaPolicyActionPass, action)
 
-	// gpt-5.5-turbo → filter
 	action, _ = svc.evaluateOpenAIFastPolicy(context.Background(), account, "gpt-5.5-turbo", OpenAIFastTierPriority)
-	require.Equal(t, BetaPolicyActionFilter, action)
+	require.Equal(t, BetaPolicyActionPass, action)
 
-	// gpt-4 + priority → filter（默认策略覆盖所有模型）
 	action, _ = svc.evaluateOpenAIFastPolicy(context.Background(), account, "gpt-4", OpenAIFastTierPriority)
-	require.Equal(t, BetaPolicyActionFilter, action)
+	require.Equal(t, BetaPolicyActionPass, action)
 
-	// gpt-5.5 + flex → pass (tier doesn't match)
 	action, _ = svc.evaluateOpenAIFastPolicy(context.Background(), account, "gpt-5.5", OpenAIFastTierFlex)
 	require.Equal(t, BetaPolicyActionPass, action)
 
@@ -129,27 +138,24 @@ func TestEvaluateOpenAIFastPolicy_ScopeFiltersOAuth(t *testing.T) {
 	require.Equal(t, BetaPolicyActionPass, action)
 }
 
-func TestApplyOpenAIFastPolicyToBody_FilterRemovesField(t *testing.T) {
+func TestApplyOpenAIFastPolicyToBody_DefaultPassesPriorityAndFast(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 
-	// gpt-5.5 fast → service_tier stripped
 	body := []byte(`{"model":"gpt-5.5","service_tier":"priority","messages":[]}`)
 	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
 	require.NoError(t, err)
-	require.NotContains(t, string(updated), `"service_tier"`)
+	require.Equal(t, string(body), string(updated))
 
-	// Client sending "fast" (alias for priority) also filtered
 	body = []byte(`{"model":"gpt-5.5","service_tier":"fast"}`)
 	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
 	require.NoError(t, err)
-	require.NotContains(t, string(updated), `"service_tier"`)
+	require.Equal(t, "priority", gjson.GetBytes(updated, "service_tier").String())
 
-	// gpt-4 priority → 默认策略对所有模型 filter，service_tier 被移除
 	body = []byte(`{"model":"gpt-4","service_tier":"priority"}`)
 	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-4", body)
 	require.NoError(t, err)
-	require.NotContains(t, string(updated), `"service_tier"`)
+	require.Equal(t, string(body), string(updated))
 
 	// No service_tier → no-op
 	body = []byte(`{"model":"gpt-5.5"}`)
@@ -158,9 +164,23 @@ func TestApplyOpenAIFastPolicyToBody_FilterRemovesField(t *testing.T) {
 	require.Equal(t, string(body), string(updated))
 }
 
-// TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule 验证扩展白名单后
-// 客户端显式发送的 OpenAI 官方合法 tier（auto/default/scale）能透传到上游而不被
-// 静默剥离。默认策略只针对 priority，所以这些 tier 落在 fall-through pass 分支。
+func TestApplyOpenAIFastPolicyToBody_ExplicitFilterRemovesField(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, openAIFastFilterPriorityPolicy())
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	body := []byte(`{"model":"gpt-5.5","service_tier":"priority","messages":[]}`)
+	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.NotContains(t, string(updated), `"service_tier"`)
+
+	body = []byte(`{"model":"gpt-5.5","service_tier":"fast"}`)
+	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.NotContains(t, string(updated), `"service_tier"`)
+}
+
+// TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule 验证默认配置
+// 下客户端显式发送的 OpenAI 官方合法 tier 能透传到上游而不被静默剥离。
 func TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
@@ -170,10 +190,10 @@ func TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule(t *testing.T
 		updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
 		require.NoError(t, err, "tier %q should pass without error", tier)
 		require.Contains(t, string(updated), `"service_tier":"`+tier+`"`,
-			"tier %q should be preserved in body under default rule", tier)
+			"tier %q should be preserved in body under default policy", tier)
 	}
 
-	// evaluate 层也应判定为 pass（默认规则 ServiceTier=priority 与 auto/default/scale 不匹配）
+	// evaluate 层也应判定为 pass（默认配置没有内置规则）。
 	for _, tier := range []string{"auto", "default", "scale"} {
 		action, _ := svc.evaluateOpenAIFastPolicy(context.Background(), account, "gpt-5.5", tier)
 		require.Equal(t, BetaPolicyActionPass, action, "tier %q should evaluate to pass", tier)

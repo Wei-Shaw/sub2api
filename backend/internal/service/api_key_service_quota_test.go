@@ -101,6 +101,9 @@ func (s *quotaBaseAPIKeyRepoStub) Update(context.Context, *APIKey) error {
 func (s *quotaBaseAPIKeyRepoStub) Delete(context.Context, int64) error {
 	panic("unexpected Delete call")
 }
+func (s *quotaBaseAPIKeyRepoStub) DeleteWithAudit(context.Context, int64) error {
+	panic("unexpected DeleteWithAudit call")
+}
 func (s *quotaBaseAPIKeyRepoStub) ListByUserID(context.Context, int64, pagination.PaginationParams, APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
 	panic("unexpected ListByUserID call")
 }

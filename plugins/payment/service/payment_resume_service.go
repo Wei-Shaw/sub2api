@@ -14,8 +14,8 @@ import (
 	"time"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
-	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/plugins/payment/internal/errors"
+	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 )
 
 const paymentResultReturnPath = "/payment/result"
@@ -190,7 +190,6 @@ func (s *PaymentResumeService) invalidateCachedKey() {
 	s.keys = nil
 	s.mu.Unlock()
 }
-
 
 // CreateToken signs claims and returns the resume token (payload.sig).
 // Validates required fields and stamps timestamps when missing.

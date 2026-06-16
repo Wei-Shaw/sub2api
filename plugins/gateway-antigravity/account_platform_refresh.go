@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"io"
 	"net/http"
 	"net/url"
@@ -60,7 +60,6 @@ func (s *accountPlatformServer) RefreshToken(
 	}, nil
 }
 
-
 // googleTokenResponse mirrors the Google OAuth /token JSON response.
 type googleTokenResponse struct {
 	AccessToken  string `json:"access_token"`
@@ -115,7 +114,6 @@ func callGoogleTokenEndpoint(
 
 	return &tokenResp, nil
 }
-
 
 // buildUpdatedCredentials merges the refresh response into the existing
 // credential map, preserving fields that the token endpoint does not return

@@ -61,4 +61,3 @@ func AppendOutgoingMetadataStream(key, value string) grpc.StreamClientIntercepto
 		return streamer(metadata.AppendToOutgoingContext(ctx, key, value), desc, cc, method, opts...)
 	}
 }
-

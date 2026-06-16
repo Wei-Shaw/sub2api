@@ -13,6 +13,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 
+	"github.com/Wei-Shaw/sub2api/internal/gateway"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -195,6 +196,9 @@ type PluginManager struct {
 	// forward requests to the plugin. Set via SetGatewayProviderRegistry
 	// before Start; nil disables gateway provider auto-registration.
 	gatewayProviderRegistry GatewayProviderRegistry
+
+	// pipeline is the gateway pipeline for content intercept hook wiring.
+	pipeline *gateway.GatewayPipeline
 }
 
 // NewPluginManager 构造 manager。

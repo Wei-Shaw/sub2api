@@ -46,8 +46,8 @@ type UsageStats struct {
 	TotalInputTokens         int64   `json:"total_input_tokens"`
 	TotalOutputTokens        int64   `json:"total_output_tokens"`
 	TotalCacheTokens         int64   `json:"total_cache_tokens"`
-	TotalCacheReadTokens     int64   `json:"total_cache_read_tokens"`
 	TotalCacheCreationTokens int64   `json:"total_cache_creation_tokens"`
+	TotalCacheReadTokens     int64   `json:"total_cache_read_tokens"`
 	TotalTokens              int64   `json:"total_tokens"`
 	TotalCost                float64 `json:"total_cost"`
 	TotalActualCost          float64 `json:"total_actual_cost"`
@@ -235,8 +235,8 @@ func toServiceUsageStats(stats *usagestats.UsageStats) *UsageStats {
 		TotalInputTokens:         stats.TotalInputTokens,
 		TotalOutputTokens:        stats.TotalOutputTokens,
 		TotalCacheTokens:         stats.TotalCacheTokens,
-		TotalCacheReadTokens:     stats.TotalCacheReadTokens,
 		TotalCacheCreationTokens: stats.TotalCacheCreationTokens,
+		TotalCacheReadTokens:     stats.TotalCacheReadTokens,
 		TotalTokens:              stats.TotalTokens,
 		TotalCost:                stats.TotalCost,
 		TotalActualCost:          stats.TotalActualCost,
@@ -308,6 +308,30 @@ func (s *UsageService) GetAPIKeyModelStats(ctx context.Context, apiKeyID int64, 
 		return nil, fmt.Errorf("get api key model stats: %w", err)
 	}
 	return stats, nil
+}
+
+// GetAPIKeyDailyUsage returns daily usage stats for a user's API key.
+func (s *UsageService) GetAPIKeyDailyUsage(ctx context.Context, userID, apiKeyID int64, startTime, endTime time.Time) ([]usagestats.APIKeyDailyUsagePoint, error) {
+	trend, err := s.usageRepo.GetUsageTrendWithFilters(ctx, startTime, endTime, "day", userID, apiKeyID, 0, 0, "", nil, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("get api key daily usage: %w", err)
+	}
+
+	points := make([]usagestats.APIKeyDailyUsagePoint, 0, len(trend))
+	for _, row := range trend {
+		points = append(points, usagestats.APIKeyDailyUsagePoint{
+			Date:             row.Date,
+			Requests:         row.Requests,
+			InputTokens:      row.InputTokens,
+			OutputTokens:     row.OutputTokens,
+			CacheReadTokens:  row.CacheReadTokens,
+			CacheWriteTokens: row.CacheCreationTokens,
+			TotalTokens:      row.TotalTokens,
+			Cost:             row.Cost,
+			ActualCost:       row.ActualCost,
+		})
+	}
+	return points, nil
 }
 
 // GetBatchAPIKeyUsageStats returns today/total actual_cost for given api keys.

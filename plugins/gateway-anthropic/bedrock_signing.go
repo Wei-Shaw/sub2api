@@ -24,6 +24,7 @@ import (
 //  3. Removes model field (Bedrock uses URL)
 //  4. Removes stream field (Bedrock uses endpoint)
 //  5. Cleans up Bedrock-unsupported fields
+//  6. Strips beta-gated fields not covered by resolved tokens
 func prepareBedrockRequestBody(body []byte, betaHeader string) ([]byte, error) {
 	var parsed map[string]json.RawMessage
 	if err := json.Unmarshal(body, &parsed); err != nil {
@@ -50,6 +51,9 @@ func prepareBedrockRequestBody(body []byte, betaHeader string) ([]byte, error) {
 	// 5. Remove output_config (not supported by Bedrock).
 	delete(parsed, "output_config")
 
+	// 6. Strip beta-gated fields not covered by resolved tokens.
+	sanitizeBedrockFieldsForBetaTokens(parsed, betaTokens)
+
 	result, err := json.Marshal(parsed)
 	if err != nil {
 		return nil, fmt.Errorf("marshal bedrock body: %w", err)
@@ -70,6 +74,8 @@ var bedrockSupportedBetaTokens = map[string]bool{
 	"tool-search-tool-2025-10-19":     true,
 	"tool-examples-2025-10-29":        true,
 }
+
+const bedrockContextManagementBetaToken = "context-management-2025-06-27"
 
 // bedrockBetaTokenTransforms maps Anthropic API beta tokens to Bedrock equivalents.
 var bedrockBetaTokenTransforms = map[string]string{
@@ -142,6 +148,25 @@ func filterBedrockBetaTokens(tokens []string) []string {
 		result = append(result, "tool-examples-2025-10-29")
 	}
 	return result
+}
+
+// sanitizeBedrockFieldsForBetaTokens removes beta-gated fields from the
+// parsed request body when the corresponding beta token is not present.
+// This prevents Bedrock from rejecting requests that include fields
+// requiring beta features that are not enabled.
+func sanitizeBedrockFieldsForBetaTokens(parsed map[string]json.RawMessage, betaTokens []string) {
+	if !containsBedrockBetaToken(betaTokens, bedrockContextManagementBetaToken) {
+		delete(parsed, "context_management")
+	}
+}
+
+func containsBedrockBetaToken(tokens []string, target string) bool {
+	for _, token := range tokens {
+		if token == target {
+			return true
+		}
+	}
+	return false
 }
 
 // --- AWS SigV4 signing (no AWS SDK dependency) ---

@@ -29,6 +29,7 @@ export interface AdminUsageStatsResponse {
 export interface SimpleUser {
   id: number
   email: string
+  deleted: boolean
 }
 
 export interface SimpleApiKey {
@@ -122,6 +123,7 @@ export async function getStats(params: {
   start_date?: string
   end_date?: string
   timezone?: string
+  nocache?: number
 }): Promise<AdminUsageStatsResponse> {
   const { data } = await apiClient.get<AdminUsageStatsResponse>('/admin/usage/stats', {
     params

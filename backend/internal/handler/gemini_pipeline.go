@@ -102,7 +102,7 @@ func (h *GatewayHandler) buildGeminiParseFunc(
 		// --- Session hash computation ---
 		sessionHash := extractGeminiCLISessionHash(c, body)
 		if sessionHash == "" {
-			parsedReq, _ := service.ParseGatewayRequest(body, domain.PlatformGemini)
+			parsedReq, _ := service.ParseGatewayRequest(service.NewRequestBodyRef(body), domain.PlatformGemini)
 			if parsedReq != nil {
 				parsedReq.SessionContext = &service.SessionContext{
 					ClientIP:  ip.GetClientIP(c),

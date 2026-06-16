@@ -5,6 +5,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/Wei-Shaw/sub2api/internal/gateway"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -96,6 +97,13 @@ func (m *PluginManager) SetGatewayProviderRegistry(registry GatewayProviderRegis
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.gatewayProviderRegistry = registry
+}
+
+// SetPipeline wires the gateway pipeline for content intercept extension.
+func (m *PluginManager) SetPipeline(p *gateway.GatewayPipeline) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pipeline = p
 }
 
 // SetFrontendCacheInvalidator wires a callback the manager invokes whenever

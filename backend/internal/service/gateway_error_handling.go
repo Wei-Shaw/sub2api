@@ -31,6 +31,7 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 		tempUnscheduleEmptyResponse(ctx, s.accountRepo, accountID, "[handler]")
 	}
 }
+
 // HandlePipelineUpstreamError processes upstream errors from the gateway
 // pipeline's failover path. Unlike HandleUpstreamError in RateLimitService
 // (which receives full HTTP headers), the pipeline only has the response body
@@ -44,11 +45,66 @@ func (s *GatewayService) HandlePipelineUpstreamError(
 	if s == nil || failoverErr == nil || account == nil || s.rateLimitService == nil {
 		return
 	}
+	var requestedModelArg []string
+	if failoverErr.RequestedModel != "" {
+		requestedModelArg = []string{failoverErr.RequestedModel}
+	}
 	s.rateLimitService.HandleUpstreamError(
 		ctx, account, failoverErr.StatusCode,
 		failoverErr.ResponseHeaders, failoverErr.ResponseBody,
+		requestedModelArg...,
 	)
+	s.applyInternal500PenaltyIfMatched(ctx, account, failoverErr)
 }
+
+// SetInternal500PenaltyHook wires the Antigravity INTERNAL 500 progressive
+// penalty hook. Optional; nil keeps the pipeline behaviour unchanged.
+func (s *GatewayService) SetInternal500PenaltyHook(hook Internal500PenaltyHook) {
+	if s == nil {
+		return
+	}
+	s.internal500PenaltyMu.Lock()
+	s.internal500PenaltyHook = hook
+	s.internal500PenaltyMu.Unlock()
+}
+
+func (s *GatewayService) internal500Hook() Internal500PenaltyHook {
+	s.internal500PenaltyMu.RLock()
+	defer s.internal500PenaltyMu.RUnlock()
+	return s.internal500PenaltyHook
+}
+
+// applyInternal500PenaltyIfMatched applies the Antigravity progressive
+// penalty when the upstream error is the specific INTERNAL 500 signature.
+// The platform guard lives here (not in the pipeline main flow) so the
+// generic failover path stays platform-agnostic.
+func (s *GatewayService) applyInternal500PenaltyIfMatched(
+	ctx context.Context, account *Account, failoverErr *UpstreamFailoverError,
+) {
+	if account.Platform != PlatformAntigravity {
+		return
+	}
+	if !IsAntigravityInternal500(failoverErr.StatusCode, failoverErr.ResponseBody) {
+		return
+	}
+	if hook := s.internal500Hook(); hook != nil {
+		hook.PenalizeInternal500(ctx, account)
+	}
+}
+
+// HandlePipelineForwardSuccess is the pipeline post-flight success hook. It
+// clears the Antigravity INTERNAL 500 consecutive-failure counter so a single
+// healthy response resets the progressive penalty ladder. No-op for accounts
+// on other platforms or when the hook is not wired.
+func (s *GatewayService) HandlePipelineForwardSuccess(ctx context.Context, account *Account) {
+	if s == nil || account == nil || account.Platform != PlatformAntigravity {
+		return
+	}
+	if hook := s.internal500Hook(); hook != nil {
+		hook.ClearInternal500(ctx, account.ID)
+	}
+}
+
 // 重试相关常量
 const (
 	// 最大尝试次数（包含首次请求）。过多重试会导致请求堆积与资源耗尽。
@@ -72,6 +128,7 @@ func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode i
 	// API Key 账号：未配置的错误码重试
 	return !account.ShouldHandleErrorCode(statusCode)
 }
+
 // shouldFailoverUpstreamError determines whether an upstream error should trigger account failover.
 func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
@@ -152,6 +209,7 @@ func (s *GatewayService) shouldFailoverOn400(respBody []byte) bool {
 
 	return false
 }
+
 // sanitizeStreamError 返回不含网络地址的客户端可见错误描述。
 // 默认 (*net.OpError).Error() 会拼接 Source/Addr 字段，泄露内部 IP/端口与上游
 // 服务器地址（例如 "read tcp 10.0.0.1:54321->52.1.2.3:443: read: connection
@@ -194,6 +252,7 @@ func sanitizeStreamError(err error) string {
 	}
 	return "upstream connection error"
 }
+
 // ExtractUpstreamErrorMessage 从上游响应体中提取错误消息
 // 支持 Claude 风格的错误格式：{"type":"error","error":{"type":"...","message":"..."}}
 func ExtractUpstreamErrorMessage(body []byte) string {
@@ -255,6 +314,19 @@ func isCountTokensUnsupported404(statusCode int, body []byte) bool {
 	}
 	return strings.Contains(msg, "count_tokens") && strings.Contains(msg, "not found")
 }
+// readUpstreamErrorBody reads the upstream error response body with a size limit
+// to prevent OOM on huge error payloads.
+func (s *GatewayService) readUpstreamErrorBody(resp *http.Response) ([]byte, error) {
+	if resp == nil || resp.Body == nil {
+		return nil, nil
+	}
+	limit := gatewayUpstreamErrorBodyReadLimit
+	if s != nil && s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody && s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > int(limit) {
+		limit = int64(s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, limit))
+}
+
 func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
@@ -420,6 +492,7 @@ func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *ht
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 }
+
 // handleRetryExhaustedError 处理重试耗尽后的错误
 // OAuth 403：标记账号异常
 // API Key 未配置错误码：仅返回错误，不标记账号
@@ -517,4 +590,3 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	}
 	return nil, fmt.Errorf("upstream error: %d (retries exhausted) message=%s", resp.StatusCode, upstreamMsg)
 }
-

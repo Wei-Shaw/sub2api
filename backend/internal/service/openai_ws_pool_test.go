@@ -885,12 +885,12 @@ func TestOpenAIWSConnLease_ReadWriteHelpersAndConnStats(t *testing.T) {
 	})
 	lease := &openAIWSConnLease{conn: conn}
 
-	require.NoError(t, lease.WriteJSONContext(context.Background(), map[string]any{"type": "response.create"}))
+	require.NoError(t, lease.WriteJSONWithContextTimeout(context.Background(), map[string]any{"type": "response.create"}, time.Second))
 	payload, err := lease.ReadMessage(100 * time.Millisecond)
 	require.NoError(t, err)
 	require.Contains(t, string(payload), "response.completed")
 
-	payload, err = lease.ReadMessageContext(context.Background())
+	payload, err = lease.ReadMessageWithContextTimeout(context.Background(), time.Second)
 	require.NoError(t, err)
 	require.Contains(t, string(payload), "response.completed")
 
@@ -1184,10 +1184,10 @@ func TestOpenAIWSConn_LeaseAndTimeHelpers_NilAndClosedBranches(t *testing.T) {
 func TestOpenAIWSConnLease_ReadWriteNilConnBranches(t *testing.T) {
 	lease := &openAIWSConnLease{}
 	require.ErrorIs(t, lease.WriteJSON(map[string]any{"k": "v"}, time.Second), errOpenAIWSConnClosed)
-	require.ErrorIs(t, lease.WriteJSONContext(context.Background(), map[string]any{"k": "v"}), errOpenAIWSConnClosed)
+	require.ErrorIs(t, lease.WriteJSONWithContextTimeout(context.Background(), map[string]any{"k": "v"}, time.Second), errOpenAIWSConnClosed)
 	_, err := lease.ReadMessage(10 * time.Millisecond)
 	require.ErrorIs(t, err, errOpenAIWSConnClosed)
-	_, err = lease.ReadMessageContext(context.Background())
+	_, err = lease.ReadMessageWithContextTimeout(context.Background(), time.Second)
 	require.ErrorIs(t, err, errOpenAIWSConnClosed)
 	_, err = lease.ReadMessageWithContextTimeout(context.Background(), 10*time.Millisecond)
 	require.ErrorIs(t, err, errOpenAIWSConnClosed)
@@ -1203,12 +1203,11 @@ func TestOpenAIWSConnLease_ReleasedLeaseGuards(t *testing.T) {
 	lease.Release() // idempotent
 
 	require.ErrorIs(t, lease.WriteJSON(map[string]any{"k": "v"}, time.Second), errOpenAIWSConnClosed)
-	require.ErrorIs(t, lease.WriteJSONContext(context.Background(), map[string]any{"k": "v"}), errOpenAIWSConnClosed)
 	require.ErrorIs(t, lease.WriteJSONWithContextTimeout(context.Background(), map[string]any{"k": "v"}, time.Second), errOpenAIWSConnClosed)
 
 	_, err := lease.ReadMessage(10 * time.Millisecond)
 	require.ErrorIs(t, err, errOpenAIWSConnClosed)
-	_, err = lease.ReadMessageContext(context.Background())
+	_, err = lease.ReadMessageWithContextTimeout(context.Background(), time.Second)
 	require.ErrorIs(t, err, errOpenAIWSConnClosed)
 	_, err = lease.ReadMessageWithContextTimeout(context.Background(), 10*time.Millisecond)
 	require.ErrorIs(t, err, errOpenAIWSConnClosed)

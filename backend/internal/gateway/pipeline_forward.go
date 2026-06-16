@@ -92,6 +92,10 @@ func (p *GatewayPipeline) tryOneAccount(
 	if err != nil {
 		return p.handleForwardError(ctx, w, req, fs, err)
 	}
+	// Post-flight success hook: lets platform adapters reset per-account
+	// failure state (e.g. Antigravity INTERNAL 500 penalty ladder). No-op
+	// for platforms without such state.
+	p.gatewayService.HandlePipelineForwardSuccess(ctx, req.Account)
 	return result, true, nil
 }
 
@@ -327,6 +331,13 @@ func (p *GatewayPipeline) handleForwardError(
 	var failoverErr *service.UpstreamFailoverError
 	if !errors.As(err, &failoverErr) {
 		return p.handleNonFailoverError(ctx, req, fs, err)
+	}
+
+	// Ensure RequestedModel is populated so HandlePipelineUpstreamError can
+	// trigger per-model rate limiting (e.g. model-not-found cooldown).
+	// Providers may or may not set it; the pipeline always knows the model.
+	if failoverErr.RequestedModel == "" {
+		failoverErr.RequestedModel = req.Model
 	}
 
 	fs.lastFailoverErr = failoverErr

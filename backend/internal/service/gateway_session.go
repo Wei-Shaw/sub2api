@@ -58,25 +58,28 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 		_, _ = combined.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
 		_, _ = combined.WriteString("|")
 	}
-	if parsed.System != nil {
-		systemText := s.extractTextFromSystem(parsed.System)
+	if systemVal, ok := parsed.SystemValue(); ok && systemVal != nil {
+		systemText := s.extractTextFromSystem(systemVal)
 		if systemText != "" {
 			_, _ = combined.WriteString(systemText)
 		}
 	}
-	for _, msg := range parsed.Messages {
-		if m, ok := msg.(map[string]any); ok {
-			if content, exists := m["content"]; exists {
-				// Anthropic: messages[].content
-				if msgText := s.extractTextFromContent(content); msgText != "" {
-					_, _ = combined.WriteString(msgText)
-				}
-			} else if parts, ok := m["parts"].([]any); ok {
-				// Gemini: contents[].parts[].text
-				for _, part := range parts {
-					if partMap, ok := part.(map[string]any); ok {
-						if text, ok := partMap["text"].(string); ok {
-							_, _ = combined.WriteString(text)
+	var messages []any
+	if err := parsed.DecodeMessages(&messages); err == nil {
+		for _, msg := range messages {
+			if m, ok := msg.(map[string]any); ok {
+				if content, exists := m["content"]; exists {
+					// Anthropic: messages[].content
+					if msgText := s.extractTextFromContent(content); msgText != "" {
+						_, _ = combined.WriteString(msgText)
+					}
+				} else if parts, ok := m["parts"].([]any); ok {
+					// Gemini: contents[].parts[].text
+					for _, part := range parts {
+						if partMap, ok := part.(map[string]any); ok {
+							if text, ok := partMap["text"].(string); ok {
+								_, _ = combined.WriteString(text)
+							}
 						}
 					}
 				}
@@ -153,13 +156,15 @@ func (s *GatewayService) extractCacheableContent(parsed *ParsedRequest) string {
 	var builder strings.Builder
 
 	// 检查 system 中的 cacheable 内容
-	if system, ok := parsed.System.([]any); ok {
-		for _, part := range system {
-			if partMap, ok := part.(map[string]any); ok {
-				if cc, ok := partMap["cache_control"].(map[string]any); ok {
-					if cc["type"] == "ephemeral" {
-						if text, ok := partMap["text"].(string); ok {
-							_, _ = builder.WriteString(text)
+	if systemVal, ok := parsed.SystemValue(); ok {
+		if system, ok := systemVal.([]any); ok {
+			for _, part := range system {
+				if partMap, ok := part.(map[string]any); ok {
+					if cc, ok := partMap["cache_control"].(map[string]any); ok {
+						if cc["type"] == "ephemeral" {
+							if text, ok := partMap["text"].(string); ok {
+								_, _ = builder.WriteString(text)
+							}
 						}
 					}
 				}
@@ -169,14 +174,17 @@ func (s *GatewayService) extractCacheableContent(parsed *ParsedRequest) string {
 	systemText := builder.String()
 
 	// 检查 messages 中的 cacheable 内容
-	for _, msg := range parsed.Messages {
-		if msgMap, ok := msg.(map[string]any); ok {
-			if msgContent, ok := msgMap["content"].([]any); ok {
-				for _, part := range msgContent {
-					if partMap, ok := part.(map[string]any); ok {
-						if cc, ok := partMap["cache_control"].(map[string]any); ok {
-							if cc["type"] == "ephemeral" {
-								return s.extractTextFromContent(msgMap["content"])
+	var messages []any
+	if err := parsed.DecodeMessages(&messages); err == nil {
+		for _, msg := range messages {
+			if msgMap, ok := msg.(map[string]any); ok {
+				if msgContent, ok := msgMap["content"].([]any); ok {
+					for _, part := range msgContent {
+						if partMap, ok := part.(map[string]any); ok {
+							if cc, ok := partMap["cache_control"].(map[string]any); ok {
+								if cc["type"] == "ephemeral" {
+									return s.extractTextFromContent(msgMap["content"])
+								}
 							}
 						}
 					}

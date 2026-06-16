@@ -6,7 +6,7 @@
       class="border-b border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-dark-700 dark:bg-dark-700/50"
     >
       <div class="flex items-center gap-2">
-        <div class="h-2 w-2 rounded-full bg-blue-500"></div>
+        <div class="dot-info h-2 w-2 rounded-full"></div>
         <label class="text-sm font-medium text-gray-900 dark:text-white">{{
           t("admin.groups.openaiMessages.familyMappingTitle")
         }}</label>

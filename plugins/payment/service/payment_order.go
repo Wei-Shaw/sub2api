@@ -10,12 +10,12 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/plugins/payment/internal/errors"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment/provider"
-	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
-	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
 // CreateOrderRequest is the input the handler passes to CreateOrder.
@@ -411,4 +411,3 @@ func buildPaymentSubject(plan *SubscriptionPlan, limitAmount decimal.Decimal, cf
 	}
 	return "Sub2API " + amountStr + " CNY"
 }
-

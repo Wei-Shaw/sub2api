@@ -10,12 +10,12 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentproviderinstance"
 	infraerrors "github.com/Wei-Shaw/sub2api/plugins/payment/internal/errors"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
-	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 )
 
 // RefundPlan captures the ExecuteRefund inputs derived from PrepareRefund.
@@ -351,15 +351,6 @@ func (s *PaymentService) resolveUniqueLegacyOrderProviderInstance(ctx context.Co
 	}
 	return nil, nil
 }
-
-// roundCNY rounds a CNY decimal to two decimals. The wrapper exists
-// for symmetry with roundYuan in payment_amounts.go and keeps the
-// refund-execute companion file's dependency obvious.
-func roundCNY(v decimal.Decimal) decimal.Decimal {
-	return v.Round(2)
-}
-
-var _ = roundCNY // referenced by the refund execute companion file.
 
 // LogAdminForceRefundNoDeduct records the (force=true, deduct_balance=false)
 // admin refund path in the audit log AND emits a structured warn-level

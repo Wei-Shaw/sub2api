@@ -5,7 +5,6 @@ import (
 	"log/slog"
 )
 
-
 // pluginCtx is the concrete implementation of PluginContext returned to the
 // plugin during Init.
 type pluginCtx struct {

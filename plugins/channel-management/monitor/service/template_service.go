@@ -33,6 +33,7 @@ type AssociatedMonitorBrief struct {
 	ID       int64
 	Name     string
 	Provider string
+	APIMode  string
 	Enabled  bool
 }
 

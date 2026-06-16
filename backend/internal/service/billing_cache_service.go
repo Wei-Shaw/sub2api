@@ -11,6 +11,8 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -30,7 +33,15 @@ var (
 	// RPM 超限错误。gateway_handler 负责映射为 HTTP 429。
 	ErrGroupRPMExceeded = infraerrors.TooManyRequests("GROUP_RPM_EXCEEDED", "group requests-per-minute limit exceeded")
 	ErrUserRPMExceeded  = infraerrors.TooManyRequests("USER_RPM_EXCEEDED", "user requests-per-minute limit exceeded")
+
+	ErrUserPlatformDailyQuotaExhausted   = infraerrors.TooManyRequests("USER_PLATFORM_DAILY_QUOTA_EXHAUSTED", "Daily usage quota exhausted for this platform.")
+	ErrUserPlatformWeeklyQuotaExhausted  = infraerrors.TooManyRequests("USER_PLATFORM_WEEKLY_QUOTA_EXHAUSTED", "Weekly usage quota exhausted for this platform.")
+	ErrUserPlatformMonthlyQuotaExhausted = infraerrors.TooManyRequests("USER_PLATFORM_MONTHLY_QUOTA_EXHAUSTED", "Monthly usage quota exhausted for this platform.")
 )
+
+// errBillingCacheUnavailable 内部哨兵：用于 quota 校验路径在 cache==nil 时
+// 与"Redis 故障"走同一条 fail-open + DB 一次性检查的分支。
+var errBillingCacheUnavailable = fmt.Errorf("billing cache unavailable")
 
 // billingCacheLogComponent 是 billing_cache_service 所有子文件（余额/订阅/限速/worker）
 // 异步写入告警日志共用的 component 标签，与 quotaLogComponent (billing_cache_service_quota.go)
@@ -49,6 +60,7 @@ type BillingCacheService struct {
 	userGroupRateRepo     UserGroupRateRepository
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
+	userPlatformQuotaRepo UserPlatformQuotaRepository
 
 	serviceQuota ServiceQuotaService
 
@@ -58,6 +70,7 @@ type BillingCacheService struct {
 	cacheWriteMu       sync.RWMutex
 	stopped            atomic.Bool
 	balanceLoadSF      singleflight.Group
+	quotaLoadSF        singleflight.Group
 	// 丢弃日志节流计数器（减少高负载下日志噪音）
 	cacheWriteDropFullCount     uint64
 	cacheWriteDropFullLastLog   int64
@@ -74,6 +87,7 @@ func NewBillingCacheService(
 	userRPMCache UserRPMCache,
 	userGroupRateRepo UserGroupRateRepository,
 	cfg *config.Config,
+	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	serviceQuotas ...ServiceQuotaService,
 ) *BillingCacheService {
 	var serviceQuota ServiceQuotaService
@@ -88,6 +102,7 @@ func NewBillingCacheService(
 		userRPMCache:          userRPMCache,
 		userGroupRateRepo:     userGroupRateRepo,
 		cfg:                   cfg,
+		userPlatformQuotaRepo: userPlatformQuotaRepo,
 		serviceQuota:          serviceQuota,
 	}
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
@@ -102,6 +117,25 @@ func NewBillingCacheService(
 //   - 通过 ServiceQuotaService.PreCheckSelect 选出候选规则但不抢 concurrency；
 //   - 返回的 *BillingTicket 必须由 caller 持有并在所有返回路径上 defer ticket.Close()。
 //
+// Redis 写失败用 ALERT 级 log；DB 持久化由 caller 单独 goroutine 兜底（gateway_service.go）。
+func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, platform string, cost float64) {
+	if s.cache == nil {
+		return
+	}
+	if platform == "" || cost <= 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
+	defer cancel()
+	ttl := time.Duration(s.cfg.Billing.UserPlatformQuotaCacheTTLSeconds) * time.Second
+	markDirty := s.cfg.Database.UserPlatformQuotaFlusherEnabled
+	if err := s.cache.IncrUserPlatformQuotaUsageCache(ctx, userID, platform, cost, ttl, markDirty); err != nil {
+		logger.LegacyPrintf("service.billing_cache",
+			"ALERT: incr user platform quota cache failed user=%d platform=%s cost=%f: %v",
+			userID, platform, cost, err)
+	}
+}
+
 // 后续 caller 选定 channel + account（路由完成）后，必须调用 ticket.Consume(ctx, channelID, accountID)
 // 才会真正按 channel/account scope 抢 concurrency / 增 RPM。
 //
@@ -398,4 +432,263 @@ func (s *BillingCacheService) FilterAccountsByServiceQuotaSchedulability(
 		return accounts
 	}
 	return FilterAccountsByServiceQuotaSchedulability(ctx, s.serviceQuota, plan, base, accounts)
+}
+
+func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
+	ctx context.Context,
+	userID int64,
+	platform string,
+) error {
+	if platform == "" || s.userPlatformQuotaRepo == nil {
+		return nil
+	}
+
+	// cache 未配置（如简化部署 / 单测路径）→ 直接走 DB 查询，避免 nil panic。
+	// 其他 check* 方法（balance/subscription/rate-limit）也有类似守卫。
+	var (
+		entry    *UserPlatformQuotaCacheEntry
+		ok       bool
+		cacheErr error
+	)
+	if s.cache != nil {
+		entry, ok, cacheErr = s.cache.GetUserPlatformQuotaCache(ctx, userID, platform)
+	} else {
+		// 标记为"cache 故障"分支：跳过 HIT 路径、不回填、走 DB 一次性检查
+		cacheErr = errBillingCacheUnavailable
+	}
+
+	// --- cache HIT with current schema → 直接用 entry，不查 DB ---
+	if cacheErr == nil && ok && entry != nil && entry.SchemaVersion == UserPlatformQuotaCacheSchemaV1 {
+		now := time.Now()
+		dailyUsage := entry.DailyUsageUSD
+		weeklyUsage := entry.WeeklyUsageUSD
+		monthlyUsage := entry.MonthlyUsageUSD
+		windowExpired := false
+		newDailyStart := entry.DailyWindowStart
+		newWeeklyStart := entry.WeeklyWindowStart
+		newMonthlyStart := entry.MonthlyWindowStart
+		if quotaWindowExpired(entry.DailyWindowStart, timezone.StartOfDay(now)) {
+			dailyUsage = 0
+			windowExpired = true
+			dayStart := timezone.StartOfDay(now)
+			newDailyStart = &dayStart
+		}
+		if quotaWindowExpired(entry.WeeklyWindowStart, timezone.StartOfWeek(now)) {
+			weeklyUsage = 0
+			windowExpired = true
+			weekStart := timezone.StartOfWeek(now)
+			newWeeklyStart = &weekStart
+		}
+		if monthlyQuotaWindowExpired(entry.MonthlyWindowStart, now) {
+			monthlyUsage = 0
+			windowExpired = true
+			monthStart := now
+			newMonthlyStart = &monthStart
+		}
+		isSentinel := entry.DailyLimitUSD == nil && entry.WeeklyLimitUSD == nil && entry.MonthlyLimitUSD == nil
+		if windowExpired && s.cache != nil && !isSentinel {
+			refreshed := &UserPlatformQuotaCacheEntry{
+				DailyUsageUSD:      dailyUsage,
+				WeeklyUsageUSD:     weeklyUsage,
+				MonthlyUsageUSD:    monthlyUsage,
+				SchemaVersion:      UserPlatformQuotaCacheSchemaV1,
+				DailyLimitUSD:      entry.DailyLimitUSD,
+				WeeklyLimitUSD:     entry.WeeklyLimitUSD,
+				MonthlyLimitUSD:    entry.MonthlyLimitUSD,
+				DailyWindowStart:   newDailyStart,
+				WeeklyWindowStart:  newWeeklyStart,
+				MonthlyWindowStart: newMonthlyStart,
+			}
+			ttl := time.Duration(s.cfg.Billing.UserPlatformQuotaCacheTTLSeconds) * time.Second
+			setCtx, setCancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			if setErr := s.cache.SetUserPlatformQuotaCache(setCtx, userID, platform, refreshed, ttl); setErr != nil {
+				logger.LegacyPrintf("service.billing_cache",
+					"Warning: refresh expired user platform quota cache failed user=%d platform=%s: %v",
+					userID, platform, setErr)
+			}
+			setCancel()
+		}
+		if entry.DailyLimitUSD != nil && dailyUsage >= *entry.DailyLimitUSD {
+			return withWindowResetsMetadata(ErrUserPlatformDailyQuotaExhausted, nextDailyReset(now))
+		}
+		if entry.WeeklyLimitUSD != nil && weeklyUsage >= *entry.WeeklyLimitUSD {
+			return withWindowResetsMetadata(ErrUserPlatformWeeklyQuotaExhausted, nextWeeklyReset(now))
+		}
+		if entry.MonthlyLimitUSD != nil && monthlyUsage >= *entry.MonthlyLimitUSD {
+			return withWindowResetsMetadata(ErrUserPlatformMonthlyQuotaExhausted, nextMonthlyResetFrom(entry.MonthlyWindowStart, now))
+		}
+		return nil
+	}
+
+	// --- cache MISS、旧版 entry 或 Redis 故障 → 查 DB（singleflight 合并并发回源）---
+	sfKey := strconv.FormatInt(userID, 10) + ":" + platform
+	ch := s.quotaLoadSF.DoChan(sfKey, func() (any, error) {
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer bgCancel()
+		return s.userPlatformQuotaRepo.GetByUserPlatform(bgCtx, userID, platform)
+	})
+	var (
+		v     any
+		dbErr error
+	)
+	select {
+	case res := <-ch:
+		v, dbErr = res.Val, res.Err
+	case <-ctx.Done():
+		logger.LegacyPrintf("service.billing_cache", "Warning: user platform quota check ctx cancelled user=%d platform=%s: %v (fail-open)", userID, platform, ctx.Err())
+		return nil
+	}
+	if dbErr != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: load user platform quota failed user=%d platform=%s: %v (fail-open)", userID, platform, dbErr)
+		return nil
+	}
+	rec, _ := v.(*UserPlatformQuotaRecord)
+	if rec == nil {
+		if s.cache != nil && cacheErr == nil {
+			now := time.Now()
+			startOfDay := timezone.StartOfDay(now)
+			startOfWeek := timezone.StartOfWeek(now)
+			sentinel := &UserPlatformQuotaCacheEntry{
+				SchemaVersion:      UserPlatformQuotaCacheSchemaV1,
+				DailyWindowStart:   &startOfDay,
+				WeeklyWindowStart:  &startOfWeek,
+				MonthlyWindowStart: &now,
+			}
+			sentinelTTL := time.Duration(s.cfg.Billing.UserPlatformQuotaSentinelTTLSeconds) * time.Second
+			if sentinelTTL <= 0 {
+				sentinelTTL = time.Hour
+			}
+			setCtx, setCancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			if setErr := s.cache.SetUserPlatformQuotaCache(setCtx, userID, platform, sentinel, sentinelTTL); setErr != nil {
+				userPlatformQuotaSentinelSetCacheErrorTotal.Add(1)
+				logger.LegacyPrintf("service.billing_cache", "Warning: set sentinel quota cache failed user=%d platform=%s: %v", userID, platform, setErr)
+			}
+			setCancel()
+		}
+		return nil
+	}
+
+	now := time.Now()
+	dailyUsage := rec.DailyUsageUSD
+	weeklyUsage := rec.WeeklyUsageUSD
+	monthlyUsage := rec.MonthlyUsageUSD
+	if quotaWindowExpired(rec.DailyWindowStart, timezone.StartOfDay(now)) {
+		dailyUsage = 0
+	}
+	if quotaWindowExpired(rec.WeeklyWindowStart, timezone.StartOfWeek(now)) {
+		weeklyUsage = 0
+	}
+	if monthlyQuotaWindowExpired(rec.MonthlyWindowStart, now) {
+		monthlyUsage = 0
+	}
+
+	if cacheErr != nil {
+		if rec.DailyLimitUSD != nil && dailyUsage >= *rec.DailyLimitUSD {
+			return withWindowResetsMetadata(ErrUserPlatformDailyQuotaExhausted, nextDailyReset(now))
+		}
+		if rec.WeeklyLimitUSD != nil && weeklyUsage >= *rec.WeeklyLimitUSD {
+			return withWindowResetsMetadata(ErrUserPlatformWeeklyQuotaExhausted, nextWeeklyReset(now))
+		}
+		if rec.MonthlyLimitUSD != nil && monthlyUsage >= *rec.MonthlyLimitUSD {
+			return withWindowResetsMetadata(ErrUserPlatformMonthlyQuotaExhausted, nextMonthlyResetFrom(rec.MonthlyWindowStart, now))
+		}
+		return nil
+	}
+
+	newEntry := &UserPlatformQuotaCacheEntry{
+		DailyUsageUSD:      dailyUsage,
+		WeeklyUsageUSD:     weeklyUsage,
+		MonthlyUsageUSD:    monthlyUsage,
+		SchemaVersion:      UserPlatformQuotaCacheSchemaV1,
+		DailyLimitUSD:      rec.DailyLimitUSD,
+		WeeklyLimitUSD:     rec.WeeklyLimitUSD,
+		MonthlyLimitUSD:    rec.MonthlyLimitUSD,
+		DailyWindowStart:   rec.DailyWindowStart,
+		WeeklyWindowStart:  rec.WeeklyWindowStart,
+		MonthlyWindowStart: rec.MonthlyWindowStart,
+	}
+	if s.cache != nil {
+		ttl := time.Duration(s.cfg.Billing.UserPlatformQuotaCacheTTLSeconds) * time.Second
+		setCtx, setCancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		if setErr := s.cache.SetUserPlatformQuotaCache(setCtx, userID, platform, newEntry, ttl); setErr != nil {
+			logger.LegacyPrintf("service.billing_cache", "Warning: set user platform quota cache failed user=%d platform=%s: %v", userID, platform, setErr)
+		}
+		setCancel()
+	}
+
+	if rec.DailyLimitUSD != nil && dailyUsage >= *rec.DailyLimitUSD {
+		return withWindowResetsMetadata(ErrUserPlatformDailyQuotaExhausted, nextDailyReset(now))
+	}
+	if rec.WeeklyLimitUSD != nil && weeklyUsage >= *rec.WeeklyLimitUSD {
+		return withWindowResetsMetadata(ErrUserPlatformWeeklyQuotaExhausted, nextWeeklyReset(now))
+	}
+	if rec.MonthlyLimitUSD != nil && monthlyUsage >= *rec.MonthlyLimitUSD {
+		return withWindowResetsMetadata(ErrUserPlatformMonthlyQuotaExhausted, nextMonthlyResetFrom(rec.MonthlyWindowStart, now))
+	}
+	return nil
+}
+
+// withWindowResetsMetadata 给 quota error 附加 window_resets_at metadata（RFC3339）。
+func withWindowResetsMetadata(err error, resetAt time.Time) error {
+	appErr, ok := err.(*infraerrors.ApplicationError)
+	if !ok || appErr == nil {
+		return err
+	}
+	return appErr.WithMetadata(map[string]string{
+		"window_resets_at": resetAt.Format(time.RFC3339),
+	})
+}
+
+func nextDailyReset(now time.Time) time.Time {
+	return timezone.StartOfDay(now).AddDate(0, 0, 1)
+}
+
+func nextWeeklyReset(now time.Time) time.Time {
+	return timezone.StartOfWeek(now).AddDate(0, 0, 7)
+}
+
+func nextMonthlyResetFrom(start *time.Time, now time.Time) time.Time {
+	if start == nil || now.Sub(*start) >= 30*24*time.Hour {
+		return now.Add(30 * 24 * time.Hour)
+	}
+	return start.Add(30 * 24 * time.Hour)
+}
+
+func quotaWindowExpired(start *time.Time, currWindowStart time.Time) bool {
+	if start == nil {
+		return true
+	}
+	return start.Before(currWindowStart)
+}
+
+func monthlyQuotaWindowExpired(start *time.Time, now time.Time) bool {
+	if start == nil {
+		return true
+	}
+	return now.Sub(*start) >= 30*24*time.Hour
+}
+
+// HasUserPlatformQuotaLimit 判断该 user×platform 是否设了任一非 nil limit。
+// 写入点守卫:无 limit 直接跳过 Redis 写 + 脏集标记,消除无谓写入。
+// fail-safe:任何不确定(simple 模式除外)都返回 true 维持写入。
+// DeleteUserPlatformQuotaCache invalidates the cached quota entry for a user+platform.
+func (s *BillingCacheService) DeleteUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) error {
+	if s.cache == nil {
+		return nil
+	}
+	return s.cache.DeleteUserPlatformQuotaCache(ctx, userID, platform)
+}
+
+func (s *BillingCacheService) HasUserPlatformQuotaLimit(ctx context.Context, userID int64, platform string) bool {
+	if s.cfg.RunMode == config.RunModeSimple {
+		return false
+	}
+	if s.cache == nil {
+		return true
+	}
+	entry, ok, err := s.cache.GetUserPlatformQuotaCache(ctx, userID, platform)
+	if err != nil || !ok || entry == nil {
+		return true
+	}
+	return entry.DailyLimitUSD != nil || entry.WeeklyLimitUSD != nil || entry.MonthlyLimitUSD != nil
 }

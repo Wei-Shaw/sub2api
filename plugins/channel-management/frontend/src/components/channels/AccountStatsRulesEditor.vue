@@ -35,7 +35,7 @@
         <button
           type="button"
           @click="removeRule(ruleIndex)"
-          class="text-xs text-red-500 hover:text-red-700"
+          class="text-semantic-danger text-xs"
         >
           {{ t('common.delete', 'Delete') }}
         </button>

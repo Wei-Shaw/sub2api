@@ -112,7 +112,7 @@ func (h *GatewayHandler) readAndParseMessagesBody(c *gin.Context) ([]byte, *serv
 		return nil, nil, errors.New("empty body")
 	}
 
-	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
+	parsedReq, err := service.ParseGatewayRequest(service.NewRequestBodyRef(body), domain.PlatformAnthropic)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return nil, nil, err

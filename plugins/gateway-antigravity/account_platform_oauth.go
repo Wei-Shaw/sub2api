@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -9,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"net/url"
 	"strings"
 	"sync"
@@ -20,11 +20,11 @@ import (
 // Antigravity OAuth constants -- mirrored from backend/internal/pkg/antigravity/oauth.go.
 // The plugin cannot import host internal packages, so these are duplicated.
 const (
-	antigravityAuthorizeURL = "https://accounts.google.com/o/oauth2/v2/auth"
+	antigravityAuthorizeURL  = "https://accounts.google.com/o/oauth2/v2/auth"
 	antigravityOAuthTokenURL = "https://oauth2.googleapis.com/token"
-	antigravityUserInfoURL  = "https://www.googleapis.com/oauth2/v2/userinfo"
-	antigravityRedirectURI  = "http://localhost:8085/callback"
-	antigravityOAuthScopes  = "https://www.googleapis.com/auth/cloud-platform " +
+	antigravityUserInfoURL   = "https://www.googleapis.com/oauth2/v2/userinfo"
+	antigravityRedirectURI   = "http://localhost:8085/callback"
+	antigravityOAuthScopes   = "https://www.googleapis.com/auth/cloud-platform " +
 		"https://www.googleapis.com/auth/userinfo.email " +
 		"https://www.googleapis.com/auth/userinfo.profile " +
 		"https://www.googleapis.com/auth/cclog " +

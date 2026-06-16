@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"encoding/json"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
@@ -78,5 +78,3 @@ func isPassthroughEnabled(extraJSON []byte) bool {
 	}
 	return false
 }
-
-

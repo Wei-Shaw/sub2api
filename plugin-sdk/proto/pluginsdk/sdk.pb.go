@@ -22,6 +22,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ContentAction int32
+
+const (
+	ContentAction_CONTENT_ACTION_ALLOW   ContentAction = 0
+	ContentAction_CONTENT_ACTION_BLOCK   ContentAction = 1
+	ContentAction_CONTENT_ACTION_OBSERVE ContentAction = 2
+)
+
+// Enum value maps for ContentAction.
+var (
+	ContentAction_name = map[int32]string{
+		0: "CONTENT_ACTION_ALLOW",
+		1: "CONTENT_ACTION_BLOCK",
+		2: "CONTENT_ACTION_OBSERVE",
+	}
+	ContentAction_value = map[string]int32{
+		"CONTENT_ACTION_ALLOW":   0,
+		"CONTENT_ACTION_BLOCK":   1,
+		"CONTENT_ACTION_OBSERVE": 2,
+	}
+)
+
+func (x ContentAction) Enum() *ContentAction {
+	p := new(ContentAction)
+	*p = x
+	return p
+}
+
+func (x ContentAction) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ContentAction) Descriptor() protoreflect.EnumDescriptor {
+	return file_sdk_proto_enumTypes[0].Descriptor()
+}
+
+func (ContentAction) Type() protoreflect.EnumType {
+	return &file_sdk_proto_enumTypes[0]
+}
+
+func (x ContentAction) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ContentAction.Descriptor instead.
+func (ContentAction) EnumDescriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{0}
+}
+
 type PricingOverrideEvent_Op int32
 
 const (
@@ -52,11 +101,11 @@ func (x PricingOverrideEvent_Op) String() string {
 }
 
 func (PricingOverrideEvent_Op) Descriptor() protoreflect.EnumDescriptor {
-	return file_sdk_proto_enumTypes[0].Descriptor()
+	return file_sdk_proto_enumTypes[1].Descriptor()
 }
 
 func (PricingOverrideEvent_Op) Type() protoreflect.EnumType {
-	return &file_sdk_proto_enumTypes[0]
+	return &file_sdk_proto_enumTypes[1]
 }
 
 func (x PricingOverrideEvent_Op) Number() protoreflect.EnumNumber {
@@ -5880,6 +5929,112 @@ func (x *ResolveModelPricingResponse) GetImageOutputPricePerToken() string {
 	return ""
 }
 
+type SetUserDisabledRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	UserId int64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// disabled=true bans the user; disabled=false unbans.
+	Disabled bool `protobuf:"varint,2,opt,name=disabled,proto3" json:"disabled,omitempty"`
+	// reason is stored in the user's disable_reason field for audit trail.
+	Reason        string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetUserDisabledRequest) Reset() {
+	*x = SetUserDisabledRequest{}
+	mi := &file_sdk_proto_msgTypes[85]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUserDisabledRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUserDisabledRequest) ProtoMessage() {}
+
+func (x *SetUserDisabledRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[85]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUserDisabledRequest.ProtoReflect.Descriptor instead.
+func (*SetUserDisabledRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{85}
+}
+
+func (x *SetUserDisabledRequest) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *SetUserDisabledRequest) GetDisabled() bool {
+	if x != nil {
+		return x.Disabled
+	}
+	return false
+}
+
+func (x *SetUserDisabledRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type SetUserDisabledResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetUserDisabledResponse) Reset() {
+	*x = SetUserDisabledResponse{}
+	mi := &file_sdk_proto_msgTypes[86]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUserDisabledResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUserDisabledResponse) ProtoMessage() {}
+
+func (x *SetUserDisabledResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[86]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUserDisabledResponse.ProtoReflect.Descriptor instead.
+func (*SetUserDisabledResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{86}
+}
+
+func (x *SetUserDisabledResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 type ValidateAccountDataRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Platform        string                 `protobuf:"bytes,1,opt,name=platform,proto3" json:"platform,omitempty"`
@@ -5894,7 +6049,7 @@ type ValidateAccountDataRequest struct {
 
 func (x *ValidateAccountDataRequest) Reset() {
 	*x = ValidateAccountDataRequest{}
-	mi := &file_sdk_proto_msgTypes[85]
+	mi := &file_sdk_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5906,7 +6061,7 @@ func (x *ValidateAccountDataRequest) String() string {
 func (*ValidateAccountDataRequest) ProtoMessage() {}
 
 func (x *ValidateAccountDataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[85]
+	mi := &file_sdk_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5919,7 +6074,7 @@ func (x *ValidateAccountDataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateAccountDataRequest.ProtoReflect.Descriptor instead.
 func (*ValidateAccountDataRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{85}
+	return file_sdk_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *ValidateAccountDataRequest) GetPlatform() string {
@@ -5979,7 +6134,7 @@ type ValidateAccountDataResponse struct {
 
 func (x *ValidateAccountDataResponse) Reset() {
 	*x = ValidateAccountDataResponse{}
-	mi := &file_sdk_proto_msgTypes[86]
+	mi := &file_sdk_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5991,7 +6146,7 @@ func (x *ValidateAccountDataResponse) String() string {
 func (*ValidateAccountDataResponse) ProtoMessage() {}
 
 func (x *ValidateAccountDataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[86]
+	mi := &file_sdk_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6004,7 +6159,7 @@ func (x *ValidateAccountDataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateAccountDataResponse.ProtoReflect.Descriptor instead.
 func (*ValidateAccountDataResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{86}
+	return file_sdk_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *ValidateAccountDataResponse) GetValid() bool {
@@ -6051,7 +6206,7 @@ type TestConnectionRequest struct {
 
 func (x *TestConnectionRequest) Reset() {
 	*x = TestConnectionRequest{}
-	mi := &file_sdk_proto_msgTypes[87]
+	mi := &file_sdk_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6063,7 +6218,7 @@ func (x *TestConnectionRequest) String() string {
 func (*TestConnectionRequest) ProtoMessage() {}
 
 func (x *TestConnectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[87]
+	mi := &file_sdk_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6076,7 +6231,7 @@ func (x *TestConnectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestConnectionRequest.ProtoReflect.Descriptor instead.
 func (*TestConnectionRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{87}
+	return file_sdk_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *TestConnectionRequest) GetAccountId() int64 {
@@ -6143,7 +6298,7 @@ type TestConnectionEvent struct {
 
 func (x *TestConnectionEvent) Reset() {
 	*x = TestConnectionEvent{}
-	mi := &file_sdk_proto_msgTypes[88]
+	mi := &file_sdk_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6155,7 +6310,7 @@ func (x *TestConnectionEvent) String() string {
 func (*TestConnectionEvent) ProtoMessage() {}
 
 func (x *TestConnectionEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[88]
+	mi := &file_sdk_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6168,7 +6323,7 @@ func (x *TestConnectionEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestConnectionEvent.ProtoReflect.Descriptor instead.
 func (*TestConnectionEvent) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{88}
+	return file_sdk_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *TestConnectionEvent) GetType() string {
@@ -6226,7 +6381,7 @@ type RefreshTokenRequest struct {
 
 func (x *RefreshTokenRequest) Reset() {
 	*x = RefreshTokenRequest{}
-	mi := &file_sdk_proto_msgTypes[89]
+	mi := &file_sdk_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6238,7 +6393,7 @@ func (x *RefreshTokenRequest) String() string {
 func (*RefreshTokenRequest) ProtoMessage() {}
 
 func (x *RefreshTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[89]
+	mi := &file_sdk_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6251,7 +6406,7 @@ func (x *RefreshTokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshTokenRequest.ProtoReflect.Descriptor instead.
 func (*RefreshTokenRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{89}
+	return file_sdk_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *RefreshTokenRequest) GetAccountId() int64 {
@@ -6301,7 +6456,7 @@ type RefreshTokenResponse struct {
 
 func (x *RefreshTokenResponse) Reset() {
 	*x = RefreshTokenResponse{}
-	mi := &file_sdk_proto_msgTypes[90]
+	mi := &file_sdk_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6313,7 +6468,7 @@ func (x *RefreshTokenResponse) String() string {
 func (*RefreshTokenResponse) ProtoMessage() {}
 
 func (x *RefreshTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[90]
+	mi := &file_sdk_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6326,7 +6481,7 @@ func (x *RefreshTokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshTokenResponse.ProtoReflect.Descriptor instead.
 func (*RefreshTokenResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{90}
+	return file_sdk_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *RefreshTokenResponse) GetSuccess() bool {
@@ -6370,7 +6525,7 @@ type RefreshTierRequest struct {
 
 func (x *RefreshTierRequest) Reset() {
 	*x = RefreshTierRequest{}
-	mi := &file_sdk_proto_msgTypes[91]
+	mi := &file_sdk_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6382,7 +6537,7 @@ func (x *RefreshTierRequest) String() string {
 func (*RefreshTierRequest) ProtoMessage() {}
 
 func (x *RefreshTierRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[91]
+	mi := &file_sdk_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6395,7 +6550,7 @@ func (x *RefreshTierRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshTierRequest.ProtoReflect.Descriptor instead.
 func (*RefreshTierRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{91}
+	return file_sdk_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *RefreshTierRequest) GetAccountId() int64 {
@@ -6444,7 +6599,7 @@ type RefreshTierResponse struct {
 
 func (x *RefreshTierResponse) Reset() {
 	*x = RefreshTierResponse{}
-	mi := &file_sdk_proto_msgTypes[92]
+	mi := &file_sdk_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6456,7 +6611,7 @@ func (x *RefreshTierResponse) String() string {
 func (*RefreshTierResponse) ProtoMessage() {}
 
 func (x *RefreshTierResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[92]
+	mi := &file_sdk_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6469,7 +6624,7 @@ func (x *RefreshTierResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshTierResponse.ProtoReflect.Descriptor instead.
 func (*RefreshTierResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{92}
+	return file_sdk_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *RefreshTierResponse) GetSuccess() bool {
@@ -6506,7 +6661,7 @@ type GetAvailableModelsRequest struct {
 
 func (x *GetAvailableModelsRequest) Reset() {
 	*x = GetAvailableModelsRequest{}
-	mi := &file_sdk_proto_msgTypes[93]
+	mi := &file_sdk_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6518,7 +6673,7 @@ func (x *GetAvailableModelsRequest) String() string {
 func (*GetAvailableModelsRequest) ProtoMessage() {}
 
 func (x *GetAvailableModelsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[93]
+	mi := &file_sdk_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6531,7 +6686,7 @@ func (x *GetAvailableModelsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAvailableModelsRequest.ProtoReflect.Descriptor instead.
 func (*GetAvailableModelsRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{93}
+	return file_sdk_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *GetAvailableModelsRequest) GetAccountId() int64 {
@@ -6578,7 +6733,7 @@ type GetAvailableModelsResponse struct {
 
 func (x *GetAvailableModelsResponse) Reset() {
 	*x = GetAvailableModelsResponse{}
-	mi := &file_sdk_proto_msgTypes[94]
+	mi := &file_sdk_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6590,7 +6745,7 @@ func (x *GetAvailableModelsResponse) String() string {
 func (*GetAvailableModelsResponse) ProtoMessage() {}
 
 func (x *GetAvailableModelsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[94]
+	mi := &file_sdk_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6603,7 +6758,7 @@ func (x *GetAvailableModelsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAvailableModelsResponse.ProtoReflect.Descriptor instead.
 func (*GetAvailableModelsResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{94}
+	return file_sdk_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *GetAvailableModelsResponse) GetModels() []*AvailableModelInfo {
@@ -6624,7 +6779,7 @@ type AvailableModelInfo struct {
 
 func (x *AvailableModelInfo) Reset() {
 	*x = AvailableModelInfo{}
-	mi := &file_sdk_proto_msgTypes[95]
+	mi := &file_sdk_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6636,7 +6791,7 @@ func (x *AvailableModelInfo) String() string {
 func (*AvailableModelInfo) ProtoMessage() {}
 
 func (x *AvailableModelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[95]
+	mi := &file_sdk_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6649,7 +6804,7 @@ func (x *AvailableModelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AvailableModelInfo.ProtoReflect.Descriptor instead.
 func (*AvailableModelInfo) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{95}
+	return file_sdk_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *AvailableModelInfo) GetModelId() string {
@@ -6687,7 +6842,7 @@ type ExecuteCustomActionRequest struct {
 
 func (x *ExecuteCustomActionRequest) Reset() {
 	*x = ExecuteCustomActionRequest{}
-	mi := &file_sdk_proto_msgTypes[96]
+	mi := &file_sdk_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6699,7 +6854,7 @@ func (x *ExecuteCustomActionRequest) String() string {
 func (*ExecuteCustomActionRequest) ProtoMessage() {}
 
 func (x *ExecuteCustomActionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[96]
+	mi := &file_sdk_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6712,7 +6867,7 @@ func (x *ExecuteCustomActionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteCustomActionRequest.ProtoReflect.Descriptor instead.
 func (*ExecuteCustomActionRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{96}
+	return file_sdk_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *ExecuteCustomActionRequest) GetActionId() string {
@@ -6770,7 +6925,7 @@ type ExecuteCustomActionResponse struct {
 
 func (x *ExecuteCustomActionResponse) Reset() {
 	*x = ExecuteCustomActionResponse{}
-	mi := &file_sdk_proto_msgTypes[97]
+	mi := &file_sdk_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6782,7 +6937,7 @@ func (x *ExecuteCustomActionResponse) String() string {
 func (*ExecuteCustomActionResponse) ProtoMessage() {}
 
 func (x *ExecuteCustomActionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[97]
+	mi := &file_sdk_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6795,7 +6950,7 @@ func (x *ExecuteCustomActionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteCustomActionResponse.ProtoReflect.Descriptor instead.
 func (*ExecuteCustomActionResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{97}
+	return file_sdk_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *ExecuteCustomActionResponse) GetSuccess() bool {
@@ -6846,7 +7001,7 @@ type IsModelSupportedRequest struct {
 
 func (x *IsModelSupportedRequest) Reset() {
 	*x = IsModelSupportedRequest{}
-	mi := &file_sdk_proto_msgTypes[98]
+	mi := &file_sdk_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6858,7 +7013,7 @@ func (x *IsModelSupportedRequest) String() string {
 func (*IsModelSupportedRequest) ProtoMessage() {}
 
 func (x *IsModelSupportedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[98]
+	mi := &file_sdk_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6871,7 +7026,7 @@ func (x *IsModelSupportedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IsModelSupportedRequest.ProtoReflect.Descriptor instead.
 func (*IsModelSupportedRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{98}
+	return file_sdk_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *IsModelSupportedRequest) GetAccountId() int64 {
@@ -6922,7 +7077,7 @@ type IsModelSupportedResponse struct {
 
 func (x *IsModelSupportedResponse) Reset() {
 	*x = IsModelSupportedResponse{}
-	mi := &file_sdk_proto_msgTypes[99]
+	mi := &file_sdk_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6934,7 +7089,7 @@ func (x *IsModelSupportedResponse) String() string {
 func (*IsModelSupportedResponse) ProtoMessage() {}
 
 func (x *IsModelSupportedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[99]
+	mi := &file_sdk_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6947,7 +7102,7 @@ func (x *IsModelSupportedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IsModelSupportedResponse.ProtoReflect.Descriptor instead.
 func (*IsModelSupportedResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{99}
+	return file_sdk_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *IsModelSupportedResponse) GetSupported() bool {
@@ -6975,7 +7130,7 @@ type GetSchedulingHintsRequest struct {
 
 func (x *GetSchedulingHintsRequest) Reset() {
 	*x = GetSchedulingHintsRequest{}
-	mi := &file_sdk_proto_msgTypes[100]
+	mi := &file_sdk_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6987,7 +7142,7 @@ func (x *GetSchedulingHintsRequest) String() string {
 func (*GetSchedulingHintsRequest) ProtoMessage() {}
 
 func (x *GetSchedulingHintsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[100]
+	mi := &file_sdk_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7000,7 +7155,7 @@ func (x *GetSchedulingHintsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSchedulingHintsRequest.ProtoReflect.Descriptor instead.
 func (*GetSchedulingHintsRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{100}
+	return file_sdk_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *GetSchedulingHintsRequest) GetAccounts() []*SchedulingHintAccount {
@@ -7035,7 +7190,7 @@ type SchedulingHintAccount struct {
 
 func (x *SchedulingHintAccount) Reset() {
 	*x = SchedulingHintAccount{}
-	mi := &file_sdk_proto_msgTypes[101]
+	mi := &file_sdk_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7047,7 +7202,7 @@ func (x *SchedulingHintAccount) String() string {
 func (*SchedulingHintAccount) ProtoMessage() {}
 
 func (x *SchedulingHintAccount) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[101]
+	mi := &file_sdk_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7060,7 +7215,7 @@ func (x *SchedulingHintAccount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SchedulingHintAccount.ProtoReflect.Descriptor instead.
 func (*SchedulingHintAccount) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{101}
+	return file_sdk_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *SchedulingHintAccount) GetAccountId() int64 {
@@ -7093,7 +7248,7 @@ type GetSchedulingHintsResponse struct {
 
 func (x *GetSchedulingHintsResponse) Reset() {
 	*x = GetSchedulingHintsResponse{}
-	mi := &file_sdk_proto_msgTypes[102]
+	mi := &file_sdk_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7105,7 +7260,7 @@ func (x *GetSchedulingHintsResponse) String() string {
 func (*GetSchedulingHintsResponse) ProtoMessage() {}
 
 func (x *GetSchedulingHintsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[102]
+	mi := &file_sdk_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7118,7 +7273,7 @@ func (x *GetSchedulingHintsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSchedulingHintsResponse.ProtoReflect.Descriptor instead.
 func (*GetSchedulingHintsResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{102}
+	return file_sdk_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *GetSchedulingHintsResponse) GetHints() map[int64]*SchedulingHint {
@@ -7139,7 +7294,7 @@ type SchedulingHint struct {
 
 func (x *SchedulingHint) Reset() {
 	*x = SchedulingHint{}
-	mi := &file_sdk_proto_msgTypes[103]
+	mi := &file_sdk_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7151,7 +7306,7 @@ func (x *SchedulingHint) String() string {
 func (*SchedulingHint) ProtoMessage() {}
 
 func (x *SchedulingHint) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[103]
+	mi := &file_sdk_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7164,7 +7319,7 @@ func (x *SchedulingHint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SchedulingHint.ProtoReflect.Descriptor instead.
 func (*SchedulingHint) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{103}
+	return file_sdk_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *SchedulingHint) GetPriorityModifier() int32 {
@@ -7202,7 +7357,7 @@ type CheckSchedulabilityRequest struct {
 
 func (x *CheckSchedulabilityRequest) Reset() {
 	*x = CheckSchedulabilityRequest{}
-	mi := &file_sdk_proto_msgTypes[104]
+	mi := &file_sdk_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7214,7 +7369,7 @@ func (x *CheckSchedulabilityRequest) String() string {
 func (*CheckSchedulabilityRequest) ProtoMessage() {}
 
 func (x *CheckSchedulabilityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[104]
+	mi := &file_sdk_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7227,7 +7382,7 @@ func (x *CheckSchedulabilityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckSchedulabilityRequest.ProtoReflect.Descriptor instead.
 func (*CheckSchedulabilityRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{104}
+	return file_sdk_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *CheckSchedulabilityRequest) GetAccountId() int64 {
@@ -7282,7 +7437,7 @@ type CheckSchedulabilityResponse struct {
 
 func (x *CheckSchedulabilityResponse) Reset() {
 	*x = CheckSchedulabilityResponse{}
-	mi := &file_sdk_proto_msgTypes[105]
+	mi := &file_sdk_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7294,7 +7449,7 @@ func (x *CheckSchedulabilityResponse) String() string {
 func (*CheckSchedulabilityResponse) ProtoMessage() {}
 
 func (x *CheckSchedulabilityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[105]
+	mi := &file_sdk_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7307,7 +7462,7 @@ func (x *CheckSchedulabilityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckSchedulabilityResponse.ProtoReflect.Descriptor instead.
 func (*CheckSchedulabilityResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{105}
+	return file_sdk_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *CheckSchedulabilityResponse) GetSchedulable() bool {
@@ -7337,7 +7492,7 @@ type GenerateAuthURLRequest struct {
 
 func (x *GenerateAuthURLRequest) Reset() {
 	*x = GenerateAuthURLRequest{}
-	mi := &file_sdk_proto_msgTypes[106]
+	mi := &file_sdk_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7349,7 +7504,7 @@ func (x *GenerateAuthURLRequest) String() string {
 func (*GenerateAuthURLRequest) ProtoMessage() {}
 
 func (x *GenerateAuthURLRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[106]
+	mi := &file_sdk_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7362,7 +7517,7 @@ func (x *GenerateAuthURLRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateAuthURLRequest.ProtoReflect.Descriptor instead.
 func (*GenerateAuthURLRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{106}
+	return file_sdk_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *GenerateAuthURLRequest) GetPlatform() string {
@@ -7410,7 +7565,7 @@ type GenerateAuthURLResponse struct {
 
 func (x *GenerateAuthURLResponse) Reset() {
 	*x = GenerateAuthURLResponse{}
-	mi := &file_sdk_proto_msgTypes[107]
+	mi := &file_sdk_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7422,7 +7577,7 @@ func (x *GenerateAuthURLResponse) String() string {
 func (*GenerateAuthURLResponse) ProtoMessage() {}
 
 func (x *GenerateAuthURLResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[107]
+	mi := &file_sdk_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7435,7 +7590,7 @@ func (x *GenerateAuthURLResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateAuthURLResponse.ProtoReflect.Descriptor instead.
 func (*GenerateAuthURLResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{107}
+	return file_sdk_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *GenerateAuthURLResponse) GetAuthUrl() string {
@@ -7468,7 +7623,7 @@ type ExchangeOAuthCodeRequest struct {
 
 func (x *ExchangeOAuthCodeRequest) Reset() {
 	*x = ExchangeOAuthCodeRequest{}
-	mi := &file_sdk_proto_msgTypes[108]
+	mi := &file_sdk_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7480,7 +7635,7 @@ func (x *ExchangeOAuthCodeRequest) String() string {
 func (*ExchangeOAuthCodeRequest) ProtoMessage() {}
 
 func (x *ExchangeOAuthCodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[108]
+	mi := &file_sdk_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7493,7 +7648,7 @@ func (x *ExchangeOAuthCodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExchangeOAuthCodeRequest.ProtoReflect.Descriptor instead.
 func (*ExchangeOAuthCodeRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{108}
+	return file_sdk_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *ExchangeOAuthCodeRequest) GetPlatform() string {
@@ -7564,7 +7719,7 @@ type ExchangeOAuthCodeResponse struct {
 
 func (x *ExchangeOAuthCodeResponse) Reset() {
 	*x = ExchangeOAuthCodeResponse{}
-	mi := &file_sdk_proto_msgTypes[109]
+	mi := &file_sdk_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7576,7 +7731,7 @@ func (x *ExchangeOAuthCodeResponse) String() string {
 func (*ExchangeOAuthCodeResponse) ProtoMessage() {}
 
 func (x *ExchangeOAuthCodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[109]
+	mi := &file_sdk_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7589,7 +7744,7 @@ func (x *ExchangeOAuthCodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExchangeOAuthCodeResponse.ProtoReflect.Descriptor instead.
 func (*ExchangeOAuthCodeResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{109}
+	return file_sdk_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *ExchangeOAuthCodeResponse) GetCredentialsJson() []byte {
@@ -7632,7 +7787,7 @@ type ValidateRefreshTokenRequest struct {
 
 func (x *ValidateRefreshTokenRequest) Reset() {
 	*x = ValidateRefreshTokenRequest{}
-	mi := &file_sdk_proto_msgTypes[110]
+	mi := &file_sdk_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7644,7 +7799,7 @@ func (x *ValidateRefreshTokenRequest) String() string {
 func (*ValidateRefreshTokenRequest) ProtoMessage() {}
 
 func (x *ValidateRefreshTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[110]
+	mi := &file_sdk_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7657,7 +7812,7 @@ func (x *ValidateRefreshTokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateRefreshTokenRequest.ProtoReflect.Descriptor instead.
 func (*ValidateRefreshTokenRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{110}
+	return file_sdk_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *ValidateRefreshTokenRequest) GetPlatform() string {
@@ -7700,7 +7855,7 @@ type ValidateRefreshTokenResponse struct {
 
 func (x *ValidateRefreshTokenResponse) Reset() {
 	*x = ValidateRefreshTokenResponse{}
-	mi := &file_sdk_proto_msgTypes[111]
+	mi := &file_sdk_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7712,7 +7867,7 @@ func (x *ValidateRefreshTokenResponse) String() string {
 func (*ValidateRefreshTokenResponse) ProtoMessage() {}
 
 func (x *ValidateRefreshTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[111]
+	mi := &file_sdk_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7725,7 +7880,7 @@ func (x *ValidateRefreshTokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateRefreshTokenResponse.ProtoReflect.Descriptor instead.
 func (*ValidateRefreshTokenResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{111}
+	return file_sdk_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *ValidateRefreshTokenResponse) GetCredentialsJson() []byte {
@@ -7767,7 +7922,7 @@ type CookieAuthRequest struct {
 
 func (x *CookieAuthRequest) Reset() {
 	*x = CookieAuthRequest{}
-	mi := &file_sdk_proto_msgTypes[112]
+	mi := &file_sdk_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7779,7 +7934,7 @@ func (x *CookieAuthRequest) String() string {
 func (*CookieAuthRequest) ProtoMessage() {}
 
 func (x *CookieAuthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[112]
+	mi := &file_sdk_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7792,7 +7947,7 @@ func (x *CookieAuthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CookieAuthRequest.ProtoReflect.Descriptor instead.
 func (*CookieAuthRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{112}
+	return file_sdk_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *CookieAuthRequest) GetSessionKey() string {
@@ -7827,7 +7982,7 @@ type CookieAuthResponse struct {
 
 func (x *CookieAuthResponse) Reset() {
 	*x = CookieAuthResponse{}
-	mi := &file_sdk_proto_msgTypes[113]
+	mi := &file_sdk_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7839,7 +7994,7 @@ func (x *CookieAuthResponse) String() string {
 func (*CookieAuthResponse) ProtoMessage() {}
 
 func (x *CookieAuthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[113]
+	mi := &file_sdk_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7852,7 +8007,7 @@ func (x *CookieAuthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CookieAuthResponse.ProtoReflect.Descriptor instead.
 func (*CookieAuthResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{113}
+	return file_sdk_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *CookieAuthResponse) GetCredentialsJson() []byte {
@@ -7889,7 +8044,7 @@ type SetPrivacyRequest struct {
 
 func (x *SetPrivacyRequest) Reset() {
 	*x = SetPrivacyRequest{}
-	mi := &file_sdk_proto_msgTypes[114]
+	mi := &file_sdk_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7901,7 +8056,7 @@ func (x *SetPrivacyRequest) String() string {
 func (*SetPrivacyRequest) ProtoMessage() {}
 
 func (x *SetPrivacyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[114]
+	mi := &file_sdk_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7914,7 +8069,7 @@ func (x *SetPrivacyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPrivacyRequest.ProtoReflect.Descriptor instead.
 func (*SetPrivacyRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{114}
+	return file_sdk_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *SetPrivacyRequest) GetAccountId() int64 {
@@ -7963,7 +8118,7 @@ type SetPrivacyResponse struct {
 
 func (x *SetPrivacyResponse) Reset() {
 	*x = SetPrivacyResponse{}
-	mi := &file_sdk_proto_msgTypes[115]
+	mi := &file_sdk_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7975,7 +8130,7 @@ func (x *SetPrivacyResponse) String() string {
 func (*SetPrivacyResponse) ProtoMessage() {}
 
 func (x *SetPrivacyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[115]
+	mi := &file_sdk_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7988,7 +8143,7 @@ func (x *SetPrivacyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPrivacyResponse.ProtoReflect.Descriptor instead.
 func (*SetPrivacyResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{115}
+	return file_sdk_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *SetPrivacyResponse) GetSuccess() bool {
@@ -8025,7 +8180,7 @@ type PostAccountCreateRequest struct {
 
 func (x *PostAccountCreateRequest) Reset() {
 	*x = PostAccountCreateRequest{}
-	mi := &file_sdk_proto_msgTypes[116]
+	mi := &file_sdk_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8037,7 +8192,7 @@ func (x *PostAccountCreateRequest) String() string {
 func (*PostAccountCreateRequest) ProtoMessage() {}
 
 func (x *PostAccountCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[116]
+	mi := &file_sdk_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8050,7 +8205,7 @@ func (x *PostAccountCreateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PostAccountCreateRequest.ProtoReflect.Descriptor instead.
 func (*PostAccountCreateRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{116}
+	return file_sdk_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *PostAccountCreateRequest) GetAccountId() int64 {
@@ -8098,7 +8253,7 @@ type PostAccountCreateResponse struct {
 
 func (x *PostAccountCreateResponse) Reset() {
 	*x = PostAccountCreateResponse{}
-	mi := &file_sdk_proto_msgTypes[117]
+	mi := &file_sdk_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8110,7 +8265,7 @@ func (x *PostAccountCreateResponse) String() string {
 func (*PostAccountCreateResponse) ProtoMessage() {}
 
 func (x *PostAccountCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[117]
+	mi := &file_sdk_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8123,7 +8278,7 @@ func (x *PostAccountCreateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PostAccountCreateResponse.ProtoReflect.Descriptor instead.
 func (*PostAccountCreateResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{117}
+	return file_sdk_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *PostAccountCreateResponse) GetUpdatedCredentialsJson() []byte {
@@ -8151,7 +8306,7 @@ type ValidateGroupConfigRequest struct {
 
 func (x *ValidateGroupConfigRequest) Reset() {
 	*x = ValidateGroupConfigRequest{}
-	mi := &file_sdk_proto_msgTypes[118]
+	mi := &file_sdk_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8163,7 +8318,7 @@ func (x *ValidateGroupConfigRequest) String() string {
 func (*ValidateGroupConfigRequest) ProtoMessage() {}
 
 func (x *ValidateGroupConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[118]
+	mi := &file_sdk_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8176,7 +8331,7 @@ func (x *ValidateGroupConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateGroupConfigRequest.ProtoReflect.Descriptor instead.
 func (*ValidateGroupConfigRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{118}
+	return file_sdk_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *ValidateGroupConfigRequest) GetPlatform() string {
@@ -8214,7 +8369,7 @@ type ValidateGroupConfigResponse struct {
 
 func (x *ValidateGroupConfigResponse) Reset() {
 	*x = ValidateGroupConfigResponse{}
-	mi := &file_sdk_proto_msgTypes[119]
+	mi := &file_sdk_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8226,7 +8381,7 @@ func (x *ValidateGroupConfigResponse) String() string {
 func (*ValidateGroupConfigResponse) ProtoMessage() {}
 
 func (x *ValidateGroupConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[119]
+	mi := &file_sdk_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8239,7 +8394,7 @@ func (x *ValidateGroupConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateGroupConfigResponse.ProtoReflect.Descriptor instead.
 func (*ValidateGroupConfigResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{119}
+	return file_sdk_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *ValidateGroupConfigResponse) GetValid() bool {
@@ -8320,7 +8475,7 @@ type GatewayForwardRequest struct {
 
 func (x *GatewayForwardRequest) Reset() {
 	*x = GatewayForwardRequest{}
-	mi := &file_sdk_proto_msgTypes[120]
+	mi := &file_sdk_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8332,7 +8487,7 @@ func (x *GatewayForwardRequest) String() string {
 func (*GatewayForwardRequest) ProtoMessage() {}
 
 func (x *GatewayForwardRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[120]
+	mi := &file_sdk_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8345,7 +8500,7 @@ func (x *GatewayForwardRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayForwardRequest.ProtoReflect.Descriptor instead.
 func (*GatewayForwardRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{120}
+	return file_sdk_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *GatewayForwardRequest) GetRequestId() string {
@@ -8530,7 +8685,7 @@ type GatewayAccountInfo struct {
 
 func (x *GatewayAccountInfo) Reset() {
 	*x = GatewayAccountInfo{}
-	mi := &file_sdk_proto_msgTypes[121]
+	mi := &file_sdk_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8542,7 +8697,7 @@ func (x *GatewayAccountInfo) String() string {
 func (*GatewayAccountInfo) ProtoMessage() {}
 
 func (x *GatewayAccountInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[121]
+	mi := &file_sdk_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8555,7 +8710,7 @@ func (x *GatewayAccountInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayAccountInfo.ProtoReflect.Descriptor instead.
 func (*GatewayAccountInfo) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{121}
+	return file_sdk_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *GatewayAccountInfo) GetAccountId() int64 {
@@ -8625,7 +8780,7 @@ type GatewayForwardChunk struct {
 
 func (x *GatewayForwardChunk) Reset() {
 	*x = GatewayForwardChunk{}
-	mi := &file_sdk_proto_msgTypes[122]
+	mi := &file_sdk_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8637,7 +8792,7 @@ func (x *GatewayForwardChunk) String() string {
 func (*GatewayForwardChunk) ProtoMessage() {}
 
 func (x *GatewayForwardChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[122]
+	mi := &file_sdk_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8650,7 +8805,7 @@ func (x *GatewayForwardChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayForwardChunk.ProtoReflect.Descriptor instead.
 func (*GatewayForwardChunk) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{122}
+	return file_sdk_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *GatewayForwardChunk) GetChunk() isGatewayForwardChunk_Chunk {
@@ -8737,7 +8892,7 @@ type GatewayResponseHeaders struct {
 
 func (x *GatewayResponseHeaders) Reset() {
 	*x = GatewayResponseHeaders{}
-	mi := &file_sdk_proto_msgTypes[123]
+	mi := &file_sdk_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8749,7 +8904,7 @@ func (x *GatewayResponseHeaders) String() string {
 func (*GatewayResponseHeaders) ProtoMessage() {}
 
 func (x *GatewayResponseHeaders) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[123]
+	mi := &file_sdk_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8762,7 +8917,7 @@ func (x *GatewayResponseHeaders) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayResponseHeaders.ProtoReflect.Descriptor instead.
 func (*GatewayResponseHeaders) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{123}
+	return file_sdk_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *GatewayResponseHeaders) GetStatusCode() int32 {
@@ -8790,7 +8945,7 @@ type GatewayResponseBody struct {
 
 func (x *GatewayResponseBody) Reset() {
 	*x = GatewayResponseBody{}
-	mi := &file_sdk_proto_msgTypes[124]
+	mi := &file_sdk_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8802,7 +8957,7 @@ func (x *GatewayResponseBody) String() string {
 func (*GatewayResponseBody) ProtoMessage() {}
 
 func (x *GatewayResponseBody) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[124]
+	mi := &file_sdk_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8815,7 +8970,7 @@ func (x *GatewayResponseBody) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayResponseBody.ProtoReflect.Descriptor instead.
 func (*GatewayResponseBody) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{124}
+	return file_sdk_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *GatewayResponseBody) GetData() []byte {
@@ -8837,7 +8992,7 @@ type GatewayResponseTrailers struct {
 
 func (x *GatewayResponseTrailers) Reset() {
 	*x = GatewayResponseTrailers{}
-	mi := &file_sdk_proto_msgTypes[125]
+	mi := &file_sdk_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8849,7 +9004,7 @@ func (x *GatewayResponseTrailers) String() string {
 func (*GatewayResponseTrailers) ProtoMessage() {}
 
 func (x *GatewayResponseTrailers) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[125]
+	mi := &file_sdk_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8862,7 +9017,7 @@ func (x *GatewayResponseTrailers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayResponseTrailers.ProtoReflect.Descriptor instead.
 func (*GatewayResponseTrailers) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{125}
+	return file_sdk_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *GatewayResponseTrailers) GetTrailers() map[string]string {
@@ -8887,7 +9042,7 @@ type GatewayResponseDone struct {
 
 func (x *GatewayResponseDone) Reset() {
 	*x = GatewayResponseDone{}
-	mi := &file_sdk_proto_msgTypes[126]
+	mi := &file_sdk_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8899,7 +9054,7 @@ func (x *GatewayResponseDone) String() string {
 func (*GatewayResponseDone) ProtoMessage() {}
 
 func (x *GatewayResponseDone) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[126]
+	mi := &file_sdk_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8912,7 +9067,7 @@ func (x *GatewayResponseDone) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayResponseDone.ProtoReflect.Descriptor instead.
 func (*GatewayResponseDone) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{126}
+	return file_sdk_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *GatewayResponseDone) GetResult() *GatewayForwardResult {
@@ -8967,7 +9122,7 @@ type GatewayForwardResult struct {
 
 func (x *GatewayForwardResult) Reset() {
 	*x = GatewayForwardResult{}
-	mi := &file_sdk_proto_msgTypes[127]
+	mi := &file_sdk_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8979,7 +9134,7 @@ func (x *GatewayForwardResult) String() string {
 func (*GatewayForwardResult) ProtoMessage() {}
 
 func (x *GatewayForwardResult) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[127]
+	mi := &file_sdk_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8992,7 +9147,7 @@ func (x *GatewayForwardResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayForwardResult.ProtoReflect.Descriptor instead.
 func (*GatewayForwardResult) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{127}
+	return file_sdk_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *GatewayForwardResult) GetRequestId() string {
@@ -9124,13 +9279,12 @@ type GatewayUpstreamError struct {
 	// Maps to UpstreamFailoverError.ForceCacheBilling.
 	ForceCacheBilling bool `protobuf:"varint,3,opt,name=force_cache_billing,json=forceCacheBilling,proto3" json:"force_cache_billing,omitempty"`
 	// error_type classifies the error for routing decisions:
-	//
-	//	"rate_limit"   — upstream 429
-	//	"overloaded"   — upstream 529 / 503
-	//	"auth_error"   — upstream 401 / 403
-	//	"server_error" — upstream 500 / 502 / 504
-	//	"prompt_too_long" — input exceeded upstream limits
-	//	""             — unclassified
+	//   "rate_limit"   — upstream 429
+	//   "overloaded"   — upstream 529 / 503
+	//   "auth_error"   — upstream 401 / 403
+	//   "server_error" — upstream 500 / 502 / 504
+	//   "prompt_too_long" — input exceeded upstream limits
+	//   ""             — unclassified
 	ErrorType string `protobuf:"bytes,4,opt,name=error_type,json=errorType,proto3" json:"error_type,omitempty"`
 	// response_body is the raw upstream error response body (truncated to
 	// a reasonable size by the plugin). Used by the host for error
@@ -9148,7 +9302,7 @@ type GatewayUpstreamError struct {
 
 func (x *GatewayUpstreamError) Reset() {
 	*x = GatewayUpstreamError{}
-	mi := &file_sdk_proto_msgTypes[128]
+	mi := &file_sdk_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9160,7 +9314,7 @@ func (x *GatewayUpstreamError) String() string {
 func (*GatewayUpstreamError) ProtoMessage() {}
 
 func (x *GatewayUpstreamError) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[128]
+	mi := &file_sdk_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9173,7 +9327,7 @@ func (x *GatewayUpstreamError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayUpstreamError.ProtoReflect.Descriptor instead.
 func (*GatewayUpstreamError) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{128}
+	return file_sdk_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *GatewayUpstreamError) GetStatusCode() int32 {
@@ -9232,7 +9386,7 @@ type GatewayFailoverRequest struct {
 
 func (x *GatewayFailoverRequest) Reset() {
 	*x = GatewayFailoverRequest{}
-	mi := &file_sdk_proto_msgTypes[129]
+	mi := &file_sdk_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9244,7 +9398,7 @@ func (x *GatewayFailoverRequest) String() string {
 func (*GatewayFailoverRequest) ProtoMessage() {}
 
 func (x *GatewayFailoverRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[129]
+	mi := &file_sdk_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9257,7 +9411,7 @@ func (x *GatewayFailoverRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayFailoverRequest.ProtoReflect.Descriptor instead.
 func (*GatewayFailoverRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{129}
+	return file_sdk_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *GatewayFailoverRequest) GetRequest() *GatewayForwardRequest {
@@ -9292,7 +9446,7 @@ type GatewayFailoverResponse struct {
 
 func (x *GatewayFailoverResponse) Reset() {
 	*x = GatewayFailoverResponse{}
-	mi := &file_sdk_proto_msgTypes[130]
+	mi := &file_sdk_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9304,7 +9458,7 @@ func (x *GatewayFailoverResponse) String() string {
 func (*GatewayFailoverResponse) ProtoMessage() {}
 
 func (x *GatewayFailoverResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[130]
+	mi := &file_sdk_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9317,7 +9471,7 @@ func (x *GatewayFailoverResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayFailoverResponse.ProtoReflect.Descriptor instead.
 func (*GatewayFailoverResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{130}
+	return file_sdk_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *GatewayFailoverResponse) GetShouldFailover() bool {
@@ -9336,7 +9490,7 @@ type GetAccessTokenRequest struct {
 
 func (x *GetAccessTokenRequest) Reset() {
 	*x = GetAccessTokenRequest{}
-	mi := &file_sdk_proto_msgTypes[131]
+	mi := &file_sdk_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9348,7 +9502,7 @@ func (x *GetAccessTokenRequest) String() string {
 func (*GetAccessTokenRequest) ProtoMessage() {}
 
 func (x *GetAccessTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[131]
+	mi := &file_sdk_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9361,7 +9515,7 @@ func (x *GetAccessTokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccessTokenRequest.ProtoReflect.Descriptor instead.
 func (*GetAccessTokenRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{131}
+	return file_sdk_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *GetAccessTokenRequest) GetAccountId() int64 {
@@ -9388,7 +9542,7 @@ type GetAccessTokenResponse struct {
 
 func (x *GetAccessTokenResponse) Reset() {
 	*x = GetAccessTokenResponse{}
-	mi := &file_sdk_proto_msgTypes[132]
+	mi := &file_sdk_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9400,7 +9554,7 @@ func (x *GetAccessTokenResponse) String() string {
 func (*GetAccessTokenResponse) ProtoMessage() {}
 
 func (x *GetAccessTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[132]
+	mi := &file_sdk_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9413,7 +9567,7 @@ func (x *GetAccessTokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccessTokenResponse.ProtoReflect.Descriptor instead.
 func (*GetAccessTokenResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{132}
+	return file_sdk_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *GetAccessTokenResponse) GetAccessToken() string {
@@ -9452,7 +9606,7 @@ type ReportOpsErrorRequest struct {
 
 func (x *ReportOpsErrorRequest) Reset() {
 	*x = ReportOpsErrorRequest{}
-	mi := &file_sdk_proto_msgTypes[133]
+	mi := &file_sdk_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9464,7 +9618,7 @@ func (x *ReportOpsErrorRequest) String() string {
 func (*ReportOpsErrorRequest) ProtoMessage() {}
 
 func (x *ReportOpsErrorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[133]
+	mi := &file_sdk_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9477,7 +9631,7 @@ func (x *ReportOpsErrorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportOpsErrorRequest.ProtoReflect.Descriptor instead.
 func (*ReportOpsErrorRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{133}
+	return file_sdk_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *ReportOpsErrorRequest) GetRequestId() string {
@@ -9523,7 +9677,7 @@ type ReportOpsErrorResponse struct {
 
 func (x *ReportOpsErrorResponse) Reset() {
 	*x = ReportOpsErrorResponse{}
-	mi := &file_sdk_proto_msgTypes[134]
+	mi := &file_sdk_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9535,7 +9689,7 @@ func (x *ReportOpsErrorResponse) String() string {
 func (*ReportOpsErrorResponse) ProtoMessage() {}
 
 func (x *ReportOpsErrorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[134]
+	mi := &file_sdk_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9548,7 +9702,242 @@ func (x *ReportOpsErrorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportOpsErrorResponse.ProtoReflect.Descriptor instead.
 func (*ReportOpsErrorResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{134}
+	return file_sdk_proto_rawDescGZIP(), []int{136}
+}
+
+type ContentCheckRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	RequestId string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	// user context
+	UserId    int64  `protobuf:"varint,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserEmail string `protobuf:"bytes,3,opt,name=user_email,json=userEmail,proto3" json:"user_email,omitempty"`
+	// api key context
+	ApiKeyId   int64  `protobuf:"varint,4,opt,name=api_key_id,json=apiKeyId,proto3" json:"api_key_id,omitempty"`
+	ApiKeyName string `protobuf:"bytes,5,opt,name=api_key_name,json=apiKeyName,proto3" json:"api_key_name,omitempty"`
+	GroupId    int64  `protobuf:"varint,6,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	GroupName  string `protobuf:"bytes,7,opt,name=group_name,json=groupName,proto3" json:"group_name,omitempty"`
+	// request context
+	Endpoint string `protobuf:"bytes,8,opt,name=endpoint,proto3" json:"endpoint,omitempty"`  // "/v1/messages", "/v1/chat/completions", etc.
+	Protocol string `protobuf:"bytes,9,opt,name=protocol,proto3" json:"protocol,omitempty"`  // "anthropic", "openai", "gemini"
+	Provider string `protobuf:"bytes,10,opt,name=provider,proto3" json:"provider,omitempty"` // platform: "anthropic", "openai", "gemini", "antigravity"
+	Model    string `protobuf:"bytes,11,opt,name=model,proto3" json:"model,omitempty"`
+	// raw request body for content extraction
+	Body          []byte `protobuf:"bytes,12,opt,name=body,proto3" json:"body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContentCheckRequest) Reset() {
+	*x = ContentCheckRequest{}
+	mi := &file_sdk_proto_msgTypes[137]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContentCheckRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContentCheckRequest) ProtoMessage() {}
+
+func (x *ContentCheckRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[137]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContentCheckRequest.ProtoReflect.Descriptor instead.
+func (*ContentCheckRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{137}
+}
+
+func (x *ContentCheckRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *ContentCheckRequest) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *ContentCheckRequest) GetUserEmail() string {
+	if x != nil {
+		return x.UserEmail
+	}
+	return ""
+}
+
+func (x *ContentCheckRequest) GetApiKeyId() int64 {
+	if x != nil {
+		return x.ApiKeyId
+	}
+	return 0
+}
+
+func (x *ContentCheckRequest) GetApiKeyName() string {
+	if x != nil {
+		return x.ApiKeyName
+	}
+	return ""
+}
+
+func (x *ContentCheckRequest) GetGroupId() int64 {
+	if x != nil {
+		return x.GroupId
+	}
+	return 0
+}
+
+func (x *ContentCheckRequest) GetGroupName() string {
+	if x != nil {
+		return x.GroupName
+	}
+	return ""
+}
+
+func (x *ContentCheckRequest) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+func (x *ContentCheckRequest) GetProtocol() string {
+	if x != nil {
+		return x.Protocol
+	}
+	return ""
+}
+
+func (x *ContentCheckRequest) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *ContentCheckRequest) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *ContentCheckRequest) GetBody() []byte {
+	if x != nil {
+		return x.Body
+	}
+	return nil
+}
+
+type ContentCheckResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// action is the moderation decision.
+	Action ContentAction `protobuf:"varint,1,opt,name=action,proto3,enum=pluginsdk.ContentAction" json:"action,omitempty"`
+	// blocked is true when the request should be rejected.
+	Blocked bool `protobuf:"varint,2,opt,name=blocked,proto3" json:"blocked,omitempty"`
+	// flagged is true when the content was flagged (may be allowed in observe mode).
+	Flagged bool `protobuf:"varint,3,opt,name=flagged,proto3" json:"flagged,omitempty"`
+	// status_code is the HTTP status to return when blocked (default 403).
+	StatusCode int32 `protobuf:"varint,4,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	// message is the user-facing error message when blocked.
+	Message string `protobuf:"bytes,5,opt,name=message,proto3" json:"message,omitempty"`
+	// highest_category is the moderation category with the highest score.
+	HighestCategory string `protobuf:"bytes,6,opt,name=highest_category,json=highestCategory,proto3" json:"highest_category,omitempty"`
+	// highest_score is the score of the highest category.
+	HighestScore  float64 `protobuf:"fixed64,7,opt,name=highest_score,json=highestScore,proto3" json:"highest_score,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContentCheckResponse) Reset() {
+	*x = ContentCheckResponse{}
+	mi := &file_sdk_proto_msgTypes[138]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContentCheckResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContentCheckResponse) ProtoMessage() {}
+
+func (x *ContentCheckResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[138]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContentCheckResponse.ProtoReflect.Descriptor instead.
+func (*ContentCheckResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{138}
+}
+
+func (x *ContentCheckResponse) GetAction() ContentAction {
+	if x != nil {
+		return x.Action
+	}
+	return ContentAction_CONTENT_ACTION_ALLOW
+}
+
+func (x *ContentCheckResponse) GetBlocked() bool {
+	if x != nil {
+		return x.Blocked
+	}
+	return false
+}
+
+func (x *ContentCheckResponse) GetFlagged() bool {
+	if x != nil {
+		return x.Flagged
+	}
+	return false
+}
+
+func (x *ContentCheckResponse) GetStatusCode() int32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *ContentCheckResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *ContentCheckResponse) GetHighestCategory() string {
+	if x != nil {
+		return x.HighestCategory
+	}
+	return ""
+}
+
+func (x *ContentCheckResponse) GetHighestScore() float64 {
+	if x != nil {
+		return x.HighestScore
+	}
+	return 0
 }
 
 var File_sdk_proto protoreflect.FileDescriptor
@@ -9990,7 +10379,13 @@ const file_sdk_proto_rawDesc = "" +
 	"\x16output_price_per_token\x18\x03 \x01(\tR\x13outputPricePerToken\x12<\n" +
 	"\x1bcache_write_price_per_token\x18\x04 \x01(\tR\x17cacheWritePricePerToken\x12:\n" +
 	"\x1acache_read_price_per_token\x18\x05 \x01(\tR\x16cacheReadPricePerToken\x12>\n" +
-	"\x1cimage_output_price_per_token\x18\x06 \x01(\tR\x18imageOutputPricePerToken\"\xe1\x01\n" +
+	"\x1cimage_output_price_per_token\x18\x06 \x01(\tR\x18imageOutputPricePerToken\"e\n" +
+	"\x16SetUserDisabledRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x03R\x06userId\x12\x1a\n" +
+	"\bdisabled\x18\x02 \x01(\bR\bdisabled\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"3\n" +
+	"\x17SetUserDisabledResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"\xe1\x01\n" +
 	"\x1aValidateAccountDataRequest\x12\x1a\n" +
 	"\bplatform\x18\x01 \x01(\tR\bplatform\x12!\n" +
 	"\faccount_type\x18\x02 \x01(\tR\vaccountType\x12)\n" +
@@ -10345,7 +10740,39 @@ const file_sdk_proto_rawDesc = "" +
 	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage\x12\x1d\n" +
 	"\n" +
 	"error_type\x18\x05 \x01(\tR\terrorType\"\x18\n" +
-	"\x16ReportOpsErrorResponse2\xa9\x03\n" +
+	"\x16ReportOpsErrorResponse\"\xe4\x02\n" +
+	"\x13ContentCheckRequest\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\x03R\x06userId\x12\x1d\n" +
+	"\n" +
+	"user_email\x18\x03 \x01(\tR\tuserEmail\x12\x1c\n" +
+	"\n" +
+	"api_key_id\x18\x04 \x01(\x03R\bapiKeyId\x12 \n" +
+	"\fapi_key_name\x18\x05 \x01(\tR\n" +
+	"apiKeyName\x12\x19\n" +
+	"\bgroup_id\x18\x06 \x01(\x03R\agroupId\x12\x1d\n" +
+	"\n" +
+	"group_name\x18\a \x01(\tR\tgroupName\x12\x1a\n" +
+	"\bendpoint\x18\b \x01(\tR\bendpoint\x12\x1a\n" +
+	"\bprotocol\x18\t \x01(\tR\bprotocol\x12\x1a\n" +
+	"\bprovider\x18\n" +
+	" \x01(\tR\bprovider\x12\x14\n" +
+	"\x05model\x18\v \x01(\tR\x05model\x12\x12\n" +
+	"\x04body\x18\f \x01(\fR\x04body\"\x87\x02\n" +
+	"\x14ContentCheckResponse\x120\n" +
+	"\x06action\x18\x01 \x01(\x0e2\x18.pluginsdk.ContentActionR\x06action\x12\x18\n" +
+	"\ablocked\x18\x02 \x01(\bR\ablocked\x12\x18\n" +
+	"\aflagged\x18\x03 \x01(\bR\aflagged\x12\x1f\n" +
+	"\vstatus_code\x18\x04 \x01(\x05R\n" +
+	"statusCode\x12\x18\n" +
+	"\amessage\x18\x05 \x01(\tR\amessage\x12)\n" +
+	"\x10highest_category\x18\x06 \x01(\tR\x0fhighestCategory\x12#\n" +
+	"\rhighest_score\x18\a \x01(\x01R\fhighestScore*_\n" +
+	"\rContentAction\x12\x18\n" +
+	"\x14CONTENT_ACTION_ALLOW\x10\x00\x12\x18\n" +
+	"\x14CONTENT_ACTION_BLOCK\x10\x01\x12\x1a\n" +
+	"\x16CONTENT_ACTION_OBSERVE\x10\x022\xa9\x03\n" +
 	"\bSQLProxy\x126\n" +
 	"\x05Query\x12\x15.pluginsdk.SQLRequest\x1a\x16.pluginsdk.SQLResponse\x126\n" +
 	"\x04Exec\x12\x15.pluginsdk.SQLRequest\x1a\x17.pluginsdk.ExecResponse\x12;\n" +
@@ -10393,7 +10820,7 @@ const file_sdk_proto_rawDesc = "" +
 	"AdjustCost\x12\x1c.pluginsdk.AdjustCostRequest\x1a\x1d.pluginsdk.AdjustCostResponse\x12p\n" +
 	"\x17ResolveAccountStatsCost\x12).pluginsdk.ResolveAccountStatsCostRequest\x1a*.pluginsdk.ResolveAccountStatsCostResponse2m\n" +
 	"\x14MaintenanceExtension\x12U\n" +
-	"\x0eRunMaintenance\x12 .pluginsdk.RunMaintenanceRequest\x1a!.pluginsdk.RunMaintenanceResponse2\x8c\x05\n" +
+	"\x0eRunMaintenance\x12 .pluginsdk.RunMaintenanceRequest\x1a!.pluginsdk.RunMaintenanceResponse2\xe6\x05\n" +
 	"\vHostService\x12d\n" +
 	"\x13ResolveModelPricing\x12%.pluginsdk.ResolveModelPricingRequest\x1a&.pluginsdk.ResolveModelPricingResponse\x12R\n" +
 	"\rCreditBalance\x12\x1f.pluginsdk.CreditBalanceRequest\x1a .pluginsdk.CreditBalanceResponse\x12R\n" +
@@ -10401,7 +10828,8 @@ const file_sdk_proto_rawDesc = "" +
 	"\x12AssignSubscription\x12$.pluginsdk.AssignSubscriptionRequest\x1a%.pluginsdk.AssignSubscriptionResponse\x12m\n" +
 	"\x16RevokeSubscriptionDays\x12(.pluginsdk.RevokeSubscriptionDaysRequest\x1a).pluginsdk.RevokeSubscriptionDaysResponse\x12O\n" +
 	"\fAccrueRebate\x12\x1e.pluginsdk.AccrueRebateRequest\x1a\x1f.pluginsdk.AccrueRebateResponse\x12L\n" +
-	"\vGetUserByID\x12\x1d.pluginsdk.GetUserByIDRequest\x1a\x1e.pluginsdk.GetUserByIDResponse2\xe3\v\n" +
+	"\vGetUserByID\x12\x1d.pluginsdk.GetUserByIDRequest\x1a\x1e.pluginsdk.GetUserByIDResponse\x12X\n" +
+	"\x0fSetUserDisabled\x12!.pluginsdk.SetUserDisabledRequest\x1a\".pluginsdk.SetUserDisabledResponse2\xe3\v\n" +
 	"\x18AccountPlatformExtension\x12d\n" +
 	"\x13ValidateAccountData\x12%.pluginsdk.ValidateAccountDataRequest\x1a&.pluginsdk.ValidateAccountDataResponse\x12T\n" +
 	"\x0eTestConnection\x12 .pluginsdk.TestConnectionRequest\x1a\x1e.pluginsdk.TestConnectionEvent0\x01\x12O\n" +
@@ -10426,7 +10854,9 @@ const file_sdk_proto_rawDesc = "" +
 	"\x0eShouldFailover\x12!.pluginsdk.GatewayFailoverRequest\x1a\".pluginsdk.GatewayFailoverResponse2\xc3\x01\n" +
 	"\x13GatewayHostCallback\x12U\n" +
 	"\x0eGetAccessToken\x12 .pluginsdk.GetAccessTokenRequest\x1a!.pluginsdk.GetAccessTokenResponse\x12U\n" +
-	"\x0eReportOpsError\x12 .pluginsdk.ReportOpsErrorRequest\x1a!.pluginsdk.ReportOpsErrorResponseB8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
+	"\x0eReportOpsError\x12 .pluginsdk.ReportOpsErrorRequest\x1a!.pluginsdk.ReportOpsErrorResponse2e\n" +
+	"\x19ContentInterceptExtension\x12H\n" +
+	"\x05Check\x12\x1e.pluginsdk.ContentCheckRequest\x1a\x1f.pluginsdk.ContentCheckResponseB8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
 
 var (
 	file_sdk_proto_rawDescOnce sync.Once
@@ -10440,343 +10870,353 @@ func file_sdk_proto_rawDescGZIP() []byte {
 	return file_sdk_proto_rawDescData
 }
 
-var file_sdk_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 149)
+var file_sdk_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 153)
 var file_sdk_proto_goTypes = []any{
-	(PricingOverrideEvent_Op)(0),            // 0: pluginsdk.PricingOverrideEvent.Op
-	(*LogRecord)(nil),                       // 1: pluginsdk.LogRecord
-	(*LogAttr)(nil),                         // 2: pluginsdk.LogAttr
-	(*LogPushSummary)(nil),                  // 3: pluginsdk.LogPushSummary
-	(*SQLRequest)(nil),                      // 4: pluginsdk.SQLRequest
-	(*TxSQLRequest)(nil),                    // 5: pluginsdk.TxSQLRequest
-	(*BeginTxRequest)(nil),                  // 6: pluginsdk.BeginTxRequest
-	(*TxResponse)(nil),                      // 7: pluginsdk.TxResponse
-	(*TxIDRequest)(nil),                     // 8: pluginsdk.TxIDRequest
-	(*SQLValue)(nil),                        // 9: pluginsdk.SQLValue
-	(*SQLResponse)(nil),                     // 10: pluginsdk.SQLResponse
-	(*SQLRow)(nil),                          // 11: pluginsdk.SQLRow
-	(*ExecResponse)(nil),                    // 12: pluginsdk.ExecResponse
-	(*RedisKeyRequest)(nil),                 // 13: pluginsdk.RedisKeyRequest
-	(*RedisValueResponse)(nil),              // 14: pluginsdk.RedisValueResponse
-	(*RedisSetRequest)(nil),                 // 15: pluginsdk.RedisSetRequest
-	(*RedisSetExRequest)(nil),               // 16: pluginsdk.RedisSetExRequest
-	(*RedisDelRequest)(nil),                 // 17: pluginsdk.RedisDelRequest
-	(*RedisHGetRequest)(nil),                // 18: pluginsdk.RedisHGetRequest
-	(*RedisHSetRequest)(nil),                // 19: pluginsdk.RedisHSetRequest
-	(*RedisMapResponse)(nil),                // 20: pluginsdk.RedisMapResponse
-	(*RedisHDelRequest)(nil),                // 21: pluginsdk.RedisHDelRequest
-	(*RedisPubRequest)(nil),                 // 22: pluginsdk.RedisPubRequest
-	(*RedisSubRequest)(nil),                 // 23: pluginsdk.RedisSubRequest
-	(*RedisMessage)(nil),                    // 24: pluginsdk.RedisMessage
-	(*DoRequest)(nil),                       // 25: pluginsdk.DoRequest
-	(*DoReply)(nil),                         // 26: pluginsdk.DoReply
-	(*EventRequest)(nil),                    // 27: pluginsdk.EventRequest
-	(*EventFilter)(nil),                     // 28: pluginsdk.EventFilter
-	(*Event)(nil),                           // 29: pluginsdk.Event
-	(*EncryptRequest)(nil),                  // 30: pluginsdk.EncryptRequest
-	(*EncryptResponse)(nil),                 // 31: pluginsdk.EncryptResponse
-	(*DecryptRequest)(nil),                  // 32: pluginsdk.DecryptRequest
-	(*DecryptResponse)(nil),                 // 33: pluginsdk.DecryptResponse
-	(*JobMessage)(nil),                      // 34: pluginsdk.JobMessage
-	(*JobRegistration)(nil),                 // 35: pluginsdk.JobRegistration
-	(*JobSpec)(nil),                         // 36: pluginsdk.JobSpec
-	(*JobTrigger)(nil),                      // 37: pluginsdk.JobTrigger
-	(*JobAck)(nil),                          // 38: pluginsdk.JobAck
-	(*ManualTrigger)(nil),                   // 39: pluginsdk.ManualTrigger
-	(*SettingsGetRequest)(nil),              // 40: pluginsdk.SettingsGetRequest
-	(*SettingsGetResponse)(nil),             // 41: pluginsdk.SettingsGetResponse
-	(*SettingsSetRequest)(nil),              // 42: pluginsdk.SettingsSetRequest
-	(*SettingsSetResponse)(nil),             // 43: pluginsdk.SettingsSetResponse
-	(*SettingsWatchRequest)(nil),            // 44: pluginsdk.SettingsWatchRequest
-	(*SettingsChangeEvent)(nil),             // 45: pluginsdk.SettingsChangeEvent
-	(*PublishEventRequest)(nil),             // 46: pluginsdk.PublishEventRequest
-	(*PublishEventResponse)(nil),            // 47: pluginsdk.PublishEventResponse
-	(*ProbeSubscriptionResponse)(nil),       // 48: pluginsdk.ProbeSubscriptionResponse
-	(*EventSubscribeRequest)(nil),           // 49: pluginsdk.EventSubscribeRequest
-	(*HostEvent)(nil),                       // 50: pluginsdk.HostEvent
-	(*PaymentOrderCreated)(nil),             // 51: pluginsdk.PaymentOrderCreated
-	(*PaymentOrderFulfilled)(nil),           // 52: pluginsdk.PaymentOrderFulfilled
-	(*GatewayModelInvoked)(nil),             // 53: pluginsdk.GatewayModelInvoked
-	(*AuthUserRegistered)(nil),              // 54: pluginsdk.AuthUserRegistered
-	(*AccountRateLimitTriggered)(nil),       // 55: pluginsdk.AccountRateLimitTriggered
-	(*PricingOverrideKey)(nil),              // 56: pluginsdk.PricingOverrideKey
-	(*PricingOverride)(nil),                 // 57: pluginsdk.PricingOverride
-	(*PricingInterval)(nil),                 // 58: pluginsdk.PricingInterval
-	(*ListPricingOverridesRequest)(nil),     // 59: pluginsdk.ListPricingOverridesRequest
-	(*ListPricingOverridesResponse)(nil),    // 60: pluginsdk.ListPricingOverridesResponse
-	(*WatchPricingOverridesRequest)(nil),    // 61: pluginsdk.WatchPricingOverridesRequest
-	(*PricingOverrideEvent)(nil),            // 62: pluginsdk.PricingOverrideEvent
-	(*AdjustCostRequest)(nil),               // 63: pluginsdk.AdjustCostRequest
-	(*AdjustCostResponse)(nil),              // 64: pluginsdk.AdjustCostResponse
-	(*PricingCostBreakdown)(nil),            // 65: pluginsdk.PricingCostBreakdown
-	(*PricingUsageTokens)(nil),              // 66: pluginsdk.PricingUsageTokens
-	(*ResolveAccountStatsCostRequest)(nil),  // 67: pluginsdk.ResolveAccountStatsCostRequest
-	(*ResolveAccountStatsCostResponse)(nil), // 68: pluginsdk.ResolveAccountStatsCostResponse
-	(*RunMaintenanceRequest)(nil),           // 69: pluginsdk.RunMaintenanceRequest
-	(*RunMaintenanceResponse)(nil),          // 70: pluginsdk.RunMaintenanceResponse
-	(*MaintenanceTaskResult)(nil),           // 71: pluginsdk.MaintenanceTaskResult
-	(*CreditBalanceRequest)(nil),            // 72: pluginsdk.CreditBalanceRequest
-	(*CreditBalanceResponse)(nil),           // 73: pluginsdk.CreditBalanceResponse
-	(*DeductBalanceRequest)(nil),            // 74: pluginsdk.DeductBalanceRequest
-	(*DeductBalanceResponse)(nil),           // 75: pluginsdk.DeductBalanceResponse
-	(*AssignSubscriptionRequest)(nil),       // 76: pluginsdk.AssignSubscriptionRequest
-	(*AssignSubscriptionResponse)(nil),      // 77: pluginsdk.AssignSubscriptionResponse
-	(*RevokeSubscriptionDaysRequest)(nil),   // 78: pluginsdk.RevokeSubscriptionDaysRequest
-	(*RevokeSubscriptionDaysResponse)(nil),  // 79: pluginsdk.RevokeSubscriptionDaysResponse
-	(*AccrueRebateRequest)(nil),             // 80: pluginsdk.AccrueRebateRequest
-	(*AccrueRebateResponse)(nil),            // 81: pluginsdk.AccrueRebateResponse
-	(*GetUserByIDRequest)(nil),              // 82: pluginsdk.GetUserByIDRequest
-	(*GetUserByIDResponse)(nil),             // 83: pluginsdk.GetUserByIDResponse
-	(*ResolveModelPricingRequest)(nil),      // 84: pluginsdk.ResolveModelPricingRequest
-	(*ResolveModelPricingResponse)(nil),     // 85: pluginsdk.ResolveModelPricingResponse
-	(*ValidateAccountDataRequest)(nil),      // 86: pluginsdk.ValidateAccountDataRequest
-	(*ValidateAccountDataResponse)(nil),     // 87: pluginsdk.ValidateAccountDataResponse
-	(*TestConnectionRequest)(nil),           // 88: pluginsdk.TestConnectionRequest
-	(*TestConnectionEvent)(nil),             // 89: pluginsdk.TestConnectionEvent
-	(*RefreshTokenRequest)(nil),             // 90: pluginsdk.RefreshTokenRequest
-	(*RefreshTokenResponse)(nil),            // 91: pluginsdk.RefreshTokenResponse
-	(*RefreshTierRequest)(nil),              // 92: pluginsdk.RefreshTierRequest
-	(*RefreshTierResponse)(nil),             // 93: pluginsdk.RefreshTierResponse
-	(*GetAvailableModelsRequest)(nil),       // 94: pluginsdk.GetAvailableModelsRequest
-	(*GetAvailableModelsResponse)(nil),      // 95: pluginsdk.GetAvailableModelsResponse
-	(*AvailableModelInfo)(nil),              // 96: pluginsdk.AvailableModelInfo
-	(*ExecuteCustomActionRequest)(nil),      // 97: pluginsdk.ExecuteCustomActionRequest
-	(*ExecuteCustomActionResponse)(nil),     // 98: pluginsdk.ExecuteCustomActionResponse
-	(*IsModelSupportedRequest)(nil),         // 99: pluginsdk.IsModelSupportedRequest
-	(*IsModelSupportedResponse)(nil),        // 100: pluginsdk.IsModelSupportedResponse
-	(*GetSchedulingHintsRequest)(nil),       // 101: pluginsdk.GetSchedulingHintsRequest
-	(*SchedulingHintAccount)(nil),           // 102: pluginsdk.SchedulingHintAccount
-	(*GetSchedulingHintsResponse)(nil),      // 103: pluginsdk.GetSchedulingHintsResponse
-	(*SchedulingHint)(nil),                  // 104: pluginsdk.SchedulingHint
-	(*CheckSchedulabilityRequest)(nil),      // 105: pluginsdk.CheckSchedulabilityRequest
-	(*CheckSchedulabilityResponse)(nil),     // 106: pluginsdk.CheckSchedulabilityResponse
-	(*GenerateAuthURLRequest)(nil),          // 107: pluginsdk.GenerateAuthURLRequest
-	(*GenerateAuthURLResponse)(nil),         // 108: pluginsdk.GenerateAuthURLResponse
-	(*ExchangeOAuthCodeRequest)(nil),        // 109: pluginsdk.ExchangeOAuthCodeRequest
-	(*ExchangeOAuthCodeResponse)(nil),       // 110: pluginsdk.ExchangeOAuthCodeResponse
-	(*ValidateRefreshTokenRequest)(nil),     // 111: pluginsdk.ValidateRefreshTokenRequest
-	(*ValidateRefreshTokenResponse)(nil),    // 112: pluginsdk.ValidateRefreshTokenResponse
-	(*CookieAuthRequest)(nil),               // 113: pluginsdk.CookieAuthRequest
-	(*CookieAuthResponse)(nil),              // 114: pluginsdk.CookieAuthResponse
-	(*SetPrivacyRequest)(nil),               // 115: pluginsdk.SetPrivacyRequest
-	(*SetPrivacyResponse)(nil),              // 116: pluginsdk.SetPrivacyResponse
-	(*PostAccountCreateRequest)(nil),        // 117: pluginsdk.PostAccountCreateRequest
-	(*PostAccountCreateResponse)(nil),       // 118: pluginsdk.PostAccountCreateResponse
-	(*ValidateGroupConfigRequest)(nil),      // 119: pluginsdk.ValidateGroupConfigRequest
-	(*ValidateGroupConfigResponse)(nil),     // 120: pluginsdk.ValidateGroupConfigResponse
-	(*GatewayForwardRequest)(nil),           // 121: pluginsdk.GatewayForwardRequest
-	(*GatewayAccountInfo)(nil),              // 122: pluginsdk.GatewayAccountInfo
-	(*GatewayForwardChunk)(nil),             // 123: pluginsdk.GatewayForwardChunk
-	(*GatewayResponseHeaders)(nil),          // 124: pluginsdk.GatewayResponseHeaders
-	(*GatewayResponseBody)(nil),             // 125: pluginsdk.GatewayResponseBody
-	(*GatewayResponseTrailers)(nil),         // 126: pluginsdk.GatewayResponseTrailers
-	(*GatewayResponseDone)(nil),             // 127: pluginsdk.GatewayResponseDone
-	(*GatewayForwardResult)(nil),            // 128: pluginsdk.GatewayForwardResult
-	(*GatewayUpstreamError)(nil),            // 129: pluginsdk.GatewayUpstreamError
-	(*GatewayFailoverRequest)(nil),          // 130: pluginsdk.GatewayFailoverRequest
-	(*GatewayFailoverResponse)(nil),         // 131: pluginsdk.GatewayFailoverResponse
-	(*GetAccessTokenRequest)(nil),           // 132: pluginsdk.GetAccessTokenRequest
-	(*GetAccessTokenResponse)(nil),          // 133: pluginsdk.GetAccessTokenResponse
-	(*ReportOpsErrorRequest)(nil),           // 134: pluginsdk.ReportOpsErrorRequest
-	(*ReportOpsErrorResponse)(nil),          // 135: pluginsdk.ReportOpsErrorResponse
-	nil,                                     // 136: pluginsdk.RedisMapResponse.FieldsEntry
-	nil,                                     // 137: pluginsdk.ValidateAccountDataResponse.FieldErrorsEntry
-	nil,                                     // 138: pluginsdk.GetSchedulingHintsResponse.HintsEntry
-	nil,                                     // 139: pluginsdk.GenerateAuthURLRequest.ParamsEntry
-	nil,                                     // 140: pluginsdk.ExchangeOAuthCodeRequest.ParamsEntry
-	nil,                                     // 141: pluginsdk.ValidateRefreshTokenRequest.ParamsEntry
-	nil,                                     // 142: pluginsdk.ValidateGroupConfigResponse.FieldErrorsEntry
-	nil,                                     // 143: pluginsdk.GatewayForwardRequest.HeadersEntry
-	nil,                                     // 144: pluginsdk.GatewayForwardRequest.ClientHeadersEntry
-	nil,                                     // 145: pluginsdk.GatewayResponseHeaders.HeadersEntry
-	nil,                                     // 146: pluginsdk.GatewayResponseTrailers.TrailersEntry
-	nil,                                     // 147: pluginsdk.GatewayForwardResult.ResponseHeadersEntry
-	nil,                                     // 148: pluginsdk.GatewayUpstreamError.ResponseHeadersEntry
-	nil,                                     // 149: pluginsdk.GetAccessTokenResponse.ExtraHeadersEntry
-	(*emptypb.Empty)(nil),                   // 150: google.protobuf.Empty
+	(ContentAction)(0),                      // 0: pluginsdk.ContentAction
+	(PricingOverrideEvent_Op)(0),            // 1: pluginsdk.PricingOverrideEvent.Op
+	(*LogRecord)(nil),                       // 2: pluginsdk.LogRecord
+	(*LogAttr)(nil),                         // 3: pluginsdk.LogAttr
+	(*LogPushSummary)(nil),                  // 4: pluginsdk.LogPushSummary
+	(*SQLRequest)(nil),                      // 5: pluginsdk.SQLRequest
+	(*TxSQLRequest)(nil),                    // 6: pluginsdk.TxSQLRequest
+	(*BeginTxRequest)(nil),                  // 7: pluginsdk.BeginTxRequest
+	(*TxResponse)(nil),                      // 8: pluginsdk.TxResponse
+	(*TxIDRequest)(nil),                     // 9: pluginsdk.TxIDRequest
+	(*SQLValue)(nil),                        // 10: pluginsdk.SQLValue
+	(*SQLResponse)(nil),                     // 11: pluginsdk.SQLResponse
+	(*SQLRow)(nil),                          // 12: pluginsdk.SQLRow
+	(*ExecResponse)(nil),                    // 13: pluginsdk.ExecResponse
+	(*RedisKeyRequest)(nil),                 // 14: pluginsdk.RedisKeyRequest
+	(*RedisValueResponse)(nil),              // 15: pluginsdk.RedisValueResponse
+	(*RedisSetRequest)(nil),                 // 16: pluginsdk.RedisSetRequest
+	(*RedisSetExRequest)(nil),               // 17: pluginsdk.RedisSetExRequest
+	(*RedisDelRequest)(nil),                 // 18: pluginsdk.RedisDelRequest
+	(*RedisHGetRequest)(nil),                // 19: pluginsdk.RedisHGetRequest
+	(*RedisHSetRequest)(nil),                // 20: pluginsdk.RedisHSetRequest
+	(*RedisMapResponse)(nil),                // 21: pluginsdk.RedisMapResponse
+	(*RedisHDelRequest)(nil),                // 22: pluginsdk.RedisHDelRequest
+	(*RedisPubRequest)(nil),                 // 23: pluginsdk.RedisPubRequest
+	(*RedisSubRequest)(nil),                 // 24: pluginsdk.RedisSubRequest
+	(*RedisMessage)(nil),                    // 25: pluginsdk.RedisMessage
+	(*DoRequest)(nil),                       // 26: pluginsdk.DoRequest
+	(*DoReply)(nil),                         // 27: pluginsdk.DoReply
+	(*EventRequest)(nil),                    // 28: pluginsdk.EventRequest
+	(*EventFilter)(nil),                     // 29: pluginsdk.EventFilter
+	(*Event)(nil),                           // 30: pluginsdk.Event
+	(*EncryptRequest)(nil),                  // 31: pluginsdk.EncryptRequest
+	(*EncryptResponse)(nil),                 // 32: pluginsdk.EncryptResponse
+	(*DecryptRequest)(nil),                  // 33: pluginsdk.DecryptRequest
+	(*DecryptResponse)(nil),                 // 34: pluginsdk.DecryptResponse
+	(*JobMessage)(nil),                      // 35: pluginsdk.JobMessage
+	(*JobRegistration)(nil),                 // 36: pluginsdk.JobRegistration
+	(*JobSpec)(nil),                         // 37: pluginsdk.JobSpec
+	(*JobTrigger)(nil),                      // 38: pluginsdk.JobTrigger
+	(*JobAck)(nil),                          // 39: pluginsdk.JobAck
+	(*ManualTrigger)(nil),                   // 40: pluginsdk.ManualTrigger
+	(*SettingsGetRequest)(nil),              // 41: pluginsdk.SettingsGetRequest
+	(*SettingsGetResponse)(nil),             // 42: pluginsdk.SettingsGetResponse
+	(*SettingsSetRequest)(nil),              // 43: pluginsdk.SettingsSetRequest
+	(*SettingsSetResponse)(nil),             // 44: pluginsdk.SettingsSetResponse
+	(*SettingsWatchRequest)(nil),            // 45: pluginsdk.SettingsWatchRequest
+	(*SettingsChangeEvent)(nil),             // 46: pluginsdk.SettingsChangeEvent
+	(*PublishEventRequest)(nil),             // 47: pluginsdk.PublishEventRequest
+	(*PublishEventResponse)(nil),            // 48: pluginsdk.PublishEventResponse
+	(*ProbeSubscriptionResponse)(nil),       // 49: pluginsdk.ProbeSubscriptionResponse
+	(*EventSubscribeRequest)(nil),           // 50: pluginsdk.EventSubscribeRequest
+	(*HostEvent)(nil),                       // 51: pluginsdk.HostEvent
+	(*PaymentOrderCreated)(nil),             // 52: pluginsdk.PaymentOrderCreated
+	(*PaymentOrderFulfilled)(nil),           // 53: pluginsdk.PaymentOrderFulfilled
+	(*GatewayModelInvoked)(nil),             // 54: pluginsdk.GatewayModelInvoked
+	(*AuthUserRegistered)(nil),              // 55: pluginsdk.AuthUserRegistered
+	(*AccountRateLimitTriggered)(nil),       // 56: pluginsdk.AccountRateLimitTriggered
+	(*PricingOverrideKey)(nil),              // 57: pluginsdk.PricingOverrideKey
+	(*PricingOverride)(nil),                 // 58: pluginsdk.PricingOverride
+	(*PricingInterval)(nil),                 // 59: pluginsdk.PricingInterval
+	(*ListPricingOverridesRequest)(nil),     // 60: pluginsdk.ListPricingOverridesRequest
+	(*ListPricingOverridesResponse)(nil),    // 61: pluginsdk.ListPricingOverridesResponse
+	(*WatchPricingOverridesRequest)(nil),    // 62: pluginsdk.WatchPricingOverridesRequest
+	(*PricingOverrideEvent)(nil),            // 63: pluginsdk.PricingOverrideEvent
+	(*AdjustCostRequest)(nil),               // 64: pluginsdk.AdjustCostRequest
+	(*AdjustCostResponse)(nil),              // 65: pluginsdk.AdjustCostResponse
+	(*PricingCostBreakdown)(nil),            // 66: pluginsdk.PricingCostBreakdown
+	(*PricingUsageTokens)(nil),              // 67: pluginsdk.PricingUsageTokens
+	(*ResolveAccountStatsCostRequest)(nil),  // 68: pluginsdk.ResolveAccountStatsCostRequest
+	(*ResolveAccountStatsCostResponse)(nil), // 69: pluginsdk.ResolveAccountStatsCostResponse
+	(*RunMaintenanceRequest)(nil),           // 70: pluginsdk.RunMaintenanceRequest
+	(*RunMaintenanceResponse)(nil),          // 71: pluginsdk.RunMaintenanceResponse
+	(*MaintenanceTaskResult)(nil),           // 72: pluginsdk.MaintenanceTaskResult
+	(*CreditBalanceRequest)(nil),            // 73: pluginsdk.CreditBalanceRequest
+	(*CreditBalanceResponse)(nil),           // 74: pluginsdk.CreditBalanceResponse
+	(*DeductBalanceRequest)(nil),            // 75: pluginsdk.DeductBalanceRequest
+	(*DeductBalanceResponse)(nil),           // 76: pluginsdk.DeductBalanceResponse
+	(*AssignSubscriptionRequest)(nil),       // 77: pluginsdk.AssignSubscriptionRequest
+	(*AssignSubscriptionResponse)(nil),      // 78: pluginsdk.AssignSubscriptionResponse
+	(*RevokeSubscriptionDaysRequest)(nil),   // 79: pluginsdk.RevokeSubscriptionDaysRequest
+	(*RevokeSubscriptionDaysResponse)(nil),  // 80: pluginsdk.RevokeSubscriptionDaysResponse
+	(*AccrueRebateRequest)(nil),             // 81: pluginsdk.AccrueRebateRequest
+	(*AccrueRebateResponse)(nil),            // 82: pluginsdk.AccrueRebateResponse
+	(*GetUserByIDRequest)(nil),              // 83: pluginsdk.GetUserByIDRequest
+	(*GetUserByIDResponse)(nil),             // 84: pluginsdk.GetUserByIDResponse
+	(*ResolveModelPricingRequest)(nil),      // 85: pluginsdk.ResolveModelPricingRequest
+	(*ResolveModelPricingResponse)(nil),     // 86: pluginsdk.ResolveModelPricingResponse
+	(*SetUserDisabledRequest)(nil),          // 87: pluginsdk.SetUserDisabledRequest
+	(*SetUserDisabledResponse)(nil),         // 88: pluginsdk.SetUserDisabledResponse
+	(*ValidateAccountDataRequest)(nil),      // 89: pluginsdk.ValidateAccountDataRequest
+	(*ValidateAccountDataResponse)(nil),     // 90: pluginsdk.ValidateAccountDataResponse
+	(*TestConnectionRequest)(nil),           // 91: pluginsdk.TestConnectionRequest
+	(*TestConnectionEvent)(nil),             // 92: pluginsdk.TestConnectionEvent
+	(*RefreshTokenRequest)(nil),             // 93: pluginsdk.RefreshTokenRequest
+	(*RefreshTokenResponse)(nil),            // 94: pluginsdk.RefreshTokenResponse
+	(*RefreshTierRequest)(nil),              // 95: pluginsdk.RefreshTierRequest
+	(*RefreshTierResponse)(nil),             // 96: pluginsdk.RefreshTierResponse
+	(*GetAvailableModelsRequest)(nil),       // 97: pluginsdk.GetAvailableModelsRequest
+	(*GetAvailableModelsResponse)(nil),      // 98: pluginsdk.GetAvailableModelsResponse
+	(*AvailableModelInfo)(nil),              // 99: pluginsdk.AvailableModelInfo
+	(*ExecuteCustomActionRequest)(nil),      // 100: pluginsdk.ExecuteCustomActionRequest
+	(*ExecuteCustomActionResponse)(nil),     // 101: pluginsdk.ExecuteCustomActionResponse
+	(*IsModelSupportedRequest)(nil),         // 102: pluginsdk.IsModelSupportedRequest
+	(*IsModelSupportedResponse)(nil),        // 103: pluginsdk.IsModelSupportedResponse
+	(*GetSchedulingHintsRequest)(nil),       // 104: pluginsdk.GetSchedulingHintsRequest
+	(*SchedulingHintAccount)(nil),           // 105: pluginsdk.SchedulingHintAccount
+	(*GetSchedulingHintsResponse)(nil),      // 106: pluginsdk.GetSchedulingHintsResponse
+	(*SchedulingHint)(nil),                  // 107: pluginsdk.SchedulingHint
+	(*CheckSchedulabilityRequest)(nil),      // 108: pluginsdk.CheckSchedulabilityRequest
+	(*CheckSchedulabilityResponse)(nil),     // 109: pluginsdk.CheckSchedulabilityResponse
+	(*GenerateAuthURLRequest)(nil),          // 110: pluginsdk.GenerateAuthURLRequest
+	(*GenerateAuthURLResponse)(nil),         // 111: pluginsdk.GenerateAuthURLResponse
+	(*ExchangeOAuthCodeRequest)(nil),        // 112: pluginsdk.ExchangeOAuthCodeRequest
+	(*ExchangeOAuthCodeResponse)(nil),       // 113: pluginsdk.ExchangeOAuthCodeResponse
+	(*ValidateRefreshTokenRequest)(nil),     // 114: pluginsdk.ValidateRefreshTokenRequest
+	(*ValidateRefreshTokenResponse)(nil),    // 115: pluginsdk.ValidateRefreshTokenResponse
+	(*CookieAuthRequest)(nil),               // 116: pluginsdk.CookieAuthRequest
+	(*CookieAuthResponse)(nil),              // 117: pluginsdk.CookieAuthResponse
+	(*SetPrivacyRequest)(nil),               // 118: pluginsdk.SetPrivacyRequest
+	(*SetPrivacyResponse)(nil),              // 119: pluginsdk.SetPrivacyResponse
+	(*PostAccountCreateRequest)(nil),        // 120: pluginsdk.PostAccountCreateRequest
+	(*PostAccountCreateResponse)(nil),       // 121: pluginsdk.PostAccountCreateResponse
+	(*ValidateGroupConfigRequest)(nil),      // 122: pluginsdk.ValidateGroupConfigRequest
+	(*ValidateGroupConfigResponse)(nil),     // 123: pluginsdk.ValidateGroupConfigResponse
+	(*GatewayForwardRequest)(nil),           // 124: pluginsdk.GatewayForwardRequest
+	(*GatewayAccountInfo)(nil),              // 125: pluginsdk.GatewayAccountInfo
+	(*GatewayForwardChunk)(nil),             // 126: pluginsdk.GatewayForwardChunk
+	(*GatewayResponseHeaders)(nil),          // 127: pluginsdk.GatewayResponseHeaders
+	(*GatewayResponseBody)(nil),             // 128: pluginsdk.GatewayResponseBody
+	(*GatewayResponseTrailers)(nil),         // 129: pluginsdk.GatewayResponseTrailers
+	(*GatewayResponseDone)(nil),             // 130: pluginsdk.GatewayResponseDone
+	(*GatewayForwardResult)(nil),            // 131: pluginsdk.GatewayForwardResult
+	(*GatewayUpstreamError)(nil),            // 132: pluginsdk.GatewayUpstreamError
+	(*GatewayFailoverRequest)(nil),          // 133: pluginsdk.GatewayFailoverRequest
+	(*GatewayFailoverResponse)(nil),         // 134: pluginsdk.GatewayFailoverResponse
+	(*GetAccessTokenRequest)(nil),           // 135: pluginsdk.GetAccessTokenRequest
+	(*GetAccessTokenResponse)(nil),          // 136: pluginsdk.GetAccessTokenResponse
+	(*ReportOpsErrorRequest)(nil),           // 137: pluginsdk.ReportOpsErrorRequest
+	(*ReportOpsErrorResponse)(nil),          // 138: pluginsdk.ReportOpsErrorResponse
+	(*ContentCheckRequest)(nil),             // 139: pluginsdk.ContentCheckRequest
+	(*ContentCheckResponse)(nil),            // 140: pluginsdk.ContentCheckResponse
+	nil,                                     // 141: pluginsdk.RedisMapResponse.FieldsEntry
+	nil,                                     // 142: pluginsdk.ValidateAccountDataResponse.FieldErrorsEntry
+	nil,                                     // 143: pluginsdk.GetSchedulingHintsResponse.HintsEntry
+	nil,                                     // 144: pluginsdk.GenerateAuthURLRequest.ParamsEntry
+	nil,                                     // 145: pluginsdk.ExchangeOAuthCodeRequest.ParamsEntry
+	nil,                                     // 146: pluginsdk.ValidateRefreshTokenRequest.ParamsEntry
+	nil,                                     // 147: pluginsdk.ValidateGroupConfigResponse.FieldErrorsEntry
+	nil,                                     // 148: pluginsdk.GatewayForwardRequest.HeadersEntry
+	nil,                                     // 149: pluginsdk.GatewayForwardRequest.ClientHeadersEntry
+	nil,                                     // 150: pluginsdk.GatewayResponseHeaders.HeadersEntry
+	nil,                                     // 151: pluginsdk.GatewayResponseTrailers.TrailersEntry
+	nil,                                     // 152: pluginsdk.GatewayForwardResult.ResponseHeadersEntry
+	nil,                                     // 153: pluginsdk.GatewayUpstreamError.ResponseHeadersEntry
+	nil,                                     // 154: pluginsdk.GetAccessTokenResponse.ExtraHeadersEntry
+	(*emptypb.Empty)(nil),                   // 155: google.protobuf.Empty
 }
 var file_sdk_proto_depIdxs = []int32{
-	2,   // 0: pluginsdk.LogRecord.attrs:type_name -> pluginsdk.LogAttr
-	9,   // 1: pluginsdk.SQLRequest.args:type_name -> pluginsdk.SQLValue
-	9,   // 2: pluginsdk.TxSQLRequest.args:type_name -> pluginsdk.SQLValue
-	11,  // 3: pluginsdk.SQLResponse.rows:type_name -> pluginsdk.SQLRow
-	9,   // 4: pluginsdk.SQLRow.values:type_name -> pluginsdk.SQLValue
-	136, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
-	26,  // 6: pluginsdk.DoReply.array:type_name -> pluginsdk.DoReply
-	35,  // 7: pluginsdk.JobMessage.register:type_name -> pluginsdk.JobRegistration
-	38,  // 8: pluginsdk.JobMessage.ack:type_name -> pluginsdk.JobAck
-	39,  // 9: pluginsdk.JobMessage.manual:type_name -> pluginsdk.ManualTrigger
-	36,  // 10: pluginsdk.JobRegistration.specs:type_name -> pluginsdk.JobSpec
-	50,  // 11: pluginsdk.PublishEventRequest.event:type_name -> pluginsdk.HostEvent
-	51,  // 12: pluginsdk.HostEvent.payment_order_created:type_name -> pluginsdk.PaymentOrderCreated
-	52,  // 13: pluginsdk.HostEvent.payment_order_fulfilled:type_name -> pluginsdk.PaymentOrderFulfilled
-	53,  // 14: pluginsdk.HostEvent.gateway_model_invoked:type_name -> pluginsdk.GatewayModelInvoked
-	54,  // 15: pluginsdk.HostEvent.auth_user_registered:type_name -> pluginsdk.AuthUserRegistered
-	55,  // 16: pluginsdk.HostEvent.account_rate_limit_triggered:type_name -> pluginsdk.AccountRateLimitTriggered
-	56,  // 17: pluginsdk.PricingOverride.key:type_name -> pluginsdk.PricingOverrideKey
-	58,  // 18: pluginsdk.PricingOverride.intervals:type_name -> pluginsdk.PricingInterval
-	57,  // 19: pluginsdk.ListPricingOverridesResponse.overrides:type_name -> pluginsdk.PricingOverride
-	0,   // 20: pluginsdk.PricingOverrideEvent.op:type_name -> pluginsdk.PricingOverrideEvent.Op
-	57,  // 21: pluginsdk.PricingOverrideEvent.override:type_name -> pluginsdk.PricingOverride
-	56,  // 22: pluginsdk.PricingOverrideEvent.deleted_key:type_name -> pluginsdk.PricingOverrideKey
-	65,  // 23: pluginsdk.AdjustCostRequest.core_cost:type_name -> pluginsdk.PricingCostBreakdown
-	66,  // 24: pluginsdk.AdjustCostRequest.tokens:type_name -> pluginsdk.PricingUsageTokens
-	65,  // 25: pluginsdk.AdjustCostResponse.final_cost:type_name -> pluginsdk.PricingCostBreakdown
-	66,  // 26: pluginsdk.ResolveAccountStatsCostRequest.tokens:type_name -> pluginsdk.PricingUsageTokens
-	71,  // 27: pluginsdk.RunMaintenanceResponse.results:type_name -> pluginsdk.MaintenanceTaskResult
-	137, // 28: pluginsdk.ValidateAccountDataResponse.field_errors:type_name -> pluginsdk.ValidateAccountDataResponse.FieldErrorsEntry
-	96,  // 29: pluginsdk.GetAvailableModelsResponse.models:type_name -> pluginsdk.AvailableModelInfo
-	102, // 30: pluginsdk.GetSchedulingHintsRequest.accounts:type_name -> pluginsdk.SchedulingHintAccount
-	138, // 31: pluginsdk.GetSchedulingHintsResponse.hints:type_name -> pluginsdk.GetSchedulingHintsResponse.HintsEntry
-	139, // 32: pluginsdk.GenerateAuthURLRequest.params:type_name -> pluginsdk.GenerateAuthURLRequest.ParamsEntry
-	140, // 33: pluginsdk.ExchangeOAuthCodeRequest.params:type_name -> pluginsdk.ExchangeOAuthCodeRequest.ParamsEntry
-	141, // 34: pluginsdk.ValidateRefreshTokenRequest.params:type_name -> pluginsdk.ValidateRefreshTokenRequest.ParamsEntry
-	142, // 35: pluginsdk.ValidateGroupConfigResponse.field_errors:type_name -> pluginsdk.ValidateGroupConfigResponse.FieldErrorsEntry
-	122, // 36: pluginsdk.GatewayForwardRequest.account:type_name -> pluginsdk.GatewayAccountInfo
-	143, // 37: pluginsdk.GatewayForwardRequest.headers:type_name -> pluginsdk.GatewayForwardRequest.HeadersEntry
-	144, // 38: pluginsdk.GatewayForwardRequest.client_headers:type_name -> pluginsdk.GatewayForwardRequest.ClientHeadersEntry
-	124, // 39: pluginsdk.GatewayForwardChunk.headers:type_name -> pluginsdk.GatewayResponseHeaders
-	125, // 40: pluginsdk.GatewayForwardChunk.body:type_name -> pluginsdk.GatewayResponseBody
-	126, // 41: pluginsdk.GatewayForwardChunk.trailers:type_name -> pluginsdk.GatewayResponseTrailers
-	127, // 42: pluginsdk.GatewayForwardChunk.done:type_name -> pluginsdk.GatewayResponseDone
-	145, // 43: pluginsdk.GatewayResponseHeaders.headers:type_name -> pluginsdk.GatewayResponseHeaders.HeadersEntry
-	146, // 44: pluginsdk.GatewayResponseTrailers.trailers:type_name -> pluginsdk.GatewayResponseTrailers.TrailersEntry
-	128, // 45: pluginsdk.GatewayResponseDone.result:type_name -> pluginsdk.GatewayForwardResult
-	129, // 46: pluginsdk.GatewayForwardResult.upstream_error:type_name -> pluginsdk.GatewayUpstreamError
-	147, // 47: pluginsdk.GatewayForwardResult.response_headers:type_name -> pluginsdk.GatewayForwardResult.ResponseHeadersEntry
-	148, // 48: pluginsdk.GatewayUpstreamError.response_headers:type_name -> pluginsdk.GatewayUpstreamError.ResponseHeadersEntry
-	121, // 49: pluginsdk.GatewayFailoverRequest.request:type_name -> pluginsdk.GatewayForwardRequest
-	149, // 50: pluginsdk.GetAccessTokenResponse.extra_headers:type_name -> pluginsdk.GetAccessTokenResponse.ExtraHeadersEntry
-	104, // 51: pluginsdk.GetSchedulingHintsResponse.HintsEntry.value:type_name -> pluginsdk.SchedulingHint
-	4,   // 52: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
-	4,   // 53: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
-	6,   // 54: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
-	5,   // 55: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
-	5,   // 56: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
-	8,   // 57: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
-	8,   // 58: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
-	25,  // 59: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
-	13,  // 60: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
-	15,  // 61: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
-	16,  // 62: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
-	17,  // 63: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
-	18,  // 64: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
-	19,  // 65: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
-	13,  // 66: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
-	21,  // 67: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
-	22,  // 68: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
-	23,  // 69: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
-	27,  // 70: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
-	28,  // 71: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
-	1,   // 72: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
-	30,  // 73: pluginsdk.SecretEncryption.Encrypt:input_type -> pluginsdk.EncryptRequest
-	32,  // 74: pluginsdk.SecretEncryption.Decrypt:input_type -> pluginsdk.DecryptRequest
-	34,  // 75: pluginsdk.JobScheduler.Subscribe:input_type -> pluginsdk.JobMessage
-	40,  // 76: pluginsdk.SettingsExtension.Get:input_type -> pluginsdk.SettingsGetRequest
-	42,  // 77: pluginsdk.SettingsExtension.Set:input_type -> pluginsdk.SettingsSetRequest
-	44,  // 78: pluginsdk.SettingsExtension.Watch:input_type -> pluginsdk.SettingsWatchRequest
-	49,  // 79: pluginsdk.EventsExtension.Subscribe:input_type -> pluginsdk.EventSubscribeRequest
-	49,  // 80: pluginsdk.EventsExtension.ProbeSubscription:input_type -> pluginsdk.EventSubscribeRequest
-	46,  // 81: pluginsdk.EventsExtension.Publish:input_type -> pluginsdk.PublishEventRequest
-	59,  // 82: pluginsdk.PricingExtension.ListPricingOverrides:input_type -> pluginsdk.ListPricingOverridesRequest
-	61,  // 83: pluginsdk.PricingExtension.WatchPricingOverrides:input_type -> pluginsdk.WatchPricingOverridesRequest
-	63,  // 84: pluginsdk.PricingExtension.AdjustCost:input_type -> pluginsdk.AdjustCostRequest
-	67,  // 85: pluginsdk.PricingExtension.ResolveAccountStatsCost:input_type -> pluginsdk.ResolveAccountStatsCostRequest
-	69,  // 86: pluginsdk.MaintenanceExtension.RunMaintenance:input_type -> pluginsdk.RunMaintenanceRequest
-	84,  // 87: pluginsdk.HostService.ResolveModelPricing:input_type -> pluginsdk.ResolveModelPricingRequest
-	72,  // 88: pluginsdk.HostService.CreditBalance:input_type -> pluginsdk.CreditBalanceRequest
-	74,  // 89: pluginsdk.HostService.DeductBalance:input_type -> pluginsdk.DeductBalanceRequest
-	76,  // 90: pluginsdk.HostService.AssignSubscription:input_type -> pluginsdk.AssignSubscriptionRequest
-	78,  // 91: pluginsdk.HostService.RevokeSubscriptionDays:input_type -> pluginsdk.RevokeSubscriptionDaysRequest
-	80,  // 92: pluginsdk.HostService.AccrueRebate:input_type -> pluginsdk.AccrueRebateRequest
-	82,  // 93: pluginsdk.HostService.GetUserByID:input_type -> pluginsdk.GetUserByIDRequest
-	86,  // 94: pluginsdk.AccountPlatformExtension.ValidateAccountData:input_type -> pluginsdk.ValidateAccountDataRequest
-	88,  // 95: pluginsdk.AccountPlatformExtension.TestConnection:input_type -> pluginsdk.TestConnectionRequest
-	90,  // 96: pluginsdk.AccountPlatformExtension.RefreshToken:input_type -> pluginsdk.RefreshTokenRequest
-	92,  // 97: pluginsdk.AccountPlatformExtension.RefreshTier:input_type -> pluginsdk.RefreshTierRequest
-	94,  // 98: pluginsdk.AccountPlatformExtension.GetAvailableModels:input_type -> pluginsdk.GetAvailableModelsRequest
-	97,  // 99: pluginsdk.AccountPlatformExtension.ExecuteCustomAction:input_type -> pluginsdk.ExecuteCustomActionRequest
-	99,  // 100: pluginsdk.AccountPlatformExtension.IsModelSupported:input_type -> pluginsdk.IsModelSupportedRequest
-	101, // 101: pluginsdk.AccountPlatformExtension.GetSchedulingHints:input_type -> pluginsdk.GetSchedulingHintsRequest
-	105, // 102: pluginsdk.AccountPlatformExtension.CheckSchedulability:input_type -> pluginsdk.CheckSchedulabilityRequest
-	107, // 103: pluginsdk.AccountPlatformExtension.GenerateAuthURL:input_type -> pluginsdk.GenerateAuthURLRequest
-	109, // 104: pluginsdk.AccountPlatformExtension.ExchangeOAuthCode:input_type -> pluginsdk.ExchangeOAuthCodeRequest
-	111, // 105: pluginsdk.AccountPlatformExtension.ValidateRefreshToken:input_type -> pluginsdk.ValidateRefreshTokenRequest
-	113, // 106: pluginsdk.AccountPlatformExtension.CookieAuth:input_type -> pluginsdk.CookieAuthRequest
-	115, // 107: pluginsdk.AccountPlatformExtension.SetPrivacy:input_type -> pluginsdk.SetPrivacyRequest
-	117, // 108: pluginsdk.AccountPlatformExtension.PostAccountCreate:input_type -> pluginsdk.PostAccountCreateRequest
-	119, // 109: pluginsdk.AccountPlatformExtension.ValidateGroupConfig:input_type -> pluginsdk.ValidateGroupConfigRequest
-	121, // 110: pluginsdk.GatewayProviderExtension.Forward:input_type -> pluginsdk.GatewayForwardRequest
-	130, // 111: pluginsdk.GatewayProviderExtension.ShouldFailover:input_type -> pluginsdk.GatewayFailoverRequest
-	132, // 112: pluginsdk.GatewayHostCallback.GetAccessToken:input_type -> pluginsdk.GetAccessTokenRequest
-	134, // 113: pluginsdk.GatewayHostCallback.ReportOpsError:input_type -> pluginsdk.ReportOpsErrorRequest
-	10,  // 114: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
-	12,  // 115: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
-	7,   // 116: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
-	10,  // 117: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
-	12,  // 118: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
-	150, // 119: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
-	150, // 120: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
-	26,  // 121: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
-	14,  // 122: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
-	150, // 123: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
-	150, // 124: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
-	150, // 125: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
-	14,  // 126: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
-	150, // 127: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
-	20,  // 128: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
-	150, // 129: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
-	150, // 130: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
-	24,  // 131: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
-	150, // 132: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
-	29,  // 133: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
-	3,   // 134: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
-	31,  // 135: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
-	33,  // 136: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
-	37,  // 137: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
-	41,  // 138: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
-	43,  // 139: pluginsdk.SettingsExtension.Set:output_type -> pluginsdk.SettingsSetResponse
-	45,  // 140: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
-	50,  // 141: pluginsdk.EventsExtension.Subscribe:output_type -> pluginsdk.HostEvent
-	48,  // 142: pluginsdk.EventsExtension.ProbeSubscription:output_type -> pluginsdk.ProbeSubscriptionResponse
-	47,  // 143: pluginsdk.EventsExtension.Publish:output_type -> pluginsdk.PublishEventResponse
-	60,  // 144: pluginsdk.PricingExtension.ListPricingOverrides:output_type -> pluginsdk.ListPricingOverridesResponse
-	62,  // 145: pluginsdk.PricingExtension.WatchPricingOverrides:output_type -> pluginsdk.PricingOverrideEvent
-	64,  // 146: pluginsdk.PricingExtension.AdjustCost:output_type -> pluginsdk.AdjustCostResponse
-	68,  // 147: pluginsdk.PricingExtension.ResolveAccountStatsCost:output_type -> pluginsdk.ResolveAccountStatsCostResponse
-	70,  // 148: pluginsdk.MaintenanceExtension.RunMaintenance:output_type -> pluginsdk.RunMaintenanceResponse
-	85,  // 149: pluginsdk.HostService.ResolveModelPricing:output_type -> pluginsdk.ResolveModelPricingResponse
-	73,  // 150: pluginsdk.HostService.CreditBalance:output_type -> pluginsdk.CreditBalanceResponse
-	75,  // 151: pluginsdk.HostService.DeductBalance:output_type -> pluginsdk.DeductBalanceResponse
-	77,  // 152: pluginsdk.HostService.AssignSubscription:output_type -> pluginsdk.AssignSubscriptionResponse
-	79,  // 153: pluginsdk.HostService.RevokeSubscriptionDays:output_type -> pluginsdk.RevokeSubscriptionDaysResponse
-	81,  // 154: pluginsdk.HostService.AccrueRebate:output_type -> pluginsdk.AccrueRebateResponse
-	83,  // 155: pluginsdk.HostService.GetUserByID:output_type -> pluginsdk.GetUserByIDResponse
-	87,  // 156: pluginsdk.AccountPlatformExtension.ValidateAccountData:output_type -> pluginsdk.ValidateAccountDataResponse
-	89,  // 157: pluginsdk.AccountPlatformExtension.TestConnection:output_type -> pluginsdk.TestConnectionEvent
-	91,  // 158: pluginsdk.AccountPlatformExtension.RefreshToken:output_type -> pluginsdk.RefreshTokenResponse
-	93,  // 159: pluginsdk.AccountPlatformExtension.RefreshTier:output_type -> pluginsdk.RefreshTierResponse
-	95,  // 160: pluginsdk.AccountPlatformExtension.GetAvailableModels:output_type -> pluginsdk.GetAvailableModelsResponse
-	98,  // 161: pluginsdk.AccountPlatformExtension.ExecuteCustomAction:output_type -> pluginsdk.ExecuteCustomActionResponse
-	100, // 162: pluginsdk.AccountPlatformExtension.IsModelSupported:output_type -> pluginsdk.IsModelSupportedResponse
-	103, // 163: pluginsdk.AccountPlatformExtension.GetSchedulingHints:output_type -> pluginsdk.GetSchedulingHintsResponse
-	106, // 164: pluginsdk.AccountPlatformExtension.CheckSchedulability:output_type -> pluginsdk.CheckSchedulabilityResponse
-	108, // 165: pluginsdk.AccountPlatformExtension.GenerateAuthURL:output_type -> pluginsdk.GenerateAuthURLResponse
-	110, // 166: pluginsdk.AccountPlatformExtension.ExchangeOAuthCode:output_type -> pluginsdk.ExchangeOAuthCodeResponse
-	112, // 167: pluginsdk.AccountPlatformExtension.ValidateRefreshToken:output_type -> pluginsdk.ValidateRefreshTokenResponse
-	114, // 168: pluginsdk.AccountPlatformExtension.CookieAuth:output_type -> pluginsdk.CookieAuthResponse
-	116, // 169: pluginsdk.AccountPlatformExtension.SetPrivacy:output_type -> pluginsdk.SetPrivacyResponse
-	118, // 170: pluginsdk.AccountPlatformExtension.PostAccountCreate:output_type -> pluginsdk.PostAccountCreateResponse
-	120, // 171: pluginsdk.AccountPlatformExtension.ValidateGroupConfig:output_type -> pluginsdk.ValidateGroupConfigResponse
-	123, // 172: pluginsdk.GatewayProviderExtension.Forward:output_type -> pluginsdk.GatewayForwardChunk
-	131, // 173: pluginsdk.GatewayProviderExtension.ShouldFailover:output_type -> pluginsdk.GatewayFailoverResponse
-	133, // 174: pluginsdk.GatewayHostCallback.GetAccessToken:output_type -> pluginsdk.GetAccessTokenResponse
-	135, // 175: pluginsdk.GatewayHostCallback.ReportOpsError:output_type -> pluginsdk.ReportOpsErrorResponse
-	114, // [114:176] is the sub-list for method output_type
-	52,  // [52:114] is the sub-list for method input_type
-	52,  // [52:52] is the sub-list for extension type_name
-	52,  // [52:52] is the sub-list for extension extendee
-	0,   // [0:52] is the sub-list for field type_name
+	3,   // 0: pluginsdk.LogRecord.attrs:type_name -> pluginsdk.LogAttr
+	10,  // 1: pluginsdk.SQLRequest.args:type_name -> pluginsdk.SQLValue
+	10,  // 2: pluginsdk.TxSQLRequest.args:type_name -> pluginsdk.SQLValue
+	12,  // 3: pluginsdk.SQLResponse.rows:type_name -> pluginsdk.SQLRow
+	10,  // 4: pluginsdk.SQLRow.values:type_name -> pluginsdk.SQLValue
+	141, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
+	27,  // 6: pluginsdk.DoReply.array:type_name -> pluginsdk.DoReply
+	36,  // 7: pluginsdk.JobMessage.register:type_name -> pluginsdk.JobRegistration
+	39,  // 8: pluginsdk.JobMessage.ack:type_name -> pluginsdk.JobAck
+	40,  // 9: pluginsdk.JobMessage.manual:type_name -> pluginsdk.ManualTrigger
+	37,  // 10: pluginsdk.JobRegistration.specs:type_name -> pluginsdk.JobSpec
+	51,  // 11: pluginsdk.PublishEventRequest.event:type_name -> pluginsdk.HostEvent
+	52,  // 12: pluginsdk.HostEvent.payment_order_created:type_name -> pluginsdk.PaymentOrderCreated
+	53,  // 13: pluginsdk.HostEvent.payment_order_fulfilled:type_name -> pluginsdk.PaymentOrderFulfilled
+	54,  // 14: pluginsdk.HostEvent.gateway_model_invoked:type_name -> pluginsdk.GatewayModelInvoked
+	55,  // 15: pluginsdk.HostEvent.auth_user_registered:type_name -> pluginsdk.AuthUserRegistered
+	56,  // 16: pluginsdk.HostEvent.account_rate_limit_triggered:type_name -> pluginsdk.AccountRateLimitTriggered
+	57,  // 17: pluginsdk.PricingOverride.key:type_name -> pluginsdk.PricingOverrideKey
+	59,  // 18: pluginsdk.PricingOverride.intervals:type_name -> pluginsdk.PricingInterval
+	58,  // 19: pluginsdk.ListPricingOverridesResponse.overrides:type_name -> pluginsdk.PricingOverride
+	1,   // 20: pluginsdk.PricingOverrideEvent.op:type_name -> pluginsdk.PricingOverrideEvent.Op
+	58,  // 21: pluginsdk.PricingOverrideEvent.override:type_name -> pluginsdk.PricingOverride
+	57,  // 22: pluginsdk.PricingOverrideEvent.deleted_key:type_name -> pluginsdk.PricingOverrideKey
+	66,  // 23: pluginsdk.AdjustCostRequest.core_cost:type_name -> pluginsdk.PricingCostBreakdown
+	67,  // 24: pluginsdk.AdjustCostRequest.tokens:type_name -> pluginsdk.PricingUsageTokens
+	66,  // 25: pluginsdk.AdjustCostResponse.final_cost:type_name -> pluginsdk.PricingCostBreakdown
+	67,  // 26: pluginsdk.ResolveAccountStatsCostRequest.tokens:type_name -> pluginsdk.PricingUsageTokens
+	72,  // 27: pluginsdk.RunMaintenanceResponse.results:type_name -> pluginsdk.MaintenanceTaskResult
+	142, // 28: pluginsdk.ValidateAccountDataResponse.field_errors:type_name -> pluginsdk.ValidateAccountDataResponse.FieldErrorsEntry
+	99,  // 29: pluginsdk.GetAvailableModelsResponse.models:type_name -> pluginsdk.AvailableModelInfo
+	105, // 30: pluginsdk.GetSchedulingHintsRequest.accounts:type_name -> pluginsdk.SchedulingHintAccount
+	143, // 31: pluginsdk.GetSchedulingHintsResponse.hints:type_name -> pluginsdk.GetSchedulingHintsResponse.HintsEntry
+	144, // 32: pluginsdk.GenerateAuthURLRequest.params:type_name -> pluginsdk.GenerateAuthURLRequest.ParamsEntry
+	145, // 33: pluginsdk.ExchangeOAuthCodeRequest.params:type_name -> pluginsdk.ExchangeOAuthCodeRequest.ParamsEntry
+	146, // 34: pluginsdk.ValidateRefreshTokenRequest.params:type_name -> pluginsdk.ValidateRefreshTokenRequest.ParamsEntry
+	147, // 35: pluginsdk.ValidateGroupConfigResponse.field_errors:type_name -> pluginsdk.ValidateGroupConfigResponse.FieldErrorsEntry
+	125, // 36: pluginsdk.GatewayForwardRequest.account:type_name -> pluginsdk.GatewayAccountInfo
+	148, // 37: pluginsdk.GatewayForwardRequest.headers:type_name -> pluginsdk.GatewayForwardRequest.HeadersEntry
+	149, // 38: pluginsdk.GatewayForwardRequest.client_headers:type_name -> pluginsdk.GatewayForwardRequest.ClientHeadersEntry
+	127, // 39: pluginsdk.GatewayForwardChunk.headers:type_name -> pluginsdk.GatewayResponseHeaders
+	128, // 40: pluginsdk.GatewayForwardChunk.body:type_name -> pluginsdk.GatewayResponseBody
+	129, // 41: pluginsdk.GatewayForwardChunk.trailers:type_name -> pluginsdk.GatewayResponseTrailers
+	130, // 42: pluginsdk.GatewayForwardChunk.done:type_name -> pluginsdk.GatewayResponseDone
+	150, // 43: pluginsdk.GatewayResponseHeaders.headers:type_name -> pluginsdk.GatewayResponseHeaders.HeadersEntry
+	151, // 44: pluginsdk.GatewayResponseTrailers.trailers:type_name -> pluginsdk.GatewayResponseTrailers.TrailersEntry
+	131, // 45: pluginsdk.GatewayResponseDone.result:type_name -> pluginsdk.GatewayForwardResult
+	132, // 46: pluginsdk.GatewayForwardResult.upstream_error:type_name -> pluginsdk.GatewayUpstreamError
+	152, // 47: pluginsdk.GatewayForwardResult.response_headers:type_name -> pluginsdk.GatewayForwardResult.ResponseHeadersEntry
+	153, // 48: pluginsdk.GatewayUpstreamError.response_headers:type_name -> pluginsdk.GatewayUpstreamError.ResponseHeadersEntry
+	124, // 49: pluginsdk.GatewayFailoverRequest.request:type_name -> pluginsdk.GatewayForwardRequest
+	154, // 50: pluginsdk.GetAccessTokenResponse.extra_headers:type_name -> pluginsdk.GetAccessTokenResponse.ExtraHeadersEntry
+	0,   // 51: pluginsdk.ContentCheckResponse.action:type_name -> pluginsdk.ContentAction
+	107, // 52: pluginsdk.GetSchedulingHintsResponse.HintsEntry.value:type_name -> pluginsdk.SchedulingHint
+	5,   // 53: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
+	5,   // 54: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
+	7,   // 55: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
+	6,   // 56: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
+	6,   // 57: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
+	9,   // 58: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
+	9,   // 59: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
+	26,  // 60: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
+	14,  // 61: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
+	16,  // 62: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
+	17,  // 63: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
+	18,  // 64: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
+	19,  // 65: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
+	20,  // 66: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
+	14,  // 67: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
+	22,  // 68: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
+	23,  // 69: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
+	24,  // 70: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
+	28,  // 71: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
+	29,  // 72: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
+	2,   // 73: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
+	31,  // 74: pluginsdk.SecretEncryption.Encrypt:input_type -> pluginsdk.EncryptRequest
+	33,  // 75: pluginsdk.SecretEncryption.Decrypt:input_type -> pluginsdk.DecryptRequest
+	35,  // 76: pluginsdk.JobScheduler.Subscribe:input_type -> pluginsdk.JobMessage
+	41,  // 77: pluginsdk.SettingsExtension.Get:input_type -> pluginsdk.SettingsGetRequest
+	43,  // 78: pluginsdk.SettingsExtension.Set:input_type -> pluginsdk.SettingsSetRequest
+	45,  // 79: pluginsdk.SettingsExtension.Watch:input_type -> pluginsdk.SettingsWatchRequest
+	50,  // 80: pluginsdk.EventsExtension.Subscribe:input_type -> pluginsdk.EventSubscribeRequest
+	50,  // 81: pluginsdk.EventsExtension.ProbeSubscription:input_type -> pluginsdk.EventSubscribeRequest
+	47,  // 82: pluginsdk.EventsExtension.Publish:input_type -> pluginsdk.PublishEventRequest
+	60,  // 83: pluginsdk.PricingExtension.ListPricingOverrides:input_type -> pluginsdk.ListPricingOverridesRequest
+	62,  // 84: pluginsdk.PricingExtension.WatchPricingOverrides:input_type -> pluginsdk.WatchPricingOverridesRequest
+	64,  // 85: pluginsdk.PricingExtension.AdjustCost:input_type -> pluginsdk.AdjustCostRequest
+	68,  // 86: pluginsdk.PricingExtension.ResolveAccountStatsCost:input_type -> pluginsdk.ResolveAccountStatsCostRequest
+	70,  // 87: pluginsdk.MaintenanceExtension.RunMaintenance:input_type -> pluginsdk.RunMaintenanceRequest
+	85,  // 88: pluginsdk.HostService.ResolveModelPricing:input_type -> pluginsdk.ResolveModelPricingRequest
+	73,  // 89: pluginsdk.HostService.CreditBalance:input_type -> pluginsdk.CreditBalanceRequest
+	75,  // 90: pluginsdk.HostService.DeductBalance:input_type -> pluginsdk.DeductBalanceRequest
+	77,  // 91: pluginsdk.HostService.AssignSubscription:input_type -> pluginsdk.AssignSubscriptionRequest
+	79,  // 92: pluginsdk.HostService.RevokeSubscriptionDays:input_type -> pluginsdk.RevokeSubscriptionDaysRequest
+	81,  // 93: pluginsdk.HostService.AccrueRebate:input_type -> pluginsdk.AccrueRebateRequest
+	83,  // 94: pluginsdk.HostService.GetUserByID:input_type -> pluginsdk.GetUserByIDRequest
+	87,  // 95: pluginsdk.HostService.SetUserDisabled:input_type -> pluginsdk.SetUserDisabledRequest
+	89,  // 96: pluginsdk.AccountPlatformExtension.ValidateAccountData:input_type -> pluginsdk.ValidateAccountDataRequest
+	91,  // 97: pluginsdk.AccountPlatformExtension.TestConnection:input_type -> pluginsdk.TestConnectionRequest
+	93,  // 98: pluginsdk.AccountPlatformExtension.RefreshToken:input_type -> pluginsdk.RefreshTokenRequest
+	95,  // 99: pluginsdk.AccountPlatformExtension.RefreshTier:input_type -> pluginsdk.RefreshTierRequest
+	97,  // 100: pluginsdk.AccountPlatformExtension.GetAvailableModels:input_type -> pluginsdk.GetAvailableModelsRequest
+	100, // 101: pluginsdk.AccountPlatformExtension.ExecuteCustomAction:input_type -> pluginsdk.ExecuteCustomActionRequest
+	102, // 102: pluginsdk.AccountPlatformExtension.IsModelSupported:input_type -> pluginsdk.IsModelSupportedRequest
+	104, // 103: pluginsdk.AccountPlatformExtension.GetSchedulingHints:input_type -> pluginsdk.GetSchedulingHintsRequest
+	108, // 104: pluginsdk.AccountPlatformExtension.CheckSchedulability:input_type -> pluginsdk.CheckSchedulabilityRequest
+	110, // 105: pluginsdk.AccountPlatformExtension.GenerateAuthURL:input_type -> pluginsdk.GenerateAuthURLRequest
+	112, // 106: pluginsdk.AccountPlatformExtension.ExchangeOAuthCode:input_type -> pluginsdk.ExchangeOAuthCodeRequest
+	114, // 107: pluginsdk.AccountPlatformExtension.ValidateRefreshToken:input_type -> pluginsdk.ValidateRefreshTokenRequest
+	116, // 108: pluginsdk.AccountPlatformExtension.CookieAuth:input_type -> pluginsdk.CookieAuthRequest
+	118, // 109: pluginsdk.AccountPlatformExtension.SetPrivacy:input_type -> pluginsdk.SetPrivacyRequest
+	120, // 110: pluginsdk.AccountPlatformExtension.PostAccountCreate:input_type -> pluginsdk.PostAccountCreateRequest
+	122, // 111: pluginsdk.AccountPlatformExtension.ValidateGroupConfig:input_type -> pluginsdk.ValidateGroupConfigRequest
+	124, // 112: pluginsdk.GatewayProviderExtension.Forward:input_type -> pluginsdk.GatewayForwardRequest
+	133, // 113: pluginsdk.GatewayProviderExtension.ShouldFailover:input_type -> pluginsdk.GatewayFailoverRequest
+	135, // 114: pluginsdk.GatewayHostCallback.GetAccessToken:input_type -> pluginsdk.GetAccessTokenRequest
+	137, // 115: pluginsdk.GatewayHostCallback.ReportOpsError:input_type -> pluginsdk.ReportOpsErrorRequest
+	139, // 116: pluginsdk.ContentInterceptExtension.Check:input_type -> pluginsdk.ContentCheckRequest
+	11,  // 117: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
+	13,  // 118: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
+	8,   // 119: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
+	11,  // 120: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
+	13,  // 121: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
+	155, // 122: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
+	155, // 123: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
+	27,  // 124: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
+	15,  // 125: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
+	155, // 126: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
+	155, // 127: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
+	155, // 128: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
+	15,  // 129: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
+	155, // 130: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
+	21,  // 131: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
+	155, // 132: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
+	155, // 133: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
+	25,  // 134: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
+	155, // 135: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
+	30,  // 136: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
+	4,   // 137: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
+	32,  // 138: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
+	34,  // 139: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
+	38,  // 140: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
+	42,  // 141: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
+	44,  // 142: pluginsdk.SettingsExtension.Set:output_type -> pluginsdk.SettingsSetResponse
+	46,  // 143: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
+	51,  // 144: pluginsdk.EventsExtension.Subscribe:output_type -> pluginsdk.HostEvent
+	49,  // 145: pluginsdk.EventsExtension.ProbeSubscription:output_type -> pluginsdk.ProbeSubscriptionResponse
+	48,  // 146: pluginsdk.EventsExtension.Publish:output_type -> pluginsdk.PublishEventResponse
+	61,  // 147: pluginsdk.PricingExtension.ListPricingOverrides:output_type -> pluginsdk.ListPricingOverridesResponse
+	63,  // 148: pluginsdk.PricingExtension.WatchPricingOverrides:output_type -> pluginsdk.PricingOverrideEvent
+	65,  // 149: pluginsdk.PricingExtension.AdjustCost:output_type -> pluginsdk.AdjustCostResponse
+	69,  // 150: pluginsdk.PricingExtension.ResolveAccountStatsCost:output_type -> pluginsdk.ResolveAccountStatsCostResponse
+	71,  // 151: pluginsdk.MaintenanceExtension.RunMaintenance:output_type -> pluginsdk.RunMaintenanceResponse
+	86,  // 152: pluginsdk.HostService.ResolveModelPricing:output_type -> pluginsdk.ResolveModelPricingResponse
+	74,  // 153: pluginsdk.HostService.CreditBalance:output_type -> pluginsdk.CreditBalanceResponse
+	76,  // 154: pluginsdk.HostService.DeductBalance:output_type -> pluginsdk.DeductBalanceResponse
+	78,  // 155: pluginsdk.HostService.AssignSubscription:output_type -> pluginsdk.AssignSubscriptionResponse
+	80,  // 156: pluginsdk.HostService.RevokeSubscriptionDays:output_type -> pluginsdk.RevokeSubscriptionDaysResponse
+	82,  // 157: pluginsdk.HostService.AccrueRebate:output_type -> pluginsdk.AccrueRebateResponse
+	84,  // 158: pluginsdk.HostService.GetUserByID:output_type -> pluginsdk.GetUserByIDResponse
+	88,  // 159: pluginsdk.HostService.SetUserDisabled:output_type -> pluginsdk.SetUserDisabledResponse
+	90,  // 160: pluginsdk.AccountPlatformExtension.ValidateAccountData:output_type -> pluginsdk.ValidateAccountDataResponse
+	92,  // 161: pluginsdk.AccountPlatformExtension.TestConnection:output_type -> pluginsdk.TestConnectionEvent
+	94,  // 162: pluginsdk.AccountPlatformExtension.RefreshToken:output_type -> pluginsdk.RefreshTokenResponse
+	96,  // 163: pluginsdk.AccountPlatformExtension.RefreshTier:output_type -> pluginsdk.RefreshTierResponse
+	98,  // 164: pluginsdk.AccountPlatformExtension.GetAvailableModels:output_type -> pluginsdk.GetAvailableModelsResponse
+	101, // 165: pluginsdk.AccountPlatformExtension.ExecuteCustomAction:output_type -> pluginsdk.ExecuteCustomActionResponse
+	103, // 166: pluginsdk.AccountPlatformExtension.IsModelSupported:output_type -> pluginsdk.IsModelSupportedResponse
+	106, // 167: pluginsdk.AccountPlatformExtension.GetSchedulingHints:output_type -> pluginsdk.GetSchedulingHintsResponse
+	109, // 168: pluginsdk.AccountPlatformExtension.CheckSchedulability:output_type -> pluginsdk.CheckSchedulabilityResponse
+	111, // 169: pluginsdk.AccountPlatformExtension.GenerateAuthURL:output_type -> pluginsdk.GenerateAuthURLResponse
+	113, // 170: pluginsdk.AccountPlatformExtension.ExchangeOAuthCode:output_type -> pluginsdk.ExchangeOAuthCodeResponse
+	115, // 171: pluginsdk.AccountPlatformExtension.ValidateRefreshToken:output_type -> pluginsdk.ValidateRefreshTokenResponse
+	117, // 172: pluginsdk.AccountPlatformExtension.CookieAuth:output_type -> pluginsdk.CookieAuthResponse
+	119, // 173: pluginsdk.AccountPlatformExtension.SetPrivacy:output_type -> pluginsdk.SetPrivacyResponse
+	121, // 174: pluginsdk.AccountPlatformExtension.PostAccountCreate:output_type -> pluginsdk.PostAccountCreateResponse
+	123, // 175: pluginsdk.AccountPlatformExtension.ValidateGroupConfig:output_type -> pluginsdk.ValidateGroupConfigResponse
+	126, // 176: pluginsdk.GatewayProviderExtension.Forward:output_type -> pluginsdk.GatewayForwardChunk
+	134, // 177: pluginsdk.GatewayProviderExtension.ShouldFailover:output_type -> pluginsdk.GatewayFailoverResponse
+	136, // 178: pluginsdk.GatewayHostCallback.GetAccessToken:output_type -> pluginsdk.GetAccessTokenResponse
+	138, // 179: pluginsdk.GatewayHostCallback.ReportOpsError:output_type -> pluginsdk.ReportOpsErrorResponse
+	140, // 180: pluginsdk.ContentInterceptExtension.Check:output_type -> pluginsdk.ContentCheckResponse
+	117, // [117:181] is the sub-list for method output_type
+	53,  // [53:117] is the sub-list for method input_type
+	53,  // [53:53] is the sub-list for extension type_name
+	53,  // [53:53] is the sub-list for extension extendee
+	0,   // [0:53] is the sub-list for field type_name
 }
 
 func init() { file_sdk_proto_init() }
@@ -10814,7 +11254,7 @@ func file_sdk_proto_init() {
 		(*HostEvent_AuthUserRegistered)(nil),
 		(*HostEvent_AccountRateLimitTriggered)(nil),
 	}
-	file_sdk_proto_msgTypes[122].OneofWrappers = []any{
+	file_sdk_proto_msgTypes[124].OneofWrappers = []any{
 		(*GatewayForwardChunk_Headers)(nil),
 		(*GatewayForwardChunk_Body)(nil),
 		(*GatewayForwardChunk_Trailers)(nil),
@@ -10825,10 +11265,10 @@ func file_sdk_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sdk_proto_rawDesc), len(file_sdk_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   149,
+			NumEnums:      2,
+			NumMessages:   153,
 			NumExtensions: 0,
-			NumServices:   14,
+			NumServices:   15,
 		},
 		GoTypes:           file_sdk_proto_goTypes,
 		DependencyIndexes: file_sdk_proto_depIdxs,

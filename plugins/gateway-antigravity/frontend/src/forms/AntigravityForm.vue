@@ -48,14 +48,14 @@
               :class="['input flex-1', mapping.to.includes('*') ? 'border-red-500 dark:border-red-500' : '']"
               :placeholder="t('admin.accounts.actualModel')" />
             <button type="button" @click="removeModelMapping(index)"
-              class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20">
+              class="btn-ghost-danger rounded-lg p-2 transition-colors">
               <Icon name="trash" size="sm" />
             </button>
           </div>
-          <p v-if="!isValidWildcardPattern(mapping.from)" class="text-xs text-red-500">
+          <p v-if="!isValidWildcardPattern(mapping.from)" class="text-semantic-danger text-xs">
             {{ t('admin.accounts.wildcardOnlyAtEnd') }}
           </p>
-          <p v-if="mapping.to.includes('*')" class="text-xs text-red-500">
+          <p v-if="mapping.to.includes('*')" class="text-semantic-danger text-xs">
             {{ t('admin.accounts.targetNoWildcard') }}
           </p>
         </div>

@@ -210,7 +210,6 @@ func (c *upstreamClient) handleErrorResponse(
 	})
 }
 
-
 // streamFullBody reads a non-streaming response and sends it as one
 // body chunk, extracting usage from the complete body.
 func (c *upstreamClient) streamFullBody(
@@ -286,6 +285,7 @@ func (c *upstreamClient) streamSSEBody(
 	})
 
 }
+
 // buildForwardResult constructs a GatewayForwardResult from extracted
 // usage data and timing.
 func buildForwardResult(
@@ -337,4 +337,3 @@ func forwardClientHeaders(httpReq *http.Request, clientHeaders map[string]string
 		}
 	}
 }
-

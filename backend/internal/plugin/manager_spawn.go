@@ -151,6 +151,7 @@ func (m *PluginManager) spawnStages() []spawnStage {
 		{name: "pricing", do: m.spawnTryPricing, rollback: nil},
 		{name: "platforms", do: m.spawnRegisterPlatforms, rollback: m.spawnRollbackPlatforms},
 		{name: "maintenance", do: m.spawnTryMaintenance, rollback: nil},
+		{name: "content_intercept", do: m.spawnTryContentIntercept, rollback: nil},
 	}
 }
 

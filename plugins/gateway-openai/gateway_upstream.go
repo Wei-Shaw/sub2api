@@ -133,7 +133,6 @@ func resolveModelMapping(
 	)
 }
 
-
 // applyAccountHeaders sets headers specific to the account type.
 // OAuth accounts require Host=chatgpt.com and chatgpt-account-id.
 func applyAccountHeaders(req *http.Request, acct *decodedAccount) {
@@ -187,4 +186,3 @@ func forwardClientHeaders(httpReq *http.Request, clientHeaders map[string]string
 		}
 	}
 }
-

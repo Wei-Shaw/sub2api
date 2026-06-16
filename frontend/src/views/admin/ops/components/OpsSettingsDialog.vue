@@ -50,6 +50,10 @@ async function loadAllSettings() {
     runtimeSettings.value = runtime
     emailConfig.value = email
     advancedSettings.value = advanced
+    // 兼容旧 payload：后端未返回该字段时补默认值，保证表单可绑定
+    if (advancedSettings.value && !advancedSettings.value.openai_account_quota_auto_pause) {
+      advancedSettings.value.openai_account_quota_auto_pause = { default_threshold_5h: 0, default_threshold_7d: 0 }
+    }
     // 如果后端返回了阈值，使用后端的值；否则保持默认值
     if (thresholds && Object.keys(thresholds).length > 0) {
         metricThresholds.value = {
@@ -119,6 +123,28 @@ function removeRecipient(target: 'alert' | 'report', email: string) {
   if (idx >= 0) list.splice(idx, 1)
 }
 
+// OpenAI 账号配额自动暂停：后端按 0~1 分数存储，UI 按百分比(0~100)展示
+const quotaAutoPause5hPercent = computed<number | null>({
+  get() {
+    const v = advancedSettings.value?.openai_account_quota_auto_pause?.default_threshold_5h
+    return v && v > 0 ? Math.round(v * 1000) / 10 : null
+  },
+  set(val) {
+    if (!advancedSettings.value?.openai_account_quota_auto_pause) return
+    advancedSettings.value.openai_account_quota_auto_pause.default_threshold_5h = val != null && val > 0 ? val / 100 : 0
+  }
+})
+const quotaAutoPause7dPercent = computed<number | null>({
+  get() {
+    const v = advancedSettings.value?.openai_account_quota_auto_pause?.default_threshold_7d
+    return v && v > 0 ? Math.round(v * 1000) / 10 : null
+  },
+  set(val) {
+    if (!advancedSettings.value?.openai_account_quota_auto_pause) return
+    advancedSettings.value.openai_account_quota_auto_pause.default_threshold_7d = val != null && val > 0 ? val / 100 : 0
+  }
+})
+
 // 验证
 const validation = computed(() => {
   const errors: string[] = []
@@ -144,6 +170,11 @@ const validation = computed(() => {
     }
     if (hourly_metrics_retention_days < 0 || hourly_metrics_retention_days > 365) {
       errors.push(t('admin.ops.settings.validation.retentionDaysRange'))
+    }
+
+    const { default_threshold_5h, default_threshold_7d } = advancedSettings.value.openai_account_quota_auto_pause
+    if (default_threshold_5h < 0 || default_threshold_5h > 1 || default_threshold_7d < 0 || default_threshold_7d > 1) {
+      errors.push(t('admin.ops.settings.validation.openaiQuotaAutoPauseRange'))
     }
   }
 
@@ -471,6 +502,40 @@ async function saveAllSettings() {
               </div>
               <Toggle v-model="advancedSettings.aggregation.aggregation_enabled" />
             </div>
+          </div>
+
+          <!-- OpenAI 账号配额自动暂停（全局默认阈值） -->
+          <div class="space-y-3">
+            <h5 class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.openaiQuotaAutoPause') }}</h5>
+            <p class="text-xs text-gray-500">{{ t('admin.ops.settings.openaiQuotaAutoPauseHint') }}</p>
+
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t('admin.ops.settings.openaiQuotaAutoPauseDefault5h') }}</label>
+                <input
+                  v-model.number="quotaAutoPause5hPercent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  class="input"
+                  data-testid="ops-quota-auto-pause-5h"
+                />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.settings.openaiQuotaAutoPauseDefault7d') }}</label>
+                <input
+                  v-model.number="quotaAutoPause7dPercent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  class="input"
+                  data-testid="ops-quota-auto-pause-7d"
+                />
+              </div>
+            </div>
+            <p class="text-xs text-gray-500">{{ t('admin.ops.settings.openaiQuotaAutoPauseThresholdHint') }}</p>
           </div>
 
           <!-- Error Filtering -->

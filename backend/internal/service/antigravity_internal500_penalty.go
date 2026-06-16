@@ -95,3 +95,40 @@ func (s *AntigravityGatewayService) resetInternal500Counter(
 			"prefix", prefix, "account_id", accountID, "error", err)
 	}
 }
+
+// internal500PipelinePrefix 是 pipeline 路径下 INTERNAL 500 惩罚日志的统一前缀。
+const internal500PipelinePrefix = "[pipeline-antigravity]"
+
+// Internal500PenaltyHook 是网关 pipeline 在失败/成功 hook 中消费的最小接口，
+// 用于在插件转发路径复刻 INTERNAL 500 渐进惩罚（计数 + 临时不可调度 + 永久禁用）。
+//
+// 由 *AntigravityGatewayService 实现并通过 GatewayService.SetInternal500PenaltyHook
+// 在启动期注入；nil 时所有调用方按 no-op 处理（不影响正常成功路径）。
+type Internal500PenaltyHook interface {
+	// PenalizeInternal500 在一次上游错误被判定为特定 INTERNAL 500 时调用：
+	// 递增该账号的连续失败计数并按轮次应用惩罚。
+	PenalizeInternal500(ctx context.Context, account *Account)
+	// ClearInternal500 在该账号一次转发成功时调用：清零连续失败计数。
+	ClearInternal500(ctx context.Context, accountID int64)
+}
+
+// PenalizeInternal500 实现 Internal500PenaltyHook：复用既有计数 + 惩罚算法。
+func (s *AntigravityGatewayService) PenalizeInternal500(ctx context.Context, account *Account) {
+	if s == nil || account == nil {
+		return
+	}
+	s.handleInternal500RetryExhausted(ctx, internal500PipelinePrefix, account)
+}
+
+// ClearInternal500 实现 Internal500PenaltyHook：复用既有清零逻辑。
+func (s *AntigravityGatewayService) ClearInternal500(ctx context.Context, accountID int64) {
+	if s == nil {
+		return
+	}
+	s.resetInternal500Counter(ctx, internal500PipelinePrefix, accountID)
+}
+
+// IsAntigravityInternal500 暴露给 pipeline 侧的 INTERNAL 500 判定（复用同一匹配规则）。
+func IsAntigravityInternal500(statusCode int, body []byte) bool {
+	return isAntigravityInternalServerError(statusCode, body)
+}

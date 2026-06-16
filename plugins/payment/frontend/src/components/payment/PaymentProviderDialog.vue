@@ -11,14 +11,14 @@
         <div>
           <label class="input-label">
             {{ t('payment.adminSettings.providerName') }}
-            <span class="text-red-500">*</span>
+            <span class="input-required">*</span>
           </label>
           <input v-model="form.name" type="text" class="input" required />
         </div>
         <div>
           <label class="input-label">
             {{ t('payment.adminSettings.providerKey') }}
-            <span class="text-red-500">*</span>
+            <span class="input-required">*</span>
           </label>
           <Select
             v-model="form.provider_key"

@@ -186,8 +186,12 @@ async function ensureAntigravityMixedChannelConfirmed(groupIds: number[], onConf
     if (!result.has_risk) return true
     openMixedChannelDialog({ response: result, onConfirm: async () => { antigravityMixedChannelConfirmed.value = true; await onConfirm() } })
     return false
-  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('admin.accounts.failedToUpdate'))); return false }
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.failedToUpdate')))
+    return false
+  }
 }
+
 async function handleMixedChannelConfirm() { const a = mixedChannelWarningAction.value; if (!a) { clearMixedChannelDialog(); return }; clearMixedChannelDialog(); submitting.value = true; try { await a() } finally { submitting.value = false } }
 function handleMixedChannelCancel() { clearMixedChannelDialog() }
 function withConfirmFlag(payload: Record<string, unknown>): Record<string, unknown> {

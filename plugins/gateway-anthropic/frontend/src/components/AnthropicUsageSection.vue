@@ -22,14 +22,14 @@
   </div>
 
   <!-- Error state -->
-  <div v-else-if="error" class="text-xs text-red-500">
+  <div v-else-if="error" class="text-semantic-danger text-xs">
     {{ error }}
   </div>
 
   <!-- Usage data -->
   <div v-else-if="usageInfo" class="space-y-1">
     <!-- API error (degraded response) -->
-    <div v-if="usageInfo.error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]" :title="usageInfo.error">
+    <div v-if="usageInfo.error" class="text-semantic-warning text-xs truncate max-w-[200px]" :title="usageInfo.error">
       {{ usageInfo.error }}
     </div>
     <!-- 5h Window -->
@@ -70,7 +70,7 @@
       </span>
       <button
         type="button"
-        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
+        class="btn-ghost-info inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium transition-colors"
         :disabled="activeQueryLoading"
         @click="$emit('active-query')"
       >

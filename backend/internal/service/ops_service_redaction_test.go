@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/json"
 	"testing"
 )
 
@@ -42,37 +41,6 @@ func TestIsSensitiveKey_TokenBudgetKeysNotRedacted(t *testing.T) {
 		if !isSensitiveKey(key) {
 			t.Fatalf("expected key %q to be treated as sensitive", key)
 		}
-	}
-}
-
-func TestSanitizeAndTrimRequestBody_PreservesTokenBudgetFields(t *testing.T) {
-	t.Parallel()
-
-	raw := []byte(`{"model":"claude-3","max_tokens":123,"thinking":{"type":"enabled","budget_tokens":456},"access_token":"abc","messages":[{"role":"user","content":"hi"}]}`)
-	out, _, _ := sanitizeAndTrimRequestBody(raw, 10*1024)
-	if out == "" {
-		t.Fatalf("expected non-empty sanitized output")
-	}
-
-	var decoded map[string]any
-	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
-		t.Fatalf("unmarshal sanitized output: %v", err)
-	}
-
-	if got, ok := decoded["max_tokens"].(float64); !ok || got != 123 {
-		t.Fatalf("expected max_tokens=123, got %#v", decoded["max_tokens"])
-	}
-
-	thinking, ok := decoded["thinking"].(map[string]any)
-	if !ok || thinking == nil {
-		t.Fatalf("expected thinking object to be preserved, got %#v", decoded["thinking"])
-	}
-	if got, ok := thinking["budget_tokens"].(float64); !ok || got != 456 {
-		t.Fatalf("expected thinking.budget_tokens=456, got %#v", thinking["budget_tokens"])
-	}
-
-	if got := decoded["access_token"]; got != "[REDACTED]" {
-		t.Fatalf("expected access_token to be redacted, got %#v", got)
 	}
 }
 

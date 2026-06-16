@@ -216,7 +216,7 @@ function resetForm(rule: ServiceQuotaRule | null) {
     initial.target_user_ids = rule.target_user_ids ?? null
   }
   Object.assign(form, initial)
-  selectedTargetUsers.value = (rule?.target_users || []).map((u) => ({ id: u.id, email: u.email }))
+  selectedTargetUsers.value = (rule?.target_users || []).map((u) => ({ id: u.id, email: u.email, deleted: false }))
 }
 
 function counterModeHint(value: string): string {

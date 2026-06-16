@@ -24,11 +24,3 @@ func TestClassifyOpenAIPreviousResponseIDKind(t *testing.T) {
 	}
 }
 
-func TestIsOpenAIPreviousResponseIDLikelyMessageID(t *testing.T) {
-	if !IsOpenAIPreviousResponseIDLikelyMessageID("msg_123") {
-		t.Fatal("expected msg_123 to be identified as message id")
-	}
-	if IsOpenAIPreviousResponseIDLikelyMessageID("resp_123") {
-		t.Fatal("expected resp_123 not to be identified as message id")
-	}
-}

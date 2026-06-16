@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"log/slog"
 	"strings"
 	"time"
@@ -404,4 +404,3 @@ func resolveModelMapping(requestedModel string, acct *pb.GatewayAccountInfo) str
 		acct.GetAccountType(),
 	)
 }
-

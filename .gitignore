@@ -147,6 +147,8 @@ docs/*
 !docs/plugin-architecture/
 !docs/plugin-architecture/**
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/legal/
+!docs/legal/*.md
 .serena/
 
 # ===================

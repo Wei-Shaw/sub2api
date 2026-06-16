@@ -14,12 +14,12 @@
       <!-- Error -->
       <div v-if="error" class="space-y-3">
         <div
-          class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-700 dark:bg-red-900/30 dark:text-red-400"
+          class="surface-danger text-semantic-danger rounded-lg p-3 text-sm"
         >
           {{ error }}
         </div>
         <button
-          class="w-full text-sm underline dark:text-blue-400 dark:hover:text-blue-300"
+          class="w-full text-sm underline"
           :style="{ color: methodColor }"
           @click="closeWindow"
         >
@@ -29,10 +29,10 @@
 
       <!-- Success -->
       <div v-else-if="success" class="space-y-3 py-4 text-center">
-        <div class="text-5xl text-green-600 dark:text-green-400">✓</div>
+        <div class="text-semantic-success text-5xl">✓</div>
         <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('payment.result.success') }}</p>
         <button
-          class="text-sm underline dark:text-blue-400 dark:hover:text-blue-300"
+          class="text-sm underline"
           :style="{ color: methodColor }"
           @click="closeWindow"
         >

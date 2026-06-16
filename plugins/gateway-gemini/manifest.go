@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"encoding/json"
@@ -24,9 +24,9 @@ func buildManifest() *pluginsdk.Manifest {
 		},
 		Platforms: []pluginsdk.PlatformDecl{
 			{
-				Platform:    "gemini",
-				DisplayName: "Gemini",
-				IconSVG:     geminiIconSVG,
+				Platform:           "gemini",
+				DisplayName:        "Gemini",
+				IconSVG:            geminiIconSVG,
 				ThemeColor:         "#2563eb",
 				SortOrder:          3,
 				CompatibleGateways: []string{"gemini"},
@@ -87,8 +87,8 @@ func buildManifest() *pluginsdk.Manifest {
 					ShowCost:     true,
 				},
 				TestConfig: &pluginsdk.TestConnectionConfig{
-					ModelSelector:    true,
-					DefaultTestModel: "gemini-2.5-flash",
+					ModelSelector:      true,
+					DefaultTestModel:   "gemini-2.5-flash",
 					ImageModelPatterns: []string{"gemini-", "-image"},
 					PrioritizedModels: []string{
 						"gemini-3.1-flash-image", "gemini-2.5-flash-image",

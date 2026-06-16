@@ -1,14 +1,15 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
@@ -21,13 +22,13 @@ const (
 // streamResult holds accumulated usage data from a completed SSE stream
 // or non-streaming response.
 type streamResult struct {
-	inputTokens      int64
-	outputTokens     int64
-	cacheReadTokens  int64
+	inputTokens       int64
+	outputTokens      int64
+	cacheReadTokens   int64
 	imageOutputTokens int64
-	firstTokenMs     int32
-	clientDisconnect bool
-	sawTerminalEvent bool // true when response.completed / [DONE] was seen
+	firstTokenMs      int32
+	clientDisconnect  bool
+	sawTerminalEvent  bool // true when response.completed / [DONE] was seen
 }
 
 // sendResponseHeaders sends the initial GatewayResponseHeaders chunk
@@ -121,6 +122,12 @@ func proxySSEStream(
 // proxyNonStreamResponse reads the entire non-streaming response body,
 // extracts usage, optionally replaces the model, and sends it as a
 // single body chunk.
+//
+// Some OpenAI-compatible upstreams (including cascaded sub2api instances)
+// may return SSE even when stream=false was requested. When the response
+// Content-Type is text/event-stream, or when JSON parsing yields no usage
+// and the body looks like SSE (contains "data:" or "event:"), the function
+// falls back to extracting usage from SSE data lines.
 func proxyNonStreamResponse(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	resp *http.Response,
@@ -132,13 +139,55 @@ func proxyNonStreamResponse(
 	}
 
 	result := &streamResult{}
-	extractNonStreamUsage(body, result)
+
+	if isEventStreamContentType(resp.Header) {
+		// Content-Type explicitly indicates SSE.
+		extractUsageFromSSEBody(body, result)
+	} else {
+		extractNonStreamUsage(body, result)
+		// Fallback: if JSON parsing yielded no usage and body looks like
+		// SSE, try SSE extraction. This handles upstreams that omit the
+		// Content-Type header while still sending SSE data.
+		if result.inputTokens == 0 && result.outputTokens == 0 && bodyLooksLikeSSE(body) {
+			extractUsageFromSSEBody(body, result)
+		}
+	}
 
 	if originalModel != mappedModel {
 		body = replaceModelInResponseJSON(body, mappedModel, originalModel)
 	}
 
 	return result, gatewayutil.SendBodyChunk(stream, body)
+}
+
+// isEventStreamContentType returns true if the response Content-Type
+// indicates a text/event-stream (SSE) response.
+func isEventStreamContentType(header http.Header) bool {
+	ct := strings.ToLower(header.Get("Content-Type"))
+	return strings.Contains(ct, "text/event-stream")
+}
+
+// bodyLooksLikeSSE returns true if the body contains SSE markers,
+// suggesting the upstream returned SSE despite not being requested.
+func bodyLooksLikeSSE(body []byte) bool {
+	return bytes.Contains(body, []byte("data:")) || bytes.Contains(body, []byte("event:"))
+}
+
+// extractUsageFromSSEBody scans a buffered SSE body (line by line) and
+// extracts usage from any terminal events found. This is used when a
+// non-streaming request unexpectedly receives an SSE response.
+func extractUsageFromSSEBody(body []byte, result *streamResult) {
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	scanner.Buffer(make([]byte, 0, 64*1024), maxSSELineSize)
+	for scanner.Scan() {
+		data, isData := extractSSEData(scanner.Text())
+		if !isData {
+			continue
+		}
+		if u := extractUsageFromSSEData(data); u != nil {
+			applyUsageToResult(u, result)
+		}
+	}
 }
 
 // --- SSE parsing helpers ---

@@ -224,18 +224,18 @@ func TestCorrectToolCallsInSSEData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, corrected := corrector.CorrectToolCallsInSSEData(tt.input)
+			result, corrected := corrector.CorrectToolCallsInSSEBytes([]byte(tt.input))
 
 			if corrected != tt.expectCorrected {
 				t.Errorf("Expected corrected=%v, got %v", tt.expectCorrected, corrected)
 			}
 
-			if !corrected && result != tt.input {
+			if !corrected && string(result) != tt.input {
 				t.Errorf("Expected unchanged result when not corrected")
 			}
 
 			if tt.checkFunc != nil {
-				tt.checkFunc(t, result)
+				tt.checkFunc(t, string(result))
 			}
 		})
 	}
@@ -309,44 +309,6 @@ func TestGetToolNameMapping(t *testing.T) {
 	}
 }
 
-func TestCorrectorStats(t *testing.T) {
-	corrector := NewCodexToolCorrector()
-
-	stats := corrector.GetStats()
-	if stats.TotalCorrected != 0 {
-		t.Errorf("Expected TotalCorrected=0, got %d", stats.TotalCorrected)
-	}
-	if len(stats.CorrectionsByTool) != 0 {
-		t.Errorf("Expected empty CorrectionsByTool, got length %d", len(stats.CorrectionsByTool))
-	}
-
-	corrector.CorrectToolCallsInSSEData(`{"tool_calls":[{"function":{"name":"apply_patch"}}]}`)
-	corrector.CorrectToolCallsInSSEData(`{"tool_calls":[{"function":{"name":"apply_patch"}}]}`)
-	corrector.CorrectToolCallsInSSEData(`{"tool_calls":[{"function":{"name":"update_plan"}}]}`)
-
-	stats = corrector.GetStats()
-	if stats.TotalCorrected != 3 {
-		t.Errorf("Expected TotalCorrected=3, got %d", stats.TotalCorrected)
-	}
-
-	if stats.CorrectionsByTool["apply_patch->edit"] != 2 {
-		t.Errorf("Expected apply_patch->edit count=2, got %d", stats.CorrectionsByTool["apply_patch->edit"])
-	}
-
-	if stats.CorrectionsByTool["update_plan->todowrite"] != 1 {
-		t.Errorf("Expected update_plan->todowrite count=1, got %d", stats.CorrectionsByTool["update_plan->todowrite"])
-	}
-
-	corrector.ResetStats()
-	stats = corrector.GetStats()
-	if stats.TotalCorrected != 0 {
-		t.Errorf("Expected TotalCorrected=0 after reset, got %d", stats.TotalCorrected)
-	}
-	if len(stats.CorrectionsByTool) != 0 {
-		t.Errorf("Expected empty CorrectionsByTool after reset, got length %d", len(stats.CorrectionsByTool))
-	}
-}
-
 func TestComplexSSEData(t *testing.T) {
 	corrector := NewCodexToolCorrector()
 
@@ -374,14 +336,14 @@ func TestComplexSSEData(t *testing.T) {
 		]
 	}`
 
-	result, corrected := corrector.CorrectToolCallsInSSEData(input)
+	result, corrected := corrector.CorrectToolCallsInSSEBytes([]byte(input))
 
 	if !corrected {
 		t.Error("Expected data to be corrected")
 	}
 
 	var payload map[string]any
-	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+	if err := json.Unmarshal(result, &payload); err != nil {
 		t.Fatalf("Failed to parse result: %v", err)
 	}
 
@@ -463,14 +425,14 @@ func TestCorrectToolParameters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			corrected, changed := corrector.CorrectToolCallsInSSEData(tt.input)
+			corrected, changed := corrector.CorrectToolCallsInSSEBytes([]byte(tt.input))
 			if !changed {
 				t.Error("expected data to be corrected")
 			}
 
 			// 解析修正后的数据
 			var result map[string]any
-			if err := json.Unmarshal([]byte(corrected), &result); err != nil {
+			if err := json.Unmarshal(corrected, &result); err != nil {
 				t.Fatalf("failed to parse corrected data: %v", err)
 			}
 

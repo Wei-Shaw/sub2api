@@ -148,7 +148,6 @@ func proxyNonStreamResponse(
 	return result, gatewayutil.SendBodyChunk(stream, body)
 }
 
-
 // --- SSE parsing helpers ---
 
 // extractSSEData extracts the JSON data string from an SSE data line.

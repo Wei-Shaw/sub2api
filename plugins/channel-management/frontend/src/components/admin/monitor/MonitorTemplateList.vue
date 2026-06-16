@@ -61,7 +61,7 @@
           <button class="btn btn-secondary btn-sm" @click="emit('edit', tpl)">
             {{ t('common.edit') }}
           </button>
-          <button class="btn btn-secondary btn-sm text-red-600" @click="emit('delete', tpl)">
+          <button class="btn btn-secondary btn-sm text-semantic-danger" @click="emit('delete', tpl)">
             {{ t('common.delete') }}
           </button>
         </div>

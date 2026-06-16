@@ -27,7 +27,7 @@
           <input v-model="mapping.to" type="text" class="input flex-1"
             :placeholder="t('admin.accounts.toModel')" />
           <button type="button" @click="removeMapping(index)"
-            class="text-red-500 hover:text-red-700">
+            class="text-semantic-danger">
             <Icon name="trash" size="sm" />
           </button>
         </div>

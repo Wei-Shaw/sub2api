@@ -15,13 +15,13 @@ func platformsToProto(decls []PlatformDecl) []*pb.PlatformDeclaration {
 
 func platformDeclToProto(d *PlatformDecl) *pb.PlatformDeclaration {
 	p := &pb.PlatformDeclaration{
-		Platform:      d.Platform,
-		DisplayName:   d.DisplayName,
-		IconSvg:       d.IconSVG,
-		ThemeColor:    d.ThemeColor,
-		AccountTypes:  accountTypesToProto(d.AccountTypes),
-		CustomActions: customActionsToProto(d.CustomActions),
-		SortOrder:     int32(d.SortOrder),
+		Platform:           d.Platform,
+		DisplayName:        d.DisplayName,
+		IconSvg:            d.IconSVG,
+		ThemeColor:         d.ThemeColor,
+		AccountTypes:       accountTypesToProto(d.AccountTypes),
+		CustomActions:      customActionsToProto(d.CustomActions),
+		SortOrder:          int32(d.SortOrder),
 		PrivacyStates:      privacyStatesToProto(d.PrivacyStates),
 		CompatibleGateways: append([]string(nil), d.CompatibleGateways...),
 		FrontendMeta:       append([]byte(nil), d.FrontendMeta...),
@@ -155,10 +155,10 @@ func PlatformDeclFromProto(p *pb.PlatformDeclaration) PlatformDecl {
 		return PlatformDecl{}
 	}
 	d := PlatformDecl{
-		Platform:    p.Platform,
-		DisplayName: p.DisplayName,
-		IconSVG:     p.IconSvg,
-		ThemeColor:  p.ThemeColor,
+		Platform:           p.Platform,
+		DisplayName:        p.DisplayName,
+		IconSVG:            p.IconSvg,
+		ThemeColor:         p.ThemeColor,
 		SortOrder:          int(p.SortOrder),
 		CompatibleGateways: append([]string(nil), p.CompatibleGateways...),
 		FrontendMeta:       append([]byte(nil), p.FrontendMeta...),

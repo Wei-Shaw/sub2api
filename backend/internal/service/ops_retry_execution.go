@@ -239,7 +239,7 @@ func (s *OpsService) selectAccountForRetry(ctx context.Context, groupID *int64, 
 func extractRetryModelAndStream(reqType opsRetryRequestType, errorLog *OpsErrorLogDetail, body []byte) (model string, stream bool, err error) {
 	switch reqType {
 	case opsRetryTypeMessages:
-		parsed, parseErr := ParseGatewayRequest(body, PlatformAnthropic)
+		parsed, parseErr := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
 		if parseErr != nil {
 			return "", false, fmt.Errorf("failed to parse messages request body: %w", parseErr)
 		}
@@ -351,11 +351,3 @@ func (s *OpsService) isFailoverError(message string) bool {
 	return strings.Contains(msg, "upstream error:") && strings.Contains(msg, "failover")
 }
 
-func containsInt64(items []int64, needle int64) bool {
-	for _, v := range items {
-		if v == needle {
-			return true
-		}
-	}
-	return false
-}

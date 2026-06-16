@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/plugins/payment/internal/errors"
+	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 	"github.com/wechatpay-apiv3/wechatpay-go/core"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/auth/verifiers"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/notify"

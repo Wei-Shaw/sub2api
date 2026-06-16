@@ -69,7 +69,7 @@
               {{ t("admin.groups.sortOrder") }}
             </button>
             <button
-              @click="showCreateModal = true"
+              @click="openCreateModal"
               class="btn btn-primary"
               data-tour="groups-create-btn"
             >
@@ -195,10 +195,7 @@
                 }}</span>
                 <span
                   class="ml-1 font-medium text-emerald-600 dark:text-emerald-400"
-                  >{{
-                    (row.active_account_count || 0) -
-                    (row.rate_limited_account_count || 0)
-                  }}</span
+                  >{{ row.active_account_count || 0 }}</span
                 >
                 <span
                   class="ml-1 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-800 dark:bg-dark-600 dark:text-gray-300"
@@ -326,7 +323,7 @@
               :title="t('admin.groups.noGroupsYet')"
               :description="t('admin.groups.createFirstGroup')"
               :action-text="t('admin.groups.createGroup')"
-              @action="showCreateModal = true"
+              @action="openCreateModal"
             />
           </template>
         </DataTable>
@@ -622,6 +619,11 @@ import { usePlatforms } from "@/composables/usePlatforms";
 import { dynamicPlatformBadgeClass } from "@/utils/platformColors";
 import { resolveGroupConfigComponent } from "@/components/admin/group/config/groupConfigRegistry";
 import { getGroupConfigMeta } from "@/utils/platformFrontendMeta";
+import {
+  createModelsListState as createInitialModelsListState,
+  setModelsListCandidates,
+} from "./groupsModelsList";
+import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
 
 const { t } = useI18n();
 const appStore = useAppStore();
@@ -779,7 +781,11 @@ const rpmOverridesGroup = ref<AdminGroup | null>(null);
 const sortableGroups = ref<AdminGroup[]>([]);
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
-
+const createModelsListState = reactive(createInitialModelsListState());
+const editModelsListState = reactive(createInitialModelsListState());
+const createModelsListLoading = ref(false);
+const editModelsListLoading = ref(false);
+const modelsListCandidatesTracker = createModelsListCandidatesTracker();
 const defaultPlatform = computed<GroupPlatform>(() => {
   if (dynamicPlatformList.value.length > 0) {
     return dynamicPlatformList.value[0].value as GroupPlatform;
@@ -828,6 +834,86 @@ const createForm = reactive({
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
 });
+
+// 简单账号类型（用于模型路由选择）
+interface SimpleAccount {
+  id: number;
+  name: string;
+}
+
+// 模型路由规则类型
+interface ModelRoutingRule {
+  pattern: string;
+  accounts: SimpleAccount[]; // 选中的账号对象数组
+}
+
+// 创建表单的模型路由规则
+const createModelRoutingRules = ref<ModelRoutingRule[]>([]);
+
+// 编辑表单的模型路由规则
+const editModelRoutingRules = ref<ModelRoutingRule[]>([]);
+
+const resetModelsListState = (
+  state: typeof createModelsListState,
+  config?: Parameters<typeof createInitialModelsListState>[0],
+) => {
+  const fresh = createInitialModelsListState(config);
+  state.enabled = fresh.enabled;
+  state.savedModels = fresh.savedModels;
+  state.items = fresh.items;
+};
+
+const loadModelsListCandidates = async (
+  mode: "create" | "edit",
+  groupID: number,
+  platform: GroupPlatform,
+) => {
+  const request = { mode, groupID, platform };
+  const requestID = modelsListCandidatesTracker.next(request);
+  const state = mode === "create" ? createModelsListState : editModelsListState;
+  const loadingRef = mode === "create" ? createModelsListLoading : editModelsListLoading;
+  loadingRef.value = true;
+  try {
+    const models = await adminAPI.groups.getModelsListCandidates(groupID, platform);
+    if (!modelsListCandidatesTracker.isCurrent(requestID, request)) {
+      return;
+    }
+    setModelsListCandidates(state, models);
+  } catch (error) {
+    if (!modelsListCandidatesTracker.isCurrent(requestID, request)) {
+      return;
+    }
+    console.error("Error loading group models list candidates:", error);
+  } finally {
+    if (modelsListCandidatesTracker.isCurrent(requestID, request)) {
+      loadingRef.value = false;
+    }
+  }
+};
+
+// 将 API 格式的路由规则转换为 UI 格式（需要加载账号名称）
+const convertApiFormatToRoutingRules = async (
+  apiFormat: Record<string, number[]> | null,
+): Promise<ModelRoutingRule[]> => {
+  if (!apiFormat) return [];
+
+  const rules: ModelRoutingRule[] = [];
+  for (const [pattern, accountIds] of Object.entries(apiFormat)) {
+    // 加载账号信息
+    const accounts: SimpleAccount[] = [];
+    for (const id of accountIds) {
+      try {
+        const account = await adminAPI.accounts.getById(id);
+        accounts.push({ id: account.id, name: account.name });
+      } catch {
+        // 如果账号不存在，仍然显示 ID
+        accounts.push({ id, name: `#${id}` });
+      }
+    }
+    rules.push({ pattern, accounts });
+  }
+  return rules;
+};
 
 const editForm = reactive({
   name: "",
@@ -1022,6 +1108,11 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadGroups();
 };
 
+const openCreateModal = () => {
+  showCreateModal.value = true;
+  loadModelsListCandidates("create", 0, createForm.platform);
+};
+
 const closeCreateModal = () => {
   showCreateModal.value = false;
   createFormFieldsRef.value?.resetRoutingRules?.();
@@ -1049,6 +1140,9 @@ const closeCreateModal = () => {
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
+  createForm.rpm_limit = 0;
+  resetModelsListState(createModelsListState);
+  createModelRoutingRules.value = [];
 };
 
 const normalizeOptionalLimit = (
@@ -1186,6 +1280,12 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
+  resetModelsListState(editModelsListState, group.models_list_config);
+  // 加载模型路由规则（异步加载账号名称）
+  editModelRoutingRules.value = await convertApiFormatToRoutingRules(
+    group.model_routing,
+  );
+  loadModelsListCandidates("edit", group.id, group.platform);
   showEditModal.value = true;
   // 加载模型路由规则（异步，需等待组件挂载后）
   nextTick(() => {
@@ -1199,6 +1299,7 @@ const closeEditModal = () => {
   editingGroup.value = null;
   editForm.copy_accounts_from_group_ids = [];
   resetMessagesDispatchFormState(editForm);
+  resetModelsListState(editModelsListState);
 };
 
 const handleUpdateGroup = async () => {
@@ -1309,6 +1410,12 @@ watch(
     if (!platformSupportsMessagesDispatch(newVal)) {
       resetMessagesDispatchFormState(createForm);
     }
+    if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
+      createForm.require_oauth_only = false;
+      createForm.require_privacy_set = false;
+    }
+    resetModelsListState(createModelsListState);
+    loadModelsListCandidates("create", 0, newVal);
   },
 );
 
@@ -1322,6 +1429,10 @@ watch(
       resetMessagesDispatchFormState(editForm);
       editForm.allow_messages_dispatch = false;
       editForm.default_mapped_model = '';
+    }
+    if (editingGroup.value) {
+      resetModelsListState(editModelsListState, editForm.platform === editingGroup.value.platform ? editingGroup.value.models_list_config : undefined);
+      loadModelsListCandidates("edit", editingGroup.value.id, newVal);
     }
   },
 );
@@ -1375,5 +1486,6 @@ const saveSortOrder = async () => {
 onMounted(() => {
   fetchPlatforms();
   loadGroups();
+  loadModelsListCandidates("create", 0, createForm.platform);
 });
 </script>

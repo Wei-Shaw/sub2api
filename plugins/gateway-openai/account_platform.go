@@ -1,19 +1,19 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"io"
 	"net/http"
 	"regexp"
 	"strings"
 
-	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
 
@@ -111,7 +111,6 @@ func validateCredentialsByType(accountType string, creds map[string]any) map[str
 	}
 	return errs
 }
-
 
 // TestConnection performs a connectivity test against the OpenAI API.
 // It sends a minimal streaming request to the OpenAI Responses API and
@@ -368,7 +367,6 @@ func extractErrorMessage(data map[string]any) string {
 	}
 	return "unknown error"
 }
-
 
 // RefreshTier refreshes account tier/plan info.
 // OpenAI does not expose a standard tier API; this queries the ChatGPT

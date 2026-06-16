@@ -71,7 +71,7 @@
       <button
         type="button"
         @click="$emit('remove-rule')"
-        class="mt-5 p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+        class="btn-icon-danger mt-5 p-1.5"
         :title="t('admin.groups.modelRouting.removeRule')"
       >
         <Icon name="trash" size="sm" />

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -29,27 +28,32 @@ func TestParseOpenAIWSResponseUsageFromCompletedEvent(t *testing.T) {
 	require.Equal(t, 11, usage.InputTokens)
 	require.Equal(t, 7, usage.OutputTokens)
 	require.Equal(t, 3, usage.CacheReadInputTokens)
+
+	parseOpenAIWSResponseUsageFromCompletedEvent(
+		[]byte(`{"type":"response.completed","response":{"usage":{"prompt_tokens":19,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":4}}}}`),
+		usage,
+	)
+	require.Equal(t, 19, usage.InputTokens)
+	require.Equal(t, 5, usage.OutputTokens)
+	require.Equal(t, 4, usage.CacheReadInputTokens)
 }
 
-func TestOpenAIWSErrorEventHelpers_ConsistentWithWrapper(t *testing.T) {
-	message := []byte(`{"type":"error","error":{"type":"invalid_request_error","code":"invalid_request","message":"invalid input"}}`)
-	codeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
+func TestOpenAIWSEventShouldParseUsageTerminalEvents(t *testing.T) {
+	t.Parallel()
 
-	wrappedReason, wrappedRecoverable := classifyOpenAIWSErrorEvent(message)
-	rawReason, rawRecoverable := classifyOpenAIWSErrorEventFromRaw(codeRaw, errTypeRaw, errMsgRaw)
-	require.Equal(t, wrappedReason, rawReason)
-	require.Equal(t, wrappedRecoverable, rawRecoverable)
-
-	wrappedStatus := openAIWSErrorHTTPStatus(message)
-	rawStatus := openAIWSErrorHTTPStatusFromRaw(codeRaw, errTypeRaw)
-	require.Equal(t, wrappedStatus, rawStatus)
-	require.Equal(t, http.StatusBadRequest, rawStatus)
-
-	wrappedCode, wrappedType, wrappedMsg := summarizeOpenAIWSErrorEventFields(message)
-	rawCode, rawType, rawMsg := summarizeOpenAIWSErrorEventFieldsFromRaw(codeRaw, errTypeRaw, errMsgRaw)
-	require.Equal(t, wrappedCode, rawCode)
-	require.Equal(t, wrappedType, rawType)
-	require.Equal(t, wrappedMsg, rawMsg)
+	for _, eventType := range []string{
+		"response.completed",
+		"response.done",
+		"response.failed",
+		"response.incomplete",
+		"response.cancelled",
+		"response.canceled",
+	} {
+		require.True(t, openAIWSEventShouldParseUsage(eventType), eventType)
+		require.True(t, openAIWSEventShouldParseUsage("  "+eventType+"  "), eventType)
+	}
+	require.False(t, openAIWSEventShouldParseUsage("response.output_text.delta"))
+	require.False(t, openAIWSEventShouldParseUsage(""))
 }
 
 func TestOpenAIWSMessageLikelyContainsToolCalls(t *testing.T) {

@@ -233,6 +233,10 @@
     @apply bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400;
   }
 
+  .stat-icon-info {
+    @apply bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400;
+  }
+
   .stat-value {
     @apply text-2xl font-bold text-gray-900 dark:text-white truncate;
   }
@@ -312,6 +316,155 @@
 
   .badge-purple {
     @apply bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400;
+  }
+
+  /* ============ 软按钮 (soft / tinted) ============
+     轻量语义按钮: 浅色底 + 语义文字, 用于次级操作 (退款 / 取消 / 清空等),
+     区别于 .btn-danger / .btn-warning 的实心渐变主操作。单点定义, 各插件复用,
+     避免在模板里散落 bg-red-50/text-red-600 等裸色类。 */
+  .btn-soft-danger {
+    @apply bg-red-50 text-red-600 hover:bg-red-100;
+    @apply dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30;
+  }
+
+  .btn-soft-warning {
+    @apply bg-amber-50 text-amber-600 hover:bg-amber-100;
+    @apply dark:bg-amber-900/20 dark:text-amber-400 dark:hover:bg-amber-900/30;
+  }
+
+  .btn-soft-success {
+    @apply bg-emerald-50 text-emerald-600 hover:bg-emerald-100;
+    @apply dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/30;
+  }
+
+  /* 幽灵语义按钮 (ghost + tinted): 透明底 + 语义文字, hover 才出浅底 */
+  .btn-ghost-danger {
+    @apply text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20;
+  }
+
+  .btn-ghost-success {
+    @apply text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20;
+  }
+
+  .btn-ghost-warning {
+    @apply text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20;
+  }
+
+  .btn-ghost-info {
+    @apply text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20;
+  }
+
+  /* 描边软按钮 (outline + tinted): 浅色边框 + 语义文字, hover 浅底 */
+  .btn-soft-outline-danger {
+    @apply border border-red-200 text-red-600 hover:bg-red-50;
+    @apply dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30;
+  }
+
+  .btn-soft-outline-success {
+    @apply border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100;
+    @apply dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/30;
+  }
+
+  /* ============ 语义信息面板 (surface) ============
+     浅色语义底 + 边框, 用于退款信息 / 状态提示等信息块。 */
+  .surface-danger {
+    @apply border border-red-200 bg-red-50;
+    @apply dark:border-red-800 dark:bg-red-900/20;
+  }
+
+  .surface-warning {
+    @apply border border-amber-200 bg-amber-50;
+    @apply dark:border-amber-800 dark:bg-amber-900/20;
+  }
+
+  .surface-success {
+    @apply border border-emerald-200 bg-emerald-50;
+    @apply dark:border-emerald-800 dark:bg-emerald-900/20;
+  }
+
+  .surface-info {
+    @apply border border-blue-200 bg-blue-50;
+    @apply dark:border-blue-800 dark:bg-blue-900/20;
+  }
+
+  /* info 强调底 (信息面板内 code / 标签的稍深底色) */
+  .surface-info-strong {
+    @apply bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200;
+  }
+
+  /* hover 语义着色: 默认灰, hover 变语义色 (图标动作按钮 / 列表行内操作)。
+     只负责 hover 颜色, 布局 (尺寸 / padding / flex) 留给模板。 */
+  .hover-tint-danger {
+    @apply text-gray-500 transition-colors;
+    @apply hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400;
+  }
+
+  .hover-tint-warning {
+    @apply text-gray-500 transition-colors;
+    @apply hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-400;
+  }
+
+  .hover-tint-info {
+    @apply text-gray-500 transition-colors;
+    @apply hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400;
+  }
+
+  .hover-tint-success {
+    @apply text-gray-500 transition-colors;
+    @apply hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400;
+  }
+
+  /* 语义复选框: 选中色 + focus ring 走语义色 (危险操作的强制确认勾选等) */
+  .checkbox-danger {
+    @apply rounded border-gray-300 text-red-600 focus:ring-red-500;
+    @apply dark:border-dark-600;
+  }
+
+  /* 语义圆点 (列表 / 标题前的状态小圆点)。与 StatusBadge 的 variant 色一致。 */
+  .dot-success {
+    @apply bg-emerald-500;
+  }
+
+  .dot-warning {
+    @apply bg-amber-500;
+  }
+
+  .dot-danger {
+    @apply bg-red-500;
+  }
+
+  .dot-info {
+    @apply bg-blue-500;
+  }
+
+  /* 语义边框色 (spinner / 描边等需要纯边框语义色的场景) */
+  .border-semantic-warning {
+    @apply border-amber-500;
+  }
+
+  .border-semantic-success {
+    @apply border-emerald-500;
+  }
+
+  .border-semantic-danger {
+    @apply border-red-500;
+  }
+
+  /* 语义文字色 (用于面板内标题 / 数值, 配合 surface-* 使用) */
+  .text-semantic-danger {
+    @apply text-red-600 dark:text-red-400;
+  }
+
+  .text-semantic-warning {
+    @apply text-amber-600 dark:text-amber-400;
+  }
+
+  .text-semantic-success {
+    @apply text-emerald-600 dark:text-emerald-400;
+  }
+
+  .text-semantic-info {
+    @apply text-blue-600 dark:text-blue-400;
   }
 
   /* ============ 下拉菜单 ============ */

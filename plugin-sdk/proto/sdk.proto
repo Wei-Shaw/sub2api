@@ -1049,6 +1049,11 @@ service HostService {
   // for the payment plugin. Plugins with db.core.read could read users
   // directly; this RPC exists so payment-flavored fields can evolve.
   rpc GetUserByID(GetUserByIDRequest) returns (GetUserByIDResponse);
+
+  // SetUserDisabled disables or re-enables a user account. Used by
+  // content moderation plugins to auto-ban users who violate policy.
+  // Also invalidates the user's auth cache to take effect immediately.
+  rpc SetUserDisabled(SetUserDisabledRequest) returns (SetUserDisabledResponse);
 }
 
 // CreditBalanceRequest credits a user's balance.
@@ -1195,6 +1200,18 @@ message ResolveModelPricingResponse {
   string cache_read_price_per_token = 5;
   // Image-output token pricing (nano-banana / gpt-image style models).
   string image_output_price_per_token = 6;
+}
+
+message SetUserDisabledRequest {
+  int64 user_id = 1;
+  // disabled=true bans the user; disabled=false unbans.
+  bool disabled = 2;
+  // reason is stored in the user's disable_reason field for audit trail.
+  string reason = 3;
+}
+
+message SetUserDisabledResponse {
+  bool success = 1;
 }
 
 // ============================================================
@@ -1881,4 +1898,82 @@ message ReportOpsErrorRequest {
 }
 
 message ReportOpsErrorResponse {}
+
+// ============================================================
+// ContentInterceptExtension — gateway request content interception
+// ============================================================
+//
+// ContentInterceptExtension allows a plugin to inspect request content
+// before the gateway forwards it upstream. The host calls Check() in
+// the pipeline preflight stage, after account selection but before
+// forwarding. The plugin evaluates the content against its moderation
+// policy and returns an action (allow / block / observe).
+//
+// Operating modes (controlled by the plugin's internal config):
+//   - off:       host never calls Check()
+//   - observe:   host calls Check() asynchronously; never blocks requests
+//   - pre_block: host calls Check() synchronously; blocks if action=BLOCK
+//
+// The host decides sync/async based on the mode reported by the plugin
+// in its manifest or via a config query. The plugin itself is stateless
+// with respect to mode — it always evaluates and returns a decision.
+//
+// Availability: probed lazily like other extensions. If the plugin does
+// not implement this service, the host skips content interception.
+service ContentInterceptExtension {
+  // Check evaluates request content against the plugin's moderation policy.
+  rpc Check(ContentCheckRequest) returns (ContentCheckResponse);
+}
+
+message ContentCheckRequest {
+  string request_id = 1;
+
+  // user context
+  int64 user_id = 2;
+  string user_email = 3;
+
+  // api key context
+  int64 api_key_id = 4;
+  string api_key_name = 5;
+  int64 group_id = 6;
+  string group_name = 7;
+
+  // request context
+  string endpoint = 8;     // "/v1/messages", "/v1/chat/completions", etc.
+  string protocol = 9;     // "anthropic", "openai", "gemini"
+  string provider = 10;    // platform: "anthropic", "openai", "gemini", "antigravity"
+  string model = 11;
+
+  // raw request body for content extraction
+  bytes body = 12;
+}
+
+message ContentCheckResponse {
+  // action is the moderation decision.
+  ContentAction action = 1;
+
+  // blocked is true when the request should be rejected.
+  bool blocked = 2;
+
+  // flagged is true when the content was flagged (may be allowed in observe mode).
+  bool flagged = 3;
+
+  // status_code is the HTTP status to return when blocked (default 403).
+  int32 status_code = 4;
+
+  // message is the user-facing error message when blocked.
+  string message = 5;
+
+  // highest_category is the moderation category with the highest score.
+  string highest_category = 6;
+
+  // highest_score is the score of the highest category.
+  double highest_score = 7;
+}
+
+enum ContentAction {
+  CONTENT_ACTION_ALLOW = 0;
+  CONTENT_ACTION_BLOCK = 1;
+  CONTENT_ACTION_OBSERVE = 2;
+}
 

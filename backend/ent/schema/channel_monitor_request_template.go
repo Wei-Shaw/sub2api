@@ -40,6 +40,10 @@ func (ChannelMonitorRequestTemplate) Fields() []ent.Field {
 			MaxLen(100),
 		field.Enum("provider").
 			Values("openai", "anthropic", "gemini"),
+		field.String("api_mode").
+			Default("chat_completions").
+			MaxLen(32).
+			Comment("OpenAI request protocol: chat_completions or responses; non-OpenAI uses chat_completions"),
 		field.String("description").
 			Optional().
 			Default("").
@@ -76,5 +80,6 @@ func (ChannelMonitorRequestTemplate) Indexes() []ent.Index {
 	return []ent.Index{
 		// 同一 provider 内 name 唯一：允许 Anthropic + OpenAI 重名 "伪装官方客户端"。
 		index.Fields("provider", "name").Unique(),
+		index.Fields("provider", "api_mode"),
 	}
 }

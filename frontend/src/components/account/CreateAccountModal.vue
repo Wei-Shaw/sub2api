@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.createAccount')"
@@ -338,6 +338,7 @@ const currentPlatformDecl = computed(() => getPlatformDecl(form.platform))
 const step = ref(1)
 const submitting = ref(false)
 const formLoading = ref(false)
+const autoPauseOnExpired = ref(true)
 
 const accountCategory = ref<string>('oauth-based')
 const addMethod = ref<AddMethod>('oauth')
@@ -353,6 +354,8 @@ const form = reactive({
 // Cached from plugin form payload before transitioning to OAuth Step 3
 // Stores ALL common fields so they survive the v-if destruction of the plugin form component
 const cachedCommonFields = ref<CommonAccountFields | null>(null)
+
+const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
 
 // ---------------------------------------------------------------------------
 // Account type -> category mapping (data-driven, no platform name checks)
@@ -815,6 +818,8 @@ function resetForm() {
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
   selectedAccountTypeId.value = 'oauth'
+  autoPauseOnExpired.value = true
+  geminiOAuthType.value = 'code_assist'
   antigravityMixedChannelConfirmed.value = false
   resolvedFormComponent.value = null
   clearMixedChannelDialog()

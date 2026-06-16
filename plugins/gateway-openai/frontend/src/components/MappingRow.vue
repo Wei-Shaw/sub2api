@@ -45,7 +45,7 @@
       <button
         type="button"
         @click="$emit('remove')"
-        class="mt-6 flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+        class="btn-icon-danger mt-6 flex h-9 w-9 items-center justify-center"
         :title="t('admin.groups.openaiMessages.removeExactMapping')"
       >
         <Icon name="trash" size="sm" />

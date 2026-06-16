@@ -1,17 +1,17 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"io"
 	"net/http"
 	"strings"
 
-	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
 
@@ -99,7 +99,6 @@ func validateCredentialsByType(accountType string, creds map[string]any) map[str
 	}
 	return errs
 }
-
 
 // TestConnection performs a connectivity test against the Antigravity API.
 // For OAuth accounts: calls the Antigravity v1internal streamGenerateContent
@@ -322,7 +321,6 @@ func parseCredentials(raw []byte) (*antigravityCredentials, error) {
 	}
 	return &c, nil
 }
-
 
 // RefreshTier refreshes account tier/plan info from the Antigravity API.
 // Calls loadCodeAssist to retrieve the current tier and plan_type.

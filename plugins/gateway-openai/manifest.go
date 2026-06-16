@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"encoding/json"
@@ -24,9 +24,9 @@ func buildManifest() *pluginsdk.Manifest {
 		},
 		Platforms: []pluginsdk.PlatformDecl{
 			{
-				Platform:    "openai",
-				DisplayName: "OpenAI",
-				IconSVG:     openaiIconSVG,
+				Platform:           "openai",
+				DisplayName:        "OpenAI",
+				IconSVG:            openaiIconSVG,
 				ThemeColor:         "#10b981",
 				SortOrder:          2,
 				CompatibleGateways: []string{"openai", "chat_completions", "responses", "anthropic_via_openai", "images"},
@@ -53,10 +53,10 @@ func buildManifest() *pluginsdk.Manifest {
 				AccountTypes: []pluginsdk.AccountTypeDecl{
 					{
 						Type:              "oauth",
-						DisplayName: "OAuth",
-						Description: "ChatGPT Plus/Team/Enterprise OAuth session",
-						SortOrder:   1,
-						BadgeLabel:         "OAuth",
+						DisplayName:       "OAuth",
+						Description:       "ChatGPT Plus/Team/Enterprise OAuth session",
+						SortOrder:         1,
+						BadgeLabel:        "OAuth",
 						FormComponentPath: "OpenAIForm",
 						FrontendMeta: json.RawMessage(`{
 							"supports_passthrough": true,
@@ -68,10 +68,10 @@ func buildManifest() *pluginsdk.Manifest {
 					},
 					{
 						Type:              "apikey",
-						DisplayName: "API Key",
-						Description: "OpenAI platform API key",
-						SortOrder:   2,
-						BadgeLabel:         "Key",
+						DisplayName:       "API Key",
+						Description:       "OpenAI platform API key",
+						SortOrder:         2,
+						BadgeLabel:        "Key",
 						FormComponentPath: "OpenAIForm",
 						FrontendMeta: json.RawMessage(`{
 							"supports_passthrough": true,

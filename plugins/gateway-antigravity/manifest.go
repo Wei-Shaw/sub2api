@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"encoding/json"
@@ -24,9 +24,9 @@ func buildManifest() *pluginsdk.Manifest {
 		},
 		Platforms: []pluginsdk.PlatformDecl{
 			{
-				Platform:    "antigravity",
-				DisplayName: "Antigravity",
-				IconSVG:     antigravityIconSVG,
+				Platform:           "antigravity",
+				DisplayName:        "Antigravity",
+				IconSVG:            antigravityIconSVG,
 				ThemeColor:         "#7c3aed",
 				SortOrder:          4,
 				CompatibleGateways: []string{"antigravity"},
@@ -57,10 +57,18 @@ func buildManifest() *pluginsdk.Manifest {
 					{
 						Type:              "oauth",
 						DisplayName:       "OAuth",
-						Description:        "Antigravity Google OAuth session (Code Assist)",
-						SortOrder:          1,
-						BadgeLabel:         "OAuth",
-						FormComponentPath:  "AntigravityForm",
+						Description:       "Antigravity Google OAuth session (Code Assist)",
+						SortOrder:         1,
+						BadgeLabel:        "OAuth",
+						FormComponentPath: "AntigravityForm",
+						// TODO(plugin-grpc): AI Credits / overages injection
+						// (enabledCreditTypes=GOOGLE_ONE_AI) is NOT yet implemented in
+						// the plugin Forward path; the legacy in-service loop that did it
+						// (antigravity_credits_overages.go) is bypassed. The allow_overages
+						// toggle still drives quota-scope resolution + admin clear-on-toggle,
+						// so the UI control is retained, but overage forwarding is a no-op
+						// until reimplemented here. Remove this flag if/when the product
+						// decision is to drop overages from the plugin gateway entirely.
 						FrontendMeta: json.RawMessage(`{
 							"supports_allow_overages": true
 						}`),
@@ -68,18 +76,18 @@ func buildManifest() *pluginsdk.Manifest {
 					{
 						Type:              "apikey",
 						DisplayName:       "API Key",
-						Description:        "Antigravity API key (supports Claude and Gemini models)",
-						SortOrder:          2,
-						BadgeLabel:         "Key",
-						FormComponentPath:  "AntigravityForm",
+						Description:       "Antigravity API key (supports Claude and Gemini models)",
+						SortOrder:         2,
+						BadgeLabel:        "Key",
+						FormComponentPath: "AntigravityForm",
 					},
 					{
 						Type:              "upstream",
 						DisplayName:       "Upstream",
-						Description:        "Upstream pass-through (custom base URL + API key)",
-						SortOrder:          3,
-						BadgeLabel:         "Upstream",
-						FormComponentPath:  "AntigravityForm",
+						Description:       "Upstream pass-through (custom base URL + API key)",
+						SortOrder:         3,
+						BadgeLabel:        "Upstream",
+						FormComponentPath: "AntigravityForm",
 					},
 				},
 				CapacityDisplay: &pluginsdk.CapacityDisplayConfig{

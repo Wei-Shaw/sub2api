@@ -202,9 +202,9 @@ type GetSchedulingHintsResp struct {
 
 // SchedulingHint is the per-account hint returned by GetSchedulingHints.
 type SchedulingHint struct {
-	PriorityModifier      int32
+	PriorityModifier       int32
 	TemporarilyUnavailable bool
-	Reason                string
+	Reason                 string
 }
 
 // CheckSchedulabilityReq is the input for CheckSchedulability.
@@ -328,7 +328,7 @@ type ValidateGroupConfigReq struct {
 
 // ValidateGroupConfigResp is the output of ValidateGroupConfig.
 type ValidateGroupConfigResp struct {
-	Valid                    bool
-	FieldErrors              map[string]string
+	Valid                   bool
+	FieldErrors             map[string]string
 	ProcessedGroupExtraJSON json.RawMessage // optional: processed group_extra with defaults filled
 }

@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 
-	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
 // defaultTestModel is the default model for testing Anthropic accounts.

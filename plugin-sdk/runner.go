@@ -21,7 +21,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-
 // HandshakeProtocolVersion is the version number written into the
 // handshake JSON line. The core uses it to gate behaviour when SDK and core
 // drift apart.

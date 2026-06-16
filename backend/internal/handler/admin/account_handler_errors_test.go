@@ -16,7 +16,7 @@ func setupAccountErrorRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	adminSvc := newStubAdminService()
-	h := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router.PUT("/api/v1/admin/accounts/:id", h.Update)
 	router.DELETE("/api/v1/admin/accounts/:id", h.Delete)
 	router.POST("/api/v1/admin/accounts", h.Create)
