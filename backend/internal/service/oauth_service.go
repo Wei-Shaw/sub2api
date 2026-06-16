@@ -20,7 +20,7 @@ REDACTED
 
 // GrokOAuthClient interface for xAI/Grok OAuth operations.
 type GrokOAuthClient interface {
-	ExchangeCode(ctx context.Context, code, codeVerifier, codeChallenge, redirectURI, proxyURL, clientID string) (*xai.TokenResponse, error)
+	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*xai.TokenResponse, error)
 	RefreshToken(ctx context.Context, refreshToken, proxyURL, clientID string) (*xai.TokenResponse, error)
 REDACTED
 

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	OAuthIssuer         = "https://auth.x.ai"
+	OAuthIssuer         = "https://accounts.x.ai"
 	DiscoveryURL        = OAuthIssuer + "/.well-known/openid-configuration"
 	DefaultAuthorizeURL = OAuthIssuer + "/oauth2/authorize"
 	DefaultTokenURL     = OAuthIssuer + "/oauth2/token"

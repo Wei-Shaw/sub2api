@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -60,9 +61,11 @@ REDACTED
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
 		upstreamMsg := sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(respBody))
 		if upstreamMsg == "" {
@@ -87,7 +90,6 @@ REDACTED
 	REDACTED
 		return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
 REDACTED
-	defer func() { _ = resp.Body.Close() REDACTED()
 
 	s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
 

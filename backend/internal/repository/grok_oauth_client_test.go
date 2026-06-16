@@ -25,8 +25,8 @@ func TestGrokOAuthClientExchangeAndRefreshUseFormFields(t *testing.T) {
 			require.Equal(t, "auth-code", r.Form.Get("code"))
 			require.Equal(t, "http://127.0.0.1:56121/callback", r.Form.Get("redirect_uri"))
 			require.Equal(t, "verifier", r.Form.Get("code_verifier"))
-			require.Equal(t, "challenge", r.Form.Get("code_challenge"))
-			require.Equal(t, "S256", r.Form.Get("code_challenge_method"))
+			require.Empty(t, r.Form.Get("code_challenge"))
+			require.Empty(t, r.Form.Get("code_challenge_method"))
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"access_token":  "exchange-access",
 				"refresh_token": "exchange-refresh",
@@ -55,7 +55,6 @@ REDACTED))
 		context.Background(),
 		"auth-code",
 		"verifier",
-		"challenge",
 		"http://127.0.0.1:56121/callback",
 		"",
 		"client-id",
