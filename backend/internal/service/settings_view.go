@@ -404,19 +404,21 @@ func DefaultStreamTimeoutSettings() *StreamTimeoutSettings {
 
 // RectifierSettings 请求整流器配置
 type RectifierSettings struct {
-	Enabled                  bool     `json:"enabled"`                    // 总开关
-	ThinkingSignatureEnabled bool     `json:"thinking_signature_enabled"` // Thinking 签名整流
-	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`    // Thinking Budget 整流
-	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`   // API Key 签名整流开关
-	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`  // API Key 自定义匹配关键词
+	Enabled                           bool     `json:"enabled"`                               // 总开关
+	ThinkingSignatureEnabled          bool     `json:"thinking_signature_enabled"`             // Thinking 签名整流
+	ThinkingBudgetEnabled             bool     `json:"thinking_budget_enabled"`                // Thinking Budget 整流
+	ThinkingReasoningFallbackEnabled  bool     `json:"thinking_reasoning_fallback_enabled"`    // Thinking/Reasoning 撞针回退
+	APIKeySignatureEnabled            bool     `json:"apikey_signature_enabled"`               // API Key 签名整流开关
+	APIKeySignaturePatterns           []string `json:"apikey_signature_patterns"`              // API Key 自定义匹配关键词
 }
 
 // DefaultRectifierSettings 返回默认的整流器配置（全部启用）
 func DefaultRectifierSettings() *RectifierSettings {
 	return &RectifierSettings{
-		Enabled:                  true,
-		ThinkingSignatureEnabled: true,
-		ThinkingBudgetEnabled:    true,
+		Enabled:                          true,
+		ThinkingSignatureEnabled:         true,
+		ThinkingBudgetEnabled:            true,
+		ThinkingReasoningFallbackEnabled: true,
 	}
 }
 

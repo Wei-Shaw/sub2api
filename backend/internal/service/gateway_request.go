@@ -1252,3 +1252,112 @@ func RectifyThinkingBudget(body []byte) ([]byte, bool) {
 
 	return modified, changed
 }
+
+// ---------------------------------------------------------------------------
+// Thinking/Reasoning 撞针回退策略 (Firing Pin Fallback)
+// ---------------------------------------------------------------------------
+
+// isResponsesThinkingReasoningError 检测上游 400 错误是否与 thinking/reasoning
+// 字段不兼容有关。用于撞针回退策略，决定是否尝试备用字段格式重试。
+// 调用方应先确认 statusCode == 400 再调用此函数。
+func isResponsesThinkingReasoningError(errMsg string) bool {
+	m := strings.ToLower(strings.TrimSpace(errMsg))
+	if m == "" {
+		return false
+	}
+
+	hasThinkingOrReasoning := strings.Contains(m, "thinking") || strings.Contains(m, "reasoning")
+	if !hasThinkingOrReasoning {
+		return false
+	}
+
+	if strings.Contains(m, "unsupported") {
+		return true
+	}
+	if strings.Contains(m, "not supported") {
+		return true
+	}
+	if strings.Contains(m, "unrecognized") {
+		return true
+	}
+	if strings.Contains(m, "unknown") && (strings.Contains(m, "parameter") || strings.Contains(m, "field")) {
+		return true
+	}
+	if strings.Contains(m, "invalid") {
+		return true
+	}
+
+	return false
+}
+
+// applyResponsesThinkingReasoningFallback 为撞针回退策略变换 Responses API 请求体：
+//
+//	Stage 2: 在现有 reasoning 旁添加 thinking 字段（Volcengine 双字段格式）
+//	Stage 3: 移除 reasoning，仅保留 thinking
+//
+// 返回 (修改后的 body, true) 或 (原始 body, false)。
+func applyResponsesThinkingReasoningFallback(body []byte, stage int) ([]byte, bool) {
+	if stage < 2 || stage > 3 {
+		return body, false
+	}
+
+	hasReasoning := gjson.GetBytes(body, "reasoning").Exists()
+	hasThinking := gjson.GetBytes(body, "thinking").Exists()
+
+	if stage == 2 {
+		// 仅在 reasoning 存在且 thinking 不存在时添加
+		if !hasReasoning || hasThinking {
+			return body, false
+		}
+
+		effort := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
+		budgetTokens := reasoningEffortToThinkingBudgetTokens(effort)
+
+		modified := body
+		var err error
+		modified, err = sjson.SetBytes(modified, "thinking.type", "enabled")
+		if err != nil {
+			return body, false
+		}
+		modified, err = sjson.SetBytes(modified, "thinking.budget_tokens", budgetTokens)
+		if err != nil {
+			return body, false
+		}
+		return modified, true
+	}
+
+	// stage == 3: 移除 reasoning，保留 thinking
+	if !hasReasoning {
+		return body, false
+	}
+
+	// 在删除 reasoning 前提取 effort（用于防御性补充 thinking）
+	effort := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
+
+	modified, err := sjson.DeleteBytes(body, "reasoning")
+	if err != nil {
+		return body, false
+	}
+	// 确保 thinking 存在（stage 2 应已添加，但防御性处理）
+	if !gjson.GetBytes(modified, "thinking").Exists() {
+		budgetTokens := reasoningEffortToThinkingBudgetTokens(effort)
+		modified, _ = sjson.SetBytes(modified, "thinking.type", "enabled")
+		modified, _ = sjson.SetBytes(modified, "thinking.budget_tokens", budgetTokens)
+	}
+	return modified, true
+}
+
+// reasoningEffortToThinkingBudgetTokens 将 OpenAI reasoning.effort 映射为
+// Anthropic/Volcengine 兼容的 thinking budget_tokens。
+func reasoningEffortToThinkingBudgetTokens(effort string) int {
+	switch strings.ToLower(strings.TrimSpace(effort)) {
+	case "low":
+		return 10240
+	case "medium":
+		return 32000
+	case "high", "xhigh":
+		return 64000
+	default:
+		return 32000
+	}
+}

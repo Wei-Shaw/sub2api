@@ -201,6 +201,7 @@ type ResponsesRequest struct {
 	Store              *bool               `json:"store,omitempty"`
 	ParallelToolCalls  *bool               `json:"parallel_tool_calls,omitempty"`
 	Reasoning          *ResponsesReasoning `json:"reasoning,omitempty"`
+	Thinking           *ResponsesThinking  `json:"thinking,omitempty"`
 	Text               *ResponsesText      `json:"text,omitempty"`
 	ToolChoice         json.RawMessage     `json:"tool_choice,omitempty"`
 	ServiceTier        string              `json:"service_tier,omitempty"`
@@ -212,6 +213,14 @@ type ResponsesRequest struct {
 type ResponsesReasoning struct {
 	Effort  string `json:"effort"`            // "low" | "medium" | "high" | "xhigh"
 	Summary string `json:"summary,omitempty"` // "auto" | "concise" | "detailed"
+}
+
+// ResponsesThinking configures thinking mode for upstream providers that use
+// Anthropic-style thinking fields (e.g. Volcengine/Doubao). Some providers
+// accept both "thinking" and "reasoning" simultaneously.
+type ResponsesThinking struct {
+	Type         string `json:"type"`                    // "enabled" | "disabled" | "adaptive"
+	BudgetTokens int    `json:"budget_tokens,omitempty"` // max thinking tokens
 }
 
 // ResponsesText configures text output options in the Responses API.

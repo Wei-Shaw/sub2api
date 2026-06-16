@@ -6305,6 +6305,8 @@ export default {
         thinkingSignatureHint: 'Automatically strip signatures and retry when upstream returns thinking block signature validation errors',
         thinkingBudget: 'Thinking Budget Rectifier',
         thinkingBudgetHint: 'Automatically set budget to 32000 and retry when upstream returns budget_tokens constraint error (≥1024)',
+        thinkingReasoningFallback: 'Thinking/Reasoning Fallback',
+        thinkingReasoningFallbackHint: 'When forwarding Responses API requests, retry with alternative thinking/reasoning field formats if upstream returns 400 errors related to these fields (for Volcengine/Doubao compatibility)',
         apikeySignature: 'API Key Signature Rectifier',
         apikeySignatureHint:
           'Automatically strip signatures and retry when API Key accounts receive signature-related errors (built-in patterns always apply)',

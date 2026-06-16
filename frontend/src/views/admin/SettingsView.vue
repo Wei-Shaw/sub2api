@@ -670,6 +670,30 @@
                     <Toggle v-model="rectifierForm.thinking_budget_enabled" />
                   </div>
 
+                  <!-- Thinking/Reasoning Fallback (Firing Pin) -->
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <label
+                        class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >{{
+                          t("admin.settings.rectifier.thinkingReasoningFallback")
+                        }}</label
+                      >
+                      <p class="text-xs text-gray-500 dark:text-gray-400">
+                        {{
+                          t(
+                            "admin.settings.rectifier.thinkingReasoningFallbackHint",
+                          )
+                        }}
+                      </p>
+                    </div>
+                    <Toggle
+                      v-model="
+                        rectifierForm.thinking_reasoning_fallback_enabled
+                      "
+                    />
+                  </div>
+
                   <!-- API Key Signature Rectifier -->
                   <div class="flex items-center justify-between">
                     <div>
@@ -7132,6 +7156,7 @@ const rectifierForm = reactive({
   enabled: true,
   thinking_signature_enabled: true,
   thinking_budget_enabled: true,
+  thinking_reasoning_fallback_enabled: true,
   apikey_signature_enabled: false,
   apikey_signature_patterns: [] as string[],
 });
@@ -9353,6 +9378,8 @@ async function saveRectifierSettings() {
       enabled: rectifierForm.enabled,
       thinking_signature_enabled: rectifierForm.thinking_signature_enabled,
       thinking_budget_enabled: rectifierForm.thinking_budget_enabled,
+      thinking_reasoning_fallback_enabled:
+        rectifierForm.thinking_reasoning_fallback_enabled,
       apikey_signature_enabled: rectifierForm.apikey_signature_enabled,
       apikey_signature_patterns: rectifierForm.apikey_signature_patterns.filter(
         (p) => p.trim() !== "",

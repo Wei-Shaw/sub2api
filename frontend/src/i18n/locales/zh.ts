@@ -6460,6 +6460,8 @@ export default {
         thinkingSignatureHint: '当上游返回 thinking block 签名校验错误时，自动去除签名并重试',
         thinkingBudget: 'Thinking Budget 整流',
         thinkingBudgetHint: '当上游返回 budget_tokens 约束错误（≥1024）时，自动将 budget 设为 32000 并重试',
+        thinkingReasoningFallback: 'Thinking/Reasoning 回退策略',
+        thinkingReasoningFallbackHint: '转发 Responses API 请求时，若上游返回与 thinking/reasoning 字段相关的 400 错误，自动尝试备用字段格式重试（兼容火山引擎/豆包等）',
         apikeySignature: 'API Key 签名整流',
         apikeySignatureHint:
           '当 API Key 账号的上游返回签名相关错误时，自动去除签名并重试（内置规则始终生效）',

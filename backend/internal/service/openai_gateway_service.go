@@ -2964,6 +2964,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	httpInvalidEncryptedContentRetryTried := false
+	firingPinStage := 0 // 撞针回退阶段: 0=原始, 2=双字段, 3=仅thinking
+	cachedReasoningEffort := extractOpenAIReasoningEffortFromBody(body, originalModel)
 	for {
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
@@ -3015,6 +3017,44 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				}
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 invalid_encrypted_content retry because encrypted reasoning items are missing (account: %s)", account.Name)
 			}
+			// 撞针回退: thinking/reasoning 字段格式降级重试
+			if resp.StatusCode == http.StatusBadRequest &&
+				firingPinStage < 3 &&
+				isResponsesThinkingReasoningError(upstreamMsg) &&
+				s.settingService.IsThinkingReasoningFallbackEnabled(ctx) {
+				firingPinStage++
+				if firingPinStage >= 2 {
+					decoded, decodeErr := ensureReqBody()
+					if decodeErr != nil {
+						return nil, decodeErr
+					}
+					rawBody, marshalErr := marshalOpenAIUpstreamJSON(decoded)
+					if marshalErr != nil {
+						return nil, fmt.Errorf("serialize firing pin retry body: %w", marshalErr)
+					}
+					modifiedBody, applied := applyResponsesThinkingReasoningFallback(rawBody, firingPinStage)
+					if applied {
+						body = modifiedBody
+						// 重置 requestView 以便下次循环使用新 body
+						requestView = newOpenAIRequestView(body)
+						reqBody = nil
+						bodyModified = false
+						logger.LegacyPrintf("service.openai_gateway",
+							"[OpenAI] Firing pin stage %d: retrying with thinking/reasoning fallback (account: %s, model: %s)",
+							firingPinStage, account.Name, upstreamModel)
+						appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+							Platform:           account.Platform,
+							AccountID:          account.ID,
+							AccountName:        account.Name,
+							UpstreamStatusCode: resp.StatusCode,
+							UpstreamRequestID:  resp.Header.Get("x-request-id"),
+							Kind:               "firing_pin_retry",
+							Message:            upstreamMsg,
+						})
+						continue
+					}
+				}
+			}
 			if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 				upstreamDetail := ""
 				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
@@ -3047,6 +3087,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		defer func() { _ = resp.Body.Close() }()
 
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, originalModel)
+		if reasoningEffort == nil {
+			reasoningEffort = cachedReasoningEffort // 撞针 stage 3 可能已移除 reasoning 字段
+		}
 		serviceTier := extractOpenAIServiceTierFromBody(body)
 		// 上游接受后只保留计费需要的标量，避免响应处理期间继续保活完整 input/tools map。
 		reqBody = nil
@@ -3251,41 +3294,81 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, err
 	}
 
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, err
-	}
+	// 撞针回退: thinking/reasoning 字段格式降级重试
+	firingPinStage := 0
+	savedBody := body // 保存原始 body 用于错误报告
+	var resp *http.Response
+	for {
+		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		upstreamReq, buildErr := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
+		releaseUpstreamCtx()
+		if buildErr != nil {
+			return nil, buildErr
+		}
 
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+		proxyURL := ""
+		if account.ProxyID != nil && account.Proxy != nil {
+			proxyURL = account.Proxy.URL()
+		}
 
-	if c != nil {
-		c.Set("openai_passthrough", true)
-	}
+		if c != nil {
+			c.Set("openai_passthrough", true)
+		}
 
-	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
-	if err != nil {
-		// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
-		// a failover so the handler switches to a healthy account, and temporarily
-		// unschedule the account on durable faults (e.g. rejected proxy credentials).
-		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+		upstreamStart := time.Now()
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+		if err != nil {
+			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+		}
+
+		if resp.StatusCode >= 400 {
+			// 撞针: 尝试 thinking/reasoning 字段格式降级
+			if resp.StatusCode == http.StatusBadRequest && firingPinStage < 3 {
+				respBody := s.readUpstreamErrorBody(resp)
+				_ = resp.Body.Close()
+				upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+				if isResponsesThinkingReasoningError(upstreamMsg) &&
+					s.settingService.IsThinkingReasoningFallbackEnabled(ctx) {
+					firingPinStage++
+					if firingPinStage >= 2 {
+						modifiedBody, applied := applyResponsesThinkingReasoningFallback(body, firingPinStage)
+						if applied {
+							body = modifiedBody
+							logger.LegacyPrintf("service.openai_gateway",
+								"[OpenAI Passthrough] Firing pin stage %d: retrying with thinking/reasoning fallback (account: %s, model: %s)",
+								firingPinStage, account.Name, reqModel)
+							appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+								Platform:           account.Platform,
+								AccountID:          account.ID,
+								AccountName:        account.Name,
+								UpstreamStatusCode: resp.StatusCode,
+								UpstreamRequestID:  resp.Header.Get("x-request-id"),
+								Kind:               "firing_pin_retry",
+								Message:            upstreamMsg,
+							})
+							continue
+						}
+					}
+				}
+				// 非撞针场景或回退耗尽：走原有错误处理
+				resp.Body = io.NopCloser(bytes.NewReader(respBody))
+				if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
+					return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, savedBody)
+				}
+				return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, savedBody)
+			}
+			// 非 400 或非 thinking/reasoning 相关：原有错误处理
+			if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
+				return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, savedBody)
+			}
+			return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, savedBody)
+		}
+		break // 成功，跳出重试循环
 	}
 	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode >= 400 {
-		// 透传模式默认保持原样代理；但 429/529 属于网关必须兜底的
-		// 上游容量类错误，应先触发多账号 failover 以维持基础 SLA。
-		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
-			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
-		}
-		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
-	}
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 

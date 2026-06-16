@@ -1228,3 +1228,114 @@ func BenchmarkParseGatewayRequest_New_Large(b *testing.B) {
 		_, _ = ParseGatewayRequest(NewRequestBodyRef(data), "")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 撞针回退策略测试 (Firing Pin Fallback Tests)
+// ---------------------------------------------------------------------------
+
+func TestIsResponsesThinkingReasoningError(t *testing.T) {
+	tests := []struct {
+		name    string
+		errMsg  string
+		want    bool
+	}{
+		{"empty", "", false},
+		{"unrelated error", "model not found", false},
+		{"thinking mentioned in non-error context", "thinking is a great feature", false},
+		{"unsupported thinking", "Unsupported parameter: thinking", true},
+		{"unsupported reasoning", "The reasoning parameter is not supported", true},
+		{"unknown parameter thinking", "Unknown parameter: thinking", true},
+		{"unknown field reasoning", "Unknown field: reasoning.effort", true},
+		{"invalid thinking", "Invalid value for thinking.type", true},
+		{"invalid reasoning", "Invalid reasoning configuration", true},
+		{"not supported thinking", "thinking is not supported for this model", true},
+		{"unrecognized reasoning", "Unrecognized field: reasoning", true},
+		{"volcengine style error", "unsupported parameter 'thinking' in request", true},
+		{"mixed case", "Unsupported Parameter: Thinking", true},
+		{"thinking budget error (not a field error)", "budget_tokens must be >= 1024 when thinking is enabled", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isResponsesThinkingReasoningError(tt.errMsg)
+			require.Equal(t, tt.want, got, "errMsg=%q", tt.errMsg)
+		})
+	}
+}
+
+func TestApplyResponsesThinkingReasoningFallback(t *testing.T) {
+	t.Run("stage 2 adds thinking alongside reasoning", func(t *testing.T) {
+		body := []byte(`{"model":"doubao-1.5-pro","reasoning":{"effort":"high"},"input":"test"}`)
+		got, applied := applyResponsesThinkingReasoningFallback(body, 2)
+		require.True(t, applied)
+		require.Equal(t, "enabled", gjson.GetBytes(got, "thinking.type").String())
+		require.Equal(t, int64(64000), gjson.GetBytes(got, "thinking.budget_tokens").Int())
+		require.True(t, gjson.GetBytes(got, "reasoning").Exists(), "reasoning should be preserved")
+	})
+
+	t.Run("stage 2 no-op if thinking already exists", func(t *testing.T) {
+		body := []byte(`{"model":"test","reasoning":{"effort":"low"},"thinking":{"type":"enabled"}}`)
+		got, applied := applyResponsesThinkingReasoningFallback(body, 2)
+		require.False(t, applied)
+		require.Equal(t, body, got)
+	})
+
+	t.Run("stage 2 no-op if no reasoning", func(t *testing.T) {
+		body := []byte(`{"model":"test","input":"hello"}`)
+		got, applied := applyResponsesThinkingReasoningFallback(body, 2)
+		require.False(t, applied)
+		require.Equal(t, body, got)
+	})
+
+	t.Run("stage 3 removes reasoning keeps thinking", func(t *testing.T) {
+		body := []byte(`{"model":"doubao-1.5-pro","reasoning":{"effort":"medium"},"thinking":{"type":"enabled","budget_tokens":32000},"input":"test"}`)
+		got, applied := applyResponsesThinkingReasoningFallback(body, 3)
+		require.True(t, applied)
+		require.False(t, gjson.GetBytes(got, "reasoning").Exists(), "reasoning should be removed")
+		require.Equal(t, "enabled", gjson.GetBytes(got, "thinking.type").String())
+	})
+
+	t.Run("stage 3 no-op if no reasoning", func(t *testing.T) {
+		body := []byte(`{"model":"test","thinking":{"type":"enabled"}}`)
+		got, applied := applyResponsesThinkingReasoningFallback(body, 3)
+		require.False(t, applied)
+		require.Equal(t, body, got)
+	})
+
+	t.Run("stage 1 no-op", func(t *testing.T) {
+		body := []byte(`{"model":"test","reasoning":{"effort":"high"}}`)
+		got, applied := applyResponsesThinkingReasoningFallback(body, 1)
+		require.False(t, applied)
+		require.Equal(t, body, got)
+	})
+
+	t.Run("stage 3 adds thinking defensively if missing", func(t *testing.T) {
+		body := []byte(`{"model":"test","reasoning":{"effort":"low"},"input":"test"}`)
+		got, applied := applyResponsesThinkingReasoningFallback(body, 3)
+		require.True(t, applied)
+		require.False(t, gjson.GetBytes(got, "reasoning").Exists())
+		require.Equal(t, "enabled", gjson.GetBytes(got, "thinking.type").String())
+		require.Equal(t, int64(10240), gjson.GetBytes(got, "thinking.budget_tokens").Int())
+	})
+}
+
+func TestReasoningEffortToThinkingBudgetTokens(t *testing.T) {
+	tests := []struct {
+		effort string
+		want   int
+	}{
+		{"low", 10240},
+		{"medium", 32000},
+		{"high", 64000},
+		{"xhigh", 64000},
+		{"", 32000},
+		{"unknown", 32000},
+		{"LOW", 10240},
+		{" High ", 64000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.effort, func(t *testing.T) {
+			got := reasoningEffortToThinkingBudgetTokens(tt.effort)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}

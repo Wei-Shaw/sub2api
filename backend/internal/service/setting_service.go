@@ -4705,6 +4705,16 @@ func (s *SettingService) IsBudgetRectifierEnabled(ctx context.Context) bool {
 	return settings.Enabled && settings.ThinkingBudgetEnabled
 }
 
+// IsThinkingReasoningFallbackEnabled 判断 Thinking/Reasoning 撞针回退策略是否启用
+// （总开关 && Thinking/Reasoning 回退子开关）
+func (s *SettingService) IsThinkingReasoningFallbackEnabled(ctx context.Context) bool {
+	settings, err := s.GetRectifierSettings(ctx)
+	if err != nil {
+		return true // fail-open: 查询失败时默认启用
+	}
+	return settings.Enabled && settings.ThinkingReasoningFallbackEnabled
+}
+
 // GetBetaPolicySettings 获取 Beta 策略配置
 func (s *SettingService) GetBetaPolicySettings(ctx context.Context) (*BetaPolicySettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyBetaPolicySettings)
