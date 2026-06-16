@@ -11,6 +11,8 @@
 *.md
 !deploy/DOCKER.md
 docs/
+# Legal documents are imported via ?raw by the frontend build
+!docs/legal/*.md
 
 # IDE
 .idea/
