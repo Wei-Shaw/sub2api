@@ -27,6 +27,10 @@ func isOpenAIOAuthAccount(account *Account) bool {
 	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth
 REDACTED
 
+func isGrokOAuthAccount(account *Account) bool {
+	return account != nil && account.Platform == PlatformGrok && account.Type == AccountTypeOAuth
+REDACTED
+
 func isOpenAIAccount(account *Account) bool {
 	return account != nil && (account.Platform == PlatformOpenAI || account.Platform == PlatformGrok)
 REDACTED
@@ -171,6 +175,9 @@ REDACTED
 func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account, statusCode int, failedSwitches int) bool {
 	if statusCode != http.StatusTooManyRequests || failedSwitches < openAIOAuth429StormMaxAccountSwitches {
 		return false
+REDACTED
+	if isGrokOAuthAccount(account) {
+		return true
 REDACTED
 	if !isOpenAIOAuthAccount(account) {
 		return false

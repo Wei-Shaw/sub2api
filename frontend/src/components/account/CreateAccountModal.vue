@@ -3901,6 +3901,8 @@ watch(
       accountCategory.value = 'oauth-based'
       addMethod.value = 'oauth'
       modelRestrictionMode.value = 'mapping'
+      form.concurrency = 1
+      form.load_factor = null
     REDACTED
     if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
       accountCategory.value = 'oauth-based'

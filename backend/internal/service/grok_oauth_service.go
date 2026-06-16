@@ -108,6 +108,7 @@ REDACTED
 	if !ok {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_SESSION_NOT_FOUND", "session not found or expired")
 REDACTED
+	defer s.sessionStore.Delete(input.SessionID)
 
 	parsed := xai.ParseAuthorizationInput(input.Code)
 	code := strings.TrimSpace(parsed.Code)
@@ -117,6 +118,9 @@ REDACTED
 	state := strings.TrimSpace(input.State)
 	if state == "" {
 		state = strings.TrimSpace(parsed.State)
+REDACTED
+	if parsed.RequiresState && state == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_STATE_REQUIRED", "oauth state is required for callback URLs")
 REDACTED
 	if state != "" && subtle.ConstantTimeCompare([]byte(state), []byte(session.State)) != 1 {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_INVALID_STATE", "invalid oauth state")
@@ -139,7 +143,6 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	s.sessionStore.Delete(input.SessionID)
 	return s.tokenInfoFromResponse(tokenResp, session.ClientID, nil), nil
 REDACTED
 

@@ -132,7 +132,17 @@ func (p *GrokTokenProvider) markTempUnschedulable(account *Account, refreshErr e
 REDACTED
 	now := time.Now()
 	until := now.Add(tokenRefreshTempUnschedDuration)
-	reason := "grok token refresh failed on request path: " + logredact.RedactText(refreshErr.Error())
+	redactedErr := "unknown error"
+	if refreshErr != nil {
+		redactedErr = logredact.RedactText(refreshErr.Error())
+REDACTED
+	if isNonRetryableRefreshError(refreshErr) {
+		if err := p.accountRepo.SetError(context.Background(), account.ID, "grok token refresh failed (non-retryable): "+redactedErr); err != nil {
+			slog.Warn(grokTokenProviderLogComponent+".set_error_status_failed", "account_id", account.ID, "error", err)
+	REDACTED
+		return
+REDACTED
+	reason := "grok token refresh failed on request path: " + redactedErr
 	bgCtx := context.Background()
 	if err := p.accountRepo.SetTempUnschedulable(bgCtx, account.ID, until, reason); err != nil {
 		slog.Warn(grokTokenProviderLogComponent+".set_temp_unschedulable_failed", "account_id", account.ID, "error", err)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 )
 
 // tokenRefreshTempUnschedDuration token 刷新重试耗尽后临时不可调度的持续时间
@@ -309,7 +310,7 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 		// 不可重试错误（invalid_grant/invalid_client 等）直接标记 error 状态并返回
 		if isNonRetryableRefreshError(err) {
-			errorMsg := fmt.Sprintf("Token refresh failed (non-retryable): %v", err)
+			errorMsg := "Token refresh failed (non-retryable): " + logredact.RedactText(err.Error())
 			s.notifyAccountSchedulingBlocked(account, time.Time{REDACTED, "token_refresh_non_retryable")
 			if setErr := s.accountRepo.SetError(ctx, account.ID, errorMsg); setErr != nil {
 				slog.Error("token_refresh.set_error_status_failed",
@@ -346,7 +347,10 @@ REDACTED
 
 	// 设置临时不可调度 10 分钟（不标记 error，保持 status=active 让下个刷新周期能继续尝试）
 	until := time.Now().Add(tokenRefreshTempUnschedDuration)
-	reason := fmt.Sprintf("token refresh retry exhausted: %v", lastErr)
+	reason := "token refresh retry exhausted"
+	if lastErr != nil {
+		reason += ": " + logredact.RedactText(lastErr.Error())
+REDACTED
 	s.notifyAccountSchedulingBlocked(account, until, "token_refresh_retry_exhausted")
 	if setErr := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); setErr != nil {
 		slog.Warn("token_refresh.set_temp_unschedulable_failed",
@@ -450,6 +454,12 @@ REDACTED
 		"access_denied",             // 访问被拒绝
 		"missing_project_id",        // 缺少 project_id
 		"no refresh token available",
+		"grok_oauth_entitlement_denied",
+		"entitlement_denied",
+		"invalid_scope",
+		"unknown scope",
+		"subscription required",
+		"no active grok subscription",
 REDACTED
 	for _, needle := range nonRetryable {
 		if strings.Contains(msg, needle) {

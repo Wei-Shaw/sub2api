@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	OAuthIssuer         = "https://accounts.x.ai"
+	OAuthIssuer         = "https://auth.x.ai"
 	DiscoveryURL        = OAuthIssuer + "/.well-known/openid-configuration"
 	DefaultAuthorizeURL = OAuthIssuer + "/oauth2/authorize"
 	DefaultTokenURL     = OAuthIssuer + "/oauth2/token"
@@ -217,8 +217,9 @@ REDACTED
 
 // AuthorizationInput is a parsed manual OAuth callback input.
 type AuthorizationInput struct {
-	Code  string
-	State string
+	Code          string
+	State         string
+	RequiresState bool
 REDACTED
 
 // ParseAuthorizationInput accepts a full callback URL, query string, or bare code.
@@ -232,8 +233,9 @@ REDACTED
 		values := parsed.Query()
 		if code := strings.TrimSpace(values.Get("code")); code != "" {
 			return AuthorizationInput{
-				Code:  code,
-				State: strings.TrimSpace(values.Get("state")),
+				Code:          code,
+				State:         strings.TrimSpace(values.Get("state")),
+				RequiresState: true,
 		REDACTED
 	REDACTED
 REDACTED
@@ -243,8 +245,9 @@ REDACTED
 		if values, err := url.ParseQuery(queryCandidate); err == nil {
 			if code := strings.TrimSpace(values.Get("code")); code != "" {
 				return AuthorizationInput{
-					Code:  code,
-					State: strings.TrimSpace(values.Get("state")),
+					Code:          code,
+					State:         strings.TrimSpace(values.Get("state")),
+					RequiresState: true,
 			REDACTED
 		REDACTED
 	REDACTED
