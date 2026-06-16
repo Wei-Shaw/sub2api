@@ -93,6 +93,9 @@ REDACTED
 func (m *sessionWindowMockRepo) ListActive(context.Context) ([]Account, error) {
 	panic("unexpected")
 REDACTED
+func (m *sessionWindowMockRepo) ListOAuthRefreshCandidates(context.Context) ([]Account, error) {
+	panic("unexpected")
+REDACTED
 func (m *sessionWindowMockRepo) ListByPlatform(context.Context, string) ([]Account, error) {
 	panic("unexpected")
 REDACTED
