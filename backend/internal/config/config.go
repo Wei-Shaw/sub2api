@@ -93,6 +93,7 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	Archive                 ArchiveConfig                 `mapstructure:"archive"`
 }
 
 type LogConfig struct {
@@ -1002,7 +1003,31 @@ type GatewayUsageRecordConfig struct {
 	AutoScaleCooldownSeconds int `mapstructure:"auto_scale_cooldown_seconds"`
 }
 
-// TLSFingerprintConfig TLS指纹伪装配置
+// ArchiveConfig 请求/响应全量落盘归档配置。
+// 默认关闭（opt-in），开启后异步把每次请求体+响应体写入 zstd 压缩的 JSONL 分片。
+type ArchiveConfig struct {
+	// Enabled: 是否启用归档（默认 false）
+	Enabled bool `mapstructure:"enabled"`
+	// Dir: 归档目录，空则默认 <DATA_DIR>/archive
+	Dir string `mapstructure:"dir"`
+	// MaxShardSizeMB: 单分片压缩后大小上限（MB），超过切片
+	MaxShardSizeMB int `mapstructure:"max_shard_size_mb"`
+	// QueueMaxItems: 有界队列最大条数
+	QueueMaxItems int `mapstructure:"queue_max_items"`
+	// QueueMaxBytes: 有界队列最大字节数（内存预算）
+	QueueMaxBytes int64 `mapstructure:"queue_max_bytes"`
+	// MaxResponseBytes: 单条记录响应体捕获上限（字节），超出截断
+	MaxResponseBytes int `mapstructure:"max_response_bytes"`
+	// CompressionLevel: zstd 级别 1-4（1 最快 / 3 默认 / 4 最高压缩比）
+	CompressionLevel int `mapstructure:"compression_level"`
+	// FlushIntervalMs: 周期 flush 间隔（毫秒）
+	FlushIntervalMs int `mapstructure:"flush_interval_ms"`
+	// MinFreeDiskGB: 归档分区剩余空间低于该值则停写（防写爆磁盘），0 关闭检查
+	MinFreeDiskGB int `mapstructure:"min_free_disk_gb"`
+	// IPHashSalt: 客户端 IP 哈希盐；空则在归档目录自动生成持久盐
+	IPHashSalt string `mapstructure:"ip_hash_salt"`
+}
+
 // 用于模拟 Claude CLI (Node.js) 的 TLS 握手特征，避免被识别为非官方客户端
 type TLSFingerprintConfig struct {
 	// Enabled: 是否全局启用TLS指纹功能
@@ -1936,6 +1961,18 @@ func setDefaults() {
 	viper.SetDefault("gateway.usage_record.auto_scale_cooldown_seconds", 10)
 	viper.SetDefault("gateway.user_group_rate_cache_ttl_seconds", 30)
 	viper.SetDefault("gateway.models_list_cache_ttl_seconds", 15)
+
+	// 请求/响应归档（默认关闭，opt-in）
+	viper.SetDefault("archive.enabled", false)
+	viper.SetDefault("archive.dir", "")
+	viper.SetDefault("archive.max_shard_size_mb", 512)
+	viper.SetDefault("archive.queue_max_items", 4096)
+	viper.SetDefault("archive.queue_max_bytes", 256*1024*1024)
+	viper.SetDefault("archive.max_response_bytes", 16*1024*1024)
+	viper.SetDefault("archive.compression_level", 3)
+	viper.SetDefault("archive.flush_interval_ms", 1500)
+	viper.SetDefault("archive.min_free_disk_gb", 10)
+	viper.SetDefault("archive.ip_hash_salt", "")
 	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
 	// 用户消息串行队列默认值
 	viper.SetDefault("gateway.user_message_queue.enabled", false)
@@ -1992,6 +2029,23 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("log.format is required")
 	default:
 		return fmt.Errorf("log.format must be one of: json/console")
+	}
+	if c.Archive.Enabled {
+		if c.Archive.MaxShardSizeMB <= 0 {
+			return fmt.Errorf("archive.max_shard_size_mb must be positive when archive is enabled")
+		}
+		if c.Archive.MaxResponseBytes <= 0 {
+			return fmt.Errorf("archive.max_response_bytes must be positive when archive is enabled")
+		}
+		if c.Archive.CompressionLevel < 1 || c.Archive.CompressionLevel > 4 {
+			return fmt.Errorf("archive.compression_level must be between 1 and 4")
+		}
+		if c.Archive.FlushIntervalMs <= 0 {
+			return fmt.Errorf("archive.flush_interval_ms must be positive")
+		}
+		if c.Archive.QueueMaxItems <= 0 {
+			return fmt.Errorf("archive.queue_max_items must be positive")
+		}
 	}
 	switch c.Log.StacktraceLevel {
 	case "none", "error", "fatal":

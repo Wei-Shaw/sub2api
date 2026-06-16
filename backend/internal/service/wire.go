@@ -557,6 +557,7 @@ var ProviderSet = wire.NewSet(
 	ProvideConcurrencyService,
 	ProvideUserMessageQueueService,
 	NewUsageRecordWorkerPool,
+	NewArchiveService,
 	ProvideSchedulerSnapshotService,
 	NewIdentityService,
 	NewCRSSyncService,

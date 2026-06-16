@@ -46,6 +46,7 @@ type GatewayHandler struct {
 	usageService              *service.UsageService
 	apiKeyService             *service.APIKeyService
 	usageRecordWorkerPool     *service.UsageRecordWorkerPool
+	archiveService            *service.ArchiveService
 	errorPassthroughService   *service.ErrorPassthroughService
 	contentModerationService  *service.ContentModerationService
 	concurrencyHelper         *ConcurrencyHelper
@@ -67,6 +68,7 @@ func NewGatewayHandler(
 	usageService *service.UsageService,
 	apiKeyService *service.APIKeyService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
+	archiveService *service.ArchiveService,
 	errorPassthroughService *service.ErrorPassthroughService,
 	contentModerationService *service.ContentModerationService,
 	userMsgQueueService *service.UserMessageQueueService,
@@ -101,6 +103,7 @@ func NewGatewayHandler(
 		usageService:              usageService,
 		apiKeyService:             apiKeyService,
 		usageRecordWorkerPool:     usageRecordWorkerPool,
+		archiveService:            archiveService,
 		errorPassthroughService:   errorPassthroughService,
 		contentModerationService:  contentModerationService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
@@ -528,6 +531,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
 			forceCacheBilling := fs.ForceCacheBilling
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+			h.archiveCapture(c, body, result, account, apiKey)
 			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
@@ -942,6 +946,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
 			forceCacheBilling := fs.ForceCacheBilling
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
+			h.archiveCapture(c, attemptParsedReq.Body.Bytes(), result, account, currentAPIKey)
 			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
@@ -2119,6 +2124,42 @@ func (h *GatewayHandler) maybeLogCompatibilityFallbackMetrics(reqLog *zap.Logger
 		zap.Float64("session_hash_legacy_read_hit_rate", metrics.SessionHashLegacyReadHitRate),
 		zap.Int64("metadata_legacy_fallback_total", metrics.MetadataLegacyFallbackTotal),
 	)
+}
+
+// archiveCapture 在归档启用时构建并提交一条请求/响应归档记录（非阻塞、可丢弃）。
+// 须在 Forward 完成、响应已写完后调用，此时捕获中间件已拿到完整响应体。
+func (h *GatewayHandler) archiveCapture(c *gin.Context, body []byte, result *service.ForwardResult, account *service.Account, apiKey *service.APIKey) {
+	if h == nil || h.archiveService == nil || !h.archiveService.Enabled() || result == nil {
+		return
+	}
+	respBody, truncated, _ := middleware2.GetArchivedResponse(c)
+	var accountID int64
+	if account != nil {
+		accountID = account.ID
+	}
+	var userID, apiKeyID int64
+	if apiKey != nil {
+		userID = apiKey.UserID
+		apiKeyID = apiKey.ID
+	}
+	h.archiveService.Capture(service.ArchiveInput{
+		Body:            body,
+		RespBody:        respBody,
+		RespTruncated:   truncated,
+		ReqHeaders:      c.Request.Header,
+		RespHeaders:     c.Writer.Header(),
+		UserID:          userID,
+		APIKeyID:        apiKeyID,
+		AccountID:       accountID,
+		Model:           result.Model,
+		InboundEndpoint: GetInboundEndpoint(c),
+		Stream:          result.Stream,
+		Status:          c.Writer.Status(),
+		DurationMs:      result.Duration.Milliseconds(),
+		RequestID:       result.RequestID,
+		ClientIP:        ip.GetClientIP(c),
+		Usage:           result.Usage,
+	})
 }
 
 func (h *GatewayHandler) submitUsageRecordTask(parent context.Context, task service.UsageRecordTask) {

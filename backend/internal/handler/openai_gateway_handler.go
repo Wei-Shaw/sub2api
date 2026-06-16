@@ -32,6 +32,7 @@ type OpenAIGatewayHandler struct {
 	billingCacheService      *service.BillingCacheService
 	apiKeyService            *service.APIKeyService
 	usageRecordWorkerPool    *service.UsageRecordWorkerPool
+	archiveService           *service.ArchiveService
 	errorPassthroughService  *service.ErrorPassthroughService
 	contentModerationService *service.ContentModerationService
 	concurrencyHelper        *ConcurrencyHelper
@@ -103,6 +104,7 @@ func NewOpenAIGatewayHandler(
 	billingCacheService *service.BillingCacheService,
 	apiKeyService *service.APIKeyService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
+	archiveService *service.ArchiveService,
 	errorPassthroughService *service.ErrorPassthroughService,
 	contentModerationService *service.ContentModerationService,
 	cfg *config.Config,
@@ -120,6 +122,7 @@ func NewOpenAIGatewayHandler(
 		billingCacheService:      billingCacheService,
 		apiKeyService:            apiKeyService,
 		usageRecordWorkerPool:    usageRecordWorkerPool,
+		archiveService:           archiveService,
 		errorPassthroughService:  errorPassthroughService,
 		contentModerationService: contentModerationService,
 		concurrencyHelper:        NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
@@ -488,6 +491,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+		h.archiveCapture(c, body, result, account, apiKey)
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
@@ -883,6 +887,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
+		h.archiveCapture(c, body, result, account, apiKey)
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
@@ -1481,6 +1486,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
 				inboundEndpoint := GetInboundEndpoint(c)
 				upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+				// 注：OpenAI Responses WebSocket 路径不做归档——连接被 Hijack，
+				// 捕获中间件无法看到 WS 帧，且逐轮 payload 不在此作用域内。
 				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
 						Result:             result,
@@ -1679,6 +1686,46 @@ func getContextInt64(c *gin.Context, key string) (int64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// archiveCapture 在归档启用时构建并提交一条请求/响应归档记录（非阻塞、可丢弃）。
+func (h *OpenAIGatewayHandler) archiveCapture(c *gin.Context, body []byte, result *service.OpenAIForwardResult, account *service.Account, apiKey *service.APIKey) {
+	if h == nil || h.archiveService == nil || !h.archiveService.Enabled() || result == nil {
+		return
+	}
+	respBody, truncated, _ := middleware2.GetArchivedResponse(c)
+	var accountID int64
+	if account != nil {
+		accountID = account.ID
+	}
+	var userID, apiKeyID int64
+	if apiKey != nil {
+		userID = apiKey.UserID
+		apiKeyID = apiKey.ID
+	}
+	h.archiveService.Capture(service.ArchiveInput{
+		Body:            body,
+		RespBody:        respBody,
+		RespTruncated:   truncated,
+		ReqHeaders:      c.Request.Header,
+		RespHeaders:     c.Writer.Header(),
+		UserID:          userID,
+		APIKeyID:        apiKeyID,
+		AccountID:       accountID,
+		Model:           result.Model,
+		InboundEndpoint: GetInboundEndpoint(c),
+		Stream:          result.Stream,
+		Status:          c.Writer.Status(),
+		DurationMs:      result.Duration.Milliseconds(),
+		RequestID:       result.RequestID,
+		ClientIP:        ip.GetClientIP(c),
+		Usage: service.ClaudeUsage{
+			InputTokens:              result.Usage.InputTokens,
+			OutputTokens:             result.Usage.OutputTokens,
+			CacheReadInputTokens:     result.Usage.CacheReadInputTokens,
+			CacheCreationInputTokens: result.Usage.CacheCreationInputTokens,
+		},
+	})
 }
 
 func (h *OpenAIGatewayHandler) submitUsageRecordTask(parent context.Context, task service.UsageRecordTask) {
