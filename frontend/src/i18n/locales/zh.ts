@@ -3196,6 +3196,7 @@ export default {
       groupCountTotal: '共 {countREDACTED 个分组',
       columns: {
         name: '名称',
+        id: '账号ID',
         platformType: '平台/类型',
         platform: '平台',
         type: '类型',
