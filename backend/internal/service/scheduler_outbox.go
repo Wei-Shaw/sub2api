@@ -18,4 +18,12 @@ REDACTED
 type SchedulerOutboxRepository interface {
 	ListAfterAndReleaseDedup(ctx context.Context, afterID int64, limit int) ([]SchedulerOutboxEvent, error)
 	MaxID(ctx context.Context) (int64, error)
+	DeleteConsumedUpTo(ctx context.Context, watermark int64, limit int) (int64, error)
+	TryAcquireCleanupLock(ctx context.Context) (SchedulerOutboxCleanupLease, bool, error)
+REDACTED
+
+// SchedulerOutboxCleanupLease holds the PostgreSQL advisory lock used by
+// scheduler outbox cleanup.
+type SchedulerOutboxCleanupLease interface {
+	Release()
 REDACTED
