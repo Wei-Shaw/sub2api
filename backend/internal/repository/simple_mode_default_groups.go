@@ -19,6 +19,7 @@ REDACTED
 		service.PlatformOpenAI:      1,
 		service.PlatformGemini:      1,
 		service.PlatformAntigravity: 2,
+		service.PlatformGrok:        1,
 REDACTED
 
 	for platform, minCount := range requiredByPlatform {

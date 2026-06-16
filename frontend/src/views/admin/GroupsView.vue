@@ -3138,6 +3138,7 @@ const platformOptions = computed(() => [
   { value: "openai", label: "OpenAI" REDACTED,
   { value: "gemini", label: "Gemini" REDACTED,
   { value: "antigravity", label: "Antigravity" REDACTED,
+  { value: "grok", label: "Grok" REDACTED,
 ]);
 
 const platformFilterOptions = computed(() => [
@@ -3146,6 +3147,7 @@ const platformFilterOptions = computed(() => [
   { value: "openai", label: "OpenAI" REDACTED,
   { value: "gemini", label: "Gemini" REDACTED,
   { value: "antigravity", label: "Antigravity" REDACTED,
+  { value: "grok", label: "Grok" REDACTED,
 ]);
 
 const editStatusOptions = computed(() => [

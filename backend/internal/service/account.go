@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 type Account struct {
@@ -173,6 +174,18 @@ REDACTED
 
 func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
+REDACTED
+
+func (a *Account) IsGrok() bool {
+	return a.Platform == PlatformGrok
+REDACTED
+
+func (a *Account) IsGrokOAuth() bool {
+	return a.IsGrok() && a.Type == AccountTypeOAuth
+REDACTED
+
+func (a *Account) IsOpenAICompatible() bool {
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok)
 REDACTED
 
 func (a *Account) GeminiOAuthType() string {
@@ -493,6 +506,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		if a.Platform == domain.PlatformAntigravity {
 			return domain.DefaultAntigravityModelMapping
 	REDACTED
+		if a.Platform == domain.PlatformGrok {
+			return xai.DefaultModelMapping()
+	REDACTED
 		// Bedrock 默认映射由 forwardBedrock 统一处理（需配合 region prefix 调整）
 		return nil
 REDACTED
@@ -500,6 +516,9 @@ REDACTED
 		// Antigravity 平台使用默认映射
 		if a.Platform == domain.PlatformAntigravity {
 			return domain.DefaultAntigravityModelMapping
+	REDACTED
+		if a.Platform == domain.PlatformGrok {
+			return xai.DefaultModelMapping()
 	REDACTED
 		return nil
 REDACTED
@@ -524,6 +543,9 @@ REDACTED
 	// Antigravity 平台使用默认映射
 	if a.Platform == domain.PlatformAntigravity {
 		return domain.DefaultAntigravityModelMapping
+REDACTED
+	if a.Platform == domain.PlatformGrok {
+		return xai.DefaultModelMapping()
 REDACTED
 	return nil
 REDACTED
@@ -1091,6 +1113,31 @@ REDACTED
 	return a.GetCredential("refresh_token")
 REDACTED
 
+func (a *Account) GetGrokBaseURL() string {
+	if !a.IsGrok() {
+		return ""
+REDACTED
+	baseURL := a.GetCredential("base_url")
+	if baseURL != "" {
+		return baseURL
+REDACTED
+	return xai.DefaultBaseURL
+REDACTED
+
+func (a *Account) GetGrokAccessToken() string {
+	if !a.IsGrok() {
+		return ""
+REDACTED
+	return a.GetCredential("access_token")
+REDACTED
+
+func (a *Account) GetGrokRefreshToken() string {
+	if !a.IsGrokOAuth() {
+		return ""
+REDACTED
+	return a.GetCredential("refresh_token")
+REDACTED
+
 func (a *Account) GetOpenAIIDToken() string {
 	if !a.IsOpenAIOAuth() {
 		return ""
@@ -1140,8 +1187,11 @@ REDACTED
 	if capability == "" {
 		return true
 REDACTED
-	if !a.IsOpenAI() {
+	if !a.IsOpenAICompatible() {
 		return false
+REDACTED
+	if a.IsGrok() {
+		return capability == OpenAIEndpointCapabilityChatCompletions
 REDACTED
 	switch capability {
 	case OpenAIEndpointCapabilityChatCompletions:

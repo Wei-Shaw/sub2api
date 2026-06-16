@@ -47,6 +47,9 @@ func RegisterAdminRoutes(
 		// Antigravity OAuth
 		registerAntigravityOAuthRoutes(admin, h)
 
+		// Grok OAuth
+		registerGrokOAuthRoutes(admin, h)
+
 		// 代理管理
 		registerProxyRoutes(admin, h)
 
@@ -382,6 +385,17 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		antigravity.POST("/oauth/auth-url", h.Admin.AntigravityOAuth.GenerateAuthURL)
 		antigravity.POST("/oauth/exchange-code", h.Admin.AntigravityOAuth.ExchangeCode)
 		antigravity.POST("/oauth/refresh-token", h.Admin.AntigravityOAuth.RefreshToken)
+REDACTED
+REDACTED
+
+func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	grok := admin.Group("/grok")
+	{
+		grok.POST("/oauth/auth-url", h.Admin.GrokOAuth.GenerateAuthURL)
+		grok.POST("/oauth/exchange-code", h.Admin.GrokOAuth.ExchangeCode)
+		grok.POST("/oauth/refresh-token", h.Admin.GrokOAuth.RefreshToken)
+		grok.POST("/oauth/create-from-oauth", h.Admin.GrokOAuth.CreateAccountFromOAuth)
+		grok.POST("/accounts/:id/refresh", h.Admin.GrokOAuth.RefreshAccountToken)
 REDACTED
 REDACTED
 

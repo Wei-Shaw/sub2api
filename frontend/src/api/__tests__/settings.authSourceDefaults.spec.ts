@@ -9,12 +9,13 @@ import {
   type DefaultPlatformQuotasMap,
 REDACTED from "@/api/admin/settings";
 
-/** 全 null 的 4 平台 map，用于断言归一化默认值 */
+/** 全 null 的 5 平台 map，用于断言归一化默认值 */
 const allNullQuotas: DefaultPlatformQuotasMap = {
   anthropic: { daily: null, weekly: null, monthly: null REDACTED,
   openai:    { daily: null, weekly: null, monthly: null REDACTED,
   gemini:    { daily: null, weekly: null, monthly: null REDACTED,
   antigravity: { daily: null, weekly: null, monthly: null REDACTED,
+  grok: { daily: null, weekly: null, monthly: null REDACTED,
 REDACTED
 
 describe("admin settings auth source defaults helpers", () => {
@@ -236,11 +237,12 @@ describe("normalizePlatformQuotasMap", () => {
     expect(result.openai).toEqual({ daily: null, weekly: null, monthly: null REDACTED);
     expect(result.gemini).toEqual({ daily: null, weekly: null, monthly: null REDACTED);
     expect(result.antigravity).toEqual({ daily: null, weekly: null, monthly: null REDACTED);
+    expect(result.grok).toEqual({ daily: null, weekly: null, monthly: null REDACTED);
   REDACTED);
 
-  it("无参数时返回全 4 平台全 null", () => {
+  it("无参数时返回全 5 平台全 null", () => {
     const result = normalizePlatformQuotasMap();
-    expect(Object.keys(result)).toHaveLength(4);
+    expect(Object.keys(result)).toHaveLength(5);
     for (const v of Object.values(result)) {
       expect(v).toEqual({ daily: null, weekly: null, monthly: null REDACTED);
     REDACTED
@@ -288,7 +290,7 @@ describe("sanitizePlatformQuotasMap", () => {
 
   it("缺失平台填充为全 null", () => {
     const result = sanitizePlatformQuotasMap({REDACTED);
-    expect(Object.keys(result)).toHaveLength(4);
+    expect(Object.keys(result)).toHaveLength(5);
     for (const v of Object.values(result)) {
       expect(v).toEqual({ daily: null, weekly: null, monthly: null REDACTED);
     REDACTED

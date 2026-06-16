@@ -28,7 +28,7 @@ func isOpenAIOAuthAccount(account *Account) bool {
 REDACTED
 
 func isOpenAIAccount(account *Account) bool {
-	return account != nil && account.Platform == PlatformOpenAI
+	return account != nil && (account.Platform == PlatformOpenAI || account.Platform == PlatformGrok)
 REDACTED
 
 func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) bool {

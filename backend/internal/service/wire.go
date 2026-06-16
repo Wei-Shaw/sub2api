@@ -63,6 +63,7 @@ func ProvideTokenRefreshService(
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
+	grokOAuthService *GrokOAuthService,
 	cacheInvalidator TokenCacheInvalidator,
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
@@ -72,7 +73,7 @@ func ProvideTokenRefreshService(
 	refreshAPI *OAuthRefreshAPI,
 	runtimeBlocker AccountRuntimeBlocker,
 ) *TokenRefreshService {
-	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache)
+	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, grokOAuthService)
 	// 注入 OpenAI privacy opt-out 依赖
 	svc.SetPrivacyDeps(privacyClientFactory, proxyRepo)
 	// 注入统一 OAuth 刷新 API（消除 TokenRefreshService 与 TokenProvider 之间的竞争条件）
@@ -148,6 +149,22 @@ func ProvideAntigravityTokenProvider(
 ) *AntigravityTokenProvider {
 	p := NewAntigravityTokenProvider(accountRepo, tokenCache, antigravityOAuthService)
 	executor := NewAntigravityTokenRefresher(antigravityOAuthService)
+	p.SetRefreshAPI(refreshAPI, executor)
+	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
+	p.SetTempUnschedCache(tempUnschedCache)
+	return p
+REDACTED
+
+// ProvideGrokTokenProvider creates GrokTokenProvider with OAuthRefreshAPI injection.
+func ProvideGrokTokenProvider(
+	accountRepo AccountRepository,
+	tokenCache GeminiTokenCache,
+	grokOAuthService *GrokOAuthService,
+	refreshAPI *OAuthRefreshAPI,
+	tempUnschedCache TempUnschedCache,
+) *GrokTokenProvider {
+	p := NewGrokTokenProvider(accountRepo, tokenCache, grokOAuthService)
+	executor := NewGrokTokenRefresher(grokOAuthService)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
 	p.SetTempUnschedCache(tempUnschedCache)
@@ -535,6 +552,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
 	ProvideOpenAIOAuthService,
+	NewGrokOAuthService,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,
@@ -544,6 +562,7 @@ var ProviderSet = wire.NewSet(
 	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
+	ProvideGrokTokenProvider,
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
 	ProvideClaudeTokenProvider,
@@ -583,6 +602,7 @@ var ProviderSet = wire.NewSet(
 	ProvideUsageCleanupService,
 	ProvideDeferredService,
 	NewAntigravityQuotaFetcher,
+	NewGrokQuotaFetcher,
 	NewUserAttributeService,
 	NewUsageCache,
 	NewTotpService,
