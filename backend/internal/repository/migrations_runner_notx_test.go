@@ -201,7 +201,7 @@ REDACTED
 
 	prepareMigrationsBootstrapExpectations(mock)
 	mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\$1").
-		WithArgs("152_scheduler_outbox_pending_dedup_key_index_notx.sql").
+		WithArgs("153_scheduler_outbox_pending_dedup_key_index_notx.sql").
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectQuery("SELECT EXISTS \\(").
 		WithArgs("idx_scheduler_outbox_pending_dedup_key").
@@ -211,14 +211,14 @@ REDACTED
 	mock.ExpectExec("CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_scheduler_outbox_pending_dedup_key").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("INSERT INTO schema_migrations \\(filename, checksum\\) VALUES \\(\\$1, \\$2\\)").
-		WithArgs("152_scheduler_outbox_pending_dedup_key_index_notx.sql", sqlmock.AnyArg()).
+		WithArgs("153_scheduler_outbox_pending_dedup_key_index_notx.sql", sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("SELECT pg_advisory_unlock\\(\\$1\\)").
 		WithArgs(migrationsAdvisoryLockID).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	fsys := fstest.MapFS{
-		"152_scheduler_outbox_pending_dedup_key_index_notx.sql": &fstest.MapFile{
+		"153_scheduler_outbox_pending_dedup_key_index_notx.sql": &fstest.MapFile{
 			Data: []byte(`
 CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_scheduler_outbox_pending_dedup_key
     ON scheduler_outbox (dedup_key)
