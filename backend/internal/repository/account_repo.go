@@ -653,6 +653,10 @@ func (r *accountRepository) ListOAuthRefreshCandidates(ctx context.Context) ([]s
 	if r.sql == nil {
 		return nil, errors.New("account repository SQL executor not configured")
 REDACTED
+	// (cond) IS NOT TRUE 把 NULL 和 FALSE 都视为"可被刷新"。直接写
+	// NOT (a AND b) 在 PG 三值逻辑下会把 a 或 b 为 NULL 的行（即绝大多数
+	// 健康账号：temp_unschedulable_until=NULL）也排除，导致后台 token
+	// 刷新工作器漏掉所有正常账号 → access_token 到期后请求开始 401。
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT id
 		FROM accounts
@@ -662,10 +666,10 @@ REDACTED
 			AND platform IN ('anthropic', 'openai', 'gemini', 'antigravity')
 			AND credentials ? 'refresh_token'
 			AND btrim(credentials->>'refresh_token') <> ''
-			AND NOT (
+			AND (
 				temp_unschedulable_until > NOW()
 				AND temp_unschedulable_reason LIKE 'token refresh retry exhausted:%'
-			)
+			) IS NOT TRUE
 		ORDER BY priority ASC, id ASC
 	`)
 	if err != nil {
