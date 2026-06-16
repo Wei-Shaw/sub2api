@@ -181,6 +181,16 @@ REDACTED
 		return true
 REDACTED
 
+	// Anthropic official 5h / 7d window exhaustion is a hard account limit.
+	// It must take precedence over user-configured 429 temp-unsched rules,
+	// otherwise a broad "rate limit" keyword rule can shorten a multi-hour
+	// cooldown to a local temporary pause.
+	if statusCode == http.StatusTooManyRequests && account.Platform == PlatformAnthropic {
+		if s.persistAnthropicExhaustedWindowLimit(ctx, account, headers) {
+			return false
+	REDACTED
+REDACTED
+
 	// 先尝试临时不可调度规则（401除外）
 	// 如果匹配成功，直接返回，不执行后续禁用逻辑
 	if statusCode != 401 {
@@ -1081,6 +1091,115 @@ REDACTED
 type anthropic429Result struct {
 	resetAt       time.Time  // The correct reset time to use for SetRateLimited
 	fiveHourReset *time.Time // 5h window reset timestamp (for session window calculation), nil if not available
+REDACTED
+
+type anthropicWindowLimit struct {
+	window  string
+	resetAt time.Time
+	reason  string
+REDACTED
+
+func selectAnthropicExhaustedWindow(headers http.Header, now time.Time) *anthropicWindowLimit {
+	reset5h, ok5hReset := parseAnthropicWindowReset(headers, "5h", now)
+	reset7d, ok7dReset := parseAnthropicWindowReset(headers, "7d", now)
+
+	exceeded5h := isAnthropic5hRejected(headers) || isAnthropicWindowExceeded(headers, "5h")
+	exceeded7d := isAnthropicWindowExceeded(headers, "7d")
+
+	if exceeded7d && ok7dReset {
+		return &anthropicWindowLimit{
+			window:  "7d",
+			resetAt: reset7d,
+			reason:  "anthropic_7d_window_exhausted",
+	REDACTED
+REDACTED
+	if exceeded5h && ok5hReset {
+		return &anthropicWindowLimit{
+			window:  "5h",
+			resetAt: reset5h,
+			reason:  "anthropic_5h_window_exhausted",
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func isAnthropic5hRejected(headers http.Header) bool {
+	return strings.EqualFold(strings.TrimSpace(headers.Get("anthropic-ratelimit-unified-5h-status")), "rejected")
+REDACTED
+
+func parseAnthropicWindowReset(headers http.Header, window string, now time.Time) (time.Time, bool) {
+	raw := strings.TrimSpace(headers.Get("anthropic-ratelimit-unified-" + window + "-reset"))
+	if raw == "" {
+		return time.Time{REDACTED, false
+REDACTED
+	ts, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return time.Time{REDACTED, false
+REDACTED
+	if ts > 1e11 {
+		ts = ts / 1000
+REDACTED
+	resetAt := time.Unix(ts, 0)
+	if !resetAt.After(now) {
+		return time.Time{REDACTED, false
+REDACTED
+
+	maxAge := 8 * 24 * time.Hour
+	if window == "5h" {
+		maxAge = 6 * time.Hour
+REDACTED
+	if resetAt.After(now.Add(maxAge)) {
+		return time.Time{REDACTED, false
+REDACTED
+	return resetAt, true
+REDACTED
+
+func shouldPersistAnthropicWindowLimit(account *Account, limit *anthropicWindowLimit, now time.Time) bool {
+	if account == nil || limit == nil || !limit.resetAt.After(now) {
+		return false
+REDACTED
+	if account.RateLimitResetAt == nil {
+		return true
+REDACTED
+	if !account.RateLimitResetAt.After(now) {
+		return true
+REDACTED
+	return limit.resetAt.After(*account.RateLimitResetAt)
+REDACTED
+
+func (s *RateLimitService) persistAnthropicExhaustedWindowLimit(ctx context.Context, account *Account, headers http.Header) bool {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return false
+REDACTED
+	now := time.Now()
+	limit := selectAnthropicExhaustedWindow(headers, now)
+	if limit == nil {
+		return false
+REDACTED
+	if !shouldPersistAnthropicWindowLimit(account, limit, now) {
+		slog.Info("anthropic_window_rate_limit_kept",
+			"account_id", account.ID,
+			"window", limit.window,
+			"reset_at", limit.resetAt,
+			"existing_reset_at", account.RateLimitResetAt)
+		return true
+REDACTED
+
+	s.notifyAccountSchedulingBlocked(account, limit.resetAt, limit.reason)
+	if err := s.accountRepo.SetRateLimited(ctx, account.ID, limit.resetAt); err != nil {
+		slog.Warn("anthropic_window_rate_limit_set_failed",
+			"account_id", account.ID,
+			"window", limit.window,
+			"reset_at", limit.resetAt,
+			"error", err)
+		return true
+REDACTED
+	slog.Info("anthropic_window_rate_limited",
+		"account_id", account.ID,
+		"window", limit.window,
+		"reset_at", limit.resetAt,
+		"reset_in", time.Until(limit.resetAt).Truncate(time.Second))
+	return true
 REDACTED
 
 // calculateAnthropic429ResetTime parses Anthropic's per-window rate-limit headers
