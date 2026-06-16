@@ -49,12 +49,18 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 
 	enc := strings.ToLower(strings.TrimSpace(req.Header.Get("Content-Encoding")))
 	if enc == "" || enc == "identity" {
+		if err := ValidateJSONNestingDepth(raw); err != nil {
+			return nil, err
+		}
 		return raw, nil
 	}
 
 	decoded, err := decompressRequestBody(enc, raw)
 	if err != nil {
 		return nil, fmt.Errorf("decode Content-Encoding %q: %w", enc, err)
+	}
+	if err := ValidateJSONNestingDepth(decoded); err != nil {
+		return nil, err
 	}
 
 	req.Header.Del("Content-Encoding")

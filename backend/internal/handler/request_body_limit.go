@@ -4,7 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 )
+
+const requestJSONNestingTooDeepMessage = "request JSON nesting too deep"
 
 func extractMaxBytesError(err error) (*http.MaxBytesError, bool) {
 	var maxErr *http.MaxBytesError
@@ -12,6 +16,10 @@ func extractMaxBytesError(err error) (*http.MaxBytesError, bool) {
 		return maxErr, true
 	}
 	return nil, false
+}
+
+func isJSONNestingTooDeepError(err error) bool {
+	return errors.Is(err, pkghttputil.ErrJSONNestingTooDeep)
 }
 
 func formatBodyLimit(limit int64) string {

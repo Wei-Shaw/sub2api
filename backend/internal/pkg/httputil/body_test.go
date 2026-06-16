@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,6 +13,10 @@ import (
 )
 
 const samplePayload = `{"model":"gpt-5.5","input":"hi","stream":false}`
+
+func nestedJSONPayload(depth int) []byte {
+	return []byte(`{"model":"gpt-5.5","messages":` + strings.Repeat("[", depth) + strings.Repeat("]", depth) + `}`)
+}
 
 func newRequestWithBody(t *testing.T, body []byte, encoding string) *http.Request {
 	t.Helper()
@@ -139,5 +144,46 @@ func TestReadRequestBodyWithPrealloc_RespectsIdentityEncoding(t *testing.T) {
 	}
 	if string(got) != samplePayload {
 		t.Fatalf("body mismatch: got %q", got)
+	}
+}
+
+func TestValidateJSONNestingDepthLimit_AllowsShallowJSONAndStringBrackets(t *testing.T) {
+	body := []byte(`{"text":"brackets in strings [ { \" ] } do not count","items":[{"value":1}]}`)
+	if err := ValidateJSONNestingDepthLimit(body, 3); err != nil {
+		t.Fatalf("expected shallow JSON to pass, got %v", err)
+	}
+}
+
+func TestValidateJSONNestingDepthLimit_RejectsTooDeepJSON(t *testing.T) {
+	body := []byte(`{"items":[[[[]]]]}`)
+	err := ValidateJSONNestingDepthLimit(body, 4)
+	if !errors.Is(err, ErrJSONNestingTooDeep) {
+		t.Fatalf("expected ErrJSONNestingTooDeep, got %v", err)
+	}
+}
+
+func TestValidateJSONNestingDepthLimit_SkipsNonJSONContainerBodies(t *testing.T) {
+	body := []byte("--boundary\r\n" + strings.Repeat("[", MaxJSONNestingDepth*2))
+	if err := ValidateJSONNestingDepth(body); err != nil {
+		t.Fatalf("expected non-JSON container body to skip depth guard, got %v", err)
+	}
+}
+
+func TestReadRequestBodyWithPrealloc_RejectsDeepJSONAfterGzipDecode(t *testing.T) {
+	payload := nestedJSONPayload(MaxJSONNestingDepth + 1)
+
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	if _, err := gw.Write(payload); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+
+	req := newRequestWithBody(t, buf.Bytes(), "gzip")
+	_, err := ReadRequestBodyWithPrealloc(req)
+	if !errors.Is(err, ErrJSONNestingTooDeep) {
+		t.Fatalf("expected ErrJSONNestingTooDeep after gzip decode, got %v", err)
 	}
 }

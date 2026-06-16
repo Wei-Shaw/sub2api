@@ -176,6 +176,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			googleError(c, http.StatusRequestEntityTooLarge, buildBodyTooLargeMessage(maxErr.Limit))
 			return
 		}
+		if isJSONNestingTooDeepError(err) {
+			googleError(c, http.StatusBadRequest, requestJSONNestingTooDeepMessage)
+			return
+		}
 		googleError(c, http.StatusBadRequest, "Failed to read request body")
 		return
 	}

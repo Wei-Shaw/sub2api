@@ -171,6 +171,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return
 		}
+		if isJSONNestingTooDeepError(err) {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", requestJSONNestingTooDeepMessage)
+			return
+		}
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
 		return
 	}
@@ -643,6 +647,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+			return
+		}
+		if isJSONNestingTooDeepError(err) {
+			h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", requestJSONNestingTooDeepMessage)
 			return
 		}
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
@@ -1223,6 +1231,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "unsupported websocket message type")
 		return
 	}
+	if err := pkghttputil.ValidateJSONNestingDepth(firstMessage); err != nil {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, requestJSONNestingTooDeepMessage)
+		return
+	}
 	if !gjson.ValidBytes(firstMessage) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid JSON payload")
 		return
@@ -1412,6 +1424,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
 				if turn == 1 {
 					return nil
+				}
+				if err := pkghttputil.ValidateJSONNestingDepth(payload); err != nil {
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, requestJSONNestingTooDeepMessage, err)
 				}
 				if !gjson.ValidBytes(payload) {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
