@@ -2668,3 +2668,109 @@ func TestOpenAICompatSSEFrameParserResetsEventTypeAtFrameBoundary(t *testing.T) 
 	require.Empty(t, frame.EventType)
 	require.JSONEq(t, `{"delta":"ok"}`, frame.Data)
 }
+
+func TestStreamingPassthroughCyberPolicyMarksAndPassesThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}
+	svc := &OpenAIGatewayService{cfg: cfg}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"r1"}}`,
+			"",
+			"event: response.failed",
+			`data: {"type":"response.failed","response":{"error":{"code":"cyber_policy","message":"flagged for cyber policy"}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-cyber"}},
+	}
+
+	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, time.Now(), "m", "m")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr), "cyber must NOT failover")
+	require.Contains(t, rec.Body.String(), "cyber_policy", "response.failed passed through to client")
+	mark := GetOpsCyberPolicy(c)
+	require.NotNil(t, mark)
+	require.Equal(t, "flagged for cyber policy", mark.Message)
+}
+
+func TestHandleStreamingResponseCyberPolicyMarks(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}
+	svc := &OpenAIGatewayService{cfg: cfg}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"r1"}}`,
+			"",
+			"event: response.failed",
+			`data: {"type":"response.failed","error":{"code":"cyber_policy","message":"flagged"}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid"}},
+	}
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, time.Now(), "m", "m")
+	require.Error(t, err)
+	var fo *UpstreamFailoverError
+	require.False(t, errors.As(err, &fo))
+	require.NotNil(t, GetOpsCyberPolicy(c))
+}
+
+func TestHandleErrorResponseCyberPolicyPassthrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	cyberBody := `{"error":{"code":"cyber_policy","message":"flagged for cyber policy"}}`
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "X-Request-Id": []string{"rid"}},
+		Body:       io.NopCloser(strings.NewReader(cyberBody)),
+	}
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, nil)
+	require.Error(t, err)
+	require.Equal(t, http.StatusBadRequest, rec.Code, "passthrough upstream 400, not rewrapped 502")
+	require.Contains(t, rec.Body.String(), "cyber_policy", "client sees original cyber body")
+	require.NotContains(t, rec.Body.String(), "Upstream request failed", "must not 502-rewrap")
+	mark := GetOpsCyberPolicy(c)
+	require.NotNil(t, mark)
+	require.Equal(t, http.StatusBadRequest, mark.UpstreamStatus)
+}
+
+func TestHandleCompatErrorResponseCyberPolicyEarlyReturn(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	cyberBody := `{"error":{"code":"cyber_policy","message":"flagged for cyber policy"}}`
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(cyberBody)),
+	}
+	var gotStatus int
+	var gotType, gotMsg string
+	writeError := func(_ *gin.Context, statusCode int, errType, message string) {
+		gotStatus, gotType, gotMsg = statusCode, errType, message
+	}
+	// cyber 命中应早返回(写兼容错误 + 不冷却账号)，而非落到通用 "Upstream request failed"。
+	_, err := svc.handleCompatErrorResponse(resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, writeError)
+	require.Error(t, err)
+	require.Equal(t, http.StatusBadRequest, gotStatus)
+	require.Equal(t, "invalid_request_error", gotType)
+	require.Contains(t, gotMsg, "flagged for cyber policy")
+	require.NotContains(t, gotMsg, "Upstream request failed")
+	require.NotNil(t, GetOpsCyberPolicy(c))
+}
