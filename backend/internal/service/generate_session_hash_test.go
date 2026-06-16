@@ -26,6 +26,14 @@ REDACTED
 	return parsed
 REDACTED
 
+func mustParseResponsesSessionHashRequest(t *testing.T, body string, ctx *SessionContext) *ParsedRequest {
+REDACTED
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(body)), "responses")
+REDACTED
+	parsed.SessionContext = ctx
+	return parsed
+REDACTED
+
 func anthropicSessionBody(system any, messages []any, metadataUserID string) string {
 	body := map[string]any{REDACTED
 	if system != nil {
@@ -215,6 +223,60 @@ func TestGenerateSessionHash_ContinuousConversation_SameRoundSameHash(t *testing
 	h1 := svc.GenerateSessionHash(mk())
 	h2 := svc.GenerateSessionHash(mk())
 	require.Equal(t, h1, h2, "same conversation state should produce identical hash on retry")
+REDACTED
+
+func TestGenerateSessionHash_ResponsesDifferentInputProducesDifferentHash(t *testing.T) {
+	svc := &GatewayService{REDACTED
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "codex_cli_rs/0.1.0", APIKeyID: 1REDACTED
+	first := mustParseResponsesSessionHashRequest(t, `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"help me with Go"REDACTED]REDACTED]REDACTED`, ctx)
+	second := mustParseResponsesSessionHashRequest(t, `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"help me with Python"REDACTED]REDACTED]REDACTED`, ctx)
+
+	h1 := svc.GenerateSessionHash(first)
+	h2 := svc.GenerateSessionHash(second)
+	require.NotEmpty(t, h1)
+	require.NotEmpty(t, h2)
+	require.NotEqual(t, h1, h2, "different Responses input should produce different hashes for the same client")
+REDACTED
+
+func TestGenerateSessionHash_ResponsesGrowingInputKeepsStableHash(t *testing.T) {
+	svc := &GatewayService{REDACTED
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "codex_cli_rs/0.1.0", APIKeyID: 1REDACTED
+	round1 := mustParseResponsesSessionHashRequest(t, `{"input":[{"type":"message","role":"developer","content":[{"type":"input_text","text":"Be concise."REDACTED]REDACTED,{"type":"message","role":"user","content":[{"type":"input_text","text":"help me with Go"REDACTED]REDACTED]REDACTED`, ctx)
+	round2 := mustParseResponsesSessionHashRequest(t, `{"input":[{"type":"message","role":"developer","content":[{"type":"input_text","text":"Be concise."REDACTED]REDACTED,{"type":"message","role":"user","content":[{"type":"input_text","text":"help me with Go"REDACTED]REDACTED,{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Sure."REDACTED]REDACTED,{"type":"message","role":"user","content":[{"type":"input_text","text":"add tests"REDACTED]REDACTED]REDACTED`, ctx)
+
+	h1 := svc.GenerateSessionHash(round1)
+	h2 := svc.GenerateSessionHash(round2)
+	require.NotEmpty(t, h1)
+	require.Equal(t, h1, h2, "Responses input growth should preserve the hash when the conversation prefix is stable")
+REDACTED
+
+func TestGenerateSessionHash_MessagesPathIgnoresResponsesInput(t *testing.T) {
+	svc := &GatewayService{REDACTED
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "test", APIKeyID: 1REDACTED
+	first := mustParseResponsesSessionHashRequest(t, `{"messages":[{"role":"user","content":"hello"REDACTED],"input":"first"REDACTED`, ctx)
+	second := mustParseResponsesSessionHashRequest(t, `{"messages":[{"role":"user","content":"hello"REDACTED],"input":"second"REDACTED`, ctx)
+
+	h1 := svc.GenerateSessionHash(first)
+	h2 := svc.GenerateSessionHash(second)
+	require.Equal(t, h1, h2, "existing messages fallback should remain authoritative when messages contain text")
+REDACTED
+
+func TestGenerateSessionHash_ResponsesInputDoesNotOverrideHigherPrioritySources(t *testing.T) {
+	svc := &GatewayService{REDACTED
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "test", APIKeyID: 1REDACTED
+
+	t.Run("metadata user id", func(t *testing.T) {
+		metadata := "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account__session_123e4567-e89b-12d3-a456-426614174000"
+		parsed := mustParseResponsesSessionHashRequest(t, `{"metadata":{"user_id":"`+metadata+`"REDACTED,"input":"hello"REDACTED`, ctx)
+		require.Equal(t, "123e4567-e89b-12d3-a456-426614174000", svc.GenerateSessionHash(parsed))
+REDACTED)
+
+	t.Run("cache control", func(t *testing.T) {
+		body := `{"system":[{"type":"text","text":"stable cache anchor","cache_control":{"type":"ephemeral"REDACTEDREDACTED],"input":"hello"REDACTED`
+		first := mustParseResponsesSessionHashRequest(t, body, ctx)
+		second := mustParseResponsesSessionHashRequest(t, body, &SessionContext{ClientIP: "9.8.7.6", UserAgent: "other", APIKeyID: 2REDACTED)
+		require.Equal(t, svc.GenerateSessionHash(first), svc.GenerateSessionHash(second))
+REDACTED)
 REDACTED
 
 func TestGenerateSessionHash_MessageRollback(t *testing.T) {
