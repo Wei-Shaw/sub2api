@@ -75,6 +75,7 @@ type DataImportResult struct {
 	ProxyReused    int               `json:"proxy_reused"`
 	ProxyFailed    int               `json:"proxy_failed"`
 	AccountCreated int               `json:"account_created"`
+	AccountSkipped int               `json:"account_skipped"`
 	AccountFailed  int               `json:"account_failed"`
 	Errors         []DataImportError `json:"errors,omitempty"`
 }
@@ -373,6 +374,17 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	// 收集需要异步设置隐私的 Antigravity OAuth 账号
 	var privacyAccounts []*service.Account
 
+	// 预加载该批次涉及的所有平台账号，构建身份索引，用于跨已存在账号去重。
+	importPlatforms := make([]string, 0, len(dataPayload.Accounts))
+	for _, item := range dataPayload.Accounts {
+		importPlatforms = append(importPlatforms, item.Platform)
+	}
+	accountIndex, indexErr := h.loadAccountIdentityIndex(ctx, importPlatforms)
+	if indexErr != nil {
+		return result, indexErr
+	}
+	seenAccountIdentity := make(map[string]int, len(dataPayload.Accounts))
+
 	for i := range dataPayload.Accounts {
 		item := dataPayload.Accounts[i]
 		if err := validateDataAccount(item); err != nil {
@@ -403,6 +415,36 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 		enrichCredentialsFromIDToken(&item)
 
+		// 去重：批内已见 → 跳过；DB 已存在 → 跳过。
+		identityKeys := buildAccountIdentityKeys(accountIdentityInput{
+			Platform:    item.Platform,
+			Type:        item.Type,
+			Credentials: item.Credentials,
+			Extra:       item.Extra,
+		})
+		if len(identityKeys) > 0 {
+			if dupIndex, ok := firstSeenIdentity(seenAccountIdentity, identityKeys); ok {
+				result.AccountSkipped++
+				result.Errors = append(result.Errors, DataImportError{
+					Kind:    "account_skipped",
+					Name:    item.Name,
+					Message: fmt.Sprintf("与本次导入第 %d 条重复，已跳过", dupIndex),
+				})
+				continue
+			}
+			if existing := accountIndex.Find(identityKeys); existing != nil {
+				result.AccountSkipped++
+				result.Errors = append(result.Errors, DataImportError{
+					Kind:    "account_skipped",
+					Name:    item.Name,
+					Message: fmt.Sprintf("账号已存在（id=%d, name=%s），已跳过", existing.ID, existing.Name),
+				})
+				markIdentitySeen(seenAccountIdentity, identityKeys, i+1)
+				continue
+			}
+			markIdentitySeen(seenAccountIdentity, identityKeys, i+1)
+		}
+
 		accountInput := &service.CreateAccountInput{
 			Name:                 item.Name,
 			Notes:                item.Notes,
@@ -429,6 +471,10 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 				Message: err.Error(),
 			})
 			continue
+		}
+		// 新建账号加入索引，保证同批次后续项可以发现它。
+		if created != nil {
+			accountIndex.Add(*created)
 		}
 		// 收集 Antigravity OAuth 账号，稍后异步设置隐私
 		if created.Platform == service.PlatformAntigravity && created.Type == service.AccountTypeOAuth {
@@ -662,7 +708,13 @@ func validateDataAccount(item DataAccount) error {
 		return errors.New("account credentials is required")
 	}
 	switch item.Type {
-	case service.AccountTypeOAuth, service.AccountTypeSetupToken, service.AccountTypeAPIKey, service.AccountTypeUpstream:
+	case service.AccountTypeOAuth,
+		service.AccountTypeSetupToken,
+		service.AccountTypeAPIKey,
+		service.AccountTypeUpstream,
+		service.AccountTypeBedrock,
+		service.AccountTypeAnthropicAWS,
+		service.AccountTypeServiceAccount:
 	default:
 		return fmt.Errorf("account type is invalid: %s", item.Type)
 	}

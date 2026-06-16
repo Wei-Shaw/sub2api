@@ -153,7 +153,7 @@
       <!-- Account Type Selection (Anthropic) -->
       <div v-if="form.platform === 'anthropic'">
         <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
-        <div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4" data-tour="account-form-type">
+        <div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" data-tour="account-form-type">
           <button
             type="button"
             @click="accountCategory = 'oauth-based'"
@@ -267,6 +267,36 @@
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">Vertex</span>
               <span class="text-xs text-gray-500 dark:text-gray-400">Service Account</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            @click="accountCategory = 'anthropic_aws'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'anthropic_aws'
+                ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                : 'border-gray-200 hover:border-indigo-300 dark:border-dark-600 dark:hover:border-indigo-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'anthropic_aws'
+                  ? 'bg-indigo-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="cloud" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{
+                t('admin.accounts.anthropicAwsLabel')
+              }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                t('admin.accounts.anthropicAwsDesc')
+              }}</span>
             </div>
           </button>
 
@@ -1662,9 +1692,200 @@
         </div>
       </div>
 
-      <!-- 配额控制 (Anthropic apikey/bedrock: 配额限制 + 亲和) -->
+      <!-- Claude Platform on AWS credentials (only for anthropic_aws type) -->
+      <div v-if="form.platform === 'anthropic' && accountCategory === 'anthropic_aws'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.anthropicAwsApiKey') }}</label>
+          <div class="relative">
+            <input
+              v-model="anthropicAwsApiKey"
+              :type="anthropicAwsApiKeyVisible ? 'text' : 'password'"
+              required
+              class="input font-mono pr-20"
+              placeholder="AEAA..."
+              autocomplete="off"
+              spellcheck="false"
+              autocapitalize="off"
+            />
+            <button
+              type="button"
+              @click="anthropicAwsApiKeyVisible = !anthropicAwsApiKeyVisible"
+              class="absolute inset-y-0 right-0 px-3 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              :aria-label="anthropicAwsApiKeyVisible ? t('admin.accounts.anthropicAwsApiKeyHide') : t('admin.accounts.anthropicAwsApiKeyShow')"
+            >
+              {{ anthropicAwsApiKeyVisible ? t('admin.accounts.anthropicAwsApiKeyHide') : t('admin.accounts.anthropicAwsApiKeyShow') }}
+            </button>
+          </div>
+          <!-- 粘贴后的校验回显，专治 S/5、O/0 视觉混淆 -->
+          <div
+            v-if="anthropicAwsApiKey"
+            :class="[
+              'mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-1 text-xs font-mono',
+              anthropicAwsApiKeyChecks.prefixValid && anthropicAwsApiKeyChecks.lengthLikely
+                ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300'
+                : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+            ]"
+          >
+            <span>len: {{ anthropicAwsApiKeyChecks.length }}</span>
+            <span>tail: …{{ anthropicAwsApiKeyChecks.tail }}</span>
+            <span v-if="!anthropicAwsApiKeyChecks.prefixValid">⚠ {{ t('admin.accounts.anthropicAwsApiKeyPrefixWarning') }}</span>
+            <span v-else-if="!anthropicAwsApiKeyChecks.lengthLikely">⚠ {{ t('admin.accounts.anthropicAwsApiKeyLengthWarning') }}</span>
+            <span v-else>✓ ok</span>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.anthropicAwsApiKeyHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.anthropicAwsWorkspaceId') }}</label>
+          <input
+            v-model="anthropicAwsWorkspaceId"
+            type="text"
+            required
+            class="input font-mono"
+            placeholder="wrkspc_..."
+          />
+          <p class="input-hint">{{ t('admin.accounts.anthropicAwsWorkspaceIdHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.anthropicAwsRegion') }}</label>
+          <select v-model="anthropicAwsRegion" class="input">
+            <optgroup label="US">
+              <option value="us-east-1">us-east-1 (N. Virginia)</option>
+              <option value="us-east-2">us-east-2 (Ohio)</option>
+              <option value="us-west-1">us-west-1 (N. California)</option>
+              <option value="us-west-2">us-west-2 (Oregon)</option>
+              <option value="us-gov-east-1">us-gov-east-1 (GovCloud US-East)</option>
+              <option value="us-gov-west-1">us-gov-west-1 (GovCloud US-West)</option>
+            </optgroup>
+            <optgroup label="Europe">
+              <option value="eu-west-1">eu-west-1 (Ireland)</option>
+              <option value="eu-west-2">eu-west-2 (London)</option>
+              <option value="eu-west-3">eu-west-3 (Paris)</option>
+              <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
+              <option value="eu-central-2">eu-central-2 (Zurich)</option>
+              <option value="eu-south-1">eu-south-1 (Milan)</option>
+              <option value="eu-south-2">eu-south-2 (Spain)</option>
+              <option value="eu-north-1">eu-north-1 (Stockholm)</option>
+            </optgroup>
+            <optgroup label="Asia Pacific">
+              <option value="ap-northeast-1">ap-northeast-1 (Tokyo)</option>
+              <option value="ap-northeast-2">ap-northeast-2 (Seoul)</option>
+              <option value="ap-northeast-3">ap-northeast-3 (Osaka)</option>
+              <option value="ap-south-1">ap-south-1 (Mumbai)</option>
+              <option value="ap-south-2">ap-south-2 (Hyderabad)</option>
+              <option value="ap-southeast-1">ap-southeast-1 (Singapore)</option>
+              <option value="ap-southeast-2">ap-southeast-2 (Sydney)</option>
+            </optgroup>
+            <optgroup label="Canada">
+              <option value="ca-central-1">ca-central-1 (Canada)</option>
+            </optgroup>
+            <optgroup label="South America">
+              <option value="sa-east-1">sa-east-1 (São Paulo)</option>
+            </optgroup>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.anthropicAwsRegionHint') }}</p>
+        </div>
+
+        <!-- Model Restriction Section for anthropic_aws -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelWhitelist') }}
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelMapping') }}
+            </button>
+          </div>
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
+            </p>
+          </div>
+          <div v-else class="space-y-3">
+            <div v-for="(mapping, index) in modelMappings" :key="index" class="flex items-center gap-2">
+              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+              <span class="text-gray-400">→</span>
+              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+            <button type="button" @click="modelMappings.push({ from: '', to: '' })" class="btn btn-secondary text-sm">
+              + {{ t('admin.accounts.addMapping') }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Pool Mode Section for anthropic_aws -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.poolMode') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.poolModeHint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="poolModeEnabled = !poolModeEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                poolModeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  poolModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <div v-if="poolModeEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.poolModeRetryCount') }}</label>
+            <input
+              v-model.number="poolModeRetryCount"
+              type="number"
+              min="0"
+              :max="MAX_POOL_MODE_RETRY_COUNT"
+              step="1"
+              class="input"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{
+                t('admin.accounts.poolModeRetryCountHint', {
+                  default: DEFAULT_POOL_MODE_RETRY_COUNT,
+                  max: MAX_POOL_MODE_RETRY_COUNT
+                })
+              }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 配额控制 (Anthropic apikey/bedrock/anthropic_aws: 配额限制 + 亲和) -->
       <div
-        v-if="form.platform === 'anthropic' && (form.type === 'apikey' || form.type === 'bedrock')"
+        v-if="form.platform === 'anthropic' && (form.type === 'apikey' || form.type === 'bedrock' || form.type === 'anthropic_aws')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
         <div class="mb-3">
@@ -3357,7 +3578,7 @@ interface TempUnschedRuleForm {
 // State
 const step = ref(1)
 const submitting = ref(false)
-const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
+const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'anthropic_aws' | 'service_account'>('oauth-based') // UI selection for account category
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
@@ -3456,6 +3677,23 @@ const bedrockSessionToken = ref('')
 const bedrockRegion = ref('us-east-1')
 const bedrockForceGlobal = ref(false)
 const bedrockApiKeyValue = ref('')
+
+// Claude Platform on AWS (anthropic_aws) credentials
+const anthropicAwsApiKey = ref('')
+const anthropicAwsWorkspaceId = ref('')
+const anthropicAwsRegion = ref('us-east-1')
+const anthropicAwsApiKeyVisible = ref(false)
+// 粘贴回显：暴露长度 + 末 4 位 + 前缀校验，防止 S/5、O/0 等视觉混淆字符
+const anthropicAwsApiKeyChecks = computed(() => {
+  const v = (anthropicAwsApiKey.value || '').trim()
+  return {
+    length: v.length,
+    tail: v.length >= 4 ? v.slice(-4) : v,
+    prefixValid: v.startsWith('AEAA'),
+    // Claude Platform on AWS 的 key 实测约 130–300 字符；过短一般是 paste 丢字
+    lengthLikely: v.length >= 100
+  }
+})
 const vertexServiceAccountFileInput = ref<HTMLInputElement | null>(null)
 const vertexServiceAccountJson = ref('')
 const vertexProjectId = ref('')
@@ -3777,6 +4015,11 @@ watch(
       form.type = 'bedrock' as AccountType
       return
     }
+    // Claude Platform on AWS 类型
+    if (form.platform === 'anthropic' && category === 'anthropic_aws') {
+      form.type = 'anthropic_aws' as AccountType
+      return
+    }
     if ((form.platform === 'gemini' || form.platform === 'anthropic') && category === 'service_account') {
       form.type = 'service_account' as AccountType
     } else if (category === 'oauth-based') {
@@ -3823,6 +4066,9 @@ watch(
     if (newPlatform !== 'anthropic' && accountCategory.value === 'bedrock') {
       accountCategory.value = 'oauth-based'
     }
+    if (newPlatform !== 'anthropic' && accountCategory.value === 'anthropic_aws') {
+      accountCategory.value = 'oauth-based'
+    }
     // Reset Bedrock fields when switching platforms
     bedrockAccessKeyId.value = ''
     bedrockSecretAccessKey.value = ''
@@ -3831,6 +4077,10 @@ watch(
     bedrockForceGlobal.value = false
     bedrockAuthMode.value = 'sigv4'
     bedrockApiKeyValue.value = ''
+    // Reset Claude Platform on AWS fields
+    anthropicAwsApiKey.value = ''
+    anthropicAwsWorkspaceId.value = ''
+    anthropicAwsRegion.value = 'us-east-1'
     vertexServiceAccountJson.value = ''
     vertexProjectId.value = ''
     vertexClientEmail.value = ''
@@ -4541,6 +4791,45 @@ const handleSubmit = async () => {
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
 
     await createAccountAndFinish('anthropic', 'bedrock' as AccountType, credentials)
+    return
+  }
+
+  // For Claude Platform on AWS type, create directly
+  if (form.platform === 'anthropic' && accountCategory.value === 'anthropic_aws') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    if (!anthropicAwsApiKey.value.trim()) {
+      appStore.showError(t('admin.accounts.anthropicAwsApiKeyRequired'))
+      return
+    }
+    if (!anthropicAwsWorkspaceId.value.trim()) {
+      appStore.showError(t('admin.accounts.anthropicAwsWorkspaceIdRequired'))
+      return
+    }
+
+    const credentials: Record<string, unknown> = {
+      api_key: anthropicAwsApiKey.value.trim(),
+      anthropic_workspace_id: anthropicAwsWorkspaceId.value.trim(),
+      aws_region: anthropicAwsRegion.value.trim() || 'us-east-1',
+    }
+
+    const modelMapping = buildModelMappingObject(
+      modelRestrictionMode.value, allowedModels.value, modelMappings.value
+    )
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    }
+
+    if (poolModeEnabled.value) {
+      credentials.pool_mode = true
+      credentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
+    }
+
+    applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+
+    await createAccountAndFinish('anthropic', 'anthropic_aws' as AccountType, credentials)
     return
   }
 

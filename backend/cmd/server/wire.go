@@ -24,7 +24,11 @@ import (
 )
 
 type Application struct {
-	Server  *http.Server
+	Server *http.Server
+	// xiugai 添加节点功能
+	// AccountRepo 账号数据库访问层，供节点上报服务读取本地全量账号数据。
+	AccountRepo service.AccountRepository
+	// end
 	Cleanup func()
 }
 
@@ -53,7 +57,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		provideCleanup,
 
 		// Application struct
-		wire.Struct(new(Application), "Server", "Cleanup"),
+		wire.Struct(new(Application), "Server", "AccountRepo", "Cleanup"),
 	)
 	return nil, nil
 }

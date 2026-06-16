@@ -31,6 +31,7 @@ const (
 	AccountTypeAPIKey         = "apikey"          // API Key类型账号
 	AccountTypeUpstream       = "upstream"        // 上游透传类型账号（通过 Base URL + API Key 连接上游）
 	AccountTypeBedrock        = "bedrock"         // AWS Bedrock 类型账号（通过 SigV4 签名或 API Key 连接 Bedrock，由 credentials.auth_mode 区分）
+	AccountTypeAnthropicAWS   = "anthropic_aws"   // Claude Platform on AWS 类型账号（Anthropic 在 AWS 上托管的外部 API，aws-external-anthropic.{region}.api.aws）
 	AccountTypeServiceAccount = "service_account" // Google Service Account 类型账号（用于 Vertex AI）
 )
 

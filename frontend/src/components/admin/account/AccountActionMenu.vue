@@ -83,7 +83,7 @@ const isAntigravityOAuth = computed(() => props.account?.platform === 'antigravi
 const isOpenAIOAuth = computed(() => props.account?.platform === 'openai' && props.account?.type === 'oauth')
 const supportsPrivacy = computed(() => isAntigravityOAuth.value || isOpenAIOAuth.value)
 const hasQuotaLimit = computed(() => {
-  return (props.account?.type === 'apikey' || props.account?.type === 'bedrock') && (
+  return (props.account?.type === 'apikey' || props.account?.type === 'bedrock' || props.account?.type === 'anthropic_aws') && (
     (props.account?.quota_limit ?? 0) > 0 ||
     (props.account?.quota_daily_limit ?? 0) > 0 ||
     (props.account?.quota_weekly_limit ?? 0) > 0

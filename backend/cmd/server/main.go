@@ -18,8 +18,14 @@ import (
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	// xiugai 添加节点功能
+	"github.com/Wei-Shaw/sub2api/internal/node"
+	// end
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	// xiugai 添加节点功能
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	// end
 	"github.com/Wei-Shaw/sub2api/internal/setup"
 	"github.com/Wei-Shaw/sub2api/internal/web"
 
@@ -154,6 +160,13 @@ func runMainServer() {
 	}
 	defer app.Cleanup()
 
+	// xiugai 添加节点功能
+	// 启动节点上报服务（可选，仅当当前目录存在 .env 时生效）
+	reporterCtx, reporterCancel := context.WithCancel(context.Background())
+	defer reporterCancel()
+	startNodeReporter(reporterCtx, app.AccountRepo)
+	// end
+
 	// 启动服务器
 	go func() {
 		if err := app.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -179,3 +192,34 @@ func runMainServer() {
 
 	log.Println("Server exited")
 }
+
+// xiugai 添加节点功能
+
+// startNodeReporter 尝试从当前工作目录加载 .env 配置并以后台 goroutine 方式
+// 启动节点上报服务。若 .env 不存在或配置有误，仅打印日志后静默返回，不影响主服务启动。
+//
+// 参数：
+//   - ctx：上下文，取消时节点上报服务随之停止。
+//   - repo：账号数据库访问层，用于读取本地全量账号数据并上报给控制服务器。
+func startNodeReporter(ctx context.Context, repo service.AccountRepository) {
+	cfg, err := node.LoadConfig(".env")
+	if err != nil {
+		// .env 不存在属于正常情况（未启用节点上报功能），其他错误才打印警告。
+		if !os.IsNotExist(err) {
+			log.Printf("[Node] Config error, reporter disabled: %v", err)
+		}
+		return
+	}
+
+	lister := node.NewRepoAccountLister(repo)
+	reporter, err := node.NewReporter(cfg, lister)
+	if err != nil {
+		log.Printf("[Node] Init error, reporter disabled: %v", err)
+		return
+	}
+
+	go reporter.Start(ctx)
+	log.Printf("[Node] Reporter started (node=%s, control=%s)", cfg.NodeName, cfg.ControlAddr)
+}
+
+// end

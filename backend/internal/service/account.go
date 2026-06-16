@@ -731,6 +731,9 @@ func (a *Account) ResolveCompactMappedModel(requestedModel string) (mappedModel 
 }
 
 func (a *Account) GetBaseURL() string {
+	if a.Type == AccountTypeAnthropicAWS {
+		return a.GetAnthropicAWSBaseURL()
+	}
 	if a.Type != AccountTypeAPIKey {
 		return ""
 	}
@@ -1043,9 +1046,34 @@ func (a *Account) IsBedrockAPIKey() bool {
 	return a.IsBedrock() && a.GetCredential("auth_mode") == "apikey"
 }
 
+// IsAnthropicAWS 返回账号是否为 Claude Platform on AWS 类型
+func (a *Account) IsAnthropicAWS() bool {
+	return a.Platform == PlatformAnthropic && a.Type == AccountTypeAnthropicAWS
+}
+
+// GetAnthropicAWSRegion 返回账号配置的 AWS region（默认 us-east-1）
+func (a *Account) GetAnthropicAWSRegion() string {
+	region := strings.TrimSpace(a.GetCredential("aws_region"))
+	if region == "" {
+		return "us-east-1"
+	}
+	return region
+}
+
+// GetAnthropicAWSWorkspaceID 返回 Claude Platform on AWS 的 workspace ID
+func (a *Account) GetAnthropicAWSWorkspaceID() string {
+	return strings.TrimSpace(a.GetCredential("anthropic_workspace_id"))
+}
+
+// GetAnthropicAWSBaseURL 根据 region 推导 Claude Platform on AWS 的 endpoint
+func (a *Account) GetAnthropicAWSBaseURL() string {
+	return "https://aws-external-anthropic." + a.GetAnthropicAWSRegion() + ".api.aws"
+}
+
 // IsAPIKeyOrBedrock 返回账号类型是否支持配额和池模式等特性
+// 同时覆盖 anthropic_aws（Claude Platform on AWS），其特性等同 API Key 账号
 func (a *Account) IsAPIKeyOrBedrock() bool {
-	return a.Type == AccountTypeAPIKey || a.Type == AccountTypeBedrock
+	return a.Type == AccountTypeAPIKey || a.Type == AccountTypeBedrock || a.Type == AccountTypeAnthropicAWS
 }
 
 func (a *Account) IsOpenAI() bool {

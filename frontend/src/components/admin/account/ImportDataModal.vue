@@ -51,6 +51,19 @@
           {{ t('admin.accounts.dataImportResultSummary', result) }}
         </div>
 
+        <div v-if="skippedItems.length" class="mt-2">
+          <div class="text-sm font-medium text-amber-600 dark:text-amber-400">
+            {{ t('admin.accounts.dataImportSkipped') }}
+          </div>
+          <div
+            class="mt-2 max-h-48 overflow-auto rounded-lg bg-amber-50 p-3 font-mono text-xs dark:bg-amber-900/20"
+          >
+            <div v-for="(item, idx) in skippedItems" :key="`skip-${idx}`" class="whitespace-pre-wrap">
+              {{ item.name || '-' }} — {{ item.message }}
+            </div>
+          </div>
+        </div>
+
         <div v-if="errorItems.length" class="mt-2">
           <div class="text-sm font-medium text-red-600 dark:text-red-400">
             {{ t('admin.accounts.dataImportErrors') }}
@@ -114,7 +127,12 @@ const result = ref<AdminDataImportResult | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const fileName = computed(() => file.value?.name || '')
 
-const errorItems = computed(() => result.value?.errors || [])
+const errorItems = computed(() =>
+  (result.value?.errors || []).filter((item) => item.kind !== 'account_skipped')
+)
+const skippedItems = computed(() =>
+  (result.value?.errors || []).filter((item) => item.kind === 'account_skipped')
+)
 
 watch(
   () => props.show,
@@ -181,6 +199,7 @@ const handleImport = async () => {
 
     const msgParams: Record<string, unknown> = {
       account_created: res.account_created,
+      account_skipped: res.account_skipped,
       account_failed: res.account_failed,
       proxy_created: res.proxy_created,
       proxy_reused: res.proxy_reused,

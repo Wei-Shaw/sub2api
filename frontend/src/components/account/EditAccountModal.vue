@@ -1000,6 +1000,165 @@
         </div>
       </div>
 
+      <!-- Claude Platform on AWS fields (for anthropic_aws type) -->
+      <div v-if="account.type === 'anthropic_aws'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.anthropicAwsApiKey') }}</label>
+          <div class="relative">
+            <input
+              v-model="editAnthropicAwsApiKey"
+              :type="editAnthropicAwsApiKeyVisible ? 'text' : 'password'"
+              class="input font-mono pr-20"
+              :placeholder="t('admin.accounts.bedrockApiKeyLeaveEmpty')"
+              autocomplete="off"
+              spellcheck="false"
+              autocapitalize="off"
+            />
+            <button
+              type="button"
+              @click="editAnthropicAwsApiKeyVisible = !editAnthropicAwsApiKeyVisible"
+              class="absolute inset-y-0 right-0 px-3 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            >
+              {{ editAnthropicAwsApiKeyVisible ? t('admin.accounts.anthropicAwsApiKeyHide') : t('admin.accounts.anthropicAwsApiKeyShow') }}
+            </button>
+          </div>
+          <div
+            v-if="editAnthropicAwsApiKey"
+            :class="[
+              'mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-1 text-xs font-mono',
+              editAnthropicAwsApiKeyChecks.prefixValid && editAnthropicAwsApiKeyChecks.lengthLikely
+                ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300'
+                : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+            ]"
+          >
+            <span>len: {{ editAnthropicAwsApiKeyChecks.length }}</span>
+            <span>tail: …{{ editAnthropicAwsApiKeyChecks.tail }}</span>
+            <span v-if="!editAnthropicAwsApiKeyChecks.prefixValid">⚠ {{ t('admin.accounts.anthropicAwsApiKeyPrefixWarning') }}</span>
+            <span v-else-if="!editAnthropicAwsApiKeyChecks.lengthLikely">⚠ {{ t('admin.accounts.anthropicAwsApiKeyLengthWarning') }}</span>
+            <span v-else>✓ ok</span>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.bedrockApiKeyLeaveEmpty') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.anthropicAwsWorkspaceId') }}</label>
+          <input
+            v-model="editAnthropicAwsWorkspaceId"
+            type="text"
+            class="input font-mono"
+            placeholder="wrkspc_..."
+          />
+          <p class="input-hint">{{ t('admin.accounts.anthropicAwsWorkspaceIdHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.anthropicAwsRegion') }}</label>
+          <select v-model="editAnthropicAwsRegion" class="input">
+            <option value="us-east-1">us-east-1 (N. Virginia)</option>
+            <option value="us-east-2">us-east-2 (Ohio)</option>
+            <option value="us-west-2">us-west-2 (Oregon)</option>
+            <option value="eu-west-1">eu-west-1 (Ireland)</option>
+            <option value="ap-northeast-1">ap-northeast-1 (Tokyo)</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.anthropicAwsRegionHint') }}</p>
+        </div>
+
+        <!-- Model Restriction for anthropic_aws -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelWhitelist') }}
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelMapping') }}
+            </button>
+          </div>
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
+            </p>
+          </div>
+          <div v-else class="space-y-3">
+            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="flex items-center gap-2">
+              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+              <span class="text-gray-400">→</span>
+              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+            <button type="button" @click="modelMappings.push({ from: '', to: '' })" class="btn btn-secondary text-sm">
+              + {{ t('admin.accounts.addMapping') }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Pool Mode Section for anthropic_aws -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.poolMode') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.poolModeHint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="poolModeEnabled = !poolModeEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                poolModeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  poolModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <div v-if="poolModeEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.poolModeRetryCount') }}</label>
+            <input
+              v-model.number="poolModeRetryCount"
+              type="number"
+              min="0"
+              :max="MAX_POOL_MODE_RETRY_COUNT"
+              step="1"
+              class="input"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{
+                t('admin.accounts.poolModeRetryCountHint', {
+                  default: DEFAULT_POOL_MODE_RETRY_COUNT,
+                  max: MAX_POOL_MODE_RETRY_COUNT
+                })
+              }}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <!-- Antigravity model restriction (applies to all antigravity types) -->
       <!-- Antigravity 只支持模型映射模式，不支持白名单模式 -->
       <div v-if="account.platform === 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -1542,9 +1701,9 @@
         </div>
       </div>
 
-      <!-- 配额控制 (Anthropic apikey/bedrock: 配额限制 + 亲和) -->
+      <!-- 配额控制 (Anthropic apikey/bedrock/anthropic_aws: 配额限制 + 亲和) -->
       <div
-        v-if="account?.platform === 'anthropic' && (account?.type === 'apikey' || account?.type === 'bedrock')"
+        v-if="account?.platform === 'anthropic' && (account?.type === 'apikey' || account?.type === 'bedrock' || account?.type === 'anthropic_aws')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
         <div class="mb-3">
@@ -2471,6 +2630,20 @@ const editBedrockSessionToken = ref('')
 const editBedrockRegion = ref('')
 const editBedrockForceGlobal = ref(false)
 const editBedrockApiKeyValue = ref('')
+// Claude Platform on AWS credentials
+const editAnthropicAwsApiKey = ref('')
+const editAnthropicAwsWorkspaceId = ref('')
+const editAnthropicAwsRegion = ref('us-east-1')
+const editAnthropicAwsApiKeyVisible = ref(false)
+const editAnthropicAwsApiKeyChecks = computed(() => {
+  const v = (editAnthropicAwsApiKey.value || '').trim()
+  return {
+    length: v.length,
+    tail: v.length >= 4 ? v.slice(-4) : v,
+    prefixValid: v.startsWith('AEAA'),
+    lengthLikely: v.length >= 100
+  }
+})
 const editVertexProjectId = ref('')
 const editVertexClientEmail = ref('')
 const editVertexLocation = ref('us-central1')
@@ -3022,8 +3195,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     }
   }
 
-  // Load quota limit for apikey/bedrock accounts (bedrock quota is also loaded in its own branch above)
-  if (newAccount.type === 'apikey' || newAccount.type === 'bedrock') {
+  // Load quota limit for apikey/bedrock/anthropic_aws accounts (bedrock/anthropic_aws quota is also loaded in their own branches above)
+  if (newAccount.type === 'apikey' || newAccount.type === 'bedrock' || newAccount.type === 'anthropic_aws') {
     const quotaVal = extra?.quota_limit as number | undefined
     editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
     const dailyVal = extra?.quota_daily_limit as number | undefined
@@ -4152,8 +4325,8 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // For apikey/bedrock accounts, handle quota_limit in extra
-    if (props.account.type === 'apikey' || props.account.type === 'bedrock') {
+    // For apikey/bedrock/anthropic_aws accounts, handle quota_limit in extra
+    if (props.account.type === 'apikey' || props.account.type === 'bedrock' || props.account.type === 'anthropic_aws') {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }

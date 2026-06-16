@@ -98,7 +98,7 @@ type CreateAccountRequest struct {
 	Name                    string         `json:"name" binding:"required"`
 	Notes                   *string        `json:"notes"`
 	Platform                string         `json:"platform" binding:"required"`
-	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock anthropic_aws service_account"`
 	Credentials             map[string]any `json:"credentials" binding:"required"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -117,7 +117,7 @@ type CreateAccountRequest struct {
 type UpdateAccountRequest struct {
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock anthropic_aws service_account"`
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -533,6 +533,24 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	var createdAccount *service.Account
 
 	result, err := executeAdminIdempotent(c, "admin.accounts.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		// 去重检查：根据平台与凭证生成身份键，命中即返回 409。
+		if existing, dupErr := h.findDuplicateAccount(ctx, accountIdentityInput{
+			Platform:    req.Platform,
+			Type:        req.Type,
+			Credentials: req.Credentials,
+			Extra:       req.Extra,
+		}); dupErr != nil {
+			return nil, dupErr
+		} else if existing != nil {
+			return nil, infraerrors.Conflict(
+				"ACCOUNT_DUPLICATE",
+				fmt.Sprintf("账号已存在（id=%d, name=%s）", existing.ID, existing.Name),
+			).WithMetadata(map[string]string{
+				"existing_id":   strconv.FormatInt(existing.ID, 10),
+				"existing_name": existing.Name,
+			})
+		}
+
 		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 			Name:                  req.Name,
 			Notes:                 req.Notes,
@@ -1323,12 +1341,24 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 	executeAdminIdempotentJSON(c, "admin.accounts.batch_create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		success := 0
 		failed := 0
+		skipped := 0
 		results := make([]gin.H, 0, len(req.Accounts))
 		// 收集需要异步设置隐私的 OAuth 账号
 		var antigravityPrivacyAccounts []*service.Account
 		var openaiPrivacyAccounts []*service.Account
 
+		// 预加载该批次涉及的所有平台账号，构建身份索引用于跨已存在账号去重。
+		platforms := make([]string, 0, len(req.Accounts))
 		for _, item := range req.Accounts {
+			platforms = append(platforms, item.Platform)
+		}
+		index, indexErr := h.loadAccountIdentityIndex(ctx, platforms)
+		if indexErr != nil {
+			return nil, indexErr
+		}
+		seenIdentity := make(map[string]int, len(req.Accounts))
+
+		for batchIdx, item := range req.Accounts {
 			if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
 				failed++
 				results = append(results, gin.H{
@@ -1341,6 +1371,40 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 
 			// base_rpm 输入校验：负值归零，超过 10000 截断
 			sanitizeExtraBaseRPM(item.Extra)
+
+			// 去重：先检查批内已见，再检查数据库已存在账号。
+			identityKeys := buildAccountIdentityKeys(accountIdentityInput{
+				Platform:    item.Platform,
+				Type:        item.Type,
+				Credentials: item.Credentials,
+				Extra:       item.Extra,
+			})
+			if len(identityKeys) > 0 {
+				if dupIndex, ok := firstSeenIdentity(seenIdentity, identityKeys); ok {
+					skipped++
+					results = append(results, gin.H{
+						"name":    item.Name,
+						"success": false,
+						"skipped": true,
+						"error":   fmt.Sprintf("与第 %d 条重复，已跳过", dupIndex),
+					})
+					continue
+				}
+				if existing := index.Find(identityKeys); existing != nil {
+					skipped++
+					results = append(results, gin.H{
+						"name":          item.Name,
+						"success":       false,
+						"skipped":       true,
+						"existing_id":   existing.ID,
+						"existing_name": existing.Name,
+						"error":         fmt.Sprintf("账号已存在（id=%d, name=%s），已跳过", existing.ID, existing.Name),
+					})
+					markIdentitySeen(seenIdentity, identityKeys, batchIdx+1)
+					continue
+				}
+				markIdentitySeen(seenIdentity, identityKeys, batchIdx+1)
+			}
 
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
 
@@ -1368,6 +1432,10 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 					"error":   err.Error(),
 				})
 				continue
+			}
+			// 新建账号加入索引，保证同批次后续项可以发现它。
+			if account != nil {
+				index.Add(*account)
 			}
 			// 收集需要异步设置隐私的 OAuth 账号
 			if account.Type == service.AccountTypeOAuth {
@@ -1422,6 +1490,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 		return gin.H{
 			"success": success,
 			"failed":  failed,
+			"skipped": skipped,
 			"results": results,
 		}, nil
 	})
