@@ -705,6 +705,76 @@ export async function setPrivacy(id: number): Promise<Account> {
   return data
 REDACTED
 
+/**
+ * OpenAI / Codex rate-limit reset feature: query and reset upstream usage.
+ */
+export interface OpenAIRateLimitWindow {
+  used_percent: number
+  limit_window_seconds: number
+  reset_after_seconds: number
+  reset_at: number
+REDACTED
+
+export interface OpenAIRateLimit {
+  allowed: boolean
+  limit_reached: boolean
+  primary_window?: OpenAIRateLimitWindow | null
+  secondary_window?: OpenAIRateLimitWindow | null
+REDACTED
+
+export interface OpenAIAdditionalRateLimit {
+  limit_name: string
+  metered_feature: string
+  rate_limit?: OpenAIRateLimit | null
+REDACTED
+
+export interface OpenAIRateLimitResetCredits {
+  available_count: number
+REDACTED
+
+export interface OpenAIQuotaUsage {
+  user_id?: string
+  account_id?: string
+  email?: string
+  plan_type?: string
+  rate_limit?: OpenAIRateLimit | null
+  additional_rate_limits?: OpenAIAdditionalRateLimit[]
+  rate_limit_reset_credits?: OpenAIRateLimitResetCredits | null
+  fetched_at: number
+REDACTED
+
+export interface OpenAIQuotaResetCredit {
+  id?: string
+  reset_type?: string
+  status?: string
+  granted_at?: string
+  expires_at?: string
+  redeem_started_at?: string
+  redeemed_at?: string
+REDACTED
+
+export interface OpenAIQuotaResetResult {
+  code: string
+  credit?: OpenAIQuotaResetCredit | null
+  windows_reset: number
+REDACTED
+
+/**
+ * Query OpenAI/Codex rate-limit usage for an OAuth account.
+ */
+export async function queryOpenAIQuota(id: number): Promise<OpenAIQuotaUsage> {
+  const { data REDACTED = await apiClient.get<OpenAIQuotaUsage>(`/admin/openai/accounts/${idREDACTED/quota`)
+  return data
+REDACTED
+
+/**
+ * Consume one rate-limit-reset credit for an OpenAI/Codex OAuth account.
+ */
+export async function resetOpenAIQuota(id: number): Promise<OpenAIQuotaResetResult> {
+  const { data REDACTED = await apiClient.post<OpenAIQuotaResetResult>(`/admin/openai/accounts/${idREDACTED/reset-quota`)
+  return data
+REDACTED
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -746,7 +816,9 @@ export const accountsAPI = {
   batchClearError,
   batchRefresh,
   setPrivacy,
-  revertProxyFallback
+  revertProxyFallback,
+  queryOpenAIQuota,
+  resetOpenAIQuota
 REDACTED
 
 export default accountsAPI

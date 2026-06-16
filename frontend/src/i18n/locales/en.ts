@@ -4105,6 +4105,17 @@ export default {
         passiveSampled: 'Passive',
         activeQuery: 'Query'
       REDACTED,
+      openaiQuotaReset: {
+        count: 'Credits',
+        reset: 'Reset',
+        countTooltipLoad: 'Click to load the available reset-credit count',
+        countTooltipRefresh: 'Click to refresh the available reset-credit count',
+        resetTooltipReady: 'Consume 1 reset credit to immediately restore the window',
+        resetTooltipNeedQuery: 'Click Credits first to load the available count',
+        resetTooltipNoCredits: 'No reset credits available',
+        noCreditsAvailable: 'No reset credits available',
+        resetSuccess: 'Reset {windowsREDACTED window(s)'
+      REDACTED,
       tier: {
         free: 'Free',
         pro: 'Pro',
