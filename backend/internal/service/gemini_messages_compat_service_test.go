@@ -293,6 +293,41 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestCleanToolSchema_NormalizesGeminiUnsupportedSchemaFields(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"$defs": map[string]any{
+			"unused": map[string]any{"type": "string"REDACTED,
+	REDACTED,
+		"definitions": map[string]any{
+			"legacy": map[string]any{"type": "number"REDACTED,
+	REDACTED,
+		"properties": map[string]any{
+			"path": map[string]any{
+				"type": []any{"string", "null"REDACTED,
+		REDACTED,
+			"count": map[string]any{
+				"type": []any{"null", "integer"REDACTED,
+		REDACTED,
+			"empty": map[string]any{
+				"type": []any{"null"REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "OBJECT", cleaned["type"])
+	require.NotContains(t, cleaned, "$defs")
+	require.NotContains(t, cleaned, "definitions")
+
+	properties, ok := cleaned["properties"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "STRING", properties["path"].(map[string]any)["type"])
+	require.Equal(t, "INTEGER", properties["count"].(map[string]any)["type"])
+	require.NotContains(t, properties["empty"].(map[string]any), "type")
+REDACTED
+
 func TestConvertClaudeToolsToGeminiTools_PreservesWebSearchAlongsideFunctions(t *testing.T) {
 	tools := []any{
 		map[string]any{
