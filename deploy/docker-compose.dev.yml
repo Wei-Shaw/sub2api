@@ -35,6 +35,8 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-false}
+      - REDIS_TLS_SKIP_VERIFY=${REDIS_TLS_SKIP_VERIFY:-true}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.local}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - JWT_SECRET=${JWT_SECRET:-}

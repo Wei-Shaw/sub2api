@@ -91,18 +91,6 @@
             </div>
           </div>
 
-          <div class="flex items-center justify-between rounded-xl border border-gray-200 p-3 dark:border-dark-700">
-            <div>
-              <p class="text-sm font-medium text-gray-900 dark:text-white">
-                {{ t("setup.redis.enableTls") }}
-              </p>
-              <p class="text-xs text-gray-500 dark:text-dark-400">
-                {{ t("setup.redis.enableTlsHint") }}
-              </p>
-            </div>
-            <Toggle v-model="formData.redis.enable_tls" />
-          </div>
-
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="input-label">{{ t('setup.database.username') }}</label>
@@ -247,6 +235,18 @@
               </p>
             </div>
             <Toggle v-model="formData.redis.enable_tls" />
+          </div>
+
+          <div v-if="formData.redis.enable_tls" class="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-950/20">
+            <div>
+              <p class="text-sm font-medium text-amber-900 dark:text-amber-100">
+                {{ t("setup.redis.tlsSkipVerify") }}
+              </p>
+              <p class="text-xs text-amber-700 dark:text-amber-300">
+                {{ t("setup.redis.tlsSkipVerifyHint") }}
+              </p>
+            </div>
+            <Toggle v-model="formData.redis.tls_skip_verify" />
           </div>
 
           <button
@@ -543,7 +543,8 @@ const formData = reactive<InstallRequest>({
     port: 6379,
     password: '',
     db: 0,
-    enable_tls: false
+    enable_tls: false,
+    tls_skip_verify: true
   },
   admin: {
     email: '',

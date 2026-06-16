@@ -91,11 +91,12 @@ type DatabaseConfig struct {
 }
 
 type RedisConfig struct {
-	Host      string `json:"host" yaml:"host"`
-	Port      int    `json:"port" yaml:"port"`
-	Password  string `json:"password" yaml:"password"`
-	DB        int    `json:"db" yaml:"db"`
-	EnableTLS bool   `json:"enable_tls" yaml:"enable_tls"`
+	Host          string `json:"host" yaml:"host"`
+	Port          int    `json:"port" yaml:"port"`
+	Password      string `json:"password" yaml:"password"`
+	DB            int    `json:"db" yaml:"db"`
+	EnableTLS     bool   `json:"enable_tls" yaml:"enable_tls"`
+	TLSSkipVerify bool   `json:"tls_skip_verify" yaml:"tls_skip_verify"`
 }
 
 type AdminConfig struct {
@@ -254,10 +255,7 @@ func TestRedisConnection(cfg *RedisConfig) error {
 	}
 
 	if cfg.EnableTLS {
-		opts.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ServerName: cfg.Host,
-		}
+		opts.TLSConfig = buildRedisTLSConfig(cfg)
 	}
 
 	rdb := redis.NewClient(opts)
@@ -275,6 +273,14 @@ func TestRedisConnection(cfg *RedisConfig) error {
 	}
 
 	return nil
+}
+
+func buildRedisTLSConfig(cfg *RedisConfig) *tls.Config {
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		ServerName:         cfg.Host,
+		InsecureSkipVerify: cfg.TLSSkipVerify, //nolint:gosec // explicit Redis setup option for private/self-signed servers
+	}
 }
 
 // Install performs the installation with the given configuration
@@ -559,11 +565,12 @@ func AutoSetupFromEnv() error {
 			SSLMode:  getEnvOrDefault("DATABASE_SSLMODE", "disable"),
 		},
 		Redis: RedisConfig{
-			Host:      getEnvOrDefault("REDIS_HOST", "localhost"),
-			Port:      getEnvIntOrDefault("REDIS_PORT", 6379),
-			Password:  getEnvOrDefault("REDIS_PASSWORD", ""),
-			DB:        getEnvIntOrDefault("REDIS_DB", 0),
-			EnableTLS: getEnvOrDefault("REDIS_ENABLE_TLS", "false") == "true",
+			Host:          getEnvOrDefault("REDIS_HOST", "localhost"),
+			Port:          getEnvIntOrDefault("REDIS_PORT", 6379),
+			Password:      getEnvOrDefault("REDIS_PASSWORD", ""),
+			DB:            getEnvIntOrDefault("REDIS_DB", 0),
+			EnableTLS:     getEnvOrDefault("REDIS_ENABLE_TLS", "false") == "true",
+			TLSSkipVerify: getEnvOrDefault("REDIS_TLS_SKIP_VERIFY", "true") == "true",
 		},
 		Admin: AdminConfig{
 			Email:    getEnvOrDefault("ADMIN_EMAIL", "admin@sub2api.local"),

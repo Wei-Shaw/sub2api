@@ -32,6 +32,7 @@ export interface RedisConfig {
   password: string
   db: number
   enable_tls: boolean
+  tls_skip_verify: boolean
 }
 
 export interface AdminConfig {

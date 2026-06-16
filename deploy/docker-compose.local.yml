@@ -77,6 +77,7 @@ services:
       - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024}
       - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10}
       - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-false}
+      - REDIS_TLS_SKIP_VERIFY=${REDIS_TLS_SKIP_VERIFY:-true}
 
       # =======================================================================
       # Admin Account (auto-created on first run)

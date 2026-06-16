@@ -39,11 +39,16 @@ func buildRedisOptions(cfg *config.Config) *redis.Options {
 	}
 
 	if cfg.Redis.EnableTLS {
-		opts.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ServerName: cfg.Redis.Host,
-		}
+		opts.TLSConfig = buildRedisTLSConfig(cfg.Redis)
 	}
 
 	return opts
+}
+
+func buildRedisTLSConfig(cfg config.RedisConfig) *tls.Config {
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		ServerName:         cfg.Host,
+		InsecureSkipVerify: cfg.TLSSkipVerify, //nolint:gosec // explicit Redis deployment option for private/self-signed servers
+	}
 }

@@ -37,11 +37,13 @@ func TestBuildRedisOptions(t *testing.T) {
 	// Test case with TLS enabled
 	cfgTLS := &config.Config{
 		Redis: config.RedisConfig{
-			Host:      "localhost",
-			EnableTLS: true,
+			Host:          "localhost",
+			EnableTLS:     true,
+			TLSSkipVerify: true,
 		},
 	}
 	optsTLS := buildRedisOptions(cfgTLS)
 	require.NotNil(t, optsTLS.TLSConfig)
 	require.Equal(t, "localhost", optsTLS.TLSConfig.ServerName)
+	require.True(t, optsTLS.TLSConfig.InsecureSkipVerify)
 }
