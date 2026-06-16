@@ -15,14 +15,14 @@ import (
 
 // Endpoints used by the OpenAI/ChatGPT/Codex quota query and reset feature.
 const (
-	chatGPTUsageURL              = "https://chatgpt.com/backend-api/wham/usage"
-	chatGPTRateLimitResetURL     = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume"
-	openaiQuotaUpstreamTimeout   = 20 * time.Second
-	openaiQuotaCodexOriginator   = "Codex Desktop"
-	openaiQuotaCodexLanguageTag  = "zh-CN"
-	openaiQuotaSecFetchSite      = "none"
-	openaiQuotaSecFetchMode      = "no-cors"
-	openaiQuotaSecFetchDest      = "empty"
+	chatGPTUsageURL             = "https://chatgpt.com/backend-api/wham/usage"
+	chatGPTRateLimitResetURL    = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume"
+	openaiQuotaUpstreamTimeout  = 20 * time.Second
+	openaiQuotaCodexOriginator  = "Codex Desktop"
+	openaiQuotaCodexLanguageTag = "zh-CN"
+	openaiQuotaSecFetchSite     = "none"
+	openaiQuotaSecFetchMode     = "no-cors"
+	openaiQuotaSecFetchDest     = "empty"
 )
 
 // OpenAIRateLimitWindow describes a single rate-limit window returned by
@@ -311,4 +311,3 @@ func mapUpstreamStatus(status int) int {
 		return http.StatusBadGateway
 REDACTED
 REDACTED
-
