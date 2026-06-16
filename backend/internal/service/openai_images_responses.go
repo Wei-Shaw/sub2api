@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -93,8 +94,11 @@ func (e *OpenAIImagesUpstreamError) clientMessage() string {
 }
 
 func openAIResponsesImageResultKey(itemID string, result openAIResponsesImageResult) string {
-	if strings.TrimSpace(result.Result) != "" {
-		return strings.TrimSpace(result.OutputFormat) + "|" + strings.TrimSpace(result.Result)
+	if trimmed := strings.TrimSpace(result.Result); trimmed != "" {
+		sum := sha256.Sum256([]byte(trimmed))
+		return strings.TrimSpace(result.OutputFormat) + "|" +
+			strings.TrimSpace(result.Size) + "|" +
+			fmt.Sprintf("%x", sum[:])
 	}
 	return "item:" + strings.TrimSpace(itemID)
 }

@@ -1151,13 +1151,34 @@ func TestOpenAISelectAccountWithLoadAwareness_PreferNeverUsed(t *testing.T) {
 	}
 }
 
+func TestOpenAIResponsesStreamTimeoutDefaultDisabled(t *testing.T) {
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 180,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+	require.Zero(t, svc.openAIResponsesStreamDataIntervalTimeout())
+}
+
+func TestOpenAIResponsesStreamTimeoutUsesDedicatedConfig(t *testing.T) {
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout:                180,
+			OpenAIResponsesStreamDataIntervalTimeout: 900,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+	require.Equal(t, 900*time.Second, svc.openAIResponsesStreamDataIntervalTimeout())
+}
+
 func TestOpenAIStreamingTimeout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			StreamDataIntervalTimeout: 1,
-			StreamKeepaliveInterval:   0,
-			MaxLineSize:               defaultMaxLineSize,
+			OpenAIResponsesStreamDataIntervalTimeout: 1,
+			StreamKeepaliveInterval:                  0,
+			MaxLineSize:                              defaultMaxLineSize,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -2667,4 +2688,323 @@ func TestOpenAICompatSSEFrameParserResetsEventTypeAtFrameBoundary(t *testing.T) 
 	require.True(t, ok)
 	require.Empty(t, frame.EventType)
 	require.JSONEq(t, `{"delta":"ok"}`, frame.Data)
+}
+
+func TestIsCodexCompactRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		body []byte
+		want bool
+	}{
+		{
+			name: "context compaction instructions",
+			body: []byte(`{"model":"gpt-5.5","instructions":"Perform context compaction for a remote compact task","input":"summarize the conversation"}`),
+			want: true,
+		},
+		{
+			name: "compact context input",
+			body: []byte(`{"model":"gpt-5.5","input":[{"role":"user","content":"remote compact task: compact the context into a summary"}]}`),
+			want: true,
+		},
+		{
+			name: "ordinary coding summary prompt",
+			body: []byte(`{"model":"gpt-5.5","instructions":"You are a coding assistant","input":"summarize this file and explain the context"}`),
+			want: false,
+		},
+		{
+			name: "ordinary coding compact adjective",
+			body: []byte(`{"model":"gpt-5.5","input":"write a compact helper for the request context"}`),
+			want: false,
+		},
+		{
+			name: "ordinary compaction discussion",
+			body: []byte(`{"model":"gpt-5.5","input":"explain context compaction with examples"}`),
+			want: false,
+		},
+		{
+			name: "explicit image tool overrides compact text",
+			body: []byte(`{"model":"gpt-5.5","instructions":"context compaction","tools":[{"type":"image_generation"}],"input":"draw a compact context diagram"}`),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isCodexCompactRequest(tt.body))
+		})
+	}
+}
+
+func TestShouldEnableCodexImageGenerationBridge_CompactSuppressionAndImageOverride(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	compactBody := []byte(`{"model":"gpt-5.5","instructions":"Remote compact task: perform context compaction","input":"summarize conversation"}`)
+	imageBody := []byte(`{"model":"gpt-5.5","instructions":"Remote compact task: perform context compaction","tools":[{"type":"image_generation"}],"input":"draw it"}`)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.125.0")
+
+	require.False(t, shouldEnableCodexImageGenerationBridge(c, compactBody, "gpt-5.5", nil, nil))
+	require.True(t, shouldEnableCodexImageGenerationBridge(c, imageBody, "gpt-5.5", nil, nil))
+
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil)
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.125.0")
+	require.False(t, shouldEnableCodexImageGenerationBridge(c, []byte(`{"model":"gpt-5.5","input":"hello"}`), "gpt-5.5", nil, nil))
+}
+
+func TestShouldDrainOpenAIStreamAfterClientDisconnect_CompactConfigOverride(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil)
+	setOpenAICompactRequestContext(c, true)
+
+	require.False(t, shouldDrainOpenAIStreamAfterClientDisconnect(&config.Config{}, c))
+	require.True(t, shouldDrainOpenAIStreamAfterClientDisconnect(&config.Config{
+		Gateway: config.GatewayConfig{CompactDrainAfterClientDisconnect: true},
+	}, c))
+
+	rec = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	require.True(t, shouldDrainOpenAIStreamAfterClientDisconnect(&config.Config{}, c))
+}
+
+func TestOpenAIForward_CodexCompactDoesNotInjectImageGenerationBridge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.5","stream":false,"instructions":"Remote compact task: perform context compaction","input":"summarize conversation"}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.125.0")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_compact","status":"completed","model":"gpt-5.5","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{CodexImageGenerationBridgeEnabled: true}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          1,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "tools").Exists(), string(upstream.lastBody))
+	require.NotContains(t, gjson.GetBytes(upstream.lastBody, "instructions").String(), codexImageGenerationBridgeMarker)
+}
+
+func TestOpenAIForward_CodexOrdinaryImageRequestStillInjectsBridge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.5","stream":false,"instructions":"You are a coding assistant","input":"Please generate an image asset for this UI"}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.125.0")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_image","status":"completed","model":"gpt-5.5","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{CodexImageGenerationBridgeEnabled: true}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          2,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.True(t, openAIRequestBodyHasImageGenerationTool(upstream.lastBody), string(upstream.lastBody))
+	require.Contains(t, gjson.GetBytes(upstream.lastBody, "instructions").String(), codexImageGenerationBridgeMarker)
+}
+
+func TestOpenAIForward_CodexImageRequestMentioningCompactionStillInjectsBridge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.5","stream":false,"instructions":"You are a coding assistant","input":"Generate an image explaining context compaction for this architecture note"}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.125.0")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_image","status":"completed","model":"gpt-5.5","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{CodexImageGenerationBridgeEnabled: true}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          3,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.True(t, openAIRequestBodyHasImageGenerationTool(upstream.lastBody), string(upstream.lastBody))
+	require.Contains(t, gjson.GetBytes(upstream.lastBody, "instructions").String(), codexImageGenerationBridgeMarker)
+}
+
+type closeTrackingReadCloser struct {
+	readStarted chan struct{}
+	closed      chan struct{}
+	data        []byte
+	pos         int
+	onClose     func()
+}
+
+func newCloseTrackingReadCloser() *closeTrackingReadCloser {
+	return &closeTrackingReadCloser{
+		readStarted: make(chan struct{}, 1),
+		closed:      make(chan struct{}),
+		data:        []byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"x\"}\n\n"),
+		onClose:     func() {},
+	}
+}
+
+func (r *closeTrackingReadCloser) Read(p []byte) (int, error) {
+	select {
+	case r.readStarted <- struct{}{}:
+	default:
+	}
+	if r.pos < len(r.data) {
+		n := copy(p, r.data[r.pos:])
+		r.pos += n
+		return n, nil
+	}
+	select {
+	case <-r.closed:
+		return 0, io.EOF
+	case <-time.After(5 * time.Second):
+		return 0, errors.New("test body was not closed")
+	}
+}
+
+func (r *closeTrackingReadCloser) Close() error {
+	r.onClose()
+	select {
+	case <-r.closed:
+	default:
+		close(r.closed)
+	}
+	return nil
+}
+
+func TestOpenAIStreamingCompactClientDisconnectStopsDrainingUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	ctx, cancel := context.WithCancel(context.Background())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil).WithContext(ctx)
+	setOpenAICompactRequestContext(c, true)
+	setOpenAIUpstreamCancelContext(c, cancel)
+	c.Writer = &failingGinWriter{ResponseWriter: c.Writer, failAfter: 0}
+
+	body := newCloseTrackingReadCloser()
+	resp := &http.Response{StatusCode: http.StatusOK, Body: body, Header: http.Header{}}
+
+	start := time.Now()
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1}, start, "model", "model")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), openAICompactClientDisconnectedError)
+	require.Less(t, time.Since(start), 500*time.Millisecond)
+	select {
+	case <-body.closed:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatalf("expected upstream body close")
+	}
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+}
+
+func TestOpenAIStreamingPassthroughUsesDedicatedResponsesTimeout(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			OpenAIResponsesStreamDataIntervalTimeout: 1,
+			MaxLineSize:                              defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Body: pr, Header: http.Header{}}
+
+	start := time.Now()
+	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1}, start, "model", "model")
+	_ = pw.Close()
+	_ = pr.Close()
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "stream data interval timeout")
+	require.Less(t, time.Since(start), 1500*time.Millisecond)
+}
+
+func TestOpenAIStreamingPassthroughCompactClientDisconnectStopsDrainingUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	ctx, cancel := context.WithCancel(context.Background())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil).WithContext(ctx)
+	setOpenAICompactRequestContext(c, true)
+	setOpenAIUpstreamCancelContext(c, cancel)
+	c.Writer = &failingGinWriter{ResponseWriter: c.Writer, failAfter: 0}
+
+	body := newCloseTrackingReadCloser()
+	resp := &http.Response{StatusCode: http.StatusOK, Body: body, Header: http.Header{}}
+
+	start := time.Now()
+	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1}, start, "model", "model")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), openAICompactClientDisconnectedError)
+	require.Less(t, time.Since(start), 500*time.Millisecond)
+	select {
+	case <-body.closed:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatalf("expected upstream body close")
+	}
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
 }

@@ -2493,7 +2493,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if apiKey != nil {
 		imageGenerationAllowed = GroupAllowsImageGeneration(apiKey.Group)
 	}
-	codexImageGenerationBridgeEnabled := isCodexCLI && imageGenerationAllowed && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+	codexCompactRequest := isOpenAIResponsesCompactPath(c) || (isCodexCLI && isCodexCompactRequest(body))
+	setOpenAICompactRequestContext(c, codexCompactRequest)
+	codexImageGenerationBridgeEnabled := isCodexCLI &&
+		shouldEnableCodexImageGenerationBridge(c, body, reqModel, account, apiKey) &&
+		imageGenerationAllowed &&
+		s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+	if codexCompactRequest && isCodexCLI && !IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body) {
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip image_generation bridge for Codex compact request")
+	}
 	imageIntent := IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body)
 	if imageIntent && !imageGenerationAllowed {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
@@ -2503,7 +2511,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	instructions := gjson.GetBytes(body, "instructions")
 	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
-	if instructionsEmpty && !compatMessagesBridge {
+	if instructionsEmpty && !compatMessagesBridge && !(codexCompactRequest && !imageIntent) {
 		markPatchSet("instructions", defaultCodexSynthInstructions(reqModel))
 	}
 
@@ -2514,7 +2522,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchSet("model", billingModel)
 	}
 	upstreamModel := billingModel
-	isCompactRequest := isOpenAIResponsesCompactPath(c)
+	isCompactRequest := codexCompactRequest
 	compactMapped := false
 	if isCompactRequest {
 		compactMappedModel := resolveOpenAICompactForwardModel(account, billingModel)
@@ -2967,9 +2975,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	for {
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		var cancelUpstream context.CancelFunc
+		if codexCompactRequest && !shouldDrainOpenAIStreamAfterClientDisconnect(s.cfg, c) {
+			upstreamCtx, cancelUpstream = context.WithCancel(upstreamCtx)
+			setOpenAIUpstreamCancelContext(c, cancelUpstream)
+		}
 		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI)
 		releaseUpstreamCtx()
 		if err != nil {
+			if cancelUpstream != nil {
+				cancelUpstream()
+			}
 			return nil, err
 		}
 
@@ -2984,6 +3000,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
+			if cancelUpstream != nil {
+				cancelUpstream()
+			}
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
 			// a failover so the handler switches to a healthy account, and temporarily
 			// unschedule the account on durable faults (e.g. rejected proxy credentials).
@@ -2995,6 +3014,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			if cancelUpstream != nil {
+				cancelUpstream()
+				cancelUpstream = nil
+			}
 
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -3044,7 +3067,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			return s.handleErrorResponse(ctx, resp, c, account, body, billingModel)
 		}
-		defer func() { _ = resp.Body.Close() }()
+		defer func() {
+			if cancelUpstream != nil {
+				cancelUpstream()
+			}
+			_ = resp.Body.Close()
+		}()
 
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, originalModel)
 		serviceTier := extractOpenAIServiceTierFromBody(body)
@@ -3251,10 +3279,21 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, err
 	}
 
+	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
+	compactRequest := isOpenAIResponsesCompactPath(c) || (isCodexCLI && isCodexCompactRequest(body))
+	setOpenAICompactRequestContext(c, compactRequest)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	var cancelUpstream context.CancelFunc
+	if compactRequest && !shouldDrainOpenAIStreamAfterClientDisconnect(s.cfg, c) {
+		upstreamCtx, cancelUpstream = context.WithCancel(upstreamCtx)
+		setOpenAIUpstreamCancelContext(c, cancelUpstream)
+	}
 	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
 	releaseUpstreamCtx()
 	if err != nil {
+		if cancelUpstream != nil {
+			cancelUpstream()
+		}
 		return nil, err
 	}
 
@@ -3271,12 +3310,20 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
+		if cancelUpstream != nil {
+			cancelUpstream()
+		}
 		// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
 		// a failover so the handler switches to a healthy account, and temporarily
 		// unschedule the account on durable faults (e.g. rejected proxy credentials).
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cancelUpstream != nil {
+			cancelUpstream()
+		}
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode >= 400 {
 		// 透传模式默认保持原样代理；但 429/529 属于网关必须兜底的
@@ -3796,6 +3843,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	var firstTokenMs *int
 	responseID := ""
 	clientDisconnected := false
+	drainAfterClientDisconnect := shouldDrainOpenAIStreamAfterClientDisconnect(s.cfg, c)
 	sawDone := false
 	sawTerminalEvent := false
 	sawFailedEvent := false
@@ -3803,11 +3851,20 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	pendingLines := make([]string, 0, 8)
+	var compactDisconnectErr error
+	markClientDisconnected := func(reason string) {
+		clientDisconnected = true
+		if !drainAfterClientDisconnect && compactDisconnectErr == nil {
+			compactDisconnectErr = stopOpenAICompactUpstreamDrain(c, resp, reason)
+		}
+	}
 	writePendingLines := func() bool {
 		for _, pending := range pendingLines {
 			if _, err := fmt.Fprintln(w, pending); err != nil {
-				clientDisconnected = true
-				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+				markClientDisconnected("passthrough pending write")
+				if drainAfterClientDisconnect {
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+				}
 				return false
 			}
 		}
@@ -3835,8 +3892,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	processPassthroughLine := func(line string) {
 		lineStartsClientOutput := false
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
@@ -3853,8 +3909,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
-					return resultWithUsage(),
-						s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
+					compactDisconnectErr = s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
+					return
 				}
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
@@ -3880,35 +3936,40 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if !clientDisconnected {
 			if !clientOutputStarted && !lineStartsClientOutput {
 				pendingLines = append(pendingLines, line)
-				continue
+				return
 			}
 			if !clientOutputStarted && len(pendingLines) > 0 {
 				if !writePendingLines() {
-					continue
+					return
 				}
 			}
 			if _, err := fmt.Fprintln(w, line); err != nil {
-				clientDisconnected = true
-				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+				markClientDisconnected("passthrough streaming write")
+				if drainAfterClientDisconnect {
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+				}
 			} else {
 				clientOutputStarted = true
 				flusher.Flush()
 			}
 		}
 	}
-	if err := scanner.Err(); err != nil {
+	handlePassthroughScanErr := func(err error) (*openaiStreamingResultPassthrough, error, bool) {
+		if err == nil {
+			return nil, nil, false
+		}
 		if sawTerminalEvent && !sawFailedEvent {
-			return resultWithUsage(), nil
+			return resultWithUsage(), nil, true
 		}
 		if sawFailedEvent {
-			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
+			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage), true
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
+			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err), true
 		}
 		if errors.Is(err, bufio.ErrTooLong) {
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, err)
-			return resultWithUsage(), err
+			return resultWithUsage(), err, true
 		}
 		if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
 			msg := "OpenAI stream disconnected before completion"
@@ -3916,10 +3977,10 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				msg += ": " + errText
 			}
 			return resultWithUsage(),
-				s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, nil, msg)
+				s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, nil, msg), true
 		}
 		if clientDisconnected {
-			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", err)
+			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", err), true
 		}
 		logger.LegacyPrintf("service.openai_gateway",
 			"[OpenAI passthrough] 流读取异常中断: account=%d request_id=%s err=%v",
@@ -3927,7 +3988,77 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			upstreamRequestID,
 			err,
 		)
-		return resultWithUsage(), fmt.Errorf("stream read error: %w", err)
+		return resultWithUsage(), fmt.Errorf("stream read error: %w", err), true
+	}
+	streamInterval := s.openAIResponsesStreamDataIntervalTimeout()
+	if streamInterval <= 0 {
+		for scanner.Scan() {
+			processPassthroughLine(scanner.Text())
+			if compactDisconnectErr != nil {
+				return resultWithUsage(), compactDisconnectErr
+			}
+		}
+		if result, err, done := handlePassthroughScanErr(scanner.Err()); done {
+			return result, err
+		}
+	} else {
+		type scanEvent struct {
+			line string
+			err  error
+		}
+		events := make(chan scanEvent, 16)
+		done := make(chan struct{})
+		var lastReadAt int64
+		atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+		go func() {
+			defer close(events)
+			for scanner.Scan() {
+				atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+				select {
+				case events <- scanEvent{line: scanner.Text()}:
+				case <-done:
+					return
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				select {
+				case events <- scanEvent{err: err}:
+				case <-done:
+				}
+			}
+		}()
+		defer close(done)
+		ticker := time.NewTicker(streamInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case ev, ok := <-events:
+				if !ok {
+					goto passthroughScanComplete
+				}
+				if result, err, done := handlePassthroughScanErr(ev.err); done {
+					return result, err
+				}
+				processPassthroughLine(ev.line)
+				if compactDisconnectErr != nil {
+					return resultWithUsage(), compactDisconnectErr
+				}
+			case <-ticker.C:
+				lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
+				if time.Since(lastRead) < streamInterval {
+					continue
+				}
+				if clientDisconnected {
+					return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")
+				}
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
+				if s.rateLimitService != nil {
+					s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
+				}
+				return resultWithUsage(), fmt.Errorf("stream data interval timeout")
+			}
+		}
+	passthroughScanComplete:
 	}
 	if sawFailedEvent {
 		return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
@@ -4583,10 +4714,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
 
-	streamInterval := time.Duration(0)
-	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
-		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
-	}
+	streamInterval := s.openAIResponsesStreamDataIntervalTimeout()
 	// 仅监控上游数据间隔超时，不被下游写入阻塞影响
 	var intervalTicker *time.Ticker
 	if streamInterval > 0 {
@@ -4622,12 +4750,19 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	// 否则下游 SDK（例如 OpenCode）会因为类型校验失败而报错。
 	errorEventSent := false
 	clientDisconnected := false // 客户端断开后继续 drain 上游以收集 usage
+	drainAfterClientDisconnect := shouldDrainOpenAIStreamAfterClientDisconnect(s.cfg, c)
 	sawTerminalEvent := false
 	sawFailedEvent := false
 	failedMessage := ""
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	var streamFailoverErr error
+	markClientDisconnected := func(reason string) {
+		clientDisconnected = true
+		if !drainAfterClientDisconnect && streamFailoverErr == nil {
+			streamFailoverErr = stopOpenAICompactUpstreamDrain(c, resp, reason)
+		}
+	}
 	sendErrorEvent := func(reason string) {
 		if errorEventSent || clientDisconnected {
 			return
@@ -4635,15 +4770,15 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		errorEventSent = true
 		payload := `{"type":"error","sequence_number":0,"error":{"type":"upstream_error","message":` + strconv.Quote(reason) + `,"code":` + strconv.Quote(reason) + `}}`
 		if err := flushBuffered(); err != nil {
-			clientDisconnected = true
+			markClientDisconnected("error-event preflush")
 			return
 		}
 		if _, err := bufferedWriter.WriteString("data: " + payload + "\n\n"); err != nil {
-			clientDisconnected = true
+			markClientDisconnected("error-event write")
 			return
 		}
 		if err := flushBuffered(); err != nil {
-			clientDisconnected = true
+			markClientDisconnected("error-event flush")
 			return
 		}
 		clientOutputStarted = true
@@ -4683,8 +4818,11 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		if !clientDisconnected {
 			hadBufferedData := bufferedWriter.Buffered() > 0
 			if err := flushBuffered(); err != nil {
-				clientDisconnected = true
+				markClientDisconnected("final flush")
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during final flush, returning collected usage")
+				if streamFailoverErr != nil {
+					return resultWithUsage(), streamFailoverErr
+				}
 			} else if hadBufferedData {
 				clientOutputStarted = true
 				lastDownstreamWriteAt = time.Now()
@@ -4791,15 +4929,21 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 					shouldFlush = true
 				}
 				if _, err := bufferedWriter.WriteString(line); err != nil {
-					clientDisconnected = true
-					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+					markClientDisconnected("streaming write")
+					if drainAfterClientDisconnect {
+						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+					}
 				} else if _, err := bufferedWriter.WriteString("\n"); err != nil {
-					clientDisconnected = true
-					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+					markClientDisconnected("streaming write")
+					if drainAfterClientDisconnect {
+						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+					}
 				} else if shouldFlush {
 					if err := flushBuffered(); err != nil {
-						clientDisconnected = true
-						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
+						markClientDisconnected("streaming flush")
+						if drainAfterClientDisconnect {
+							logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
+						}
 					} else {
 						clientOutputStarted = true
 						lastDownstreamWriteAt = time.Now()
@@ -4819,15 +4963,21 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		// Forward non-data lines as-is
 		if !clientDisconnected {
 			if _, err := bufferedWriter.WriteString(line); err != nil {
-				clientDisconnected = true
-				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+				markClientDisconnected("streaming write")
+				if drainAfterClientDisconnect {
+					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+				}
 			} else if _, err := bufferedWriter.WriteString("\n"); err != nil {
-				clientDisconnected = true
-				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+				markClientDisconnected("streaming write")
+				if drainAfterClientDisconnect {
+					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+				}
 			} else if queueDrained && clientOutputStarted {
 				if err := flushBuffered(); err != nil {
-					clientDisconnected = true
-					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
+					markClientDisconnected("streaming flush")
+					if drainAfterClientDisconnect {
+						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
+					}
 				} else {
 					clientOutputStarted = true
 					lastDownstreamWriteAt = time.Now()
@@ -4921,19 +5071,36 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				continue
 			}
 			if _, err := bufferedWriter.WriteString(":\n\n"); err != nil {
-				clientDisconnected = true
-				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+				markClientDisconnected("keepalive write")
+				if drainAfterClientDisconnect {
+					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+				}
 				continue
 			}
 			if err := flushBuffered(); err != nil {
-				clientDisconnected = true
-				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during keepalive flush, continuing to drain upstream for billing")
+				markClientDisconnected("keepalive flush")
+				if drainAfterClientDisconnect {
+					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during keepalive flush, continuing to drain upstream for billing")
+				}
+				if streamFailoverErr != nil {
+					return resultWithUsage(), streamFailoverErr
+				}
 			} else {
 				lastDownstreamWriteAt = time.Now()
 			}
 		}
 	}
 
+}
+
+func (s *OpenAIGatewayService) openAIResponsesStreamDataIntervalTimeout() time.Duration {
+	if s == nil || s.cfg == nil {
+		return 0
+	}
+	if s.cfg.Gateway.OpenAIResponsesStreamDataIntervalTimeout > 0 {
+		return time.Duration(s.cfg.Gateway.OpenAIResponsesStreamDataIntervalTimeout) * time.Second
+	}
+	return 0
 }
 
 // extractOpenAISSEDataLine 低开销提取 SSE `data:` 行内容。
@@ -5621,6 +5788,125 @@ func NormalizeOpenAICompactRequestBodyForTest(body []byte) ([]byte, bool, error)
 func isOpenAIResponsesCompactPath(c *gin.Context) bool {
 	suffix := strings.TrimSpace(openAIResponsesRequestPathSuffix(c))
 	return suffix == "/compact" || strings.HasPrefix(suffix, "/compact/")
+}
+
+const (
+	openAICompactRequestContextKey       = "openai_compact_request"
+	openAIUpstreamCancelContextKey       = "openai_upstream_cancel"
+	openAICompactClientDisconnectedError = "compact client disconnected; stop draining upstream"
+)
+
+func isCodexCompactRequest(body []byte) bool {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+	if IsImageGenerationIntent(openAIResponsesEndpoint, "", body) {
+		return false
+	}
+
+	parts := make([]string, 0, 4)
+	for _, path := range []string{"instructions", "input"} {
+		value := gjson.GetBytes(body, path)
+		if !value.Exists() {
+			continue
+		}
+		switch value.Type {
+		case gjson.String:
+			parts = append(parts, value.String())
+		default:
+			parts = append(parts, value.Raw)
+		}
+	}
+	haystack := strings.ToLower(strings.Join(parts, "\n"))
+	if strings.TrimSpace(haystack) == "" {
+		return false
+	}
+
+	strongCompactSignature := false
+	for _, phrase := range []string{
+		"remote compact task",
+		"remote compact request",
+		"compact task",
+		"compact request",
+	} {
+		if strings.Contains(haystack, phrase) {
+			strongCompactSignature = true
+			break
+		}
+	}
+	if !strongCompactSignature {
+		return false
+	}
+
+	for _, phrase := range []string{
+		"context",
+		"summarize",
+		"summary",
+		"conversation",
+		"transcript",
+	} {
+		if strings.Contains(haystack, phrase) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func shouldEnableCodexImageGenerationBridge(c *gin.Context, body []byte, reqModel string, _ *Account, _ *APIKey) bool {
+	if (isOpenAIResponsesCompactPath(c) || isCodexCompactRequest(body)) &&
+		!IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body) {
+		return false
+	}
+	return true
+}
+
+func setOpenAICompactRequestContext(c *gin.Context, compact bool) {
+	if c == nil {
+		return
+	}
+	c.Set(openAICompactRequestContextKey, compact)
+}
+
+func isOpenAICompactRequestContext(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	value, exists := c.Get(openAICompactRequestContextKey)
+	if !exists {
+		return isOpenAIResponsesCompactPath(c)
+	}
+	compact, _ := value.(bool)
+	return compact
+}
+
+func setOpenAIUpstreamCancelContext(c *gin.Context, cancel context.CancelFunc) {
+	if c == nil || cancel == nil {
+		return
+	}
+	c.Set(openAIUpstreamCancelContextKey, cancel)
+}
+
+func shouldDrainOpenAIStreamAfterClientDisconnect(cfg *config.Config, c *gin.Context) bool {
+	if isOpenAICompactRequestContext(c) {
+		return cfg != nil && cfg.Gateway.CompactDrainAfterClientDisconnect
+	}
+	return true
+}
+
+func stopOpenAICompactUpstreamDrain(c *gin.Context, resp *http.Response, reason string) error {
+	if c != nil {
+		if value, exists := c.Get(openAIUpstreamCancelContextKey); exists {
+			if cancel, ok := value.(context.CancelFunc); ok && cancel != nil {
+				cancel()
+			}
+		}
+	}
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Compact client disconnected during %s; cancel upstream and stop draining", reason)
+	return errors.New(openAICompactClientDisconnectedError)
 }
 
 func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
