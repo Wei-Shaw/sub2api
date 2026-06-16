@@ -100,7 +100,7 @@ REDACTED
 
 	errText := err.Error()
 	require.Contains(t, errText, "status 400")
-	require.Contains(t, errText, `"refresh_token":"***"`)
+	require.Contains(t, errText, `\"refresh_token\":\"***\"`)
 	require.NotContains(t, errText, "access-secret")
 	require.NotContains(t, errText, "refresh-secret")
 	require.NotContains(t, errText, "verifier-secret")
