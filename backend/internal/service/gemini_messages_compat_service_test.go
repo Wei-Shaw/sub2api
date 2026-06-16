@@ -323,9 +323,18 @@ REDACTED
 
 	properties, ok := cleaned["properties"].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "STRING", properties["path"].(map[string]any)["type"])
-	require.Equal(t, "INTEGER", properties["count"].(map[string]any)["type"])
-	require.NotContains(t, properties["empty"].(map[string]any), "type")
+
+	pathSchema, ok := properties["path"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "STRING", pathSchema["type"])
+
+	countSchema, ok := properties["count"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "INTEGER", countSchema["type"])
+
+	emptySchema, ok := properties["empty"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, emptySchema, "type")
 REDACTED
 
 func TestConvertClaudeToolsToGeminiTools_PreservesWebSearchAlongsideFunctions(t *testing.T) {
