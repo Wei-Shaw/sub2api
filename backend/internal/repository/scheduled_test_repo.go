@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 )
 
 // --- Plan Repository ---
@@ -95,15 +96,19 @@ func NewScheduledTestResultRepository(db *sql.DB) service.ScheduledTestResultRep
 }
 
 func (r *scheduledTestResultRepository) Create(ctx context.Context, result *service.ScheduledTestResult) (*service.ScheduledTestResult, error) {
+	source := result.Source
+	if source == "" {
+		source = "scheduled"
+	}
 	row := r.db.QueryRowContext(ctx, `
-		INSERT INTO scheduled_test_results (plan_id, status, response_text, error_message, latency_ms, started_at, finished_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-		RETURNING id, plan_id, status, response_text, error_message, latency_ms, started_at, finished_at, created_at
-	`, result.PlanID, result.Status, result.ResponseText, result.ErrorMessage, result.LatencyMs, result.StartedAt, result.FinishedAt)
+		INSERT INTO scheduled_test_results (plan_id, account_id, source, model_id, status, response_text, error_message, latency_ms, started_at, finished_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+		RETURNING id, plan_id, account_id, source, model_id, status, response_text, error_message, latency_ms, started_at, finished_at, created_at
+	`, result.PlanID, result.AccountID, source, result.ModelID, result.Status, result.ResponseText, result.ErrorMessage, result.LatencyMs, result.StartedAt, result.FinishedAt)
 
 	out := &service.ScheduledTestResult{}
 	if err := row.Scan(
-		&out.ID, &out.PlanID, &out.Status, &out.ResponseText, &out.ErrorMessage,
+		&out.ID, &out.PlanID, &out.AccountID, &out.Source, &out.ModelID, &out.Status, &out.ResponseText, &out.ErrorMessage,
 		&out.LatencyMs, &out.StartedAt, &out.FinishedAt, &out.CreatedAt,
 	); err != nil {
 		return nil, err
@@ -113,7 +118,7 @@ func (r *scheduledTestResultRepository) Create(ctx context.Context, result *serv
 
 func (r *scheduledTestResultRepository) ListByPlanID(ctx context.Context, planID int64, limit int) ([]*service.ScheduledTestResult, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, plan_id, status, response_text, error_message, latency_ms, started_at, finished_at, created_at
+		SELECT id, plan_id, account_id, source, model_id, status, response_text, error_message, latency_ms, started_at, finished_at, created_at
 		FROM scheduled_test_results
 		WHERE plan_id = $1
 		ORDER BY created_at DESC
@@ -128,12 +133,71 @@ func (r *scheduledTestResultRepository) ListByPlanID(ctx context.Context, planID
 	for rows.Next() {
 		r := &service.ScheduledTestResult{}
 		if err := rows.Scan(
-			&r.ID, &r.PlanID, &r.Status, &r.ResponseText, &r.ErrorMessage,
+			&r.ID, &r.PlanID, &r.AccountID, &r.Source, &r.ModelID, &r.Status, &r.ResponseText, &r.ErrorMessage,
 			&r.LatencyMs, &r.StartedAt, &r.FinishedAt, &r.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
 		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
+// ListLatestByAccountIDs 用 DISTINCT ON 一次查出每个账号最近一条结果,避免 N+1。
+func (r *scheduledTestResultRepository) ListLatestByAccountIDs(ctx context.Context, accountIDs []int64) (map[int64]*service.ScheduledTestResult, error) {
+	out := make(map[int64]*service.ScheduledTestResult)
+	if len(accountIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT DISTINCT ON (account_id)
+		       id, plan_id, account_id, source, model_id, status, response_text, error_message, latency_ms, started_at, finished_at, created_at
+		FROM scheduled_test_results
+		WHERE account_id = ANY($1)
+		ORDER BY account_id, created_at DESC
+	`, pq.Array(accountIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		res := &service.ScheduledTestResult{}
+		if err := rows.Scan(
+			&res.ID, &res.PlanID, &res.AccountID, &res.Source, &res.ModelID, &res.Status, &res.ResponseText, &res.ErrorMessage,
+			&res.LatencyMs, &res.StartedAt, &res.FinishedAt, &res.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		out[res.AccountID] = res
+	}
+	return out, rows.Err()
+}
+
+// ListByAccountID 按账号查最近 limit 条检测结果(含手动 + 定时),按创建时间倒序。
+func (r *scheduledTestResultRepository) ListByAccountID(ctx context.Context, accountID int64, limit int) ([]*service.ScheduledTestResult, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, plan_id, account_id, source, model_id, status, response_text, error_message, latency_ms, started_at, finished_at, created_at
+		FROM scheduled_test_results
+		WHERE account_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2
+	`, accountID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []*service.ScheduledTestResult
+	for rows.Next() {
+		res := &service.ScheduledTestResult{}
+		if err := rows.Scan(
+			&res.ID, &res.PlanID, &res.AccountID, &res.Source, &res.ModelID, &res.Status, &res.ResponseText, &res.ErrorMessage,
+			&res.LatencyMs, &res.StartedAt, &res.FinishedAt, &res.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, res)
 	}
 	return results, rows.Err()
 }
@@ -150,6 +214,22 @@ func (r *scheduledTestResultRepository) PruneOldResults(ctx context.Context, pla
 			WHERE rn > $2
 		)
 	`, planID, keepCount)
+	return err
+}
+
+// PruneOldManualResults 按 account_id 且 plan_id IS NULL 保留最近 keepCount 条手动结果,防无限增长。
+func (r *scheduledTestResultRepository) PruneOldManualResults(ctx context.Context, accountID int64, keepCount int) error {
+	_, err := r.db.ExecContext(ctx, `
+		DELETE FROM scheduled_test_results
+		WHERE id IN (
+			SELECT id FROM (
+				SELECT id, ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY created_at DESC) AS rn
+				FROM scheduled_test_results
+				WHERE account_id = $1 AND plan_id IS NULL
+			) ranked
+			WHERE rn > $2
+		)
+	`, accountID, keepCount)
 	return err
 }
 

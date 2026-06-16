@@ -124,6 +124,9 @@ var (
 		{Name: "session_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "session_window_end", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "session_window_status", Type: field.TypeString, Nullable: true, Size: 20},
+		{Name: "last_health_result_status", Type: field.TypeString, Nullable: true, Size: 20},
+		{Name: "last_health_checked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_health_latency_ms", Type: field.TypeInt64, Nullable: true},
 		{Name: "proxy_id", Type: field.TypeInt64, Nullable: true},
 	}
 	// AccountsTable holds the schema information for the "accounts" table.
@@ -134,7 +137,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "accounts_proxies_proxy",
-				Columns:    []*schema.Column{AccountsColumns[29]},
+				Columns:    []*schema.Column{AccountsColumns[32]},
 				RefColumns: []*schema.Column{ProxiesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -158,7 +161,7 @@ var (
 			{
 				Name:    "account_proxy_id",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[29]},
+				Columns: []*schema.Column{AccountsColumns[32]},
 			},
 			{
 				Name:    "account_priority",
@@ -189,6 +192,16 @@ var (
 				Name:    "account_overload_until",
 				Unique:  false,
 				Columns: []*schema.Column{AccountsColumns[23]},
+			},
+			{
+				Name:    "account_last_health_result_status",
+				Unique:  false,
+				Columns: []*schema.Column{AccountsColumns[29]},
+			},
+			{
+				Name:    "account_last_health_checked_at",
+				Unique:  false,
+				Columns: []*schema.Column{AccountsColumns[30]},
 			},
 			{
 				Name:    "account_platform_priority",

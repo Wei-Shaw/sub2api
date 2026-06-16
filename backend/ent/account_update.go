@@ -530,6 +530,73 @@ func (_u *AccountUpdate) ClearSessionWindowStatus() *AccountUpdate {
 	return _u
 }
 
+// SetLastHealthResultStatus sets the "last_health_result_status" field.
+func (_u *AccountUpdate) SetLastHealthResultStatus(v string) *AccountUpdate {
+	_u.mutation.SetLastHealthResultStatus(v)
+	return _u
+}
+
+// SetNillableLastHealthResultStatus sets the "last_health_result_status" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableLastHealthResultStatus(v *string) *AccountUpdate {
+	if v != nil {
+		_u.SetLastHealthResultStatus(*v)
+	}
+	return _u
+}
+
+// ClearLastHealthResultStatus clears the value of the "last_health_result_status" field.
+func (_u *AccountUpdate) ClearLastHealthResultStatus() *AccountUpdate {
+	_u.mutation.ClearLastHealthResultStatus()
+	return _u
+}
+
+// SetLastHealthCheckedAt sets the "last_health_checked_at" field.
+func (_u *AccountUpdate) SetLastHealthCheckedAt(v time.Time) *AccountUpdate {
+	_u.mutation.SetLastHealthCheckedAt(v)
+	return _u
+}
+
+// SetNillableLastHealthCheckedAt sets the "last_health_checked_at" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableLastHealthCheckedAt(v *time.Time) *AccountUpdate {
+	if v != nil {
+		_u.SetLastHealthCheckedAt(*v)
+	}
+	return _u
+}
+
+// ClearLastHealthCheckedAt clears the value of the "last_health_checked_at" field.
+func (_u *AccountUpdate) ClearLastHealthCheckedAt() *AccountUpdate {
+	_u.mutation.ClearLastHealthCheckedAt()
+	return _u
+}
+
+// SetLastHealthLatencyMs sets the "last_health_latency_ms" field.
+func (_u *AccountUpdate) SetLastHealthLatencyMs(v int64) *AccountUpdate {
+	_u.mutation.ResetLastHealthLatencyMs()
+	_u.mutation.SetLastHealthLatencyMs(v)
+	return _u
+}
+
+// SetNillableLastHealthLatencyMs sets the "last_health_latency_ms" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableLastHealthLatencyMs(v *int64) *AccountUpdate {
+	if v != nil {
+		_u.SetLastHealthLatencyMs(*v)
+	}
+	return _u
+}
+
+// AddLastHealthLatencyMs adds value to the "last_health_latency_ms" field.
+func (_u *AccountUpdate) AddLastHealthLatencyMs(v int64) *AccountUpdate {
+	_u.mutation.AddLastHealthLatencyMs(v)
+	return _u
+}
+
+// ClearLastHealthLatencyMs clears the value of the "last_health_latency_ms" field.
+func (_u *AccountUpdate) ClearLastHealthLatencyMs() *AccountUpdate {
+	_u.mutation.ClearLastHealthLatencyMs()
+	return _u
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_u *AccountUpdate) AddGroupIDs(ids ...int64) *AccountUpdate {
 	_u.mutation.AddGroupIDs(ids...)
@@ -687,6 +754,11 @@ func (_u *AccountUpdate) check() error {
 			return &ValidationError{Name: "session_window_status", err: fmt.Errorf(`ent: validator failed for field "Account.session_window_status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.LastHealthResultStatus(); ok {
+		if err := account.LastHealthResultStatusValidator(v); err != nil {
+			return &ValidationError{Name: "last_health_result_status", err: fmt.Errorf(`ent: validator failed for field "Account.last_health_result_status": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -842,6 +914,27 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.SessionWindowStatusCleared() {
 		_spec.ClearField(account.FieldSessionWindowStatus, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastHealthResultStatus(); ok {
+		_spec.SetField(account.FieldLastHealthResultStatus, field.TypeString, value)
+	}
+	if _u.mutation.LastHealthResultStatusCleared() {
+		_spec.ClearField(account.FieldLastHealthResultStatus, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastHealthCheckedAt(); ok {
+		_spec.SetField(account.FieldLastHealthCheckedAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastHealthCheckedAtCleared() {
+		_spec.ClearField(account.FieldLastHealthCheckedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LastHealthLatencyMs(); ok {
+		_spec.SetField(account.FieldLastHealthLatencyMs, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedLastHealthLatencyMs(); ok {
+		_spec.AddField(account.FieldLastHealthLatencyMs, field.TypeInt64, value)
+	}
+	if _u.mutation.LastHealthLatencyMsCleared() {
+		_spec.ClearField(account.FieldLastHealthLatencyMs, field.TypeInt64)
 	}
 	if _u.mutation.GroupsCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1493,6 +1586,73 @@ func (_u *AccountUpdateOne) ClearSessionWindowStatus() *AccountUpdateOne {
 	return _u
 }
 
+// SetLastHealthResultStatus sets the "last_health_result_status" field.
+func (_u *AccountUpdateOne) SetLastHealthResultStatus(v string) *AccountUpdateOne {
+	_u.mutation.SetLastHealthResultStatus(v)
+	return _u
+}
+
+// SetNillableLastHealthResultStatus sets the "last_health_result_status" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableLastHealthResultStatus(v *string) *AccountUpdateOne {
+	if v != nil {
+		_u.SetLastHealthResultStatus(*v)
+	}
+	return _u
+}
+
+// ClearLastHealthResultStatus clears the value of the "last_health_result_status" field.
+func (_u *AccountUpdateOne) ClearLastHealthResultStatus() *AccountUpdateOne {
+	_u.mutation.ClearLastHealthResultStatus()
+	return _u
+}
+
+// SetLastHealthCheckedAt sets the "last_health_checked_at" field.
+func (_u *AccountUpdateOne) SetLastHealthCheckedAt(v time.Time) *AccountUpdateOne {
+	_u.mutation.SetLastHealthCheckedAt(v)
+	return _u
+}
+
+// SetNillableLastHealthCheckedAt sets the "last_health_checked_at" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableLastHealthCheckedAt(v *time.Time) *AccountUpdateOne {
+	if v != nil {
+		_u.SetLastHealthCheckedAt(*v)
+	}
+	return _u
+}
+
+// ClearLastHealthCheckedAt clears the value of the "last_health_checked_at" field.
+func (_u *AccountUpdateOne) ClearLastHealthCheckedAt() *AccountUpdateOne {
+	_u.mutation.ClearLastHealthCheckedAt()
+	return _u
+}
+
+// SetLastHealthLatencyMs sets the "last_health_latency_ms" field.
+func (_u *AccountUpdateOne) SetLastHealthLatencyMs(v int64) *AccountUpdateOne {
+	_u.mutation.ResetLastHealthLatencyMs()
+	_u.mutation.SetLastHealthLatencyMs(v)
+	return _u
+}
+
+// SetNillableLastHealthLatencyMs sets the "last_health_latency_ms" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableLastHealthLatencyMs(v *int64) *AccountUpdateOne {
+	if v != nil {
+		_u.SetLastHealthLatencyMs(*v)
+	}
+	return _u
+}
+
+// AddLastHealthLatencyMs adds value to the "last_health_latency_ms" field.
+func (_u *AccountUpdateOne) AddLastHealthLatencyMs(v int64) *AccountUpdateOne {
+	_u.mutation.AddLastHealthLatencyMs(v)
+	return _u
+}
+
+// ClearLastHealthLatencyMs clears the value of the "last_health_latency_ms" field.
+func (_u *AccountUpdateOne) ClearLastHealthLatencyMs() *AccountUpdateOne {
+	_u.mutation.ClearLastHealthLatencyMs()
+	return _u
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_u *AccountUpdateOne) AddGroupIDs(ids ...int64) *AccountUpdateOne {
 	_u.mutation.AddGroupIDs(ids...)
@@ -1661,6 +1821,11 @@ func (_u *AccountUpdateOne) check() error {
 	if v, ok := _u.mutation.SessionWindowStatus(); ok {
 		if err := account.SessionWindowStatusValidator(v); err != nil {
 			return &ValidationError{Name: "session_window_status", err: fmt.Errorf(`ent: validator failed for field "Account.session_window_status": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.LastHealthResultStatus(); ok {
+		if err := account.LastHealthResultStatusValidator(v); err != nil {
+			return &ValidationError{Name: "last_health_result_status", err: fmt.Errorf(`ent: validator failed for field "Account.last_health_result_status": %w`, err)}
 		}
 	}
 	return nil
@@ -1835,6 +2000,27 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if _u.mutation.SessionWindowStatusCleared() {
 		_spec.ClearField(account.FieldSessionWindowStatus, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastHealthResultStatus(); ok {
+		_spec.SetField(account.FieldLastHealthResultStatus, field.TypeString, value)
+	}
+	if _u.mutation.LastHealthResultStatusCleared() {
+		_spec.ClearField(account.FieldLastHealthResultStatus, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastHealthCheckedAt(); ok {
+		_spec.SetField(account.FieldLastHealthCheckedAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastHealthCheckedAtCleared() {
+		_spec.ClearField(account.FieldLastHealthCheckedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LastHealthLatencyMs(); ok {
+		_spec.SetField(account.FieldLastHealthLatencyMs, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedLastHealthLatencyMs(); ok {
+		_spec.AddField(account.FieldLastHealthLatencyMs, field.TypeInt64, value)
+	}
+	if _u.mutation.LastHealthLatencyMsCleared() {
+		_spec.ClearField(account.FieldLastHealthLatencyMs, field.TypeInt64)
 	}
 	if _u.mutation.GroupsCleared() {
 		edge := &sqlgraph.EdgeSpec{

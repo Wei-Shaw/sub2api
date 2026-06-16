@@ -367,8 +367,13 @@ func ProvideIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Co
 func ProvideScheduledTestService(
 	planRepo ScheduledTestPlanRepository,
 	resultRepo ScheduledTestResultRepository,
+	accountRepo AccountRepository,
 ) *ScheduledTestService {
-	return NewScheduledTestService(planRepo, resultRepo)
+	svc := NewScheduledTestService(planRepo, resultRepo)
+	// 注入健康快照更新器:检测落库后同步 accounts 表的健康快照字段,
+	// 使列表健康筛选/排序可在 SQL 层分页(见 account_health.go)。
+	svc.SetHealthSnapshotUpdater(accountRepo)
+	return svc
 }
 
 // ProvideScheduledTestRunnerService creates and starts ScheduledTestRunnerService.

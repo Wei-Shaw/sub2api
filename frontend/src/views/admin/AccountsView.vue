@@ -172,6 +172,7 @@
         </div>
       </template>
       <template #table>
+        <AccountHealthSummary ref="healthSummaryRef" @filter="handleHealthCardFilter" />
         <AccountBulkActionsBar
           :selected-ids="selIds"
           @delete="handleBulkDelete"
@@ -182,6 +183,7 @@
           @clear="clearSelection"
           @select-page="selectPage"
           @toggle-schedulable="handleBulkToggleSchedulable"
+          @batch-schedule="openBatchScheduleModal"
         />
         <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable
@@ -368,6 +370,13 @@
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
+    <BatchScheduledTestModal
+      :show="showBatchSchedule"
+      :account-ids="selIds"
+      :model-options="batchScheduleModelOptions"
+      @close="showBatchSchedule = false"
+      @submitted="handleBatchScheduleSubmitted"
+    />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
@@ -421,6 +430,8 @@ import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vu
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
 import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.vue'
+import AccountHealthSummary from '@/components/admin/account/AccountHealthSummary.vue'
+import BatchScheduledTestModal from '@/components/admin/account/BatchScheduledTestModal.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
@@ -507,6 +518,10 @@ const statsAcc = ref<Account | null>(null)
 const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
+// 批量定时检测(需求 §7.4)
+const showBatchSchedule = ref(false)
+const batchScheduleModelOptions = ref<SelectOption[]>([])
+const healthSummaryRef = ref<InstanceType<typeof AccountHealthSummary> | null>(null)
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
@@ -749,6 +764,7 @@ const {
     platform: '',
     type: '',
     status: '',
+    health: '',
     privacy_mode: '',
     group: '',
     search: '',
@@ -816,6 +832,7 @@ const reload = async () => {
   pendingTodayStatsRefresh.value = false
   await baseReload()
   await refreshTodayStatsBatch()
+  healthSummaryRef.value?.refresh()
 }
 
 const debouncedReload = () => {
@@ -1568,6 +1585,37 @@ const handleSchedule = async (a: Account) => {
   }
 }
 const closeSchedulePanel = () => { showSchedulePanel.value = false; scheduleAcc.value = null; scheduleModelOptions.value = [] }
+
+// 点击健康聚合卡片:联动列表筛选(需求 §7.2.7)。platform→平台筛选;group→分组筛选。
+const handleHealthCardFilter = (payload: { dimension: 'platform' | 'group'; key: string }) => {
+  const requestParams = params as any
+  if (payload.dimension === 'platform') {
+    requestParams.platform = payload.key
+  } else {
+    requestParams.group = payload.key
+  }
+  pagination.page = 1
+  reload()
+}
+
+// 打开批量定时检测弹窗(需求 §7.4)。模型选项取首个选中账号的可用模型作为共同候选。
+const openBatchScheduleModal = async () => {
+  if (selIds.value.length === 0) return
+  batchScheduleModelOptions.value = []
+  showBatchSchedule.value = true
+  const firstId = selIds.value[0]
+  try {
+    const models = await adminAPI.accounts.getAvailableModels(firstId)
+    batchScheduleModelOptions.value = models.map((m: ClaudeModel) => ({ value: m.id, label: m.display_name || m.id }))
+  } catch {
+    batchScheduleModelOptions.value = []
+  }
+}
+
+const handleBatchScheduleSubmitted = () => {
+  // 计划生效后刷新健康聚合卡片,使分布数据反映新的检测计划状态。
+  healthSummaryRef.value?.refresh()
+}
 const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true }
 const handleRefresh = async (a: Account) => {
   try {

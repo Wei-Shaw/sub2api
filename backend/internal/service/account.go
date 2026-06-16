@@ -54,6 +54,12 @@ type Account struct {
 	SessionWindowEnd    *time.Time
 	SessionWindowStatus string
 
+	// 健康监控快照:最近一次检测结果(success/failed)、耗时与时间。
+	// 由检测落库路径写入(见 scheduled_test_service),供列表健康筛选/排序与展示使用。
+	LastHealthResultStatus string
+	LastHealthCheckedAt    *time.Time
+	LastHealthLatencyMs    *int64
+
 	Proxy         *Proxy
 	AccountGroups []AccountGroup
 	GroupIDs      []int64

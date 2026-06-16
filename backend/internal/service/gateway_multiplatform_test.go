@@ -92,8 +92,11 @@ func (m *mockAccountRepoForPlatform) Delete(ctx context.Context, id int64) error
 func (m *mockAccountRepoForPlatform) List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (m *mockAccountRepoForPlatform) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
+func (m *mockAccountRepoForPlatform) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, healthStatus string) ([]Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
+}
+func (m *mockAccountRepoForPlatform) GetHealthSummary(ctx context.Context) (*AccountHealthSummary, error) {
+	return nil, nil
 }
 func (m *mockAccountRepoForPlatform) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
 	return nil, nil
@@ -105,6 +108,9 @@ func (m *mockAccountRepoForPlatform) ListByPlatform(ctx context.Context, platfor
 	return nil, nil
 }
 func (m *mockAccountRepoForPlatform) UpdateLastUsed(ctx context.Context, id int64) error {
+	return nil
+}
+func (m *mockAccountRepoForPlatform) UpdateHealthSnapshot(ctx context.Context, id int64, status string, latencyMs int64, checkedAt time.Time) error {
 	return nil
 }
 func (m *mockAccountRepoForPlatform) BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {

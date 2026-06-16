@@ -38,13 +38,17 @@ type AccountRepository interface {
 	Delete(ctx context.Context, id int64) error
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, healthStatus string) ([]Account, *pagination.PaginationResult, error)
+	// GetHealthSummary 返回账号健康聚合(总体 + 按平台 + 按分组),分类口径与 EvaluateHealth 一致。
+	GetHealthSummary(ctx context.Context) (*AccountHealthSummary, error)
 	ListByGroup(ctx context.Context, groupID int64) ([]Account, error)
 	ListActive(ctx context.Context) ([]Account, error)
 	ListByPlatform(ctx context.Context, platform string) ([]Account, error)
 
 	UpdateLastUsed(ctx context.Context, id int64) error
 	BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error
+	// UpdateHealthSnapshot 写入账号最近一次健康检测快照(原始 status + 耗时 + 检测时间)。
+	UpdateHealthSnapshot(ctx context.Context, id int64, status string, latencyMs int64, checkedAt time.Time) error
 	SetError(ctx context.Context, id int64, errorMsg string) error
 	ClearError(ctx context.Context, id int64) error
 	SetSchedulable(ctx context.Context, id int64, schedulable bool) error

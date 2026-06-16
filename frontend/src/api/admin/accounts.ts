@@ -19,7 +19,9 @@ import type {
   CodexSessionImportRequest,
   CodexSessionImportResult,
   CheckMixedChannelRequest,
-  CheckMixedChannelResponse
+  CheckMixedChannelResponse,
+  AccountHealthSummary,
+  ScheduledTestResult
 } from '@/types'
 
 /**
@@ -705,6 +707,34 @@ export async function setPrivacy(id: number): Promise<Account> {
   return data
 }
 
+/**
+ * Get account health summary (overall + per-platform + per-group).
+ * 健康聚合卡片数据(需求 §7.2)。一次返回全部维度,前端切换 tab 无需重新请求。
+ * @returns Aggregated health counts
+ */
+export async function getHealthSummary(options?: {
+  signal?: AbortSignal
+}): Promise<AccountHealthSummary> {
+  const { data } = await apiClient.get<AccountHealthSummary>('/admin/accounts/health-summary', {
+    signal: options?.signal
+  })
+  return data
+}
+
+/**
+ * Get recent health-check results for an account (manual + scheduled).
+ * 账号最近检测详情/历史(需求 §7.5)。
+ * @param id - Account ID
+ * @param limit - Max results (default backend: 10)
+ * @returns Recent test results, newest first
+ */
+export async function getHealthResults(id: number, limit?: number): Promise<ScheduledTestResult[]> {
+  const { data } = await apiClient.get<ScheduledTestResult[]>(`/admin/accounts/${id}/health-results`, {
+    params: limit ? { limit } : undefined
+  })
+  return data ?? []
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -746,6 +776,8 @@ export const accountsAPI = {
   batchClearError,
   batchRefresh,
   setPrivacy,
+  getHealthSummary,
+  getHealthResults,
   revertProxyFallback
 }
 

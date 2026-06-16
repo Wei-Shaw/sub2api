@@ -391,6 +391,48 @@ func (_c *AccountCreate) SetNillableSessionWindowStatus(v *string) *AccountCreat
 	return _c
 }
 
+// SetLastHealthResultStatus sets the "last_health_result_status" field.
+func (_c *AccountCreate) SetLastHealthResultStatus(v string) *AccountCreate {
+	_c.mutation.SetLastHealthResultStatus(v)
+	return _c
+}
+
+// SetNillableLastHealthResultStatus sets the "last_health_result_status" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableLastHealthResultStatus(v *string) *AccountCreate {
+	if v != nil {
+		_c.SetLastHealthResultStatus(*v)
+	}
+	return _c
+}
+
+// SetLastHealthCheckedAt sets the "last_health_checked_at" field.
+func (_c *AccountCreate) SetLastHealthCheckedAt(v time.Time) *AccountCreate {
+	_c.mutation.SetLastHealthCheckedAt(v)
+	return _c
+}
+
+// SetNillableLastHealthCheckedAt sets the "last_health_checked_at" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableLastHealthCheckedAt(v *time.Time) *AccountCreate {
+	if v != nil {
+		_c.SetLastHealthCheckedAt(*v)
+	}
+	return _c
+}
+
+// SetLastHealthLatencyMs sets the "last_health_latency_ms" field.
+func (_c *AccountCreate) SetLastHealthLatencyMs(v int64) *AccountCreate {
+	_c.mutation.SetLastHealthLatencyMs(v)
+	return _c
+}
+
+// SetNillableLastHealthLatencyMs sets the "last_health_latency_ms" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableLastHealthLatencyMs(v *int64) *AccountCreate {
+	if v != nil {
+		_c.SetLastHealthLatencyMs(*v)
+	}
+	return _c
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_c *AccountCreate) AddGroupIDs(ids ...int64) *AccountCreate {
 	_c.mutation.AddGroupIDs(ids...)
@@ -584,6 +626,11 @@ func (_c *AccountCreate) check() error {
 			return &ValidationError{Name: "session_window_status", err: fmt.Errorf(`ent: validator failed for field "Account.session_window_status": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.LastHealthResultStatus(); ok {
+		if err := account.LastHealthResultStatusValidator(v); err != nil {
+			return &ValidationError{Name: "last_health_result_status", err: fmt.Errorf(`ent: validator failed for field "Account.last_health_result_status": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -722,6 +769,18 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SessionWindowStatus(); ok {
 		_spec.SetField(account.FieldSessionWindowStatus, field.TypeString, value)
 		_node.SessionWindowStatus = &value
+	}
+	if value, ok := _c.mutation.LastHealthResultStatus(); ok {
+		_spec.SetField(account.FieldLastHealthResultStatus, field.TypeString, value)
+		_node.LastHealthResultStatus = &value
+	}
+	if value, ok := _c.mutation.LastHealthCheckedAt(); ok {
+		_spec.SetField(account.FieldLastHealthCheckedAt, field.TypeTime, value)
+		_node.LastHealthCheckedAt = &value
+	}
+	if value, ok := _c.mutation.LastHealthLatencyMs(); ok {
+		_spec.SetField(account.FieldLastHealthLatencyMs, field.TypeInt64, value)
+		_node.LastHealthLatencyMs = &value
 	}
 	if nodes := _c.mutation.GroupsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1287,6 +1346,66 @@ func (u *AccountUpsert) UpdateSessionWindowStatus() *AccountUpsert {
 // ClearSessionWindowStatus clears the value of the "session_window_status" field.
 func (u *AccountUpsert) ClearSessionWindowStatus() *AccountUpsert {
 	u.SetNull(account.FieldSessionWindowStatus)
+	return u
+}
+
+// SetLastHealthResultStatus sets the "last_health_result_status" field.
+func (u *AccountUpsert) SetLastHealthResultStatus(v string) *AccountUpsert {
+	u.Set(account.FieldLastHealthResultStatus, v)
+	return u
+}
+
+// UpdateLastHealthResultStatus sets the "last_health_result_status" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateLastHealthResultStatus() *AccountUpsert {
+	u.SetExcluded(account.FieldLastHealthResultStatus)
+	return u
+}
+
+// ClearLastHealthResultStatus clears the value of the "last_health_result_status" field.
+func (u *AccountUpsert) ClearLastHealthResultStatus() *AccountUpsert {
+	u.SetNull(account.FieldLastHealthResultStatus)
+	return u
+}
+
+// SetLastHealthCheckedAt sets the "last_health_checked_at" field.
+func (u *AccountUpsert) SetLastHealthCheckedAt(v time.Time) *AccountUpsert {
+	u.Set(account.FieldLastHealthCheckedAt, v)
+	return u
+}
+
+// UpdateLastHealthCheckedAt sets the "last_health_checked_at" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateLastHealthCheckedAt() *AccountUpsert {
+	u.SetExcluded(account.FieldLastHealthCheckedAt)
+	return u
+}
+
+// ClearLastHealthCheckedAt clears the value of the "last_health_checked_at" field.
+func (u *AccountUpsert) ClearLastHealthCheckedAt() *AccountUpsert {
+	u.SetNull(account.FieldLastHealthCheckedAt)
+	return u
+}
+
+// SetLastHealthLatencyMs sets the "last_health_latency_ms" field.
+func (u *AccountUpsert) SetLastHealthLatencyMs(v int64) *AccountUpsert {
+	u.Set(account.FieldLastHealthLatencyMs, v)
+	return u
+}
+
+// UpdateLastHealthLatencyMs sets the "last_health_latency_ms" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateLastHealthLatencyMs() *AccountUpsert {
+	u.SetExcluded(account.FieldLastHealthLatencyMs)
+	return u
+}
+
+// AddLastHealthLatencyMs adds v to the "last_health_latency_ms" field.
+func (u *AccountUpsert) AddLastHealthLatencyMs(v int64) *AccountUpsert {
+	u.Add(account.FieldLastHealthLatencyMs, v)
+	return u
+}
+
+// ClearLastHealthLatencyMs clears the value of the "last_health_latency_ms" field.
+func (u *AccountUpsert) ClearLastHealthLatencyMs() *AccountUpsert {
+	u.SetNull(account.FieldLastHealthLatencyMs)
 	return u
 }
 
@@ -1871,6 +1990,76 @@ func (u *AccountUpsertOne) UpdateSessionWindowStatus() *AccountUpsertOne {
 func (u *AccountUpsertOne) ClearSessionWindowStatus() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearSessionWindowStatus()
+	})
+}
+
+// SetLastHealthResultStatus sets the "last_health_result_status" field.
+func (u *AccountUpsertOne) SetLastHealthResultStatus(v string) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthResultStatus(v)
+	})
+}
+
+// UpdateLastHealthResultStatus sets the "last_health_result_status" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateLastHealthResultStatus() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthResultStatus()
+	})
+}
+
+// ClearLastHealthResultStatus clears the value of the "last_health_result_status" field.
+func (u *AccountUpsertOne) ClearLastHealthResultStatus() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthResultStatus()
+	})
+}
+
+// SetLastHealthCheckedAt sets the "last_health_checked_at" field.
+func (u *AccountUpsertOne) SetLastHealthCheckedAt(v time.Time) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthCheckedAt(v)
+	})
+}
+
+// UpdateLastHealthCheckedAt sets the "last_health_checked_at" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateLastHealthCheckedAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthCheckedAt()
+	})
+}
+
+// ClearLastHealthCheckedAt clears the value of the "last_health_checked_at" field.
+func (u *AccountUpsertOne) ClearLastHealthCheckedAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthCheckedAt()
+	})
+}
+
+// SetLastHealthLatencyMs sets the "last_health_latency_ms" field.
+func (u *AccountUpsertOne) SetLastHealthLatencyMs(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthLatencyMs(v)
+	})
+}
+
+// AddLastHealthLatencyMs adds v to the "last_health_latency_ms" field.
+func (u *AccountUpsertOne) AddLastHealthLatencyMs(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddLastHealthLatencyMs(v)
+	})
+}
+
+// UpdateLastHealthLatencyMs sets the "last_health_latency_ms" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateLastHealthLatencyMs() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthLatencyMs()
+	})
+}
+
+// ClearLastHealthLatencyMs clears the value of the "last_health_latency_ms" field.
+func (u *AccountUpsertOne) ClearLastHealthLatencyMs() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthLatencyMs()
 	})
 }
 
@@ -2621,6 +2810,76 @@ func (u *AccountUpsertBulk) UpdateSessionWindowStatus() *AccountUpsertBulk {
 func (u *AccountUpsertBulk) ClearSessionWindowStatus() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearSessionWindowStatus()
+	})
+}
+
+// SetLastHealthResultStatus sets the "last_health_result_status" field.
+func (u *AccountUpsertBulk) SetLastHealthResultStatus(v string) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthResultStatus(v)
+	})
+}
+
+// UpdateLastHealthResultStatus sets the "last_health_result_status" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateLastHealthResultStatus() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthResultStatus()
+	})
+}
+
+// ClearLastHealthResultStatus clears the value of the "last_health_result_status" field.
+func (u *AccountUpsertBulk) ClearLastHealthResultStatus() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthResultStatus()
+	})
+}
+
+// SetLastHealthCheckedAt sets the "last_health_checked_at" field.
+func (u *AccountUpsertBulk) SetLastHealthCheckedAt(v time.Time) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthCheckedAt(v)
+	})
+}
+
+// UpdateLastHealthCheckedAt sets the "last_health_checked_at" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateLastHealthCheckedAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthCheckedAt()
+	})
+}
+
+// ClearLastHealthCheckedAt clears the value of the "last_health_checked_at" field.
+func (u *AccountUpsertBulk) ClearLastHealthCheckedAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthCheckedAt()
+	})
+}
+
+// SetLastHealthLatencyMs sets the "last_health_latency_ms" field.
+func (u *AccountUpsertBulk) SetLastHealthLatencyMs(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthLatencyMs(v)
+	})
+}
+
+// AddLastHealthLatencyMs adds v to the "last_health_latency_ms" field.
+func (u *AccountUpsertBulk) AddLastHealthLatencyMs(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddLastHealthLatencyMs(v)
+	})
+}
+
+// UpdateLastHealthLatencyMs sets the "last_health_latency_ms" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateLastHealthLatencyMs() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthLatencyMs()
+	})
+}
+
+// ClearLastHealthLatencyMs clears the value of the "last_health_latency_ms" field.
+func (u *AccountUpsertBulk) ClearLastHealthLatencyMs() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthLatencyMs()
 	})
 }
 

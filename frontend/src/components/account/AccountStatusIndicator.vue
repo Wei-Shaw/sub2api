@@ -1,5 +1,43 @@
 <template>
   <div class="flex items-center gap-2">
+    <!-- Health badge (需求 §7.1/§7.5):基于运行态 + 最近检测结果的综合分类 -->
+    <div v-if="healthBadge" class="group/health relative">
+      <span
+        :class="['inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium', healthBadge.cls]"
+      >
+        <span :class="['inline-block h-1.5 w-1.5 rounded-full', healthBadge.dot]"></span>
+        {{ healthBadge.label }}
+      </span>
+      <!-- Tooltip:最近一次检测详情(脱敏后的失败原因) -->
+      <div
+        v-if="hasHealthDetail"
+        class="invisible absolute left-0 top-full z-[100] mt-1.5 min-w-[200px] max-w-[300px] rounded-lg bg-gray-800 px-3 py-2 text-xs text-white opacity-0 shadow-xl transition-all duration-200 group-hover/health:visible group-hover/health:opacity-100 dark:bg-gray-900"
+      >
+        <div class="space-y-1 leading-relaxed">
+          <div v-if="account.last_health_model" class="flex justify-between gap-3">
+            <span class="text-gray-400">{{ t('admin.accounts.health.model') }}</span>
+            <span class="font-mono">{{ account.last_health_model }}</span>
+          </div>
+          <div v-if="account.last_health_status" class="flex justify-between gap-3">
+            <span class="text-gray-400">{{ t('admin.accounts.health.lastResult') }}</span>
+            <span>{{ healthResultText }}</span>
+          </div>
+          <div v-if="typeof account.last_health_latency_ms === 'number'" class="flex justify-between gap-3">
+            <span class="text-gray-400">{{ t('admin.accounts.health.latency') }}</span>
+            <span>{{ account.last_health_latency_ms }}ms</span>
+          </div>
+          <div v-if="account.last_health_at" class="flex justify-between gap-3">
+            <span class="text-gray-400">{{ t('admin.accounts.health.checkedAt') }}</span>
+            <span>{{ formatHealthCheckedAt }}</span>
+          </div>
+          <div v-if="account.last_health_error" class="border-t border-gray-700 pt-1 text-red-300 whitespace-pre-wrap break-words">
+            {{ account.last_health_error }}
+          </div>
+        </div>
+        <div class="absolute bottom-full left-3 border-[6px] border-transparent border-b-gray-800 dark:border-b-gray-900"></div>
+      </div>
+    </div>
+
     <!-- Rate Limit Display (429) - Two-line layout -->
     <div v-if="isRateLimited" class="flex flex-col items-center gap-1">
       <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rateLimited') }}</span>
@@ -170,6 +208,55 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'show-temp-unsched', account: Account): void
 }>()
+
+// ── Health badge(需求 §7.1/§7.5)─────────────────────────────────
+// 颜色映射(需求 §6.5):healthy=绿 / error=红 / limited=黄 / paused=灰 / untested=灰
+const HEALTH_BADGE_STYLE: Record<string, { cls: string; dot: string }> = {
+  healthy: {
+    cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    dot: 'bg-emerald-500'
+  },
+  error: {
+    cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    dot: 'bg-red-500'
+  },
+  limited: {
+    cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    dot: 'bg-amber-500'
+  },
+  paused: {
+    cls: 'bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-300',
+    dot: 'bg-gray-400'
+  },
+  untested: {
+    cls: 'bg-gray-100 text-gray-500 dark:bg-gray-700/40 dark:text-gray-400',
+    dot: 'bg-gray-300 dark:bg-gray-500'
+  }
+}
+
+const healthBadge = computed(() => {
+  const h = props.account.health
+  if (!h) return null
+  const style = HEALTH_BADGE_STYLE[h] ?? HEALTH_BADGE_STYLE.untested
+  return { ...style, label: t(`admin.accounts.health.status.${h}`) }
+})
+
+const hasHealthDetail = computed(() =>
+  !!(props.account.last_health_status || props.account.last_health_error || props.account.last_health_at)
+)
+
+const healthResultText = computed(() => {
+  const s = props.account.last_health_status
+  if (s === 'success') return t('admin.accounts.health.resultSuccess')
+  if (s === 'failed') return t('admin.accounts.health.resultFailed')
+  return s ?? '-'
+})
+
+const formatHealthCheckedAt = computed(() => {
+  const ts = props.account.last_health_at
+  if (!ts) return '-'
+  return formatDateTime(new Date(ts * 1000).toISOString())
+})
 
 // Computed: is rate limited (429)
 const isRateLimited = computed(() => {

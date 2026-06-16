@@ -84,7 +84,10 @@ func (m *sessionWindowMockRepo) Delete(context.Context, int64) error    { panic(
 func (m *sessionWindowMockRepo) List(context.Context, pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
 	panic("unexpected")
 }
-func (m *sessionWindowMockRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, string, int64, string) ([]Account, *pagination.PaginationResult, error) {
+func (m *sessionWindowMockRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, string, int64, string, string) ([]Account, *pagination.PaginationResult, error) {
+	panic("unexpected")
+}
+func (m *sessionWindowMockRepo) GetHealthSummary(context.Context) (*AccountHealthSummary, error) {
 	panic("unexpected")
 }
 func (m *sessionWindowMockRepo) ListByGroup(context.Context, int64) ([]Account, error) {
@@ -97,6 +100,9 @@ func (m *sessionWindowMockRepo) ListByPlatform(context.Context, string) ([]Accou
 	panic("unexpected")
 }
 func (m *sessionWindowMockRepo) UpdateLastUsed(context.Context, int64) error { panic("unexpected") }
+func (m *sessionWindowMockRepo) UpdateHealthSnapshot(context.Context, int64, string, int64, time.Time) error {
+	panic("unexpected")
+}
 func (m *sessionWindowMockRepo) BatchUpdateLastUsed(context.Context, map[int64]time.Time) error {
 	panic("unexpected")
 }

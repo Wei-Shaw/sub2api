@@ -190,6 +190,21 @@ func SessionWindowStatus(v string) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldSessionWindowStatus, v))
 }
 
+// LastHealthResultStatus applies equality check predicate on the "last_health_result_status" field. It's identical to LastHealthResultStatusEQ.
+func LastHealthResultStatus(v string) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthCheckedAt applies equality check predicate on the "last_health_checked_at" field. It's identical to LastHealthCheckedAtEQ.
+func LastHealthCheckedAt(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldLastHealthCheckedAt, v))
+}
+
+// LastHealthLatencyMs applies equality check predicate on the "last_health_latency_ms" field. It's identical to LastHealthLatencyMsEQ.
+func LastHealthLatencyMs(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldLastHealthLatencyMs, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldCreatedAt, v))
@@ -1548,6 +1563,181 @@ func SessionWindowStatusEqualFold(v string) predicate.Account {
 // SessionWindowStatusContainsFold applies the ContainsFold predicate on the "session_window_status" field.
 func SessionWindowStatusContainsFold(v string) predicate.Account {
 	return predicate.Account(sql.FieldContainsFold(FieldSessionWindowStatus, v))
+}
+
+// LastHealthResultStatusEQ applies the EQ predicate on the "last_health_result_status" field.
+func LastHealthResultStatusEQ(v string) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthResultStatusNEQ applies the NEQ predicate on the "last_health_result_status" field.
+func LastHealthResultStatusNEQ(v string) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthResultStatusIn applies the In predicate on the "last_health_result_status" field.
+func LastHealthResultStatusIn(vs ...string) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldLastHealthResultStatus, vs...))
+}
+
+// LastHealthResultStatusNotIn applies the NotIn predicate on the "last_health_result_status" field.
+func LastHealthResultStatusNotIn(vs ...string) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldLastHealthResultStatus, vs...))
+}
+
+// LastHealthResultStatusGT applies the GT predicate on the "last_health_result_status" field.
+func LastHealthResultStatusGT(v string) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthResultStatusGTE applies the GTE predicate on the "last_health_result_status" field.
+func LastHealthResultStatusGTE(v string) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthResultStatusLT applies the LT predicate on the "last_health_result_status" field.
+func LastHealthResultStatusLT(v string) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthResultStatusLTE applies the LTE predicate on the "last_health_result_status" field.
+func LastHealthResultStatusLTE(v string) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthResultStatusContains applies the Contains predicate on the "last_health_result_status" field.
+func LastHealthResultStatusContains(v string) predicate.Account {
+	return predicate.Account(sql.FieldContains(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthResultStatusHasPrefix applies the HasPrefix predicate on the "last_health_result_status" field.
+func LastHealthResultStatusHasPrefix(v string) predicate.Account {
+	return predicate.Account(sql.FieldHasPrefix(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthResultStatusHasSuffix applies the HasSuffix predicate on the "last_health_result_status" field.
+func LastHealthResultStatusHasSuffix(v string) predicate.Account {
+	return predicate.Account(sql.FieldHasSuffix(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthResultStatusIsNil applies the IsNil predicate on the "last_health_result_status" field.
+func LastHealthResultStatusIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldLastHealthResultStatus))
+}
+
+// LastHealthResultStatusNotNil applies the NotNil predicate on the "last_health_result_status" field.
+func LastHealthResultStatusNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldLastHealthResultStatus))
+}
+
+// LastHealthResultStatusEqualFold applies the EqualFold predicate on the "last_health_result_status" field.
+func LastHealthResultStatusEqualFold(v string) predicate.Account {
+	return predicate.Account(sql.FieldEqualFold(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthResultStatusContainsFold applies the ContainsFold predicate on the "last_health_result_status" field.
+func LastHealthResultStatusContainsFold(v string) predicate.Account {
+	return predicate.Account(sql.FieldContainsFold(FieldLastHealthResultStatus, v))
+}
+
+// LastHealthCheckedAtEQ applies the EQ predicate on the "last_health_checked_at" field.
+func LastHealthCheckedAtEQ(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldLastHealthCheckedAt, v))
+}
+
+// LastHealthCheckedAtNEQ applies the NEQ predicate on the "last_health_checked_at" field.
+func LastHealthCheckedAtNEQ(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldLastHealthCheckedAt, v))
+}
+
+// LastHealthCheckedAtIn applies the In predicate on the "last_health_checked_at" field.
+func LastHealthCheckedAtIn(vs ...time.Time) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldLastHealthCheckedAt, vs...))
+}
+
+// LastHealthCheckedAtNotIn applies the NotIn predicate on the "last_health_checked_at" field.
+func LastHealthCheckedAtNotIn(vs ...time.Time) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldLastHealthCheckedAt, vs...))
+}
+
+// LastHealthCheckedAtGT applies the GT predicate on the "last_health_checked_at" field.
+func LastHealthCheckedAtGT(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldLastHealthCheckedAt, v))
+}
+
+// LastHealthCheckedAtGTE applies the GTE predicate on the "last_health_checked_at" field.
+func LastHealthCheckedAtGTE(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldLastHealthCheckedAt, v))
+}
+
+// LastHealthCheckedAtLT applies the LT predicate on the "last_health_checked_at" field.
+func LastHealthCheckedAtLT(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldLastHealthCheckedAt, v))
+}
+
+// LastHealthCheckedAtLTE applies the LTE predicate on the "last_health_checked_at" field.
+func LastHealthCheckedAtLTE(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldLastHealthCheckedAt, v))
+}
+
+// LastHealthCheckedAtIsNil applies the IsNil predicate on the "last_health_checked_at" field.
+func LastHealthCheckedAtIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldLastHealthCheckedAt))
+}
+
+// LastHealthCheckedAtNotNil applies the NotNil predicate on the "last_health_checked_at" field.
+func LastHealthCheckedAtNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldLastHealthCheckedAt))
+}
+
+// LastHealthLatencyMsEQ applies the EQ predicate on the "last_health_latency_ms" field.
+func LastHealthLatencyMsEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldLastHealthLatencyMs, v))
+}
+
+// LastHealthLatencyMsNEQ applies the NEQ predicate on the "last_health_latency_ms" field.
+func LastHealthLatencyMsNEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldLastHealthLatencyMs, v))
+}
+
+// LastHealthLatencyMsIn applies the In predicate on the "last_health_latency_ms" field.
+func LastHealthLatencyMsIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldLastHealthLatencyMs, vs...))
+}
+
+// LastHealthLatencyMsNotIn applies the NotIn predicate on the "last_health_latency_ms" field.
+func LastHealthLatencyMsNotIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldLastHealthLatencyMs, vs...))
+}
+
+// LastHealthLatencyMsGT applies the GT predicate on the "last_health_latency_ms" field.
+func LastHealthLatencyMsGT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldLastHealthLatencyMs, v))
+}
+
+// LastHealthLatencyMsGTE applies the GTE predicate on the "last_health_latency_ms" field.
+func LastHealthLatencyMsGTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldLastHealthLatencyMs, v))
+}
+
+// LastHealthLatencyMsLT applies the LT predicate on the "last_health_latency_ms" field.
+func LastHealthLatencyMsLT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldLastHealthLatencyMs, v))
+}
+
+// LastHealthLatencyMsLTE applies the LTE predicate on the "last_health_latency_ms" field.
+func LastHealthLatencyMsLTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldLastHealthLatencyMs, v))
+}
+
+// LastHealthLatencyMsIsNil applies the IsNil predicate on the "last_health_latency_ms" field.
+func LastHealthLatencyMsIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldLastHealthLatencyMs))
+}
+
+// LastHealthLatencyMsNotNil applies the NotNil predicate on the "last_health_latency_ms" field.
+func LastHealthLatencyMsNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldLastHealthLatencyMs))
 }
 
 // HasGroups applies the HasEdge predicate on the "groups" edge.

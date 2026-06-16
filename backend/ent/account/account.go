@@ -73,6 +73,12 @@ const (
 	FieldSessionWindowEnd = "session_window_end"
 	// FieldSessionWindowStatus holds the string denoting the session_window_status field in the database.
 	FieldSessionWindowStatus = "session_window_status"
+	// FieldLastHealthResultStatus holds the string denoting the last_health_result_status field in the database.
+	FieldLastHealthResultStatus = "last_health_result_status"
+	// FieldLastHealthCheckedAt holds the string denoting the last_health_checked_at field in the database.
+	FieldLastHealthCheckedAt = "last_health_checked_at"
+	// FieldLastHealthLatencyMs holds the string denoting the last_health_latency_ms field in the database.
+	FieldLastHealthLatencyMs = "last_health_latency_ms"
 	// EdgeGroups holds the string denoting the groups edge name in mutations.
 	EdgeGroups = "groups"
 	// EdgeProxy holds the string denoting the proxy edge name in mutations.
@@ -143,6 +149,9 @@ var Columns = []string{
 	FieldSessionWindowStart,
 	FieldSessionWindowEnd,
 	FieldSessionWindowStatus,
+	FieldLastHealthResultStatus,
+	FieldLastHealthCheckedAt,
+	FieldLastHealthLatencyMs,
 }
 
 var (
@@ -201,6 +210,8 @@ var (
 	DefaultSchedulable bool
 	// SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	SessionWindowStatusValidator func(string) error
+	// LastHealthResultStatusValidator is a validator for the "last_health_result_status" field. It is called by the builders before save.
+	LastHealthResultStatusValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the Account queries.
@@ -344,6 +355,21 @@ func BySessionWindowEnd(opts ...sql.OrderTermOption) OrderOption {
 // BySessionWindowStatus orders the results by the session_window_status field.
 func BySessionWindowStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSessionWindowStatus, opts...).ToFunc()
+}
+
+// ByLastHealthResultStatus orders the results by the last_health_result_status field.
+func ByLastHealthResultStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastHealthResultStatus, opts...).ToFunc()
+}
+
+// ByLastHealthCheckedAt orders the results by the last_health_checked_at field.
+func ByLastHealthCheckedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastHealthCheckedAt, opts...).ToFunc()
+}
+
+// ByLastHealthLatencyMs orders the results by the last_health_latency_ms field.
+func ByLastHealthLatencyMs(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastHealthLatencyMs, opts...).ToFunc()
 }
 
 // ByGroupsCount orders the results by groups count.

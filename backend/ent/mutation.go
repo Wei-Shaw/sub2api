@@ -2310,6 +2310,10 @@ type AccountMutation struct {
 	session_window_start        *time.Time
 	session_window_end          *time.Time
 	session_window_status       *string
+	last_health_result_status   *string
+	last_health_checked_at      *time.Time
+	last_health_latency_ms      *int64
+	addlast_health_latency_ms   *int64
 	clearedFields               map[string]struct{}
 	groups                      map[int64]struct{}
 	removedgroups               map[int64]struct{}
@@ -3776,6 +3780,174 @@ func (m *AccountMutation) ResetSessionWindowStatus() {
 	delete(m.clearedFields, account.FieldSessionWindowStatus)
 }
 
+// SetLastHealthResultStatus sets the "last_health_result_status" field.
+func (m *AccountMutation) SetLastHealthResultStatus(s string) {
+	m.last_health_result_status = &s
+}
+
+// LastHealthResultStatus returns the value of the "last_health_result_status" field in the mutation.
+func (m *AccountMutation) LastHealthResultStatus() (r string, exists bool) {
+	v := m.last_health_result_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastHealthResultStatus returns the old "last_health_result_status" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldLastHealthResultStatus(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastHealthResultStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastHealthResultStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastHealthResultStatus: %w", err)
+	}
+	return oldValue.LastHealthResultStatus, nil
+}
+
+// ClearLastHealthResultStatus clears the value of the "last_health_result_status" field.
+func (m *AccountMutation) ClearLastHealthResultStatus() {
+	m.last_health_result_status = nil
+	m.clearedFields[account.FieldLastHealthResultStatus] = struct{}{}
+}
+
+// LastHealthResultStatusCleared returns if the "last_health_result_status" field was cleared in this mutation.
+func (m *AccountMutation) LastHealthResultStatusCleared() bool {
+	_, ok := m.clearedFields[account.FieldLastHealthResultStatus]
+	return ok
+}
+
+// ResetLastHealthResultStatus resets all changes to the "last_health_result_status" field.
+func (m *AccountMutation) ResetLastHealthResultStatus() {
+	m.last_health_result_status = nil
+	delete(m.clearedFields, account.FieldLastHealthResultStatus)
+}
+
+// SetLastHealthCheckedAt sets the "last_health_checked_at" field.
+func (m *AccountMutation) SetLastHealthCheckedAt(t time.Time) {
+	m.last_health_checked_at = &t
+}
+
+// LastHealthCheckedAt returns the value of the "last_health_checked_at" field in the mutation.
+func (m *AccountMutation) LastHealthCheckedAt() (r time.Time, exists bool) {
+	v := m.last_health_checked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastHealthCheckedAt returns the old "last_health_checked_at" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldLastHealthCheckedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastHealthCheckedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastHealthCheckedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastHealthCheckedAt: %w", err)
+	}
+	return oldValue.LastHealthCheckedAt, nil
+}
+
+// ClearLastHealthCheckedAt clears the value of the "last_health_checked_at" field.
+func (m *AccountMutation) ClearLastHealthCheckedAt() {
+	m.last_health_checked_at = nil
+	m.clearedFields[account.FieldLastHealthCheckedAt] = struct{}{}
+}
+
+// LastHealthCheckedAtCleared returns if the "last_health_checked_at" field was cleared in this mutation.
+func (m *AccountMutation) LastHealthCheckedAtCleared() bool {
+	_, ok := m.clearedFields[account.FieldLastHealthCheckedAt]
+	return ok
+}
+
+// ResetLastHealthCheckedAt resets all changes to the "last_health_checked_at" field.
+func (m *AccountMutation) ResetLastHealthCheckedAt() {
+	m.last_health_checked_at = nil
+	delete(m.clearedFields, account.FieldLastHealthCheckedAt)
+}
+
+// SetLastHealthLatencyMs sets the "last_health_latency_ms" field.
+func (m *AccountMutation) SetLastHealthLatencyMs(i int64) {
+	m.last_health_latency_ms = &i
+	m.addlast_health_latency_ms = nil
+}
+
+// LastHealthLatencyMs returns the value of the "last_health_latency_ms" field in the mutation.
+func (m *AccountMutation) LastHealthLatencyMs() (r int64, exists bool) {
+	v := m.last_health_latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastHealthLatencyMs returns the old "last_health_latency_ms" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldLastHealthLatencyMs(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastHealthLatencyMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastHealthLatencyMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastHealthLatencyMs: %w", err)
+	}
+	return oldValue.LastHealthLatencyMs, nil
+}
+
+// AddLastHealthLatencyMs adds i to the "last_health_latency_ms" field.
+func (m *AccountMutation) AddLastHealthLatencyMs(i int64) {
+	if m.addlast_health_latency_ms != nil {
+		*m.addlast_health_latency_ms += i
+	} else {
+		m.addlast_health_latency_ms = &i
+	}
+}
+
+// AddedLastHealthLatencyMs returns the value that was added to the "last_health_latency_ms" field in this mutation.
+func (m *AccountMutation) AddedLastHealthLatencyMs() (r int64, exists bool) {
+	v := m.addlast_health_latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearLastHealthLatencyMs clears the value of the "last_health_latency_ms" field.
+func (m *AccountMutation) ClearLastHealthLatencyMs() {
+	m.last_health_latency_ms = nil
+	m.addlast_health_latency_ms = nil
+	m.clearedFields[account.FieldLastHealthLatencyMs] = struct{}{}
+}
+
+// LastHealthLatencyMsCleared returns if the "last_health_latency_ms" field was cleared in this mutation.
+func (m *AccountMutation) LastHealthLatencyMsCleared() bool {
+	_, ok := m.clearedFields[account.FieldLastHealthLatencyMs]
+	return ok
+}
+
+// ResetLastHealthLatencyMs resets all changes to the "last_health_latency_ms" field.
+func (m *AccountMutation) ResetLastHealthLatencyMs() {
+	m.last_health_latency_ms = nil
+	m.addlast_health_latency_ms = nil
+	delete(m.clearedFields, account.FieldLastHealthLatencyMs)
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by ids.
 func (m *AccountMutation) AddGroupIDs(ids ...int64) {
 	if m.groups == nil {
@@ -3945,7 +4117,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 29)
+	fields := make([]string, 0, 32)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -4033,6 +4205,15 @@ func (m *AccountMutation) Fields() []string {
 	if m.session_window_status != nil {
 		fields = append(fields, account.FieldSessionWindowStatus)
 	}
+	if m.last_health_result_status != nil {
+		fields = append(fields, account.FieldLastHealthResultStatus)
+	}
+	if m.last_health_checked_at != nil {
+		fields = append(fields, account.FieldLastHealthCheckedAt)
+	}
+	if m.last_health_latency_ms != nil {
+		fields = append(fields, account.FieldLastHealthLatencyMs)
+	}
 	return fields
 }
 
@@ -4099,6 +4280,12 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.SessionWindowEnd()
 	case account.FieldSessionWindowStatus:
 		return m.SessionWindowStatus()
+	case account.FieldLastHealthResultStatus:
+		return m.LastHealthResultStatus()
+	case account.FieldLastHealthCheckedAt:
+		return m.LastHealthCheckedAt()
+	case account.FieldLastHealthLatencyMs:
+		return m.LastHealthLatencyMs()
 	}
 	return nil, false
 }
@@ -4166,6 +4353,12 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldSessionWindowEnd(ctx)
 	case account.FieldSessionWindowStatus:
 		return m.OldSessionWindowStatus(ctx)
+	case account.FieldLastHealthResultStatus:
+		return m.OldLastHealthResultStatus(ctx)
+	case account.FieldLastHealthCheckedAt:
+		return m.OldLastHealthCheckedAt(ctx)
+	case account.FieldLastHealthLatencyMs:
+		return m.OldLastHealthLatencyMs(ctx)
 	}
 	return nil, fmt.Errorf("unknown Account field %s", name)
 }
@@ -4378,6 +4571,27 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSessionWindowStatus(v)
 		return nil
+	case account.FieldLastHealthResultStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastHealthResultStatus(v)
+		return nil
+	case account.FieldLastHealthCheckedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastHealthCheckedAt(v)
+		return nil
+	case account.FieldLastHealthLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastHealthLatencyMs(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)
 }
@@ -4401,6 +4615,9 @@ func (m *AccountMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, account.FieldRateMultiplier)
 	}
+	if m.addlast_health_latency_ms != nil {
+		fields = append(fields, account.FieldLastHealthLatencyMs)
+	}
 	return fields
 }
 
@@ -4419,6 +4636,8 @@ func (m *AccountMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedPriority()
 	case account.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case account.FieldLastHealthLatencyMs:
+		return m.AddedLastHealthLatencyMs()
 	}
 	return nil, false
 }
@@ -4462,6 +4681,13 @@ func (m *AccountMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRateMultiplier(v)
+		return nil
+	case account.FieldLastHealthLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLastHealthLatencyMs(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Account numeric field %s", name)
@@ -4518,6 +4744,15 @@ func (m *AccountMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(account.FieldSessionWindowStatus) {
 		fields = append(fields, account.FieldSessionWindowStatus)
+	}
+	if m.FieldCleared(account.FieldLastHealthResultStatus) {
+		fields = append(fields, account.FieldLastHealthResultStatus)
+	}
+	if m.FieldCleared(account.FieldLastHealthCheckedAt) {
+		fields = append(fields, account.FieldLastHealthCheckedAt)
+	}
+	if m.FieldCleared(account.FieldLastHealthLatencyMs) {
+		fields = append(fields, account.FieldLastHealthLatencyMs)
 	}
 	return fields
 }
@@ -4580,6 +4815,15 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldSessionWindowStatus:
 		m.ClearSessionWindowStatus()
+		return nil
+	case account.FieldLastHealthResultStatus:
+		m.ClearLastHealthResultStatus()
+		return nil
+	case account.FieldLastHealthCheckedAt:
+		m.ClearLastHealthCheckedAt()
+		return nil
+	case account.FieldLastHealthLatencyMs:
+		m.ClearLastHealthLatencyMs()
 		return nil
 	}
 	return fmt.Errorf("unknown Account nullable field %s", name)
@@ -4675,6 +4919,15 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldSessionWindowStatus:
 		m.ResetSessionWindowStatus()
+		return nil
+	case account.FieldLastHealthResultStatus:
+		m.ResetLastHealthResultStatus()
+		return nil
+	case account.FieldLastHealthCheckedAt:
+		m.ResetLastHealthCheckedAt()
+		return nil
+	case account.FieldLastHealthLatencyMs:
+		m.ResetLastHealthLatencyMs()
 		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)

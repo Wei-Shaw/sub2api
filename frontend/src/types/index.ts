@@ -918,7 +918,19 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+
+  // 健康监控（需求 §7.1/§7.5）。health 为结合运行态与最近检测结果计算的分类;
+  // last_health_* 为最近一次检测快照,供列表徽章与悬停提示展示。
+  health?: AccountHealth
+  last_health_status?: 'success' | 'failed' | string
+  last_health_model?: string
+  last_health_at?: number | null // Unix 秒
+  last_health_latency_ms?: number | null
+  last_health_error?: string // 失败原因摘要（已脱敏）
 }
+
+// 账号健康分类（与后端 service.EvaluateHealth 一致,需求 §6.5/§9）。
+export type AccountHealth = 'healthy' | 'error' | 'limited' | 'paused' | 'untested'
 
 // Account Usage types
 export interface WindowStats {
@@ -1897,7 +1909,10 @@ export interface ScheduledTestPlan {
 
 export interface ScheduledTestResult {
   id: number
-  plan_id: number
+  plan_id: number | null // 手动测试为 null,定时测试为所属计划 ID
+  account_id?: number
+  source?: 'manual' | 'scheduled'
+  model_id?: string
   status: string
   response_text: string
   error_message: string
@@ -1922,6 +1937,63 @@ export interface UpdateScheduledTestPlanRequest {
   enabled?: boolean
   max_results?: number
   auto_recover?: boolean
+}
+
+// ── 账号健康聚合(需求 §7.2 / 计划 §4.2)──────────────────────────────
+
+// HealthCounts 一组账号的健康分布计数。health_rate 分母为 healthy+error+limited,
+// 分母为 0 时后端返回 null(前端显示 "—")。
+export interface HealthCounts {
+  total: number
+  healthy: number
+  error: number
+  limited: number
+  paused: number
+  untested: number
+  health_rate: number | null
+}
+
+// HealthSummaryBucket 按平台或分组聚合的一个健康卡片。
+export interface HealthSummaryBucket {
+  key: string // 平台标识或分组 ID 字符串
+  label: string // 展示名
+  counts: HealthCounts
+}
+
+// AccountHealthSummary 健康聚合接口的完整返回。
+export interface AccountHealthSummary {
+  overall: HealthCounts
+  by_platform: HealthSummaryBucket[]
+  by_group: HealthSummaryBucket[]
+}
+
+// ── 批量定时检测(需求 §7.4 / 计划 §4.4)────────────────────────────
+
+export type BatchPlanConflictStrategy = 'overwrite' | 'skip' | 'add'
+
+export interface BatchCreateScheduledTestPlansRequest {
+  account_ids: number[]
+  model_id: string
+  cron_expression: string
+  enabled?: boolean
+  max_results?: number
+  auto_recover?: boolean
+  conflict_strategy?: BatchPlanConflictStrategy
+}
+
+export interface BatchPlanItemResult {
+  account_id: number
+  action: 'created' | 'overwritten' | 'skipped' | 'failed'
+  plan_id?: number
+  error?: string
+}
+
+export interface BatchCreateScheduledTestPlansResult {
+  total: number
+  success: number
+  failed: number
+  skipped: number
+  results: BatchPlanItemResult[]
 }
 
 // Payment types

@@ -252,6 +252,10 @@ func init() {
 	accountDescSessionWindowStatus := accountFields[25].Descriptor()
 	// account.SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	account.SessionWindowStatusValidator = accountDescSessionWindowStatus.Validators[0].(func(string) error)
+	// accountDescLastHealthResultStatus is the schema descriptor for last_health_result_status field.
+	accountDescLastHealthResultStatus := accountFields[26].Descriptor()
+	// account.LastHealthResultStatusValidator is a validator for the "last_health_result_status" field. It is called by the builders before save.
+	account.LastHealthResultStatusValidator = accountDescLastHealthResultStatus.Validators[0].(func(string) error)
 	accountgroupFields := schema.AccountGroup{}.Fields()
 	_ = accountgroupFields
 	// accountgroupDescPriority is the schema descriptor for priority field.

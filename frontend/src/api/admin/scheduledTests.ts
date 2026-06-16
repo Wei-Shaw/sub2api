@@ -8,7 +8,9 @@ import type {
   ScheduledTestPlan,
   ScheduledTestResult,
   CreateScheduledTestPlanRequest,
-  UpdateScheduledTestPlanRequest
+  UpdateScheduledTestPlanRequest,
+  BatchCreateScheduledTestPlansRequest,
+  BatchCreateScheduledTestPlansResult
 } from '@/types'
 
 /**
@@ -74,12 +76,29 @@ export async function listResults(planId: number, limit?: number): Promise<Sched
   return data ?? []
 }
 
+/**
+ * Batch create/update scheduled test plans across multiple accounts.
+ * 批量为多个账号配置定时健康检测(需求 §7.4)。冲突键为 (account_id, model_id)。
+ * @param req - Batch request
+ * @returns Per-account result summary
+ */
+export async function batchCreate(
+  req: BatchCreateScheduledTestPlansRequest
+): Promise<BatchCreateScheduledTestPlansResult> {
+  const { data } = await apiClient.post<BatchCreateScheduledTestPlansResult>(
+    '/admin/scheduled-test-plans/batch',
+    req
+  )
+  return data
+}
+
 export const scheduledTestsAPI = {
   listByAccount,
   create,
   update,
   delete: deletePlan,
-  listResults
+  listResults,
+  batchCreate
 }
 
 export default scheduledTestsAPI
