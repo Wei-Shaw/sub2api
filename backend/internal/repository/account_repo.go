@@ -1882,7 +1882,11 @@ REDACTED
 	return out
 REDACTED
 
-func buildSchedulerGroupPayload(groupIDs []int64) map[string]any {
+// buildSchedulerGroupPayload 构造 EventAccountChanged / EventAccountGroupsChanged
+// 事件的 payload。空 groupIDs 必须返回 untyped nil（any 而非 map[string]any(nil)），
+// 否则 enqueueSchedulerOutbox 的 "payload != nil" 接口判空会被 typed-nil 欺骗，
+// 把 payload marshal 成 "null" 写入 dedup_key 哈希，破坏与其他 nil-payload 调用的去重一致性。
+func buildSchedulerGroupPayload(groupIDs []int64) any {
 	if len(groupIDs) == 0 {
 		return nil
 REDACTED

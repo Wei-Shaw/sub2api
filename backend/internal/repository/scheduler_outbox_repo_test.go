@@ -90,3 +90,29 @@ REDACTED
 
 	require.NoError(t, mock.ExpectationsWereMet())
 REDACTED
+
+// buildSchedulerGroupPayload 在 groupIDs 为空时必须返回 untyped nil（any），
+// 否则 enqueueSchedulerOutbox 的 "payload != nil" 接口判空会被 typed-nil 欺骗，
+// 把 payload marshal 成 "null" 写入 dedup_key 哈希，破坏与其他 nil-payload
+// 调用的去重一致性。本测试用 ungrouped 账号场景验证两条路径的 dedup_key 一致。
+func TestEnqueueSchedulerOutbox_UngroupedAccountDedupesWithLiteralNilPayload(t *testing.T) {
+	accountID := int64(42)
+
+	// Path A: 显式 nil payload（如 SetError、SetStatus 等调用模式）
+	keyLiteralNil := schedulerOutboxDedupKey("account_changed", &accountID, nil, nil)
+
+	// Path B: buildSchedulerGroupPayload(account.GroupIDs) 当账号没有任何分组
+	emptyGroupsPayload := buildSchedulerGroupPayload(nil)
+	require.Nil(t, emptyGroupsPayload,
+		"buildSchedulerGroupPayload(empty) must return untyped-nil any to avoid typed-nil marshal")
+
+	// 模拟 enqueueSchedulerOutbox 内部的判空逻辑
+	var payloadJSON []byte
+	if emptyGroupsPayload != nil {
+		t.Fatalf("typed-nil regression: buildSchedulerGroupPayload(empty) interface should be nil")
+REDACTED
+	keyEmptyGroups := schedulerOutboxDedupKey("account_changed", &accountID, nil, payloadJSON)
+
+	require.Equal(t, keyLiteralNil, keyEmptyGroups,
+		"ungrouped-account account_changed must share dedup_key with other nil-payload variants")
+REDACTED
