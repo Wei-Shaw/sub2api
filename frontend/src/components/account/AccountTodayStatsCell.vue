@@ -23,6 +23,18 @@
           formatNumber(props.stats.requests)
         }}</span>
       </div>
+      <!-- Completed / Errors -->
+      <div class="flex items-center gap-1">
+        <span class="text-gray-500 dark:text-gray-400">200/错:</span>
+        <span class="font-medium text-emerald-600 dark:text-emerald-400">{{
+          formatNumber(successCount)
+        }}</span>
+        <span class="text-gray-300 dark:text-gray-600">/</span>
+        <span
+          class="font-medium"
+          :class="errorCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'"
+        >{{ formatNumber(errorCount) }}</span>
+      </div>
       <!-- Tokens -->
       <div class="flex items-center gap-1">
         <span class="text-gray-500 dark:text-gray-400"
@@ -54,6 +66,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { WindowStats } from '@/types'
 import { formatNumber, formatCurrency } from '@/utils/format'
@@ -72,6 +85,9 @@ const props = withDefaults(
 )
 
 const { t } = useI18n()
+
+const successCount = computed(() => props.stats?.success_count ?? props.stats?.requests ?? 0)
+const errorCount = computed(() => props.stats?.error_count ?? 0)
 
 // Format large token numbers (e.g., 1234567 -> 1.23M)
 const formatTokens = (tokens: number): string => {

@@ -83,6 +83,14 @@ type accountWindowStatsBatchReader interface {
 	GetAccountWindowStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error)
 }
 
+type accountAverageFirstTokenBatchReader interface {
+	GetAccountAverageFirstTokenBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*float64, error)
+}
+
+type accountHealthBucketsBatchReader interface {
+	GetAccountHealthBucketsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time, bucketCount int) (map[int64][]usagestats.AccountHealthBucket, error)
+}
+
 // apiUsageCache 缓存从 Anthropic API 获取的使用率数据（utilization, resets_at）
 // 同时支持缓存错误响应（负缓存），防止 429 等错误导致的重试风暴
 type apiUsageCache struct {
@@ -139,6 +147,8 @@ type WindowStats struct {
 	Cost         float64 `json:"cost"`
 	StandardCost float64 `json:"standard_cost"`
 	UserCost     float64 `json:"user_cost"`
+	SuccessCount int64   `json:"success_count"`
+	ErrorCount   int64   `json:"error_count"`
 }
 
 // UsageProgress 使用量进度
@@ -1053,6 +1063,8 @@ func windowStatsFromAccountStats(stats *usagestats.AccountStats) *WindowStats {
 		Cost:         stats.Cost,
 		StandardCost: stats.StandardCost,
 		UserCost:     stats.UserCost,
+		SuccessCount: stats.SuccessCount,
+		ErrorCount:   stats.ErrorCount,
 	}
 }
 
@@ -1346,4 +1358,65 @@ func buildGeminiUsageProgress(used, limit int64, resetAt time.Time, tokens int64
 // 用于账号列表页面显示当前窗口费用
 func (s *AccountUsageService) GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error) {
 	return s.usageLogRepo.GetAccountWindowStats(ctx, accountID, startTime)
+}
+
+func uniquePositiveAccountIDs(accountIDs []int64) []int64 {
+	uniqueIDs := make([]int64, 0, len(accountIDs))
+	seen := make(map[int64]struct{}, len(accountIDs))
+	for _, accountID := range accountIDs {
+		if accountID <= 0 {
+			continue
+		}
+		if _, exists := seen[accountID]; exists {
+			continue
+		}
+		seen[accountID] = struct{}{}
+		uniqueIDs = append(uniqueIDs, accountID)
+	}
+	return uniqueIDs
+}
+
+func (s *AccountUsageService) GetAverageFirstTokenBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*float64, error) {
+	uniqueIDs := uniquePositiveAccountIDs(accountIDs)
+	result := make(map[int64]*float64, len(uniqueIDs))
+	if len(uniqueIDs) == 0 {
+		return result, nil
+	}
+	if batchReader, ok := s.usageLogRepo.(accountAverageFirstTokenBatchReader); ok {
+		stats, err := batchReader.GetAccountAverageFirstTokenBatch(ctx, uniqueIDs, startTime)
+		if err == nil {
+			for _, accountID := range uniqueIDs {
+				result[accountID] = stats[accountID]
+			}
+			return result, nil
+		}
+	}
+	return result, nil
+}
+
+func (s *AccountUsageService) GetHealthBucketsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time, bucketCount int) (map[int64][]usagestats.AccountHealthBucket, error) {
+	uniqueIDs := uniquePositiveAccountIDs(accountIDs)
+	result := make(map[int64][]usagestats.AccountHealthBucket, len(uniqueIDs))
+	if len(uniqueIDs) == 0 {
+		return result, nil
+	}
+	if bucketCount <= 0 {
+		bucketCount = 60
+	}
+	if bucketCount > 120 {
+		bucketCount = 120
+	}
+	if !endTime.After(startTime) {
+		return result, nil
+	}
+	if batchReader, ok := s.usageLogRepo.(accountHealthBucketsBatchReader); ok {
+		stats, err := batchReader.GetAccountHealthBucketsBatch(ctx, uniqueIDs, startTime, endTime, bucketCount)
+		if err == nil {
+			for _, accountID := range uniqueIDs {
+				result[accountID] = stats[accountID]
+			}
+			return result, nil
+		}
+	}
+	return result, nil
 }

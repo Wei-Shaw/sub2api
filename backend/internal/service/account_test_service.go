@@ -309,7 +309,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
 
 		// 403 表示账号被上游封禁，标记为 error 状态
-		if resp.StatusCode == http.StatusForbidden {
+		if shouldPersistAccountTestForbidden(resp.StatusCode, account) {
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
 
@@ -318,6 +318,23 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 
 	// Process SSE stream
 	return s.processClaudeStream(c, resp.Body)
+}
+
+func shouldPersistAccountTestForbidden(statusCode int, account *Account) bool {
+	return statusCode == http.StatusForbidden && account != nil && !accountTestPoolModeEnabled(account)
+}
+
+func accountTestPoolModeEnabled(account *Account) bool {
+	if account == nil || account.Credentials == nil {
+		return false
+	}
+	if account.IsPoolMode() {
+		return true
+	}
+	if enabled, ok := account.Credentials["pool_mode"].(bool); ok {
+		return enabled
+	}
+	return false
 }
 
 func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string) error {
@@ -379,7 +396,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
-		if resp.StatusCode == http.StatusForbidden {
+		if shouldPersistAccountTestForbidden(resp.StatusCode, account) {
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
 		return s.sendErrorAndEnd(c, errMsg)

@@ -17,6 +17,21 @@
             @create="showCreate = true"
           >
             <template #after>
+              <select
+                v-model="params.ttft_window"
+                class="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                title="平均首字时间窗口"
+                @change="handleTTFTWindowChange"
+              >
+                <option
+                  v-for="option in ttftWindowOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  首字时间：{{ option.label }}
+                </option>
+              </select>
+
               <!-- Auto Refresh Dropdown -->
               <div class="relative" ref="autoRefreshDropdownRef">
                 <button
@@ -195,7 +210,7 @@
           default-sort-key="name"
           default-sort-order="asc"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
-          :estimate-row-height="72"
+          :estimate-row-height="96"
           :overscan="5"
         >
           <template #header-select>
@@ -220,6 +235,25 @@
               >
                 {{ row.extra?.email_address || row.extra?.email || row.credentials?.email }}
               </span>
+              <div v-if="hasAccountHealthBuckets(row)" class="mt-2 w-56 max-w-full">
+                <div class="flex h-5 items-end gap-px">
+                  <div
+                    v-for="slot in accountHealthSlots(row)"
+                    :key="slot.key"
+                    class="flex min-w-[2px] flex-1 items-end"
+                  >
+                    <div
+                      v-if="slot.total > 0"
+                      :class="[
+                        'w-full rounded-sm transition-opacity hover:opacity-80',
+                        accountHealthBarClass(slot.errorRate)
+                      ]"
+                      :style="{ height: accountHealthBarHeight(slot.total, row.health_buckets) }"
+                      :title="accountHealthBucketTitle(slot)"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </template>
           <template #cell-notes="{ value }">
@@ -269,6 +303,18 @@
               :loading="todayStatsLoading"
               :error="todayStatsError"
             />
+          </template>
+          <template #cell-avg_first_token="{ row }">
+            <span
+              v-if="row.type === 'apikey' && row.avg_first_token_ms != null"
+              :class="[
+                'badge text-xs whitespace-nowrap tabular-nums',
+                firstTokenLatencyClass(row.avg_first_token_ms)
+              ]"
+            >
+              {{ formatFirstTokenMs(row.avg_first_token_ms) }}
+            </span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-groups="{ row }">
             <AccountGroupsCell :groups="row.groups" :max-display="4" />
@@ -421,7 +467,7 @@ import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRules
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
-import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
+import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, AccountHealthBucket } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -520,7 +566,8 @@ const ACCOUNT_SORTABLE_KEYS = new Set([
   'rate_multiplier',
   'last_used_at',
   'created_at',
-  'expires_at'
+  'expires_at',
+  'avg_first_token'
 ])
 const loadInitialAccountSortState = (): AccountSortState => {
   const fallback: AccountSortState = { sort_by: 'name', sort_order: 'asc' }
@@ -559,13 +606,119 @@ const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
+const ttftWindowOptions = [
+  { value: '5m', label: '近5分钟' },
+  { value: '30m', label: '近30分钟' },
+  { value: '1h', label: '近1小时' },
+  { value: '6h', label: '近6小时' },
+  { value: '24h', label: '近24小时' }
+]
+
+type AccountHealthSlot = {
+  key: string
+  bucketStart: Date
+  successCount: number
+  errorCount: number
+  total: number
+  errorRate: number
+}
+
+const accountHealthWindowMs = (value: unknown) => {
+  switch (String(value || '1h')) {
+    case '5m': return 5 * 60 * 1000
+    case '30m': return 30 * 60 * 1000
+    case '6h': return 6 * 60 * 60 * 1000
+    case '24h': return 24 * 60 * 60 * 1000
+    case '1h':
+    default: return 60 * 60 * 1000
+  }
+}
+
+const accountHealthBucketCount = (value: unknown) => {
+  switch (String(value || '1h')) {
+    case '5m': return 30
+    case '6h': return 72
+    case '24h': return 96
+    case '30m':
+    case '1h':
+    default: return 60
+  }
+}
+
+const normalizeAccountHealthBucketTime = (value: string) => {
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) ? time : 0
+}
+
+const accountHealthSignature = (buckets?: AccountHealthBucket[] | null) => {
+  if (!Array.isArray(buckets) || buckets.length === 0) return ''
+  return buckets
+    .map(bucket => `${bucket.bucket_start}:${bucket.success_count || 0}:${bucket.error_count || 0}`)
+    .join('|')
+}
+
+const hasAccountHealthBuckets = (account: Account) => {
+  return Array.isArray(account.health_buckets) && account.health_buckets.some(bucket => (bucket.success_count || 0) + (bucket.error_count || 0) > 0)
+}
+
+const accountHealthSlots = (account: Account): AccountHealthSlot[] => {
+  const bucketCount = accountHealthBucketCount(params.ttft_window)
+  const windowMs = accountHealthWindowMs(params.ttft_window)
+  const bucketMs = windowMs / bucketCount
+  const now = Date.now()
+  const startMs = now - windowMs
+  const byIndex = new Map<number, { successCount: number; errorCount: number }>()
+
+  for (const bucket of account.health_buckets || []) {
+    const bucketTime = normalizeAccountHealthBucketTime(bucket.bucket_start)
+    if (!bucketTime) continue
+    const index = Math.floor((bucketTime - startMs) / bucketMs)
+    if (index < 0 || index >= bucketCount) continue
+    const current = byIndex.get(index) || { successCount: 0, errorCount: 0 }
+    current.successCount += Number(bucket.success_count || 0)
+    current.errorCount += Number(bucket.error_count || 0)
+    byIndex.set(index, current)
+  }
+
+  return Array.from({ length: bucketCount }, (_, index) => {
+    const counts = byIndex.get(index) || { successCount: 0, errorCount: 0 }
+    const total = counts.successCount + counts.errorCount
+    return {
+      key: `${index}-${Math.floor(startMs + index * bucketMs)}`,
+      bucketStart: new Date(startMs + index * bucketMs),
+      successCount: counts.successCount,
+      errorCount: counts.errorCount,
+      total,
+      errorRate: total > 0 ? counts.errorCount / total : 0
+    }
+  })
+}
+
+const accountHealthBarClass = (errorRate: number) => {
+  if (errorRate < 0.15) return 'bg-emerald-500 dark:bg-emerald-400'
+  if (errorRate < 0.5) return 'bg-amber-400 dark:bg-amber-300'
+  return 'bg-red-500 dark:bg-red-400'
+}
+
+const accountHealthBarHeight = (total: number, buckets?: AccountHealthBucket[] | null) => {
+  const maxTotal = Math.max(1, ...(buckets || []).map(bucket => (bucket.success_count || 0) + (bucket.error_count || 0)))
+  const ratio = Math.max(0.25, Math.min(1, total / maxTotal))
+  return `${Math.round(20 * ratio)}px`
+}
+
+const accountHealthBucketTitle = (slot: AccountHealthSlot) => {
+  const errorRate = slot.total > 0 ? `${(slot.errorRate * 100).toFixed(1)}%` : '0%'
+  return `${formatDateTime(slot.bucketStart)}\n200: ${slot.successCount}\n错误: ${slot.errorCount}\n总数: ${slot.total}\n错误率: ${errorRate}`
+}
 
 const buildDefaultTodayStats = (): WindowStats => ({
   requests: 0,
   tokens: 0,
   cost: 0,
   standard_cost: 0,
-  user_cost: 0
+  user_cost: 0,
+  success_count: 0,
+  error_count: 0
 })
 
 const refreshTodayStatsBatch = async () => {
@@ -739,6 +892,7 @@ const {
     privacy_mode: '',
     group: '',
     search: '',
+    ttft_window: '1h',
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
@@ -826,6 +980,14 @@ const handlePageSizeChange = (size: number) => {
   baseHandlePageSizeChange(size)
 }
 
+const handleTTFTWindowChange = () => {
+  pagination.page = 1
+  hasPendingListSync.value = false
+  resetAutoRefreshCache()
+  pendingTodayStatsRefresh.value = true
+  load()
+}
+
 const handleSort = (key: string, order: AccountSortOrder) => {
   sortState.sort_by = key
   sortState.sort_order = order
@@ -881,6 +1043,8 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.updated_at !== next.updated_at ||
     current.current_concurrency !== next.current_concurrency ||
     current.current_window_cost !== next.current_window_cost ||
+    current.avg_first_token_ms !== next.avg_first_token_ms ||
+    accountHealthSignature(current.health_buckets) !== accountHealthSignature(next.health_buckets) ||
     current.active_sessions !== next.active_sessions ||
     current.schedulable !== next.schedulable ||
     current.status !== next.status ||
@@ -945,6 +1109,7 @@ const refreshAccountsIncrementally = async () => {
         search?: string
         sort_by?: string
         sort_order?: AccountSortOrder
+        ttft_window?: string
 
       },
       { etag: autoRefreshETag.value }
@@ -1127,7 +1292,8 @@ const allColumns = computed(() => {
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
-    { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false }
+    { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false },
+    { key: 'avg_first_token', label: '平均首字', sortable: true }
   ]
   if (!authStore.isSimpleMode) {
     c.push({ key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false })
@@ -1460,6 +1626,8 @@ const mergeRuntimeFields = (oldAccount: Account, updatedAccount: Account): Accou
   ...updatedAccount,
   current_concurrency: updatedAccount.current_concurrency ?? oldAccount.current_concurrency,
   current_window_cost: updatedAccount.current_window_cost ?? oldAccount.current_window_cost,
+  avg_first_token_ms: updatedAccount.avg_first_token_ms ?? oldAccount.avg_first_token_ms,
+  health_buckets: updatedAccount.health_buckets ?? oldAccount.health_buckets,
   active_sessions: updatedAccount.active_sessions ?? oldAccount.active_sessions
 })
 
@@ -1635,6 +1803,29 @@ const formatExpiresAt = (value: number | null) => {
     'sv-SE'
   )
 }
+
+const formatFirstTokenMs = (value: number | null | undefined) => {
+  if (value == null || !Number.isFinite(value)) return '-'
+  if (value < 1000) return `${Math.round(value)}ms`
+  return `${(value / 1000).toFixed(value < 10000 ? 2 : 1)}s`
+}
+
+const firstTokenLatencyClass = (value: number | null | undefined) => {
+  if (value == null || !Number.isFinite(value)) {
+    return 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-dark-300'
+  }
+  if (value < 1000) {
+    return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+  }
+  if (value < 3000) {
+    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+  }
+  if (value < 8000) {
+    return 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300'
+  }
+  return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+}
+
 const isExpired = (value: number | null) => {
   if (!value) return false
   return value * 1000 <= Date.now()

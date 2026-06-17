@@ -2,6 +2,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"hash/fnv"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
 type Account struct {
@@ -82,8 +84,168 @@ type TempUnschedulableRule struct {
 	Description     string   `json:"description"`
 }
 
+type ContextLengthFilterConfig struct {
+	Enabled        bool
+	Mode           string
+	Threshold      int
+	MinInputTokens int
+	MaxInputTokens int
+	AllowPercent   int
+}
+
+func nestedExtraBool(m map[string]any, key string) bool {
+	if m == nil {
+		return false
+	}
+	if v, ok := m[key]; ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return false
+}
+
+func nestedExtraInt(m map[string]any, key string) int {
+	if m == nil {
+		return 0
+	}
+	if v, ok := m[key]; ok {
+		return int(parseExtraFloat64(v))
+	}
+	return 0
+}
+
+func nestedExtraString(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
+	if v, ok := m[key].(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
 func (a *Account) IsActive() bool {
 	return a.Status == StatusActive
+}
+
+func (a *Account) ContextLengthFilterSettings() *ContextLengthFilterConfig {
+	if a == nil || a.Extra == nil {
+		return nil
+	}
+	raw, ok := a.Extra["context_length_filter"]
+	if !ok || raw == nil {
+		return nil
+	}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	cfg := &ContextLengthFilterConfig{
+		Enabled:        nestedExtraBool(m, "enabled"),
+		Mode:           nestedExtraString(m, "mode"),
+		Threshold:      nestedExtraInt(m, "threshold"),
+		MinInputTokens: nestedExtraInt(m, "min_input_tokens"),
+		MaxInputTokens: nestedExtraInt(m, "max_input_tokens"),
+		AllowPercent:   nestedExtraInt(m, "allow_percent"),
+	}
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.AllowPercent < 0 {
+		cfg.AllowPercent = 0
+	}
+	if cfg.AllowPercent > 100 {
+		cfg.AllowPercent = 100
+	}
+	if cfg.MinInputTokens < 0 {
+		cfg.MinInputTokens = 0
+	}
+	if cfg.MaxInputTokens < 0 {
+		cfg.MaxInputTokens = 0
+	}
+	if cfg.Threshold < 0 {
+		cfg.Threshold = 0
+	}
+	return cfg
+}
+
+func (a *Account) ContextLengthFilterAllows(ctx context.Context, estimatedInputTokens int, sessionHash string) bool {
+	cfg := a.ContextLengthFilterSettings()
+	if cfg == nil {
+		return true
+	}
+	if estimatedInputTokens <= 0 {
+		return true
+	}
+	trigger := false
+	switch cfg.Mode {
+	case "lt":
+		trigger = cfg.Threshold > 0 && estimatedInputTokens < cfg.Threshold
+	case "gt":
+		trigger = cfg.Threshold > 0 && estimatedInputTokens > cfg.Threshold
+	default:
+	}
+	if !trigger && cfg.Mode == "" {
+		if cfg.MaxInputTokens > 0 {
+			trigger = estimatedInputTokens > cfg.MaxInputTokens
+		} else if cfg.MinInputTokens > 0 {
+			trigger = estimatedInputTokens >= cfg.MinInputTokens
+		}
+	}
+	if !trigger {
+		return true
+	}
+	if cfg.AllowPercent <= 0 {
+		slog.Info("context_length_filter.decision", "account_id", a.ID, "estimated_input_tokens", estimatedInputTokens, "mode", cfg.Mode, "threshold", cfg.Threshold, "allow_percent", cfg.AllowPercent, "allowed", false)
+		return false
+	}
+	if cfg.AllowPercent >= 100 {
+		slog.Debug("context_length_filter.decision", "account_id", a.ID, "estimated_input_tokens", estimatedInputTokens, "mode", cfg.Mode, "threshold", cfg.Threshold, "allow_percent", cfg.AllowPercent, "allowed", true)
+		return true
+	}
+	seed := a.ID
+	if sessionHash != "" {
+		h := fnv.New32a()
+		_, _ = h.Write([]byte(sessionHash))
+		seed ^= int64(h.Sum32())
+	}
+	if ctx != nil {
+		if v, ok := ctx.Value(ctxkey.RequestID).(string); ok && v != "" {
+			h := fnv.New32a()
+			_, _ = h.Write([]byte(v))
+			seed ^= int64(h.Sum32())
+		}
+		if v, ok := ctx.Value(ctxkey.ClientRequestID).(string); ok && v != "" {
+			h := fnv.New32a()
+			_, _ = h.Write([]byte(v))
+			seed ^= int64(h.Sum32())
+		}
+	}
+	if seed < 0 {
+		seed = -seed
+	}
+	sample := int(seed % 100)
+	allowed := sample < cfg.AllowPercent
+	logContextLengthFilterDecision(a.ID, estimatedInputTokens, cfg, sample, allowed)
+	return allowed
+}
+
+func logContextLengthFilterDecision(accountID int64, estimatedInputTokens int, cfg *ContextLengthFilterConfig, sample int, allowed bool) {
+	args := []any{
+		"account_id", accountID,
+		"estimated_input_tokens", estimatedInputTokens,
+		"mode", cfg.Mode,
+		"threshold", cfg.Threshold,
+		"allow_percent", cfg.AllowPercent,
+		"sample", sample,
+		"allowed", allowed,
+	}
+	if allowed {
+		slog.Debug("context_length_filter.decision", args...)
+		return
+	}
+	slog.Info("context_length_filter.decision", args...)
 }
 
 // BillingRateMultiplier 返回账号计费倍率。

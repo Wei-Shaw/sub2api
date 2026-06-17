@@ -883,8 +883,24 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	if req.GroupID != nil && s.service.schedulerSnapshot != nil {
 		schedGroup, _ = s.service.schedulerSnapshot.GetGroupByID(ctx, *req.GroupID)
 	}
+	if routedIDs := openAIGroupRoutingAccountIDs(schedGroup, req.RequestedModel); len(routedIDs) > 0 {
+		routedSet := make(map[int64]struct{}, len(routedIDs))
+		for _, id := range routedIDs {
+			routedSet[id] = struct{}{}
+		}
+		routedAccounts := make([]Account, 0, len(accounts))
+		for _, account := range accounts {
+			if _, ok := routedSet[account.ID]; ok {
+				routedAccounts = append(routedAccounts, account)
+			}
+		}
+		if len(routedAccounts) > 0 {
+			accounts = routedAccounts
+		}
+	}
 
 	filtered := make([]*Account, 0, len(accounts))
+	contextBlockedFiltered := make([]*Account, 0, len(accounts))
 	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
@@ -912,14 +928,28 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 			continue
 		}
+		if !contextLengthFilterAllowsAccount(ctx, account, req.SessionHash) {
+			contextBlockedFiltered = append(contextBlockedFiltered, account)
+			continue
+		}
 		filtered = append(filtered, account)
 		loadReq = append(loadReq, AccountWithConcurrency{
 			ID:             account.ID,
 			MaxConcurrency: account.EffectiveLoadFactor(),
 		})
 	}
+	if len(filtered) == 0 && len(contextBlockedFiltered) == 1 && len(accounts) == 1 {
+		filtered = contextBlockedFiltered
+	}
 	if len(filtered) == 0 {
 		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false)
+	}
+	loadReq = loadReq[:0]
+	for _, account := range filtered {
+		loadReq = append(loadReq, AccountWithConcurrency{
+			ID:             account.ID,
+			MaxConcurrency: account.EffectiveLoadFactor(),
+		})
 	}
 
 	loadMap := map[int64]*AccountLoadInfo{}
@@ -999,6 +1029,13 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	}
 
 	return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked)
+}
+
+func openAIGroupRoutingAccountIDs(group *Group, requestedModel string) []int64 {
+	if group == nil || requestedModel == "" || !supportsGroupModelRouting(group.Platform) {
+		return nil
+	}
+	return group.GetRoutingAccountIDs(requestedModel)
 }
 
 func (s *defaultOpenAIAccountScheduler) isAccountTransportCompatible(account *Account, requiredTransport OpenAIUpstreamTransport) bool {

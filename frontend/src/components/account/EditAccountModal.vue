@@ -1324,6 +1324,49 @@
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') }}</p>
       </div>
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">上下文长度过滤</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              按估算输入 tokens 做账号级放行；未命中时会优先切到同组其他可用账号，没有替代账号则仍放行。
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="contextLengthFilterEnabled = !contextLengthFilterEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              contextLengthFilterEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                contextLengthFilterEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+        <div v-if="contextLengthFilterEnabled" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <label class="input-label">放行条件</label>
+            <select v-model="contextLengthFilterMode" class="input">
+              <option value="gt">输入 tokens 大于阈值才按比例放行</option>
+              <option value="lt">输入 tokens 小于阈值才按比例放行</option>
+            </select>
+          </div>
+          <div>
+            <label class="input-label">阈值 tokens</label>
+            <input v-model.number="contextLengthFilterThreshold" type="number" min="1" step="1" class="input" />
+          </div>
+          <div>
+            <label class="input-label">放行比例 %</label>
+            <input v-model.number="contextLengthFilterAllowPercent" type="number" min="0" max="100" step="1" class="input" />
+            <p class="input-hint">0 表示命中条件时尽量不用该账号，100 表示不限制。</p>
+          </div>
+        </div>
+      </div>
 
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
@@ -2575,6 +2618,10 @@ const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
 const customBaseUrlEnabled = ref(false)
 const customBaseUrl = ref('')
+const contextLengthFilterEnabled = ref(false)
+const contextLengthFilterMode = ref<'gt' | 'lt'>('gt')
+const contextLengthFilterThreshold = ref<number | null>(null)
+const contextLengthFilterAllowPercent = ref<number>(0)
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
@@ -2944,13 +2991,18 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load mixed scheduling setting (only for antigravity accounts)
   mixedScheduling.value = false
   allowOverages.value = false
-	const extra = newAccount.extra as Record<string, unknown> | undefined
-	mixedScheduling.value = extra?.mixed_scheduling === true
-	allowOverages.value = extra?.allow_overages === true
-	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
-	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
-	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
-	autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
+  const extra = newAccount.extra as Record<string, unknown> | undefined
+  mixedScheduling.value = extra?.mixed_scheduling === true
+  allowOverages.value = extra?.allow_overages === true
+  const contextFilter = extra?.context_length_filter as Record<string, unknown> | undefined
+  contextLengthFilterEnabled.value = contextFilter?.enabled === true
+  contextLengthFilterMode.value = contextFilter?.mode === 'lt' ? 'lt' : 'gt'
+  contextLengthFilterThreshold.value = Number(contextFilter?.threshold || contextFilter?.min_input_tokens || contextFilter?.max_input_tokens || 0) || null
+  contextLengthFilterAllowPercent.value = Math.max(0, Math.min(100, Number(contextFilter?.allow_percent ?? 0) || 0))
+  autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
+  autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
+  autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
+  autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
   openaiPassthroughEnabled.value = false
@@ -3625,6 +3677,21 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const formatDateTimeLocal = formatDateTimeLocalInput
 const parseDateTimeLocal = parseDateTimeLocalInput
 
+const applyContextLengthFilterExtra = (extra: Record<string, unknown>) => {
+  if (!contextLengthFilterEnabled.value) {
+    delete extra.context_length_filter
+    return
+  }
+  const threshold = Math.max(1, Math.trunc(Number(contextLengthFilterThreshold.value) || 0))
+  const allowPercent = Math.max(0, Math.min(100, Math.trunc(Number(contextLengthFilterAllowPercent.value) || 0)))
+  extra.context_length_filter = {
+    enabled: true,
+    mode: contextLengthFilterMode.value,
+    threshold,
+    allow_percent: allowPercent,
+  }
+}
+
 // Methods
 const handleClose = () => {
   antigravityMixedChannelConfirmed.value = false
@@ -4203,6 +4270,14 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      updatePayload.extra = newExtra
+    }
+
+    {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      applyContextLengthFilterExtra(newExtra)
       updatePayload.extra = newExtra
     }
 

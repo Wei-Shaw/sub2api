@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,6 +23,44 @@ type openAISnapshotCacheStub struct {
 type schedulerTestOpenAIAccountRepo struct {
 	AccountRepository
 	accounts []Account
+}
+
+type schedulerTestGroupRepo struct {
+	GroupRepository
+	groups map[int64]*Group
+}
+
+func (r *schedulerTestGroupRepo) GetByID(ctx context.Context, id int64) (*Group, error) {
+	if r == nil || r.groups == nil {
+		return nil, ErrGroupNotFound
+	}
+	group := r.groups[id]
+	if group == nil {
+		return nil, ErrGroupNotFound
+	}
+	cloned := *group
+	return &cloned, nil
+}
+
+func (r *schedulerTestGroupRepo) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
+	return r.GetByID(ctx, id)
+}
+
+func (r *schedulerTestGroupRepo) ListActive(ctx context.Context) ([]Group, error) {
+	if r == nil || r.groups == nil {
+		return nil, nil
+	}
+	result := make([]Group, 0, len(r.groups))
+	for _, group := range r.groups {
+		if group != nil && group.Status == StatusActive {
+			result = append(result, *group)
+		}
+	}
+	return result, nil
+}
+
+func (r *schedulerTestGroupRepo) List(ctx context.Context, params pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
+	return nil, nil, nil
 }
 
 func (r schedulerTestOpenAIAccountRepo) GetByID(ctx context.Context, id int64) (*Account, error) {
@@ -297,6 +336,67 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabledUsesLega
 	require.Equal(t, int64(36002), selection.Account.ID)
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 	require.False(t, decision.StickyPreviousHit)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_RespectsOpenAIGroupModelRouting(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(101061)
+	routed := &Account{
+		ID:          42,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+		Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"}},
+	}
+	other := &Account{
+		ID:          19273,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+		Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"}},
+	}
+	snapshotCache := &openAISnapshotCacheStub{
+		snapshotAccounts: []*Account{other, routed},
+		accountsByID:     map[int64]*Account{42: routed, 19273: other},
+	}
+	groupRepo := &schedulerTestGroupRepo{groups: map[int64]*Group{
+		groupID: {
+			ID:                  groupID,
+			Platform:            PlatformOpenAI,
+			Status:              StatusActive,
+			Hydrated:            true,
+			ModelRoutingEnabled: true,
+			ModelRouting: map[string][]int64{
+				"gpt-*": {42},
+			},
+		},
+	}}
+	snapshotService := &SchedulerSnapshotService{cache: snapshotCache, groupRepo: groupRepo}
+	svc := &OpenAIGatewayService{
+		accountRepo:           schedulerTestOpenAIAccountRepo{accounts: []Account{*other, *routed}},
+		cache:                 &schedulerTestGatewayCache{},
+		cfg:                   newSchedulerTestOpenAIWSV2Config(),
+		schedulerSnapshot:     snapshotService,
+		concurrencyService:    NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		rateLimitService:      newOpenAIAdvancedSchedulerRateLimitService("true"),
+		openaiAccountStats:    newOpenAIAccountRuntimeStats(),
+		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "route-openai", "gpt-5.4", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(42), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_RequiredWSV2_SkipsHTTPOnlyAccount(t *testing.T) {

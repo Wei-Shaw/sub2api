@@ -480,3 +480,106 @@ func TestAccountTestService_OpenAIChatCompletionsPathRejectsNonJSONStream(t *tes
 	require.Contains(t, recorder.Body.String(), "/v1/chat/completions")
 	require.NotContains(t, recorder.Body.String(), `"success":true`)
 }
+
+func TestAccountTestService_ClaudeAPIKeyPoolMode403DoesNotSetError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusForbidden, `{"error":"pool upstream forbidden"}`)
+
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: claudeAccountTestConfig()}
+	account := &Account{
+		ID:          13,
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":   "sk-test",
+			"base_url":  "https://example.test",
+			"pool_mode": true,
+		},
+	}
+
+	err := svc.testClaudeAccountConnection(ctx, account, "claude-sonnet-4-5")
+	require.Error(t, err)
+	require.Zero(t, repo.setErrorID)
+	require.Empty(t, repo.setErrorMsg)
+}
+
+func TestAccountTestService_ClaudeAPIKeyNonPool403SetsError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusForbidden, `{"error":"account forbidden"}`)
+
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: claudeAccountTestConfig()}
+	account := &Account{
+		ID:          14,
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://example.test",
+		},
+	}
+
+	err := svc.testClaudeAccountConnection(ctx, account, "claude-sonnet-4-5")
+	require.Error(t, err)
+	require.Equal(t, account.ID, repo.setErrorID)
+	require.Contains(t, repo.setErrorMsg, "API returned 403")
+}
+
+func TestAccountTestService_ClaudeVertexPoolMode403DoesNotSetError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusForbidden, `{"error":"vertex pool forbidden"}`)
+
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	account := &Account{
+		ID:          15,
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeServiceAccount,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"pool_mode": true,
+			"service_account_json": map[string]any{
+				"type":           "service_account",
+				"project_id":     "test-project",
+				"private_key_id": "key-id",
+				"private_key":    "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----\n",
+				"client_email":   "svc@example.test",
+			},
+		},
+	}
+	cache := newClaudeTokenCacheStub()
+	key, err := parseVertexServiceAccountKey(account)
+	require.NoError(t, err)
+	cache.tokens[vertexServiceAccountCacheKey(account, key)] = "test-token"
+
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, claudeTokenProvider: NewClaudeTokenProvider(nil, cache, nil)}
+
+	err = svc.testClaudeAccountConnection(ctx, account, "claude-sonnet-4-5")
+	require.Error(t, err)
+	require.Zero(t, repo.setErrorID)
+	require.Empty(t, repo.setErrorMsg)
+}
+
+func claudeAccountTestConfig() *config.Config {
+	return &config.Config{
+		Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{
+				AllowInsecureHTTP: true,
+			},
+		},
+	}
+}

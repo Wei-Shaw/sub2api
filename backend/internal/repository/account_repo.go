@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -585,6 +586,15 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderAsc)
+	if strings.HasPrefix(sortBy, "avg_first_token") {
+		window := time.Hour
+		if parts := strings.SplitN(sortBy, ":", 2); len(parts) == 2 {
+			if d, err := time.ParseDuration(parts[1]); err == nil && d > 0 {
+				window = d
+			}
+		}
+		return accountAvgFirstTokenOrder(sortOrder, window)
+	}
 
 	field := dbaccount.FieldName
 	defaultOrder := true
@@ -624,6 +634,26 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 		return []func(*entsql.Selector){dbent.Asc(dbaccount.FieldName), dbent.Asc(dbaccount.FieldID)}
 	}
 	return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(dbaccount.FieldID)}
+}
+
+func accountAvgFirstTokenOrder(sortOrder string, window time.Duration) []func(*entsql.Selector) {
+	orderExpr := func(direction, nulls string, tieOrder func(string) string) func(*entsql.Selector) {
+		return func(s *entsql.Selector) {
+			since := time.Now().Add(-window).UTC().Format(time.RFC3339Nano)
+			subquery := fmt.Sprintf(
+				"(SELECT AVG(first_token_ms) FROM usage_logs WHERE account_id = %s AND created_at >= TIMESTAMPTZ '%s' AND first_token_ms IS NOT NULL)",
+				s.C(dbaccount.FieldID),
+				since,
+			)
+			s.OrderExpr(entsql.Expr(subquery + " " + direction + " NULLS " + nulls))
+			s.OrderBy(tieOrder(s.C(dbaccount.FieldID)))
+		}
+	}
+
+	if sortOrder == pagination.SortOrderDesc {
+		return []func(*entsql.Selector){orderExpr("DESC", "LAST", entsql.Desc)}
+	}
+	return []func(*entsql.Selector){orderExpr("ASC", "LAST", entsql.Asc)}
 }
 
 func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -1508,11 +1538,36 @@ type accountGroupQueryOptions struct {
 }
 
 func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID int64, opts accountGroupQueryOptions) ([]service.Account, error) {
-	q := r.client.AccountGroup.Query().
-		Where(dbaccountgroup.GroupIDEQ(groupID))
+	groupRows, err := r.client.AccountGroup.Query().
+		Where(dbaccountgroup.GroupIDEQ(groupID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(groupRows) == 0 {
+		return []service.Account{}, nil
+	}
 
-	// 通过 account_groups 中间表查询账号，并按需叠加状态/平台/调度能力过滤。
-	preds := make([]dbpredicate.Account, 0, 6)
+	accountIDs := make([]int64, 0, len(groupRows))
+	seen := make(map[int64]struct{}, len(groupRows))
+	for _, row := range groupRows {
+		if row.AccountID <= 0 {
+			continue
+		}
+		if _, ok := seen[row.AccountID]; ok {
+			continue
+		}
+		seen[row.AccountID] = struct{}{}
+		accountIDs = append(accountIDs, row.AccountID)
+	}
+	if len(accountIDs) == 0 {
+		return []service.Account{}, nil
+	}
+
+	// Resolve group bindings first, then query accounts directly to avoid
+	// ambiguous joined "id" columns and keep scheduling on account priority.
+	preds := make([]dbpredicate.Account, 0, 7)
+	preds = append(preds, dbaccount.IDIn(accountIDs...))
 	preds = append(preds, dbaccount.DeletedAtIsNil())
 	if opts.status != "" {
 		preds = append(preds, dbaccount.StatusEQ(opts.status))
@@ -1531,39 +1586,12 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 		)
 	}
 
-	if len(preds) > 0 {
-		q = q.Where(dbaccountgroup.HasAccountWith(preds...))
-	}
-
-	groups, err := q.
-		Order(
-			dbaccountgroup.ByPriority(),
-			dbaccountgroup.ByAccountField(dbaccount.FieldPriority),
-		).
-		WithAccount().
+	accounts, err := r.client.Account.Query().
+		Where(preds...).
+		Order(dbent.Asc(dbaccount.FieldPriority), dbent.Asc(dbaccount.FieldID)).
 		All(ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	orderedIDs := make([]int64, 0, len(groups))
-	accountMap := make(map[int64]*dbent.Account, len(groups))
-	for _, ag := range groups {
-		if ag.Edges.Account == nil {
-			continue
-		}
-		if _, exists := accountMap[ag.AccountID]; exists {
-			continue
-		}
-		accountMap[ag.AccountID] = ag.Edges.Account
-		orderedIDs = append(orderedIDs, ag.AccountID)
-	}
-
-	accounts := make([]*dbent.Account, 0, len(orderedIDs))
-	for _, id := range orderedIDs {
-		if acc, ok := accountMap[id]; ok {
-			accounts = append(accounts, acc)
-		}
 	}
 
 	return r.accountsToService(ctx, accounts)

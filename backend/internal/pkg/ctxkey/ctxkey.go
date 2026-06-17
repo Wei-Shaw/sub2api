@@ -29,6 +29,9 @@ const (
 	// AccountSwitchCount 表示请求过程中发生的账号切换次数
 	AccountSwitchCount Key = "ctx_account_switch_count"
 
+	// EstimatedInputTokens 表示当前请求估算出的输入 token 数
+	EstimatedInputTokens Key = "ctx_estimated_input_tokens"
+
 	// IsClaudeCodeClient 标识当前请求是否来自 Claude Code 客户端
 	IsClaudeCodeClient Key = "ctx_is_claude_code_client"
 

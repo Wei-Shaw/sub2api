@@ -25,6 +25,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -171,12 +172,51 @@ type AccountWithConcurrency struct {
 	*dto.Account
 	CurrentConcurrency int `json:"current_concurrency"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
-	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
-	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
-	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
+	CurrentWindowCost *float64                         `json:"current_window_cost,omitempty"` // 当前窗口费用
+	ActiveSessions    *int                             `json:"active_sessions,omitempty"`     // 当前活跃会话数
+	CurrentRPM        *int                             `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
+	AvgFirstTokenMs   *float64                         `json:"avg_first_token_ms,omitempty"`
+	HealthBuckets     []usagestats.AccountHealthBucket `json:"health_buckets,omitempty"`
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
+
+func parseAccountTTFTWindow(raw string) time.Duration {
+	value := strings.TrimSpace(raw)
+	switch value {
+	case "", "1h":
+		return time.Hour
+	case "5m":
+		return 5 * time.Minute
+	case "30m":
+		return 30 * time.Minute
+	case "6h":
+		return 6 * time.Hour
+	case "24h":
+		return 24 * time.Hour
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil || duration <= 0 {
+		return time.Hour
+	}
+	if duration > 30*24*time.Hour {
+		return 30 * 24 * time.Hour
+	}
+	return duration
+}
+
+func accountHealthBucketCount(window time.Duration) int {
+	switch {
+	case window <= 5*time.Minute:
+		return 30
+	case window <= time.Hour:
+		return 60
+	case window <= 6*time.Hour:
+		return 72
+	default:
+		return 96
+	}
+}
 
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
@@ -233,6 +273,9 @@ func (h *AccountHandler) List(c *gin.Context) {
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
 	sortBy := c.DefaultQuery("sort_by", "name")
 	sortOrder := c.DefaultQuery("sort_order", "asc")
+	if strings.EqualFold(strings.TrimSpace(sortBy), "avg_first_token") {
+		sortBy = "avg_first_token:" + parseAccountTTFTWindow(c.Query("ttft_window")).String()
+	}
 	// 标准化和验证 search 参数
 	search = strings.TrimSpace(search)
 	if len(search) > 100 {
@@ -262,6 +305,35 @@ func (h *AccountHandler) List(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	avgFirstTokenByAccount := map[int64]*float64{}
+	healthBucketsByAccount := map[int64][]usagestats.AccountHealthBucket{}
+	apiKeyAccountIDs := make([]int64, 0)
+	for i := range accounts {
+		acc := &accounts[i]
+		if acc.Type == service.AccountTypeAPIKey {
+			apiKeyAccountIDs = append(apiKeyAccountIDs, acc.ID)
+		}
+	}
+	if h.accountUsageService != nil {
+		ttftWindow := parseAccountTTFTWindow(c.Query("ttft_window"))
+		now := time.Now().UTC()
+		startTime := now.Add(-ttftWindow)
+		if len(apiKeyAccountIDs) > 0 {
+			if averages, err := h.accountUsageService.GetAverageFirstTokenBatch(c.Request.Context(), apiKeyAccountIDs, startTime); err == nil && averages != nil {
+				avgFirstTokenByAccount = averages
+			}
+		}
+		if len(accounts) > 0 {
+			allAccountIDs := make([]int64, 0, len(accounts))
+			for i := range accounts {
+				allAccountIDs = append(allAccountIDs, accounts[i].ID)
+			}
+			if buckets, err := h.accountUsageService.GetHealthBucketsBatch(c.Request.Context(), allAccountIDs, startTime, now, accountHealthBucketCount(ttftWindow)); err == nil && buckets != nil {
+				healthBucketsByAccount = buckets
+			}
+		}
 	}
 
 	// Get current concurrency counts for all accounts
@@ -376,6 +448,10 @@ func (h *AccountHandler) List(c *gin.Context) {
 				item.CurrentRPM = &rpm
 			}
 		}
+		if acc.Type == service.AccountTypeAPIKey {
+			item.AvgFirstTokenMs = avgFirstTokenByAccount[acc.ID]
+		}
+		item.HealthBuckets = healthBucketsByAccount[acc.ID]
 
 		result[i] = item
 	}

@@ -11,4 +11,13 @@ type AccountStats struct {
 	Cost         float64 `json:"cost"`
 	StandardCost float64 `json:"standard_cost"`
 	UserCost     float64 `json:"user_cost"`
+	SuccessCount int64   `json:"success_count"`
+	ErrorCount   int64   `json:"error_count"`
+}
+
+// AccountHealthBucket is a compact per-account request health sample for a time bucket.
+type AccountHealthBucket struct {
+	BucketStart  string `json:"bucket_start"`
+	SuccessCount int64  `json:"success_count"`
+	ErrorCount   int64  `json:"error_count"`
 }
