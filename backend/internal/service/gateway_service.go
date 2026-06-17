@@ -26,6 +26,7 @@ import (
 	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -546,6 +547,49 @@ type ClaudeUsage struct {
 	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+}
+
+func (u ClaudeUsage) totalTokenLikeCount() int {
+	return u.InputTokens + u.OutputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens + u.CacheCreation5mTokens + u.CacheCreation1hTokens + u.ImageOutputTokens
+}
+
+func logHTTP200UsageAnomaly(scope string, account *Account, body []byte, reason string) {
+	bodyText := string(body)
+	if len(body) == 0 {
+		bodyText = "(empty)"
+	}
+	accountID := int64(0)
+	accountName := ""
+	platform := ""
+	if account != nil {
+		accountID = account.ID
+		accountName = account.Name
+		platform = account.Platform
+	}
+	slog.Warn("upstream returned HTTP 200 with abnormal usage/body",
+		"scope", scope,
+		"reason", reason,
+		"platform", platform,
+		"account_id", accountID,
+		"account_name", accountName,
+		"body", bodyText,
+	)
+}
+
+func responseBodyHasErrorObject(body []byte) bool {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+	if gjson.GetBytes(body, "error").Exists() {
+		return true
+	}
+	if gjson.GetBytes(body, "error_code").Exists() {
+		return true
+	}
+	if strings.EqualFold(gjson.GetBytes(body, "type").String(), "error") {
+		return true
+	}
+	return false
 }
 
 // ForwardResult 转发结果
@@ -5523,6 +5567,9 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
+	sawOutput := false
+	var pendingLines []string
+	var upstreamBody strings.Builder
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -5592,6 +5639,38 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	}
 	lastDataAt := time.Now()
 	inPartialEvent := false
+	writeLine := func(line string) {
+		if clientDisconnected {
+			return
+		}
+		restored := string(reverseToolNamesIfPresent(c, []byte(line)))
+		if _, err := io.WriteString(w, restored); err != nil {
+			clientDisconnected = true
+			logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+			return
+		}
+		if _, err := io.WriteString(w, "\n"); err != nil {
+			clientDisconnected = true
+			logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+			return
+		}
+		if line == "" {
+			flusher.Flush()
+			lastDataAt = time.Now()
+			inPartialEvent = false
+		} else {
+			inPartialEvent = true
+		}
+	}
+	flushPending := func() {
+		for _, pendingLine := range pendingLines {
+			writeLine(pendingLine)
+			if clientDisconnected {
+				break
+			}
+		}
+		pendingLines = nil
+	}
 
 	for {
 		select {
@@ -5599,7 +5678,13 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			if !ok {
 				if !clientDisconnected {
 					// 兜底补刷，确保最后一个未以空行结尾的事件也能及时送达客户端。
-					flusher.Flush()
+					if sawOutput {
+						flusher.Flush()
+					}
+				}
+				if !sawOutput {
+					logEmptyAnthropicHTTP200Response("anthropic_passthrough_stream", c, resp, model, model, "empty_stream", upstreamBody.String())
+					return nil, newUpstreamStreamEndedFailoverError(emptyAnthropicCompletionMessage)
 				}
 				if !sawTerminalEvent {
 					if clientDisconnected && streamInterval > 0 {
@@ -5614,6 +5699,10 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			}
 			if ev.err != nil {
 				if sawTerminalEvent {
+					if !sawOutput {
+						logEmptyAnthropicHTTP200Response("anthropic_passthrough_stream", c, resp, model, model, "empty_stream_after_terminal", upstreamBody.String())
+						return nil, newUpstreamStreamEndedFailoverError(emptyAnthropicCompletionMessage)
+					}
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
 				}
 				if clientDisconnected {
@@ -5630,12 +5719,26 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			}
 
 			line := ev.line
+			upstreamBody.WriteString(line)
+			upstreamBody.WriteByte('\n')
+			hasOutput := false
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
 				trimmed := strings.TrimSpace(data)
 				if anthropicStreamEventIsTerminal("", trimmed) {
 					sawTerminalEvent = true
 				}
-				if firstTokenMs == nil && trimmed != "" && trimmed != "[DONE]" {
+				if trimmed != "" && trimmed != "[DONE]" {
+					var streamEvent apicompat.AnthropicStreamEvent
+					if err := json.Unmarshal([]byte(trimmed), &streamEvent); err == nil {
+						hasOutput = anthropicStreamEventHasVisibleCompletionOutput(&streamEvent)
+					}
+					if !hasOutput {
+						probeUsage := &ClaudeUsage{}
+						s.parseSSEUsagePassthrough(trimmed, probeUsage)
+						hasOutput = probeUsage.totalTokenLikeCount() > 0
+					}
+				}
+				if firstTokenMs == nil && hasOutput {
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
@@ -5647,23 +5750,15 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				}
 			}
 
-			if !clientDisconnected {
-				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
-				if _, err := io.WriteString(w, restored); err != nil {
-					clientDisconnected = true
-					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
-				} else if _, err := io.WriteString(w, "\n"); err != nil {
-					clientDisconnected = true
-					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
-				} else if line == "" {
-					// 按 SSE 事件边界刷出，减少每行 flush 带来的 syscall 开销。
-					flusher.Flush()
-					lastDataAt = time.Now()
-					inPartialEvent = false
-				} else {
-					inPartialEvent = true
+			if !sawOutput {
+				pendingLines = append(pendingLines, line)
+				if hasOutput {
+					sawOutput = true
+					flushPending()
 				}
+				continue
 			}
+			writeLine(line)
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
@@ -5832,6 +5927,19 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	}
 
 	usage := parseClaudeUsageFromResponseBody(body)
+	if resp.StatusCode == http.StatusOK {
+		switch {
+		case responseBodyHasErrorObject(body):
+			logHTTP200UsageAnomaly("anthropic_passthrough_non_stream", account, body, "error_body")
+			return nil, newUpstreamStreamEndedFailoverError(ExtractUpstreamErrorMessage(body))
+		case !gjson.GetBytes(body, "usage").Exists():
+			logHTTP200UsageAnomaly("anthropic_passthrough_non_stream", account, body, "usage_missing")
+			return nil, newUpstreamStreamEndedFailoverError(emptyAnthropicCompletionMessage)
+		case usage.totalTokenLikeCount() == 0:
+			logHTTP200UsageAnomaly("anthropic_passthrough_non_stream", account, body, "usage_zero")
+			return nil, newUpstreamStreamEndedFailoverError(emptyAnthropicCompletionMessage)
+		}
+	}
 
 	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))

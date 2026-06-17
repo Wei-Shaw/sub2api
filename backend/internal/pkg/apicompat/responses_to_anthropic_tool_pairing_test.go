@@ -58,7 +58,7 @@ func hasToolResult(blocks []AnthropicContentBlock, toolUseID string) bool {
 
 func convertAnthropic(t *testing.T, input string) []AnthropicMessage {
 	t.Helper()
-	_, messages, err := convertResponsesInputToAnthropic(json.RawMessage(input))
+	_, messages, err := convertResponsesInputToAnthropic("", json.RawMessage(input))
 	require.NoError(t, err)
 	assertAnthropicPairing(t, messages)
 	return messages

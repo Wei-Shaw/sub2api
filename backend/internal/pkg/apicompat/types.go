@@ -230,13 +230,31 @@ type ResponsesInputItem struct {
 	Content json.RawMessage `json:"content,omitempty"` // string or []ResponsesContentPart
 
 	// type=function_call
-	CallID    string `json:"call_id,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Arguments string `json:"arguments,omitempty"`
-	ID        string `json:"id,omitempty"`
+	CallID string `json:"call_id,omitempty"`
+	Name   string `json:"name,omitempty"`
+	// Arguments is stringified JSON per the OpenAI spec, but codex / newer
+	// clients may send a raw JSON object. RawMessage accepts both; callers
+	// normalize via normalizeResponsesArguments.
+	Arguments json.RawMessage `json:"arguments,omitempty"`
+	ID        string          `json:"id,omitempty"`
 
 	// type=function_call_output
-	Output string `json:"output,omitempty"`
+	// Output is a plain string in older clients, but newer Responses clients
+	// (codex) send an array like [{"type":"output_text","text":"..."}].
+	// RawMessage accepts both; callers normalize via extractResponsesOutputText.
+	Output json.RawMessage `json:"output,omitempty"`
+}
+
+// jsonRawString marshals a Go string into a JSON-string RawMessage (i.e. a
+// quoted value). Used when building ResponsesInputItem.Arguments / .Output from
+// a string source, preserving the OpenAI wire format where these fields are
+// emitted as JSON strings.
+func jsonRawString(s string) json.RawMessage {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return json.RawMessage(`""`)
+	}
+	return json.RawMessage(b)
 }
 
 // ResponsesContentPart is a typed content part in a Responses message.

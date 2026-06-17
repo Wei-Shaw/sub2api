@@ -105,7 +105,7 @@ func TestChatCompletionsToResponses_ToolCalls(t *testing.T) {
 	// Check function_call_output item
 	assert.Equal(t, "function_call_output", items[2].Type)
 	assert.Equal(t, "call_1", items[2].CallID)
-	assert.Equal(t, "pong", items[2].Output)
+	assert.Equal(t, `"pong"`, string(items[2].Output))
 
 	// Check tools
 	require.Len(t, resp.Tools, 1)
@@ -673,7 +673,7 @@ func TestChatCompletionsToResponses_ToolArrayContent(t *testing.T) {
 	require.Len(t, items, 3)
 	assert.Equal(t, "function_call_output", items[2].Type)
 	assert.Equal(t, "call_1", items[2].CallID)
-	assert.Equal(t, "image width: 100; image height: 200", items[2].Output)
+	assert.Equal(t, `"image width: 100; image height: 200"`, string(items[2].Output))
 }
 
 func TestResponsesToChatCompletions_Incomplete(t *testing.T) {
