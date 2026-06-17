@@ -143,6 +143,53 @@ describe('API Client', () => {
         })
       )
     })
+
+    it('部署与运营合规未确认时广播事件且保留登录态', async () => {
+      localStorage.setItem('auth_token', 'admin-token')
+      const listener = vi.fn()
+      window.addEventListener('admin-compliance-required', listener)
+
+      const adapter = vi.fn().mockRejectedValue({
+        response: {
+          status: 423,
+          data: {
+            code: 'ADMIN_COMPLIANCE_ACK_REQUIRED',
+            message: 'administrator compliance acknowledgement is required',
+            metadata: {
+              version: 'v2026.06.10',
+              document_path_zh: 'docs/legal/admin-compliance.zh.md',
+              document_path_en: 'docs/legal/admin-compliance.en.md',
+            },
+          },
+        },
+        config: {
+          url: '/admin/users',
+          headers: { Authorization: 'Bearer admin-token' },
+        },
+        code: 'ERR_BAD_REQUEST',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await expect(apiClient.get('/admin/users')).rejects.toEqual(
+        expect.objectContaining({
+          status: 423,
+          code: 'ADMIN_COMPLIANCE_ACK_REQUIRED',
+          metadata: expect.objectContaining({
+            version: 'v2026.06.10',
+          }),
+        })
+      )
+
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual(
+        expect.objectContaining({
+          version: 'v2026.06.10',
+        })
+      )
+      expect(localStorage.getItem('auth_token')).toBe('admin-token')
+
+      window.removeEventListener('admin-compliance-required', listener)
+    })
   })
 
   // --- 401 Token 刷新 ---

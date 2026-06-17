@@ -2240,6 +2240,19 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 		imageCounter.AddSSEData(message)
 
+		if eventType == "response.failed" {
+			if hit, code, msg := detectOpenAICyberPolicy(message); hit {
+				MarkOpsCyberPolicy(c, CyberPolicyMark{
+					Code:           code,
+					Message:        msg,
+					Body:           truncateString(string(message), 4096),
+					UpstreamStatus: http.StatusOK,
+					UpstreamInTok:  usage.InputTokens,
+					UpstreamOutTok: usage.OutputTokens,
+				})
+			}
+		}
+
 		if eventType == "error" {
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
 			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw)
@@ -3220,6 +3233,19 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			imageCounter.AddSSEData(upstreamMessage)
 
+			if eventType == "response.failed" {
+				if hit, code, msg := detectOpenAICyberPolicy(upstreamMessage); hit {
+					MarkOpsCyberPolicy(c, CyberPolicyMark{
+						Code:           code,
+						Message:        msg,
+						Body:           truncateString(string(upstreamMessage), 4096),
+						UpstreamStatus: http.StatusOK,
+						UpstreamInTok:  usage.InputTokens,
+						UpstreamOutTok: usage.OutputTokens,
+					})
+				}
+			}
+
 			if !clientDisconnected {
 				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
 					upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, mappedModel, originalModel)
@@ -3286,7 +3312,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					Model:           originalModel,
 					UpstreamModel:   mappedModel,
 					ServiceTier:     extractOpenAIServiceTierFromBody(payload),
-					ReasoningEffort: extractOpenAIReasoningEffortFromBody(payload, originalModel),
+					ReasoningEffort: ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, originalModel), payload, mappedModel),
 					Stream:          reqStream,
 					OpenAIWSMode:    true,
 					ResponseHeaders: lease.HandshakeHeaders(),

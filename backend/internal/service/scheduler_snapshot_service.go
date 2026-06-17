@@ -18,7 +18,10 @@ var (
 	ErrSchedulerFallbackLimited = errors.New("scheduler db fallback limited")
 )
 
-const outboxEventTimeout = 2 * time.Minute
+const (
+	outboxEventTimeout          = 2 * time.Minute
+	schedulerOutboxCleanupBatch = 5000
+)
 
 // batchSeenKey tracks which (groupID, platform) bucket sets have already been
 // rebuilt within a single pollOutbox call, to avoid redundant work when multiple
@@ -242,7 +245,7 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 		return
 	}
 
-	events, err := s.outboxRepo.ListAfter(ctx, watermark, 200)
+	events, err := s.outboxRepo.ListAfterAndReleaseDedup(ctx, watermark, 200)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox poll failed: %v", err)
 		return
@@ -280,9 +283,40 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox watermark write failed: %v", wmErr)
 	} else {
 		watermarkForCheck = lastID
+		s.cleanupConsumedOutbox(lastID)
 	}
 
 	s.checkOutboxLag(ctx, events[0], watermarkForCheck)
+}
+
+func (s *SchedulerSnapshotService) cleanupConsumedOutbox(watermark int64) {
+	if s == nil || s.outboxRepo == nil || watermark <= 0 {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	lease, acquired, err := s.outboxRepo.TryAcquireCleanupLock(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox cleanup lock failed: %v", err)
+		return
+	}
+	if !acquired {
+		return
+	}
+	defer lease.Release()
+
+	for {
+		deleted, err := s.outboxRepo.DeleteConsumedUpTo(ctx, watermark, schedulerOutboxCleanupBatch)
+		if err != nil {
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox cleanup failed: watermark=%d err=%v", watermark, err)
+			return
+		}
+		if deleted == 0 || deleted < schedulerOutboxCleanupBatch {
+			return
+		}
+	}
 }
 
 func (s *SchedulerSnapshotService) handleOutboxEvent(ctx context.Context, event SchedulerOutboxEvent, seen map[batchSeenKey]struct{}) error {
