@@ -206,6 +206,19 @@ const routes: RouteRecordRaw[] = [
     redirect: '/home'
   },
   {
+    // OIDC Provider 同意页：用户登录后由 /oidc/authorize 重定向至此，
+    // 携带 ?consent=<token>。需要前端登录态（auth 守卫保留 next 回跳）。
+    path: '/oauth/consent',
+    name: 'OidcConsent',
+    component: () => import('@/views/oidc/ConsentView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Authorize Application',
+      titleKey: 'oidc.consent.title'
+    }
+  },
+  {
     path: '/dashboard',
     name: 'Dashboard',
     component: () => import('@/views/user/DashboardView.vue'),
@@ -571,6 +584,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Recharge Promotions',
       titleKey: 'admin.rechargePromos.title',
       descriptionKey: 'admin.rechargePromos.description'
+    }
+  },
+  {
+    path: '/admin/oidc-clients',
+    name: 'AdminOidcClients',
+    component: () => import('@/views/admin/OidcClientsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'OIDC Clients',
+      titleKey: 'oidc.admin.title',
+      descriptionKey: 'oidc.admin.description'
     }
   },
   {

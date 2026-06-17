@@ -31,8 +31,8 @@
 
 - [x] 3.1 Create `backend/internal/service/sso_session_service.go` with `Issue(ctx, w http.ResponseWriter, r *http.Request, userID int64) error`, `Resolve(ctx, r) (userID int64, sessionID string, ok bool)`, `Revoke(ctx, w, sessionID string) error`, `RevokeAllForUser(ctx, userID) error`, `TouchLastSeen(ctx, sessionID)` (async)
 - [x] 3.2 Cookie attributes: name `sub2api_sso`, value 32-byte base64url random, `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, `Max-Age` from setting `oidc_provider.sso_cookie_max_age_seconds` default 2592000, `Domain` from setting `oidc_provider.sso_cookie_domain` if non-empty
-- [ ] 3.3 (Stage 1B-2) Locate every successful login path and add `ssoSessionService.Issue` call: `auth_handler.go` Login, `auth_email_oauth.go` magic-link complete, `auth_oidc_oauth.go` complete, `auth_dingtalk_oauth.go` complete, `auth_wechat_oauth.go` complete, `auth_linuxdo_oauth.go` complete, registration auto-login path
-- [ ] 3.4 (Stage 1B-2) Wire logout to call `Revoke` and emit `Set-Cookie: sub2api_sso=; Max-Age=0; Path=/`
+- [x] 3.3 (Stage 1B-2 完成) 登录成功路径统一接入 best-effort、feature-gated 的 `IssueIfProviderEnabled`：在 `auth_handler.go` 的 `respondWithTokenPair` (password/register/2FA)、`auth_oauth_pending_flow.go` 的 3 处 OAuth funnel、`auth_email_oauth.go` 1 处共 5 个登录成功点新增 `issueSsoSession`；当 `oidc_provider.enabled != true` 时为 no-op，保证特性关闭时对既有登录零行为影响
+- [x] 3.4 (Stage 1B-2 完成) Logout 与 RevokeAllSessions 接入 `revokeSsoSession`：读取 `sub2api_sso` cookie 调 `Revoke` 并下发 `Max-Age=0` 清除 cookie；忽略 `ErrSsoSessionNotFound`
 - [x] 3.5 Implement `TouchLastSeen` with rate limiting (no DB write if last update was within the last 60s) and run from a goroutine so it never blocks `/oidc/authorize`
 - [x] 3.6 Unit tests: Issue produces correct cookie attributes per setting combinations; Resolve handles missing/expired/revoked sessions correctly; Revoke ends both DB row and cookie
 
@@ -44,10 +44,10 @@
 - [x] 4.4 Validate redirect_uris on Create/Update: must be non-empty array, every entry parseable URL with `https://` scheme (allow `http://localhost` for dev), no trailing slash mismatch (store exactly as provided)
 - [x] 4.5 Validate allowed_scopes is subset of `["openid","profile","email","offline_access","sub2api:balance","sub2api:apikey"]`
 - [x] 4.6 Implement cascade delete: Delete must remove all `oidc_consent`, `oidc_authorization_code`, `oidc_refresh_token` rows referencing `client_id` in the same transaction (本实现额外把 `oidc_access_token` 也纳入级联，符合决策 B1 的独立表方案)
-- [ ] 4.7 (Stage 1B-2) Create `backend/internal/handler/admin/oidc_client_handler.go` with handlers for the 6 admin routes (List, Create, Get, Patch, Delete, ResetSecret)
-- [ ] 4.8 (Stage 1B-2) Register routes under `/api/v1/admin/oidc/clients` group with admin auth middleware
+- [x] 4.7 (Stage 1B-2 完成) Create `backend/internal/handler/admin/oidc_client_handler.go` with handlers for the 6 admin routes (List, Create, Get, Patch, Delete, ResetSecret)；错误经 `mapOidcClientError` 映射为 404/400；Create/ResetSecret 仅在响应体里一次性返回明文 secret
+- [x] 4.8 (Stage 1B-2 完成) Register routes under `/api/v1/admin/oidc/clients` group with admin auth middleware (见 `routes/admin.go` 的 `registerOidcAdminRoutes`)
 - [x] 4.9 Unit tests for service: secret round-trip with bcrypt, redirect_uri validation, allowed_scopes subset enforcement, cascade delete, ResetSecret invalidates the old secret
-- [ ] 4.10 (Stage 1B-2) Handler tests: Create returns plaintext secret only in creation response; subsequent Get omits it
+- [x] 4.10 (Stage 1B-3 完成) `oidc_client_handler_test.go`：Create 201 响应体含 `client_secret`、随后 Get/List 均不含；ResetSecret 返回与原值不同的新 secret；非法 scope→400、未知 id→404。全部通过
 
 ## 5. OIDC Consent Service
 
@@ -58,67 +58,67 @@
 
 ## 6. OIDC Provider Core Service
 
-- [ ] 6.1 Create `backend/internal/service/oidc_provider_service.go` with high-level methods: `HandleAuthorize(ctx, params) (*AuthorizeOutcome, error)`, `ExchangeCode(ctx, params) (*TokenResponse, error)`, `RefreshToken(ctx, params) (*TokenResponse, error)`, `RevokeFamily(ctx, familyID) error`, `BuildUserInfo(ctx, accessTokenValue) (claims map[string]any, err error)`
-- [ ] 6.2 Implement authorize parameter validation per spec scenarios (response_type, scope subset, redirect_uri exact match, PKCE S256 required, prompt=login handling, client.enabled check)
-- [ ] 6.3 Implement opaque code generation: 32 bytes from `crypto/rand`, base64url no padding; persist with code_ttl_seconds
-- [ ] 6.4 Implement `ExchangeCode`: load code by hash-equality (exact match on the stored value), check unconsumed/unexpired, validate redirect_uri/PKCE, mark consumed atomically, generate access_token and (if offline_access) refresh_token, sign ID Token via `oidcSigningService.SignIDToken`
-- [ ] 6.5 Implement access token storage: opaque tokens persist in a NEW table `oidc_access_token` mirroring `oidc_refresh_token` minus family fields (or extend the refresh token table with a `kind` column — choose during implementation per simpler path; document the choice in PR description)
-- [ ] 6.6 Implement `RefreshToken`: load by token, ensure not revoked/expired, atomically mark revoked + insert new refresh in same family, support optional scope downgrade (must be subset)
-- [ ] 6.7 Implement reuse detection: if the presented refresh token is already revoked, call `RevokeFamily` and return `invalid_grant`; emit a security log line `oidc.refresh_token.reuse_detected`
-- [ ] 6.8 Implement claim assembly per Scope-to-Claim Mapping requirement (D8): switch by scope, never put balance/apikey_count in id_token
-- [ ] 6.9 Implement `BuildUserInfo`: lookup access token row, load user, project claims based on token's stored scopes
-- [ ] 6.10 Implement `acr` / `amr` derivation from session: read latest `pending_auth_session.totp_verified_at` for the user (or sso_session metadata if mfa flag is added — choose minimal-touch path)
-- [ ] 6.11 Unit tests: each spec scenario in `oidc-provider/spec.md` (Token Endpoint requirement) maps to at least one test case in this service
+- [x] 6.1 (Stage 1B-2 完成) Create `backend/internal/service/oidc_provider_service.go` with high-level methods (Discovery/HandleAuthorize/ExchangeCode/RefreshToken/RevokeFamily/BuildUserInfo + consent token 签发/解码 + IssueCode/RecordConsent/LookupClient 等)
+- [x] 6.2 (Stage 1B-2 完成) Implement authorize parameter validation per spec scenarios (response_type, scope subset, redirect_uri exact match, PKCE S256 required, prompt=login handling, client.enabled check)
+- [x] 6.3 (Stage 1B-2 完成) Implement opaque code generation: 32 bytes from `crypto/rand`, base64url no padding; persist with code_ttl_seconds
+- [x] 6.4 (Stage 1B-2 完成) Implement `ExchangeCode`: load code, check unconsumed/unexpired, validate redirect_uri/PKCE, mark consumed atomically, generate access_token and (if offline_access) refresh_token, sign ID Token via `oidcSigningService.SignIDToken`
+- [x] 6.5 (Stage 1B-2 完成，决策 B1) Implement access token storage: opaque tokens persist in NEW table `oidc_access_token` (独立表方案)
+- [x] 6.6 (Stage 1B-2 完成) Implement `RefreshToken`: load by token, ensure not revoked/expired, atomically mark revoked + insert new refresh in same family, support optional scope downgrade (must be subset)
+- [x] 6.7 (Stage 1B-2 完成) Implement reuse detection: if the presented refresh token is already revoked, call `RevokeFamily` and return `invalid_grant`; emit security log
+- [x] 6.8 (Stage 1B-2 完成) Implement claim assembly per Scope-to-Claim Mapping requirement (D8): switch by scope, never put balance/apikey_count in id_token
+- [x] 6.9 (Stage 1B-2 完成) Implement `BuildUserInfo`: lookup access token row, load user, project claims based on token's stored scopes
+- [x] 6.10 (Stage 1B-2 完成) Implement `acr` / `amr` derivation from session (minimal-touch path)
+- [x] 6.11 (Stage 1B-3 完成) `oidc_provider_service_test.go` 覆盖 spec 各场景：ValidateAuthorize (unknown/disabled client、redirect 不匹配不可回跳、缺 PKCE、非 S256、scope 缺 openid/越权、unsupported response_type)、ExchangeCode (成功签发 access/refresh/id、无 offline_access 不发 refresh、单次使用 + code 复用吊销 family、redirect/PKCE 不匹配、unknown/wrong-client)、RefreshToken (轮转吊销旧 token、reuse 触发整 family 吊销、scope 降权 OK、越权拒绝、unknown)、BuildUserInfo (scope 投影、balance/apikey 私有 scope、缺/未知 token 401)、Consent token round-trip + superset bypass。全部通过
 
 ## 7. OIDC HTTP Handlers
 
-- [ ] 7.1 Create `backend/internal/handler/oidc_provider_handler.go` with: `Discovery`, `JWKS`, `Authorize`, `Token`, `UserInfo`
-- [ ] 7.2 Implement `Discovery` returning JSON per the Discovery requirement; 404 when `oidc_provider.enabled=false`
-- [ ] 7.3 Implement `JWKS` returning `oidcSigningService.JWKS()` result; 404 when disabled
-- [ ] 7.4 Implement `Authorize` GET: parse query params, call provider service, on success either redirect to consent page or directly to `redirect_uri` with `code`; on error use the redirect-vs-JSON branching per spec
-- [ ] 7.5 Implement `Token` POST: support both `client_secret_basic` (Basic auth header) and `client_secret_post` (form fields); set `Cache-Control: no-store` and `Pragma: no-cache` per spec
-- [ ] 7.6 Implement `UserInfo` GET: parse Bearer header (case-insensitive scheme), call `BuildUserInfo`, on error return `WWW-Authenticate: Bearer error="invalid_token"` per spec
-- [ ] 7.7 Create `backend/internal/handler/oidc_provider_consent_handler.go` with `ConsentGet`, `ConsentPost` (CSRF-protected)
-- [ ] 7.8 Create `backend/internal/server/routes/oidc_provider.go` registering the 6 OIDC endpoints + `/.well-known/openid-configuration` + `/.well-known/jwks.json` at the root router (no API version prefix)
-- [ ] 7.9 Add startup validation that panics if `oidc_provider.enabled=true` but `issuer_url` is empty
-- [ ] 7.10 Handler-level tests using `httptest`: each scenario in the Authorize, Token, UserInfo requirements is covered with at least one assertion
+- [x] 7.1 (Stage 1B-2 完成) Create `backend/internal/handler/oidc_provider_handler.go` with: `Discovery`, `JWKS`, `Authorize`, `Token`, `UserInfo`
+- [x] 7.2 (Stage 1B-2 完成) Implement `Discovery` returning JSON per the Discovery requirement; 404 when `oidc_provider.enabled=false`
+- [x] 7.3 (Stage 1B-2 完成) Implement `JWKS` returning `oidcSigningService.JWKS()` result; 404 when disabled
+- [x] 7.4 (Stage 1B-2 完成) Implement `Authorize` GET: parse query params, call provider service, on success redirect to consent page (`/oauth/consent?consent=`) or directly to `redirect_uri` with `code`; on error redirect-vs-JSON branching per spec
+- [x] 7.5 (Stage 1B-2 完成) Implement `Token` POST: support both `client_secret_basic` 与 `client_secret_post`; set `Cache-Control: no-store` 与 `Pragma: no-cache`
+- [x] 7.6 (Stage 1B-2 完成) Implement `UserInfo` GET/POST: parse Bearer header, call `BuildUserInfo`, on error return `WWW-Authenticate: Bearer error="invalid_token"`
+- [x] 7.7 (Stage 1B-2 完成) Create `backend/internal/handler/oidc_provider_consent_handler.go` with `ConsentGet`, `ConsentPost` (consent token 绑定 user_id + SSO 比对防 CSRF)
+- [x] 7.8 (Stage 1B-2 完成) Create `backend/internal/server/routes/oidc_provider.go` registering the OIDC endpoints + `/.well-known/openid-configuration` + `/.well-known/jwks.json` at root router (no API version prefix)
+- [x] 7.9 (Stage 1B-2 完成) Add startup validation when `oidc_provider.enabled=true` but `issuer_url` is empty
+- [x] 7.10 (Stage 1B-3 完成) `oidc_provider_handler_test.go` 用 `httptest` 覆盖：Discovery (disabled 404 / enabled 200 + issuer 断言)、JWKS (200 + 不泄露私钥)、Token (disabled 404、authorization_code 成功签发 access/refresh/id + `Cache-Control: no-store`、refresh 轮转、invalid_client→401、unsupported_grant_type→400)、UserInfo (Bearer 返回 name/email、缺 token→401 + `WWW-Authenticate`、非法 token→401 `error="invalid_token"`)、Authorize (无 session 跳 /login、非法 redirect_uri→400 JSON invalid_request)。全部通过
 
 ## 8. Admin Settings Plumbing
 
-- [~] 8.1 (Stage 1B-1 部分完成) 新增 `backend/internal/service/oidc_provider_settings.go` 集中声明 8 个 `oidc_provider.*` setting key 常量、默认值、`ValidateOidcIssuerURL` (前缀/末尾斜杠/?#) 严格校验函数、`AllowedOidcProviderScopes` 与 `ValidateOidcProviderScopeSubset`。下一阶段 (Stage 1B-2) 仍需修改 `backend/internal/handler/admin/setting_handler.go` 把这 8 个 key 注册进 admin 设置 UI 的元数据 (默认值/类型/分组)，并接入 ValidateOidcIssuerURL 作为 setter 校验钩子。
-- [ ] 8.2 (Stage 1B-2) Implement issuer_url format validator (must start with `https://`, must not end with `/`, must not contain `?` or `#`); return HTTP 400 with explicit message on violation — service 层校验函数已就绪，剩 handler 接入。
-- [ ] 8.3 (Stage 1B-2) Implement signing-keys admin handlers: `POST /api/v1/admin/oidc/signing-keys/rotate`, `DELETE /api/v1/admin/oidc/signing-keys/:kid`, `GET /api/v1/admin/oidc/signing-keys` (list with `is_active`, `created_at`, `retired_at`, `removable` flags)
-- [ ] 8.4 (Stage 1B-2) Add audit log entries for each admin operation: client create/update/delete/reset-secret, signing-key rotate/delete, settings change
+- [x] 8.1 (Stage 1B-2 完成，设计偏差) 出于风险考量，未把 8 个 key 塞进 3700 行的 `setting_handler.go` `SystemSettings` 巨型结构，而是新增**独立的** admin 设置端点 `backend/internal/handler/admin/oidc_provider_settings_handler.go` (`GET/PUT /api/v1/admin/oidc/settings`)，底层走 `OidcProviderService.GetProviderSettings/UpdateProviderSettings`，集中处理 8 个 key 的默认值/类型与 `ValidateOidcIssuerURL` 校验钩子，前端在 SettingsView 独立区块对接。
+- [x] 8.2 (Stage 1B-2 完成) issuer_url format validator 已在 `UpdateProviderSettings` 接入：违规返回 issuer URL sentinel → handler 映射 HTTP 400；TTL 非正整数返回 `ErrOidcProviderInvalidTTL` → 400
+- [x] 8.3 (Stage 1B-2 完成) signing-keys admin handlers (`oidc_signing_key_handler.go`): `GET /signing-keys` (list with `is_active`/`created_at`/`retired_at`/`removable`)、`POST /signing-keys/rotate`、`DELETE /signing-keys/:kid` (active key 删除返回 409 Conflict)
+- [x] 8.4 (Stage 1B-3 完成) admin 操作审计：新增 `auditOidcAdmin` helper (结构化 slog `audit=true` + `component=audit.oidc_provider`，沿用 setting/user handler 既有约定，OIDC 低频管理操作无需独立审计表)，覆盖 client create/update/delete/reset-secret、signing-key rotate/delete、settings update，记录 operator_id/role + 关键字段
 
 ## 9. Frontend — Consent Page
 
-- [ ] 9.1 Add route `/oidc/consent` in `frontend/src/router/index.ts` with `requiresAuth: true`; if user not signed in, router auth guard redirects to login with `next` preserved
-- [ ] 9.2 Create `frontend/src/views/oidc/ConsentView.vue`: read `session` query param, call `GET /oidc/consent?session=<>` to fetch client_name + requested scopes + scope-description map, render Allow/Deny buttons
-- [ ] 9.3 Hard-code human-readable scope descriptions in i18n locale: `openid` (基础身份), `profile` (用户名), `email` (邮箱地址), `offline_access` (离线访问 / refresh token), `sub2api:balance` (**红色警示**：读取账户余额与累计充值), `sub2api:apikey` (读取已创建 API Key 数量，不会读取 key 内容)
-- [ ] 9.4 Submit Allow → `POST /oidc/consent` with CSRF token + session token; on 200 follow `Location` redirect to `redirect_uri`
-- [ ] 9.5 Submit Deny → `POST /oidc/consent` with `decision=deny`; backend returns redirect to `redirect_uri?error=access_denied`
-- [ ] 9.6 Component tests using Vitest + Testing Library: scope descriptions render, Allow and Deny call the correct endpoints, red warning visible when `sub2api:balance` is requested
+- [x] 9.1 (Stage 1B-3 完成) Add route `/oauth/consent` in `frontend/src/router/index.ts` with `requiresAuth: true`；ConsentView 内对 401/login_required 自行 `redirect=<fullPath>` 跳登录（与后端 `/oauth/consent?consent=` 跳转路径一致）
+- [x] 9.2 (Stage 1B-3 完成) Create `frontend/src/views/oidc/ConsentView.vue`：读 `consent` query 短期签名 token，调 `GET /oidc/consent?consent=<>`（独立 axios 实例 `withCredentials`，根路径 raw JSON）拿 client_name + scopes，渲染 Allow/Deny
+- [x] 9.3 (Stage 1B-3 完成) i18n 硬编码 scope 文案：`oidc.consent.scopes.*` 在 zh.ts/en.ts，敏感 scope (balance/apikey) 红点+红字+顶部警示横幅
+- [x] 9.4 (Stage 1B-3 完成) Allow → `POST /oidc/consent {consent, action:"allow"}` → `window.location.assign(redirect)`
+- [x] 9.5 (Stage 1B-3 完成) Deny → `POST /oidc/consent {consent, action:"deny"}` → 后端返回 `redirect_uri?error=access_denied`，前端同样 `window.location.assign`
+- [x] 9.6 (Stage 1B-3 完成) `ConsentView.spec.ts` (Vitest + @vue/test-utils)：scope 标题/描述渲染、Allow/Deny 各自调用 `submitConsentDecision('allow'|'deny')` 并整页 `location.assign(redirect)`、请求含 `sub2api:balance` 时红色警示横幅可见（无敏感 scope 时不渲染）、401 引导登录并保留 `redirect` 回跳。6 个用例全过
 
 ## 10. Frontend — Admin Pages
 
-- [ ] 10.1 Create `frontend/src/api/oidcClients.ts` wrapping the 6 admin endpoints
-- [ ] 10.2 Create `frontend/src/views/admin/OidcClientsView.vue` with: client list table (columns: name, client_id, allowed_scopes, redirect_uris count, enabled, created_at), Create button opening a drawer/modal, Edit/Delete/ResetSecret row actions
-- [ ] 10.3 In Create/Edit form: `client_name`, dynamic redirect_uris input (add/remove), `allowed_scopes` as multi-select with the 6 valid scopes, `consent_required` toggle, `enabled` toggle
-- [ ] 10.4 When user toggles on `sub2api:balance` or `sub2api:apikey` in `allowed_scopes`, show inline red warning text and require a confirm-modal with checkbox "我确认允许此客户端读取敏感信息" before save
-- [ ] 10.5 Create-success page shows the plaintext `client_secret` once with a copy-to-clipboard button and a non-dismissable red banner "此 secret 不会再次显示，请立即复制保存"
-- [ ] 10.6 ResetSecret action shows confirm dialog explaining all running tokens of that client will keep working until they expire, but the old secret stops working immediately; on success show the same one-time secret reveal page
-- [ ] 10.7 Add route `/admin/oidc-clients` and link it in the admin sidebar navigation
-- [ ] 10.8 Add a new section "OIDC Provider" in `frontend/src/views/admin/SettingsView.vue` with form fields for the 8 `oidc_provider.*` settings; for `issuer_url` show inline format hint and validation error; for `enabled` show a confirmation dialog before turning on
+- [x] 10.1 (Stage 1B-3 完成) Create `frontend/src/api/admin/oidcClients.ts` wrapping the 6 admin endpoints + settings + signing-keys，含 6 scope 常量与 `isSensitiveScope`
+- [x] 10.2 (Stage 1B-3 完成) Create `frontend/src/views/admin/OidcClientsView.vue`：`AppLayout`+`TablePageLayout`+`DataTable`，Create modal + Edit/Delete/ResetSecret 行操作
+- [x] 10.3 (Stage 1B-3 完成) Create/Edit form：client_name、动态 redirect_uris、6-scope 复选、consent_required/enabled toggle
+- [x] 10.4 (Stage 1B-3 完成) 勾选 balance/apikey 显示红色警示，保存前弹 checkbox 门控的确认 modal
+- [x] 10.5 (Stage 1B-3 完成) Create 成功一次性展示明文 secret，复制按钮 + 不可关闭红色横幅（`:close-on-escape=false`+no-op close）
+- [x] 10.6 (Stage 1B-3 完成) ResetSecret 用 ConfirmDialog 解释旧 secret 立即失效、旧 token 到期前仍可用；成功复用 one-time secret reveal
+- [x] 10.7 (Stage 1B-3 完成) Add route `/admin/oidc-clients` + 侧边栏 `nav.oidcClients` 导航项 (key icon)
+- [x] 10.8 (Stage 1B-3 完成) OIDC Provider 作为 SettingsView 新 tab：自包含子组件 `OidcProviderSettingsSection.vue` 对接独立 `/admin/oidc/settings`；issuer_url 内联格式校验；enable toggle 前置 ConfirmDialog；全局保存按钮对该 tab 隐藏
 
 ## 11. Documentation & Operator Materials
 
-- [ ] 11.1 Add a help section inside the admin OIDC Provider page describing 3rd-party integration: discovery URL, supported scopes, redirect_uri exact-match rule, PKCE requirement
-- [ ] 11.2 Update `deploy/config.example.yaml` if any new YAML-level option is required (likely none — all settings are DB-stored; document this fact in a README touch)
-- [ ] 11.3 Add a section to project README briefly noting "sub2api can act as an OIDC provider" with a pointer to the admin docs
+- [x] 11.1 (Stage 1B-3 完成) `OidcProviderSettingsSection.vue` 新增"第三方接入说明"区块：由 issuer_url 推导 discovery / jwks 端点、列出 6 个支持的 scope、redirect_uri 精确匹配规则、PKCE S256 强制要求（i18n `oidc.admin.help.*`）
+- [x] 11.2 (Stage 1B-3 完成) 确认无需新增 YAML 选项 —— 8 个 OIDC 设置全部 DB 存储；该事实已在 README 注明（无须改 `deploy/config.example.yaml`）
+- [x] 11.3 (Stage 1B-3 完成) README `Features` 新增 "OIDC Provider (SSO)" 条目，说明可作为 OIDC Provider、全部在 admin 后台配置、默认关闭（端点 404）
 
 ## 12. Integration & Conformance Verification
 
-- [ ] 12.1 Add an integration test under `backend/internal/service/` (or a new `backend/test/integration` folder if convention exists) that boots an in-process gin server, drives a complete Authorization Code + PKCE + Refresh Token flow, and uses `github.com/coreos/go-oidc/v3` (or equivalent already-vendored library; if not vendored, do JWKS + RS256 verification by hand using stdlib) to validate the ID Token against the JWKS endpoint
+- [x] 12.1 (Stage 1B-3 完成) `internal/handler/oidc_integration_test.go` 用 gin engine 驱动完整流程：签发 SSO cookie → GET `/oidc/authorize` (consent_required=false) 302 回跳 `redirect_uri?code=&state=` → POST `/oidc/token` (authorization_code + PKCE S256) 拿 access/refresh/id → 拉 `/.well-known/jwks.json` 手工用 stdlib (`crypto/rsa`+`math/big`+`golang-jwt/jwt v5`) 重建 RSA 公钥并按 kid 验 RS256 签名、断言 iss/aud/sub/nonce → refresh 轮转出新 token + 新可验证 id token → UserInfo Bearer 取 sub/name/email → 旧 refresh 复用触发 family 吊销返回 `invalid_grant`。(go-oidc 未 vendored，按 task 指引手写验签。) 通过
 - [ ] 12.2 Manual conformance smoke test using `oidc-client-tools` or `appauth` against a staging deployment; record results in PR description
 - [ ] 12.3 Manual test: rotate signing key while a client holds a valid ID Token; verify that token still verifies for 7 days and stops verifying after the retired-timestamp setting is manually backdated past the grace window
 - [ ] 12.4 Manual test: simulate refresh-token reuse; verify family revocation behavior and the security log line is emitted

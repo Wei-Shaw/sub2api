@@ -113,6 +113,7 @@ func registerRoutes(
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, h.Admin.RechargePromo, jwtAuth, adminAuth, settingService)
 	routes.RegisterPlazaRoutes(v1, h, redisClient)
+	routes.RegisterOidcProviderRoutes(r, h)
 
 	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)
 }

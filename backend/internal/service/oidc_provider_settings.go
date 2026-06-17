@@ -98,6 +98,9 @@ var ErrOidcProviderIssuerURLTrailingSlash = errors.New("oidc provider: issuer_ur
 // ErrOidcProviderIssuerURLContainsQueryOrFragment issuer_url 不能包含 ? 或 #。
 var ErrOidcProviderIssuerURLContainsQueryOrFragment = errors.New("oidc provider: issuer_url must not contain query string or fragment")
 
+// ErrOidcProviderInvalidTTL 某个 TTL 设置项不是正整数。
+var ErrOidcProviderInvalidTTL = errors.New("oidc provider: ttl must be a positive integer")
+
 // ─── 校验函数 ────────────────────────────────────────────────────────────────
 
 // ValidateOidcIssuerURL 严格校验 issuer_url 字面值 (与 spec.md "issuer_url format

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -27,13 +28,14 @@ type AuthHandler struct {
 	redeemService        *service.RedeemService
 	totpService          *service.TotpService
 	userAttributeService *service.UserAttributeService
+	ssoSessionService    *service.SsoSessionService
 
 	dingTalkClientInstance *DingTalkClient
 	dingTalkClientMu       sync.Mutex
 }
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, redeemService *service.RedeemService, totpService *service.TotpService, userAttributeService *service.UserAttributeService) *AuthHandler {
+func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, redeemService *service.RedeemService, totpService *service.TotpService, userAttributeService *service.UserAttributeService, ssoSessionService *service.SsoSessionService) *AuthHandler {
 	return &AuthHandler{
 		cfg:                  cfg,
 		authService:          authService,
@@ -43,6 +45,20 @@ func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userSe
 		redeemService:        redeemService,
 		totpService:          totpService,
 		userAttributeService: userAttributeService,
+		ssoSessionService:    ssoSessionService,
+	}
+}
+
+// issueSsoSession 在登录成功后尽力签发 OIDC Provider 的 HttpOnly SSO cookie。
+//
+// 仅当 oidc_provider.enabled=true 时实际生效 (见 SsoSessionService.IssueIfProviderEnabled)；
+// 失败只记日志，绝不阻断主登录流程 (用户拿到 JWT 即视为登录成功)。
+func (h *AuthHandler) issueSsoSession(c *gin.Context, userID int64) {
+	if h == nil || h.ssoSessionService == nil || userID <= 0 {
+		return
+	}
+	if _, err := h.ssoSessionService.IssueIfProviderEnabled(c.Request.Context(), c.Writer, c.Request, userID); err != nil {
+		slog.Warn("failed to issue sso session cookie", "error", err, "user_id", userID)
 	}
 }
 
@@ -140,6 +156,10 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 		response.ErrorFrom(c, err)
 		return
 	}
+
+	// 登录成功 → 尽力签发 OIDC Provider SSO cookie (仅当功能开启时生效)。
+	// 必须在写响应体之前设置 Set-Cookie。
+	h.issueSsoSession(c, user.ID)
 
 	tokenPair, err := h.authService.GenerateTokenPair(c.Request.Context(), user, "")
 	if err != nil {
@@ -754,10 +774,29 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	}
 	h.consumePendingOAuthSessionOnLogout(c)
 	clearOAuthLogoutCookies(c)
+	h.revokeSsoSession(c)
 
 	response.Success(c, LogoutResponse{
 		Message: "Logged out successfully",
 	})
+}
+
+// revokeSsoSession 在登出时尽力吊销 OIDC Provider 的 SSO 会话并清除 cookie。
+//
+// 即便 OIDC Provider 未开启，本方法也只是读不到 cookie → no-op；失败仅记日志，
+// 不阻断登出。必须在写响应体之前调用 (Revoke 会写过期 Set-Cookie)。
+func (h *AuthHandler) revokeSsoSession(c *gin.Context) {
+	if h == nil || h.ssoSessionService == nil {
+		return
+	}
+	cookie, err := c.Request.Cookie(service.SsoCookieName)
+	if err != nil || cookie == nil || cookie.Value == "" {
+		return
+	}
+	if err := h.ssoSessionService.Revoke(c.Request.Context(), c.Writer, cookie.Value); err != nil &&
+		!errors.Is(err, service.ErrSsoSessionNotFound) {
+		slog.Warn("failed to revoke sso session on logout", "error", err)
+	}
 }
 
 // RevokeAllSessionsResponse 撤销所有会话响应
@@ -778,6 +817,13 @@ func (h *AuthHandler) RevokeAllSessions(c *gin.Context) {
 		slog.Error("failed to revoke all sessions", "user_id", subject.UserID, "error", err)
 		response.InternalError(c, "Failed to revoke sessions")
 		return
+	}
+
+	// 同步吊销该用户的全部 OIDC Provider SSO 会话 (尽力而为)。
+	if h.ssoSessionService != nil {
+		if _, err := h.ssoSessionService.RevokeAllForUser(c.Request.Context(), subject.UserID); err != nil {
+			slog.Warn("failed to revoke all sso sessions", "user_id", subject.UserID, "error", err)
+		}
 	}
 
 	response.Success(c, RevokeAllSessionsResponse{

@@ -455,6 +455,7 @@ export default {
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
+    oidcClients: 'OIDC 客户端',
   },
 
   // Auth
@@ -5660,6 +5661,7 @@ export default {
         email: '邮件设置',
         backup: '数据备份',
         payment: '支付设置',
+        oidc: 'OIDC 提供方',
       },
       features: {
         channelMonitor: {
@@ -7554,6 +7556,191 @@ export default {
     },
     use_group: '去使用 ›',
     buy_now: '立即购买',
+  },
+
+  // OIDC Provider（sub2api 作为 OIDC 身份提供方对外提供单点登录）
+  oidc: {
+    consent: {
+      title: '授权应用访问',
+      subtitle: '“{client}” 请求访问你的账户，请确认以下权限。',
+      loading: '正在加载授权信息…',
+      errorTitle: '授权请求无效',
+      loadFailed: '无法加载授权信息，请返回后重试。',
+      submitFailed: '提交授权决策失败，请重试。',
+      missingToken: '缺少授权令牌，请从应用方重新发起登录。',
+      backToDashboard: '返回控制台',
+      scopesTitle: '此应用将获得以下权限：',
+      sensitiveWarning: '注意：此应用请求读取你的敏感信息（账户余额 / API Key 数量），请仅在你信任该应用时授权。',
+      allow: '允许',
+      deny: '拒绝',
+      scopes: {
+        openid: {
+          title: '基础身份',
+          description: '读取你的唯一用户标识。'
+        },
+        profile: {
+          title: '用户名',
+          description: '读取你的用户名等基础资料。'
+        },
+        email: {
+          title: '邮箱地址',
+          description: '读取你的邮箱地址及验证状态。'
+        },
+        offlineAccess: {
+          title: '离线访问',
+          description: '在你离线时持续访问（颁发 refresh token）。'
+        },
+        balance: {
+          title: '账户余额（敏感）',
+          description: '读取你的账户余额与累计充值金额。'
+        },
+        apikey: {
+          title: 'API Key 数量（敏感）',
+          description: '读取你已创建的 API Key 数量（不会读取 Key 内容）。'
+        }
+      }
+    },
+    admin: {
+      title: 'OIDC 客户端',
+      description: '管理以 sub2api 作为身份提供方的第三方应用（RP）。',
+      createButton: '新建客户端',
+      empty: '暂无 OIDC 客户端。',
+      loadFailed: '加载客户端列表失败。',
+      table: {
+        name: '名称',
+        clientId: 'Client ID',
+        scopes: '授权范围',
+        redirectUris: '回调地址',
+        enabled: '状态',
+        createdAt: '创建时间',
+        actions: '操作',
+        uriCount: '{count} 个'
+      },
+      status: {
+        enabled: '已启用',
+        disabled: '已禁用'
+      },
+      actions: {
+        edit: '编辑',
+        delete: '删除',
+        resetSecret: '重置密钥'
+      },
+      form: {
+        createTitle: '新建 OIDC 客户端',
+        editTitle: '编辑 OIDC 客户端',
+        clientName: '客户端名称',
+        clientNamePlaceholder: '例如：内部知识库',
+        redirectUris: '回调地址（Redirect URIs）',
+        redirectUriPlaceholder: 'https://app.example.com/callback',
+        addRedirectUri: '添加回调地址',
+        redirectUriHint: '必须是 https://（localhost 可用 http://），需与应用方完全一致（含末尾斜杠）。',
+        allowedScopes: '允许的授权范围',
+        consentRequired: '每次都需用户确认授权',
+        enabled: '启用此客户端',
+        save: '保存',
+        cancel: '取消',
+        saveFailed: '保存失败。',
+        nameRequired: '请填写客户端名称。',
+        redirectUriRequired: '至少需要一个回调地址。'
+      },
+      sensitiveScopeWarning: '你勾选了敏感授权范围（账户余额 / API Key 数量），该客户端将能读取用户的敏感信息。',
+      confirmModal: {
+        title: '确认授予敏感权限',
+        body: '该客户端将能读取用户的账户余额与 API Key 数量等敏感信息，请确认是否继续。',
+        checkbox: '我确认允许此客户端读取敏感信息',
+        confirm: '确认并保存',
+        cancel: '返回修改'
+      },
+      secretReveal: {
+        title: '客户端密钥（Client Secret）',
+        createBanner: '此 secret 仅显示这一次，请立即复制并妥善保存。',
+        resetBanner: '已生成新的 secret，旧 secret 立即失效。此 secret 仅显示这一次，请立即复制保存。',
+        copy: '复制',
+        copied: '已复制',
+        done: '我已保存'
+      },
+      deleteConfirm: {
+        title: '删除 OIDC 客户端',
+        body: '删除后将级联清除该客户端的所有授权、授权码与令牌，且无法恢复。确认删除“{name}”吗？',
+        confirm: '删除',
+        cancel: '取消',
+        failed: '删除失败。'
+      },
+      resetSecretConfirm: {
+        title: '重置客户端密钥',
+        body: '重置后旧 secret 立即失效，但该客户端已签发的令牌在过期前仍可继续使用。确认重置吗？',
+        confirm: '重置',
+        cancel: '取消',
+        failed: '重置密钥失败。'
+      },
+      settings: {
+        title: 'OIDC Provider',
+        description: '将 sub2api 作为 OIDC 身份提供方（OP），供第三方应用接入单点登录。',
+        enabled: '启用 OIDC Provider',
+        enabledHint: '关闭时所有 OIDC 端点（discovery / authorize / token 等）返回 404。',
+        issuerUrl: 'Issuer URL',
+        issuerUrlPlaceholder: 'https://api.example.com',
+        issuerUrlHint: '必须以 https:// 开头，不能以 / 结尾，且不能包含 ? 或 #。启用前必须填写。',
+        accessTokenTtl: 'Access Token 有效期（秒）',
+        idTokenTtl: 'ID Token 有效期（秒）',
+        refreshTokenTtl: 'Refresh Token 有效期（秒）',
+        codeTtl: '授权码有效期（秒）',
+        ssoCookieMaxAge: 'SSO Cookie Max-Age（秒）',
+        ssoCookieDomain: 'SSO Cookie Domain',
+        ssoCookieDomainPlaceholder: '留空则仅当前域；跨子域填 .example.com',
+        save: '保存设置',
+        saveSuccess: '设置已保存。',
+        saveFailed: '保存设置失败。',
+        loadFailed: '加载设置失败。',
+        enableConfirm: {
+          title: '启用 OIDC Provider',
+          body: '启用后 sub2api 将对外提供 OIDC 身份服务，第三方应用可据此发起登录。请确认 Issuer URL 已正确配置。确认启用吗？',
+          confirm: '确认启用',
+          cancel: '取消'
+        }
+      },
+      signingKeys: {
+        title: '签名密钥',
+        description: '用于签发 ID Token（RS256）。轮换后旧密钥保留 7 天宽限期以验证存量令牌。',
+        kid: 'Key ID',
+        status: '状态',
+        createdAt: '创建时间',
+        retiredAt: '退役时间',
+        active: '当前活跃',
+        retired: '已退役',
+        rotate: '轮换密钥',
+        rotateConfirm: {
+          title: '轮换签名密钥',
+          body: '将生成新的活跃密钥，旧密钥进入 7 天宽限期。确认轮换吗？',
+          confirm: '轮换',
+          cancel: '取消'
+        },
+        rotateSuccess: '签名密钥已轮换。',
+        rotateFailed: '轮换密钥失败。',
+        delete: '删除',
+        deleteConfirm: {
+          title: '删除签名密钥',
+          body: '删除后用该密钥签发的令牌将无法验证。确认删除吗？',
+          confirm: '删除',
+          cancel: '取消'
+        },
+        deleteFailed: '删除密钥失败（活跃密钥不可删除）。',
+        loadFailed: '加载签名密钥失败。',
+        empty: '暂无签名密钥（启用 Provider 后将自动生成）。'
+      },
+      help: {
+        title: '第三方接入说明',
+        intro: '第三方应用（RP）可按标准 OIDC 授权码 + PKCE 流程接入。请将以下信息提供给接入方。',
+        discoveryLabel: 'Discovery 地址',
+        jwksLabel: 'JWKS 地址',
+        discoveryNeedIssuer: '请先填写并保存合法的 Issuer URL',
+        scopesLabel: '支持的 Scope',
+        redirectLabel: 'redirect_uri 规则',
+        redirectBody: '回调地址必须与客户端登记的 redirect_uri 完全一致（精确匹配，区分大小写与末尾斜杠），不支持通配或子路径匹配。',
+        pkceLabel: 'PKCE 要求',
+        pkceBody: '所有授权码流程强制要求 PKCE，且仅接受 code_challenge_method=S256（不支持 plain）。'
+      }
+    }
   },
 
 }

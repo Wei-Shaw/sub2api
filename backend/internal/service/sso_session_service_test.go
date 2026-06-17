@@ -100,14 +100,6 @@ func (r *memSettingRepoForSso) SetMultiple(_ context.Context, settings map[strin
 
 var _ SettingRepository = (*memSettingRepoForSso)(nil)
 
-// 必须创建一个 user 行才能满足 sso_sessions.user_id 的外键约束。
-func createUserForSso(t *testing.T, client interface{}, userID int64) {
-	t.Helper()
-	// 使用 newOidcSigningTestClient 返回的 *ent.Client 类型；通过类型断言
-	// 调用 ent 的 User.Create 接口。本辅助仅依赖测试文件里 newOidcSigningTestClient
-	// 已声明的同 package import。
-}
-
 // ─── Issue ───────────────────────────────────────────────────────────────────
 
 func TestSsoSession_Issue_PersistsRowAndSetsCookie(t *testing.T) {

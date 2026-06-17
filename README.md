@@ -39,6 +39,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 - **Built-in Payment System** - Supports EasyPay, Alipay, WeChat Pay, and Stripe for user self-service top-up, no separate payment service needed ([Configuration Guide](docs/PAYMENT.md))
 - **Admin Dashboard** - Web interface for monitoring and management
 - **External System Integration** - Embed external systems (e.g. ticketing) via iframe to extend the admin dashboard
+- **OIDC Provider (SSO)** - sub2api can act as a standard OpenID Connect provider, letting third-party apps sign in with sub2api accounts via the Authorization Code + PKCE flow. Configure it entirely from the admin dashboard (**Settings → OIDC Provider**); no YAML/config-file changes are required since all OIDC settings are stored in the database. Disabled by default (all OIDC endpoints return 404 until enabled).
 
 ## ❤️ Sponsors
 

@@ -459,6 +459,7 @@ export default {
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
+    oidcClients: 'OIDC Clients',
   },
 
   // Auth
@@ -5504,6 +5505,7 @@ export default {
         email: 'Email',
         backup: 'Backup',
         payment: 'Payment',
+        oidc: 'OIDC Provider',
       },
       features: {
         channelMonitor: {
@@ -7379,6 +7381,191 @@ export default {
     },
     use_group: 'Use this group →',
     buy_now: 'Buy now',
+  },
+
+  // OIDC Provider (sub2api acting as an OIDC identity provider for third-party apps)
+  oidc: {
+    consent: {
+      title: 'Authorize Application',
+      subtitle: '"{client}" is requesting access to your account. Please review the permissions below.',
+      loading: 'Loading authorization request…',
+      errorTitle: 'Invalid Authorization Request',
+      loadFailed: 'Failed to load the authorization request. Please go back and try again.',
+      submitFailed: 'Failed to submit your decision. Please try again.',
+      missingToken: 'Missing authorization token. Please restart the login from the application.',
+      backToDashboard: 'Back to dashboard',
+      scopesTitle: 'This application will be able to:',
+      sensitiveWarning: 'Warning: this application requests access to sensitive information (account balance / API key count). Only authorize if you trust it.',
+      allow: 'Allow',
+      deny: 'Deny',
+      scopes: {
+        openid: {
+          title: 'Basic identity',
+          description: 'Read your unique user identifier.'
+        },
+        profile: {
+          title: 'Username',
+          description: 'Read your username and basic profile.'
+        },
+        email: {
+          title: 'Email address',
+          description: 'Read your email address and verification status.'
+        },
+        offlineAccess: {
+          title: 'Offline access',
+          description: 'Keep access while you are offline (issues a refresh token).'
+        },
+        balance: {
+          title: 'Account balance (sensitive)',
+          description: 'Read your account balance and total recharged amount.'
+        },
+        apikey: {
+          title: 'API key count (sensitive)',
+          description: 'Read the number of API keys you have created (never the key contents).'
+        }
+      }
+    },
+    admin: {
+      title: 'OIDC Clients',
+      description: 'Manage third-party applications (RPs) that use sub2api as their identity provider.',
+      createButton: 'New client',
+      empty: 'No OIDC clients yet.',
+      loadFailed: 'Failed to load clients.',
+      table: {
+        name: 'Name',
+        clientId: 'Client ID',
+        scopes: 'Scopes',
+        redirectUris: 'Redirect URIs',
+        enabled: 'Status',
+        createdAt: 'Created',
+        actions: 'Actions',
+        uriCount: '{count}'
+      },
+      status: {
+        enabled: 'Enabled',
+        disabled: 'Disabled'
+      },
+      actions: {
+        edit: 'Edit',
+        delete: 'Delete',
+        resetSecret: 'Reset secret'
+      },
+      form: {
+        createTitle: 'New OIDC Client',
+        editTitle: 'Edit OIDC Client',
+        clientName: 'Client name',
+        clientNamePlaceholder: 'e.g. Internal Wiki',
+        redirectUris: 'Redirect URIs',
+        redirectUriPlaceholder: 'https://app.example.com/callback',
+        addRedirectUri: 'Add redirect URI',
+        redirectUriHint: 'Must be https:// (http:// allowed for localhost) and match the application exactly (including trailing slash).',
+        allowedScopes: 'Allowed scopes',
+        consentRequired: 'Require user consent every time',
+        enabled: 'Enable this client',
+        save: 'Save',
+        cancel: 'Cancel',
+        saveFailed: 'Failed to save.',
+        nameRequired: 'Please enter a client name.',
+        redirectUriRequired: 'At least one redirect URI is required.'
+      },
+      sensitiveScopeWarning: 'You selected sensitive scopes (account balance / API key count). This client will be able to read users\' sensitive information.',
+      confirmModal: {
+        title: 'Confirm sensitive permissions',
+        body: 'This client will be able to read sensitive information such as account balance and API key count. Do you want to continue?',
+        checkbox: 'I confirm allowing this client to read sensitive information',
+        confirm: 'Confirm and save',
+        cancel: 'Go back'
+      },
+      secretReveal: {
+        title: 'Client Secret',
+        createBanner: 'This secret is shown only once. Copy and store it now.',
+        resetBanner: 'A new secret has been generated and the old one is immediately invalid. This secret is shown only once — copy it now.',
+        copy: 'Copy',
+        copied: 'Copied',
+        done: 'I have saved it'
+      },
+      deleteConfirm: {
+        title: 'Delete OIDC client',
+        body: 'Deleting will cascade-remove all consents, authorization codes and tokens for this client and cannot be undone. Delete "{name}"?',
+        confirm: 'Delete',
+        cancel: 'Cancel',
+        failed: 'Failed to delete.'
+      },
+      resetSecretConfirm: {
+        title: 'Reset client secret',
+        body: 'The old secret becomes invalid immediately, but tokens already issued to this client keep working until they expire. Continue?',
+        confirm: 'Reset',
+        cancel: 'Cancel',
+        failed: 'Failed to reset secret.'
+      },
+      settings: {
+        title: 'OIDC Provider',
+        description: 'Use sub2api as an OIDC provider (OP) so third-party apps can sign in via SSO.',
+        enabled: 'Enable OIDC Provider',
+        enabledHint: 'When disabled, all OIDC endpoints (discovery / authorize / token, etc.) return 404.',
+        issuerUrl: 'Issuer URL',
+        issuerUrlPlaceholder: 'https://api.example.com',
+        issuerUrlHint: 'Must start with https://, must not end with /, and must not contain ? or #. Required before enabling.',
+        accessTokenTtl: 'Access token TTL (seconds)',
+        idTokenTtl: 'ID token TTL (seconds)',
+        refreshTokenTtl: 'Refresh token TTL (seconds)',
+        codeTtl: 'Authorization code TTL (seconds)',
+        ssoCookieMaxAge: 'SSO cookie Max-Age (seconds)',
+        ssoCookieDomain: 'SSO cookie domain',
+        ssoCookieDomainPlaceholder: 'Leave empty for current host; use .example.com for cross-subdomain',
+        save: 'Save settings',
+        saveSuccess: 'Settings saved.',
+        saveFailed: 'Failed to save settings.',
+        loadFailed: 'Failed to load settings.',
+        enableConfirm: {
+          title: 'Enable OIDC Provider',
+          body: 'Once enabled, sub2api will expose OIDC identity services and third-party apps can initiate login. Make sure the Issuer URL is configured correctly. Enable now?',
+          confirm: 'Enable',
+          cancel: 'Cancel'
+        }
+      },
+      signingKeys: {
+        title: 'Signing Keys',
+        description: 'Used to sign ID Tokens (RS256). After rotation the old key is retained for a 7-day grace period to verify existing tokens.',
+        kid: 'Key ID',
+        status: 'Status',
+        createdAt: 'Created',
+        retiredAt: 'Retired',
+        active: 'Active',
+        retired: 'Retired',
+        rotate: 'Rotate key',
+        rotateConfirm: {
+          title: 'Rotate signing key',
+          body: 'A new active key will be generated and the old key enters a 7-day grace period. Continue?',
+          confirm: 'Rotate',
+          cancel: 'Cancel'
+        },
+        rotateSuccess: 'Signing key rotated.',
+        rotateFailed: 'Failed to rotate key.',
+        delete: 'Delete',
+        deleteConfirm: {
+          title: 'Delete signing key',
+          body: 'Tokens signed with this key will no longer verify. Continue?',
+          confirm: 'Delete',
+          cancel: 'Cancel'
+        },
+        deleteFailed: 'Failed to delete key (the active key cannot be deleted).',
+        loadFailed: 'Failed to load signing keys.',
+        empty: 'No signing keys yet (one is generated automatically when the provider is enabled).'
+      },
+      help: {
+        title: 'Third-party integration',
+        intro: 'Third-party apps (RPs) integrate via the standard OIDC Authorization Code + PKCE flow. Share the following details with the integrator.',
+        discoveryLabel: 'Discovery URL',
+        jwksLabel: 'JWKS URL',
+        discoveryNeedIssuer: 'Set and save a valid Issuer URL first',
+        scopesLabel: 'Supported scopes',
+        redirectLabel: 'redirect_uri rule',
+        redirectBody: 'The callback must exactly match a registered redirect_uri (exact match, case-sensitive, including trailing slash). Wildcards and sub-path matching are not supported.',
+        pkceLabel: 'PKCE requirement',
+        pkceBody: 'PKCE is mandatory for all authorization-code flows, and only code_challenge_method=S256 is accepted (plain is not supported).'
+      }
+    }
   },
 
 }

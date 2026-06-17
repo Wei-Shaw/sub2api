@@ -122,11 +122,11 @@ type OidcClientService struct {
 	client *ent.Client
 
 	// 注入点 (测试覆写)
-	now              func() time.Time
-	randReadFunc     func([]byte) (int, error)
-	bcryptCost       int
-	hashFunc         func(plain []byte, cost int) ([]byte, error) // bcrypt.GenerateFromPassword
-	compareHashFunc  func(hash, plain []byte) error               // bcrypt.CompareHashAndPassword
+	now             func() time.Time
+	randReadFunc    func([]byte) (int, error)
+	bcryptCost      int
+	hashFunc        func(plain []byte, cost int) ([]byte, error) // bcrypt.GenerateFromPassword
+	compareHashFunc func(hash, plain []byte) error               // bcrypt.CompareHashAndPassword
 }
 
 // NewOidcClientService 构造服务。client 必须非 nil。

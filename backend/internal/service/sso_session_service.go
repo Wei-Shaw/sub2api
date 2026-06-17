@@ -174,6 +174,32 @@ func (s *SsoSessionService) Issue(ctx context.Context, w http.ResponseWriter, r 
 	return sessionID, nil
 }
 
+// IssueIfProviderEnabled 仅当 oidc_provider.enabled=true 时签发 SSO cookie；否则 no-op。
+//
+// 这是登录 handler 接入点 (task 3.3) 的"零副作用"包装：当 OIDC Provider 功能未开启
+// (默认状态) 时，本方法不写任何 cookie、不建任何 sso_sessions 行，因此对既有登录流程
+// 完全无影响。开启后才会随登录附带 HttpOnly SSO cookie。
+//
+// 返回 (issued, error)：issued 表示是否实际签发；error 仅用于日志，调用方应"尽力而为"
+// 处理 — 即便 SSO 签发失败也不应阻断用户主登录流程。
+func (s *SsoSessionService) IssueIfProviderEnabled(ctx context.Context, w http.ResponseWriter, r *http.Request, userID int64) (bool, error) {
+	if s == nil || s.client == nil || s.settingRepo == nil {
+		return false, nil
+	}
+	v, err := s.settingRepo.GetValue(ctx, SettingKeyOidcProviderEnabled)
+	if err != nil {
+		// 读不到设置 (含 ErrSettingNotFound) → 视为未开启 → no-op。
+		return false, nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(v), "true") {
+		return false, nil
+	}
+	if _, err := s.Issue(ctx, w, r, userID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // ─── Cookie 解析 ─────────────────────────────────────────────────────────────
 
 // Resolve 从 r.Cookies() 中解析 sub2api_sso，校验 DB 状态并返回会话信息。

@@ -263,7 +263,9 @@ func TestOidcSigning_RotateKey_AddsNewActiveAndKeepsOld(t *testing.T) {
 	require.Len(t, jwks, 2, "old kid must still appear within grace window")
 	kidsInJWKS := map[string]bool{}
 	for _, k := range jwks {
-		kidsInJWKS[k["kid"].(string)] = true
+		kid, ok := k["kid"].(string)
+		require.True(t, ok)
+		kidsInJWKS[kid] = true
 	}
 	require.True(t, kidsInJWKS[old])
 	require.True(t, kidsInJWKS[newKid])

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
@@ -1112,14 +1113,17 @@ func (k oidcJWK) publicKey() (any, error) {
 		}
 		return &rsa.PublicKey{N: n, E: e}, nil
 	case "EC":
-		var curve elliptic.Curve
+		var (
+			curve     elliptic.Curve
+			ecdhCurve ecdh.Curve
+		)
 		switch strings.TrimSpace(k.Crv) {
 		case "P-256":
-			curve = elliptic.P256()
+			curve, ecdhCurve = elliptic.P256(), ecdh.P256()
 		case "P-384":
-			curve = elliptic.P384()
+			curve, ecdhCurve = elliptic.P384(), ecdh.P384()
 		case "P-521":
-			curve = elliptic.P521()
+			curve, ecdhCurve = elliptic.P521(), ecdh.P521()
 		default:
 			return nil, fmt.Errorf("unsupported ec curve: %s", k.Crv)
 		}
@@ -1131,7 +1135,14 @@ func (k oidcJWK) publicKey() (any, error) {
 		if err != nil {
 			return nil, fmt.Errorf("decode ec y: %w", err)
 		}
-		if !curve.IsOnCurve(x, y) {
+		// 通过 crypto/ecdh 校验坐标点位于曲线上（替代已弃用的 elliptic.Curve.IsOnCurve）。
+		// 编码为未压缩点：0x04 || X || Y，每个坐标左侧补零到曲线字节长度。
+		byteLen := (curve.Params().BitSize + 7) / 8
+		point := make([]byte, 1+2*byteLen)
+		point[0] = 4
+		x.FillBytes(point[1 : 1+byteLen])
+		y.FillBytes(point[1+byteLen:])
+		if _, err := ecdhCurve.NewPublicKey(point); err != nil {
 			return nil, errors.New("ec point is not on curve")
 		}
 		return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil

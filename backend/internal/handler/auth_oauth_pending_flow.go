@@ -1641,6 +1641,7 @@ func (h *AuthHandler) bindPendingOAuthLogin(c *gin.Context, provider string) {
 	}
 
 	clearCookies()
+	h.issueSsoSession(c, user.ID)
 	writeOAuthTokenPairResponse(c, tokenPair)
 }
 
@@ -1830,6 +1831,7 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 	// createPendingOAuthAccount = 注册新账户，需要把钉钉昵称同步到 users.username 作为初始值
 	h.maybeSyncDingTalkAfterRegistration(c.Request.Context(), session, user.ID)
 	clearCookies()
+	h.issueSsoSession(c, user.ID)
 	writeOAuthTokenPairResponse(c, tokenPair)
 }
 
@@ -1984,6 +1986,7 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 		payload["refresh_token"] = tokenPair.RefreshToken
 		payload["expires_in"] = tokenPair.ExpiresIn
 		payload["token_type"] = "Bearer"
+		h.issueSsoSession(c, loginUser.ID)
 	}
 
 	clearCookies()

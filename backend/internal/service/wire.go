@@ -597,6 +597,13 @@ var ProviderSet = wire.NewSet(
 	ProvideUserPlatformQuotaUsageFlusher,
 	NewPlazaService,
 	wire.Bind(new(PlazaPaymentConfigSource), new(*PaymentConfigService)),
+
+	// OIDC Provider services
+	NewSsoSessionService,
+	NewOidcSigningService,
+	NewOidcClientService,
+	NewOidcConsentService,
+	NewOidcProviderService,
 )
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
