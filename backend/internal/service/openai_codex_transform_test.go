@@ -1035,10 +1035,14 @@ REDACTED)
 		require.True(t, result)
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
-		require.Len(t, input, 1)
+		require.Len(t, input, 2)
 		msg, ok := input[0].(map[string]any)
 		require.True(t, ok)
-		require.Equal(t, "user", msg["role"])
+		require.Equal(t, "developer", msg["role"])
+		require.Equal(t, "You are an assistant.", msg["content"])
+		user, ok := input[1].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "user", user["role"])
 		require.Equal(t, "You are an assistant.", reqBody["instructions"])
 REDACTED)
 
@@ -1058,7 +1062,14 @@ REDACTED)
 		require.Equal(t, "Be helpful.", reqBody["instructions"])
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
-		require.Len(t, input, 0)
+		require.Len(t, input, 1)
+		msg, ok := input[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "developer", msg["role"])
+		require.Equal(t, []any{
+			map[string]any{"type": "text", "text": "Be helpful."REDACTED,
+	REDACTED, msg["content"])
+		require.Equal(t, "Be helpful.", reqBody["instructions"])
 REDACTED)
 
 	t.Run("multiple system messages concatenated", func(t *testing.T) {
@@ -1074,7 +1085,17 @@ REDACTED)
 		require.Equal(t, "First.\n\nSecond.", reqBody["instructions"])
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
-		require.Len(t, input, 1)
+		require.Len(t, input, 3)
+		first, ok := input[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "developer", first["role"])
+		second, ok := input[1].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "developer", second["role"])
+		user, ok := input[2].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "user", user["role"])
+		require.Equal(t, "First.\n\nSecond.", reqBody["instructions"])
 REDACTED)
 
 	t.Run("mixed system and non-system preserves non-system", func(t *testing.T) {
@@ -1089,13 +1110,17 @@ REDACTED)
 		require.True(t, result)
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
-		require.Len(t, input, 2)
+		require.Len(t, input, 3)
 		first, ok := input[0].(map[string]any)
 		require.True(t, ok)
 		require.Equal(t, "user", first["role"])
 		second, ok := input[1].(map[string]any)
 		require.True(t, ok)
-		require.Equal(t, "assistant", second["role"])
+		require.Equal(t, "developer", second["role"])
+		third, ok := input[2].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "assistant", third["role"])
+		require.Equal(t, "Sys prompt.", reqBody["instructions"])
 REDACTED)
 
 	t.Run("existing instructions prepended", func(t *testing.T) {
@@ -1109,6 +1134,11 @@ REDACTED)
 		result := extractSystemMessagesFromInput(reqBody)
 		require.True(t, result)
 		require.Equal(t, "Extracted.\n\nExisting instructions.", reqBody["instructions"])
+		input, ok := reqBody["input"].([]any)
+		require.True(t, ok)
+		msg, ok := input[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "developer", msg["role"])
 REDACTED)
 REDACTED
 
@@ -1168,14 +1198,53 @@ REDACTED
 
 	input, ok := reqBody["input"].([]any)
 	require.True(t, ok)
-	require.Len(t, input, 1)
-	msg, ok := input[0].(map[string]any)
+	require.Len(t, input, 2)
+	system, ok := input[0].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "user", msg["role"])
+	require.Equal(t, "developer", system["role"])
+	require.Equal(t, "You are a coding assistant.", system["content"])
+	user, ok := input[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "user", user["role"])
+	require.Equal(t, "You are a coding assistant.", reqBody["instructions"])
+REDACTED
 
+func TestApplyCodexOAuthTransform_JsonObjectKeepsJsonInstructionInInput(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"input": []any{
+			map[string]any{
+				"role":    "system",
+				"content": "You are an assistant. Output JSON only.",
+		REDACTED,
+			map[string]any{
+				"role":    "user",
+				"content": "symbol data without the keyword",
+		REDACTED,
+	REDACTED,
+		"text": map[string]any{
+			"format": map[string]any{
+				"type": "json_object",
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+
+	require.True(t, result.Modified)
 	instructions, ok := reqBody["instructions"].(string)
 	require.True(t, ok)
-	require.Equal(t, "You are a coding assistant.", instructions)
+	require.Contains(t, instructions, "JSON")
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 2)
+	developer, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "developer", developer["role"])
+	require.Contains(t, developer["content"], "JSON")
+	user, ok := input[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "user", user["role"])
 REDACTED
 
 func TestIsInstructionsEmpty(t *testing.T) {
