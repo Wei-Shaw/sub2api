@@ -156,6 +156,14 @@ REDACTED{
 			want: true,
 	REDACTED,
 		{
+			name: "retry after expired",
+			snapshot: xai.QuotaSnapshot{
+				RetryAfterSeconds: &retryAfter,
+				UpdatedAt:         time.Now().Add(-time.Duration(retryAfter+1) * time.Second).UTC().Format(time.RFC3339),
+		REDACTED,
+			want: false,
+	REDACTED,
+		{
 			name: "stale snapshot ignored",
 			snapshot: xai.QuotaSnapshot{
 				Requests:  &xai.QuotaWindow{Limit: &limit, Remaining: &zero, ResetUnix: &resetFutureREDACTED,

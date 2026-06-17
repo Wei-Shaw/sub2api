@@ -102,7 +102,11 @@
       </div>
 
       <!-- No data yet -->
-      <div v-else class="text-xs text-gray-400">-</div>
+      <div v-else class="space-y-1">
+        <div class="text-xs text-gray-400">-</div>
+        <!-- Always allow on-demand upstream quota probe, even before passive headers exist. -->
+        <GrokQuotaProbeCell :account="account" />
+      </div>
     </template>
 
     <!-- OpenAI OAuth accounts: single source from /usage API -->

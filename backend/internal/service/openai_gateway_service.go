@@ -1418,7 +1418,7 @@ REDACTED
 	if grokQuotaSnapshotStaleForPause(snapshot, now) {
 		return false, openAIQuotaAutoPauseDecision{REDACTED
 REDACTED
-	if snapshot.RetryAfterSeconds != nil && *snapshot.RetryAfterSeconds > 0 {
+	if grokQuotaRetryAfterActive(snapshot, now) {
 		return true, openAIQuotaAutoPauseDecision{window: "retry_after", threshold: 1, utilization: 1REDACTED
 REDACTED
 	if paused, decision := shouldAutoPauseGrokQuotaWindow("requests", snapshot.Requests, now); paused {
@@ -1428,6 +1428,21 @@ REDACTED
 		return true, decision
 REDACTED
 	return false, openAIQuotaAutoPauseDecision{REDACTED
+REDACTED
+
+func grokQuotaRetryAfterActive(snapshot *xai.QuotaSnapshot, now time.Time) bool {
+	if snapshot == nil || snapshot.RetryAfterSeconds == nil || *snapshot.RetryAfterSeconds <= 0 {
+		return false
+REDACTED
+	if strings.TrimSpace(snapshot.UpdatedAt) == "" {
+		return true
+REDACTED
+	updatedAt, err := parseTime(snapshot.UpdatedAt)
+	if err != nil {
+		return true
+REDACTED
+	retryAfterUntil := updatedAt.Add(time.Duration(*snapshot.RetryAfterSeconds) * time.Second)
+	return now.Before(retryAfterUntil)
 REDACTED
 
 func shouldAutoPauseGrokQuotaWindow(name string, window *xai.QuotaWindow, now time.Time) (bool, openAIQuotaAutoPauseDecision) {
