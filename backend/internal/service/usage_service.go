@@ -36,6 +36,7 @@ type CreateUsageLogRequest struct {
 	TotalCost             float64 `json:"total_cost"`
 	ActualCost            float64 `json:"actual_cost"`
 	RateMultiplier        float64 `json:"rate_multiplier"`
+	BillingType           int8    `json:"billing_type"`
 	Stream                bool    `json:"stream"`
 	DurationMs            *int    `json:"duration_ms"`
 }
@@ -58,6 +59,7 @@ type UsageService struct {
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	balancePackageRepo   BalancePackageRepository
 }
 
 // NewUsageService 创建使用统计服务实例
@@ -110,6 +112,7 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 		TotalCost:             req.TotalCost,
 		ActualCost:            req.ActualCost,
 		RateMultiplier:        req.RateMultiplier,
+		BillingType:           req.BillingType,
 		Stream:                req.Stream,
 		DurationMs:            req.DurationMs,
 	}
@@ -121,8 +124,12 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 
 	// 扣除用户余额
 	balanceUpdated := false
-	if inserted && req.ActualCost > 0 {
-		if err := s.userRepo.UpdateBalance(txCtx, req.UserID, -req.ActualCost); err != nil {
+	if inserted && shouldDeductBalanceForBillingType(req.BillingType, req.ActualCost) {
+		if s.balancePackageRepo != nil {
+			if _, err := DeductUserBalanceWithPackages(txCtx, s.balancePackageRepo, req.UserID, req.ActualCost, time.Now().UTC()); err != nil {
+				return nil, fmt.Errorf("deduct user balance packages: %w", err)
+			}
+		} else if err := s.userRepo.UpdateBalance(txCtx, req.UserID, -req.ActualCost); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
 		}
 		balanceUpdated = true
@@ -137,6 +144,10 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	s.invalidateUsageCaches(ctx, req.UserID, balanceUpdated)
 
 	return usageLog, nil
+}
+
+func shouldDeductBalanceForBillingType(billingType int8, actualCost float64) bool {
+	return actualCost > 0 && billingType == BillingTypeBalance
 }
 
 func (s *UsageService) invalidateUsageCaches(ctx context.Context, userID int64, balanceUpdated bool) {

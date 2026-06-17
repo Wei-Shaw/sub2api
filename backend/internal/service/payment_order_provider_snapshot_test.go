@@ -97,6 +97,7 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 				"secretKey": "do-not-copy",
 			},
 		},
+		ResolvedBalanceTier{},
 	)
 	require.NoError(t, err)
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), valueOrEmpty(order.ProviderInstanceID))

@@ -132,6 +132,29 @@ describe('PaymentStatusPanel', () => {
     openSpy.mockRestore()
   })
 
+  it('renders remote xunhupay QR images directly without generating a nested QR code', async () => {
+    const wrapper = mount(PaymentStatusPanel, {
+      props: {
+        orderId: 42,
+        qrCode: 'https://pay.example/qrcode/order.png',
+        expiresAt: '2099-01-01T12:30:00Z',
+        paymentType: 'wxpay_xunhu',
+        orderType: 'balance',
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const img = wrapper.get('img[src="https://pay.example/qrcode/order.png"]')
+    expect(img.classes()).toContain('object-contain')
+    expect(toCanvas).not.toHaveBeenCalled()
+  })
+
   it('actively verifies a stuck pending order and settles it when upstream confirms payment', async () => {
     pollOrderStatus.mockResolvedValue(orderFactory('PENDING'))
     verifyOrder.mockResolvedValue({

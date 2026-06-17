@@ -199,6 +199,142 @@ func TestParsePaymentConfig(t *testing.T) {
 	})
 }
 
+func TestCatalogProductsDefaultAndUpdate(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	products, err := svc.GetCatalogProducts(context.Background(), false)
+	if err != nil {
+		t.Fatalf("GetCatalogProducts returned error: %v", err)
+	}
+	if len(products) == 0 {
+		t.Fatal("expected default catalog products")
+	}
+	if products[0].Slug == "" || products[0].Title == "" {
+		t.Fatalf("default product should include slug and title: %+v", products[0])
+	}
+	if repo.values[SettingCatalogProducts] == "" {
+		t.Fatal("expected defaults to be persisted")
+	}
+
+	next := []CatalogProduct{{
+		Slug:        "openai-pro",
+		Title:       "OpenAI Pro",
+		Category:    "Subscription",
+		Summary:     "Monthly plan",
+		Description: "OpenAI monthly subscription",
+		Image:       "https://example.test/openai.webp",
+		Tags:        []string{"hot", "pro"},
+		PriceLabel:  "99.00",
+		Currency:    "CNY",
+		Active:      true,
+		SortOrder:   20,
+		ProductType: CatalogProductTypeSubscription,
+		PlanID:      "7",
+		CTAText:     "Buy now",
+	}}
+	if err := svc.SetCatalogProducts(context.Background(), next); err != nil {
+		t.Fatalf("SetCatalogProducts returned error: %v", err)
+	}
+
+	products, err = svc.GetCatalogProducts(context.Background(), true)
+	if err != nil {
+		t.Fatalf("GetCatalogProducts after set returned error: %v", err)
+	}
+	if len(products) != 1 || products[0].Slug != "openai-pro" || products[0].PlanID != "7" {
+		t.Fatalf("products = %+v, want saved subscription product", products)
+	}
+}
+
+func TestSetCatalogProductsRecalculatesTopupAmountFromPricingTiers(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{
+		SettingBalanceRechargeMult: "1",
+		SettingBalancePricingTiers: `[{
+			"min":100,
+			"max":500,
+			"multiplier":7.3,
+			"label":"vip",
+			"enabled":true,
+			"sortOrder":1
+		}]`,
+	}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	input := []CatalogProduct{{
+		Slug:        "vip-topup",
+		Title:       "VIP Topup",
+		Category:    "Balance",
+		PriceLabel:  "320.00",
+		Currency:    "CNY",
+		Active:      true,
+		ProductType: CatalogProductTypeTopup,
+		Amount:      999,
+	}}
+	if err := svc.SetCatalogProducts(context.Background(), input); err != nil {
+		t.Fatalf("SetCatalogProducts returned error: %v", err)
+	}
+
+	products, err := svc.GetCatalogProducts(context.Background(), true)
+	if err != nil {
+		t.Fatalf("GetCatalogProducts returned error: %v", err)
+	}
+	if len(products) != 1 {
+		t.Fatalf("products len = %d, want 1", len(products))
+	}
+	if products[0].Amount != 43.84 {
+		t.Fatalf("topup amount = %v, want 43.84", products[0].Amount)
+	}
+}
+
+func TestGetCatalogProductsSeedsDefaultsWhenSettingIsMissing(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}, missingKeys: map[string]bool{SettingCatalogProducts: true}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	products, err := svc.GetCatalogProducts(context.Background(), false)
+	if err != nil {
+		t.Fatalf("GetCatalogProducts returned error: %v", err)
+	}
+	if len(products) == 0 {
+		t.Fatal("expected missing catalog setting to seed defaults")
+	}
+	if repo.values[SettingCatalogProducts] == "" {
+		t.Fatal("expected missing catalog setting to be persisted with defaults")
+	}
+}
+
+func TestSetCatalogProductsValidatesRequiredFields(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	err := svc.SetCatalogProducts(context.Background(), []CatalogProduct{{Title: "Missing slug"}})
+	if err == nil {
+		t.Fatal("expected missing slug to fail")
+	}
+	if !strings.Contains(err.Error(), "slug") {
+		t.Fatalf("error = %v, want slug validation", err)
+	}
+}
+
+func TestGetCatalogProductsPublicFiltersInactive(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	if err := svc.SetCatalogProducts(context.Background(), []CatalogProduct{
+		{Slug: "active", Title: "Active", Active: true, ProductType: CatalogProductTypeTopup, Amount: 20, SortOrder: 20},
+		{Slug: "inactive", Title: "Inactive", Active: false, ProductType: CatalogProductTypeTopup, Amount: 30, SortOrder: 10},
+	}); err != nil {
+		t.Fatalf("SetCatalogProducts returned error: %v", err)
+	}
+
+	products, err := svc.GetCatalogProducts(context.Background(), false)
+	if err != nil {
+		t.Fatalf("GetCatalogProducts returned error: %v", err)
+	}
+	if len(products) != 1 || products[0].Slug != "active" {
+		t.Fatalf("products = %+v, want only active product", products)
+	}
+}
+
 func TestGetBasePaymentType(t *testing.T) {
 	t.Parallel()
 
@@ -368,17 +504,34 @@ func newPaymentConfigServiceTestClient(t *testing.T) *dbent.Client {
 }
 
 type paymentConfigSettingRepoStub struct {
-	values  map[string]string
-	updates map[string]string
+	values      map[string]string
+	updates     map[string]string
+	missingKeys map[string]bool
 }
 
 func (s *paymentConfigSettingRepoStub) Get(context.Context, string) (*Setting, error) {
 	return nil, nil
 }
 func (s *paymentConfigSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	if s.missingKeys != nil && s.missingKeys[key] {
+		return "", ErrSettingNotFound
+	}
 	return s.values[key], nil
 }
-func (s *paymentConfigSettingRepoStub) Set(context.Context, string, string) error { return nil }
+func (s *paymentConfigSettingRepoStub) Set(_ context.Context, key string, value string) error {
+	if s.values == nil {
+		s.values = map[string]string{}
+	}
+	if s.updates == nil {
+		s.updates = map[string]string{}
+	}
+	s.values[key] = value
+	s.updates[key] = value
+	if s.missingKeys != nil {
+		delete(s.missingKeys, key)
+	}
+	return nil
+}
 func (s *paymentConfigSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
 	out := make(map[string]string, len(keys))
 	for _, key := range keys {
@@ -429,6 +582,43 @@ func TestUpdatePaymentConfig_PersistsVisibleMethodRouting(t *testing.T) {
 	}
 	if repo.values[SettingPaymentVisibleMethodWxpaySource] != VisibleMethodSourceOfficialWechat {
 		t.Fatalf("wxpay source = %q, want %q", repo.values[SettingPaymentVisibleMethodWxpaySource], VisibleMethodSourceOfficialWechat)
+	}
+}
+
+func TestUpdatePaymentConfig_PersistsBalancePricingTiers(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		BalancePricingTiers: &[]BalancePricingTier{
+			{Min: 100, Max: 500, Multiplier: 7.3, Label: "vip", Enabled: true, SortOrder: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+
+	cfg := svc.parsePaymentConfig(repo.values)
+	if len(cfg.BalancePricingTiers) != 1 {
+		t.Fatalf("BalancePricingTiers len = %d, want 1", len(cfg.BalancePricingTiers))
+	}
+	if cfg.BalancePricingTiers[0].Label != "vip" || cfg.BalancePricingTiers[0].Multiplier != 7.3 {
+		t.Fatalf("BalancePricingTiers[0] = %+v, want vip multiplier 7.3", cfg.BalancePricingTiers[0])
+	}
+}
+
+func TestUpdatePaymentConfig_RejectsOverlappingBalancePricingTiers(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		BalancePricingTiers: &[]BalancePricingTier{
+			{Min: 1, Max: 100, Multiplier: 1, Label: "base", Enabled: true},
+			{Min: 100, Max: 200, Multiplier: 2, Label: "vip", Enabled: true},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected overlapping tiers to be rejected")
 	}
 }
 

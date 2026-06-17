@@ -396,6 +396,8 @@ func normalizeVisibleMethodSupportType(paymentType PaymentType) PaymentType {
 		return TypeAlipay
 	case TypeWxpay, TypeWxpayDirect:
 		return TypeWxpay
+	case TypeXunhuPay, TypeWxpayXunhu:
+		return TypeXunhuPay
 	default:
 		return strings.TrimSpace(paymentType)
 	}

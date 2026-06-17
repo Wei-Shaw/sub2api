@@ -49,6 +49,16 @@ describe('getVisibleMethods', () => {
     })
   })
 
+  it('normalizes xunhupay legacy aliases', () => {
+    const visible = getVisibleMethods({
+      wxpay_xunhu: methodLimit({ single_max: 200 }),
+    })
+
+    expect(visible).toEqual({
+      xunhupay: methodLimit({ single_max: 200 }),
+    })
+  })
+
   it('prefers canonical visible methods over aliases when both exist', () => {
     const visible = getVisibleMethods({
       alipay: methodLimit({ single_min: 2 }),
@@ -175,6 +185,22 @@ describe('decidePaymentLaunch', () => {
 
     expect(decision.kind).toBe('qr_waiting')
     expect(decision.paymentState.qrCode).toBe('https://pay.example.com/qr/session')
+  })
+
+  it('keeps xunhupay QR display when a QR payload is available', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://pay.example.com/xunhu/checkout',
+      qr_code: 'https://pay.example.com/xunhu/qrcode.png',
+      payment_mode: 'qrcode',
+    }), {
+      visibleMethod: 'wxpay_xunhu',
+      orderType: 'balance',
+      isMobile: false,
+    })
+
+    expect(decision.kind).toBe('qr_waiting')
+    expect(decision.paymentState.payUrl).toBe('https://pay.example.com/xunhu/checkout')
+    expect(decision.paymentState.qrCode).toBe('https://pay.example.com/xunhu/qrcode.png')
   })
 
   it('returns wechat oauth launch when backend requires in-app authorization', () => {

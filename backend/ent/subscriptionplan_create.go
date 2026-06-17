@@ -69,13 +69,13 @@ func (_c *SubscriptionPlanCreate) SetNillableOriginalPrice(v *float64) *Subscrip
 }
 
 // SetValidityDays sets the "validity_days" field.
-func (_c *SubscriptionPlanCreate) SetValidityDays(v int) *SubscriptionPlanCreate {
+func (_c *SubscriptionPlanCreate) SetValidityDays(v float64) *SubscriptionPlanCreate {
 	_c.mutation.SetValidityDays(v)
 	return _c
 }
 
 // SetNillableValidityDays sets the "validity_days" field if the given value is not nil.
-func (_c *SubscriptionPlanCreate) SetNillableValidityDays(v *int) *SubscriptionPlanCreate {
+func (_c *SubscriptionPlanCreate) SetNillableValidityDays(v *float64) *SubscriptionPlanCreate {
 	if v != nil {
 		_c.SetValidityDays(*v)
 	}
@@ -354,7 +354,7 @@ func (_c *SubscriptionPlanCreate) createSpec() (*SubscriptionPlan, *sqlgraph.Cre
 		_node.OriginalPrice = &value
 	}
 	if value, ok := _c.mutation.ValidityDays(); ok {
-		_spec.SetField(subscriptionplan.FieldValidityDays, field.TypeInt, value)
+		_spec.SetField(subscriptionplan.FieldValidityDays, field.TypeFloat64, value)
 		_node.ValidityDays = value
 	}
 	if value, ok := _c.mutation.ValidityUnit(); ok {
@@ -522,7 +522,7 @@ func (u *SubscriptionPlanUpsert) ClearOriginalPrice() *SubscriptionPlanUpsert {
 }
 
 // SetValidityDays sets the "validity_days" field.
-func (u *SubscriptionPlanUpsert) SetValidityDays(v int) *SubscriptionPlanUpsert {
+func (u *SubscriptionPlanUpsert) SetValidityDays(v float64) *SubscriptionPlanUpsert {
 	u.Set(subscriptionplan.FieldValidityDays, v)
 	return u
 }
@@ -534,7 +534,7 @@ func (u *SubscriptionPlanUpsert) UpdateValidityDays() *SubscriptionPlanUpsert {
 }
 
 // AddValidityDays adds v to the "validity_days" field.
-func (u *SubscriptionPlanUpsert) AddValidityDays(v int) *SubscriptionPlanUpsert {
+func (u *SubscriptionPlanUpsert) AddValidityDays(v float64) *SubscriptionPlanUpsert {
 	u.Add(subscriptionplan.FieldValidityDays, v)
 	return u
 }
@@ -761,14 +761,14 @@ func (u *SubscriptionPlanUpsertOne) ClearOriginalPrice() *SubscriptionPlanUpsert
 }
 
 // SetValidityDays sets the "validity_days" field.
-func (u *SubscriptionPlanUpsertOne) SetValidityDays(v int) *SubscriptionPlanUpsertOne {
+func (u *SubscriptionPlanUpsertOne) SetValidityDays(v float64) *SubscriptionPlanUpsertOne {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.SetValidityDays(v)
 	})
 }
 
 // AddValidityDays adds v to the "validity_days" field.
-func (u *SubscriptionPlanUpsertOne) AddValidityDays(v int) *SubscriptionPlanUpsertOne {
+func (u *SubscriptionPlanUpsertOne) AddValidityDays(v float64) *SubscriptionPlanUpsertOne {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.AddValidityDays(v)
 	})
@@ -1182,14 +1182,14 @@ func (u *SubscriptionPlanUpsertBulk) ClearOriginalPrice() *SubscriptionPlanUpser
 }
 
 // SetValidityDays sets the "validity_days" field.
-func (u *SubscriptionPlanUpsertBulk) SetValidityDays(v int) *SubscriptionPlanUpsertBulk {
+func (u *SubscriptionPlanUpsertBulk) SetValidityDays(v float64) *SubscriptionPlanUpsertBulk {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.SetValidityDays(v)
 	})
 }
 
 // AddValidityDays adds v to the "validity_days" field.
-func (u *SubscriptionPlanUpsertBulk) AddValidityDays(v int) *SubscriptionPlanUpsertBulk {
+func (u *SubscriptionPlanUpsertBulk) AddValidityDays(v float64) *SubscriptionPlanUpsertBulk {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.AddValidityDays(v)
 	})

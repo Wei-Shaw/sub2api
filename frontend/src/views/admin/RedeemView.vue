@@ -132,7 +132,7 @@
             <span class="text-sm font-medium text-gray-900 dark:text-white">
               <template v-if="row.type === 'balance'">${{ value.toFixed(2) }}</template>
               <template v-else-if="row.type === 'subscription'">
-                {{ row.validity_days || 30 }} {{ t('admin.redeem.days') }}
+                {{ formatRedeemValidity(row) }}
                 <span v-if="row.group" class="ml-1 text-xs text-gray-500 dark:text-gray-400"
                   >({{ row.group.name }})</span
                 >
@@ -305,6 +305,18 @@
                 class="input"
               />
             </div>
+            <div v-if="generateForm.type === 'balance'">
+              <label class="input-label">余额包有效期（天，留空为普通余额）</label>
+              <input
+                v-model.number="generateForm.balance_validity_days"
+                type="number"
+                min="0.001"
+                max="365"
+                step="any"
+                class="input"
+                placeholder="例如 0.5 表示半天"
+              />
+            </div>
             <!-- 邀请码类型：显示提示信息 -->
             <div v-if="generateForm.type === 'invitation'" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
               <p class="text-sm text-blue-700 dark:text-blue-300">
@@ -349,8 +361,9 @@
                 <input
                   v-model.number="generateForm.validity_days"
                   type="number"
-                  min="1"
+                  min="0.001"
                   max="365"
+                  step="any"
                   required
                   class="input"
                 />
@@ -833,6 +846,7 @@ const generateForm = reactive({
   count: 1,
   group_id: null as number | null,
   validity_days: 30,
+  balance_validity_days: null as number | null,
   expiry_option: 'never' as RedeemCodeExpiryOption,
   custom_expiry_days: 7
 })
@@ -848,6 +862,14 @@ watch(
     }
   }
 )
+
+const formatRedeemValidity = (code: RedeemCode) => {
+  if (code.validity_seconds && code.validity_seconds > 0) {
+    const days = code.validity_seconds / 86400
+    return `${Number(days.toFixed(4))} ${t('admin.redeem.days')}`
+  }
+  return `${code.validity_days || 30} ${t('admin.redeem.days')}`
+}
 
 const buildRedeemQueryFilters = () => ({
   type: (filters.type || undefined) as RedeemCodeType | undefined,
@@ -1037,7 +1059,11 @@ const handleGenerateCodes = async () => {
       generateForm.type,
       generateForm.value,
       generateForm.type === 'subscription' ? generateForm.group_id : undefined,
-      generateForm.type === 'subscription' ? generateForm.validity_days : undefined,
+      generateForm.type === 'subscription'
+        ? Number(generateForm.validity_days)
+        : generateForm.type === 'balance' && Number(generateForm.balance_validity_days) > 0
+          ? Number(generateForm.balance_validity_days)
+          : undefined,
       expiresInDays
     )
     showGenerateDialog.value = false
@@ -1046,6 +1072,7 @@ const handleGenerateCodes = async () => {
     // 重置表单
     generateForm.group_id = null
     generateForm.validity_days = 30
+    generateForm.balance_validity_days = null
     generateForm.expiry_option = 'never'
     generateForm.custom_expiry_days = 7
     loadCodes()

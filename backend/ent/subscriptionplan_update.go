@@ -126,14 +126,14 @@ func (_u *SubscriptionPlanUpdate) ClearOriginalPrice() *SubscriptionPlanUpdate {
 }
 
 // SetValidityDays sets the "validity_days" field.
-func (_u *SubscriptionPlanUpdate) SetValidityDays(v int) *SubscriptionPlanUpdate {
+func (_u *SubscriptionPlanUpdate) SetValidityDays(v float64) *SubscriptionPlanUpdate {
 	_u.mutation.ResetValidityDays()
 	_u.mutation.SetValidityDays(v)
 	return _u
 }
 
 // SetNillableValidityDays sets the "validity_days" field if the given value is not nil.
-func (_u *SubscriptionPlanUpdate) SetNillableValidityDays(v *int) *SubscriptionPlanUpdate {
+func (_u *SubscriptionPlanUpdate) SetNillableValidityDays(v *float64) *SubscriptionPlanUpdate {
 	if v != nil {
 		_u.SetValidityDays(*v)
 	}
@@ -141,7 +141,7 @@ func (_u *SubscriptionPlanUpdate) SetNillableValidityDays(v *int) *SubscriptionP
 }
 
 // AddValidityDays adds value to the "validity_days" field.
-func (_u *SubscriptionPlanUpdate) AddValidityDays(v int) *SubscriptionPlanUpdate {
+func (_u *SubscriptionPlanUpdate) AddValidityDays(v float64) *SubscriptionPlanUpdate {
 	_u.mutation.AddValidityDays(v)
 	return _u
 }
@@ -330,10 +330,10 @@ func (_u *SubscriptionPlanUpdate) sqlSave(ctx context.Context) (_node int, err e
 		_spec.ClearField(subscriptionplan.FieldOriginalPrice, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.ValidityDays(); ok {
-		_spec.SetField(subscriptionplan.FieldValidityDays, field.TypeInt, value)
+		_spec.SetField(subscriptionplan.FieldValidityDays, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.AddedValidityDays(); ok {
-		_spec.AddField(subscriptionplan.FieldValidityDays, field.TypeInt, value)
+		_spec.AddField(subscriptionplan.FieldValidityDays, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.ValidityUnit(); ok {
 		_spec.SetField(subscriptionplan.FieldValidityUnit, field.TypeString, value)
@@ -474,14 +474,14 @@ func (_u *SubscriptionPlanUpdateOne) ClearOriginalPrice() *SubscriptionPlanUpdat
 }
 
 // SetValidityDays sets the "validity_days" field.
-func (_u *SubscriptionPlanUpdateOne) SetValidityDays(v int) *SubscriptionPlanUpdateOne {
+func (_u *SubscriptionPlanUpdateOne) SetValidityDays(v float64) *SubscriptionPlanUpdateOne {
 	_u.mutation.ResetValidityDays()
 	_u.mutation.SetValidityDays(v)
 	return _u
 }
 
 // SetNillableValidityDays sets the "validity_days" field if the given value is not nil.
-func (_u *SubscriptionPlanUpdateOne) SetNillableValidityDays(v *int) *SubscriptionPlanUpdateOne {
+func (_u *SubscriptionPlanUpdateOne) SetNillableValidityDays(v *float64) *SubscriptionPlanUpdateOne {
 	if v != nil {
 		_u.SetValidityDays(*v)
 	}
@@ -489,7 +489,7 @@ func (_u *SubscriptionPlanUpdateOne) SetNillableValidityDays(v *int) *Subscripti
 }
 
 // AddValidityDays adds value to the "validity_days" field.
-func (_u *SubscriptionPlanUpdateOne) AddValidityDays(v int) *SubscriptionPlanUpdateOne {
+func (_u *SubscriptionPlanUpdateOne) AddValidityDays(v float64) *SubscriptionPlanUpdateOne {
 	_u.mutation.AddValidityDays(v)
 	return _u
 }
@@ -708,10 +708,10 @@ func (_u *SubscriptionPlanUpdateOne) sqlSave(ctx context.Context) (_node *Subscr
 		_spec.ClearField(subscriptionplan.FieldOriginalPrice, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.ValidityDays(); ok {
-		_spec.SetField(subscriptionplan.FieldValidityDays, field.TypeInt, value)
+		_spec.SetField(subscriptionplan.FieldValidityDays, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.AddedValidityDays(); ok {
-		_spec.AddField(subscriptionplan.FieldValidityDays, field.TypeInt, value)
+		_spec.AddField(subscriptionplan.FieldValidityDays, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.ValidityUnit(); ok {
 		_spec.SetField(subscriptionplan.FieldValidityUnit, field.TypeString, value)

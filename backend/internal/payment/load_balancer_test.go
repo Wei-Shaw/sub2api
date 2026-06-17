@@ -80,6 +80,12 @@ func TestInstanceSupportsType(t *testing.T) {
 			expected:       true,
 		},
 		{
+			name:           "legacy xunhu wxpay method supports canonical xunhupay provider",
+			supportedTypes: "wxpay_xunhu",
+			target:         "xunhupay",
+			expected:       true,
+		},
+		{
 			name:           "empty supported types means all supported",
 			supportedTypes: "",
 			target:         "alipay",

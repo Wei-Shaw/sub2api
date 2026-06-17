@@ -34,6 +34,13 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if !cfg.Enabled {
 		return nil, infraerrors.Forbidden("PAYMENT_DISABLED", "payment system is disabled")
 	}
+	if req.OrderType == payment.OrderTypeBalance {
+		if cfg.BalanceRechargeAsPackage {
+			req.BalancePackageValidityDays = cfg.BalancePackageValidityDays
+		} else {
+			req.BalancePackageValidityDays = 0
+		}
+	}
 	plan, err := s.validateOrderInput(ctx, req, cfg)
 	if err != nil {
 		return nil, err
@@ -53,11 +60,13 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	}
 	orderAmount := req.Amount
 	limitAmount := req.Amount
+	balanceTier := ResolvedBalanceTier{}
 	if plan != nil {
 		orderAmount = plan.Price
 		limitAmount = plan.Price
 	} else if req.OrderType == payment.OrderTypeBalance {
-		orderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
+		balanceTier = cfg.ResolveBalancePricingTier(req.Amount)
+		orderAmount = balanceTier.CreditedAmount
 	}
 	feeRate := cfg.RechargeFeeRate
 	methodCurrency := payment.DefaultPaymentCurrency
@@ -98,7 +107,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if oauthResp != nil {
 		return oauthResp, nil
 	}
-	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel)
+	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel, balanceTier)
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +127,9 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 	}
 	if req.OrderType == payment.OrderTypeSubscription {
 		return s.validateSubOrder(ctx, req)
+	}
+	if req.BalancePackageValidityDays < 0 || math.IsNaN(req.BalancePackageValidityDays) || math.IsInf(req.BalancePackageValidityDays, 0) {
+		return nil, infraerrors.BadRequest("INVALID_BALANCE_PACKAGE_VALIDITY", "balance package validity days must be a non-negative number")
 	}
 	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
@@ -147,7 +159,7 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	return plan, nil
 }
 
-func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
+func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection, balanceTier ResolvedBalanceTier) (*dbent.PaymentOrder, error) {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -192,6 +204,23 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		SetExpiresAt(exp).
 		SetClientIP(req.ClientIP).
 		SetSrcHost(req.SrcHost)
+	if req.OrderType == payment.OrderTypeBalance && balanceTier.Multiplier > 0 {
+		b.SetAppliedRateMultiplier(balanceTier.Multiplier)
+		b.SetCreditedAmount(balanceTier.CreditedAmount)
+		if balanceTier.Label != "" {
+			b.SetPricingTierLabel(balanceTier.Label)
+		}
+		if balanceTier.Tier != nil {
+			b.SetPricingTierSnapshot(map[string]any{
+				"min":        balanceTier.Tier.Min,
+				"max":        balanceTier.Tier.Max,
+				"multiplier": balanceTier.Tier.Multiplier,
+				"label":      balanceTier.Tier.Label,
+				"enabled":    balanceTier.Tier.Enabled,
+				"sortOrder":  balanceTier.Tier.SortOrder,
+			})
+		}
+	}
 	if req.SrcURL != "" {
 		b.SetSrcURL(req.SrcURL)
 	}
@@ -201,11 +230,28 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if selectedProviderKey != "" {
 		b.SetProviderKey(selectedProviderKey)
 	}
+	if plan != nil {
+		validityDays, validityDuration := psComputeValidityForOrder(plan.ValidityDays, plan.ValidityUnit)
+		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(validityDays)
+		if validityDuration > 0 {
+			if providerSnapshot == nil {
+				providerSnapshot = map[string]any{"schema_version": 2}
+			}
+			providerSnapshot["subscription_validity_seconds"] = int64(validityDuration / time.Second)
+		}
+	}
+	if req.OrderType == payment.OrderTypeBalance && req.BalancePackageValidityDays > 0 {
+		validitySeconds := int64(math.Round(req.BalancePackageValidityDays * 24 * float64(time.Hour/time.Second)))
+		if validitySeconds <= 0 {
+			return nil, infraerrors.BadRequest("INVALID_BALANCE_PACKAGE_VALIDITY", "balance package validity is too short")
+		}
+		if providerSnapshot == nil {
+			providerSnapshot = map[string]any{"schema_version": 2}
+		}
+		providerSnapshot["balance_package_validity_seconds"] = validitySeconds
+	}
 	if providerSnapshot != nil {
 		b.SetProviderSnapshot(providerSnapshot)
-	}
-	if plan != nil {
-		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit))
 	}
 	order, err := b.Save(ctx)
 	if err != nil {
@@ -302,6 +348,11 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 			snapshot["merchant_id"] = accountID
 		}
 		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
+	}
+	if providerKey == payment.TypeXunhuPay {
+		if appID := strings.TrimSpace(sel.Config["appId"]); appID != "" {
+			snapshot["merchant_app_id"] = appID
+		}
 	}
 
 	if len(snapshot) == 1 {

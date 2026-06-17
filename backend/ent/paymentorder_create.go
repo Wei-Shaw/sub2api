@@ -81,6 +81,54 @@ func (_c *PaymentOrderCreate) SetNillableFeeRate(v *float64) *PaymentOrderCreate
 	return _c
 }
 
+// SetAppliedRateMultiplier sets the "applied_rate_multiplier" field.
+func (_c *PaymentOrderCreate) SetAppliedRateMultiplier(v float64) *PaymentOrderCreate {
+	_c.mutation.SetAppliedRateMultiplier(v)
+	return _c
+}
+
+// SetNillableAppliedRateMultiplier sets the "applied_rate_multiplier" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableAppliedRateMultiplier(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetAppliedRateMultiplier(*v)
+	}
+	return _c
+}
+
+// SetPricingTierLabel sets the "pricing_tier_label" field.
+func (_c *PaymentOrderCreate) SetPricingTierLabel(v string) *PaymentOrderCreate {
+	_c.mutation.SetPricingTierLabel(v)
+	return _c
+}
+
+// SetNillablePricingTierLabel sets the "pricing_tier_label" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillablePricingTierLabel(v *string) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetPricingTierLabel(*v)
+	}
+	return _c
+}
+
+// SetPricingTierSnapshot sets the "pricing_tier_snapshot" field.
+func (_c *PaymentOrderCreate) SetPricingTierSnapshot(v map[string]interface{}) *PaymentOrderCreate {
+	_c.mutation.SetPricingTierSnapshot(v)
+	return _c
+}
+
+// SetCreditedAmount sets the "credited_amount" field.
+func (_c *PaymentOrderCreate) SetCreditedAmount(v float64) *PaymentOrderCreate {
+	_c.mutation.SetCreditedAmount(v)
+	return _c
+}
+
+// SetNillableCreditedAmount sets the "credited_amount" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableCreditedAmount(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetCreditedAmount(*v)
+	}
+	return _c
+}
+
 // SetRechargeCode sets the "recharge_code" field.
 func (_c *PaymentOrderCreate) SetRechargeCode(v string) *PaymentOrderCreate {
 	_c.mutation.SetRechargeCode(v)
@@ -577,6 +625,11 @@ func (_c *PaymentOrderCreate) check() error {
 	if _, ok := _c.mutation.FeeRate(); !ok {
 		return &ValidationError{Name: "fee_rate", err: errors.New(`ent: missing required field "PaymentOrder.fee_rate"`)}
 	}
+	if v, ok := _c.mutation.PricingTierLabel(); ok {
+		if err := paymentorder.PricingTierLabelValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_tier_label", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.pricing_tier_label": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.RechargeCode(); !ok {
 		return &ValidationError{Name: "recharge_code", err: errors.New(`ent: missing required field "PaymentOrder.recharge_code"`)}
 	}
@@ -724,6 +777,22 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.FeeRate(); ok {
 		_spec.SetField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
 		_node.FeeRate = value
+	}
+	if value, ok := _c.mutation.AppliedRateMultiplier(); ok {
+		_spec.SetField(paymentorder.FieldAppliedRateMultiplier, field.TypeFloat64, value)
+		_node.AppliedRateMultiplier = &value
+	}
+	if value, ok := _c.mutation.PricingTierLabel(); ok {
+		_spec.SetField(paymentorder.FieldPricingTierLabel, field.TypeString, value)
+		_node.PricingTierLabel = &value
+	}
+	if value, ok := _c.mutation.PricingTierSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldPricingTierSnapshot, field.TypeJSON, value)
+		_node.PricingTierSnapshot = value
+	}
+	if value, ok := _c.mutation.CreditedAmount(); ok {
+		_spec.SetField(paymentorder.FieldCreditedAmount, field.TypeFloat64, value)
+		_node.CreditedAmount = &value
 	}
 	if value, ok := _c.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
@@ -1027,6 +1096,90 @@ func (u *PaymentOrderUpsert) UpdateFeeRate() *PaymentOrderUpsert {
 // AddFeeRate adds v to the "fee_rate" field.
 func (u *PaymentOrderUpsert) AddFeeRate(v float64) *PaymentOrderUpsert {
 	u.Add(paymentorder.FieldFeeRate, v)
+	return u
+}
+
+// SetAppliedRateMultiplier sets the "applied_rate_multiplier" field.
+func (u *PaymentOrderUpsert) SetAppliedRateMultiplier(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldAppliedRateMultiplier, v)
+	return u
+}
+
+// UpdateAppliedRateMultiplier sets the "applied_rate_multiplier" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateAppliedRateMultiplier() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldAppliedRateMultiplier)
+	return u
+}
+
+// AddAppliedRateMultiplier adds v to the "applied_rate_multiplier" field.
+func (u *PaymentOrderUpsert) AddAppliedRateMultiplier(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldAppliedRateMultiplier, v)
+	return u
+}
+
+// ClearAppliedRateMultiplier clears the value of the "applied_rate_multiplier" field.
+func (u *PaymentOrderUpsert) ClearAppliedRateMultiplier() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldAppliedRateMultiplier)
+	return u
+}
+
+// SetPricingTierLabel sets the "pricing_tier_label" field.
+func (u *PaymentOrderUpsert) SetPricingTierLabel(v string) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldPricingTierLabel, v)
+	return u
+}
+
+// UpdatePricingTierLabel sets the "pricing_tier_label" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdatePricingTierLabel() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldPricingTierLabel)
+	return u
+}
+
+// ClearPricingTierLabel clears the value of the "pricing_tier_label" field.
+func (u *PaymentOrderUpsert) ClearPricingTierLabel() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldPricingTierLabel)
+	return u
+}
+
+// SetPricingTierSnapshot sets the "pricing_tier_snapshot" field.
+func (u *PaymentOrderUpsert) SetPricingTierSnapshot(v map[string]interface{}) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldPricingTierSnapshot, v)
+	return u
+}
+
+// UpdatePricingTierSnapshot sets the "pricing_tier_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdatePricingTierSnapshot() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldPricingTierSnapshot)
+	return u
+}
+
+// ClearPricingTierSnapshot clears the value of the "pricing_tier_snapshot" field.
+func (u *PaymentOrderUpsert) ClearPricingTierSnapshot() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldPricingTierSnapshot)
+	return u
+}
+
+// SetCreditedAmount sets the "credited_amount" field.
+func (u *PaymentOrderUpsert) SetCreditedAmount(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldCreditedAmount, v)
+	return u
+}
+
+// UpdateCreditedAmount sets the "credited_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateCreditedAmount() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldCreditedAmount)
+	return u
+}
+
+// AddCreditedAmount adds v to the "credited_amount" field.
+func (u *PaymentOrderUpsert) AddCreditedAmount(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldCreditedAmount, v)
+	return u
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (u *PaymentOrderUpsert) ClearCreditedAmount() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldCreditedAmount)
 	return u
 }
 
@@ -1708,6 +1861,104 @@ func (u *PaymentOrderUpsertOne) AddFeeRate(v float64) *PaymentOrderUpsertOne {
 func (u *PaymentOrderUpsertOne) UpdateFeeRate() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateFeeRate()
+	})
+}
+
+// SetAppliedRateMultiplier sets the "applied_rate_multiplier" field.
+func (u *PaymentOrderUpsertOne) SetAppliedRateMultiplier(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetAppliedRateMultiplier(v)
+	})
+}
+
+// AddAppliedRateMultiplier adds v to the "applied_rate_multiplier" field.
+func (u *PaymentOrderUpsertOne) AddAppliedRateMultiplier(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddAppliedRateMultiplier(v)
+	})
+}
+
+// UpdateAppliedRateMultiplier sets the "applied_rate_multiplier" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateAppliedRateMultiplier() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateAppliedRateMultiplier()
+	})
+}
+
+// ClearAppliedRateMultiplier clears the value of the "applied_rate_multiplier" field.
+func (u *PaymentOrderUpsertOne) ClearAppliedRateMultiplier() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearAppliedRateMultiplier()
+	})
+}
+
+// SetPricingTierLabel sets the "pricing_tier_label" field.
+func (u *PaymentOrderUpsertOne) SetPricingTierLabel(v string) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPricingTierLabel(v)
+	})
+}
+
+// UpdatePricingTierLabel sets the "pricing_tier_label" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdatePricingTierLabel() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePricingTierLabel()
+	})
+}
+
+// ClearPricingTierLabel clears the value of the "pricing_tier_label" field.
+func (u *PaymentOrderUpsertOne) ClearPricingTierLabel() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearPricingTierLabel()
+	})
+}
+
+// SetPricingTierSnapshot sets the "pricing_tier_snapshot" field.
+func (u *PaymentOrderUpsertOne) SetPricingTierSnapshot(v map[string]interface{}) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPricingTierSnapshot(v)
+	})
+}
+
+// UpdatePricingTierSnapshot sets the "pricing_tier_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdatePricingTierSnapshot() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePricingTierSnapshot()
+	})
+}
+
+// ClearPricingTierSnapshot clears the value of the "pricing_tier_snapshot" field.
+func (u *PaymentOrderUpsertOne) ClearPricingTierSnapshot() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearPricingTierSnapshot()
+	})
+}
+
+// SetCreditedAmount sets the "credited_amount" field.
+func (u *PaymentOrderUpsertOne) SetCreditedAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetCreditedAmount(v)
+	})
+}
+
+// AddCreditedAmount adds v to the "credited_amount" field.
+func (u *PaymentOrderUpsertOne) AddCreditedAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddCreditedAmount(v)
+	})
+}
+
+// UpdateCreditedAmount sets the "credited_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateCreditedAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateCreditedAmount()
+	})
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (u *PaymentOrderUpsertOne) ClearCreditedAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearCreditedAmount()
 	})
 }
 
@@ -2640,6 +2891,104 @@ func (u *PaymentOrderUpsertBulk) AddFeeRate(v float64) *PaymentOrderUpsertBulk {
 func (u *PaymentOrderUpsertBulk) UpdateFeeRate() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateFeeRate()
+	})
+}
+
+// SetAppliedRateMultiplier sets the "applied_rate_multiplier" field.
+func (u *PaymentOrderUpsertBulk) SetAppliedRateMultiplier(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetAppliedRateMultiplier(v)
+	})
+}
+
+// AddAppliedRateMultiplier adds v to the "applied_rate_multiplier" field.
+func (u *PaymentOrderUpsertBulk) AddAppliedRateMultiplier(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddAppliedRateMultiplier(v)
+	})
+}
+
+// UpdateAppliedRateMultiplier sets the "applied_rate_multiplier" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateAppliedRateMultiplier() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateAppliedRateMultiplier()
+	})
+}
+
+// ClearAppliedRateMultiplier clears the value of the "applied_rate_multiplier" field.
+func (u *PaymentOrderUpsertBulk) ClearAppliedRateMultiplier() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearAppliedRateMultiplier()
+	})
+}
+
+// SetPricingTierLabel sets the "pricing_tier_label" field.
+func (u *PaymentOrderUpsertBulk) SetPricingTierLabel(v string) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPricingTierLabel(v)
+	})
+}
+
+// UpdatePricingTierLabel sets the "pricing_tier_label" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdatePricingTierLabel() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePricingTierLabel()
+	})
+}
+
+// ClearPricingTierLabel clears the value of the "pricing_tier_label" field.
+func (u *PaymentOrderUpsertBulk) ClearPricingTierLabel() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearPricingTierLabel()
+	})
+}
+
+// SetPricingTierSnapshot sets the "pricing_tier_snapshot" field.
+func (u *PaymentOrderUpsertBulk) SetPricingTierSnapshot(v map[string]interface{}) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPricingTierSnapshot(v)
+	})
+}
+
+// UpdatePricingTierSnapshot sets the "pricing_tier_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdatePricingTierSnapshot() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePricingTierSnapshot()
+	})
+}
+
+// ClearPricingTierSnapshot clears the value of the "pricing_tier_snapshot" field.
+func (u *PaymentOrderUpsertBulk) ClearPricingTierSnapshot() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearPricingTierSnapshot()
+	})
+}
+
+// SetCreditedAmount sets the "credited_amount" field.
+func (u *PaymentOrderUpsertBulk) SetCreditedAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetCreditedAmount(v)
+	})
+}
+
+// AddCreditedAmount adds v to the "credited_amount" field.
+func (u *PaymentOrderUpsertBulk) AddCreditedAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddCreditedAmount(v)
+	})
+}
+
+// UpdateCreditedAmount sets the "credited_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateCreditedAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateCreditedAmount()
+	})
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (u *PaymentOrderUpsertBulk) ClearCreditedAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearCreditedAmount()
 	})
 }
 

@@ -171,7 +171,7 @@ func TestValidatePlanPatch_ValidPrice(t *testing.T) {
 }
 
 func TestValidatePlanPatch_ZeroValidityDays(t *testing.T) {
-	err := validatePlanPatch(UpdatePlanRequest{ValidityDays: ptrInt(0)})
+	err := validatePlanPatch(UpdatePlanRequest{ValidityDays: ptrFloat(0)})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "validity days")
 }

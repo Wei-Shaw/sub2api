@@ -277,13 +277,14 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 
 	switch action {
 	case redeemActionSkipCompleted:
-		if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
-			return err
-		}
+		s.bestEffortAffiliateRebateForOrder(ctx, o)
 		// Code already created and redeemed — just mark completed
 		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
 	case redeemActionCreate:
 		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
+		if validitySeconds := balancePackageValiditySecondsFromOrder(o); validitySeconds > 0 {
+			rc.ValiditySeconds = validitySeconds
+		}
 		if err := s.redeemService.CreateCode(ctx, rc); err != nil {
 			return fmt.Errorf("create redeem code: %w", err)
 		}
@@ -293,10 +294,34 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(ctx), o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
-	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
-		return err
-	}
+	s.bestEffortAffiliateRebateForOrder(ctx, o)
 	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+}
+
+func balancePackageValiditySecondsFromOrder(o *dbent.PaymentOrder) int64 {
+	if o == nil || o.ProviderSnapshot == nil {
+		return 0
+	}
+	raw, ok := o.ProviderSnapshot["balance_package_validity_seconds"]
+	if !ok {
+		return 0
+	}
+	switch v := raw.(type) {
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	case float64:
+		return int64(v)
+	case float32:
+		return int64(v)
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		if err == nil {
+			return parsed
+		}
+	}
+	return 0
 }
 
 func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) error {
@@ -365,7 +390,9 @@ func (s *PaymentService) sendSubscriptionPurchaseSuccessNotification(ctx context
 		"expiry_time":        "",
 		"order_id":           strconv.FormatInt(o.ID, 10),
 	}
-	if o.SubscriptionDays != nil {
+	if seconds := subscriptionValiditySecondsFromOrder(o); seconds > 0 {
+		variables["subscription_days"] = formatSubscriptionValidityDays(seconds)
+	} else if o.SubscriptionDays != nil {
 		variables["subscription_days"] = strconv.Itoa(*o.SubscriptionDays)
 	}
 	if o.SubscriptionGroupID != nil {
@@ -425,6 +452,10 @@ func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid
 func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error {
 	gid := *o.SubscriptionGroupID
 	days := *o.SubscriptionDays
+	validityDuration := time.Duration(0)
+	if seconds := subscriptionValiditySecondsFromOrder(o); seconds > 0 {
+		validityDuration = time.Duration(seconds) * time.Second
+	}
 	g, err := s.groupRepo.GetByID(ctx, gid)
 	if err != nil || g.Status != payment.EntityStatusActive {
 		return fmt.Errorf("group %d no longer exists or inactive", gid)
@@ -436,11 +467,26 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 		return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 	}
 	orderNote := fmt.Sprintf("payment order %d", o.ID)
-	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: orderNote})
+	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, ValidityDuration: validityDuration, AssignedBy: 0, Notes: orderNote})
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
 	}
 	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
+}
+
+func subscriptionValiditySecondsFromOrder(o *dbent.PaymentOrder) int64 {
+	if snapshot := psOrderProviderSnapshot(o); snapshot != nil && snapshot.SubscriptionValiditySeconds > 0 {
+		return snapshot.SubscriptionValiditySeconds
+	}
+	return 0
+}
+
+func formatSubscriptionValidityDays(seconds int64) string {
+	if seconds <= 0 {
+		return ""
+	}
+	days := float64(seconds) / 86400
+	return strconv.FormatFloat(days, 'f', -1, 64)
 }
 
 func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action string) bool {
@@ -525,6 +571,15 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 		return fmt.Errorf("commit affiliate rebate tx: %w", err)
 	}
 	return nil
+}
+
+func (s *PaymentService) bestEffortAffiliateRebateForOrder(ctx context.Context, o *dbent.PaymentOrder) {
+	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
+		slog.Warn("affiliate rebate failed during payment fulfillment; continuing core fulfillment",
+			"orderID", o.ID,
+			"error", err,
+		)
+	}
 }
 
 func (s *PaymentService) tryClaimAffiliateRebateAudit(ctx context.Context, client *dbent.Client, orderID int64, baseAmount float64) (bool, error) {

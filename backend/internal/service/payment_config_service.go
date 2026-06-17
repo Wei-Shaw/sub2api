@@ -24,6 +24,9 @@ const (
 	SettingLoadBalanceStrategy = "LOAD_BALANCE_STRATEGY"
 	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
 	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
+	SettingBalancePricingTiers = "BALANCE_PRICING_TIERS"
+	SettingBalanceRechargeAsPackage = "BALANCE_RECHARGE_AS_PACKAGE"
+	SettingBalancePackageValidityDays = "BALANCE_PACKAGE_VALIDITY_DAYS"
 	SettingRechargeFeeRate     = "RECHARGE_FEE_RATE"
 	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
 	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
@@ -45,22 +48,25 @@ const (
 
 // PaymentConfig holds the payment system configuration.
 type PaymentConfig struct {
-	Enabled                   bool     `json:"enabled"`
-	MinAmount                 float64  `json:"min_amount"`
-	MaxAmount                 float64  `json:"max_amount"`
-	DailyLimit                float64  `json:"daily_limit"`
-	OrderTimeoutMin           int      `json:"order_timeout_minutes"`
-	MaxPendingOrders          int      `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           bool     `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           float64  `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       string   `json:"load_balance_strategy"`
-	ProductNamePrefix         string   `json:"product_name_prefix"`
-	ProductNameSuffix         string   `json:"product_name_suffix"`
-	HelpImageURL              string   `json:"help_image_url"`
-	HelpText                  string   `json:"help_text"`
-	StripePublishableKey      string   `json:"stripe_publishable_key,omitempty"`
+	Enabled                   bool                 `json:"enabled"`
+	MinAmount                 float64              `json:"min_amount"`
+	MaxAmount                 float64              `json:"max_amount"`
+	DailyLimit                float64              `json:"daily_limit"`
+	OrderTimeoutMin           int                  `json:"order_timeout_minutes"`
+	MaxPendingOrders          int                  `json:"max_pending_orders"`
+	EnabledTypes              []string             `json:"enabled_payment_types"`
+	BalanceDisabled           bool                 `json:"balance_disabled"`
+	BalanceRechargeMultiplier float64              `json:"balance_recharge_multiplier"`
+	BalancePricingTiers       []BalancePricingTier `json:"balance_pricing_tiers"`
+	BalanceRechargeAsPackage  bool                 `json:"balance_recharge_as_package"`
+	BalancePackageValidityDays float64             `json:"balance_package_validity_days"`
+	RechargeFeeRate           float64              `json:"recharge_fee_rate"`
+	LoadBalanceStrategy       string               `json:"load_balance_strategy"`
+	ProductNamePrefix         string               `json:"product_name_prefix"`
+	ProductNameSuffix         string               `json:"product_name_suffix"`
+	HelpImageURL              string               `json:"help_image_url"`
+	HelpText                  string               `json:"help_text"`
+	StripePublishableKey      string               `json:"stripe_publishable_key,omitempty"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
@@ -75,21 +81,24 @@ type PaymentConfig struct {
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
 type UpdatePaymentConfigRequest struct {
-	Enabled                   *bool    `json:"enabled"`
-	MinAmount                 *float64 `json:"min_amount"`
-	MaxAmount                 *float64 `json:"max_amount"`
-	DailyLimit                *float64 `json:"daily_limit"`
-	OrderTimeoutMin           *int     `json:"order_timeout_minutes"`
-	MaxPendingOrders          *int     `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           *bool    `json:"balance_disabled"`
-	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
-	ProductNamePrefix         *string  `json:"product_name_prefix"`
-	ProductNameSuffix         *string  `json:"product_name_suffix"`
-	HelpImageURL              *string  `json:"help_image_url"`
-	HelpText                  *string  `json:"help_text"`
+	Enabled                   *bool                 `json:"enabled"`
+	MinAmount                 *float64              `json:"min_amount"`
+	MaxAmount                 *float64              `json:"max_amount"`
+	DailyLimit                *float64              `json:"daily_limit"`
+	OrderTimeoutMin           *int                  `json:"order_timeout_minutes"`
+	MaxPendingOrders          *int                  `json:"max_pending_orders"`
+	EnabledTypes              []string              `json:"enabled_payment_types"`
+	BalanceDisabled           *bool                 `json:"balance_disabled"`
+	BalanceRechargeMultiplier *float64              `json:"balance_recharge_multiplier"`
+	BalancePricingTiers       *[]BalancePricingTier `json:"balance_pricing_tiers"`
+	BalanceRechargeAsPackage  *bool                 `json:"balance_recharge_as_package"`
+	BalancePackageValidityDays *float64             `json:"balance_package_validity_days"`
+	RechargeFeeRate           *float64              `json:"recharge_fee_rate"`
+	LoadBalanceStrategy       *string               `json:"load_balance_strategy"`
+	ProductNamePrefix         *string               `json:"product_name_prefix"`
+	ProductNameSuffix         *string               `json:"product_name_suffix"`
+	HelpImageURL              *string               `json:"help_image_url"`
+	HelpText                  *string               `json:"help_text"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled *bool   `json:"cancel_rate_limit_enabled"`
@@ -155,7 +164,7 @@ type CreatePlanRequest struct {
 	Description   string   `json:"description"`
 	Price         float64  `json:"price"`
 	OriginalPrice *float64 `json:"original_price"`
-	ValidityDays  int      `json:"validity_days"`
+	ValidityDays  float64  `json:"validity_days"`
 	ValidityUnit  string   `json:"validity_unit"`
 	Features      string   `json:"features"`
 	ProductName   string   `json:"product_name"`
@@ -169,7 +178,7 @@ type UpdatePlanRequest struct {
 	Description   *string  `json:"description"`
 	Price         *float64 `json:"price"`
 	OriginalPrice *float64 `json:"original_price"`
-	ValidityDays  *int     `json:"validity_days"`
+	ValidityDays  *float64 `json:"validity_days"`
 	ValidityUnit  *string  `json:"validity_unit"`
 	Features      *string  `json:"features"`
 	ProductName   *string  `json:"product_name"`
@@ -204,7 +213,8 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 	keys := []string{
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
-		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
+		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingBalancePricingTiers,
+		SettingBalanceRechargeAsPackage, SettingBalancePackageValidityDays, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
@@ -233,6 +243,8 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		MaxPendingOrders:          pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
+		BalanceRechargeAsPackage:  vals[SettingBalanceRechargeAsPackage] == "true",
+		BalancePackageValidityDays: pcParseFloat(vals[SettingBalancePackageValidityDays], 1),
 		RechargeFeeRate:           pcParseFloat(vals[SettingRechargeFeeRate], 0),
 		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:         vals[SettingProductNamePrefix],
@@ -248,6 +260,9 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 
 		AlipayForceQRCode: vals[SettingAlipayForceQRCode] == "true",
 	}
+	if tiers, err := parseBalancePricingTiers(vals[SettingBalancePricingTiers]); err == nil {
+		cfg.BalancePricingTiers = tiers
+	}
 	if cfg.LoadBalanceStrategy == "" {
 		cfg.LoadBalanceStrategy = payment.DefaultLoadBalanceStrategy
 	}
@@ -262,6 +277,13 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		cfg.EnabledTypes = NormalizeVisibleMethods(types)
 	}
 	return cfg
+}
+
+func (cfg *PaymentConfig) ResolveBalancePricingTier(amount float64) ResolvedBalanceTier {
+	if cfg == nil {
+		return resolveBalancePricingTier(amount, nil, defaultBalanceRechargeMultiplier)
+	}
+	return resolveBalancePricingTier(amount, cfg.BalancePricingTiers, cfg.BalanceRechargeMultiplier)
 }
 
 // getStripePublishableKey finds the publishable key from the first enabled Stripe provider instance.
@@ -304,6 +326,20 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate allows at most 2 decimal places")
 		}
 	}
+	if req.BalancePackageValidityDays != nil {
+		v := *req.BalancePackageValidityDays
+		if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 {
+			return infraerrors.BadRequest("INVALID_BALANCE_PACKAGE_VALIDITY", "balance package validity days must be greater than 0")
+		}
+	}
+	balancePricingTiersRaw := ""
+	if req.BalancePricingTiers != nil {
+		raw, err := formatBalancePricingTiers(*req.BalancePricingTiers)
+		if err != nil {
+			return infraerrors.BadRequest("INVALID_BALANCE_PRICING_TIERS", err.Error())
+		}
+		balancePricingTiersRaw = raw
+	}
 	m := map[string]string{
 		SettingPaymentEnabled:                    formatBoolOrEmpty(req.Enabled),
 		SettingMinRechargeAmount:                 formatPositiveFloat(req.MinAmount),
@@ -313,6 +349,9 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingMaxPendingOrders:                  formatPositiveInt(req.MaxPendingOrders),
 		SettingBalancePayDisabled:                formatBoolOrEmpty(req.BalanceDisabled),
 		SettingBalanceRechargeMult:               formatPositiveFloat(req.BalanceRechargeMultiplier),
+		SettingBalancePricingTiers:               balancePricingTiersRaw,
+		SettingBalanceRechargeAsPackage:          formatBoolOrEmpty(req.BalanceRechargeAsPackage),
+		SettingBalancePackageValidityDays:        formatPositiveFloat(req.BalancePackageValidityDays),
 		SettingRechargeFeeRate:                   formatNonNegativeFloat(req.RechargeFeeRate),
 		SettingLoadBalanceStrategy:               derefStr(req.LoadBalanceStrategy),
 		SettingProductNamePrefix:                 derefStr(req.ProductNamePrefix),

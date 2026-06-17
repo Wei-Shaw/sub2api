@@ -44,6 +44,9 @@ func RegisterPaymentRoutes(
 	}
 
 	// --- Public payment endpoints (no auth) ---
+	v1.GET("/payment/catalog/products", paymentHandler.GetCatalogProducts)
+	v1.GET("/catalog/products", paymentHandler.GetCatalogProducts)
+	v1.GET("/catalog/products/legacy", paymentHandler.GetCatalogProductsLegacy)
 	// Signed resume-token recovery is the preferred public lookup path.
 	// The legacy anonymous out_trade_no verify endpoint remains available as a
 	// persisted-state compatibility path for staggered upgrades.
@@ -52,6 +55,7 @@ func RegisterPaymentRoutes(
 		public.POST("/orders/verify", paymentHandler.VerifyOrderPublic)
 		public.POST("/orders/resolve", paymentHandler.ResolveOrderPublicByResumeToken)
 	}
+	v1.GET("/subscription-plans", paymentHandler.GetPlansLegacy)
 
 	// --- Webhook endpoints (no auth) ---
 	webhook := v1.Group("/payment/webhook")
@@ -63,6 +67,8 @@ func RegisterPaymentRoutes(
 		webhook.POST("/wxpay", webhookHandler.WxpayNotify)
 		webhook.POST("/stripe", webhookHandler.StripeWebhook)
 		webhook.POST("/airwallex", webhookHandler.AirwallexWebhook)
+		webhook.GET("/xunhupay", webhookHandler.XunhuPayNotify)
+		webhook.POST("/xunhupay", webhookHandler.XunhuPayNotify)
 	}
 
 	// --- Admin payment endpoints (admin auth) ---
@@ -75,6 +81,8 @@ func RegisterPaymentRoutes(
 		// Config
 		adminGroup.GET("/config", adminPaymentHandler.GetConfig)
 		adminGroup.PUT("/config", adminPaymentHandler.UpdateConfig)
+		adminGroup.GET("/products", adminPaymentHandler.GetCatalogProducts)
+		adminGroup.PUT("/products", adminPaymentHandler.UpdateCatalogProducts)
 
 		// Orders
 		adminOrders := adminGroup.Group("/orders")
@@ -103,5 +111,14 @@ func RegisterPaymentRoutes(
 			providers.PUT("/:id", adminPaymentHandler.UpdateProvider)
 			providers.DELETE("/:id", adminPaymentHandler.DeleteProvider)
 		}
+	}
+
+	legacyAdminPlans := v1.Group("/admin/subscription-plans")
+	legacyAdminPlans.Use(gin.HandlerFunc(adminAuth))
+	{
+		legacyAdminPlans.GET("", adminPaymentHandler.ListPlansLegacy)
+		legacyAdminPlans.POST("", adminPaymentHandler.CreatePlanLegacy)
+		legacyAdminPlans.PUT("/:id", adminPaymentHandler.UpdatePlanLegacy)
+		legacyAdminPlans.DELETE("/:id", adminPaymentHandler.DeletePlanLegacy)
 	}
 }

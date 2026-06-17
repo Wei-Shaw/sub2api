@@ -144,11 +144,13 @@ func (s *SubscriptionService) InvalidateSubCache(userID, groupID int64) {
 
 // AssignSubscriptionInput 分配订阅输入
 type AssignSubscriptionInput struct {
-	UserID       int64
-	GroupID      int64
-	ValidityDays int
-	AssignedBy   int64
-	Notes        string
+	UserID            int64
+	GroupID           int64
+	ValidityDays      int
+	ValidityDuration  time.Duration
+	AssignedBy        int64
+	Notes             string
+	OverwriteExisting bool
 }
 
 // AssignSubscription 分配订阅给用户（不允许重复分配）
@@ -183,13 +185,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		existingSub = nil
 	}
 
-	validityDays := input.ValidityDays
-	if validityDays <= 0 {
-		validityDays = 30
-	}
-	if validityDays > MaxValidityDays {
-		validityDays = MaxValidityDays
-	}
+	validityDuration := normalizeAssignValidityDuration(input)
 
 	// 已有订阅，执行续期（在事务中完成所有更新）
 	if existingSub != nil {
@@ -199,10 +195,10 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		isExpired := !existingSub.ExpiresAt.After(now)
 		if !isExpired {
 			// 未过期：从当前过期时间累加
-			newExpiresAt = existingSub.ExpiresAt.AddDate(0, 0, validityDays)
+			newExpiresAt = existingSub.ExpiresAt.Add(validityDuration)
 		} else {
 			// 已过期：从当前时间开始计算
-			newExpiresAt = now.AddDate(0, 0, validityDays)
+			newExpiresAt = now.Add(validityDuration)
 		}
 
 		// 确保不超过最大过期时间
@@ -340,16 +336,8 @@ func appendSubscriptionNotes(existingNotes, newNotes string) string {
 
 // createSubscription 创建新订阅（内部方法）
 func (s *SubscriptionService) createSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
-	validityDays := input.ValidityDays
-	if validityDays <= 0 {
-		validityDays = 30
-	}
-	if validityDays > MaxValidityDays {
-		validityDays = MaxValidityDays
-	}
-
 	now := time.Now()
-	expiresAt := now.AddDate(0, 0, validityDays)
+	expiresAt := now.Add(normalizeAssignValidityDuration(input))
 	if expiresAt.After(MaxExpiresAt) {
 		expiresAt = MaxExpiresAt
 	}
@@ -454,6 +442,10 @@ func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, i
 		if getErr != nil {
 			return nil, false, getErr
 		}
+		if input.OverwriteExisting {
+			overwritten, err := s.overwriteExistingSubscription(ctx, sub, input)
+			return overwritten, true, err
+		}
 		if conflictReason, conflict := detectAssignSemanticConflict(sub, input); conflict {
 			return nil, false, ErrSubscriptionAssignConflict.WithMetadata(map[string]string{
 				"conflict_reason": conflictReason,
@@ -481,14 +473,45 @@ func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, i
 	return sub, false, nil
 }
 
+func (s *SubscriptionService) overwriteExistingSubscription(ctx context.Context, existingSub *UserSubscription, input *AssignSubscriptionInput) (*UserSubscription, error) {
+	if existingSub == nil || input == nil {
+		return nil, ErrSubscriptionNilInput
+	}
+	now := time.Now()
+	expiresAt := now.Add(normalizeAssignValidityDuration(input))
+	if expiresAt.After(MaxExpiresAt) {
+		expiresAt = MaxExpiresAt
+	}
+	overwritten := renewedSubscriptionTerm(existingSub, input.Notes, now, expiresAt)
+	if input.AssignedBy > 0 {
+		overwritten.AssignedBy = &input.AssignedBy
+	}
+	overwritten.AssignedAt = now
+	overwritten.Notes = input.Notes
+	if err := s.withSubscriptionUpdateTx(ctx, func(txCtx context.Context) error {
+		return s.userSubRepo.Update(txCtx, overwritten)
+	}); err != nil {
+		return nil, err
+	}
+	s.InvalidateSubCache(input.UserID, input.GroupID)
+	if s.billingCacheService != nil {
+		userID, groupID := input.UserID, input.GroupID
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+		}()
+	}
+	return s.userSubRepo.GetByID(ctx, existingSub.ID)
+}
+
 func detectAssignSemanticConflict(existing *UserSubscription, input *AssignSubscriptionInput) (string, bool) {
 	if existing == nil || input == nil {
 		return "", false
 	}
 
-	normalizedDays := normalizeAssignValidityDays(input.ValidityDays)
 	if !existing.StartsAt.IsZero() {
-		expectedExpiresAt := existing.StartsAt.AddDate(0, 0, normalizedDays)
+		expectedExpiresAt := existing.StartsAt.Add(normalizeAssignValidityDuration(input))
 		if expectedExpiresAt.After(MaxExpiresAt) {
 			expectedExpiresAt = MaxExpiresAt
 		}
@@ -514,6 +537,20 @@ func normalizeAssignValidityDays(days int) int {
 		days = MaxValidityDays
 	}
 	return days
+}
+
+func normalizeAssignValidityDuration(input *AssignSubscriptionInput) time.Duration {
+	if input == nil {
+		return 30 * 24 * time.Hour
+	}
+	if input.ValidityDuration > 0 {
+		maxDuration := time.Duration(MaxValidityDays) * 24 * time.Hour
+		if input.ValidityDuration > maxDuration {
+			return maxDuration
+		}
+		return input.ValidityDuration
+	}
+	return time.Duration(normalizeAssignValidityDays(input.ValidityDays)) * 24 * time.Hour
 }
 
 // RevokeSubscription 撤销订阅

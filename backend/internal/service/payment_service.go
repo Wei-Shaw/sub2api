@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/rand/v2"
 	"os"
 	"strings"
@@ -70,20 +71,21 @@ func generateRandomString(n int) string {
 }
 
 type CreateOrderRequest struct {
-	UserID          int64
-	Amount          float64
-	PaymentType     string
-	OpenID          string
-	ClientIP        string
-	IsMobile        bool
-	IsWeChatBrowser bool
-	SrcHost         string
-	SrcURL          string
-	ReturnURL       string
-	PaymentSource   string
-	OrderType       string
-	PlanID          int64
-	Locale          string
+	UserID                     int64
+	Amount                     float64
+	PaymentType                string
+	OpenID                     string
+	ClientIP                   string
+	IsMobile                   bool
+	IsWeChatBrowser            bool
+	SrcHost                    string
+	SrcURL                     string
+	ReturnURL                  string
+	PaymentSource              string
+	OrderType                  string
+	PlanID                     int64
+	Locale                     string
+	BalancePackageValidityDays float64
 }
 
 type CreateOrderResponse struct {
@@ -341,15 +343,59 @@ const (
 	validityUnitMonth = "month"
 )
 
-func psComputeValidityDays(days int, unit string) int {
+var paymentNow = time.Now
+
+func computeSubscriptionValidity(days float64, unit string, from time.Time) (int, time.Duration) {
 	switch unit {
 	case validityUnitWeek:
-		return days * 7
+		return splitSubscriptionValidityDuration(days * 7)
 	case validityUnitMonth:
-		return days * 30
+		wholeMonths := int(days)
+		target := from.AddDate(0, wholeMonths, 0)
+		wholeDays := int(target.Sub(from).Hours() / 24)
+		fractionalMonths := days - float64(wholeMonths)
+		if fractionalMonths <= 0 {
+			return wholeDays, 0
+		}
+		fractionalDays := fractionalMonths * 30
+		fractionalWholeDays, fractionalDuration := splitSubscriptionValidityDuration(fractionalDays)
+		return wholeDays + fractionalWholeDays, fractionalDuration
 	default:
-		return days
+		return splitSubscriptionValidityDuration(days)
 	}
+}
+
+func splitSubscriptionValidityDuration(days float64) (int, time.Duration) {
+	if days <= 0 || math.IsNaN(days) || math.IsInf(days, 0) {
+		return 0, 0
+	}
+	wholeDays := int(math.Floor(days))
+	fractional := days - float64(wholeDays)
+	if fractional <= 0 {
+		return wholeDays, 0
+	}
+	seconds := int64(math.Round(fractional * 24 * float64(time.Hour/time.Second)))
+	if seconds >= int64((24*time.Hour)/time.Second) {
+		wholeDays++
+		seconds -= int64((24 * time.Hour) / time.Second)
+	}
+	return wholeDays, time.Duration(seconds) * time.Second
+}
+
+func computeSubscriptionValidityDays(days float64, unit string, from time.Time) int {
+	wholeDays, duration := computeSubscriptionValidity(days, unit, from)
+	if duration > 0 {
+		wholeDays += int(math.Ceil(duration.Hours() / 24))
+	}
+	return wholeDays
+}
+
+func psComputeValidityDays(days float64, unit string) int {
+	return computeSubscriptionValidityDays(days, unit, paymentNow())
+}
+
+func psComputeValidityForOrder(days float64, unit string) (int, time.Duration) {
+	return computeSubscriptionValidity(days, unit, paymentNow())
 }
 
 func psStartOfDayUTC(t time.Time) time.Time {

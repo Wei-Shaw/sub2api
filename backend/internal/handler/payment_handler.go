@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,28 @@ func (h *PaymentHandler) GetPaymentConfig(c *gin.Context) {
 	response.Success(c, cfg)
 }
 
+// GetCatalogProducts returns active homepage/shop products.
+// GET /api/v1/payment/catalog/products
+func (h *PaymentHandler) GetCatalogProducts(c *gin.Context) {
+	products, err := h.configService.GetCatalogProducts(c.Request.Context(), false)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"products": products})
+}
+
+// GetCatalogProductsLegacy returns the old sub2apipay catalog response shape.
+// It keeps the static /shop frontend on the merged sub2api product settings.
+func (h *PaymentHandler) GetCatalogProductsLegacy(c *gin.Context) {
+	products, err := h.configService.GetCatalogProducts(c.Request.Context(), false)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"products": products})
+}
+
 // GetPlans returns subscription plans available for sale.
 // GET /api/v1/payment/plans
 func (h *PaymentHandler) GetPlans(c *gin.Context) {
@@ -61,7 +84,7 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 		Description   string   `json:"description"`
 		Price         float64  `json:"price"`
 		OriginalPrice *float64 `json:"original_price,omitempty"`
-		ValidityDays  int      `json:"validity_days"`
+		ValidityDays  float64  `json:"validity_days"`
 		ValidityUnit  string   `json:"validity_unit"`
 		Features      string   `json:"features"`
 		ProductName   string   `json:"product_name"`
@@ -131,32 +154,38 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 	}
 
 	response.Success(c, checkoutInfoResponse{
-		Methods:                   limitsResp.Methods,
-		GlobalMin:                 limitsResp.GlobalMin,
-		GlobalMax:                 limitsResp.GlobalMax,
-		Plans:                     planList,
-		BalanceDisabled:           cfg.BalanceDisabled,
-		BalanceRechargeMultiplier: cfg.BalanceRechargeMultiplier,
-		RechargeFeeRate:           cfg.RechargeFeeRate,
-		HelpText:                  cfg.HelpText,
-		HelpImageURL:              cfg.HelpImageURL,
-		StripePublishableKey:      cfg.StripePublishableKey,
-		AlipayForceQRCode:         cfg.AlipayForceQRCode,
+		Methods:                    limitsResp.Methods,
+		GlobalMin:                  limitsResp.GlobalMin,
+		GlobalMax:                  limitsResp.GlobalMax,
+		Plans:                      planList,
+		BalanceDisabled:            cfg.BalanceDisabled,
+		BalanceRechargeMultiplier:  cfg.BalanceRechargeMultiplier,
+		BalancePricingTiers:        cfg.BalancePricingTiers,
+		BalanceRechargeAsPackage:   cfg.BalanceRechargeAsPackage,
+		BalancePackageValidityDays: cfg.BalancePackageValidityDays,
+		RechargeFeeRate:            cfg.RechargeFeeRate,
+		HelpText:                   cfg.HelpText,
+		HelpImageURL:               cfg.HelpImageURL,
+		StripePublishableKey:       cfg.StripePublishableKey,
+		AlipayForceQRCode:          cfg.AlipayForceQRCode,
 	})
 }
 
 type checkoutInfoResponse struct {
-	Methods                   map[string]service.MethodLimits `json:"methods"`
-	GlobalMin                 float64                         `json:"global_min"`
-	GlobalMax                 float64                         `json:"global_max"`
-	Plans                     []checkoutPlan                  `json:"plans"`
-	BalanceDisabled           bool                            `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64                         `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           float64                         `json:"recharge_fee_rate"`
-	HelpText                  string                          `json:"help_text"`
-	HelpImageURL              string                          `json:"help_image_url"`
-	StripePublishableKey      string                          `json:"stripe_publishable_key"`
-	AlipayForceQRCode         bool                            `json:"alipay_force_qrcode"`
+	Methods                    map[string]service.MethodLimits `json:"methods"`
+	GlobalMin                  float64                         `json:"global_min"`
+	GlobalMax                  float64                         `json:"global_max"`
+	Plans                      []checkoutPlan                  `json:"plans"`
+	BalanceDisabled            bool                            `json:"balance_disabled"`
+	BalanceRechargeMultiplier  float64                         `json:"balance_recharge_multiplier"`
+	BalancePricingTiers        []service.BalancePricingTier    `json:"balance_pricing_tiers"`
+	BalanceRechargeAsPackage   bool                            `json:"balance_recharge_as_package"`
+	BalancePackageValidityDays float64                         `json:"balance_package_validity_days"`
+	RechargeFeeRate            float64                         `json:"recharge_fee_rate"`
+	HelpText                   string                          `json:"help_text"`
+	HelpImageURL               string                          `json:"help_image_url"`
+	StripePublishableKey       string                          `json:"stripe_publishable_key"`
+	AlipayForceQRCode          bool                            `json:"alipay_force_qrcode"`
 }
 
 type checkoutPlan struct {
@@ -173,10 +202,23 @@ type checkoutPlan struct {
 	Description     string   `json:"description"`
 	Price           float64  `json:"price"`
 	OriginalPrice   *float64 `json:"original_price,omitempty"`
-	ValidityDays    int      `json:"validity_days"`
+	ValidityDays    float64  `json:"validity_days"`
 	ValidityUnit    string   `json:"validity_unit"`
 	Features        []string `json:"features"`
 	ProductName     string   `json:"product_name"`
+}
+
+// GetPlansLegacy returns subscription plans using the old sub2apipay response
+// shape. It is kept as a compatibility endpoint for migrated clients.
+// GET /api/v1/subscription-plans
+func (h *PaymentHandler) GetPlansLegacy(c *gin.Context) {
+	plans, err := h.configService.ListPlansForSale(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	groupInfo := h.configService.GetGroupInfoMap(c.Request.Context(), plans)
+	response.Success(c, gin.H{"plans": legacySubscriptionPlans(plans, groupInfo, false)})
 }
 
 // parseFeatures splits a newline-separated features string into a string slice.
@@ -209,14 +251,15 @@ func (h *PaymentHandler) GetLimits(c *gin.Context) {
 
 // CreateOrderRequest is the request body for creating a payment order.
 type CreateOrderRequest struct {
-	Amount            float64 `json:"amount"`
-	PaymentType       string  `json:"payment_type" binding:"required"`
-	OpenID            string  `json:"openid"`
-	WechatResumeToken string  `json:"wechat_resume_token"`
-	ReturnURL         string  `json:"return_url"`
-	PaymentSource     string  `json:"payment_source"`
-	OrderType         string  `json:"order_type"`
-	PlanID            int64   `json:"plan_id"`
+	Amount                     float64 `json:"amount"`
+	PaymentType                string  `json:"payment_type" binding:"required"`
+	OpenID                     string  `json:"openid"`
+	WechatResumeToken          string  `json:"wechat_resume_token"`
+	ReturnURL                  string  `json:"return_url"`
+	PaymentSource              string  `json:"payment_source"`
+	OrderType                  string  `json:"order_type"`
+	PlanID                     int64   `json:"plan_id"`
+	BalancePackageValidityDays float64 `json:"balance_package_validity_days"`
 	// IsMobile lets the frontend declare its mobile status directly. When
 	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
 	// embedded browsers that strip the "Mobile" keyword).
@@ -253,20 +296,21 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		mobile = *req.IsMobile
 	}
 	result, err := h.paymentService.CreateOrder(c.Request.Context(), service.CreateOrderRequest{
-		UserID:          subject.UserID,
-		Amount:          req.Amount,
-		PaymentType:     req.PaymentType,
-		OpenID:          req.OpenID,
-		ClientIP:        c.ClientIP(),
-		IsMobile:        mobile,
-		IsWeChatBrowser: isWeChatBrowser(c),
-		SrcHost:         c.Request.Host,
-		SrcURL:          c.Request.Referer(),
-		ReturnURL:       req.ReturnURL,
-		PaymentSource:   req.PaymentSource,
-		OrderType:       req.OrderType,
-		PlanID:          req.PlanID,
-		Locale:          c.GetHeader("Accept-Language"),
+		UserID:                     subject.UserID,
+		Amount:                     req.Amount,
+		PaymentType:                req.PaymentType,
+		OpenID:                     req.OpenID,
+		ClientIP:                   c.ClientIP(),
+		IsMobile:                   mobile,
+		IsWeChatBrowser:            isWeChatBrowser(c),
+		SrcHost:                    c.Request.Host,
+		SrcURL:                     c.Request.Referer(),
+		ReturnURL:                  req.ReturnURL,
+		PaymentSource:              req.PaymentSource,
+		OrderType:                  req.OrderType,
+		PlanID:                     req.PlanID,
+		BalancePackageValidityDays: req.BalancePackageValidityDays,
+		Locale:                     c.GetHeader("Accept-Language"),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -476,9 +520,43 @@ type PublicOrderResult struct {
 	RefundRequestedBy   *string    `json:"refund_requested_by,omitempty"`
 	RefundRequestReason *string    `json:"refund_request_reason,omitempty"`
 	PlanID              *int64     `json:"plan_id,omitempty"`
+	PaymentSuccess      bool       `json:"paymentSuccess"`
+	RechargeSuccess     bool       `json:"rechargeSuccess"`
+	RechargeStatus      string     `json:"rechargeStatus"`
+}
+
+func deriveRechargeStatus(order *dbent.PaymentOrder) (paymentSuccess bool, rechargeSuccess bool, rechargeStatus string) {
+	if order == nil {
+		return false, false, "not_paid"
+	}
+
+	paymentSuccess = order.PaidAt != nil
+	rechargeSuccess = order.CompletedAt != nil || order.Status == service.OrderStatusCompleted
+	if rechargeSuccess {
+		return paymentSuccess, true, "success"
+	}
+
+	switch order.Status {
+	case service.OrderStatusRecharging:
+		return paymentSuccess, false, "recharging"
+	case service.OrderStatusFailed:
+		return paymentSuccess, false, "failed"
+	case service.OrderStatusExpired,
+		service.OrderStatusCancelled,
+		service.OrderStatusRefunding,
+		service.OrderStatusRefunded,
+		service.OrderStatusRefundFailed:
+		return paymentSuccess, false, "closed"
+	}
+
+	if paymentSuccess {
+		return true, false, "paid_pending"
+	}
+	return false, false, "not_paid"
 }
 
 func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
+	paymentSuccess, rechargeSuccess, rechargeStatus := deriveRechargeStatus(order)
 	return PublicOrderResult{
 		ID:                  order.ID,
 		OutTradeNo:          order.OutTradeNo,
@@ -499,6 +577,9 @@ func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
 		RefundRequestedBy:   order.RefundRequestedBy,
 		RefundRequestReason: order.RefundRequestReason,
 		PlanID:              order.PlanID,
+		PaymentSuccess:      paymentSuccess,
+		RechargeSuccess:     rechargeSuccess,
+		RechargeStatus:      rechargeStatus,
 	}
 }
 
@@ -581,6 +662,9 @@ type PaymentOrderResult struct {
 	RefundRequestReason *string    `json:"refund_request_reason,omitempty"`
 	PlanID              *int64     `json:"plan_id,omitempty"`
 	ProviderInstanceID  *string    `json:"provider_instance_id,omitempty"`
+	PaymentSuccess      bool       `json:"paymentSuccess"`
+	RechargeSuccess     bool       `json:"rechargeSuccess"`
+	RechargeStatus      string     `json:"rechargeStatus"`
 }
 
 func sanitizePaymentOrdersForResponse(orders []*dbent.PaymentOrder) []PaymentOrderResult {
@@ -597,6 +681,7 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *PaymentOrderRes
 	if order == nil {
 		return nil
 	}
+	paymentSuccess, rechargeSuccess, rechargeStatus := deriveRechargeStatus(order)
 	return &PaymentOrderResult{
 		ID:                  order.ID,
 		UserID:              order.UserID,
@@ -619,6 +704,9 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *PaymentOrderRes
 		RefundRequestReason: order.RefundRequestReason,
 		PlanID:              order.PlanID,
 		ProviderInstanceID:  order.ProviderInstanceID,
+		PaymentSuccess:      paymentSuccess,
+		RechargeSuccess:     rechargeSuccess,
+		RechargeStatus:      rechargeStatus,
 	}
 }
 
