@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -121,19 +122,18 @@ REDACTED
 	)
 
 	// 5. Build upstream request
-	apiKey := account.GetOpenAIApiKey()
-	if apiKey == "" {
-		return nil, fmt.Errorf("account %d missing api_key", account.ID)
-REDACTED
-	baseURL := account.GetOpenAIBaseURL()
-	if baseURL == "" {
-		baseURL = "https://api.openai.com"
-REDACTED
-	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+	token, tokenKind, err := s.GetAccessToken(ctx, account)
 	if err != nil {
-		return nil, fmt.Errorf("invalid base_url: %w", err)
+		return nil, err
 REDACTED
-	targetURL := buildOpenAIChatCompletionsURL(validatedURL)
+	if strings.TrimSpace(token) == "" {
+		return nil, fmt.Errorf("account %d missing %s credential", account.ID, tokenKind)
+REDACTED
+
+	targetURL, err := s.rawChatCompletionsURL(account)
+	if err != nil {
+		return nil, err
+REDACTED
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(upstreamBody))
@@ -143,7 +143,7 @@ REDACTED
 REDACTED
 	upstreamReq = upstreamReq.WithContext(WithHTTPUpstreamProfile(upstreamReq.Context(), HTTPUpstreamProfileOpenAI))
 	upstreamReq.Header.Set("Content-Type", "application/json")
-	upstreamReq.Header.Set("Authorization", "Bearer "+apiKey)
+	upstreamReq.Header.Set("Authorization", "Bearer "+token)
 	if clientStream {
 		upstreamReq.Header.Set("Accept", "text/event-stream")
 REDACTED else {
@@ -162,6 +162,8 @@ REDACTED
 	customUA := account.GetOpenAIUserAgent()
 	if customUA != "" {
 		upstreamReq.Header.Set("user-agent", customUA)
+REDACTED else if account.Platform == PlatformGrok {
+		upstreamReq.Header.Set("user-agent", "sub2api-grok/1.0")
 REDACTED
 
 	// 6. Send request
@@ -180,9 +182,32 @@ REDACTED
 		respBody := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		if account.Platform == PlatformGrok {
+			s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+	REDACTED
 
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		if account.Platform == PlatformGrok {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
+				Kind:               "failover",
+				Message:            upstreamMsg,
+		REDACTED)
+			s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+			if s.shouldFailoverUpstreamError(resp.StatusCode) {
+				return nil, &UpstreamFailoverError{
+					StatusCode:             resp.StatusCode,
+					ResponseBody:           respBody,
+					RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			REDACTED
+		REDACTED
+			return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
+	REDACTED
 		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 			upstreamDetail := ""
 			if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
@@ -212,11 +237,35 @@ REDACTED
 		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
 REDACTED
 
+	if account.Platform == PlatformGrok {
+		s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+REDACTED
+
 	// 8. Forward response
 	if clientStream {
 		return s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
 REDACTED
 	return s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+REDACTED
+
+func (s *OpenAIGatewayService) rawChatCompletionsURL(account *Account) (string, error) {
+	if account.Platform == PlatformGrok {
+		targetURL, err := xai.BuildChatCompletionsURL(account.GetGrokBaseURL())
+		if err != nil {
+			return "", fmt.Errorf("invalid grok base_url: %w", err)
+	REDACTED
+		return targetURL, nil
+REDACTED
+
+	baseURL := account.GetOpenAIBaseURL()
+	if baseURL == "" {
+		baseURL = "https://api.openai.com"
+REDACTED
+	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base_url: %w", err)
+REDACTED
+	return buildOpenAIChatCompletionsURL(validatedURL), nil
 REDACTED
 
 // streamRawChatCompletions 透传上游 CC SSE 流到客户端，并提取 usage（包括

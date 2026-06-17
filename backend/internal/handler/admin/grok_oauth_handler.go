@@ -13,12 +13,18 @@ import (
 type GrokOAuthHandler struct {
 	grokOAuthService *service.GrokOAuthService
 	adminService     service.AdminService
+	quotaService     *service.GrokQuotaService
 REDACTED
 
-func NewGrokOAuthHandler(grokOAuthService *service.GrokOAuthService, adminService service.AdminService) *GrokOAuthHandler {
+func NewGrokOAuthHandler(
+	grokOAuthService *service.GrokOAuthService,
+	adminService service.AdminService,
+	quotaService *service.GrokQuotaService,
+) *GrokOAuthHandler {
 	return &GrokOAuthHandler{
 		grokOAuthService: grokOAuthService,
 		adminService:     adminService,
+		quotaService:     quotaService,
 REDACTED
 REDACTED
 
@@ -196,4 +202,40 @@ REDACTED)
 		return
 REDACTED
 	response.Success(c, dto.AccountFromService(account))
+REDACTED
+
+func (h *GrokOAuthHandler) QueryQuota(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+REDACTED
+	if h.quotaService == nil {
+		response.BadRequest(c, "grok quota service is not enabled")
+		return
+REDACTED
+	result, err := h.quotaService.ProbeUsage(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, result)
+REDACTED
+
+func (h *GrokOAuthHandler) ResetQuota(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+REDACTED
+	if h.quotaService == nil {
+		response.BadRequest(c, "grok quota service is not enabled")
+		return
+REDACTED
+	result, err := h.quotaService.ResetQuota(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, result)
 REDACTED

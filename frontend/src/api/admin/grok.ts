@@ -39,6 +39,39 @@ export interface GrokTokenInfo {
   [key: string]: unknown
 REDACTED
 
+export interface GrokQuotaWindow {
+  limit?: number | null
+  remaining?: number | null
+  reset_unix?: number | null
+  reset_at?: string | null
+REDACTED
+
+export interface GrokQuotaSnapshot {
+  requests?: GrokQuotaWindow | null
+  tokens?: GrokQuotaWindow | null
+  retry_after_seconds?: number | null
+  subscription_tier?: string
+  entitlement_status?: string
+  status_code?: number
+  headers?: Record<string, string>
+  updated_at: string
+REDACTED
+
+export interface GrokQuotaProbeResult {
+  source: 'active_probe'
+  snapshot?: GrokQuotaSnapshot | null
+  status_code?: number
+  headers_observed: boolean
+  reset_supported: boolean
+  fetched_at: number
+REDACTED
+
+export interface GrokQuotaResetResult {
+  supported: boolean
+  code: string
+  message: string
+REDACTED
+
 export async function generateAuthUrl(
   payload: GrokAuthUrlRequest
 ): Promise<GrokAuthUrlResponse> {
@@ -71,4 +104,14 @@ export async function refreshGrokToken(
   return data
 REDACTED
 
-export default { generateAuthUrl, exchangeCode, refreshGrokToken REDACTED
+export async function queryQuota(id: number): Promise<GrokQuotaProbeResult> {
+  const { data REDACTED = await apiClient.get<GrokQuotaProbeResult>(`/admin/grok/accounts/${idREDACTED/quota`)
+  return data
+REDACTED
+
+export async function resetQuota(id: number): Promise<GrokQuotaResetResult> {
+  const { data REDACTED = await apiClient.post<GrokQuotaResetResult>(`/admin/grok/accounts/${idREDACTED/reset-quota`)
+  return data
+REDACTED
+
+export default { generateAuthUrl, exchangeCode, refreshGrokToken, queryQuota, resetQuota REDACTED

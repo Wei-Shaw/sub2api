@@ -88,6 +88,58 @@ REDACTED
 	require.Equal(t, "sub2api", values.Get("referrer"))
 REDACTED
 
+func TestValidateXAIURLsAllowOfficialOAuthAndGatewayHosts(t *testing.T) {
+	authorizeURL, err := ValidateOAuthEndpointURL(DefaultAuthorizeURL)
+REDACTED
+	require.Equal(t, DefaultAuthorizeURL, authorizeURL)
+
+	tokenURL, err := ValidateOAuthEndpointURL(DefaultTokenURL)
+REDACTED
+	require.Equal(t, DefaultTokenURL, tokenURL)
+
+	baseURL, err := ValidateBaseURL(DefaultBaseURL)
+REDACTED
+	require.Equal(t, DefaultBaseURL, baseURL)
+
+	cliBaseURL, err := ValidateBaseURL(DefaultCLIBaseURL)
+REDACTED
+	require.Equal(t, DefaultCLIBaseURL, cliBaseURL)
+
+	baseURLNoPath, err := ValidateBaseURL("https://api.x.ai")
+REDACTED
+	require.Equal(t, DefaultBaseURL, baseURLNoPath)
+
+	chatURL, err := BuildChatCompletionsURL(DefaultCLIBaseURL + "/")
+REDACTED
+	require.Equal(t, DefaultCLIBaseURL+"/chat/completions", chatURL)
+REDACTED
+
+func TestValidateXAIURLsRejectArbitraryHostsByDefault(t *testing.T) {
+	_, err := ValidateOAuthEndpointURL("https://auth.example.test/oauth2/token")
+REDACTED
+
+	_, err = ValidateBaseURL("https://xai.test/v1")
+REDACTED
+
+	_, err = ValidateBaseURL("http://127.0.0.1:8080/v1")
+REDACTED
+
+	_, err = ValidateBaseURL("https://api.x.ai/custom")
+REDACTED
+REDACTED
+
+func TestValidateXAIURLsAllowUnsafeDevOverride(t *testing.T) {
+	t.Setenv(EnvAllowUnsafeURLOverrides, "true")
+
+	tokenURL, err := ValidateOAuthEndpointURL("http://127.0.0.1:8080/oauth2/token")
+REDACTED
+	require.Equal(t, "http://127.0.0.1:8080/oauth2/token", tokenURL)
+
+	baseURL, err := ValidateBaseURL("http://127.0.0.1:8080/v1/")
+REDACTED
+	require.Equal(t, "http://127.0.0.1:8080/v1", baseURL)
+REDACTED
+
 func TestDefaultModelMappingIncludesGrokAliases(t *testing.T) {
 	t.Parallel()
 

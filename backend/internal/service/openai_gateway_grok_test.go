@@ -3,13 +3,18 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -56,4 +61,76 @@ REDACTED
 	data, err := io.ReadAll(req.Body)
 REDACTED
 	require.Equal(t, `{"model":"grok-4.3"REDACTED`, strings.TrimSpace(string(data)))
+REDACTED
+
+func TestBuildGrokResponsesRequestRejectsUnsafeAccountBaseURL(t *testing.T) {
+	t.Parallel()
+
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"base_url": "https://xai.test/v1",
+	REDACTED,
+REDACTED
+
+	_, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "access-token")
+REDACTED
+	require.Contains(t, err.Error(), "invalid base url")
+REDACTED
+
+func TestForwardAsChatCompletionsForGrokUsesXAIChatCompletionsAndSnapshots(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"stream":falseREDACTED`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	account := &Account{
+		ID:          51,
+		Name:        "grok",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+REDACTED
+			"access_token": "access-token",
+			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			"base_url":     xai.DefaultCLIBaseURL,
+	REDACTED,
+REDACTED
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{51: accountREDACTED,
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type":                   []string{"application/json"REDACTED,
+			"Xai-Request-Id":                 []string{"xai-req"REDACTED,
+			"X-Ratelimit-Limit-Requests":     []string{"10"REDACTED,
+			"X-Ratelimit-Remaining-Requests": []string{"9"REDACTED,
+			"X-Ratelimit-Limit-Tokens":       []string{"1000"REDACTED,
+			"X-Ratelimit-Remaining-Tokens":   []string{"990"REDACTED,
+	REDACTED,
+		Body: io.NopCloser(strings.NewReader(`{"id":"chatcmpl","object":"chat.completion","model":"grok-4.3","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":2REDACTEDREDACTED`)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil, nil),
+		accountRepo:       repo,
+REDACTED
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+REDACTED
+	require.Equal(t, xai.DefaultCLIBaseURL+"/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "grok", result.Model)
+	require.Equal(t, "grok-4.3", result.UpstreamModel)
+	require.Equal(t, 1, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+	require.NotNil(t, repo.updates[51][grokQuotaSnapshotExtraKey])
+	require.Equal(t, http.StatusOK, recorder.Code)
 REDACTED
