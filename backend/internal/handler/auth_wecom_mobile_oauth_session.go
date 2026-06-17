@@ -18,18 +18,22 @@ func (h *AuthHandler) createWeComMobilePendingSession(ctx context.Context, input
 	if err != nil {
 		return nil, err
 	}
+	localFlowState := map[string]any{
+		weComMobileOAuthStateKey:  hashWeComMobileState(input.state),
+		weComMobileOAuthStatusKey: weComMobileOAuthStatusPending,
+		"authorize_url":           input.authorizeURL,
+	}
+	if promoCode := strings.TrimSpace(input.promoCode); promoCode != "" {
+		localFlowState[oauthPromoCodeStateKey] = promoCode
+	}
 	return svc.CreatePendingSession(ctx, service.CreatePendingAuthSessionInput{
 		Intent:            input.intent,
 		Identity:          service.PendingAuthIdentityKey{ProviderType: "wecom", ProviderKey: weComOAuthProviderKey, ProviderSubject: pendingWeComMobileSubject(input.state)},
 		TargetUserID:      input.targetUserID,
 		RedirectTo:        input.redirectTo,
 		BrowserSessionKey: input.browserSessionKey,
-		LocalFlowState: map[string]any{
-			weComMobileOAuthStateKey:  hashWeComMobileState(input.state),
-			weComMobileOAuthStatusKey: weComMobileOAuthStatusPending,
-			"authorize_url":           input.authorizeURL,
-		},
-		ExpiresAt: time.Now().UTC().Add(weComMobileOAuthSessionTTL),
+		LocalFlowState:    localFlowState,
+		ExpiresAt:         time.Now().UTC().Add(weComMobileOAuthSessionTTL),
 	})
 }
 

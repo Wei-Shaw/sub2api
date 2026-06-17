@@ -1447,7 +1447,15 @@ func (h *AuthHandler) shouldSkipPendingOAuthAdoptionPrompt(
 		return false, nil
 	}
 
-	return pendingOAuthIdentityExistsForUser(ctx, h.entClient(), session, *session.TargetUserID)
+	identityExists, err := pendingOAuthIdentityExistsForUser(ctx, h.entClient(), session, *session.TargetUserID)
+	if err != nil || identityExists {
+		return identityExists, err
+	}
+	if strings.EqualFold(strings.TrimSpace(session.ProviderType), "wecom") &&
+		strings.TrimSpace(session.ResolvedEmail) != "" {
+		return true, nil
+	}
+	return false, nil
 }
 
 func readPendingOAuthBrowserSession(c *gin.Context, h *AuthHandler) (*service.AuthPendingIdentityService, *dbent.PendingAuthSession, func(), error) {

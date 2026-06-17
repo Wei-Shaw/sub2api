@@ -428,6 +428,7 @@ export interface SystemSettings {
   auth_source_default_linuxdo_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_oidc_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_wechat_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_wecom_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_github_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_google_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_dingtalk_platform_quotas?: DefaultPlatformQuotasMap;
@@ -707,6 +708,7 @@ export interface UpdateSettingsRequest {
   auth_source_default_linuxdo_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_oidc_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_wechat_platform_quotas?: DefaultPlatformQuotasMap;
+  auth_source_default_wecom_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_github_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_google_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_dingtalk_platform_quotas?: DefaultPlatformQuotasMap;

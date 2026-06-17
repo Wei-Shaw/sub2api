@@ -151,6 +151,7 @@ func (h *AuthHandler) WeComOAuthStart(c *gin.Context) {
 	mode := normalizeWeComOAuthMode(c.Query("mode"), c.Request.UserAgent())
 	intent := normalizeWeChatOAuthIntent(c.Query("intent"))
 	secureCookie := isRequestHTTPS(c)
+	captureOAuthPromoCode(c, secureCookie)
 	weComSetCookie(c, weComOAuthStateCookieName, encodeCookieValue(state), weComOAuthCookieMaxAgeSec, secureCookie)
 	weComSetCookie(c, weComOAuthRedirectCookieName, encodeCookieValue(redirectTo), weComOAuthCookieMaxAgeSec, secureCookie)
 	weComSetCookie(c, weComOAuthIntentCookieName, encodeCookieValue(intent), weComOAuthCookieMaxAgeSec, secureCookie)
@@ -196,6 +197,7 @@ func (h *AuthHandler) WeComOAuthCallback(c *gin.Context) {
 		weComClearCookie(c, weComOAuthIntentCookieName, secureCookie)
 		weComClearCookie(c, weComOAuthModeCookieName, secureCookie)
 		weComClearCookie(c, weComOAuthBindUserCookieName, secureCookie)
+		clearOAuthPromoCodeCookie(c, secureCookie)
 	}()
 	expectedState, err := readCookieDecoded(c, weComOAuthStateCookieName)
 	if err != nil || expectedState == "" || state != expectedState {
@@ -291,16 +293,22 @@ func (h *AuthHandler) WeComOAuthCallback(c *gin.Context) {
 		return
 	}
 
-	tokenPair, user, authErr := h.authService.LoginOrRegisterVerifiedEmailOAuth(c.Request.Context(), service.EmailOAuthIdentityInput{
-		ProviderType:     "wecom",
-		ProviderKey:      weComOAuthProviderKey,
-		ProviderSubject:  resolved.providerSubject,
-		Email:            resolved.email,
-		EmailVerified:    true,
-		Username:         resolved.username,
-		AvatarURL:        weComResolvedAvatarURL(resolved),
-		UpstreamMetadata: resolved.upstreamClaims,
-	})
+	tokenPair, user, authErr := h.authService.LoginOrRegisterVerifiedEmailOAuthWithSignupCodes(
+		c.Request.Context(),
+		service.EmailOAuthIdentityInput{
+			ProviderType:     "wecom",
+			ProviderKey:      weComOAuthProviderKey,
+			ProviderSubject:  resolved.providerSubject,
+			Email:            resolved.email,
+			EmailVerified:    true,
+			Username:         resolved.username,
+			AvatarURL:        weComResolvedAvatarURL(resolved),
+			UpstreamMetadata: resolved.upstreamClaims,
+		},
+		"",
+		"",
+		readOAuthPromoCode(c),
+	)
 	var targetUserID *int64
 	if user != nil && user.ID > 0 {
 		if authErr == nil {
@@ -401,11 +409,12 @@ func (h *AuthHandler) CompleteWeComOAuthRegistration(c *gin.Context) {
 		AvatarURL:        pendingSessionStringValue(session.UpstreamIdentityClaims, "suggested_avatar_url"),
 		UpstreamMetadata: session.UpstreamIdentityClaims,
 	}
-	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(
+	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithSignupCodes(
 		c.Request.Context(),
 		input,
 		req.InvitationCode,
 		req.AffCode,
+		pendingOAuthPromoCode(session),
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)

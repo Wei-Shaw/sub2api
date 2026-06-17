@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -44,5 +45,25 @@ func TestBuildWeComMobileAuthorizeURLUsesPrivateInfoScope(t *testing.T) {
 	}
 	if q.Get("redirect_uri") != "https://app.example.com/api/v1/auth/oauth/wecom/mobile/callback" {
 		t.Fatalf("unexpected redirect_uri: %q", q.Get("redirect_uri"))
+	}
+}
+
+func TestCreateWeComMobilePendingSessionStoresPromoCode(t *testing.T) {
+	handler, _ := newOAuthPendingFlowTestHandler(t, false)
+
+	session, err := handler.createWeComMobilePendingSession(context.Background(), weComMobilePendingSessionInput{
+		state:             "state-1",
+		browserSessionKey: "browser-session-1",
+		intent:            oauthIntentLogin,
+		redirectTo:        "/dashboard",
+		authorizeURL:      "https://open.weixin.qq.com/connect/oauth2/authorize",
+		promoCode:         " PROMO2026 ",
+	})
+	if err != nil {
+		t.Fatalf("createWeComMobilePendingSession returned error: %v", err)
+	}
+
+	if got := pendingOAuthPromoCode(session); got != "PROMO2026" {
+		t.Fatalf("expected promo code to be stored, got %q", got)
 	}
 }

@@ -366,7 +366,7 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 			true,
 			true,
 		); err != nil {
-			response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_BIND_APPLY_FAILED", "failed to bind pending oauth identity").WithCause(err))
+			respondPendingOAuthBindingApplyError(c, err)
 			return
 		}
 		if _, err := pendingSvc.ConsumeBrowserSession(

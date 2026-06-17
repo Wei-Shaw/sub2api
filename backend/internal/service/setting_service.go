@@ -294,11 +294,13 @@ var (
 		platformQuotas:   SettingKeyAuthSourcePlatformQuotas("wechat"),
 	}
 	weComAuthSourceDefaultKeys = authSourceDefaultKeySet{
+		source:           "wecom",
 		balance:          SettingKeyAuthSourceDefaultWeComBalance,
 		concurrency:      SettingKeyAuthSourceDefaultWeComConcurrency,
 		subscriptions:    SettingKeyAuthSourceDefaultWeComSubscriptions,
 		grantOnSignup:    SettingKeyAuthSourceDefaultWeComGrantOnSignup,
 		grantOnFirstBind: SettingKeyAuthSourceDefaultWeComGrantOnFirstBind,
+		platformQuotas:   SettingKeyAuthSourcePlatformQuotas("wecom"),
 	}
 	gitHubAuthSourceDefaultKeys = authSourceDefaultKeySet{
 		source:           "github",
@@ -2147,6 +2149,7 @@ func (s *SettingService) buildAuthSourceDefaultUpdates(ctx context.Context, sett
 		{"linuxdo", settings.LinuxDo.PlatformQuotas},
 		{"oidc", settings.OIDC.PlatformQuotas},
 		{"wechat", settings.WeChat.PlatformQuotas},
+		{"wecom", settings.WeCom.PlatformQuotas},
 		{"github", settings.GitHub.PlatformQuotas},
 		{"google", settings.Google.PlatformQuotas},
 		{"dingtalk", settings.DingTalk.PlatformQuotas},
@@ -2158,7 +2161,7 @@ func (s *SettingService) buildAuthSourceDefaultUpdates(ctx context.Context, sett
 		}
 	}
 
-	updates := make(map[string]string, 36)
+	updates := make(map[string]string, 37)
 	writeProviderDefaultGrantUpdates(updates, emailAuthSourceDefaultKeys, settings.Email)
 	writeProviderDefaultGrantUpdates(updates, linuxDoAuthSourceDefaultKeys, settings.LinuxDo)
 	writeProviderDefaultGrantUpdates(updates, oidcAuthSourceDefaultKeys, settings.OIDC)
@@ -2778,6 +2781,7 @@ func (s *SettingService) GetAuthSourceDefaultSettings(ctx context.Context) (*Aut
 		SettingKeyAuthSourcePlatformQuotas("linuxdo"),
 		SettingKeyAuthSourcePlatformQuotas("oidc"),
 		SettingKeyAuthSourcePlatformQuotas("wechat"),
+		SettingKeyAuthSourcePlatformQuotas("wecom"),
 		SettingKeyAuthSourcePlatformQuotas("github"),
 		SettingKeyAuthSourcePlatformQuotas("google"),
 		SettingKeyAuthSourcePlatformQuotas("dingtalk"),

@@ -22,6 +22,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import { resolveWeComOAuthStart } from '@/api/auth'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
+import { resolveOAuthPromoCode } from '@/utils/oauthPromoCode'
 
 const props = defineProps<{
   disabled?: boolean
@@ -53,7 +54,11 @@ function startLogin(): void {
   }
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   storeOAuthAffiliateCode(resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code))
+  const promoCode = resolveOAuthPromoCode(route.query.promo, route.query.promo_code)
   const params = new URLSearchParams({ redirect: redirectTo })
+  if (promoCode) {
+    params.set('promo_code', promoCode)
+  }
   const start = resolveWeComOAuthStart(appStore.cachedPublicSettings)
   if (start.mode === 'webview') {
     const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'

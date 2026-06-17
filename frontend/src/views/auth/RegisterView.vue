@@ -334,6 +334,7 @@ import {
   loadAffiliateReferralCode,
   resolveAffiliateReferralCode
 } from '@/utils/oauthAffiliate'
+import { storeOAuthPromoCode } from '@/utils/oauthPromoCode'
 import type { LoginAgreementDocument } from '@/types'
 
 const { t, locale } = useI18n()
@@ -488,9 +489,12 @@ onMounted(async () => {
       const promoParam = route.query.promo as string
       if (promoParam) {
         formData.promo_code = promoParam
+        storeOAuthPromoCode(promoParam)
         // Validate the promo code from URL
         await validatePromoCodeDebounced(promoParam)
       }
+    } else {
+      storeOAuthPromoCode()
     }
     syncAffiliateReferralCode()
   } catch (error) {

@@ -827,6 +827,76 @@ func TestExchangePendingOAuthCompletionExistingLoginWithSuggestedProfileSkipsAdo
 	require.Equal(t, "/dashboard", completion["redirect"])
 }
 
+func TestExchangePendingOAuthCompletionWeComEmailMatchSkipsAdoptionPromptAndBindsIdentity(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	userEntity, err := client.User.Create().
+		SetEmail("wecom-user@example.com").
+		SetUsername("wecom-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("wecom-email-match-session-token").
+		SetIntent("login").
+		SetProviderType("wecom").
+		SetProviderKey(weComOAuthProviderKey).
+		SetProviderSubject("wwcorp/zhangsan").
+		SetTargetUserID(userEntity.ID).
+		SetResolvedEmail(userEntity.Email).
+		SetBrowserSessionKey("wecom-email-match-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"email":                  userEntity.Email,
+			"wecom_email":            userEntity.Email,
+			"username":               "zhangsan",
+			"suggested_display_name": "张三",
+			"suggested_avatar_url":   "https://cdn.example/wecom.png",
+		}).
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"redirect": "/dashboard",
+			},
+		}).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/pending/exchange", nil)
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue(session.BrowserSessionKey)})
+	ginCtx.Request = req
+
+	handler.ExchangePendingOAuthCompletion(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	payload := decodeJSONResponseData(t, recorder)
+	require.NotEmpty(t, payload["access_token"])
+	require.Equal(t, "/dashboard", payload["redirect"])
+	require.Equal(t, "张三", payload["suggested_display_name"])
+	require.NotContains(t, payload, "adoption_required")
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("wecom"),
+			authidentity.ProviderKeyEQ(weComOAuthProviderKey),
+			authidentity.ProviderSubjectEQ("wwcorp/zhangsan"),
+			authidentity.UserIDEQ(userEntity.ID),
+		).
+		Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, userEntity.ID, identity.UserID)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+	require.NoError(t, err)
+	require.NotNil(t, storedSession.ConsumedAt)
+}
+
 func TestExchangePendingOAuthCompletionBlocksBackendModeBeforeReturningTokenPayload(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
 		settingValues: map[string]string{

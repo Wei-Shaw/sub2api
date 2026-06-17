@@ -63,6 +63,7 @@ export interface WeComMobileOAuthStatusResponse {
 export async function startWeComMobileOAuth(payload: {
   redirect?: string
   intent?: 'login' | 'bind_current_user'
+  promo_code?: string
 }): Promise<WeComMobileOAuthStartResponse> {
   const { data } = await apiClient.post<WeComMobileOAuthStartResponse>(
     '/auth/oauth/wecom/mobile/start',

@@ -277,6 +277,27 @@ func TestUpdateSettingsWithAuthSourceDefaults_PlatformQuotaRoundTrip(t *testing.
 	}
 }
 
+func TestUpdateSettingsWithAuthSourceDefaults_WeComPlatformQuotaRoundTrip(t *testing.T) {
+	svc := newSettingServiceForPlatformQuotaTest(nil)
+	monthly := 25.0
+	authDefaults := &AuthSourceDefaultSettings{
+		WeCom: ProviderDefaultGrantSettings{
+			PlatformQuotas: map[string]*DefaultPlatformQuotaSetting{
+				"openai": {MonthlyLimitUSD: &monthly},
+			},
+		},
+	}
+
+	err := svc.UpdateSettingsWithAuthSourceDefaults(context.Background(), &SystemSettings{}, authDefaults)
+	require.NoError(t, err)
+
+	got := svc.GetAuthSourcePlatformQuotas(context.Background(), "wecom")
+	oai := got["openai"]
+	require.NotNil(t, oai)
+	require.NotNil(t, oai.MonthlyLimitUSD)
+	require.Equal(t, monthly, *oai.MonthlyLimitUSD)
+}
+
 // TestUpdateSettingsWithAuthSourceDefaults_NilPlatformQuotaPreservesExisting 验证 #2 防御：
 // 请求未携带某 auth source 的 platform quota（nil）时跳过写入、保留既有配置，
 // 而非整体替换为空 map 清空（与系统层 nil 守卫一致）。

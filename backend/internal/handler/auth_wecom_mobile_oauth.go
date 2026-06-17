@@ -30,8 +30,9 @@ const (
 )
 
 type weComMobileOAuthStartRequest struct {
-	Redirect string `json:"redirect"`
-	Intent   string `json:"intent"`
+	Redirect  string `json:"redirect"`
+	Intent    string `json:"intent"`
+	PromoCode string `json:"promo_code"`
 }
 
 type weComMobilePendingSessionInput struct {
@@ -40,6 +41,7 @@ type weComMobilePendingSessionInput struct {
 	intent            string
 	redirectTo        string
 	authorizeURL      string
+	promoCode         string
 	targetUserID      *int64
 }
 
@@ -87,6 +89,7 @@ func (h *AuthHandler) WeComMobileOAuthStart(c *gin.Context) {
 		intent:            intent,
 		redirectTo:        redirectTo,
 		authorizeURL:      authURL,
+		promoCode:         req.PromoCode,
 		targetUserID:      targetUserID,
 	})
 	if err != nil {
@@ -228,16 +231,22 @@ func (h *AuthHandler) completeWeComMobileLogin(ctx context.Context, session *dbe
 		_, err := h.updateWeComMobilePendingSession(ctx, session, resolved, "", nil, buildWeComEmailRequiredResponse(session.RedirectTo))
 		return err
 	}
-	tokenPair, user, authErr := h.authService.LoginOrRegisterVerifiedEmailOAuth(ctx, service.EmailOAuthIdentityInput{
-		ProviderType:     "wecom",
-		ProviderKey:      weComOAuthProviderKey,
-		ProviderSubject:  resolved.providerSubject,
-		Email:            resolved.email,
-		EmailVerified:    true,
-		Username:         resolved.username,
-		AvatarURL:        weComResolvedAvatarURL(resolved),
-		UpstreamMetadata: resolved.upstreamClaims,
-	})
+	tokenPair, user, authErr := h.authService.LoginOrRegisterVerifiedEmailOAuthWithSignupCodes(
+		ctx,
+		service.EmailOAuthIdentityInput{
+			ProviderType:     "wecom",
+			ProviderKey:      weComOAuthProviderKey,
+			ProviderSubject:  resolved.providerSubject,
+			Email:            resolved.email,
+			EmailVerified:    true,
+			Username:         resolved.username,
+			AvatarURL:        weComResolvedAvatarURL(resolved),
+			UpstreamMetadata: resolved.upstreamClaims,
+		},
+		"",
+		"",
+		pendingOAuthPromoCode(session),
+	)
 	var targetUserID *int64
 	if user != nil && user.ID > 0 {
 		if authErr == nil {

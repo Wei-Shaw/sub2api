@@ -63,6 +63,7 @@ import {
   loadWeComSDK,
   type WeComLoginInstance
 } from './wecomLoginPanel'
+import { resolveOAuthPromoCode } from '@/utils/oauthPromoCode'
 
 const route = useRoute()
 const router = useRouter()
@@ -222,7 +223,8 @@ async function start(): Promise<void> {
     }
     const result = await startWeComMobileOAuth({
       redirect: sanitizeRedirectPath(route.query.redirect),
-      intent: isBinding.value ? 'bind_current_user' : 'login'
+      intent: isBinding.value ? 'bind_current_user' : 'login',
+      promo_code: isBinding.value ? undefined : resolveOAuthPromoCode(route.query.promo, route.query.promo_code)
     })
     sessionId.value = result.session_id
     authorizeUrl.value = result.authorize_url
