@@ -196,3 +196,16 @@ func TestMigration142RestoresFinalAuthProviderConstraintsAfterUpstreamFollowups(
 	require.Contains(t, sql, "'wecom'")
 	require.Contains(t, sql, "'dingtalk'")
 }
+
+func TestMigration151AddsAccountAutoPauseExpiryPartialIndex(t *testing.T) {
+	content, err := FS.ReadFile("151_account_autopause_expiry_index_notx.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_accounts_autopause_expiry_due")
+	require.Contains(t, sql, "ON accounts (expires_at)")
+	require.Contains(t, sql, "WHERE deleted_at IS NULL")
+	require.Contains(t, sql, "schedulable = TRUE")
+	require.Contains(t, sql, "auto_pause_on_expired = TRUE")
+	require.Contains(t, sql, "expires_at IS NOT NULL")
+}
