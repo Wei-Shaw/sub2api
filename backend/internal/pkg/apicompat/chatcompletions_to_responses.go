@@ -86,7 +86,244 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 		out.ToolChoice = tc
 	}
 
+	if IsChatCompletionsImageGenerationRequest(req) {
+		normalizeChatCompletionsImageGenerationRequest(out, req)
+	}
+
 	return out, nil
+}
+
+// IsChatCompletionsImageGenerationRequest reports whether a Chat Completions
+// request is using the compatibility image-generation entrypoint. This mirrors
+// popular relay behavior where /v1/chat/completions accepts gpt-image-* models
+// or modalities:["image"] and returns generated images as assistant content.
+func IsChatCompletionsImageGenerationRequest(req *ChatCompletionsRequest) bool {
+	if req == nil {
+		return false
+	}
+	if isOpenAIChatImageModel(req.Model) {
+		return true
+	}
+	for _, modality := range req.Modalities {
+		if strings.TrimSpace(strings.ToLower(modality)) == "image" {
+			return true
+		}
+	}
+	for _, tool := range req.Tools {
+		if strings.TrimSpace(strings.ToLower(tool.Type)) == "image_generation" {
+			return true
+		}
+	}
+	if openAIChatToolChoiceSelectsImageGeneration(req.ToolChoice) {
+		return true
+	}
+	return false
+}
+
+func normalizeChatCompletionsImageGenerationRequest(out *ResponsesRequest, req *ChatCompletionsRequest) {
+	if out == nil || req == nil {
+		return
+	}
+	imageModel := strings.TrimSpace(req.Model)
+	if imageModel == "" || !isOpenAIChatImageModel(imageModel) {
+		imageModel = "gpt-image-2"
+	}
+	if prompt := strings.TrimSpace(req.Prompt); prompt != "" {
+		out.Input = ensureChatImagePrompt(out.Input, prompt)
+	}
+	hasImages := responsesInputHasInputImage(out.Input)
+	tool := ResponsesTool{
+		Type:   "image_generation",
+		Model:  imageModel,
+		Action: "generate",
+	}
+	if hasImages {
+		tool.Action = "edit"
+	}
+	if req.N != nil && *req.N > 0 {
+		n := *req.N
+		tool.N = &n
+	}
+	tool.Size = strings.TrimSpace(req.Size)
+	tool.Quality = strings.TrimSpace(req.Quality)
+	tool.Background = strings.TrimSpace(req.Background)
+	tool.OutputFormat = strings.TrimSpace(firstNonEmpty(req.OutputFormat, req.ResponseFormat))
+	tool.Moderation = strings.TrimSpace(req.Moderation)
+	tool.InputFidelity = strings.TrimSpace(req.InputFidelity)
+	tool.Style = strings.TrimSpace(req.Style)
+	if req.OutputCompression != nil {
+		v := *req.OutputCompression
+		tool.OutputCompression = &v
+	}
+	if req.PartialImages != nil {
+		v := *req.PartialImages
+		tool.PartialImages = &v
+	}
+	out.Tools = appendPreservingNonImageTools(out.Tools, tool)
+	choice, _ := json.Marshal(map[string]string{"type": "image_generation"})
+	out.ToolChoice = choice
+	out.Model = "gpt-5.4-mini"
+}
+
+func appendPreservingNonImageTools(tools []ResponsesTool, imageTool ResponsesTool) []ResponsesTool {
+	out := make([]ResponsesTool, 0, len(tools)+1)
+	inserted := false
+	for _, tool := range tools {
+		if strings.TrimSpace(strings.ToLower(tool.Type)) == "image_generation" {
+			if !inserted {
+				out = append(out, imageTool)
+				inserted = true
+			}
+			continue
+		}
+		out = append(out, tool)
+	}
+	if !inserted {
+		out = append(out, imageTool)
+	}
+	return out
+}
+
+func ensureChatImagePrompt(input json.RawMessage, prompt string) json.RawMessage {
+	if strings.TrimSpace(prompt) == "" {
+		return input
+	}
+	var items []ResponsesInputItem
+	if err := json.Unmarshal(input, &items); err != nil || len(items) == 0 {
+		raw, _ := json.Marshal([]ResponsesInputItem{{Role: "user", Content: mustMarshalRaw(prompt)}})
+		return raw
+	}
+	for i := len(items) - 1; i >= 0; i-- {
+		if strings.TrimSpace(items[i].Role) != "user" {
+			continue
+		}
+		parts, ok := responseInputItemContentParts(items[i])
+		if !ok {
+			continue
+		}
+		parts = append([]ResponsesContentPart{{Type: "input_text", Text: prompt}}, parts...)
+		raw, _ := json.Marshal(parts)
+		items[i].Content = raw
+		out, _ := json.Marshal(items)
+		return out
+	}
+	items = append(items, ResponsesInputItem{Role: "user", Content: mustMarshalRaw(prompt)})
+	raw, _ := json.Marshal(items)
+	return raw
+}
+
+func responseInputItemContentParts(item ResponsesInputItem) ([]ResponsesContentPart, bool) {
+	if len(item.Content) == 0 {
+		return nil, false
+	}
+	var parts []ResponsesContentPart
+	if err := json.Unmarshal(item.Content, &parts); err == nil {
+		return parts, true
+	}
+	var text string
+	if err := json.Unmarshal(item.Content, &text); err == nil {
+		if strings.TrimSpace(text) == "" {
+			return nil, true
+		}
+		return []ResponsesContentPart{{Type: "input_text", Text: text}}, true
+	}
+	return nil, false
+}
+
+func responsesInputHasInputImage(input json.RawMessage) bool {
+	if len(input) == 0 {
+		return false
+	}
+	var value any
+	if err := json.Unmarshal(input, &value); err != nil {
+		return false
+	}
+	return anyHasInputImage(value)
+}
+
+func anyHasInputImage(value any) bool {
+	switch v := value.(type) {
+	case []any:
+		for _, item := range v {
+			if anyHasInputImage(item) {
+				return true
+			}
+		}
+	case map[string]any:
+		if strings.TrimSpace(rawStringValue(v["type"])) == "input_image" {
+			return true
+		}
+		if _, ok := v["image_url"]; ok {
+			return true
+		}
+		return anyHasInputImage(v["content"])
+	}
+	return false
+}
+
+func isOpenAIChatImageModel(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-image-")
+}
+
+// ChatCompletionsImageGenerationModel returns the image model requested by a
+// Chat Completions image-compat call. Text models paired with modalities:image
+// use the project's default image model, matching common relay behavior.
+func ChatCompletionsImageGenerationModel(req *ChatCompletionsRequest) string {
+	if req == nil {
+		return "gpt-image-2"
+	}
+	imageModel := strings.TrimSpace(req.Model)
+	if imageModel == "" || !isOpenAIChatImageModel(imageModel) {
+		imageModel = "gpt-image-2"
+	}
+	return imageModel
+}
+
+func openAIChatToolChoiceSelectsImageGeneration(choice json.RawMessage) bool {
+	if len(choice) == 0 {
+		return false
+	}
+	var s string
+	if err := json.Unmarshal(choice, &s); err == nil {
+		return strings.TrimSpace(strings.ToLower(s)) == "image_generation"
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(choice, &obj); err != nil {
+		return false
+	}
+	if strings.TrimSpace(strings.ToLower(rawStringValue(obj["type"]))) == "image_generation" {
+		return true
+	}
+	if tool, ok := obj["tool"].(map[string]any); ok && strings.TrimSpace(strings.ToLower(rawStringValue(tool["type"]))) == "image_generation" {
+		return true
+	}
+	if fn, ok := obj["function"].(map[string]any); ok && strings.TrimSpace(strings.ToLower(rawStringValue(fn["name"]))) == "image_generation" {
+		return true
+	}
+	return false
+}
+
+func rawStringValue(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	default:
+		return ""
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func mustMarshalRaw(value any) json.RawMessage {
+	raw, _ := json.Marshal(value)
+	return raw
 }
 
 // convertChatMessagesToResponsesInput converts the Chat Completions messages
@@ -419,7 +656,7 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 			Name:        t.Function.Name,
 			Description: t.Function.Description,
 			Parameters:  t.Function.Parameters,
-			Strict:      t.Function.Strict,
+			Strict:      defaultStrictFalse(t.Function.Strict),
 		}
 		out = append(out, rt)
 	}
@@ -431,12 +668,20 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 			Name:        f.Name,
 			Description: f.Description,
 			Parameters:  f.Parameters,
-			Strict:      f.Strict,
+			Strict:      defaultStrictFalse(f.Strict),
 		}
 		out = append(out, rt)
 	}
 
 	return out
+}
+
+func defaultStrictFalse(src *bool) *bool {
+	if src == nil {
+		value := false
+		return &value
+	}
+	return src
 }
 
 // convertChatFunctionCallToToolChoice maps the legacy function_call field to a

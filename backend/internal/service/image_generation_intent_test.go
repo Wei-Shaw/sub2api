@@ -28,10 +28,24 @@ func TestIsImageGenerationIntent(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "gemini image model",
+			endpoint: "/v1/chat/completions",
+			model:    "gemini-3.1-flash-image",
+			body:     []byte(`{"model":"gemini-3.1-flash-image","messages":[{"role":"user","content":"draw"}]}`),
+			want:     true,
+		},
+		{
 			name:     "image tool",
 			endpoint: "/v1/responses",
 			model:    "gpt-5.4",
 			body:     []byte(`{"model":"gpt-5.4","tools":[{"type":"image_generation"}]}`),
+			want:     true,
+		},
+		{
+			name:     "modalities image",
+			endpoint: "/v1/chat/completions",
+			model:    "gpt-5.4",
+			body:     []byte(`{"model":"gpt-5.4","modalities":["text","image"]}`),
 			want:     true,
 		},
 		{
@@ -55,6 +69,13 @@ func TestIsImageGenerationIntent(t *testing.T) {
 			body:     []byte(`{"model":"gpt-5.4","input":"write code"}`),
 			want:     false,
 		},
+		{
+			name:     "gemini text model",
+			endpoint: "/v1/chat/completions",
+			model:    "gemini-3.1-pro-preview",
+			body:     []byte(`{"model":"gemini-3.1-pro-preview","messages":[{"role":"user","content":"describe"}]}`),
+			want:     false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -62,6 +83,14 @@ func TestIsImageGenerationIntent(t *testing.T) {
 			require.Equal(t, tt.want, IsImageGenerationIntent(tt.endpoint, tt.model, tt.body))
 		})
 	}
+}
+
+func TestIsGeminiImageGenerationModel(t *testing.T) {
+	require.True(t, IsGeminiImageGenerationModel("gemini-3.1-flash-image"))
+	require.True(t, IsGeminiImageGenerationModel("gemini-3-pro-image-preview"))
+	require.True(t, IsGeminiImageGenerationModel("models/gemini-2.5-flash-image"))
+	require.False(t, IsGeminiImageGenerationModel("gemini-3.1-pro-preview"))
+	require.False(t, IsGeminiImageGenerationModel("gpt-image-2"))
 }
 
 func TestResolveOpenAIResponsesImageBillingConfigUsesCurrentBodyModel(t *testing.T) {

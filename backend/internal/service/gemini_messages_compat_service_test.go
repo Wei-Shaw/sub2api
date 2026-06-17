@@ -353,6 +353,67 @@ func TestGeminiForwardNative_CompatibleRelayGenerateContentUsesOpenAIChatComplet
 	require.Equal(t, int64(2), gjson.Get(rec.Body.String(), "usageMetadata.candidatesTokenCount").Int())
 }
 
+func TestGeminiForwardNative_CompatibleRelayGenerateContentPreservesImageOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	contentParts := []any{
+		map[string]any{"type": "text", "text": "edited image"},
+		map[string]any{
+			"type": "image_url",
+			"image_url": map[string]any{
+				"url": "data:image/png;base64,QUJD",
+			},
+		},
+	}
+	contentBytes, err := json.Marshal(contentParts)
+	require.NoError(t, err)
+	upstreamBody := fmt.Sprintf(`{"id":"chatcmpl_native_image","object":"chat.completion","model":"gemini-3.1-flash-image","choices":[{"index":0,"message":{"role":"assistant","content":%s},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}`, contentBytes)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_native_image"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       112,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "sk-iacc",
+			"base_url":      "https://iacc.cc",
+			"upstream_type": GeminiUpstreamCompatibleRelay,
+			"model_mapping": map[string]any{"gemini-3.1-flash-image": "gemini-3.1-flash-image"},
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"把这张图改成水彩风格"},{"inlineData":{"mimeType":"image/png","data":"aGVsbG8="}}]}],"generationConfig":{"imageConfig":{"imageSize":"1K"}}}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.1-flash-image:generateContent", bytes.NewReader(body))
+
+	result, err := svc.ForwardNative(context.Background(), c, account, "gemini-3.1-flash-image", "generateContent", false, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, "1K", result.ImageInputSize)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "gemini-3.1-flash-image", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "image_url", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.type").String())
+	require.Equal(t, "data:image/png;base64,aGVsbG8=", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.image_url.url").String())
+	require.Equal(t, "edited image", gjson.Get(rec.Body.String(), "candidates.0.content.parts.0.text").String())
+	require.Equal(t, "image/png", gjson.Get(rec.Body.String(), "candidates.0.content.parts.1.inlineData.mimeType").String())
+	require.Equal(t, "QUJD", gjson.Get(rec.Body.String(), "candidates.0.content.parts.1.inlineData.data").String())
+	require.Equal(t, "STOP", gjson.Get(rec.Body.String(), "candidates.0.finishReason").String())
+	require.Equal(t, int64(12), gjson.Get(rec.Body.String(), "usageMetadata.promptTokenCount").Int())
+	require.Equal(t, int64(8), gjson.Get(rec.Body.String(), "usageMetadata.candidatesTokenCount").Int())
+}
+
 func TestGeminiForwardNative_CompatibleRelayStreamGenerateContentConvertsOpenAISSE(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -459,6 +520,87 @@ func TestGeminiForwardNative_AcceptsOpenAIChatBodyOnV1BetaCompatibleRelay(t *tes
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
 	require.Contains(t, rec.Body.String(), `"text":"ok"`)
+	require.Contains(t, rec.Body.String(), `"usageMetadata"`)
+}
+
+func TestGeminiForwardNative_CompatibleRelaySplitsLargeOpenAIStreamDelta(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	longText := strings.Repeat("流式输出测试", 40)
+	chunkBytes, err := json.Marshal(map[string]any{
+		"id":     "chatcmpl_native_stream",
+		"object": "chat.completion.chunk",
+		"model":  "gemini-3.1-pro-preview",
+		"choices": []any{
+			map[string]any{
+				"index": 0,
+				"delta": map[string]any{
+					"content": longText,
+				},
+				"finish_reason": nil,
+			},
+		},
+	})
+	require.NoError(t, err)
+	upstreamBody := "data: " + string(chunkBytes) + "\n\n" +
+		`data: {"id":"chatcmpl_native_stream","object":"chat.completion.chunk","model":"gemini-3.1-pro-preview","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\n" +
+		`data: {"id":"chatcmpl_native_stream","object":"chat.completion.chunk","model":"gemini-3.1-pro-preview","choices":[],"usage":{"prompt_tokens":6,"completion_tokens":120,"total_tokens":126}}` + "\n\n" +
+		"data: [DONE]\n\n"
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_native_stream_large_delta"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       110,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "sk-iacc",
+			"base_url":      "https://iacc.cc",
+			"upstream_type": GeminiUpstreamCompatibleRelay,
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-3.1-pro-preview","messages":[{"role":"user","content":"请输出一段大约300字的中文内容。"}],"stream":true,"max_tokens":1024}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent", bytes.NewReader(body))
+
+	result, err := svc.ForwardNative(context.Background(), c, account, "gemini-3.1-pro-preview", "streamGenerateContent", true, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, result.Stream)
+	require.Equal(t, 6, result.Usage.InputTokens)
+	require.Equal(t, 120, result.Usage.OutputTokens)
+
+	var dataEvents int
+	var textEvents int
+	var joined strings.Builder
+	for _, line := range strings.Split(rec.Body.String(), "\n") {
+		payload, ok := extractOpenAISSEDataLine(line)
+		if !ok {
+			continue
+		}
+		dataEvents++
+		if payload == "[DONE]" || strings.TrimSpace(payload) == "" {
+			continue
+		}
+		if text := gjson.Get(payload, "candidates.0.content.parts.0.text").String(); text != "" {
+			textEvents++
+			joined.WriteString(text)
+		}
+	}
+	require.Greater(t, dataEvents, 2)
+	require.GreaterOrEqual(t, textEvents, 8)
+	require.Equal(t, longText, joined.String())
+	require.Contains(t, rec.Body.String(), `"finishReason":"STOP"`)
 	require.Contains(t, rec.Body.String(), `"usageMetadata"`)
 }
 

@@ -558,6 +558,164 @@ func TestImportDataAcceptsCockpitAccountTransferBundle(t *testing.T) {
 	require.Equal(t, "2030-01-01T00:00:00Z", antigravity.Credentials["expires_at"])
 }
 
+func TestImportDataSkipsDuplicateExistingOAuthCredential(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.accounts = []service.Account{
+		{
+			ID:       42,
+			Name:     "existing@example.com",
+			Platform: service.PlatformOpenAI,
+			Type:     service.AccountTypeOAuth,
+			Credentials: map[string]any{
+				"access_token":  "existing-at",
+				"refresh_token": "same-refresh-token",
+			},
+		},
+	}
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":     "duplicate@example.com",
+					"platform": service.PlatformOpenAI,
+					"type":     service.AccountTypeOAuth,
+					"credentials": map[string]any{
+						"access_token":  "new-at",
+						"refresh_token": "same-refresh-token",
+					},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Code int              `json:"code"`
+		Data DataImportResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, 0, resp.Data.AccountCreated)
+	require.Equal(t, 1, resp.Data.AccountFailed)
+	require.Len(t, adminSvc.createdAccounts, 0)
+	require.Len(t, resp.Data.Errors, 1)
+	require.Contains(t, resp.Data.Errors[0].Message, "duplicate OAuth refresh_token already exists")
+	require.Contains(t, resp.Data.Errors[0].Message, "account #42")
+}
+
+func TestImportDataSkipsDuplicateOAuthCredentialInPayload(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":     "first@example.com",
+					"platform": service.PlatformGemini,
+					"type":     service.AccountTypeOAuth,
+					"credentials": map[string]any{
+						"access_token":  "gemini-at-1",
+						"refresh_token": "same-gemini-rt",
+					},
+					"concurrency": 3,
+					"priority":    50,
+				},
+				{
+					"name":     "second@example.com",
+					"platform": service.PlatformGemini,
+					"type":     service.AccountTypeOAuth,
+					"credentials": map[string]any{
+						"access_token":  "gemini-at-2",
+						"refresh_token": "same-gemini-rt",
+					},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Code int              `json:"code"`
+		Data DataImportResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, 1, resp.Data.AccountCreated)
+	require.Equal(t, 1, resp.Data.AccountFailed)
+	require.Len(t, adminSvc.createdAccounts, 1)
+	require.Equal(t, "first@example.com", adminSvc.createdAccounts[0].Name)
+	require.Len(t, resp.Data.Errors, 1)
+	require.Contains(t, resp.Data.Errors[0].Message, "duplicate OAuth refresh_token in this import payload")
+	require.Contains(t, resp.Data.Errors[0].Message, "first@example.com")
+}
+
+func TestImportDataWarnsAccessTokenOnlyOAuthAccount(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":     "at-only@example.com",
+					"platform": service.PlatformOpenAI,
+					"type":     service.AccountTypeOAuth,
+					"credentials": map[string]any{
+						"access_token": "only-at",
+					},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Code int              `json:"code"`
+		Data DataImportResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, 1, resp.Data.AccountCreated)
+	require.Equal(t, 0, resp.Data.AccountFailed)
+	require.Len(t, adminSvc.createdAccounts, 1)
+	require.Len(t, resp.Data.Errors, 1)
+	require.Equal(t, "account_warning", resp.Data.Errors[0].Kind)
+	require.Contains(t, resp.Data.Errors[0].Message, "no refresh_token")
+}
+
 func TestImportDataAcceptsCockpitDataTransferBundle(t *testing.T) {
 	router, adminSvc := setupAccountDataRouter()
 
@@ -631,6 +789,22 @@ func TestConvertCockpitCodexOAuthPreservesTokenExpiry(t *testing.T) {
 	require.Equal(t, "2030-01-01T00:00:00Z", account.Credentials["expires_at"])
 	require.Nil(t, account.ExpiresAt)
 	require.Nil(t, account.AutoPauseOnExpired)
+}
+
+func TestConvertCockpitCodexOAuthPreservesImportedClientID(t *testing.T) {
+	item := map[string]any{
+		"email":     "codex-oauth@example.com",
+		"auth_mode": "oauth",
+		"tokens": map[string]any{
+			"access_token":  "codex-at",
+			"refresh_token": "codex-rt",
+			"client_id":     "external-client-id",
+		},
+	}
+
+	account, err := convertCockpitCodexAccount(item, 1)
+	require.NoError(t, err)
+	require.Equal(t, "external-client-id", account.Credentials["client_id"])
 }
 
 func TestConvertCockpitCodexOAuthWithoutRefreshTokenAutoPausesAtExpiry(t *testing.T) {

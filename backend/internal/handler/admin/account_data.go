@@ -2,6 +2,8 @@ package admin
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -581,7 +583,15 @@ func convertCockpitCodexAccount(item map[string]any, index int) (DataAccount, er
 	setImportString(credentials, "organization_id", cockpitString(item, "organization_id"))
 	setImportString(credentials, "plan_type", cockpitString(item, "plan_type"))
 	if refreshToken != "" {
-		credentials["client_id"] = openai.ClientID
+		setImportString(credentials, "client_id", firstImportString(
+			cockpitString(tokens, "client_id"),
+			cockpitString(tokens, "clientId"),
+			cockpitString(tokens, "clientID"),
+			cockpitString(item, "client_id"),
+			cockpitString(item, "clientId"),
+			cockpitString(item, "clientID"),
+			openai.ClientID,
+		))
 	}
 
 	extra := cockpitImportExtra("cockpit-tools", "codex", item)
@@ -1065,6 +1075,12 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 	// 收集需要异步设置隐私的 Antigravity OAuth 账号
 	var privacyAccounts []*service.Account
+	existingCredentialIndex, indexErr := h.buildExistingImportOAuthCredentialIndex(ctx)
+	if indexErr != nil {
+		slog.Warn("import_account_credential_index_failed", "error", indexErr)
+		existingCredentialIndex = map[string]importOAuthCredentialRef{}
+	}
+	seenImportCredentials := make(map[string]string)
 
 	for i := range dataPayload.Accounts {
 		item := dataPayload.Accounts[i]
@@ -1105,6 +1121,43 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			mergedCredentials,
 		)
 		extra := mergeImportMaps(item.Extra, req.Extra)
+		if warning := accessTokenOnlyOAuthImportWarning(item.Platform, accountType, credentials); warning != "" {
+			result.Errors = append(result.Errors, DataImportError{
+				Kind:    "account_warning",
+				Name:    item.Name,
+				Message: warning,
+			})
+		}
+		if fingerprint, tokenKind := importOAuthCredentialFingerprint(item.Platform, accountType, credentials); fingerprint != "" {
+			if existing, ok := existingCredentialIndex[fingerprint]; ok {
+				result.AccountFailed++
+				result.Errors = append(result.Errors, DataImportError{
+					Kind: "account",
+					Name: item.Name,
+					Message: fmt.Sprintf(
+						"duplicate OAuth %s already exists on account #%d (%s); skipped to avoid refresh-token rotation conflicts",
+						tokenKind,
+						existing.ID,
+						existing.Name,
+					),
+				})
+				continue
+			}
+			if previousName, ok := seenImportCredentials[fingerprint]; ok {
+				result.AccountFailed++
+				result.Errors = append(result.Errors, DataImportError{
+					Kind: "account",
+					Name: item.Name,
+					Message: fmt.Sprintf(
+						"duplicate OAuth %s in this import payload; already used by %q, skipped to avoid refresh-token rotation conflicts",
+						tokenKind,
+						previousName,
+					),
+				})
+				continue
+			}
+			seenImportCredentials[fingerprint] = item.Name
+		}
 
 		accountInput := &service.CreateAccountInput{
 			Name:                  item.Name,
@@ -1356,6 +1409,69 @@ func mergeImportMaps(base map[string]any, override map[string]any) map[string]an
 		return nil
 	}
 	return merged
+}
+
+type importOAuthCredentialRef struct {
+	ID   int64
+	Name string
+}
+
+func (h *AccountHandler) buildExistingImportOAuthCredentialIndex(ctx context.Context) (map[string]importOAuthCredentialRef, error) {
+	accounts, err := h.listAccountsFiltered(ctx, "", "", "", "", 0, "", "id", "asc")
+	if err != nil {
+		return nil, err
+	}
+
+	index := make(map[string]importOAuthCredentialRef)
+	for i := range accounts {
+		fingerprint, _ := importOAuthCredentialFingerprint(accounts[i].Platform, accounts[i].Type, accounts[i].Credentials)
+		if fingerprint == "" {
+			continue
+		}
+		if _, exists := index[fingerprint]; exists {
+			continue
+		}
+		index[fingerprint] = importOAuthCredentialRef{
+			ID:   accounts[i].ID,
+			Name: accounts[i].Name,
+		}
+	}
+	return index, nil
+}
+
+func importOAuthCredentialFingerprint(platform, accountType string, credentials map[string]any) (string, string) {
+	if strings.TrimSpace(accountType) != service.AccountTypeOAuth {
+		return "", ""
+	}
+	refreshToken := importStringValue(credentials["refresh_token"])
+	if refreshToken != "" {
+		return importSecretFingerprint("oauth_refresh", platform, refreshToken), "refresh_token"
+	}
+	accessToken := importStringValue(credentials["access_token"])
+	if accessToken != "" {
+		return importSecretFingerprint("oauth_access", platform, accessToken), "access_token"
+	}
+	return "", ""
+}
+
+func importSecretFingerprint(kind, platform, secret string) string {
+	normalizedPlatform := strings.ToLower(strings.TrimSpace(platform))
+	sum := sha256.Sum256([]byte(kind + "\x00" + normalizedPlatform + "\x00" + secret))
+	return kind + ":" + normalizedPlatform + ":" + hex.EncodeToString(sum[:])
+}
+
+func accessTokenOnlyOAuthImportWarning(platform, accountType string, credentials map[string]any) string {
+	if strings.TrimSpace(accountType) != service.AccountTypeOAuth {
+		return ""
+	}
+	if importStringValue(credentials["access_token"]) == "" || importStringValue(credentials["refresh_token"]) != "" {
+		return ""
+	}
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		platform = "OAuth"
+	}
+	return fmt.Sprintf("%s OAuth account has access_token but no refresh_token; it cannot auto-refresh and may become 401 when the access token expires or is invalidated", platform)
 }
 
 func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, error) {

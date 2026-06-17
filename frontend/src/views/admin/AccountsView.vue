@@ -218,6 +218,9 @@
           <template #cell-select="{ row }">
             <input type="checkbox" :checked="isSelected(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </template>
+          <template #cell-id="{ value }">
+            <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
+          </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
               <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
@@ -238,6 +241,21 @@
             <div class="flex min-w-0 flex-col gap-1">
               <div class="flex flex-wrap items-center gap-1">
                 <PlatformTypeBadge :platform="row.platform" :type="row.type" :plan-type="row.credentials?.plan_type" :privacy-mode="row.extra?.privacy_mode" :subscription-expires-at="row.credentials?.subscription_expires_at" />
+                <span
+                  v-for="badge in getTokenPresenceBadges(row)"
+                  :key="badge.key"
+                  :class="[
+                    'inline-flex h-5 min-w-6 items-center justify-center rounded border px-1.5 text-[10px] font-semibold leading-none',
+                    badge.present
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/50 dark:text-emerald-300'
+                      : 'border-gray-200 bg-gray-50 text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500'
+                  ]"
+                  :title="badge.title"
+                  :aria-label="badge.title"
+                  :data-test="`token-badge-${badge.key}`"
+                >
+                  {{ badge.label }}
+                </span>
                 <span
                   v-if="getAntigravityTierLabel(row)"
                   :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
@@ -552,6 +570,7 @@ type AccountSortState = {
   sort_order: AccountSortOrder
 }
 const ACCOUNT_SORTABLE_KEYS = new Set([
+  'id',
   'name',
   'status',
   'schedulable',
@@ -1121,6 +1140,73 @@ function getAntigravityTierLabel(row: any): string | null {
 }
 
 type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'
+type TokenCredentialKey = 'access_token' | 'refresh_token'
+type TokenPresenceBadge = {
+  key: TokenCredentialKey
+  label: string
+  present: boolean
+  title: string
+}
+
+const tokenPresenceBadgeSpecs: Array<{
+  key: TokenCredentialKey
+  label: string
+  presentTitleKey: string
+  missingTitleKey: string
+}> = [
+  {
+    key: 'access_token',
+    label: 'AT',
+    presentTitleKey: 'admin.accounts.tokenPresence.accessTokenPresent',
+    missingTitleKey: 'admin.accounts.tokenPresence.accessTokenMissing'
+  },
+  {
+    key: 'refresh_token',
+    label: 'RT',
+    presentTitleKey: 'admin.accounts.tokenPresence.refreshTokenPresent',
+    missingTitleKey: 'admin.accounts.tokenPresence.refreshTokenMissing'
+  }
+]
+
+function hasOwnCredentialStatus(account: Account, statusKey: string): boolean {
+  return Object.prototype.hasOwnProperty.call(account.credentials_status ?? {}, statusKey)
+}
+
+function hasLegacyCredentialValue(account: Account, key: TokenCredentialKey): boolean {
+  const value = account.credentials?.[key]
+  return typeof value === 'string' ? value.trim().length > 0 : Boolean(value)
+}
+
+function hasTokenCredential(account: Account, key: TokenCredentialKey): boolean {
+  const statusKey = `has_${key}`
+  if (hasOwnCredentialStatus(account, statusKey)) {
+    return account.credentials_status?.[statusKey] === true
+  }
+  return hasLegacyCredentialValue(account, key)
+}
+
+function shouldShowTokenPresenceBadges(account: Account): boolean {
+  return (
+    account.type === 'oauth' ||
+    account.type === 'setup-token' ||
+    hasTokenCredential(account, 'access_token') ||
+    hasTokenCredential(account, 'refresh_token')
+  )
+}
+
+function getTokenPresenceBadges(account: Account): TokenPresenceBadge[] {
+  if (!shouldShowTokenPresenceBadges(account)) return []
+
+  return tokenPresenceBadgeSpecs.map(spec => {
+    const present = hasTokenCredential(account, spec.key)
+    return {
+      key: spec.key,
+      label: spec.label,
+      present,
+      title: t(present ? spec.presentTitleKey : spec.missingTitleKey)
+    }
+  })
+}
 
 function getOpenAICompactState(row: any): OpenAICompactBadgeState | null {
   if (row.platform !== 'openai' || (row.type !== 'oauth' && row.type !== 'apikey')) return null
@@ -1182,6 +1268,7 @@ const allColumns = computed(() => {
   const c = [
     { key: 'select', label: '', sortable: false },
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true },
+    { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },

@@ -113,6 +113,91 @@ func TestChatCompletionsToResponses_ToolCalls(t *testing.T) {
 	assert.Equal(t, "ping", resp.Tools[0].Name)
 }
 
+func TestChatCompletionsToResponses_ToolStrict(t *testing.T) {
+	strictTrue := true
+	strictFalse := false
+	tests := []struct {
+		name   string
+		strict *bool
+		want   bool
+	}{
+		{name: "defaults omitted strict to false", want: false},
+		{name: "preserves explicit true", strict: &strictTrue, want: true},
+		{name: "preserves explicit false", strict: &strictFalse, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &ChatCompletionsRequest{
+				Model:    "gpt-4o",
+				Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+				Tools: []ChatTool{{
+					Type: "function",
+					Function: &ChatFunction{
+						Name:   "lookup",
+						Strict: tt.strict,
+					},
+				}},
+			}
+
+			resp, err := ChatCompletionsToResponses(req)
+			require.NoError(t, err)
+			require.Len(t, resp.Tools, 1)
+			require.NotNil(t, resp.Tools[0].Strict)
+			assert.Equal(t, tt.want, *resp.Tools[0].Strict)
+
+			payload, err := json.Marshal(resp)
+			require.NoError(t, err)
+
+			var serialized struct {
+				Tools []map[string]json.RawMessage `json:"tools"`
+			}
+			require.NoError(t, json.Unmarshal(payload, &serialized))
+			require.Len(t, serialized.Tools, 1)
+			strictJSON, ok := serialized.Tools[0]["strict"]
+			require.True(t, ok, "strict must be present in the Responses payload")
+			assert.JSONEq(t, string(mustMarshalJSON(t, tt.want)), string(strictJSON))
+		})
+	}
+}
+
+func TestChatCompletionsToResponses_LegacyFunctionDefaultsStrictFalse(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:    "gpt-4o",
+		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		Functions: []ChatFunction{{
+			Name: "lookup",
+		}},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 1)
+	require.NotNil(t, resp.Tools[0].Strict)
+	assert.False(t, *resp.Tools[0].Strict)
+
+	payload, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.Contains(t, string(payload), `"strict":false`)
+}
+
+func TestResponsesTool_StrictFalseIsSerialized(t *testing.T) {
+	strict := false
+	payload, err := json.Marshal(ResponsesTool{
+		Type:   "function",
+		Strict: &strict,
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"function","strict":false}`, string(payload))
+}
+
+func mustMarshalJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	require.NoError(t, err)
+	return data
+}
+
 func TestChatCompletionsToResponses_MaxTokens(t *testing.T) {
 	t.Run("max_tokens", func(t *testing.T) {
 		maxTokens := 100
@@ -179,6 +264,90 @@ func TestChatCompletionsToResponses_ImageURL(t *testing.T) {
 	assert.Equal(t, "Describe this", parts[0].Text)
 	assert.Equal(t, "input_image", parts[1].Type)
 	assert.Equal(t, "data:image/png;base64,abc123", parts[1].ImageURL)
+}
+
+func TestChatCompletionsToResponses_ImageGenerationCompatWithReferenceImage(t *testing.T) {
+	n := 2
+	req := &ChatCompletionsRequest{
+		Model: "gpt-image-2",
+		Messages: []ChatMessage{
+			{
+				Role:    "user",
+				Content: json.RawMessage(`[{"type":"text","text":"turn this into watercolor"},{"type":"image_url","image_url":{"url":"data:image/png;base64,abc123"}}]`),
+			},
+		},
+		N:            &n,
+		Size:         "1024x1024",
+		Quality:      "high",
+		OutputFormat: "png",
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4-mini", resp.Model)
+	require.JSONEq(t, `{"type":"image_generation"}`, string(resp.ToolChoice))
+	require.Len(t, resp.Tools, 1)
+	require.Equal(t, "image_generation", resp.Tools[0].Type)
+	require.Equal(t, "gpt-image-2", resp.Tools[0].Model)
+	require.Equal(t, "edit", resp.Tools[0].Action)
+	require.Equal(t, "1024x1024", resp.Tools[0].Size)
+	require.Equal(t, "high", resp.Tools[0].Quality)
+	require.Equal(t, "png", resp.Tools[0].OutputFormat)
+	require.NotNil(t, resp.Tools[0].N)
+	require.Equal(t, 2, *resp.Tools[0].N)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	require.Equal(t, "input_text", parts[0].Type)
+	require.Equal(t, "input_image", parts[1].Type)
+	require.Equal(t, "data:image/png;base64,abc123", parts[1].ImageURL)
+}
+
+func TestChatCompletionsToResponses_ImageGenerationCompatModalitiesDefaultsImageModel(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:      "gpt-5.4",
+		Modalities: []string{"text", "image"},
+		Prompt:     "draw a lantern over the sea",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(`"soft cinematic light"`)},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4-mini", resp.Model)
+	require.Len(t, resp.Tools, 1)
+	require.Equal(t, "gpt-image-2", resp.Tools[0].Model)
+	require.Equal(t, "generate", resp.Tools[0].Action)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	require.Equal(t, "draw a lantern over the sea", parts[0].Text)
+	require.Equal(t, "soft cinematic light", parts[1].Text)
+}
+
+func TestChatCompletionsToResponses_ImageGenerationCompatLegacyToolChoice(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:      "gpt-5.4",
+		ToolChoice: json.RawMessage(`{"function":{"name":"image_generation"}}`),
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(`"draw a small boat"`)}},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4-mini", resp.Model)
+	require.Len(t, resp.Tools, 1)
+	require.Equal(t, "image_generation", resp.Tools[0].Type)
+	require.Equal(t, "gpt-image-2", resp.Tools[0].Model)
 }
 
 func TestChatCompletionsToResponses_EmptyBase64ImageURLSkipped(t *testing.T) {

@@ -44,6 +44,11 @@ const (
 // Ref: https://ai.google.dev/gemini-api/docs/thought-signatures
 const geminiDummyThoughtSignature = "skip_thought_signature_validator"
 
+const (
+	geminiNativeCompatibleRelayTextChunkRunes = 32
+	geminiNativeCompatibleRelayChunkDelay     = 150 * time.Millisecond
+)
+
 type GeminiMessagesCompatService struct {
 	accountRepo               AccountRepository
 	groupRepo                 GroupRepository
@@ -843,15 +848,18 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 				var strippedClaudeBody []byte
 				stageName := ""
+				// 路径说明：本处上游是 Gemini，但被剥离的 body 是 Anthropic 格式。传 originalModel
+				// （客户端原 Anthropic model）而非 mappedModel（上游 Gemini model），让剥离逻辑按
+				// 客户端请求的 Anthropic 子协议族判定（详见 ResolveThinkingProtocol 文档）。
 				switch signatureRetryStage {
 				case 0:
 					// Stage 1: disable thinking + thinking->text
-					strippedClaudeBody = FilterThinkingBlocksForRetry(originalClaudeBody)
+					strippedClaudeBody = FilterThinkingBlocksForRetry(originalClaudeBody, originalModel)
 					stageName = "thinking-only"
 					signatureRetryStage = 1
 				default:
 					// Stage 2: additionally downgrade tool_use/tool_result blocks to text
-					strippedClaudeBody = FilterSignatureSensitiveBlocksForRetry(originalClaudeBody)
+					strippedClaudeBody = FilterSignatureSensitiveBlocksForRetry(originalClaudeBody, originalModel)
 					stageName = "thinking+tools"
 					signatureRetryStage = 2
 				}
@@ -2141,8 +2149,13 @@ func chatCompletionsResponseToGeminiNative(resp *apicompat.ChatCompletionsRespon
 
 func chatMessageToGeminiNativeParts(msg apicompat.ChatMessage) []any {
 	parts := make([]any, 0)
-	if text := chatMessageContentText(msg.Content); text != "" {
-		parts = append(parts, map[string]any{"text": text})
+	if len(msg.Content) > 0 && string(bytes.TrimSpace(msg.Content)) != "null" {
+		var content any
+		if err := json.Unmarshal(msg.Content, &content); err == nil {
+			parts = append(parts, openAIChatContentToGeminiParts(content)...)
+		} else if text := chatMessageContentText(msg.Content); text != "" {
+			parts = append(parts, map[string]any{"text": text})
+		}
 	}
 	for _, tc := range msg.ToolCalls {
 		name := strings.TrimSpace(tc.Function.Name)
@@ -2793,7 +2806,20 @@ func (s *GeminiMessagesCompatService) streamCompatibleRelayNativeChatCompletions
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
-				writeEvent(geminiNativeTextStreamPayload(*choice.Delta.Content))
+				textChunks := splitGeminiNativeStreamText(*choice.Delta.Content)
+				for i, textChunk := range textChunks {
+					writeEvent(geminiNativeTextStreamPayload(textChunk))
+					if clientDisconnected {
+						break
+					}
+					if i < len(textChunks)-1 && geminiNativeCompatibleRelayChunkDelay > 0 {
+						select {
+						case <-c.Request.Context().Done():
+							clientDisconnected = true
+						case <-time.After(geminiNativeCompatibleRelayChunkDelay):
+						}
+					}
+				}
 			}
 			if len(choice.Delta.ToolCalls) > 0 {
 				toolState.observe(choice.Delta.ToolCalls)
@@ -2859,6 +2885,26 @@ func (s *GeminiMessagesCompatService) streamCompatibleRelayNativeChatCompletions
 
 func geminiNativeTextStreamPayload(text string) map[string]any {
 	return geminiNativePartsStreamPayload([]any{map[string]any{"text": text}}, "")
+}
+
+func splitGeminiNativeStreamText(text string) []string {
+	if text == "" {
+		return nil
+	}
+	runes := []rune(text)
+	if len(runes) <= geminiNativeCompatibleRelayTextChunkRunes {
+		return []string{text}
+	}
+
+	chunks := make([]string, 0, (len(runes)+geminiNativeCompatibleRelayTextChunkRunes-1)/geminiNativeCompatibleRelayTextChunkRunes)
+	for start := 0; start < len(runes); start += geminiNativeCompatibleRelayTextChunkRunes {
+		end := start + geminiNativeCompatibleRelayTextChunkRunes
+		if end > len(runes) {
+			end = len(runes)
+		}
+		chunks = append(chunks, string(runes[start:end]))
+	}
+	return chunks
 }
 
 func geminiNativePartsStreamPayload(parts []any, finishReason string) map[string]any {

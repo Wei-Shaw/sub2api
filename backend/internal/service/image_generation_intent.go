@@ -17,6 +17,11 @@ func ImageGenerationPermissionMessage() string {
 	return imageGenerationPermissionMessage
 }
 
+// IsGeminiImageGenerationModel reports whether a Gemini-family model can generate images.
+func IsGeminiImageGenerationModel(model string) bool {
+	return isImageGenerationModel(model)
+}
+
 // GroupAllowsImageGeneration preserves ungrouped-key behavior and enforces the flag when a group is present.
 func GroupAllowsImageGeneration(group *Group) bool {
 	return group == nil || group.AllowImageGeneration
@@ -27,13 +32,16 @@ func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte
 	if IsImageGenerationEndpoint(endpoint) {
 		return true
 	}
-	if isOpenAIImageGenerationModel(requestedModel) {
+	if isOpenAIImageGenerationModel(requestedModel) || IsGeminiImageGenerationModel(requestedModel) {
 		return true
 	}
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return false
 	}
-	if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); isOpenAIImageGenerationModel(model) {
+	if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); isOpenAIImageGenerationModel(model) || IsGeminiImageGenerationModel(model) {
+		return true
+	}
+	if openAIJSONModalitiesContainImage(gjson.GetBytes(body, "modalities")) {
 		return true
 	}
 	if openAIJSONToolsContainImageGeneration(gjson.GetBytes(body, "tools")) {
@@ -47,13 +55,16 @@ func IsImageGenerationIntentMap(endpoint string, requestedModel string, reqBody 
 	if IsImageGenerationEndpoint(endpoint) {
 		return true
 	}
-	if isOpenAIImageGenerationModel(requestedModel) {
+	if isOpenAIImageGenerationModel(requestedModel) || IsGeminiImageGenerationModel(requestedModel) {
 		return true
 	}
 	if reqBody == nil {
 		return false
 	}
-	if isOpenAIImageGenerationModel(firstNonEmptyString(reqBody["model"])) {
+	if model := firstNonEmptyString(reqBody["model"]); isOpenAIImageGenerationModel(model) || IsGeminiImageGenerationModel(model) {
+		return true
+	}
+	if openAIAnyModalitiesContainImage(reqBody["modalities"]) {
 		return true
 	}
 	if hasOpenAIImageGenerationTool(reqBody) {
@@ -99,6 +110,21 @@ func openAIJSONToolsContainImageGeneration(tools gjson.Result) bool {
 	return found
 }
 
+func openAIJSONModalitiesContainImage(modalities gjson.Result) bool {
+	if !modalities.IsArray() {
+		return false
+	}
+	found := false
+	modalities.ForEach(func(_, item gjson.Result) bool {
+		if strings.TrimSpace(strings.ToLower(item.String())) == "image" {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
 func openAIRequestBodyHasImageGenerationTool(body []byte) bool {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return false
@@ -127,6 +153,24 @@ func openAIRequestBodyImageGenerationToolNeedsNormalization(body []byte) bool {
 		return true
 	})
 	return needsNormalization
+}
+
+func openAIAnyModalitiesContainImage(modalities any) bool {
+	switch v := modalities.(type) {
+	case []any:
+		for _, item := range v {
+			if strings.TrimSpace(strings.ToLower(firstNonEmptyString(item))) == "image" {
+				return true
+			}
+		}
+	case []string:
+		for _, item := range v {
+			if strings.TrimSpace(strings.ToLower(item)) == "image" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func openAIJSONToolChoiceSelectsImageGeneration(choice gjson.Result) bool {
