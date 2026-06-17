@@ -1049,7 +1049,7 @@ func (a *Account) IsAPIKeyOrBedrock() bool {
 }
 
 func (a *Account) IsOpenAI() bool {
-	return a.Platform == PlatformOpenAI
+	return a.Platform == PlatformOpenAI || a.Platform == PlatformDeepseek
 }
 
 func (a *Account) IsAnthropic() bool {

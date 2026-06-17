@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/deepseek"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -2425,4 +2426,37 @@ func sanitizeExtraBaseRPM(extra map[string]any) {
 		v = 10000
 	}
 	extra["base_rpm"] = v
+}
+
+// DeepSeekCookieAuthRequest represents the request for DeepSeek cookie-based authentication
+type DeepSeekCookieAuthRequest struct {
+	Token  string `json:"token" binding:"required"`
+	Cookie string `json:"cookie"`
+}
+
+// DeepSeekCookieAuth validates DeepSeek credentials by creating a test session.
+// POST /api/v1/admin/accounts/deepseek-cookie-auth
+func (h *AccountHandler) DeepSeekCookieAuth(c *gin.Context) {
+	var req DeepSeekCookieAuthRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	dsClient := deepseek.NewClient(nil)
+	sessionID, err := dsClient.CreateSession(c.Request.Context(), req.Token, req.Cookie)
+	if err != nil {
+		response.BadRequest(c, "DeepSeek authentication failed: "+err.Error())
+		return
+	}
+
+	go func() {
+		bgCtx := context.Background()
+		_ = dsClient.DeleteSession(bgCtx, req.Token, req.Cookie, sessionID)
+	}()
+
+	response.Success(c, gin.H{
+		"valid":      true,
+		"session_id": sessionID,
+	})
 }

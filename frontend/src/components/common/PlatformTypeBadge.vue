@@ -76,6 +76,7 @@ const platformLabel = computed(() => {
   if (props.platform === 'anthropic') return 'Anthropic'
   if (props.platform === 'openai') return 'OpenAI'
   if (props.platform === 'antigravity') return 'Antigravity'
+  if (props.platform === 'deepseek') return 'DeepSeek'
   return 'Gemini'
 })
 

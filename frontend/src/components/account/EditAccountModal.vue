@@ -26,8 +26,8 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
-      <!-- API Key fields (only for apikey type) -->
-      <div v-if="account.type === 'apikey'" class="space-y-4">
+      <!-- API Key fields (only for apikey type, excluding DeepSeek cookie accounts) -->
+      <div v-if="account.type === 'apikey' && account.platform !== 'deepseek'" class="space-y-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -3702,7 +3702,7 @@ const handleSubmit = async () => {
         props.account.credentials_status?.has_api_key ?? Boolean(currentCredentials.api_key)
       if (editApiKey.value.trim()) {
         newCredentials.api_key = editApiKey.value.trim()
-      } else if (!hasExistingApiKey) {
+      } else if (!hasExistingApiKey && props.account.platform !== 'deepseek') {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
       }

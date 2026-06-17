@@ -147,6 +147,76 @@
             <Icon name="cloud" size="sm" />
             Antigravity
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'deepseek'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'deepseek'
+                ? 'bg-white text-blue-700 shadow-sm dark:bg-dark-600 dark:text-blue-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <span class="text-xs font-bold">DS</span>
+            DeepSeek
+          </button>
+        </div>
+      </div>
+
+      <!-- Account Type Selection (DeepSeek) -->
+      <div v-if="form.platform === 'deepseek'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="mt-2 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            @click="accountCategory = 'deepseek-cookie'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'deepseek-cookie'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                : 'border-gray-200 hover:border-blue-300 dark:border-dark-600 dark:hover:border-blue-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'deepseek-cookie'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="key" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">Cookie + Token</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">Web session authentication</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="accountCategory = 'apikey'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'apikey'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                : 'border-gray-200 hover:border-blue-300 dark:border-dark-600 dark:hover:border-blue-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'apikey'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="key" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">Standard API key</span>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -1008,8 +1078,52 @@
         </div>
       </div>
 
-      <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
-      <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
+      <!-- DeepSeek Cookie + Token input -->
+      <div v-if="form.platform === 'deepseek' && accountCategory === 'deepseek-cookie'" class="space-y-4">
+        <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-800/40 dark:bg-blue-900/20 dark:text-blue-200">
+          <p class="font-medium mb-1">How to get your credentials:</p>
+          <ol class="list-decimal ml-4 space-y-1">
+            <li>Open <a href="https://chat.deepseek.com" target="_blank" class="underline">chat.deepseek.com</a> and log in</li>
+            <li>Open browser DevTools (F12) → Network tab</li>
+            <li>Send a message and look for a request to <code class="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">/api/v0/chat/completion</code></li>
+            <li>Copy the <code class="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">Authorization</code> header value (starts with <code class="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">Bearer eyJ</code>)</li>
+            <li>Copy the <code class="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">Cookie</code> header value</li>
+          </ol>
+        </div>
+        <div>
+          <label class="input-label">Authorization Token *</label>
+          <input
+            v-model="deepseekToken"
+            type="password"
+            required
+            class="input font-mono"
+            placeholder="Bearer eyJhbGciOiJIUzI1NiIs..."
+          />
+          <p class="input-hint">The Authorization header value from chat.deepseek.com</p>
+        </div>
+        <div>
+          <label class="input-label">Cookie</label>
+          <textarea
+            v-model="deepseekCookie"
+            class="input font-mono"
+            rows="3"
+            placeholder="Optional: full cookie string from chat.deepseek.com"
+          />
+          <p class="input-hint">The Cookie header value (optional but recommended for stability)</p>
+        </div>
+        <div>
+          <label class="input-label">Account Name *</label>
+          <input
+            v-model="form.name"
+            type="text"
+            class="input"
+            placeholder="My DeepSeek Account"
+          />
+        </div>
+      </div>
+
+      <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields, and DeepSeek cookie) -->
+      <div v-if="form.type === 'apikey' && form.platform !== 'antigravity' && !(form.platform === 'deepseek' && accountCategory === 'deepseek-cookie')" class="space-y-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -3208,6 +3322,7 @@ import {
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import { apiClient } from '@/api/client'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -3357,10 +3472,12 @@ interface TempUnschedRuleForm {
 // State
 const step = ref(1)
 const submitting = ref(false)
-const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
+const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account' | 'deepseek-cookie'>('oauth-based') // UI selection for account category
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const deepseekToken = ref('')
+const deepseekCookie = ref('')
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
@@ -4579,6 +4696,39 @@ const handleSubmit = async () => {
 
     const extra = buildAntigravityExtra()
     await createAccountAndFinish(form.platform, 'apikey', credentials, extra)
+    return
+  }
+
+  // For DeepSeek cookie type, validate and create directly
+  if (form.platform === 'deepseek' && accountCategory.value === 'deepseek-cookie') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    if (!deepseekToken.value.trim()) {
+      appStore.showError('DeepSeek Authorization Token is required')
+      return
+    }
+
+    // Validate token via backend
+    try {
+      await apiClient.post('/admin/accounts/deepseek-cookie-auth', {
+        token: deepseekToken.value.trim(),
+        cookie: deepseekCookie.value.trim()
+      })
+    } catch (error: any) {
+      appStore.showError(error.response?.data?.detail || 'DeepSeek authentication failed')
+      return
+    }
+
+    const credentials: Record<string, unknown> = {
+      token: deepseekToken.value.trim(),
+      cookie: deepseekCookie.value.trim()
+    }
+
+    applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+
+    await createAccountAndFinish('deepseek', 'apikey', credentials)
     return
   }
 
