@@ -385,6 +385,12 @@ gateway:
       quota_headroom: 0.0
       # 倾向上游声明倍率更低的账号；0 表示关闭（默认），建议启用时从 1.5 开始。
       upstream_cost: 0.0
+      # Codex 5h quota headroom weight. Lower 5h usage gets a higher scheduler score.
+      # Set to 0 to disable the short-window quota signal.
+      quota_5h: 0.4
+      # Codex 7d quota headroom weight. Lower 7d usage gets a higher scheduler score.
+      # Set to 0 to disable the weekly quota signal.
+      quota_7d: 0.3
   # OpenAI 高级调度器补充配置
   openai_scheduler:
     # 是否允许 session_hash sticky 在账号健康度恶化时临时逃逸；false 可一键回退旧行为

@@ -374,6 +374,12 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate != 0.5 {
 		t.Fatalf("Gateway.OpenAIScheduler.StickyEscapeErrorRate = %v, want 0.5", cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate)
 	}
+	if cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota5h != 0.4 {
+		t.Fatalf("Gateway.OpenAIWS.SchedulerScoreWeights.Quota5h = %v, want 0.4", cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota5h)
+	}
+	if cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota7d != 0.3 {
+		t.Fatalf("Gateway.OpenAIWS.SchedulerScoreWeights.Quota7d = %v, want 0.3", cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota7d)
+	}
 	if !cfg.Gateway.OpenAIWS.SessionHashReadOldFallback {
 		t.Fatalf("Gateway.OpenAIWS.SessionHashReadOldFallback = false, want true")
 	}
@@ -2173,6 +2179,8 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 				c.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
 				c.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
 				c.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
+				c.Gateway.OpenAIWS.SchedulerScoreWeights.Quota5h = 0
+				c.Gateway.OpenAIWS.SchedulerScoreWeights.Quota7d = 0
 			},
 			wantErr: "gateway.openai_ws.scheduler_score_weights must not all be zero",
 		},

@@ -959,7 +959,9 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 			weights.TTFT*ttftFactor +
 			weights.Reset*resetFactor +
 			weights.QuotaHeadroom*quotaHeadroomFactor +
-			weights.UpstreamCost*(upstreamCostFactor-openAIUpstreamCostNeutralFactor)
+			weights.UpstreamCost*(upstreamCostFactor-openAIUpstreamCostNeutralFactor) +
+			weights.Quota5h*openAICodexQuotaHeadroomFactor(item.account, "5h", now) +
+			weights.Quota7d*openAICodexQuotaHeadroomFactor(item.account, "7d", now)
 		if req.StickyWeighted {
 			if req.PreviousResponseCanMove && req.StickyPreviousAccountID > 0 && item.account.ID == req.StickyPreviousAccountID {
 				item.score += weights.Previous
@@ -2208,6 +2210,8 @@ func (s *OpenAIGatewayService) openAIWSSchedulerWeights() GatewayOpenAIWSSchedul
 			Reset:         s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Reset,
 			QuotaHeadroom: s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom,
 			UpstreamCost:  s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost,
+			Quota5h:       s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota5h,
+			Quota7d:       s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota7d,
 			Previous:      s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.PreviousResponse,
 			SessionSticky: s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.SessionSticky,
 		}
@@ -2221,6 +2225,8 @@ func (s *OpenAIGatewayService) openAIWSSchedulerWeights() GatewayOpenAIWSSchedul
 		Reset:         0.0,
 		QuotaHeadroom: 0.0,
 		UpstreamCost:  0.0,
+		Quota5h:       0.4,
+		Quota7d:       0.3,
 		Previous:      5.0,
 		SessionSticky: 3.0,
 	}
@@ -2260,6 +2266,10 @@ func applyOpenAIAdvancedSchedulerWeightOverrides(
 			weights.Reset = value
 		case "quota_headroom":
 			weights.QuotaHeadroom = value
+		case "quota_5h":
+			weights.Quota5h = value
+		case "quota_7d":
+			weights.Quota7d = value
 		case "upstream_cost":
 			weights.UpstreamCost = value
 		case "previous_response":
@@ -2281,6 +2291,8 @@ type GatewayOpenAIWSSchedulerScoreWeightsView struct {
 	Reset         float64
 	QuotaHeadroom float64
 	UpstreamCost  float64
+	Quota5h       float64
+	Quota7d       float64
 	Previous      float64
 	SessionSticky float64
 }
@@ -2295,6 +2307,8 @@ func (w GatewayOpenAIWSSchedulerScoreWeightsView) configWeights() config.Gateway
 		Reset:            w.Reset,
 		QuotaHeadroom:    w.QuotaHeadroom,
 		UpstreamCost:     w.UpstreamCost,
+		Quota5h:          w.Quota5h,
+		Quota7d:          w.Quota7d,
 		PreviousResponse: w.Previous,
 		SessionSticky:    w.SessionSticky,
 	}
@@ -2447,7 +2461,9 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 			weights.TTFT*ttftFactor +
 			weights.Reset*resetFactor +
 			weights.QuotaHeadroom*quotaHeadroomFactor +
-			weights.UpstreamCost*(upstreamCostFactor-openAIUpstreamCostNeutralFactor)
+			weights.UpstreamCost*(upstreamCostFactor-openAIUpstreamCostNeutralFactor) +
+			weights.Quota5h*openAICodexQuotaHeadroomFactor(candidate.account, "5h", now) +
+			weights.Quota7d*openAICodexQuotaHeadroomFactor(candidate.account, "7d", now)
 		score := OpenAIAccountSchedulerScoreSnapshot{
 			BaseScore:             baseScore,
 			StickyWeightedEnabled: stickyWeightedEnabled,
@@ -2639,6 +2655,17 @@ func openAIQuotaWindowResetAny(extra map[string]any, now time.Time, windows ...s
 		}
 	}
 	return false
+}
+
+func openAICodexQuotaHeadroomFactor(account *Account, window string, now time.Time) float64 {
+	if account == nil {
+		return 0.5
+	}
+	utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, window, now)
+	if !ok {
+		return 0.5
+	}
+	return 1 - clamp01(utilization)
 }
 
 func clamp01(value float64) float64 {

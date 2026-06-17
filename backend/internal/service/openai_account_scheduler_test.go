@@ -3249,6 +3249,8 @@ func TestOpenAIGatewayService_SchedulerWrappersAndDefaults(t *testing.T) {
 	require.Equal(t, 0.7, defaultWeights.Queue)
 	require.Equal(t, 0.8, defaultWeights.ErrorRate)
 	require.Equal(t, 0.5, defaultWeights.TTFT)
+	require.Equal(t, 0.4, defaultWeights.Quota5h)
+	require.Equal(t, 0.3, defaultWeights.Quota7d)
 
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.LBTopK = 9
@@ -3258,6 +3260,8 @@ func TestOpenAIGatewayService_SchedulerWrappersAndDefaults(t *testing.T) {
 	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0.4
 	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0.5
 	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0.6
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota5h = 0.7
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota7d = 0.8
 	svcWithCfg := &OpenAIGatewayService{cfg: cfg}
 
 	require.Equal(t, 9, svcWithCfg.openAIWSLBTopK())
@@ -3268,6 +3272,166 @@ func TestOpenAIGatewayService_SchedulerWrappersAndDefaults(t *testing.T) {
 	require.Equal(t, 0.4, customWeights.Queue)
 	require.Equal(t, 0.5, customWeights.ErrorRate)
 	require.Equal(t, 0.6, customWeights.TTFT)
+	require.Equal(t, 0.7, customWeights.Quota5h)
+	require.Equal(t, 0.8, customWeights.Quota7d)
+}
+
+func TestOpenAIAccountScheduler_CodexQuotaWeightsPreferMoreHeadroom(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	now := time.Now().UTC()
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 3
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota5h = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota7d = 1
+
+	highHeadroom := &Account{
+		ID:          9101,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":  10.0,
+			"codex_7d_used_percent":  20.0,
+			"codex_5h_reset_at":      now.Add(2 * time.Hour).Format(time.RFC3339),
+			"codex_7d_reset_at":      now.Add(48 * time.Hour).Format(time.RFC3339),
+			"codex_usage_updated_at": now.Format(time.RFC3339),
+		},
+	}
+	lowHeadroom := &Account{
+		ID:          9102,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":  70.0,
+			"codex_7d_used_percent":  90.0,
+			"codex_5h_reset_at":      now.Add(2 * time.Hour).Format(time.RFC3339),
+			"codex_7d_reset_at":      now.Add(48 * time.Hour).Format(time.RFC3339),
+			"codex_usage_updated_at": now.Format(time.RFC3339),
+		},
+	}
+	noSignal := &Account{
+		ID:          9103,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+	}
+
+	svc := &OpenAIGatewayService{cfg: cfg}
+	scheduler, ok := newDefaultOpenAIAccountScheduler(svc, nil).(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+	plan := scheduler.buildOpenAIAccountLoadPlan(
+		context.Background(),
+		OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.1"},
+		[]*Account{lowHeadroom, noSignal, highHeadroom},
+		map[int64]*AccountLoadInfo{},
+	)
+
+	scores := map[int64]float64{}
+	for _, candidate := range plan.candidates {
+		scores[candidate.account.ID] = candidate.score
+	}
+
+	require.Greater(t, scores[9101], scores[9103], "fresh high headroom should outrank neutral no-signal accounts")
+	require.Greater(t, scores[9103], scores[9102], "neutral no-signal accounts should outrank low-headroom accounts")
+	require.InDelta(t, 1.7, scores[9101], 1e-9)
+	require.InDelta(t, 1.0, scores[9103], 1e-9)
+	require.InDelta(t, 0.4, scores[9102], 1e-9)
+}
+
+func TestOpenAIAccountScheduler_CodexQuotaWeightsTreatStaleOrResetWindowsAsNeutral(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	now := time.Now().UTC()
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 3
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota5h = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Quota7d = 1
+
+	freshLowHeadroom := &Account{
+		ID:          9201,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"codex_5h_used_percent":  90.0,
+			"codex_7d_used_percent":  90.0,
+			"codex_5h_reset_at":      now.Add(2 * time.Hour).Format(time.RFC3339),
+			"codex_7d_reset_at":      now.Add(48 * time.Hour).Format(time.RFC3339),
+			"codex_usage_updated_at": now.Format(time.RFC3339),
+		},
+	}
+	resetWindow := &Account{
+		ID:          9202,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"codex_5h_used_percent":  90.0,
+			"codex_7d_used_percent":  90.0,
+			"codex_5h_reset_at":      now.Add(-1 * time.Minute).Format(time.RFC3339),
+			"codex_7d_reset_at":      now.Add(-1 * time.Minute).Format(time.RFC3339),
+			"codex_usage_updated_at": now.Format(time.RFC3339),
+		},
+	}
+	staleSnapshot := &Account{
+		ID:          9203,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"codex_5h_used_percent":  90.0,
+			"codex_7d_used_percent":  90.0,
+			"codex_5h_reset_at":      now.Add(2 * time.Hour).Format(time.RFC3339),
+			"codex_7d_reset_at":      now.Add(48 * time.Hour).Format(time.RFC3339),
+			"codex_usage_updated_at": now.Add(-3 * time.Hour).Format(time.RFC3339),
+		},
+	}
+
+	svc := &OpenAIGatewayService{cfg: cfg}
+	scheduler, ok := newDefaultOpenAIAccountScheduler(svc, nil).(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+	plan := scheduler.buildOpenAIAccountLoadPlan(
+		context.Background(),
+		OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.1"},
+		[]*Account{freshLowHeadroom, resetWindow, staleSnapshot},
+		map[int64]*AccountLoadInfo{},
+	)
+
+	scores := map[int64]float64{}
+	for _, candidate := range plan.candidates {
+		scores[candidate.account.ID] = candidate.score
+	}
+
+	require.InDelta(t, 0.2, scores[9201], 1e-9)
+	require.InDelta(t, 1.0, scores[9202], 1e-9)
+	require.InDelta(t, 1.0, scores[9203], 1e-9)
 }
 
 func TestDefaultOpenAIAccountScheduler_IsAccountTransportCompatible_Branches(t *testing.T) {
