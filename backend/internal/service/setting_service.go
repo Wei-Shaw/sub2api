@@ -2127,6 +2127,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		settings.AffiliateRebatePerInviteeCap = AffiliateRebatePerInviteeCapDefault
 	}
 	updates[SettingKeyAffiliateRebatePerInviteeCap] = strconv.FormatFloat(settings.AffiliateRebatePerInviteeCap, 'f', 8, 64)
+	updates[SettingKeyAffiliateRebateIncludeSubscription] = strconv.FormatBool(settings.AffiliateRebateIncludeSubscription)
 	updates[SettingKeyDefaultUserRPMLimit] = strconv.Itoa(settings.DefaultUserRPMLimit)
 	defaultSubsJSON, err := json.Marshal(settings.DefaultSubscriptions)
 	if err != nil {
@@ -2779,6 +2780,16 @@ func (s *SettingService) GetAffiliateRebatePerInviteeCap(ctx context.Context) fl
 	return cap
 }
 
+// GetAffiliateRebateIncludeSubscription 返回订阅套餐购买是否计入返利。
+// 缺失或解析失败时回退到 AffiliateRebateIncludeSubscriptionDefault（默认不计入）。
+func (s *SettingService) GetAffiliateRebateIncludeSubscription(ctx context.Context) bool {
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateRebateIncludeSubscription)
+	if err != nil {
+		return AffiliateRebateIncludeSubscriptionDefault
+	}
+	return strings.TrimSpace(raw) == "true"
+}
+
 // IsPasswordResetEnabled 检查是否启用密码重置功能
 // 要求：必须同时开启邮件验证
 func (s *SettingService) IsPasswordResetEnabled(ctx context.Context) bool {
@@ -3069,6 +3080,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
 		SettingKeyAffiliateRebatePerInviteeCap:              strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
+		SettingKeyAffiliateRebateIncludeSubscription:        strconv.FormatBool(AffiliateRebateIncludeSubscriptionDefault),
 		SettingKeyDefaultUserRPMLimit:                       "0",
 		SettingKeyDefaultSubscriptions:                      "[]",
 		SettingKeyAuthSourceDefaultEmailBalance:             "0",
@@ -3657,6 +3669,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"
+
+	// 订阅套餐是否计入返利（默认 false；严格 true 才计入）
+	result.AffiliateRebateIncludeSubscription = settings[SettingKeyAffiliateRebateIncludeSubscription] == "true"
 
 	// 风控中心功能（默认关闭，严格 true 才启用）
 	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"

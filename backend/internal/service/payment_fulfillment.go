@@ -517,12 +517,20 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	// Prevents double-extension on retry after markCompleted fails.
 	if s.hasAuditLog(ctx, o.ID, "SUBSCRIPTION_SUCCESS") {
 		slog.Info("subscription already assigned for order, skipping", "orderID", o.ID, "groupID", gid)
+		// 返利按订单 ID + 金额做审计去重，重复调用是安全的。
+		if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
+			return err
+		}
 		return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 	}
 	orderNote := fmt.Sprintf("payment order %d", o.ID)
 	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: orderNote})
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
+	}
+	// 订阅成功后结算邀请返利（开关关闭时内部直接跳过）。
+	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
+		return err
 	}
 	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 }
@@ -536,10 +544,21 @@ func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action 
 }
 
 func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *dbent.PaymentOrder) error {
-	if o == nil || o.OrderType != payment.OrderTypeBalance || o.Amount <= 0 {
+	if o == nil || o.Amount <= 0 {
 		return nil
 	}
 	if s.affiliateService == nil {
+		return nil
+	}
+	// 余额充值订单始终参与返利；订阅订单仅在「订阅计入返利」开关打开时参与。
+	switch o.OrderType {
+	case payment.OrderTypeBalance:
+		// always eligible
+	case payment.OrderTypeSubscription:
+		if !s.affiliateService.IncludeSubscriptionRebate(ctx) {
+			return nil
+		}
+	default:
 		return nil
 	}
 
