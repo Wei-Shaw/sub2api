@@ -334,6 +334,7 @@ func buildDeepSeekPayload(body []byte, sessionID string) map[string]any {
 		"model":           model,
 		"stream":          stream,
 		"ref_file_ids":    []any{},
+		"search_enabled":  true,
 	}
 
 	if temp, ok := payload["temperature"]; ok {
