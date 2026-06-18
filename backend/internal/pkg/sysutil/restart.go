@@ -43,6 +43,6 @@ func RestartService() error {
 func RestartServiceAsync() {
 	if err := RestartService(); err != nil {
 		log.Printf("Service restart failed: %v", err)
-		log.Println("Please restart the service manually: sudo systemctl restart sub2api")
+		log.Println("Please restart the service manually: sudo systemctl restart nub2api")
 	}
 }

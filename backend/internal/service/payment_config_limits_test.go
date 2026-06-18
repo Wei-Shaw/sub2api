@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	dbent "github.com/Wei-Shaw/Nub2api/ent"
+	"github.com/Wei-Shaw/Nub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/Nub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 

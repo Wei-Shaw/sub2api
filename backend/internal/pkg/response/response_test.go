@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	errors2 "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	errors2 "github.com/Wei-Shaw/Nub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )

@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	dbent "github.com/Wei-Shaw/Nub2api/ent"
+	"github.com/Wei-Shaw/Nub2api/ent/authidentity"
+	"github.com/Wei-Shaw/Nub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/Nub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/logger"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -45,8 +45,12 @@ var (
 	ErrOAuthInvitationRequired = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
 )
 
-// maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
-const maxTokenLength = 8192
+const (
+	// MaxTokenLength limits token size to avoid excessive allocation while parsing headers.
+	maxTokenLength = 8192
+	// MinPasswordLength is the minimum accepted password length for all password-creation flows.
+	MinPasswordLength = 12
+)
 
 // refreshTokenPrefix is the prefix for refresh tokens to distinguish them from access tokens.
 const refreshTokenPrefix = "rt_"
@@ -308,7 +312,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 	}
 
 	// 获取网站名称
-	siteName := "Sub2API"
+	siteName := "Nub2API"
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}
@@ -351,7 +355,7 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 	}
 
 	// 获取网站名称
-	siteName := "Sub2API"
+	siteName := "Nub2API"
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}
@@ -1271,7 +1275,7 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 	}
 
 	// Get site name
-	siteName := "Sub2API"
+	siteName := "Nub2API"
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}

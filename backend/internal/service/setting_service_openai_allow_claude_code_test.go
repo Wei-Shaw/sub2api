@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/Nub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 

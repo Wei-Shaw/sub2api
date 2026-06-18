@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	"github.com/Wei-Shaw/sub2api/internal/handler/quotaview"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/Nub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/Nub2api/internal/handler/quotaview"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/Nub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -48,10 +48,10 @@ func NewUserHandler(
 
 // CreateUserRequest represents admin create user request
 type CreateUserRequest struct {
-	Email         string   `json:"email" binding:"required,email"`
-	Password      string   `json:"password" binding:"required,min=6"`
-	Username      string   `json:"username"`
-	Notes         string   `json:"notes"`
+	Email         string   `json:"email" binding:"required,email,max=254"`
+	Password      string   `json:"password" binding:"required,min=12,max=256"`
+	Username      string   `json:"username" binding:"omitempty,max=64"`
+	Notes         string   `json:"notes" binding:"omitempty,max=2000"`
 	Balance       *float64 `json:"balance"`
 	Concurrency   int      `json:"concurrency"`
 	RPMLimit      int      `json:"rpm_limit"`
@@ -61,8 +61,8 @@ type CreateUserRequest struct {
 // UpdateUserRequest represents admin update user request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateUserRequest struct {
-	Email         string   `json:"email" binding:"omitempty,email"`
-	Password      string   `json:"password" binding:"omitempty,min=6"`
+	Email         string   `json:"email" binding:"omitempty,email,max=254"`
+	Password      string   `json:"password" binding:"omitempty,min=12,max=256"`
 	Username      *string  `json:"username"`
 	Notes         *string  `json:"notes"`
 	Balance       *float64 `json:"balance"`

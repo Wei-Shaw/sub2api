@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/antigravity"
 )
 
 const (

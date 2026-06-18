@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/Wei-Shaw/Nub2api/internal/config"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/Nub2api/internal/util/urlvalidator"
 	"go.uber.org/zap"
 )
 

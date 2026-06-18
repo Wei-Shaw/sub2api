@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/group"
-	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	dbent "github.com/Wei-Shaw/Nub2api/ent"
+	"github.com/Wei-Shaw/Nub2api/ent/group"
+	"github.com/Wei-Shaw/Nub2api/ent/subscriptionplan"
+	infraerrors "github.com/Wei-Shaw/Nub2api/internal/pkg/errors"
 )
 
 // validatePlanRequired checks that all required fields for a plan are provided.

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/Nub2api/internal/config"
 )
 
 func BenchmarkOpenAIWSPoolAcquire(b *testing.B) {

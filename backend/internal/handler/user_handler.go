@@ -5,11 +5,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	"github.com/Wei-Shaw/sub2api/internal/handler/quotaview"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/Nub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/Nub2api/internal/handler/quotaview"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/response"
+	middleware2 "github.com/Wei-Shaw/Nub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/Nub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -71,8 +71,8 @@ func (h *UserHandler) GetMyPlatformQuotas(c *gin.Context) {
 
 // ChangePasswordRequest represents the change password request payload
 type ChangePasswordRequest struct {
-	OldPassword string `json:"old_password" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=6"`
+	OldPassword string `json:"old_password" binding:"required,max=256"`
+	NewPassword string `json:"new_password" binding:"required,min=12,max=256"`
 }
 
 // UpdateProfileRequest represents the update profile request payload

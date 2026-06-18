@@ -9,9 +9,9 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/Wei-Shaw/sub2api/ent/group"
-	"github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/Nub2api/ent/group"
+	"github.com/Wei-Shaw/Nub2api/ent/user"
+	"github.com/Wei-Shaw/Nub2api/ent/usersubscription"
 )
 
 // UserSubscription is the model entity for the UserSubscription schema.

@@ -1,0 +1,22 @@
+[Unit]
+Description=Nub2API Data Management Daemon
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=nub2api
+Group=nub2api
+WorkingDirectory=/opt/nub2api
+ExecStart=/opt/nub2api/datamanagementd \
+  -socket-path /tmp/nub2api-datamanagement.sock \
+  -sqlite-path /var/lib/nub2api/datamanagement/datamanagementd.db \
+  -version 1.0.0
+Restart=always
+RestartSec=5s
+LimitNOFILE=100000
+NoNewPrivileges=true
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target

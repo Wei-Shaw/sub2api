@@ -223,7 +223,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_Success() {
 	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(s.T(), "/repos/test/repo/releases/latest", r.URL.Path)
 		require.Equal(s.T(), "application/vnd.github.v3+json", r.Header.Get("Accept"))
-		require.Equal(s.T(), "Sub2API-Updater", r.Header.Get("User-Agent"))
+		require.Equal(s.T(), "Nub2API-Updater", r.Header.Get("User-Agent"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(releaseJSON))

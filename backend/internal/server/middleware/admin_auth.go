@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/Nub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -33,7 +33,7 @@ func adminAuth(
 		// WebSocket upgrade requests cannot set Authorization headers in browsers.
 		// For admin WebSocket endpoints (e.g. Ops realtime), allow passing the JWT via
 		// Sec-WebSocket-Protocol (subprotocol list) using a prefixed token item:
-		//   Sec-WebSocket-Protocol: sub2api-admin, jwt.<token>
+		//   Sec-WebSocket-Protocol: nub2api-admin, jwt.<token>
 		if isWebSocketUpgradeRequest(c) {
 			if token := extractJWTFromWebSocketSubprotocol(c); token != "" {
 				if !validateJWTForAdmin(c, token, authService, userService) {

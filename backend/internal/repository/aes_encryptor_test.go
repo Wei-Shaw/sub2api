@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/Nub2api/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -99,7 +99,7 @@ func TestAESEncryptor_RoundTrip(t *testing.T) {
 		name      string
 		plaintext string
 	}{
-		{"ascii", "Hello, Sub2API!"},
+		{"ascii", "Hello, Nub2API!"},
 		{"chinese_multibyte", "你好，世界！这是多字节 UTF-8 文本。"},
 		{"empty_string", ""},
 		{"long_string_gt_1KB", strings.Repeat("x", 2048)},

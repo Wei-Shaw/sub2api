@@ -1205,7 +1205,7 @@ func TestFilterCodexInput_DropsReasoningItemsRegardlessOfPreserveReferences(t *t
 	// chatgpt.com under store=false (forced by applyCodexOAuthTransform).
 	// They are never persisted upstream, so forwarding them produces a
 	// guaranteed 404 ("Item with id 'rs_...' not found"). Drop them
-	// regardless of preserveReferences. See: Wei-Shaw/sub2api issue #1957.
+	// regardless of preserveReferences. See: Wei-Shaw/Nub2api issue #1957.
 
 	build := func() []any {
 		return []any{

@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/openai"
 	"github.com/stretchr/testify/require"
 )
 

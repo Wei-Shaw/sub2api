@@ -1,17 +1,17 @@
 # 简化版 GoReleaser 配置 - 仅发布 x86_64 GHCR 镜像
 version: 2
 
-project_name: sub2api
+project_name: nub2api
 
 before:
   hooks:
     - go mod tidy -C backend
 
 builds:
-  - id: sub2api
+  - id: nub2api
     dir: backend
     main: ./cmd/server
-    binary: sub2api
+    binary: nub2api
     flags:
       - -tags=embed
     env:
@@ -42,9 +42,9 @@ dockers:
     goos: linux
     goarch: amd64
     image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:{{ .Version }}"
-      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:latest"
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nub2api:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nub2api:{{ .Version }}"
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nub2api:latest"
     dockerfile: Dockerfile.goreleaser
     use: buildx
     extra_files:
@@ -64,7 +64,7 @@ release:
     name: "{{ .Env.GITHUB_REPO_NAME }}"
   draft: false
   prerelease: auto
-  name_template: "Sub2API {{.Version}} (Simple)"
+  name_template: "Nub2API {{.Version}} (Simple)"
   # 跳过上传二进制包
   skip_upload: true
   header: |
@@ -80,7 +80,7 @@ release:
 
     **Docker (x86_64 only):**
     ```bash
-    docker pull ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:{{ .Version }}
+    docker pull ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nub2api:{{ .Version }}
     ```
 
     ## 📚 Documentation

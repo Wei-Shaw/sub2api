@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/apicompat"
 	"github.com/stretchr/testify/require"
 )
 

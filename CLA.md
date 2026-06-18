@@ -1,6 +1,6 @@
-# Sub2API Individual Contributor License Agreement (v1.0)
+# Nub2API Individual Contributor License Agreement (v1.0)
 
-Thank you for your interest in contributing to Sub2API ("the Project"). This Contributor License Agreement ("Agreement") documents the rights granted by contributors to the Project.
+Thank you for your interest in contributing to Nub2API ("the Project"). This Contributor License Agreement ("Agreement") documents the rights granted by contributors to the Project.
 
 By signing this Agreement, you accept and agree to the following terms and conditions for your present and future contributions submitted to the Project.
 

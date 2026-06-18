@@ -10,16 +10,16 @@ import (
 
 	"log/slog"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	infraerrors "github.com/Wei-Shaw/Nub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/Nub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
 const (
-	dataType       = "sub2api-data"
-	legacyDataType = "sub2api-bundle"
+	dataType       = "nub2api-data"
+	legacyDataType = "nub2api-bundle"
 	dataVersion    = 1
 	dataPageCap    = 1000
 )

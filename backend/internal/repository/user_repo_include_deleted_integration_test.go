@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/Nub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
 

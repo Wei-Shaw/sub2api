@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -73,7 +73,7 @@ func captureHandlerStructuredLog(t *testing.T) (*handlerInMemoryLogSink, func())
 	err := logger.Init(logger.InitOptions{
 		Level:       "debug",
 		Format:      "json",
-		ServiceName: "sub2api",
+		ServiceName: "nub2api",
 		Environment: "test",
 		Output: logger.OutputOptions{
 			ToStdout: true,

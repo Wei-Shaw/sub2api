@@ -8,8 +8,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/predicate"
-	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/Nub2api/ent/predicate"
+	"github.com/Wei-Shaw/Nub2api/ent/setting"
 )
 
 // SettingDelete is the builder for deleting a Setting entity.

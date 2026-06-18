@@ -1,0 +1,7 @@
+interface:
+  display_name: "Nub2API Admin"
+  short_description: "Manage Nub2API admin accounts and settings"
+  default_prompt: "Use $nub2api-admin to inspect and manage Nub2API backend accounts safely."
+
+policy:
+  allow_implicit_invocation: true

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/openai_compat"
 )
 
 // openaiResponsesProbeTimeout 是探测请求的超时时长。

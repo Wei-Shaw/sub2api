@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	dbent "github.com/Wei-Shaw/Nub2api/ent"
+	"github.com/Wei-Shaw/Nub2api/ent/authidentity"
+	infraerrors "github.com/Wei-Shaw/Nub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/logger"
 )
 
 // BindEmailIdentity verifies and binds a local email/password identity to the
@@ -46,8 +46,8 @@ func (s *AuthService) BindEmailIdentity(
 		return nil, err
 	}
 	firstRealEmailBind := !hasBindableEmailIdentitySubject(currentUser.Email)
-	if firstRealEmailBind && len(password) < 6 {
-		return nil, infraerrors.BadRequest("PASSWORD_TOO_SHORT", "password must be at least 6 characters")
+	if firstRealEmailBind && len(password) < MinPasswordLength {
+		return nil, infraerrors.BadRequest("PASSWORD_TOO_SHORT", fmt.Sprintf("password must be at least %d characters", MinPasswordLength))
 	}
 	if !firstRealEmailBind && !s.CheckPassword(password, currentUser.PasswordHash) {
 		return nil, ErrPasswordIncorrect
@@ -124,7 +124,7 @@ func (s *AuthService) SendEmailIdentityBindCode(ctx context.Context, userID int6
 		return ErrServiceUnavailable
 	}
 
-	siteName := "Sub2API"
+	siteName := "Nub2API"
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}

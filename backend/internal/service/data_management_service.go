@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	infraerrors "github.com/Wei-Shaw/Nub2api/internal/pkg/errors"
 )
 
 const (
-	DefaultDataManagementAgentSocketPath = "/tmp/sub2api-datamanagement.sock"
-	LegacyBackupAgentSocketPath          = "/tmp/sub2api-backup.sock"
+	DefaultDataManagementAgentSocketPath = "/tmp/nub2api-datamanagement.sock"
+	LegacyBackupAgentSocketPath          = "/tmp/nub2api-backup.sock"
 
 	DataManagementDeprecatedReason         = "DATA_MANAGEMENT_DEPRECATED"
 	DataManagementAgentSocketMissingReason = "DATA_MANAGEMENT_AGENT_SOCKET_MISSING"

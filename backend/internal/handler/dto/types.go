@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/Nub2api/internal/domain"
 )
 
 type User struct {

@@ -6,13 +6,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/Nub2api/internal/config"
+	"github.com/Wei-Shaw/Nub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/Nub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/response"
+	middleware2 "github.com/Wei-Shaw/Nub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/Nub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -48,19 +48,19 @@ func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userSe
 
 // RegisterRequest represents the registration request payload
 type RegisterRequest struct {
-	Email          string `json:"email" binding:"required,email"`
-	Password       string `json:"password" binding:"required,min=6"`
-	VerifyCode     string `json:"verify_code"`
-	TurnstileToken string `json:"turnstile_token"`
-	PromoCode      string `json:"promo_code"`      // 注册优惠码
-	InvitationCode string `json:"invitation_code"` // 邀请码
-	AffCode        string `json:"aff_code"`        // 邀请返利码
+	Email          string `json:"email" binding:"required,email,max=254"`
+	Password       string `json:"password" binding:"required,min=12,max=256"`
+	VerifyCode     string `json:"verify_code" binding:"omitempty,max=32"`
+	TurnstileToken string `json:"turnstile_token" binding:"omitempty,max=4096"`
+	PromoCode      string `json:"promo_code" binding:"omitempty,max=64"`       // 注册优惠码
+	InvitationCode string `json:"invitation_code" binding:"omitempty,max=128"` // 邀请码
+	AffCode        string `json:"aff_code" binding:"omitempty,max=64"`         // 邀请返利码
 }
 
 // SendVerifyCodeRequest 发送验证码请求
 type SendVerifyCodeRequest struct {
-	Email          string `json:"email" binding:"required,email"`
-	TurnstileToken string `json:"turnstile_token"`
+	Email          string `json:"email" binding:"required,email,max=254"`
+	TurnstileToken string `json:"turnstile_token" binding:"omitempty,max=4096"`
 }
 
 // SendVerifyCodeResponse 发送验证码响应
@@ -71,9 +71,9 @@ type SendVerifyCodeResponse struct {
 
 // LoginRequest represents the login request payload
 type LoginRequest struct {
-	Email          string `json:"email" binding:"required,email"`
-	Password       string `json:"password" binding:"required"`
-	TurnstileToken string `json:"turnstile_token"`
+	Email          string `json:"email" binding:"required,email,max=254"`
+	Password       string `json:"password" binding:"required,max=256"`
+	TurnstileToken string `json:"turnstile_token" binding:"omitempty,max=4096"`
 }
 
 // AuthResponse 认证响应格式（匹配前端期望）
@@ -569,8 +569,8 @@ func (h *AuthHandler) ValidateInvitationCode(c *gin.Context) {
 
 // ForgotPasswordRequest 忘记密码请求
 type ForgotPasswordRequest struct {
-	Email          string `json:"email" binding:"required,email"`
-	TurnstileToken string `json:"turnstile_token"`
+	Email          string `json:"email" binding:"required,email,max=254"`
+	TurnstileToken string `json:"turnstile_token" binding:"omitempty,max=4096"`
 }
 
 // ForgotPasswordResponse 忘记密码响应
@@ -614,9 +614,9 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 
 // ResetPasswordRequest 重置密码请求
 type ResetPasswordRequest struct {
-	Email       string `json:"email" binding:"required,email"`
-	Token       string `json:"token" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=6"`
+	Email       string `json:"email" binding:"required,email,max=254"`
+	Token       string `json:"token" binding:"required,max=512"`
+	NewPassword string `json:"new_password" binding:"required,min=12,max=256"`
 }
 
 // ResetPasswordResponse 重置密码响应

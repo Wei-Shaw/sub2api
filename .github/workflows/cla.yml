@@ -15,7 +15,7 @@ permissions:
 jobs:
   cla-check:
     if: |
-      github.repository == 'Wei-Shaw/sub2api' &&
+      github.repository == 'Wei-Shaw/Nub2api' &&
       (
         github.event_name == 'issue_comment' ||
         (github.event_name == 'pull_request_target' && github.event.action != 'closed')
@@ -32,12 +32,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           path-to-signatures: "cla.json"
-          path-to-document: "https://github.com/Wei-Shaw/sub2api/blob/main/CLA.md"
+          path-to-document: "https://github.com/Wei-Shaw/Nub2api/blob/main/CLA.md"
           branch: "cla-signatures"
           allowlist: "dependabot[bot],renovate[bot],bot*"
           lock-pullrequest-aftermerge: false
           custom-notsigned-prcomment: |
-            Thank you for your contribution! Before we can merge this PR, we need $you to sign our [Contributor License Agreement (CLA)](https://github.com/Wei-Shaw/sub2api/blob/main/CLA.md).
+            Thank you for your contribution! Before we can merge this PR, we need $you to sign our [Contributor License Agreement (CLA)](https://github.com/Wei-Shaw/Nub2api/blob/main/CLA.md).
 
             **To sign**, please reply with the following comment:
 
@@ -49,7 +49,7 @@ jobs:
 
   cla-lock:
     if: |
-      github.repository == 'Wei-Shaw/sub2api' &&
+      github.repository == 'Wei-Shaw/Nub2api' &&
       github.event_name == 'pull_request_target' &&
       github.event.action == 'closed' &&
       github.event.pull_request.merged == true
@@ -61,6 +61,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           path-to-signatures: "cla.json"
-          path-to-document: "https://github.com/Wei-Shaw/sub2api/blob/main/CLA.md"
+          path-to-document: "https://github.com/Wei-Shaw/Nub2api/blob/main/CLA.md"
           branch: "cla-signatures"
           lock-pullrequest-aftermerge: true

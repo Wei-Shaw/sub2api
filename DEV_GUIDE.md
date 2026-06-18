@@ -1,4 +1,4 @@
-# sub2api 项目开发指南
+# nub2api 项目开发指南
 
 > 本文档记录项目环境配置、常见坑点和注意事项，供 Claude Code 和团队成员参考。
 
@@ -6,8 +6,8 @@
 
 | 项目 | 说明 |
 |------|------|
-| **上游仓库** | Wei-Shaw/sub2api |
-| **Fork 仓库** | bayma888/sub2api-bmai |
+| **上游仓库** | Wei-Shaw/Nub2api |
+| **Fork 仓库** | bayma888/nub2api-bmai |
 | **技术栈** | Go 后端 (Ent ORM + Gin) + Vue3 前端 (pnpm) |
 | **数据库** | PostgreSQL 16 + Redis |
 | **包管理** | 后端: go modules, 前端: **pnpm**（不是 npm） |
@@ -21,7 +21,7 @@
 | 端口 | 5432 |
 | psql 路径 | `C:\Program Files\PostgreSQL\16\bin\psql.exe` |
 | pg_hba.conf | `C:\Program Files\PostgreSQL\16\data\pg_hba.conf` |
-| 数据库凭据 | user=`sub2api`, password=`sub2api`, dbname=`sub2api` |
+| 数据库凭据 | user=`nub2api`, password=`nub2api`, dbname=`nub2api` |
 | 超级用户 | user=`postgres`, password=`postgres` |
 
 ### Redis
@@ -41,7 +41,89 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.7
 npm install -g pnpm
 ```
 
-## 三、CI/CD 流水线
+## 三、标准开发流程
+
+### 1. 后端开发
+
+```bash
+cd backend
+
+# 启动后端服务
+go run ./cmd/server
+
+# 运行全部后端测试
+go test ./...
+
+# 运行单元/集成测试
+make test-unit
+make test-integration
+
+# 修改 Ent schema 后重新生成
+go generate ./ent
+go generate ./cmd/server
+```
+
+### 2. 前端开发
+
+```bash
+cd frontend
+
+# 安装依赖，必须使用 pnpm
+pnpm install
+
+# 启动 Vite 开发服务器
+pnpm run dev
+
+# 类型检查、lint 和构建
+pnpm run typecheck
+pnpm run lint:check
+pnpm run build
+```
+
+### 3. 全项目验证
+
+```bash
+# 后端 + 前端关键检查
+make test
+
+# 构建后端和前端
+make build
+
+# 密钥扫描
+make secret-scan
+```
+
+### 4. 本地服务地址
+
+| 服务 | 默认地址 |
+|------|----------|
+| 后端 API | `http://localhost:8080` |
+| 前端 Dev Server | `http://localhost:5173` |
+| 初始化向导 | `http://localhost:8080/setup` |
+| PostgreSQL | `127.0.0.1:5432` |
+| Redis | `127.0.0.1:6379` |
+
+## 四、安全开发约定
+
+- 所有新密码创建/修改入口必须使用至少 12 位密码策略。
+- 认证请求字段必须设置合理 `max` 长度，避免异常大 payload 进入业务层。
+- 记录日志前必须避免输出 API Key、Authorization、token、password、private key 等敏感字段；优先复用 `internal/util/logredact`。
+- 生产环境必须配置稳定的 `JWT_SECRET` 和 `TOTP_ENCRYPTION_KEY`，否则重启后会影响会话和 2FA。
+- 默认只允许 HTTPS 上游；仅在本地受信环境中临时启用 HTTP。
+- 对外暴露服务时应配置反向代理、TLS、可信代理列表和 CORS 白名单。
+
+## 五、Claude 风格前端主题
+
+前端主题集中在：
+
+- `frontend/tailwind.config.js`：色彩、阴影、字体、动画 token。
+- `frontend/src/style.css`：按钮、输入框、卡片、表格、侧栏、弹窗等全局组件类。
+- `frontend/src/components/layout/AppLayout.vue`：应用主背景和整体层级。
+- `frontend/src/components/layout/AuthLayout.vue`：登录/注册页背景。
+
+主题原则：温暖中性色、柔和橙棕主色、大圆角、轻玻璃态、低对比阴影、顺滑 hover/active 微交互，并保持深色模式可读性。
+
+## 六、CI/CD 流水线
 
 ### GitHub Actions Workflows
 
@@ -72,7 +154,7 @@ cd backend && golangci-lint run ./...
 cd frontend && pnpm install
 ```
 
-## 四、常见坑点 & 解决方案
+## 七、常见坑点 & 解决方案
 
 ### 坑 1：pnpm-lock.yaml 必须同步提交
 
@@ -114,7 +196,7 @@ psql -c "INSERT INTO users ... VALUES ('$2a$10$...')"
 
 # 正确做法
 echo "INSERT INTO users ... VALUES ('\$2a\$10\$...')" > temp.sql
-psql -U sub2api -h 127.0.0.1 -d sub2api -f temp.sql
+psql -U nub2api -h 127.0.0.1 -d nub2api -f temp.sql
 ```
 
 ---
@@ -148,7 +230,7 @@ psql -f "C:\temp.sql"
 3. 无密码登录并重置
    ```bash
    psql -U postgres -h 127.0.0.1
-   ALTER USER sub2api WITH PASSWORD 'sub2api';
+   ALTER USER nub2api WITH PASSWORD 'nub2api';
    ALTER USER postgres WITH PASSWORD 'postgres';
    ```
 4. 改回 `scram-sha-256` 并重启
@@ -249,7 +331,7 @@ git add ent/       # 生成的文件也要提交
 
 ```bash
 # 连接数据库
-psql -U sub2api -h 127.0.0.1 -d sub2api
+psql -U nub2api -h 127.0.0.1 -d nub2api
 
 # 查看所有用户
 psql -U postgres -h 127.0.0.1 -c "\du"
@@ -258,7 +340,7 @@ psql -U postgres -h 127.0.0.1 -c "\du"
 psql -U postgres -h 127.0.0.1 -c "\l"
 
 # 执行 SQL 文件
-psql -U sub2api -h 127.0.0.1 -d sub2api -f migration.sql
+psql -U nub2api -h 127.0.0.1 -d nub2api -f migration.sql
 ```
 
 ### Git 操作
@@ -313,7 +395,7 @@ golangci-lint run ./...
 ## 六、项目结构速览
 
 ```
-sub2api-bmai/
+nub2api-bmai/
 ├── backend/
 │   ├── cmd/server/          # 主程序入口
 │   ├── ent/                 # Ent ORM 生成代码
@@ -340,7 +422,7 @@ sub2api-bmai/
 
 ## 七、参考资源
 
-- [上游仓库](https://github.com/Wei-Shaw/sub2api)
+- [上游仓库](https://github.com/Wei-Shaw/Nub2api)
 - [Ent 文档](https://entgo.io/docs/getting-started)
 - [Vue3 文档](https://vuejs.org/)
 - [pnpm 文档](https://pnpm.io/)

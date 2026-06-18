@@ -7,7 +7,7 @@
 ## 中文
 
 ### 目标
-本文档用于对接外部支付系统（如 `sub2apipay`）与 Sub2API 的 Admin API，覆盖：
+本文档用于对接外部支付系统（如 `nub2apipay`）与 Nub2API 的 Admin API，覆盖：
 - 支付成功后充值
 - 用户查询
 - 人工余额修正
@@ -41,7 +41,7 @@
   "type": "balance",
   "value": 100.0,
   "user_id": 123,
-  "notes": "sub2apipay order: cm1234567890"
+  "notes": "nub2apipay order: cm1234567890"
 }
 ```
 
@@ -61,7 +61,7 @@ curl -X POST "${BASE}/api/v1/admin/redeem-codes/create-and-redeem" \
     "type":"balance",
     "value":100.00,
     "user_id":123,
-    "notes":"sub2apipay order: cm1234567890"
+    "notes":"nub2apipay order: cm1234567890"
   }'
 ```
 
@@ -100,7 +100,7 @@ curl -X POST "${BASE}/api/v1/admin/users/123/balance" \
 ```
 
 ### 4) 购买页 / 自定义页面 URL Query 透传（iframe / 新窗口一致）
-当 Sub2API 打开 `purchase_subscription_url` 或用户侧自定义页面 iframe URL 时，会统一追加：
+当 Nub2API 打开 `purchase_subscription_url` 或用户侧自定义页面 iframe URL 时，会统一追加：
 - `user_id`
 - `token`
 - `theme`（`light` / `dark`）
@@ -119,15 +119,15 @@ https://pay.example.com/pay?user_id=123&token=<jwt>&theme=light&lang=zh&ui_mode=
 - 重试保持相同 `code`，并使用新的 `Idempotency-Key`
 
 ### 6) `doc_url` 配置建议
-- 查看链接：`https://github.com/Wei-Shaw/sub2api/blob/main/ADMIN_PAYMENT_INTEGRATION_API.md`
-- 下载链接：`https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/ADMIN_PAYMENT_INTEGRATION_API.md`
+- 查看链接：`https://github.com/Wei-Shaw/Nub2api/blob/main/ADMIN_PAYMENT_INTEGRATION_API.md`
+- 下载链接：`https://raw.githubusercontent.com/Wei-Shaw/Nub2api/main/ADMIN_PAYMENT_INTEGRATION_API.md`
 
 ---
 
 ## English
 
 ### Purpose
-This document describes the minimal Sub2API Admin API surface for external payment integrations (for example, `sub2apipay`), including:
+This document describes the minimal Nub2API Admin API surface for external payment integrations (for example, `nub2apipay`), including:
 - Recharge after payment success
 - User lookup
 - Manual balance correction
@@ -161,7 +161,7 @@ Request body:
   "type": "balance",
   "value": 100.0,
   "user_id": 123,
-  "notes": "sub2apipay order: cm1234567890"
+  "notes": "nub2apipay order: cm1234567890"
 }
 ```
 
@@ -181,7 +181,7 @@ curl -X POST "${BASE}/api/v1/admin/redeem-codes/create-and-redeem" \
     "type":"balance",
     "value":100.00,
     "user_id":123,
-    "notes":"sub2apipay order: cm1234567890"
+    "notes":"nub2apipay order: cm1234567890"
   }'
 ```
 
@@ -220,7 +220,7 @@ curl -X POST "${BASE}/api/v1/admin/users/123/balance" \
 ```
 
 ### 4) Purchase / Custom Page URL query forwarding (iframe and new tab)
-When Sub2API opens `purchase_subscription_url` or a user-facing custom page iframe URL, it appends:
+When Nub2API opens `purchase_subscription_url` or a user-facing custom page iframe URL, it appends:
 - `user_id`
 - `token`
 - `theme` (`light` / `dark`)
@@ -239,5 +239,5 @@ https://pay.example.com/pay?user_id=123&token=<jwt>&theme=light&lang=zh&ui_mode=
 - Keep the same `code` for retry, and use a new `Idempotency-Key`
 
 ### 6) Recommended `doc_url`
-- View URL: `https://github.com/Wei-Shaw/sub2api/blob/main/ADMIN_PAYMENT_INTEGRATION_API.md`
-- Download URL: `https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/ADMIN_PAYMENT_INTEGRATION_API.md`
+- View URL: `https://github.com/Wei-Shaw/Nub2api/blob/main/ADMIN_PAYMENT_INTEGRATION_API.md`
+- Download URL: `https://raw.githubusercontent.com/Wei-Shaw/Nub2api/main/ADMIN_PAYMENT_INTEGRATION_API.md`

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/Nub2api/internal/payment"
 )
 
 func TestNormalizeEasyPayAPIBase(t *testing.T) {

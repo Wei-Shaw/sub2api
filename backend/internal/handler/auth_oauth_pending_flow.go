@@ -11,17 +11,17 @@ import (
 	"strings"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
-	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
-	"github.com/Wei-Shaw/sub2api/ent/predicate"
-	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/Wei-Shaw/Nub2api/ent"
+	"github.com/Wei-Shaw/Nub2api/ent/authidentity"
+	"github.com/Wei-Shaw/Nub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/Nub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/Nub2api/ent/predicate"
+	dbuser "github.com/Wei-Shaw/Nub2api/ent/user"
+	infraerrors "github.com/Wei-Shaw/Nub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/oauth"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/Nub2api/internal/service"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/gin-gonic/gin"
@@ -57,27 +57,27 @@ type oauthAdoptionDecisionRequest struct {
 }
 
 type bindPendingOAuthLoginRequest struct {
-	Email            string `json:"email" binding:"required,email"`
-	Password         string `json:"password" binding:"required"`
+	Email            string `json:"email" binding:"required,email,max=254"`
+	Password         string `json:"password" binding:"required,max=256"`
 	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
 	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
 }
 
 type createPendingOAuthAccountRequest struct {
-	Email            string `json:"email" binding:"required,email"`
-	VerifyCode       string `json:"verify_code,omitempty"`
-	Password         string `json:"password" binding:"required,min=6"`
-	InvitationCode   string `json:"invitation_code,omitempty"`
-	AffCode          string `json:"aff_code,omitempty"`
+	Email            string `json:"email" binding:"required,email,max=254"`
+	VerifyCode       string `json:"verify_code,omitempty" binding:"omitempty,max=32"`
+	Password         string `json:"password" binding:"required,min=12,max=256"`
+	InvitationCode   string `json:"invitation_code,omitempty" binding:"omitempty,max=128"`
+	AffCode          string `json:"aff_code,omitempty" binding:"omitempty,max=64"`
 	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
 	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
 }
 
 type sendPendingOAuthVerifyCodeRequest struct {
-	Email             string `json:"email" binding:"required,email"`
-	TurnstileToken    string `json:"turnstile_token,omitempty"`
-	PendingAuthToken  string `json:"pending_auth_token,omitempty"`
-	PendingOAuthToken string `json:"pending_oauth_token,omitempty"`
+	Email             string `json:"email" binding:"required,email,max=254"`
+	TurnstileToken    string `json:"turnstile_token,omitempty" binding:"omitempty,max=4096"`
+	PendingAuthToken  string `json:"pending_auth_token,omitempty" binding:"omitempty,max=512"`
+	PendingOAuthToken string `json:"pending_oauth_token,omitempty" binding:"omitempty,max=512"`
 }
 
 func (r bindPendingOAuthLoginRequest) adoptionDecision() oauthAdoptionDecisionRequest {

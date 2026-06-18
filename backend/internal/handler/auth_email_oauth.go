@@ -9,12 +9,12 @@ import (
 	"net/url"
 	"strings"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/Wei-Shaw/Nub2api/ent"
+	"github.com/Wei-Shaw/Nub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/Nub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/oauth"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/Nub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
 	"github.com/tidwall/gjson"
@@ -326,9 +326,9 @@ func (h *AuthHandler) createEmailOAuthRegistrationPendingSession(
 }
 
 type completeEmailOAuthRequest struct {
-	Password       string `json:"password" binding:"required,min=6"`
-	InvitationCode string `json:"invitation_code,omitempty"`
-	AffCode        string `json:"aff_code,omitempty"`
+	Password       string `json:"password" binding:"required,min=12,max=256"`
+	InvitationCode string `json:"invitation_code,omitempty" binding:"omitempty,max=128"`
+	AffCode        string `json:"aff_code,omitempty" binding:"omitempty,max=64"`
 }
 
 func (h *AuthHandler) completeEmailOAuthRegistration(c *gin.Context, provider string) {

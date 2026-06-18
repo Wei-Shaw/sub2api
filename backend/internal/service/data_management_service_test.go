@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	infraerrors "github.com/Wei-Shaw/Nub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 

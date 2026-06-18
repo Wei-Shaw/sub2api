@@ -66,7 +66,7 @@ function buildPublicSettings(overrides: Partial<WeChatPublicSettings> = {}): WeC
     invitation_code_enabled: false,
     turnstile_enabled: false,
     turnstile_site_key: '',
-    site_name: 'Sub2API',
+    site_name: 'Nub2API',
     site_logo: '',
     site_subtitle: '',
     api_base_url: '/api/v1',

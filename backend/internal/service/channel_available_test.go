@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/Nub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 

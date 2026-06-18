@@ -3,8 +3,8 @@ package service
 import (
 	"strings"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
+	dbent "github.com/Wei-Shaw/Nub2api/ent"
+	"github.com/Wei-Shaw/Nub2api/internal/payment"
 )
 
 func paymentProviderConfigCurrency(providerKey string, cfg map[string]string) string {

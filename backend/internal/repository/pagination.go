@@ -1,6 +1,6 @@
 package repository
 
-import "github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+import "github.com/Wei-Shaw/Nub2api/internal/pkg/pagination"
 
 func paginationResultFromTotal(total int64, params pagination.PaginationParams) *pagination.PaginationResult {
 	pages := int(total) / params.Limit()
