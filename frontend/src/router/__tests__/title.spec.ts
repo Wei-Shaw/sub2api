@@ -1,5 +1,5 @@
 import { describe, expect, it REDACTED from 'vitest'
-import { resolveDocumentTitle REDACTED from '@/router/title'
+import { resolveDocumentTitle, resolveRouteDocumentTitle REDACTED from '@/router/title'
 
 describe('resolveDocumentTitle', () => {
   it('路由存在标题时，使用“路由标题 - 站点名”格式', () => {
@@ -21,5 +21,29 @@ describe('resolveDocumentTitle', () => {
 
     expect(before).toBe('Admin Dashboard - Alpha')
     expect(after).toBe('Admin Dashboard - Beta')
+  REDACTED)
+REDACTED)
+
+describe('resolveRouteDocumentTitle', () => {
+  it('自定义页面菜单加载后，使用菜单名称作为标题', () => {
+    const route = {
+      name: 'CustomPage',
+      params: { id: 'scheduler' REDACTED,
+      meta: {
+        title: 'Custom Page'
+      REDACTED
+    REDACTED
+
+    expect(resolveRouteDocumentTitle(route, 'EzouAPI')).toBe('Custom Page - EzouAPI')
+    expect(resolveRouteDocumentTitle(route, 'EzouAPI', [
+      {
+        id: 'scheduler',
+        label: '账号调度器',
+        icon_svg: '',
+        url: 'https://example.com',
+        visibility: 'admin',
+        sort_order: 0
+      REDACTED
+    ])).toBe('账号调度器 - EzouAPI')
   REDACTED)
 REDACTED)
