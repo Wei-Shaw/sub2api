@@ -6546,6 +6546,7 @@ export default {
         passthroughBody: 'Passthrough upstream error message',
         customMessage: 'Custom error message',
         customMessagePlaceholder: 'Error message to return to client...',
+        customMessageHint: 'For local no-available-account errors, match status 503 + keyword "no available accounts". Custom messages support template variables next_reset_at, next_reset_account, and account_summary wrapped in double braces.',
         skipMonitoring: 'Skip monitoring',
         skipMonitoringHint: 'When enabled, errors matching this rule will not be recorded in ops monitoring',
         enabled: 'Enable this rule'

@@ -344,7 +344,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available OpenAI accounts support /responses/compact", streamStarted)
 					return
 				}
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				status, errType, message := h.openAIAccountSelectionErrorResponse(c, apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "Service temporarily unavailable")
+				h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 				return
 			}
 			if lastFailoverErr != nil {
@@ -356,7 +357,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		if selection == nil || selection.Account == nil {
 			markOpsRoutingCapacityLimited(c)
-			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+			status, errType, message := h.openAIAccountSelectionErrorResponse(c, apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts")
+			h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 			return
 		}
 		if previousResponseID != "" && selection != nil && selection.Account != nil {
@@ -762,7 +764,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			if len(failedAccountIDs) == 0 {
 				if err != nil {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-					h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+					status, errType, message := h.openAIAccountSelectionErrorResponse(c, apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "Service temporarily unavailable")
+					h.anthropicStreamingAwareError(c, status, errType, message, streamStarted)
 					return
 				}
 			} else {
@@ -776,7 +779,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		}
 		if selection == nil || selection.Account == nil {
 			markOpsRoutingCapacityLimited(c)
-			h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+			status, errType, message := h.openAIAccountSelectionErrorResponse(c, apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts")
+			h.anthropicStreamingAwareError(c, status, errType, message, streamStarted)
 			return
 		}
 		account := selection.Account
@@ -1061,7 +1065,8 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 ) (func(), bool) {
 	if selection == nil || selection.Account == nil {
 		markOpsRoutingCapacityLimited(c)
-		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", *streamStarted)
+		status, errType, message := h.openAIAccountSelectionErrorResponse(c, groupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts")
+		h.handleStreamingAwareError(c, status, errType, message, *streamStarted)
 		return nil, false
 	}
 
@@ -1072,7 +1077,8 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 	}
 	if selection.WaitPlan == nil {
 		markOpsRoutingCapacityLimited(c)
-		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", *streamStarted)
+		status, errType, message := h.openAIAccountSelectionErrorResponse(c, groupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts")
+		h.handleStreamingAwareError(c, status, errType, message, *streamStarted)
 		return nil, false
 	}
 

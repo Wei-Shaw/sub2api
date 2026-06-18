@@ -6701,6 +6701,7 @@ export default {
         passthroughBody: '透传上游错误信息',
         customMessage: '自定义错误信息',
         customMessagePlaceholder: '返回给客户端的错误信息...',
+        customMessageHint: '本地无可用账号可用错误码 503 + 关键词 no available accounts 匹配；自定义消息支持模板变量：next_reset_at、next_reset_account、account_summary（使用双大括号包裹）。',
         skipMonitoring: '跳过运维监控记录',
         skipMonitoringHint: '开启后，匹配此规则的错误不会被记录到运维监控中',
         enabled: '启用此规则'
