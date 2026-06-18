@@ -43,6 +43,7 @@ func ProvideAdminHandlers(
 	oidcClientHandler *admin.OidcClientHandler,
 	oidcSigningKeyHandler *admin.OidcSigningKeyHandler,
 	oidcProviderSettingsHandler *admin.OidcProviderSettingsHandler,
+	complianceHandler *admin.ComplianceHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -79,6 +80,7 @@ func ProvideAdminHandlers(
 		OidcClient:             oidcClientHandler,
 		OidcSigningKey:         oidcSigningKeyHandler,
 		OidcProviderSettings:   oidcProviderSettingsHandler,
+		Compliance:             complianceHandler,
 	}
 }
 
@@ -202,6 +204,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewOidcClientHandler,
 	admin.NewOidcSigningKeyHandler,
 	admin.NewOidcProviderSettingsHandler,
+	admin.NewComplianceHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

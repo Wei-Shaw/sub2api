@@ -40,6 +40,7 @@ type AdminHandlers struct {
 	OidcClient             *admin.OidcClientHandler
 	OidcSigningKey         *admin.OidcSigningKeyHandler
 	OidcProviderSettings   *admin.OidcProviderSettingsHandler
+	Compliance             *admin.ComplianceHandler
 }
 
 // Handlers contains all HTTP handlers

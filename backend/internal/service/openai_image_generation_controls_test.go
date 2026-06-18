@@ -320,6 +320,34 @@ func TestOpenAIGatewayServiceHandleResponsesImageOutputs_Streaming(t *testing.T)
 	require.Equal(t, 4, result.usage.ImageOutputTokens)
 }
 
+// TestHandleStreamingResponse_CyberPolicyCapturesRealUpstreamTokens 锁定流式
+// /v1/responses 命中 cyber_policy 的计费正确性：response.failed 自带的真实 usage
+// 必须在打 cyber 标记前被解析进 mark；否则计费走 mark.UpstreamInTok 会按 0 token
+// 漏记真实用量（该路径返回错误，handler 仅经 RecordCyberPolicyUsageLog 计费）。
+func TestHandleStreamingResponse_CyberPolicyCapturesRealUpstreamTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newOpenAIImageGenerationControlTestService(&httpUpstreamRecorder{})
+	c, _ := newOpenAIImageGenerationControlTestContext(false, "unit-test-agent/1.0")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(
+			"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_cyber\"}}\n\n" +
+				"data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_cyber\",\"error\":{\"code\":\"cyber_policy\",\"message\":\"blocked by network policy\"},\"usage\":{\"input_tokens\":1234,\"output_tokens\":7}}}\n\n",
+		)),
+	}
+
+	_, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "gpt-5.5", "gpt-5.5")
+	require.Error(t, err, "cyber 命中的流式响应应返回错误（sawFailedEvent）")
+
+	mark := GetOpsCyberPolicy(c)
+	require.NotNil(t, mark, "必须打上 cyber 标记")
+	require.Equal(t, "cyber_policy", mark.Code)
+	require.Equal(t, 1234, mark.UpstreamInTok, "必须捕获 response.failed 自带真实 input token，而非解析前的 0")
+	require.Equal(t, 7, mark.UpstreamOutTok)
+}
+
 func newOpenAIImageGenerationControlTestService(upstream *httpUpstreamRecorder) *OpenAIGatewayService {
 	cfg := &config.Config{}
 	return &OpenAIGatewayService{

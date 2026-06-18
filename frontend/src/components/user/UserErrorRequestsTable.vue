@@ -123,7 +123,7 @@ const localModel = ref<string | null>('')
 const localCategory = ref<string>('')
 const localApiKeyId = ref<number | null>(null)
 
-const categoryCodes = ['auth', 'rate_limit', 'quota', 'invalid_request', 'service_unavailable', 'upstream', 'internal']
+const categoryCodes = ['auth', 'rate_limit', 'quota', 'invalid_request', 'service_unavailable', 'upstream', 'internal', 'cyber']
 
 const categoryOptions = computed(() => [
   { value: '', label: t('usage.errors.allCategories') },

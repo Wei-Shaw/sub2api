@@ -64,6 +64,8 @@ var schedulerNeutralExtraKeys = map[string]struct{}{
 	"session_window_utilization": {},
 }
 
+const postgresParameterBatchSize = 50000
+
 // NewAccountRepository 创建账户仓储实例。
 // 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
 func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AccountRepository {
@@ -647,6 +649,62 @@ func (r *accountRepository) ListActive(ctx context.Context) ([]service.Account, 
 	return r.accountsToService(ctx, accounts)
 }
 
+func (r *accountRepository) ListOAuthRefreshCandidates(ctx context.Context) ([]service.Account, error) {
+	if r.sql == nil {
+		return nil, errors.New("account repository SQL executor not configured")
+	}
+	// (cond) IS NOT TRUE 把 NULL 和 FALSE 都视为"可被刷新"。直接写
+	// NOT (a AND b) 在 PG 三值逻辑下会把 a 或 b 为 NULL 的行（即绝大多数
+	// 健康账号：temp_unschedulable_until=NULL）也排除，导致后台 token
+	// 刷新工作器漏掉所有正常账号 → access_token 到期后请求开始 401。
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id
+		FROM accounts
+		WHERE deleted_at IS NULL
+			AND status = 'active'
+			AND type = 'oauth'
+			AND platform IN ('anthropic', 'openai', 'gemini', 'antigravity')
+			AND credentials ? 'refresh_token'
+			AND btrim(credentials->>'refresh_token') <> ''
+			AND (
+				temp_unschedulable_until > NOW()
+				AND temp_unschedulable_reason LIKE 'token refresh retry exhausted:%'
+			) IS NOT TRUE
+		ORDER BY priority ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []service.Account{}, nil
+	}
+
+	accounts, err := r.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account != nil {
+			out = append(out, *account)
+		}
+	}
+	return out, nil
+}
+
 func (r *accountRepository) ListByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
 	accounts, err := r.client.Account.Query().
 		Where(
@@ -1146,7 +1204,7 @@ func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until t
 }
 
 func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
-	_, err := r.sql.ExecContext(ctx, `
+	result, err := r.sql.ExecContext(ctx, `
 		UPDATE accounts
 		SET temp_unschedulable_until = $1,
 			temp_unschedulable_reason = $2,
@@ -1157,6 +1215,13 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 	`, until, reason, id)
 	if err != nil {
 		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected <= 0 {
+		return nil
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue temp unschedulable failed: account=%d err=%v", id, err)
@@ -1662,17 +1727,23 @@ func notExpiredPredicate(now time.Time) dbpredicate.Account {
 
 func (r *accountRepository) loadProxies(ctx context.Context, proxyIDs []int64) (map[int64]*service.Proxy, error) {
 	proxyMap := make(map[int64]*service.Proxy)
+	proxyIDs = uniquePositiveInt64s(proxyIDs)
 	if len(proxyIDs) == 0 {
 		return proxyMap, nil
 	}
 
-	proxies, err := r.client.Proxy.Query().Where(dbproxy.IDIn(proxyIDs...)).All(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, p := range proxies {
-		proxyMap[p.ID] = proxyEntityToService(p)
+	for start := 0; start < len(proxyIDs); start += postgresParameterBatchSize {
+		end := start + postgresParameterBatchSize
+		if end > len(proxyIDs) {
+			end = len(proxyIDs)
+		}
+		proxies, err := r.client.Proxy.Query().Where(dbproxy.IDIn(proxyIDs[start:end]...)).All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range proxies {
+			proxyMap[p.ID] = proxyEntityToService(p)
+		}
 	}
 	return proxyMap, nil
 }
@@ -1682,36 +1753,92 @@ func (r *accountRepository) loadAccountGroups(ctx context.Context, accountIDs []
 	groupIDsByAccount := make(map[int64][]int64)
 	accountGroupsByAccount := make(map[int64][]service.AccountGroup)
 
+	accountIDs = uniquePositiveInt64s(accountIDs)
 	if len(accountIDs) == 0 {
 		return groupsByAccount, groupIDsByAccount, accountGroupsByAccount, nil
 	}
 
-	entries, err := r.client.AccountGroup.Query().
-		Where(dbaccountgroup.AccountIDIn(accountIDs...)).
-		WithGroup().
-		Order(dbaccountgroup.ByAccountID(), dbaccountgroup.ByPriority()).
-		All(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	for _, ag := range entries {
-		groupSvc := groupEntityToService(ag.Edges.Group)
-		agSvc := service.AccountGroup{
-			AccountID: ag.AccountID,
-			GroupID:   ag.GroupID,
-			Priority:  ag.Priority,
-			CreatedAt: ag.CreatedAt,
-			Group:     groupSvc,
+	for start := 0; start < len(accountIDs); start += postgresParameterBatchSize {
+		end := start + postgresParameterBatchSize
+		if end > len(accountIDs) {
+			end = len(accountIDs)
 		}
-		accountGroupsByAccount[ag.AccountID] = append(accountGroupsByAccount[ag.AccountID], agSvc)
-		groupIDsByAccount[ag.AccountID] = append(groupIDsByAccount[ag.AccountID], ag.GroupID)
-		if groupSvc != nil {
-			groupsByAccount[ag.AccountID] = append(groupsByAccount[ag.AccountID], groupSvc)
+		entries, err := r.client.AccountGroup.Query().
+			Where(dbaccountgroup.AccountIDIn(accountIDs[start:end]...)).
+			Order(dbaccountgroup.ByAccountID(), dbaccountgroup.ByPriority()).
+			All(ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		groupIDs := make([]int64, 0, len(entries))
+		for _, ag := range entries {
+			groupIDs = append(groupIDs, ag.GroupID)
+		}
+		groupMap, err := r.loadGroups(ctx, groupIDs)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		for _, ag := range entries {
+			groupSvc := groupMap[ag.GroupID]
+			agSvc := service.AccountGroup{
+				AccountID: ag.AccountID,
+				GroupID:   ag.GroupID,
+				Priority:  ag.Priority,
+				CreatedAt: ag.CreatedAt,
+				Group:     groupSvc,
+			}
+			accountGroupsByAccount[ag.AccountID] = append(accountGroupsByAccount[ag.AccountID], agSvc)
+			groupIDsByAccount[ag.AccountID] = append(groupIDsByAccount[ag.AccountID], ag.GroupID)
+			if groupSvc != nil {
+				groupsByAccount[ag.AccountID] = append(groupsByAccount[ag.AccountID], groupSvc)
+			}
 		}
 	}
 
 	return groupsByAccount, groupIDsByAccount, accountGroupsByAccount, nil
+}
+
+func (r *accountRepository) loadGroups(ctx context.Context, groupIDs []int64) (map[int64]*service.Group, error) {
+	groupMap := make(map[int64]*service.Group)
+	groupIDs = uniquePositiveInt64s(groupIDs)
+	if len(groupIDs) == 0 {
+		return groupMap, nil
+	}
+
+	for start := 0; start < len(groupIDs); start += postgresParameterBatchSize {
+		end := start + postgresParameterBatchSize
+		if end > len(groupIDs) {
+			end = len(groupIDs)
+		}
+		groups, err := r.client.Group.Query().Where(dbgroup.IDIn(groupIDs[start:end]...)).All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range groups {
+			groupMap[g.ID] = groupEntityToService(g)
+		}
+	}
+	return groupMap, nil
+}
+
+func uniquePositiveInt64s(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 func (r *accountRepository) loadAccountGroupIDs(ctx context.Context, accountID int64) ([]int64, error) {
@@ -1755,7 +1882,11 @@ func mergeGroupIDs(a []int64, b []int64) []int64 {
 	return out
 }
 
-func buildSchedulerGroupPayload(groupIDs []int64) map[string]any {
+// buildSchedulerGroupPayload 构造 EventAccountChanged / EventAccountGroupsChanged
+// 事件的 payload。空 groupIDs 必须返回 untyped nil（any 而非 map[string]any(nil)），
+// 否则 enqueueSchedulerOutbox 的 "payload != nil" 接口判空会被 typed-nil 欺骗，
+// 把 payload marshal 成 "null" 写入 dedup_key 哈希，破坏与其他 nil-payload 调用的去重一致性。
+func buildSchedulerGroupPayload(groupIDs []int64) any {
 	if len(groupIDs) == 0 {
 		return nil
 	}

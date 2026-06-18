@@ -378,6 +378,9 @@ const baseSettingsResponse = {
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
+  enable_claude_oauth_system_prompt_injection: true,
+  claude_oauth_system_prompt: "",
+  claude_oauth_system_prompt_blocks: "",
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
@@ -640,6 +643,42 @@ describe("admin SettingsView payment visible method controls", () => {
         rewrite_message_cache_control: true,
       }),
     );
+  });
+
+  it("submits Claude OAuth system prompt injection gateway settings", async () => {
+    const blocks = `[{"type":"text","text":"custom block","cache_control":true}]`;
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      enable_claude_oauth_system_prompt_injection: false,
+      claude_oauth_system_prompt_blocks: blocks,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enable_claude_oauth_system_prompt_injection: false,
+      }),
+    );
+    const payload = updateSettings.mock.calls[0][0] as {
+      claude_oauth_system_prompt_blocks: string;
+    };
+    expect(JSON.parse(payload.claude_oauth_system_prompt_blocks)).toEqual([
+      {
+        enabled: true,
+        type: "text",
+        text: "custom block",
+        cache_control: {
+          type: "ephemeral",
+          ttl: "5m",
+        },
+      },
+    ]);
   });
 
   it("submits Antigravity user agent version gateway setting", async () => {
