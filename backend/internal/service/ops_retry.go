@@ -359,10 +359,17 @@ func (s *OpsService) executeRetry(ctx context.Context, errorLog *OpsErrorLogDeta
 	reqType := detectOpsRetryType(errorLog.RequestPath)
 	bodyBytes := []byte(errorLog.RequestBody)
 
+	mappedModel := strings.TrimSpace(errorLog.UpstreamModel)
+	if mappedModel == "" {
+		mappedModel = strings.TrimSpace(errorLog.RequestedModel)
+	}
+	if mappedModel == "" {
+		mappedModel = strings.TrimSpace(errorLog.Model)
+	}
+
 	switch reqType {
 	case opsRetryTypeMessages:
-		retryModel := strings.TrimSpace(firstNonEmpty(errorLog.UpstreamModel, errorLog.RequestedModel, errorLog.Model))
-		bodyBytes = FilterThinkingBlocksForRetry(bodyBytes, retryModel)
+		bodyBytes = FilterThinkingBlocksForRetry(bodyBytes, mappedModel)
 	case opsRetryTypeOpenAI, opsRetryTypeGeminiV1B:
 		// No-op
 	}
