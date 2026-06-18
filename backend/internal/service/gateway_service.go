@@ -2218,13 +2218,17 @@ REDACTED else {
 		REDACTED
 	REDACTED
 
-		// 分层过滤选择：优先级 → 负载率 → LRU
+		// 分层过滤选择：优先级 →（可选）最早重置 → 负载率 → LRU
 		for len(available) > 0 {
 			// 1. 取优先级最小的集合
 			candidates := filterByMinPriority(available)
-			// 2. 取负载率最低的集合
+			// 2. （可选）use-it-or-lose-it：优先选用会话窗口最早重置的账号
+			if cfg.PreferSoonestReset {
+				candidates = filterBySoonestReset(candidates)
+		REDACTED
+			// 3. 取负载率最低的集合
 			candidates = filterByMinLoadRate(candidates)
-			// 3. LRU 选择最久未用的账号
+			// 4. LRU 选择最久未用的账号
 			selected := selectByLRU(candidates, preferOAuth)
 			if selected == nil {
 				break
@@ -2977,6 +2981,39 @@ REDACTED
 	result := make([]accountWithLoad, 0, len(accounts))
 	for _, acc := range accounts {
 		if acc.loadInfo.LoadRate == minLoadRate {
+			result = append(result, acc)
+	REDACTED
+REDACTED
+	return result
+REDACTED
+
+// filterBySoonestReset 过滤出「会话窗口最早重置」的账号集合（use-it-or-lose-it）。
+// 仅保留拥有未来重置时间（SessionWindowEnd 在当前时间之后）且最早的账号；
+// 窗口为空或已过期的账号视为无活跃窗口、优先级最低。
+// 当所有账号都没有活跃窗口时，返回原集合（不改变后续 LRU 选择）。
+func filterBySoonestReset(accounts []accountWithLoad) []accountWithLoad {
+	if len(accounts) <= 1 {
+		return accounts
+REDACTED
+	now := time.Now()
+	var minEnd *time.Time
+	for _, acc := range accounts {
+		end := acc.account.SessionWindowEnd
+		if end == nil || !now.Before(*end) {
+			continue
+	REDACTED
+		if minEnd == nil || end.Before(*minEnd) {
+			minEnd = end
+	REDACTED
+REDACTED
+	if minEnd == nil {
+		// 没有任何账号拥有活跃窗口，保持原集合
+		return accounts
+REDACTED
+	result := make([]accountWithLoad, 0, len(accounts))
+	for _, acc := range accounts {
+		end := acc.account.SessionWindowEnd
+		if end != nil && now.Before(*end) && end.Equal(*minEnd) {
 			result = append(result, acc)
 	REDACTED
 REDACTED
