@@ -40,7 +40,7 @@ REDACTED
 REDACTED
 
 func TestBuildGrokResponsesRequestUsesAccountBaseURLAndBearerToken(t *testing.T) {
-	t.Parallel()
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 
 	account := &Account{
 		Platform: PlatformGrok,
@@ -269,4 +269,79 @@ REDACTED
 	require.Equal(t, 1, result.Usage.CacheReadInputTokens)
 	require.Contains(t, recorder.Body.String(), "data: [DONE]")
 	require.NotNil(t, repo.updates[53][grokQuotaSnapshotExtraKey])
+REDACTED
+
+func TestHandleGrokAccountUpstreamErrorTempUnschedulesReadinessStates(t *testing.T) {
+	tests := []struct {
+		name            string
+		status          int
+		headers         http.Header
+		wantReason      string
+		wantMinCooldown time.Duration
+		wantMaxCooldown time.Duration
+REDACTED{
+		{
+			name:            "unauthorized reauth",
+			status:          http.StatusUnauthorized,
+			wantReason:      "grok oauth token unauthorized",
+			wantMinCooldown: 10*time.Minute - time.Second,
+			wantMaxCooldown: 10*time.Minute + time.Second,
+	REDACTED,
+		{
+			name:            "forbidden entitlement",
+			status:          http.StatusForbidden,
+			wantReason:      "grok entitlement or subscription tier denied",
+			wantMinCooldown: 30*time.Minute - time.Second,
+			wantMaxCooldown: 30*time.Minute + time.Second,
+	REDACTED,
+		{
+			name:            "rate limited retry after",
+			status:          http.StatusTooManyRequests,
+			headers:         http.Header{"Retry-After": []string{"45"REDACTEDREDACTED,
+			wantReason:      "grok rate limited",
+			wantMinCooldown: 44 * time.Second,
+			wantMaxCooldown: 46 * time.Second,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{ID: 61, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+			repo := &grokQuotaAccountRepo{REDACTED
+			svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+			before := time.Now()
+
+			svc.handleGrokAccountUpstreamError(context.Background(), account, tt.status, tt.headers, nil)
+
+			require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+			require.Equal(t, 1, repo.tempUnschedCalls)
+			require.Equal(t, account.ID, repo.lastTempUnschedID)
+			require.Equal(t, tt.wantReason, repo.lastTempUnschedReason)
+			require.True(t, repo.lastTempUnschedUntil.After(before.Add(tt.wantMinCooldown)))
+			require.True(t, repo.lastTempUnschedUntil.Before(before.Add(tt.wantMaxCooldown)))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestHandleGrokAccountUpstreamErrorDoesNotShortenExistingPause(t *testing.T) {
+	existingUntil := time.Now().Add(15 * time.Minute)
+	account := &Account{
+		ID:                      62,
+		Platform:                PlatformGrok,
+		Type:                    AccountTypeOAuth,
+		TempUnschedulableUntil:  &existingUntil,
+		TempUnschedulableReason: "existing pause",
+REDACTED
+	repo := &grokQuotaAccountRepo{REDACTED
+	svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{"Retry-After": []string{"45"REDACTEDREDACTED, nil)
+
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.WithinDuration(t, existingUntil, repo.lastTempUnschedUntil, time.Second)
+	value, ok := svc.openaiAccountRuntimeBlockUntil.Load(account.ID)
+	require.True(t, ok)
+	runtimeUntil, ok := value.(time.Time)
+	require.True(t, ok)
+	require.WithinDuration(t, existingUntil, runtimeUntil, time.Second)
 REDACTED

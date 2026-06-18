@@ -125,3 +125,23 @@ REDACTEDREDACTED
 	require.Contains(t, rec.Body.String(), `"reason":"GROK_QUOTA_RESET_UNSUPPORTED"`)
 	require.NotContains(t, rec.Body.String(), "access-token")
 REDACTED
+
+func TestGrokOAuthHandlerRuntimeSanityDoesNotExposeSecrets(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv(xai.EnvBaseURL, "http://127.0.0.1:8080/v1?access_token=secret")
+	t.Setenv(xai.EnvClientID, "client-secret-like-value")
+
+	handler := NewGrokOAuthHandler(nil, nil, nil)
+	router := gin.New()
+	router.GET("/api/v1/admin/grok/runtime-sanity", handler.RuntimeSanity)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/grok/runtime-sanity", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"public_gateway_scope":"responses_only"`)
+	require.Contains(t, rec.Body.String(), `"valid":false`)
+	require.NotContains(t, rec.Body.String(), "access_token")
+	require.NotContains(t, rec.Body.String(), "secret")
+	require.NotContains(t, rec.Body.String(), "client-secret-like-value")
+REDACTED

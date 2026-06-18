@@ -969,6 +969,9 @@ export interface AccountUsageInfo {
   grok_retry_after_seconds?: number | null
   grok_entitlement_status?: string
   grok_quota_snapshot_state?: string
+  grok_last_quota_probe_at?: string
+  grok_last_headers_seen_at?: string
+  grok_last_status_code?: number
   grok_local_usage?: WindowStats | null
   ai_credits?: Array<{
     credit_type?: string

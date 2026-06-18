@@ -4159,6 +4159,9 @@ export default {
         grokResetUnsupported: 'Reset unsupported',
         grokResetUnsupportedTooltip: 'xAI does not expose reset credits for Grok OAuth accounts',
         grokNoHeaders: 'No quota headers observed',
+        grokLastStatus: 'Status {statusREDACTED',
+        grokLastProbe: 'Probe {timeREDACTED',
+        grokLastHeadersSeen: 'Headers {timeREDACTED',
         passiveSampled: 'Passive',
         activeQuery: 'Query'
       REDACTED,

@@ -60,6 +60,11 @@ REDACTED
 	redirectURI = xai.EffectiveRedirectURI(redirectURI)
 	codeChallenge := xai.GenerateCodeChallenge(codeVerifier)
 
+	authURL, err := xai.BuildAuthorizationURL(state, codeChallenge, redirectURI, nonce)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadRequest, "GROK_OAUTH_INVALID_AUTHORIZE_URL", "%v", err)
+REDACTED
+
 	s.sessionStore.Set(sessionID, &xai.OAuthSession{
 		State:         state,
 		CodeVerifier:  codeVerifier,
@@ -72,7 +77,7 @@ REDACTED
 REDACTED)
 
 	return &GrokAuthURLResult{
-		AuthURL:   xai.BuildAuthorizationURL(state, codeChallenge, redirectURI, nonce),
+		AuthURL:   authURL,
 		SessionID: sessionID,
 		State:     state,
 REDACTED, nil

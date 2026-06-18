@@ -3417,6 +3417,9 @@ export default {
         grokResetUnsupported: '不支持重置',
         grokResetUnsupportedTooltip: 'xAI 未向 Grok OAuth 账号开放重置额度接口',
         grokNoHeaders: '未观察到配额响应头',
+        grokLastStatus: '状态 {statusREDACTED',
+        grokLastProbe: '探测 {timeREDACTED',
+        grokLastHeadersSeen: '响应头 {timeREDACTED',
         passiveSampled: '被动采样',
         activeQuery: '查询'
       REDACTED,

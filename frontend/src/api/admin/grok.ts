@@ -54,6 +54,10 @@ export interface GrokQuotaSnapshot {
   entitlement_status?: string
   status_code?: number
   headers?: Record<string, string>
+  headers_observed: boolean
+  observation_source?: string
+  last_probe_at?: string
+  last_headers_seen_at?: string
   updated_at: string
 REDACTED
 

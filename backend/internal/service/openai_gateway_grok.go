@@ -151,7 +151,10 @@ REDACTED
 REDACTED
 
 func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string) (*http.Request, error) {
-	targetURL := xai.BuildResponsesURL(account.GetGrokBaseURL())
+	targetURL, err := xai.BuildResponsesURL(account.GetGrokBaseURL())
+	if err != nil {
+		return nil, err
+REDACTED
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -208,6 +211,9 @@ func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *
 		return
 REDACTED
 	until := time.Now().Add(cooldown)
+	if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(until) {
+		until = *account.TempUnschedulableUntil
+REDACTED
 	s.BlockAccountScheduling(account, until, reason)
 	if s.accountRepo != nil {
 		stateCtx, cancel := openAIAccountStateContext(ctx)

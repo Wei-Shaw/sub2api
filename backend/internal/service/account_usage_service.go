@@ -200,6 +200,9 @@ type UsageInfo struct {
 	GrokRetryAfterSeconds  *int             `json:"grok_retry_after_seconds,omitempty"`
 	GrokEntitlementStatus  string           `json:"grok_entitlement_status,omitempty"`
 	GrokQuotaSnapshotState string           `json:"grok_quota_snapshot_state,omitempty"`
+	GrokLastQuotaProbeAt   string           `json:"grok_last_quota_probe_at,omitempty"`
+	GrokLastHeadersSeenAt  string           `json:"grok_last_headers_seen_at,omitempty"`
+	GrokLastStatusCode     int              `json:"grok_last_status_code,omitempty"`
 	GrokLocalUsage         *WindowStats     `json:"grok_local_usage,omitempty"`
 
 	// Antigravity 账号级信息
@@ -864,10 +867,12 @@ func (s *AccountUsageService) getGrokUsage(ctx context.Context, account *Account
 		s.grokQuotaFetcher = NewGrokQuotaFetcher()
 REDACTED
 	usage := s.grokQuotaFetcher.BuildUsageInfo(account)
-	if usage.ErrorCode == "quota_unknown" {
-		usage.GrokQuotaSnapshotState = "unknown_until_first_response"
-REDACTED else {
-		usage.GrokQuotaSnapshotState = "observed"
+	if usage.GrokQuotaSnapshotState == "" {
+		if usage.ErrorCode == "quota_unknown" {
+			usage.GrokQuotaSnapshotState = "unknown_until_first_response"
+	REDACTED else {
+			usage.GrokQuotaSnapshotState = "observed"
+	REDACTED
 REDACTED
 
 	if s.usageLogRepo != nil && account != nil {

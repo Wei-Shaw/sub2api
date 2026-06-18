@@ -26,6 +26,8 @@ func TestParseQuotaHeaders(t *testing.T) {
 	snapshot := ParseQuotaHeaders(headers, http.StatusTooManyRequests)
 	require.NotNil(t, snapshot)
 	require.Equal(t, http.StatusTooManyRequests, snapshot.StatusCode)
+	require.True(t, snapshot.HeadersObserved)
+	require.NotEmpty(t, snapshot.LastHeadersSeenAt)
 	require.Equal(t, int64(100), *snapshot.Requests.Limit)
 	require.Equal(t, int64(25), *snapshot.Requests.Remaining)
 	require.Equal(t, int64(1893456000), *snapshot.Requests.ResetUnix)
@@ -43,4 +45,19 @@ func TestParseQuotaHeadersReturnsNilForMissingHeaders(t *testing.T) {
 	t.Parallel()
 
 	require.Nil(t, ParseQuotaHeaders(http.Header{REDACTED, http.StatusOK))
+REDACTED
+
+func TestObserveQuotaHeadersRecordsNoHeaderProbe(t *testing.T) {
+	t.Parallel()
+
+	snapshot := ObserveQuotaHeaders(http.Header{REDACTED, http.StatusOK, "active_probe")
+	require.NotNil(t, snapshot)
+	require.False(t, snapshot.HeadersObserved)
+	require.Equal(t, http.StatusOK, snapshot.StatusCode)
+	require.Equal(t, "active_probe", snapshot.ObservationSource)
+	require.NotEmpty(t, snapshot.LastProbeAt)
+	require.Empty(t, snapshot.LastHeadersSeenAt)
+	require.Empty(t, snapshot.Headers)
+	require.Nil(t, snapshot.Requests)
+	require.Nil(t, snapshot.Tokens)
 REDACTED

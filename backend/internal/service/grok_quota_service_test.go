@@ -17,7 +17,11 @@ import (
 
 type grokQuotaAccountRepo struct {
 	*mockAccountRepoForPlatform
-	updates map[int64]map[string]any
+	updates               map[int64]map[string]any
+	tempUnschedCalls      int
+	lastTempUnschedID     int64
+	lastTempUnschedUntil  time.Time
+	lastTempUnschedReason string
 REDACTED
 
 func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
@@ -25,6 +29,14 @@ func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates 
 		r.updates = make(map[int64]map[string]any)
 REDACTED
 	r.updates[id] = updates
+	return nil
+REDACTED
+
+func (r *grokQuotaAccountRepo) SetTempUnschedulable(_ context.Context, id int64, until time.Time, reason string) error {
+	r.tempUnschedCalls++
+	r.lastTempUnschedID = id
+	r.lastTempUnschedUntil = until
+	r.lastTempUnschedReason = reason
 	return nil
 REDACTED
 
@@ -64,6 +76,10 @@ REDACTED
 	require.Equal(t, http.StatusOK, result.StatusCode)
 	require.True(t, result.HeadersObserved)
 	require.NotNil(t, result.Snapshot)
+	require.True(t, result.Snapshot.HeadersObserved)
+	require.Equal(t, "active_probe", result.Snapshot.ObservationSource)
+	require.NotEmpty(t, result.Snapshot.LastProbeAt)
+	require.NotEmpty(t, result.Snapshot.LastHeadersSeenAt)
 	require.NotNil(t, result.Snapshot.Requests)
 	require.EqualValues(t, 10, *result.Snapshot.Requests.Limit)
 	require.EqualValues(t, 7, *result.Snapshot.Requests.Remaining)
@@ -72,6 +88,47 @@ REDACTED
 	require.Contains(t, string(upstream.lastBody), `"max_output_tokens":1`)
 	require.Contains(t, string(upstream.lastBody), `"store":false`)
 	require.NotNil(t, repo.updates[42][grokQuotaSnapshotExtraKey])
+REDACTED
+
+func TestGrokQuotaServiceProbeUsageStoresNoHeadersState(t *testing.T) {
+	t.Parallel()
+
+	account := &Account{
+		ID:          45,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+REDACTED
+			"access_token": "access-token",
+			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+	REDACTED,
+REDACTED
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{45: accountREDACTED,
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"REDACTED`)),
+REDACTEDREDACTED
+	svc := NewGrokQuotaService(repo, NewGrokTokenProvider(repo, nil, nil), upstream)
+
+	result, err := svc.ProbeUsage(context.Background(), 45)
+REDACTED
+	require.Equal(t, http.StatusOK, result.StatusCode)
+	require.False(t, result.HeadersObserved)
+	require.NotNil(t, result.Snapshot)
+	require.False(t, result.Snapshot.HeadersObserved)
+	require.Equal(t, "active_probe", result.Snapshot.ObservationSource)
+	require.NotEmpty(t, result.Snapshot.LastProbeAt)
+	require.Empty(t, result.Snapshot.LastHeadersSeenAt)
+
+	stored, ok := repo.updates[45][grokQuotaSnapshotExtraKey].(*xai.QuotaSnapshot)
+	require.True(t, ok)
+	require.False(t, stored.HeadersObserved)
+	require.Equal(t, http.StatusOK, stored.StatusCode)
 REDACTED
 
 func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {

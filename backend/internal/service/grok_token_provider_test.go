@@ -91,3 +91,41 @@ REDACTED
 	require.Greater(t, cache.setTTL, time.Duration(0))
 	require.Equal(t, 1, cache.releaseCalls)
 REDACTED
+
+func TestGrokTokenProviderRefreshFailureUnschedulesWithRedactedReason(t *testing.T) {
+	expiredAt := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+	account := &Account{
+		ID:       55,
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token":  "expired-access-token",
+			"refresh_token": "refresh-token",
+			"expires_at":    expiredAt,
+			"base_url":      xai.DefaultCLIBaseURL,
+	REDACTED,
+REDACTED
+	repo := &tokenRefreshAccountRepo{REDACTED
+	repo.accountsByID = map[int64]*Account{55: accountREDACTED
+	cache := &grokTokenCacheForProviderTest{lockResult: trueREDACTED
+	tempCache := &tempUnschedCacheStub{REDACTED
+	provider := NewGrokTokenProvider(repo, cache, nil)
+	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, cache), &tokenRefresherStub{
+		err: errors.New("temporary refresh failure access_token=leaked-access refresh_token=leaked-refresh"),
+REDACTED)
+	provider.SetTempUnschedCache(tempCache)
+
+	token, err := provider.GetAccessToken(context.Background(), account)
+REDACTED
+	require.Empty(t, token)
+	require.Equal(t, 1, repo.setTempUnschedCalls)
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Contains(t, repo.lastTempUnschedReason, "access_token=***")
+	require.Contains(t, repo.lastTempUnschedReason, "refresh_token=***")
+	require.NotContains(t, repo.lastTempUnschedReason, "leaked-access")
+	require.NotContains(t, repo.lastTempUnschedReason, "leaked-refresh")
+	require.Equal(t, 1, tempCache.setCalls)
+	require.NotNil(t, tempCache.lastState)
+	require.NotContains(t, tempCache.lastState.ErrorMessage, "leaked-access")
+	require.NotContains(t, tempCache.lastState.ErrorMessage, "leaked-refresh")
+REDACTED

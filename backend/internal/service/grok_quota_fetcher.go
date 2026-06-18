@@ -44,6 +44,16 @@ REDACTED
 	usage.SubscriptionTier = snapshot.SubscriptionTier
 	usage.SubscriptionTierRaw = snapshot.SubscriptionTier
 	usage.GrokEntitlementStatus = snapshot.EntitlementStatus
+	usage.GrokLastQuotaProbeAt = snapshot.LastProbeAt
+	usage.GrokLastHeadersSeenAt = snapshot.LastHeadersSeenAt
+	usage.GrokLastStatusCode = snapshot.StatusCode
+	if snapshot.HasObservedHeaders() {
+		usage.GrokQuotaSnapshotState = "observed"
+REDACTED else {
+		usage.GrokQuotaSnapshotState = "no_headers"
+		usage.ErrorCode = "quota_unknown"
+		usage.Error = "No xAI quota headers observed on the latest Grok probe"
+REDACTED
 
 	switch snapshot.StatusCode {
 	case 401:
