@@ -1,0 +1,45 @@
+# 方案 B：用 Caddy 在本地给 sub2api 套一层 https，使 OIDC issuer 满足 https 强制校验。
+#
+# 监听 8443（避开 443 特权端口）。注意 OIDC 流程会同时用到：
+#   - 后端 API / OIDC 端点（/oidc、/api、/v1、/setup、/.well-known）→ 后端 :8080
+#   - 前端 SPA 页面（/login、/oauth/consent、/auth/* 等）          → 前端 dev :3000
+# 所以这里按路径分流，而不是一股脑全打到后端，否则 /login 会 404。
+#
+# 证书由 mkcert 生成，需先在本目录执行：
+#   mkcert -install
+#   mkcert localhost 127.0.0.1 ::1      # 得到 localhost+2.pem / localhost+2-key.pem
+#
+# 启动：./start-caddy.sh
+# 验证：curl https://localhost:8443/.well-known/openid-configuration
+#
+# 之后 issuer 两处都填 https://localhost:8443：
+#   - 管理后台「OIDC 设置」的 issuer URL
+#   - 本目录 .env 的 SUB2API_ISSUER_URL
+#
+# 端口按实际情况调整：
+#   - 后端监听端口（默认 8080）
+#   - sub2api 前端 dev server 端口（vite，默认 3000；见 frontend 的 VITE_DEV_PORT）
+#
+# 若你用的是「内嵌前端」的后端（go build -tags embed，前端已打包进二进制），
+# 则前端页面也由 8080 提供，可把下面的 handle 分流删掉，直接 reverse_proxy 127.0.0.1:8080。
+
+{
+	# 站点是 https:// 时，Caddy 默认会额外在 :80 起一个 HTTP->HTTPS 跳转监听器。
+	# 本地反代用不到，且 :80 是特权端口（非 root 会失败），这里关掉跳转，只保留 8443。
+	auto_https disable_redirects
+}
+
+https://localhost:8443 {
+	tls ./localhost+2.pem ./localhost+2-key.pem
+
+	# 后端：OIDC 端点 + API。
+	@backend path /oidc* /api/* /v1/* /setup* /.well-known/*
+	handle @backend {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	# 其余（含前端 SPA 页面 /login、/oauth/consent、/auth/* 等）→ 前端 dev server。
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+}
