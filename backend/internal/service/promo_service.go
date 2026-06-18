@@ -236,6 +236,9 @@ REDACTED
 		promoCode.Status = *input.Status
 REDACTED
 	if input.ExpiresAt != nil {
+		if input.ExpiresAt.IsZero() {
+			input.ExpiresAt = nil
+	REDACTED
 		promoCode.ExpiresAt = input.ExpiresAt
 REDACTED
 	if input.Notes != nil {
