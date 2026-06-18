@@ -89,6 +89,9 @@ REDACTED
 	if upstreamModel != originalModel {
 		upstreamBody = ReplaceModelInBody(body, upstreamModel)
 REDACTED
+	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(upstreamBody, upstreamModel); normalized {
+		upstreamBody = normalizedBody
+REDACTED
 
 	// 4. Apply OpenAI fast policy on the CC body
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, upstreamBody)
