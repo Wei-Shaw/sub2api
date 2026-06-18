@@ -119,6 +119,8 @@ tests
 CLAUDE.md
 .claude
 scripts
+!scripts/
+!scripts/verify-local-frontend-assets.mjs
 .code-review-state
 #openspec/
 code-reviews/

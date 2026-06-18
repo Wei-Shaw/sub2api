@@ -78,26 +78,26 @@ export default defineConfig(({ mode }) => {
               id.includes('/pinia/') ||
               id.includes('/@vue/')
             ) {
-              return 'vendor-vue'
+              return 'pkg-vue'
             }
 
             // UI 工具库（较大，单独分离）
             if (id.includes('/@vueuse/') || id.includes('/xlsx/')) {
-              return 'vendor-ui'
+              return 'pkg-ui'
             }
 
             // 图表库
             if (id.includes('/chart.js/') || id.includes('/vue-chartjs/')) {
-              return 'vendor-chart'
+              return 'pkg-chart'
             }
 
             // 国际化
             if (id.includes('/vue-i18n/') || id.includes('/@intlify/')) {
-              return 'vendor-i18n'
+              return 'pkg-i18n'
             }
 
             // 其他小型第三方库合并
-            return 'vendor-misc'
+            return 'pkg-misc'
           }
 
           // 应用代码：按入口点自动分包，不手动干预
