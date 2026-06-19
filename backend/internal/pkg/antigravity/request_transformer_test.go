@@ -424,6 +424,115 @@ func TestTransformClaudeToGeminiWithOptions_PreservesBillingHeaderSystemBlock(t 
 	}
 }
 
+func TestTransformClaudeToGeminiWithOptions_MessageRoles(t *testing.T) {
+	transform := func(t *testing.T, claudeReq *ClaudeRequest) V1InternalRequest {
+		t.Helper()
+
+		body, err := TransformClaudeToGeminiWithOptions(claudeReq, "project-1", "gemini-2.5-flash", DefaultTransformOptions())
+		require.NoError(t, err)
+
+		var req V1InternalRequest
+		require.NoError(t, json.Unmarshal(body, &req))
+		return req
+	}
+
+	systemText := func(content *GeminiContent) string {
+		if content == nil {
+			return ""
+		}
+		var texts []string
+		for _, part := range content.Parts {
+			texts = append(texts, part.Text)
+		}
+		return strings.Join(texts, "\n")
+	}
+
+	t.Run("message system role moves to system instruction", func(t *testing.T) {
+		req := transform(t, &ClaudeRequest{
+			Model: "claude-3-5-sonnet-latest",
+			Messages: []ClaudeMessage{
+				{
+					Role:    "system",
+					Content: json.RawMessage(`[{"type":"text","text":"skills context"}]`),
+				},
+				{
+					Role:    "user",
+					Content: json.RawMessage(`"hello"`),
+				},
+			},
+		})
+
+		require.Len(t, req.Request.Contents, 1)
+		require.Equal(t, "user", req.Request.Contents[0].Role)
+		require.Contains(t, systemText(req.Request.SystemInstruction), "skills context")
+		for _, content := range req.Request.Contents {
+			require.NotEqual(t, "system", content.Role)
+		}
+	})
+
+	t.Run("assistant role still maps to model", func(t *testing.T) {
+		req := transform(t, &ClaudeRequest{
+			Model: "claude-3-5-sonnet-latest",
+			Messages: []ClaudeMessage{
+				{
+					Role:    "assistant",
+					Content: json.RawMessage(`"hello from assistant"`),
+				},
+			},
+		})
+
+		require.Len(t, req.Request.Contents, 1)
+		require.Equal(t, "model", req.Request.Contents[0].Role)
+		require.Equal(t, "hello from assistant", req.Request.Contents[0].Parts[0].Text)
+	})
+
+	t.Run("top level and message system instructions are merged", func(t *testing.T) {
+		req := transform(t, &ClaudeRequest{
+			Model:  "claude-3-5-sonnet-latest",
+			System: json.RawMessage(`"top level system"`),
+			Messages: []ClaudeMessage{
+				{
+					Role:    "system",
+					Content: json.RawMessage(`"message system"`),
+				},
+				{
+					Role:    "user",
+					Content: json.RawMessage(`"hello"`),
+				},
+			},
+		})
+
+		mergedSystem := systemText(req.Request.SystemInstruction)
+		require.Contains(t, mergedSystem, "top level system")
+		require.Contains(t, mergedSystem, "message system")
+		require.Less(t, strings.Index(mergedSystem, "top level system"), strings.Index(mergedSystem, "message system"))
+		require.Len(t, req.Request.Contents, 1)
+		require.Equal(t, "user", req.Request.Contents[0].Role)
+	})
+
+	t.Run("ordinary user assistant conversation is unchanged", func(t *testing.T) {
+		req := transform(t, &ClaudeRequest{
+			Model: "claude-3-5-sonnet-latest",
+			Messages: []ClaudeMessage{
+				{
+					Role:    "user",
+					Content: json.RawMessage(`"question"`),
+				},
+				{
+					Role:    "assistant",
+					Content: json.RawMessage(`"answer"`),
+				},
+			},
+		})
+
+		require.Len(t, req.Request.Contents, 2)
+		require.Equal(t, "user", req.Request.Contents[0].Role)
+		require.Equal(t, "question", req.Request.Contents[0].Parts[0].Text)
+		require.Equal(t, "model", req.Request.Contents[1].Role)
+		require.Equal(t, "answer", req.Request.Contents[1].Parts[0].Text)
+	})
+}
+
 func TestTransformClaudeToGeminiWithOptions_PreservesWebSearchAlongsideFunctions(t *testing.T) {
 	claudeReq := &ClaudeRequest{
 		Model: "claude-3-5-sonnet-latest",
