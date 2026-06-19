@@ -241,6 +241,14 @@
         </div>
       </Transition>
     </Teleport>
+    <ManualPaymentDialog
+      v-if="selectedPlan"
+      :show="showManualPaymentDialog"
+      :plan="selectedPlan"
+      :locale-code="localeCode"
+      @close="showManualPaymentDialog = false"
+      @redeem="goRedeem"
+    />
   </AppLayout>
 </template>
 
@@ -274,6 +282,7 @@ import {
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel } from '@/utils/platformColors'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
+import ManualPaymentDialog from '@/components/payment/ManualPaymentDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
@@ -306,6 +315,7 @@ const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
+const showManualPaymentDialog = ref(false)
 
 const paymentPhase = ref<'select' | 'paying'>('select')
 
@@ -613,11 +623,12 @@ const subTotalAmount = computed(() => {
   return Math.round((price + subFeeAmount.value) * 100) / 100
 })
 
-const canSubmitSubscription = computed(() =>
-  selectedPlan.value !== null
-    && amountFitsMethod(selectedPlan.value.price, selectedMethod.value)
+const canSubmitSubscription = computed(() => {
+  if (!selectedPlan.value) return false
+  if (enabledMethods.value.length === 0) return true
+  return amountFitsMethod(selectedPlan.value.price, selectedMethod.value)
     && selectedLimit.value?.available !== false
-)
+})
 
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
@@ -659,6 +670,7 @@ const planValiditySuffix = computed(() => {
 
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
+  showManualPaymentDialog.value = false
   errorMessage.value = ''
 }
 
@@ -666,6 +678,7 @@ function selectPlanFromModal(plan: SubscriptionPlan) {
   showRenewalModal.value = false
   renewGroupId.value = null
   selectedPlan.value = plan
+  showManualPaymentDialog.value = false
   errorMessage.value = ''
 }
 
@@ -681,7 +694,16 @@ async function handleSubmitRecharge() {
 
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
+  if (enabledMethods.value.length === 0) {
+    showManualPaymentDialog.value = true
+    return
+  }
   await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
+}
+
+function goRedeem() {
+  showManualPaymentDialog.value = false
+  router.push('/redeem')
 }
 
 async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {}) {
