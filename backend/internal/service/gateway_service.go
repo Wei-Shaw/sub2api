@@ -4444,7 +4444,7 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expa
 REDACTED
 
 	// 2. 构造 system 数组，对齐真实 Claude Code CLI 的 3-block 形态：
-	//    [0] billing attribution block（cc_version={cliVerREDACTED.{fpREDACTED; cc_entrypoint=cli; cch=00000;）
+	//    [0] billing attribution block（cc_version={cliVerREDACTED.{fpREDACTED; cc_entrypoint=cli;）
 	//    [1] "You are Claude Code..." 身份前缀 block（默认不带 cache_control）
 	//    [2] 工具无关的通用提示词扩充 block（带 cache_control 作为稳定缓存断点）
 	//
@@ -4452,9 +4452,9 @@ REDACTED
 	//    区别于真实 CLI。这里注入 claudeCodeSystemPromptExpansion（中性段落）把形态做到
 	//    接近真实，同时不注入会污染被代理用户行为的工具专属指令。
 	//
-	//    billing block 的 cch=00000 是占位符，会被 buildUpstreamRequest 里的
-	//    signBillingHeaderCCH 替换成 xxhash64 签名。缺失 billing block 的系统 payload
-	//    是 Anthropic 判定第三方的关键信号之一（真实 CLI 每个请求都带）。
+	//    缺失 billing block 的系统 payload 是 Anthropic 判定第三方的关键信号之一
+	//    （真实 CLI 每个请求都带）。新版 CLI 已取消 cch=... 签名字段，故 block 不再注入
+	//    cch（见 buildBillingAttributionText）。
 	systemBlocks, blockErr := buildClaudeOAuthSystemPromptBlocksJSON(body, expansionPrompt, blocksConfig)
 	if blockErr != nil {
 		logger.LegacyPrintf("service.gateway", "Warning: failed to build configured Claude OAuth system blocks: %v", blockErr)
@@ -6679,9 +6679,9 @@ REDACTED
 
 	// OAuth账号：应用统一指纹和metadata重写（受设置开关控制）
 	var fingerprint *Fingerprint
-	enableFP, enableMPT, enableCCH := true, false, false
+	enableFP, enableMPT := true, false
 	if s.settingService != nil {
-		enableFP, enableMPT, enableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
+		enableFP, enableMPT, _ = s.settingService.GetGatewayForwardingSettings(ctx)
 REDACTED
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
@@ -6733,11 +6733,6 @@ REDACTED
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, finalBetaHeader); changed {
 		body = sanitized
-REDACTED
-
-	// CCH 签名：将 cch=00000 占位符替换为 xxHash64 签名（需在所有 body 修改之后）
-	if enableCCH {
-		body = signBillingHeaderCCH(body)
 REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
@@ -10243,9 +10238,9 @@ REDACTED
 
 	// OAuth 账号：应用统一指纹和重写 userID（受设置开关控制）
 	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
-	ctEnableFP, ctEnableMPT, ctEnableCCH := true, false, false
+	ctEnableFP, ctEnableMPT := true, false
 	if s.settingService != nil {
-		ctEnableFP, ctEnableMPT, ctEnableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
+		ctEnableFP, ctEnableMPT, _ = s.settingService.GetGatewayForwardingSettings(ctx)
 REDACTED
 	var ctFingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
@@ -10280,9 +10275,6 @@ REDACTED
 		body = sanitized
 REDACTED
 
-	if ctEnableCCH {
-		body = signBillingHeaderCCH(body)
-REDACTED
 	body = sanitizeCountTokensRequestBody(body)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
