@@ -53,8 +53,9 @@
             <!-- Pricing Plaza link (anonymous-friendly) -->
             <router-link
               to="/plaza/models"
-              class="shrink-0 whitespace-nowrap text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-dark-300 dark:hover:text-white"
+              class="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-dark-300 dark:hover:text-white"
             >
+              <Icon name="dollar" size="sm" />
               {{ t('plaza.title') }}
             </router-link>
 
