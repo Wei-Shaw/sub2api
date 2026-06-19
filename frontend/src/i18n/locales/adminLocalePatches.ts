@@ -838,6 +838,592 @@ const adminLocaleCoveragePatches = {
   }
 } as const satisfies Record<string, LocalePatch>
 
+const staticI18nCoveragePatches = {
+  en: {
+    common: {
+      apply: 'Apply',
+      clear: 'Clear',
+      creating: 'Creating...',
+      rateMultiplier: 'Rate multiplier',
+      required: 'Required',
+      sending: 'Sending...',
+      tryAgain: 'Try again'
+    },
+    auth: {
+      loginAgreement: {
+        passwordSignInBlocked: 'Accept the login agreement before signing in with password.',
+        registerBlocked: 'Accept the login agreement before creating an account.',
+        registerRequired: 'Please read and accept the agreement to register.',
+        signInRequired: 'Please read and accept the agreement to sign in.'
+      },
+      dingtalk: {
+        callbackTitle: 'DingTalk sign-in',
+        callbackProcessing: 'Processing DingTalk authorization...',
+        callbackHint: 'Complete authorization in DingTalk, then return here to continue.',
+        callbackMissingToken: 'DingTalk callback did not return an access token.',
+        completeRegistration: 'Complete registration',
+        completeRegistrationFailed: 'Failed to complete DingTalk registration',
+        completing: 'Completing...',
+        createAccountTitle: 'Create account with DingTalk',
+        invitationRequired: 'An invitation code is required to complete DingTalk registration.',
+        registrationDisabledRedirectToBind: 'Registration is disabled. Sign in first, then bind DingTalk from your profile.',
+        signIn: 'Sign in with DingTalk'
+      }
+    },
+    keyUsage: {
+      dailyDetail: 'Daily usage detail',
+      date: 'Date',
+      cacheWriteTokens: 'Cache write tokens',
+      dateRange90d: '90 Days',
+      noDailyUsage: 'No daily usage records'
+    },
+    userSubscriptions: {
+      quotaEndsIn: 'Quota ends in {time}'
+    },
+    admin: {
+      accounts: {
+        add: 'Add account',
+        fromModel: 'Source model',
+        toModel: 'Target model',
+        syncUpstreamModels: 'Sync upstream models',
+        syncUpstreamModelsLoading: 'Syncing upstream models...',
+        syncUpstreamModelsEmpty: 'No upstream models found',
+        syncUpstreamModelsSuccess: 'Upstream models synced',
+        syncUpstreamModelsNoChanges: 'Upstream models are already up to date',
+        syncUpstreamModelsFailed: 'Failed to sync upstream models',
+        syncUpstreamModelsError: 'Sync upstream models error: {message}',
+        oauth: {
+          openai: {
+            mobileRefreshTokenAuth: 'Mobile refresh token',
+            accessTokenAuth: 'Access token'
+          }
+        },
+        gemini: {
+          setupGuide: {
+            links: {
+              changeCountryAssociation: 'Change country/region association'
+            }
+          }
+        }
+      },
+      groups: {
+        modelsList: {
+          selectedTotal: 'Selected {selected} / {total}',
+          invertSelection: 'Invert selection'
+        }
+      },
+      users: {
+        platformBreakdown: 'Platform breakdown',
+        platformOther: 'Other platforms'
+      }
+    },
+    payment: {
+      orders: {
+        payAmount: 'Pay amount'
+      }
+    }
+  },
+  zh: {
+    common: {
+      apply: '应用',
+      clear: '清除',
+      creating: '创建中...',
+      rateMultiplier: '费率倍数',
+      required: '必填',
+      sending: '发送中...',
+      tryAgain: '重试'
+    },
+    auth: {
+      loginAgreement: {
+        passwordSignInBlocked: '请先同意登录协议后再使用密码登录。',
+        registerBlocked: '请先同意登录协议后再创建账号。',
+        registerRequired: '请阅读并同意协议后注册。',
+        signInRequired: '请阅读并同意协议后登录。'
+      },
+      dingtalk: {
+        callbackTitle: '钉钉登录',
+        callbackProcessing: '正在处理钉钉授权...',
+        callbackHint: '请在钉钉完成授权，然后返回此页面继续。',
+        callbackMissingToken: '钉钉回调未返回访问令牌。',
+        completeRegistration: '完成注册',
+        completeRegistrationFailed: '完成钉钉注册失败',
+        completing: '正在完成...',
+        createAccountTitle: '使用钉钉创建账号',
+        invitationRequired: '需要邀请码才能完成钉钉注册。',
+        registrationDisabledRedirectToBind: '当前已关闭注册。请先登录，再到个人资料中绑定钉钉。',
+        signIn: '使用钉钉登录'
+      }
+    },
+    keyUsage: {
+      dailyDetail: '每日用量明细',
+      date: '日期',
+      cacheWriteTokens: '缓存写入 Tokens',
+      dateRange90d: '90 天',
+      noDailyUsage: '暂无每日用量记录'
+    },
+    userSubscriptions: {
+      quotaEndsIn: '额度将在 {time} 后结束'
+    },
+    admin: {
+      accounts: {
+        add: '添加账号',
+        fromModel: '源模型',
+        toModel: '目标模型',
+        syncUpstreamModels: '同步上游模型',
+        syncUpstreamModelsLoading: '正在同步上游模型...',
+        syncUpstreamModelsEmpty: '未发现上游模型',
+        syncUpstreamModelsSuccess: '上游模型已同步',
+        syncUpstreamModelsNoChanges: '上游模型已是最新',
+        syncUpstreamModelsFailed: '同步上游模型失败',
+        syncUpstreamModelsError: '同步上游模型出错：{message}',
+        oauth: {
+          openai: {
+            mobileRefreshTokenAuth: '移动端 Refresh Token',
+            accessTokenAuth: 'Access Token'
+          }
+        },
+        gemini: {
+          setupGuide: {
+            links: {
+              changeCountryAssociation: '更改国家/地区关联'
+            }
+          }
+        }
+      },
+      groups: {
+        modelsList: {
+          selectedTotal: '已选 {selected} / {total}',
+          invertSelection: '反选'
+        }
+      },
+      users: {
+        platformBreakdown: '平台分布',
+        platformOther: '其他平台'
+      }
+    },
+    payment: {
+      orders: {
+        payAmount: '支付金额'
+      }
+    }
+  },
+  vi: {
+    common: {
+      apply: 'Áp dụng',
+      clear: 'Xóa',
+      creating: 'Đang tạo...',
+      rateMultiplier: 'Hệ số giá',
+      required: 'Bắt buộc',
+      sending: 'Đang gửi...',
+      tryAgain: 'Thử lại'
+    },
+    auth: {
+      loginAgreement: {
+        passwordSignInBlocked: 'Hãy chấp nhận thỏa thuận đăng nhập trước khi đăng nhập bằng mật khẩu.',
+        registerBlocked: 'Hãy chấp nhận thỏa thuận đăng nhập trước khi tạo tài khoản.',
+        registerRequired: 'Vui lòng đọc và chấp nhận thỏa thuận để đăng ký.',
+        signInRequired: 'Vui lòng đọc và chấp nhận thỏa thuận để đăng nhập.'
+      },
+      dingtalk: {
+        callbackTitle: 'Đăng nhập DingTalk',
+        callbackProcessing: 'Đang xử lý ủy quyền DingTalk...',
+        callbackHint: 'Hoàn tất ủy quyền trong DingTalk rồi quay lại đây để tiếp tục.',
+        callbackMissingToken: 'Callback DingTalk không trả về access token.',
+        completeRegistration: 'Hoàn tất đăng ký',
+        completeRegistrationFailed: 'Hoàn tất đăng ký DingTalk thất bại',
+        completing: 'Đang hoàn tất...',
+        createAccountTitle: 'Tạo tài khoản bằng DingTalk',
+        invitationRequired: 'Cần mã mời để hoàn tất đăng ký DingTalk.',
+        registrationDisabledRedirectToBind: 'Đăng ký đang bị tắt. Hãy đăng nhập trước rồi liên kết DingTalk trong hồ sơ.',
+        signIn: 'Đăng nhập bằng DingTalk'
+      }
+    },
+    keyUsage: {
+      dailyDetail: 'Chi tiết sử dụng hằng ngày',
+      date: 'Ngày',
+      cacheWriteTokens: 'Cache write tokens',
+      dateRange90d: '90 ngày',
+      noDailyUsage: 'Chưa có bản ghi sử dụng hằng ngày'
+    },
+    userSubscriptions: {
+      quotaEndsIn: 'Quota kết thúc sau {time}'
+    },
+    admin: {
+      accounts: {
+        add: 'Thêm tài khoản',
+        fromModel: 'Model nguồn',
+        toModel: 'Model đích',
+        syncUpstreamModels: 'Đồng bộ model upstream',
+        syncUpstreamModelsLoading: 'Đang đồng bộ model upstream...',
+        syncUpstreamModelsEmpty: 'Không tìm thấy model upstream',
+        syncUpstreamModelsSuccess: 'Đã đồng bộ model upstream',
+        syncUpstreamModelsNoChanges: 'Model upstream đã là mới nhất',
+        syncUpstreamModelsFailed: 'Đồng bộ model upstream thất bại',
+        syncUpstreamModelsError: 'Lỗi đồng bộ model upstream: {message}',
+        oauth: {
+          openai: {
+            mobileRefreshTokenAuth: 'Mobile refresh token',
+            accessTokenAuth: 'Access token'
+          }
+        },
+        gemini: {
+          setupGuide: {
+            links: {
+              changeCountryAssociation: 'Đổi liên kết quốc gia/khu vực'
+            }
+          }
+        }
+      },
+      groups: {
+        modelsList: {
+          selectedTotal: 'Đã chọn {selected} / {total}',
+          invertSelection: 'Đảo chọn'
+        }
+      },
+      users: {
+        platformBreakdown: 'Phân bổ theo nền tảng',
+        platformOther: 'Nền tảng khác'
+      }
+    },
+    payment: {
+      orders: {
+        payAmount: 'Số tiền thanh toán'
+      }
+    }
+  },
+  ko: {
+    common: {
+      apply: '적용',
+      clear: '지우기',
+      creating: '생성 중...',
+      rateMultiplier: '요율 배수',
+      required: '필수',
+      sending: '전송 중...',
+      tryAgain: '다시 시도'
+    },
+    auth: {
+      loginAgreement: {
+        passwordSignInBlocked: '비밀번호로 로그인하기 전에 로그인 약관에 동의하세요.',
+        registerBlocked: '계정을 만들기 전에 로그인 약관에 동의하세요.',
+        registerRequired: '가입하려면 약관을 읽고 동의해 주세요.',
+        signInRequired: '로그인하려면 약관을 읽고 동의해 주세요.'
+      },
+      dingtalk: {
+        callbackTitle: 'DingTalk 로그인',
+        callbackProcessing: 'DingTalk 인증을 처리하는 중...',
+        callbackHint: 'DingTalk에서 인증을 완료한 뒤 여기로 돌아와 계속하세요.',
+        callbackMissingToken: 'DingTalk callback이 access token을 반환하지 않았습니다.',
+        completeRegistration: '가입 완료',
+        completeRegistrationFailed: 'DingTalk 가입 완료 실패',
+        completing: '완료 중...',
+        createAccountTitle: 'DingTalk로 계정 만들기',
+        invitationRequired: 'DingTalk 가입을 완료하려면 초대 코드가 필요합니다.',
+        registrationDisabledRedirectToBind: '가입이 비활성화되어 있습니다. 먼저 로그인한 뒤 프로필에서 DingTalk를 연결하세요.',
+        signIn: 'DingTalk로 로그인'
+      }
+    },
+    keyUsage: {
+      dailyDetail: '일별 사용량 상세',
+      date: '날짜',
+      cacheWriteTokens: 'Cache write tokens',
+      dateRange90d: '90일',
+      noDailyUsage: '일별 사용량 기록이 없습니다'
+    },
+    userSubscriptions: {
+      quotaEndsIn: '{time} 후 quota 종료'
+    },
+    admin: {
+      accounts: {
+        add: '계정 추가',
+        fromModel: '원본 모델',
+        toModel: '대상 모델',
+        syncUpstreamModels: '업스트림 모델 동기화',
+        syncUpstreamModelsLoading: '업스트림 모델 동기화 중...',
+        syncUpstreamModelsEmpty: '업스트림 모델을 찾을 수 없습니다',
+        syncUpstreamModelsSuccess: '업스트림 모델이 동기화되었습니다',
+        syncUpstreamModelsNoChanges: '업스트림 모델이 이미 최신입니다',
+        syncUpstreamModelsFailed: '업스트림 모델 동기화 실패',
+        syncUpstreamModelsError: '업스트림 모델 동기화 오류: {message}',
+        oauth: {
+          openai: {
+            mobileRefreshTokenAuth: 'Mobile refresh token',
+            accessTokenAuth: 'Access token'
+          }
+        },
+        gemini: {
+          setupGuide: {
+            links: {
+              changeCountryAssociation: '국가/지역 연결 변경'
+            }
+          }
+        }
+      },
+      groups: {
+        modelsList: {
+          selectedTotal: '{selected} / {total} 선택됨',
+          invertSelection: '선택 반전'
+        }
+      },
+      users: {
+        platformBreakdown: '플랫폼별 분포',
+        platformOther: '기타 플랫폼'
+      }
+    },
+    payment: {
+      orders: {
+        payAmount: '결제 금액'
+      }
+    }
+  }
+} as const satisfies Record<string, LocalePatch>
+
+
+const staticI18nCoverageHotfixPatches = {
+  en: {
+    auth: {
+      wechatConnect: {
+        mobileOnlyHint: 'This site is configured for WeChat Mobile App login only. Continue from the native app through the WeChat SDK.'
+      }
+    },
+    keyUsage: {
+      windowUnits: {
+        day: 'D',
+        week: 'W',
+        month: 'M'
+      }
+    },
+    admin: {
+      accounts: {
+        messages: {
+          accountCreated: 'Account created successfully'
+        },
+        status: {
+          overageActive: 'Overage',
+          overageExhausted: 'Overage exhausted',
+          overageExhaustedUntil: 'Overage exhausted; expected to recover at {time}'
+        },
+        gemini: {
+          oauthType: {
+            badges: {
+              recommendedPersonal: 'Recommended for personal users',
+              enterpriseUser: 'Enterprise users'
+            }
+          }
+        }
+      }
+    }
+  },
+  zh: {
+    auth: {
+      wechatConnect: {
+        mobileOnlyHint: '当前站点仅配置了微信移动应用登录，请在原生应用中通过微信 SDK 继续。'
+      }
+    },
+    keyUsage: {
+      windowUnits: {
+        day: 'D',
+        week: 'W',
+        month: 'M'
+      }
+    },
+    admin: {
+      accounts: {
+        messages: {
+          accountCreated: '账号创建成功'
+        },
+        status: {
+          overageActive: '超额使用',
+          overageExhausted: '超额用量已耗尽',
+          overageExhaustedUntil: '超额用量已耗尽，预计 {time} 恢复'
+        },
+        gemini: {
+          oauthType: {
+            badges: {
+              recommendedPersonal: '推荐个人用户',
+              enterpriseUser: '企业用户'
+            }
+          }
+        }
+      }
+    }
+  },
+  vi: {
+    admin: {
+      accounts: {
+        messages: {
+          accountCreated: 'Tạo tài khoản thành công'
+        }
+      }
+    }
+  },
+  ko: {
+    admin: {
+      accounts: {
+        messages: {
+          accountCreated: '계정이 생성되었습니다'
+        }
+      }
+    }
+  }
+} as const satisfies Record<string, LocalePatch>
+
+const zhBaselineLocaleCoveragePatches = {
+  vi: {
+    usage: {
+      cyber: 'Chính sách an toàn',
+      errors: {
+        categories: {
+          cyber: 'Chính sách an toàn'
+        }
+      }
+    },
+    admin: {
+      riskControl: {
+        cyberPolicyExcludeBan: 'Không tính cyber_policy vào số lần cấm',
+        cyberPolicyExcludeBanHint: 'Khi bật, các lần bị chặn bởi cyber_policy sẽ không còn tính vào số lần vi phạm để tự động cấm: lần hit hiện tại không kích hoạt xét cấm và các bản ghi lịch sử cũng bị loại khỏi bộ đếm rolling. Nhật ký risk control và email thông báo vẫn giữ nguyên.',
+        violationNotCounted: 'Không tính vào lệnh cấm',
+        action: {
+          cyberPolicy: 'Chính sách an toàn'
+        }
+      },
+      channelMonitor: {
+        form: {
+          jitterSeconds: 'Độ lệch ngẫu nhiên (± giây)',
+          jitterSecondsHint: 'Mỗi lần kiểm tra sẽ chạy tại khoảng thời gian ± một độ lệch ngẫu nhiên trong giá trị này; 0 nghĩa là cố định. Khoảng cách trừ độ lệch phải ≥ 15 giây'
+        }
+      },
+      accounts: {
+        columns: {
+          id: 'ID'
+        },
+        openaiQuotaReset: {
+          count: 'Lượt',
+          reset: 'Đặt lại',
+          countTooltipLoad: 'Bấm để tải số lượt reset còn lại',
+          countTooltipRefresh: 'Bấm để làm mới số lượt reset còn lại',
+          resetTooltipReady: 'Dùng 1 lượt reset để khôi phục ngay cửa sổ hiện tại',
+          resetTooltipNeedQuery: 'Bấm “Lượt” trước để tải số lượt reset còn lại',
+          resetTooltipNoCredits: 'Không còn lượt reset khả dụng',
+          noCreditsAvailable: 'Không còn lượt reset khả dụng',
+          resetSuccess: 'Đã reset {windows} cửa sổ'
+        }
+      },
+      settings: {
+        features: {
+          riskControl: {
+            cyberSessionBlock: 'Tự động chặn phiên cyber',
+            cyberSessionBlockHint: 'Khi bật, phiên bị upstream cyber_policy chặn sẽ bị chặn cục bộ trong thời gian TTL và không còn gửi lên upstream. Chỉ chặn phiên vi phạm; các phiên khác trên cùng key không bị ảnh hưởng.',
+            cyberSessionBlockTTL: 'TTL chặn (giây)'
+          }
+        },
+        gatewayForwarding: {
+          claudeOAuthSystemPromptInjection: 'Tiêm Claude OAuth System',
+          claudeOAuthSystemPromptInjectionHint: 'Tiêm các system block theo dạng Claude Code cho request Claude OAuth từ client không phải Claude Code. Mặc định bật.',
+          claudeOAuthSystemPrompt: 'Prompt mở rộng Claude OAuth',
+          claudeOAuthSystemPromptPlaceholder: 'Để trống để dùng prompt mở rộng Claude Code tích hợp.',
+          claudeOAuthSystemPromptHint: 'Tương thích cấu hình cũ: chỉ điều khiển system block thứ ba được tiêm.',
+          claudeOAuthSystemPromptBlocks: 'Claude OAuth System Blocks',
+          claudeOAuthSystemPromptBlocksPlaceholder: 'Để trống để dùng 3 block tích hợp. Hỗ trợ mảng hoặc {"blocks": [...]}.',
+          claudeOAuthSystemPromptBlocksHint: 'Mỗi block sẽ được lưu dưới dạng JSON có enabled, type, text và cache_control tùy chọn. {billing_header} được tạo động theo request; prompt nhận diện Claude Code và prompt mở rộng có thể chỉnh trực tiếp hoặc khôi phục bằng preset.',
+          systemBlockTitle: 'System Block {index}',
+          systemBlockPreset: 'Preset',
+          systemBlockPresetBilling: 'Billing Header',
+          systemBlockPresetIdentity: 'Prompt nhận diện Claude Code',
+          systemBlockPresetExpansion: 'Prompt mở rộng Claude Code',
+          systemBlockPresetCustom: 'Tùy chỉnh',
+          systemBlockType: 'Loại',
+          systemBlockTypeText: 'Văn bản',
+          systemBlockText: 'Nội dung',
+          systemBlockCacheControl: 'Cache Control',
+          systemBlockHide: 'Ẩn chi tiết block',
+          systemBlockShow: 'Hiện chi tiết block',
+          addSystemBlock: 'Thêm block',
+          resetSystemBlocks: 'Khôi phục mặc định',
+          cacheTTL5m: '5 phút',
+          cacheTTL1h: '1 giờ'
+        }
+      }
+    }
+  },
+  ko: {
+    usage: {
+      cyber: '보안 정책',
+      errors: {
+        categories: {
+          cyber: '보안 정책'
+        }
+      }
+    },
+    admin: {
+      riskControl: {
+        cyberPolicyExcludeBan: 'cyber_policy 차단을 금지 횟수에서 제외',
+        cyberPolicyExcludeBanHint: '활성화하면 cyber_policy 차단은 자동 차단 위반 횟수에 더 이상 포함되지 않습니다. 해당 hit 자체로 차단 판단을 하지 않고, rolling count에서도 과거 기록을 제외합니다. 위험 제어 로그와 알림 이메일은 그대로 유지됩니다.',
+        violationNotCounted: '차단 횟수 미포함',
+        action: {
+          cyberPolicy: '보안 정책'
+        }
+      },
+      channelMonitor: {
+        form: {
+          jitterSeconds: '무작위 지터 (±초)',
+          jitterSecondsHint: '각 점검은 간격에 이 값 범위의 무작위 오프셋을 더하거나 빼서 실행됩니다. 0은 고정 간격을 의미합니다. 간격 - 지터는 15초 이상이어야 합니다'
+        }
+      },
+      accounts: {
+        columns: {
+          id: 'ID'
+        },
+        openaiQuotaReset: {
+          count: '횟수',
+          reset: '재설정',
+          countTooltipLoad: '남은 재설정 횟수를 불러오려면 클릭하세요',
+          countTooltipRefresh: '남은 재설정 횟수를 새로고침하려면 클릭하세요',
+          resetTooltipReady: '재설정 횟수 1회를 사용해 현재 창을 즉시 복구합니다',
+          resetTooltipNeedQuery: '먼저 “횟수”를 클릭해 남은 재설정 횟수를 불러오세요',
+          resetTooltipNoCredits: '사용 가능한 재설정 횟수가 없습니다',
+          noCreditsAvailable: '사용 가능한 재설정 횟수가 없습니다',
+          resetSuccess: '{windows}개 창을 재설정했습니다'
+        }
+      },
+      settings: {
+        features: {
+          riskControl: {
+            cyberSessionBlock: 'cyber 세션 자동 차단',
+            cyberSessionBlockHint: '활성화하면 upstream cyber_policy에 의해 차단된 세션은 TTL 동안 로컬에서 차단되어 upstream으로 전달되지 않습니다. 해당 세션만 차단하며 같은 key의 다른 세션에는 영향을 주지 않습니다.',
+            cyberSessionBlockTTL: '차단 TTL(초)'
+          }
+        },
+        gatewayForwarding: {
+          claudeOAuthSystemPromptInjection: 'Claude OAuth System 주입',
+          claudeOAuthSystemPromptInjectionHint: 'Claude Code가 아닌 클라이언트의 Claude OAuth 요청에 Claude Code 형태의 system blocks를 주입합니다. 기본값은 활성화입니다.',
+          claudeOAuthSystemPrompt: 'Claude OAuth 확장 프롬프트',
+          claudeOAuthSystemPromptPlaceholder: '비워 두면 내장 Claude Code 확장 프롬프트를 사용합니다.',
+          claudeOAuthSystemPromptHint: '이전 설정과의 호환성: 세 번째로 주입되는 system block만 제어합니다.',
+          claudeOAuthSystemPromptBlocks: 'Claude OAuth System Blocks',
+          claudeOAuthSystemPromptBlocksPlaceholder: '비워 두면 내장 3개 blocks를 사용합니다. 배열 또는 {"blocks": [...]} 형식을 지원합니다.',
+          claudeOAuthSystemPromptBlocksHint: '각 block은 enabled, type, text 및 선택적 cache_control을 포함한 JSON으로 저장됩니다. {billing_header}는 요청마다 동적으로 생성됩니다. Claude Code 신원 프롬프트와 확장 프롬프트는 직접 편집하거나 preset으로 기본값을 복원할 수 있습니다.',
+          systemBlockTitle: 'System Block {index}',
+          systemBlockPreset: '프리셋',
+          systemBlockPresetBilling: 'Billing Header',
+          systemBlockPresetIdentity: 'Claude Code 신원 프롬프트',
+          systemBlockPresetExpansion: 'Claude Code 확장 프롬프트',
+          systemBlockPresetCustom: '사용자 지정',
+          systemBlockType: '유형',
+          systemBlockTypeText: '텍스트',
+          systemBlockText: '내용',
+          systemBlockCacheControl: 'Cache Control',
+          systemBlockHide: 'block 상세 숨기기',
+          systemBlockShow: 'block 상세 보기',
+          addSystemBlock: 'block 추가',
+          resetSystemBlocks: '기본값 복원',
+          cacheTTL5m: '5분',
+          cacheTTL1h: '1시간'
+        }
+      }
+    }
+  }
+} as const satisfies Record<string, LocalePatch>
+
 export const adminLocalePatches = mergeLocalePatch(
   mergeLocalePatch(
     adminLocalePatchBase as unknown as Record<string, LocalePatch>,
@@ -845,3 +1431,14 @@ export const adminLocalePatches = mergeLocalePatch(
   ),
   adminLocaleCoveragePatches
 )
+
+mergeLocalePatch(adminLocalePatches.vi, zhBaselineLocaleCoveragePatches.vi)
+mergeLocalePatch(adminLocalePatches.ko, zhBaselineLocaleCoveragePatches.ko)
+
+for (const locale of ['en', 'zh', 'vi', 'ko'] as const) {
+  mergeLocalePatch(adminLocalePatches[locale], staticI18nCoveragePatches[locale])
+}
+
+for (const locale of ['en', 'zh', 'vi', 'ko'] as const) {
+  mergeLocalePatch(adminLocalePatches[locale], staticI18nCoverageHotfixPatches[locale])
+}

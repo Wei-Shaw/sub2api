@@ -791,12 +791,10 @@
               class="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs dark:border-dark-600 dark:bg-dark-800"
             >
               <span class="text-gray-500 dark:text-gray-400">
-                {{
-                  t("admin.groups.modelsList.selectedSummary", {
-                    selected: createModelsListSelectedCount,
-                    total: createModelsListState.items.length,
-                  })
-                }}
+                {{ t("admin.groups.modelsList.selectedTotal", {
+                  selected: createModelsListSelectedCount,
+                  total: createModelsListState.items.length,
+                }) }}
               </span>
               <div class="flex items-center gap-1.5">
                 <button
@@ -804,7 +802,7 @@
                   class="rounded px-2 py-1 font-medium text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
                   @click="selectAllModelsListItems(createModelsListState)"
                 >
-                  {{ t("admin.groups.modelsList.selectAll") }}
+                  {{ t("common.selectAll") }}
                 </button>
                 <button
                   type="button"
@@ -2346,12 +2344,10 @@
               class="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs dark:border-dark-600 dark:bg-dark-800"
             >
               <span class="text-gray-500 dark:text-gray-400">
-                {{
-                  t("admin.groups.modelsList.selectedSummary", {
-                    selected: editModelsListSelectedCount,
-                    total: editModelsListState.items.length,
-                  })
-                }}
+                {{ t("admin.groups.modelsList.selectedTotal", {
+                  selected: editModelsListSelectedCount,
+                  total: editModelsListState.items.length,
+                }) }}
               </span>
               <div class="flex items-center gap-1.5">
                 <button
@@ -2359,7 +2355,7 @@
                   class="rounded px-2 py-1 font-medium text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
                   @click="selectAllModelsListItems(editModelsListState)"
                 >
-                  {{ t("admin.groups.modelsList.selectAll") }}
+                  {{ t("common.selectAll") }}
                 </button>
                 <button
                   type="button"

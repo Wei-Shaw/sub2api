@@ -123,23 +123,24 @@ type Translate = TranslateFn
 const defaultTranslate: Translate = (key, params = {}) => {
   const messages: Record<string, string> = {
     'admin.channels.intervalValidation.minTokensNonNegative':
-      '区间 #{index}: 最小 token 数 ({value}) 不能为负数',
+      'Interval #{index}: minimum token count ({value}) cannot be negative',
     'admin.channels.intervalValidation.maxTokensPositive':
-      '区间 #{index}: 最大 token 数 ({value}) 必须大于 0',
+      'Interval #{index}: maximum token count ({value}) must be greater than 0',
     'admin.channels.intervalValidation.maxTokensGreaterThanMin':
-      '区间 #{index}: 最大 token 数 ({max}) 必须大于最小 token 数 ({min})',
+      'Interval #{index}: maximum token count ({max}) must be greater than minimum token count ({min})',
     'admin.channels.intervalValidation.priceNonNegative':
-      '区间 #{index}: {name}不能为负数',
+      'Interval #{index}: {name} cannot be negative',
     'admin.channels.intervalValidation.unboundedLast':
-      '区间 #{index}: 无上限区间（最大 token 数为空）只能是最后一个',
+      'Interval #{index}: unbounded interval (empty max tokens) can only be the last interval',
     'admin.channels.intervalValidation.overlap':
-      '区间 #{prevIndex} 和 #{index} 重叠：前一个上限 ({prevMax}) 大于当前下限 ({min})',
-    'admin.channels.intervalValidation.priceNames.input': '输入价格',
-    'admin.channels.intervalValidation.priceNames.output': '输出价格',
-    'admin.channels.intervalValidation.priceNames.cacheWrite': '缓存写入价格',
-    'admin.channels.intervalValidation.priceNames.cacheRead': '缓存读取价格',
-    'admin.channels.intervalValidation.priceNames.perRequest': '每请求价格',
+      'Intervals #{prevIndex} and #{index} overlap: previous upper bound ({prevMax}) is greater than current lower bound ({min})',
+    'admin.channels.intervalValidation.priceNames.input': 'Input price',
+    'admin.channels.intervalValidation.priceNames.output': 'Output price',
+    'admin.channels.intervalValidation.priceNames.cacheWrite': 'Cache write price',
+    'admin.channels.intervalValidation.priceNames.cacheRead': 'Cache read price',
+    'admin.channels.intervalValidation.priceNames.perRequest': 'Per-request price',
   }
+
   const template = messages[key] ?? key
   return template.replace(/\{(\w+)\}/g, (_, param: string) => String(params[param] ?? ''))
 }
