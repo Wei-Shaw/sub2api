@@ -228,6 +228,15 @@ func (s *AffiliateService) IsEnabled(ctx context.Context) bool {
 	return s.settingService.IsAffiliateEnabled(ctx)
 }
 
+// IncludeSubscriptionRebate reports whether subscription plan purchases should
+// also accrue invite rebate. Defaults to false when unset.
+func (s *AffiliateService) IncludeSubscriptionRebate(ctx context.Context) bool {
+	if s == nil || s.settingService == nil {
+		return AffiliateRebateIncludeSubscriptionDefault
+	}
+	return s.settingService.GetAffiliateRebateIncludeSubscription(ctx)
+}
+
 func (s *AffiliateService) EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error) {
 	if userID <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_USER", "invalid user")

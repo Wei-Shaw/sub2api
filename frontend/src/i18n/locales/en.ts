@@ -487,6 +487,7 @@ export default {
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
+    oidcClients: 'OIDC Clients',
   },
 
   // Auth
@@ -997,6 +998,7 @@ export default {
     ws: 'WS',
     stream: 'Stream',
     sync: 'Sync',
+    cyber: 'Cyber',
     unknown: 'Unknown',
     in: 'In',
     out: 'Out',
@@ -1054,7 +1056,7 @@ export default {
       categories: {
         auth: 'Auth failed', rate_limit: 'Rate limited', quota: 'Balance/Subscription',
         invalid_request: 'Invalid request', service_unavailable: 'Service unavailable',
-        upstream: 'Upstream error', internal: 'Platform error', other: 'Other',
+        upstream: 'Upstream error', internal: 'Platform error', other: 'Other', cyber: 'Cyber policy',
       },
       detail: {
         title: 'Error Request Detail',
@@ -2701,6 +2703,9 @@ export default {
       emailOnHitHint: 'When enabled, send a risk-control email on every hit; auto-ban notices are always sent.',
       autoBan: 'Auto Ban User',
       autoBanHint: 'Disable the user, invalidate auth cache, and send a ban notice after the hit threshold is reached.',
+      cyberPolicyExcludeBan: 'Exclude Cyber Policy Hits from Ban Count',
+      cyberPolicyExcludeBanHint: 'When enabled, cyber_policy hits no longer count toward auto-ban violations: no ban judgment on the hit itself, and history rows are excluded from the rolling count. Logs and notice emails are unaffected.',
+      violationNotCounted: 'Not counted',
       banThreshold: 'Ban Threshold',
       violationWindowHours: 'Count Window (hours)',
       hitRetentionDays: 'Hit Record Retention (days)',
@@ -2845,6 +2850,7 @@ export default {
       action: {
         block: 'Blocked',
         keywordBlock: 'Keyword Blocked',
+        cyberPolicy: 'Cyber policy',
         error: 'Error',
       },
     },
@@ -2909,6 +2915,8 @@ export default {
         groupNamePlaceholder: 'Optional, used to group rows in user view',
         intervalSeconds: 'Interval (seconds)',
         intervalSecondsHint: 'Range: 15 - 3600 seconds',
+        jitterSeconds: 'Random Jitter (± seconds)',
+        jitterSecondsHint: 'Each check fires at interval ± a random offset within this value; 0 means fixed interval. Interval minus jitter must be ≥ 15s',
         enabled: 'Enable monitor',
         kindRequired: 'Please select a provider'
       },
@@ -3225,6 +3233,7 @@ export default {
       },
       columns: {
         name: 'Name',
+        id: 'Account ID',
         platformType: 'Platform/Type',
         platform: 'Platform',
         type: 'Type',
@@ -4178,6 +4187,17 @@ export default {
         claude: 'Claude',
         passiveSampled: 'Passive',
         activeQuery: 'Query'
+      },
+      openaiQuotaReset: {
+        count: 'Credits',
+        reset: 'Reset',
+        countTooltipLoad: 'Click to load the available reset-credit count',
+        countTooltipRefresh: 'Click to refresh the available reset-credit count',
+        resetTooltipReady: 'Consume 1 reset credit to immediately restore the window',
+        resetTooltipNeedQuery: 'Click Credits first to load the available count',
+        resetTooltipNoCredits: 'No reset credits available',
+        noCreditsAvailable: 'No reset credits available',
+        resetSuccess: 'Reset {windows} window(s)'
       },
       tier: {
         free: 'Free',
@@ -5542,6 +5562,7 @@ export default {
         email: 'Email',
         backup: 'Backup',
         payment: 'Payment',
+        oidc: 'OIDC Provider',
       },
       features: {
         channelMonitor: {
@@ -5566,6 +5587,9 @@ export default {
           configureLink: 'Configure content moderation in Risk Control',
           enabled: 'Enable Risk Control',
           enabledHint: 'When off, the admin sidebar entry is hidden and gateway moderation is skipped.',
+          cyberSessionBlock: 'Cyber session auto-block',
+          cyberSessionBlockHint: 'When enabled, sessions hit by upstream cyber_policy are blocked locally for the TTL and no longer forwarded. Only the offending session is blocked; other sessions on the same key are unaffected.',
+          cyberSessionBlockTTL: 'Block TTL (seconds)',
         },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',
@@ -5580,6 +5604,8 @@ export default {
           durationDaysDesc: 'Rebate relationship expires after this many days since invitee registration. 0 = permanent.',
           perInviteeCap: 'Per-Invitee Rebate Cap',
           perInviteeCapDesc: 'Maximum total rebate from a single invitee. 0 = no limit.',
+          includeSubscription: 'Include Subscription Purchases',
+          includeSubscriptionDesc: 'When enabled, subscription plan purchases also accrue invite rebate (based on the paid amount). Disabled by default.',
           customUsers: {
             title: 'Per-User Overrides',
             description: 'Set a custom invite code or exclusive rebate rate for specific users. Lists only users that have an override applied.',
@@ -5876,6 +5902,30 @@ export default {
         metadataPassthroughHint: 'Pass through client\'s original metadata.user_id without rewriting. May improve upstream cache hit rates.',
         cchSigning: 'CCH Signing',
         cchSigningHint: 'Sign the billing header in forwarded requests with CCH hash. When disabled, the placeholder is preserved.',
+        claudeOAuthSystemPromptInjection: 'Claude OAuth System Blocks',
+        claudeOAuthSystemPromptInjectionHint: 'Inject Claude Code-like system blocks for Claude OAuth requests from non-Claude-Code clients. Enabled by default.',
+        claudeOAuthSystemPrompt: 'Claude OAuth Expansion Prompt',
+        claudeOAuthSystemPromptPlaceholder: 'Leave empty to use the built-in Claude Code expansion prompt.',
+        claudeOAuthSystemPromptHint: 'Legacy compatibility: controls only the third injected system block.',
+        claudeOAuthSystemPromptBlocks: 'Claude OAuth System Blocks',
+        claudeOAuthSystemPromptBlocksPlaceholder: 'Leave empty to use the built-in 3 blocks. Supports an array or {"blocks": [...]}.',
+        claudeOAuthSystemPromptBlocksHint: 'Each block is saved as JSON with enabled, type, text, and optional cache_control. {billing_header} stays dynamic per request; the Claude Code identity and expansion prompts can be edited directly or restored from presets.',
+        systemBlockTitle: 'System Block {index}',
+        systemBlockPreset: 'Preset',
+        systemBlockPresetBilling: 'Billing header',
+        systemBlockPresetIdentity: 'Claude Code identity',
+        systemBlockPresetExpansion: 'Claude Code expansion',
+        systemBlockPresetCustom: 'Custom',
+        systemBlockType: 'Type',
+        systemBlockTypeText: 'Text',
+        systemBlockText: 'Content',
+        systemBlockCacheControl: 'Cache control',
+        systemBlockHide: 'Hide block details',
+        systemBlockShow: 'Show block details',
+        addSystemBlock: 'Add block',
+        resetSystemBlocks: 'Reset defaults',
+        cacheTTL5m: '5 minutes',
+        cacheTTL1h: '1 hour',
         anthropicCacheTTL1hInjection: 'Anthropic Cache TTL Injection',
         anthropicCacheTTL1hInjectionHint: 'When enabled, existing ephemeral cache_control blocks in Anthropic OAuth/Setup Token request bodies are forced to 1h; response usage is billed back as 5m by default, with account-level TTL billing override taking priority.',
         rewriteMessageCacheControl: 'Rewrite Message Cache Breakpoints',
@@ -7417,6 +7467,191 @@ export default {
     },
     use_group: 'Use this group →',
     buy_now: 'Buy now',
+  },
+
+  // OIDC Provider (sub2api acting as an OIDC identity provider for third-party apps)
+  oidc: {
+    consent: {
+      title: 'Authorize Application',
+      subtitle: '"{client}" is requesting access to your account. Please review the permissions below.',
+      loading: 'Loading authorization request…',
+      errorTitle: 'Invalid Authorization Request',
+      loadFailed: 'Failed to load the authorization request. Please go back and try again.',
+      submitFailed: 'Failed to submit your decision. Please try again.',
+      missingToken: 'Missing authorization token. Please restart the login from the application.',
+      backToDashboard: 'Back to dashboard',
+      scopesTitle: 'This application will be able to:',
+      sensitiveWarning: 'Warning: this application requests access to sensitive information (account balance / API key count). Only authorize if you trust it.',
+      allow: 'Allow',
+      deny: 'Deny',
+      scopes: {
+        openid: {
+          title: 'Basic identity',
+          description: 'Read your unique user identifier.'
+        },
+        profile: {
+          title: 'Username',
+          description: 'Read your username and basic profile.'
+        },
+        email: {
+          title: 'Email address',
+          description: 'Read your email address and verification status.'
+        },
+        offlineAccess: {
+          title: 'Offline access',
+          description: 'Keep access while you are offline (issues a refresh token).'
+        },
+        balance: {
+          title: 'Account balance (sensitive)',
+          description: 'Read your account balance and total recharged amount.'
+        },
+        apikey: {
+          title: 'API key count (sensitive)',
+          description: 'Read the number of API keys you have created (never the key contents).'
+        }
+      }
+    },
+    admin: {
+      title: 'OIDC Clients',
+      description: 'Manage third-party applications (RPs) that use sub2api as their identity provider.',
+      createButton: 'New client',
+      empty: 'No OIDC clients yet.',
+      loadFailed: 'Failed to load clients.',
+      table: {
+        name: 'Name',
+        clientId: 'Client ID',
+        scopes: 'Scopes',
+        redirectUris: 'Redirect URIs',
+        enabled: 'Status',
+        createdAt: 'Created',
+        actions: 'Actions',
+        uriCount: '{count}'
+      },
+      status: {
+        enabled: 'Enabled',
+        disabled: 'Disabled'
+      },
+      actions: {
+        edit: 'Edit',
+        delete: 'Delete',
+        resetSecret: 'Reset secret'
+      },
+      form: {
+        createTitle: 'New OIDC Client',
+        editTitle: 'Edit OIDC Client',
+        clientName: 'Client name',
+        clientNamePlaceholder: 'e.g. Internal Wiki',
+        redirectUris: 'Redirect URIs',
+        redirectUriPlaceholder: 'https://app.example.com/callback',
+        addRedirectUri: 'Add redirect URI',
+        redirectUriHint: 'Must be https:// (http:// allowed for localhost) and match the application exactly (including trailing slash).',
+        allowedScopes: 'Allowed scopes',
+        consentRequired: 'Require user consent every time',
+        enabled: 'Enable this client',
+        save: 'Save',
+        cancel: 'Cancel',
+        saveFailed: 'Failed to save.',
+        nameRequired: 'Please enter a client name.',
+        redirectUriRequired: 'At least one redirect URI is required.'
+      },
+      sensitiveScopeWarning: 'You selected sensitive scopes (account balance / API key count). This client will be able to read users\' sensitive information.',
+      confirmModal: {
+        title: 'Confirm sensitive permissions',
+        body: 'This client will be able to read sensitive information such as account balance and API key count. Do you want to continue?',
+        checkbox: 'I confirm allowing this client to read sensitive information',
+        confirm: 'Confirm and save',
+        cancel: 'Go back'
+      },
+      secretReveal: {
+        title: 'Client Secret',
+        createBanner: 'This secret is shown only once. Copy and store it now.',
+        resetBanner: 'A new secret has been generated and the old one is immediately invalid. This secret is shown only once — copy it now.',
+        copy: 'Copy',
+        copied: 'Copied',
+        done: 'I have saved it'
+      },
+      deleteConfirm: {
+        title: 'Delete OIDC client',
+        body: 'Deleting will cascade-remove all consents, authorization codes and tokens for this client and cannot be undone. Delete "{name}"?',
+        confirm: 'Delete',
+        cancel: 'Cancel',
+        failed: 'Failed to delete.'
+      },
+      resetSecretConfirm: {
+        title: 'Reset client secret',
+        body: 'The old secret becomes invalid immediately, but tokens already issued to this client keep working until they expire. Continue?',
+        confirm: 'Reset',
+        cancel: 'Cancel',
+        failed: 'Failed to reset secret.'
+      },
+      settings: {
+        title: 'OIDC Provider',
+        description: 'Use sub2api as an OIDC provider (OP) so third-party apps can sign in via SSO.',
+        enabled: 'Enable OIDC Provider',
+        enabledHint: 'When disabled, all OIDC endpoints (discovery / authorize / token, etc.) return 404.',
+        issuerUrl: 'Issuer URL',
+        issuerUrlPlaceholder: 'https://api.example.com',
+        issuerUrlHint: 'Must start with https://, must not end with /, and must not contain ? or #. Required before enabling.',
+        accessTokenTtl: 'Access token TTL (seconds)',
+        idTokenTtl: 'ID token TTL (seconds)',
+        refreshTokenTtl: 'Refresh token TTL (seconds)',
+        codeTtl: 'Authorization code TTL (seconds)',
+        ssoCookieMaxAge: 'SSO cookie Max-Age (seconds)',
+        ssoCookieDomain: 'SSO cookie domain',
+        ssoCookieDomainPlaceholder: 'Leave empty for current host; use .example.com for cross-subdomain',
+        save: 'Save settings',
+        saveSuccess: 'Settings saved.',
+        saveFailed: 'Failed to save settings.',
+        loadFailed: 'Failed to load settings.',
+        enableConfirm: {
+          title: 'Enable OIDC Provider',
+          body: 'Once enabled, sub2api will expose OIDC identity services and third-party apps can initiate login. Make sure the Issuer URL is configured correctly. Enable now?',
+          confirm: 'Enable',
+          cancel: 'Cancel'
+        }
+      },
+      signingKeys: {
+        title: 'Signing Keys',
+        description: 'Used to sign ID Tokens (RS256). After rotation the old key is retained for a 7-day grace period to verify existing tokens.',
+        kid: 'Key ID',
+        status: 'Status',
+        createdAt: 'Created',
+        retiredAt: 'Retired',
+        active: 'Active',
+        retired: 'Retired',
+        rotate: 'Rotate key',
+        rotateConfirm: {
+          title: 'Rotate signing key',
+          body: 'A new active key will be generated and the old key enters a 7-day grace period. Continue?',
+          confirm: 'Rotate',
+          cancel: 'Cancel'
+        },
+        rotateSuccess: 'Signing key rotated.',
+        rotateFailed: 'Failed to rotate key.',
+        delete: 'Delete',
+        deleteConfirm: {
+          title: 'Delete signing key',
+          body: 'Tokens signed with this key will no longer verify. Continue?',
+          confirm: 'Delete',
+          cancel: 'Cancel'
+        },
+        deleteFailed: 'Failed to delete key (the active key cannot be deleted).',
+        loadFailed: 'Failed to load signing keys.',
+        empty: 'No signing keys yet (one is generated automatically when the provider is enabled).'
+      },
+      help: {
+        title: 'Third-party integration',
+        intro: 'Third-party apps (RPs) integrate via the standard OIDC Authorization Code + PKCE flow. Share the following details with the integrator.',
+        discoveryLabel: 'Discovery URL',
+        jwksLabel: 'JWKS URL',
+        discoveryNeedIssuer: 'Set and save a valid Issuer URL first',
+        scopesLabel: 'Supported scopes',
+        redirectLabel: 'redirect_uri rule',
+        redirectBody: 'The callback must exactly match a registered redirect_uri (exact match, case-sensitive, including trailing slash). Wildcards and sub-path matching are not supported.',
+        pkceLabel: 'PKCE requirement',
+        pkceBody: 'PKCE is mandatory for all authorization-code flows, and only code_challenge_method=S256 is accepted (plain is not supported).'
+      }
+    }
   },
 
 }

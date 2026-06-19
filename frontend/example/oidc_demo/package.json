@@ -1,0 +1,13 @@
+{
+  "name": "sub2api-oidc-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal, dependency-free OIDC Relying Party (RP) demo against a Sub2API provider.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

@@ -141,3 +141,4 @@ aicodex
 output/
 .github/prompts/
 .github/skills/
+*.pem

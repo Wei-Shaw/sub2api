@@ -40,6 +40,9 @@ func ProvideAdminHandlers(
 	paymentHandler *admin.PaymentHandler,
 	rechargePromoHandler *admin.RechargePromoHandler,
 	affiliateHandler *admin.AffiliateHandler,
+	oidcClientHandler *admin.OidcClientHandler,
+	oidcSigningKeyHandler *admin.OidcSigningKeyHandler,
+	oidcProviderSettingsHandler *admin.OidcProviderSettingsHandler,
 	complianceHandler *admin.ComplianceHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
@@ -74,6 +77,9 @@ func ProvideAdminHandlers(
 		Payment:                paymentHandler,
 		RechargePromo:          rechargePromoHandler,
 		Affiliate:              affiliateHandler,
+		OidcClient:             oidcClientHandler,
+		OidcSigningKey:         oidcSigningKeyHandler,
+		OidcProviderSettings:   oidcProviderSettingsHandler,
 		Compliance:             complianceHandler,
 	}
 }
@@ -116,6 +122,7 @@ func ProvideHandlers(
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
 	plazaHandler *PlazaHandler,
+	oidcProviderHandler *OidcProviderHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -137,6 +144,7 @@ func ProvideHandlers(
 		PaymentWebhook:   paymentWebhookHandler,
 		AvailableChannel: availableChannelHandler,
 		Plaza:            plazaHandler,
+		OidcProvider:     oidcProviderHandler,
 	}
 }
 
@@ -159,6 +167,7 @@ var ProviderSet = wire.NewSet(
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewPlazaHandler,
+	NewOidcProviderHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -192,6 +201,9 @@ var ProviderSet = wire.NewSet(
 	admin.NewPaymentHandler,
 	admin.NewRechargePromoHandler,
 	admin.NewAffiliateHandler,
+	admin.NewOidcClientHandler,
+	admin.NewOidcSigningKeyHandler,
+	admin.NewOidcProviderSettingsHandler,
 	admin.NewComplianceHandler,
 
 	// AdminHandlers and Handlers constructors

@@ -37,6 +37,9 @@ type AdminHandlers struct {
 	Payment                *admin.PaymentHandler
 	RechargePromo          *admin.RechargePromoHandler
 	Affiliate              *admin.AffiliateHandler
+	OidcClient             *admin.OidcClientHandler
+	OidcSigningKey         *admin.OidcSigningKeyHandler
+	OidcProviderSettings   *admin.OidcProviderSettingsHandler
 	Compliance             *admin.ComplianceHandler
 }
 
@@ -59,6 +62,7 @@ type Handlers struct {
 	PaymentWebhook   *PaymentWebhookHandler
 	AvailableChannel *AvailableChannelHandler
 	Plaza            *PlazaHandler
+	OidcProvider     *OidcProviderHandler
 }
 
 // BuildInfo contains build-time information

@@ -30,6 +30,7 @@ const (
 	NotificationEmailEventAccountQuotaAlert           = "account.quota_alert"
 	NotificationEmailEventContentModerationViolation  = "content_moderation.violation_notice"
 	NotificationEmailEventContentModerationDisabled   = "content_moderation.account_disabled"
+	NotificationEmailEventCyberPolicyNotice           = "content_moderation.cyber_policy_notice"
 	NotificationEmailEventOpsAlert                    = "ops.alert"
 	NotificationEmailEventOpsScheduledReport          = "ops.scheduled_report"
 
@@ -947,6 +948,7 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventAccountQuotaAlert,
 	NotificationEmailEventContentModerationViolation,
 	NotificationEmailEventContentModerationDisabled,
+	NotificationEmailEventCyberPolicyNotice,
 	NotificationEmailEventOpsAlert,
 	NotificationEmailEventOpsScheduledReport,
 }
@@ -1034,6 +1036,15 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Optional:    false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
 			"triggered_at", "group_name", "moderation_category", "moderation_score", "violation_count", "ban_threshold"),
+	},
+	NotificationEmailEventCyberPolicyNotice: {
+		Event:       NotificationEmailEventCyberPolicyNotice,
+		Label:       "Cyber policy notice",
+		Description: "Sent to users when an upstream request is blocked by cyber-security policy (cyber_policy).",
+		Category:    "risk_control",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"triggered_at", "model", "group_name", "upstream_message"),
 	},
 	NotificationEmailEventOpsAlert: {
 		Event:       NotificationEmailEventOpsAlert,
@@ -1275,6 +1286,34 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
   <tr><td>累计触发次数</td><td>{{violation_count}} / {{ban_threshold}}</td></tr>
 </table>
 <p>如需申诉或恢复账号，请联系平台管理员处理。</p>`),
+		},
+	},
+	NotificationEmailEventCyberPolicyNotice: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Cyber-security policy notice",
+			HTML: notificationEmailCard("#ef4444", "Cyber-security policy notice", `
+<p>Hello {{recipient_name}},</p>
+<p>Your request was blocked by the upstream provider's cyber-security policy.</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td>Triggered at</td><td>{{triggered_at}}</td></tr>
+  <tr><td>Model</td><td>{{model}}</td></tr>
+  <tr><td>Group</td><td>{{group_name}}</td></tr>
+  <tr><td>Upstream message</td><td>{{upstream_message}}</td></tr>
+</table>
+<p>If you believe this is a mistake, try rephrasing your request, or apply for authorized security access.</p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 网络安全策略拦截提醒",
+			HTML: notificationEmailCard("#ef4444", "网络安全策略拦截提醒", `
+<p>{{recipient_name}}，您好：</p>
+<p>您的请求被上游服务商的网络安全策略（cyber policy）拦截。</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td>触发时间</td><td>{{triggered_at}}</td></tr>
+  <tr><td>模型</td><td>{{model}}</td></tr>
+  <tr><td>所属分组</td><td>{{group_name}}</td></tr>
+  <tr><td>上游说明</td><td>{{upstream_message}}</td></tr>
+</table>
+<p>如认为系误判，可调整请求措辞后重试，或申请获得授权的安全访问权限。</p>`),
 		},
 	},
 	NotificationEmailEventOpsAlert: {

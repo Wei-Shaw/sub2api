@@ -189,6 +189,66 @@ func (f IdentityAdoptionDecisionFunc) Mutate(ctx context.Context, m ent.Mutation
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IdentityAdoptionDecisionMutation", m)
 }
 
+// The OidcAccessTokenFunc type is an adapter to allow the use of ordinary
+// function as OidcAccessToken mutator.
+type OidcAccessTokenFunc func(context.Context, *ent.OidcAccessTokenMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OidcAccessTokenFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OidcAccessTokenMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OidcAccessTokenMutation", m)
+}
+
+// The OidcAuthorizationCodeFunc type is an adapter to allow the use of ordinary
+// function as OidcAuthorizationCode mutator.
+type OidcAuthorizationCodeFunc func(context.Context, *ent.OidcAuthorizationCodeMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OidcAuthorizationCodeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OidcAuthorizationCodeMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OidcAuthorizationCodeMutation", m)
+}
+
+// The OidcClientFunc type is an adapter to allow the use of ordinary
+// function as OidcClient mutator.
+type OidcClientFunc func(context.Context, *ent.OidcClientMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OidcClientFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OidcClientMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OidcClientMutation", m)
+}
+
+// The OidcConsentFunc type is an adapter to allow the use of ordinary
+// function as OidcConsent mutator.
+type OidcConsentFunc func(context.Context, *ent.OidcConsentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OidcConsentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OidcConsentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OidcConsentMutation", m)
+}
+
+// The OidcRefreshTokenFunc type is an adapter to allow the use of ordinary
+// function as OidcRefreshToken mutator.
+type OidcRefreshTokenFunc func(context.Context, *ent.OidcRefreshTokenMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OidcRefreshTokenFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OidcRefreshTokenMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OidcRefreshTokenMutation", m)
+}
+
 // The PaymentAuditLogFunc type is an adapter to allow the use of ordinary
 // function as PaymentAuditLog mutator.
 type PaymentAuditLogFunc func(context.Context, *ent.PaymentAuditLogMutation) (ent.Value, error)
@@ -319,6 +379,18 @@ func (f SettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SettingMutation", m)
+}
+
+// The SsoSessionFunc type is an adapter to allow the use of ordinary
+// function as SsoSession mutator.
+type SsoSessionFunc func(context.Context, *ent.SsoSessionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SsoSessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SsoSessionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SsoSessionMutation", m)
 }
 
 // The SubscriptionPlanFunc type is an adapter to allow the use of ordinary

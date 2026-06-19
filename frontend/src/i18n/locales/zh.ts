@@ -483,6 +483,7 @@ export default {
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
+    oidcClients: 'OIDC 客户端',
   },
 
   // Auth
@@ -997,6 +998,7 @@ export default {
     ws: 'WS',
     stream: '流式',
     sync: '同步',
+    cyber: '安全策略',
     unknown: '未知',
     in: '输入',
     out: '输出',
@@ -1054,7 +1056,7 @@ export default {
       categories: {
         auth: '认证失败', rate_limit: '限流', quota: '余额/订阅',
         invalid_request: '参数错误', service_unavailable: '服务暂时不可用',
-        upstream: '上游错误', internal: '平台错误', other: '其他',
+        upstream: '上游错误', internal: '平台错误', other: '其他', cyber: '安全策略',
       },
       detail: {
         title: '错误请求详情',
@@ -2774,6 +2776,9 @@ export default {
       emailOnHitHint: '开启后每次达到阈值都会向用户发送风控提醒邮件；自动封禁通知始终发送。',
       autoBan: '自动封禁用户',
       autoBanHint: '命中次数达到阈值后将禁用用户账号、刷新认证缓存并发送封禁通知邮件。',
+      cyberPolicyExcludeBan: 'cyber_policy 不计入封号次数',
+      cyberPolicyExcludeBanHint: '开启后，cyber_policy 拦截不再计入自动封号的违规次数：当次不判定封号，历史累计亦排除。风控日志与通知邮件照常。',
+      violationNotCounted: '未计入封号',
       banThreshold: '封禁触发次数',
       violationWindowHours: '累计窗口（小时）',
       hitRetentionDays: '命中记录保留（天）',
@@ -2918,6 +2923,7 @@ export default {
       action: {
         block: '拦截',
         keywordBlock: '关键词拦截',
+        cyberPolicy: '网络安全策略',
         error: '异常',
       },
     },
@@ -2982,6 +2988,8 @@ export default {
         groupNamePlaceholder: '可选，用于在用户视图中聚合显示',
         intervalSeconds: '检测间隔 (秒)',
         intervalSecondsHint: '范围：15 - 3600 秒',
+        jitterSeconds: '随机抖动 (± 秒)',
+        jitterSecondsHint: '每次检测在间隔基础上正负随机偏移该秒数，0 表示固定间隔；需满足 间隔 - 抖动 ≥ 15 秒',
         enabled: '启用监控',
         kindRequired: '请选择供应商'
       },
@@ -3259,6 +3267,7 @@ export default {
       groupCountTotal: '共 {count} 个分组',
       columns: {
         name: '名称',
+        id: '账号ID',
         platformType: '平台/类型',
         platform: '平台',
         type: '类型',
@@ -3462,6 +3471,17 @@ export default {
         claude: 'Claude',
         passiveSampled: '被动采样',
         activeQuery: '查询'
+      },
+      openaiQuotaReset: {
+        count: '次数',
+        reset: '重置',
+        countTooltipLoad: '点击查询剩余重置次数',
+        countTooltipRefresh: '点击刷新剩余重置次数',
+        resetTooltipReady: '消耗 1 次重置次数以立即恢复当前窗口',
+        resetTooltipNeedQuery: '先点击「次数」加载剩余重置次数',
+        resetTooltipNoCredits: '没有可用的重置次数',
+        noCreditsAvailable: '没有可用的重置次数',
+        resetSuccess: '已重置 {windows} 个窗口'
       },
       tier: {
         free: 'Free',
@@ -5698,6 +5718,7 @@ export default {
         email: '邮件设置',
         backup: '数据备份',
         payment: '支付设置',
+        oidc: 'OIDC 提供方',
       },
       features: {
         channelMonitor: {
@@ -5722,6 +5743,9 @@ export default {
           configureLink: '前往 风控中心 配置内容审计',
           enabled: '启用风控中心',
           enabledHint: '关闭后管理员侧边栏入口隐藏，网关内容审计不会执行。',
+          cyberSessionBlock: 'cyber 会话自动屏蔽',
+          cyberSessionBlockHint: '开启后,被上游网络安全策略(cyber_policy)拦截的会话将在 TTL 内被本地屏蔽,不再发往上游。仅屏蔽该会话,不影响同 Key 其他会话。',
+          cyberSessionBlockTTL: '屏蔽时长(秒)',
         },
         affiliate: {
           title: '邀请返利',
@@ -5736,6 +5760,8 @@ export default {
           durationDaysDesc: '被邀请用户注册后多少天内的充值产生返利。0 = 永久有效。',
           perInviteeCap: '单人返利上限',
           perInviteeCapDesc: '每个被邀请用户最多产生的返利总额。0 = 无上限。',
+          includeSubscription: '订阅套餐计入返利',
+          includeSubscriptionDesc: '开启后，购买订阅套餐也会按实付金额产生邀请返利。默认关闭。',
           customUsers: {
             title: '专属用户配置',
             description: '为指定用户设置专属邀请码或专属返利比例。仅展示已设置过专属配置的用户。',
@@ -6026,6 +6052,30 @@ export default {
         metadataPassthroughHint: '透传客户端原始 metadata.user_id，不进行重写。可能提高上游缓存命中率。',
         cchSigning: 'CCH 签名',
         cchSigningHint: '对转发请求的 billing header 进行 CCH 哈希签名。关闭时保留原始占位符。',
+        claudeOAuthSystemPromptInjection: 'Claude OAuth System 注入',
+        claudeOAuthSystemPromptInjectionHint: '为非 Claude Code 客户端的 Claude OAuth 请求注入 Claude Code 形态的 system blocks。默认开启。',
+        claudeOAuthSystemPrompt: 'Claude OAuth 扩展提示词',
+        claudeOAuthSystemPromptPlaceholder: '留空时使用内置 Claude Code 扩展提示词。',
+        claudeOAuthSystemPromptHint: '兼容旧配置：仅控制第三个注入的 system block。',
+        claudeOAuthSystemPromptBlocks: 'Claude OAuth System Blocks',
+        claudeOAuthSystemPromptBlocksPlaceholder: '留空时使用内置 3 个 blocks。支持数组或 {"blocks": [...]}。',
+        claudeOAuthSystemPromptBlocksHint: '每个 block 会保存为带 enabled、type、text、可选 cache_control 的 JSON。{billing_header} 会按请求动态生成；Claude Code 身份提示词和扩展提示词可直接编辑，也可用预设恢复默认值。',
+        systemBlockTitle: 'System Block {index}',
+        systemBlockPreset: '预设',
+        systemBlockPresetBilling: 'Billing Header',
+        systemBlockPresetIdentity: 'Claude Code 身份提示词',
+        systemBlockPresetExpansion: 'Claude Code 扩展提示词',
+        systemBlockPresetCustom: '自定义',
+        systemBlockType: '类型',
+        systemBlockTypeText: '文本',
+        systemBlockText: '内容',
+        systemBlockCacheControl: 'Cache Control',
+        systemBlockHide: '隐藏 block 详情',
+        systemBlockShow: '展示 block 详情',
+        addSystemBlock: '添加 block',
+        resetSystemBlocks: '恢复默认',
+        cacheTTL5m: '5 分钟',
+        cacheTTL1h: '1 小时',
         anthropicCacheTTL1hInjection: 'Anthropic 缓存 TTL 注入',
         anthropicCacheTTL1hInjectionHint: '开启后，对 Anthropic OAuth/Setup Token 请求体中已有的 ephemeral 缓存块强制写入 1h；响应 usage 默认按 5m 回写计费，账号级 TTL 计费设置优先。',
         rewriteMessageCacheControl: '改写消息缓存断点',
@@ -7592,6 +7642,191 @@ export default {
     },
     use_group: '去使用 ›',
     buy_now: '立即购买',
+  },
+
+  // OIDC Provider（sub2api 作为 OIDC 身份提供方对外提供单点登录）
+  oidc: {
+    consent: {
+      title: '授权应用访问',
+      subtitle: '“{client}” 请求访问你的账户，请确认以下权限。',
+      loading: '正在加载授权信息…',
+      errorTitle: '授权请求无效',
+      loadFailed: '无法加载授权信息，请返回后重试。',
+      submitFailed: '提交授权决策失败，请重试。',
+      missingToken: '缺少授权令牌，请从应用方重新发起登录。',
+      backToDashboard: '返回控制台',
+      scopesTitle: '此应用将获得以下权限：',
+      sensitiveWarning: '注意：此应用请求读取你的敏感信息（账户余额 / API Key 数量），请仅在你信任该应用时授权。',
+      allow: '允许',
+      deny: '拒绝',
+      scopes: {
+        openid: {
+          title: '基础身份',
+          description: '读取你的唯一用户标识。'
+        },
+        profile: {
+          title: '用户名',
+          description: '读取你的用户名等基础资料。'
+        },
+        email: {
+          title: '邮箱地址',
+          description: '读取你的邮箱地址及验证状态。'
+        },
+        offlineAccess: {
+          title: '离线访问',
+          description: '在你离线时持续访问（颁发 refresh token）。'
+        },
+        balance: {
+          title: '账户余额（敏感）',
+          description: '读取你的账户余额与累计充值金额。'
+        },
+        apikey: {
+          title: 'API Key 数量（敏感）',
+          description: '读取你已创建的 API Key 数量（不会读取 Key 内容）。'
+        }
+      }
+    },
+    admin: {
+      title: 'OIDC 客户端',
+      description: '管理以 sub2api 作为身份提供方的第三方应用（RP）。',
+      createButton: '新建客户端',
+      empty: '暂无 OIDC 客户端。',
+      loadFailed: '加载客户端列表失败。',
+      table: {
+        name: '名称',
+        clientId: 'Client ID',
+        scopes: '授权范围',
+        redirectUris: '回调地址',
+        enabled: '状态',
+        createdAt: '创建时间',
+        actions: '操作',
+        uriCount: '{count} 个'
+      },
+      status: {
+        enabled: '已启用',
+        disabled: '已禁用'
+      },
+      actions: {
+        edit: '编辑',
+        delete: '删除',
+        resetSecret: '重置密钥'
+      },
+      form: {
+        createTitle: '新建 OIDC 客户端',
+        editTitle: '编辑 OIDC 客户端',
+        clientName: '客户端名称',
+        clientNamePlaceholder: '例如：内部知识库',
+        redirectUris: '回调地址（Redirect URIs）',
+        redirectUriPlaceholder: 'https://app.example.com/callback',
+        addRedirectUri: '添加回调地址',
+        redirectUriHint: '必须是 https://（localhost 可用 http://），需与应用方完全一致（含末尾斜杠）。',
+        allowedScopes: '允许的授权范围',
+        consentRequired: '每次都需用户确认授权',
+        enabled: '启用此客户端',
+        save: '保存',
+        cancel: '取消',
+        saveFailed: '保存失败。',
+        nameRequired: '请填写客户端名称。',
+        redirectUriRequired: '至少需要一个回调地址。'
+      },
+      sensitiveScopeWarning: '你勾选了敏感授权范围（账户余额 / API Key 数量），该客户端将能读取用户的敏感信息。',
+      confirmModal: {
+        title: '确认授予敏感权限',
+        body: '该客户端将能读取用户的账户余额与 API Key 数量等敏感信息，请确认是否继续。',
+        checkbox: '我确认允许此客户端读取敏感信息',
+        confirm: '确认并保存',
+        cancel: '返回修改'
+      },
+      secretReveal: {
+        title: '客户端密钥（Client Secret）',
+        createBanner: '此 secret 仅显示这一次，请立即复制并妥善保存。',
+        resetBanner: '已生成新的 secret，旧 secret 立即失效。此 secret 仅显示这一次，请立即复制保存。',
+        copy: '复制',
+        copied: '已复制',
+        done: '我已保存'
+      },
+      deleteConfirm: {
+        title: '删除 OIDC 客户端',
+        body: '删除后将级联清除该客户端的所有授权、授权码与令牌，且无法恢复。确认删除“{name}”吗？',
+        confirm: '删除',
+        cancel: '取消',
+        failed: '删除失败。'
+      },
+      resetSecretConfirm: {
+        title: '重置客户端密钥',
+        body: '重置后旧 secret 立即失效，但该客户端已签发的令牌在过期前仍可继续使用。确认重置吗？',
+        confirm: '重置',
+        cancel: '取消',
+        failed: '重置密钥失败。'
+      },
+      settings: {
+        title: 'OIDC Provider',
+        description: '将 sub2api 作为 OIDC 身份提供方（OP），供第三方应用接入单点登录。',
+        enabled: '启用 OIDC Provider',
+        enabledHint: '关闭时所有 OIDC 端点（discovery / authorize / token 等）返回 404。',
+        issuerUrl: 'Issuer URL',
+        issuerUrlPlaceholder: 'https://api.example.com',
+        issuerUrlHint: '必须以 https:// 开头，不能以 / 结尾，且不能包含 ? 或 #。启用前必须填写。',
+        accessTokenTtl: 'Access Token 有效期（秒）',
+        idTokenTtl: 'ID Token 有效期（秒）',
+        refreshTokenTtl: 'Refresh Token 有效期（秒）',
+        codeTtl: '授权码有效期（秒）',
+        ssoCookieMaxAge: 'SSO Cookie Max-Age（秒）',
+        ssoCookieDomain: 'SSO Cookie Domain',
+        ssoCookieDomainPlaceholder: '留空则仅当前域；跨子域填 .example.com',
+        save: '保存设置',
+        saveSuccess: '设置已保存。',
+        saveFailed: '保存设置失败。',
+        loadFailed: '加载设置失败。',
+        enableConfirm: {
+          title: '启用 OIDC Provider',
+          body: '启用后 sub2api 将对外提供 OIDC 身份服务，第三方应用可据此发起登录。请确认 Issuer URL 已正确配置。确认启用吗？',
+          confirm: '确认启用',
+          cancel: '取消'
+        }
+      },
+      signingKeys: {
+        title: '签名密钥',
+        description: '用于签发 ID Token（RS256）。轮换后旧密钥保留 7 天宽限期以验证存量令牌。',
+        kid: 'Key ID',
+        status: '状态',
+        createdAt: '创建时间',
+        retiredAt: '退役时间',
+        active: '当前活跃',
+        retired: '已退役',
+        rotate: '轮换密钥',
+        rotateConfirm: {
+          title: '轮换签名密钥',
+          body: '将生成新的活跃密钥，旧密钥进入 7 天宽限期。确认轮换吗？',
+          confirm: '轮换',
+          cancel: '取消'
+        },
+        rotateSuccess: '签名密钥已轮换。',
+        rotateFailed: '轮换密钥失败。',
+        delete: '删除',
+        deleteConfirm: {
+          title: '删除签名密钥',
+          body: '删除后用该密钥签发的令牌将无法验证。确认删除吗？',
+          confirm: '删除',
+          cancel: '取消'
+        },
+        deleteFailed: '删除密钥失败（活跃密钥不可删除）。',
+        loadFailed: '加载签名密钥失败。',
+        empty: '暂无签名密钥（启用 Provider 后将自动生成）。'
+      },
+      help: {
+        title: '第三方接入说明',
+        intro: '第三方应用（RP）可按标准 OIDC 授权码 + PKCE 流程接入。请将以下信息提供给接入方。',
+        discoveryLabel: 'Discovery 地址',
+        jwksLabel: 'JWKS 地址',
+        discoveryNeedIssuer: '请先填写并保存合法的 Issuer URL',
+        scopesLabel: '支持的 Scope',
+        redirectLabel: 'redirect_uri 规则',
+        redirectBody: '回调地址必须与客户端登记的 redirect_uri 完全一致（精确匹配，区分大小写与末尾斜杠），不支持通配或子路径匹配。',
+        pkceLabel: 'PKCE 要求',
+        pkceBody: '所有授权码流程强制要求 PKCE，且仅接受 code_challenge_method=S256（不支持 plain）。'
+      }
+    }
   },
 
 }

@@ -51,6 +51,21 @@ type IdempotencyRecord func(*sql.Selector)
 // IdentityAdoptionDecision is the predicate function for identityadoptiondecision builders.
 type IdentityAdoptionDecision func(*sql.Selector)
 
+// OidcAccessToken is the predicate function for oidcaccesstoken builders.
+type OidcAccessToken func(*sql.Selector)
+
+// OidcAuthorizationCode is the predicate function for oidcauthorizationcode builders.
+type OidcAuthorizationCode func(*sql.Selector)
+
+// OidcClient is the predicate function for oidcclient builders.
+type OidcClient func(*sql.Selector)
+
+// OidcConsent is the predicate function for oidcconsent builders.
+type OidcConsent func(*sql.Selector)
+
+// OidcRefreshToken is the predicate function for oidcrefreshtoken builders.
+type OidcRefreshToken func(*sql.Selector)
+
 // PaymentAuditLog is the predicate function for paymentauditlog builders.
 type PaymentAuditLog func(*sql.Selector)
 
@@ -83,6 +98,9 @@ type SecuritySecret func(*sql.Selector)
 
 // Setting is the predicate function for setting builders.
 type Setting func(*sql.Selector)
+
+// SsoSession is the predicate function for ssosession builders.
+type SsoSession func(*sql.Selector)
 
 // SubscriptionPlan is the predicate function for subscriptionplan builders.
 type SubscriptionPlan func(*sql.Selector)

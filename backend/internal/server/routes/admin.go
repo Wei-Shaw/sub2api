@@ -103,6 +103,42 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+
+		// OIDC Provider（第三方客户端 + 签名密钥管理）
+		registerOidcAdminRoutes(admin, h)
+	}
+}
+
+// registerOidcAdminRoutes 注册 sub2api 作为 OIDC Provider 的 admin 管理路由。
+func registerOidcAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin == nil {
+		return
+	}
+	oidc := admin.Group("/oidc")
+	{
+		if h.Admin.OidcProviderSettings != nil {
+			oidc.GET("/settings", h.Admin.OidcProviderSettings.Get)
+			oidc.PUT("/settings", h.Admin.OidcProviderSettings.Update)
+		}
+		if h.Admin.OidcClient != nil {
+			clients := oidc.Group("/clients")
+			{
+				clients.GET("", h.Admin.OidcClient.List)
+				clients.POST("", h.Admin.OidcClient.Create)
+				clients.GET("/:id", h.Admin.OidcClient.Get)
+				clients.PATCH("/:id", h.Admin.OidcClient.Update)
+				clients.DELETE("/:id", h.Admin.OidcClient.Delete)
+				clients.POST("/:id/reset-secret", h.Admin.OidcClient.ResetSecret)
+			}
+		}
+		if h.Admin.OidcSigningKey != nil {
+			keys := oidc.Group("/signing-keys")
+			{
+				keys.GET("", h.Admin.OidcSigningKey.List)
+				keys.POST("/rotate", h.Admin.OidcSigningKey.Rotate)
+				keys.DELETE("/:kid", h.Admin.OidcSigningKey.Delete)
+			}
+		}
 	}
 }
 
@@ -362,6 +398,8 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		openai.POST("/refresh-token", h.Admin.OpenAIOAuth.RefreshToken)
 		openai.POST("/accounts/:id/refresh", h.Admin.OpenAIOAuth.RefreshAccountToken)
 		openai.POST("/create-from-oauth", h.Admin.OpenAIOAuth.CreateAccountFromOAuth)
+		openai.GET("/accounts/:id/quota", h.Admin.OpenAIOAuth.QueryQuota)
+		openai.POST("/accounts/:id/reset-quota", h.Admin.OpenAIOAuth.ResetQuota)
 	}
 }
 

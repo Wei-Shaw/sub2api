@@ -37,11 +37,17 @@ func ProvideRouter(
 	subscriptionService *service.SubscriptionService,
 	opsService *service.OpsService,
 	settingService *service.SettingService,
+	oidcProvider *service.OidcProviderService,
+	oidcSigning *service.OidcSigningService,
 	redisClient *redis.Client,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
+
+	// OIDC Provider 启动校验 (design.md D9 / 任务 7.9)：
+	// 启用但 issuer_url 缺失/非法 → 启动失败；启用则确保已有 active 签名密钥。
+	initOidcProvider(oidcProvider, oidcSigning)
 
 	r := gin.New()
 	r.Use(middleware2.Recovery())
@@ -148,6 +154,28 @@ func ProvideHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
 
 	server.Handler = httpHandler
 	return server
+}
+
+// initOidcProvider 在启动时校验 OIDC Provider 配置并初始化签名密钥。
+//
+//   - oidc_provider.enabled=false：不做任何事 (端点运行期返回 404)。
+//   - enabled=true 但 issuer_url 缺失/非法：直接 log.Fatal 终止进程 (design.md D9)。
+//   - enabled=true 且 issuer_url 合法：确保内存中有 active 签名密钥 (无则生成 RSA-2048)。
+func initOidcProvider(provider *service.OidcProviderService, signing *service.OidcSigningService) {
+	if provider == nil || signing == nil {
+		return
+	}
+	ctx := context.Background()
+	if !provider.IsEnabled(ctx) {
+		return
+	}
+	if _, err := provider.IssuerURL(ctx); err != nil {
+		log.Fatalf("oidc provider is enabled but issuer_url is missing or invalid: %v", err)
+	}
+	if err := signing.EnsureActiveKey(ctx); err != nil {
+		log.Fatalf("oidc provider signing key initialization failed: %v", err)
+	}
+	log.Printf("OIDC Provider enabled; signing key active kid=%s", signing.ActiveKid())
 }
 
 func derefInt64(p *int64) int64 {
