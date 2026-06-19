@@ -277,8 +277,8 @@
             </div>
           </template>
 
-          <template #cell-username="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{ value || '-' }}</span>
+          <template #cell-username="{ value, row }">
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ value || row.email || '-' }}</span>
           </template>
 
           <template #cell-notes="{ value }">

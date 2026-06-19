@@ -43,6 +43,23 @@ func TestAdminService_CreateUser_Success(t *testing.T) {
 	require.Equal(t, user, repo.created[0])
 }
 
+func TestAdminService_CreateUser_DefaultsBlankUsernameToEmail(t *testing.T) {
+	repo := &userRepoStub{nextID: 13}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:    "blank-name@test.com",
+		Password: "strong-pass",
+		Username: "   ",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, "blank-name@test.com", user.Username)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, "blank-name@test.com", repo.created[0].Username)
+}
+
 func TestAdminService_CreateUser_UsesDefaultBalanceWhenBalanceOmitted(t *testing.T) {
 	repo := &userRepoStub{nextID: 11}
 	cfg := &config.Config{

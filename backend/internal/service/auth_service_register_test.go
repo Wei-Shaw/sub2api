@@ -464,6 +464,7 @@ func TestAuthService_Register_Success(t *testing.T) {
 	require.NotNil(t, user)
 	require.Equal(t, int64(5), user.ID)
 	require.Equal(t, "user@test.com", user.Email)
+	require.Equal(t, "user@test.com", user.Username)
 	require.Equal(t, RoleUser, user.Role)
 	require.Equal(t, StatusActive, user.Status)
 	require.Equal(t, 3.5, user.Balance)

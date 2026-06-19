@@ -700,10 +700,14 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 	} else if s.settingService != nil {
 		balance = s.settingService.GetDefaultBalance(ctx)
 	}
+	username := strings.TrimSpace(input.Username)
+	if username == "" {
+		username = strings.TrimSpace(input.Email)
+	}
 
 	user := &User{
 		Email:         input.Email,
-		Username:      input.Username,
+		Username:      username,
 		Notes:         input.Notes,
 		Role:          RoleUser, // Always create as regular user, never admin
 		Balance:       balance,
