@@ -40,6 +40,9 @@ REDACTED
 	if err := s.VerifyOAuthEmailCode(ctx, normalizedEmail, verifyCode); err != nil {
 		return nil, err
 REDACTED
+	if err := s.validateRegistrationEmailPolicy(ctx, normalizedEmail); err != nil {
+		return nil, err
+REDACTED
 
 	currentUser, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -105,6 +108,9 @@ REDACTED
 REDACTED
 	if isReservedEmail(normalizedEmail) {
 		return ErrEmailReserved
+REDACTED
+	if err := s.validateRegistrationEmailPolicy(ctx, normalizedEmail); err != nil {
+		return err
 REDACTED
 	if s.emailService == nil {
 		return ErrServiceUnavailable
