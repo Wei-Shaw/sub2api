@@ -140,6 +140,15 @@ function checkoutInfoWithPlansFixture() {
   }
 }
 
+function checkoutInfoWithManualPlansFixture() {
+  return {
+    data: {
+      ...checkoutInfoWithPlansFixture().data,
+      methods: {},
+    },
+  }
+}
+
 function jsapiOrderFixture(resumeToken: string) {
   return {
     order_id: 123,
@@ -179,6 +188,63 @@ function oauthOrderFixture() {
     },
   }
 }
+
+describe('PaymentView manual subscription payment', () => {
+  beforeEach(() => {
+    routeState.path = '/purchase'
+    routeState.query = {
+      tab: 'subscription',
+    }
+    routerReplace.mockReset().mockResolvedValue(undefined)
+    routerPush.mockReset().mockResolvedValue(undefined)
+    routerResolve.mockClear()
+    createOrder.mockReset()
+    refreshUser.mockReset()
+    fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
+    showError.mockReset()
+    showInfo.mockReset()
+    showWarning.mockReset()
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoWithManualPlansFixture())
+    bridgeInvoke.mockReset()
+    window.localStorage.clear()
+    ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = {
+      invoke: bridgeInvoke,
+    }
+  })
+
+  it('opens manual payment dialog without creating an order when no payment methods are configured', async () => {
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+          Teleport: true,
+          Transition: false,
+          ManualPaymentDialog: {
+            props: ['show'],
+            template: '<div v-if="show" data-testid="manual-payment-dialog-stub"></div>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    const planCard = wrapper.findComponent({ name: 'SubscriptionPlanCard' })
+    expect(planCard.exists()).toBe(true)
+    await planCard.vm.$emit('select', checkoutInfoWithManualPlansFixture().data.plans[0])
+    await flushPromises()
+
+    const confirmButton = wrapper.findAll('button').find(button => button.text().includes('payment.createOrder'))
+    expect(confirmButton?.attributes('disabled')).toBeUndefined()
+    await confirmButton?.trigger('click')
+    await flushPromises()
+
+    expect(createOrder).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="manual-payment-dialog-stub"]').exists()).toBe(true)
+  })
+})
 
 describe('PaymentView WeChat JSAPI flow', () => {
   beforeEach(() => {
