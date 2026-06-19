@@ -20,7 +20,7 @@ const DEFAULT_QUOTA_DATE = '2026-06-18';
 const DEFAULT_PERIOD_START = '2026-06-17T00:00:00+08:00';
 
 const PLAN_TO_GROUP = new Map([
-  ['sub_29_daily_19_usd', 'codex-pool'],
+  ['sub_29_daily_19_usd', 'codex-pool-19-usd'],
   ['sub_39_daily_29_usd', 'codex-pool-29-usd'],
   ['sub_59_daily_49_usd', 'codex-pool-49-usd'],
 ]);
@@ -219,7 +219,7 @@ order by o.redeemed_at;
     const preview = keyPreview(key);
     const keyHash = hashApiKey(key);
     const hasActiveSub = row.sub_status === 'active' && PLAN_TO_GROUP.has(row.sub_plan_id);
-    const groupName = hasActiveSub ? PLAN_TO_GROUP.get(row.sub_plan_id) : 'codex-pool';
+    const groupName = hasActiveSub ? PLAN_TO_GROUP.get(row.sub_plan_id) : 'codex-pool-19-usd';
     const subSource = hasActiveSub ? 'active_subscription' : 'manual_order_subscription';
     const startsAt = hasActiveSub ? row.sub_started_at : row.redeemed_at;
     const expiresAt = hasActiveSub ? row.sub_expires_at : row.order_expires_at;
