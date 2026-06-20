@@ -9,26 +9,72 @@ import (
 
 func TestDefaultLoginAgreementDocumentsIncludeLocalizedContent(t *testing.T) {
 	docs := defaultLoginAgreementDocuments()
-	require.NotEmpty(t, docs)
+	require.Len(t, docs, 5)
 
+	expectedIDs := []string{
+		"terms",
+		"usage-policy",
+		"supported-regions",
+		"service-specific-terms",
+		"privacy-data-processing",
+	}
 	byID := make(map[string]LoginAgreementDocument, len(docs))
-	for _, doc := range docs {
+	for i, doc := range docs {
+		require.Equal(t, expectedIDs[i], doc.ID)
+		require.NotEmpty(t, doc.Title)
+		require.NotEmpty(t, doc.ContentMD)
+		for _, locale := range []string{"zh", "en", "vi", "ko"} {
+			require.NotEmpty(t, doc.TitleI18n[locale], "document %s missing %s title", doc.ID, locale)
+			require.NotEmpty(t, doc.ContentMDI18n[locale], "document %s missing %s content", doc.ID, locale)
+		}
+		require.NotContains(t, byID, doc.ID, "duplicate document ID %s", doc.ID)
 		byID[doc.ID] = doc
 	}
 
 	terms := byID["terms"]
-	require.NotEmpty(t, terms.TitleI18n["zh"])
-	require.NotEmpty(t, terms.TitleI18n["en"])
-	require.NotEmpty(t, terms.TitleI18n["vi"])
-	require.NotEmpty(t, terms.TitleI18n["ko"])
-	require.NotEmpty(t, terms.ContentMDI18n["zh"])
-	require.NotEmpty(t, terms.ContentMDI18n["en"])
-	require.NotEmpty(t, terms.ContentMDI18n["vi"])
-	require.NotEmpty(t, terms.ContentMDI18n["ko"])
+	require.Contains(t, terms.ContentMDI18n["en"], "a shared AI API access and internal usage-credit service")
+	require.Contains(t, terms.ContentMDI18n["en"], "internal usage credits")
+	require.Contains(t, terms.ContentMDI18n["en"], "technical intermediary")
+	require.Contains(t, terms.ContentMDI18n["en"], "indemnify")
+
+	require.Contains(t, terms.ContentMDI18n["en"], "V-Claw is not under a duty to pre-screen or continuously monitor")
 
 	usagePolicy := byID["usage-policy"]
-	require.NotEmpty(t, usagePolicy.ContentMDI18n["zh"])
-	require.Contains(t, usagePolicy.ContentMDI18n["zh"], "严禁非法使用")
+	require.Contains(t, usagePolicy.ContentMDI18n["zh"], "共享 AI API 访问")
+	require.Contains(t, usagePolicy.ContentMDI18n["en"], "shared AI API access")
+	require.Contains(t, usagePolicy.ContentMDI18n["en"], "Users must use the Service only for lawful, authorized, and responsible purposes")
+	require.Contains(t, usagePolicy.ContentMDI18n["en"], "Users remain responsible for all activity under their accounts and API keys")
+
+	serviceSpecificTerms := byID["service-specific-terms"]
+	require.Contains(t, serviceSpecificTerms.ContentMDI18n["en"], "service-specific rule conflicts with these general Terms")
+	require.Contains(t, serviceSpecificTerms.ContentMDI18n["en"], "No installation warranty, handover warranty, fixed uptime guarantee")
+
+	privacyNotice := byID["privacy-data-processing"]
+	require.Contains(t, privacyNotice.TitleI18n["en"], "Privacy & Data Processing Notice")
+	require.Contains(t, privacyNotice.ContentMDI18n["en"], "shared AI API access")
+	require.Contains(t, privacyNotice.ContentMDI18n["en"], "upstream AI providers")
+
+	badFragments := []string{
+		"OPENCLAW",
+		"99 CNY",
+		"installation fee",
+		"12-month warranty",
+		"token sales",
+		"Company sells",
+		"dịch vụ cài đặt",
+	}
+	for _, doc := range docs {
+		combined := doc.Title + "\n" + doc.ContentMD
+		for _, value := range doc.TitleI18n {
+			combined += "\n" + value
+		}
+		for _, value := range doc.ContentMDI18n {
+			combined += "\n" + value
+		}
+		for _, fragment := range badFragments {
+			require.NotContains(t, combined, fragment, "document %s should not contain reverted legacy fragment", doc.ID)
+		}
+	}
 }
 
 func TestLoginAgreementDocumentsPreserveLocalizedFields(t *testing.T) {

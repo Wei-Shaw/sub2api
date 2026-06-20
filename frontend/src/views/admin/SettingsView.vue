@@ -8999,7 +8999,14 @@ const loginAgreementLocales = [
   { code: "ko", label: "한국어" },
 ] as const;
 
-function loginAgreementDefaultTitle(key: "terms" | "usagePolicy" | "supportedRegions" | "serviceSpecificTerms"): string {
+type LoginAgreementDefaultDocumentKey =
+  | "terms"
+  | "usagePolicy"
+  | "supportedRegions"
+  | "serviceSpecificTerms"
+  | "privacyDataProcessing";
+
+function loginAgreementDefaultTitle(key: LoginAgreementDefaultDocumentKey): string {
   return t(`admin.settings.loginAgreementSettings.defaultDocuments.${key}`);
 }
 
@@ -9092,10 +9099,22 @@ function defaultLoginAgreementDocuments(): LoginAgreementDocument[] {
       title: loginAgreementDefaultTitle("serviceSpecificTerms"),
       content_md: "",
       title_i18n: buildLoginAgreementTitleI18n(
-        "特定服务条款",
+        "服务特定条款",
         "Service-Specific Terms",
         "Điều khoản riêng theo dịch vụ",
         "서비스별 약관",
+      ),
+      content_md_i18n: emptyLoginAgreementContentI18n(),
+    },
+    {
+      id: "privacy-data-processing",
+      title: loginAgreementDefaultTitle("privacyDataProcessing"),
+      content_md: "",
+      title_i18n: buildLoginAgreementTitleI18n(
+        "隐私与数据处理说明",
+        "Privacy & Data Processing Notice",
+        "Thông báo Quyền riêng tư & Xử lý dữ liệu",
+        "개인정보 보호 및 데이터 처리 고지",
       ),
       content_md_i18n: emptyLoginAgreementContentI18n(),
     },
@@ -9562,7 +9581,7 @@ const form = reactive<SettingsForm>({
   audit_log_retention_days: 180,
   login_agreement_enabled: false,
   login_agreement_mode: "modal",
-  login_agreement_updated_at: "2026-03-31",
+  login_agreement_updated_at: "2026-06-20",
   login_agreement_documents: defaultLoginAgreementDocuments(),
   default_balance: 0,
   default_platform_quotas: normalizePlatformQuotasMap() as DefaultPlatformQuotasMap,
@@ -11426,7 +11445,7 @@ async function loadSettings() {
     form.login_agreement_mode =
       settings.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
     form.login_agreement_updated_at =
-      settings.login_agreement_updated_at || "2026-03-31";
+      settings.login_agreement_updated_at || "2026-06-20";
     form.login_agreement_documents =
       Array.isArray(settings.login_agreement_documents) &&
       settings.login_agreement_documents.length > 0
