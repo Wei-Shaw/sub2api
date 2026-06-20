@@ -4,6 +4,7 @@ import App from './App.vue'
 import router from './router'
 import i18n, { initI18n } from './i18n'
 import { useAppStore } from '@/stores/app'
+import { DEFAULT_DOCUMENT_TITLE, DEFAULT_SITE_NAME } from '@/constants/branding'
 import './style.css'
 
 function initThemeClass() {
@@ -28,8 +29,10 @@ async function bootstrap() {
   appStore.initFromInjectedConfig()
 
   // Set document title immediately after config is loaded
-  if (appStore.siteName && appStore.siteName !== 'Sub2API') {
+  if (appStore.siteName && appStore.siteName !== DEFAULT_SITE_NAME) {
     document.title = `${appStore.siteName} - AI API Gateway`
+  } else {
+    document.title = DEFAULT_DOCUMENT_TITLE
   }
 
   await initI18n()

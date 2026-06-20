@@ -3,17 +3,17 @@
     <div class="mx-auto max-w-2xl space-y-6">
       <!-- Current Balance Card -->
       <div class="card overflow-hidden">
-        <div class="bg-gradient-to-br from-primary-500 to-primary-600 px-6 py-8 text-center">
+        <div class="bg-gray-900 px-6 py-8 text-center text-white dark:bg-gray-100 dark:text-dark-950">
           <div
-            class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm"
+            class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-md border border-white/20 bg-white/10 dark:border-dark-300 dark:bg-dark-950/10"
           >
-            <Icon name="creditCard" size="xl" class="text-white" />
+            <Icon name="creditCard" size="xl" class="text-current" />
           </div>
-          <p class="text-sm font-medium text-primary-100">{{ t('redeem.currentBalance') }}</p>
-          <p class="mt-2 text-4xl font-bold text-white">
+          <p class="text-sm font-medium text-gray-200 dark:text-dark-700">{{ t('redeem.currentBalance') }}</p>
+          <p class="mt-2 text-4xl font-bold">
             ${{ user?.balance?.toFixed(2) || '0.00' }}
           </p>
-          <p class="mt-2 text-sm text-primary-100">
+          <p class="mt-2 text-sm text-gray-200 dark:text-dark-700">
             {{ t('redeem.concurrency') }}: {{ user?.concurrency || 0 }} {{ t('redeem.requests') }}
           </p>
         </div>
@@ -82,20 +82,20 @@
       <transition name="fade">
         <div
           v-if="redeemResult"
-          class="card border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-900/20"
+          class="card border-gray-300 bg-gray-50 dark:border-dark-700 dark:bg-dark-900"
         >
           <div class="p-6">
             <div class="flex items-start gap-4">
               <div
-                class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/30"
+                class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-gray-200 dark:bg-dark-700"
               >
-                <Icon name="checkCircle" size="md" class="text-emerald-600 dark:text-emerald-400" />
+                <Icon name="checkCircle" size="md" class="text-gray-700 dark:text-gray-200" />
               </div>
               <div class="flex-1">
-                <h3 class="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
                   {{ t('redeem.redeemSuccess') }}
                 </h3>
-                <div class="mt-2 text-sm text-emerald-700 dark:text-emerald-400">
+                <div class="mt-2 text-sm text-gray-700 dark:text-gray-300">
                   <p>{{ redeemResult.message }}</p>
                   <div class="mt-3 space-y-1">
                     <p v-if="redeemResult.type === 'balance'" class="font-medium">
@@ -164,21 +164,21 @@
 
       <!-- Information Card -->
       <div
-        class="card border-primary-200 bg-primary-50 dark:border-primary-800/50 dark:bg-primary-900/20"
+        class="card border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-900"
       >
         <div class="p-6">
           <div class="flex items-start gap-4">
             <div
-              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-900/30"
+              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-gray-200 dark:bg-dark-700"
             >
-              <Icon name="infoCircle" size="md" class="text-primary-600 dark:text-primary-400" />
+              <Icon name="infoCircle" size="md" class="text-gray-700 dark:text-gray-200" />
             </div>
             <div class="flex-1">
-              <h3 class="text-sm font-semibold text-primary-800 dark:text-primary-300">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 {{ t('redeem.aboutCodes') }}
               </h3>
               <ul
-                class="mt-2 list-inside list-disc space-y-1 text-sm text-primary-700 dark:text-primary-400"
+                class="mt-2 list-inside list-disc space-y-1 text-sm text-gray-700 dark:text-gray-300"
               >
                 <li>{{ t('redeem.codeRule1') }}</li>
                 <li>{{ t('redeem.codeRule2') }}</li>
@@ -186,7 +186,7 @@
                   {{ t('redeem.codeRule3') }}
                   <span
                     v-if="contactInfo"
-                    class="ml-1.5 inline-flex items-center rounded-md bg-primary-200/50 px-2 py-0.5 text-xs font-medium text-primary-800 dark:bg-primary-800/40 dark:text-primary-200"
+                    class="ml-1.5 inline-flex items-center rounded-md bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-800 dark:bg-dark-700 dark:text-gray-200"
                   >
                     {{ contactInfo }}
                   </span>
@@ -208,7 +208,7 @@
         <div class="p-6">
           <!-- Loading State -->
           <div v-if="loadingHistory" class="flex items-center justify-center py-8">
-            <svg class="h-6 w-6 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
+            <svg class="h-6 w-6 animate-spin text-gray-700 dark:text-gray-200" fill="none" viewBox="0 0 24 24">
               <circle
                 class="opacity-25"
                 cx="12"
@@ -236,15 +236,9 @@
                 <div
                   :class="[
                     'flex h-10 w-10 items-center justify-center rounded-xl',
-                    isBalanceType(item.type)
-                      ? item.value >= 0
-                        ? 'bg-emerald-100 dark:bg-emerald-900/30'
-                        : 'bg-red-100 dark:bg-red-900/30'
-                      : isSubscriptionType(item.type)
-                        ? 'bg-purple-100 dark:bg-purple-900/30'
-                        : item.value >= 0
-                          ? 'bg-blue-100 dark:bg-blue-900/30'
-                          : 'bg-orange-100 dark:bg-orange-900/30'
+                    item.value < 0
+                      ? 'bg-red-100 dark:bg-red-900/30'
+                      : 'bg-gray-100 dark:bg-dark-700'
                   ]"
                 >
                   <!-- 余额类型图标 -->
@@ -254,7 +248,7 @@
                     size="md"
                     :class="
                       item.value >= 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
+                        ? 'text-gray-700 dark:text-gray-200'
                         : 'text-red-600 dark:text-red-400'
                     "
                   />
@@ -263,7 +257,7 @@
                     v-else-if="isSubscriptionType(item.type)"
                     name="badge"
                     size="md"
-                    class="text-purple-600 dark:text-purple-400"
+                    class="text-gray-700 dark:text-gray-200"
                   />
                   <!-- 并发类型图标 -->
                   <Icon
@@ -272,8 +266,8 @@
                     size="md"
                     :class="
                       item.value >= 0
-                        ? 'text-blue-600 dark:text-blue-400'
-                        : 'text-orange-600 dark:text-orange-400'
+                        ? 'text-gray-700 dark:text-gray-200'
+                        : 'text-red-600 dark:text-red-400'
                     "
                   />
                 </div>
@@ -290,15 +284,9 @@
                 <p
                   :class="[
                     'text-sm font-semibold',
-                    isBalanceType(item.type)
-                      ? item.value >= 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-red-600 dark:text-red-400'
-                      : isSubscriptionType(item.type)
-                        ? 'text-purple-600 dark:text-purple-400'
-                        : item.value >= 0
-                          ? 'text-blue-600 dark:text-blue-400'
-                          : 'text-orange-600 dark:text-orange-400'
+                    item.value >= 0 || isSubscriptionType(item.type)
+                      ? 'text-gray-900 dark:text-gray-100'
+                      : 'text-red-600 dark:text-red-400'
                   ]"
                 >
                   {{ formatHistoryValue(item) }}

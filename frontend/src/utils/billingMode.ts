@@ -1,3 +1,5 @@
+import { grayBadgeLightClass } from '@/utils/grayTheme'
+
 export const BILLING_MODE_TOKEN = 'token'
 export const BILLING_MODE_PER_REQUEST = 'per_request'
 export const BILLING_MODE_IMAGE = 'image'
@@ -10,12 +12,8 @@ export function getBillingModeLabel(mode: string | null | undefined, t: (key: st
   }
 }
 
-export function getBillingModeBadgeClass(mode: string | null | undefined): string {
-  switch (mode) {
-    case BILLING_MODE_PER_REQUEST: return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
-    case BILLING_MODE_IMAGE: return 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300'
-    default: return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-  }
+export function getBillingModeBadgeClass(_mode: string | null | undefined): string {
+  return grayBadgeLightClass()
 }
 
 interface ImageBillingRow {

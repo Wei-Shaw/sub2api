@@ -3,10 +3,10 @@
     <!-- Mini Progress Display -->
     <button
       @click="toggleTooltip"
-      class="flex cursor-pointer items-center gap-2 rounded-xl bg-purple-50 px-3 py-1.5 transition-colors hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30"
+      class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 transition-colors hover:bg-gray-50 dark:border-dark-700 dark:bg-dark-900 dark:hover:bg-dark-800"
       :title="t('subscriptionProgress.viewDetails')"
     >
-      <Icon name="creditCard" size="sm" class="text-purple-600 dark:text-purple-400" />
+      <Icon name="creditCard" size="sm" class="text-gray-600 dark:text-gray-300" />
       <div class="flex items-center gap-1.5">
         <!-- Combined progress indicator -->
         <div class="flex items-center gap-0.5">
@@ -17,7 +17,7 @@
             :class="getProgressDotClass(sub)"
           ></div>
         </div>
-        <span class="text-xs font-medium text-purple-700 dark:text-purple-300">
+        <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
           {{ activeSubscriptions.length }}
         </span>
       </div>
@@ -62,10 +62,10 @@
               <!-- Unlimited subscription badge -->
               <div
                 v-if="isUnlimited(subscription)"
-                class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-2.5 py-1.5 dark:from-emerald-900/20 dark:to-teal-900/20"
+                class="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 dark:border-dark-700 dark:bg-dark-900"
               >
-                <span class="text-lg text-emerald-600 dark:text-emerald-400">∞</span>
-                <span class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                <span class="text-lg text-gray-700 dark:text-gray-300">∞</span>
+                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
                   {{ t('subscriptionProgress.unlimited') }}
                 </span>
               </div>
@@ -167,7 +167,7 @@
           <router-link
             to="/subscriptions"
             @click="closeTooltip"
-            class="block w-full py-1 text-center text-xs text-primary-600 hover:underline dark:text-primary-400"
+            class="block w-full py-1 text-center text-xs text-gray-700 hover:underline dark:text-gray-300"
           >
             {{ t('subscriptionProgress.viewAll') }}
           </router-link>
@@ -227,14 +227,13 @@ function isUnlimited(sub: UserSubscription): boolean {
 }
 
 function getProgressDotClass(sub: UserSubscription): string {
-  // Unlimited subscriptions get a special color
   if (isUnlimited(sub)) {
-    return 'bg-emerald-500'
+    return 'bg-gray-500'
   }
   const maxPercentage = getMaxUsagePercentage(sub)
   if (maxPercentage >= 90) return 'bg-red-500'
   if (maxPercentage >= 70) return 'bg-orange-500'
-  return 'bg-green-500'
+  return 'bg-gray-500'
 }
 
 function getProgressBarClass(used: number | undefined, limit: number | null | undefined): string {
@@ -242,7 +241,7 @@ function getProgressBarClass(used: number | undefined, limit: number | null | un
   const percentage = ((used || 0) / limit) * 100
   if (percentage >= 90) return 'bg-red-500'
   if (percentage >= 70) return 'bg-orange-500'
-  return 'bg-green-500'
+  return 'bg-gray-600 dark:bg-gray-300'
 }
 
 function getProgressWidth(used: number | undefined, limit: number | null | undefined): string {

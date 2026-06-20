@@ -57,7 +57,7 @@ vi.mock('vue-i18n', () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string | number>) => {
       if (key === 'auth.accountCreatedSuccess') {
-        return `Account created for ${params?.siteName ?? 'Sub2API'}`
+        return `Account created for ${params?.siteName ?? '天才程序员小站'}`
       }
       return key
     },
@@ -117,7 +117,7 @@ describe('EmailVerifyView', () => {
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
-      site_name: 'Sub2API',
+      site_name: '天才程序员小站',
       registration_email_suffix_whitelist: [],
     })
     sendVerifyCodeMock.mockResolvedValue({ countdown: 60 })
@@ -171,7 +171,7 @@ describe('EmailVerifyView', () => {
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
-      site_name: 'Sub2API',
+      site_name: '天才程序员小站',
       registration_email_suffix_whitelist: ['allowed.com'],
     })
     sessionStorage.setItem(
@@ -212,7 +212,7 @@ describe('EmailVerifyView', () => {
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
-      site_name: 'Sub2API',
+      site_name: '天才程序员小站',
       registration_email_suffix_whitelist: ['allowed.com'],
     })
     sessionStorage.setItem(
@@ -254,7 +254,7 @@ describe('EmailVerifyView', () => {
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
-      site_name: 'Sub2API',
+      site_name: '天才程序员小站',
       registration_email_suffix_whitelist: ['allowed.com'],
     })
     sendPendingOAuthVerifyCodeMock.mockResolvedValue({
@@ -336,7 +336,9 @@ describe('EmailVerifyView', () => {
       email: 'fresh@example.com',
       password: 'secret-123',
       verify_code: '123456',
-      aff_code: 'AFF123',
+      invitation_code: undefined,
+      adopt_display_name: undefined,
+      adopt_avatar: undefined,
     })
     expect(persistOAuthTokenContextMock).toHaveBeenCalledWith({
       access_token: 'oauth-access-token',
@@ -360,7 +362,7 @@ describe('EmailVerifyView', () => {
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
-      site_name: 'Sub2API',
+      site_name: '天才程序员小站',
       registration_email_suffix_whitelist: ['allowed.com'],
     })
     sessionStorage.setItem(

@@ -1,0 +1,3 @@
+export const DEFAULT_SITE_NAME = '天才程序员小站'
+export const DEFAULT_SITE_SUBTITLE = 'AI API Gateway'
+export const DEFAULT_DOCUMENT_TITLE = `${DEFAULT_SITE_NAME} - ${DEFAULT_SITE_SUBTITLE}`

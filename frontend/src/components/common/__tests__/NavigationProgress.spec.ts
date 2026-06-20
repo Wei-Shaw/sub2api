@@ -3,8 +3,14 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { ref } from 'vue'
 import NavigationProgress from '../../common/NavigationProgress.vue'
+
+const componentPath = resolve(dirname(fileURLToPath(import.meta.url)), '../NavigationProgress.vue')
+const source = readFileSync(componentPath, 'utf8')
 
 // Mock useNavigationLoadingState
 const mockIsLoading = ref(false)
@@ -57,6 +63,11 @@ describe('NavigationProgress', () => {
 
     const bar = wrapper.find('.navigation-progress-bar')
     expect(bar.exists()).toBe(true)
+  })
+
+  it('进度条使用灰阶视觉，不再使用主色彩渐变', () => {
+    expect(source).toContain("theme('colors.gray.900')")
+    expect(source).not.toContain("theme('colors.primary.")
   })
 
   it('应该正确响应 isLoading 状态变化', async () => {

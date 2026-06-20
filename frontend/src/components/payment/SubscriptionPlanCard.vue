@@ -1,10 +1,9 @@
 <template>
   <div
     :class="[
-      'group relative flex flex-col overflow-hidden rounded-2xl border transition-all',
-      'hover:shadow-xl hover:-translate-y-0.5',
+      'group relative flex flex-col overflow-hidden rounded-lg border transition-colors',
       borderClass,
-      'bg-white dark:bg-dark-800',
+      'bg-white hover:border-gray-400 dark:bg-dark-800 dark:hover:border-dark-500',
     ]"
   >
     <!-- Colored top accent bar -->

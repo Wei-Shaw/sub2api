@@ -14,12 +14,14 @@
       <div class="flex items-center gap-3">
         <div :class="[
           'rounded-md p-1.5',
-          provider.enabled && enabled ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-100 dark:bg-dark-700',
+          provider.enabled && enabled
+            ? 'border border-gray-300 bg-gray-100 text-gray-700 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200'
+            : 'bg-gray-100 text-gray-400 dark:bg-dark-700 dark:text-gray-500',
         ]">
           <Icon
             name="server"
             size="sm"
-            :class="provider.enabled && enabled ? 'text-green-600 dark:text-green-400' : 'text-gray-400'"
+            class="text-current"
           />
         </div>
         <span class="text-sm font-medium text-gray-900 dark:text-white">{{ provider.name }}</span>
@@ -35,7 +37,7 @@
             :class="[
               'rounded px-2 py-0.5 text-xs font-medium transition-all',
               isSelected(pt.value)
-                ? 'bg-primary-500 text-white'
+                ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-dark-950'
                 : 'bg-gray-100 text-gray-400 dark:bg-dark-700 dark:text-gray-500',
             ]"
           >{{ pt.label }}</button>
@@ -48,7 +50,7 @@
         <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="provider.refund_enabled" @toggle="emit('toggleField', 'refund_enabled')" />
         <ToggleSwitch v-if="provider.refund_enabled" :label="t('admin.settings.payment.allowUserRefund')" :checked="provider.allow_user_refund" @toggle="emit('toggleField', 'allow_user_refund')" />
         <div class="flex items-center gap-2 border-l border-gray-200 pl-3 dark:border-dark-600">
-          <button type="button" @click="emit('edit')" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400">
+          <button type="button" @click="emit('edit')" class="flex flex-col items-center gap-0.5 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white">
             <Icon name="edit" size="sm" />
             <span class="text-xs">{{ t('common.edit') }}</span>
           </button>

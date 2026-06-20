@@ -35,6 +35,7 @@ import {
 import { Line } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import type { TrendDataPoint } from '@/types'
+import { chartGrayPalette } from '@/utils/grayTheme'
 
 ChartJS.register(
   CategoryScale,
@@ -59,13 +60,13 @@ const isDarkMode = computed(() => {
 })
 
 const chartColors = computed(() => ({
-  text: isDarkMode.value ? '#e5e7eb' : '#374151',
-  grid: isDarkMode.value ? '#374151' : '#e5e7eb',
-  input: '#3b82f6',
-  output: '#10b981',
-  cacheCreation: '#f59e0b',
-  cacheRead: '#06b6d4',
-  cacheHitRate: '#8b5cf6'
+  text: isDarkMode.value ? '#e5e5e5' : '#222222',
+  grid: isDarkMode.value ? '#333333' : '#e5e5e5',
+  input: chartGrayPalette[0],
+  output: chartGrayPalette[1],
+  cacheCreation: chartGrayPalette[2],
+  cacheRead: chartGrayPalette[3],
+  cacheHitRate: chartGrayPalette[4]
 }))
 
 const chartData = computed(() => {

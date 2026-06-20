@@ -22,18 +22,18 @@ const props = defineProps<{
 
 const variantClass = computed(() => {
   switch (props.status) {
-    case 'active':
-    case 'success':
-      return 'bg-green-500'
-    case 'disabled':
-    case 'inactive':
-    case 'warning':
-      return 'bg-yellow-500'
     case 'error':
     case 'danger':
       return 'bg-red-500'
+    case 'active':
+    case 'success':
+      return 'bg-gray-900 dark:bg-gray-100'
+    case 'disabled':
+    case 'inactive':
+    case 'warning':
+      return 'bg-gray-400 dark:bg-gray-500'
     default:
-      return 'bg-gray-400'
+      return 'bg-gray-300 dark:bg-gray-600'
   }
 })
 </script>

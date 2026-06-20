@@ -1,18 +1,8 @@
 <template>
   <div
-    class="relative flex min-h-screen items-center justify-center overflow-hidden bg-gray-50 px-4 dark:bg-dark-950"
+    class="flex min-h-screen items-center justify-center bg-white px-6 text-gray-900 dark:bg-dark-950 dark:text-gray-100"
   >
-    <!-- Background Decoration -->
-    <div class="pointer-events-none absolute inset-0 overflow-hidden">
-      <div
-        class="absolute -right-40 -top-40 h-80 w-80 rounded-full bg-primary-400/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-primary-500/10 blur-3xl"
-      ></div>
-    </div>
-
-    <div class="relative z-10 w-full max-w-md text-center">
+    <div class="w-full max-w-md text-center">
       <!-- 404 Display -->
       <div class="mb-8">
         <div class="relative inline-block">
@@ -21,10 +11,10 @@
           >
           <div class="absolute inset-0 flex items-center justify-center">
             <div
-              class="flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/30"
+              class="flex h-24 w-24 items-center justify-center rounded-md border border-gray-200 bg-gray-100 text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200"
             >
               <svg
-                class="h-12 w-12 text-white"
+                class="h-12 w-12 text-current"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -68,7 +58,7 @@
         Need help?
         <a
           href="#"
-          class="text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+          class="text-gray-900 underline underline-offset-4 transition-colors hover:text-gray-600 dark:text-gray-100 dark:hover:text-gray-300"
         >
           Contact support
         </a>
