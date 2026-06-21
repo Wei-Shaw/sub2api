@@ -8,6 +8,7 @@ import type {
   PaymentConfig,
   SubscriptionPlan,
   PaymentChannel,
+  CatalogProduct,
   MethodLimitsResponse,
   CheckoutInfoResponse,
   CreateOrderRequest,
@@ -35,6 +36,11 @@ export const paymentAPI = {
   /** Get all checkout page data in a single call */
   getCheckoutInfo() {
     return apiClient.get<CheckoutInfoResponse>('/payment/checkout-info')
+  },
+
+  /** Get public homepage/shop products */
+  getCatalogProducts() {
+    return apiClient.get<{ products: CatalogProduct[] }>('/payment/catalog/products')
   },
 
   /** Get payment method limits and fee rates */

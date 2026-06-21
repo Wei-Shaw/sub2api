@@ -5,7 +5,8 @@
       <!-- QR Code mode -->
       <template v-if="qrUrl">
         <div class="rounded-2xl bg-white p-4 shadow-sm dark:bg-dark-800">
-          <canvas ref="qrCanvas" class="mx-auto"></canvas>
+          <img v-if="remoteQrImageUrl" :src="remoteQrImageUrl" alt="" class="mx-auto h-[220px] w-[220px] object-contain" />
+          <canvas v-else ref="qrCanvas" class="mx-auto"></canvas>
         </div>
         <p v-if="scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">
           {{ scanHint }}
@@ -122,6 +123,12 @@ const VERIFY_RETRY_MAX_ATTEMPTS = 6
 
 const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
+const isXunhuPay = computed(() => props.paymentType.includes('xunhu'))
+const remoteQrImageUrl = computed(() => {
+  const value = qrUrl.value.trim()
+  if (!isXunhuPay.value || !/^https?:\/\//i.test(value)) return ''
+  return value
+})
 
 const dialogTitle = computed(() => {
   if (success.value) return t('payment.result.success')
@@ -158,7 +165,7 @@ function reopenPopup() {
 
 async function renderQR() {
   await nextTick()
-  if (!qrCanvas.value || !qrUrl.value) return
+  if (remoteQrImageUrl.value || !qrCanvas.value || !qrUrl.value) return
   const logoSrc = getLogoForType()
   await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
     width: 220,

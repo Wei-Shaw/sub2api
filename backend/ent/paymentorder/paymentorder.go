@@ -28,6 +28,14 @@ const (
 	FieldPayAmount = "pay_amount"
 	// FieldFeeRate holds the string denoting the fee_rate field in the database.
 	FieldFeeRate = "fee_rate"
+	// FieldAppliedRateMultiplier holds the string denoting the applied_rate_multiplier field in the database.
+	FieldAppliedRateMultiplier = "applied_rate_multiplier"
+	// FieldPricingTierLabel holds the string denoting the pricing_tier_label field in the database.
+	FieldPricingTierLabel = "pricing_tier_label"
+	// FieldPricingTierSnapshot holds the string denoting the pricing_tier_snapshot field in the database.
+	FieldPricingTierSnapshot = "pricing_tier_snapshot"
+	// FieldCreditedAmount holds the string denoting the credited_amount field in the database.
+	FieldCreditedAmount = "credited_amount"
 	// FieldRechargeCode holds the string denoting the recharge_code field in the database.
 	FieldRechargeCode = "recharge_code"
 	// FieldOutTradeNo holds the string denoting the out_trade_no field in the database.
@@ -115,6 +123,10 @@ var Columns = []string{
 	FieldAmount,
 	FieldPayAmount,
 	FieldFeeRate,
+	FieldAppliedRateMultiplier,
+	FieldPricingTierLabel,
+	FieldPricingTierSnapshot,
+	FieldCreditedAmount,
 	FieldRechargeCode,
 	FieldOutTradeNo,
 	FieldPaymentType,
@@ -166,6 +178,8 @@ var (
 	UserNameValidator func(string) error
 	// DefaultFeeRate holds the default value on creation for the "fee_rate" field.
 	DefaultFeeRate float64
+	// PricingTierLabelValidator is a validator for the "pricing_tier_label" field. It is called by the builders before save.
+	PricingTierLabelValidator func(string) error
 	// RechargeCodeValidator is a validator for the "recharge_code" field. It is called by the builders before save.
 	RechargeCodeValidator func(string) error
 	// DefaultOutTradeNo holds the default value on creation for the "out_trade_no" field.
@@ -247,6 +261,21 @@ func ByPayAmount(opts ...sql.OrderTermOption) OrderOption {
 // ByFeeRate orders the results by the fee_rate field.
 func ByFeeRate(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFeeRate, opts...).ToFunc()
+}
+
+// ByAppliedRateMultiplier orders the results by the applied_rate_multiplier field.
+func ByAppliedRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAppliedRateMultiplier, opts...).ToFunc()
+}
+
+// ByPricingTierLabel orders the results by the pricing_tier_label field.
+func ByPricingTierLabel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPricingTierLabel, opts...).ToFunc()
+}
+
+// ByCreditedAmount orders the results by the credited_amount field.
+func ByCreditedAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCreditedAmount, opts...).ToFunc()
 }
 
 // ByRechargeCode orders the results by the recharge_code field.

@@ -37,21 +37,21 @@ type GenerateRedeemCodesRequest struct {
 	Count         int        `json:"count" binding:"required,min=1,max=100"`
 	Type          string     `json:"type" binding:"required,oneof=balance concurrency subscription invitation"`
 	Value         float64    `json:"value"`
-	GroupID       *int64     `json:"group_id"`      // 订阅类型必填
-	ValidityDays  int        `json:"validity_days"` // 订阅类型使用，正数增加/负数退款扣减
+	GroupID       *int64     `json:"group_id"`      // 璁㈤槄绫诲瀷蹇呭～
+	ValidityDays  float64    `json:"validity_days"` // subscription duration in days; decimals like 0.5 are allowed
 	ExpiresAt     *time.Time `json:"expires_at"`
 	ExpiresInDays *int       `json:"expires_in_days" binding:"omitempty,min=1,max=3650"`
 }
 
 // CreateAndRedeemCodeRequest represents creating a fixed code and redeeming it for a target user.
-// Type 为 omitempty 而非 required 是为了向后兼容旧版调用方（不传 type 时默认 balance）。
+// Type is omitempty for legacy callers. Missing type defaults to balance.
 type CreateAndRedeemCodeRequest struct {
 	Code          string     `json:"code" binding:"required,min=3,max=128"`
-	Type          string     `json:"type" binding:"omitempty,oneof=balance concurrency subscription invitation"` // 不传时默认 balance（向后兼容）
+	Type          string     `json:"type" binding:"omitempty,oneof=balance concurrency subscription invitation"` // 涓嶄紶鏃堕粯璁?balance锛堝悜鍚庡吋瀹癸級
 	Value         float64    `json:"value" binding:"required"`
 	UserID        int64      `json:"user_id" binding:"required,gt=0"`
-	GroupID       *int64     `json:"group_id"`      // subscription 类型必填
-	ValidityDays  int        `json:"validity_days"` // subscription 类型：正数增加，负数退款扣减
+	GroupID       *int64     `json:"group_id"`      // subscription 绫诲瀷蹇呭～
+	ValidityDays  float64    `json:"validity_days"` // subscription duration in days; decimals like 0.5 are allowed
 	Notes         string     `json:"notes"`
 	ExpiresAt     *time.Time `json:"expires_at"`
 	ExpiresInDays *int       `json:"expires_in_days" binding:"omitempty,min=1,max=3650"`
@@ -90,7 +90,7 @@ func (h *RedeemHandler) List(c *gin.Context) {
 	search := c.Query("search")
 	sortBy := c.DefaultQuery("sort_by", "id")
 	sortOrder := c.DefaultQuery("sort_order", "desc")
-	// 标准化和验证 search 参数
+	// 鏍囧噯鍖栧拰楠岃瘉 search 鍙傛暟
 	search = strings.TrimSpace(search)
 	if len(search) > 100 {
 		search = search[:100]
@@ -177,8 +177,7 @@ func (h *RedeemHandler) CreateAndRedeem(c *gin.Context) {
 		return
 	}
 	req.Code = strings.TrimSpace(req.Code)
-	// 向后兼容：旧版调用方（如 Sub2ApiPay）不传 type 字段，默认当作 balance 充值处理。
-	// 请勿删除此默认值逻辑，否则会导致旧版调用方 400 报错。
+	// Legacy callers may omit type; keep defaulting to balance.
 	if req.Type == "" {
 		req.Type = "balance"
 	}
@@ -188,7 +187,12 @@ func (h *RedeemHandler) CreateAndRedeem(c *gin.Context) {
 			response.BadRequest(c, "group_id is required for subscription type")
 			return
 		}
-		if req.ValidityDays == 0 {
+		validityDays, validitySeconds, err := service.NormalizeRedeemValidityDays(req.ValidityDays)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		if validityDays == 0 && validitySeconds == 0 {
 			response.BadRequest(c, "validity_days must not be zero for subscription type")
 			return
 		}
@@ -209,15 +213,26 @@ func (h *RedeemHandler) CreateAndRedeem(c *gin.Context) {
 			return nil, err
 		}
 
+		validityDays, validitySeconds, err := service.NormalizeRedeemValidityDays(req.ValidityDays)
+		if err != nil {
+			return nil, err
+		}
+		if req.Type == service.RedeemTypeBalance {
+			if validitySeconds <= 0 && validityDays > 0 {
+				validitySeconds = int64(validityDays) * 24 * int64(time.Hour/time.Second)
+			}
+			validityDays = 0
+		}
 		createErr := h.redeemService.CreateCode(ctx, &service.RedeemCode{
-			Code:         req.Code,
-			Type:         req.Type,
-			Value:        req.Value,
-			Status:       service.StatusUnused,
-			Notes:        req.Notes,
-			GroupID:      req.GroupID,
-			ValidityDays: req.ValidityDays,
-			ExpiresAt:    expiresAt,
+			Code:            req.Code,
+			Type:            req.Type,
+			Value:           req.Value,
+			Status:          service.StatusUnused,
+			Notes:           req.Notes,
+			GroupID:         req.GroupID,
+			ValidityDays:    validityDays,
+			ValiditySeconds: validitySeconds,
+			ExpiresAt:       expiresAt,
 		})
 		if createErr != nil {
 			// Unique code race: if code now exists, use idempotent semantics by used_by.

@@ -33,6 +33,9 @@ export interface PaymentConfig {
   order_timeout_minutes: number
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  balance_pricing_tiers?: BalancePricingTier[]
+  balance_recharge_as_package?: boolean
+  balance_package_validity_days?: number
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
@@ -65,12 +68,46 @@ export interface CheckoutInfoResponse {
   plans: SubscriptionPlan[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  balance_pricing_tiers?: BalancePricingTier[]
+  balance_recharge_as_package?: boolean
+  balance_package_validity_days?: number
   recharge_fee_rate: number
   help_text: string
   help_image_url: string
   stripe_publishable_key: string
   /** When true, Alipay payments on mobile always show the QR code instead of redirecting */
   alipay_force_qrcode?: boolean
+}
+
+export interface BalancePricingTier {
+  min: number
+  max: number
+  multiplier: number
+  label: string
+  enabled: boolean
+  sortOrder: number
+}
+
+export type CatalogProductType = 'topup' | 'subscription'
+
+export interface CatalogProduct {
+  slug: string
+  title: string
+  category: string
+  summary: string
+  description: string
+  image: string
+  cardImage?: string
+  tags: string[]
+  priceLabel: string
+  currency?: string
+  badge?: string
+  active: boolean
+  sortOrder: number
+  productType: CatalogProductType
+  amount?: number
+  planId?: string
+  ctaText?: string
 }
 
 // ==================== Orders ====================
@@ -97,6 +134,9 @@ export interface PaymentOrder {
   refund_request_reason?: string
   plan_id?: number
   provider_instance_id?: string
+  paymentSuccess?: boolean
+  rechargeSuccess?: boolean
+  rechargeStatus?: 'not_paid' | 'paid_pending' | 'recharging' | 'success' | 'failed' | 'closed'
 }
 
 // ==================== Plans & Channels ====================

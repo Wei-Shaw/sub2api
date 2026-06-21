@@ -87,7 +87,13 @@
           </div>
         </div>
         <!-- Actions -->
-        <div class="flex gap-3">
+        <div v-if="isInPopup" class="space-y-3 text-center">
+          <p v-if="isSuccess" class="text-sm text-gray-500 dark:text-gray-400">
+            支付已完成，窗口将自动关闭
+          </p>
+          <button class="btn btn-primary w-full" @click="closeCurrentWindow">立即关闭窗口</button>
+        </div>
+        <div v-else class="flex gap-3">
           <button class="btn btn-secondary flex-1" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
           <button class="btn btn-primary flex-1" @click="router.push('/orders')">{{ t('payment.result.viewOrders') }}</button>
         </div>
@@ -136,7 +142,15 @@ const STATUS_REFRESH_INTERVAL_MS = 2000
 const STATUS_REFRESH_MAX_ATTEMPTS = 15
 
 let statusRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let autoCloseTimer: ReturnType<typeof setTimeout> | null = null
 const refreshAttempts = ref(0)
+const isInPopup = ref(false)
+
+type WindowWithAlipayBridge = Window & {
+  AlipayJSBridge?: {
+    call: (name: string, params?: unknown, callback?: (...args: unknown[]) => void) => void
+  }
+}
 
 /** 充值金额 = pay_amount / (1 + fee_rate/100)，fee_rate=0 时等于 pay_amount */
 const baseAmount = computed(() => {
@@ -286,6 +300,57 @@ function clearStatusRefreshTimer(): void {
   }
 }
 
+function clearAutoCloseTimer(): void {
+  if (autoCloseTimer !== null) {
+    clearTimeout(autoCloseTimer)
+    autoCloseTimer = null
+  }
+}
+
+function tryCloseViaAlipayBridge(): boolean {
+  if (typeof window === 'undefined') return false
+  const bridge = (window as WindowWithAlipayBridge).AlipayJSBridge
+  if (!bridge?.call) return false
+
+  try {
+    bridge.call('closeWebview')
+    return true
+  } catch (_err: unknown) {
+    return false
+  }
+}
+
+function closeCurrentWindow(): void {
+  if (typeof window === 'undefined') return
+  if (tryCloseViaAlipayBridge()) return
+
+  let settled = false
+  const handleBridgeReady = () => {
+    if (settled) return
+    settled = true
+    document.removeEventListener('AlipayJSBridgeReady', handleBridgeReady)
+    if (!tryCloseViaAlipayBridge()) {
+      window.close()
+    }
+  }
+
+  document.addEventListener('AlipayJSBridgeReady', handleBridgeReady, { once: true })
+  window.setTimeout(() => {
+    if (settled) return
+    settled = true
+    document.removeEventListener('AlipayJSBridgeReady', handleBridgeReady)
+    window.close()
+  }, 250)
+}
+
+function schedulePopupAutoClose(): void {
+  clearAutoCloseTimer()
+  if (!isInPopup.value || !isSuccess.value) return
+  autoCloseTimer = setTimeout(() => {
+    closeCurrentWindow()
+  }, 3000)
+}
+
 function clearRecoverySnapshot(): void {
   if (typeof window === 'undefined') return
   clearPaymentRecoverySnapshot(window.localStorage, PAYMENT_RECOVERY_STORAGE_KEY)
@@ -310,6 +375,7 @@ function scheduleStatusRefresh(refreshOrder: (() => Promise<PaymentOrder | null>
     if (refreshedOrder) {
       setResolvedOrder(refreshedOrder)
       clearRecoverySnapshotForTerminalStatus(refreshedOrder.status)
+      schedulePopupAutoClose()
     }
 
     if (isPendingStatus(order.value?.status)) {
@@ -319,6 +385,10 @@ function scheduleStatusRefresh(refreshOrder: (() => Promise<PaymentOrder | null>
 }
 
 onMounted(async () => {
+  if (typeof window !== 'undefined') {
+    isInPopup.value = readRouteQueryString('popup') === '1' || !!window.opener
+  }
+
   const resumeToken = readRouteQueryString('resume_token')
   const routeOrderId = Number(readRouteQueryString('order_id')) || 0
   let outTradeNo = readRouteQueryString('out_trade_no')
@@ -414,6 +484,7 @@ onMounted(async () => {
     scheduleStatusRefresh(refreshOrder)
   } else if (order.value) {
     clearRecoverySnapshotForTerminalStatus(order.value.status)
+    schedulePopupAutoClose()
   } else if (returnInfo.value) {
     clearRecoverySnapshot()
   }
@@ -422,5 +493,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   clearStatusRefreshTimer()
+  clearAutoCloseTimer()
 })
 </script>

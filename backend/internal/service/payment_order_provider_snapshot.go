@@ -11,13 +11,14 @@ import (
 )
 
 type paymentOrderProviderSnapshot struct {
-	SchemaVersion      int
-	ProviderInstanceID string
-	ProviderKey        string
-	PaymentMode        string
-	MerchantAppID      string
-	MerchantID         string
-	Currency           string
+	SchemaVersion               int
+	ProviderInstanceID          string
+	ProviderKey                 string
+	PaymentMode                 string
+	MerchantAppID               string
+	MerchantID                  string
+	Currency                    string
+	SubscriptionValiditySeconds int64
 }
 
 func psOrderProviderSnapshot(order *dbent.PaymentOrder) *paymentOrderProviderSnapshot {
@@ -26,13 +27,14 @@ func psOrderProviderSnapshot(order *dbent.PaymentOrder) *paymentOrderProviderSna
 	}
 
 	snapshot := &paymentOrderProviderSnapshot{
-		SchemaVersion:      psSnapshotIntValue(order.ProviderSnapshot["schema_version"]),
-		ProviderInstanceID: psSnapshotStringValue(order.ProviderSnapshot["provider_instance_id"]),
-		ProviderKey:        psSnapshotStringValue(order.ProviderSnapshot["provider_key"]),
-		PaymentMode:        psSnapshotStringValue(order.ProviderSnapshot["payment_mode"]),
-		MerchantAppID:      psSnapshotStringValue(order.ProviderSnapshot["merchant_app_id"]),
-		MerchantID:         psSnapshotStringValue(order.ProviderSnapshot["merchant_id"]),
-		Currency:           psSnapshotStringValue(order.ProviderSnapshot["currency"]),
+		SchemaVersion:               psSnapshotIntValue(order.ProviderSnapshot["schema_version"]),
+		ProviderInstanceID:          psSnapshotStringValue(order.ProviderSnapshot["provider_instance_id"]),
+		ProviderKey:                 psSnapshotStringValue(order.ProviderSnapshot["provider_key"]),
+		PaymentMode:                 psSnapshotStringValue(order.ProviderSnapshot["payment_mode"]),
+		MerchantAppID:               psSnapshotStringValue(order.ProviderSnapshot["merchant_app_id"]),
+		MerchantID:                  psSnapshotStringValue(order.ProviderSnapshot["merchant_id"]),
+		Currency:                    psSnapshotStringValue(order.ProviderSnapshot["currency"]),
+		SubscriptionValiditySeconds: psSnapshotInt64Value(order.ProviderSnapshot["subscription_validity_seconds"]),
 	}
 	if snapshot.SchemaVersion == 0 &&
 		snapshot.ProviderInstanceID == "" &&
@@ -40,7 +42,8 @@ func psOrderProviderSnapshot(order *dbent.PaymentOrder) *paymentOrderProviderSna
 		snapshot.PaymentMode == "" &&
 		snapshot.MerchantAppID == "" &&
 		snapshot.MerchantID == "" &&
-		snapshot.Currency == "" {
+		snapshot.Currency == "" &&
+		snapshot.SubscriptionValiditySeconds == 0 {
 		return nil
 	}
 	return snapshot
@@ -56,19 +59,23 @@ func psSnapshotStringValue(value any) string {
 }
 
 func psSnapshotIntValue(value any) int {
+	return int(psSnapshotInt64Value(value))
+}
+
+func psSnapshotInt64Value(value any) int64 {
 	switch typed := value.(type) {
 	case int:
-		return typed
+		return int64(typed)
 	case int32:
-		return int(typed)
+		return int64(typed)
 	case int64:
-		return int(typed)
+		return typed
 	case float32:
-		return int(typed)
+		return int64(typed)
 	case float64:
-		return int(typed)
+		return int64(typed)
 	case string:
-		n, err := strconv.Atoi(strings.TrimSpace(typed))
+		n, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
 		if err == nil {
 			return n
 		}
@@ -176,6 +183,16 @@ func validateProviderSnapshotMetadata(order *dbent.PaymentOrder, providerKey str
 			}
 			if !strings.EqualFold(expected, actual) {
 				return fmt.Errorf("alipay app_id mismatch: expected %s, got %s", expected, actual)
+			}
+		}
+	case payment.TypeXunhuPay:
+		if expected := strings.TrimSpace(snapshot.MerchantAppID); expected != "" {
+			actual := strings.TrimSpace(metadata["appid"])
+			if actual == "" {
+				return fmt.Errorf("xunhupay appid missing")
+			}
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("xunhupay appid mismatch: expected %s, got %s", expected, actual)
 			}
 		}
 	case payment.TypeEasyPay:

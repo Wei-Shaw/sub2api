@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-4xl space-y-6">
+    <div class="mx-auto max-w-6xl space-y-6">
       <div v-if="loading" class="flex items-center justify-center py-20">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
       </div>
@@ -32,10 +32,58 @@
           <!-- Top-up Tab -->
           <template v-if="activeTab === 'recharge'">
             <!-- Recharge Account Card -->
-            <div class="card p-5">
-              <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.rechargeAccount') }}</p>
-              <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
-              <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
+            <div class="card p-4">
+              <div class="grid gap-3 lg:grid-cols-[minmax(0,0.78fr)_minmax(0,2.22fr)] lg:items-center">
+                <div>
+                  <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.rechargeAccount') }}</p>
+                  <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
+                  <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
+                </div>
+                <div v-if="balanceTierCards.length > 0" class="rounded-2xl border border-gray-100 bg-gradient-to-r from-primary-50 via-green-50 to-emerald-50 p-2.5 dark:border-dark-700 dark:from-primary-900/20 dark:via-green-900/20 dark:to-emerald-900/20">
+                  <div class="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p class="text-sm font-semibold leading-tight text-gray-900 dark:text-white">{{ t('payment.balanceTierCardTitle') }}</p>
+                      <p class="text-xs leading-tight text-gray-500 dark:text-gray-400">{{ t('payment.balanceTierCardSubtitle') }}</p>
+                    </div>
+                    <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-medium text-primary-600 shadow-sm dark:bg-dark-800 dark:text-primary-300">
+                      {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
+                    </span>
+                  </div>
+                  <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    <div
+                      v-for="(tier, index) in balanceTierCards"
+                      :key="`${tier.sortOrder ?? index}-${tier.min}-${tier.max}-${tier.multiplier}`"
+                      class="rounded-xl border bg-white/80 px-2.5 py-2 transition-all dark:bg-dark-800/70"
+                      :class="isCurrentTier(tier)
+                        ? 'border-primary-400 shadow-sm dark:border-primary-500'
+                        : 'border-gray-100 dark:border-dark-700'"
+                    >
+                      <div class="flex items-center gap-2">
+                        <div class="min-w-0 flex-1">
+                          <div class="flex items-center gap-1.5">
+                            <p class="truncate text-xs font-semibold leading-tight text-gray-900 dark:text-white">{{ tier.label || t('payment.defaultTier') }}</p>
+                            <span
+                              v-if="isCurrentTier(tier)"
+                              class="shrink-0 rounded-full bg-primary-600 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-white"
+                            >
+                              {{ t('payment.balanceTierCurrent') }}
+                            </span>
+                          </div>
+                          <p class="mt-0.5 truncate text-[11px] leading-tight text-gray-500 dark:text-gray-400">{{ formatBalanceTierRange(tier) }}</p>
+                        </div>
+                        <div class="shrink-0">
+                          <p class="text-[10px] leading-tight text-gray-400 dark:text-gray-500">{{ t('payment.rechargeMultiplier') }}</p>
+                          <p class="text-lg font-bold leading-none text-primary-600 dark:text-primary-300">{{ tier.multiplier.toFixed(2) }}</p>
+                        </div>
+                        <div v-if="validAmount > 0" class="shrink-0 text-right">
+                          <p class="text-[10px] leading-tight text-gray-400 dark:text-gray-500">{{ t('payment.balanceTierCreditPreview') }}</p>
+                          <p class="text-xs font-semibold leading-tight text-green-600 dark:text-green-300">${{ calculateCreditedAmount(tier.multiplier).toFixed(2) }}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
@@ -49,13 +97,25 @@
                 :max="globalMaxAmount"
               />
               <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
-            </div>
-            <div v-if="enabledMethods.length >= 1" class="card p-6">
-              <PaymentMethodSelector
-                :methods="methodOptions"
-                :selected="selectedMethod"
-                @select="selectedMethod = $event"
-              />
+              <div class="mt-5 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/60">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">充值规则</p>
+                  <span
+                    class="rounded-full px-2.5 py-1 text-xs font-semibold"
+                    :class="balanceRechargeAsPackage ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-200'"
+                  >
+                    {{ balanceRechargeAsPackage ? '限时余额包' : '普通余额' }}
+                  </span>
+                </div>
+                <p class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                  <template v-if="balanceRechargeAsPackage">
+                    本次充值会按管理员后台配置发放为限时余额包，有效期 {{ balancePackageValidityText }}。到期后剩余额度自动失效，多个余额包优先扣最早到期的。
+                  </template>
+                  <template v-else>
+                    本次充值会按管理员后台配置发放为普通余额，长期有效。
+                  </template>
+                </p>
+              </div>
             </div>
             <div v-if="validAmount > 0" class="card p-6">
               <div class="space-y-2 text-sm">
@@ -71,22 +131,48 @@
                   <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
                   <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(totalAmount) }}</span>
                 </div>
-                <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
-                  <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
+                <div class="flex justify-between">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.matchedTier') }}</span>
+                  <span class="text-gray-900 dark:text-white">{{ currentBalanceTier?.label || t('payment.defaultTier') }}</span>
                 </div>
-                <p v-if="balanceRechargeMultiplier !== 1" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
+                <div class="flex justify-between">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.rechargeMultiplier') }}</span>
+                  <span class="text-gray-900 dark:text-white">{{ balanceRechargeMultiplier.toFixed(2) }}</span>
+                </div>
+                <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
+                  <span class="font-semibold text-green-600 dark:text-green-400">${{ creditedAmount.toFixed(2) }}</span>
+                </div>
+                <p v-if="nextBalanceTier" class="border-t border-gray-200 pt-2 text-xs text-orange-600 dark:border-dark-600 dark:text-orange-300">
+                  {{ t('payment.nextTierHint', { amount: formatSelectedPaymentAmount(nextTierUnlockAmount), tier: nextBalanceTier.label || t('payment.nextTier') }) }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
                 </p>
               </div>
             </div>
-            <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
-              <span v-if="submitting" class="flex items-center justify-center gap-2">
-                <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                {{ t('common.processing') }}
-              </span>
-              <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(totalAmount) }}</span>
-            </button>
+            <div v-if="enabledMethods.length >= 1" class="card p-6">
+              <PaymentMethodSelector
+                :methods="methodOptions"
+                :selected="selectedMethod"
+                @select="selectedMethod = $event"
+              />
+            </div>
+            <div class="sticky bottom-3 z-30 rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-2xl shadow-gray-200/60 backdrop-blur dark:border-dark-700 dark:bg-dark-900/90 dark:shadow-black/30">
+              <div class="flex items-center justify-between gap-4">
+                <div class="min-w-0">
+                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</p>
+                  <p class="text-lg font-bold text-green-600 dark:text-green-300">${{ creditedAmount.toFixed(2) }}</p>
+                </div>
+                <button :class="['btn w-3/4 py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
+                  <span v-if="submitting" class="flex items-center justify-center gap-2">
+                    <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                    {{ t('common.processing') }}
+                  </span>
+                  <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(totalAmount) }}</span>
+                </button>
+              </div>
+            </div>
             </template>
           </template>
           <!-- Subscribe Tab -->
@@ -255,7 +341,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, BalancePricingTier } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
@@ -478,7 +564,9 @@ function onPaymentSettled() {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, balance_pricing_tiers: [],
+  balance_recharge_as_package: false, balance_package_validity_days: 1,
+  recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
@@ -491,11 +579,52 @@ const tabs = computed(() => {
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
 const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 const validAmount = computed(() => amount.value ?? 0)
+const enabledBalanceTiers = computed<BalancePricingTier[]>(() =>
+  (checkout.value.balance_pricing_tiers || [])
+    .filter(tier => tier.enabled !== false)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.min - b.min)
+)
+const currentBalanceTier = computed(() =>
+  enabledBalanceTiers.value.find(tier => validAmount.value >= tier.min && validAmount.value <= tier.max)
+)
+const nextBalanceTier = computed(() =>
+  enabledBalanceTiers.value.find(tier => validAmount.value > 0 && validAmount.value < tier.min)
+)
+const nextTierUnlockAmount = computed(() => {
+  if (!nextBalanceTier.value) return 0
+  return Math.max(0, Math.round((nextBalanceTier.value.min - validAmount.value) * 100) / 100)
+})
 const balanceRechargeMultiplier = computed(() => {
-  const multiplier = checkout.value.balance_recharge_multiplier
+  const multiplier = currentBalanceTier.value?.multiplier || checkout.value.balance_recharge_multiplier
   return multiplier > 0 ? multiplier : 1
 })
-const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+const balanceRechargeAsPackage = computed(() => checkout.value.balance_recharge_as_package === true)
+const balancePackageValidityDays = computed(() => {
+  const days = Number(checkout.value.balance_package_validity_days || 0)
+  return Number.isFinite(days) && days > 0 ? days : 1
+})
+const balancePackageValidityText = computed(() => {
+  const days = balancePackageValidityDays.value
+  if (days < 1) return `${Math.round(days * 24 * 100) / 100} 小时`
+  return `${days} 天`
+})
+const creditedAmount = computed(() => Math.round((validAmount.value / balanceRechargeMultiplier.value) * 100) / 100)
+const balanceTierCards = computed(() => enabledBalanceTiers.value)
+
+function calculateCreditedAmount(multiplier: number): number {
+  const safeMultiplier = multiplier > 0 ? multiplier : 1
+  return Math.round((validAmount.value / safeMultiplier) * 100) / 100
+}
+
+function isCurrentTier(tier: BalancePricingTier): boolean {
+  return validAmount.value > 0 && currentBalanceTier.value === tier
+}
+
+function formatBalanceTierRange(tier: BalancePricingTier): string {
+  if (tier.min <= 0 && tier.max > 0) return `≤ ${formatSelectedPaymentAmount(tier.max)}`
+  if (tier.max <= 0 || !Number.isFinite(tier.max)) return `≥ ${formatSelectedPaymentAmount(tier.min)}`
+  return `${formatSelectedPaymentAmount(tier.min)} - ${formatSelectedPaymentAmount(tier.max)}`
+}
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {

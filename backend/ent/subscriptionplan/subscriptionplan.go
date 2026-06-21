@@ -77,7 +77,7 @@ var (
 	// DefaultDescription holds the default value on creation for the "description" field.
 	DefaultDescription string
 	// DefaultValidityDays holds the default value on creation for the "validity_days" field.
-	DefaultValidityDays int
+	DefaultValidityDays float64
 	// DefaultValidityUnit holds the default value on creation for the "validity_unit" field.
 	DefaultValidityUnit string
 	// ValidityUnitValidator is a validator for the "validity_unit" field. It is called by the builders before save.

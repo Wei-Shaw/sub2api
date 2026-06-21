@@ -38,6 +38,7 @@ type AdminService interface {
 	UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error)
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
+	AddUserBalancePackage(ctx context.Context, userID int64, amount float64, validityDays float64, notes string) (*User, error)
 	BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
@@ -420,8 +421,8 @@ type GenerateRedeemCodesInput struct {
 	Count        int
 	Type         string
 	Value        float64
-	GroupID      *int64 // 订阅类型专用：关联的分组ID
-	ValidityDays int    // 订阅类型专用：有效天数
+	GroupID      *int64  // 订阅类型专用：关联的分组ID
+	ValidityDays float64 // 订阅类型专用：有效天数，允许 0.5 这种小数
 	ExpiresAt    *time.Time
 }
 
@@ -545,6 +546,7 @@ type adminServiceImpl struct {
 	proxyRepo            ProxyRepository
 	apiKeyRepo           APIKeyRepository
 	redeemCodeRepo       RedeemCodeRepository
+	balancePackageRepo   BalancePackageRepository
 	userGroupRateRepo    UserGroupRateRepository
 	userRPMCache         UserRPMCache
 	billingCacheService  *BillingCacheService
@@ -571,6 +573,7 @@ func NewAdminService(
 	proxyRepo ProxyRepository,
 	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
+	balancePackageRepo BalancePackageRepository,
 	userGroupRateRepo UserGroupRateRepository,
 	userRPMCache UserRPMCache,
 	billingCacheService *BillingCacheService,
@@ -591,6 +594,7 @@ func NewAdminService(
 		proxyRepo:            proxyRepo,
 		apiKeyRepo:           apiKeyRepo,
 		redeemCodeRepo:       redeemCodeRepo,
+		balancePackageRepo:   balancePackageRepo,
 		userGroupRateRepo:    userGroupRateRepo,
 		userRPMCache:         userRPMCache,
 		billingCacheService:  billingCacheService,
@@ -1044,6 +1048,77 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
 			logger.LegacyPrintf("service.admin", "failed to create balance adjustment redeem code: %v", err)
 		}
+	}
+
+	return user, nil
+}
+
+func (s *adminServiceImpl) AddUserBalancePackage(ctx context.Context, userID int64, amount float64, validityDays float64, notes string) (*User, error) {
+	if amount <= 0 {
+		return nil, errors.New("amount must be greater than 0")
+	}
+	validityDaysInt, validitySeconds, err := NormalizeRedeemValidityDays(validityDays)
+	if err != nil {
+		return nil, err
+	}
+	if validitySeconds <= 0 && validityDaysInt > 0 {
+		validitySeconds = int64(validityDaysInt) * 24 * int64(time.Hour/time.Second)
+	}
+	if validitySeconds <= 0 {
+		return nil, errors.New("balance package validity must be greater than 0")
+	}
+	if s.balancePackageRepo == nil {
+		return nil, errors.New("balance package repository not configured")
+	}
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	code, err := GenerateRedeemCode()
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	expiresAt := now.Add(time.Duration(validitySeconds) * time.Second)
+	adjustmentRecord := &RedeemCode{
+		Code:            code,
+		Type:            RedeemTypeBalance,
+		Value:           amount,
+		Status:          StatusUsed,
+		UsedBy:          &user.ID,
+		ValidityDays:    0,
+		ValiditySeconds: validitySeconds,
+		Notes:           notes,
+	}
+	adjustmentRecord.UsedAt = &now
+	if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
+		return nil, err
+	}
+	redeemCodeID := adjustmentRecord.ID
+	if err := s.balancePackageRepo.CreateBalancePackage(ctx, &UserBalancePackage{
+		UserID:          user.ID,
+		RedeemCodeID:    &redeemCodeID,
+		Amount:          amount,
+		RemainingAmount: amount,
+		ExpiresAt:       expiresAt,
+		Status:          BalancePackageStatusActive,
+	}); err != nil {
+		return nil, err
+	}
+
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+	if s.billingCacheService != nil {
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := s.billingCacheService.InvalidateUserBalance(cacheCtx, userID); err != nil {
+				logger.LegacyPrintf("service.admin", "invalidate user balance cache failed: user_id=%d err=%v", userID, err)
+			}
+		}()
 	}
 
 	return user, nil
@@ -3279,11 +3354,29 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 		}
 		// 订阅类型专用字段
 		if input.Type == RedeemTypeSubscription {
-			code.GroupID = input.GroupID
-			code.ValidityDays = input.ValidityDays
-			if code.ValidityDays <= 0 {
-				code.ValidityDays = 30 // 默认30天
+			validityDays, validitySeconds, err := NormalizeRedeemValidityDays(input.ValidityDays)
+			if err != nil {
+				return nil, err
 			}
+			code.GroupID = input.GroupID
+			code.ValidityDays = validityDays
+			code.ValiditySeconds = validitySeconds
+			if code.ValidityDays <= 0 {
+				if code.ValiditySeconds <= 0 {
+					code.ValidityDays = 30 // 默认30天
+				}
+			}
+		}
+		if input.Type == RedeemTypeBalance && input.ValidityDays > 0 {
+			validityDays, validitySeconds, err := NormalizeRedeemValidityDays(input.ValidityDays)
+			if err != nil {
+				return nil, err
+			}
+			if validitySeconds <= 0 && validityDays > 0 {
+				validitySeconds = int64(validityDays) * 24 * int64(time.Hour/time.Second)
+			}
+			code.ValidityDays = 0
+			code.ValiditySeconds = validitySeconds
 		}
 		if err := s.redeemCodeRepo.Create(ctx, &code); err != nil {
 			return nil, err

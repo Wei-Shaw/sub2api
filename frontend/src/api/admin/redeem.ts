@@ -84,6 +84,8 @@ export async function generate(
     if (validityDays && validityDays > 0) {
       payload.validity_days = validityDays
     }
+  } else if (type === 'balance' && validityDays && validityDays > 0) {
+    payload.validity_days = validityDays
   }
   if (expiresInDays && expiresInDays > 0) {
     payload.expires_in_days = expiresInDays

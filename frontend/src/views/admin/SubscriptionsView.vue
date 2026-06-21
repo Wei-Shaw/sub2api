@@ -633,6 +633,44 @@
       </template>
     </BaseDialog>
 
+    <!-- Existing Active Subscription Choice Dialog -->
+    <BaseDialog
+      :show="showAssignChoiceDialog"
+      title="已有未结束订阅"
+      width="normal"
+      @close="closeAssignChoiceDialog"
+    >
+      <div v-if="assignConflictSubscription" class="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+        <p>
+          用户
+          <span class="font-medium text-gray-900 dark:text-white">{{ selectedUser?.email }}</span>
+          已经有这个分组的未结束订阅。
+        </p>
+        <p>
+          当前结束时间：
+          <span class="font-medium text-gray-900 dark:text-white">
+            {{ assignConflictSubscription.expires_at ? formatDateOnly(assignConflictSubscription.expires_at) : '无结束时间' }}
+          </span>
+        </p>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          续期会在当前结束时间后增加天数；覆盖会从现在开始重新计算有效期，并重置这条订阅的用量窗口。
+        </p>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button @click="closeAssignChoiceDialog" type="button" class="btn btn-secondary">
+            {{ t('common.cancel') }}
+          </button>
+          <button @click="confirmAssignExtend" type="button" :disabled="submitting" class="btn btn-secondary">
+            续期
+          </button>
+          <button @click="confirmAssignOverwrite" type="button" :disabled="submitting" class="btn btn-primary">
+            覆盖
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- Revoke Confirmation Dialog -->
     <ConfirmDialog
       :show="showRevokeDialog"
@@ -939,12 +977,14 @@ const pagination = reactive({
 
 const showAssignModal = ref(false)
 const showExtendModal = ref(false)
+const showAssignChoiceDialog = ref(false)
 const showRevokeDialog = ref(false)
 const showResetQuotaConfirm = ref(false)
 const submitting = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
 const extendingSubscription = ref<UserSubscription | null>(null)
+const assignConflictSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
 
 const assignForm = reactive({
@@ -1167,6 +1207,33 @@ const closeAssignModal = () => {
   userSearchKeyword.value = ''
   userSearchResults.value = []
   showUserDropdown.value = false
+  assignConflictSubscription.value = null
+  showAssignChoiceDialog.value = false
+}
+
+const closeAssignChoiceDialog = () => {
+  showAssignChoiceDialog.value = false
+  assignConflictSubscription.value = null
+}
+
+const findExistingOpenSubscription = async (): Promise<UserSubscription | null> => {
+  if (!assignForm.user_id || !assignForm.group_id) return null
+  const result = await adminAPI.subscriptions.list(1, 50, {
+    status: 'active',
+    user_id: assignForm.user_id,
+    group_id: assignForm.group_id
+  })
+  const now = Date.now()
+  return result.items.find((sub) => !sub.expires_at || new Date(sub.expires_at).getTime() > now) || null
+}
+
+const assignSubscription = async (overwriteExisting = false) => {
+  await adminAPI.subscriptions.assign({
+    user_id: assignForm.user_id!,
+    group_id: assignForm.group_id!,
+    validity_days: assignForm.validity_days,
+    overwrite_existing: overwriteExisting
+  })
 }
 
 const handleAssignSubscription = async () => {
@@ -1185,17 +1252,54 @@ const handleAssignSubscription = async () => {
 
   submitting.value = true
   try {
-    await adminAPI.subscriptions.assign({
-      user_id: assignForm.user_id,
-      group_id: assignForm.group_id,
-      validity_days: assignForm.validity_days
-    })
+    const existingOpen = await findExistingOpenSubscription()
+    if (existingOpen) {
+      assignConflictSubscription.value = existingOpen
+      showAssignChoiceDialog.value = true
+      return
+    }
+    await assignSubscription(false)
     appStore.showSuccess(t('admin.subscriptions.subscriptionAssigned'))
     closeAssignModal()
     loadSubscriptions()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToAssign'))
     console.error('Error assigning subscription:', error)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const confirmAssignExtend = async () => {
+  if (!assignConflictSubscription.value) return
+  submitting.value = true
+  try {
+    await adminAPI.subscriptions.extend(assignConflictSubscription.value.id, {
+      days: assignForm.validity_days
+    })
+    appStore.showSuccess(t('admin.subscriptions.subscriptionAdjusted'))
+    closeAssignChoiceDialog()
+    closeAssignModal()
+    loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToAdjust'))
+    console.error('Error extending existing subscription:', error)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const confirmAssignOverwrite = async () => {
+  submitting.value = true
+  try {
+    await assignSubscription(true)
+    appStore.showSuccess(t('admin.subscriptions.subscriptionAssigned'))
+    closeAssignChoiceDialog()
+    closeAssignModal()
+    loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToAssign'))
+    console.error('Error overwriting existing subscription:', error)
   } finally {
     submitting.value = false
   }

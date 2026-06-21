@@ -141,6 +141,7 @@ type RedeemService struct {
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	affiliateService     *AffiliateService
+	balancePackageRepo   BalancePackageRepository
 }
 
 // NewRedeemService 创建兑换码服务实例
@@ -167,6 +168,10 @@ func NewRedeemService(
 }
 
 // GenerateRandomCode 生成随机兑换码
+func (s *RedeemService) SetBalancePackageRepository(repo BalancePackageRepository) {
+	s.balancePackageRepo = repo
+}
+
 func (s *RedeemService) GenerateRandomCode() (string, error) {
 	// 生成16字节随机数据
 	bytes := make([]byte, 16)
@@ -445,7 +450,19 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		if amount < 0 && user.Balance+amount < 0 {
 			amount = -user.Balance
 		}
-		if err := s.userRepo.UpdateBalance(txCtx, userID, amount); err != nil {
+		if amount > 0 && redeemCode.ValiditySeconds > 0 && s.balancePackageRepo != nil {
+			redeemCodeID := redeemCode.ID
+			if err := s.balancePackageRepo.CreateBalancePackage(txCtx, &UserBalancePackage{
+				UserID:          userID,
+				RedeemCodeID:    &redeemCodeID,
+				Amount:          amount,
+				RemainingAmount: amount,
+				ExpiresAt:       time.Now().UTC().Add(time.Duration(redeemCode.ValiditySeconds) * time.Second),
+				Status:          BalancePackageStatusActive,
+			}); err != nil {
+				return nil, fmt.Errorf("create balance package: %w", err)
+			}
+		} else if err := s.userRepo.UpdateBalance(txCtx, userID, amount); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
 		}
 
@@ -470,12 +487,18 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 			if validityDays == 0 {
 				validityDays = 30
 			}
+			validityDuration := time.Duration(0)
+			if redeemCode.ValiditySeconds > 0 {
+				validityDays = 0
+				validityDuration = time.Duration(redeemCode.ValiditySeconds) * time.Second
+			}
 			_, _, err := s.subscriptionService.AssignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
-				UserID:       userID,
-				GroupID:      *redeemCode.GroupID,
-				ValidityDays: validityDays,
-				AssignedBy:   0, // 系统分配
-				Notes:        fmt.Sprintf("通过兑换码 %s 兑换", redeemCode.Code),
+				UserID:           userID,
+				GroupID:          *redeemCode.GroupID,
+				ValidityDays:     validityDays,
+				ValidityDuration: validityDuration,
+				AssignedBy:       0, // 系统分配
+				Notes:            fmt.Sprintf("通过兑换码 %s 兑换", redeemCode.Code),
 			})
 			if err != nil {
 				return nil, fmt.Errorf("assign or extend subscription: %w", err)

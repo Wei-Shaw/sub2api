@@ -67,6 +67,12 @@ func (h *PaymentWebhookHandler) AirwallexWebhook(c *gin.Context) {
 	h.handleNotify(c, payment.TypeAirwallex)
 }
 
+// XunhuPayNotify handles XunhuPay payment notifications.
+// POST /api/v1/payment/webhook/xunhupay
+func (h *PaymentWebhookHandler) XunhuPayNotify(c *gin.Context) {
+	h.handleNotify(c, payment.TypeXunhuPay)
+}
+
 // handleNotify is the shared logic for all provider webhook handlers.
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
 	var rawBody string
@@ -152,6 +158,11 @@ func extractOutTradeNo(rawBody, providerKey string) string {
 		values, err := url.ParseQuery(rawBody)
 		if err == nil {
 			return values.Get("out_trade_no")
+		}
+	case payment.TypeXunhuPay:
+		values, err := url.ParseQuery(rawBody)
+		if err == nil {
+			return values.Get("trade_order_id")
 		}
 	case payment.TypeAirwallex:
 		var payload struct {

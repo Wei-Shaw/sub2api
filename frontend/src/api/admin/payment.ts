@@ -8,8 +8,10 @@ import type {
   DashboardStats,
   PaymentOrder,
   PaymentChannel,
+  CatalogProduct,
   SubscriptionPlan,
-  ProviderInstance
+  ProviderInstance,
+  BalancePricingTier
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
@@ -24,6 +26,9 @@ export interface AdminPaymentConfig {
   enabled_payment_types: string[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  balance_pricing_tiers?: BalancePricingTier[]
+  balance_recharge_as_package?: boolean
+  balance_package_validity_days?: number
   load_balance_strategy: string
   product_name_prefix: string
   product_name_suffix: string
@@ -42,6 +47,9 @@ export interface UpdatePaymentConfigRequest {
   enabled_payment_types?: string[]
   balance_disabled?: boolean
   balance_recharge_multiplier?: number
+  balance_pricing_tiers?: BalancePricingTier[]
+  balance_recharge_as_package?: boolean
+  balance_package_validity_days?: number
   load_balance_strategy?: string
   product_name_prefix?: string
   product_name_suffix?: string
@@ -60,6 +68,16 @@ export const adminPaymentAPI = {
   /** Update payment configuration */
   updateConfig(data: UpdatePaymentConfigRequest) {
     return apiClient.put('/admin/payment/config', data)
+  },
+
+  /** Get homepage/shop product catalog */
+  getProducts() {
+    return apiClient.get<{ products: CatalogProduct[] }>('/admin/payment/products')
+  },
+
+  /** Replace homepage/shop product catalog */
+  updateProducts(products: CatalogProduct[]) {
+    return apiClient.put<{ products: CatalogProduct[] }>('/admin/payment/products', { products })
   },
 
   // ==================== Dashboard ====================

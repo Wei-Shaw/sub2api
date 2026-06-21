@@ -14,11 +14,13 @@ const VISIBLE_METHOD_ALIASES = {
   alipay_direct: 'alipay',
   wxpay: 'wxpay',
   wxpay_direct: 'wxpay',
+  xunhupay: 'xunhupay',
+  wxpay_xunhu: 'xunhupay',
   stripe: 'stripe',
   airwallex: 'airwallex',
 } as const
 
-export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe' | 'airwallex'
+export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'xunhupay' | 'stripe' | 'airwallex'
 export type StripeVisibleMethod = 'alipay' | 'wechat_pay'
 export type PaymentLaunchKind =
   | 'qr_waiting'
@@ -213,6 +215,15 @@ export function decidePaymentLaunch(
 
   if (visibleMethod === 'wxpay' && context.isWechatBrowser && baseState.payUrl && !baseState.qrCode) {
     return { kind: 'redirect_waiting', paymentState: baseState, recovery: baseState }
+  }
+
+  if (visibleMethod === 'xunhupay') {
+    if (baseState.qrCode) {
+      return { kind: 'qr_waiting', paymentState: baseState, recovery: baseState }
+    }
+    if (baseState.payUrl) {
+      return { kind: 'redirect_waiting', paymentState: baseState, recovery: baseState }
+    }
   }
 
   if (prefersRedirect && baseState.payUrl) {

@@ -114,17 +114,19 @@ func TestCreateAndRedeem_SubscriptionRequiresNonZeroValidityDays(t *testing.T) {
 func TestCreateAndRedeem_SubscriptionValidParamsPassValidation(t *testing.T) {
 	groupID := int64(5)
 	h := newCreateAndRedeemHandler()
-	code := postCreateAndRedeemValidation(t, h, map[string]any{
-		"code":          "test-sub-valid",
-		"type":          "subscription",
-		"value":         29.9,
-		"user_id":       1,
-		"group_id":      groupID,
-		"validity_days": 31,
-	})
+	for _, validityDays := range []float64{31, 0.5} {
+		code := postCreateAndRedeemValidation(t, h, map[string]any{
+			"code":          "test-sub-valid",
+			"type":          "subscription",
+			"value":         29.9,
+			"user_id":       1,
+			"group_id":      groupID,
+			"validity_days": validityDays,
+		})
 
-	assert.NotEqual(t, http.StatusBadRequest, code,
-		"valid subscription params should pass validation")
+		assert.NotEqual(t, http.StatusBadRequest, code,
+			"valid subscription params should pass validation")
+	}
 }
 
 func TestCreateAndRedeem_BalanceIgnoresSubscriptionFields(t *testing.T) {

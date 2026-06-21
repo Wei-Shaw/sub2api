@@ -271,6 +271,46 @@ func TestAssignSubscriptionConflictWhenSemanticsMismatch(t *testing.T) {
 	require.Equal(t, 0, subRepo.createCalls, "conflict should not create or mutate existing subscription")
 }
 
+func TestAssignSubscriptionOverwriteExistingActiveSubscription(t *testing.T) {
+	start := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
+	groupRepo := &subscriptionGroupRepoStub{
+		group: &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription},
+	}
+	subRepo := newSubscriptionUserSubRepoStub()
+	subRepo.seed(&UserSubscription{
+		ID:              12,
+		UserID:          2002,
+		GroupID:         1,
+		StartsAt:        start,
+		ExpiresAt:       time.Now().Add(10 * 24 * time.Hour),
+		Status:          SubscriptionStatusActive,
+		DailyUsageUSD:   5,
+		WeeklyUsageUSD:  6,
+		MonthlyUsageUSD: 7,
+		Notes:           "old-note",
+	})
+
+	svc := NewSubscriptionService(groupRepo, subRepo, nil, nil, nil)
+	sub, err := svc.AssignSubscription(context.Background(), &AssignSubscriptionInput{
+		UserID:            2002,
+		GroupID:           1,
+		ValidityDays:      3,
+		AssignedBy:        9,
+		Notes:             "overwrite-note",
+		OverwriteExisting: true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, int64(12), sub.ID)
+	require.Equal(t, SubscriptionStatusActive, sub.Status)
+	require.WithinDuration(t, time.Now().Add(3*24*time.Hour), sub.ExpiresAt, 3*time.Second)
+	require.InDelta(t, 0, sub.DailyUsageUSD, 1e-9)
+	require.InDelta(t, 0, sub.WeeklyUsageUSD, 1e-9)
+	require.InDelta(t, 0, sub.MonthlyUsageUSD, 1e-9)
+	require.Equal(t, "overwrite-note", sub.Notes)
+	require.Equal(t, 0, subRepo.createCalls, "overwrite should update existing subscription instead of creating a duplicate")
+}
+
 func TestBulkAssignSubscriptionCreatedReusedAndConflict(t *testing.T) {
 	start := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
 	groupRepo := &subscriptionGroupRepoStub{

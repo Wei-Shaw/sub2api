@@ -7,6 +7,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNormalizeRedeemValidityDays(t *testing.T) {
+	days, seconds, err := NormalizeRedeemValidityDays(0.5)
+	require.NoError(t, err)
+	require.Equal(t, 0, days)
+	require.Equal(t, int64(12*60*60), seconds)
+
+	days, seconds, err = NormalizeRedeemValidityDays(2)
+	require.NoError(t, err)
+	require.Equal(t, 2, days)
+	require.Equal(t, int64(0), seconds)
+
+	days, seconds, err = NormalizeRedeemValidityDays(-7)
+	require.NoError(t, err)
+	require.Equal(t, -7, days)
+	require.Equal(t, int64(0), seconds)
+
+	_, _, err = NormalizeRedeemValidityDays(-0.5)
+	require.Error(t, err)
+}
+
+func TestRedeemValiditySecondsNoteRoundTrip(t *testing.T) {
+	encoded := EncodeRedeemValiditySecondsNote("manual note", 12*60*60)
+	notes, seconds := DecodeRedeemValiditySecondsNote(encoded)
+	require.Equal(t, "manual note", notes)
+	require.Equal(t, int64(12*60*60), seconds)
+}
+
 func TestRedeemCodeExpiry(t *testing.T) {
 	now := time.Now().UTC()
 	past := now.Add(-time.Hour)

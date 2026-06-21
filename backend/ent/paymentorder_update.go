@@ -154,6 +154,92 @@ func (_u *PaymentOrderUpdate) AddFeeRate(v float64) *PaymentOrderUpdate {
 	return _u
 }
 
+// SetAppliedRateMultiplier sets the "applied_rate_multiplier" field.
+func (_u *PaymentOrderUpdate) SetAppliedRateMultiplier(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetAppliedRateMultiplier()
+	_u.mutation.SetAppliedRateMultiplier(v)
+	return _u
+}
+
+// SetNillableAppliedRateMultiplier sets the "applied_rate_multiplier" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableAppliedRateMultiplier(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetAppliedRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddAppliedRateMultiplier adds value to the "applied_rate_multiplier" field.
+func (_u *PaymentOrderUpdate) AddAppliedRateMultiplier(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddAppliedRateMultiplier(v)
+	return _u
+}
+
+// ClearAppliedRateMultiplier clears the value of the "applied_rate_multiplier" field.
+func (_u *PaymentOrderUpdate) ClearAppliedRateMultiplier() *PaymentOrderUpdate {
+	_u.mutation.ClearAppliedRateMultiplier()
+	return _u
+}
+
+// SetPricingTierLabel sets the "pricing_tier_label" field.
+func (_u *PaymentOrderUpdate) SetPricingTierLabel(v string) *PaymentOrderUpdate {
+	_u.mutation.SetPricingTierLabel(v)
+	return _u
+}
+
+// SetNillablePricingTierLabel sets the "pricing_tier_label" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillablePricingTierLabel(v *string) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetPricingTierLabel(*v)
+	}
+	return _u
+}
+
+// ClearPricingTierLabel clears the value of the "pricing_tier_label" field.
+func (_u *PaymentOrderUpdate) ClearPricingTierLabel() *PaymentOrderUpdate {
+	_u.mutation.ClearPricingTierLabel()
+	return _u
+}
+
+// SetPricingTierSnapshot sets the "pricing_tier_snapshot" field.
+func (_u *PaymentOrderUpdate) SetPricingTierSnapshot(v map[string]interface{}) *PaymentOrderUpdate {
+	_u.mutation.SetPricingTierSnapshot(v)
+	return _u
+}
+
+// ClearPricingTierSnapshot clears the value of the "pricing_tier_snapshot" field.
+func (_u *PaymentOrderUpdate) ClearPricingTierSnapshot() *PaymentOrderUpdate {
+	_u.mutation.ClearPricingTierSnapshot()
+	return _u
+}
+
+// SetCreditedAmount sets the "credited_amount" field.
+func (_u *PaymentOrderUpdate) SetCreditedAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetCreditedAmount()
+	_u.mutation.SetCreditedAmount(v)
+	return _u
+}
+
+// SetNillableCreditedAmount sets the "credited_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableCreditedAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetCreditedAmount(*v)
+	}
+	return _u
+}
+
+// AddCreditedAmount adds value to the "credited_amount" field.
+func (_u *PaymentOrderUpdate) AddCreditedAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddCreditedAmount(v)
+	return _u
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (_u *PaymentOrderUpdate) ClearCreditedAmount() *PaymentOrderUpdate {
+	_u.mutation.ClearCreditedAmount()
+	return _u
+}
+
 // SetRechargeCode sets the "recharge_code" field.
 func (_u *PaymentOrderUpdate) SetRechargeCode(v string) *PaymentOrderUpdate {
 	_u.mutation.SetRechargeCode(v)
@@ -778,6 +864,11 @@ func (_u *PaymentOrderUpdate) check() error {
 			return &ValidationError{Name: "user_name", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.user_name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PricingTierLabel(); ok {
+		if err := paymentorder.PricingTierLabelValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_tier_label", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.pricing_tier_label": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RechargeCode(); ok {
 		if err := paymentorder.RechargeCodeValidator(v); err != nil {
 			return &ValidationError{Name: "recharge_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.recharge_code": %w`, err)}
@@ -880,6 +971,36 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.AddedFeeRate(); ok {
 		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AppliedRateMultiplier(); ok {
+		_spec.SetField(paymentorder.FieldAppliedRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAppliedRateMultiplier(); ok {
+		_spec.AddField(paymentorder.FieldAppliedRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.AppliedRateMultiplierCleared() {
+		_spec.ClearField(paymentorder.FieldAppliedRateMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.PricingTierLabel(); ok {
+		_spec.SetField(paymentorder.FieldPricingTierLabel, field.TypeString, value)
+	}
+	if _u.mutation.PricingTierLabelCleared() {
+		_spec.ClearField(paymentorder.FieldPricingTierLabel, field.TypeString)
+	}
+	if value, ok := _u.mutation.PricingTierSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldPricingTierSnapshot, field.TypeJSON, value)
+	}
+	if _u.mutation.PricingTierSnapshotCleared() {
+		_spec.ClearField(paymentorder.FieldPricingTierSnapshot, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.CreditedAmount(); ok {
+		_spec.SetField(paymentorder.FieldCreditedAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCreditedAmount(); ok {
+		_spec.AddField(paymentorder.FieldCreditedAmount, field.TypeFloat64, value)
+	}
+	if _u.mutation.CreditedAmountCleared() {
+		_spec.ClearField(paymentorder.FieldCreditedAmount, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
@@ -1214,6 +1335,92 @@ func (_u *PaymentOrderUpdateOne) SetNillableFeeRate(v *float64) *PaymentOrderUpd
 // AddFeeRate adds value to the "fee_rate" field.
 func (_u *PaymentOrderUpdateOne) AddFeeRate(v float64) *PaymentOrderUpdateOne {
 	_u.mutation.AddFeeRate(v)
+	return _u
+}
+
+// SetAppliedRateMultiplier sets the "applied_rate_multiplier" field.
+func (_u *PaymentOrderUpdateOne) SetAppliedRateMultiplier(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetAppliedRateMultiplier()
+	_u.mutation.SetAppliedRateMultiplier(v)
+	return _u
+}
+
+// SetNillableAppliedRateMultiplier sets the "applied_rate_multiplier" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableAppliedRateMultiplier(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetAppliedRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddAppliedRateMultiplier adds value to the "applied_rate_multiplier" field.
+func (_u *PaymentOrderUpdateOne) AddAppliedRateMultiplier(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddAppliedRateMultiplier(v)
+	return _u
+}
+
+// ClearAppliedRateMultiplier clears the value of the "applied_rate_multiplier" field.
+func (_u *PaymentOrderUpdateOne) ClearAppliedRateMultiplier() *PaymentOrderUpdateOne {
+	_u.mutation.ClearAppliedRateMultiplier()
+	return _u
+}
+
+// SetPricingTierLabel sets the "pricing_tier_label" field.
+func (_u *PaymentOrderUpdateOne) SetPricingTierLabel(v string) *PaymentOrderUpdateOne {
+	_u.mutation.SetPricingTierLabel(v)
+	return _u
+}
+
+// SetNillablePricingTierLabel sets the "pricing_tier_label" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillablePricingTierLabel(v *string) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetPricingTierLabel(*v)
+	}
+	return _u
+}
+
+// ClearPricingTierLabel clears the value of the "pricing_tier_label" field.
+func (_u *PaymentOrderUpdateOne) ClearPricingTierLabel() *PaymentOrderUpdateOne {
+	_u.mutation.ClearPricingTierLabel()
+	return _u
+}
+
+// SetPricingTierSnapshot sets the "pricing_tier_snapshot" field.
+func (_u *PaymentOrderUpdateOne) SetPricingTierSnapshot(v map[string]interface{}) *PaymentOrderUpdateOne {
+	_u.mutation.SetPricingTierSnapshot(v)
+	return _u
+}
+
+// ClearPricingTierSnapshot clears the value of the "pricing_tier_snapshot" field.
+func (_u *PaymentOrderUpdateOne) ClearPricingTierSnapshot() *PaymentOrderUpdateOne {
+	_u.mutation.ClearPricingTierSnapshot()
+	return _u
+}
+
+// SetCreditedAmount sets the "credited_amount" field.
+func (_u *PaymentOrderUpdateOne) SetCreditedAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetCreditedAmount()
+	_u.mutation.SetCreditedAmount(v)
+	return _u
+}
+
+// SetNillableCreditedAmount sets the "credited_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableCreditedAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetCreditedAmount(*v)
+	}
+	return _u
+}
+
+// AddCreditedAmount adds value to the "credited_amount" field.
+func (_u *PaymentOrderUpdateOne) AddCreditedAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddCreditedAmount(v)
+	return _u
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (_u *PaymentOrderUpdateOne) ClearCreditedAmount() *PaymentOrderUpdateOne {
+	_u.mutation.ClearCreditedAmount()
 	return _u
 }
 
@@ -1854,6 +2061,11 @@ func (_u *PaymentOrderUpdateOne) check() error {
 			return &ValidationError{Name: "user_name", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.user_name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PricingTierLabel(); ok {
+		if err := paymentorder.PricingTierLabelValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_tier_label", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.pricing_tier_label": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RechargeCode(); ok {
 		if err := paymentorder.RechargeCodeValidator(v); err != nil {
 			return &ValidationError{Name: "recharge_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.recharge_code": %w`, err)}
@@ -1973,6 +2185,36 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if value, ok := _u.mutation.AddedFeeRate(); ok {
 		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AppliedRateMultiplier(); ok {
+		_spec.SetField(paymentorder.FieldAppliedRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAppliedRateMultiplier(); ok {
+		_spec.AddField(paymentorder.FieldAppliedRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.AppliedRateMultiplierCleared() {
+		_spec.ClearField(paymentorder.FieldAppliedRateMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.PricingTierLabel(); ok {
+		_spec.SetField(paymentorder.FieldPricingTierLabel, field.TypeString, value)
+	}
+	if _u.mutation.PricingTierLabelCleared() {
+		_spec.ClearField(paymentorder.FieldPricingTierLabel, field.TypeString)
+	}
+	if value, ok := _u.mutation.PricingTierSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldPricingTierSnapshot, field.TypeJSON, value)
+	}
+	if _u.mutation.PricingTierSnapshotCleared() {
+		_spec.ClearField(paymentorder.FieldPricingTierSnapshot, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.CreditedAmount(); ok {
+		_spec.SetField(paymentorder.FieldCreditedAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCreditedAmount(); ok {
+		_spec.AddField(paymentorder.FieldCreditedAmount, field.TypeFloat64, value)
+	}
+	if _u.mutation.CreditedAmountCleared() {
+		_spec.ClearField(paymentorder.FieldCreditedAmount, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)

@@ -40,10 +40,11 @@ func NewSubscriptionHandler(subscriptionService *service.SubscriptionService) *S
 
 // AssignSubscriptionRequest represents assign subscription request
 type AssignSubscriptionRequest struct {
-	UserID       int64  `json:"user_id" binding:"required"`
-	GroupID      int64  `json:"group_id" binding:"required"`
-	ValidityDays int    `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
-	Notes        string `json:"notes"`
+	UserID            int64  `json:"user_id" binding:"required"`
+	GroupID           int64  `json:"group_id" binding:"required"`
+	ValidityDays      int    `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
+	Notes             string `json:"notes"`
+	OverwriteExisting bool   `json:"overwrite_existing"`
 }
 
 // BulkAssignSubscriptionRequest represents bulk assign subscription request
@@ -96,6 +97,77 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 	response.PaginatedWithResult(c, out, toResponsePagination(pagination))
 }
 
+// ListSub2ApiLegacy returns subscription data in the legacy sub2apipay admin shape.
+// Keep it on a separate /admin/sub2api/* route so the current admin UI contract stays unchanged.
+func (h *SubscriptionHandler) ListSub2ApiLegacy(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+
+	var userID, groupID *int64
+	if userIDStr := c.Query("user_id"); userIDStr != "" {
+		if id, err := strconv.ParseInt(userIDStr, 10, 64); err == nil {
+			userID = &id
+		}
+	}
+	if groupIDStr := c.Query("group_id"); groupIDStr != "" {
+		if id, err := strconv.ParseInt(groupIDStr, 10, 64); err == nil {
+			groupID = &id
+		}
+	}
+
+	status := c.Query("status")
+	platform := c.Query("platform")
+	sortBy := c.DefaultQuery("sort_by", "created_at")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
+
+	subscriptions, pag, err := h.subscriptionService.List(c.Request.Context(), page, pageSize, userID, groupID, status, platform, sortBy, sortOrder)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]gin.H, 0, len(subscriptions))
+	var legacyUser any
+	for i := range subscriptions {
+		sub := subscriptions[i]
+		user := dto.UserFromServiceShallow(sub.User)
+		group := dto.GroupFromServiceShallow(sub.Group)
+		if legacyUser == nil && user != nil {
+			legacyUser = user
+		}
+		out = append(out, gin.H{
+			"id":                   sub.ID,
+			"user_id":              sub.UserID,
+			"group_id":             sub.GroupID,
+			"starts_at":            sub.StartsAt,
+			"expires_at":           sub.ExpiresAt,
+			"status":               sub.Status,
+			"daily_usage_usd":      sub.DailyUsageUSD,
+			"weekly_usage_usd":     sub.WeeklyUsageUSD,
+			"monthly_usage_usd":    sub.MonthlyUsageUSD,
+			"daily_window_start":   sub.DailyWindowStart,
+			"weekly_window_start":  sub.WeeklyWindowStart,
+			"monthly_window_start": sub.MonthlyWindowStart,
+			"assigned_by":          sub.AssignedBy,
+			"assigned_at":          sub.AssignedAt,
+			"notes":                sub.Notes,
+			"created_at":           sub.CreatedAt,
+			"updated_at":           sub.UpdatedAt,
+			"user":                 user,
+			"group":                group,
+		})
+	}
+
+	total := int64(len(out))
+	if pag != nil {
+		total = pag.Total
+	}
+	response.Success(c, gin.H{
+		"subscriptions": out,
+		"user":          legacyUser,
+		"total":         total,
+	})
+}
+
 // GetByID handles getting a subscription by ID
 // GET /api/v1/admin/subscriptions/:id
 func (h *SubscriptionHandler) GetByID(c *gin.Context) {
@@ -145,11 +217,12 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 	adminID := getAdminIDFromContext(c)
 
 	subscription, err := h.subscriptionService.AssignSubscription(c.Request.Context(), &service.AssignSubscriptionInput{
-		UserID:       req.UserID,
-		GroupID:      req.GroupID,
-		ValidityDays: req.ValidityDays,
-		AssignedBy:   adminID,
-		Notes:        req.Notes,
+		UserID:            req.UserID,
+		GroupID:           req.GroupID,
+		ValidityDays:      req.ValidityDays,
+		AssignedBy:        adminID,
+		Notes:             req.Notes,
+		OverwriteExisting: req.OverwriteExisting,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

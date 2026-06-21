@@ -137,18 +137,21 @@ func TestVerifyOrderPublicReturnsLegacyOrderState(t *testing.T) {
 	var resp struct {
 		Code int `json:"code"`
 		Data struct {
-			ID           int64   `json:"id"`
-			OutTradeNo   string  `json:"out_trade_no"`
-			Amount       float64 `json:"amount"`
-			PayAmount    float64 `json:"pay_amount"`
-			FeeRate      float64 `json:"fee_rate"`
-			Currency     string  `json:"currency"`
-			PaymentType  string  `json:"payment_type"`
-			OrderType    string  `json:"order_type"`
-			Status       string  `json:"status"`
-			RefundAmount float64 `json:"refund_amount"`
-			CreatedAt    string  `json:"created_at"`
-			ExpiresAt    string  `json:"expires_at"`
+			ID              int64   `json:"id"`
+			OutTradeNo      string  `json:"out_trade_no"`
+			Amount          float64 `json:"amount"`
+			PayAmount       float64 `json:"pay_amount"`
+			FeeRate         float64 `json:"fee_rate"`
+			Currency        string  `json:"currency"`
+			PaymentType     string  `json:"payment_type"`
+			OrderType       string  `json:"order_type"`
+			Status          string  `json:"status"`
+			RefundAmount    float64 `json:"refund_amount"`
+			CreatedAt       string  `json:"created_at"`
+			ExpiresAt       string  `json:"expires_at"`
+			PaymentSuccess  bool    `json:"paymentSuccess"`
+			RechargeSuccess bool    `json:"rechargeSuccess"`
+			RechargeStatus  string  `json:"rechargeStatus"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
@@ -162,6 +165,9 @@ func TestVerifyOrderPublicReturnsLegacyOrderState(t *testing.T) {
 	require.Equal(t, payment.OrderTypeBalance, resp.Data.OrderType)
 	require.Equal(t, service.OrderStatusPending, resp.Data.Status)
 	require.Equal(t, 0.0, resp.Data.RefundAmount)
+	require.False(t, resp.Data.PaymentSuccess)
+	require.False(t, resp.Data.RechargeSuccess)
+	require.Equal(t, "not_paid", resp.Data.RechargeStatus)
 	require.NotEmpty(t, resp.Data.CreatedAt)
 	require.NotEmpty(t, resp.Data.ExpiresAt)
 }
@@ -250,6 +256,9 @@ func TestResolveOrderPublicByResumeTokenReturnsFrontendContractFields(t *testing
 	require.Equal(t, payment.TypeAlipay, resp.Data["payment_type"])
 	require.Equal(t, payment.OrderTypeBalance, resp.Data["order_type"])
 	require.Equal(t, service.OrderStatusPaid, resp.Data["status"])
+	require.Equal(t, true, resp.Data["paymentSuccess"])
+	require.Equal(t, false, resp.Data["rechargeSuccess"])
+	require.Equal(t, "paid_pending", resp.Data["rechargeStatus"])
 	require.Contains(t, resp.Data, "created_at")
 	require.Contains(t, resp.Data, "expires_at")
 	require.Contains(t, resp.Data, "refund_amount")

@@ -11,11 +11,59 @@
           </div>
           <p class="text-sm font-medium text-primary-100">{{ t('redeem.currentBalance') }}</p>
           <p class="mt-2 text-4xl font-bold text-white">
-            ${{ user?.balance?.toFixed(2) || '0.00' }}
+            ${{ totalAvailableBalance.toFixed(2) }}
           </p>
+          <div class="mt-4 grid grid-cols-2 gap-3 text-left">
+            <div class="rounded-xl bg-white/15 px-3 py-2 backdrop-blur-sm">
+              <p class="text-xs text-primary-100">普通余额</p>
+              <p class="mt-1 text-lg font-semibold text-white">${{ baseBalance.toFixed(2) }}</p>
+            </div>
+            <div class="rounded-xl bg-white/15 px-3 py-2 backdrop-blur-sm">
+              <p class="text-xs text-primary-100">限时余额包</p>
+              <p class="mt-1 text-lg font-semibold text-white">
+                ${{ limitedBalance.toFixed(2) }}
+              </p>
+            </div>
+          </div>
           <p class="mt-2 text-sm text-primary-100">
             {{ t('redeem.concurrency') }}: {{ user?.concurrency || 0 }} {{ t('redeem.requests') }}
           </p>
+        </div>
+        <div v-if="balancePackages.length > 0" class="space-y-3 border-t border-gray-100 p-4 dark:border-dark-700">
+          <div class="flex items-center justify-between">
+            <p class="text-sm font-semibold text-gray-900 dark:text-white">限时余额包明细</p>
+            <p class="text-xs text-gray-500 dark:text-dark-400">
+              优先扣最早到期的余额包
+            </p>
+          </div>
+          <div
+            v-for="pkg in balancePackages"
+            :key="pkg.id"
+            class="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/60"
+          >
+            <div class="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                  剩余 ${{ pkg.remaining_amount.toFixed(2) }} / ${{ pkg.amount.toFixed(2) }}
+                </p>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
+                  到期：{{ formatDateTime(pkg.expires_at) }}
+                </p>
+              </div>
+              <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                已用 {{ Math.min(100, Math.max(0, pkg.used_percent)).toFixed(0) }}%
+              </span>
+            </div>
+            <div class="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
+              <div
+                class="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600"
+                :style="{ width: `${Math.min(100, Math.max(0, pkg.used_percent))}%` }"
+              ></div>
+            </div>
+            <p v-if="pkg.redeem_code" class="mt-2 font-mono text-xs text-gray-400 dark:text-dark-500">
+              来源兑换码：{{ pkg.redeem_code.slice(0, 8) }}...
+            </p>
+          </div>
         </div>
       </div>
 
@@ -347,7 +395,8 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useSubscriptionStore } from '@/stores/subscriptions'
-import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
+import { redeemAPI, authAPI, userAPI, type RedeemHistoryItem } from '@/api'
+import type { UserBalancePackage } from '@/api/user'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
@@ -358,6 +407,10 @@ const appStore = useAppStore()
 const subscriptionStore = useSubscriptionStore()
 
 const user = computed(() => authStore.user)
+const balancePackages = ref<UserBalancePackage[]>([])
+const limitedBalance = ref(0)
+const baseBalance = computed(() => user.value?.balance || 0)
+const totalAvailableBalance = computed(() => baseBalance.value + limitedBalance.value)
 
 const redeemCode = ref('')
 const submitting = ref(false)
@@ -431,6 +484,18 @@ const fetchHistory = async () => {
   }
 }
 
+const fetchBalancePackages = async () => {
+  try {
+    const data = await userAPI.getBalancePackages()
+    limitedBalance.value = data.total_limited_balance || 0
+    balancePackages.value = data.packages || []
+  } catch (error) {
+    console.error('Failed to fetch balance packages:', error)
+    limitedBalance.value = 0
+    balancePackages.value = []
+  }
+}
+
 const handleRedeem = async () => {
   if (!redeemCode.value.trim()) {
     appStore.showError(t('redeem.pleaseEnterCode'))
@@ -448,6 +513,7 @@ const handleRedeem = async () => {
 
     // Refresh user data to get updated balance/concurrency
     await authStore.refreshUser()
+    await fetchBalancePackages()
 
     // If subscription type, immediately refresh subscription status
     if (result.type === 'subscription') {
@@ -478,6 +544,7 @@ const handleRedeem = async () => {
 
 onMounted(async () => {
   fetchHistory()
+  fetchBalancePackages()
   try {
     const settings = await authAPI.getPublicSettings()
     contactInfo.value = settings.contact_info || ''

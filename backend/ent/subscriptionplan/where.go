@@ -80,7 +80,7 @@ func OriginalPrice(v float64) predicate.SubscriptionPlan {
 }
 
 // ValidityDays applies equality check predicate on the "validity_days" field. It's identical to ValidityDaysEQ.
-func ValidityDays(v int) predicate.SubscriptionPlan {
+func ValidityDays(v float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldValidityDays, v))
 }
 
@@ -380,42 +380,42 @@ func OriginalPriceNotNil() predicate.SubscriptionPlan {
 }
 
 // ValidityDaysEQ applies the EQ predicate on the "validity_days" field.
-func ValidityDaysEQ(v int) predicate.SubscriptionPlan {
+func ValidityDaysEQ(v float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldValidityDays, v))
 }
 
 // ValidityDaysNEQ applies the NEQ predicate on the "validity_days" field.
-func ValidityDaysNEQ(v int) predicate.SubscriptionPlan {
+func ValidityDaysNEQ(v float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldNEQ(FieldValidityDays, v))
 }
 
 // ValidityDaysIn applies the In predicate on the "validity_days" field.
-func ValidityDaysIn(vs ...int) predicate.SubscriptionPlan {
+func ValidityDaysIn(vs ...float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldIn(FieldValidityDays, vs...))
 }
 
 // ValidityDaysNotIn applies the NotIn predicate on the "validity_days" field.
-func ValidityDaysNotIn(vs ...int) predicate.SubscriptionPlan {
+func ValidityDaysNotIn(vs ...float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldNotIn(FieldValidityDays, vs...))
 }
 
 // ValidityDaysGT applies the GT predicate on the "validity_days" field.
-func ValidityDaysGT(v int) predicate.SubscriptionPlan {
+func ValidityDaysGT(v float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldGT(FieldValidityDays, v))
 }
 
 // ValidityDaysGTE applies the GTE predicate on the "validity_days" field.
-func ValidityDaysGTE(v int) predicate.SubscriptionPlan {
+func ValidityDaysGTE(v float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldGTE(FieldValidityDays, v))
 }
 
 // ValidityDaysLT applies the LT predicate on the "validity_days" field.
-func ValidityDaysLT(v int) predicate.SubscriptionPlan {
+func ValidityDaysLT(v float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldLT(FieldValidityDays, v))
 }
 
 // ValidityDaysLTE applies the LTE predicate on the "validity_days" field.
-func ValidityDaysLTE(v int) predicate.SubscriptionPlan {
+func ValidityDaysLTE(v float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldLTE(FieldValidityDays, v))
 }
 
