@@ -8,15 +8,15 @@ export default {
     switchToDark: 'Switch to Dark Mode',
     dashboard: 'Dashboard',
     login: 'Login',
-    getStarted: 'Get Started',
+    getStarted: 'Log In',
     goToDashboard: 'Go to Dashboard',
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
-    heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
+    heroDescription: 'No need to manage multiple subscriptions. Access GPT and Codex models with a single API key',
     tags: {
       subscriptionToApi: 'Subscription to API',
       stickySession: 'Session Persistence',
-      realtimeBilling: 'Pay As You Go'
+      realtimeBilling: 'Daily Refresh'
     },
     // Pain points section
     painPoints: {
@@ -46,12 +46,12 @@ export default {
       subtitle: 'Three simple steps to stress-free AI access'
     },
     features: {
-      unifiedGateway: 'One-Click Access',
-      unifiedGatewayDesc: 'Get a single API key to call all connected AI models. No separate applications needed.',
-      multiAccount: 'Always Reliable',
-      multiAccountDesc: 'Smart routing across multiple upstream accounts with automatic failover. Say goodbye to errors.',
-      balanceQuota: 'Pay What You Use',
-      balanceQuotaDesc: 'Usage-based billing with quota limits. Full visibility into team consumption.'
+      unifiedGateway: '29 RMB Plan',
+      unifiedGatewayDesc: 'Monthly subscription - duration 30 days, daily limit 19 USD, refreshes at 24:00',
+      multiAccount: '39 RMB Plan',
+      multiAccountDesc: 'Monthly subscription - duration 30 days, daily limit 29 USD, refreshes at 24:00',
+      balanceQuota: '59 RMB Plan',
+      balanceQuotaDesc: 'Monthly subscription - duration 30 days, daily limit 49 USD, refreshes at 24:00'
     },
     // Comparison section
     comparison: {
@@ -91,12 +91,12 @@ export default {
     },
     providers: {
       title: 'Supported AI Models',
-      description: 'One API, Multiple Choices',
+      description: 'Currently available models',
       supported: 'Supported',
       soon: 'Soon',
-      claude: 'Claude',
-      gemini: 'Gemini',
-      antigravity: 'Antigravity',
+      claude: 'GPT 5.3',
+      gemini: 'Codex 5.4',
+      antigravity: 'GPT 5.5',
       more: 'More'
     },
     // CTA section

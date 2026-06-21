@@ -8,15 +8,15 @@ export default {
     switchToDark: '切换到深色模式',
     dashboard: '控制台',
     login: '登录',
-    getStarted: '立即开始',
+    getStarted: '立即登录',
     goToDashboard: '进入控制台',
     // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
-    heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
+    heroDescription: '无需管理多个订阅账号，一站式接入 GPT 与 Codex 等 AI 服务',
     tags: {
       subscriptionToApi: '订阅转 API',
       stickySession: '会话保持',
-      realtimeBilling: '按量计费'
+      realtimeBilling: '每日刷新'
     },
     // 用户痛点区块
     painPoints: {
@@ -46,12 +46,12 @@ export default {
       subtitle: '简单三步，开始省心使用 AI'
     },
     features: {
-      unifiedGateway: '一键接入',
-      unifiedGatewayDesc: '获取一个 API 密钥，即可调用所有已接入的 AI 模型，无需分别申请。',
-      multiAccount: '稳定可靠',
-      multiAccountDesc: '智能调度多个上游账号，自动切换和负载均衡，告别频繁报错。',
-      balanceQuota: '用多少付多少',
-      balanceQuotaDesc: '按实际使用量计费，支持设置配额上限，团队用量一目了然。'
+      unifiedGateway: '29 元套餐',
+      unifiedGatewayDesc: '月度订阅-时间 30天，日限额 19刀，24点刷新',
+      multiAccount: '39 元套餐',
+      multiAccountDesc: '月度订阅-时间 30天，日限额 29刀，24点刷新',
+      balanceQuota: '59 元套餐',
+      balanceQuotaDesc: '月度订阅-时间 30天，日限额 49刀，24点刷新'
     },
     // 优势对比
     comparison: {
@@ -91,12 +91,12 @@ export default {
     },
     providers: {
       title: '已支持的 AI 模型',
-      description: '一个 API，多种选择',
+      description: '当前可用模型',
       supported: '已支持',
       soon: '即将推出',
-      claude: 'Claude',
-      gemini: 'Gemini',
-      antigravity: 'Antigravity',
+      claude: 'GPT 5.3',
+      gemini: 'Codex 5.4',
+      antigravity: 'GPT 5.5',
       more: '更多'
     },
     // CTA 区块

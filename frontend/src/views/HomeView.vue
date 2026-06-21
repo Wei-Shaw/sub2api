@@ -54,7 +54,7 @@
             <Icon v-else name="moon" size="md" />
           </button>
 
-          <!-- Login / Dashboard Button -->
+          <!-- Dashboard Button -->
           <router-link
             v-if="isAuthenticated"
             :to="dashboardPath"
@@ -79,13 +79,6 @@
                 d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"
               />
             </svg>
-          </router-link>
-          <router-link
-            v-else
-            to="/login"
-            class="inline-flex items-center rounded-md bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-dark-950 dark:hover:bg-white"
-          >
-            {{ t('home.login') }}
           </router-link>
         </div>
       </nav>
@@ -274,7 +267,22 @@
         </div>
 
         <div class="mb-16 flex flex-wrap items-center justify-center gap-4">
-          <!-- Claude - Supported -->
+          <!-- GPT 5.3 - Supported -->
+          <div
+            class="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-5 py-3 dark:border-dark-700 dark:bg-dark-900"
+          >
+            <div
+              class="flex h-8 w-8 items-center justify-center rounded-md bg-gray-900 dark:bg-gray-100"
+            >
+              <span class="text-xs font-bold text-white dark:text-dark-950">G</span>
+            </div>
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">GPT 5.3</span>
+            <span
+              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200"
+              >{{ t('home.providers.supported') }}</span
+            >
+          </div>
+          <!-- Codex 5.4 - Supported -->
           <div
             class="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-5 py-3 dark:border-dark-700 dark:bg-dark-900"
           >
@@ -283,13 +291,13 @@
             >
               <span class="text-xs font-bold text-white dark:text-dark-950">C</span>
             </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.claude') }}</span>
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">Codex 5.4</span>
             <span
               class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200"
               >{{ t('home.providers.supported') }}</span
             >
           </div>
-          <!-- GPT - Supported -->
+          <!-- GPT 5.5 - Supported -->
           <div
             class="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-5 py-3 dark:border-dark-700 dark:bg-dark-900"
           >
@@ -298,55 +306,10 @@
             >
               <span class="text-xs font-bold text-white dark:text-dark-950">G</span>
             </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">GPT</span>
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">GPT 5.5</span>
             <span
               class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200"
               >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Gemini - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-5 py-3 dark:border-dark-700 dark:bg-dark-900"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-md bg-gray-900 dark:bg-gray-100"
-            >
-              <span class="text-xs font-bold text-white dark:text-dark-950">G</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.gemini') }}</span>
-            <span
-              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Antigravity - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-5 py-3 dark:border-dark-700 dark:bg-dark-900"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-md bg-gray-900 dark:bg-gray-100"
-            >
-              <span class="text-xs font-bold text-white dark:text-dark-950">A</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.antigravity') }}</span>
-            <span
-              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- More - Coming Soon -->
-          <div
-            class="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-5 py-3 opacity-60 dark:border-dark-700 dark:bg-dark-900"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-md bg-gray-700 dark:bg-dark-700"
-            >
-              <span class="text-xs font-bold text-white">+</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.more') }}</span>
-            <span
-              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400"
-              >{{ t('home.providers.soon') }}</span
             >
           </div>
         </div>
