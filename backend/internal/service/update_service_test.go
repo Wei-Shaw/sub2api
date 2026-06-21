@@ -62,3 +62,10 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.True(t, errors.Is(err, ErrNoUpdateAvailable))
 	require.ErrorIs(t, err, ErrNoUpdateAvailable)
 }
+
+func TestCompareVersionsAllowsCustomBuildSuffix(t *testing.T) {
+	require.Zero(t, compareVersions("0.1.137-custom", "0.1.137"))
+	require.Zero(t, compareVersions("v0.1.137-upstream-compat-20260618", "v0.1.137"))
+	require.Equal(t, -1, compareVersions("0.1.136-custom", "0.1.137"))
+	require.Equal(t, 1, compareVersions("0.1.138-custom", "0.1.137"))
+}
