@@ -148,7 +148,7 @@ REDACTED
 	if req.ExpiresAt != nil {
 		if *req.ExpiresAt == 0 {
 			// 0 表示清除过期时间
-			input.ExpiresAt = nil
+			input.ExpiresAt = &time.Time{REDACTED
 	REDACTED else {
 			t := time.Unix(*req.ExpiresAt, 0)
 			input.ExpiresAt = &t
