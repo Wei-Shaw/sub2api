@@ -752,6 +752,37 @@ func (s *AccountRepoSuite) TestTempUnschedulableFieldsLoadedByGetByIDAndGetByIDs
 	s.Require().Equal("", cacheRecorder.setAccounts[0].TempUnschedulableReason)
 }
 
+func (s *AccountRepoSuite) TestSetTempUnschedulableSkipsOutboxWhenWindowDoesNotExtend() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-temp-noop"})
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
+
+	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
+
+	until := time.Now().Add(30 * time.Minute).UTC().Truncate(time.Second)
+	s.Require().NoError(s.repo.SetTempUnschedulable(s.ctx, account.ID, until, "first"))
+
+	var count int
+	err = scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &count)
+	s.Require().NoError(err)
+	s.Require().Equal(1, count)
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+
+	s.Require().NoError(s.repo.SetTempUnschedulable(s.ctx, account.ID, until.Add(-5*time.Minute), "older"))
+
+	err = scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &count)
+	s.Require().NoError(err)
+	s.Require().Equal(1, count)
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal("first", got.TempUnschedulableReason)
+	s.Require().NotNil(got.TempUnschedulableUntil)
+	s.Require().WithinDuration(until, *got.TempUnschedulableUntil, time.Second)
+}
+
 func (s *AccountRepoSuite) TestClearModelRateLimits_SyncsSchedulerSnapshot() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name: "acc-clear-model-rate",

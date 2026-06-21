@@ -205,26 +205,6 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	// For Gemini native API, do not send Claude-style ping frames.
 	geminiConcurrency := NewConcurrencyHelper(h.concurrencyHelper.concurrencyService, SSEPingFormatNone, 0)
 
-	// 0) wait queue check
-	maxWait := service.CalculateMaxWait(authSubject.Concurrency)
-	canWait, err := geminiConcurrency.IncrementWaitCount(c.Request.Context(), authSubject.UserID, maxWait)
-	waitCounted := false
-	if err != nil {
-		reqLog.Warn("gemini.user_wait_counter_increment_failed", zap.Error(err))
-	} else if !canWait {
-		reqLog.Info("gemini.user_wait_queue_full", zap.Int("max_wait", maxWait))
-		googleError(c, http.StatusTooManyRequests, "Too many pending requests, please retry later")
-		return
-	}
-	if err == nil && canWait {
-		waitCounted = true
-	}
-	defer func() {
-		if waitCounted {
-			geminiConcurrency.DecrementWaitCount(c.Request.Context(), authSubject.UserID)
-		}
-	}()
-
 	// 1) user concurrency slot
 	streamStarted := false
 	if h.errorPassthroughService != nil {
@@ -235,10 +215,6 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		reqLog.Warn("gemini.user_slot_acquire_failed", zap.Error(err))
 		googleError(c, http.StatusTooManyRequests, err.Error())
 		return
-	}
-	if waitCounted {
-		geminiConcurrency.DecrementWaitCount(c.Request.Context(), authSubject.UserID)
-		waitCounted = false
 	}
 	// 确保请求取消时也会释放槽位，避免长连接被动中断造成泄漏
 	userReleaseFunc = wrapReleaseOnDone(c.Request.Context(), userReleaseFunc)

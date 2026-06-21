@@ -549,6 +549,10 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			return
 		}
 
+		if shouldSkipOpsErrorLogForCyber(c) {
+			return
+		}
+
 		status := c.Writer.Status()
 		if status < 400 {
 			// Even when the client request succeeds, we still want to persist upstream error attempts
@@ -1466,4 +1470,10 @@ func shouldSkipOpsErrorLog(ctx context.Context, ops *service.OpsService, message
 	}
 
 	return false
+}
+
+// shouldSkipOpsErrorLogForCyber：cyber_policy 命中的请求由 recordCyberPolicyIfMarked
+// 统一落一条 status=403 的错误请求，故中间件跳过自身落库，避免双写。
+func shouldSkipOpsErrorLogForCyber(c *gin.Context) bool {
+	return service.GetOpsCyberPolicy(c) != nil
 }
