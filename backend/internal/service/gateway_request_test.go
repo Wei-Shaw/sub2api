@@ -1512,3 +1512,96 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+func TestNormalizeGLMOpenAIReasoningEffort(t *testing.T) {
+	tests := []struct {
+		name          string
+		model         string
+		input         string
+		wantApplied   bool
+		wantPath      string
+		wantValue     string
+		wantUnchanged bool
+REDACTED{
+		{
+			name:        "flat xhigh maps to max",
+			model:       "glm-5.2",
+			input:       `{"model":"glm-5.2","reasoning_effort":"xhigh","messages":[]REDACTED`,
+			wantApplied: true,
+			wantPath:    "reasoning_effort",
+			wantValue:   "max",
+	REDACTED,
+		{
+			name:        "flat x-high maps to max",
+			model:       "GLM-5.2",
+			input:       `{"model":"glm-5.2","reasoning_effort":"x-high","messages":[]REDACTED`,
+			wantApplied: true,
+			wantPath:    "reasoning_effort",
+			wantValue:   "max",
+	REDACTED,
+		{
+			name:        "flat ultracode maps to max",
+			model:       "glm-5.2",
+			input:       `{"model":"glm-5.2","reasoning_effort":"ultracode","messages":[]REDACTED`,
+			wantApplied: true,
+			wantPath:    "reasoning_effort",
+			wantValue:   "max",
+	REDACTED,
+		{
+			name:        "flat medium maps to high",
+			model:       "glm-5.2",
+			input:       `{"model":"glm-5.2","reasoning_effort":"medium","messages":[]REDACTED`,
+			wantApplied: true,
+			wantPath:    "reasoning_effort",
+			wantValue:   "high",
+	REDACTED,
+		{
+			name:        "nested high case-normalizes",
+			model:       "glm-5.2",
+			input:       `{"model":"glm-5.2","reasoning":{"effort":"HIGH"REDACTED,"messages":[]REDACTED`,
+			wantApplied: true,
+			wantPath:    "reasoning.effort",
+			wantValue:   "high",
+	REDACTED,
+		{
+			name:          "native max unchanged",
+			model:         "glm-5.2",
+			input:         `{"model":"glm-5.2","reasoning_effort":"max","messages":[]REDACTED`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+		{
+			name:          "non glm unchanged",
+			model:         "deepseek-v4-pro",
+			input:         `{"model":"deepseek-v4-pro","reasoning_effort":"xhigh","messages":[]REDACTED`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+		{
+			name:          "missing effort unchanged",
+			model:         "glm-5.2",
+			input:         `{"model":"glm-5.2","messages":[]REDACTED`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+		{
+			name:          "unknown effort unchanged",
+			model:         "glm-5.2",
+			input:         `{"model":"glm-5.2","reasoning_effort":"banana","messages":[]REDACTED`,
+			wantApplied:   false,
+			wantUnchanged: true,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, applied := NormalizeGLMOpenAIReasoningEffort([]byte(tt.input), tt.model)
+			require.Equal(t, tt.wantApplied, applied)
+			if tt.wantUnchanged {
+				require.Equal(t, tt.input, string(got))
+				return
+		REDACTED
+			require.Equal(t, tt.wantValue, gjson.GetBytes(got, tt.wantPath).String())
+	REDACTED)
+REDACTED
+REDACTED
