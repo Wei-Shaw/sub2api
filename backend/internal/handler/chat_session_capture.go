@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/observability"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/redis/go-redis/v9"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
@@ -44,7 +45,12 @@ type chatSessionRecordTask struct {
 var (
 	chatSessionRecordQueue     chan chatSessionRecordTask
 	chatSessionRecordQueueOnce sync.Once
+	chatSessionPayloadRedis    *redis.Client
 )
+
+func ConfigureChatSessionPayloadQueue(rdb *redis.Client) {
+	chatSessionPayloadRedis = rdb
+}
 
 func recordChatSessionAsync(
 	ctx context.Context,
@@ -171,6 +177,12 @@ func recordChatSessionTaskWithTimeout(task chatSessionRecordTask) {
 	if len(messages) == 0 && len(events) == 0 {
 		return
 	}
+	for _, msg := range messages {
+		if len(msg.ContentJSON) == 0 {
+			continue
+		}
+		enqueueChatSessionPayloadTask(task.payload, msg.Role, msg.Direction, "message", msg.ContentJSON)
+	}
 	task.payload.Messages = messages
 	task.payload.Events = events
 	recordChatSessionWithTimeout(task.recorder, task.payload)
@@ -236,12 +248,9 @@ func buildChatSessionMessages(
 
 	var inboundMessages []service.ChatMessageRecordInput
 	if len(requestBodyRef) > 0 {
-		inboundMessages = []service.ChatMessageRecordInput{{
-			Role:        "user",
-			Direction:   "inbound",
-			ContentText: strings.TrimSpace(requestBodySummary),
-			ContentJSON: requestBodyRef,
-		}}
+		inboundMessages = []service.ChatMessageRecordInput{
+			chatMessageInputFromPayloadRef("user", "inbound", requestBodySummary, requestBodyRef),
+		}
 	} else if len(requestBody) == 0 && strings.TrimSpace(requestBodySummary) != "" {
 		inboundMessages = []service.ChatMessageRecordInput{{
 			Role:        "user",
@@ -257,15 +266,22 @@ func buildChatSessionMessages(
 	if text := strings.TrimSpace(finalOutputText); text != "" {
 		contentJSON := chooseAssistantContentJSON(finalOutputJSON, text)
 		if len(finalOutputJSONRef) > 0 {
-			contentJSON = finalOutputJSONRef
+			contentJSON = chooseAssistantContentJSONRef(finalOutputJSONRef, text)
 		}
-		messages = append(messages, service.ChatMessageRecordInput{
-			Role:        "assistant",
-			Direction:   "outbound",
-			ContentText: text,
-			ContentJSON: contentJSON,
-		})
+		if len(finalOutputJSONRef) > 0 && bytes.Equal(bytes.TrimSpace(contentJSON), bytes.TrimSpace(finalOutputJSONRef)) {
+			messages = append(messages, chatMessageInputFromPayloadRef("assistant", "outbound", text, finalOutputJSONRef))
+		} else {
+			messages = append(messages, service.ChatMessageRecordInput{
+				Role:        "assistant",
+				Direction:   "outbound",
+				ContentText: text,
+				ContentJSON: contentJSON,
+			})
+		}
 	} else if len(finalOutputJSON) > 0 {
+		if looksLikeInboundRequestJSON(finalOutputJSON) {
+			return messages, nil
+		}
 		messages = append(messages, service.ChatMessageRecordInput{
 			Role:        "assistant",
 			Direction:   "outbound",
@@ -273,11 +289,10 @@ func buildChatSessionMessages(
 			ContentJSON: cloneChatRawJSON(finalOutputJSON),
 		})
 	} else if len(finalOutputJSONRef) > 0 {
-		messages = append(messages, service.ChatMessageRecordInput{
-			Role:        "assistant",
-			Direction:   "outbound",
-			ContentJSON: finalOutputJSONRef,
-		})
+		if looksLikeInboundRequestJSON(finalOutputJSONRef) {
+			return messages, nil
+		}
+		messages = append(messages, chatMessageInputFromPayloadRef("assistant", "outbound", "", finalOutputJSONRef))
 	}
 	return messages, nil
 }
@@ -612,6 +627,12 @@ func cloneChatRawJSON(body json.RawMessage) json.RawMessage {
 }
 
 func chooseAssistantContentJSON(raw json.RawMessage, text string) json.RawMessage {
+	if looksLikeInboundRequestJSON(raw) {
+		return marshalChatContentJSON(map[string]any{
+			"type": "assistant_text",
+			"text": text,
+		})
+	}
 	if cloned := cloneChatRawJSON(raw); len(cloned) > 0 {
 		return cloned
 	}
@@ -619,6 +640,25 @@ func chooseAssistantContentJSON(raw json.RawMessage, text string) json.RawMessag
 		"type": "assistant_text",
 		"text": text,
 	})
+}
+
+func chooseAssistantContentJSONRef(rawRef json.RawMessage, text string) json.RawMessage {
+	if looksLikeInboundRequestJSON(rawRef) {
+		return chooseAssistantContentJSON(nil, text)
+	}
+	return rawRef
+}
+
+func looksLikeInboundRequestJSON(raw json.RawMessage) bool {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || !json.Valid(raw) {
+		return false
+	}
+	result := gjson.ParseBytes(raw)
+	if result.Get("output").Exists() || result.Get("choices").Exists() || result.Get("usage").Exists() || result.Get("error").Exists() {
+		return false
+	}
+	return result.Get("input").Exists() || result.Get("messages").Exists() || result.Get("tools").Exists() || result.Get("prompt").Exists()
 }
 
 func summarizeChatContentJSON(raw json.RawMessage) string {
@@ -688,6 +728,90 @@ func maybeExternalizeChatSessionCapturePayload(raw []byte, createdAt time.Time, 
 		return nil, summary
 	}
 	return json.RawMessage(body), summary
+}
+
+func chatMessageInputFromPayloadRef(role, direction, text string, refJSON json.RawMessage) service.ChatMessageRecordInput {
+	msg := service.ChatMessageRecordInput{
+		Role:        role,
+		Direction:   direction,
+		ContentText: strings.TrimSpace(text),
+		ContentJSON: refJSON,
+	}
+	ref, ok := decodeChatSessionCapturePayloadRef(refJSON)
+	if !ok {
+		return msg
+	}
+	storage := ref.Storage
+	path := ref.Path
+	sha := ref.SHA256
+	compression := ref.Compression
+	bytesValue := ref.Bytes
+	storedBytesValue := ref.StoredBytes
+	status := "pending"
+	msg.ContentStorage = &storage
+	msg.ContentPath = &path
+	msg.ContentSHA256 = &sha
+	msg.ContentBytes = &bytesValue
+	msg.ContentStoredBytes = &storedBytesValue
+	msg.ContentCompression = &compression
+	msg.ProcessedStatus = &status
+	return msg
+}
+
+func decodeChatSessionCapturePayloadRef(raw json.RawMessage) (chatSessionCapturePayloadRef, bool) {
+	var ref chatSessionCapturePayloadRef
+	if len(bytes.TrimSpace(raw)) == 0 || json.Unmarshal(raw, &ref) != nil {
+		return chatSessionCapturePayloadRef{}, false
+	}
+	if strings.TrimSpace(ref.Storage) != "file" || strings.TrimSpace(ref.Path) == "" {
+		return chatSessionCapturePayloadRef{}, false
+	}
+	ref.Storage = strings.TrimSpace(ref.Storage)
+	ref.Path = strings.TrimSpace(ref.Path)
+	ref.SHA256 = strings.TrimSpace(ref.SHA256)
+	ref.Compression = strings.TrimSpace(ref.Compression)
+	return ref, true
+}
+
+func enqueueChatSessionPayloadTask(payload *service.ChatSessionRecordInput, role, direction, kind string, refJSON json.RawMessage) {
+	if chatSessionPayloadRedis == nil {
+		return
+	}
+	ref, ok := decodeChatSessionCapturePayloadRef(refJSON)
+	if !ok {
+		return
+	}
+	task := service.ChatSessionPayloadTask{
+		Role:        role,
+		Direction:   direction,
+		Kind:        kind,
+		Path:        ref.Path,
+		SHA256:      ref.SHA256,
+		Bytes:       ref.Bytes,
+		StoredBytes: ref.StoredBytes,
+		Compression: ref.Compression,
+	}
+	if payload != nil {
+		task.SessionKey = payload.SessionKey
+		task.RequestID = payload.RequestID
+		task.UserID = payload.UserID
+		task.APIKeyID = payload.APIKeyID
+		if !payload.CreatedAt.IsZero() {
+			task.CreatedAtUTC = payload.CreatedAt.UTC().Format(time.RFC3339Nano)
+		}
+	}
+	body, err := json.Marshal(task)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if err := chatSessionPayloadRedis.LPush(ctx, service.ChatSessionPayloadQueueKey, body).Err(); err != nil {
+		logger.L().Warn("chat_session.payload_queue_push_failed",
+			zap.String("path", ref.Path),
+			zap.Error(err),
+		)
+	}
 }
 
 func shouldDropInlineChatSessionCapturePayload(raw []byte) bool {

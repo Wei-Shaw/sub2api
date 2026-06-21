@@ -65,6 +65,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		subscriptionExpirySvc,
 		&service.UsageCleanupService{},
 		&service.ChatSessionRetentionService{},
+		&service.ChatSessionPayloadProcessor{},
 		idempotencyCleanupSvc,
 		pricingSvc,
 		emailQueueSvc,

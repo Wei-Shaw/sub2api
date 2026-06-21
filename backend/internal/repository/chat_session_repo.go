@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -62,9 +63,14 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO chat_messages (
-			session_id, seq, role, direction, content_text, content_json, dedupe_hash, created_at
+			session_id, seq, role, direction, content_text, content_json,
+			content_storage, content_path, content_sha256, content_bytes, content_stored_bytes,
+			content_compression, processed_status,
+			dedupe_hash, created_at
 		) VALUES (
 			$1, $2, $3::text, $4::text, $5::text, $6::jsonb,
+			$7::text, $8::text, $9::text, $10::bigint, $11::bigint,
+			$12::text, $13::text,
 			encode(
 				digest(
 					length(trim($3::text))::text || ':' || trim($3::text) || '|' ||
@@ -72,11 +78,13 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 					length(trim($5::text))::text || ':' || trim($5::text) || '|' ||
 					length(
 						CASE
+							WHEN NULLIF($8::text, '') IS NOT NULL THEN COALESCE(NULLIF($9::text, ''), $8::text)
 							WHEN $6::jsonb ->> 'storage' = 'file' THEN COALESCE(NULLIF($6::jsonb ->> 'sha256', ''), $6::jsonb::text)
 							ELSE COALESCE($6::jsonb::text, '')
 						END
 					)::text || ':' ||
 					CASE
+						WHEN NULLIF($8::text, '') IS NOT NULL THEN COALESCE(NULLIF($9::text, ''), $8::text)
 						WHEN $6::jsonb ->> 'storage' = 'file' THEN COALESCE(NULLIF($6::jsonb ->> 'sha256', ''), $6::jsonb::text)
 						ELSE COALESCE($6::jsonb::text, '')
 					END,
@@ -84,7 +92,7 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 				),
 				'hex'
 			),
-			$7
+			$14
 		)
 		ON CONFLICT (session_id, dedupe_hash)
 		WHERE dedupe_hash IS NOT NULL
@@ -104,6 +112,17 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 		if len(msg.ContentJSON) > 0 {
 			contentJSON = r.prepareContentJSON(ctx, msg.ContentJSON, input.CreatedAt, "message")
 		}
+		meta := chatMessagePayloadMetadataFromInput(msg)
+		if ref, ok := contentJSON.(chatSessionPayloadRef); ok {
+			meta = chatMessagePayloadMetadataFromRef(ref)
+		}
+		if meta.ContentPath != nil {
+			contentJSON = nil
+		}
+		if meta.ProcessedStatus == nil && meta.ContentPath != nil {
+			status := "pending"
+			meta.ProcessedStatus = &status
+		}
 		result, err := stmt.ExecContext(
 			ctx,
 			sessionID,
@@ -112,6 +131,13 @@ func (r *chatSessionRepository) CreateSessionWithMessages(ctx context.Context, i
 			direction,
 			contentText,
 			contentJSON,
+			nullableString(meta.ContentStorage),
+			nullableString(meta.ContentPath),
+			nullableString(meta.ContentSHA256),
+			nullableInt64(meta.ContentBytes),
+			nullableInt64(meta.ContentStoredBytes),
+			nullableString(meta.ContentCompression),
+			nullableString(meta.ProcessedStatus),
 			input.CreatedAt,
 		)
 		if err != nil {
@@ -394,7 +420,11 @@ func (r *chatSessionRepository) GetSessionDetail(ctx context.Context, userID, ap
 
 	offset := (params.Page - 1) * params.PageSize
 	rows, err := r.sql.QueryContext(ctx, `
-		SELECT id, session_id, seq, role, direction, content_text, has_content_json, content_json_bytes, created_at
+		SELECT id, session_id, seq, role, direction, content_text,
+			has_content_json, content_json_bytes,
+			content_storage, content_path, content_sha256, content_bytes, content_stored_bytes,
+			content_compression, processed_status, processed_at, processed_error,
+			created_at
 		FROM (
 			SELECT
 				id,
@@ -405,6 +435,15 @@ func (r *chatSessionRepository) GetSessionDetail(ctx context.Context, userID, ap
 				content_text,
 				content_json IS NOT NULL AS has_content_json,
 				COALESCE(pg_column_size(content_json), 0)::BIGINT AS content_json_bytes,
+				content_storage,
+				content_path,
+				content_sha256,
+				content_bytes,
+				content_stored_bytes,
+				content_compression,
+				processed_status,
+				processed_at,
+				processed_error,
 				created_at
 			FROM chat_messages
 			WHERE session_id = $1
@@ -430,6 +469,15 @@ func (r *chatSessionRepository) GetSessionDetail(ctx context.Context, userID, ap
 			&msg.ContentText,
 			&msg.HasContentJSON,
 			&msg.ContentJSONBytes,
+			&msg.ContentStorage,
+			&msg.ContentPath,
+			&msg.ContentSHA256,
+			&msg.ContentBytes,
+			&msg.ContentStoredBytes,
+			&msg.ContentCompression,
+			&msg.ProcessedStatus,
+			&msg.ProcessedAt,
+			&msg.ProcessedError,
 			&msg.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -475,6 +523,15 @@ func (r *chatSessionRepository) GetChatMessageDetail(ctx context.Context, userID
 			m.content_json,
 			m.content_json IS NOT NULL AS has_content_json,
 			COALESCE(pg_column_size(m.content_json), 0)::BIGINT AS content_json_bytes,
+			m.content_storage,
+			m.content_path,
+			m.content_sha256,
+			m.content_bytes,
+			m.content_stored_bytes,
+			m.content_compression,
+			m.processed_status,
+			m.processed_at,
+			m.processed_error,
 			m.created_at
 		FROM chat_messages m
 		INNER JOIN chat_sessions s ON s.id = m.session_id
@@ -493,11 +550,20 @@ func (r *chatSessionRepository) GetChatMessageDetail(ctx context.Context, userID
 		&contentJSON,
 		&msg.HasContentJSON,
 		&msg.ContentJSONBytes,
+		&msg.ContentStorage,
+		&msg.ContentPath,
+		&msg.ContentSHA256,
+		&msg.ContentBytes,
+		&msg.ContentStoredBytes,
+		&msg.ContentCompression,
+		&msg.ProcessedStatus,
+		&msg.ProcessedAt,
+		&msg.ProcessedError,
 		&msg.CreatedAt,
 	); err != nil {
 		return nil, err
 	}
-	msg.ContentJSON = r.resolveContentJSON(ctx, contentJSON)
+	msg.ContentJSON = r.resolveContentJSONFromPath(ctx, contentJSON, msg.ContentPath, msg.ContentCompression, msg.ContentSHA256)
 	msg.HasContentJSON = len(msg.ContentJSON) > 0
 	msg.ContentJSONBytes = int64(len(msg.ContentJSON))
 	return &msg, nil
@@ -509,7 +575,10 @@ func (r *chatSessionRepository) ListRecentMessagesByAPIKey(ctx context.Context, 
 	}
 
 	rows, err := r.sql.QueryContext(ctx, `
-		SELECT id, session_id, seq, role, direction, content_text, content_json, created_at
+		SELECT id, session_id, seq, role, direction, content_text, content_json,
+			content_storage, content_path, content_sha256, content_bytes, content_stored_bytes,
+			content_compression, processed_status, processed_at, processed_error,
+			created_at
 		FROM (
 			SELECT
 				m.id,
@@ -519,6 +588,15 @@ func (r *chatSessionRepository) ListRecentMessagesByAPIKey(ctx context.Context, 
 				m.direction,
 				m.content_text,
 				m.content_json,
+				m.content_storage,
+				m.content_path,
+				m.content_sha256,
+				m.content_bytes,
+				m.content_stored_bytes,
+				m.content_compression,
+				m.processed_status,
+				m.processed_at,
+				m.processed_error,
 				m.created_at
 			FROM chat_messages m
 			INNER JOIN chat_sessions s ON s.id = m.session_id
@@ -545,11 +623,20 @@ func (r *chatSessionRepository) ListRecentMessagesByAPIKey(ctx context.Context, 
 			&msg.Direction,
 			&msg.ContentText,
 			&contentJSON,
+			&msg.ContentStorage,
+			&msg.ContentPath,
+			&msg.ContentSHA256,
+			&msg.ContentBytes,
+			&msg.ContentStoredBytes,
+			&msg.ContentCompression,
+			&msg.ProcessedStatus,
+			&msg.ProcessedAt,
+			&msg.ProcessedError,
 			&msg.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
-		msg.ContentJSON = r.resolveContentJSON(ctx, contentJSON)
+		msg.ContentJSON = r.resolveContentJSONFromPath(ctx, contentJSON, msg.ContentPath, msg.ContentCompression, msg.ContentSHA256)
 		out = append(out, msg)
 	}
 	return out, rows.Err()
@@ -660,6 +747,64 @@ func buildChatSessionPreviews(messages []service.ChatMessageRecordInput) (*strin
 	return userPreview, assistantPreview
 }
 
+type chatMessagePayloadMetadata struct {
+	ContentStorage     *string
+	ContentPath        *string
+	ContentSHA256      *string
+	ContentBytes       *int64
+	ContentStoredBytes *int64
+	ContentCompression *string
+	ProcessedStatus    *string
+}
+
+func chatMessagePayloadMetadataFromInput(msg service.ChatMessageRecordInput) chatMessagePayloadMetadata {
+	meta := chatMessagePayloadMetadata{
+		ContentStorage:     msg.ContentStorage,
+		ContentPath:        msg.ContentPath,
+		ContentSHA256:      msg.ContentSHA256,
+		ContentBytes:       msg.ContentBytes,
+		ContentStoredBytes: msg.ContentStoredBytes,
+		ContentCompression: msg.ContentCompression,
+		ProcessedStatus:    msg.ProcessedStatus,
+	}
+	if meta.ContentPath != nil || len(msg.ContentJSON) == 0 {
+		return meta
+	}
+	if ref, ok := decodeChatSessionPayloadRef(msg.ContentJSON); ok {
+		return chatMessagePayloadMetadataFromRef(ref)
+	}
+	return meta
+}
+
+func chatMessagePayloadMetadataFromRef(ref chatSessionPayloadRef) chatMessagePayloadMetadata {
+	storage := strings.TrimSpace(ref.Storage)
+	path := strings.TrimSpace(ref.Path)
+	sha := strings.TrimSpace(ref.SHA256)
+	compression := strings.TrimSpace(ref.Compression)
+	bytesValue := ref.Bytes
+	storedBytesValue := ref.StoredBytes
+	meta := chatMessagePayloadMetadata{}
+	if storage != "" {
+		meta.ContentStorage = &storage
+	}
+	if path != "" {
+		meta.ContentPath = &path
+	}
+	if sha != "" {
+		meta.ContentSHA256 = &sha
+	}
+	if bytesValue > 0 {
+		meta.ContentBytes = &bytesValue
+	}
+	if storedBytesValue > 0 {
+		meta.ContentStoredBytes = &storedBytesValue
+	}
+	if compression != "" {
+		meta.ContentCompression = &compression
+	}
+	return meta
+}
+
 func truncateChatPreview(value string, maxLen int) string {
 	value = strings.TrimSpace(value)
 	if value == "" || maxLen <= 0 {
@@ -675,6 +820,13 @@ func truncateChatPreview(value string, maxLen int) string {
 func nullableString(value *string) any {
 	if value == nil {
 		return nil
+	}
+	return *value
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
 	}
 	return *value
 }
@@ -715,6 +867,13 @@ func (r *chatSessionRepository) DeleteSessionsBefore(ctx context.Context, cutoff
 		r.payloadStore.DeleteDateDirsBefore(cutoff)
 	}
 	return deleted, nil
+}
+
+func (r *chatSessionRepository) DeleteOldestPayloadDayIfLowDisk(ctx context.Context, minFreeBytes uint64, minKeepDays int) (*service.ChatSessionPayloadCleanupResult, error) {
+	if r == nil || r.payloadStore == nil {
+		return &service.ChatSessionPayloadCleanupResult{ThresholdBytes: minFreeBytes}, nil
+	}
+	return r.payloadStore.DeleteOldestDateDirIfLowDisk(ctx, minFreeBytes, minKeepDays)
 }
 
 type chatSessionPayloadStore struct {
@@ -775,9 +934,32 @@ func (r *chatSessionRepository) resolveContentJSON(ctx context.Context, raw []by
 	}
 	resolved, err := r.payloadStore.Load(ctx, raw)
 	if err != nil {
+		if fallback, ok := r.payloadStore.LoadIgnoringSHA(ctx, raw); ok {
+			return fallback
+		}
 		return json.RawMessage(raw)
 	}
 	return resolved
+}
+
+func (r *chatSessionRepository) resolveContentJSONFromPath(ctx context.Context, raw []byte, path *string, compression *string, sha *string) json.RawMessage {
+	if len(raw) > 0 {
+		return r.resolveContentJSON(ctx, raw)
+	}
+	if r == nil || r.payloadStore == nil || path == nil || strings.TrimSpace(*path) == "" {
+		return nil
+	}
+	ref := chatSessionPayloadRef{
+		Storage:     chatSessionPayloadStorageFile,
+		Path:        strings.TrimSpace(*path),
+		Compression: strings.TrimSpace(stringValue(compression)),
+		SHA256:      strings.TrimSpace(stringValue(sha)),
+	}
+	body, err := json.Marshal(ref)
+	if err != nil {
+		return nil
+	}
+	return r.resolveContentJSON(ctx, body)
 }
 
 func (s *chatSessionPayloadStore) Store(ctx context.Context, raw json.RawMessage, createdAt time.Time, kind string) (any, error) {
@@ -854,6 +1036,23 @@ func (s *chatSessionPayloadStore) Load(ctx context.Context, raw []byte) (json.Ra
 	return json.RawMessage(data), nil
 }
 
+func (s *chatSessionPayloadStore) LoadIgnoringSHA(ctx context.Context, raw []byte) (json.RawMessage, bool) {
+	ref, ok := decodeChatSessionPayloadRef(raw)
+	if !ok || strings.TrimSpace(ref.Path) == "" {
+		return nil, false
+	}
+	ref.SHA256 = ""
+	body, err := json.Marshal(ref)
+	if err != nil {
+		return nil, false
+	}
+	resolved, err := s.Load(ctx, body)
+	if err != nil || !json.Valid(resolved) {
+		return nil, false
+	}
+	return resolved, true
+}
+
 func (s *chatSessionPayloadStore) DeleteDateDirsBefore(cutoff time.Time) {
 	if s == nil || strings.TrimSpace(s.baseDir) == "" || cutoff.IsZero() {
 		return
@@ -877,6 +1076,113 @@ func (s *chatSessionPayloadStore) DeleteDateDirsBefore(cutoff time.Time) {
 		}
 		_ = os.RemoveAll(fullPath)
 	}
+}
+
+func (s *chatSessionPayloadStore) DeleteOldestDateDirIfLowDisk(ctx context.Context, minFreeBytes uint64, minKeepDays int) (*service.ChatSessionPayloadCleanupResult, error) {
+	result := &service.ChatSessionPayloadCleanupResult{ThresholdBytes: minFreeBytes}
+	if s == nil || strings.TrimSpace(s.baseDir) == "" || minFreeBytes == 0 {
+		return result, nil
+	}
+	basePath, err := s.ensureBaseDirForDiskCheck()
+	if err != nil {
+		return nil, err
+	}
+	availableBytes, err := availableDiskBytes(basePath)
+	if err != nil {
+		return nil, err
+	}
+	result.AvailableBytes = availableBytes
+	if availableBytes >= minFreeBytes {
+		return result, nil
+	}
+	result.Triggered = true
+	oldest, err := s.oldestDeletableDateDir(minKeepDays)
+	if err != nil {
+		return nil, err
+	}
+	if oldest == "" {
+		return result, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	fullPath, err := s.safePath(oldest)
+	if err != nil {
+		return nil, err
+	}
+	freedEstimate := dirSizeBytes(fullPath)
+	if err := os.RemoveAll(fullPath); err != nil {
+		return result, err
+	}
+	result.Deleted = true
+	result.DeletedDate = oldest
+	result.DeletedPath = fullPath
+	result.FreedEstimateBytes = freedEstimate
+	return result, nil
+}
+
+func (s *chatSessionPayloadStore) ensureBaseDirForDiskCheck() (string, error) {
+	if s == nil || strings.TrimSpace(s.baseDir) == "" {
+		return "", errors.New("chat session payload store not configured")
+	}
+	baseAbs, err := filepath.Abs(s.baseDir)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(baseAbs, 0750); err != nil {
+		return "", err
+	}
+	return baseAbs, nil
+}
+
+func (s *chatSessionPayloadStore) oldestDeletableDateDir(minKeepDays int) (string, error) {
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -minKeepDays)
+	cutoffDay := time.Date(cutoff.Year(), cutoff.Month(), cutoff.Day(), 0, 0, 0, 0, time.UTC)
+	oldest := ""
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		day, err := time.Parse("2006-01-02", entry.Name())
+		if err != nil || !day.Before(cutoffDay) {
+			continue
+		}
+		if oldest == "" || entry.Name() < oldest {
+			oldest = entry.Name()
+		}
+	}
+	return oldest, nil
+}
+
+func availableDiskBytes(path string) (uint64, error) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err != nil {
+		return 0, err
+	}
+	return stat.Bavail * uint64(stat.Bsize), nil
+}
+
+func dirSizeBytes(path string) uint64 {
+	var total uint64
+	_ = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || info.Size() <= 0 {
+			return nil
+		}
+		total += uint64(info.Size())
+		return nil
+	})
+	return total
 }
 
 func (s *chatSessionPayloadStore) safePath(relPath string) (string, error) {

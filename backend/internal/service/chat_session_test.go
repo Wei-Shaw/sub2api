@@ -19,6 +19,7 @@ type chatSessionRepoScopeStub struct {
 	deletedCutoffs []time.Time
 	deleteLimit    int
 	deleteBatches  []int64
+	lowDiskCalls   int
 }
 
 func (s *chatSessionRepoScopeStub) CreateSessionWithMessages(context.Context, *ChatSessionRecordInput) error {
@@ -58,6 +59,11 @@ func (s *chatSessionRepoScopeStub) DeleteSessionsBefore(_ context.Context, cutof
 	deleted := s.deleteBatches[0]
 	s.deleteBatches = s.deleteBatches[1:]
 	return deleted, nil
+}
+
+func (s *chatSessionRepoScopeStub) DeleteOldestPayloadDayIfLowDisk(context.Context, uint64, int) (*ChatSessionPayloadCleanupResult, error) {
+	s.lowDiskCalls++
+	return &ChatSessionPayloadCleanupResult{}, nil
 }
 
 func TestChatSessionServiceScopesQueriesByUserAndAPIKey(t *testing.T) {
@@ -111,5 +117,23 @@ func TestChatSessionRetentionServiceRunOnceDeletesUntilBatchShort(t *testing.T) 
 	cutoffAge := time.Since(repo.deletedCutoffs[0])
 	if cutoffAge < 89*24*time.Hour || cutoffAge > 91*24*time.Hour {
 		t.Fatalf("cutoff age = %s, want about 90d", cutoffAge)
+	}
+}
+
+func TestNextChatSessionRetentionRunUsesBeijingThreeAM(t *testing.T) {
+	loc := chatSessionRetentionLocation()
+
+	before := time.Date(2026, 6, 10, 2, 59, 0, 0, loc)
+	got := nextChatSessionRetentionRun(before, loc)
+	want := time.Date(2026, 6, 10, 3, 0, 0, 0, loc)
+	if !got.Equal(want) {
+		t.Fatalf("next run before 03:00 = %s, want %s", got, want)
+	}
+
+	after := time.Date(2026, 6, 10, 3, 1, 0, 0, loc)
+	got = nextChatSessionRetentionRun(after, loc)
+	want = time.Date(2026, 6, 11, 3, 0, 0, 0, loc)
+	if !got.Equal(want) {
+		t.Fatalf("next run after 03:00 = %s, want %s", got, want)
 	}
 }

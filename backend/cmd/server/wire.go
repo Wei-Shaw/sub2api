@@ -85,6 +85,7 @@ func provideCleanup(
 	subscriptionExpiry *service.SubscriptionExpiryService,
 	usageCleanup *service.UsageCleanupService,
 	chatSessionRetention *service.ChatSessionRetentionService,
+	chatSessionPayloadProcessor *service.ChatSessionPayloadProcessor,
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
@@ -164,6 +165,12 @@ func provideCleanup(
 			{"ChatSessionRetentionService", func() error {
 				if chatSessionRetention != nil {
 					chatSessionRetention.Stop()
+				}
+				return nil
+			}},
+			{"ChatSessionPayloadProcessor", func() error {
+				if chatSessionPayloadProcessor != nil {
+					chatSessionPayloadProcessor.Stop()
 				}
 				return nil
 			}},

@@ -5,7 +5,15 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/google/wire"
+	"github.com/redis/go-redis/v9"
 )
+
+type ChatSessionPayloadQueueInitializer struct{}
+
+func ProvideChatSessionPayloadQueueInitializer(rdb *redis.Client) ChatSessionPayloadQueueInitializer {
+	ConfigureChatSessionPayloadQueue(rdb)
+	return ChatSessionPayloadQueueInitializer{}
+}
 
 // ProvideAdminHandlers creates the AdminHandlers struct
 func ProvideAdminHandlers(
@@ -113,6 +121,7 @@ func ProvideHandlers(
 	paymentHandler *PaymentHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
+	_ ChatSessionPayloadQueueInitializer,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -154,6 +163,7 @@ var ProviderSet = wire.NewSet(
 	NewPaymentHandler,
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
+	ProvideChatSessionPayloadQueueInitializer,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

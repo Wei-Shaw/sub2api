@@ -1357,6 +1357,12 @@ type ChatSessionRetentionConfig struct {
 	PayloadDir string `mapstructure:"payload_dir"`
 	// PayloadInlineMaxBytes: content_json at or below this size stays in database.
 	PayloadInlineMaxBytes int `mapstructure:"payload_inline_max_bytes"`
+	// MinFreeDiskGB: delete oldest payload day when payload filesystem free space is below this threshold.
+	MinFreeDiskGB int `mapstructure:"min_free_disk_gb"`
+	// LowDiskDeleteOldestPayloadDay: enable low-disk emergency payload cleanup.
+	LowDiskDeleteOldestPayloadDay bool `mapstructure:"low_disk_delete_oldest_payload_day"`
+	// LowDiskMinKeepDays: never delete payload date dirs newer than this many days.
+	LowDiskMinKeepDays int `mapstructure:"low_disk_min_keep_days"`
 	// BatchSize: maximum chat_sessions rows deleted per batch.
 	BatchSize int `mapstructure:"batch_size"`
 	// IntervalSeconds: how often the retention worker runs.
@@ -1831,6 +1837,9 @@ func setDefaults() {
 	viper.SetDefault("chat_session_retention.retention_days", 30)
 	viper.SetDefault("chat_session_retention.payload_dir", "./data/chat_session_payloads")
 	viper.SetDefault("chat_session_retention.payload_inline_max_bytes", 256*1024)
+	viper.SetDefault("chat_session_retention.min_free_disk_gb", 5)
+	viper.SetDefault("chat_session_retention.low_disk_delete_oldest_payload_day", true)
+	viper.SetDefault("chat_session_retention.low_disk_min_keep_days", 1)
 	viper.SetDefault("chat_session_retention.batch_size", 1000)
 	viper.SetDefault("chat_session_retention.interval_seconds", 86400)
 	viper.SetDefault("chat_session_retention.task_timeout_seconds", 300)
@@ -2468,6 +2477,12 @@ func (c *Config) Validate() error {
 		if c.ChatSessionRetention.PayloadInlineMaxBytes < 0 {
 			return fmt.Errorf("chat_session_retention.payload_inline_max_bytes must be non-negative")
 		}
+		if c.ChatSessionRetention.MinFreeDiskGB < 0 {
+			return fmt.Errorf("chat_session_retention.min_free_disk_gb must be non-negative")
+		}
+		if c.ChatSessionRetention.LowDiskMinKeepDays < 0 {
+			return fmt.Errorf("chat_session_retention.low_disk_min_keep_days must be non-negative")
+		}
 		if c.ChatSessionRetention.BatchSize <= 0 {
 			return fmt.Errorf("chat_session_retention.batch_size must be positive")
 		}
@@ -2483,6 +2498,12 @@ func (c *Config) Validate() error {
 		}
 		if c.ChatSessionRetention.PayloadInlineMaxBytes < 0 {
 			return fmt.Errorf("chat_session_retention.payload_inline_max_bytes must be non-negative")
+		}
+		if c.ChatSessionRetention.MinFreeDiskGB < 0 {
+			return fmt.Errorf("chat_session_retention.min_free_disk_gb must be non-negative")
+		}
+		if c.ChatSessionRetention.LowDiskMinKeepDays < 0 {
+			return fmt.Errorf("chat_session_retention.low_disk_min_keep_days must be non-negative")
 		}
 		if c.ChatSessionRetention.BatchSize < 0 {
 			return fmt.Errorf("chat_session_retention.batch_size must be non-negative")

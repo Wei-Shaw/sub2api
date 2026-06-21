@@ -11,16 +11,25 @@ import (
 )
 
 type ChatMessage struct {
-	ID               int64           `json:"id"`
-	SessionID        int64           `json:"session_id"`
-	Seq              int             `json:"seq"`
-	Role             string          `json:"role"`
-	Direction        string          `json:"direction"`
-	ContentText      string          `json:"content_text"`
-	ContentJSON      json.RawMessage `json:"content_json,omitempty"`
-	HasContentJSON   bool            `json:"has_content_json,omitempty"`
-	ContentJSONBytes int64           `json:"content_json_bytes,omitempty"`
-	CreatedAt        time.Time       `json:"created_at"`
+	ID                 int64           `json:"id"`
+	SessionID          int64           `json:"session_id"`
+	Seq                int             `json:"seq"`
+	Role               string          `json:"role"`
+	Direction          string          `json:"direction"`
+	ContentText        string          `json:"content_text"`
+	ContentJSON        json.RawMessage `json:"content_json,omitempty"`
+	HasContentJSON     bool            `json:"has_content_json,omitempty"`
+	ContentJSONBytes   int64           `json:"content_json_bytes,omitempty"`
+	ContentStorage     *string         `json:"content_storage,omitempty"`
+	ContentPath        *string         `json:"content_path,omitempty"`
+	ContentSHA256      *string         `json:"content_sha256,omitempty"`
+	ContentBytes       *int64          `json:"content_bytes,omitempty"`
+	ContentStoredBytes *int64          `json:"content_stored_bytes,omitempty"`
+	ContentCompression *string         `json:"content_compression,omitempty"`
+	ProcessedStatus    *string         `json:"processed_status,omitempty"`
+	ProcessedAt        *time.Time      `json:"processed_at,omitempty"`
+	ProcessedError     *string         `json:"processed_error,omitempty"`
+	CreatedAt          time.Time       `json:"created_at"`
 }
 
 type ChatSession struct {
@@ -96,10 +105,17 @@ type ChatSessionRecordInput struct {
 }
 
 type ChatMessageRecordInput struct {
-	Role        string
-	Direction   string
-	ContentText string
-	ContentJSON json.RawMessage
+	Role               string
+	Direction          string
+	ContentText        string
+	ContentJSON        json.RawMessage
+	ContentStorage     *string
+	ContentPath        *string
+	ContentSHA256      *string
+	ContentBytes       *int64
+	ContentStoredBytes *int64
+	ContentCompression *string
+	ProcessedStatus    *string
 }
 
 type ChatMessageEventRecordInput struct {
@@ -117,6 +133,17 @@ type ChatSessionRepository interface {
 	GetChatMessageDetail(ctx context.Context, userID, apiKeyID, sessionID, messageID int64) (*ChatMessage, error)
 	ListRecentMessagesByAPIKey(ctx context.Context, userID, apiKeyID int64, limit int) ([]ChatMessage, error)
 	DeleteSessionsBefore(ctx context.Context, cutoff time.Time, limit int) (int64, error)
+	DeleteOldestPayloadDayIfLowDisk(ctx context.Context, minFreeBytes uint64, minKeepDays int) (*ChatSessionPayloadCleanupResult, error)
+}
+
+type ChatSessionPayloadCleanupResult struct {
+	Triggered          bool
+	Deleted            bool
+	AvailableBytes     uint64
+	ThresholdBytes     uint64
+	DeletedDate        string
+	DeletedPath        string
+	FreedEstimateBytes uint64
 }
 
 type ChatSessionService struct {
@@ -156,10 +183,17 @@ func (s *ChatSessionService) RecordSession(ctx context.Context, input *ChatSessi
 			direction = "outbound"
 		}
 		filtered = append(filtered, ChatMessageRecordInput{
-			Role:        role,
-			Direction:   direction,
-			ContentText: strings.TrimSpace(msg.ContentText),
-			ContentJSON: msg.ContentJSON,
+			Role:               role,
+			Direction:          direction,
+			ContentText:        strings.TrimSpace(msg.ContentText),
+			ContentJSON:        msg.ContentJSON,
+			ContentStorage:     msg.ContentStorage,
+			ContentPath:        msg.ContentPath,
+			ContentSHA256:      msg.ContentSHA256,
+			ContentBytes:       msg.ContentBytes,
+			ContentStoredBytes: msg.ContentStoredBytes,
+			ContentCompression: msg.ContentCompression,
+			ProcessedStatus:    msg.ProcessedStatus,
 		})
 	}
 	filteredEvents := make([]ChatMessageEventRecordInput, 0, len(input.Events))

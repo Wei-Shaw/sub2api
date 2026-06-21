@@ -96,6 +96,63 @@ func TestBuildChatSessionMessagesKeepsToolAndImageJSON(t *testing.T) {
 	}
 }
 
+func TestBuildChatSessionMessagesDoesNotStoreInboundRequestAsAssistantJSON(t *testing.T) {
+	t.Parallel()
+
+	endpoint := "/v1/responses"
+	body := []byte(`{"input":[{"role":"user","content":[{"type":"input_text","text":"hello"}]}]}`)
+	requestLikeOutput := json.RawMessage(`{
+		"model":"gpt-5.5",
+		"input":[{"role":"user","content":[{"type":"input_text","text":"hello"}]}],
+		"tools":[{"name":"exec_command"}],
+		"stream":true
+	}`)
+
+	messages, _ := buildChatSessionMessages(&endpoint, body, nil, "", "assistant text", requestLikeOutput, nil)
+	if len(messages) != 2 {
+		t.Fatalf("messages len = %d, want 2: %#v", len(messages), messages)
+	}
+	if messages[1].Role != "assistant" || messages[1].Direction != "outbound" {
+		t.Fatalf("assistant message = %#v", messages[1])
+	}
+	if gjson.GetBytes(messages[1].ContentJSON, "input").Exists() || gjson.GetBytes(messages[1].ContentJSON, "tools").Exists() {
+		t.Fatalf("assistant content_json kept inbound request JSON: %s", string(messages[1].ContentJSON))
+	}
+	if got := gjson.GetBytes(messages[1].ContentJSON, "type").String(); got != "assistant_text" {
+		t.Fatalf("assistant content_json type = %q, want assistant_text", got)
+	}
+
+	messages, _ = buildChatSessionMessages(&endpoint, body, nil, "", "", requestLikeOutput, nil)
+	if len(messages) != 1 {
+		t.Fatalf("messages len without assistant text = %d, want only inbound message: %#v", len(messages), messages)
+	}
+}
+
+func TestBuildChatSessionMessagesDoesNotStoreInboundRequestRefAsAssistantJSON(t *testing.T) {
+	t.Parallel()
+
+	endpoint := "/v1/responses"
+	body := []byte(`{"input":[{"role":"user","content":[{"type":"input_text","text":"hello"}]}]}`)
+	requestLikeRef := json.RawMessage(`{
+		"storage":"file",
+		"path":"2026-06-10/request.json.gz",
+		"sha256":"abc",
+		"input":[{"role":"user"}],
+		"tools":[{"name":"exec_command"}]
+	}`)
+
+	messages, _ := buildChatSessionMessages(&endpoint, body, nil, "", "assistant text", nil, requestLikeRef)
+	if len(messages) != 2 {
+		t.Fatalf("messages len = %d, want 2: %#v", len(messages), messages)
+	}
+	if gjson.GetBytes(messages[1].ContentJSON, "storage").String() == "file" {
+		t.Fatalf("assistant content_json kept request ref: %s", string(messages[1].ContentJSON))
+	}
+	if got := gjson.GetBytes(messages[1].ContentJSON, "type").String(); got != "assistant_text" {
+		t.Fatalf("assistant content_json type = %q, want assistant_text", got)
+	}
+}
+
 func TestEnqueueChatSessionRecordDropsWhenQueueFull(t *testing.T) {
 	oldQueue := chatSessionRecordQueue
 	oldOnce := chatSessionRecordQueueOnce
@@ -171,6 +228,28 @@ func TestEnqueueChatSessionRecordExternalizesLargePayloads(t *testing.T) {
 	}
 	if !strings.Contains(task.requestBodySummary, strings.Repeat("x", 16)) {
 		t.Fatalf("summary does not include request text")
+	}
+
+	messages, _ := buildChatSessionMessages(
+		task.payload.InboundEndpoint,
+		task.requestBody,
+		task.requestBodyRef,
+		task.requestBodySummary,
+		task.finalOutputText,
+		task.finalOutputJSON,
+		task.finalOutputJSONRef,
+	)
+	if len(messages) != 1 {
+		t.Fatalf("messages len = %d, want 1", len(messages))
+	}
+	if messages[0].ContentPath == nil || *messages[0].ContentPath != ref.Path {
+		t.Fatalf("ContentPath = %#v, want %s", messages[0].ContentPath, ref.Path)
+	}
+	if messages[0].ContentSHA256 == nil || *messages[0].ContentSHA256 != ref.SHA256 {
+		t.Fatalf("ContentSHA256 = %#v, want %s", messages[0].ContentSHA256, ref.SHA256)
+	}
+	if messages[0].ProcessedStatus == nil || *messages[0].ProcessedStatus != "pending" {
+		t.Fatalf("ProcessedStatus = %#v, want pending", messages[0].ProcessedStatus)
 	}
 }
 
