@@ -79,6 +79,9 @@ Desktop.ini
 # ===================
 tmp/
 temp/
+.tmp-*
+*.dump
+*.sqlite
 *.tmp
 *.temp
 *.log
@@ -110,6 +113,7 @@ backend/data/
 # ===================
 backend/config.yaml
 deploy/config.yaml
+deploy/.env.*
 backend/.installed
 
 # ===================
