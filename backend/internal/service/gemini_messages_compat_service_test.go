@@ -472,6 +472,53 @@ func TestGeminiForwardNative_CompatibleRelayStreamGenerateContentConvertsOpenAIS
 	require.Contains(t, out, `"usageMetadata"`)
 }
 
+func TestGeminiForwardNative_CompatibleRelayMapsThinkingConfigToReasoningEffort(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamBody := `data: {"id":"chatcmpl_native_reasoning","object":"chat.completion.chunk","model":"gemini-3.1-pro-high","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}` + "\n\n" +
+		`data: {"id":"chatcmpl_native_reasoning","object":"chat.completion.chunk","model":"gemini-3.1-pro-high","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\n" +
+		`data: {"id":"chatcmpl_native_reasoning","object":"chat.completion.chunk","model":"gemini-3.1-pro-high","choices":[],"usage":{"prompt_tokens":6,"completion_tokens":1,"total_tokens":7}}` + "\n\n" +
+		"data: [DONE]\n\n"
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_native_reasoning"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       113,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "sk-iacc",
+			"base_url":      "https://iacc.cc",
+			"upstream_type": GeminiUpstreamCompatibleRelay,
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"write a long story"}]}],"generationConfig":{"temperature":0.7,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":32768},"maxOutputTokens":65536}}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.1-pro-high:streamGenerateContent", bytes.NewReader(body))
+
+	result, err := svc.ForwardNative(context.Background(), c, account, "gemini-3.1-pro-high", "streamGenerateContent", true, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://iacc.cc/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "gemini-3.1-pro-high", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "xhigh", gjson.GetBytes(upstream.lastBody, "reasoning_effort").String())
+	require.Equal(t, int64(65536), gjson.GetBytes(upstream.lastBody, "max_tokens").Int())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
+}
+
 func TestGeminiForwardNative_AcceptsOpenAIChatBodyOnV1BetaCompatibleRelay(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

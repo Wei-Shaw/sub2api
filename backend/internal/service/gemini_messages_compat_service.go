@@ -15,6 +15,7 @@ import (
 	mathrand "math/rand"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1944,11 +1945,44 @@ func applyGeminiGenerationConfigToChatRequest(gen map[string]any, chatReq *apico
 	if v, ok := intPointerFromAny(gen["maxOutputTokens"]); ok {
 		chatReq.MaxTokens = v
 	}
+	if effort := geminiThinkingConfigReasoningEffort(gen["thinkingConfig"]); effort != "" {
+		chatReq.ReasoningEffort = effort
+	}
 	if stopRaw, ok := gen["stopSequences"]; ok {
 		if b, err := json.Marshal(stopRaw); err == nil && len(b) > 0 && string(b) != "null" {
 			chatReq.Stop = b
 		}
 	}
+}
+
+func geminiThinkingConfigReasoningEffort(raw any) string {
+	cfg, ok := raw.(map[string]any)
+	if !ok || cfg == nil {
+		return ""
+	}
+	includeThoughts, hasIncludeThoughts := boolFromAny(cfg["includeThoughts"])
+	budget, hasBudget := intFromAny(cfg["thinkingBudget"])
+	if !hasIncludeThoughts && !hasBudget {
+		return ""
+	}
+	if hasIncludeThoughts && !includeThoughts && (!hasBudget || budget <= 0) {
+		return ""
+	}
+	if hasBudget {
+		switch {
+		case budget >= 32768:
+			return "xhigh"
+		case budget >= 8192:
+			return "high"
+		case budget >= 2048:
+			return "medium"
+		case budget > 0:
+			return "low"
+		default:
+			return ""
+		}
+	}
+	return "medium"
 }
 
 func numericPointerFromAny(v any) (*float64, bool) {
@@ -1970,6 +2004,41 @@ func numericPointerFromAny(v any) (*float64, bool) {
 		}
 	}
 	return nil, false
+}
+
+func boolFromAny(v any) (bool, bool) {
+	switch b := v.(type) {
+	case bool:
+		return b, true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(b)) {
+		case "true":
+			return true, true
+		case "false":
+			return false, true
+		}
+	}
+	return false, false
+}
+
+func intFromAny(v any) (int, bool) {
+	switch n := v.(type) {
+	case float64:
+		return int(n), true
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return int(i), true
+		}
+	case string:
+		if i, err := strconv.Atoi(strings.TrimSpace(n)); err == nil {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 func intPointerFromAny(v any) (*int, bool) {
