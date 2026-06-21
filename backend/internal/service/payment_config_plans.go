@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -12,7 +13,7 @@ import (
 )
 
 // validatePlanRequired checks that all required fields for a plan are provided.
-func validatePlanRequired(name string, groupID int64, price float64, validityDays int, validityUnit string, originalPrice *float64) error {
+func validatePlanRequired(name string, groupID int64, price float64, validityDays float64, validityUnit string, originalPrice *float64) error {
 	if strings.TrimSpace(name) == "" {
 		return infraerrors.BadRequest("PLAN_NAME_REQUIRED", "plan name is required")
 	}
@@ -22,7 +23,7 @@ func validatePlanRequired(name string, groupID int64, price float64, validityDay
 	if price <= 0 {
 		return infraerrors.BadRequest("PLAN_PRICE_INVALID", "price must be > 0")
 	}
-	if validityDays <= 0 {
+	if validityDays <= 0 || math.IsNaN(validityDays) || math.IsInf(validityDays, 0) {
 		return infraerrors.BadRequest("PLAN_VALIDITY_REQUIRED", "validity days must be > 0")
 	}
 	if strings.TrimSpace(validityUnit) == "" {
@@ -45,7 +46,7 @@ func validatePlanPatch(req UpdatePlanRequest) error {
 	if req.Price != nil && *req.Price <= 0 {
 		return infraerrors.BadRequest("PLAN_PRICE_INVALID", "price must be > 0")
 	}
-	if req.ValidityDays != nil && *req.ValidityDays <= 0 {
+	if req.ValidityDays != nil && (*req.ValidityDays <= 0 || math.IsNaN(*req.ValidityDays) || math.IsInf(*req.ValidityDays, 0)) {
 		return infraerrors.BadRequest("PLAN_VALIDITY_REQUIRED", "validity days must be > 0")
 	}
 	if req.ValidityUnit != nil && strings.TrimSpace(*req.ValidityUnit) == "" {

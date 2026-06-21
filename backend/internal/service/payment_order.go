@@ -201,11 +201,18 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if selectedProviderKey != "" {
 		b.SetProviderKey(selectedProviderKey)
 	}
+	if plan != nil {
+		validityDays, validityDuration := psComputeValidityForOrder(plan.ValidityDays, plan.ValidityUnit)
+		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(validityDays)
+		if validityDuration > 0 {
+			if providerSnapshot == nil {
+				providerSnapshot = map[string]any{"schema_version": 2}
+			}
+			providerSnapshot["subscription_validity_seconds"] = int64(validityDuration / time.Second)
+		}
+	}
 	if providerSnapshot != nil {
 		b.SetProviderSnapshot(providerSnapshot)
-	}
-	if plan != nil {
-		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit))
 	}
 	order, err := b.Save(ctx)
 	if err != nil {

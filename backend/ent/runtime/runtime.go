@@ -1512,7 +1512,7 @@ func init() {
 	// subscriptionplanDescValidityDays is the schema descriptor for validity_days field.
 	subscriptionplanDescValidityDays := subscriptionplanFields[5].Descriptor()
 	// subscriptionplan.DefaultValidityDays holds the default value on creation for the validity_days field.
-	subscriptionplan.DefaultValidityDays = subscriptionplanDescValidityDays.Default.(int)
+	subscriptionplan.DefaultValidityDays = subscriptionplanDescValidityDays.Default.(float64)
 	// subscriptionplanDescValidityUnit is the schema descriptor for validity_unit field.
 	subscriptionplanDescValidityUnit := subscriptionplanFields[6].Descriptor()
 	// subscriptionplan.DefaultValidityUnit holds the default value on creation for the validity_unit field.

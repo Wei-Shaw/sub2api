@@ -1239,7 +1239,7 @@ var (
 		{Name: "description", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "price", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "original_price", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
-		{Name: "validity_days", Type: field.TypeInt, Default: 30},
+		{Name: "validity_days", Type: field.TypeFloat64, Default: 30, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "validity_unit", Type: field.TypeString, Size: 10, Default: "day"},
 		{Name: "features", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "product_name", Type: field.TypeString, Size: 100, Default: ""},

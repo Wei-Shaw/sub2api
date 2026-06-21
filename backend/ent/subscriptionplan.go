@@ -28,7 +28,7 @@ type SubscriptionPlan struct {
 	// OriginalPrice holds the value of the "original_price" field.
 	OriginalPrice *float64 `json:"original_price,omitempty"`
 	// ValidityDays holds the value of the "validity_days" field.
-	ValidityDays int `json:"validity_days,omitempty"`
+	ValidityDays float64 `json:"validity_days,omitempty"`
 	// ValidityUnit holds the value of the "validity_unit" field.
 	ValidityUnit string `json:"validity_unit,omitempty"`
 	// Features holds the value of the "features" field.
@@ -53,9 +53,9 @@ func (*SubscriptionPlan) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case subscriptionplan.FieldForSale:
 			values[i] = new(sql.NullBool)
-		case subscriptionplan.FieldPrice, subscriptionplan.FieldOriginalPrice:
+		case subscriptionplan.FieldPrice, subscriptionplan.FieldOriginalPrice, subscriptionplan.FieldValidityDays:
 			values[i] = new(sql.NullFloat64)
-		case subscriptionplan.FieldID, subscriptionplan.FieldGroupID, subscriptionplan.FieldValidityDays, subscriptionplan.FieldSortOrder:
+		case subscriptionplan.FieldID, subscriptionplan.FieldGroupID, subscriptionplan.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
 		case subscriptionplan.FieldName, subscriptionplan.FieldDescription, subscriptionplan.FieldValidityUnit, subscriptionplan.FieldFeatures, subscriptionplan.FieldProductName:
 			values[i] = new(sql.NullString)
@@ -114,10 +114,10 @@ func (_m *SubscriptionPlan) assignValues(columns []string, values []any) error {
 				*_m.OriginalPrice = value.Float64
 			}
 		case subscriptionplan.FieldValidityDays:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field validity_days", values[i])
 			} else if value.Valid {
-				_m.ValidityDays = int(value.Int64)
+				_m.ValidityDays = value.Float64
 			}
 		case subscriptionplan.FieldValidityUnit:
 			if value, ok := values[i].(*sql.NullString); !ok {
