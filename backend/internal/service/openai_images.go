@@ -274,8 +274,8 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 		req.PartialImages = &v
 	}
 	for _, path := range []string{"image", "image_url", "url", "b64_json", "base64", "image_base64", "input_image"} {
-		if imageURL := normalizeOpenAIImagesJSONInputImage(gjson.GetBytes(body, path)); imageURL != "" {
-			req.InputImageURLs = append(req.InputImageURLs, imageURL)
+		if err := appendOpenAIImagesJSONInputImages(req, gjson.GetBytes(body, path), path); err != nil {
+			return err
 		}
 	}
 	for _, path := range []string{"images", "input_images"} {
@@ -286,14 +286,8 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 		if !images.IsArray() {
 			return fmt.Errorf("invalid %s field type", path)
 		}
-		for _, item := range images.Array() {
-			if imageURL := normalizeOpenAIImagesJSONInputImage(item); imageURL != "" {
-				req.InputImageURLs = append(req.InputImageURLs, imageURL)
-				continue
-			}
-			if item.Get("file_id").Exists() {
-				return fmt.Errorf("%s[].file_id is not supported (use %s[].image_url instead)", path, path)
-			}
+		if err := appendOpenAIImagesJSONInputImages(req, images, path); err != nil {
+			return err
 		}
 	}
 	if req.IsEdits() {
@@ -311,6 +305,28 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 	req.HasNativeOptions = hasOpenAINativeImageOptions(func(path string) bool {
 		return gjson.GetBytes(body, path).Exists()
 	})
+	return nil
+}
+
+func appendOpenAIImagesJSONInputImages(req *OpenAIImagesRequest, images gjson.Result, path string) error {
+	if !images.Exists() {
+		return nil
+	}
+	if images.IsArray() {
+		for _, item := range images.Array() {
+			if imageURL := normalizeOpenAIImagesJSONInputImage(item); imageURL != "" {
+				req.InputImageURLs = append(req.InputImageURLs, imageURL)
+				continue
+			}
+			if item.Get("file_id").Exists() {
+				return fmt.Errorf("%s[].file_id is not supported (use %s[].image_url instead)", path, path)
+			}
+		}
+		return nil
+	}
+	if imageURL := normalizeOpenAIImagesJSONInputImage(images); imageURL != "" {
+		req.InputImageURLs = append(req.InputImageURLs, imageURL)
+	}
 	return nil
 }
 

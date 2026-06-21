@@ -418,6 +418,39 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSONGenerationImageCompat(
 	require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
 }
 
+func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSONGenerationTopLevelImageArrayCompat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{
+		"model":"gpt-image-2",
+		"prompt":"make a portrait book cover",
+		"response_format":"url",
+		"size":"1088x1440",
+		"image":["https://example.com/source.jpg"]
+	}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+	require.NotNil(t, parsed)
+	require.False(t, parsed.IsEdits())
+	require.Equal(t, []string{"https://example.com/source.jpg"}, parsed.InputImageURLs)
+	require.Equal(t, "url", parsed.ResponseFormat)
+	require.Equal(t, "1088x1440", parsed.Size)
+	require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
+
+	upstreamBody, err := buildOpenAIImagesResponsesRequest(parsed, "gpt-image-2")
+	require.NoError(t, err)
+	require.Equal(t, "edit", gjson.GetBytes(upstreamBody, "tools.0.action").String())
+	require.Equal(t, "1088x1440", gjson.GetBytes(upstreamBody, "tools.0.size").String())
+	require.Equal(t, "https://example.com/source.jpg", gjson.GetBytes(upstreamBody, "input.0.content.1.image_url").String())
+}
+
 func TestCollectOpenAIImagePointers_RecognizesDirectAssets(t *testing.T) {
 	items := collectOpenAIImagePointers([]byte(`{
 		"revised_prompt": "cat astronaut",
