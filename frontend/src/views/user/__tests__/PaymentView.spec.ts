@@ -189,6 +189,54 @@ function oauthOrderFixture() {
   }
 }
 
+describe('PaymentView tab defaults', () => {
+  beforeEach(() => {
+    routeState.path = '/purchase'
+    routeState.query = {}
+    routerReplace.mockReset().mockResolvedValue(undefined)
+    routerPush.mockReset().mockResolvedValue(undefined)
+    routerResolve.mockClear()
+    createOrder.mockReset()
+    refreshUser.mockReset()
+    fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
+    showError.mockReset()
+    showInfo.mockReset()
+    showWarning.mockReset()
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoWithPlansFixture())
+    bridgeInvoke.mockReset()
+    window.localStorage.clear()
+  })
+
+  it('defaults to subscription tab and keeps subscription on the left', async () => {
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+          Teleport: true,
+          Transition: false,
+          SubscriptionPlanCard: {
+            name: 'SubscriptionPlanCard',
+            template: '<div data-testid="subscription-plan-card"></div>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    const tabTexts = wrapper
+      .findAll('button')
+      .map(button => button.text())
+      .filter(text => text === 'payment.tabSubscribe' || text === 'payment.tabTopUp')
+
+    expect(tabTexts).toEqual(['payment.tabSubscribe', 'payment.tabTopUp'])
+    expect(wrapper.find('[data-testid="subscription-plan-card"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('payment.rechargeAccount')
+  })
+})
+
 describe('PaymentView manual subscription payment', () => {
   beforeEach(() => {
     routeState.path = '/purchase'
