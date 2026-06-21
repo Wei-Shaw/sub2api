@@ -316,6 +316,51 @@ func TestForwardAsChatCompletions_StreamResponseFailedTriggersFailoverBeforeFlus
 	require.False(t, c.Writer.Written())
 }
 
+func TestForwardAsChatCompletions_StreamCyberPolicyNoFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"` + strings.Repeat("large prompt ", 6000) + `"}],"stream":true}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_cyber","model":"gpt-5.5","status":"in_progress","output":[]}}`,
+		"",
+		`event: response.failed`,
+		`data: {"type":"response.failed","response":{"id":"resp_cyber","object":"response","model":"gpt-5.5","status":"failed","output":[],"error":{"code":"cyber_policy","message":"flagged for cyber policy"}}}`,
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_chat_cyber"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := &Account{
+		ID:          1,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+		},
+	}
+
+	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.5")
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr), "cyber must NOT trigger failover")
+	require.NotNil(t, GetOpsCyberPolicy(c), "cyber mark must be set")
+	respBody := rec.Body.String()
+	require.Contains(t, respBody, `"error"`)
+	require.Contains(t, respBody, `"cyber_policy"`)
+	require.Contains(t, respBody, "data: [DONE]")
+}
+
 func TestForwardAsChatCompletions_StreamsUsageWithoutClientStreamOptions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -772,4 +817,15 @@ func TestForwardAsChatCompletions_UpstreamRequestIgnoresClientCancel(t *testing.
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)
 	require.NoError(t, upstream.lastReq.Context().Err())
+}
+
+// TestBuildChatStreamErrorSSE verifies F4: the error chunk payload follows the
+// OpenAI chat streaming error convention so third-party clients stop retrying.
+func TestBuildChatStreamErrorSSE(t *testing.T) {
+	got := buildChatStreamErrorSSE("cyber_policy", "blocked by policy")
+	require.True(t, strings.HasPrefix(got, "data: "), "must be an SSE data frame")
+	payload := strings.TrimSuffix(strings.TrimPrefix(got, "data: "), "\n\n")
+	require.Equal(t, "invalid_request_error", gjson.Get(payload, "error.type").String())
+	require.Equal(t, "cyber_policy", gjson.Get(payload, "error.code").String())
+	require.Equal(t, "blocked by policy", gjson.Get(payload, "error.message").String())
 }

@@ -205,6 +205,9 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	}
 
 	reasoningEffort := extractCCReasoningEffortFromBody(originalChatBody)
+	// 国产模型默认 effort 补充（本路径上游是 Gemini，不会命中 passback-required）。
+	// 保持与 OpenAI 网关路径调用模式一致，便于未来上游变异时语义一致。
+	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, originalChatBody, mappedModel)
 
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
