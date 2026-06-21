@@ -9,6 +9,22 @@ const viewPath = resolve(currentDir, '../UsageGuideView.vue')
 const routerPath = resolve(currentDir, '../../../router/index.ts')
 
 describe('UsageGuideView', () => {
+  it('声明使用方法控制台和两个教程栏目', () => {
+    expect(existsSync(viewPath)).toBe(true)
+    if (!existsSync(viewPath)) return
+
+    const source = readFileSync(viewPath, 'utf8')
+
+    expect(source).toContain('const guideTopics')
+    expect(source).toContain("id: 'codex'")
+    expect(source).toContain("title: 'Codex 接入'")
+    expect(source).toContain("id: 'image-generation'")
+    expect(source).toContain("title: '生图方法'")
+    expect(source).toContain('activeTopicId')
+    expect(source).toContain('data-test="usage-guide-topic-nav-desktop"')
+    expect(source).toContain('data-test="usage-guide-topic-tabs-mobile"')
+  })
+
   it('声明 8 个使用步骤和 10 张截图，保持指定图片顺序', () => {
     expect(existsSync(viewPath)).toBe(true)
     if (!existsSync(viewPath)) return
@@ -44,8 +60,33 @@ describe('UsageGuideView', () => {
     }
 
     expect(source.match(/data-test="usage-guide-step"/g)?.length).toBe(1)
-    expect(source.match(/title: '/g)).toHaveLength(8)
+    expect(source.match(/step: /g)).toHaveLength(8)
     expect(source.match(/alt: '/g)).toHaveLength(10)
+  })
+
+  it('生图方法教程只展示用户需要知道的接入和扣费信息', () => {
+    expect(existsSync(viewPath)).toBe(true)
+    if (!existsSync(viewPath)) return
+
+    const source = readFileSync(viewPath, 'utf8')
+    const expectedTokens = [
+      "title: '生图方法'",
+      '29/39/59 元套餐已支持生图',
+      'https://api.aaccx.pw/v1',
+      'POST /v1/images/generations',
+      '$0.10 / 张',
+      '$0.20 / 张',
+      '$0.40 / 张',
+      'Authorization: Bearer sk-xxxx',
+      'gpt-image-2',
+    ]
+
+    for (const token of expectedTokens) {
+      expect(source, `缺少生图教程信息：${token}`).toContain(token)
+    }
+
+    expect(source).not.toContain('groups.id')
+    expect(source).not.toContain('127.0.0.1:18080')
   })
 
   it('注册为登录后用户页面路由', () => {
