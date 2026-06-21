@@ -30,3 +30,14 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar user usage guide nav', () => {
+  it('adds usage guide only to the regular user menu', () => {
+    const navFunctionMatch = componentSource.match(/function buildSelfNavItems\(withDashboard: boolean\): NavItem\[] \{[\s\S]*?\n\}/)
+
+    expect(navFunctionMatch).not.toBeNull()
+    const navFunction = navFunctionMatch?.[0] ?? ''
+    expect(navFunction).toContain("if (withDashboard) {\n    items.push({ path: '/usage-guide', label: t('nav.usageGuide')")
+    expect(navFunction).not.toContain("items.push(\n    { path: '/usage-guide'")
+  })
+})

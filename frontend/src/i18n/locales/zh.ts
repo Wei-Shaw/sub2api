@@ -379,6 +379,7 @@ export default {
     apiKeys: 'API 密钥',
     usage: '使用记录',
     redeem: '兑换',
+    usageGuide: '使用方法',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
     affiliateInviteRecords: '邀请记录',
@@ -416,6 +417,11 @@ export default {
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
+  },
+
+  usageGuide: {
+    title: '使用方法',
+    description: '查看从购买订阅到配置 cc-switch 的完整步骤'
   },
 
   // Auth

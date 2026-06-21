@@ -379,6 +379,7 @@ export default {
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
+    usageGuide: 'Usage Guide',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
     affiliateInviteRecords: 'Invite Records',
@@ -416,6 +417,11 @@ export default {
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
+  },
+
+  usageGuide: {
+    title: 'Usage Guide',
+    description: 'View the complete flow from subscription purchase to cc-switch setup'
   },
 
   // Auth
