@@ -56,7 +56,8 @@ var openaiCCRawAllowedHeaders = map[string]bool{
 //   - 不注入 prompt_cache_key（OAuth 专属机制）
 //
 // 调用入口：openai_gateway_chat_completions.go::ForwardAsChatCompletions
-// 在函数顶部按 openai_compat.ShouldUseResponsesAPI 分流。
+// 在函数顶部按 openai_compat.ResolveOpenAITextRoute 分流（RouteChatCompletions 与
+// RouteNative 均走本路径）。
 func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	ctx context.Context,
 	c *gin.Context,

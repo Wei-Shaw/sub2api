@@ -166,8 +166,12 @@ func TestForwardAsChatCompletions_APIKeyPropagatesPromptCacheKeyInResponsesBody(
 		Credentials: map[string]any{
 			"api_key": "sk-compatible",
 		},
+		// force_responses 强制走 CC→Responses 转换路径（探测确认支持的 auto 账号现在
+		// 走原生透传，CC 入站不再上转——见
+		// TestForwardAsChatCompletions_NativeAndAutoSupportedRouteRawChatCompletions）。
+		// 本用例验证的是 Responses 路径上的 prompt_cache_key/session_id 注入，故显式 force。
 		Extra: map[string]any{
-			"openai_responses_supported": true,
+			"openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -179,6 +183,61 @@ func TestForwardAsChatCompletions_APIKeyPropagatesPromptCacheKeyInResponsesBody(
 	require.Equal(t, "https://api.openai.com/v1/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer sk-compatible", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(99, "cache-key-123")), upstream.lastReq.Header.Get("session_id"))
+}
+
+// TestForwardAsChatCompletions_NativeAndAutoSupportedRouteRawChatCompletions 验证
+// 双支持账号（显式 native 模式、或 auto 探测确认支持）的 Chat Completions 入站请求
+// 走原生直转：打上游 /v1/chat/completions，不上转为 Responses（避免有损跨协议转换）。
+func TestForwardAsChatCompletions_NativeAndAutoSupportedRouteRawChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cases := []struct {
+		name  string
+		extra map[string]any
+	}{
+		{"explicit native mode", map[string]any{"openai_responses_mode": "native"}},
+		{"auto probed supported", map[string]any{"openai_responses_supported": true}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			upstreamJSON := `{"id":"chatcmpl_native","object":"chat.completion","model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_native"}},
+				Body:       io.NopCloser(strings.NewReader(upstreamJSON)),
+			}}
+
+			svc := &OpenAIGatewayService{
+				cfg:          &config.Config{},
+				httpUpstream: upstream,
+			}
+			account := &Account{
+				ID:          103,
+				Name:        "openai-native",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: map[string]any{
+					"api_key": "sk-native",
+				},
+				Extra: tc.extra,
+			}
+
+			result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.4")
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, "https://api.openai.com/v1/chat/completions", upstream.lastReq.URL.String())
+			require.True(t, gjson.GetBytes(upstream.lastBody, "messages").Exists(), "raw CC body must retain messages")
+			require.False(t, gjson.GetBytes(upstream.lastBody, "input").Exists(), "must not convert to Responses input")
+		})
+	}
 }
 
 func TestForwardAsChatCompletions_ClientDisconnectDrainsUpstreamUsage(t *testing.T) {

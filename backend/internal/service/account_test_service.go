@@ -554,7 +554,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
-		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+		// 仅当账号路由到 Chat Completions（强制 CC / 探测确认不支持）时测 CC 端点；
+		// RouteResponses 与 RouteNative（双支持）下 /v1/responses 端点确实存在，测它即可。
+		if openai_compat.ResolveOpenAITextRoute(account.Extra) == openai_compat.RouteChatCompletions {
 			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
 		}
 		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)

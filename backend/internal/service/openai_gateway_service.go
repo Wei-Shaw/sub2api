@@ -2390,7 +2390,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	reqModel, reqStream, promptCacheKey := requestView.Model, requestView.Stream, requestView.PromptCacheKey
 	originalModel := reqModel
 
-	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+	// Responses 入站分流：仅当账号被强制/探测确认走 Chat Completions（RouteChatCompletions）
+	// 时，才把 Responses 下转为 CC 打上游 /v1/chat/completions。RouteNative（双支持）与
+	// RouteResponses 都让 Responses 入站走下方原生 Responses 路径，无需转换。
+	if account.Type == AccountTypeAPIKey && openai_compat.ResolveOpenAITextRoute(account.Extra) == openai_compat.RouteChatCompletions {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 	}
 

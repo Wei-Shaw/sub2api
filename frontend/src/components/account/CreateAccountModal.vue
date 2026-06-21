@@ -3478,7 +3478,8 @@ const openAICompactModeOptions = computed(() => [
 const openAIResponsesModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
-  { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
+  { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') },
+  { value: 'native', label: t('admin.accounts.openai.responsesModeNative') }
 ])
 const openAITextEndpointCapabilityLabel = computed(() => {
   if (openAIResponsesMode.value === 'force_responses') {
@@ -3486,6 +3487,9 @@ const openAITextEndpointCapabilityLabel = computed(() => {
   }
   if (openAIResponsesMode.value === 'force_chat_completions') {
     return t('admin.accounts.openai.capabilityChatCompletions')
+  }
+  if (openAIResponsesMode.value === 'native') {
+    return t('admin.accounts.openai.capabilityTextNative')
   }
   return t('admin.accounts.openai.capabilityTextAuto')
 })

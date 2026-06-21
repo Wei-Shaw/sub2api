@@ -15,6 +15,11 @@
 //   - 标记缺失时默认 true（即"走 Responses"），保持与重构前老代码完全一致的存量
 //     账号行为（"现状即证据"原则；详见
 //     pensieve/short-term/maxims/preserve-existing-runtime-behavior-when-replacing-logic-in-stateful-systems）
+//
+// 路由判定：网关分流以 ResolveOpenAITextRoute 为准（三态：Responses / Chat
+// Completions / Native）。当上游同时支持两个端点时按入站类型原生透传，避免对不
+// 匹配的入站类型做有损跨协议转换——探测确认支持（auto+supported）时自动启用，
+// 也可用账号级 native 模式手动强制。ShouldUseResponsesAPI 仅保留给非分流场景。
 package openai_compat
 
 // AccountResponsesSupport 描述账号上游对 OpenAI Responses API 的有效支持状态。
@@ -47,6 +52,11 @@ const (
 
 	// ResponsesSupportModeForceChatCompletions 强制使用 /v1/chat/completions。
 	ResponsesSupportModeForceChatCompletions ResponsesSupportMode = "force_chat_completions"
+
+	// ResponsesSupportModeNative 表示上游同时支持两个端点，按入站类型原生透传：
+	// Responses 入站 → /v1/responses，Chat Completions 入站 → /v1/chat/completions，
+	// 不做任何 CC<->Responses 跨协议转换（详见 ResolveOpenAITextRoute）。
+	ResponsesSupportModeNative ResponsesSupportMode = "native"
 )
 
 // ExtraKeyResponsesMode 是 accounts.extra JSON 中存储手动覆盖模式的键名。
@@ -66,6 +76,8 @@ func NormalizeResponsesSupportMode(mode string) ResponsesSupportMode {
 		return ResponsesSupportModeForceResponses
 	case ResponsesSupportModeForceChatCompletions:
 		return ResponsesSupportModeForceChatCompletions
+	case ResponsesSupportModeNative:
+		return ResponsesSupportModeNative
 	default:
 		return ResponsesSupportModeAuto
 	}
@@ -101,15 +113,73 @@ func ResolveResponsesSupport(extra map[string]any) AccountResponsesSupport {
 	return ResponsesSupportNo
 }
 
-// ShouldUseResponsesAPI 判断 OpenAI APIKey 账号的入站 /v1/chat/completions 请求
-// 是否应走"CC→Responses 转换 + 上游 /v1/responses"路径。
+// ShouldUseResponsesAPI 是一个保留的兼容判定，仅用于非分流场景（如账号连通性
+// 测试、ops 端点标签的兜底）。网关分流请改用 ResolveOpenAITextRoute——它按入站
+// 类型区分原生透传，能力更强。
 //
 // 返回 true 的两种情况：
 //  1. 账号已探测确认支持 Responses
 //  2. 账号未探测（标记缺失）——按"现状即证据"原则保留旧行为
 //
-// 仅当账号已探测且确认不支持时返回 false，此时调用方应走 CC 直转路径
-// （详见 internal/service/openai_gateway_chat_completions_raw.go）。
+// 仅当账号已探测且确认不支持时返回 false。
 func ShouldUseResponsesAPI(extra map[string]any) bool {
 	return ResolveResponsesSupport(extra) != ResponsesSupportNo
+}
+
+// OpenAITextRoute 描述 OpenAI APIKey 账号文本补全请求（/v1/responses 与
+// /v1/chat/completions）的上游路由策略。
+//
+// 它取代了早期用单个布尔 ShouldUseResponsesAPI 在两个入站入口（Responses 与
+// Chat Completions）以相反语义分流的做法——单布尔只能把账号的全部流量归一到一个
+// 端点，对不匹配的入站类型强制有损跨协议转换。三态路由让"上游双支持"成为一等
+// 公民：按入站类型原生透传，零转换。
+type OpenAITextRoute int
+
+const (
+	// RouteResponses 所有文本请求走上游 /v1/responses：Responses 入站原生直转，
+	// Chat Completions 入站上转为 Responses。
+	RouteResponses OpenAITextRoute = iota
+
+	// RouteChatCompletions 所有文本请求走上游 /v1/chat/completions：Chat
+	// Completions 入站原生直转，Responses 入站下转为 Chat Completions。
+	RouteChatCompletions
+
+	// RouteNative 上游同时支持两个端点，按入站类型原生透传，零跨协议转换。
+	RouteNative
+)
+
+// ResolveOpenAITextRoute 决定 OpenAI APIKey 账号文本请求的上游路由。
+//
+// 判定顺序（mode 优先于探测标记，与 ResolveResponsesSupport 一致）：
+//   - mode=native                  → RouteNative（手动覆盖：双支持原生透传）
+//   - mode=force_responses         → RouteResponses
+//   - mode=force_chat_completions  → RouteChatCompletions
+//   - mode=auto/缺失：跟随探测标记
+//   - 探测支持（Yes）          → RouteNative（智能自动：双支持原生透传）
+//   - 探测不支持（No）         → RouteChatCompletions
+//   - 未探测（Unknown）        → RouteResponses（"现状即证据"保留存量行为）
+//
+// 仅 platform=openai + type=apikey 的账号应调用本函数；OAuth 账号只支持
+// Responses，不经过本路由判定。
+func ResolveOpenAITextRoute(extra map[string]any) OpenAITextRoute {
+	if extra != nil {
+		if mode, ok := extra[ExtraKeyResponsesMode].(string); ok {
+			switch NormalizeResponsesSupportMode(mode) {
+			case ResponsesSupportModeNative:
+				return RouteNative
+			case ResponsesSupportModeForceResponses:
+				return RouteResponses
+			case ResponsesSupportModeForceChatCompletions:
+				return RouteChatCompletions
+			}
+		}
+	}
+	switch ResolveResponsesSupport(extra) {
+	case ResponsesSupportYes:
+		return RouteNative
+	case ResponsesSupportNo:
+		return RouteChatCompletions
+	default:
+		return RouteResponses
+	}
 }

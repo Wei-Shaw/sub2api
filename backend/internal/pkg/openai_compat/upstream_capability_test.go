@@ -74,6 +74,7 @@ func TestNormalizeResponsesSupportMode(t *testing.T) {
 		{"auto", "auto", ResponsesSupportModeAuto},
 		{"force responses", "force_responses", ResponsesSupportModeForceResponses},
 		{"force chat completions", "force_chat_completions", ResponsesSupportModeForceChatCompletions},
+		{"native", "native", ResponsesSupportModeNative},
 		{"invalid", "enabled", ResponsesSupportModeAuto},
 	}
 
@@ -82,6 +83,54 @@ func TestNormalizeResponsesSupportMode(t *testing.T) {
 			got := NormalizeResponsesSupportMode(tc.mode)
 			if got != tc.want {
 				t.Errorf("NormalizeResponsesSupportMode(%q) = %q, want %q", tc.mode, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveOpenAITextRoute(t *testing.T) {
+	tests := []struct {
+		name  string
+		extra map[string]any
+		want  OpenAITextRoute
+	}{
+		// auto / 未探测：保留"走 Responses"存量行为
+		{"nil extra -> responses", nil, RouteResponses},
+		{"empty extra -> responses", map[string]any{}, RouteResponses},
+		{"auto unprobed -> responses", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeAuto)}, RouteResponses},
+		{"supported wrong type -> responses", map[string]any{ExtraKeyResponsesSupported: "true"}, RouteResponses},
+
+		// 智能自动：auto + 探测确认支持 → 原生透传
+		{"auto supported -> native", map[string]any{ExtraKeyResponsesSupported: true}, RouteNative},
+		{"auto explicit supported -> native", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeAuto), ExtraKeyResponsesSupported: true}, RouteNative},
+
+		// 探测确认不支持 → CC（火山方舟工具坏掉等场景）
+		{"auto unsupported -> chat", map[string]any{ExtraKeyResponsesSupported: false}, RouteChatCompletions},
+		{"auto explicit unsupported -> chat", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeAuto), ExtraKeyResponsesSupported: false}, RouteChatCompletions},
+
+		// 手动 native：忽略探测标记，恒为原生透传
+		{"native + supported true -> native", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeNative), ExtraKeyResponsesSupported: true}, RouteNative},
+		{"native + supported false -> native", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeNative), ExtraKeyResponsesSupported: false}, RouteNative},
+		{"native + unprobed -> native", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeNative)}, RouteNative},
+
+		// force_responses：忽略探测标记
+		{"force responses + unsupported -> responses", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceResponses), ExtraKeyResponsesSupported: false}, RouteResponses},
+		{"force responses + supported -> responses", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceResponses), ExtraKeyResponsesSupported: true}, RouteResponses},
+
+		// force_chat_completions：忽略探测标记
+		{"force chat + supported -> chat", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceChatCompletions), ExtraKeyResponsesSupported: true}, RouteChatCompletions},
+		{"force chat + unsupported -> chat", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceChatCompletions), ExtraKeyResponsesSupported: false}, RouteChatCompletions},
+
+		// 非法 mode 跟随探测
+		{"invalid mode follows probe supported -> native", map[string]any{ExtraKeyResponsesMode: "bogus", ExtraKeyResponsesSupported: true}, RouteNative},
+		{"invalid mode follows probe unsupported -> chat", map[string]any{ExtraKeyResponsesMode: "bogus", ExtraKeyResponsesSupported: false}, RouteChatCompletions},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ResolveOpenAITextRoute(tc.extra)
+			if got != tc.want {
+				t.Errorf("ResolveOpenAITextRoute(%v) = %v, want %v", tc.extra, got, tc.want)
 			}
 		})
 	}

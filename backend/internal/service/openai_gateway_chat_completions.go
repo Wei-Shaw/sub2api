@@ -48,11 +48,14 @@ var cursorResponsesUnsupportedFields = []string{
 // 正确的，但 sub2api 接入 DeepSeek/Kimi/GLM 等第三方 OpenAI 兼容上游后假设破裂：
 // 这些上游普遍只支持 /v1/chat/completions，无 /v1/responses 端点。
 //
-// 当前路由策略（基于账号覆盖模式/探测标记，详见 openai_compat.ShouldUseResponsesAPI）：
-//   - APIKey 账号 + 强制或探测确认不支持 Responses → 走 forwardAsRawChatCompletions
-//     直转上游 /v1/chat/completions，不做协议转换
-//   - 其他所有情况（OAuth、APIKey 强制/探测确认支持、未探测）→ 走原有 CC→Responses
-//     转换路径（保留旧行为，存量未探测账号零兼容破坏）
+// 当前路由策略（基于账号覆盖模式/探测标记，详见 openai_compat.ResolveOpenAITextRoute）：
+//   - APIKey 账号 + RouteChatCompletions（强制 CC / 探测确认不支持 Responses）→ 走
+//     forwardAsRawChatCompletions 直转上游 /v1/chat/completions，不做协议转换
+//   - APIKey 账号 + RouteNative（强制 native / 探测确认双支持）→ 同样走原生 CC 直转，
+//     让 CC 入站直达 /v1/chat/completions，不再上转为 Responses（Responses 入站则原生
+//     走 /v1/responses，详见 Forward）
+//   - 其他所有情况（OAuth、RouteResponses：强制 Responses / 未探测）→ 走原有
+//     CC→Responses 转换路径（保留旧行为，存量未探测账号零兼容破坏）
 func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	ctx context.Context,
 	c *gin.Context,
@@ -61,10 +64,14 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
-	// 入口分流：APIKey 账号 + 强制或已探测确认上游不支持 Responses，走 CC 直转。
-	// 自动模式下标记缺失（未探测）按"现状即证据"原则继续走下方原 Responses 转换路径。
-	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
-		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
+	// 入口分流：APIKey 账号 + RouteChatCompletions（强制 CC / 探测确认不支持）或
+	// RouteNative（强制 native / 探测确认双支持）→ CC 入站原生直转，不上转 Responses。
+	// 仅 RouteResponses（强制 Responses / 未探测）继续走下方 CC→Responses 转换路径。
+	if account.Type == AccountTypeAPIKey {
+		route := openai_compat.ResolveOpenAITextRoute(account.Extra)
+		if route == openai_compat.RouteChatCompletions || route == openai_compat.RouteNative {
+			return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
+		}
 	}
 
 	startTime := time.Now()
