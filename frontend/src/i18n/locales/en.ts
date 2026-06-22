@@ -249,6 +249,7 @@ export default {
 
   // Common
   common: {
+    multiplier: 'Rate',
     loading: 'Loading...',
     submitting: 'Submitting...',
     justNow: 'just now',
