@@ -637,9 +637,7 @@ REDACTED
 			req.Header.Set("User-Agent", strings.TrimSpace(fp.UserAgent))
 	REDACTED
 REDACTED
-	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
-		req.Header.Set("chatgpt-account-id", chatgptAccountID)
-REDACTED
+	setOpenAIChatGPTAccountHeaders(req.Header, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

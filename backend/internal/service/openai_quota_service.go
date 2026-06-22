@@ -122,7 +122,7 @@ REDACTED
 // OAuth account. Returns infraerrors so the handler layer can map them to
 // stable error codes / HTTP statuses.
 func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
-	accessToken, chatGPTAccountID, proxyURL, err := s.prepareUpstreamCall(ctx, accountID)
+	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -138,7 +138,7 @@ REDACTED
 	var payload OpenAIQuotaUsage
 	resp, err := client.R().
 		SetContext(callCtx).
-		SetHeaders(buildCodexCommonHeaders(accessToken, chatGPTAccountID)).
+		SetHeaders(buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)).
 		SetSuccessResult(&payload).
 		Get(chatGPTUsageURL)
 	if err != nil {
@@ -159,7 +159,7 @@ REDACTED
 // The redeem_request_id is auto-generated (uuid-like) — upstream uses it for
 // idempotency. Returns the consumed credit metadata so the UI can refresh.
 func (s *OpenAIQuotaService) ResetCredit(ctx context.Context, accountID int64) (*OpenAIQuotaResetResult, error) {
-	accessToken, chatGPTAccountID, proxyURL, err := s.prepareUpstreamCall(ctx, accountID)
+	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -177,7 +177,7 @@ REDACTED
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
 
-	headers := buildCodexCommonHeaders(accessToken, chatGPTAccountID)
+	headers := buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)
 	headers["content-type"] = "application/json"
 
 	var payload OpenAIQuotaResetResult
@@ -208,23 +208,23 @@ REDACTED
 // prepareUpstreamCall loads the account, validates it, obtains a fresh access
 // token via the shared TokenProvider, and resolves the chatgpt-account-id and
 // proxy URL. Centralized so QueryUsage / ResetCredit share validation.
-func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID int64) (accessToken, chatGPTAccountID, proxyURL string, err error) {
+func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID int64) (accessToken, chatGPTAccountID, proxyURL string, fedRAMP bool, err error) {
 	if s == nil || s.accountRepo == nil || s.tokenProvider == nil || s.privacyClientFactory == nil {
-		return "", "", "", infraerrors.New(http.StatusInternalServerError, "OPENAI_QUOTA_NOT_CONFIGURED", "openai quota service is not configured")
+		return "", "", "", false, infraerrors.New(http.StatusInternalServerError, "OPENAI_QUOTA_NOT_CONFIGURED", "openai quota service is not configured")
 REDACTED
 
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
-		return "", "", "", infraerrors.Newf(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found: %v", err)
+		return "", "", "", false, infraerrors.Newf(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found: %v", err)
 REDACTED
 	if account == nil {
-		return "", "", "", infraerrors.New(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found")
+		return "", "", "", false, infraerrors.New(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found")
 REDACTED
 	if account.Platform != PlatformOpenAI {
-		return "", "", "", infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_PLATFORM", "account is not an OpenAI account")
+		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_PLATFORM", "account is not an OpenAI account")
 REDACTED
 	if account.Type != AccountTypeOAuth {
-		return "", "", "", infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_TYPE", "account is not an OAuth account")
+		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_TYPE", "account is not an OAuth account")
 REDACTED
 
 	chatGPTAccountID = strings.TrimSpace(account.GetCredential("chatgpt_account_id"))
@@ -233,16 +233,17 @@ REDACTED
 		chatGPTAccountID = strings.TrimSpace(account.GetCredential("organization_id"))
 REDACTED
 	if chatGPTAccountID == "" {
-		return "", "", "", infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_MISSING_ACCOUNT_ID", "chatgpt_account_id is missing; please re-authorize this account")
+		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_MISSING_ACCOUNT_ID", "chatgpt_account_id is missing; please re-authorize this account")
 REDACTED
 
 	accessToken, err = s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
-		return "", "", "", infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
+		return "", "", "", false, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
 REDACTED
 	if strings.TrimSpace(accessToken) == "" {
-		return "", "", "", infraerrors.New(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "access token is empty")
+		return "", "", "", false, infraerrors.New(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "access token is empty")
 REDACTED
+	fedRAMP = account.IsChatGPTAccountFedRAMP()
 
 	// account.Proxy is eager-loaded by accountRepo.GetByID (see
 	// repository.accountsToService), so we can read the proxy URL directly
@@ -260,13 +261,13 @@ REDACTED
 	REDACTED
 REDACTED
 
-	return accessToken, chatGPTAccountID, proxyURL, nil
+	return accessToken, chatGPTAccountID, proxyURL, fedRAMP, nil
 REDACTED
 
 // buildCodexCommonHeaders sets the request headers expected by the chatgpt.com
 // backend so calls succeed past Cloudflare/WASM checks.
-func buildCodexCommonHeaders(accessToken, chatGPTAccountID string) map[string]string {
-	return map[string]string{
+func buildCodexCommonHeaders(accessToken, chatGPTAccountID string, fedRAMP bool) map[string]string {
+	headers := map[string]string{
 		"authorization":      "Bearer " + accessToken,
 		"chatgpt-account-id": chatGPTAccountID,
 		"oai-language":       openaiQuotaCodexLanguageTag,
@@ -277,6 +278,10 @@ func buildCodexCommonHeaders(accessToken, chatGPTAccountID string) map[string]st
 		"sec-fetch-dest":     openaiQuotaSecFetchDest,
 		"priority":           "u=4, i",
 REDACTED
+	if fedRAMP {
+		headers["x-openai-fedramp"] = "true"
+REDACTED
+	return headers
 REDACTED
 
 // generateRedeemRequestID produces a UUID-v4-shaped string without pulling in a
