@@ -213,6 +213,17 @@ gateway:
   # 默认 false：保持纯文本 Codex 请求不被改写；客户端显式提供 image_generation tool 时，
   # 仍会在分组允许图片生成的情况下正常转发。
   codex_image_generation_bridge_enabled: false
+  # Strip ChatGPT connector/app tools (the `codex_apps.*` namespace) from forwarded
+  # Codex OAuth requests. These tools run server-side under the account owner's
+  # identity (e.g. the GitHub connector reading the owner's private repos), so when
+  # one OAuth account is shared across downstream API keys, a downstream caller could
+  # otherwise invoke the owner's connectors. Enabling this drops matching tools and
+  # resets a tool_choice that pinned a removed tool.
+  # 是否在转发前剥除请求中的 ChatGPT 连接器/App（codex_apps.* 命名空间）工具。
+  # 这类工具由上游以「账号主人」身份在服务端执行（如 GitHub 连接器读取私有仓库）；
+  # 当一个 OAuth 账号被多个下游 API key 共享时，下游用户本不应能调用账号主人的连接器。
+  # 默认 false 保持兼容；共享账号 / 多租户部署建议设为 true。
+  codex_block_connector_tools: false
   # Optional: template file used to build the final top-level Codex `instructions`.
   # 可选：用于构建最终 Codex 顶层 `instructions` 的模板文件路径。
   #

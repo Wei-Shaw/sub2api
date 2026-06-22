@@ -2280,6 +2280,15 @@ func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig
 	}
 }
 
+// codexBlockConnectorTools reports whether connector/app tools should be stripped
+// from forwarded Codex OAuth requests (gateway.codex_block_connector_tools).
+func (s *OpenAIGatewayService) codexBlockConnectorTools() bool {
+	if s == nil || s.cfg == nil {
+		return false
+	}
+	return s.cfg.Gateway.CodexBlockConnectorTools
+}
+
 // GetAccessToken gets the access token for an OpenAI account
 func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Account) (string, string, error) {
 	switch account.Type {
@@ -2609,11 +2618,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		codexResult := codexTransformResult{}
 		if compatMessagesBridge {
-			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{IsCodexCLI: isCodexCLI, IsCompact: isCompactRequest, SkipDefaultInstructions: true, PreserveToolCallIDs: true})
+			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{IsCodexCLI: isCodexCLI, IsCompact: isCompactRequest, SkipDefaultInstructions: true, PreserveToolCallIDs: true, BlockConnectorTools: s.codexBlockConnectorTools()})
 			ensureCodexOAuthInstructionsField(decoded)
 			markDecodedModified()
 		} else {
-			codexResult = applyCodexOAuthTransform(decoded, isCodexCLI, isCompactRequest)
+			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{IsCodexCLI: isCodexCLI, IsCompact: isCompactRequest, BlockConnectorTools: s.codexBlockConnectorTools()})
 		}
 		if codexResult.Modified {
 			markDecodedModified()
