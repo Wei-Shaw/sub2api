@@ -14,11 +14,7 @@
       @focusout="onLeave"
       tabindex="0"
     >
-      <PlatformIcon
-        v-if="effectivePlatform"
-        :platform="effectivePlatform as GroupPlatform"
-        size="xs"
-      />
+      <ModelIcon :model="model.name" size="18px" />
       <span
         v-if="showPlatform && model.platform"
         class="rounded bg-gray-200/60 px-1 text-[10px] uppercase text-gray-600 dark:bg-dark-700 dark:text-gray-400"
@@ -113,10 +109,10 @@
             <PricingRow
               v-if="
                 model.pricing.billing_mode === BILLING_MODE_IMAGE &&
-                model.pricing.image_output_price != null
+                model.pricing.per_request_price != null
               "
-              :label="t(prefixKey('imageOutputPrice'))"
-              :value="model.pricing.image_output_price"
+              :label="t(prefixKey('perRequestPrice'))"
+              :value="model.pricing.per_request_price"
               :unit="t(prefixKey('unitPerRequest'))"
               :scale="1"
             />
@@ -164,8 +160,7 @@ import {
 // 复用 api/channels.ts 的用户侧最小形态 DTO。
 // admin 侧 ChannelModelPricing 字段更多，但结构上是用户 DTO 的超集，admin 视图传入可直接通过结构化子类型检查。
 import type { UserPricingInterval, UserSupportedModel } from '@/api/channels'
-import PlatformIcon from '@/components/common/PlatformIcon.vue'
-import type { GroupPlatform } from '@/types'
+import ModelIcon from '@/components/common/ModelIcon.vue'
 import { platformBadgeClass, platformBorderClass, platformBadgeLightClass } from '@/utils/platformColors'
 
 const props = withDefaults(

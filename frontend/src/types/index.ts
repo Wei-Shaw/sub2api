@@ -186,6 +186,15 @@ export interface LoginAgreementDocument {
   content_md: string
 }
 
+export interface BalancePricingTier {
+  min: number
+  max: number
+  multiplier: number
+  label: string
+  enabled: boolean
+  sortOrder: number
+}
+
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
@@ -205,11 +214,14 @@ export interface PublicSettings {
   site_logo: string
   site_subtitle: string
   api_base_url: string
+  image_generation_api_base_url: string
   contact_info: string
   doc_url: string
   home_content: string
   hide_ccs_import_button: boolean
   payment_enabled: boolean
+  payment_balance_recharge_multiplier?: number
+  payment_balance_pricing_tiers?: BalancePricingTier[]
   risk_control_enabled: boolean
   table_default_page_size: number
   table_page_size_options: number[]
@@ -233,6 +245,8 @@ export interface PublicSettings {
   channel_monitor_enabled: boolean
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
+  ai_chat_enabled: boolean
+  image_generation_enabled: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean
   allow_user_view_error_requests?: boolean
@@ -817,6 +831,12 @@ export interface TempUnschedulableStatus {
   state?: TempUnschedulableState
 }
 
+export interface AccountHealthBucket {
+  bucket_start: string
+  success_count: number
+  error_count: number
+}
+
 export interface Account {
   id: number
   name: string
@@ -918,6 +938,8 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+  avg_first_token_ms?: number | null
+  health_buckets?: AccountHealthBucket[] | null
 }
 
 // Account Usage types
@@ -927,6 +949,8 @@ export interface WindowStats {
   cost: number // Account cost (account multiplier)
   standard_cost?: number
   user_cost?: number
+  success_count?: number
+  error_count?: number
 }
 
 export interface UsageProgress {
@@ -1337,7 +1361,8 @@ export interface RedeemCode {
   updated_at?: string
   notes?: string
   group_id?: number | null // 订阅类型专用
-  validity_days?: number // 订阅类型专用
+  validity_days?: number
+  validity_seconds?: number // 订阅类型专用
   user?: User
   group?: Group // 关联的分组
 }
@@ -1366,6 +1391,7 @@ export interface BatchUpdateRedeemCodesRequest {
 
 export interface RedeemCodeRequest {
   code: string
+  invitation_code?: string
 }
 
 // ==================== Dashboard & Statistics ====================
@@ -1598,6 +1624,7 @@ export interface AssignSubscriptionRequest {
   user_id: number
   group_id: number
   validity_days?: number
+  overwrite_existing?: boolean
 }
 
 export interface BulkAssignSubscriptionRequest {

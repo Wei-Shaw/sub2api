@@ -20,6 +20,24 @@
           </div>
 
           <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
+            <div class="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+              <button
+                type="button"
+                class="view-toggle-btn"
+                :class="{ active: viewMode === 'channel' }"
+                @click="viewMode = 'channel'"
+              >
+                渠道视图
+              </button>
+              <button
+                type="button"
+                class="view-toggle-btn"
+                :class="{ active: viewMode === 'group' }"
+                @click="viewMode = 'group'"
+              >
+                分组视图
+              </button>
+            </div>
             <button
               @click="loadChannels"
               :disabled="loading"
@@ -42,6 +60,8 @@
           :no-pricing-label="t('availableChannels.noPricing')"
           :no-models-label="t('availableChannels.noModels')"
           :empty-label="t('availableChannels.empty')"
+          :view-mode="viewMode"
+          :available-groups="availableGroups"
         />
       </template>
     </TablePageLayout>
@@ -57,6 +77,7 @@ import Icon from '@/components/icons/Icon.vue'
 import AvailableChannelsTable from '@/components/channels/AvailableChannelsTable.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
+import type { Group } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
@@ -65,8 +86,10 @@ const appStore = useAppStore()
 
 const channels = ref<UserAvailableChannel[]>([])
 const userGroupRates = ref<Record<number, number>>({})
+const availableGroups = ref<Group[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
+const viewMode = ref<'channel' | 'group'>('group')
 
 const columnLabels = computed(() => ({
   name: t('availableChannels.columns.name'),
@@ -107,15 +130,20 @@ async function loadChannels() {
   try {
     // 渠道列表和用户专属倍率并发拉取。专属倍率失败不阻塞渠道展示——
     // 失败时只是无法渲染专属倍率角标，降级为仅显示默认倍率。
-    const [list, rates] = await Promise.all([
+    const [list, rates, groups] = await Promise.all([
       userChannelsAPI.getAvailable(),
       userGroupsAPI.getUserGroupRates().catch((err: unknown) => {
         console.error('Failed to load user group rates:', err)
         return {} as Record<number, number>
       }),
+      userGroupsAPI.getAvailable().catch((err: unknown) => {
+        console.error('Failed to load available groups:', err)
+        return [] as Group[]
+      }),
     ])
     channels.value = list
     userGroupRates.value = rates
+    availableGroups.value = groups
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {
@@ -125,3 +153,29 @@ async function loadChannels() {
 
 onMounted(loadChannels)
 </script>
+
+<style scoped>
+.view-toggle-btn {
+  border-radius: .625rem;
+  padding: .5rem .875rem;
+  color: rgb(71 85 105);
+  font-size: .875rem;
+  font-weight: 600;
+  transition: color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+
+.view-toggle-btn.active {
+  color: rgb(15 118 110);
+  background: rgb(240 253 250);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+}
+
+:global(.dark) .view-toggle-btn {
+  color: rgb(203 213 225);
+}
+
+:global(.dark) .view-toggle-btn.active {
+  color: rgb(94 234 212);
+  background: rgba(20, 184, 166, .16);
+}
+</style>

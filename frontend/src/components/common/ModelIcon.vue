@@ -19,17 +19,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = withDefaults(defineProps<{
-  model: string
-  size?: string
-}>(), {
-  size: '18px'
-})
-
 interface IconData {
   color: string
   paths: string[]
 }
+
+const props = withDefaults(defineProps<{
+  model: string
+  size?: string
+  preferFallback?: boolean
+}>(), {
+  size: '20px',
+  preferFallback: false,
+})
 
 // SVG paths extracted from @lobehub/icons Mono.js files
 const iconData: Record<string, IconData> = {
@@ -258,7 +260,7 @@ const iconKey = computed(() => {
   return null
 })
 
-const iconInfo = computed(() => iconKey.value ? iconData[iconKey.value] : null)
+const iconInfo = computed(() => props.preferFallback ? null : (iconKey.value ? iconData[iconKey.value] : null))
 </script>
 
 <style scoped>
