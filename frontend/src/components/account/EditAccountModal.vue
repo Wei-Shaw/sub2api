@@ -68,7 +68,6 @@
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
-
         <!-- Model Restriction Section (不适用于 Antigravity) -->
         <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -417,6 +416,21 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- OpenAI account User-Agent -->
+      <div
+        v-if="account.platform === 'openai'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.userAgent') }}</label>
+        <input
+          v-model="editOpenAIUserAgent"
+          type="text"
+          class="input font-mono"
+          :placeholder="t('admin.accounts.userAgentPlaceholder')"
+        />
+        <p class="input-hint">{{ t('admin.accounts.userAgentHint') }}</p>
       </div>
 
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
@@ -2464,6 +2478,7 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editOpenAIUserAgent = ref('')
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -2711,6 +2726,15 @@ const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapabili
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')
 )
+
+const applyOpenAIUserAgent = (credentials: Record<string, unknown>) => {
+  const userAgent = editOpenAIUserAgent.value.trim()
+  if (userAgent) {
+    credentials.user_agent = userAgent
+  } else {
+    delete credentials.user_agent
+  }
+}
 
 const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
   const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings']
@@ -3099,6 +3123,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           ? 'https://generativelanguage.googleapis.com'
           : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
+    editOpenAIUserAgent.value = props.account.platform === 'openai' ? String(credentials.user_agent || '') : ''
 
     // Load model mappings and detect mode
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
@@ -3151,6 +3176,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   } else if (newAccount.type === 'upstream' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editBaseUrl.value = (credentials.base_url as string) || ''
+    editOpenAIUserAgent.value = ''
   } else if ((newAccount.platform === 'gemini' || newAccount.platform === 'anthropic') && newAccount.type === 'service_account' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editVertexProjectId.value = (credentials.project_id as string) || ''
@@ -3719,6 +3745,7 @@ const handleSubmit = async () => {
         newCredentials.model_mapping = currentCredentials.model_mapping
       }
       if (props.account.platform === 'openai') {
+        applyOpenAIUserAgent(newCredentials)
         applyOpenAIEndpointCapabilities(newCredentials)
         const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
         if (compactModelMapping) {
@@ -3914,6 +3941,7 @@ const handleSubmit = async () => {
         // 透传模式保留现有映射
         newCredentials.model_mapping = currentCredentials.model_mapping
       }
+      applyOpenAIUserAgent(newCredentials)
       const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
       if (compactModelMapping) {
         newCredentials.compact_model_mapping = compactModelMapping

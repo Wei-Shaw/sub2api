@@ -1043,6 +1043,16 @@
           />
           <p class="input-hint">{{ apiKeyHint }}</p>
         </div>
+        <div v-if="form.platform === 'openai'">
+          <label class="input-label">{{ t('admin.accounts.userAgent') }}</label>
+          <input
+            v-model="openAIUserAgent"
+            type="text"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.userAgentPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.userAgentHint') }}</p>
+        </div>
 
         <!-- Gemini API Key tier selection -->
         <div v-if="form.platform === 'gemini'">
@@ -1764,6 +1774,21 @@
           @update:weeklyResetHour="editWeeklyResetHour = $event"
           @update:resetTimezone="editResetTimezone = $event"
         />
+      </div>
+
+      <!-- OpenAI account User-Agent -->
+      <div
+        v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.userAgent') }}</label>
+        <input
+          v-model="openAIUserAgent"
+          type="text"
+          class="input font-mono"
+          :placeholder="t('admin.accounts.userAgentPlaceholder')"
+        />
+        <p class="input-hint">{{ t('admin.accounts.userAgentHint') }}</p>
       </div>
 
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
@@ -3361,6 +3386,7 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const openAIUserAgent = ref('')
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
@@ -3368,7 +3394,8 @@ const syncPreviewCredentials = computed(() => {
     platform: form.platform,
     type: form.type,
     base_url: apiKeyBaseUrl.value || undefined,
-    api_key: apiKeyValue.value
+    api_key: apiKeyValue.value,
+    user_agent: form.platform === 'openai' ? openAIUserAgent.value.trim() || undefined : undefined
   }
 })
 
@@ -3501,6 +3528,15 @@ const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[])
   const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings']
   const selected = allowed.filter((value) => values.includes(value))
   return selected.length > 0 ? selected : allowed
+}
+
+const applyOpenAIUserAgent = (credentials: Record<string, unknown>) => {
+  const userAgent = openAIUserAgent.value.trim()
+  if (userAgent) {
+    credentials.user_agent = userAgent
+  } else {
+    delete credentials.user_agent
+  }
 }
 
 const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, event?: Event) => {
@@ -3799,6 +3835,9 @@ watch(
         : newPlatform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
           : 'https://api.anthropic.com'
+    if (newPlatform !== 'openai') {
+      openAIUserAgent.value = ''
+    }
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
@@ -4213,6 +4252,7 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  openAIUserAgent.value = ''
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -4636,6 +4676,7 @@ const handleSubmit = async () => {
     }
   }
   if (form.platform === 'openai') {
+    applyOpenAIUserAgent(credentials)
     applyOpenAIEndpointCapabilities(credentials)
     const compactModelMapping = buildOpenAICompactModelMapping()
     if (compactModelMapping) {
@@ -4759,6 +4800,7 @@ const createAccountAndFinish = async (
     }
   }
   if (platform === 'openai') {
+    applyOpenAIUserAgent(credentials)
     if (type === 'apikey') {
       applyOpenAIEndpointCapabilities(credentials)
     }
@@ -4824,6 +4866,7 @@ const handleOpenAIExchange = async (authCode: string) => {
       }
     }
     if (shouldCreateOpenAI) {
+      applyOpenAIUserAgent(credentials)
       const compactModelMapping = buildOpenAICompactModelMapping()
       if (compactModelMapping) {
         credentials.compact_model_mapping = compactModelMapping
@@ -4877,6 +4920,8 @@ const buildOpenAICodexImportCredentialExtras = (): Record<string, unknown> | nul
       credentials.model_mapping = modelMapping
     }
   }
+
+  applyOpenAIUserAgent(credentials)
 
   const compactModelMapping = buildOpenAICompactModelMapping()
   if (compactModelMapping) {

@@ -76,8 +76,9 @@ func TestForwardEmbeddings_APIKeyPassthroughRecordsUsageAndBatchInput(t *testing
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
-			"api_key":  "sk-test",
-			"base_url": "https://api.jina.ai",
+			"api_key":    "sk-test",
+			"base_url":   "https://api.jina.ai",
+			"user_agent": "custom-openai-client/1.0",
 			"model_mapping": map[string]any{
 				"nowledge-embedding": "jina-embeddings-v5-text-small",
 			},
@@ -97,6 +98,7 @@ func TestForwardEmbeddings_APIKeyPassthroughRecordsUsageAndBatchInput(t *testing
 	require.Equal(t, 0, result.Usage.OutputTokens)
 	require.Equal(t, "https://api.jina.ai/v1/embeddings", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "custom-openai-client/1.0", upstream.lastReq.Header.Get("User-Agent"))
 	require.Equal(t, "jina-embeddings-v5-text-small", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, int64(2), gjson.GetBytes(upstream.lastBody, "input.#").Int())
 	require.Equal(t, "hello", gjson.GetBytes(upstream.lastBody, "input.0").String())
