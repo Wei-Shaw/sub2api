@@ -563,20 +563,18 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		apiKey.GroupID = req.GroupID
 	}
 
-	if req.Status != nil {
-		apiKey.Status = *req.Status
-		// 如果状态改变，清除Redis缓存
-		if s.cache != nil {
-			_ = s.cache.DeleteCreateAttemptCount(ctx, apiKey.UserID)
-		}
-	}
+	// Step 1: Handle automatic reactivation from quota/expiration changes first
+	// This must happen before explicit status updates to ensure quota_exhausted/expired
+	// keys can be reactivated when quota is increased or expiration is extended.
+	autoReactivated := false
+	originalStatus := apiKey.Status
 
-	// Update quota fields
 	if req.Quota != nil {
 		apiKey.Quota = *req.Quota
 		// If quota is increased and status was quota_exhausted, reactivate
 		if apiKey.Status == StatusAPIKeyQuotaExhausted && *req.Quota > apiKey.QuotaUsed {
 			apiKey.Status = StatusActive
+			autoReactivated = true
 		}
 	}
 	if req.ResetQuota != nil && *req.ResetQuota {
@@ -584,6 +582,7 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		// If resetting quota and status was quota_exhausted, reactivate
 		if apiKey.Status == StatusAPIKeyQuotaExhausted {
 			apiKey.Status = StatusActive
+			autoReactivated = true
 		}
 	}
 	if req.ClearExpiration {
@@ -591,12 +590,34 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		// If clearing expiry and status was expired, reactivate
 		if apiKey.Status == StatusAPIKeyExpired {
 			apiKey.Status = StatusActive
+			autoReactivated = true
 		}
 	} else if req.ExpiresAt != nil {
 		apiKey.ExpiresAt = req.ExpiresAt
 		// If extending expiry and status was expired, reactivate
 		if apiKey.Status == StatusAPIKeyExpired && time.Now().Before(*req.ExpiresAt) {
 			apiKey.Status = StatusActive
+			autoReactivated = true
+		}
+	}
+
+	// Step 2: Handle explicit status updates
+	// Skip explicit status update if we just auto-reactivated from quota_exhausted/expired to active
+	// and the request is trying to set it to inactive (which is the frontend's default behavior)
+	if req.Status != nil {
+		if autoReactivated && *req.Status == StatusInactive &&
+			(originalStatus == StatusAPIKeyQuotaExhausted || originalStatus == StatusAPIKeyExpired) {
+			// Skip the inactive status update since we just reactivated the key
+			// Clear Redis cache for the status change
+			if s.cache != nil {
+				_ = s.cache.DeleteCreateAttemptCount(ctx, apiKey.UserID)
+			}
+		} else {
+			apiKey.Status = *req.Status
+			// 如果状态改变，清除Redis缓存
+			if s.cache != nil {
+				_ = s.cache.DeleteCreateAttemptCount(ctx, apiKey.UserID)
+			}
 		}
 	}
 
