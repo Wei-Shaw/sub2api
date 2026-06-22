@@ -396,6 +396,70 @@ func TestBotSalesFulfillmentBalanceTopupWithoutDeviceCodeCreditsCanonicalBuyerAc
 	}
 }
 
+func TestBotSalesFulfillmentCreditTopupCreditsDeviceOwnerWithoutPackageOrAPIKey(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	owner := client.User.Create().
+		SetEmail("credit-device-owner@example.test").
+		SetPasswordHash("test-password-hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		SetConcurrency(1).
+		SaveX(ctx)
+	deviceCode := "DLG-CRDT-TOPU-TEST"
+	client.UserDevice.Create().
+		SetUserID(owner.ID).
+		SetDeviceCode(deviceCode).
+		SetDeviceHash(strings.Repeat("a", 64)).
+		SetPlatform("bot-sales").
+		SetArch("api").
+		SetStatus(service.UserDeviceStatusActive).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:     "bs-order-credit-topup-device",
+		ExternalOrderItemID: "line-credit-1",
+		ExternalPaymentID:   "bs-pay-credit-topup-device",
+		Operation:           service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:     service.BotSalesEntitlementCreditTopup,
+		PaymentAmount:       125000,
+		PaymentCurrency:     "VND",
+		DeviceCode:          strings.ToLower(deviceCode),
+		AmountLedger:        12.5,
+		ActualCredits:       15000000,
+		CreditUnit:          "tokens",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:credit-topup-payer",
+			Email:          "credit-topup-payer@example.test",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways},
+	})
+	require.NoError(t, err)
+	require.Equal(t, service.BotSalesEntitlementCreditTopup, resp.EntitlementKind)
+	require.Equal(t, service.BotSalesFulfillmentOperationTopup, resp.Operation)
+	require.Equal(t, owner.ID, resp.Buyer.UserID)
+	require.Equal(t, deviceCode, resp.DeviceCode)
+	require.Equal(t, deviceCode, resp.Delivery.DeviceCode)
+	require.Nil(t, resp.Delivery.APIKey)
+	require.Equal(t, 0, client.APIKey.Query().CountX(ctx))
+	require.InDelta(t, 12.5, client.User.GetX(ctx, owner.ID).Balance, 0.000001)
+	require.InDelta(t, 0, client.User.Query().Where(dbuser.EmailEQ("credit-topup-payer@example.test")).OnlyX(ctx).Balance, 0.000001)
+
+	order := client.PaymentOrder.Query().OnlyX(ctx)
+	require.Equal(t, service.OrderStatusCompleted, order.Status)
+	require.Equal(t, payment.OrderTypeBalance, order.OrderType)
+	require.Equal(t, service.BotSalesPaymentProvider, order.PaymentType)
+	require.Equal(t, "VND", order.PaymentCurrency)
+	require.Equal(t, float64(125000), order.PaymentAmount)
+	require.InDelta(t, 12.5, order.LedgerAmount, 0.000001)
+	require.Nil(t, order.BalanceGroupID)
+	require.NotNil(t, order.ActualCredits)
+	require.Equal(t, int64(15000000), *order.ActualCredits)
+	require.Equal(t, service.BotSalesEntitlementCreditTopup, order.ProviderSnapshot["entitlement_kind"])
+	require.Equal(t, "tokens", order.ProviderSnapshot["credit_unit"])
+}
+
 func TestBotSalesFulfillmentBalancePaymentOrderRetryDoesNotDoubleCredit(t *testing.T) {
 	ctx := context.Background()
 	client, db := newBotSalesFulfillmentEntClient(t)

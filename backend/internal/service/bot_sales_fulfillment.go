@@ -33,6 +33,7 @@ const (
 
 	BotSalesEntitlementSubscription = "subscription"
 	BotSalesEntitlementBalance      = "balance"
+	BotSalesEntitlementCreditTopup  = "credit_topup"
 
 	BotSalesPaymentProvider = "bot_sales"
 	botSalesPaymentCurrency = "VND"
@@ -98,6 +99,9 @@ type BotSalesTokenFulfillmentRequest struct {
 	PaymentProviderTxnID string                        `json:"payment_provider_txn_id"`
 	PaidAt               *time.Time                    `json:"paid_at"`
 	DeviceCode           string                        `json:"device_code"`
+	AmountLedger         float64                       `json:"amount_ledger"`
+	ActualCredits        int64                         `json:"actual_credits"`
+	CreditUnit           string                        `json:"credit_unit"`
 	Buyer                BotSalesFulfillmentBuyer      `json:"buyer"`
 	Affiliate            *BotSalesFulfillmentAffiliate `json:"affiliate"`
 	DeliveryPolicy       BotSalesDeliveryPolicy        `json:"delivery_policy"`
@@ -227,15 +231,19 @@ func (s *BotSalesFulfillmentService) Fulfill(ctx context.Context, req BotSalesTo
 		if err := s.fulfillBalance(ctx, buyer, req, resp); err != nil {
 			return nil, err
 		}
+	case BotSalesEntitlementCreditTopup:
+		if err := s.fulfillCreditTopup(ctx, buyer, req, resp); err != nil {
+			return nil, err
+		}
 	default:
-		return nil, infraerrors.BadRequest("BOT_SALES_ENTITLEMENT_KIND_INVALID", "entitlement_kind must be subscription or balance")
+		return nil, infraerrors.BadRequest("BOT_SALES_ENTITLEMENT_KIND_INVALID", "entitlement_kind must be subscription, balance, or credit_topup")
 	}
 
 	apiKeyUserID := resp.Buyer.UserID
 	if apiKeyUserID <= 0 {
 		apiKeyUserID = buyer.ID
 	}
-	if !resp.paymentReplayed && s.apiKeyService != nil {
+	if !resp.paymentReplayed && s.apiKeyService != nil && resp.EntitlementKind != BotSalesEntitlementCreditTopup {
 		apiKey, err := s.issueBotSalesAPIKeyForPolicy(ctx, apiKeyUserID, resp.Entitlement.GroupID, req)
 		if err != nil {
 			return nil, err
@@ -467,6 +475,72 @@ func (s *BotSalesFulfillmentService) fulfillBalance(ctx context.Context, buyer *
 		BalanceCredited:    balanceCredited,
 	}
 	resp.Balance = BotSalesFulfillmentBalance{GroupID: groupID, AmountLedger: balanceCredited, ActualCredits: actualCredits}
+	resp.Delivery.DeviceCode = deviceCode
+	resp.DeviceCode = deviceCode
+	return nil
+}
+
+func (s *BotSalesFulfillmentService) fulfillCreditTopup(ctx context.Context, buyer *User, req BotSalesTokenFulfillmentRequest, resp *BotSalesTokenFulfillmentResponse) error {
+	operation := req.Operation
+	if operation == "" {
+		operation = BotSalesFulfillmentOperationTopup
+	}
+	if operation != BotSalesFulfillmentOperationTopup {
+		return infraerrors.BadRequest("BOT_SALES_OPERATION_INVALID", "credit_topup operation must be topup")
+	}
+	if strings.TrimSpace(req.BalancePackageCode) != "" {
+		return infraerrors.BadRequest("BOT_SALES_CREDIT_TOPUP_PACKAGE_UNSUPPORTED", "credit_topup does not accept balance_package_code")
+	}
+	if strings.TrimSpace(req.DeviceCode) == "" {
+		return infraerrors.BadRequest("BOT_SALES_DEVICE_CODE_REQUIRED", "device_code is required for credit_topup")
+	}
+	if err := validateBotSalesCreditTopup(req); err != nil {
+		return err
+	}
+	req.Operation = operation
+
+	device, err := s.resolveBotSalesDevice(ctx, req.DeviceCode)
+	if err != nil {
+		return err
+	}
+	targetBuyer, err := s.userRepo.GetByID(ctx, device.UserID)
+	if err != nil {
+		return err
+	}
+	deviceCode := ""
+	if device.DeviceCode != nil {
+		deviceCode = *device.DeviceCode
+	}
+
+	pkg := &dbent.BalancePackage{
+		Code:          BotSalesEntitlementCreditTopup,
+		AmountLedger:  req.AmountLedger,
+		ActualCredits: req.ActualCredits,
+		CreditUnit:    botSalesCreditUnit(req),
+	}
+	paymentOrder, paymentReplayed, err := s.recordBotSalesBalancePayment(ctx, targetBuyer, req, pkg)
+	if err != nil {
+		return err
+	}
+	resp.paymentReplayed = paymentReplayed
+
+	balanceCredited := botSalesBalanceLedgerAmount(req, pkg)
+	actualCredits := botSalesBalanceActualCredits(req, pkg)
+	if paymentReplayed && paymentOrder != nil {
+		balanceCredited = paymentOrder.Amount
+		if paymentOrder.ActualCredits != nil {
+			actualCredits = *paymentOrder.ActualCredits
+		}
+	}
+
+	resp.Operation = operation
+	resp.EntitlementKind = BotSalesEntitlementCreditTopup
+	resp.Buyer = BotSalesFulfillmentBuyerResult{UserID: targetBuyer.ID, ExternalUserID: req.Buyer.ExternalUserID, Email: targetBuyer.Email}
+	resp.Entitlement = BotSalesFulfillmentEntitlement{
+		Kind:            BotSalesEntitlementCreditTopup,
+		BalanceCredited: balanceCredited,
+	}
+	resp.Balance = BotSalesFulfillmentBalance{AmountLedger: balanceCredited, ActualCredits: actualCredits}
 	resp.Delivery.DeviceCode = deviceCode
 	resp.DeviceCode = deviceCode
 	return nil
@@ -721,6 +795,23 @@ func botSalesPaymentAmountProvided(req BotSalesTokenFulfillmentRequest) bool {
 	return ok
 }
 
+func validateBotSalesCreditTopup(req BotSalesTokenFulfillmentRequest) error {
+	if req.AmountLedger <= 0 || math.IsNaN(req.AmountLedger) || math.IsInf(req.AmountLedger, 0) {
+		return infraerrors.BadRequest("BOT_SALES_CREDIT_TOPUP_AMOUNT_INVALID", "amount_ledger must be positive for credit_topup")
+	}
+	if req.ActualCredits <= 0 {
+		return infraerrors.BadRequest("BOT_SALES_CREDIT_TOPUP_CREDITS_INVALID", "actual_credits must be positive for credit_topup")
+	}
+	return validateBotSalesBalanceQuantity(req, &dbent.BalancePackage{AmountLedger: req.AmountLedger, ActualCredits: req.ActualCredits})
+}
+
+func botSalesCreditUnit(req BotSalesTokenFulfillmentRequest) string {
+	if unit := strings.TrimSpace(req.CreditUnit); unit != "" {
+		return unit
+	}
+	return "credits"
+}
+
 func validateBotSalesBalanceQuantity(req BotSalesTokenFulfillmentRequest, pkg *dbent.BalancePackage) error {
 	if req.Quantity < 0 {
 		return infraerrors.BadRequest("BOT_SALES_QUANTITY_INVALID", "quantity must be a positive integer")
@@ -828,7 +919,7 @@ func botSalesProviderSnapshot(req BotSalesTokenFulfillmentRequest, pkg *dbent.Ba
 	if provider == "" {
 		provider = BotSalesPaymentProvider
 	}
-	return map[string]any{
+	snapshot := map[string]any{
 		"schema_version":          1,
 		"source":                  "bot-sales",
 		"provider_key":            provider,
@@ -840,10 +931,21 @@ func botSalesProviderSnapshot(req BotSalesTokenFulfillmentRequest, pkg *dbent.Ba
 		"payment_amount":          paymentAmount,
 		"payment_amount_source":   paymentAmountSource,
 		"payment_currency":        currency,
-		"balance_package_code":    pkg.Code,
 		"quantity":                botSalesQuantity(req),
 		"operation":               req.Operation,
+		"entitlement_kind":        req.EntitlementKind,
 	}
+	if req.EntitlementKind == BotSalesEntitlementCreditTopup {
+		snapshot["amount_ledger"] = botSalesBalanceLedgerAmount(req, pkg)
+		snapshot["actual_credits"] = botSalesBalanceActualCredits(req, pkg)
+		snapshot["credit_unit"] = botSalesCreditUnit(req)
+		if deviceCode := NormalizeRedeemCode(req.DeviceCode); deviceCode != "" {
+			snapshot["device_code"] = deviceCode
+		}
+	} else {
+		snapshot["balance_package_code"] = pkg.Code
+	}
+	return snapshot
 }
 
 func int64PtrOrNil(v int64) *int64 {

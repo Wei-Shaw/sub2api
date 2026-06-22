@@ -293,6 +293,83 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 	require.Equal(t, float64(60), client.User.GetX(ctx, ownerID).Balance)
 }
 
+func TestBotSalesFulfillmentHandlerFulfillsCreditTopupWithoutAPIKey(t *testing.T) {
+	router, client, cleanup := newBotSalesFulfillmentHandlerTestRouter(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	owner := client.User.Create().
+		SetEmail("bot-http-credit-owner@example.test").
+		SetPasswordHash("test-password-hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		SetConcurrency(1).
+		SaveX(ctx)
+	deviceCode := "DLG-HTTP-CRDT-TOPU"
+	client.UserDevice.Create().
+		SetUserID(owner.ID).
+		SetDeviceCode(deviceCode).
+		SetDeviceHash(strings.Repeat("b", 64)).
+		SetPlatform("bot-sales").
+		SetArch("api").
+		SetStatus(service.UserDeviceStatusActive).
+		SaveX(ctx)
+
+	payload := map[string]any{
+		"external_order_id":      "bs-http-credit-topup",
+		"external_order_item_id": "credit-line-1",
+		"external_payment_id":    "bs-http-pay-credit-topup",
+		"operation":              service.BotSalesFulfillmentOperationTopup,
+		"entitlement_kind":       service.BotSalesEntitlementCreditTopup,
+		"payment_amount":         125000,
+		"payment_currency":       "VND",
+		"device_code":            strings.ToLower(deviceCode),
+		"amount_ledger":          12.5,
+		"actual_credits":         15000000,
+		"credit_unit":            "tokens",
+		"buyer": map[string]any{
+			"external_user_id": "channel:telegram:user:http-credit-payer",
+			"provider":         "telegram",
+			"provider_user_id": "http-credit-payer",
+			"telegram_id":      "http-credit-payer",
+			"email":            "bot-http-credit-payer@example.test",
+		},
+		"delivery_policy": map[string]any{
+			"issue_api_key": "always",
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/bot-sales/token-fulfillments", jsonBody(t, payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "bot-sales:bs-http-credit-topup:credit-line-1:topup")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var data map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &data))
+	require.Equal(t, service.BotSalesEntitlementCreditTopup, data["entitlement_kind"])
+	require.Equal(t, service.BotSalesFulfillmentOperationTopup, data["operation"])
+	require.Equal(t, deviceCode, data["device_code"])
+	delivery, ok := data["delivery"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, deviceCode, delivery["device_code"])
+	require.NotContains(t, delivery, "api_key")
+	balance, ok := data["balance"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(12.5), balance["amount_ledger"])
+	require.Equal(t, float64(15000000), balance["actual_credits"])
+	require.Equal(t, 0, client.APIKey.Query().CountX(ctx))
+	require.InDelta(t, 12.5, client.User.GetX(ctx, owner.ID).Balance, 0.000001)
+
+	order := client.PaymentOrder.Query().Where(paymentorder.OutTradeNoHasPrefix("bs_")).OnlyX(ctx)
+	require.Equal(t, service.OrderStatusCompleted, order.Status)
+	require.Equal(t, service.BotSalesEntitlementCreditTopup, order.ProviderSnapshot["entitlement_kind"])
+	require.Equal(t, float64(12.5), order.ProviderSnapshot["amount_ledger"])
+	require.Equal(t, float64(15000000), order.ProviderSnapshot["actual_credits"])
+	require.Equal(t, "tokens", order.ProviderSnapshot["credit_unit"])
+}
+
 func TestBotSalesFulfillmentHandlerAcceptsExplicitZeroPaymentAmount(t *testing.T) {
 	router, client, cleanup := newBotSalesFulfillmentHandlerTestRouter(t)
 	defer cleanup()
