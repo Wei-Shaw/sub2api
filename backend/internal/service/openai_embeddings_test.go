@@ -82,6 +82,12 @@ func TestForwardEmbeddings_APIKeyPassthroughRecordsUsageAndBatchInput(t *testing
 				"nowledge-embedding": "jina-embeddings-v5-text-small",
 			},
 		},
+		Extra: map[string]any{
+			openAICustomHeadersExtraKey: map[string]any{
+				"X-Account-Header": "account-value",
+				"Authorization":    "Bearer attacker",
+			},
+		},
 	}
 
 	result, err := svc.ForwardEmbeddings(context.Background(), c, account, reqBody, "")
@@ -97,6 +103,7 @@ func TestForwardEmbeddings_APIKeyPassthroughRecordsUsageAndBatchInput(t *testing
 	require.Equal(t, 0, result.Usage.OutputTokens)
 	require.Equal(t, "https://api.jina.ai/v1/embeddings", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "account-value", upstream.lastReq.Header.Get("X-Account-Header"))
 	require.Equal(t, "jina-embeddings-v5-text-small", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, int64(2), gjson.GetBytes(upstream.lastBody, "input.#").Int())
 	require.Equal(t, "hello", gjson.GetBytes(upstream.lastBody, "input.0").String())

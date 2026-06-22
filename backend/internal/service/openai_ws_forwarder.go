@@ -1182,6 +1182,8 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		headers.Set("user-agent", codexCLIUserAgent)
 	}
 
+	applyOpenAIAccountCustomHeaders(headers, account)
+
 	return headers, sessionResolution
 }
 

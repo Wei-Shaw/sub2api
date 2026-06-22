@@ -3568,6 +3568,15 @@ export default {
         oauthPassthrough: '自动透传（仅替换认证）',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
+        customHeaders: '自定义请求头',
+        customHeadersDesc: '随该账号的 OpenAI 上游请求发送。Authorization 可用于特殊上游认证；会话、WebSocket 与内容类型等核心请求头受保护。',
+        addCustomHeader: '添加请求头',
+        customHeaderNamePlaceholder: 'Header 名称',
+        customHeaderValuePlaceholder: 'Header 值',
+        customHeaderIncomplete: '请同时填写 Header 名称和值，或删除该行。',
+        customHeaderInvalid: 'Header 名称包含不支持的字符。',
+        customHeaderProtected: '该 Header 由网关管理，不能覆盖。',
+        customHeaderDuplicate: 'Header 名称不能重复。',
         responsesWebsocketsV2: 'Responses WebSocket v2',
         responsesWebsocketsV2Desc:
           '默认关闭。开启后可启用 responses_websockets_v2 协议能力（受网关全局开关与账号类型开关约束）。',

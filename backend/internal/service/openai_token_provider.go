@@ -139,6 +139,9 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
 		return "", errors.New("not an openai oauth account")
 	}
+	if hasOpenAICustomAuthorization(account) {
+		return openAICustomAuthorizationTokenPlaceholder, nil
+	}
 
 	cacheKey := OpenAITokenCacheKey(account)
 

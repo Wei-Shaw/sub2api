@@ -532,6 +532,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		isOAuth = true
 		// OAuth - use Bearer token with ChatGPT internal API
 		authToken = account.GetOpenAIAccessToken()
+		if hasOpenAICustomAuthorization(account) {
+			authToken = openAICustomAuthorizationTokenPlaceholder
+		}
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No access token available")
 		}
@@ -594,6 +597,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			req.Header.Set("chatgpt-account-id", chatgptAccountID)
 		}
 	}
+	applyOpenAIAccountCustomHeaders(req.Header, account)
 
 	// Get proxy URL
 	proxyURL := ""
@@ -664,6 +668,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+	applyOpenAIAccountCustomHeaders(req.Header, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -705,6 +710,9 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	case account.IsOAuth():
 		isOAuth = true
 		authToken = account.GetOpenAIAccessToken()
+		if hasOpenAICustomAuthorization(account) {
+			authToken = openAICustomAuthorizationTokenPlaceholder
+		}
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No access token available")
 		}
@@ -760,6 +768,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 			req.Header.Set("chatgpt-account-id", chatgptAccountID)
 		}
 	}
+	applyOpenAIAccountCustomHeaders(req.Header, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -1511,6 +1520,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+	applyOpenAIAccountCustomHeaders(req.Header, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -1567,6 +1577,9 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 // testOpenAIImageOAuth tests OpenAI image generation using an OAuth account via Codex /responses API.
 func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
 	authToken := account.GetOpenAIAccessToken()
+	if hasOpenAICustomAuthorization(account) {
+		authToken = openAICustomAuthorizationTokenPlaceholder
+	}
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No access token available")
 	}
@@ -1612,6 +1625,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	if chatgptAccountID := strings.TrimSpace(account.GetChatGPTAccountID()); chatgptAccountID != "" {
 		req.Header.Set("chatgpt-account-id", chatgptAccountID)
 	}
+	applyOpenAIAccountCustomHeaders(req.Header, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
