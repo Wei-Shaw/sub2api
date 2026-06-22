@@ -29,7 +29,7 @@ export http_proxy=http://127.0.0.1:7890
 export https_proxy=http://127.0.0.1:7890
 export HTTP_PROXY=http://127.0.0.1:7890
 export HTTPS_PROXY=http://127.0.0.1:7890
-docker buildx build --platform linux/amd64 -t docker.io/doctor11ma/sub2api:latest -t docker.io/doctor11ma/sub2api:v0.1.136 --push .
+docker buildx build --platform linux/amd64 -t docker.io/doctor11ma/sub2api:latest -t docker.io/doctor11ma/sub2api:v0.1.138 --push .
 
 feat
 上传自己的 docker hub
@@ -37,5 +37,5 @@ export http_proxy=http://127.0.0.1:7890
 export https_proxy=http://127.0.0.1:7890
 export HTTP_PROXY=http://127.0.0.1:7890
 export HTTPS_PROXY=http://127.0.0.1:7890
-docker buildx build --platform linux/amd64 -t docker.io/doctor11ma/sub2api:v0.1.137feat --push .
+docker buildx build --platform linux/amd64 -t docker.io/doctor11ma/sub2api:v0.1.138feat --push .
 
