@@ -1158,6 +1158,11 @@ REDACTED{
 			wantErr: "billing.circuit_breaker.half_open_requests",
 	REDACTED,
 		{
+			name:    "billing minimum balance reserve",
+			mutate:  func(c *Config) { c.Billing.MinimumBalanceReserve = -0.01 REDACTED,
+			wantErr: "billing.minimum_balance_reserve",
+	REDACTED,
+		{
 			name:    "database max open conns",
 			mutate:  func(c *Config) { c.Database.MaxOpenConns = 0 REDACTED,
 			wantErr: "database.max_open_conns",
