@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/clienterror"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
@@ -1464,7 +1465,8 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 					contentType = "application/json"
 				}
 				MarkResponseCommitted(c)
-				c.Data(http.StatusInternalServerError, contentType, respBody)
+				clientBody := clienterror.JSONBody(http.StatusInternalServerError, respBody, "upstream_error", "Upstream service temporarily unavailable")
+				c.Data(http.StatusInternalServerError, contentType, clientBody)
 				return nil, fmt.Errorf("gemini upstream error: %d (skipped by error policy)", resp.StatusCode)
 			case ErrorPolicyMatched, ErrorPolicyTempUnscheduled:
 				if policy == ErrorPolicyMatched {
@@ -1579,7 +1581,8 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			contentType = "application/json"
 		}
 		MarkResponseCommitted(c)
-		c.Data(resp.StatusCode, contentType, respBody)
+		clientBody := clienterror.JSONBody(resp.StatusCode, respBody, "upstream_error", upstreamMsg)
+		c.Data(resp.StatusCode, contentType, clientBody)
 		if upstreamMsg == "" {
 			return nil, fmt.Errorf("gemini upstream error: %d", resp.StatusCode)
 		}
@@ -1905,7 +1908,7 @@ func (s *GeminiMessagesCompatService) writeGeminiMappedError(c *gin.Context, acc
 
 	c.JSON(statusCode, gin.H{
 		"type":  "error",
-		"error": gin.H{"type": errType, "message": errMsg},
+		"error": gin.H{"type": clienterror.TypeForHTTPStatus(statusCode, errType), "message": clienterror.UpstreamMessageWithCode(statusCode, errType, errMsg)},
 	})
 	if upstreamMsg == "" {
 		return fmt.Errorf("upstream error: %d", upstreamStatus)
@@ -2310,10 +2313,17 @@ func generateAnthropicMsgID() string {
 }
 
 func (s *GeminiMessagesCompatService) writeClaudeError(c *gin.Context, status int, errType, message string) error {
+	clientMessage := clienterror.MessageWithCode(status, errType, message, "")
+	if strings.EqualFold(strings.TrimSpace(errType), "upstream_error") {
+		clientMessage = clienterror.UpstreamMessageWithCode(status, errType, message)
+	}
 	MarkResponseCommitted(c)
 	c.JSON(status, gin.H{
-		"type":  "error",
-		"error": gin.H{"type": errType, "message": message},
+		"type": "error",
+		"error": gin.H{
+			"type":    clienterror.TypeForHTTPStatus(status, errType),
+			"message": clientMessage,
+		},
 	})
 	return fmt.Errorf("%s", message)
 }
@@ -2323,7 +2333,7 @@ func (s *GeminiMessagesCompatService) writeGoogleError(c *gin.Context, status in
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"code":    status,
-			"message": message,
+			"message": clienterror.Message(status, message),
 			"status":  googleapi.HTTPStatusToGoogleStatus(status),
 		},
 	})
@@ -2589,6 +2599,9 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/json"
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		respBody = clienterror.JSONBody(resp.StatusCode, respBody, "upstream_error", extractUpstreamErrorMessage(respBody))
 	}
 	c.Data(resp.StatusCode, contentType, respBody)
 

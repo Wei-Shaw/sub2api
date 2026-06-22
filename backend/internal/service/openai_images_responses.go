@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/clienterror"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -75,10 +76,10 @@ func (e *OpenAIImagesUpstreamError) clientErrorType() string {
 	if e == nil {
 		return "upstream_error"
 	}
-	if trimmed := strings.TrimSpace(e.ErrorType); trimmed != "" {
-		return trimmed
+	if errType := strings.TrimSpace(e.ErrorType); errType != "" && !clienterror.ContainsCJK(errType) {
+		return errType
 	}
-	return "upstream_error"
+	return clienterror.TypeForHTTPStatus(e.clientStatusCode(), e.ErrorType)
 }
 
 func (e *OpenAIImagesUpstreamError) clientMessage() string {
@@ -86,12 +87,12 @@ func (e *OpenAIImagesUpstreamError) clientMessage() string {
 		return "Upstream request failed"
 	}
 	if trimmed := strings.TrimSpace(e.Message); trimmed != "" {
-		return trimmed
+		return clienterror.UpstreamMessageWithCode(e.clientStatusCode(), e.Code, trimmed)
 	}
 	if trimmed := strings.TrimSpace(e.Code); trimmed != "" {
-		return trimmed
+		return clienterror.UpstreamMessageWithCode(e.clientStatusCode(), e.Code, trimmed)
 	}
-	return "Upstream request failed"
+	return clienterror.UpstreamMessage(e.clientStatusCode(), "Upstream request failed")
 }
 
 // IsOpenAIImagesRetryableUpstreamError reports whether an Images error is an

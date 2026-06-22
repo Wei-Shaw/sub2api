@@ -475,6 +475,22 @@ func TestAPIKeyAuthOverwritesInvalidContextGroup(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestAbortWithErrorLocalizesChineseMessageToEnglish(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	AbortWithError(c, http.StatusTooManyRequests, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
+
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	var payload ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Equal(t, "API_KEY_QUOTA_EXHAUSTED", payload.Code)
+	require.Equal(t, "API key quota exhausted", payload.Message)
+	require.NotContains(t, rec.Body.String(), "额度")
+}
+
 func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -592,6 +608,8 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 			require.Equal(t, tt.wantStatus, w.Code)
 			if tt.wantCode != "" {
 				require.Contains(t, w.Body.String(), tt.wantCode)
+				require.NotContains(t, w.Body.String(), "已")
+				require.NotContains(t, w.Body.String(), "所属")
 			}
 			require.Equal(t, tt.wantMarked, markedBusinessLimited)
 			require.Equal(t, tt.wantReject != "", rejected)

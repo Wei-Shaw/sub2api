@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/clienterror"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
 
@@ -603,8 +604,8 @@ func (s *GatewayService) countTokensError(c *gin.Context, status int, errType, m
 	c.JSON(status, gin.H{
 		"type": "error",
 		"error": gin.H{
-			"type":    errType,
-			"message": message,
+			"type":    clienterror.TypeForHTTPStatus(status, errType),
+			"message": clienterror.UpstreamMessageWithCode(status, errType, message),
 		},
 	})
 }

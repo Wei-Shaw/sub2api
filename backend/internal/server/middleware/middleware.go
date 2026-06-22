@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/clienterror"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -75,8 +76,8 @@ func NewErrorResponse(code, message string) ErrorResponse {
 	}
 }
 
-func newBillingErrorResponse(code, message string) ErrorResponse {
-	resp := NewErrorResponse(code, message)
+func newBillingErrorResponse(statusCode int, code, message string) ErrorResponse {
+	resp := NewErrorResponse(code, clienterror.MessageWithCode(statusCode, code, message, ""))
 	if metadata := billingErrorMetadata(code); metadata != nil {
 		resp.Metadata = metadata
 	}
@@ -117,7 +118,8 @@ func setBillingErrorHeaders(c *gin.Context, code string) {
 // AbortWithError 中断请求并返回JSON错误
 func AbortWithError(c *gin.Context, statusCode int, code, message string) {
 	setBillingErrorHeaders(c, code)
-	c.JSON(statusCode, newBillingErrorResponse(code, message))
+	resp := newBillingErrorResponse(statusCode, code, message)
+	c.JSON(statusCode, resp)
 	c.Abort()
 }
 
@@ -143,14 +145,16 @@ type GatewayErrorWriter func(c *gin.Context, status int, message string)
 
 // AnthropicErrorWriter 按 Anthropic API 规范输出错误
 func AnthropicErrorWriter(c *gin.Context, status int, message string) {
+	message = clienterror.Message(status, message)
 	c.JSON(status, gin.H{
 		"type":  "error",
-		"error": gin.H{"type": "permission_error", "message": message},
+		"error": gin.H{"type": clienterror.TypeForHTTPStatus(status, "permission_error"), "message": message},
 	})
 }
 
 // GoogleErrorWriter 按 Google API 规范输出错误
 func GoogleErrorWriter(c *gin.Context, status int, message string) {
+	message = clienterror.Message(status, message)
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"code":    status,

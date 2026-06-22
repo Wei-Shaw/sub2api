@@ -73,6 +73,15 @@ func TestErrorWithDetails(t *testing.T) {
 			},
 		},
 		{
+			name:       "localized_error_is_normalized",
+			statusCode: http.StatusBadRequest,
+			message:    "请求格式或参数不正确，请检查 messages 参数",
+			want: Response{
+				Code:    http.StatusBadRequest,
+				Message: "Invalid request format or parameters",
+			},
+		},
+		{
 			name:       "structured_error",
 			statusCode: http.StatusForbidden,
 			message:    "no access",
@@ -80,7 +89,7 @@ func TestErrorWithDetails(t *testing.T) {
 			metadata:   map[string]string{"k": "v"},
 			want: Response{
 				Code:     http.StatusForbidden,
-				Message:  "no access",
+				Message:  "Access forbidden",
 				Reason:   "FORBIDDEN",
 				Metadata: map[string]string{"k": "v"},
 			},
@@ -125,7 +134,7 @@ func TestErrorFrom(t *testing.T) {
 			wantHTTPCode: http.StatusForbidden,
 			wantBody: Response{
 				Code:     http.StatusForbidden,
-				Message:  "no access",
+				Message:  "Access forbidden",
 				Reason:   "FORBIDDEN",
 				Metadata: map[string]string{"scope": "admin"},
 			},
@@ -148,7 +157,7 @@ func TestErrorFrom(t *testing.T) {
 			wantHTTPCode: http.StatusUnauthorized,
 			wantBody: Response{
 				Code:    http.StatusUnauthorized,
-				Message: "unauthorized",
+				Message: "Authentication required",
 				Reason:  "UNAUTHORIZED",
 			},
 		},
@@ -159,7 +168,7 @@ func TestErrorFrom(t *testing.T) {
 			wantHTTPCode: http.StatusNotFound,
 			wantBody: Response{
 				Code:    http.StatusNotFound,
-				Message: "not found",
+				Message: "Not found",
 				Reason:  "NOT_FOUND",
 			},
 		},
@@ -170,7 +179,7 @@ func TestErrorFrom(t *testing.T) {
 			wantHTTPCode: http.StatusConflict,
 			wantBody: Response{
 				Code:    http.StatusConflict,
-				Message: "conflict",
+				Message: "Conflict",
 				Reason:  "CONFLICT",
 			},
 		},
@@ -353,7 +362,7 @@ func TestBadRequest(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	got := parseResponseBody(t, w)
 	require.Equal(t, http.StatusBadRequest, got.Code)
-	require.Equal(t, "参数无效", got.Message)
+	require.Equal(t, "Invalid request parameters", got.Message)
 }
 
 func TestUnauthorized(t *testing.T) {
@@ -367,7 +376,7 @@ func TestUnauthorized(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, w.Code)
 	got := parseResponseBody(t, w)
 	require.Equal(t, http.StatusUnauthorized, got.Code)
-	require.Equal(t, "未登录", got.Message)
+	require.Equal(t, "Authentication required", got.Message)
 }
 
 func TestForbidden(t *testing.T) {
@@ -381,7 +390,7 @@ func TestForbidden(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, w.Code)
 	got := parseResponseBody(t, w)
 	require.Equal(t, http.StatusForbidden, got.Code)
-	require.Equal(t, "无权限", got.Message)
+	require.Equal(t, "Access forbidden", got.Message)
 }
 
 func TestNotFound(t *testing.T) {
@@ -395,7 +404,7 @@ func TestNotFound(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, w.Code)
 	got := parseResponseBody(t, w)
 	require.Equal(t, http.StatusNotFound, got.Code)
-	require.Equal(t, "资源不存在", got.Message)
+	require.Equal(t, "Resource not found", got.Message)
 }
 
 func TestInternalError(t *testing.T) {
@@ -409,7 +418,7 @@ func TestInternalError(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	got := parseResponseBody(t, w)
 	require.Equal(t, http.StatusInternalServerError, got.Code)
-	require.Equal(t, "服务器内部错误", got.Message)
+	require.Equal(t, "Internal server error", got.Message)
 }
 
 func TestPaginated(t *testing.T) {

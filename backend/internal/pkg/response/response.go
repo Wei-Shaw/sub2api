@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/clienterror"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/gin-gonic/gin"
@@ -58,6 +59,7 @@ func Accepted(c *gin.Context, data any) {
 
 // Error 返回错误响应
 func Error(c *gin.Context, statusCode int, message string) {
+	message = clienterror.Message(statusCode, message)
 	c.JSON(statusCode, Response{
 		Code:     statusCode,
 		Message:  message,
@@ -69,6 +71,7 @@ func Error(c *gin.Context, statusCode int, message string) {
 // ErrorWithDetails returns an error response compatible with the existing envelope while
 // optionally providing structured error fields (reason/metadata).
 func ErrorWithDetails(c *gin.Context, statusCode int, message, reason string, metadata map[string]string) {
+	message = clienterror.MessageWithCode(statusCode, reason, message, "")
 	c.JSON(statusCode, Response{
 		Code:     statusCode,
 		Message:  message,

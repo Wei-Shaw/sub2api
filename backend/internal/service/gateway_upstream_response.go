@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/clienterror"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/tidwall/gjson"
@@ -468,7 +469,8 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		c.Data(http.StatusBadRequest, "application/json", body)
+		clientBody := clienterror.JSONBody(http.StatusBadRequest, body, "invalid_request_error", upstreamMsg)
+		c.Data(http.StatusBadRequest, "application/json; charset=utf-8", clientBody)
 		summary := upstreamMsg
 		if summary == "" {
 			summary = truncateForLog(body, 512)

@@ -516,7 +516,9 @@ func TestApiKeyAuthWithSubscriptionGoogle_MarksUnavailableGroupBusinessLimited(t
 	require.Equal(t, http.StatusForbidden, rec.Code)
 	var resp googleErrorResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Equal(t, "API Key 所属分组已删除", resp.Error.Message)
+	require.Equal(t, "API key group has been deleted", resp.Error.Message)
+	require.NotContains(t, rec.Body.String(), "所属")
+	require.NotContains(t, rec.Body.String(), "删除")
 	require.True(t, markedBusinessLimited)
 	require.Equal(t, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable, businessLimitedReason)
 	require.True(t, rejected)
@@ -611,7 +613,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_InsufficientBalance(t *testing.T) {
 	var resp googleErrorResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, http.StatusForbidden, resp.Error.Code)
-	require.Equal(t, "Insufficient account balance", resp.Error.Message)
+	require.Equal(t, "Insufficient balance or quota", resp.Error.Message)
 	require.Equal(t, "PERMISSION_DENIED", resp.Error.Status)
 	require.Equal(t, "insufficient_balance", rec.Header().Get("X-Sub2API-Billing-Code"))
 	require.Equal(t, "false", rec.Header().Get("X-Sub2API-Auto-Switchable"))
@@ -653,7 +655,9 @@ func TestApiKeyAuthWithSubscriptionGoogle_APIKeyQuotaExhaustedIsSwitchable(t *te
 	var resp googleErrorResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, http.StatusTooManyRequests, resp.Error.Code)
+	require.Equal(t, "API key quota exhausted", resp.Error.Message)
 	require.Equal(t, "RESOURCE_EXHAUSTED", resp.Error.Status)
+	require.NotContains(t, rec.Body.String(), "额度")
 	require.Equal(t, "api_key_quota_exhausted", rec.Header().Get("X-Sub2API-Billing-Code"))
 	require.Equal(t, "true", rec.Header().Get("X-Sub2API-Auto-Switchable"))
 	require.Equal(t, "api_key_quota_exhausted", resp.Metadata["billing_code"])
@@ -724,7 +728,8 @@ func TestApiKeyAuthWithSubscriptionGoogle_RejectsExhaustedBalance(t *testing.T) 
 	var resp googleErrorResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, http.StatusForbidden, resp.Error.Code)
-	require.Equal(t, "Insufficient account balance", resp.Error.Message)
+	require.Equal(t, "Insufficient balance or quota", resp.Error.Message)
+	require.NotContains(t, rec.Body.String(), "余额")
 	require.Equal(t, "PERMISSION_DENIED", resp.Error.Status)
 }
 
@@ -948,7 +953,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_SubscriptionLimitExceededReturns429(t 
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, http.StatusTooManyRequests, resp.Error.Code)
 	require.Equal(t, "RESOURCE_EXHAUSTED", resp.Error.Status)
-	require.Contains(t, resp.Error.Message, "daily usage limit exceeded")
+	require.Equal(t, "Usage limit exceeded", resp.Error.Message)
 	require.Equal(t, "subscription_limit_exceeded", rec.Header().Get("X-Sub2API-Billing-Code"))
 	require.Equal(t, "true", rec.Header().Get("X-Sub2API-Auto-Switchable"))
 	require.Equal(t, "subscription_limit_exceeded", resp.Metadata["billing_code"])
