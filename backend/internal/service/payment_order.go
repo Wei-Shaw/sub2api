@@ -67,7 +67,7 @@ REDACTED
 			return nil, err
 	REDACTED
 REDACTED
-	payAmountStr, payAmount, err := calculateCreateOrderPayAmount(limitAmount, feeRate, methodCurrency)
+	payAmountStr, payAmount, err := calculateCreateOrderPayAmountForOrder(req.OrderType, limitAmount, feeRate, cfg.BalanceRechargeMultiplier, methodCurrency)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -83,7 +83,7 @@ REDACTED
 		selectedCurrency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 REDACTED
 	if selectedCurrency != methodCurrency {
-		payAmountStr, payAmount, err = calculateCreateOrderPayAmount(limitAmount, feeRate, selectedCurrency)
+		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrder(req.OrderType, limitAmount, feeRate, cfg.BalanceRechargeMultiplier, selectedCurrency)
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -610,6 +610,19 @@ REDACTED
 			WithMetadata(map[string]string{"currency": currencyREDACTED)
 REDACTED
 	return payAmountStr, payAmount, nil
+REDACTED
+
+func calculateCreateOrderPayAmountForOrder(orderType string, limitAmount, feeRate, multiplier float64, currency string) (string, float64, error) {
+	paymentAmount := calculateCreateOrderPaymentAmount(orderType, limitAmount, multiplier, currency)
+	return calculateCreateOrderPayAmount(paymentAmount, feeRate, currency)
+REDACTED
+
+func calculateCreateOrderPaymentAmount(orderType string, limitAmount, multiplier float64, currency string) float64 {
+	normalizedCurrency, err := payment.NormalizePaymentCurrency(currency)
+	if err != nil || normalizedCurrency != payment.DefaultPaymentCurrency || orderType != payment.OrderTypeSubscription {
+		return limitAmount
+REDACTED
+	return calculateGatewayPaymentAmount(limitAmount, multiplier, normalizedCurrency)
 REDACTED
 
 func validateCreateOrderAmountCurrency(amount float64, currency string) error {
