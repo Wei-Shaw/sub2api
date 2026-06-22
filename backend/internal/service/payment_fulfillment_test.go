@@ -54,6 +54,7 @@ type paymentFulfillmentAffiliateRepoStub struct {
 	inviteeSummary *AffiliateSummary
 	inviterSummary *AffiliateSummary
 	accrueCalls    []paymentFulfillmentAffiliateAccrueCall
+	codesByCode    map[string]*AffiliateCode
 }
 
 func (r *paymentFulfillmentAffiliateRepoStub) EnsureUserAffiliate(_ context.Context, userID int64) (*AffiliateSummary, error) {
@@ -71,6 +72,18 @@ func (r *paymentFulfillmentAffiliateRepoStub) EnsureUserAffiliate(_ context.Cont
 
 func (r *paymentFulfillmentAffiliateRepoStub) GetAffiliateByCode(context.Context, string) (*AffiliateSummary, error) {
 	panic("unexpected GetAffiliateByCode call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) GetAffiliateCode(ctx context.Context, code string) (*AffiliateCode, error) {
+	if r.codesByCode == nil {
+		return nil, ErrAffiliateProfileNotFound
+	}
+	entry, ok := r.codesByCode[code]
+	if !ok {
+		return nil, ErrAffiliateProfileNotFound
+	}
+	clone := *entry
+	return &clone, nil
 }
 
 func (r *paymentFulfillmentAffiliateRepoStub) BindInviter(context.Context, int64, int64) (bool, error) {
@@ -107,6 +120,14 @@ func (r *paymentFulfillmentAffiliateRepoStub) TransferQuotaToBalance(context.Con
 
 func (r *paymentFulfillmentAffiliateRepoStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
 	panic("unexpected ListInvitees call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) EnsureUserAutoActiveAffCode(context.Context, int64) (*AffiliateCode, error) {
+	panic("unexpected EnsureUserAutoActiveAffCode call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) DeleteUserAutoActiveAffCode(context.Context, int64) error {
+	panic("unexpected DeleteUserAutoActiveAffCode call")
 }
 
 func (r *paymentFulfillmentAffiliateRepoStub) UpdateUserAffCode(context.Context, int64, string) error {
