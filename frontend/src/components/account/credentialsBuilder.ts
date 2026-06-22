@@ -9,3 +9,16 @@ export function applyInterceptWarmup(
     delete credentials.intercept_warmup_requests
   }
 }
+
+export function applyRefreshTokenFallback(
+  credentials: Record<string, unknown>,
+  refreshToken: string
+): void {
+  const fallback = refreshToken.trim()
+  const current =
+    typeof credentials.refresh_token === 'string' ? credentials.refresh_token.trim() : ''
+
+  if (!current && fallback) {
+    credentials.refresh_token = fallback
+  }
+}

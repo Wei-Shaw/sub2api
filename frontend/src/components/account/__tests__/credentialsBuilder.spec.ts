@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyInterceptWarmup } from '../credentialsBuilder'
+import { applyInterceptWarmup, applyRefreshTokenFallback } from '../credentialsBuilder'
 
 describe('applyInterceptWarmup', () => {
   it('create + enabled=true: should set intercept_warmup_requests to true', () => {
@@ -42,5 +42,25 @@ describe('applyInterceptWarmup', () => {
     expect(creds.api_key).toBe('sk')
     expect(creds.base_url).toBe('url')
     expect('intercept_warmup_requests' in creds).toBe(false)
+  })
+})
+
+describe('applyRefreshTokenFallback', () => {
+  it('adds the original refresh token when credentials do not include one', () => {
+    const creds: Record<string, unknown> = { access_token: 'tok' }
+    applyRefreshTokenFallback(creds, 'rt-original')
+    expect(creds.refresh_token).toBe('rt-original')
+  })
+
+  it('does not overwrite a refresh token returned by the upstream response', () => {
+    const creds: Record<string, unknown> = { access_token: 'tok', refresh_token: 'rt-new' }
+    applyRefreshTokenFallback(creds, 'rt-original')
+    expect(creds.refresh_token).toBe('rt-new')
+  })
+
+  it('ignores empty fallback refresh tokens', () => {
+    const creds: Record<string, unknown> = { access_token: 'tok' }
+    applyRefreshTokenFallback(creds, '   ')
+    expect('refresh_token' in creds).toBe(false)
   })
 })
