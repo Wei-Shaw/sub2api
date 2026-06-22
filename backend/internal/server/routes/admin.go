@@ -65,6 +65,12 @@ func RegisterAdminRoutes(
 		// 数据库备份恢复
 		registerBackupRoutes(admin, h)
 
+		// 图片转存（COS）配置
+		registerCOSImageRoutes(admin, h)
+
+		// 异步媒体（fal 等）reconciler 运行时配置
+		registerAsyncMediaConfigRoutes(admin, h)
+
 		// 运维监控（Ops）
 		registerOpsRoutes(admin, h)
 
@@ -354,8 +360,10 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.DELETE("/:id/temp-unschedulable", h.Admin.Account.ClearTempUnschedulable)
 		accounts.POST("/:id/schedulable", h.Admin.Account.SetSchedulable)
 		accounts.POST("/models/sync-upstream-preview", h.Admin.Account.SyncUpstreamModelsPreview)
+		accounts.POST("/models/search-upstream-preview", h.Admin.Account.SearchUpstreamModelsPreview)
 		accounts.GET("/:id/models", h.Admin.Account.GetAvailableModels)
 		accounts.POST("/:id/models/sync-upstream", h.Admin.Account.SyncUpstreamModels)
+		accounts.POST("/:id/models/search-upstream", h.Admin.Account.SearchUpstreamModels)
 		accounts.POST("/batch", h.Admin.Account.BatchCreate)
 		accounts.GET("/data", h.Admin.Account.ExportData)
 		accounts.POST("/data", h.Admin.Account.ImportData)
@@ -528,6 +536,22 @@ func registerDataManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dataManagement.POST("/backups", h.Admin.DataManagement.CreateBackupJob)
 		dataManagement.GET("/backups", h.Admin.DataManagement.ListBackupJobs)
 		dataManagement.GET("/backups/:job_id", h.Admin.DataManagement.GetBackupJob)
+	}
+}
+
+func registerCOSImageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	cos := admin.Group("/cos-image")
+	{
+		cos.GET("/config", h.Admin.COSImage.GetConfig)
+		cos.PUT("/config", h.Admin.COSImage.UpdateConfig)
+	}
+}
+
+func registerAsyncMediaConfigRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	am := admin.Group("/async-media")
+	{
+		am.GET("/config", h.Admin.AsyncMediaConfig.GetConfig)
+		am.PUT("/config", h.Admin.AsyncMediaConfig.UpdateConfig)
 	}
 }
 

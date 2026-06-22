@@ -2569,7 +2569,34 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 	return accounts, nil
 }
 
+// validateFalAccountCredentials 校验 fal apikey 账号必须携带 FAL_KEY
+// （存于 credentials["api_key"] 或 credentials["fal_key"]）。
+func validateFalAccountCredentials(platform, accountType string, credentials map[string]any) error {
+	if platform != PlatformFal {
+		return nil
+	}
+	if accountType != "" && accountType != AccountTypeAPIKey {
+		return fmt.Errorf("fal platform only supports apikey account type")
+	}
+	getStr := func(key string) string {
+		if credentials == nil {
+			return ""
+		}
+		if v, ok := credentials[key].(string); ok {
+			return strings.TrimSpace(v)
+		}
+		return ""
+	}
+	if getStr("api_key") == "" && getStr("fal_key") == "" {
+		return fmt.Errorf("fal account requires FAL_KEY in credentials (api_key or fal_key)")
+	}
+	return nil
+}
+
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if err := validateFalAccountCredentials(input.Platform, input.Type, input.Credentials); err != nil {
+		return nil, err
+	}
 	// 绑定分组
 	groupIDs := input.GroupIDs
 	// 如果没有指定分组,自动绑定对应平台的默认分组
@@ -2694,6 +2721,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
 		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		if err := validateFalAccountCredentials(account.Platform, account.Type, account.Credentials); err != nil {
+			return nil, err
+		}
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。

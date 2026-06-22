@@ -314,6 +314,24 @@
             </div>
           </template>
 
+          <template #cell-result="{ row }">
+            <div v-if="resultImageURLs(row).length" class="flex max-w-[180px] flex-wrap items-center gap-1.5">
+              <a
+                v-for="(url, idx) in resultImageURLs(row)"
+                :key="idx"
+                :href="url"
+                target="_blank"
+                rel="noopener noreferrer"
+                download
+                :title="t('usage.resultDownload')"
+                class="block h-12 w-12 overflow-hidden rounded border border-gray-200 transition hover:ring-2 hover:ring-blue-400 dark:border-dark-700"
+              >
+                <img :src="url" loading="lazy" alt="result" class="h-full w-full object-cover" />
+              </a>
+            </div>
+            <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+          </template>
+
           <template #cell-cost="{ row }">
             <div class="flex items-center gap-1.5 text-sm">
               <span class="font-medium text-green-600 dark:text-green-400">
@@ -686,6 +704,7 @@ const columns = computed<Column[]>(() => [
   { key: 'stream', label: t('usage.type'), sortable: false },
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
+  { key: 'result', label: t('usage.result'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
   { key: 'first_token', label: t('usage.firstToken'), sortable: false },
   { key: 'duration', label: t('usage.duration'), sortable: false },
@@ -802,6 +821,14 @@ const getRequestTypeExportText = (log: UsageLog): string => {
 const formatUsageEndpoints = (log: UsageLog): string => {
   const inbound = log.inbound_endpoint?.trim()
   return inbound || '-'
+}
+
+// 出图结果地址：优先 COS 转存地址，回退上游原始地址。
+// 失败/退费记录只要已产出图片仍可展示，供用户下载。
+const resultImageURLs = (log: UsageLog): string[] => {
+  const cos = log.cos_urls
+  if (cos && cos.length > 0) return cos
+  return log.image_urls ?? []
 }
 
 const formatTokens = (value: number): string => {

@@ -22,6 +22,7 @@ const (
 	PlatformOpenAI      = "openai"
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
+	PlatformFal         = "fal"
 )
 
 // Account type constants
@@ -145,3 +146,31 @@ var DefaultBedrockModelMapping = map[string]string{
 	"claude-haiku-4-5":          "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 	"claude-haiku-4-5-20251001": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 }
+
+// DefaultFalModelMapping 是 fal 平台的默认模型映射
+// 将对外的（OpenAI 风格）图片模型名映射为 fal 的应用 slug（用于拼接 queue/sync 端点路径）。
+// 当账号/渠道未配置 model_mapping 时使用此默认值。
+// 说明：fal 文生图 slug 为 openai/gpt-image-2，图生图/编辑 slug 为 openai/gpt-image-2/edit。
+var DefaultFalModelMapping = map[string]string{
+	// 文生图
+	"gpt-image-2":        "openai/gpt-image-2",
+	"openai/gpt-image-2": "openai/gpt-image-2",
+	"gpt-image-1":        "openai/gpt-image-2",
+	"dall-e-3":           "openai/gpt-image-2",
+	// 图生图 / 编辑
+	"gpt-image-2-edit":        "openai/gpt-image-2/edit",
+	"gpt-image-2/edit":        "openai/gpt-image-2/edit",
+	"openai/gpt-image-2/edit": "openai/gpt-image-2/edit",
+}
+
+// FalSlugTextToImage 是 fal 文生图默认应用 slug。
+const FalSlugTextToImage = "openai/gpt-image-2"
+
+// FalSlugImageEdit 是 fal 图生图/编辑默认应用 slug。
+const FalSlugImageEdit = "openai/gpt-image-2/edit"
+
+// FalQueueBaseURL 是 fal 队列协议默认 base URL（异步：submit/status/result/cancel）。
+const FalQueueBaseURL = "https://queue.fal.run"
+
+// FalSyncBaseURL 是 fal 同步协议默认 base URL。
+const FalSyncBaseURL = "https://fal.run"

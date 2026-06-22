@@ -175,6 +175,14 @@ type UsageLog struct {
 	ImageSizeBreakdown map[string]int
 	MediaType          *string
 
+	// 异步媒体任务字段（fal 等异步出图）。
+	// TaskID 关联 async_media_tasks.id；ImageURLs/CosURLs 为出图结果地址；
+	// BillingStatus 为终态计费状态（charged/refunded），供展示与失败用户下载结果图片。
+	TaskID        *int64
+	ImageURLs     []string
+	CosURLs       []string
+	BillingStatus *string
+
 	CreatedAt time.Time
 
 	User         *User

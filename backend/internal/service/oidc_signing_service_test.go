@@ -217,7 +217,7 @@ func TestOidcSigning_SignIDToken_AndVerifyWithJWKS(t *testing.T) {
 	// 直接用导出的公钥验签
 	pub := svc.VerificationKey(svc.ActiveKid())
 	require.NotNil(t, pub)
-	parsed, err := jwt.Parse(signed, func(tok *jwt.Token) (interface{}, error) {
+	parsed, err := jwt.Parse(signed, func(tok *jwt.Token) (any, error) {
 		require.Equal(t, "RS256", tok.Method.Alg())
 		require.Equal(t, svc.ActiveKid(), tok.Header["kid"])
 		return pub, nil
@@ -293,7 +293,7 @@ func TestOidcSigning_RotateKey_OldKidStillVerifiesOldTokens(t *testing.T) {
 	// 用旧 kid 的公钥仍能验旧 token
 	pub := svc.VerificationKey(oldKid)
 	require.NotNil(t, pub)
-	parsed, err := jwt.Parse(oldToken, func(tok *jwt.Token) (interface{}, error) {
+	parsed, err := jwt.Parse(oldToken, func(tok *jwt.Token) (any, error) {
 		return pub, nil
 	})
 	require.NoError(t, err)

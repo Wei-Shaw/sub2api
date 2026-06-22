@@ -41,6 +41,8 @@ type AdminHandlers struct {
 	OidcSigningKey         *admin.OidcSigningKeyHandler
 	OidcProviderSettings   *admin.OidcProviderSettingsHandler
 	Compliance             *admin.ComplianceHandler
+	COSImage               *admin.COSImageHandler
+	AsyncMediaConfig       *admin.AsyncMediaConfigHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -56,6 +58,7 @@ type Handlers struct {
 	Admin            *AdminHandlers
 	Gateway          *GatewayHandler
 	OpenAIGateway    *OpenAIGatewayHandler
+	FalGateway       *FalGatewayHandler
 	Setting          *SettingHandler
 	Totp             *TotpHandler
 	Payment          *PaymentHandler

@@ -28,7 +28,8 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
-        <div>
+        <!-- fal 接入域名固定（api.fal.ai / queue.fal.run），无需配置 base URL -->
+        <div v-if="account.platform !== 'fal'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
             v-model="editBaseUrl"
@@ -63,7 +64,9 @@
                   ? 'AIza...'
                   : account.platform === 'antigravity'
                     ? 'sk-...'
-                    : 'sk-ant-...'
+                    : account.platform === 'fal'
+                      ? 'FAL_KEY (xxxxxxxx:xxxxxxxx)'
+                      : 'sk-ant-...'
             "
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
@@ -3691,6 +3694,10 @@ const handleSubmit = async () => {
       const newCredentials: Record<string, unknown> = {
         ...currentCredentials,
         base_url: newBaseUrl
+      }
+      // fal 接入域名固定，不保留 base_url（避免被当作上游域名覆盖默认值）
+      if (props.account.platform === 'fal') {
+        delete newCredentials.base_url
       }
 
       // Handle API key

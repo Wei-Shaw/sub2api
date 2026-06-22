@@ -752,6 +752,7 @@ type CostInput struct {
 	Tokens         UsageTokens
 	RequestCount   int    // 按次计费时使用
 	SizeTier       string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
+	Quality        string // 图片质量维度（auto/low/medium/high）；空 = 不区分质量（存量单维定价）
 	RateMultiplier float64
 	ServiceTier    string                // "priority","flex","" 等
 	Resolver       *ModelPricingResolver // 定价解析器
@@ -938,7 +939,8 @@ func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, inpu
 	var unitPrice float64
 
 	if input.SizeTier != "" {
-		unitPrice = input.Resolver.GetRequestTierPrice(resolved, input.SizeTier)
+		// 优先按 (尺寸档位 × 质量) 二维定价查找，存量单维定价自动回退
+		unitPrice = input.Resolver.GetRequestTierPriceWithQuality(resolved, input.SizeTier, input.Quality)
 	}
 
 	if unitPrice == 0 {

@@ -1608,11 +1608,284 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 
 	// antigravity 分组、强制平台模式或无分组使用单平台选择
 	// 注意：强制平台模式也必须遵守分组限制，不再回退到全平台查询
-	account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+	// 非 fal 平台走通用调度，api 段无意义，传空串。
+	account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform, "")
 	if err != nil {
 		return nil, err
 	}
 	return s.hydrateSelectedAccount(ctx, account)
+}
+
+// SelectFalAccountInGroup 在指定分组内强制按 fal 平台选号，忽略分组自身平台。
+//
+// 用于让挂载到非 fal（如 openai）分组的 fal 账号也能参与图片调度：openai 伪同步
+// 门面在没有可用 openai 账号时回退到本方法，从同一分组里挑选可用 fal 账号出图。
+func (s *GatewayService) SelectFalAccountInGroup(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, api string) (*Account, error) {
+	// api 为本次请求所需的 fal api 段（edit=图生图，空串=文生图），由调用方通过函数参数
+	// 传入并一路贯穿到 fal 模型支持判断。
+	if groupID != nil {
+		group, resolvedGroupID, err := s.resolveGatewayGroup(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		groupID = resolvedGroupID
+		ctx = s.withGroupContext(ctx, group)
+	}
+	account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, PlatformFal, api)
+	if err != nil {
+		return nil, err
+	}
+	return s.hydrateSelectedAccount(ctx, account)
+}
+
+// SelectImageAccountMixed 在指定分组内构建 openai + fal 两平台的统一候选池，按
+// “优先级 + 最久未用” 混合选号（参照 anthropic+antigravity 混合调度范式），
+// 不区分平台先后、不做 fallback：两类账号同池竞争，优先级相同时一起按 LRU 比较。
+//
+// 返回的账号可能属于 openai 或 fal 平台，调用方据 account.Platform 分发到对应转发路径
+// （openai 同步 ForwardImages / fal 伪同步 runPseudoSync）。failover 时把失败账号加入
+// excludedIDs 重新选号即可天然实现跨平台切换。
+//
+//	imageCapability: openai 账号所需的图片能力门控（basic/native）；fal 账号忽略该参数。
+//	falAPI:          fal 账号所需的 api 段（edit=图生图，空串=文生图）；openai 账号忽略该参数。
+func (s *GatewayService) SelectImageAccountMixed(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	imageCapability OpenAIImagesCapability,
+	falAPI string,
+) (*Account, error) {
+	if groupID != nil {
+		group, resolvedGroupID, err := s.resolveGatewayGroup(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		groupID = resolvedGroupID
+		ctx = s.withGroupContext(ctx, group)
+	}
+
+	// require_privacy_set: 获取分组信息
+	var schedGroup *Group
+	if groupID != nil && s.groupRepo != nil {
+		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
+	}
+
+	// 1. 加载 openai + fal 两个平台的可调度账号，合并为统一候选池
+	accounts, err := s.listSchedulableImageAccounts(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if len(accounts) == 0 {
+		return nil, ErrNoAvailableAccounts
+	}
+
+	// 批量预取窗口费用+RPM 计数，避免逐账号查询（N+1）
+	ctx = s.withWindowCostPrefetch(ctx, accounts)
+	ctx = s.withRPMPrefetch(ctx, accounts)
+
+	eligible := func(acc *Account) bool {
+		// debug：逐账号记录资格判断的拒绝原因，定位「为什么 openai 账号没被选中」。
+		rejectReason := ""
+		ok := func() bool {
+			if _, excluded := excludedIDs[acc.ID]; excluded {
+				rejectReason = "excluded"
+				return false
+			}
+			// 调度快照可能短暂过期，这里重新校验可调度性，避免选中刚被限流/过载的账号
+			if !s.isAccountSchedulableForSelection(acc) {
+				rejectReason = "not_schedulable_for_selection"
+				return false
+			}
+			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
+			if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
+				_ = s.accountRepo.SetError(ctx, acc.ID,
+					fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
+				rejectReason = "privacy_not_set"
+				return false
+			}
+			// 平台各自的模型/能力门控
+			if !s.imageAccountSupportsRequest(ctx, acc, requestedModel, imageCapability, falAPI) {
+				rejectReason = "model_or_capability_unsupported"
+				return false
+			}
+			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+				rejectReason = "model_selection_blocked"
+				return false
+			}
+			if !s.isAccountSchedulableForQuota(acc) {
+				rejectReason = "quota_exceeded"
+				return false
+			}
+			if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
+				rejectReason = "window_cost_exceeded"
+				return false
+			}
+			if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+				rejectReason = "rpm_exceeded"
+				return false
+			}
+			return true
+		}()
+
+		if slog.Default().Enabled(ctx, slog.LevelDebug) {
+			attrs := []any{
+				"account_id", acc.ID,
+				"platform", acc.Platform,
+				"priority", acc.Priority,
+				"requested_model", requestedModel,
+				"image_capability", imageCapability,
+				"fal_api", falAPI,
+				"eligible", ok,
+			}
+			if !ok {
+				attrs = append(attrs, "reject_reason", rejectReason)
+			}
+			// openai 账号打印 model_mapping，便于确认 gpt-image-2 是否在白名单内。
+			if acc.Platform == PlatformOpenAI {
+				attrs = append(attrs, "model_mapping", acc.GetModelMapping())
+			}
+			slog.Debug("image_account_eligibility", attrs...)
+		}
+		return ok
+	}
+
+	// 2. 粘性会话命中（允许跨平台），仅当绑定账号仍在候选池且可用
+	if sessionHash != "" && s.cache != nil {
+		if accountID, gErr := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash); gErr == nil && accountID > 0 {
+			if _, excluded := excludedIDs[accountID]; !excluded {
+				for i := range accounts {
+					acc := &accounts[i]
+					if acc.ID != accountID {
+						continue
+					}
+					if shouldClearStickySession(acc, requestedModel) {
+						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+						break
+					}
+					if eligible(acc) {
+						return s.hydrateSelectedAccount(ctx, acc)
+					}
+					break
+				}
+			}
+		}
+	}
+
+	// 3. 按优先级 + 最久未用统一选号（openai/fal 同池竞争）
+	var selected *Account
+	for i := range accounts {
+		acc := &accounts[i]
+		if !eligible(acc) {
+			continue
+		}
+		if selected == nil {
+			selected = acc
+			continue
+		}
+		if acc.Priority < selected.Priority {
+			selected = acc
+		} else if acc.Priority == selected.Priority {
+			switch {
+			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
+				selected = acc
+			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
+				// keep selected (never used is preferred)
+			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
+				// 均未使用：保持稳定（openai 列表先入池）
+			default:
+				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
+					selected = acc
+				}
+			}
+		}
+	}
+
+	// debug：汇总候选池全貌（每个账号的 platform/priority/last_used）与最终选中账号，
+	// 便于确认是优先级胜出还是被过滤。
+	if slog.Default().Enabled(ctx, slog.LevelDebug) {
+		candidates := make([]map[string]any, 0, len(accounts))
+		for i := range accounts {
+			acc := &accounts[i]
+			lastUsed := ""
+			if acc.LastUsedAt != nil {
+				lastUsed = acc.LastUsedAt.Format(time.RFC3339)
+			}
+			candidates = append(candidates, map[string]any{
+				"account_id": acc.ID,
+				"platform":   string(acc.Platform),
+				"priority":   acc.Priority,
+				"last_used":  lastUsed,
+			})
+		}
+		attrs := []any{
+			"requested_model", requestedModel,
+			"candidate_count", len(accounts),
+			"candidates", candidates,
+		}
+		if selected != nil {
+			attrs = append(attrs,
+				"selected_account_id", selected.ID,
+				"selected_platform", string(selected.Platform),
+				"selected_priority", selected.Priority,
+			)
+		} else {
+			attrs = append(attrs, "selected_account_id", "none")
+		}
+		slog.Debug("image_account_selection_summary", attrs...)
+	}
+
+	if selected == nil {
+		if requestedModel != "" {
+			return nil, fmt.Errorf("%w supporting model: %s", ErrNoAvailableAccounts, requestedModel)
+		}
+		return nil, ErrNoAvailableAccounts
+	}
+
+	// 4. 建立粘性绑定
+	if sessionHash != "" && s.cache != nil {
+		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+			logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
+		}
+	}
+
+	return s.hydrateSelectedAccount(ctx, selected)
+}
+
+// listSchedulableImageAccounts 加载分组内 openai 与 fal 两平台的可调度账号并合并。
+// openai 列表先入池，使得相同优先级且均未使用时优先保持 openai（稳定性）。
+func (s *GatewayService) listSchedulableImageAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
+	openaiAccounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformOpenAI, false)
+	if err != nil {
+		return nil, fmt.Errorf("query openai accounts failed: %w", err)
+	}
+	falAccounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformFal, false)
+	if err != nil {
+		return nil, fmt.Errorf("query fal accounts failed: %w", err)
+	}
+	merged := make([]Account, 0, len(openaiAccounts)+len(falAccounts))
+	merged = append(merged, openaiAccounts...)
+	merged = append(merged, falAccounts...)
+	return merged, nil
+}
+
+// imageAccountSupportsRequest 按平台判断账号是否支持本次图片请求：
+//   - openai：需支持请求模型（如指定）且具备所需图片能力（basic/native）；
+//   - fal：交由 falAccountSupportsModel 做模型 + api 段门控匹配；
+//   - 其它平台：不参与图片混合调度。
+func (s *GatewayService) imageAccountSupportsRequest(ctx context.Context, acc *Account, requestedModel string, imageCapability OpenAIImagesCapability, falAPI string) bool {
+	switch acc.Platform {
+	case PlatformOpenAI:
+		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel, "") {
+			return false
+		}
+		return acc.SupportsOpenAIImageCapability(imageCapability)
+	case PlatformFal:
+		return s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel, falAPI)
+	default:
+		return false
+	}
 }
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
@@ -1809,7 +2082,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				filteredPlatform++
 				continue
 			}
-			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, account, requestedModel) {
+			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "") {
 				filteredModelMapping++
 				continue
 			}
@@ -1861,7 +2134,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 						gatePass := s.isAccountSchedulableForSelection(stickyAccount) &&
 							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
-							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
+							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel, "")) &&
 							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
 							s.isAccountSchedulableForQuota(stickyAccount) &&
 							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true)
@@ -2044,7 +2317,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				// accounts 列表构建，账号一定在分组内。而 scheduler snapshot 缓存
 				// 反序列化后 AccountGroups 字段为空，导致 isAccountInGroup 永远返回 false。
 				platformOK := s.isAccountAllowedForPlatform(account, platform, useMixed)
-				modelSupported := requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)
+				modelSupported := requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")
 				modelSchedulable := s.isAccountSchedulableForModelSelection(ctx, account, requestedModel)
 				quotaOK := s.isAccountSchedulableForQuota(account)
 				windowCostOK := s.isAccountSchedulableForWindowCost(ctx, account, true)
@@ -2163,7 +2436,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
 			continue
 		}
-		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel, "") {
 			continue
 		}
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
@@ -3214,7 +3487,8 @@ func shuffleWithinPriority(accounts []*Account) {
 }
 
 // selectAccountForModelWithPlatform 选择单平台账户（完全隔离）
-func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, platform string) (*Account, error) {
+// api 为 fal 平台所需的 api 段（edit/空串=文生图），其它平台传空串即可。
+func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, platform string, api string) (*Account, error) {
 	preferOAuth := platform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, platform)
 
@@ -3247,7 +3521,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, api)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 							}
@@ -3301,7 +3575,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 				continue
 			}
-			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel, api) {
 				continue
 			}
 			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
@@ -3366,7 +3640,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, api)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						return account, nil
 					}
 				}
@@ -3412,7 +3686,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 			continue
 		}
-		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel, api) {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel) {
@@ -3455,7 +3729,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	}
 
 	if selected == nil {
-		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, false)
+		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, false, api)
 		if requestedModel != "" {
 			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
 		}
@@ -3505,7 +3779,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 								if s.debugModelRoutingEnabled() {
 									logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
@@ -3561,7 +3835,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
 				continue
 			}
-			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel, "") {
 				continue
 			}
 			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
@@ -3626,7 +3900,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 							return account, nil
 						}
@@ -3673,7 +3947,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
 			continue
 		}
-		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel, "") {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel) {
@@ -3716,7 +3990,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	}
 
 	if selected == nil {
-		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, nativePlatform, accounts, excludedIDs, true)
+		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, nativePlatform, accounts, excludedIDs, true, "")
 		if requestedModel != "" {
 			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
 		}
@@ -3760,8 +4034,9 @@ func (s *GatewayService) logDetailedSelectionFailure(
 	accounts []Account,
 	excludedIDs map[int64]struct{},
 	allowMixedScheduling bool,
+	api string,
 ) selectionFailureStats {
-	stats := s.collectSelectionFailureStats(ctx, accounts, requestedModel, platform, excludedIDs, allowMixedScheduling)
+	stats := s.collectSelectionFailureStats(ctx, accounts, requestedModel, platform, excludedIDs, allowMixedScheduling, api)
 	logger.LegacyPrintf(
 		"service.gateway",
 		"[SelectAccountDetailed] group_id=%v model=%s platform=%s session=%s total=%d eligible=%d excluded=%d unschedulable=%d platform_filtered=%d model_unsupported=%d model_rate_limited=%d sample_platform_filtered=%v sample_model_unsupported=%v sample_model_rate_limited=%v",
@@ -3790,6 +4065,7 @@ func (s *GatewayService) collectSelectionFailureStats(
 	platform string,
 	excludedIDs map[int64]struct{},
 	allowMixedScheduling bool,
+	api string,
 ) selectionFailureStats {
 	stats := selectionFailureStats{
 		Total: len(accounts),
@@ -3797,7 +4073,7 @@ func (s *GatewayService) collectSelectionFailureStats(
 
 	for i := range accounts {
 		acc := &accounts[i]
-		diagnosis := s.diagnoseSelectionFailure(ctx, acc, requestedModel, platform, excludedIDs, allowMixedScheduling)
+		diagnosis := s.diagnoseSelectionFailure(ctx, acc, requestedModel, platform, excludedIDs, allowMixedScheduling, api)
 		switch diagnosis.Category {
 		case "excluded":
 			stats.Excluded++
@@ -3828,6 +4104,7 @@ func (s *GatewayService) diagnoseSelectionFailure(
 	platform string,
 	excludedIDs map[int64]struct{},
 	allowMixedScheduling bool,
+	api string,
 ) selectionFailureDiagnosis {
 	if acc == nil {
 		return selectionFailureDiagnosis{Category: "unschedulable", Detail: "account_nil"}
@@ -3844,7 +4121,7 @@ func (s *GatewayService) diagnoseSelectionFailure(
 			Detail:   fmt.Sprintf("account_platform=%s requested_platform=%s", acc.Platform, strings.TrimSpace(platform)),
 		}
 	}
-	if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+	if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel, api) {
 		return selectionFailureDiagnosis{
 			Category: "model_unsupported",
 			Detail:   fmt.Sprintf("model=%s", requestedModel),
@@ -3907,7 +4184,14 @@ func summarizeSelectionFailureStats(stats selectionFailureStats) string {
 
 // isModelSupportedByAccountWithContext 根据账户平台检查模型支持（带 context）
 // 对于 Antigravity 平台，会先获取映射后的最终模型名（包括 thinking 后缀）再检查支持
-func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Context, account *Account, requestedModel string) bool {
+// 对于 fal 平台，会按调用方传入的 api 段（edit/文生图）校验账号是否支持
+func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Context, account *Account, requestedModel string, api string) bool {
+	if account.Platform == PlatformFal {
+		// 不再用 account.IsModelSupported 的别名 key 命中直接放行：那样会绕过 api 校验
+		// （key 不携带 api 信息，api 在 value 里）。统一交给 falAccountSupportsModel 做
+		// api 门控匹配，api 段由调用方通过函数参数传入。
+		return falAccountSupportsModel(account, requestedModel, api)
+	}
 	if account.Platform == PlatformAntigravity {
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
@@ -3927,11 +4211,12 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 		}
 		return true
 	}
-	return s.isModelSupportedByAccount(account, requestedModel)
+	return s.isModelSupportedByAccount(account, requestedModel, api)
 }
 
 // isModelSupportedByAccount 根据账户平台检查模型支持（无 context，用于非 Antigravity 平台）
-func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedModel string) bool {
+// api 为 fal 平台所需的 api 段（edit/空串=文生图），非 fal 平台忽略该参数。
+func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedModel string, api string) bool {
 	if account.Platform == PlatformAntigravity {
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
@@ -3953,6 +4238,19 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		} else {
 			requestedModel = claude.NormalizeModelID(requestedModel)
 		}
+	}
+	// fal 平台：fal 账号"支持的模型"由 model_mapping 决定：
+	//   - key 为对外请求名（如 gpt-image-2、dall-e-3 等别名）
+	//   - value 为 fal endpoint，形如 organization/model/api（如 openai/gpt-image-2[/edit]）
+	// 先按对外名直接匹配（兼容别名 key）；再把账号的每个 endpoint 切开取 model 段
+	// （第二部分）与请求模型比对。这样无论请求传入的是对外名（gpt-image-2，来自
+	// /v1/images/* 门面）还是 fal endpoint slug（openai/gpt-image-2，来自 /fal/* 原生
+	// 门面），只要账号 endpoint 的 model 段与之一致即视为支持，避免误判为「找不到账户」。
+	if account.Platform == PlatformFal {
+		// 统一走 api 门控匹配（详见 falAccountSupportsModel）。api 段由调用方通过函数参数
+		// 传入（edit 来自 /v1/images/edits 门面，空串=文生图）。注：请求模型本身带 api 段
+		// （如原生 slug openai/gpt-image-2/edit）时仍会被正确识别。
+		return falAccountSupportsModel(account, requestedModel, api)
 	}
 	// 其他平台使用账户的模型支持检查
 	return account.IsModelSupported(requestedModel)

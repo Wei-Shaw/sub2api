@@ -366,6 +366,9 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'claude': return claudeModels
     case 'gemini': return geminiModels
     case 'antigravity': return antigravityModels
+    // fal 的可选模型为动态列表（来自 fal 平台 models 接口），无硬编码清单，
+    // 这里返回空，避免回退到 claudeModels 造成"模型限制显示 Claude 模型"的错觉。
+    case 'fal': return []
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
     case 'deepseek': return deepseekModels

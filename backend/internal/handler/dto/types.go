@@ -478,6 +478,14 @@ type UsageLog struct {
 	ImageSizeBreakdown map[string]int `json:"image_size_breakdown"`
 	MediaType          *string        `json:"media_type"`
 
+	// 异步媒体任务结果（fal 等异步出图）。
+	// TaskID 关联异步任务；ImageURLs/CosURLs 为出图结果地址（供下载，包含失败/退费记录仍可展示已产出图片）；
+	// BillingStatus 终态计费状态：charged / refunded。
+	TaskID        *int64   `json:"task_id,omitempty"`
+	ImageURLs     []string `json:"image_urls,omitempty"`
+	CosURLs       []string `json:"cos_urls,omitempty"`
+	BillingStatus *string  `json:"billing_status,omitempty"`
+
 	// User-Agent
 	UserAgent *string `json:"user_agent"`
 

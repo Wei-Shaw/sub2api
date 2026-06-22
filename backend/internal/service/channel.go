@@ -96,6 +96,7 @@ type PricingInterval struct {
 	MinTokens       int      // 区间下界（含）
 	MaxTokens       *int     // 区间上界（不含），nil = 无上限
 	TierLabel       string   // 层级标签（按次/图片模式：1K, 2K, 4K, HD 等）
+	Quality         string   // 图片质量维度（auto/low/medium/high）；空字符串表示不区分质量（兼容存量单维定价）
 	InputPrice      *float64 // token 模式：每 token 输入价
 	OutputPrice     *float64 // token 模式：每 token 输出价
 	CacheWritePrice *float64 // token 模式：缓存写入价

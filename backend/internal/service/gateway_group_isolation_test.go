@@ -203,7 +203,7 @@ func TestGroupIsolation_UngroupedKey_ShouldNotScheduleGroupedAccounts(t *testing
 		cfg:         testConfig(),
 	}
 
-	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "", nil, PlatformOpenAI)
+	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "", nil, PlatformOpenAI, "")
 	require.Error(t, err, "无分组 Key 不应调度到已分组账号")
 	require.Nil(t, acc)
 }
@@ -228,7 +228,7 @@ func TestGroupIsolation_GroupedKey_ShouldNotScheduleUngroupedAccounts(t *testing
 		cfg:         testConfig(),
 	}
 
-	acc, err := svc.selectAccountForModelWithPlatform(ctx, &groupID, "", "", nil, PlatformOpenAI)
+	acc, err := svc.selectAccountForModelWithPlatform(ctx, &groupID, "", "", nil, PlatformOpenAI, "")
 	require.Error(t, err, "有分组 Key 不应调度到未分组账号")
 	require.Nil(t, acc)
 }
@@ -254,7 +254,7 @@ func TestGroupIsolation_UngroupedKey_ShouldOnlyScheduleUngroupedAccounts(t *test
 		cfg:         testConfig(),
 	}
 
-	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "", nil, PlatformOpenAI)
+	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "", nil, PlatformOpenAI, "")
 	require.NoError(t, err, "应成功调度未分组账号")
 	require.NotNil(t, acc)
 	require.Equal(t, int64(2), acc.ID, "应选中未分组的账号 ID=2")
@@ -282,7 +282,7 @@ func TestGroupIsolation_GroupedKey_ShouldOnlyScheduleMatchingGroupAccounts(t *te
 		cfg:         testConfig(),
 	}
 
-	acc, err := svc.selectAccountForModelWithPlatform(ctx, &groupID, "", "", nil, PlatformOpenAI)
+	acc, err := svc.selectAccountForModelWithPlatform(ctx, &groupID, "", "", nil, PlatformOpenAI, "")
 	require.NoError(t, err, "应成功调度分组内账号")
 	require.NotNil(t, acc)
 	require.Equal(t, int64(3), acc.ID, "应选中分组 100 内的账号 ID=3")
@@ -323,7 +323,7 @@ func TestGroupIsolation_SimpleMode_SkipsGroupIsolation(t *testing.T) {
 	}
 
 	// groupID=nil 时，SimpleMode 应使用 ListSchedulableByPlatform（不过滤分组）
-	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "", nil, PlatformOpenAI)
+	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "", nil, PlatformOpenAI, "")
 	require.NoError(t, err, "SimpleMode 应跳过分组隔离直接返回账号")
 	require.NotNil(t, acc)
 	// 应选择优先级最高的账号（Priority=1, ID=2），即使它未分组
@@ -356,7 +356,7 @@ func TestGroupIsolation_SimpleMode_GroupedAccountAlsoSchedulable(t *testing.T) {
 		cfg:         &config.Config{RunMode: config.RunModeSimple},
 	}
 
-	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "", nil, PlatformOpenAI)
+	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "", nil, PlatformOpenAI, "")
 	require.NoError(t, err, "SimpleMode 下已分组账号也应可调度")
 	require.NotNil(t, acc)
 	require.Equal(t, int64(1), acc.ID, "SimpleMode 应能调度已分组账号")

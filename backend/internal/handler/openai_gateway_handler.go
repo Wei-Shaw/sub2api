@@ -39,6 +39,15 @@ type OpenAIGatewayHandler struct {
 	imageLimiter             *imageConcurrencyLimiter
 	maxAccountSwitches       int
 	cfg                      *config.Config
+	// falImageFallback 用于在 openai 分组没有可用 openai 账号时，把 /v1/images 请求
+	// 回退到分组内挂载的 fal 账号（经 fal 伪同步门面出图）。由路由注册阶段注入。
+	falImageFallback *FalGatewayHandler
+}
+
+// SetFalImageFallback 注入 fal 伪同步门面，作为 openai 图片调度的跨平台兜底。
+// 在路由注册阶段调用一次（此时两个 handler 均已构造完成）。
+func (h *OpenAIGatewayHandler) SetFalImageFallback(fal *FalGatewayHandler) {
+	h.falImageFallback = fal
 }
 
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {

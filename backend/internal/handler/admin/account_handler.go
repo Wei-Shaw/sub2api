@@ -2124,6 +2124,7 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		return
 	}
 
+	fetchStart := time.Now()
 	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account)
 	if err != nil {
 		var syncErr *service.UpstreamModelSyncError
@@ -2142,6 +2143,13 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
 		return
 	}
+
+	slog.Debug("sync_upstream_models_ok",
+		"account_id", accountID,
+		"platform", account.Platform,
+		"models", len(models),
+		"elapsed_ms", time.Since(fetchStart).Milliseconds(),
+	)
 
 	response.Success(c, gin.H{"models": models})
 }
@@ -2174,6 +2182,7 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 		return
 	}
 
+	fetchStart := time.Now()
 	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), tempAccount)
 	if err != nil {
 		var syncErr *service.UpstreamModelSyncError
@@ -2190,6 +2199,106 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 
 		slog.Warn("sync_upstream_models_preview_failed", "platform", req.Platform)
 		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
+		return
+	}
+
+	slog.Debug("sync_upstream_models_preview_ok",
+		"platform", req.Platform,
+		"models", len(models),
+		"elapsed_ms", time.Since(fetchStart).Milliseconds(),
+	)
+
+	response.Success(c, gin.H{"models": models})
+}
+
+// SearchUpstreamModels searches live supported models from an account's upstream by keyword.
+// POST /api/v1/admin/accounts/:id/models/search-upstream?q={query}
+func (h *AccountHandler) SearchUpstreamModels(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+
+	if h.accountTestService == nil {
+		response.InternalError(c, "Account test service is not configured")
+		return
+	}
+
+	query := strings.TrimSpace(c.Query("q"))
+	models, err := h.accountTestService.SearchUpstreamModels(c.Request.Context(), account, query)
+	if err != nil {
+		var syncErr *service.UpstreamModelSyncError
+		if errors.As(err, &syncErr) {
+			switch syncErr.Kind {
+			case service.UpstreamModelSyncErrorConfiguration, service.UpstreamModelSyncErrorUnsupported:
+				response.BadRequest(c, syncErr.SafeMessage())
+			default:
+				slog.Warn("search_upstream_models_failed", "account_id", accountID, "kind", syncErr.Kind)
+				response.Error(c, http.StatusBadGateway, syncErr.SafeMessage())
+			}
+			return
+		}
+
+		slog.Warn("search_upstream_models_failed", "account_id", accountID)
+		response.Error(c, http.StatusBadGateway, "Failed to search upstream models from upstream")
+		return
+	}
+
+	response.Success(c, gin.H{"models": models})
+}
+
+// SearchUpstreamModelsPreview searches live supported models using provided credentials (no account ID needed).
+// POST /api/v1/admin/accounts/models/search-upstream-preview
+func (h *AccountHandler) SearchUpstreamModelsPreview(c *gin.Context) {
+	var req struct {
+		Platform string `json:"platform" binding:"required"`
+		Type     string `json:"type" binding:"required"`
+		BaseURL  string `json:"base_url"`
+		APIKey   string `json:"api_key" binding:"required"`
+		Query    string `json:"q"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	tempAccount := &service.Account{
+		Platform: req.Platform,
+		Type:     req.Type,
+		Credentials: map[string]any{
+			"api_key":  req.APIKey,
+			"base_url": req.BaseURL,
+		},
+	}
+
+	if h.accountTestService == nil {
+		response.InternalError(c, "Account test service is not configured")
+		return
+	}
+
+	models, err := h.accountTestService.SearchUpstreamModels(c.Request.Context(), tempAccount, strings.TrimSpace(req.Query))
+	if err != nil {
+		var syncErr *service.UpstreamModelSyncError
+		if errors.As(err, &syncErr) {
+			switch syncErr.Kind {
+			case service.UpstreamModelSyncErrorConfiguration, service.UpstreamModelSyncErrorUnsupported:
+				response.BadRequest(c, syncErr.SafeMessage())
+			default:
+				slog.Warn("search_upstream_models_preview_failed", "platform", req.Platform, "kind", syncErr.Kind)
+				response.Error(c, http.StatusBadGateway, syncErr.SafeMessage())
+			}
+			return
+		}
+
+		slog.Warn("search_upstream_models_preview_failed", "platform", req.Platform)
+		response.Error(c, http.StatusBadGateway, "Failed to search upstream models from upstream")
 		return
 	}
 

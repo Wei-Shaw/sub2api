@@ -4,6 +4,7 @@ export interface IntervalFormEntry {
   min_tokens: number
   max_tokens: number | null
   tier_label: string
+  quality: string
   input_price: number | string | null
   output_price: number | string | null
   cache_write_price: number | string | null
@@ -51,6 +52,7 @@ export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEn
     min_tokens: iv.min_tokens,
     max_tokens: iv.max_tokens,
     tier_label: iv.tier_label || '',
+    quality: iv.quality || '',
     input_price: perTokenToMTok(iv.input_price),
     output_price: perTokenToMTok(iv.output_price),
     cache_write_price: perTokenToMTok(iv.cache_write_price),
@@ -65,6 +67,7 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
     min_tokens: iv.min_tokens,
     max_tokens: iv.max_tokens,
     tier_label: iv.tier_label,
+    quality: iv.quality || '',
     input_price: mTokToPerToken(iv.input_price),
     output_price: mTokToPerToken(iv.output_price),
     cache_write_price: mTokToPerToken(iv.cache_write_price),

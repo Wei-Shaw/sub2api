@@ -96,6 +96,10 @@ const filteredGroups = computed(() => {
       result = result.filter(
         (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini'
       )
+    } else if (props.platform === 'fal') {
+      // fal 账户可同时挂到 fal 分组与 openai 分组：
+      // openai 分组的 /v1/images 伪同步门面会在没有可用 openai 账号时调度到 fal 账号出图。
+      result = result.filter((g) => g.platform === 'fal' || g.platform === 'openai')
     } else {
       // 默认：只能选择同 platform 的分组
       result = result.filter((g) => g.platform === props.platform)

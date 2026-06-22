@@ -504,6 +504,35 @@ export async function syncUpstreamModelsPreview(params: SyncUpstreamPreviewParam
   return data
 }
 
+/**
+ * Search upstream supported models by keyword (e.g. fal /v1/models?q=...)
+ * @param id - Account ID
+ * @param query - Free-text search keyword
+ * @returns List of matching model IDs returned by the upstream
+ */
+export async function searchUpstreamModels(id: number, query: string): Promise<SyncUpstreamModelsResult> {
+  const { data } = await apiClient.post<SyncUpstreamModelsResult>(
+    `/admin/accounts/${id}/models/search-upstream`,
+    null,
+    { params: { q: query } }
+  )
+  return data
+}
+
+export interface SearchUpstreamPreviewParams extends SyncUpstreamPreviewParams {
+  q: string
+}
+
+/**
+ * Search upstream models without a saved account (create-flow)
+ * @param params - Connection credentials plus search keyword
+ * @returns List of matching model IDs returned by the upstream
+ */
+export async function searchUpstreamModelsPreview(params: SearchUpstreamPreviewParams): Promise<SyncUpstreamModelsResult> {
+  const { data } = await apiClient.post<SyncUpstreamModelsResult>('/admin/accounts/models/search-upstream-preview', params)
+  return data
+}
+
 export interface CRSPreviewAccount {
   crs_account_id: string
   kind: string
@@ -801,6 +830,8 @@ export const accountsAPI = {
   getAvailableModels,
   syncUpstreamModels,
   syncUpstreamModelsPreview,
+  searchUpstreamModels,
+  searchUpstreamModelsPreview,
   generateAuthUrl,
   exchangeCode,
   refreshOpenAIToken,

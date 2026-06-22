@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/fal"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 )
 
@@ -83,6 +86,10 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 
 	if account.Platform == PlatformAntigravity && account.Type != AccountTypeAPIKey {
 		return s.fetchAntigravityOAuthUpstreamModels(ctx, account)
+	}
+
+	if account.Platform == PlatformFal {
+		return s.fetchFalUpstreamModels(ctx, account)
 	}
 
 	if s.httpUpstream == nil {
@@ -354,6 +361,95 @@ func (s *AccountTestService) fetchAntigravityOAuthUpstreamModels(ctx context.Con
 	for modelID := range modelsResp.Models {
 		models = append(models, strings.TrimSpace(modelID))
 	}
+	return dedupeAndSortModelIDs(models), nil
+}
+
+// fetchFalUpstreamModels 通过 fal 平台模型列表 API（固定域名 api.fal.ai）拉取
+// 账号可用的模型白名单。fal 接入域名固定，无需 base_url。
+func (s *AccountTestService) fetchFalUpstreamModels(ctx context.Context, account *Account) ([]string, error) {
+	apiKey := account.FalAPIKey()
+	if apiKey == "" {
+		return nil, newUpstreamModelSyncConfigError("No fal API key is available", nil)
+	}
+
+	proxyURL := upstreamModelsProxyURL(account)
+	slog.Debug("fal_upstream_models_start", "account_id", account.ID, "has_proxy", proxyURL != "")
+
+	client, err := fal.NewClient(fal.Config{
+		APIKey:   apiKey,
+		ProxyURL: proxyURL,
+	})
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Failed to configure fal client", err)
+	}
+
+	fetchStart := time.Now()
+	models, err := client.FetchModels(ctx)
+	if err != nil {
+		slog.Warn("fal_upstream_models_failed",
+			"account_id", account.ID,
+			"elapsed_ms", time.Since(fetchStart).Milliseconds(),
+		)
+		return nil, newUpstreamModelSyncUpstreamError("Failed to fetch fal available models", err)
+	}
+	if len(models) == 0 {
+		return nil, newUpstreamModelSyncUpstreamError("Upstream returned no supported models", nil)
+	}
+
+	slog.Debug("fal_upstream_models_done",
+		"account_id", account.ID,
+		"raw_models", len(models),
+		"elapsed_ms", time.Since(fetchStart).Milliseconds(),
+	)
+
+	return dedupeAndSortModelIDs(models), nil
+}
+
+// SearchUpstreamModels searches the live model list of the account's upstream by a free-text query.
+// Currently only fal is supported (its /v1/models endpoint accepts a `q` parameter).
+func (s *AccountTestService) SearchUpstreamModels(ctx context.Context, account *Account, query string) ([]string, error) {
+	if s == nil {
+		return nil, newUpstreamModelSyncConfigError("Account test service is not configured", nil)
+	}
+	if account == nil {
+		return nil, newUpstreamModelSyncConfigError("Account is required", nil)
+	}
+
+	if account.Platform == PlatformFal {
+		return s.searchFalUpstreamModels(ctx, account, query)
+	}
+
+	return nil, newUpstreamModelSyncUnsupportedError(
+		fmt.Sprintf("Unsupported platform for upstream model search: %s", account.Platform), nil,
+	)
+}
+
+// searchFalUpstreamModels 通过 fal 平台模型列表 API 的关键词搜索（q 参数）按需检索模型。
+func (s *AccountTestService) searchFalUpstreamModels(ctx context.Context, account *Account, query string) ([]string, error) {
+	apiKey := account.FalAPIKey()
+	if apiKey == "" {
+		return nil, newUpstreamModelSyncConfigError("No fal API key is available", nil)
+	}
+
+	client, err := fal.NewClient(fal.Config{
+		APIKey:   apiKey,
+		ProxyURL: upstreamModelsProxyURL(account),
+	})
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Failed to configure fal client", err)
+	}
+
+	start := time.Now()
+	models, err := client.SearchModels(ctx, query, 0)
+	if err != nil {
+		slog.Warn("fal_search_upstream_models_failed",
+			"account_id", account.ID,
+			"elapsed_ms", time.Since(start).Milliseconds(),
+		)
+		return nil, newUpstreamModelSyncUpstreamError("Failed to search fal available models", err)
+	}
+
+	// 搜索结果允许为空（无匹配项），不视为错误。
 	return dedupeAndSortModelIDs(models), nil
 }
 

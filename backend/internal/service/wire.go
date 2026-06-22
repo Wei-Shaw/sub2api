@@ -597,6 +597,10 @@ var ProviderSet = wire.NewSet(
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,
+	NewCOSImageTransferService,
+	ProvideAsyncMediaService,
+	ProvideAsyncMediaReconciler,
+	ProvideAsyncMediaConfigService,
 	NewContentModerationService,
 	NewAffiliateService,
 	NewRechargePromoActivityService,
@@ -667,6 +671,56 @@ func ProvideChannelMonitorService(
 	encryptor SecretEncryptor,
 ) *ChannelMonitorService {
 	return NewChannelMonitorService(repo, encryptor)
+}
+
+// ProvideAsyncMediaService 创建异步媒体执行内核，并按 config 配置轮询间隔与失败兜底时间。
+func ProvideAsyncMediaService(
+	taskRepo AsyncMediaTaskRepository,
+	userRepo UserRepository,
+	billing *BillingService,
+	resolver *ModelPricingResolver,
+	cos *COSImageTransferService,
+	deferred *DeferredService,
+	cfg *config.Config,
+) *AsyncMediaService {
+	svc := NewAsyncMediaService(taskRepo, userRepo, billing, resolver, cos)
+	svc.SetDeferredService(deferred)
+	if cfg != nil {
+		if cfg.AsyncMedia.PollIntervalSeconds > 0 {
+			svc.SetPollInterval(time.Duration(cfg.AsyncMedia.PollIntervalSeconds) * time.Second)
+		}
+		if cfg.AsyncMedia.FailTimeoutSeconds > 0 {
+			svc.SetFailTimeout(time.Duration(cfg.AsyncMedia.FailTimeoutSeconds) * time.Second)
+		}
+	}
+	return svc
+}
+
+// ProvideAsyncMediaReconciler 创建并启动异步媒体对账 worker，按 config 配置扫描间隔。
+func ProvideAsyncMediaReconciler(
+	taskRepo AsyncMediaTaskRepository,
+	exec *AsyncMediaService,
+	accountRepo AccountRepository,
+	cfg *config.Config,
+) *AsyncMediaReconciler {
+	r := NewAsyncMediaReconciler(taskRepo, exec, accountRepo)
+	if cfg != nil && cfg.AsyncMedia.ReconcileIntervalSeconds > 0 {
+		r.SetInterval(time.Duration(cfg.AsyncMedia.ReconcileIntervalSeconds) * time.Second)
+	}
+	r.Start()
+	return r
+}
+
+// ProvideAsyncMediaConfigService 创建异步媒体运行时配置服务，并在启动时用 DB 中
+// 已保存的配置覆盖静态配置（热更新运行中的 reconciler / service）。
+func ProvideAsyncMediaConfigService(
+	settingRepo SettingRepository,
+	svc *AsyncMediaService,
+	reconciler *AsyncMediaReconciler,
+) *AsyncMediaConfigService {
+	s := NewAsyncMediaConfigService(settingRepo, svc, reconciler)
+	s.LoadAndApply(context.Background())
+	return s
 }
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。

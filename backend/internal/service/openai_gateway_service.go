@@ -2266,6 +2266,26 @@ func (s *OpenAIGatewayService) newAcquiredSelectionResult(ctx context.Context, a
 	return selection, err
 }
 
+// PrepareImageAccountSelection 为图片混合调度中已选中的 openai 账号获取并发槽，
+// 构造调度结果供 handler 使用。槽位获取成功直接返回已占用结果；否则返回带等待计划
+// 的结果，由 handler 的并发槽辅助决定排队或拒绝（与负载感知降级路径行为一致）。
+func (s *OpenAIGatewayService) PrepareImageAccountSelection(ctx context.Context, account *Account) (*AccountSelectionResult, error) {
+	if account == nil {
+		return nil, ErrNoAvailableAccounts
+	}
+	cfg := s.schedulingConfig()
+	result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+	if err == nil && result != nil && result.Acquired {
+		return s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
+	}
+	return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+		AccountID:      account.ID,
+		MaxConcurrency: account.Concurrency,
+		Timeout:        cfg.FallbackWaitTimeout,
+		MaxWaiting:     cfg.FallbackMaxWaiting,
+	})
+}
+
 func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 	if s.cfg != nil {
 		return s.cfg.Gateway.Scheduling

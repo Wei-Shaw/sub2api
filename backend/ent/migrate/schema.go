@@ -339,6 +339,89 @@ var (
 			},
 		},
 	}
+	// AsyncMediaTasksColumns holds the columns for the "async_media_tasks" table.
+	AsyncMediaTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "internal_request_id", Type: field.TypeString, Size: 64},
+		{Name: "upstream_request_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "status_url", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "response_url", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "channel_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "facade", Type: field.TypeString, Size: 16, Default: "openai"},
+		{Name: "requested_model", Type: field.TypeString, Size: 100},
+		{Name: "upstream_model", Type: field.TypeString, Nullable: true, Size: 100},
+		{Name: "image_size", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "quality", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "num_images", Type: field.TypeInt, Default: 1},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "held_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "final_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
+		{Name: "size_tier", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "image_urls", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "cos_urls", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "error_reason", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "fail_deadline_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "client_ip", Type: field.TypeString, Nullable: true, Size: 45},
+		{Name: "user_agent", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "inbound_endpoint", Type: field.TypeString, Nullable: true, Size: 100},
+		{Name: "upstream_endpoint", Type: field.TypeString, Nullable: true, Size: 200},
+	}
+	// AsyncMediaTasksTable holds the schema information for the "async_media_tasks" table.
+	AsyncMediaTasksTable = &schema.Table{
+		Name:       "async_media_tasks",
+		Columns:    AsyncMediaTasksColumns,
+		PrimaryKey: []*schema.Column{AsyncMediaTasksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "asyncmediatask_internal_request_id",
+				Unique:  true,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[3]},
+			},
+			{
+				Name:    "asyncmediatask_upstream_request_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[4]},
+			},
+			{
+				Name:    "asyncmediatask_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[9]},
+			},
+			{
+				Name:    "asyncmediatask_api_key_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[8]},
+			},
+			{
+				Name:    "asyncmediatask_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[7]},
+			},
+			{
+				Name:    "asyncmediatask_status",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[18]},
+			},
+			{
+				Name:    "asyncmediatask_status_fail_deadline_at",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[18], AsyncMediaTasksColumns[26]},
+			},
+			{
+				Name:    "asyncmediatask_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[1]},
+			},
+		},
+	}
 	// AuthIdentitiesColumns holds the columns for the "auth_identities" table.
 	AuthIdentitiesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1621,6 +1704,10 @@ var (
 		{Name: "image_output_size", Type: field.TypeString, Nullable: true, Size: 32},
 		{Name: "image_size_source", Type: field.TypeString, Nullable: true, Size: 16},
 		{Name: "image_size_breakdown", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "task_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "image_urls", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "cos_url", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "billing_status", Type: field.TypeString, Nullable: true, Size: 16},
 		{Name: "cache_ttl_overridden", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "api_key_id", Type: field.TypeInt64},
@@ -1637,31 +1724,31 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "usage_logs_api_keys_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[37]},
+				Columns:    []*schema.Column{UsageLogsColumns[41]},
 				RefColumns: []*schema.Column{APIKeysColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_accounts_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[38]},
+				Columns:    []*schema.Column{UsageLogsColumns[42]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_groups_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[39]},
+				Columns:    []*schema.Column{UsageLogsColumns[43]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "usage_logs_users_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[40]},
+				Columns:    []*schema.Column{UsageLogsColumns[44]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_user_subscriptions_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[41]},
+				Columns:    []*schema.Column{UsageLogsColumns[45]},
 				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1670,32 +1757,32 @@ var (
 			{
 				Name:    "usagelog_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[40]},
+				Columns: []*schema.Column{UsageLogsColumns[44]},
 			},
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[37]},
+				Columns: []*schema.Column{UsageLogsColumns[41]},
 			},
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[38]},
+				Columns: []*schema.Column{UsageLogsColumns[42]},
 			},
 			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[39]},
+				Columns: []*schema.Column{UsageLogsColumns[43]},
 			},
 			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[41]},
+				Columns: []*schema.Column{UsageLogsColumns[45]},
 			},
 			{
 				Name:    "usagelog_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[36]},
+				Columns: []*schema.Column{UsageLogsColumns[40]},
 			},
 			{
 				Name:    "usagelog_model",
@@ -1715,17 +1802,17 @@ var (
 			{
 				Name:    "usagelog_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[40], UsageLogsColumns[36]},
+				Columns: []*schema.Column{UsageLogsColumns[44], UsageLogsColumns[40]},
 			},
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[37], UsageLogsColumns[36]},
+				Columns: []*schema.Column{UsageLogsColumns[41], UsageLogsColumns[40]},
 			},
 			{
 				Name:    "usagelog_group_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[39], UsageLogsColumns[36]},
+				Columns: []*schema.Column{UsageLogsColumns[43], UsageLogsColumns[40]},
 			},
 		},
 	}
@@ -2036,6 +2123,7 @@ var (
 		AccountGroupsTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,
+		AsyncMediaTasksTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
 		ChannelMonitorsTable,
@@ -2098,6 +2186,9 @@ func init() {
 	AnnouncementReadsTable.ForeignKeys[1].RefTable = UsersTable
 	AnnouncementReadsTable.Annotation = &entsql.Annotation{
 		Table: "announcement_reads",
+	}
+	AsyncMediaTasksTable.Annotation = &entsql.Annotation{
+		Table: "async_media_tasks",
 	}
 	AuthIdentitiesTable.ForeignKeys[0].RefTable = UsersTable
 	AuthIdentitiesTable.Annotation = &entsql.Annotation{

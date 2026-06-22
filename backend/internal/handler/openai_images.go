@@ -145,35 +145,97 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 	for {
 		reqLog.Debug("openai.images.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForImages(
-			requestCtx,
-			apiKey.GroupID,
-			sessionHash,
-			requestModel,
-			failedAccountIDs,
-			parsed.RequiredCapability,
-		)
-		if err != nil {
-			reqLog.Warn("openai.images.account_select_failed",
-				zap.Error(err),
-				zap.Int("excluded_account_count", len(failedAccountIDs)),
+
+		var selection *service.AccountSelectionResult
+		var scheduleDecision service.OpenAIAccountScheduleDecision
+
+		if h.falImageFallback != nil {
+			// 混合调度：openai + fal 账号同池，按“优先级 + 最久未用”统一选号（不做 fallback）。
+			account, selErr := h.falImageFallback.SelectMixedImageAccount(
+				requestCtx,
+				apiKey.GroupID,
+				sessionHash,
+				requestModel,
+				failedAccountIDs,
+				parsed.RequiredCapability,
+				parsed,
 			)
-			if len(failedAccountIDs) == 0 {
-				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+			if selErr != nil || account == nil {
+				reqLog.Warn("openai.images.account_select_failed",
+					zap.Error(selErr),
+					zap.Int("excluded_account_count", len(failedAccountIDs)),
+				)
+				if len(failedAccountIDs) == 0 {
+					markOpsRoutingCapacityLimitedIfNoAvailable(c, selErr)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available compatible accounts", streamStarted)
+					return
+				}
+				if lastFailoverErr != nil {
+					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+				} else {
+					h.handleFailoverExhaustedSimple(c, 502, streamStarted)
+				}
+				return
+			}
+
+			// fal 平台：走 fal 伪同步门面，响应一旦写出即终结（计费由 AsyncMediaService 承担，
+			// 本 handler 不再重复记账）。失败的 openai 账号可经混合池重选切到 fal，反之亦然。
+			if account.Platform == service.PlatformFal {
+				sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
+				setOpsSelectedAccount(c, account.ID, account.Platform)
+				reqLog.Debug("openai.images.fal_account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
+				h.falImageFallback.ServeOpenAIImagesWithAccount(c, reqLog, apiKey, subject, parsed, account)
+				reqLog.Debug("openai.images.served_by_fal", zap.Int64("account_id", account.ID), zap.Int("switch_count", switchCount))
+				return
+			}
+
+			// openai 平台：为预选账号获取并发槽，构造调度结果走同步转发路径。
+			sel, prepErr := h.gatewayService.PrepareImageAccountSelection(requestCtx, account)
+			if prepErr != nil || sel == nil || sel.Account == nil {
+				reqLog.Warn("openai.images.account_slot_prepare_failed", zap.Int64("account_id", account.ID), zap.Error(prepErr))
+				failedAccountIDs[account.ID] = struct{}{}
+				if switchCount >= maxAccountSwitches {
+					h.handleFailoverExhaustedSimple(c, http.StatusServiceUnavailable, streamStarted)
+					return
+				}
+				switchCount++
+				continue
+			}
+			selection = sel
+		} else {
+			// 未挂载 fal 门面：退化为纯 openai 调度。
+			sel, decision, selErr := h.gatewayService.SelectAccountWithSchedulerForImages(
+				requestCtx,
+				apiKey.GroupID,
+				sessionHash,
+				requestModel,
+				failedAccountIDs,
+				parsed.RequiredCapability,
+			)
+			if selErr != nil {
+				reqLog.Warn("openai.images.account_select_failed",
+					zap.Error(selErr),
+					zap.Int("excluded_account_count", len(failedAccountIDs)),
+				)
+				if len(failedAccountIDs) == 0 {
+					markOpsRoutingCapacityLimitedIfNoAvailable(c, selErr)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available compatible accounts", streamStarted)
+					return
+				}
+				if lastFailoverErr != nil {
+					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+				} else {
+					h.handleFailoverExhaustedSimple(c, 502, streamStarted)
+				}
+				return
+			}
+			if sel == nil || sel.Account == nil {
+				markOpsRoutingCapacityLimited(c)
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available compatible accounts", streamStarted)
 				return
 			}
-			if lastFailoverErr != nil {
-				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
-			} else {
-				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
-			}
-			return
-		}
-		if selection == nil || selection.Account == nil {
-			markOpsRoutingCapacityLimited(c)
-			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available compatible accounts", streamStarted)
-			return
+			selection = sel
+			scheduleDecision = decision
 		}
 
 		reqLog.Debug("openai.images.account_schedule_decision",

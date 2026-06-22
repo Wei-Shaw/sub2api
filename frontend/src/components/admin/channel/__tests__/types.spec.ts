@@ -6,6 +6,7 @@ function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
     min_tokens: 0,
     max_tokens: null,
     tier_label: '',
+    quality: '',
     input_price: null,
     output_price: null,
     cache_write_price: null,

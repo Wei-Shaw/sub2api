@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/asyncmediatask"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
@@ -76,6 +77,8 @@ type Client struct {
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
 	AnnouncementRead *AnnouncementReadClient
+	// AsyncMediaTask is the client for interacting with the AsyncMediaTask builders.
+	AsyncMediaTask *AsyncMediaTaskClient
 	// AuthIdentity is the client for interacting with the AuthIdentity builders.
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
@@ -166,6 +169,7 @@ func (c *Client) init() {
 	c.AccountGroup = NewAccountGroupClient(c.config)
 	c.Announcement = NewAnnouncementClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
+	c.AsyncMediaTask = NewAsyncMediaTaskClient(c.config)
 	c.AuthIdentity = NewAuthIdentityClient(c.config)
 	c.AuthIdentityChannel = NewAuthIdentityChannelClient(c.config)
 	c.ChannelMonitor = NewChannelMonitorClient(c.config)
@@ -300,6 +304,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
+		AsyncMediaTask:                NewAsyncMediaTaskClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
@@ -361,6 +366,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
+		AsyncMediaTask:                NewAsyncMediaTaskClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
@@ -428,7 +434,7 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
+		c.AsyncMediaTask, c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.OidcAccessToken,
@@ -449,7 +455,7 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
+		c.AsyncMediaTask, c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.OidcAccessToken,
@@ -478,6 +484,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Announcement.mutate(ctx, m)
 	case *AnnouncementReadMutation:
 		return c.AnnouncementRead.mutate(ctx, m)
+	case *AsyncMediaTaskMutation:
+		return c.AsyncMediaTask.mutate(ctx, m)
 	case *AuthIdentityMutation:
 		return c.AuthIdentity.mutate(ctx, m)
 	case *AuthIdentityChannelMutation:
@@ -1366,6 +1374,139 @@ func (c *AnnouncementReadClient) mutate(ctx context.Context, m *AnnouncementRead
 		return (&AnnouncementReadDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AnnouncementRead mutation op: %q", m.Op())
+	}
+}
+
+// AsyncMediaTaskClient is a client for the AsyncMediaTask schema.
+type AsyncMediaTaskClient struct {
+	config
+}
+
+// NewAsyncMediaTaskClient returns a client for the AsyncMediaTask from the given config.
+func NewAsyncMediaTaskClient(c config) *AsyncMediaTaskClient {
+	return &AsyncMediaTaskClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `asyncmediatask.Hooks(f(g(h())))`.
+func (c *AsyncMediaTaskClient) Use(hooks ...Hook) {
+	c.hooks.AsyncMediaTask = append(c.hooks.AsyncMediaTask, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `asyncmediatask.Intercept(f(g(h())))`.
+func (c *AsyncMediaTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AsyncMediaTask = append(c.inters.AsyncMediaTask, interceptors...)
+}
+
+// Create returns a builder for creating a AsyncMediaTask entity.
+func (c *AsyncMediaTaskClient) Create() *AsyncMediaTaskCreate {
+	mutation := newAsyncMediaTaskMutation(c.config, OpCreate)
+	return &AsyncMediaTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AsyncMediaTask entities.
+func (c *AsyncMediaTaskClient) CreateBulk(builders ...*AsyncMediaTaskCreate) *AsyncMediaTaskCreateBulk {
+	return &AsyncMediaTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AsyncMediaTaskClient) MapCreateBulk(slice any, setFunc func(*AsyncMediaTaskCreate, int)) *AsyncMediaTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AsyncMediaTaskCreateBulk{err: fmt.Errorf("calling to AsyncMediaTaskClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AsyncMediaTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AsyncMediaTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AsyncMediaTask.
+func (c *AsyncMediaTaskClient) Update() *AsyncMediaTaskUpdate {
+	mutation := newAsyncMediaTaskMutation(c.config, OpUpdate)
+	return &AsyncMediaTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AsyncMediaTaskClient) UpdateOne(_m *AsyncMediaTask) *AsyncMediaTaskUpdateOne {
+	mutation := newAsyncMediaTaskMutation(c.config, OpUpdateOne, withAsyncMediaTask(_m))
+	return &AsyncMediaTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AsyncMediaTaskClient) UpdateOneID(id int64) *AsyncMediaTaskUpdateOne {
+	mutation := newAsyncMediaTaskMutation(c.config, OpUpdateOne, withAsyncMediaTaskID(id))
+	return &AsyncMediaTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AsyncMediaTask.
+func (c *AsyncMediaTaskClient) Delete() *AsyncMediaTaskDelete {
+	mutation := newAsyncMediaTaskMutation(c.config, OpDelete)
+	return &AsyncMediaTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AsyncMediaTaskClient) DeleteOne(_m *AsyncMediaTask) *AsyncMediaTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AsyncMediaTaskClient) DeleteOneID(id int64) *AsyncMediaTaskDeleteOne {
+	builder := c.Delete().Where(asyncmediatask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AsyncMediaTaskDeleteOne{builder}
+}
+
+// Query returns a query builder for AsyncMediaTask.
+func (c *AsyncMediaTaskClient) Query() *AsyncMediaTaskQuery {
+	return &AsyncMediaTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAsyncMediaTask},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AsyncMediaTask entity by its id.
+func (c *AsyncMediaTaskClient) Get(ctx context.Context, id int64) (*AsyncMediaTask, error) {
+	return c.Query().Where(asyncmediatask.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AsyncMediaTaskClient) GetX(ctx context.Context, id int64) *AsyncMediaTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AsyncMediaTaskClient) Hooks() []Hook {
+	return c.hooks.AsyncMediaTask
+}
+
+// Interceptors returns the client interceptors.
+func (c *AsyncMediaTaskClient) Interceptors() []Interceptor {
+	return c.inters.AsyncMediaTask
+}
+
+func (c *AsyncMediaTaskClient) mutate(ctx context.Context, m *AsyncMediaTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AsyncMediaTaskCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AsyncMediaTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AsyncMediaTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AsyncMediaTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AsyncMediaTask mutation op: %q", m.Op())
 	}
 }
 
@@ -7232,8 +7373,8 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
+		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AsyncMediaTask,
+		AuthIdentity, AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
 		Group, IdempotencyRecord, IdentityAdoptionDecision, OidcAccessToken,
 		OidcAuthorizationCode, OidcClient, OidcConsent, OidcRefreshToken,
@@ -7244,8 +7385,8 @@ type (
 		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
+		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AsyncMediaTask,
+		AuthIdentity, AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
 		Group, IdempotencyRecord, IdentityAdoptionDecision, OidcAccessToken,
 		OidcAuthorizationCode, OidcClient, OidcConsent, OidcRefreshToken,

@@ -44,6 +44,8 @@ func ProvideAdminHandlers(
 	oidcSigningKeyHandler *admin.OidcSigningKeyHandler,
 	oidcProviderSettingsHandler *admin.OidcProviderSettingsHandler,
 	complianceHandler *admin.ComplianceHandler,
+	cosImageHandler *admin.COSImageHandler,
+	asyncMediaConfigHandler *admin.AsyncMediaConfigHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -81,6 +83,8 @@ func ProvideAdminHandlers(
 		OidcSigningKey:         oidcSigningKeyHandler,
 		OidcProviderSettings:   oidcProviderSettingsHandler,
 		Compliance:             complianceHandler,
+		COSImage:               cosImageHandler,
+		AsyncMediaConfig:       asyncMediaConfigHandler,
 	}
 }
 
@@ -116,6 +120,7 @@ func ProvideHandlers(
 	adminHandlers *AdminHandlers,
 	gatewayHandler *GatewayHandler,
 	openaiGatewayHandler *OpenAIGatewayHandler,
+	falGatewayHandler *FalGatewayHandler,
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
 	paymentHandler *PaymentHandler,
@@ -138,6 +143,7 @@ func ProvideHandlers(
 		Admin:            adminHandlers,
 		Gateway:          gatewayHandler,
 		OpenAIGateway:    openaiGatewayHandler,
+		FalGateway:       falGatewayHandler,
 		Setting:          settingHandler,
 		Totp:             totpHandler,
 		Payment:          paymentHandler,
@@ -161,6 +167,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorUserHandler,
 	NewGatewayHandler,
 	NewOpenAIGatewayHandler,
+	NewFalGatewayHandler,
 	NewTotpHandler,
 	ProvideSettingHandler,
 	NewPaymentHandler,
@@ -177,6 +184,8 @@ var ProviderSet = wire.NewSet(
 	admin.NewAnnouncementHandler,
 	admin.NewDataManagementHandler,
 	admin.NewBackupHandler,
+	admin.NewCOSImageHandler,
+	admin.NewAsyncMediaConfigHandler,
 	admin.NewOAuthHandler,
 	admin.NewOpenAIOAuthHandler,
 	admin.NewGeminiOAuthHandler,

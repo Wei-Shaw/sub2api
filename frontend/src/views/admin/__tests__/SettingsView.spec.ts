@@ -441,6 +441,9 @@ function mountView() {
         ProxySelector: true,
         ImageUpload: ImageUploadStub,
         BackupSettings: true,
+        OidcProviderSettingsSection: true,
+        CosImageSettingsSection: true,
+        AsyncMediaConfigSection: true,
       },
     },
   });
@@ -751,6 +754,9 @@ describe("admin SettingsView payment visible method controls", () => {
           ProxySelector: true,
           ImageUpload: ImageUploadStub,
           BackupSettings: true,
+          OidcProviderSettingsSection: true,
+          CosImageSettingsSection: true,
+          AsyncMediaConfigSection: true,
         },
       },
     });

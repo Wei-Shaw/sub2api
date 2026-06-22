@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/asyncmediatask"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
@@ -325,6 +326,119 @@ func init() {
 	announcementreadDescCreatedAt := announcementreadFields[3].Descriptor()
 	// announcementread.DefaultCreatedAt holds the default value on creation for the created_at field.
 	announcementread.DefaultCreatedAt = announcementreadDescCreatedAt.Default.(func() time.Time)
+	asyncmediataskMixin := schema.AsyncMediaTask{}.Mixin()
+	asyncmediataskMixinFields0 := asyncmediataskMixin[0].Fields()
+	_ = asyncmediataskMixinFields0
+	asyncmediataskFields := schema.AsyncMediaTask{}.Fields()
+	_ = asyncmediataskFields
+	// asyncmediataskDescCreatedAt is the schema descriptor for created_at field.
+	asyncmediataskDescCreatedAt := asyncmediataskMixinFields0[0].Descriptor()
+	// asyncmediatask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	asyncmediatask.DefaultCreatedAt = asyncmediataskDescCreatedAt.Default.(func() time.Time)
+	// asyncmediataskDescUpdatedAt is the schema descriptor for updated_at field.
+	asyncmediataskDescUpdatedAt := asyncmediataskMixinFields0[1].Descriptor()
+	// asyncmediatask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	asyncmediatask.DefaultUpdatedAt = asyncmediataskDescUpdatedAt.Default.(func() time.Time)
+	// asyncmediatask.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	asyncmediatask.UpdateDefaultUpdatedAt = asyncmediataskDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// asyncmediataskDescInternalRequestID is the schema descriptor for internal_request_id field.
+	asyncmediataskDescInternalRequestID := asyncmediataskFields[0].Descriptor()
+	// asyncmediatask.InternalRequestIDValidator is a validator for the "internal_request_id" field. It is called by the builders before save.
+	asyncmediatask.InternalRequestIDValidator = func() func(string) error {
+		validators := asyncmediataskDescInternalRequestID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(internal_request_id string) error {
+			for _, fn := range fns {
+				if err := fn(internal_request_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// asyncmediataskDescUpstreamRequestID is the schema descriptor for upstream_request_id field.
+	asyncmediataskDescUpstreamRequestID := asyncmediataskFields[1].Descriptor()
+	// asyncmediatask.UpstreamRequestIDValidator is a validator for the "upstream_request_id" field. It is called by the builders before save.
+	asyncmediatask.UpstreamRequestIDValidator = asyncmediataskDescUpstreamRequestID.Validators[0].(func(string) error)
+	// asyncmediataskDescStatusURL is the schema descriptor for status_url field.
+	asyncmediataskDescStatusURL := asyncmediataskFields[2].Descriptor()
+	// asyncmediatask.StatusURLValidator is a validator for the "status_url" field. It is called by the builders before save.
+	asyncmediatask.StatusURLValidator = asyncmediataskDescStatusURL.Validators[0].(func(string) error)
+	// asyncmediataskDescResponseURL is the schema descriptor for response_url field.
+	asyncmediataskDescResponseURL := asyncmediataskFields[3].Descriptor()
+	// asyncmediatask.ResponseURLValidator is a validator for the "response_url" field. It is called by the builders before save.
+	asyncmediatask.ResponseURLValidator = asyncmediataskDescResponseURL.Validators[0].(func(string) error)
+	// asyncmediataskDescFacade is the schema descriptor for facade field.
+	asyncmediataskDescFacade := asyncmediataskFields[9].Descriptor()
+	// asyncmediatask.DefaultFacade holds the default value on creation for the facade field.
+	asyncmediatask.DefaultFacade = asyncmediataskDescFacade.Default.(string)
+	// asyncmediatask.FacadeValidator is a validator for the "facade" field. It is called by the builders before save.
+	asyncmediatask.FacadeValidator = asyncmediataskDescFacade.Validators[0].(func(string) error)
+	// asyncmediataskDescRequestedModel is the schema descriptor for requested_model field.
+	asyncmediataskDescRequestedModel := asyncmediataskFields[10].Descriptor()
+	// asyncmediatask.RequestedModelValidator is a validator for the "requested_model" field. It is called by the builders before save.
+	asyncmediatask.RequestedModelValidator = asyncmediataskDescRequestedModel.Validators[0].(func(string) error)
+	// asyncmediataskDescUpstreamModel is the schema descriptor for upstream_model field.
+	asyncmediataskDescUpstreamModel := asyncmediataskFields[11].Descriptor()
+	// asyncmediatask.UpstreamModelValidator is a validator for the "upstream_model" field. It is called by the builders before save.
+	asyncmediatask.UpstreamModelValidator = asyncmediataskDescUpstreamModel.Validators[0].(func(string) error)
+	// asyncmediataskDescImageSize is the schema descriptor for image_size field.
+	asyncmediataskDescImageSize := asyncmediataskFields[12].Descriptor()
+	// asyncmediatask.ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
+	asyncmediatask.ImageSizeValidator = asyncmediataskDescImageSize.Validators[0].(func(string) error)
+	// asyncmediataskDescQuality is the schema descriptor for quality field.
+	asyncmediataskDescQuality := asyncmediataskFields[13].Descriptor()
+	// asyncmediatask.QualityValidator is a validator for the "quality" field. It is called by the builders before save.
+	asyncmediatask.QualityValidator = asyncmediataskDescQuality.Validators[0].(func(string) error)
+	// asyncmediataskDescNumImages is the schema descriptor for num_images field.
+	asyncmediataskDescNumImages := asyncmediataskFields[14].Descriptor()
+	// asyncmediatask.DefaultNumImages holds the default value on creation for the num_images field.
+	asyncmediatask.DefaultNumImages = asyncmediataskDescNumImages.Default.(int)
+	// asyncmediataskDescStatus is the schema descriptor for status field.
+	asyncmediataskDescStatus := asyncmediataskFields[15].Descriptor()
+	// asyncmediatask.DefaultStatus holds the default value on creation for the status field.
+	asyncmediatask.DefaultStatus = asyncmediataskDescStatus.Default.(string)
+	// asyncmediatask.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	asyncmediatask.StatusValidator = asyncmediataskDescStatus.Validators[0].(func(string) error)
+	// asyncmediataskDescHeldCost is the schema descriptor for held_cost field.
+	asyncmediataskDescHeldCost := asyncmediataskFields[16].Descriptor()
+	// asyncmediatask.DefaultHeldCost holds the default value on creation for the held_cost field.
+	asyncmediatask.DefaultHeldCost = asyncmediataskDescHeldCost.Default.(float64)
+	// asyncmediataskDescFinalCost is the schema descriptor for final_cost field.
+	asyncmediataskDescFinalCost := asyncmediataskFields[17].Descriptor()
+	// asyncmediatask.DefaultFinalCost holds the default value on creation for the final_cost field.
+	asyncmediatask.DefaultFinalCost = asyncmediataskDescFinalCost.Default.(float64)
+	// asyncmediataskDescRateMultiplier is the schema descriptor for rate_multiplier field.
+	asyncmediataskDescRateMultiplier := asyncmediataskFields[18].Descriptor()
+	// asyncmediatask.DefaultRateMultiplier holds the default value on creation for the rate_multiplier field.
+	asyncmediatask.DefaultRateMultiplier = asyncmediataskDescRateMultiplier.Default.(float64)
+	// asyncmediataskDescSizeTier is the schema descriptor for size_tier field.
+	asyncmediataskDescSizeTier := asyncmediataskFields[19].Descriptor()
+	// asyncmediatask.SizeTierValidator is a validator for the "size_tier" field. It is called by the builders before save.
+	asyncmediatask.SizeTierValidator = asyncmediataskDescSizeTier.Validators[0].(func(string) error)
+	// asyncmediataskDescErrorReason is the schema descriptor for error_reason field.
+	asyncmediataskDescErrorReason := asyncmediataskFields[22].Descriptor()
+	// asyncmediatask.ErrorReasonValidator is a validator for the "error_reason" field. It is called by the builders before save.
+	asyncmediatask.ErrorReasonValidator = asyncmediataskDescErrorReason.Validators[0].(func(string) error)
+	// asyncmediataskDescClientIP is the schema descriptor for client_ip field.
+	asyncmediataskDescClientIP := asyncmediataskFields[25].Descriptor()
+	// asyncmediatask.ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
+	asyncmediatask.ClientIPValidator = asyncmediataskDescClientIP.Validators[0].(func(string) error)
+	// asyncmediataskDescUserAgent is the schema descriptor for user_agent field.
+	asyncmediataskDescUserAgent := asyncmediataskFields[26].Descriptor()
+	// asyncmediatask.UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
+	asyncmediatask.UserAgentValidator = asyncmediataskDescUserAgent.Validators[0].(func(string) error)
+	// asyncmediataskDescInboundEndpoint is the schema descriptor for inbound_endpoint field.
+	asyncmediataskDescInboundEndpoint := asyncmediataskFields[27].Descriptor()
+	// asyncmediatask.InboundEndpointValidator is a validator for the "inbound_endpoint" field. It is called by the builders before save.
+	asyncmediatask.InboundEndpointValidator = asyncmediataskDescInboundEndpoint.Validators[0].(func(string) error)
+	// asyncmediataskDescUpstreamEndpoint is the schema descriptor for upstream_endpoint field.
+	asyncmediataskDescUpstreamEndpoint := asyncmediataskFields[28].Descriptor()
+	// asyncmediatask.UpstreamEndpointValidator is a validator for the "upstream_endpoint" field. It is called by the builders before save.
+	asyncmediatask.UpstreamEndpointValidator = asyncmediataskDescUpstreamEndpoint.Validators[0].(func(string) error)
 	authidentityMixin := schema.AuthIdentity{}.Mixin()
 	authidentityMixinFields0 := authidentityMixin[0].Fields()
 	_ = authidentityMixinFields0
@@ -2202,12 +2316,16 @@ func init() {
 	usagelogDescImageSizeSource := usagelogFields[37].Descriptor()
 	// usagelog.ImageSizeSourceValidator is a validator for the "image_size_source" field. It is called by the builders before save.
 	usagelog.ImageSizeSourceValidator = usagelogDescImageSizeSource.Validators[0].(func(string) error)
+	// usagelogDescBillingStatus is the schema descriptor for billing_status field.
+	usagelogDescBillingStatus := usagelogFields[42].Descriptor()
+	// usagelog.BillingStatusValidator is a validator for the "billing_status" field. It is called by the builders before save.
+	usagelog.BillingStatusValidator = usagelogDescBillingStatus.Validators[0].(func(string) error)
 	// usagelogDescCacheTTLOverridden is the schema descriptor for cache_ttl_overridden field.
-	usagelogDescCacheTTLOverridden := usagelogFields[39].Descriptor()
+	usagelogDescCacheTTLOverridden := usagelogFields[43].Descriptor()
 	// usagelog.DefaultCacheTTLOverridden holds the default value on creation for the cache_ttl_overridden field.
 	usagelog.DefaultCacheTTLOverridden = usagelogDescCacheTTLOverridden.Default.(bool)
 	// usagelogDescCreatedAt is the schema descriptor for created_at field.
-	usagelogDescCreatedAt := usagelogFields[40].Descriptor()
+	usagelogDescCreatedAt := usagelogFields[44].Descriptor()
 	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{}.Mixin()

@@ -458,6 +458,79 @@ func isOpenAIImageGenerationModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-image-")
 }
 
+// FalAPIEdit 是 fal endpoint 第三段（api 段）中代表「图生图 / 编辑」的取值。
+const FalAPIEdit = "edit"
+
+// falEndpointModelAPI 从 fal endpoint 中解析出 model 段与 api 段。
+// fal endpoint 形如 organization/model/api（api 段可缺省）：
+//   - openai/gpt-image-2        → organization=openai, model=gpt-image-2, api=（无，文生图）
+//   - openai/gpt-image-2/edit   → organization=openai, model=gpt-image-2, api=edit
+//   - openai/gpt-image-2/vision → organization=openai, model=gpt-image-2, api=vision
+//
+// 同时兼容请求侧传入的对外模型名形态（单段，如 gpt-image-2），此时整段即为 model、api 为空。
+func falEndpointModelAPI(endpoint string) (model, api string) {
+	e := strings.TrimSpace(endpoint)
+	if e == "" {
+		return "", ""
+	}
+	segs := strings.Split(e, "/")
+	switch {
+	case len(segs) >= 3:
+		// organization/model/api
+		return strings.TrimSpace(segs[1]), strings.TrimSpace(segs[2])
+	case len(segs) == 2:
+		// organization/model（无 api 段，文生图）
+		return strings.TrimSpace(segs[1]), ""
+	default:
+		// 对外模型名形态，整段即为 model
+		return strings.TrimSpace(segs[0]), ""
+	}
+}
+
+// falAccountSupportsModel 判断 fal 账号是否支持请求模型（含 edit 能力校验）。
+// fal 账号「支持的模型」由其 model_mapping 决定，每个 value 是 fal endpoint，
+// 形如 organization/model/api（如 openai/gpt-image-2、openai/gpt-image-2/edit），
+// value 的第三段 api（空串=文生图、edit=图生图）决定该 endpoint 的能力。
+// 账号侧的「模型名 → api 段集合」已由 Account.FalSupportedModelAPIs 预切并缓存
+// （同时索引了对外别名 key 与 value 的 model 段），这里只需确定本次请求所需的 api 段，
+// 再查表匹配，避免每次请求重复切分账号的全部 endpoint。
+//
+// 请求名与所需 api 段的判定：
+//   - 请求模型本身带 api 段（如原生门面 slug openai/gpt-image-2/edit）→ 以该 api 段为准；
+//   - 否则使用调用方传入的 api 参数（如 edit 来自 /v1/images/edits 门面，空串=文生图），
+//     api 请求需要对应 api 段的 endpoint，文生图请求需要无 api 段的 endpoint。
+//
+// 查表时同时按「请求原串（对外别名）」与「请求的 model 段」两个键尝试命中，任一命中即支持。
+// 即：api 请求必须命中映射里对应 api 段的 endpoint 才算支持；文生图请求必须命中无 api 段的 endpoint。
+func falAccountSupportsModel(account *Account, requestedModel string, api string) bool {
+	if account == nil {
+		return false
+	}
+	reqModel, reqAPI := falEndpointModelAPI(requestedModel)
+	if strings.TrimSpace(requestedModel) == "" {
+		return false
+	}
+	neededAPI := strings.ToLower(reqAPI)
+	if neededAPI == "" {
+		neededAPI = strings.ToLower(strings.TrimSpace(api))
+	}
+
+	supported := account.FalSupportedModelAPIs()
+	// 先按请求原串（对外别名，如 dall-e-3、gpt-image-2-edit）匹配，
+	// 再按请求的 model 段（如 slug openai/gpt-image-2[/edit] 取 gpt-image-2）匹配。
+	for _, name := range []string{strings.ToLower(strings.TrimSpace(requestedModel)), strings.ToLower(reqModel)} {
+		if name == "" {
+			continue
+		}
+		if apis, ok := supported[name]; ok {
+			if _, ok := apis[neededAPI]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func validateOpenAIImagesModel(model string) error {
 	model = strings.TrimSpace(model)
 	if isOpenAIImageGenerationModel(model) {

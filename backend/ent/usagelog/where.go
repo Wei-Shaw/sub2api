@@ -245,6 +245,16 @@ func ImageSizeSource(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldImageSizeSource, v))
 }
 
+// TaskID applies equality check predicate on the "task_id" field. It's identical to TaskIDEQ.
+func TaskID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldTaskID, v))
+}
+
+// BillingStatus applies equality check predicate on the "billing_status" field. It's identical to BillingStatusEQ.
+func BillingStatus(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingStatus, v))
+}
+
 // CacheTTLOverridden applies equality check predicate on the "cache_ttl_overridden" field. It's identical to CacheTTLOverriddenEQ.
 func CacheTTLOverridden(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCacheTTLOverridden, v))
@@ -2148,6 +2158,151 @@ func ImageSizeBreakdownIsNil() predicate.UsageLog {
 // ImageSizeBreakdownNotNil applies the NotNil predicate on the "image_size_breakdown" field.
 func ImageSizeBreakdownNotNil() predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotNull(FieldImageSizeBreakdown))
+}
+
+// TaskIDEQ applies the EQ predicate on the "task_id" field.
+func TaskIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldTaskID, v))
+}
+
+// TaskIDNEQ applies the NEQ predicate on the "task_id" field.
+func TaskIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldTaskID, v))
+}
+
+// TaskIDIn applies the In predicate on the "task_id" field.
+func TaskIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldTaskID, vs...))
+}
+
+// TaskIDNotIn applies the NotIn predicate on the "task_id" field.
+func TaskIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldTaskID, vs...))
+}
+
+// TaskIDGT applies the GT predicate on the "task_id" field.
+func TaskIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldTaskID, v))
+}
+
+// TaskIDGTE applies the GTE predicate on the "task_id" field.
+func TaskIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldTaskID, v))
+}
+
+// TaskIDLT applies the LT predicate on the "task_id" field.
+func TaskIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldTaskID, v))
+}
+
+// TaskIDLTE applies the LTE predicate on the "task_id" field.
+func TaskIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldTaskID, v))
+}
+
+// TaskIDIsNil applies the IsNil predicate on the "task_id" field.
+func TaskIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldTaskID))
+}
+
+// TaskIDNotNil applies the NotNil predicate on the "task_id" field.
+func TaskIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldTaskID))
+}
+
+// ImageUrlsIsNil applies the IsNil predicate on the "image_urls" field.
+func ImageUrlsIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldImageUrls))
+}
+
+// ImageUrlsNotNil applies the NotNil predicate on the "image_urls" field.
+func ImageUrlsNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldImageUrls))
+}
+
+// CosURLIsNil applies the IsNil predicate on the "cos_url" field.
+func CosURLIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldCosURL))
+}
+
+// CosURLNotNil applies the NotNil predicate on the "cos_url" field.
+func CosURLNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldCosURL))
+}
+
+// BillingStatusEQ applies the EQ predicate on the "billing_status" field.
+func BillingStatusEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingStatus, v))
+}
+
+// BillingStatusNEQ applies the NEQ predicate on the "billing_status" field.
+func BillingStatusNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldBillingStatus, v))
+}
+
+// BillingStatusIn applies the In predicate on the "billing_status" field.
+func BillingStatusIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldBillingStatus, vs...))
+}
+
+// BillingStatusNotIn applies the NotIn predicate on the "billing_status" field.
+func BillingStatusNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldBillingStatus, vs...))
+}
+
+// BillingStatusGT applies the GT predicate on the "billing_status" field.
+func BillingStatusGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldBillingStatus, v))
+}
+
+// BillingStatusGTE applies the GTE predicate on the "billing_status" field.
+func BillingStatusGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldBillingStatus, v))
+}
+
+// BillingStatusLT applies the LT predicate on the "billing_status" field.
+func BillingStatusLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldBillingStatus, v))
+}
+
+// BillingStatusLTE applies the LTE predicate on the "billing_status" field.
+func BillingStatusLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldBillingStatus, v))
+}
+
+// BillingStatusContains applies the Contains predicate on the "billing_status" field.
+func BillingStatusContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldBillingStatus, v))
+}
+
+// BillingStatusHasPrefix applies the HasPrefix predicate on the "billing_status" field.
+func BillingStatusHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldBillingStatus, v))
+}
+
+// BillingStatusHasSuffix applies the HasSuffix predicate on the "billing_status" field.
+func BillingStatusHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldBillingStatus, v))
+}
+
+// BillingStatusIsNil applies the IsNil predicate on the "billing_status" field.
+func BillingStatusIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldBillingStatus))
+}
+
+// BillingStatusNotNil applies the NotNil predicate on the "billing_status" field.
+func BillingStatusNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldBillingStatus))
+}
+
+// BillingStatusEqualFold applies the EqualFold predicate on the "billing_status" field.
+func BillingStatusEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldBillingStatus, v))
+}
+
+// BillingStatusContainsFold applies the ContainsFold predicate on the "billing_status" field.
+func BillingStatusContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldBillingStatus, v))
 }
 
 // CacheTTLOverriddenEQ applies the EQ predicate on the "cache_ttl_overridden" field.
