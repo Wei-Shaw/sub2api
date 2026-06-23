@@ -753,6 +753,162 @@ func TestBotSalesFulfillmentCreatesBuyerWithDefaultLimitsFromSettings(t *testing
 	require.Equal(t, 123, created.RpmLimit)
 }
 
+func TestBotSalesFulfillmentDefaultsTelegramNotifyChatIDForNewBuyer(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	group := createBotSalesGroup(t, client, "bot-telegram-notify-default", service.SubscriptionTypeSubscription)
+	plan := client.SubscriptionPlan.Create().
+		SetGroupID(group.ID).
+		SetName("Bot telegram notify default").
+		SetPrice(9.9).
+		SetValidityDays(30).
+		SetValidityUnit("day").
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID: "bs-order-telegram-notify-default",
+		Operation:       service.BotSalesFulfillmentOperationNew,
+		EntitlementKind: service.BotSalesEntitlementSubscription,
+		PlanID:          plan.ID,
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:123456789",
+			Provider:       "telegram",
+			ProviderUserID: "123456789",
+			TelegramID:     "123456789",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyNever},
+	})
+	require.NoError(t, err)
+
+	created := client.User.GetX(ctx, resp.Buyer.UserID)
+	require.Equal(t, "123456789", created.BalanceNotifyTelegramChatID)
+}
+
+func TestBotSalesFulfillmentDefaultsTelegramNotifyChatIDFromLegacyExternalIDWithEmail(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	group := createBotSalesGroup(t, client, "bot-telegram-notify-legacy", service.SubscriptionTypeSubscription)
+	plan := client.SubscriptionPlan.Create().
+		SetGroupID(group.ID).
+		SetName("Bot telegram notify legacy").
+		SetPrice(9.9).
+		SetValidityDays(30).
+		SetValidityUnit("day").
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID: "bs-order-telegram-notify-legacy",
+		Operation:       service.BotSalesFulfillmentOperationNew,
+		EntitlementKind: service.BotSalesEntitlementSubscription,
+		PlanID:          plan.ID,
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "telegram:246810",
+			Email:          "legacy-telegram-buyer@example.test",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyNever},
+	})
+	require.NoError(t, err)
+
+	created := client.User.GetX(ctx, resp.Buyer.UserID)
+	require.Equal(t, "legacy-telegram-buyer@example.test", created.Email)
+	require.Equal(t, "246810", created.BalanceNotifyTelegramChatID)
+}
+
+func TestBotSalesFulfillmentFillsMissingTelegramNotifyChatIDForExistingSyntheticBuyer(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	group := createBotSalesGroup(t, client, "bot-telegram-notify-existing", service.SubscriptionTypeNone)
+	pkg := client.BalancePackage.Create().
+		SetCode("standard_20_telegram_notify_existing").
+		SetLabel("Standard 20 telegram notify existing").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(group.ID).
+		SetForSale(true).
+		SaveX(ctx)
+	existing := client.User.Create().
+		SetEmail("channel-telegram-user-987654321@bot-sales.local").
+		SetPasswordHash("test-password-hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		SetConcurrency(1).
+		SetBalance(15).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-telegram-notify-existing",
+		Operation:          service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:987654321",
+			Provider:       "telegram",
+			ProviderUserID: "987654321",
+			TelegramID:     "987654321",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyNever},
+	})
+	require.NoError(t, err)
+	require.Equal(t, existing.ID, resp.Buyer.UserID)
+
+	updated := client.User.GetX(ctx, existing.ID)
+	require.Equal(t, "987654321", updated.BalanceNotifyTelegramChatID)
+}
+
+func TestBotSalesFulfillmentPreservesExistingTelegramNotifyChatIDOverride(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	group := createBotSalesGroup(t, client, "bot-telegram-notify-override", service.SubscriptionTypeNone)
+	pkg := client.BalancePackage.Create().
+		SetCode("standard_20_telegram_notify_override").
+		SetLabel("Standard 20 telegram notify override").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(group.ID).
+		SetForSale(true).
+		SaveX(ctx)
+	existing := client.User.Create().
+		SetEmail("channel-telegram-user-111222333@bot-sales.local").
+		SetPasswordHash("test-password-hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		SetConcurrency(1).
+		SetBalance(15).
+		SetBalanceNotifyTelegramChatID("444555666").
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-telegram-notify-override",
+		Operation:          service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:111222333",
+			Provider:       "telegram",
+			ProviderUserID: "111222333",
+			TelegramID:     "111222333",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyNever},
+	})
+	require.NoError(t, err)
+	require.Equal(t, existing.ID, resp.Buyer.UserID)
+
+	updated := client.User.GetX(ctx, existing.ID)
+	require.Equal(t, "444555666", updated.BalanceNotifyTelegramChatID)
+}
+
 func TestBotSalesFulfillmentBalanceTopupWithoutDeviceCodeReusesLegacyBuyerAcrossProviders(t *testing.T) {
 	cases := []struct {
 		name           string

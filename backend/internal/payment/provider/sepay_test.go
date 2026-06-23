@@ -151,6 +151,7 @@ func TestSepayVerifyNotificationExtractsVclawOrderCodeFromContent(t *testing.T) 
 	}
 	if notification == nil {
 		t.Fatal("VerifyNotification() returned nil notification")
+		return
 	}
 	if notification.OrderID != "vclaw_aB3k9Q" {
 		t.Fatalf("OrderID = %q, want vclaw_aB3k9Q", notification.OrderID)
@@ -270,6 +271,7 @@ func TestSepayVerifyNotificationExtractsTransferReferenceFromContent(t *testing.
 	}
 	if notification == nil {
 		t.Fatal("VerifyNotification() returned nil notification")
+		return
 	}
 	if notification.OrderID != "vclaw_aB3k9Q" {
 		t.Fatalf("OrderID = %q, want vclaw_aB3k9Q", notification.OrderID)
@@ -298,6 +300,7 @@ func TestSepayVerifyNotificationNormalizesWebhookCodeSuffix(t *testing.T) {
 	}
 	if notification == nil {
 		t.Fatal("VerifyNotification() returned nil notification")
+		return
 	}
 	if notification.OrderID != "vclaw_aB3k9Q" {
 		t.Fatalf("OrderID = %q, want vclaw_aB3k9Q", notification.OrderID)

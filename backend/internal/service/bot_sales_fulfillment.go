@@ -1032,12 +1032,19 @@ func (s *BotSalesFulfillmentService) findOrCreateBuyer(ctx context.Context, buye
 		lookupEmails = botSalesBuyerLookupEmails(buyer)
 		email = lookupEmails[0]
 	}
+	telegramChatID := botSalesBuyerTelegramChatID(buyer, lookupEmails...)
 	for _, lookupEmail := range lookupEmails {
 		if lookupEmail == "" {
 			continue
 		}
 		existing, err := s.userRepo.GetByEmail(ctx, lookupEmail)
 		if err == nil {
+			if telegramChatID != "" && strings.TrimSpace(existing.BalanceNotifyTelegramChatID) == "" {
+				existing.BalanceNotifyTelegramChatID = telegramChatID
+				if err := s.userRepo.Update(ctx, existing, UserUpdateFields{BalanceNotifyTelegramChatID: true}); err != nil {
+					return nil, err
+				}
+			}
 			return existing, nil
 		}
 		if !errors.Is(err, ErrUserNotFound) {
@@ -1054,13 +1061,14 @@ func (s *BotSalesFulfillmentService) findOrCreateBuyer(ctx context.Context, buye
 	}
 	defaultConcurrency, defaultRPMLimit := s.botSalesBuyerDefaults(ctx)
 	created := &User{
-		Email:        email,
-		Username:     username,
-		PasswordHash: fmt.Sprintf("bot-sales:%d", time.Now().UnixNano()),
-		Role:         RoleUser,
-		Status:       StatusActive,
-		Concurrency:  defaultConcurrency,
-		RPMLimit:     defaultRPMLimit,
+		Email:                       email,
+		Username:                    username,
+		PasswordHash:                fmt.Sprintf("bot-sales:%d", time.Now().UnixNano()),
+		Role:                        RoleUser,
+		Status:                      StatusActive,
+		Concurrency:                 defaultConcurrency,
+		RPMLimit:                    defaultRPMLimit,
+		BalanceNotifyTelegramChatID: telegramChatID,
 	}
 	if err := s.userRepo.Create(ctx, created); err != nil {
 		return nil, err
@@ -1083,6 +1091,58 @@ func userServiceUserRepo(userService *UserService) UserRepository {
 		return nil
 	}
 	return userService.userRepo
+}
+
+func botSalesBuyerTelegramChatID(buyer BotSalesFulfillmentBuyer, lookupEmails ...string) string {
+	if chatID := NormalizeBalanceNotifyTelegramChatID(buyer.TelegramID); chatID != "" {
+		return chatID
+	}
+	provider := strings.TrimSpace(strings.ToLower(buyer.Provider))
+	if provider == "telegram" {
+		if chatID := NormalizeBalanceNotifyTelegramChatID(buyer.ProviderUserID); chatID != "" {
+			return chatID
+		}
+	}
+	if parsedProvider, parsedUserID := botSalesParseChannelUserID(buyer.ExternalUserID); parsedProvider == "telegram" {
+		if chatID := NormalizeBalanceNotifyTelegramChatID(parsedUserID); chatID != "" {
+			return chatID
+		}
+	}
+	if chatID := botSalesLegacyTelegramChatIDFromExternalUserID(buyer.ExternalUserID); chatID != "" {
+		return chatID
+	}
+	for _, email := range lookupEmails {
+		if chatID := botSalesTelegramChatIDFromSyntheticEmail(email); chatID != "" {
+			return chatID
+		}
+	}
+	return ""
+}
+
+func botSalesLegacyTelegramChatIDFromExternalUserID(externalUserID string) string {
+	provider, providerUserID, ok := strings.Cut(strings.TrimSpace(externalUserID), ":")
+	if !ok {
+		return ""
+	}
+	switch strings.TrimSpace(strings.ToLower(provider)) {
+	case "telegram", "tg":
+		return NormalizeBalanceNotifyTelegramChatID(providerUserID)
+	default:
+		return ""
+	}
+}
+
+func botSalesTelegramChatIDFromSyntheticEmail(email string) string {
+	local, domain, ok := strings.Cut(strings.TrimSpace(strings.ToLower(email)), "@")
+	if !ok || domain != "bot-sales.local" {
+		return ""
+	}
+	for _, prefix := range []string{"channel-telegram-user-", "telegram-", "tg-"} {
+		if strings.HasPrefix(local, prefix) {
+			return NormalizeBalanceNotifyTelegramChatID(strings.TrimPrefix(local, prefix))
+		}
+	}
+	return ""
 }
 
 func botSalesBuyerLookupEmails(buyer BotSalesFulfillmentBuyer) []string {

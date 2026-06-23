@@ -41,6 +41,7 @@ func TestParse_有效HTTP代理(t *testing.T) {
 	}
 	if parsed == nil {
 		t.Fatal("parsed 不应为 nil")
+		return
 	}
 	if parsed.Host != "proxy.example.com:8080" {
 		t.Errorf("Host 不匹配: got %q", parsed.Host)
@@ -109,6 +110,7 @@ func TestParse_含密码URL脱敏(t *testing.T) {
 	}
 	if trimmed == "" || parsed == nil {
 		t.Fatal("应返回非空结果")
+		return
 	}
 	if parsed.Scheme != "socks5h" {
 		t.Errorf("Scheme 应升级为 socks5h: got %q", parsed.Scheme)
@@ -143,6 +145,7 @@ func TestParse_带空白的有效URL(t *testing.T) {
 	}
 	if parsed == nil {
 		t.Fatal("parsed 不应为 nil")
+		return
 	}
 }
 

@@ -199,7 +199,7 @@ func (s *VClawClaimService) createFirstClaim(ctx context.Context, req VClawClaim
 		userStatus := s.firstClaimUserStatus(runCtx, req.AffCode)
 		if user.Status != userStatus {
 			user.Status = userStatus
-			if err := s.userRepo.Update(runCtx, user); err != nil {
+			if err := s.userRepo.Update(runCtx, user, UserUpdateFields{Status: true}); err != nil {
 				return nil, ErrServiceUnavailable
 			}
 		}
