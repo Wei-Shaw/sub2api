@@ -132,10 +132,11 @@ func resolveAccountQuotaCost(usageLog *UsageLog, p *postUsageBillingParams) floa
 	if p == nil || p.Cost == nil {
 		return 0
 	}
+	baseCost := p.Cost.TotalCost
 	if usageLog != nil && usageLog.AccountStatsCost != nil && *usageLog.AccountStatsCost > 0 {
-		return *usageLog.AccountStatsCost
+		baseCost = *usageLog.AccountStatsCost
 	}
-	return p.Cost.TotalCost * p.AccountRateMultiplier
+	return baseCost * p.AccountRateMultiplier
 }
 
 // postUsageBilling is the legacy fallback billing path used when the unified
