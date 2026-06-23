@@ -597,8 +597,86 @@ func openAIImagesUpstreamErrorFromSSEPayload(payload []byte) *OpenAIImagesUpstre
 	case "response.failed":
 		response := gjson.GetBytes(payload, "response")
 		return openAIImagesUpstreamErrorFromGJSON(response.Get("error"), response.Get("id").String())
+	case "response.incomplete":
+		// 上游在生成预算内未产出图片（超时/被截断），返回 response.incomplete 而非 error。
+		// 旧逻辑识别不到，统一报成模糊的 "upstream did not return image output" + 502，
+		// 且不触发 failover。这里把它显式建模为可重试的上游错误，使其能换账号重试。
+		return openAIImagesIncompleteUpstreamError(gjson.GetBytes(payload, "response"))
 	default:
 		return nil
+	}
+}
+
+// summarizeOpenAIImagesNoOutputBody 从上游 SSE 响应体提取诊断摘要，用于软失败时
+// 记录到 ops 日志（上游无图、无标准错误的场景）。提取最终事件类型、response.status、
+// incomplete_details.reason，并附 body 截断片段，便于事后定位上游到底返回了什么。
+func summarizeOpenAIImagesNoOutputBody(body []byte) string {
+	var lastType, status, incompleteReason string
+	forEachOpenAISSEDataPayload(string(body), func(payload []byte) {
+		if !gjson.ValidBytes(payload) {
+			return
+		}
+		if t := strings.TrimSpace(gjson.GetBytes(payload, "type").String()); t != "" {
+			lastType = t
+		}
+		if resp := gjson.GetBytes(payload, "response"); resp.Exists() {
+			if s := strings.TrimSpace(resp.Get("status").String()); s != "" {
+				status = s
+			}
+			if r := strings.TrimSpace(resp.Get("incomplete_details.reason").String()); r != "" {
+				incompleteReason = r
+			}
+		}
+	})
+	var b strings.Builder
+	_, _ = b.WriteString("no_image_output")
+	if lastType != "" {
+		fmt.Fprintf(&b, " last_event=%s", lastType)
+	}
+	if status != "" {
+		fmt.Fprintf(&b, " status=%s", status)
+	}
+	if incompleteReason != "" {
+		fmt.Fprintf(&b, " incomplete_reason=%s", incompleteReason)
+	}
+	// 附 body 截断片段（脱敏后），上限 1KB，避免日志膨胀。
+	snippet := strings.TrimSpace(string(body))
+	const maxSnippet = 1024
+	if len(snippet) > maxSnippet {
+		snippet = snippet[:maxSnippet] + "...(truncated)"
+	}
+	if snippet != "" {
+		fmt.Fprintf(&b, " body=%s", snippet)
+	}
+	return b.String()
+}
+
+// openAIImagesIncompleteUpstreamError 从 response.incomplete 事件构建可重试的上游错误。
+// incomplete_details.reason 常见取值：max_output_tokens / content_filter 等。
+// content_filter 视为客户端错误（400，重试无意义）；其余（生成超时/截断）视为
+// 可重试的 502，触发 failover 换账号重试。
+func openAIImagesIncompleteUpstreamError(response gjson.Result) *OpenAIImagesUpstreamError {
+	if !response.Exists() {
+		return nil
+	}
+	reason := strings.TrimSpace(response.Get("incomplete_details.reason").String())
+	statusCode := http.StatusBadGateway // 默认可重试（生成未完成）
+	errType := "incomplete_error"
+	if strings.Contains(strings.ToLower(reason), "content_filter") ||
+		strings.Contains(strings.ToLower(reason), "moderation") {
+		statusCode = http.StatusBadRequest // 内容过滤，重试无意义
+		errType = "image_generation_user_error"
+	}
+	message := "Upstream did not complete image generation"
+	if reason != "" {
+		message = fmt.Sprintf("Upstream image generation incomplete: %s", reason)
+	}
+	return &OpenAIImagesUpstreamError{
+		StatusCode:        statusCode,
+		ErrorType:         errType,
+		Code:              "response_incomplete",
+		Message:           sanitizeUpstreamErrorMessage(message),
+		UpstreamRequestID: strings.TrimSpace(response.Get("id").String()),
 	}
 }
 
@@ -959,7 +1037,20 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 			}
 			return OpenAIUsage{}, 0, nil, upstreamErr
 		}
-		return OpenAIUsage{}, 0, nil, fmt.Errorf("upstream did not return image output")
+		// 软失败兜底：上游既无图、又无任何可识别的 error/failed/incomplete 事件
+		// （实测：上游偶发把请求路由到 gpt-5.x-mini，返回 response.completed 但 output 为空、
+		// image_gen 工具未执行）。这是上游的概率性失败——同账号有时成功有时失败。
+		// 处理：① 记录上游诊断摘要到 ops（last_event/status/model/body 片段）便于排查；
+		// ② 返回 UpstreamFailoverError 触发重试。因实测为「同账号概率性失败」，优先
+		//    RetryableOnSameAccount 同账号快速重试（默认 3 次，大概率某次正常出图），
+		//    用尽后由 handler 自然换账号 failover（switchCount 上限保护），既提高成功率
+		//    又不无谓消耗其他账号配额。
+		setOpsUpstreamError(c, http.StatusBadGateway, "upstream did not return image output", summarizeOpenAIImagesNoOutputBody(body))
+		return OpenAIUsage{}, 0, nil, &UpstreamFailoverError{
+			StatusCode:             http.StatusBadGateway,
+			ResponseBody:           body,
+			RetryableOnSameAccount: true,
+		}
 	}
 	if strings.TrimSpace(firstMeta.Model) == "" {
 		firstMeta.Model = strings.TrimSpace(fallbackModel)
@@ -1096,6 +1187,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			}
 			if len(finalResults) == 0 {
 				outputErr := fmt.Errorf("upstream did not return image output")
+				// 软失败：response.completed 事件里没有图片。记录上游诊断摘要到 ops，
+				// 与非流式路径保持一致，避免上游响应信息丢失。
+				setOpsUpstreamError(c, http.StatusBadGateway, "upstream did not return image output", summarizeOpenAIImagesNoOutputBody(dataBytes))
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(outputErr.Error()))
 				processDataErr = outputErr
 				processDataDone = true
