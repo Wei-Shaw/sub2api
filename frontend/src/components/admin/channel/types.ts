@@ -146,10 +146,14 @@ export function validateIntervals(
     if (err) return err
   }
 
-  // per_request 模式按 tier_label 匹配，不做 token 区间重叠校验
-  // image 模式按面积范围匹配，需要做重叠校验
-  if (mode === 'per_request') return null
+  // per_request 模式按 tier_label 匹配，不做 token 区间重叠校验。
+  // 兼容旧的图片定价配置：多个 1K/2K/4K 标签段可能都不填写上下界。
+  if (mode === 'per_request' || (mode === 'image' && hasOnlyLabelTiers(sorted))) return null
   return checkIntervalOverlap(sorted)
+}
+
+function hasOnlyLabelTiers(intervals: IntervalFormEntry[]): boolean {
+  return intervals.every((iv) => iv.max_tokens == null && iv.tier_label.trim() !== '')
 }
 
 function validateSingleInterval(iv: IntervalFormEntry, idx: number): string | null {

@@ -322,15 +322,55 @@ func openAIImageOutputMIMEType(outputFormat string) string {
 }
 
 func openAIImageURLFromBase64(c *gin.Context, b64, outputFormat string, publicBaseURL ...string) string {
-	id, err := storeGeneratedImageFromBase64(b64, outputFormat)
+	raw := strings.TrimSpace(b64)
+	if mimeType, payload, ok := splitOpenAIImageDataURL(raw); ok {
+		raw = payload
+		if strings.TrimSpace(outputFormat) == "" {
+			outputFormat = mimeType
+		}
+	}
+	if normalized := normalizeOpenAIImageBase64(raw); normalized != "" {
+		raw = normalized
+	}
+
+	id, err := storeGeneratedImageFromBase64(raw, outputFormat)
 	if err != nil {
-		return "data:" + openAIImageOutputMIMEType(outputFormat) + ";base64," + b64
+		if isOpenAIImageDataURL(b64) {
+			return strings.TrimSpace(b64)
+		}
+		return "data:" + openAIImageOutputMIMEType(outputFormat) + ";base64," + raw
 	}
 	baseURL := ""
 	if len(publicBaseURL) > 0 {
 		baseURL = publicBaseURL[0]
 	}
 	return generatedImageURLForRequestWithBase(c, id, baseURL)
+}
+
+func isOpenAIImageDataURL(raw string) bool {
+	_, _, ok := splitOpenAIImageDataURL(raw)
+	return ok
+}
+
+func splitOpenAIImageDataURL(raw string) (string, string, bool) {
+	raw = strings.TrimSpace(raw)
+	lower := strings.ToLower(raw)
+	if !strings.HasPrefix(lower, "data:image/") {
+		return "", "", false
+	}
+	comma := strings.Index(raw, ",")
+	if comma <= 0 || comma == len(raw)-1 {
+		return "", "", false
+	}
+	meta := raw[:comma]
+	if !strings.Contains(strings.ToLower(meta), ";base64") {
+		return "", "", false
+	}
+	mimeType := strings.TrimPrefix(strings.SplitN(meta, ";", 2)[0], "data:")
+	if !strings.HasPrefix(strings.ToLower(mimeType), "image/") {
+		return "", "", false
+	}
+	return mimeType, strings.TrimSpace(raw[comma+1:]), true
 }
 
 func (s *OpenAIGatewayService) openAIImagesPublicBaseURL(c *gin.Context) string {
@@ -1450,7 +1490,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	}
 }
 
-func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
+func (s *OpenAIGatewayService) forwardOpenAIImagesResponses(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,

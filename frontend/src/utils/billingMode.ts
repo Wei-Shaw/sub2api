@@ -29,6 +29,7 @@ export function isImageUsage(row: Pick<ImageBillingRow, 'image_count' | 'billing
 }
 
 export function getDisplayBillingMode(row: Pick<ImageBillingRow, 'billing_mode' | 'image_count'> | null | undefined): string | null | undefined {
+  if (isImageUsage(row)) return BILLING_MODE_IMAGE
   return row?.billing_mode
 }
 
