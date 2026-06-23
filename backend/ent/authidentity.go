@@ -10,8 +10,8 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Usersxiao/ai2api/ent/authidentity"
+	"github.com/Usersxiao/ai2api/ent/user"
 )
 
 // AuthIdentity is the model entity for the AuthIdentity schema.

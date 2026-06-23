@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	infraerrors "github.com/Usersxiao/ai2api/internal/pkg/errors"
 )
 
 func (s *OpsService) GetOpenAITokenStats(ctx context.Context, filter *OpsOpenAITokenStatsFilter) (*OpsOpenAITokenStatsResponse, error) {

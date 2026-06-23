@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Usersxiao/ai2api/internal/payment"
 	"github.com/wechatpay-apiv3/wechatpay-go/core"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/h5"
@@ -595,8 +595,8 @@ func TestCreatePaymentMobileH5IncludesConfiguredSceneInfo(t *testing.T) {
 		if got := wxSV(req.SceneInfo.H5Info.Type); got != wxpayH5Type {
 			t.Fatalf("scene_info.h5_info.type = %q, want %q", got, wxpayH5Type)
 		}
-		if got := wxSV(req.SceneInfo.H5Info.AppName); got != "Sub2API" {
-			t.Fatalf("scene_info.h5_info.app_name = %q, want %q", got, "Sub2API")
+		if got := wxSV(req.SceneInfo.H5Info.AppName); got != "AI2API" {
+			t.Fatalf("scene_info.h5_info.app_name = %q, want %q", got, "AI2API")
 		}
 		if got := wxSV(req.SceneInfo.H5Info.AppUrl); got != "https://app.example.com" {
 			t.Fatalf("scene_info.h5_info.app_url = %q, want %q", got, "https://app.example.com")
@@ -610,7 +610,7 @@ func TestCreatePaymentMobileH5IncludesConfiguredSceneInfo(t *testing.T) {
 		config: map[string]string{
 			"appId":     "wx123",
 			"mchId":     "mch123",
-			"h5AppName": "Sub2API",
+			"h5AppName": "AI2API",
 			"h5AppUrl":  "https://app.example.com",
 		},
 		coreClient: &core.Client{},

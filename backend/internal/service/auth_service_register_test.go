@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Usersxiao/ai2api/internal/config"
+	infraerrors "github.com/Usersxiao/ai2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 

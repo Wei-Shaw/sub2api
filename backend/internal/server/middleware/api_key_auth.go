@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Usersxiao/ai2api/internal/config"
+	"github.com/Usersxiao/ai2api/internal/pkg/ctxkey"
+	"github.com/Usersxiao/ai2api/internal/pkg/ip"
+	"github.com/Usersxiao/ai2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )

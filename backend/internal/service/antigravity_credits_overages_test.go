@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Usersxiao/ai2api/internal/pkg/antigravity"
 	"github.com/stretchr/testify/require"
 )
 

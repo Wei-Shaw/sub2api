@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/Usersxiao/ai2api/ent"
+	"github.com/Usersxiao/ai2api/internal/payment"
+	infraerrors "github.com/Usersxiao/ai2api/internal/pkg/errors"
+	"github.com/Usersxiao/ai2api/internal/pkg/pagination"
+	"github.com/Usersxiao/ai2api/internal/pkg/response"
+	middleware2 "github.com/Usersxiao/ai2api/internal/server/middleware"
+	"github.com/Usersxiao/ai2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )

@@ -10,8 +10,8 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Usersxiao/ai2api/ent/channelmonitor"
+	"github.com/Usersxiao/ai2api/ent/channelmonitorrequesttemplate"
 )
 
 // ChannelMonitor is the model entity for the ChannelMonitor schema.

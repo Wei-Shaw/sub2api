@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 
-	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Usersxiao/ai2api/internal/domain"
 )
 
 // Status constants

@@ -165,7 +165,7 @@ See "If You Accidentally Modified an Applied Migration" above.
 ### Migration Failed
 ```bash
 # Check migration status
-psql -d sub2api -c "SELECT * FROM schema_migrations ORDER BY applied_at DESC;"
+psql -d ai2api -c "SELECT * FROM schema_migrations ORDER BY applied_at DESC;"
 
 # Manually rollback if needed (use with caution)
 # Better to fix the migration and create a new one

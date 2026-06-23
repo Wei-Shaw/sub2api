@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	infraerrors "github.com/Usersxiao/ai2api/internal/pkg/errors"
+	"github.com/Usersxiao/ai2api/internal/pkg/logger"
 )
 
 var (

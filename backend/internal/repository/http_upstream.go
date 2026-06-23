@@ -21,12 +21,12 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
-	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/Usersxiao/ai2api/internal/config"
+	"github.com/Usersxiao/ai2api/internal/pkg/proxyurl"
+	"github.com/Usersxiao/ai2api/internal/pkg/proxyutil"
+	"github.com/Usersxiao/ai2api/internal/pkg/tlsfingerprint"
+	"github.com/Usersxiao/ai2api/internal/service"
+	"github.com/Usersxiao/ai2api/internal/util/urlvalidator"
 )
 
 // 默认配置常量

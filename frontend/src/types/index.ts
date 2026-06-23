@@ -1,5 +1,5 @@
 /**
- * Core Type Definitions for Sub2API Frontend
+ * Core Type Definitions for AI2API Frontend
  */
 
 // ==================== Common Types ====================

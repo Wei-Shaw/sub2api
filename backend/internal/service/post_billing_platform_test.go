@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Usersxiao/ai2api/internal/pkg/ctxkey"
 )
 
 func TestPlatformFromAPIKey_NilSafe(t *testing.T) {

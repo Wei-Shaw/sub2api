@@ -9,9 +9,9 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
-	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Usersxiao/ai2api/ent/user"
+	"github.com/Usersxiao/ai2api/ent/userattributedefinition"
+	"github.com/Usersxiao/ai2api/ent/userattributevalue"
 )
 
 // UserAttributeValue is the model entity for the UserAttributeValue schema.

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Usersxiao/ai2api/internal/config"
 	"github.com/imroc/req/v3"
 	"github.com/stretchr/testify/require"
 )

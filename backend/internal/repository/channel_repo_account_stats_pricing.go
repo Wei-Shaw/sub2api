@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Usersxiao/ai2api/internal/service"
 	"github.com/lib/pq"
 )
 

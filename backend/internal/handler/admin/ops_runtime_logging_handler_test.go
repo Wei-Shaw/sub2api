@@ -8,10 +8,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Usersxiao/ai2api/internal/config"
+	"github.com/Usersxiao/ai2api/internal/pkg/logger"
+	"github.com/Usersxiao/ai2api/internal/server/middleware"
+	"github.com/Usersxiao/ai2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -88,7 +88,7 @@ func newRuntimeOpsService(t *testing.T) *service.OpsService {
 	if err := logger.Init(logger.InitOptions{
 		Level:       "info",
 		Format:      "json",
-		ServiceName: "sub2api",
+		ServiceName: "ai2api",
 		Environment: "test",
 		Output: logger.OutputOptions{
 			ToStdout: false,

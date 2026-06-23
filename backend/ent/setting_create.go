@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Usersxiao/ai2api/ent/setting"
 )
 
 // SettingCreate is the builder for creating a Setting entity.

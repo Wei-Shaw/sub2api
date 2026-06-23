@@ -1,6 +1,6 @@
 # Payment System Configuration Guide
 
-Sub2API has a built-in payment system that enables user self-service top-up without deploying a separate payment service.
+AI2API has a built-in payment system that enables user self-service top-up without deploying a separate payment service.
 
 ---
 
@@ -31,7 +31,7 @@ Sub2API has a built-in payment system that enables user self-service top-up with
 > **EasyPay Provider Recommendations**: Both options below are third-party aggregators compatible with the EasyPay protocol. Pick based on the funding channel and settlement currency you need:
 >
 > - **Domestic channel / CNY settlement** — [ZPay](https://z-pay.cn/?uid=23808) (`https://z-pay.cn/?uid=23808`): direct integration with official Alipay / WeChat Pay APIs, fee **1.6%**; funds go straight to the merchant account with **T+1 automatic settlement**. Supports **individual users** (no business license required) with up to 10,000 CNY daily transactions; business-licensed accounts have no limit. Link contains the referral code of [Sub2ApiPay](https://github.com/touwaeriol/sub2apipay) original author [@touwaeriol](https://github.com/touwaeriol) — feel free to remove it.
-> - **International channel / USDT or USD settlement** — [Kyren Topup](https://kyren.top/?code=SUB2API) (`https://kyren.top/?code=SUB2API`): a ready-to-launch global payment stack for AI startups with WeChat Pay and Alipay support, local-currency checkout, and USD settlement. Fees: WeChat 2%, Alipay 2.5%; withdrawal 0.1% (min $40, max $150), settled in **USDT or USD**. No qualification review required — sign up and use immediately, making it the lowest barrier to entry. Withdrawal threshold is relatively high, recommended for users **who do not use domestic Chinese payment channels, cannot tolerate Stripe's 6%+ fees, have high transaction volume, and have USD or USDT channels to receive withdrawn funds**. Kyren Topup charges a $200 account opening fee; signing up via this link (which contains Sub2Api author [@Wei-Shaw](https://github.com/Wei-Shaw)'s referral code) **waives the opening fee**. Feel free to remove it if you prefer.
+> - **International channel / USDT or USD settlement** — [Kyren Topup](https://kyren.top/?code=SUB2API) (`https://kyren.top/?code=SUB2API`): a ready-to-launch global payment stack for AI startups with WeChat Pay and Alipay support, local-currency checkout, and USD settlement. Fees: WeChat 2%, Alipay 2.5%; withdrawal 0.1% (min $40, max $150), settled in **USDT or USD**. No qualification review required — sign up and use immediately, making it the lowest barrier to entry. Withdrawal threshold is relatively high, recommended for users **who do not use domestic Chinese payment channels, cannot tolerate Stripe's 6%+ fees, have high transaction volume, and have USD or USDT channels to receive withdrawn funds**. Kyren Topup charges a $200 account opening fee; signing up via this link (which contains AI2Api author [@Wei-Shaw](https://github.com/Wei-Shaw)'s referral code) **waives the opening fee**. Feel free to remove it if you prefer.
 >
 > Please evaluate the security, reliability, and compliance of any third-party payment provider on your own — this project does not endorse or guarantee any of them.
 
@@ -270,17 +270,17 @@ If you previously used [Sub2ApiPay](https://github.com/touwaeriol/sub2apipay) as
 
 | Aspect | Sub2ApiPay | Built-in Payment |
 |--------|-----------|-----------------|
-| Deployment | Separate service (Next.js + PostgreSQL) | Built into Sub2API, no extra deployment |
+| Deployment | Separate service (Next.js + PostgreSQL) | Built into AI2API, no extra deployment |
 | Payment Methods | EasyPay, Alipay, WeChat, Stripe | Same |
-| Configuration | Environment variables + separate admin UI | Unified in Sub2API admin dashboard |
+| Configuration | Environment variables + separate admin UI | Unified in AI2API admin dashboard |
 | Top-up Integration | Via Admin API callback | Internal processing, more reliable |
 | Subscription Plans | Supported | Not yet (planned) |
-| Order Management | Separate admin interface | Integrated in Sub2API admin dashboard |
+| Order Management | Separate admin interface | Integrated in AI2API admin dashboard |
 
 ### Migration Steps
 
-1. Enable payment in Sub2API admin dashboard and configure providers (use the same payment credentials)
-2. Update webhook callback URLs to Sub2API's callback endpoints
+1. Enable payment in AI2API admin dashboard and configure providers (use the same payment credentials)
+2. Update webhook callback URLs to AI2API's callback endpoints
 3. Verify that new orders are processed correctly via built-in payment
 4. Decommission the Sub2ApiPay service
 

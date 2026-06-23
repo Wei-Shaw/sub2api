@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	infraerrors "github.com/Usersxiao/ai2api/internal/pkg/errors"
 )
 
 // UserAttributeService handles attribute management

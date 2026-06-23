@@ -10,17 +10,17 @@ import (
 	"strings"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	infraerrors "github.com/Usersxiao/ai2api/internal/pkg/errors"
 )
 
 const (
 	AdminComplianceVersion        = "v2026.06.10"
 	AdminComplianceDocumentPathZH = "docs/legal/admin-compliance.zh.md"
 	AdminComplianceDocumentPathEN = "docs/legal/admin-compliance.en.md"
-	AdminComplianceDocumentURLZH  = "https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.zh.md"
-	AdminComplianceDocumentURLEN  = "https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.en.md"
-	AdminComplianceAckPhraseZH    = "我已阅读、理解并同意 Sub2API 部署与运营合规承诺"
-	AdminComplianceAckPhraseEN    = "I have read, understood, and agree to the Sub2API Deployment and Operation Compliance Commitment"
+	AdminComplianceDocumentURLZH  = ""
+	AdminComplianceDocumentURLEN  = ""
+	AdminComplianceAckPhraseZH    = "我已阅读、理解并同意 AI2API 部署与运营合规承诺"
+	AdminComplianceAckPhraseEN    = "I have read, understood, and agree to the AI2API Deployment and Operation Compliance Commitment"
 
 	settingKeyAdminComplianceAcknowledgement = "admin_compliance_acknowledgement"
 )

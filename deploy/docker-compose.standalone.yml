@@ -1,7 +1,7 @@
 # =============================================================================
-# Sub2API Docker Compose - Standalone Configuration
+# AI2API Docker Compose - Standalone Configuration
 # =============================================================================
-# This configuration runs only the Sub2API application.
+# This configuration runs only the AI2API application.
 # PostgreSQL and Redis must be provided externally.
 #
 # Usage:
@@ -11,9 +11,9 @@
 # =============================================================================
 
 services:
-  sub2api:
-    image: weishaw/sub2api:latest
-    container_name: sub2api
+  ai2api:
+    image: weishaw/ai2api:latest
+    container_name: ai2api
     restart: unless-stopped
     ulimits:
       nofile:
@@ -44,9 +44,9 @@ services:
       # =======================================================================
       - DATABASE_HOST=${DATABASE_HOST:?DATABASE_HOST is required}
       - DATABASE_PORT=${DATABASE_PORT:-5432}
-      - DATABASE_USER=${DATABASE_USER:-sub2api}
+      - DATABASE_USER=${DATABASE_USER:-ai2api}
       - DATABASE_PASSWORD=${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
-      - DATABASE_DBNAME=${DATABASE_DBNAME:-sub2api}
+      - DATABASE_DBNAME=${DATABASE_DBNAME:-ai2api}
       - DATABASE_SSLMODE=${DATABASE_SSLMODE:-disable}
       - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50}
       - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10}
@@ -67,7 +67,7 @@ services:
       # =======================================================================
       # Admin Account (auto-created on first run)
       # =======================================================================
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.local}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@ai2api.local}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
 
       # =======================================================================

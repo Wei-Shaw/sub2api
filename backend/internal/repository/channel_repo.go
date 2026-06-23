@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Usersxiao/ai2api/internal/pkg/pagination"
+	"github.com/Usersxiao/ai2api/internal/service"
 	"github.com/lib/pq"
 )
 

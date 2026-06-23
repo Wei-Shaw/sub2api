@@ -4,7 +4,7 @@ package model
 import (
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/Usersxiao/ai2api/internal/pkg/tlsfingerprint"
 )
 
 // TLSFingerprintProfile TLS 指纹配置模板

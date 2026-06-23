@@ -1,5 +1,5 @@
 /**
- * Vue Router configuration for Sub2API frontend
+ * Vue Router configuration for AI2API frontend
  * Defines all application routes with lazy loading and navigation guards
  */
 

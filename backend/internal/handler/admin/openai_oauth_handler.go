@@ -4,10 +4,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Usersxiao/ai2api/internal/handler/dto"
+	"github.com/Usersxiao/ai2api/internal/pkg/openai"
+	"github.com/Usersxiao/ai2api/internal/pkg/response"
+	"github.com/Usersxiao/ai2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )

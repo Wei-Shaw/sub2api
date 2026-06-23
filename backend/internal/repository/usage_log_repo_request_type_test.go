@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Usersxiao/ai2api/internal/pkg/pagination"
+	"github.com/Usersxiao/ai2api/internal/pkg/usagestats"
+	"github.com/Usersxiao/ai2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
 

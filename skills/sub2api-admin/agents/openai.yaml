@@ -1,7 +1,7 @@
 interface:
-  display_name: "Sub2API Admin"
-  short_description: "Manage Sub2API admin accounts and settings"
-  default_prompt: "Use $sub2api-admin to inspect and manage Sub2API backend accounts safely."
+  display_name: "AI2API Admin"
+  short_description: "Manage AI2API admin accounts and settings"
+  default_prompt: "Use $ai2api-admin to inspect and manage AI2API backend accounts safely."
 
 policy:
   allow_implicit_invocation: true

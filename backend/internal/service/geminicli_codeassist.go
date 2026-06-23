@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Usersxiao/ai2api/internal/pkg/geminicli"
 )
 
 // GeminiCliCodeAssistClient calls GeminiCli internal Code Assist endpoints.

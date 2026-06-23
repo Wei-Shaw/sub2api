@@ -1,16 +1,16 @@
 [Unit]
-Description=Sub2API Data Management Daemon
+Description=AI2API Data Management Daemon
 After=network.target
 Wants=network.target
 
 [Service]
 Type=simple
-User=sub2api
-Group=sub2api
-WorkingDirectory=/opt/sub2api
-ExecStart=/opt/sub2api/datamanagementd \
-  -socket-path /tmp/sub2api-datamanagement.sock \
-  -sqlite-path /var/lib/sub2api/datamanagement/datamanagementd.db \
+User=ai2api
+Group=ai2api
+WorkingDirectory=/opt/ai2api
+ExecStart=/opt/ai2api/datamanagementd \
+  -socket-path /tmp/ai2api-datamanagement.sock \
+  -sqlite-path /var/lib/ai2api/datamanagement/datamanagementd.db \
   -version 1.0.0
 Restart=always
 RestartSec=5s

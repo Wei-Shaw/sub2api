@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Usersxiao/ai2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
 
