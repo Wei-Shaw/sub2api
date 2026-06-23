@@ -124,6 +124,7 @@ import { useAuthStore REDACTED from '@/stores/auth'
 import { useAdminSettingsStore REDACTED from '@/stores/adminSettings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { buildApiUrl REDACTED from '@/api/client'
 import { buildEmbeddedUrl, detectTheme REDACTED from '@/utils/embedded-url'
 import { marked REDACTED from 'marked'
 import DOMPurify from 'dompurify'
@@ -217,7 +218,7 @@ function buildPageImageUrl(slug: string, src: string): string {
     .filter((part) => part && part !== '.')
     .map((part) => encodeURIComponent(part))
     .join('/')
-  return `/api/v1/pages/${encodeURIComponent(slug)REDACTED/images/${encodedPathREDACTED${suffixREDACTED`
+  return buildApiUrl(`/pages/${encodeURIComponent(slug)REDACTED/images/${encodedPathREDACTED${suffixREDACTED`)
 REDACTED
 
 async function fetchAndRenderMarkdown(slug: string) {
@@ -225,7 +226,7 @@ async function fetchAndRenderMarkdown(slug: string) {
   tocItems.value = []
   activeHeadingId.value = ''
   try {
-    const resp = await fetch(`/api/v1/pages/${encodeURIComponent(slug)REDACTED`, {
+    const resp = await fetch(buildApiUrl(`/pages/${encodeURIComponent(slug)REDACTED`), {
       headers: authStore.token ? { Authorization: `Bearer ${authStore.tokenREDACTED` REDACTED : {REDACTED,
     REDACTED)
     if (!resp.ok) {

@@ -422,6 +422,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { buildGatewayUrl REDACTED from '@/api/client'
 
 const { t, locale REDACTED = useI18n()
 const appStore = useAppStore()
@@ -856,7 +857,7 @@ REDACTED
 
 async function fetchUsage(key: string) {
   const dateParams = getDateParams()
-  const url = '/v1/usage' + (dateParams ? '?' + dateParams : '')
+  const url = buildGatewayUrl('/v1/usage') + (dateParams ? '?' + dateParams : '')
   const res = await fetch(url, {
     headers: { 'Authorization': 'Bearer ' + key REDACTED,
   REDACTED)

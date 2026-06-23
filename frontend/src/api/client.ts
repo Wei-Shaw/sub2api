@@ -6,13 +6,13 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse REDACTED from 'axios'
 import type { ApiResponse REDACTED from '@/types'
 import { getLocale REDACTED from '@/i18n'
+import { getAPIBaseURL REDACTED from './url'
+export { buildApiUrl, buildGatewayUrl REDACTED from './url'
 
 // ==================== Axios Instance Configuration ====================
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
-
 export const apiClient: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getAPIBaseURL(),
   withCredentials: true,
   timeout: 30000,
   headers: {
@@ -203,7 +203,7 @@ apiClient.interceptors.response.use(
           try {
             // Call refresh endpoint directly to avoid circular dependency
             const refreshResponse = await axios.post(
-              `${API_BASE_URLREDACTED/auth/refresh`,
+              `${getAPIBaseURL()REDACTED/auth/refresh`,
               { refresh_token: refreshToken REDACTED,
               { headers: { 'Content-Type': 'application/json' REDACTED REDACTED
             )

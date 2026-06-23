@@ -8192,13 +8192,15 @@ REDACTED;
 const currentOrigin =
   typeof window !== "undefined" ? window.location.origin : "";
 
+function buildApiCallbackUrl(path: string): string {
+  const base = (form.api_base_url || currentOrigin).replace(/\/+$/, "");
+  const apiRoot = base.endsWith("/api/v1") ? base : `${baseREDACTED/api/v1`;
+  return `${apiRootREDACTED${path.startsWith("/") ? path : `/${pathREDACTED`REDACTED`;
+REDACTED
+
 // LinuxDo OAuth redirect URL suggestion
 const linuxdoRedirectUrlSuggestion = computed(() => {
-  if (typeof window === "undefined") return "";
-  const origin =
-    window.location.origin ||
-    `${window.location.protocolREDACTED//${window.location.hostREDACTED`;
-  return `${originREDACTED/api/v1/auth/oauth/linuxdo/callback`;
+  return buildApiCallbackUrl("/auth/oauth/linuxdo/callback");
 REDACTED);
 
 async function setAndCopyLinuxdoRedirectUrl() {
@@ -8215,19 +8217,11 @@ REDACTED
 type EmailOAuthProvider = "github" | "google";
 
 const githubOAuthRedirectUrlSuggestion = computed(() => {
-  if (typeof window === "undefined") return "";
-  const origin =
-    window.location.origin ||
-    `${window.location.protocolREDACTED//${window.location.hostREDACTED`;
-  return `${originREDACTED/api/v1/auth/oauth/github/callback`;
+  return buildApiCallbackUrl("/auth/oauth/github/callback");
 REDACTED);
 
 const googleOAuthRedirectUrlSuggestion = computed(() => {
-  if (typeof window === "undefined") return "";
-  const origin =
-    window.location.origin ||
-    `${window.location.protocolREDACTED//${window.location.hostREDACTED`;
-  return `${originREDACTED/api/v1/auth/oauth/google/callback`;
+  return buildApiCallbackUrl("/auth/oauth/google/callback");
 REDACTED);
 
 async function setAndCopyEmailOAuthRedirectUrl(provider: EmailOAuthProvider) {
@@ -8249,11 +8243,7 @@ async function setAndCopyEmailOAuthRedirectUrl(provider: EmailOAuthProvider) {
 REDACTED
 
 const wechatRedirectUrlSuggestion = computed(() => {
-  if (typeof window === "undefined") return "";
-  const origin =
-    window.location.origin ||
-    `${window.location.protocolREDACTED//${window.location.hostREDACTED`;
-  return `${originREDACTED/api/v1/auth/oauth/wechat/callback`;
+  return buildApiCallbackUrl("/auth/oauth/wechat/callback");
 REDACTED);
 
 function syncWeChatConnectMode(preferredMode?: WeChatConnectMode) {
@@ -8318,11 +8308,7 @@ async function setAndCopyWeChatRedirectUrl() {
 REDACTED
 
 const oidcRedirectUrlSuggestion = computed(() => {
-  if (typeof window === "undefined") return "";
-  const origin =
-    window.location.origin ||
-    `${window.location.protocolREDACTED//${window.location.hostREDACTED`;
-  return `${originREDACTED/api/v1/auth/oauth/oidc/callback`;
+  return buildApiCallbackUrl("/auth/oauth/oidc/callback");
 REDACTED);
 
 async function setAndCopyOIDCRedirectUrl() {
