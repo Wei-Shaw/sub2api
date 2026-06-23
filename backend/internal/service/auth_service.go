@@ -1042,7 +1042,7 @@ REDACTED
 REDACTED
 
 	if !existed {
-		if err := client.AuthIdentity.Create().
+		if err = client.AuthIdentity.Create().
 			SetUserID(user.ID).
 			SetProviderType("email").
 			SetProviderKey("email").
