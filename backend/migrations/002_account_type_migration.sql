@@ -1,4 +1,4 @@
--- AI2API 账号类型迁移脚本
+-- Sub2API 账号类型迁移脚本
 -- 将 'official' 类型账号迁移为 'oauth' 或 'setup-token'
 -- 根据 credentials->>'scope' 字段判断：
 --   - 包含 'user:profile' 的是 'oauth' 类型
