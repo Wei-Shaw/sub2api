@@ -1,4 +1,4 @@
--- AI2API 初始化数据库迁移脚本
+-- Sub2API 初始化数据库迁移脚本
 -- PostgreSQL 15+
 
 -- 1. proxies 代理IP表（无外键依赖）
