@@ -162,3 +162,77 @@ func TestTelegramNotifyService_SendTestMessageWithOverrides_KeepsSavedTokenWhenO
 		t.Fatalf("expected chat_id override, got %q", got)
 	}
 }
+
+func TestTelegramNotifyService_NotifyBalanceLowToChat_SendsDirectWhenAdminBalanceLowToggleDisabled(t *testing.T) {
+	repo := &telegramNotifyTestSettingRepo{values: map[string]string{
+		SettingTelegramBotToken:         "telegram-saved-token-fixture",
+		SettingTelegramChatID:           "-1000000000000",
+		SettingTelegramNotifyBalanceLow: "false",
+	}}
+	svc := NewTelegramNotifyService(repo)
+
+	called := false
+	var requestForm url.Values
+	svc.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			called = true
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read request body: %v", err)
+			}
+			requestForm, err = url.ParseQuery(string(body))
+			if err != nil {
+				t.Fatalf("parse request body: %v", err)
+			}
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"ok":true}`)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	svc.NotifyBalanceLowToChat(context.Background(), "123456789", "buyer<&>@example.test", 1.25, 2)
+
+	if !called {
+		t.Fatalf("expected direct customer balance-low Telegram alert to send even when admin balance-low Telegram toggle is disabled")
+	}
+	if got := requestForm.Get("chat_id"); got != "123456789" {
+		t.Fatalf("expected direct chat_id override, got %q", got)
+	}
+	text := requestForm.Get("text")
+	if !strings.Contains(text, "<b>Balance Low</b>") {
+		t.Fatalf("expected balance-low HTML title in message, got %q", text)
+	}
+	if !strings.Contains(text, "buyer&lt;&amp;&gt;@example.test") {
+		t.Fatalf("expected user email to be escaped for Telegram HTML, got %q", text)
+	}
+}
+
+func TestTelegramNotifyService_NotifyBalanceLow_GlobalAdminChatRespectsBalanceLowToggle(t *testing.T) {
+	repo := &telegramNotifyTestSettingRepo{values: map[string]string{
+		SettingTelegramBotToken:         "telegram-saved-token-fixture",
+		SettingTelegramChatID:           "-1000000000000",
+		SettingTelegramNotifyBalanceLow: "false",
+	}}
+	svc := NewTelegramNotifyService(repo)
+
+	called := false
+	svc.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			called = true
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"ok":true}`)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	svc.NotifyBalanceLow(context.Background(), "buyer@example.test", 1.25, 2)
+
+	if called {
+		t.Fatalf("expected global/admin balance-low Telegram alert to remain disabled by telegram_notify_balance_low=false")
+	}
+}

@@ -368,9 +368,14 @@ func (s *TelegramNotifyService) NotifyBalanceLow(ctx context.Context, userEmail 
 
 // NotifyBalanceLowToChat sends a customer-directed balance low alert to a specific Telegram chat ID.
 func (s *TelegramNotifyService) NotifyBalanceLowToChat(ctx context.Context, chatID, userEmail string, balance, threshold float64) {
-	if strings.TrimSpace(chatID) == "" || !s.isEnabled(ctx, SettingTelegramNotifyBalanceLow) {
+	if strings.TrimSpace(chatID) == "" {
 		return
 	}
+	// Direct customer alerts are already gated by the balance notification flow
+	// (global balance_low_notify_enabled, user balance_notify_enabled, threshold
+	// crossing, and per-user chat ID). Do not reuse the admin/global Telegram
+	// balance-low toggle here; otherwise customers with a configured chat ID are
+	// silently skipped when only the admin chat alert is disabled.
 	if err := s.sendBalanceLowMessage(ctx, chatID, userEmail, balance, threshold); err != nil {
 		slog.Error("telegram notify balance low direct failed", "error", err, "email", userEmail)
 	}
