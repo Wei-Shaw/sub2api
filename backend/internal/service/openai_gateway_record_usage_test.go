@@ -899,7 +899,7 @@ func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillsWholeSession(t *te
 	require.Equal(t, 1, userRepo.deductCalls)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_ServiceTierPriorityUsesFastPricing(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_ServiceTierPriorityUsesOnePointFiveMultiplier(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
@@ -927,7 +927,7 @@ func TestOpenAIGatewayServiceRecordUsage_ServiceTierPriorityUsesFastPricing(t *t
 
 	baseCost, calcErr := svc.billingService.CalculateCost("gpt-5.4", UsageTokens{InputTokens: 100, OutputTokens: 50}, 1.0)
 	require.NoError(t, calcErr)
-	require.InDelta(t, baseCost.TotalCost*2, usageRepo.lastLog.TotalCost, 1e-10)
+	require.InDelta(t, baseCost.TotalCost*1.5, usageRepo.lastLog.TotalCost, 1e-10)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_ServiceTierFlexHalvesCost(t *testing.T) {

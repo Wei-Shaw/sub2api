@@ -1093,6 +1093,22 @@ export default {
       groups: 'Your Accessible Groups',
       supportedModels: 'Supported Models'
     },
+    priceSummary: {
+      title: 'Current Prices',
+      subtitle: 'Calculated from billing settings and groups available to this account',
+      input: 'Input',
+      output: 'Output',
+      cacheWrite: 'Cache Write',
+      cacheRead: 'Cache Read',
+      priorityInput: 'Priority Input',
+      priorityOutput: 'Priority Output',
+      priorityCacheRead: 'Priority Cache Read',
+      imageTitle: 'Image Generation',
+      imageOutput: 'Image Output',
+      image1k: '1K',
+      image2k: '2K',
+      image4k: '4K'
+    },
     pricing: {
       billingMode: 'Billing Mode',
       billingModeToken: 'Per Token',

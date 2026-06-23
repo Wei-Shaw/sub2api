@@ -21,9 +21,10 @@ import (
 //  4. 字段白名单：仅返回用户需要的字段（省略 BillingModelSource / RestrictModels
 //     / 内部 ID / Status 等管理字段）。
 type AvailableChannelHandler struct {
-	channelService *service.ChannelService
-	apiKeyService  *service.APIKeyService
-	settingService *service.SettingService
+	channelService  *service.ChannelService
+	apiKeyService   *service.APIKeyService
+	settingService  *service.SettingService
+	pricingResolver *service.ModelPricingResolver
 }
 
 // NewAvailableChannelHandler 创建用户侧可用渠道 handler。
@@ -31,11 +32,13 @@ func NewAvailableChannelHandler(
 	channelService *service.ChannelService,
 	apiKeyService *service.APIKeyService,
 	settingService *service.SettingService,
+	pricingResolver *service.ModelPricingResolver,
 ) *AvailableChannelHandler {
 	return &AvailableChannelHandler{
-		channelService: channelService,
-		apiKeyService:  apiKeyService,
-		settingService: settingService,
+		channelService:  channelService,
+		apiKeyService:   apiKeyService,
+		settingService:  settingService,
+		pricingResolver: pricingResolver,
 	}
 }
 
@@ -111,6 +114,22 @@ type userAvailableChannel struct {
 	Platforms   []userChannelPlatformSection `json:"platforms"`
 }
 
+// userModelPrice 用户侧价格摘要使用的模型价格白名单。
+type userModelPrice struct {
+	Name                   string   `json:"name"`
+	BillingMode            string   `json:"billing_mode"`
+	Source                 string   `json:"source"`
+	InputPrice             *float64 `json:"input_price"`
+	OutputPrice            *float64 `json:"output_price"`
+	CacheWritePrice        *float64 `json:"cache_write_price"`
+	CacheReadPrice         *float64 `json:"cache_read_price"`
+	PriorityInputPrice     *float64 `json:"priority_input_price"`
+	PriorityOutputPrice    *float64 `json:"priority_output_price"`
+	PriorityCacheReadPrice *float64 `json:"priority_cache_read_price"`
+}
+
+var featuredUserPriceModels = []string{"gpt-5.4", "gpt-5.5"}
+
 // List 列出当前用户可见的「可用渠道」。
 // GET /api/v1/channels/available
 func (h *AvailableChannelHandler) List(c *gin.Context) {
@@ -161,6 +180,32 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 			Description: ch.Description,
 			Platforms:   sections,
 		})
+	}
+
+	response.Success(c, out)
+}
+
+// ListPrices 返回用户页展示用的公开模型价格。
+// GET /api/v1/channels/prices
+func (h *AvailableChannelHandler) ListPrices(c *gin.Context) {
+	if _, ok := middleware.GetAuthSubjectFromContext(c); !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	if !h.featureEnabled(c) || h.pricingResolver == nil {
+		response.Success(c, []userModelPrice{})
+		return
+	}
+
+	out := make([]userModelPrice, 0, len(featuredUserPriceModels))
+	for _, model := range featuredUserPriceModels {
+		resolved := h.pricingResolver.Resolve(c.Request.Context(), service.PricingInput{Model: model})
+		price := toUserModelPrice(model, resolved)
+		if price == nil {
+			continue
+		}
+		out = append(out, *price)
 	}
 
 	response.Success(c, out)
@@ -280,4 +325,40 @@ func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
 		PerRequestPrice:  p.PerRequestPrice,
 		Intervals:        intervals,
 	}
+}
+
+// toUserModelPrice 将实际计费 resolver 的输出转换成用户可见价格摘要。
+func toUserModelPrice(name string, resolved *service.ResolvedPricing) *userModelPrice {
+	if resolved == nil || resolved.BasePricing == nil {
+		return nil
+	}
+
+	billingMode := string(resolved.Mode)
+	if billingMode == "" {
+		billingMode = string(service.BillingModeToken)
+	}
+	p := resolved.BasePricing
+	return &userModelPrice{
+		Name:                   name,
+		BillingMode:            billingMode,
+		Source:                 resolved.Source,
+		InputPrice:             cloneFloat64(p.InputPricePerToken),
+		OutputPrice:            cloneFloat64(p.OutputPricePerToken),
+		CacheWritePrice:        cloneFloat64(p.CacheCreationPricePerToken),
+		CacheReadPrice:         cloneFloat64(p.CacheReadPricePerToken),
+		PriorityInputPrice:     clonePositiveFloat64(p.InputPricePerTokenPriority),
+		PriorityOutputPrice:    clonePositiveFloat64(p.OutputPricePerTokenPriority),
+		PriorityCacheReadPrice: clonePositiveFloat64(p.CacheReadPricePerTokenPriority),
+	}
+}
+
+func cloneFloat64(v float64) *float64 {
+	return &v
+}
+
+func clonePositiveFloat64(v float64) *float64 {
+	if v <= 0 {
+		return nil
+	}
+	return &v
 }

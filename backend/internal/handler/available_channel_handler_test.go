@@ -131,6 +131,51 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	}
 }
 
+func TestToUserModelPrice_FromResolvedPricing(t *testing.T) {
+	resolved := &service.ResolvedPricing{
+		Mode:   service.BillingModeToken,
+		Source: service.PricingSourceLiteLLM,
+		BasePricing: &service.ModelPricing{
+			InputPricePerToken:             5e-6,
+			OutputPricePerToken:            30e-6,
+			CacheCreationPricePerToken:     0,
+			CacheReadPricePerToken:         0.5e-6,
+			InputPricePerTokenPriority:     7.5e-6,
+			OutputPricePerTokenPriority:    45e-6,
+			CacheReadPricePerTokenPriority: 0.75e-6,
+		},
+	}
+
+	price := toUserModelPrice("gpt-5.5", resolved)
+	require.NotNil(t, price)
+	require.Equal(t, "gpt-5.5", price.Name)
+	require.Equal(t, "token", price.BillingMode)
+	require.Equal(t, service.PricingSourceLiteLLM, price.Source)
+	require.NotNil(t, price.InputPrice)
+	require.InDelta(t, 5e-6, *price.InputPrice, 1e-12)
+	require.NotNil(t, price.OutputPrice)
+	require.InDelta(t, 30e-6, *price.OutputPrice, 1e-12)
+	require.NotNil(t, price.CacheWritePrice)
+	require.InDelta(t, 0, *price.CacheWritePrice, 1e-12)
+	require.NotNil(t, price.CacheReadPrice)
+	require.InDelta(t, 0.5e-6, *price.CacheReadPrice, 1e-12)
+	require.NotNil(t, price.PriorityInputPrice)
+	require.InDelta(t, 7.5e-6, *price.PriorityInputPrice, 1e-12)
+	require.NotNil(t, price.PriorityOutputPrice)
+	require.InDelta(t, 45e-6, *price.PriorityOutputPrice, 1e-12)
+	require.NotNil(t, price.PriorityCacheReadPrice)
+	require.InDelta(t, 0.75e-6, *price.PriorityCacheReadPrice, 1e-12)
+
+	raw, err := json.Marshal(price)
+	require.NoError(t, err)
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	for _, key := range []string{"channel_id", "group_id", "channel_pricing"} {
+		_, exists := decoded[key]
+		require.Falsef(t, exists, "user model price must not expose %q", key)
+	}
+}
+
 func TestBuildPlatformSections_GroupsByPlatform(t *testing.T) {
 	// 一个渠道横跨 anthropic / openai / 空平台：应该生成 2 个 section，
 	// 按 platform 字母序排序，各自 groups 和 supported_models 只含同平台条目。

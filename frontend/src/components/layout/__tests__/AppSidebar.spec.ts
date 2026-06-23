@@ -41,3 +41,15 @@ describe('AppSidebar user usage guide nav', () => {
     expect(navFunction).not.toContain("items.push(\n    { path: '/usage-guide'")
   })
 })
+
+describe('AppSidebar user channel monitor nav', () => {
+  it('hides the user-facing monitor entry while keeping admin monitor management', () => {
+    const navFunctionMatch = componentSource.match(/function buildSelfNavItems\(withDashboard: boolean\): NavItem\[] \{[\s\S]*?\n\}/)
+
+    expect(navFunctionMatch).not.toBeNull()
+    const navFunction = navFunctionMatch?.[0] ?? ''
+
+    expect(navFunction).not.toContain("path: '/monitor'")
+    expect(componentSource).toContain("path: '/admin/channels/monitor'")
+  })
+})

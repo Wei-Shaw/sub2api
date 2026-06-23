@@ -46,6 +46,19 @@ export interface UserSupportedModel {
   pricing: UserSupportedModelPricing | null
 }
 
+export interface UserModelPrice {
+  name: string
+  billing_mode: BillingMode
+  source: string
+  input_price: number | null
+  output_price: number | null
+  cache_write_price: number | null
+  cache_read_price: number | null
+  priority_input_price: number | null
+  priority_output_price: number | null
+  priority_cache_read_price: number | null
+}
+
 /**
  * 渠道下单个平台的子视图：用户可访问的分组 + 该平台支持的模型。
  * 后端把一个渠道按平台聚合成 sections，前端可以把渠道名作为 row-group
@@ -71,6 +84,14 @@ export async function getAvailable(options?: { signal?: AbortSignal }): Promise<
   return data
 }
 
-export const userChannelsAPI = { getAvailable }
+/** 列出用户页价格摘要需要展示的公开模型价格。 */
+export async function getPrices(options?: { signal?: AbortSignal }): Promise<UserModelPrice[]> {
+  const { data } = await apiClient.get<UserModelPrice[]>('/channels/prices', {
+    signal: options?.signal
+  })
+  return data
+}
+
+export const userChannelsAPI = { getAvailable, getPrices }
 
 export default userChannelsAPI

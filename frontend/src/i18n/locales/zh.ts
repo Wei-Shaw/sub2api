@@ -1097,6 +1097,22 @@ export default {
       groups: '我可访问的分组',
       supportedModels: '支持模型'
     },
+    priceSummary: {
+      title: '当前价格',
+      subtitle: '按实际计费配置与当前账号可用分组计算',
+      input: '输入',
+      output: '输出',
+      cacheWrite: '缓存写入',
+      cacheRead: '缓存读取',
+      priorityInput: '优先输入',
+      priorityOutput: '优先输出',
+      priorityCacheRead: '优先缓存读取',
+      imageTitle: '生图',
+      imageOutput: '图片输出',
+      image1k: '1K',
+      image2k: '2K',
+      image4k: '4K'
+    },
     pricing: {
       billingMode: '计费模式',
       billingModeToken: '按 Token',

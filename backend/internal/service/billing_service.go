@@ -110,27 +110,48 @@ const (
 	openAIGPT54LongContextInputThreshold   = 272000
 	openAIGPT54LongContextInputMultiplier  = 2.0
 	openAIGPT54LongContextOutputMultiplier = 1.5
+	openAIPriorityServiceTierMultiplier    = 1.5
 )
 
 func normalizeBillingServiceTier(serviceTier string) string {
 	return strings.ToLower(strings.TrimSpace(serviceTier))
 }
 
-func usePriorityServiceTierPricing(serviceTier string, pricing *ModelPricing) bool {
-	if pricing == nil || normalizeBillingServiceTier(serviceTier) != "priority" {
-		return false
-	}
-	return pricing.InputPricePerTokenPriority > 0 || pricing.OutputPricePerTokenPriority > 0 || pricing.CacheReadPricePerTokenPriority > 0
-}
-
 func serviceTierCostMultiplier(serviceTier string) float64 {
 	switch normalizeBillingServiceTier(serviceTier) {
 	case "priority":
-		return 2.0
+		return openAIPriorityServiceTierMultiplier
 	case "flex":
 		return 0.5
 	default:
 		return 1.0
+	}
+}
+
+func withPriorityServiceTierPrices(pricing *ModelPricing) *ModelPricing {
+	if pricing == nil {
+		return nil
+	}
+	cloned := *pricing
+	applyPriorityServiceTierPrices(&cloned)
+	return &cloned
+}
+
+func applyPriorityServiceTierPrices(pricing *ModelPricing) {
+	if pricing == nil {
+		return
+	}
+	pricing.InputPricePerTokenPriority = 0
+	if pricing.InputPricePerToken > 0 {
+		pricing.InputPricePerTokenPriority = pricing.InputPricePerToken * openAIPriorityServiceTierMultiplier
+	}
+	pricing.OutputPricePerTokenPriority = 0
+	if pricing.OutputPricePerToken > 0 {
+		pricing.OutputPricePerTokenPriority = pricing.OutputPricePerToken * openAIPriorityServiceTierMultiplier
+	}
+	pricing.CacheReadPricePerTokenPriority = 0
+	if pricing.CacheReadPricePerToken > 0 {
+		pricing.CacheReadPricePerTokenPriority = pricing.CacheReadPricePerToken * openAIPriorityServiceTierMultiplier
 	}
 }
 
@@ -380,7 +401,7 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 			price5m := litellmPricing.CacheCreationInputTokenCost
 			price1h := litellmPricing.CacheCreationInputTokenCostAbove1hr
 			enableBreakdown := price1h > 0 && price1h > price5m
-			return s.applyModelSpecificPricingPolicy(model, &ModelPricing{
+			pricing := s.applyModelSpecificPricingPolicy(model, &ModelPricing{
 				InputPricePerToken:             litellmPricing.InputCostPerToken,
 				InputPricePerTokenPriority:     litellmPricing.InputCostPerTokenPriority,
 				OutputPricePerToken:            litellmPricing.OutputCostPerToken,
@@ -395,7 +416,8 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 				LongContextInputMultiplier:     litellmPricing.LongContextInputCostMultiplier,
 				LongContextOutputMultiplier:    litellmPricing.LongContextOutputCostMultiplier,
 				ImageOutputPricePerToken:       litellmPricing.OutputCostPerImageToken,
-			}), nil
+			})
+			return withPriorityServiceTierPrices(pricing), nil
 		}
 	}
 
@@ -403,7 +425,7 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	fallback := s.getFallbackPricing(model)
 	if fallback != nil {
 		log.Printf("[Billing] Using fallback pricing for model: %s", model)
-		return s.applyModelSpecificPricingPolicy(model, fallback), nil
+		return withPriorityServiceTierPrices(s.applyModelSpecificPricingPolicy(model, fallback)), nil
 	}
 
 	return nil, fmt.Errorf("%w for model: %s", ErrModelPricingUnavailable, model)
@@ -442,6 +464,7 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 		pricing.ImageOutputPricePerToken = 0
 	}
 	pricing.ImageOutputPriceExplicit = true
+	applyPriorityServiceTierPrices(pricing)
 	return pricing, nil
 }
 
@@ -535,19 +558,7 @@ func (s *BillingService) computeTokenBreakdown(
 	cacheCreationMultiplier := 1.0
 	tierMultiplier := 1.0
 
-	if usePriorityServiceTierPricing(serviceTier, pricing) {
-		if pricing.InputPricePerTokenPriority > 0 {
-			inputPrice = pricing.InputPricePerTokenPriority
-		}
-		if pricing.OutputPricePerTokenPriority > 0 {
-			outputPrice = pricing.OutputPricePerTokenPriority
-		}
-		if pricing.CacheReadPricePerTokenPriority > 0 {
-			cacheReadPrice = pricing.CacheReadPricePerTokenPriority
-		}
-	} else {
-		tierMultiplier = serviceTierCostMultiplier(serviceTier)
-	}
+	tierMultiplier = serviceTierCostMultiplier(serviceTier)
 
 	if applyLongCtx && s.shouldApplySessionLongContextPricing(tokens, pricing) {
 		inputPrice *= pricing.LongContextInputMultiplier
