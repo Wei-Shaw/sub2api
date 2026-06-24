@@ -898,6 +898,10 @@ export default {
     cacheTtlOverridden1h: '按 1h 计费',
     totalRequests: '总请求数',
     totalTokens: '总 Token',
+    cacheTotal: '缓存',
+    cacheBreakdown: '缓存 Token 明细',
+    cacheCreationTokensLabel: '缓存创建',
+    cacheReadTokensLabel: '缓存读取',
     totalCost: '总消费',
     standardCost: '标准',
     actualCost: '实际',
@@ -3441,7 +3445,9 @@ export default {
         resetTooltipNeedQuery: '先点击「次数」加载剩余重置次数',
         resetTooltipNoCredits: '没有可用的重置次数',
         noCreditsAvailable: '没有可用的重置次数',
-        resetSuccess: '已重置 {windows} 个窗口'
+        resetSuccess: '已重置 {windows} 个窗口',
+        confirmTitle: '确认重置周限',
+        confirmMessage: '将消耗 1 次重置次数立即恢复当前窗口，剩余 {count} 次。此操作不可撤销，确定继续吗？'
       },
       tier: {
         free: 'Free',

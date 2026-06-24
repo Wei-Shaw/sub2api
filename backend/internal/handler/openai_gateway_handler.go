@@ -505,7 +505,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
-		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account)
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
@@ -910,7 +910,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
-		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account)
 
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
@@ -1505,7 +1505,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
 				inboundEndpoint := GetInboundEndpoint(c)
-				upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+				upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account)
 				cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
@@ -2306,7 +2306,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 	var accountID int64
 	if account != nil {
 		accountID = account.ID
-		upstreamEndpoint = GetUpstreamEndpoint(c, account.Platform)
+		upstreamEndpoint = resolveOpenAIUpstreamEndpoint(c, account)
 	}
 	stream := false
 	if v, ok := c.Get(opsStreamKey); ok {
