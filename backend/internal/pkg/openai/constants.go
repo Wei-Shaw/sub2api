@@ -48,7 +48,7 @@ const DefaultTestModel = "gpt-5.4"
 //go:embed instructions.txt
 var DefaultInstructions string
 
-// instructionsGPT51 / instructionsGPT52 为 gpt-5.1 / gpt-5.2 非 codex 模型对应的
+// instructionsGPT51 / instructionsGPT52 / instructionsGPT55 为 gpt-5.1 / gpt-5.2 / gpt-5.5 非 codex 模型对应的
 // 真实 Codex 编码 agent base prompt，用于模型感知的 instructions 选择。
 //
 //go:embed instructions_gpt5_1.txt
@@ -57,8 +57,12 @@ var instructionsGPT51 string
 //go:embed instructions_gpt5_2.txt
 var instructionsGPT52 string
 
+//go:embed instructions_gpt5_5.txt
+var instructionsGPT55 string
+
 // CodexBaseInstructionsForModel 按模型返回最匹配的真实 Codex base instructions：
 //   - 含 "codex" 的模型（gpt-5-codex / gpt-5.x-codex / codex-max / spark 等）→ GPT-5-Codex prompt
+//   - gpt-5.5 系非 codex 模型 → GPT-5.5 prompt
 //   - gpt-5.2 系非 codex 模型 → GPT-5.2 prompt
 //   - gpt-5.1 / gpt-5 系非 codex 模型 → GPT-5.1 prompt
 //   - 其它 → 回退到 GPT-5-Codex prompt
@@ -69,6 +73,10 @@ func CodexBaseInstructionsForModel(model string) string {
 	switch {
 	case strings.Contains(m, "codex"):
 		return DefaultInstructions
+	case strings.HasPrefix(m, "gpt-5.5"):
+		if v := strings.TrimSpace(instructionsGPT55); v != "" {
+			return instructionsGPT55
+		}
 	case strings.HasPrefix(m, "gpt-5.2"):
 		if v := strings.TrimSpace(instructionsGPT52); v != "" {
 			return instructionsGPT52
