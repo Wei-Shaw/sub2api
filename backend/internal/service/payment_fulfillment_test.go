@@ -7,10 +7,12 @@ import (
 	"errors"
 	"math"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type paymentFulfillmentTestProvider struct {
@@ -264,6 +266,79 @@ func TestExpectedNotificationProviderKeyForOrderUsesSnapshotProviderKey(t *testi
 		payment.TypeEasyPay,
 		expectedNotificationProviderKeyForOrder(registry, order, ""),
 	)
+}
+
+type paymentFulfillmentTrafficPackRepo struct {
+	TrafficPackRepository
+
+	creditCalls int
+	lastInput   CreditTrafficPackInput
+}
+
+func (r *paymentFulfillmentTrafficPackRepo) CreditPurchase(ctx context.Context, input CreditTrafficPackInput) error {
+	r.creditCalls++
+	r.lastInput = input
+	return nil
+}
+
+func TestExecuteTrafficPackFulfillment_CreditsBatchAndIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	paidAt := time.Date(2026, 6, 23, 12, 0, 0, 0, time.UTC)
+
+	user, err := client.User.Create().
+		SetEmail("traffic-pack-paid@example.com").
+		SetPasswordHash("hash").
+		SetUsername("traffic-pack-paid-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(5).
+		SetPayAmount(5).
+		SetFeeRate(0).
+		SetRechargeCode("PAY-TRAFFIC-PACK").
+		SetOutTradeNo("sub2_traffic_pack_paid").
+		SetPaymentType(payment.TypeWxpay).
+		SetPaymentTradeNo("wx-trade-traffic-pack").
+		SetOrderType(payment.OrderTypeTrafficPack).
+		SetStatus(OrderStatusPaid).
+		SetPaidAt(paidAt).
+		SetExpiresAt(paidAt.Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("app.example.com").
+		SetProviderSnapshot(map[string]any{
+			"traffic_pack_id":            float64(3),
+			"traffic_pack_credit_usd":    float64(20),
+			"traffic_pack_validity_days": float64(365),
+		}).
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &paymentFulfillmentTrafficPackRepo{}
+	svc := &PaymentService{
+		entClient:          client,
+		trafficPackService: NewTrafficPackService(repo),
+	}
+
+	require.NoError(t, svc.ExecuteTrafficPackFulfillment(ctx, order.ID))
+	require.Equal(t, 1, repo.creditCalls)
+	require.Equal(t, user.ID, repo.lastInput.UserID)
+	require.Equal(t, order.ID, repo.lastInput.OrderID)
+	require.Equal(t, int64(3), repo.lastInput.PackID)
+	require.Equal(t, float64(20), repo.lastInput.CreditUSD)
+	require.Equal(t, 365, repo.lastInput.ValidityDays)
+	require.Equal(t, paidAt, repo.lastInput.CreditedAt)
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+
+	require.NoError(t, svc.ExecuteTrafficPackFulfillment(ctx, order.ID))
+	require.Equal(t, 1, repo.creditCalls)
 }
 
 func TestValidateProviderNotificationMetadataRejectsWxpaySnapshotMismatch(t *testing.T) {

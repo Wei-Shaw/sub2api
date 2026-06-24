@@ -6,7 +6,7 @@
       </div>
       <template v-else>
         <!-- Tab Switcher (hide during payment and subscription confirm) -->
-        <div v-if="tabs.length > 1 && paymentPhase === 'select' && !selectedPlan" class="flex space-x-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-800">
+        <div v-if="tabs.length > 1 && paymentPhase === 'select' && !selectedPlan && !selectedTrafficPack" class="flex space-x-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-800">
           <button v-for="tab in tabs" :key="tab.key"
             class="flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all"
             :class="activeTab === tab.key ? 'bg-white text-gray-900 shadow dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'"
@@ -91,8 +91,65 @@
           </template>
           <!-- Subscribe Tab -->
           <template v-else-if="activeTab === 'subscription'">
+            <!-- Traffic pack confirm (inline, reuses subscription payment flow) -->
+            <template v-if="selectedTrafficPack">
+              <div class="card p-5">
+                <div class="mb-3 flex flex-wrap items-center gap-2">
+                  <span class="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200">GPT</span>
+                  <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ selectedTrafficPack.name }}</h3>
+                </div>
+                <div class="flex items-baseline gap-2">
+                  <span class="text-3xl font-bold text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(selectedTrafficPack.price) }}</span>
+                  <span class="text-sm text-gray-500 dark:text-gray-400">/ {{ selectedTrafficPack.credit_usd }} 刀额度</span>
+                </div>
+                <p class="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                  {{ selectedTrafficPack.description || `有效期 ${selectedTrafficPack.validity_days} 天，可用于 GPT 写代码和生图。` }}
+                </p>
+                <div class="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">可用范围</span>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">GPT</div>
+                  </div>
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">有效期</span>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ selectedTrafficPack.validity_days }} 天</div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="enabledMethods.length >= 1" class="card p-6">
+                <PaymentMethodSelector
+                  :methods="trafficPackMethodOptions"
+                  :selected="selectedMethod"
+                  @select="selectedMethod = $event"
+                />
+              </div>
+              <div v-if="feeRate > 0 && selectedTrafficPack.price > 0" class="card p-6">
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(selectedTrafficPack.price) }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(trafficPackFeeAmount) }}</span>
+                  </div>
+                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
+                    <span class="text-lg font-bold text-gray-900 dark:text-gray-100">{{ formatSelectedPaymentAmount(trafficPackTotalAmount) }}</span>
+                  </div>
+                </div>
+              </div>
+              <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitTrafficPack || submitting" @click="confirmTrafficPack">
+                <span v-if="submitting" class="flex items-center justify-center gap-2">
+                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                  {{ t('common.processing') }}
+                </span>
+                <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(feeRate > 0 ? trafficPackTotalAmount : selectedTrafficPack.price) }}</span>
+              </button>
+              <button class="btn btn-secondary w-full" @click="selectedTrafficPack = null">{{ t('common.cancel') }}</button>
+            </template>
             <!-- Subscription confirm (inline, replaces plan list) -->
-            <template v-if="selectedPlan">
+            <template v-else-if="selectedPlan">
               <div class="card p-5">
                 <!-- Header: platform badge + plan name -->
                 <div class="mb-3 flex flex-wrap items-center gap-2">
@@ -180,6 +237,34 @@
               <div v-else :class="planGridClass">
                 <SubscriptionPlanCard v-for="plan in checkout.plans" :key="plan.id" :plan="plan" :active-subscriptions="activeSubscriptions" @select="selectPlan" />
               </div>
+              <div v-if="checkout.traffic_packs.length > 0" class="space-y-3">
+                <div class="flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <p class="text-xs font-medium text-gray-400 dark:text-gray-500">GPT 流量包</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-300">
+                      当前可用 {{ trafficCreditRemaining }} 刀<span v-if="trafficCreditNextExpiry">，最近 {{ trafficCreditNextExpiry }} 到期</span>
+                    </p>
+                  </div>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">订阅日额度用完后自动消耗</p>
+                </div>
+                <div :class="trafficPackGridClass">
+                  <div v-for="pack in checkout.traffic_packs" :key="pack.id" class="card flex min-h-[172px] flex-col p-5">
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <p class="text-xs font-medium text-gray-400 dark:text-gray-500">一次性额度</p>
+                        <h3 class="mt-1 text-lg font-bold text-gray-900 dark:text-white">{{ pack.name }}</h3>
+                      </div>
+                      <span class="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200">365 天</span>
+                    </div>
+                    <div class="mt-4 flex items-baseline gap-2">
+                      <span class="text-3xl font-bold text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(pack.price) }}</span>
+                      <span class="text-sm text-gray-500 dark:text-gray-400">{{ pack.credit_usd }} 刀额度</span>
+                    </div>
+                    <p class="mt-2 min-h-[40px] text-sm leading-relaxed text-gray-500 dark:text-gray-400">{{ pack.description || '可用于 GPT 写代码和生图。' }}</p>
+                    <button class="btn btn-primary mt-auto w-full" @click="selectTrafficPack(pack)">购买</button>
+                  </div>
+                </div>
+              </div>
               <!-- Active subscriptions (compact, below plan list) -->
               <div v-if="activeSubscriptions.length > 0">
                 <p class="mb-2 text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.activeSubscription') }}</p>
@@ -206,7 +291,7 @@
             </template>
           </template>
         </template>
-        <div v-if="(checkout.help_text || checkout.help_image_url) && paymentPhase === 'select' && !selectedPlan" class="card p-4">
+        <div v-if="(checkout.help_text || checkout.help_image_url) && paymentPhase === 'select' && !selectedPlan && !selectedTrafficPack" class="card p-4">
           <div class="flex flex-col items-center gap-3">
             <img v-if="checkout.help_image_url" :src="checkout.help_image_url" alt=""
               class="h-40 max-w-full cursor-pointer rounded-lg object-contain transition-opacity hover:opacity-80"
@@ -263,7 +348,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, TrafficPack } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
@@ -314,6 +399,7 @@ const activeTab = ref<'recharge' | 'subscription'>('subscription')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
+const selectedTrafficPack = ref<TrafficPack | null>(null)
 const previewImage = ref('')
 const showManualPaymentDialog = ref(false)
 
@@ -323,6 +409,7 @@ interface CreateOrderOptions {
   openid?: string
   wechatResumeToken?: string
   paymentType?: string
+  trafficPackId?: number
   isResume?: boolean
   mobileQrFallbackAttempted?: boolean
 }
@@ -429,7 +516,7 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
 
 function buildWechatOAuthAuthorizeUrl(
   authorizeUrl: string,
-  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number },
+  context: { paymentType: string; orderType: OrderType; planId?: number; trafficPackId?: number; orderAmount: number },
 ): string {
   const normalizedUrl = authorizeUrl.trim()
   if (!normalizedUrl || typeof window === 'undefined') {
@@ -450,6 +537,11 @@ function buildWechatOAuthAuthorizeUrl(
     } else {
       redirectUrl.searchParams.delete('plan_id')
     }
+    if (context.trafficPackId) {
+      redirectUrl.searchParams.set('traffic_pack_id', String(context.trafficPackId))
+    } else {
+      redirectUrl.searchParams.delete('traffic_pack_id')
+    }
 
     if (context.orderAmount > 0) {
       redirectUrl.searchParams.set('amount', String(context.orderAmount))
@@ -466,10 +558,15 @@ function buildWechatOAuthAuthorizeUrl(
 
 function onPaymentDone() {
   const wasSubscription = paymentState.value.orderType === 'subscription'
+  const wasTrafficPack = paymentState.value.orderType === 'traffic_pack'
   resetPayment()
   selectedPlan.value = null
+  selectedTrafficPack.value = null
   if (wasSubscription) {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
+  }
+  if (wasTrafficPack) {
+    reloadCheckoutInfo().catch(() => {})
   }
 }
 
@@ -478,6 +575,9 @@ function onPaymentSuccess() {
   authStore.refreshUser()
   if (paymentState.value.orderType === 'subscription') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
+  }
+  if (paymentState.value.orderType === 'traffic_pack') {
+    reloadCheckoutInfo().catch(() => {})
   }
 }
 
@@ -488,7 +588,7 @@ function onPaymentSettled() {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], traffic_packs: [], traffic_credit_summary: null, balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
@@ -512,6 +612,23 @@ const planGridClass = computed(() => {
   const n = checkout.value.plans.length
   if (n <= 2) return 'grid grid-cols-1 gap-5 sm:grid-cols-2'
   return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
+})
+
+const trafficPackGridClass = computed(() => {
+  const n = checkout.value.traffic_packs.length
+  if (n <= 2) return 'grid grid-cols-1 gap-5 sm:grid-cols-2'
+  return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
+})
+
+const trafficCreditRemaining = computed(() => {
+  const value = checkout.value.traffic_credit_summary?.total_remaining_usd ?? 0
+  return value.toFixed(2)
+})
+
+const trafficCreditNextExpiry = computed(() => {
+  const expiresAt = checkout.value.traffic_credit_summary?.next_expires_at
+  if (!expiresAt) return ''
+  return new Date(expiresAt).toLocaleDateString(localeCode.value || undefined)
 })
 
 // Check if an amount fits a method's [min, max]. 0 = no limit.
@@ -630,6 +747,37 @@ const canSubmitSubscription = computed(() => {
     && selectedLimit.value?.available !== false
 })
 
+const trafficPackMethodOptions = computed<PaymentMethodOption[]>(() => {
+  const price = selectedTrafficPack.value?.price ?? 0
+  return enabledMethods.value.map((type) => {
+    const ml = visibleMethods.value[type]
+    return {
+      type,
+      fee_rate: ml?.fee_rate ?? 0,
+      available: ml?.available !== false && amountFitsMethod(price, type),
+    }
+  })
+})
+
+const trafficPackFeeAmount = computed(() => {
+  const price = selectedTrafficPack.value?.price ?? 0
+  if (feeRate.value <= 0 || price <= 0) return 0
+  return Math.ceil(((price * feeRate.value) / 100) * 100) / 100
+})
+
+const trafficPackTotalAmount = computed(() => {
+  const price = selectedTrafficPack.value?.price ?? 0
+  if (feeRate.value <= 0 || price <= 0) return price
+  return Math.round((price + trafficPackFeeAmount.value) * 100) / 100
+})
+
+const canSubmitTrafficPack = computed(() => {
+  if (!selectedTrafficPack.value) return false
+  if (enabledMethods.value.length === 0) return false
+  return amountFitsMethod(selectedTrafficPack.value.price, selectedMethod.value)
+    && selectedLimit.value?.available !== false
+})
+
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
   if (amt <= 0 || amountFitsMethod(amt, method)) return
@@ -670,6 +818,14 @@ const planValiditySuffix = computed(() => {
 
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
+  selectedTrafficPack.value = null
+  showManualPaymentDialog.value = false
+  errorMessage.value = ''
+}
+
+function selectTrafficPack(pack: TrafficPack) {
+  selectedTrafficPack.value = pack
+  selectedPlan.value = null
   showManualPaymentDialog.value = false
   errorMessage.value = ''
 }
@@ -701,6 +857,17 @@ async function confirmSubscribe() {
   await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
 }
 
+async function confirmTrafficPack() {
+  if (!selectedTrafficPack.value || submitting.value) return
+  if (enabledMethods.value.length === 0) {
+    appStore.showError(t('payment.notAvailable'))
+    return
+  }
+  await createOrder(selectedTrafficPack.value.price, 'traffic_pack', undefined, {
+    trafficPackId: selectedTrafficPack.value.id,
+  })
+}
+
 function goRedeem() {
   showManualPaymentDialog.value = false
   router.push('/redeem')
@@ -717,6 +884,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       paymentType: requestType,
       orderType,
       planId,
+      trafficPackId: options.trafficPackId,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: isMobileDevice(),
       isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
@@ -779,6 +947,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         paymentType: visibleMethod,
         orderType,
         planId,
+        trafficPackId: options.trafficPackId,
         orderAmount,
       })
       return
@@ -820,6 +989,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
               orderAmount,
               orderType,
               planId,
+              trafficPackId: options.trafficPackId,
               paymentType: visibleMethod,
               attempted: options.mobileQrFallbackAttempted === true,
             },
@@ -838,6 +1008,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
           orderAmount,
           orderType,
           planId,
+          trafficPackId: options.trafficPackId,
           paymentType: visibleMethod,
           attempted: options.mobileQrFallbackAttempted === true,
         })
@@ -867,6 +1038,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       orderAmount,
       orderType,
       planId,
+      trafficPackId: options.trafficPackId,
       paymentType: requestType,
       attempted: options.mobileQrFallbackAttempted === true,
     })) {
@@ -894,6 +1066,7 @@ interface MobileQrFallbackContext {
   orderAmount: number
   orderType: OrderType
   planId?: number
+  trafficPackId?: number
   paymentType: string
   attempted: boolean
 }
@@ -943,6 +1116,7 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
       paymentType: visibleMethod,
       orderType: context.orderType,
       planId: context.planId,
+      trafficPackId: context.trafficPackId,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: false,
       isWechatBrowser: false,
@@ -1036,10 +1210,18 @@ async function resumeWechatPaymentFromQuery() {
   }
 }
 
+async function reloadCheckoutInfo() {
+  const res = await paymentAPI.getCheckoutInfo()
+  checkout.value = {
+    ...res.data,
+    traffic_packs: res.data.traffic_packs ?? [],
+    traffic_credit_summary: res.data.traffic_credit_summary ?? null,
+  }
+}
+
 onMounted(async () => {
   try {
-    const res = await paymentAPI.getCheckoutInfo()
-    checkout.value = res.data
+    await reloadCheckoutInfo()
     if (enabledMethods.value.length) {
       const order: readonly string[] = METHOD_ORDER
       const sorted = [...enabledMethods.value].sort((a, b) => {

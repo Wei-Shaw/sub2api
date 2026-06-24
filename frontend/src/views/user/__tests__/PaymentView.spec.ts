@@ -101,6 +101,49 @@ function checkoutInfoFixture() {
       global_min: 0,
       global_max: 0,
       plans: [],
+      traffic_packs: [
+        {
+          id: 1,
+          code: 'gpt_traffic_5usd_2cny',
+          name: 'GPT 流量包 5 刀',
+          description: '2 元购买 5 USD GPT 额度，有效期 365 天，可用于写代码和生图。',
+          price: 2,
+          credit_usd: 5,
+          validity_days: 365,
+          platform: 'openai',
+          for_sale: true,
+          sort_order: 10,
+        },
+        {
+          id: 2,
+          code: 'gpt_traffic_10usd_3cny',
+          name: 'GPT 流量包 10 刀',
+          description: '3 元购买 10 USD GPT 额度，有效期 365 天，可用于写代码和生图。',
+          price: 3,
+          credit_usd: 10,
+          validity_days: 365,
+          platform: 'openai',
+          for_sale: true,
+          sort_order: 20,
+        },
+        {
+          id: 3,
+          code: 'gpt_traffic_20usd_5cny',
+          name: 'GPT 流量包 20 刀',
+          description: '5 元购买 20 USD GPT 额度，有效期 365 天，可用于写代码和生图。',
+          price: 5,
+          credit_usd: 20,
+          validity_days: 365,
+          platform: 'openai',
+          for_sale: true,
+          sort_order: 30,
+        },
+      ],
+      traffic_credit_summary: {
+        total_remaining_usd: 8,
+        next_expiring_usd: 5,
+        next_expires_at: '2027-06-22T12:00:00Z',
+      },
       balance_disabled: false,
       balance_recharge_multiplier: 1,
       recharge_fee_rate: 0,
@@ -234,6 +277,88 @@ describe('PaymentView tab defaults', () => {
     expect(tabTexts).toEqual(['payment.tabSubscribe', 'payment.tabTopUp'])
     expect(wrapper.find('[data-testid="subscription-plan-card"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('payment.rechargeAccount')
+  })
+
+  it('renders GPT traffic pack cards and creates a traffic pack order', async () => {
+    createOrder.mockResolvedValue({
+      order_id: 991,
+      amount: 5,
+      pay_amount: 5,
+      fee_rate: 0,
+      expires_at: '2099-01-01T00:10:00.000Z',
+      payment_type: 'wxpay',
+      qr_code: 'weixin://wxpay/bizpayurl?pr=traffic-pack',
+      out_trade_no: 'sub2_traffic_pack_991',
+    })
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+          Teleport: true,
+          Transition: false,
+          SubscriptionPlanCard: {
+            name: 'SubscriptionPlanCard',
+            template: '<div data-testid="subscription-plan-card"></div>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('GPT 流量包 5 刀')
+    expect(wrapper.text()).toContain('GPT 流量包 10 刀')
+    expect(wrapper.text()).toContain('GPT 流量包 20 刀')
+
+    const buyButtons = wrapper.findAll('button').filter(button => button.text() === '购买')
+    expect(buyButtons).toHaveLength(3)
+    await buyButtons[2].trigger('click')
+    await flushPromises()
+
+    const confirmButton = wrapper.findAll('button').find(button => button.text().includes('payment.createOrder'))
+    expect(confirmButton?.attributes('disabled')).toBeUndefined()
+    await confirmButton?.trigger('click')
+    await flushPromises()
+
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 5,
+      payment_type: 'wxpay',
+      order_type: 'traffic_pack',
+      traffic_pack_id: 3,
+      is_mobile: true,
+    }))
+  })
+
+  it('does not render traffic packs when backend returns none', async () => {
+    getCheckoutInfo.mockResolvedValue({
+      data: {
+        ...checkoutInfoWithPlansFixture().data,
+        traffic_packs: [],
+        traffic_credit_summary: null,
+      },
+    })
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+          Teleport: true,
+          Transition: false,
+          SubscriptionPlanCard: {
+            name: 'SubscriptionPlanCard',
+            template: '<div data-testid="subscription-plan-card"></div>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('GPT 流量包')
+    expect(wrapper.findAll('button').some(button => button.text() === '购买')).toBe(false)
   })
 })
 

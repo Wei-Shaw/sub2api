@@ -20,7 +20,7 @@ export type OrderStatus =
 
 export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'easypay' | 'airwallex'
 
-export type OrderType = 'balance' | 'subscription'
+export type OrderType = 'balance' | 'subscription' | 'traffic_pack'
 
 // ==================== Configuration ====================
 
@@ -63,6 +63,8 @@ export interface CheckoutInfoResponse {
   global_min: number
   global_max: number
   plans: SubscriptionPlan[]
+  traffic_packs: TrafficPack[]
+  traffic_credit_summary?: TrafficCreditSummary | null
   balance_disabled: boolean
   balance_recharge_multiplier: number
   recharge_fee_rate: number
@@ -71,6 +73,25 @@ export interface CheckoutInfoResponse {
   stripe_publishable_key: string
   /** When true, Alipay payments on mobile always show the QR code instead of redirecting */
   alipay_force_qrcode?: boolean
+}
+
+export interface TrafficPack {
+  id: number
+  code: string
+  name: string
+  description: string
+  price: number
+  credit_usd: number
+  validity_days: number
+  platform: string
+  for_sale: boolean
+  sort_order: number
+}
+
+export interface TrafficCreditSummary {
+  total_remaining_usd: number
+  next_expiring_usd: number
+  next_expires_at?: string
 }
 
 // ==================== Orders ====================
@@ -158,6 +179,7 @@ export interface CreateOrderRequest {
   payment_type: string
   order_type: string
   plan_id?: number
+  traffic_pack_id?: number
   return_url?: string
   payment_source?: string
   openid?: string

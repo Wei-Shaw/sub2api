@@ -108,6 +108,7 @@ type BillingCacheService struct {
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	trafficPackService    *TrafficPackService
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -147,6 +148,10 @@ func NewBillingCacheService(
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
 	svc.startCacheWriteWorkers()
 	return svc
+}
+
+func (s *BillingCacheService) SetTrafficPackService(trafficPackService *TrafficPackService) {
+	s.trafficPackService = trafficPackService
 }
 
 // Stop 关闭缓存写入工作池
@@ -719,10 +724,16 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 
 	if isSubscriptionMode {
 		if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
+			if s.canUseTrafficPackCredit(ctx, user.ID, platform) {
+				return s.checkCommonEligibilityAfterCredit(ctx, user, apiKey, group)
+			}
 			return err
 		}
 	} else {
 		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+			if s.canUseTrafficPackCredit(ctx, user.ID, platform) {
+				return s.checkCommonEligibilityAfterCredit(ctx, user, apiKey, group)
+			}
 			return err
 		}
 	}
@@ -747,6 +758,23 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	}
 
 	return nil
+}
+
+func (s *BillingCacheService) canUseTrafficPackCredit(ctx context.Context, userID int64, platform string) bool {
+	if s == nil || s.trafficPackService == nil || !IsTrafficPackPlatform(platform) {
+		return false
+	}
+	ok, err := s.trafficPackService.HasAvailableCredit(ctx, userID, time.Now())
+	return err == nil && ok
+}
+
+func (s *BillingCacheService) checkCommonEligibilityAfterCredit(ctx context.Context, user *User, apiKey *APIKey, group *Group) error {
+	if apiKey != nil && apiKey.HasRateLimits() {
+		if err := s.checkAPIKeyRateLimits(ctx, apiKey); err != nil {
+			return err
+		}
+	}
+	return s.checkRPM(ctx, user, group)
 }
 
 // checkRPM 执行并行 RPM 限流，所有适用的限制同时生效，任一超限即拒绝：

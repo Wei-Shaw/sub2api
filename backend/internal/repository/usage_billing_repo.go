@@ -120,6 +120,16 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 		result.NewBalance = &newBalance
 	}
 
+	if cmd.TrafficPackCost > 0 {
+		covered, err := deductUsageBillingTrafficPack(ctx, tx, cmd.UserID, cmd.TrafficPackCost, cmd.RequestID)
+		if err != nil {
+			return err
+		}
+		if !covered {
+			return service.ErrInsufficientBalance
+		}
+	}
+
 	if cmd.APIKeyQuotaCost > 0 {
 		exhausted, err := incrementUsageBillingAPIKeyQuota(ctx, tx, cmd.APIKeyID, cmd.APIKeyQuotaCost)
 		if err != nil {
@@ -143,6 +153,78 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	}
 
 	return nil
+}
+
+func deductUsageBillingTrafficPack(ctx context.Context, tx *sql.Tx, userID int64, amountUSD float64, requestID string) (bool, error) {
+	batches, err := listUsageBillingTrafficCredits(ctx, tx, userID)
+	if err != nil {
+		return false, err
+	}
+	deductions, covered := service.PlanTrafficCreditDeductions(batches, amountUSD)
+	if !covered {
+		return false, nil
+	}
+	nowExpr := "NOW()"
+	for _, deduction := range deductions {
+		var balanceAfter float64
+		err := tx.QueryRowContext(ctx, `
+			UPDATE user_traffic_credits
+			SET remaining_usd = remaining_usd - $1,
+				updated_at = `+nowExpr+`
+			WHERE id = $2 AND remaining_usd + 0.0000000001 >= $1
+			RETURNING remaining_usd
+		`, deduction.AmountUSD, deduction.CreditID).Scan(&balanceAfter)
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, service.ErrInvalidInput
+		}
+		if err != nil {
+			return false, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO traffic_credit_ledger (
+				user_id, credit_id, order_id, request_id, entry_type, amount_usd, balance_after_usd, created_at
+			)
+			VALUES ($1, $2, NULL, $3, $4, $5, $6, `+nowExpr+`)
+		`, userID, deduction.CreditID, requestID, service.TrafficCreditLedgerTypeDeduction, deduction.AmountUSD, balanceAfter); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func listUsageBillingTrafficCredits(ctx context.Context, tx *sql.Tx, userID int64) ([]service.TrafficCreditBatch, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, user_id, order_id, pack_id, initial_usd, remaining_usd, credited_at, expires_at
+		FROM user_traffic_credits
+		WHERE user_id = $1 AND platform = $2 AND remaining_usd > 0 AND expires_at > NOW()
+		ORDER BY expires_at ASC, credited_at ASC, id ASC
+		FOR UPDATE
+	`, userID, service.TrafficPackPlatformOpenAI)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	batches := []service.TrafficCreditBatch{}
+	for rows.Next() {
+		var batch service.TrafficCreditBatch
+		var orderID sql.NullInt64
+		var packID sql.NullInt64
+		if err := rows.Scan(&batch.ID, &batch.UserID, &orderID, &packID, &batch.InitialUSD, &batch.RemainingUSD, &batch.CreditedAt, &batch.ExpiresAt); err != nil {
+			return nil, err
+		}
+		if orderID.Valid {
+			batch.OrderID = &orderID.Int64
+		}
+		if packID.Valid {
+			batch.PackID = &packID.Int64
+		}
+		batches = append(batches, batch)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return batches, nil
 }
 
 func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64) error {

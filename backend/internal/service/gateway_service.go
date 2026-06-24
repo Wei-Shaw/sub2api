@@ -8365,6 +8365,7 @@ type postUsageBillingParams struct {
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	UseTrafficPack        bool
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -8403,6 +8404,20 @@ func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
 	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
 }
 
+func shouldBillWithTrafficPack(ctx context.Context, deps *billingDeps, user *User, platform string, subscription *UserSubscription, group *Group, cost *CostBreakdown, isSubscriptionBill bool) bool {
+	if deps == nil || deps.trafficPackService == nil || user == nil || cost == nil || cost.ActualCost <= 0 || !IsTrafficPackPlatform(platform) {
+		return false
+	}
+	if isSubscriptionBill && subscription != nil && group != nil {
+		daily, weekly, monthly := subscription.CheckAllLimits(group, cost.ActualCost)
+		if daily && weekly && monthly {
+			return false
+		}
+	}
+	ok, err := deps.trafficPackService.HasAvailableCredit(ctx, user.ID, time.Now())
+	return err == nil && ok
+}
+
 // postUsageBilling is the legacy fallback billing path used when the unified
 // billing repo is unavailable (nil). Production uses applyUsageBilling → repo.Apply
 // for atomic billing. This path only runs in tests or degraded mode.
@@ -8418,6 +8433,14 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		if cost.ActualCost > 0 {
 			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.ActualCost); err != nil {
 				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
+			}
+		}
+	} else if p.UseTrafficPack {
+		if cost.ActualCost > 0 && deps.trafficPackService != nil {
+			if ok, _, err := deps.trafficPackService.Deduct(billingCtx, p.User.ID, cost.ActualCost, resolveUsageBillingRequestID(ctx, ""), time.Now()); err != nil {
+				slog.Error("deduct traffic pack failed", "user_id", p.User.ID, "error", err)
+			} else if !ok {
+				slog.Error("deduct traffic pack failed", "user_id", p.User.ID, "error", "insufficient traffic pack credit")
 			}
 		}
 	} else {
@@ -8542,6 +8565,8 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
 		cmd.SubscriptionID = &p.Subscription.ID
 		cmd.SubscriptionCost = p.Cost.ActualCost
+	} else if p.UseTrafficPack && p.Cost.ActualCost > 0 {
+		cmd.TrafficPackCost = p.Cost.ActualCost
 	} else if p.Cost.ActualCost > 0 {
 		cmd.BalanceCost = p.Cost.ActualCost
 	}
@@ -8603,6 +8628,8 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
 			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 		}
+	} else if p.UseTrafficPack && p.Cost.ActualCost > 0 {
+		// 流量包余额由独立批次表维护，不能写入 users.balance 缓存。
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
 		deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
 	}
@@ -8759,6 +8786,7 @@ type billingDeps struct {
 	deferredService       *DeferredService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	trafficPackService    *TrafficPackService
 	cfg                   *config.Config
 }
 
@@ -8771,8 +8799,16 @@ func (s *GatewayService) billingDeps() *billingDeps {
 		deferredService:       s.deferredService,
 		balanceNotifyService:  s.balanceNotifyService,
 		userPlatformQuotaRepo: s.userPlatformQuotaRepo,
+		trafficPackService:    trafficPackServiceFromBillingCache(s.billingCacheService),
 		cfg:                   s.cfg,
 	}
+}
+
+func trafficPackServiceFromBillingCache(s *BillingCacheService) *TrafficPackService {
+	if s == nil {
+		return nil
+	}
+	return s.trafficPackService
 }
 
 func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) {
@@ -8947,6 +8983,15 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 判断计费方式：订阅模式 vs 余额模式
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+	quotaPlatform := input.QuotaPlatform
+	if quotaPlatform == "" {
+		quotaPlatform = PlatformFromAPIKey(apiKey)
+	}
+	useTrafficPack := shouldBillWithTrafficPack(ctx, s.billingDeps(), user, quotaPlatform, subscription, apiKey.Group, cost, isSubscriptionBilling)
+	if useTrafficPack {
+		isSubscriptionBilling = false
+		subscription = nil
+	}
 	billingType := BillingTypeBalance
 	if isSubscriptionBilling {
 		billingType = BillingTypeSubscription
@@ -8984,10 +9029,6 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// 配额平台由 handler 在请求 ctx 内经 QuotaPlatform() 算定并通过 input 传入；
 	// 后扣运行在 worker 池的 background ctx 上，无法再从 ctx 取 ForcePlatform。
 	// 缺省（未设置）时回退到分组平台，保持对其它调用方的兼容。
-	quotaPlatform := input.QuotaPlatform
-	if quotaPlatform == "" {
-		quotaPlatform = PlatformFromAPIKey(apiKey)
-	}
 	requestID := usageLog.RequestID
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 		Cost:                  cost,
@@ -9000,6 +9041,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		AccountRateMultiplier: accountRateMultiplier,
 		APIKeyService:         input.APIKeyService,
 		Platform:              quotaPlatform,
+		UseTrafficPack:        useTrafficPack,
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {

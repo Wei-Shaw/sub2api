@@ -215,7 +215,46 @@ func (s *PaymentService) executeFulfillment(ctx context.Context, oid int64) erro
 	if o.OrderType == payment.OrderTypeSubscription {
 		return s.ExecuteSubscriptionFulfillment(ctx, oid)
 	}
+	if o.OrderType == payment.OrderTypeTrafficPack {
+		return s.ExecuteTrafficPackFulfillment(ctx, oid)
+	}
 	return s.ExecuteBalanceFulfillment(ctx, oid)
+}
+
+func (s *PaymentService) ExecuteTrafficPackFulfillment(ctx context.Context, oid int64) error {
+	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
+	if err != nil {
+		return infraerrors.NotFound("NOT_FOUND", "order not found")
+	}
+	if o.Status == OrderStatusCompleted {
+		return nil
+	}
+	if psIsRefundStatus(o.Status) {
+		return infraerrors.BadRequest("INVALID_STATUS", "refund-related order cannot fulfill")
+	}
+	if o.Status != OrderStatusPaid && o.Status != OrderStatusFailed {
+		return infraerrors.BadRequest("INVALID_STATUS", "order cannot fulfill in status "+o.Status)
+	}
+	if s.trafficPackService == nil {
+		return infraerrors.NotFound("TRAFFIC_PACK_NOT_AVAILABLE", "traffic pack service is not available")
+	}
+	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.StatusIn(OrderStatusPaid, OrderStatusFailed)).SetStatus(OrderStatusRecharging).Save(ctx)
+	if err != nil {
+		return fmt.Errorf("lock: %w", err)
+	}
+	if c == 0 {
+		return nil
+	}
+	input, err := trafficPackCreditInputFromOrder(o)
+	if err != nil {
+		s.markFailed(ctx, oid, err)
+		return err
+	}
+	if err := s.trafficPackService.CreditPurchase(ctx, input); err != nil {
+		s.markFailed(ctx, oid, err)
+		return err
+	}
+	return s.markCompleted(ctx, o, "TRAFFIC_PACK_SUCCESS")
 }
 
 func (s *PaymentService) ExecuteBalanceFulfillment(ctx context.Context, oid int64) error {

@@ -83,6 +83,7 @@ type CreateOrderRequest struct {
 	PaymentSource   string
 	OrderType       string
 	PlanID          int64
+	TrafficPackID   int64
 	Locale          string
 }
 
@@ -188,6 +189,7 @@ type PaymentService struct {
 	resumeService            *PaymentResumeService
 	affiliateService         *AffiliateService
 	notificationEmailService *NotificationEmailService
+	trafficPackService       *TrafficPackService
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
@@ -198,6 +200,24 @@ func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, load
 
 func (s *PaymentService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
 	s.notificationEmailService = notificationEmailService
+}
+
+func (s *PaymentService) SetTrafficPackService(trafficPackService *TrafficPackService) {
+	s.trafficPackService = trafficPackService
+}
+
+func (s *PaymentService) ListTrafficPacksForSale(ctx context.Context) ([]TrafficPack, error) {
+	if s == nil || s.trafficPackService == nil {
+		return []TrafficPack{}, nil
+	}
+	return s.trafficPackService.ListForSale(ctx)
+}
+
+func (s *PaymentService) GetTrafficCreditSummary(ctx context.Context, userID int64) (*TrafficCreditSummary, error) {
+	if s == nil || s.trafficPackService == nil {
+		return &TrafficCreditSummary{}, nil
+	}
+	return s.trafficPackService.GetSummary(ctx, userID, time.Now())
 }
 
 // --- Provider Registry ---

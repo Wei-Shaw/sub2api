@@ -129,12 +129,22 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 			ProductName: p.ProductName,
 		})
 	}
+	trafficPacks := []service.TrafficPack{}
+	if packs, err := h.paymentService.ListTrafficPacksForSale(ctx); err == nil {
+		trafficPacks = packs
+	}
+	var trafficSummary *service.TrafficCreditSummary
+	if subject, ok := middleware2.GetAuthSubjectFromContext(c); ok {
+		trafficSummary, _ = h.paymentService.GetTrafficCreditSummary(ctx, subject.UserID)
+	}
 
 	response.Success(c, checkoutInfoResponse{
 		Methods:                   limitsResp.Methods,
 		GlobalMin:                 limitsResp.GlobalMin,
 		GlobalMax:                 limitsResp.GlobalMax,
 		Plans:                     planList,
+		TrafficPacks:              trafficPacks,
+		TrafficCreditSummary:      trafficSummary,
 		BalanceDisabled:           cfg.BalanceDisabled,
 		BalanceRechargeMultiplier: cfg.BalanceRechargeMultiplier,
 		RechargeFeeRate:           cfg.RechargeFeeRate,
@@ -150,6 +160,8 @@ type checkoutInfoResponse struct {
 	GlobalMin                 float64                         `json:"global_min"`
 	GlobalMax                 float64                         `json:"global_max"`
 	Plans                     []checkoutPlan                  `json:"plans"`
+	TrafficPacks              []service.TrafficPack           `json:"traffic_packs"`
+	TrafficCreditSummary      *service.TrafficCreditSummary   `json:"traffic_credit_summary,omitempty"`
 	BalanceDisabled           bool                            `json:"balance_disabled"`
 	BalanceRechargeMultiplier float64                         `json:"balance_recharge_multiplier"`
 	RechargeFeeRate           float64                         `json:"recharge_fee_rate"`
@@ -217,6 +229,7 @@ type CreateOrderRequest struct {
 	PaymentSource     string  `json:"payment_source"`
 	OrderType         string  `json:"order_type"`
 	PlanID            int64   `json:"plan_id"`
+	TrafficPackID     int64   `json:"traffic_pack_id"`
 	// IsMobile lets the frontend declare its mobile status directly. When
 	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
 	// embedded browsers that strip the "Mobile" keyword).
@@ -266,6 +279,7 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		PaymentSource:   req.PaymentSource,
 		OrderType:       req.OrderType,
 		PlanID:          req.PlanID,
+		TrafficPackID:   req.TrafficPackID,
 		Locale:          c.GetHeader("Accept-Language"),
 	})
 	if err != nil {
@@ -309,6 +323,9 @@ func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeC
 	}
 	if claims.PlanID > 0 {
 		req.PlanID = claims.PlanID
+	}
+	if claims.TrafficPackID > 0 {
+		req.TrafficPackID = claims.TrafficPackID
 	}
 	return nil
 }

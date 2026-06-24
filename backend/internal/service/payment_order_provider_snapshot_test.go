@@ -26,7 +26,7 @@ func TestBuildPaymentOrderProviderSnapshot_ExcludesSensitiveConfig(t *testing.T)
 		},
 	}
 
-	snapshot := buildPaymentOrderProviderSnapshot(sel, CreateOrderRequest{})
+	snapshot := buildPaymentOrderProviderSnapshot(sel, CreateOrderRequest{}, nil)
 	require.Equal(t, map[string]any{
 		"schema_version":       2,
 		"provider_instance_id": "12",
@@ -80,6 +80,7 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 			Username: user.Username,
 		},
 		nil,
+		nil,
 		&PaymentConfig{
 			MaxPendingOrders: 3,
 			OrderTimeoutMin:  30,
@@ -123,7 +124,7 @@ func TestBuildPaymentOrderProviderSnapshot_UsesWxpayJSAPIAppIDForOpenIDOrders(t 
 			"mchId":   "mch-88",
 		},
 		PaymentMode: "jsapi",
-	}, CreateOrderRequest{OpenID: "openid-123"})
+	}, CreateOrderRequest{OpenID: "openid-123"}, nil)
 
 	require.Equal(t, "wx-mp-app", snapshot["merchant_app_id"])
 	require.Equal(t, "mch-88", snapshot["merchant_id"])
@@ -141,7 +142,7 @@ func TestBuildPaymentOrderProviderSnapshot_IncludesAlipayMerchantIdentity(t *tes
 			"privateKey": "secret",
 		},
 		PaymentMode: "redirect",
-	}, CreateOrderRequest{})
+	}, CreateOrderRequest{}, nil)
 
 	require.Equal(t, "alipay-app-21", snapshot["merchant_app_id"])
 	require.NotContains(t, snapshot, "privateKey")
@@ -158,7 +159,7 @@ func TestBuildPaymentOrderProviderSnapshot_IncludesEasyPayMerchantIdentity(t *te
 			"pkey": "secret",
 		},
 		PaymentMode: "popup",
-	}, CreateOrderRequest{PaymentType: payment.TypeAlipay})
+	}, CreateOrderRequest{PaymentType: payment.TypeAlipay}, nil)
 
 	require.Equal(t, "easypay-merchant-66", snapshot["merchant_id"])
 	require.NotContains(t, snapshot, "pkey")
@@ -173,7 +174,7 @@ func TestBuildPaymentOrderProviderSnapshot_IncludesProviderCurrency(t *testing.T
 		Config: map[string]string{
 			"currency": "hkd",
 		},
-	}, CreateOrderRequest{})
+	}, CreateOrderRequest{}, nil)
 	require.Equal(t, "HKD", stripeSnapshot["currency"])
 
 	airwallexSnapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
@@ -183,7 +184,7 @@ func TestBuildPaymentOrderProviderSnapshot_IncludesProviderCurrency(t *testing.T
 			"currency":  "usd",
 			"accountId": "acct-78",
 		},
-	}, CreateOrderRequest{})
+	}, CreateOrderRequest{}, nil)
 	require.Equal(t, "USD", airwallexSnapshot["currency"])
 	require.Equal(t, "acct-78", airwallexSnapshot["merchant_id"])
 }
