@@ -6916,6 +6916,7 @@ export default {
     manual: {
       title: 'Scan to Pay',
       planLabel: 'Subscription Plan',
+      productLabel: 'Product',
       wxpay: 'WeChat Pay',
       alipay: 'Alipay',
       wxpayQrAlt: 'WeChat collection QR code',

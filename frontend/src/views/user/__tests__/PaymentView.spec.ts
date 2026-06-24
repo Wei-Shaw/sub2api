@@ -417,6 +417,69 @@ describe('PaymentView manual subscription payment', () => {
     expect(createOrder).not.toHaveBeenCalled()
     expect(wrapper.find('[data-testid="manual-payment-dialog-stub"]').exists()).toBe(true)
   })
+
+  it('opens manual payment dialog for traffic packs when no payment methods are configured', async () => {
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+          Teleport: true,
+          Transition: false,
+          ManualPaymentDialog: {
+            props: ['show'],
+            template: '<div v-if="show" data-testid="manual-payment-dialog-stub"></div>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    const buyButtons = wrapper.findAll('button').filter(button => button.text() === '购买')
+    expect(buyButtons).toHaveLength(3)
+    await buyButtons[0].trigger('click')
+    await flushPromises()
+
+    const confirmButton = wrapper.findAll('button').find(button => button.text().includes('payment.createOrder'))
+    expect(confirmButton?.attributes('disabled')).toBeUndefined()
+    await confirmButton?.trigger('click')
+    await flushPromises()
+
+    expect(createOrder).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="manual-payment-dialog-stub"]').exists()).toBe(true)
+  })
+
+  it('shows a back action in traffic pack confirm view and returns to the list', async () => {
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    const initialBuyButtons = wrapper.findAll('button').filter(button => button.text() === '购买')
+    expect(initialBuyButtons).toHaveLength(3)
+    await initialBuyButtons[1].trigger('click')
+    await flushPromises()
+
+    const backButton = wrapper.findAll('button').find(button => button.text().includes('common.back'))
+    expect(backButton).toBeDefined()
+
+    await backButton?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('button').filter(button => button.text() === '购买')).toHaveLength(3)
+    expect(wrapper.findAll('button').some(button => button.text().includes('payment.createOrder'))).toBe(false)
+  })
 })
 
 describe('PaymentView WeChat JSAPI flow', () => {

@@ -1,7 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import ManualPaymentDialog from '../ManualPaymentDialog.vue'
-import type { SubscriptionPlan } from '@/types/payment'
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -17,26 +16,16 @@ vi.mock('../currency', () => ({
   formatPaymentAmount: (value: number) => `¥${value.toFixed(2)}`,
 }))
 
-const plan: SubscriptionPlan = {
-  id: 7,
-  group_id: 3,
+const item = {
   name: '29 元订阅池',
-  description: '',
   price: 29,
-  original_price: 0,
-  validity_days: 30,
-  validity_unit: 'day',
-  features: [],
-  for_sale: true,
-  sort_order: 1,
-  group_platform: 'openai',
 }
 
 function mountDialog() {
   return mount(ManualPaymentDialog, {
     props: {
       show: true,
-      plan,
+      item,
       localeCode: 'zh-CN',
     },
     global: {

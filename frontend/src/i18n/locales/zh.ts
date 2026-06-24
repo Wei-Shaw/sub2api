@@ -7096,6 +7096,7 @@ export default {
     manual: {
       title: '扫码付款',
       planLabel: '订阅套餐',
+      productLabel: '支付商品',
       wxpay: '微信支付',
       alipay: '支付宝',
       wxpayQrAlt: '微信收款码',

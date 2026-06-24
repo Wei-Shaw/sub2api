@@ -7,9 +7,9 @@
   >
     <div class="space-y-5" data-testid="manual-payment-dialog">
       <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800">
-        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.manual.planLabel') }}</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.manual.productLabel') }}</p>
         <div class="mt-1 flex flex-wrap items-end justify-between gap-2">
-          <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ plan.name }}</p>
+          <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ item.name }}</p>
           <p class="text-2xl font-bold text-primary-600 dark:text-primary-400">
             {{ formattedAmount }}
           </p>
@@ -106,13 +106,17 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { formatPaymentAmount } from '@/components/payment/currency'
-import type { SubscriptionPlan } from '@/types/payment'
 import wxpayQr from '@/assets/payment/manual-wxpay.jpg'
 import alipayQr from '@/assets/payment/manual-alipay.jpg'
 
+export interface ManualPaymentItem {
+  name: string
+  price: number
+}
+
 const props = defineProps<{
   show: boolean
-  plan: SubscriptionPlan
+  item: ManualPaymentItem
   localeCode?: string
 }>()
 
@@ -125,7 +129,7 @@ const { t } = useI18n()
 const activeMethod = ref<'wxpay' | 'alipay'>('wxpay')
 const submitted = ref(false)
 
-const formattedAmount = computed(() => formatPaymentAmount(props.plan.price, 'CNY', props.localeCode))
+const formattedAmount = computed(() => formatPaymentAmount(props.item.price, 'CNY', props.localeCode))
 
 function tabClass(method: 'wxpay' | 'alipay') {
   return [

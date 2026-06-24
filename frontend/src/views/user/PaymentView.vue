@@ -91,6 +91,16 @@
           </template>
           <!-- Subscribe Tab -->
           <template v-else-if="activeTab === 'subscription'">
+            <div v-if="selectedPlan || selectedTrafficPack" class="mb-1">
+              <button
+                type="button"
+                class="inline-flex items-center gap-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                @click="backToSubscriptionList"
+              >
+                <Icon name="arrowLeft" size="sm" />
+                {{ t('common.back') }}
+              </button>
+            </div>
             <!-- Traffic pack confirm (inline, reuses subscription payment flow) -->
             <template v-if="selectedTrafficPack">
               <div class="card p-5">
@@ -146,7 +156,7 @@
                 </span>
                 <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(feeRate > 0 ? trafficPackTotalAmount : selectedTrafficPack.price) }}</span>
               </button>
-              <button class="btn btn-secondary w-full" @click="selectedTrafficPack = null">{{ t('common.cancel') }}</button>
+              <button class="btn btn-secondary w-full" @click="backToSubscriptionList">{{ t('common.back') }}</button>
             </template>
             <!-- Subscription confirm (inline, replaces plan list) -->
             <template v-else-if="selectedPlan">
@@ -226,7 +236,7 @@
                 </span>
                 <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(feeRate > 0 ? subTotalAmount : selectedPlan.price) }}</span>
               </button>
-              <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
+              <button class="btn btn-secondary w-full" @click="backToSubscriptionList">{{ t('common.back') }}</button>
             </template>
             <!-- Plan list -->
             <template v-else>
@@ -327,9 +337,9 @@
       </Transition>
     </Teleport>
     <ManualPaymentDialog
-      v-if="selectedPlan"
+      v-if="manualPaymentItem"
       :show="showManualPaymentDialog"
-      :plan="selectedPlan"
+      :item="manualPaymentItem"
       :locale-code="localeCode"
       @close="showManualPaymentDialog = false"
       @redeem="goRedeem"
@@ -773,7 +783,7 @@ const trafficPackTotalAmount = computed(() => {
 
 const canSubmitTrafficPack = computed(() => {
   if (!selectedTrafficPack.value) return false
-  if (enabledMethods.value.length === 0) return false
+  if (enabledMethods.value.length === 0) return true
   return amountFitsMethod(selectedTrafficPack.value.price, selectedMethod.value)
     && selectedLimit.value?.available !== false
 })
@@ -830,6 +840,30 @@ function selectTrafficPack(pack: TrafficPack) {
   errorMessage.value = ''
 }
 
+const manualPaymentItem = computed(() => {
+  if (selectedPlan.value) {
+    return {
+      name: selectedPlan.value.name,
+      price: selectedPlan.value.price,
+    }
+  }
+  if (selectedTrafficPack.value) {
+    return {
+      name: selectedTrafficPack.value.name,
+      price: selectedTrafficPack.value.price,
+    }
+  }
+  return null
+})
+
+function backToSubscriptionList() {
+  selectedPlan.value = null
+  selectedTrafficPack.value = null
+  showManualPaymentDialog.value = false
+  errorMessage.value = ''
+  errorHintMessage.value = ''
+}
+
 function selectPlanFromModal(plan: SubscriptionPlan) {
   showRenewalModal.value = false
   renewGroupId.value = null
@@ -860,7 +894,7 @@ async function confirmSubscribe() {
 async function confirmTrafficPack() {
   if (!selectedTrafficPack.value || submitting.value) return
   if (enabledMethods.value.length === 0) {
-    appStore.showError(t('payment.notAvailable'))
+    showManualPaymentDialog.value = true
     return
   }
   await createOrder(selectedTrafficPack.value.price, 'traffic_pack', undefined, {
