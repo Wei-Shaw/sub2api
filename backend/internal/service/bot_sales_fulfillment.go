@@ -308,7 +308,98 @@ func (s *BotSalesFulfillmentService) rebindBotSalesAPIKeyIfNeeded(ctx context.Co
 	if apiKey == nil || targetGroupID <= 0 || apiKey.GroupID != nil && *apiKey.GroupID == targetGroupID {
 		return apiKey, nil
 	}
+	shouldRebind, err := s.shouldRebindBotSalesAPIKeyToGroup(ctx, apiKey, targetGroupID)
+	if err != nil {
+		return nil, err
+	}
+	if !shouldRebind {
+		return apiKey, nil
+	}
 	return s.rebindBotSalesAPIKeyGroup(ctx, apiKey, userID, targetGroupID)
+}
+
+func (s *BotSalesFulfillmentService) shouldRebindBotSalesAPIKeyToGroup(ctx context.Context, apiKey *APIKey, targetGroupID int64) (bool, error) {
+	if s == nil || s.apiKeyService == nil || s.apiKeyService.groupRepo == nil || apiKey == nil {
+		return false, nil
+	}
+	if apiKey.GroupID == nil || *apiKey.GroupID <= 0 {
+		return true, nil
+	}
+	targetGroup, err := s.apiKeyService.groupRepo.GetByID(ctx, targetGroupID)
+	if err != nil {
+		return false, fmt.Errorf("get target group: %w", err)
+	}
+	existingGroup, err := s.apiKeyService.groupRepo.GetByID(ctx, *apiKey.GroupID)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			return true, nil
+		}
+		return false, fmt.Errorf("get api key group: %w", err)
+	}
+	if !botSalesGroupPlatformsEquivalent(existingGroup.Platform, targetGroup.Platform) {
+		return true, nil
+	}
+	return !botSalesGroupCapabilitiesCompatible(existingGroup, targetGroup), nil
+}
+
+func botSalesGroupPlatformsEquivalent(left string, right string) bool {
+	left = normalizeBotSalesGroupPlatform(left)
+	right = normalizeBotSalesGroupPlatform(right)
+	return left != "" && left == right
+}
+
+func botSalesGroupCapabilitiesCompatible(existingGroup *Group, targetGroup *Group) bool {
+	if existingGroup == nil || targetGroup == nil {
+		return false
+	}
+	if targetGroup.ClaudeCodeOnly && !existingGroup.ClaudeCodeOnly {
+		return false
+	}
+	if targetGroup.AllowMessagesDispatch && !existingGroup.AllowMessagesDispatch {
+		return false
+	}
+	if targetGroup.AllowImageGeneration && !existingGroup.AllowImageGeneration {
+		return false
+	}
+	if targetGroup.RequireOAuthOnly && !existingGroup.RequireOAuthOnly {
+		return false
+	}
+	if targetGroup.RequirePrivacySet && !existingGroup.RequirePrivacySet {
+		return false
+	}
+	return botSalesSupportedModelScopesCover(existingGroup.SupportedModelScopes, targetGroup.SupportedModelScopes)
+}
+
+func botSalesSupportedModelScopesCover(existingScopes []string, targetScopes []string) bool {
+	if len(targetScopes) == 0 || len(existingScopes) == 0 {
+		return true
+	}
+	existing := make(map[string]struct{}, len(existingScopes))
+	for _, scope := range existingScopes {
+		scope = strings.TrimSpace(strings.ToLower(scope))
+		if scope != "" {
+			existing[scope] = struct{}{}
+		}
+	}
+	for _, scope := range targetScopes {
+		scope = strings.TrimSpace(strings.ToLower(scope))
+		if scope == "" {
+			continue
+		}
+		if _, ok := existing[scope]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeBotSalesGroupPlatform(platform string) string {
+	switch strings.TrimSpace(strings.ToLower(platform)) {
+	case "claude":
+		return PlatformAnthropic
+	default:
+		return strings.TrimSpace(strings.ToLower(platform))
+	}
 }
 
 func (s *BotSalesFulfillmentService) rebindBotSalesAPIKeyGroup(ctx context.Context, apiKey *APIKey, userID int64, targetGroupID int64) (*APIKey, error) {

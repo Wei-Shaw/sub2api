@@ -247,14 +247,14 @@ func TestBotSalesFulfillmentIfMissingReusesExistingAPIKeyForTopup(t *testing.T) 
 	require.Equal(t, float64(40), client.User.GetX(ctx, newResp.Buyer.UserID).Balance)
 }
 
-func TestBotSalesFulfillmentIfMissingRebindsExistingAPIKeyToTopupGroup(t *testing.T) {
+func TestBotSalesFulfillmentIfMissingPreservesExistingAPIKeyForEquivalentTopupPlatform(t *testing.T) {
 	ctx := context.Background()
 	client, db := newBotSalesFulfillmentEntClient(t)
-	oldGroup := createBotSalesGroup(t, client, "bot-balance-rebind-old", service.SubscriptionTypeNone)
-	newGroup := createBotSalesGroup(t, client, "bot-balance-rebind-new", service.SubscriptionTypeNone)
+	oldGroup := createBotSalesGroupWithPlatform(t, client, "bot-balance-openai-a", service.PlatformOpenAI, service.SubscriptionTypeNone)
+	newGroup := createBotSalesGroupWithPlatform(t, client, "bot-balance-openai-b", service.PlatformOpenAI, service.SubscriptionTypeNone)
 	oldPkg := client.BalancePackage.Create().
-		SetCode("standard_rebind_old").
-		SetLabel("Standard Rebind Old").
+		SetCode("standard_openai_a").
+		SetLabel("Standard OpenAI A").
 		SetAmountLedger(10).
 		SetActualCredits(10000000).
 		SetCreditUnit("tokens").
@@ -262,8 +262,8 @@ func TestBotSalesFulfillmentIfMissingRebindsExistingAPIKeyToTopupGroup(t *testin
 		SetForSale(true).
 		SaveX(ctx)
 	newPkg := client.BalancePackage.Create().
-		SetCode("standard_rebind_new").
-		SetLabel("Standard Rebind New").
+		SetCode("standard_openai_b").
+		SetLabel("Standard OpenAI B").
 		SetAmountLedger(20).
 		SetActualCredits(27000000).
 		SetCreditUnit("tokens").
@@ -313,7 +313,223 @@ func TestBotSalesFulfillmentIfMissingRebindsExistingAPIKeyToTopupGroup(t *testin
 	require.NoError(t, err)
 	require.NotNil(t, topupResp.Delivery.APIKey)
 	require.Equal(t, issuedKeyID, topupResp.Delivery.APIKey.ID)
+	require.Equal(t, oldGroup.ID, *topupResp.Delivery.APIKey.GroupID)
+	require.Equal(t, 1, client.APIKey.Query().Where(apikey.UserIDEQ(firstResp.Buyer.UserID)).CountX(ctx))
+
+	storedKey := client.APIKey.GetX(ctx, issuedKeyID)
+	require.NotNil(t, storedKey.GroupID)
+	require.Equal(t, oldGroup.ID, *storedKey.GroupID)
+}
+
+func TestBotSalesFulfillmentIfMissingRebindsExistingAPIKeyWhenTargetPlatformDiffers(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	oldGroup := createBotSalesGroupWithPlatform(t, client, "bot-balance-codex", service.PlatformOpenAI, service.SubscriptionTypeNone)
+	newGroup := createBotSalesGroupWithPlatform(t, client, "bot-balance-claude", service.PlatformAnthropic, service.SubscriptionTypeNone)
+	oldPkg := client.BalancePackage.Create().
+		SetCode("standard_codex").
+		SetLabel("Standard Codex").
+		SetAmountLedger(10).
+		SetActualCredits(10000000).
+		SetCreditUnit("tokens").
+		SetGroupID(oldGroup.ID).
+		SetForSale(true).
+		SaveX(ctx)
+	newPkg := client.BalancePackage.Create().
+		SetCode("standard_claude").
+		SetLabel("Standard Claude").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(newGroup.ID).
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	firstResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-cross-platform-key-new",
+		Operation:          service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: oldPkg.Code,
+		ExternalPaymentID:  "bs-pay-cross-platform-key-new",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:cross-platform-key-owner",
+			Provider:       "telegram",
+			ProviderUserID: "cross-platform-key-owner",
+			TelegramID:     "cross-platform-key-owner",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, firstResp.Delivery.APIKey)
+	issuedKeyID := firstResp.Delivery.APIKey.ID
+	require.NotZero(t, issuedKeyID)
+	require.Equal(t, oldGroup.ID, *firstResp.Delivery.APIKey.GroupID)
+
+	topupResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-cross-platform-key-topup",
+		Operation:          service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: newPkg.Code,
+		ExternalPaymentID:  "bs-pay-cross-platform-key-topup",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:cross-platform-key-owner",
+			Provider:       "telegram",
+			ProviderUserID: "cross-platform-key-owner",
+			TelegramID:     "cross-platform-key-owner",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyIfMissing},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, topupResp.Delivery.APIKey)
+	require.Equal(t, issuedKeyID, topupResp.Delivery.APIKey.ID)
 	require.Equal(t, newGroup.ID, *topupResp.Delivery.APIKey.GroupID)
+	require.Equal(t, 1, client.APIKey.Query().Where(apikey.UserIDEQ(firstResp.Buyer.UserID)).CountX(ctx))
+
+	storedKey := client.APIKey.GetX(ctx, issuedKeyID)
+	require.NotNil(t, storedKey.GroupID)
+	require.Equal(t, newGroup.ID, *storedKey.GroupID)
+}
+
+func TestBotSalesFulfillmentSubscriptionIfMissingPreservesExistingAPIKeyForEquivalentPlatform(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	oldGroup := createBotSalesGroupWithPlatform(t, client, "bot-sub-openai-a", service.PlatformOpenAI, service.SubscriptionTypeSubscription)
+	newGroup := createBotSalesGroupWithPlatform(t, client, "bot-sub-openai-b", service.PlatformOpenAI, service.SubscriptionTypeSubscription)
+	oldPlan := client.SubscriptionPlan.Create().
+		SetGroupID(oldGroup.ID).
+		SetName("Bot OpenAI A monthly").
+		SetPrice(9.9).
+		SetValidityDays(30).
+		SetValidityUnit("day").
+		SetForSale(true).
+		SaveX(ctx)
+	newPlan := client.SubscriptionPlan.Create().
+		SetGroupID(newGroup.ID).
+		SetName("Bot OpenAI B monthly").
+		SetPrice(9.9).
+		SetValidityDays(30).
+		SetValidityUnit("day").
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	firstResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:   "bs-order-sub-openai-a",
+		ExternalPaymentID: "bs-pay-sub-openai-a",
+		Operation:         service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:   service.BotSalesEntitlementSubscription,
+		PlanID:            oldPlan.ID,
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:sub-platform-owner",
+			Provider:       "telegram",
+			ProviderUserID: "sub-platform-owner",
+			TelegramID:     "sub-platform-owner",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, firstResp.Delivery.APIKey)
+	issuedKeyID := firstResp.Delivery.APIKey.ID
+	require.NotZero(t, issuedKeyID)
+	require.Equal(t, oldGroup.ID, *firstResp.Delivery.APIKey.GroupID)
+
+	secondResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:   "bs-order-sub-openai-b",
+		ExternalPaymentID: "bs-pay-sub-openai-b",
+		Operation:         service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:   service.BotSalesEntitlementSubscription,
+		PlanID:            newPlan.ID,
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:sub-platform-owner",
+			Provider:       "telegram",
+			ProviderUserID: "sub-platform-owner",
+			TelegramID:     "sub-platform-owner",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyIfMissing},
+	})
+	require.NoError(t, err)
+	require.Equal(t, service.BotSalesEntitlementSubscription, secondResp.EntitlementKind)
+	require.Equal(t, newGroup.ID, secondResp.Subscription.GroupID)
+	require.NotNil(t, secondResp.Delivery.APIKey)
+	require.Equal(t, issuedKeyID, secondResp.Delivery.APIKey.ID)
+	require.Equal(t, oldGroup.ID, *secondResp.Delivery.APIKey.GroupID)
+	require.Equal(t, 1, client.APIKey.Query().Where(apikey.UserIDEQ(firstResp.Buyer.UserID)).CountX(ctx))
+
+	storedKey := client.APIKey.GetX(ctx, issuedKeyID)
+	require.NotNil(t, storedKey.GroupID)
+	require.Equal(t, oldGroup.ID, *storedKey.GroupID)
+}
+
+func TestBotSalesFulfillmentSubscriptionIfMissingRebindsExistingAPIKeyWhenCapabilityMissing(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	oldGroup := createBotSalesGroupWithPlatform(t, client, "bot-sub-openai-basic", service.PlatformOpenAI, service.SubscriptionTypeSubscription)
+	newGroup := createBotSalesGroupWithPlatform(t, client, "bot-sub-openai-messages", service.PlatformOpenAI, service.SubscriptionTypeSubscription)
+	_, err := client.Group.UpdateOneID(newGroup.ID).SetAllowMessagesDispatch(true).Save(ctx)
+	require.NoError(t, err)
+	oldPlan := client.SubscriptionPlan.Create().
+		SetGroupID(oldGroup.ID).
+		SetName("Bot OpenAI basic monthly").
+		SetPrice(9.9).
+		SetValidityDays(30).
+		SetValidityUnit("day").
+		SetForSale(true).
+		SaveX(ctx)
+	newPlan := client.SubscriptionPlan.Create().
+		SetGroupID(newGroup.ID).
+		SetName("Bot OpenAI messages monthly").
+		SetPrice(9.9).
+		SetValidityDays(30).
+		SetValidityUnit("day").
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	firstResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:   "bs-order-sub-openai-basic",
+		ExternalPaymentID: "bs-pay-sub-openai-basic",
+		Operation:         service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:   service.BotSalesEntitlementSubscription,
+		PlanID:            oldPlan.ID,
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:sub-capability-owner",
+			Provider:       "telegram",
+			ProviderUserID: "sub-capability-owner",
+			TelegramID:     "sub-capability-owner",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, firstResp.Delivery.APIKey)
+	issuedKeyID := firstResp.Delivery.APIKey.ID
+	require.NotZero(t, issuedKeyID)
+	require.Equal(t, oldGroup.ID, *firstResp.Delivery.APIKey.GroupID)
+
+	secondResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:   "bs-order-sub-openai-messages",
+		ExternalPaymentID: "bs-pay-sub-openai-messages",
+		Operation:         service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:   service.BotSalesEntitlementSubscription,
+		PlanID:            newPlan.ID,
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:sub-capability-owner",
+			Provider:       "telegram",
+			ProviderUserID: "sub-capability-owner",
+			TelegramID:     "sub-capability-owner",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyIfMissing},
+	})
+	require.NoError(t, err)
+	require.Equal(t, service.BotSalesEntitlementSubscription, secondResp.EntitlementKind)
+	require.Equal(t, newGroup.ID, secondResp.Subscription.GroupID)
+	require.NotNil(t, secondResp.Delivery.APIKey)
+	require.Equal(t, issuedKeyID, secondResp.Delivery.APIKey.ID)
+	require.Equal(t, newGroup.ID, *secondResp.Delivery.APIKey.GroupID)
 	require.Equal(t, 1, client.APIKey.Query().Where(apikey.UserIDEQ(firstResp.Buyer.UserID)).CountX(ctx))
 
 	storedKey := client.APIKey.GetX(ctx, issuedKeyID)
@@ -399,6 +615,7 @@ func TestBotSalesFulfillmentBalanceTopupWithoutDeviceCodeCreditsCanonicalBuyerAc
 func TestBotSalesFulfillmentCreditTopupCreditsDeviceOwnerWithoutPackageOrAPIKey(t *testing.T) {
 	ctx := context.Background()
 	client, db := newBotSalesFulfillmentEntClient(t)
+	ownerGroup := createBotSalesGroup(t, client, "credit-topup-owner-group", service.SubscriptionTypeNone)
 	owner := client.User.Create().
 		SetEmail("credit-device-owner@example.test").
 		SetPasswordHash("test-password-hash").
@@ -414,6 +631,13 @@ func TestBotSalesFulfillmentCreditTopupCreditsDeviceOwnerWithoutPackageOrAPIKey(
 		SetPlatform("bot-sales").
 		SetArch("api").
 		SetStatus(service.UserDeviceStatusActive).
+		SaveX(ctx)
+	existingKey := client.APIKey.Create().
+		SetUserID(owner.ID).
+		SetKey("sk-existing-credit-topup-owner-key").
+		SetName("existing-credit-topup-owner-key").
+		SetGroupID(ownerGroup.ID).
+		SetStatus(service.StatusAPIKeyActive).
 		SaveX(ctx)
 
 	svc := newBotSalesFulfillmentServiceForTest(client, db)
@@ -442,7 +666,10 @@ func TestBotSalesFulfillmentCreditTopupCreditsDeviceOwnerWithoutPackageOrAPIKey(
 	require.Equal(t, deviceCode, resp.DeviceCode)
 	require.Equal(t, deviceCode, resp.Delivery.DeviceCode)
 	require.Nil(t, resp.Delivery.APIKey)
-	require.Equal(t, 0, client.APIKey.Query().CountX(ctx))
+	require.Equal(t, 1, client.APIKey.Query().CountX(ctx))
+	storedKey := client.APIKey.GetX(ctx, existingKey.ID)
+	require.NotNil(t, storedKey.GroupID)
+	require.Equal(t, ownerGroup.ID, *storedKey.GroupID)
 	require.InDelta(t, 12.5, client.User.GetX(ctx, owner.ID).Balance, 0.000001)
 	require.InDelta(t, 0, client.User.Query().Where(dbuser.EmailEQ("credit-topup-payer@example.test")).OnlyX(ctx).Balance, 0.000001)
 
@@ -1058,10 +1285,14 @@ func newBotSalesFulfillmentEntClient(t *testing.T) (*dbent.Client, *sql.DB) {
 }
 
 func createBotSalesGroup(t *testing.T, client *dbent.Client, name string, subscriptionType string) *dbent.Group {
+	return createBotSalesGroupWithPlatform(t, client, name, service.PlatformAnthropic, subscriptionType)
+}
+
+func createBotSalesGroupWithPlatform(t *testing.T, client *dbent.Client, name string, platform string, subscriptionType string) *dbent.Group {
 	t.Helper()
 	return client.Group.Create().
 		SetName(name).
-		SetPlatform("claude").
+		SetPlatform(platform).
 		SetStatus(service.StatusActive).
 		SetSubscriptionType(subscriptionType).
 		SetRateMultiplier(1).
