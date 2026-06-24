@@ -16,6 +16,16 @@ func AdminComplianceGuard(settingService *service.SettingService) gin.HandlerFun
 			return
 		}
 
+		role, ok := GetUserRoleFromContext(c)
+		if !ok {
+			AbortWithError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Authorization required")
+			return
+		}
+		if role != service.RoleAdmin {
+			c.Next()
+			return
+		}
+
 		subject, ok := GetAuthSubjectFromContext(c)
 		if !ok {
 			AbortWithError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Authorization required")
