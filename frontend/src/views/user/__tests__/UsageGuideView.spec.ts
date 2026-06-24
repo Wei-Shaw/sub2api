@@ -71,7 +71,7 @@ describe('UsageGuideView', () => {
     const source = readFileSync(viewPath, 'utf8')
     const expectedTokens = [
       "title: '生图方法'",
-      '29/39/59 元套餐已支持生图和图生图',
+      '29/39/59/99 元套餐已支持生图和图生图',
       'https://api.aaccx.pw/v1',
       'POST /v1/images/edits',
       'images[].image_url',
