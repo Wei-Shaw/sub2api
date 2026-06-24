@@ -146,7 +146,7 @@ func (h *OidcProviderHandler) ConsentPost(c *gin.Context) {
 
 // isSensitiveScope 标记需要红字警示的私有 scope (design.md D8)。
 func isSensitiveScope(scope string) bool {
-	return scope == service.OidcScopeBalance || scope == service.OidcScopeAPIKey
+	return scope == service.OidcScopeAPIKey
 }
 
 // buildSuccessRedirect 拼 redirect_uri?code=&state=。

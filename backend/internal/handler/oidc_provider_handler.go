@@ -16,10 +16,14 @@ package handler
 import (
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -27,14 +31,16 @@ import (
 type OidcProviderHandler struct {
 	provider *service.OidcProviderService
 	sso      *service.SsoSessionService
+	apiKeys  *service.APIKeyService
 }
 
 // NewOidcProviderHandler 构造 handler。
 func NewOidcProviderHandler(
 	provider *service.OidcProviderService,
 	sso *service.SsoSessionService,
+	apiKeys *service.APIKeyService,
 ) *OidcProviderHandler {
-	return &OidcProviderHandler{provider: provider, sso: sso}
+	return &OidcProviderHandler{provider: provider, sso: sso, apiKeys: apiKeys}
 }
 
 // ─── 内部：错误输出 ──────────────────────────────────────────────────────────
@@ -328,4 +334,101 @@ func bearerToken(authHeader string) string {
 		return strings.TrimSpace(authHeader[len(prefix):])
 	}
 	return ""
+}
+
+// ─── Resource: API Keys ──────────────────────────────────────────────────────
+
+// resolveOidcBearer 校验 Authorization Bearer token，要求 access token 携带指定 scope。
+//
+// 失败时已写好响应（含 WWW-Authenticate 头），调用方直接 return 即可。
+func (h *OidcProviderHandler) resolveOidcBearer(c *gin.Context, requiredScope string) (*service.OidcResolvedAccessToken, bool) {
+	ctx := c.Request.Context()
+	if !h.provider.IsEnabled(ctx) {
+		c.Status(http.StatusNotFound)
+		return nil, false
+	}
+
+	token := bearerToken(c.GetHeader("Authorization"))
+	if token == "" {
+		c.Header("WWW-Authenticate", `Bearer realm="oidc"`)
+		writeOAuthError(c, service.NewOidcError("invalid_token", "missing access token", http.StatusUnauthorized))
+		return nil, false
+	}
+
+	resolved, oerr := h.provider.ResolveAccessToken(ctx, token)
+	if oerr != nil {
+		if oerr.Status == http.StatusUnauthorized {
+			c.Header("WWW-Authenticate", `Bearer realm="oidc", error="`+oerr.Code+`", error_description="`+oerr.Description+`"`)
+		}
+		writeOAuthError(c, oerr)
+		return nil, false
+	}
+
+	if requiredScope != "" && !resolved.HasScope(requiredScope) {
+		c.Header("WWW-Authenticate", `Bearer realm="oidc", error="insufficient_scope", scope="`+requiredScope+`"`)
+		writeOAuthError(c, service.NewOidcError("insufficient_scope", "scope "+requiredScope+" is required", http.StatusForbidden))
+		return nil, false
+	}
+	return resolved, true
+}
+
+// ListAPIKeys GET /oidc/resource/api-keys
+//
+// OAuth2 受保护资源端点：以 OIDC access_token 鉴权，返回当前 access_token 绑定用户的
+// API Key 列表（含 key 明文）。
+//
+// 鉴权要求：
+//   - 提供 Authorization: Bearer <opaque-access-token>
+//   - access_token 必须携带 scope `sub2api:apikey`
+//
+// 查询参数（与 /api/v1/user/keys 对齐）：
+//   - page (default=1) / page_size (default=20, 最大见 ParsePagination)
+//   - sort_by / sort_order (默认 created_at desc)
+//   - search / status / group_id
+//
+// 响应体形如 response.Paginated：{data: [APIKey...], total, page, page_size}。
+func (h *OidcProviderHandler) ListAPIKeys(c *gin.Context) {
+	resolved, ok := h.resolveOidcBearer(c, service.OidcScopeAPIKey)
+	if !ok {
+		return
+	}
+
+	if h.apiKeys == nil {
+		writeOAuthError(c, service.NewOidcError("server_error", "api key service not available", http.StatusInternalServerError))
+		return
+	}
+
+	page, pageSize := response.ParsePagination(c)
+	params := pagination.PaginationParams{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
+	}
+
+	var filters service.APIKeyListFilters
+	if search := strings.TrimSpace(c.Query("search")); search != "" {
+		if len(search) > 100 {
+			search = search[:100]
+		}
+		filters.Search = search
+	}
+	filters.Status = c.Query("status")
+	if groupIDStr := c.Query("group_id"); groupIDStr != "" {
+		if gid, err := strconv.ParseInt(groupIDStr, 10, 64); err == nil {
+			filters.GroupID = &gid
+		}
+	}
+
+	keys, result, err := h.apiKeys.List(c.Request.Context(), resolved.UserID, params, filters)
+	if err != nil {
+		writeOAuthError(c, service.NewOidcError("server_error", "list api keys failed", http.StatusInternalServerError))
+		return
+	}
+
+	out := make([]dto.APIKey, 0, len(keys))
+	for i := range keys {
+		out = append(out, *dto.APIKeyFromService(&keys[i]))
+	}
+	response.Paginated(c, out, result.Total, page, pageSize)
 }

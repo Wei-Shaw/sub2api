@@ -188,7 +188,7 @@ func TestOidcProvider_ValidateAuthorize_ScopeNotAllowed(t *testing.T) {
 		ClientID:      rp.ClientID,
 		RedirectURI:   "https://acme.example.com/cb",
 		ResponseType:  "code",
-		Scope:         "openid sub2api:balance",
+		Scope:         "openid sub2api:apikey",
 		CodeChallenge: pkceChallenge("v"),
 	})
 	require.NotNil(t, oerr)
@@ -498,25 +498,7 @@ func TestOidcProvider_BuildUserInfo_ScopedClaims(t *testing.T) {
 	require.False(t, hasBalance)
 }
 
-func TestOidcProvider_BuildUserInfo_BalanceScope(t *testing.T) {
-	e := newProviderTestEnv(t)
-	rp := e.newRP(t, []string{"openid", "sub2api:balance"}, true)
-	user := e.newUser(t)
 
-	code, verifier := e.issueValidCode(t, rp, user.ID, []string{"openid", "sub2api:balance"}, "")
-	resp, oerr := e.svc.ExchangeCode(context.Background(), OidcExchangeCodeInput{
-		Client: rp, Code: code, RedirectURI: "https://acme.example.com/cb", CodeVerifier: verifier,
-	})
-	require.Nil(t, oerr)
-
-	claims, uerr := e.svc.BuildUserInfo(context.Background(), resp.AccessToken)
-	require.Nil(t, uerr)
-	require.Contains(t, claims, "sub2api_balance")
-	require.Contains(t, claims, "sub2api_total_recharged")
-	// balance 私有 scope 不得泄露 profile/email
-	_, hasName := claims["name"]
-	require.False(t, hasName)
-}
 
 func TestOidcProvider_BuildUserInfo_ApikeyScopeCountOnly(t *testing.T) {
 	e := newProviderTestEnv(t)
@@ -532,6 +514,45 @@ func TestOidcProvider_BuildUserInfo_ApikeyScopeCountOnly(t *testing.T) {
 	claims, uerr := e.svc.BuildUserInfo(context.Background(), resp.AccessToken)
 	require.Nil(t, uerr)
 	require.Contains(t, claims, "sub2api_apikey_count")
+	require.Contains(t, claims, "sub2api_apikeys")
+
+	// 验证 apikeys 字段是一个数组（实际类型为 []map[string]any）
+	apikeys, ok := claims["sub2api_apikeys"].([]map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 0, len(apikeys)) // 新用户没有 API Key
+	require.Equal(t, 0, claims["sub2api_apikey_count"])
+}
+
+func TestOidcProvider_BuildUserInfo_ApikeyScopeReturnsKeyValue(t *testing.T) {
+	e := newProviderTestEnv(t)
+	rp := e.newRP(t, []string{"openid", "sub2api:apikey"}, true)
+	user := e.newUser(t)
+
+	// 为用户创建一个 API Key
+	_, err := e.client.APIKey.Create().
+		SetUserID(user.ID).
+		SetKey("sk-test-plaintext-key-123").
+		SetName("test-key").
+		SetStatus("active").
+		Save(context.Background())
+	require.NoError(t, err)
+
+	code, verifier := e.issueValidCode(t, rp, user.ID, []string{"openid", "sub2api:apikey"}, "")
+	resp, oerr := e.svc.ExchangeCode(context.Background(), OidcExchangeCodeInput{
+		Client: rp, Code: code, RedirectURI: "https://acme.example.com/cb", CodeVerifier: verifier,
+	})
+	require.Nil(t, oerr)
+
+	claims, uerr := e.svc.BuildUserInfo(context.Background(), resp.AccessToken)
+	require.Nil(t, uerr)
+	require.Equal(t, 1, claims["sub2api_apikey_count"])
+
+	apikeys, ok := claims["sub2api_apikeys"].([]map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 1, len(apikeys))
+	require.Equal(t, "sk-test-plaintext-key-123", apikeys[0]["key"])
+	require.Equal(t, "test-key", apikeys[0]["name"])
+	require.Equal(t, "active", apikeys[0]["status"])
 }
 
 func TestOidcProvider_BuildUserInfo_MissingToken(t *testing.T) {
@@ -547,6 +568,44 @@ func TestOidcProvider_BuildUserInfo_UnknownToken(t *testing.T) {
 	_, uerr := e.svc.BuildUserInfo(context.Background(), "not-a-real-token")
 	require.NotNil(t, uerr)
 	require.Equal(t, "invalid_token", uerr.Code)
+}
+
+// ─── ResolveAccessToken (Resource Endpoint 鉴权) ────────────────────────────
+
+func TestOidcProvider_ResolveAccessToken_OK(t *testing.T) {
+	e := newProviderTestEnv(t)
+	rp := e.newRP(t, []string{"openid", "sub2api:apikey"}, true)
+	user := e.newUser(t)
+
+	code, verifier := e.issueValidCode(t, rp, user.ID, []string{"openid", "sub2api:apikey"}, "")
+	resp, oerr := e.svc.ExchangeCode(context.Background(), OidcExchangeCodeInput{
+		Client: rp, Code: code, RedirectURI: "https://acme.example.com/cb", CodeVerifier: verifier,
+	})
+	require.Nil(t, oerr)
+
+	resolved, rerr := e.svc.ResolveAccessToken(context.Background(), resp.AccessToken)
+	require.Nil(t, rerr)
+	require.Equal(t, user.ID, resolved.UserID)
+	require.Equal(t, rp.ClientID, resolved.ClientID)
+	require.True(t, resolved.HasScope("sub2api:apikey"))
+	require.True(t, resolved.HasScope("openid"))
+	require.False(t, resolved.HasScope("sub2api:balance"))
+}
+
+func TestOidcProvider_ResolveAccessToken_MissingToken(t *testing.T) {
+	e := newProviderTestEnv(t)
+	_, rerr := e.svc.ResolveAccessToken(context.Background(), "")
+	require.NotNil(t, rerr)
+	require.Equal(t, "invalid_token", rerr.Code)
+	require.Equal(t, 401, rerr.Status)
+}
+
+func TestOidcProvider_ResolveAccessToken_UnknownToken(t *testing.T) {
+	e := newProviderTestEnv(t)
+	_, rerr := e.svc.ResolveAccessToken(context.Background(), "not-a-real-token")
+	require.NotNil(t, rerr)
+	require.Equal(t, "invalid_token", rerr.Code)
+	require.Equal(t, 401, rerr.Status)
 }
 
 // ─── 同意令牌 round-trip ─────────────────────────────────────────────────────

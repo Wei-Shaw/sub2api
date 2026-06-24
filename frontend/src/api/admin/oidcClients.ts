@@ -145,12 +145,11 @@ export const OIDC_ALLOWED_SCOPES = [
   'profile',
   'email',
   'offline_access',
-  'sub2api:balance',
   'sub2api:apikey'
 ] as const
 
 /** 敏感授权范围（需红字警示 + 二次确认）。 */
-export const OIDC_SENSITIVE_SCOPES = ['sub2api:balance', 'sub2api:apikey'] as const
+export const OIDC_SENSITIVE_SCOPES = ['sub2api:apikey'] as const
 
 export function isSensitiveScope(scope: string): boolean {
   return (OIDC_SENSITIVE_SCOPES as readonly string[]).includes(scope)

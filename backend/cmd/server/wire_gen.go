@@ -274,7 +274,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	availableChannelHandler := handler.NewAvailableChannelHandler(channelService, apiKeyService, settingService)
 	plazaService := service.NewPlazaService(pricingService, billingService, groupRepository, accountRepository, paymentConfigService)
 	plazaHandler := handler.NewPlazaHandler(plazaService, rechargePromoActivityService)
-	oidcProviderHandler := handler.NewOidcProviderHandler(oidcProviderService, ssoSessionService)
+	oidcProviderHandler := handler.NewOidcProviderHandler(oidcProviderService, ssoSessionService, apiKeyService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
 	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, channelMonitorUserHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, falGatewayHandler, handlerSettingHandler, totpHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, plazaHandler, oidcProviderHandler, idempotencyCoordinator, idempotencyCleanupService)

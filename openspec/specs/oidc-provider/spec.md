@@ -14,7 +14,7 @@ The system SHALL expose an OpenID Connect Discovery 1.0 compliant document at `G
 - **AND** the JSON body contains `issuer` equal to the configured `oidc_provider.issuer_url` (no trailing slash)
 - **AND** the JSON body contains `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`, `jwks_uri` formed by appending `/oidc/authorize`, `/oidc/token`, `/oidc/userinfo`, `/.well-known/jwks.json` respectively to the issuer URL
 - **AND** the JSON body declares `response_types_supported: ["code"]`, `grant_types_supported: ["authorization_code","refresh_token"]`, `id_token_signing_alg_values_supported: ["RS256"]`, `subject_types_supported: ["public"]`, `code_challenge_methods_supported: ["S256"]`, `token_endpoint_auth_methods_supported: ["client_secret_basic","client_secret_post"]`
-- **AND** the JSON body declares `scopes_supported` containing exactly `openid`, `profile`, `email`, `offline_access`, `sub2api:balance`, `sub2api:apikey`
+- **AND** the JSON body declares `scopes_supported` containing exactly `openid`, `profile`, `email`, `offline_access`, `sub2api:apikey`
 
 #### Scenario: Discovery is hidden when provider is disabled
 
@@ -148,22 +148,46 @@ The system SHALL implement `GET /oidc/userinfo` requiring a Bearer access token 
 - **THEN** the response is HTTP 200 JSON containing exactly `sub`, `email`, `email_verified`, `name`, `preferred_username`, `updated_at` (other claims MUST be absent)
 - **AND** `sub` equals the user_id as a decimal string
 
-#### Scenario: sub2api:balance scope returns balance claims
 
-- **WHEN** the access token's scopes include `sub2api:balance`
-- **THEN** the userinfo response MUST contain `sub2api_balance` (decimal string preserving full precision) and `sub2api_total_recharged` (decimal string)
-- **AND** when scopes do NOT include `sub2api:balance`, both fields MUST be absent
 
-#### Scenario: sub2api:apikey scope returns apikey count only
+#### Scenario: sub2api:apikey scope returns apikey list with key values
 
 - **WHEN** the access token's scopes include `sub2api:apikey`
-- **THEN** the userinfo response MUST contain `sub2api_apikey_count` (integer count of currently enabled api_keys for the user)
-- **AND** the response MUST NOT contain any plaintext API key value, hash, prefix, or last-used metadata
+- **THEN** the userinfo response MUST contain `sub2api_apikey_count` (integer count of api_keys for the user)
+- **AND** the userinfo response MUST contain `sub2api_apikeys` (array of api_key objects, each containing `id`, `key` (plaintext key value), `name`, `status`, `created_at`, `last_used_at`, `expires_at`)
 
 #### Scenario: Missing or invalid Bearer token
 
 - **WHEN** the userinfo request lacks `Authorization` header OR carries a token that is unknown / revoked / expired / not issued by the OIDC token endpoint
 - **THEN** the response is HTTP 401 with header `WWW-Authenticate: Bearer error="invalid_token"`
+
+### Requirement: Resource Endpoint — API Keys
+
+The system SHALL implement `GET /oidc/resource/api-keys` as an OAuth2-protected resource endpoint that returns the API Keys belonging to the user bound to the presented OIDC access token. The endpoint MUST require Bearer authentication using an OIDC access token whose granted scopes include `sub2api:apikey`.
+
+#### Scenario: Bearer token with sub2api:apikey scope returns paginated API Keys
+
+- **WHEN** a client sends `GET /oidc/resource/api-keys` with header `Authorization: Bearer <opaque-access-token>` matching an unrevoked unexpired access token whose scopes include `sub2api:apikey`
+- **THEN** the response is HTTP 200 JSON of shape `{data: [APIKey...], total: int, page: int, page_size: int}` where each `APIKey` includes at least `id`, `key` (plaintext key value), `name`, `status`, `created_at`, `last_used_at`, `expires_at`
+- **AND** only API Keys whose `user_id` equals the access token's bound user MUST be returned
+- **AND** the endpoint MUST honor query parameters `page`, `page_size`, `sort_by`, `sort_order`, `search`, `status`, `group_id` consistently with the existing `/api/v1/user/keys` endpoint
+
+#### Scenario: Bearer token without sub2api:apikey scope is rejected
+
+- **WHEN** the request carries a valid access token whose scopes do NOT include `sub2api:apikey`
+- **THEN** the response MUST be HTTP 403 JSON `{error: "insufficient_scope", error_description: ...}`
+- **AND** the response MUST include header `WWW-Authenticate: Bearer error="insufficient_scope", scope="sub2api:apikey"`
+- **AND** the response MUST NOT leak any API Key data
+
+#### Scenario: Missing or invalid Bearer token
+
+- **WHEN** the request lacks an `Authorization` header OR carries a token that is unknown / revoked / expired / not issued by the OIDC token endpoint
+- **THEN** the response MUST be HTTP 401 with header `WWW-Authenticate: Bearer error="invalid_token"` and JSON `{error: "invalid_token", error_description: ...}`
+
+#### Scenario: Provider disabled hides the resource endpoint
+
+- **WHEN** any request reaches `/oidc/resource/api-keys` while `oidc_provider.enabled=false`
+- **THEN** the response MUST be HTTP 404 with no OAuth2 error metadata body
 
 ### Requirement: Consent Page
 
@@ -326,9 +350,9 @@ The system SHALL project granted scopes to ID Token claims and UserInfo claims a
 
 #### Scenario: Private scopes appear only in UserInfo
 
-- **WHEN** scopes include `sub2api:balance` or `sub2api:apikey`
-- **THEN** the corresponding claims (`sub2api_balance`, `sub2api_total_recharged`, `sub2api_apikey_count`) MUST be absent from the ID Token
-- **AND** they MUST be present in the `/oidc/userinfo` response per the UserInfo Endpoint requirement
+- **WHEN** scopes include `sub2api:apikey`
+- **THEN** the corresponding claim (`sub2api_apikey_count`) MUST be absent from the ID Token
+- **AND** it MUST be present in the `/oidc/userinfo` response per the UserInfo Endpoint requirement
 
 #### Scenario: acr and amr reflect authentication strength
 

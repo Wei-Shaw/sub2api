@@ -30,6 +30,21 @@
 }
 
 https://localhost:8443 {
+
+    @cors_preflight method OPTIONS
+
+    header {
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        Access-Control-Allow-Headers "*"
+        Access-Control-Max-Age "3600"
+    }
+
+    # 处理 OPTIONS 预检请求
+    handle @cors_preflight {
+        respond "" 204
+    }
+
 	tls ./localhost+2.pem ./localhost+2-key.pem
 
 	# 后端：OIDC 端点 + API。
