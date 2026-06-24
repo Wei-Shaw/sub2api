@@ -180,14 +180,30 @@ const codexSetupSteps = [
   },
 ]
 
-const imageGenerationRequestExample = `curl https://api.aaccx.pw/v1/images/generations \\
+const imageEditRequestExample = `# JSON 方式：适合已经有公网图片链接
+curl https://api.aaccx.pw/v1/images/edits \\
   -H "Authorization: Bearer sk-xxxx" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "gpt-image-2",
-    "prompt": "一张黑白极简风的程序员工作台插画",
-    "size": "1024x1024"
-  }'`
+    "prompt": "把这张图改成黑白极简海报风格，保留主体轮廓",
+    "images": [
+      {
+        "image_url": "https://example.com/input.png"
+      }
+    ],
+    "size": "1024x1024",
+    "response_format": "b64_json"
+  }'
+
+# multipart 方式：适合直接上传本地图片
+curl https://api.aaccx.pw/v1/images/edits \\
+  -H "Authorization: Bearer sk-xxxx" \\
+  -F "model=gpt-image-2" \\
+  -F "prompt=把这张图改成黑白极简海报风格，保留主体轮廓" \\
+  -F "image=@/absolute/path/input.png" \\
+  -F "size=1024x1024" \\
+  -F "response_format=b64_json"`
 
 const guideTopics = [
   {
@@ -200,20 +216,21 @@ const guideTopics = [
   {
     id: 'image-generation',
     title: '生图方法',
-    description: '使用现有 API Key 调用 OpenAI 兼容图片接口，并了解图片额度扣费方式。',
+    description: '使用现有 API Key 调用 OpenAI 兼容图生图接口，并了解图片额度扣费方式。',
     kind: 'sections',
     sections: [
       {
         title: '可用范围',
         paragraphs: [
-          '29/39/59 元套餐已支持生图，使用你已经生成的 API Key 即可请求图片接口。',
+          '29/39/59 元套餐已支持生图和图生图，使用你已经生成的 API Key 即可直接请求图片接口。',
           '请求地址保持为 https://api.aaccx.pw/v1，不需要更换新的服务端点。',
         ],
       },
       {
         title: '接口与扣费',
         paragraphs: [
-          '独立图片生成接口使用 POST /v1/images/generations。',
+          '图生图编辑接口使用 POST /v1/images/edits，模型填写 gpt-image-2。',
+          'JSON 请求可传 images[].image_url，上传本地文件时改用 multipart 的 image=@...；需要局部修改时可以再加 mask。',
           '图片按实际分辨率消耗订阅日额度，余额和用量记录会按图片价格统计。',
         ],
         priceRows: [
@@ -226,8 +243,9 @@ const guideTopics = [
         title: '请求示例',
         paragraphs: [
           '把示例中的 sk-xxxx 换成你自己的 API Key。不要在公开文档、聊天或截图里展示完整密钥。',
+          '如果你只是想从文字直接生成图片，可以把请求路径换成 /v1/images/generations；图生图优先使用下面这组 /v1/images/edits 示例。',
         ],
-        code: imageGenerationRequestExample,
+        code: imageEditRequestExample,
       },
     ],
   },
