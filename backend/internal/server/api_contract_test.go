@@ -58,6 +58,7 @@ func TestAPIContracts(t *testing.T) {
 					"rpm_limit": 0,
 					"status": "active",
 					"allowed_groups": null,
+					"allowed_accounts": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z",
 					"balance_notify_enabled": false,
@@ -69,6 +70,7 @@ func TestAPIContracts(t *testing.T) {
 					"oidc_bound": false,
 					"wechat_bound": false,
 					"dingtalk_bound": false,
+					"wecom_bound": false,
 					"identities": {
 						"email": {
 							"provider": "email",
@@ -105,6 +107,14 @@ func TestAPIContracts(t *testing.T) {
 							"can_bind": true,
 							"can_unbind": false,
 							"bind_start_path": "/api/v1/auth/oauth/wechat/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+						},
+						"wecom": {
+							"provider": "wecom",
+							"bound": false,
+							"bound_count": 0,
+							"can_bind": true,
+							"can_unbind": false,
+							"bind_start_path": "/api/v1/auth/oauth/wecom/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 						},
 						"dingtalk": {
 							"provider": "dingtalk",
@@ -152,6 +162,14 @@ func TestAPIContracts(t *testing.T) {
 							"can_unbind": false,
 							"bind_start_path": "/api/v1/auth/oauth/wechat/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 						},
+						"wecom": {
+							"provider": "wecom",
+							"bound": false,
+							"bound_count": 0,
+							"can_bind": true,
+							"can_unbind": false,
+							"bind_start_path": "/api/v1/auth/oauth/wecom/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+						},
 						"dingtalk": {
 							"provider": "dingtalk",
 							"bound": false,
@@ -197,6 +215,14 @@ func TestAPIContracts(t *testing.T) {
 							"can_bind": true,
 							"can_unbind": false,
 							"bind_start_path": "/api/v1/auth/oauth/wechat/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+						},
+						"wecom": {
+							"provider": "wecom",
+							"bound": false,
+							"bound_count": 0,
+							"can_bind": true,
+							"can_unbind": false,
+							"bind_start_path": "/api/v1/auth/oauth/wecom/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 						},
 						"dingtalk": {
 							"provider": "dingtalk",
@@ -794,6 +820,11 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_wechat_subscriptions": [],
 					"auth_source_default_wechat_grant_on_signup": false,
 					"auth_source_default_wechat_grant_on_first_bind": false,
+					"auth_source_default_wecom_balance": 0,
+					"auth_source_default_wecom_concurrency": 5,
+					"auth_source_default_wecom_subscriptions": [],
+					"auth_source_default_wecom_grant_on_signup": false,
+					"auth_source_default_wecom_grant_on_first_bind": false,
 					"auth_source_default_dingtalk_balance": 0,
 					"auth_source_default_dingtalk_concurrency": 5,
 					"auth_source_default_dingtalk_subscriptions": [],
@@ -809,6 +840,7 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_linuxdo_platform_quotas": null,
 					"auth_source_default_oidc_platform_quotas": null,
 					"auth_source_default_wechat_platform_quotas": null,
+					"auth_source_default_wecom_platform_quotas": null,
 					"auth_source_default_dingtalk_platform_quotas": null,
 					"affiliate_rebate_rate": 20,
 					"affiliate_rebate_freeze_hours": 0,
@@ -906,6 +938,13 @@ func TestAPIContracts(t *testing.T) {
 					"wechat_connect_redirect_url": "",
 					"wechat_connect_frontend_redirect_url": "/auth/wechat/callback",
 					"wechat_connect_scopes": "snsapi_login",
+					"wecom_oauth_enabled": false,
+					"wecom_oauth_corp_id": "",
+					"wecom_oauth_agent_id": "",
+					"wecom_oauth_secret_configured": false,
+					"wecom_oauth_scope": "snsapi_base",
+					"wecom_oauth_redirect_url": "",
+					"wecom_oauth_frontend_redirect_url": "/auth/wecom/callback",
 					"allow_user_view_error_requests": false
 				}
 			}`,
@@ -1051,6 +1090,7 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_linuxdo_platform_quotas": null,
 					"auth_source_default_oidc_platform_quotas": null,
 					"auth_source_default_wechat_platform_quotas": null,
+					"auth_source_default_wecom_platform_quotas": null,
 					"auth_source_default_dingtalk_platform_quotas": null,
 					"custom_menu_items": [],
 					"custom_endpoints": [],
@@ -1147,6 +1187,13 @@ func TestAPIContracts(t *testing.T) {
 					"wechat_connect_redirect_url": "",
 					"wechat_connect_frontend_redirect_url": "/auth/wechat/callback",
 					"wechat_connect_scopes": "snsapi_login",
+					"wecom_oauth_enabled": false,
+					"wecom_oauth_corp_id": "",
+					"wecom_oauth_agent_id": "",
+					"wecom_oauth_secret_configured": false,
+					"wecom_oauth_scope": "snsapi_base",
+					"wecom_oauth_redirect_url": "",
+					"wecom_oauth_frontend_redirect_url": "/auth/wecom/callback",
 					"auth_source_default_email_balance": 0,
 					"auth_source_default_email_concurrency": 5,
 					"auth_source_default_email_subscriptions": [],
@@ -1177,6 +1224,11 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_wechat_subscriptions": [],
 					"auth_source_default_wechat_grant_on_signup": false,
 					"auth_source_default_wechat_grant_on_first_bind": false,
+					"auth_source_default_wecom_balance": 0,
+					"auth_source_default_wecom_concurrency": 5,
+					"auth_source_default_wecom_subscriptions": [],
+					"auth_source_default_wecom_grant_on_signup": false,
+					"auth_source_default_wecom_grant_on_first_bind": false,
 					"auth_source_default_dingtalk_balance": 0,
 					"auth_source_default_dingtalk_concurrency": 5,
 					"auth_source_default_dingtalk_subscriptions": [],
@@ -1860,7 +1912,7 @@ func (stubProxyRepo) ListActiveWithAccountCount(ctx context.Context) ([]service.
 	return nil, errors.New("not implemented")
 }
 
-func (stubProxyRepo) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error) {
+func (stubProxyRepo) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password, basePath string) (bool, error) {
 	return false, errors.New("not implemented")
 }
 
@@ -2352,6 +2404,14 @@ func (r *stubUsageLogRepo) GetAccountWindowStats(ctx context.Context, accountID 
 
 func (r *stubUsageLogRepo) GetAccountTodayStats(ctx context.Context, accountID int64) (*usagestats.AccountStats, error) {
 	return nil, errors.New("not implemented")
+}
+
+func (r *stubUsageLogRepo) GetUsageTrendForAccounts(ctx context.Context, accountIDs []int64, startTime, endTime time.Time, granularity string) ([]usagestats.TrendDataPoint, error) {
+	return []usagestats.TrendDataPoint{}, nil
+}
+
+func (r *stubUsageLogRepo) GetModelStatsForAccounts(ctx context.Context, accountIDs []int64, startTime, endTime time.Time, source string) ([]usagestats.ModelStat, error) {
+	return []usagestats.ModelStat{}, nil
 }
 
 func (r *stubUsageLogRepo) GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {

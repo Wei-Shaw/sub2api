@@ -3837,7 +3837,7 @@
                 <Toggle v-model="form.enable_metadata_passthrough" />
               </div>
 
-              <!-- CCH Signing -->
+              <!-- Deprecated CCH Signing -->
               <div class="flex items-center justify-between">
                 <div>
                   <label
@@ -3849,7 +3849,7 @@
                     {{ t("admin.settings.gatewayForwarding.cchSigningHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.enable_cch_signing" />
+                <Toggle v-model="form.enable_cch_signing" disabled />
               </div>
 
               <!-- Claude OAuth System Prompt Injection -->
