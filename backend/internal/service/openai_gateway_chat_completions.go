@@ -172,7 +172,12 @@ REDACTED
 		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
 	REDACTED
-		codexResult := applyCodexOAuthTransform(reqBody, false, false)
+		codexResult := applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
+			SkipDefaultInstructions: !isResponsesShape,
+	REDACTED)
+		if !isResponsesShape {
+			ensureCodexOAuthInstructionsField(reqBody)
+	REDACTED
 		if codexResult.NormalizedModel != "" {
 			upstreamModel = codexResult.NormalizedModel
 	REDACTED
