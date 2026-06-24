@@ -4126,7 +4126,9 @@ export default {
         resetTooltipNeedQuery: 'Click Credits first to load the available count',
         resetTooltipNoCredits: 'No reset credits available',
         noCreditsAvailable: 'No reset credits available',
-        resetSuccess: 'Reset {windowsREDACTED window(s)'
+        resetSuccess: 'Reset {windowsREDACTED window(s)',
+        confirmTitle: 'Confirm Weekly Limit Reset',
+        confirmMessage: 'This will consume 1 reset credit to immediately restore the current window ({countREDACTED remaining). This action cannot be undone. Continue?'
       REDACTED,
       tier: {
         free: 'Free',

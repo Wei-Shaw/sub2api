@@ -3414,7 +3414,9 @@ export default {
         resetTooltipNeedQuery: '先点击「次数」加载剩余重置次数',
         resetTooltipNoCredits: '没有可用的重置次数',
         noCreditsAvailable: '没有可用的重置次数',
-        resetSuccess: '已重置 {windowsREDACTED 个窗口'
+        resetSuccess: '已重置 {windowsREDACTED 个窗口',
+        confirmTitle: '确认重置周限',
+        confirmMessage: '将消耗 1 次重置次数立即恢复当前窗口，剩余 {countREDACTED 次。此操作不可撤销，确定继续吗？'
       REDACTED,
       tier: {
         free: 'Free',
