@@ -522,6 +522,12 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		return s.testOpenAIImageOAuth(c, ctx, account, testModelID, imagePrompt)
 	}
 
+	// Embeddings-only accounts do not expose /responses or /chat/completions.
+	// Probe the OpenAI-compatible embeddings endpoint directly.
+	if account.Type == AccountTypeAPIKey && shouldUseOpenAIEmbeddingsAccountTest(account, testModelID) {
+		return s.testOpenAIEmbeddingsConnection(c, account, testModelID, prompt)
+	}
+
 	// Determine authentication method and API URL
 	var authToken string
 	var apiURL string
@@ -629,6 +635,118 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// Process SSE stream
 	return s.processOpenAIStream(c, resp.Body)
+}
+
+func shouldUseOpenAIEmbeddingsAccountTest(account *Account, modelID string) bool {
+	if account == nil {
+		return false
+	}
+
+	model := strings.ToLower(strings.TrimSpace(modelID))
+	if strings.Contains(model, "embedding") || strings.Contains(model, "embed") {
+		return true
+	}
+
+	configured, found := account.openAIEndpointCapabilitySet()
+	if !found {
+		return false
+	}
+	return configured[string(OpenAIEndpointCapabilityEmbeddings)] && !configured[string(OpenAIEndpointCapabilityChatCompletions)]
+}
+
+func (s *AccountTestService) testOpenAIEmbeddingsConnection(c *gin.Context, account *Account, testModelID string, prompt string) error {
+	ctx := c.Request.Context()
+
+	authToken := account.GetOpenAIApiKey()
+	if authToken == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
+	}
+
+	baseURL := account.GetOpenAIBaseURL()
+	if baseURL == "" {
+		baseURL = "https://api.openai.com"
+	}
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	upstreamModel := normalizeOpenAIModelForUpstream(account, testModelID)
+	if strings.TrimSpace(upstreamModel) == "" {
+		upstreamModel = testModelID
+	}
+	input := strings.TrimSpace(prompt)
+	if input == "" {
+		input = "你好"
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "正在通过 /v1/embeddings 测试连接"})
+
+	payload := map[string]any{
+		"model": upstreamModel,
+		"input": input,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, buildOpenAIEmbeddingsURL(normalizedBaseURL), bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Embeddings request")
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Embeddings API (/v1/embeddings) request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read Embeddings response: %s", readErr.Error()))
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusTooManyRequests {
+			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
+		}
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			errMsg := fmt.Sprintf("Embeddings authentication failed (401): %s", string(body))
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Embeddings API (/v1/embeddings) returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	var parsed struct {
+		Data []struct {
+			Embedding []float64 `json:"embedding"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse Embeddings response: %s", err.Error()))
+	}
+	if len(parsed.Data) == 0 || len(parsed.Data[0].Embedding) == 0 {
+		return s.sendErrorAndEnd(c, "Embeddings response missing data[0].embedding")
+	}
+
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("embedding dim: %d", len(parsed.Data[0].Embedding))})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "已通过 /v1/embeddings 验证"})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
 }
 
 // testOpenAIChatCompletionsConnection tests an OpenAI-compatible APIKey account
