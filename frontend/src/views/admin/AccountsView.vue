@@ -224,8 +224,19 @@
           </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
+              <a
+                v-if="getApiKeyAccountNameHref(row)"
+                :href="getApiKeyAccountNameHref(row) || undefined"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="font-medium text-primary-600 underline-offset-2 hover:underline dark:text-primary-400"
+                :title="getApiKeyAccountNameHref(row) || String(value)"
+                @click.stop
+              >
+                {{ value }}
+              </a>
               <HelpTooltip
-                v-if="accountHomepageUrl(row)"
+                v-else-if="accountHomepageUrl(row)"
                 :content="accountHomepageUrl(row)"
                 width-class="w-max max-w-sm break-all"
                 class="-ml-1 self-start"
@@ -637,6 +648,20 @@ const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-hidden-by-default'
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
+const HTTP_URL_PATTERN = /^https?:\/\/[\w.-]+(?::\d{2,5})?(?:[/?#][^\s]*)?$/i
+const WEBSITE_LINK_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::\d{2,5})?(?:[/?#][^\s]*)?$/i
+const normalizeAccountNameUrl = (name: unknown): string | null => {
+  if (typeof name !== 'string') return null
+  const value = name.trim()
+  if (!value || /\s/.test(value)) return null
+  if (HTTP_URL_PATTERN.test(value)) return value
+  if (WEBSITE_LINK_PATTERN.test(value)) return `https://${value}`
+  return null
+}
+const getApiKeyAccountNameHref = (account: Account): string | null => {
+  if (account.type !== 'apikey') return null
+  return normalizeAccountNameUrl(account.name)
+}
 type AccountSortOrder = 'asc' | 'desc'
 type AccountSortState = {
   sort_by: string
