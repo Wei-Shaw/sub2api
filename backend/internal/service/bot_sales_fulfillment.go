@@ -262,14 +262,7 @@ func (s *BotSalesFulfillmentService) issueBotSalesAPIKeyForPolicy(ctx context.Co
 	case "", BotSalesIssueAPIKeyAlways:
 		return s.createBotSalesAPIKey(ctx, userID, targetGroupID, req.ExternalOrderID)
 	case BotSalesIssueAPIKeyIfMissing:
-		apiKey, err := s.findReusableBotSalesAPIKey(ctx, userID)
-		if err != nil {
-			return nil, err
-		}
-		if apiKey != nil {
-			return s.rebindBotSalesAPIKeyIfNeeded(ctx, apiKey, userID, targetGroupID)
-		}
-		return s.createBotSalesAPIKey(ctx, userID, targetGroupID, req.ExternalOrderID)
+		return s.issueBotSalesAPIKeyIfMissing(ctx, userID, targetGroupID, req.ExternalOrderID)
 	case BotSalesIssueAPIKeyNever:
 		return nil, nil
 	default:
@@ -287,119 +280,85 @@ func (s *BotSalesFulfillmentService) createBotSalesAPIKey(ctx context.Context, u
 	})
 }
 
-func (s *BotSalesFulfillmentService) findReusableBotSalesAPIKey(ctx context.Context, userID int64) (*APIKey, error) {
+func (s *BotSalesFulfillmentService) issueBotSalesAPIKeyIfMissing(ctx context.Context, userID int64, targetGroupID int64, externalOrderID string) (*APIKey, error) {
+	keys, err := s.findReusableBotSalesAPIKeys(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return s.createBotSalesAPIKey(ctx, userID, targetGroupID, externalOrderID)
+	}
+	if targetGroupID <= 0 {
+		return &keys[0], nil
+	}
+	if apiKey := firstBotSalesAPIKeyForGroup(keys, targetGroupID); apiKey != nil {
+		return apiKey, nil
+	}
+	if apiKey := firstUnassignedBotSalesAPIKey(keys); apiKey != nil {
+		return s.rebindBotSalesAPIKeyGroup(ctx, apiKey, userID, targetGroupID)
+	}
+	if len(keys) == 1 || botSalesReusableKeysShareGroup(keys) {
+		return s.rebindBotSalesAPIKeyGroup(ctx, &keys[0], userID, targetGroupID)
+	}
+	return s.createBotSalesAPIKey(ctx, userID, targetGroupID, externalOrderID)
+}
+
+func (s *BotSalesFulfillmentService) findReusableBotSalesAPIKeys(ctx context.Context, userID int64) ([]APIKey, error) {
 	if s == nil || s.apiKeyService == nil || userID <= 0 {
 		return nil, nil
 	}
-	keys, _, err := s.apiKeyService.List(ctx, userID, pagination.PaginationParams{Page: 1, PageSize: 1000, SortBy: "created_at", SortOrder: pagination.SortOrderAsc}, APIKeyListFilters{Status: StatusAPIKeyActive})
-	if err != nil {
-		return nil, err
+
+	const pageSize = 1000
+	reusable := make([]APIKey, 0, pageSize)
+	for page := 1; ; page++ {
+		keys, _, err := s.apiKeyService.List(ctx, userID, pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: "created_at", SortOrder: pagination.SortOrderAsc}, APIKeyListFilters{Status: StatusAPIKeyActive})
+		if err != nil {
+			return nil, err
+		}
+		for i := range keys {
+			if isReusableBotSalesAPIKey(&keys[i]) {
+				reusable = append(reusable, keys[i])
+			}
+		}
+		if len(keys) < pageSize {
+			break
+		}
 	}
+	return reusable, nil
+}
+
+func firstBotSalesAPIKeyForGroup(keys []APIKey, targetGroupID int64) *APIKey {
 	for i := range keys {
-		candidate := &keys[i]
-		if isReusableBotSalesAPIKey(candidate) {
-			return candidate, nil
+		if keys[i].GroupID != nil && *keys[i].GroupID == targetGroupID {
+			return &keys[i]
 		}
 	}
-	return nil, nil
+	return nil
 }
 
-func (s *BotSalesFulfillmentService) rebindBotSalesAPIKeyIfNeeded(ctx context.Context, apiKey *APIKey, userID int64, targetGroupID int64) (*APIKey, error) {
-	if apiKey == nil || targetGroupID <= 0 || apiKey.GroupID != nil && *apiKey.GroupID == targetGroupID {
-		return apiKey, nil
-	}
-	shouldRebind, err := s.shouldRebindBotSalesAPIKeyToGroup(ctx, apiKey, targetGroupID)
-	if err != nil {
-		return nil, err
-	}
-	if !shouldRebind {
-		return apiKey, nil
-	}
-	return s.rebindBotSalesAPIKeyGroup(ctx, apiKey, userID, targetGroupID)
-}
-
-func (s *BotSalesFulfillmentService) shouldRebindBotSalesAPIKeyToGroup(ctx context.Context, apiKey *APIKey, targetGroupID int64) (bool, error) {
-	if s == nil || s.apiKeyService == nil || s.apiKeyService.groupRepo == nil || apiKey == nil {
-		return false, nil
-	}
-	if apiKey.GroupID == nil || *apiKey.GroupID <= 0 {
-		return true, nil
-	}
-	targetGroup, err := s.apiKeyService.groupRepo.GetByID(ctx, targetGroupID)
-	if err != nil {
-		return false, fmt.Errorf("get target group: %w", err)
-	}
-	existingGroup, err := s.apiKeyService.groupRepo.GetByID(ctx, *apiKey.GroupID)
-	if err != nil {
-		if errors.Is(err, ErrGroupNotFound) {
-			return true, nil
-		}
-		return false, fmt.Errorf("get api key group: %w", err)
-	}
-	if !botSalesGroupPlatformsEquivalent(existingGroup.Platform, targetGroup.Platform) {
-		return true, nil
-	}
-	return !botSalesGroupCapabilitiesCompatible(existingGroup, targetGroup), nil
-}
-
-func botSalesGroupPlatformsEquivalent(left string, right string) bool {
-	left = normalizeBotSalesGroupPlatform(left)
-	right = normalizeBotSalesGroupPlatform(right)
-	return left != "" && left == right
-}
-
-func botSalesGroupCapabilitiesCompatible(existingGroup *Group, targetGroup *Group) bool {
-	if existingGroup == nil || targetGroup == nil {
-		return false
-	}
-	if targetGroup.ClaudeCodeOnly && !existingGroup.ClaudeCodeOnly {
-		return false
-	}
-	if targetGroup.AllowMessagesDispatch && !existingGroup.AllowMessagesDispatch {
-		return false
-	}
-	if targetGroup.AllowImageGeneration && !existingGroup.AllowImageGeneration {
-		return false
-	}
-	if targetGroup.RequireOAuthOnly && !existingGroup.RequireOAuthOnly {
-		return false
-	}
-	if targetGroup.RequirePrivacySet && !existingGroup.RequirePrivacySet {
-		return false
-	}
-	return botSalesSupportedModelScopesCover(existingGroup.SupportedModelScopes, targetGroup.SupportedModelScopes)
-}
-
-func botSalesSupportedModelScopesCover(existingScopes []string, targetScopes []string) bool {
-	if len(targetScopes) == 0 || len(existingScopes) == 0 {
-		return true
-	}
-	existing := make(map[string]struct{}, len(existingScopes))
-	for _, scope := range existingScopes {
-		scope = strings.TrimSpace(strings.ToLower(scope))
-		if scope != "" {
-			existing[scope] = struct{}{}
+func firstUnassignedBotSalesAPIKey(keys []APIKey) *APIKey {
+	for i := range keys {
+		if keys[i].GroupID == nil || *keys[i].GroupID <= 0 {
+			return &keys[i]
 		}
 	}
-	for _, scope := range targetScopes {
-		scope = strings.TrimSpace(strings.ToLower(scope))
-		if scope == "" {
-			continue
-		}
-		if _, ok := existing[scope]; !ok {
+	return nil
+}
+
+func botSalesReusableKeysShareGroup(keys []APIKey) bool {
+	if len(keys) == 0 {
+		return false
+	}
+	if keys[0].GroupID == nil || *keys[0].GroupID <= 0 {
+		return false
+	}
+	groupID := *keys[0].GroupID
+	for i := 1; i < len(keys); i++ {
+		if keys[i].GroupID == nil || *keys[i].GroupID != groupID {
 			return false
 		}
 	}
 	return true
-}
-
-func normalizeBotSalesGroupPlatform(platform string) string {
-	switch strings.TrimSpace(strings.ToLower(platform)) {
-	case "claude":
-		return PlatformAnthropic
-	default:
-		return strings.TrimSpace(strings.ToLower(platform))
-	}
 }
 
 func (s *BotSalesFulfillmentService) rebindBotSalesAPIKeyGroup(ctx context.Context, apiKey *APIKey, userID int64, targetGroupID int64) (*APIKey, error) {

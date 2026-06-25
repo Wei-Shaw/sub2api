@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -247,7 +248,7 @@ func TestBotSalesFulfillmentIfMissingReusesExistingAPIKeyForTopup(t *testing.T) 
 	require.Equal(t, float64(40), client.User.GetX(ctx, newResp.Buyer.UserID).Balance)
 }
 
-func TestBotSalesFulfillmentIfMissingPreservesExistingAPIKeyForEquivalentTopupPlatform(t *testing.T) {
+func TestBotSalesFulfillmentIfMissingRebindsSingleReusableAPIKeyToTopupGroup(t *testing.T) {
 	ctx := context.Background()
 	client, db := newBotSalesFulfillmentEntClient(t)
 	oldGroup := createBotSalesGroupWithPlatform(t, client, "bot-balance-openai-a", service.PlatformOpenAI, service.SubscriptionTypeNone)
@@ -313,12 +314,12 @@ func TestBotSalesFulfillmentIfMissingPreservesExistingAPIKeyForEquivalentTopupPl
 	require.NoError(t, err)
 	require.NotNil(t, topupResp.Delivery.APIKey)
 	require.Equal(t, issuedKeyID, topupResp.Delivery.APIKey.ID)
-	require.Equal(t, oldGroup.ID, *topupResp.Delivery.APIKey.GroupID)
+	require.Equal(t, newGroup.ID, *topupResp.Delivery.APIKey.GroupID)
 	require.Equal(t, 1, client.APIKey.Query().Where(apikey.UserIDEQ(firstResp.Buyer.UserID)).CountX(ctx))
 
 	storedKey := client.APIKey.GetX(ctx, issuedKeyID)
 	require.NotNil(t, storedKey.GroupID)
-	require.Equal(t, oldGroup.ID, *storedKey.GroupID)
+	require.Equal(t, newGroup.ID, *storedKey.GroupID)
 }
 
 func TestBotSalesFulfillmentIfMissingRebindsExistingAPIKeyWhenTargetPlatformDiffers(t *testing.T) {
@@ -395,7 +396,244 @@ func TestBotSalesFulfillmentIfMissingRebindsExistingAPIKeyWhenTargetPlatformDiff
 	require.Equal(t, newGroup.ID, *storedKey.GroupID)
 }
 
-func TestBotSalesFulfillmentSubscriptionIfMissingPreservesExistingAPIKeyForEquivalentPlatform(t *testing.T) {
+func TestBotSalesFulfillmentIfMissingCreatesTargetGroupAPIKeyWhenNoReusableKeyExists(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	targetGroup := createBotSalesGroup(t, client, "bot-balance-no-key-target", service.SubscriptionTypeNone)
+	pkg := createBotSalesBalancePackage(t, client, "standard_no_key_target", targetGroup.ID)
+	buyer := createBotSalesBuyer(t, client, "bot-if-missing-no-key@example.test")
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp := fulfillBotSalesBalanceIfMissing(t, ctx, svc, pkg, buyer.Email, "no-key-target")
+
+	require.NotNil(t, resp.Delivery.APIKey)
+	require.Equal(t, targetGroup.ID, *resp.Delivery.APIKey.GroupID)
+	require.Equal(t, 1, client.APIKey.Query().Where(apikey.UserIDEQ(buyer.ID)).CountX(ctx))
+	storedKey := client.APIKey.GetX(ctx, resp.Delivery.APIKey.ID)
+	require.NotNil(t, storedKey.GroupID)
+	require.Equal(t, targetGroup.ID, *storedKey.GroupID)
+}
+
+func TestBotSalesFulfillmentIfMissingUsesExactTargetGroupAPIKey(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	otherGroup := createBotSalesGroup(t, client, "bot-balance-exact-other", service.SubscriptionTypeNone)
+	targetGroup := createBotSalesGroup(t, client, "bot-balance-exact-target", service.SubscriptionTypeNone)
+	pkg := createBotSalesBalancePackage(t, client, "standard_exact_target", targetGroup.ID)
+	buyer := createBotSalesBuyer(t, client, "bot-if-missing-exact@example.test")
+	otherKey := createBotSalesAPIKey(t, client, buyer.ID, "exact-other", botSalesInt64Ptr(otherGroup.ID))
+	targetKey := createBotSalesAPIKey(t, client, buyer.ID, "exact-target", botSalesInt64Ptr(targetGroup.ID))
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp := fulfillBotSalesBalanceIfMissing(t, ctx, svc, pkg, buyer.Email, "exact-target")
+
+	require.NotNil(t, resp.Delivery.APIKey)
+	require.Equal(t, targetKey.ID, resp.Delivery.APIKey.ID)
+	require.Equal(t, targetGroup.ID, *resp.Delivery.APIKey.GroupID)
+	require.Equal(t, 2, client.APIKey.Query().Where(apikey.UserIDEQ(buyer.ID)).CountX(ctx))
+	require.Equal(t, otherGroup.ID, *client.APIKey.GetX(ctx, otherKey.ID).GroupID)
+	require.Equal(t, targetGroup.ID, *client.APIKey.GetX(ctx, targetKey.ID).GroupID)
+}
+
+func TestBotSalesFulfillmentIfMissingPrefersExactTargetGroupOverUnassignedKey(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	targetGroup := createBotSalesGroup(t, client, "bot-balance-exact-over-unassigned", service.SubscriptionTypeNone)
+	pkg := createBotSalesBalancePackage(t, client, "standard_exact_over_unassigned", targetGroup.ID)
+	buyer := createBotSalesBuyer(t, client, "bot-if-missing-exact-over-unassigned@example.test")
+	unassignedKey := createBotSalesAPIKey(t, client, buyer.ID, "exact-over-unassigned-free", nil)
+	targetKey := createBotSalesAPIKey(t, client, buyer.ID, "exact-over-unassigned-target", botSalesInt64Ptr(targetGroup.ID))
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp := fulfillBotSalesBalanceIfMissing(t, ctx, svc, pkg, buyer.Email, "exact-over-unassigned")
+
+	require.NotNil(t, resp.Delivery.APIKey)
+	require.Equal(t, targetKey.ID, resp.Delivery.APIKey.ID)
+	require.Equal(t, targetGroup.ID, *resp.Delivery.APIKey.GroupID)
+	require.Equal(t, 2, client.APIKey.Query().Where(apikey.UserIDEQ(buyer.ID)).CountX(ctx))
+	require.Nil(t, client.APIKey.GetX(ctx, unassignedKey.ID).GroupID)
+	require.Equal(t, targetGroup.ID, *client.APIKey.GetX(ctx, targetKey.ID).GroupID)
+}
+
+func TestBotSalesFulfillmentIfMissingPaginatesReusableKeysBeyondFirstThousand(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	otherGroup := createBotSalesGroup(t, client, "bot-balance-paged-other", service.SubscriptionTypeNone)
+	targetGroup := createBotSalesGroup(t, client, "bot-balance-paged-target", service.SubscriptionTypeNone)
+	pkg := createBotSalesBalancePackage(t, client, "standard_paged_target", targetGroup.ID)
+	buyer := createBotSalesBuyer(t, client, "bot-if-missing-paged@example.test")
+	for i := 0; i < 1000; i++ {
+		createBotSalesAPIKey(t, client, buyer.ID, "paged-other-"+strconv.Itoa(i), botSalesInt64Ptr(otherGroup.ID))
+	}
+	targetKey := createBotSalesAPIKey(t, client, buyer.ID, "paged-target", botSalesInt64Ptr(targetGroup.ID))
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp := fulfillBotSalesBalanceIfMissing(t, ctx, svc, pkg, buyer.Email, "paged-target")
+
+	require.NotNil(t, resp.Delivery.APIKey)
+	require.Equal(t, targetKey.ID, resp.Delivery.APIKey.ID)
+	require.Equal(t, targetGroup.ID, *resp.Delivery.APIKey.GroupID)
+	require.Equal(t, 1001, client.APIKey.Query().Where(apikey.UserIDEQ(buyer.ID)).CountX(ctx))
+	require.Equal(t, targetGroup.ID, *client.APIKey.GetX(ctx, targetKey.ID).GroupID)
+}
+
+func TestBotSalesFulfillmentIfMissingRebindsFirstKeyWhenReusableKeysShareNonTargetGroup(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	oldGroup := createBotSalesGroup(t, client, "bot-balance-same-pool-old", service.SubscriptionTypeNone)
+	targetGroup := createBotSalesGroup(t, client, "bot-balance-same-pool-target", service.SubscriptionTypeNone)
+	pkg := createBotSalesBalancePackage(t, client, "standard_same_pool_target", targetGroup.ID)
+	buyer := createBotSalesBuyer(t, client, "bot-if-missing-same-pool@example.test")
+	firstKey := createBotSalesAPIKey(t, client, buyer.ID, "same-pool-first", botSalesInt64Ptr(oldGroup.ID))
+	secondKey := createBotSalesAPIKey(t, client, buyer.ID, "same-pool-second", botSalesInt64Ptr(oldGroup.ID))
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp := fulfillBotSalesBalanceIfMissing(t, ctx, svc, pkg, buyer.Email, "same-pool-target")
+
+	require.NotNil(t, resp.Delivery.APIKey)
+	require.Equal(t, firstKey.ID, resp.Delivery.APIKey.ID)
+	require.Equal(t, targetGroup.ID, *resp.Delivery.APIKey.GroupID)
+	require.Equal(t, 2, client.APIKey.Query().Where(apikey.UserIDEQ(buyer.ID)).CountX(ctx))
+	require.Equal(t, targetGroup.ID, *client.APIKey.GetX(ctx, firstKey.ID).GroupID)
+	require.Equal(t, oldGroup.ID, *client.APIKey.GetX(ctx, secondKey.ID).GroupID)
+}
+
+func TestBotSalesFulfillmentIfMissingCreatesNewKeyWhenReusableKeysSpanMultipleNonTargetGroups(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	firstGroup := createBotSalesGroup(t, client, "bot-balance-multi-first", service.SubscriptionTypeNone)
+	secondGroup := createBotSalesGroup(t, client, "bot-balance-multi-second", service.SubscriptionTypeNone)
+	targetGroup := createBotSalesGroup(t, client, "bot-balance-multi-target", service.SubscriptionTypeNone)
+	pkg := createBotSalesBalancePackage(t, client, "standard_multi_target", targetGroup.ID)
+	buyer := createBotSalesBuyer(t, client, "bot-if-missing-multi@example.test")
+	firstKey := createBotSalesAPIKey(t, client, buyer.ID, "multi-first", botSalesInt64Ptr(firstGroup.ID))
+	secondKey := createBotSalesAPIKey(t, client, buyer.ID, "multi-second", botSalesInt64Ptr(secondGroup.ID))
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp := fulfillBotSalesBalanceIfMissing(t, ctx, svc, pkg, buyer.Email, "multi-target")
+
+	require.NotNil(t, resp.Delivery.APIKey)
+	require.NotEqual(t, firstKey.ID, resp.Delivery.APIKey.ID)
+	require.NotEqual(t, secondKey.ID, resp.Delivery.APIKey.ID)
+	require.Equal(t, targetGroup.ID, *resp.Delivery.APIKey.GroupID)
+	require.Equal(t, 3, client.APIKey.Query().Where(apikey.UserIDEQ(buyer.ID)).CountX(ctx))
+	require.Equal(t, firstGroup.ID, *client.APIKey.GetX(ctx, firstKey.ID).GroupID)
+	require.Equal(t, secondGroup.ID, *client.APIKey.GetX(ctx, secondKey.ID).GroupID)
+}
+
+func TestBotSalesFulfillmentIfMissingPrefersUnassignedReusableAPIKey(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	oldGroup := createBotSalesGroup(t, client, "bot-balance-unassigned-old", service.SubscriptionTypeNone)
+	targetGroup := createBotSalesGroup(t, client, "bot-balance-unassigned-target", service.SubscriptionTypeNone)
+	pkg := createBotSalesBalancePackage(t, client, "standard_unassigned_target", targetGroup.ID)
+	buyer := createBotSalesBuyer(t, client, "bot-if-missing-unassigned@example.test")
+	groupedKey := createBotSalesAPIKey(t, client, buyer.ID, "unassigned-grouped", botSalesInt64Ptr(oldGroup.ID))
+	unassignedKey := createBotSalesAPIKey(t, client, buyer.ID, "unassigned-free", nil)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp := fulfillBotSalesBalanceIfMissing(t, ctx, svc, pkg, buyer.Email, "unassigned-target")
+
+	require.NotNil(t, resp.Delivery.APIKey)
+	require.Equal(t, unassignedKey.ID, resp.Delivery.APIKey.ID)
+	require.Equal(t, targetGroup.ID, *resp.Delivery.APIKey.GroupID)
+	require.Equal(t, 2, client.APIKey.Query().Where(apikey.UserIDEQ(buyer.ID)).CountX(ctx))
+	require.Equal(t, oldGroup.ID, *client.APIKey.GetX(ctx, groupedKey.ID).GroupID)
+	require.Equal(t, targetGroup.ID, *client.APIKey.GetX(ctx, unassignedKey.ID).GroupID)
+}
+
+func TestBotSalesFulfillmentIfMissingIgnoresUnusableAPIKeys(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	oldGroup := createBotSalesGroup(t, client, "bot-balance-unusable-old", service.SubscriptionTypeNone)
+	targetGroup := createBotSalesGroup(t, client, "bot-balance-unusable-target", service.SubscriptionTypeNone)
+	pkg := createBotSalesBalancePackage(t, client, "standard_unusable_target", targetGroup.ID)
+	buyer := createBotSalesBuyer(t, client, "bot-if-missing-unusable@example.test")
+	expiredAt := time.Now().Add(-time.Hour)
+	disabledKey := createBotSalesAPIKey(t, client, buyer.ID, "unusable-disabled-target", botSalesInt64Ptr(targetGroup.ID), func(c *dbent.APIKeyCreate) {
+		c.SetStatus(service.StatusAPIKeyDisabled)
+	})
+	expiredKey := createBotSalesAPIKey(t, client, buyer.ID, "unusable-expired-target", botSalesInt64Ptr(targetGroup.ID), func(c *dbent.APIKeyCreate) {
+		c.SetExpiresAt(expiredAt)
+	})
+	quotaKey := createBotSalesAPIKey(t, client, buyer.ID, "unusable-quota-old", botSalesInt64Ptr(oldGroup.ID), func(c *dbent.APIKeyCreate) {
+		c.SetQuota(1)
+		c.SetQuotaUsed(1)
+	})
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp := fulfillBotSalesBalanceIfMissing(t, ctx, svc, pkg, buyer.Email, "unusable-target")
+
+	require.NotNil(t, resp.Delivery.APIKey)
+	require.NotEqual(t, disabledKey.ID, resp.Delivery.APIKey.ID)
+	require.NotEqual(t, expiredKey.ID, resp.Delivery.APIKey.ID)
+	require.NotEqual(t, quotaKey.ID, resp.Delivery.APIKey.ID)
+	require.Equal(t, targetGroup.ID, *resp.Delivery.APIKey.GroupID)
+	require.Equal(t, 4, client.APIKey.Query().Where(apikey.UserIDEQ(buyer.ID)).CountX(ctx))
+	require.Equal(t, targetGroup.ID, *client.APIKey.GetX(ctx, disabledKey.ID).GroupID)
+	require.Equal(t, targetGroup.ID, *client.APIKey.GetX(ctx, expiredKey.ID).GroupID)
+	require.Equal(t, oldGroup.ID, *client.APIKey.GetX(ctx, quotaKey.ID).GroupID)
+}
+
+func TestBotSalesFulfillmentAlwaysCreatesNewAPIKeyForTargetGroup(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	targetGroup := createBotSalesGroup(t, client, "bot-balance-always-target", service.SubscriptionTypeNone)
+	pkg := createBotSalesBalancePackage(t, client, "standard_always_target", targetGroup.ID)
+	buyer := createBotSalesBuyer(t, client, "bot-always-target@example.test")
+	existingKey := createBotSalesAPIKey(t, client, buyer.ID, "always-existing-target", botSalesInt64Ptr(targetGroup.ID))
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-always-target",
+		Operation:          service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-always-target",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:always-target",
+			Email:          buyer.Email,
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.Delivery.APIKey)
+	require.NotEqual(t, existingKey.ID, resp.Delivery.APIKey.ID)
+	require.Equal(t, targetGroup.ID, *resp.Delivery.APIKey.GroupID)
+	require.Equal(t, 2, client.APIKey.Query().Where(apikey.UserIDEQ(buyer.ID)).CountX(ctx))
+	require.Equal(t, targetGroup.ID, *client.APIKey.GetX(ctx, existingKey.ID).GroupID)
+}
+
+func TestBotSalesFulfillmentNeverDoesNotReturnAPIKey(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	targetGroup := createBotSalesGroup(t, client, "bot-balance-never-target", service.SubscriptionTypeNone)
+	pkg := createBotSalesBalancePackage(t, client, "standard_never_target", targetGroup.ID)
+	buyer := createBotSalesBuyer(t, client, "bot-never-target@example.test")
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-never-target",
+		Operation:          service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-never-target",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:never-target",
+			Email:          buyer.Email,
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyNever},
+	})
+	require.NoError(t, err)
+	require.Nil(t, resp.Delivery.APIKey)
+	require.Equal(t, 0, client.APIKey.Query().Where(apikey.UserIDEQ(buyer.ID)).CountX(ctx))
+}
+
+func TestBotSalesFulfillmentSubscriptionIfMissingRebindsSingleReusableAPIKeyToPlanGroup(t *testing.T) {
 	ctx := context.Background()
 	client, db := newBotSalesFulfillmentEntClient(t)
 	oldGroup := createBotSalesGroupWithPlatform(t, client, "bot-sub-openai-a", service.PlatformOpenAI, service.SubscriptionTypeSubscription)
@@ -457,12 +695,12 @@ func TestBotSalesFulfillmentSubscriptionIfMissingPreservesExistingAPIKeyForEquiv
 	require.Equal(t, newGroup.ID, secondResp.Subscription.GroupID)
 	require.NotNil(t, secondResp.Delivery.APIKey)
 	require.Equal(t, issuedKeyID, secondResp.Delivery.APIKey.ID)
-	require.Equal(t, oldGroup.ID, *secondResp.Delivery.APIKey.GroupID)
+	require.Equal(t, newGroup.ID, *secondResp.Delivery.APIKey.GroupID)
 	require.Equal(t, 1, client.APIKey.Query().Where(apikey.UserIDEQ(firstResp.Buyer.UserID)).CountX(ctx))
 
 	storedKey := client.APIKey.GetX(ctx, issuedKeyID)
 	require.NotNil(t, storedKey.GroupID)
-	require.Equal(t, oldGroup.ID, *storedKey.GroupID)
+	require.Equal(t, newGroup.ID, *storedKey.GroupID)
 }
 
 func TestBotSalesFulfillmentSubscriptionIfMissingRebindsExistingAPIKeyWhenCapabilityMissing(t *testing.T) {
@@ -1263,6 +1501,68 @@ func TestBotSalesFulfillmentMissingAffiliateIsNotRejected(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+}
+
+func createBotSalesBuyer(t *testing.T, client *dbent.Client, email string) *dbent.User {
+	t.Helper()
+	return client.User.Create().
+		SetEmail(email).
+		SetPasswordHash("test-password-hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		SetConcurrency(1).
+		SaveX(context.Background())
+}
+
+func createBotSalesBalancePackage(t *testing.T, client *dbent.Client, code string, groupID int64) *dbent.BalancePackage {
+	t.Helper()
+	return client.BalancePackage.Create().
+		SetCode(code).
+		SetLabel(code).
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(groupID).
+		SetForSale(true).
+		SaveX(context.Background())
+}
+
+func createBotSalesAPIKey(t *testing.T, client *dbent.Client, userID int64, suffix string, groupID *int64, opts ...func(*dbent.APIKeyCreate)) *dbent.APIKey {
+	t.Helper()
+	create := client.APIKey.Create().
+		SetUserID(userID).
+		SetKey("bot-sales-test-key-" + suffix).
+		SetName("bot-sales-" + suffix).
+		SetStatus(service.StatusAPIKeyActive).
+		SetNillableGroupID(groupID)
+	for _, opt := range opts {
+		opt(create)
+	}
+	return create.SaveX(context.Background())
+}
+
+func fulfillBotSalesBalanceIfMissing(t *testing.T, ctx context.Context, svc *service.BotSalesFulfillmentService, pkg *dbent.BalancePackage, buyerEmail string, suffix string) *service.BotSalesTokenFulfillmentResponse {
+	t.Helper()
+	resp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-" + suffix,
+		Operation:          service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-" + suffix,
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:" + suffix,
+			Email:          buyerEmail,
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyIfMissing},
+	})
+	require.NoError(t, err)
+	return resp
+}
+
+func botSalesInt64Ptr(v int64) *int64 {
+	return &v
 }
 
 func newBotSalesFulfillmentServiceForTest(client *dbent.Client, db *sql.DB) *service.BotSalesFulfillmentService {
