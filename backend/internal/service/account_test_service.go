@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -32,8 +33,9 @@ import (
 var sseDataPrefix = regexp.MustCompile(`^data:\s*`)
 
 const (
-	testClaudeAPIURL   = "https://api.anthropic.com/v1/messages?beta=true"
-	chatgptCodexAPIURL = "https://chatgpt.com/backend-api/codex/responses"
+	testClaudeAPIURL           = "https://api.anthropic.com/v1/messages?beta=true"
+	chatgptCodexAPIURL         = "https://chatgpt.com/backend-api/codex/responses"
+	chatgptWhamAccountCheckURL = "https://chatgpt.com/backend-api/wham/accounts/check"
 )
 
 // TestEvent represents a SSE event for account testing
@@ -70,6 +72,14 @@ type AccountTestService struct {
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	tlsFPProfileService       *TLSFingerprintProfileService
+}
+
+// AccountLiveProbeResult is the in-memory result for checking credentials that
+// have not been persisted yet, such as accounts being imported from a data file.
+type AccountLiveProbeResult struct {
+	Healthy   bool
+	Message   string
+	LatencyMs int64
 }
 
 // NewAccountTestService creates a new AccountTestService
@@ -195,6 +205,232 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
+// ProbeTemporaryAccount runs the same upstream connectivity check used by the
+// admin account test flow without requiring the account to exist in the database.
+func (s *AccountTestService) ProbeTemporaryAccount(ctx context.Context, account *Account, modelID string) AccountLiveProbeResult {
+	startedAt := time.Now()
+	if s == nil {
+		return AccountLiveProbeResult{Healthy: false, Message: "account test service is not configured"}
+	}
+	if account == nil {
+		return AccountLiveProbeResult{Healthy: false, Message: "account is required"}
+	}
+	if s.httpUpstream == nil && account.Platform != PlatformAntigravity {
+		return AccountLiveProbeResult{Healthy: false, Message: "upstream HTTP client is not configured"}
+	}
+	if account.IsOpenAI() {
+		return s.probeTemporaryOpenAIAccount(ctx, account, startedAt)
+	}
+
+	w := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(w)
+	ginCtx.Request = (&http.Request{}).WithContext(ctx)
+
+	testErr := s.testTemporaryAccountConnection(ginCtx, account, modelID)
+	_, errMsg := parseTestSSEOutput(w.Body.String())
+	if errMsg == "" && testErr != nil {
+		errMsg = testErr.Error()
+	}
+	if errMsg != "" {
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   errMsg,
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+	return AccountLiveProbeResult{
+		Healthy:   true,
+		Message:   "ok",
+		LatencyMs: time.Since(startedAt).Milliseconds(),
+	}
+}
+
+func (s *AccountTestService) probeTemporaryOpenAIAccount(ctx context.Context, account *Account, startedAt time.Time) AccountLiveProbeResult {
+	if accessToken := account.GetOpenAIAccessToken(); accessToken != "" {
+		return s.probeTemporaryOpenAIAccountCheck(ctx, account, startedAt, accessToken)
+	}
+	if account.Type == AccountTypeAPIKey {
+		return s.probeTemporaryOpenAIModels(ctx, account, startedAt)
+	}
+	return AccountLiveProbeResult{
+		Healthy:   false,
+		Message:   "No access token available",
+		LatencyMs: time.Since(startedAt).Milliseconds(),
+	}
+}
+
+func (s *AccountTestService) probeTemporaryOpenAIAccountCheck(ctx context.Context, account *Account, startedAt time.Time, accessToken string) AccountLiveProbeResult {
+	if strings.TrimSpace(accessToken) == "" {
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   "No access token available",
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+	accessToken = strings.TrimSpace(accessToken)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, chatgptWhamAccountCheckURL, nil)
+	if err != nil {
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   "Failed to create account check request",
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Host = "chatgpt.com"
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Origin", "https://chatgpt.com")
+	req.Header.Set("Referer", "https://chatgpt.com/")
+	if chatgptAccountID := strings.TrimSpace(account.GetCredential("chatgpt_account_id")); chatgptAccountID != "" {
+		req.Header.Set("ChatGPT-Account-Id", chatgptAccountID)
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
+	if err != nil {
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   "account check request failed: " + truncateString(sanitizeUpstreamErrorMessage(err.Error()), 512),
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if readErr != nil {
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   "failed to read account check response: " + truncateString(sanitizeUpstreamErrorMessage(readErr.Error()), 512),
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		message := strings.TrimSpace(extractUpstreamErrorMessage(body))
+		if message == "" {
+			message = strings.TrimSpace(string(body))
+		}
+		if message == "" {
+			message = http.StatusText(resp.StatusCode)
+		}
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   fmt.Sprintf("account check returned %d: %s", resp.StatusCode, truncateString(sanitizeUpstreamErrorMessage(message), 512)),
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+
+	return AccountLiveProbeResult{
+		Healthy:   true,
+		Message:   "ok",
+		LatencyMs: time.Since(startedAt).Milliseconds(),
+	}
+}
+
+func (s *AccountTestService) probeTemporaryOpenAIModels(ctx context.Context, account *Account, startedAt time.Time) AccountLiveProbeResult {
+	apiKey := account.GetOpenAIApiKey()
+	if apiKey == "" {
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   "No API key available",
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+	baseURL := account.GetOpenAIBaseURL()
+	if baseURL == "" {
+		baseURL = "https://api.openai.com"
+	}
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   "Invalid base URL: " + sanitizeUpstreamErrorMessage(err.Error()),
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildOpenAIModelsURL(normalizedBaseURL), nil)
+	if err != nil {
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   "Failed to create model list request",
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
+	if err != nil {
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   "model list request failed: " + truncateString(sanitizeUpstreamErrorMessage(err.Error()), 512),
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if readErr != nil {
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   "failed to read model list response: " + truncateString(sanitizeUpstreamErrorMessage(readErr.Error()), 512),
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		message := strings.TrimSpace(extractUpstreamErrorMessage(body))
+		if message == "" {
+			message = strings.TrimSpace(string(body))
+		}
+		if message == "" {
+			message = http.StatusText(resp.StatusCode)
+		}
+		return AccountLiveProbeResult{
+			Healthy:   false,
+			Message:   fmt.Sprintf("model list returned %d: %s", resp.StatusCode, truncateString(sanitizeUpstreamErrorMessage(message), 512)),
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+		}
+	}
+
+	return AccountLiveProbeResult{
+		Healthy:   true,
+		Message:   "ok",
+		LatencyMs: time.Since(startedAt).Milliseconds(),
+	}
+}
+
+func (s *AccountTestService) testTemporaryAccountConnection(c *gin.Context, account *Account, modelID string) error {
+	switch {
+	case account.IsOpenAI():
+		return s.testOpenAIAccountConnection(c, account, modelID, "", AccountTestModeDefault)
+	case account.IsGemini():
+		return s.testGeminiAccountConnection(c, account, modelID, "")
+	case account.Platform == PlatformAntigravity:
+		return s.routeAntigravityTest(c, account, modelID, "")
+	default:
+		return s.testClaudeAccountConnection(c, account, modelID)
+	}
+}
+
+func (s *AccountTestService) resolveTLSProfile(account *Account) *tlsfingerprint.Profile {
+	if s == nil || s.tlsFPProfileService == nil {
+		return nil
+	}
+	return s.tlsFPProfileService.ResolveTLSProfile(account)
+}
+
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
 func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account *Account, modelID string) error {
 	ctx := c.Request.Context()
@@ -298,7 +534,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -370,7 +606,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -601,7 +837,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -670,7 +906,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) request failed: %s", err.Error()))
 	}
@@ -766,7 +1002,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		if s.accountRepo != nil {
 			updates := buildOpenAICompactProbeExtraUpdates(nil, nil, err, time.Now())
@@ -900,7 +1136,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -1517,7 +1753,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}

@@ -16,11 +16,16 @@ import type {
   TempUnschedulableStatus,
   AdminDataPayload,
   AdminDataImportResult,
+  AdminDataInspectStreamEvent,
+  AdminDataInspectResult,
   CodexSessionImportRequest,
   CodexSessionImportResult,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse
 } from '@/types'
+import { getLocale } from '@/i18n'
+
+const ADMIN_ACCOUNTS_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 /**
  * List all accounts with pagination
@@ -599,12 +604,95 @@ export async function exportData(options?: {
 export async function importData(payload: {
   data: AdminDataPayload
   skip_default_group_bind?: boolean
+  group_ids?: number[]
 }): Promise<AdminDataImportResult> {
   const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
     data: payload.data,
-    skip_default_group_bind: payload.skip_default_group_bind
+    skip_default_group_bind: payload.skip_default_group_bind,
+    group_ids: payload.group_ids
   })
   return data
+}
+
+export async function inspectData(payload: {
+  data: AdminDataPayload
+  valid_proxy_keys?: string[]
+}): Promise<AdminDataInspectResult> {
+  const { data } = await apiClient.post<AdminDataInspectResult>('/admin/accounts/data/inspect', {
+    data: payload.data,
+    valid_proxy_keys: payload.valid_proxy_keys
+  })
+  return data
+}
+
+export async function inspectDataStream(
+  payload: {
+    data: AdminDataPayload
+    valid_proxy_keys?: string[]
+  },
+  onEvent: (event: AdminDataInspectStreamEvent) => void | Promise<void>
+): Promise<void> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept-Language': getLocale()
+  }
+  const token = localStorage.getItem('auth_token')
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  const response = await fetch(`${ADMIN_ACCOUNTS_API_BASE_URL}/admin/accounts/data/inspect/stream`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({
+      data: payload.data,
+      valid_proxy_keys: payload.valid_proxy_keys
+    })
+  })
+
+  if (!response.ok) {
+    throw new Error(`Inspect stream failed: HTTP ${response.status}`)
+  }
+  if (!response.body) {
+    throw new Error('Inspect stream is not readable')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  const consumeEventBlock = async (block: string) => {
+    const dataLines = block
+      .split(/\r?\n/)
+      .map((line) => line.trimEnd())
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+    if (dataLines.length === 0) {
+      return
+    }
+    const raw = dataLines.join('\n')
+    const event = JSON.parse(raw) as AdminDataInspectStreamEvent
+    await onEvent(event)
+  }
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) {
+      break
+    }
+    buffer += decoder.decode(value, { stream: true })
+    const blocks = buffer.split(/\r?\n\r?\n/)
+    buffer = blocks.pop() || ''
+    for (const block of blocks) {
+      await consumeEventBlock(block)
+    }
+  }
+
+  buffer += decoder.decode()
+  if (buffer.trim()) {
+    await consumeEventBlock(buffer)
+  }
 }
 
 export async function importCodexSession(payload: CodexSessionImportRequest): Promise<CodexSessionImportResult> {
@@ -811,6 +899,8 @@ export const accountsAPI = {
   syncFromCrs,
   exportData,
   importData,
+  inspectData,
+  inspectDataStream,
   importCodexSession,
   getAntigravityDefaultModelMapping,
   batchClearError,
