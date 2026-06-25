@@ -498,7 +498,8 @@ func (s *GeminiMessagesCompatService) HasAntigravityAccounts(ctx context.Context
 // 1) API key accounts (AI Studio)
 // 2) OAuth accounts without project_id (AI Studio OAuth)
 // 3) OAuth accounts explicitly marked as ai_studio
-// 4) Any remaining Gemini accounts (fallback)
+// 4) API key accounts (Vertex API key; GET models falls back to local metadata)
+// 5) Any remaining Gemini accounts (fallback)
 func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx context.Context, groupID *int64) (*Account, error) {
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, PlatformGemini, true)
 	if err != nil {
@@ -515,6 +516,9 @@ func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx cont
 		switch a.Type {
 		case AccountTypeAPIKey:
 			if strings.TrimSpace(a.GetCredential("api_key")) != "" {
+				if a.IsGeminiVertexAPIKey() {
+					return 3
+				}
 				return 0
 			}
 			return 9
@@ -526,7 +530,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx cont
 				return 2
 			}
 			// Code Assist OAuth tokens often lack AI Studio scopes for models listing.
-			return 3
+			return 4
 		case AccountTypeServiceAccount:
 			// Vertex service accounts use aiplatform.googleapis.com, not the AI Studio
 			// endpoint (generativelanguage.googleapis.com), so they cannot serve these requests.
@@ -627,19 +631,13 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 				return nil, "", errors.New("gemini api_key not configured")
 			}
 
-			baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
-			normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
-			if err != nil {
-				return nil, "", err
-			}
-
 			action := "generateContent"
 			if req.Stream {
 				action = "streamGenerateContent"
 			}
-			fullURL := fmt.Sprintf("%s/v1beta/models/%s:%s", strings.TrimRight(normalizedBaseURL, "/"), mappedModel, action)
-			if req.Stream {
-				fullURL += "?alt=sse"
+			fullURL, err := buildGeminiAPIKeyUpstreamURL(account, s.validateUpstreamBaseURL, mappedModel, action, req.Stream)
+			if err != nil {
+				return nil, "", err
 			}
 
 			restGeminiReq := normalizeGeminiRequestForAIStudio(geminiReq)
@@ -1168,15 +1166,9 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				return nil, "", errors.New("gemini api_key not configured")
 			}
 
-			baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
-			normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+			fullURL, err := buildGeminiAPIKeyUpstreamURL(account, s.validateUpstreamBaseURL, mappedModel, upstreamAction, useUpstreamStream)
 			if err != nil {
 				return nil, "", err
-			}
-
-			fullURL := fmt.Sprintf("%s/v1beta/models/%s:%s", strings.TrimRight(normalizedBaseURL, "/"), mappedModel, upstreamAction)
-			if useUpstreamStream {
-				fullURL += "?alt=sse"
 			}
 
 			upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(body))
@@ -2643,6 +2635,11 @@ func (s *GeminiMessagesCompatService) ForwardAIStudioGET(ctx context.Context, ac
 	path = strings.TrimSpace(path)
 	if path == "" || !strings.HasPrefix(path, "/") {
 		return nil, errors.New("invalid path")
+	}
+	if account.IsGeminiVertexAPIKey() {
+		if fallbackRes, handled, err := buildGeminiVertexModelsFallback(path); handled || err != nil {
+			return fallbackRes, err
+		}
 	}
 
 	baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)

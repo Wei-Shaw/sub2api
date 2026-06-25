@@ -170,6 +170,47 @@ func TestGeminiForwardAsChatCompletions_StreamsOpenAIChunksFromGeminiSSE(t *test
 	require.Contains(t, out, "data: [DONE]")
 }
 
+func TestGeminiForwardAsChatCompletions_APIKeyVertexUsesVertexEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"parts":[{"text":"hello"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":1}}`)),
+		},
+	}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: httpStub,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       360,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "gemini-api-key",
+			"api_mode": "vertex",
+			"base_url": "https://aiplatform.googleapis.com",
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-3.1-flash-image","messages":[{"role":"user","content":"hi"}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "gemini-3.1-flash-image", result.UpstreamModel)
+	require.Equal(t, 1, httpStub.calls)
+	require.NotNil(t, httpStub.lastReq)
+	require.Equal(t, "gemini-api-key", httpStub.lastReq.Header.Get("x-goog-api-key"))
+	require.Equal(t, "https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-3.1-flash-image:generateContent", httpStub.lastReq.URL.String())
+}
+
 // TestConvertClaudeToolsToGeminiTools_CustomType 测试custom类型工具转换
 func TestConvertClaudeToolsToGeminiTools_CustomType(t *testing.T) {
 	tests := []struct {
@@ -432,6 +473,120 @@ func TestGeminiMessagesCompatServiceForward_PreservesRequestedModelAndMappedUpst
 	require.Equal(t, 1, httpStub.calls)
 	require.NotNil(t, httpStub.lastReq)
 	require.Contains(t, httpStub.lastReq.URL.String(), "/models/claude-sonnet-4-20250514:")
+}
+
+func TestGeminiMessagesCompatServiceForward_APIKeyVertexUsesVertexEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"x-request-id": []string{"vertex-req-messages"}},
+			Body:       io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"parts":[{"text":"hello"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5}}`)),
+		},
+	}
+	svc := &GeminiMessagesCompatService{httpUpstream: httpStub, cfg: &config.Config{}}
+	account := &Account{
+		ID:       360,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-key",
+			"api_mode": "vertex",
+			"base_url": "https://aiplatform.googleapis.com",
+		},
+		Concurrency: 1,
+	}
+	body := []byte(`{"model":"gemini-3.1-flash-image","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "gemini-3.1-flash-image", result.UpstreamModel)
+	require.Equal(t, 1, httpStub.calls)
+	require.NotNil(t, httpStub.lastReq)
+	require.Equal(t, "test-key", httpStub.lastReq.Header.Get("x-goog-api-key"))
+	require.Equal(t, "https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-3.1-flash-image:generateContent", httpStub.lastReq.URL.String())
+}
+
+func TestBuildGeminiAPIKeyUpstreamURL_VertexExpressMode(t *testing.T) {
+	account := &Account{
+		Type:     AccountTypeAPIKey,
+		Platform: PlatformGemini,
+		Credentials: map[string]any{
+			"api_key":  "test-key",
+			"api_mode": "vertex",
+		},
+	}
+
+	fullURL, err := buildGeminiAPIKeyUpstreamURL(
+		account,
+		func(raw string) (string, error) { return raw, nil },
+		"gemini-2.5-flash",
+		"streamGenerateContent",
+		true,
+	)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		"https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+		fullURL,
+	)
+}
+
+func TestBuildGeminiVertexModelsFallback(t *testing.T) {
+	res, handled, err := buildGeminiVertexModelsFallback("/v1beta/models")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Contains(t, string(res.Body), "\"models\"")
+
+	res, handled, err = buildGeminiVertexModelsFallback("/v1beta/models/gemini-2.5-flash")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Contains(t, string(res.Body), "\"models/gemini-2.5-flash\"")
+}
+
+func TestGeminiMessagesCompatServiceForwardNative_APIKeyVertexUsesVertexEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.1-flash-image:generateContent", nil)
+
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"x-request-id": []string{"vertex-req-1"}},
+			Body:       io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"parts":[{"text":"ok"}]}}],"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":4}}`)),
+		},
+	}
+	svc := &GeminiMessagesCompatService{httpUpstream: httpStub, cfg: &config.Config{}}
+	account := &Account{
+		ID:       360,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-key",
+			"api_mode": "vertex",
+			"base_url": "https://aiplatform.googleapis.com",
+		},
+		Concurrency: 1,
+	}
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"draw a cat"}]}],"generationConfig":{"responseModalities":["TEXT","IMAGE"],"imageConfig":{"aspectRatio":"1:1"}}}`)
+
+	result, err := svc.ForwardNative(context.Background(), c, account, "gemini-3.1-flash-image", "generateContent", false, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "gemini-3.1-flash-image", result.UpstreamModel)
+	require.Equal(t, 1, httpStub.calls)
+	require.NotNil(t, httpStub.lastReq)
+	require.Equal(t, "test-key", httpStub.lastReq.Header.Get("x-goog-api-key"))
+	require.Contains(t, httpStub.lastReq.URL.String(), "https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-3.1-flash-image:generateContent")
+	require.NotContains(t, httpStub.lastReq.URL.String(), "/v1beta/models/")
 }
 
 func TestGeminiMessagesCompatServiceForward_NormalizesWebSearchToolForAIStudio(t *testing.T) {

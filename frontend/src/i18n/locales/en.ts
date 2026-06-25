@@ -3909,11 +3909,22 @@ export default {
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)',
+        baseUrlHintVertex: 'Leave default for the official Vertex AI express mode endpoint',
+        apiKeyHintVertex: 'Your Vertex AI API Key (usually starts with AQ)',
+        apiModeLabel: 'API Mode',
+        apiModeHint:
+          'AI Studio stays the default. When switched to Vertex AI, sub2api will call Vertex directly instead of using an upstream compatibility relay.',
+        apiMode: {
+          aiStudio: 'AI Studio',
+          vertex: 'Vertex AI'
+        },
         tier: {
           label: 'Account Tier',
           hint: 'Tip: The system will try to auto-detect the tier first; if auto-detection is unavailable or fails, your selected tier is used as a fallback (simulated quota).',
           aiStudioHint:
             'AI Studio quotas are per-model (Pro/Flash are limited independently). If billing is enabled, choose Pay-as-you-go.',
+          vertexHint:
+            'Vertex API keys use Vertex AI Express Mode. This tier is only used for local scheduling heuristics and does not change Google-side quota.',
           googleOne: {
             free: 'Google One Free',
             pro: 'Google One Pro',
@@ -3926,6 +3937,10 @@ export default {
           aiStudio: {
             free: 'Google AI Free',
             paid: 'Google AI Pay-as-you-go'
+          },
+          vertex: {
+            standard: 'GCP Standard',
+            enterprise: 'GCP Enterprise'
           }
         },
         accountType: {
