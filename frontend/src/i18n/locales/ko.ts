@@ -1222,6 +1222,7 @@ const messages = {
     rpmLimit: 'RPM 제한',
     rpmUnlimited: '제한 없음',
     memberSince: '가입일',
+    serialNumber: 'Serial Number',
     overviewTitle: '계정 개요',
     overviewDescription: '계정 상태, 프로필 출처, 자주 사용하는 설정을 빠르게 확인하세요.',
     basicsTitle: '프로필 및 아바타',

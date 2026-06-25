@@ -75,6 +75,8 @@ export interface User {
   username_source?: string | UserProfileSourceContext | null
   display_name_source?: string | UserProfileSourceContext | null
   nickname_source?: string | UserProfileSourceContext | null
+  device_code?: string | null
+  deviceCode?: string | null
   profile_sources?: {
     avatar?: string | UserProfileSourceContext | null
     username?: string | UserProfileSourceContext | null

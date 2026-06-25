@@ -672,6 +672,7 @@ export default {
     rpmLimit: 'RPM 限制',
     rpmUnlimited: '不限制',
     memberSince: '注册时间',
+    serialNumber: 'Serial Number',
     overviewTitle: '账户总览',
     overviewDescription: '快速查看账号状态、资料来源与常用设置。',
     basicsTitle: '资料与头像',

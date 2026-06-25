@@ -38,10 +38,33 @@
                 </span>
               </div>
 
-              <div class="space-y-1">
+              <div class="space-y-3">
                 <p class="truncate text-sm text-gray-600 dark:text-gray-300">
                   {{ primaryEmailDisplay }}
                 </p>
+
+                <div
+                  v-if="serialNumber"
+                  class="flex flex-wrap items-center gap-2 rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-primary-100 dark:bg-dark-900/70 dark:ring-primary-900/40"
+                >
+                  <span class="text-xs font-medium tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                    {{ t('profile.serialNumber') }}:
+                  </span>
+                  <span class="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ serialNumber }}
+                  </span>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm ml-auto inline-flex items-center gap-1.5"
+                    :title="t('common.copy')"
+                    :aria-label="t('common.copy')"
+                    @click="copySerialNumber"
+                  >
+                    <Icon name="clipboard" size="sm" />
+                    <span class="sr-only">{{ t('common.copy') }}</span>
+                  </button>
+                </div>
+
                 <div
                   v-if="sourceHints.length"
                   class="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400"
@@ -186,6 +209,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
 import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
+import { useClipboard } from '@/composables/useClipboard'
 import type { User, UserAuthBindingStatus, UserAuthProvider, UserProfileSourceContext } from '@/types'
 
 const props = withDefaults(defineProps<{
@@ -208,6 +232,7 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
+const { copyToClipboard } = useClipboard()
 
 function normalizeBindingStatus(binding: boolean | UserAuthBindingStatus | undefined): boolean | null {
   if (typeof binding === 'boolean') {
@@ -244,6 +269,9 @@ const primaryEmailDisplay = computed(() => {
   }
   return email
 })
+const serialNumber = computed(() => {
+  return (props.user?.device_code || props.user?.deviceCode || '').trim()
+})
 const avatarInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'U')
 const memberSinceLabel = computed(() => {
   const raw = props.user?.created_at?.trim()
@@ -261,6 +289,13 @@ const memberSinceLabel = computed(() => {
     month: 'short',
   }).format(date)
 })
+
+const copySerialNumber = async () => {
+  if (!serialNumber.value) {
+    return
+  }
+  await copyToClipboard(serialNumber.value)
+}
 
 const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
   email: t('profile.authBindings.providers.email'),

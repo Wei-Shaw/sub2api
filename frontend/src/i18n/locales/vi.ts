@@ -1221,6 +1221,7 @@ const messages = {
     rpmLimit: 'Giới hạn RPM',
     rpmUnlimited: 'Không giới hạn',
     memberSince: 'Ngày đăng ký',
+    serialNumber: 'Serial Number',
     overviewTitle: 'Tổng quan tài khoản',
     overviewDescription: 'Xem nhanh trạng thái tài khoản, nguồn hồ sơ và các cài đặt thường dùng.',
     basicsTitle: 'Hồ sơ và ảnh đại diện',
