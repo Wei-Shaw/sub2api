@@ -1144,6 +1144,21 @@ REDACTED
 REDACTED
 
 func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if upstreamStatusCode != http.StatusBadRequest && upstreamStatusCode != http.StatusServiceUnavailable {
+		return false
+REDACTED
+
+	hasOpenAIServerOverloadedCode := func(payload []byte) bool {
+		code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
+		if code == "" {
+			code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
+	REDACTED
+		return code == "server_is_overloaded" || code == "slow_down"
+REDACTED
+
+	if len(upstreamBody) > 0 && hasOpenAIServerOverloadedCode(upstreamBody) {
+		return true
+REDACTED
 	if upstreamStatusCode != http.StatusBadRequest {
 		return false
 REDACTED
