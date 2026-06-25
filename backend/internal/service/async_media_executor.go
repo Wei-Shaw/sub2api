@@ -219,6 +219,13 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 // 但不退费、不终结任务——任务仍由 reconciler 兜底处理。
 var ErrAsyncMediaPending = errors.New("async media task still pending")
 
+// ErrAsyncMediaPricingMissing 表示上游模型未在渠道/分组中配置可用的定价。
+//
+// 触发条件：image / per-request 模式下，分层价（含 size_tier × quality）与
+// 默认按次价均为 0，意味着该模型未配置任何有效定价。此时禁止提交任务，
+// 防止账户被「免费刷图」。
+var ErrAsyncMediaPricingMissing = errors.New("async media pricing not configured")
+
 func (s *AsyncMediaService) WaitForTerminal(ctx context.Context, task *AsyncMediaTask, in *AsyncMediaSubmitInput) (*AsyncMediaTask, error) {
 	ticker := time.NewTicker(s.pollInterval)
 	defer ticker.Stop()
@@ -469,17 +476,39 @@ func (s *AsyncMediaService) writeTerminalUsageLog(
 }
 
 // estimateCost 通过统一计费入口估算 (size_tier × quality × count) 的实际费用。
+//
+// 强校验：image / per-request 模式下，若该模型在分组/渠道中未配置任何有效定价
+// （RequestTiers 与 DefaultPerRequestPrice 均为 0），返回 ErrAsyncMediaPricingMissing，
+// 调用方据此拒绝提交任务，避免账户被「0 费用刷图」。
 func (s *AsyncMediaService) estimateCost(
 	ctx context.Context,
 	model string, groupID *int64,
 	sizeTier, quality string, count int, rateMultiplier float64,
 ) (float64, error) {
 	if s.billing == nil {
-		return 0, nil
+		return 0, fmt.Errorf("%w: billing service not initialized", ErrAsyncMediaPricingMissing)
+	}
+	if s.resolver == nil {
+		return 0, fmt.Errorf("%w: pricing resolver not initialized", ErrAsyncMediaPricingMissing)
 	}
 	if count <= 0 {
 		count = 1
 	}
+
+	// 先解析定价，校验是否存在有效配置（image/per-request 模式必须命中 tier 或默认价）。
+	resolved := s.resolver.Resolve(ctx, PricingInput{
+		Model:   model,
+		GroupID: groupID,
+	})
+	if resolved == nil {
+		return 0, fmt.Errorf("%w: model=%s", ErrAsyncMediaPricingMissing, model)
+	}
+	if resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage {
+		if len(resolved.RequestTiers) == 0 && resolved.DefaultPerRequestPrice <= 0 {
+			return 0, fmt.Errorf("%w: model=%s mode=%s", ErrAsyncMediaPricingMissing, model, resolved.Mode)
+		}
+	}
+
 	breakdown, err := s.billing.CalculateCostUnified(CostInput{
 		Ctx:            ctx,
 		Model:          model,
@@ -489,12 +518,21 @@ func (s *AsyncMediaService) estimateCost(
 		Quality:        quality,
 		RateMultiplier: rateMultiplier,
 		Resolver:       s.resolver,
+		Resolved:       resolved,
 	})
 	if err != nil {
+		// 统一计费层上抛的「定价不可用」视为配置缺失，转化为我们的 sentinel。
+		if errors.Is(err, ErrModelPricingUnavailable) {
+			return 0, fmt.Errorf("%w: model=%s: %v", ErrAsyncMediaPricingMissing, model, err)
+		}
 		return 0, err
 	}
 	if breakdown == nil {
-		return 0, nil
+		return 0, fmt.Errorf("%w: model=%s empty breakdown", ErrAsyncMediaPricingMissing, model)
+	}
+	// 二次防御：在合法计费倍率下结算价仍为 0，视为定价缺失。
+	if rateMultiplier > 0 && breakdown.ActualCost <= 0 {
+		return 0, fmt.Errorf("%w: model=%s size=%s quality=%s zero cost", ErrAsyncMediaPricingMissing, model, sizeTier, quality)
 	}
 	return breakdown.ActualCost, nil
 }

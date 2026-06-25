@@ -289,6 +289,21 @@ func newImageBillingResolver(t *testing.T, groupID int64, model string, price1K 
 	return NewModelPricingResolver(cs, newTestBillingService())
 }
 
+// newEmptyPricingResolver 构造一个没有任何定价配置的解析器，用于测试「未配置定价就拒绝提交」。
+func newEmptyPricingResolver(t *testing.T, groupID int64) *ModelPricingResolver {
+	t.Helper()
+	cs := newTestChannelServiceWithCache(t, &channelCache{
+		pricingByGroupModel:     map[channelModelKey]*ChannelModelPricing{},
+		channelByGroupID:        map[int64]*Channel{groupID: {ID: groupID, Status: StatusActive}},
+		groupPlatform:           map[int64]string{groupID: ""},
+		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
+		mappingByGroupModel:     map[channelModelKey]string{},
+		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
+		byID:                    map[int64]*Channel{},
+	})
+	return NewModelPricingResolver(cs, newTestBillingService())
+}
+
 func newFalAccount(serverURL string) *Account {
 	return &Account{
 		ID:       7,
@@ -480,4 +495,32 @@ func TestAsyncMedia_DeadlineExceeded_Reconciler_Refunds(t *testing.T) {
 	require.Equal(t, AsyncMediaStatusExpired, stored.Status)
 	require.InDelta(t, 100.0, userRepo.balance, 1e-9) // 全额退还
 	require.Equal(t, BillingStatusRefunded, taskRepo.lastUsageLog().BillingStatus)
+}
+
+// TestAsyncMedia_PricingMissing_RejectsSubmit 验证：
+// 当渠道/分组未为上游 fal 模型配置任何定价时，SubmitAsync 必须返回
+// ErrAsyncMediaPricingMissing 并拒绝提交，且不扣款、不落任务、不写 usage_log，
+// 防止账户被「免费刷图」。
+func TestAsyncMedia_PricingMissing_RejectsSubmit(t *testing.T) {
+	fs := newFalTestServer(t)
+	defer fs.Close()
+
+	groupID := int64(1)
+	resolver := newEmptyPricingResolver(t, groupID)
+	userRepo := &fakeUserRepo{balance: 100}
+	taskRepo := newFakeTaskRepo()
+	svc := NewAsyncMediaService(taskRepo, userRepo, newTestBillingService(), resolver, nil)
+	svc.SetPollInterval(time.Millisecond)
+
+	acc := newFalAccount(fs.URL)
+	in := newSubmitInput(acc, groupID, 2)
+
+	task, err := svc.SubmitAsync(context.Background(), in)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrAsyncMediaPricingMissing)
+	require.Nil(t, task)
+	// 余额未变动、没有退款、没有任务、没有 usage_log。
+	require.InDelta(t, 100.0, userRepo.balance, 1e-9)
+	require.Equal(t, 0, userRepo.refundCount())
+	require.Equal(t, 0, taskRepo.usageLogCount())
 }

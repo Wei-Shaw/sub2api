@@ -233,6 +233,12 @@ func (h *FalGatewayHandler) runPseudoSync(
 	task, err := h.asyncMedia.SubmitAsync(c.Request.Context(), submitInput)
 	if err != nil {
 		reqLog.Warn("fal.images.submit_failed", zap.Error(err))
+		if errors.Is(err, service.ErrAsyncMediaPricingMissing) {
+			// 模型未配置定价：拒绝提交，避免被「免费刷图」。
+			h.jsonError(c, http.StatusServiceUnavailable, "pricing_unavailable",
+				"Image model pricing is not configured for this group/channel; please contact the administrator")
+			return
+		}
 		h.jsonError(c, http.StatusBadGateway, "api_error", "Failed to submit image task: "+err.Error())
 		return
 	}
@@ -386,6 +392,11 @@ func (h *FalGatewayHandler) nativeSubmit(c *gin.Context, model string) {
 
 	task, err := h.asyncMedia.SubmitAsync(c.Request.Context(), submitInput)
 	if err != nil {
+		if errors.Is(err, service.ErrAsyncMediaPricingMissing) {
+			h.jsonError(c, http.StatusServiceUnavailable, "pricing_unavailable",
+				"Image model pricing is not configured for this group/channel; please contact the administrator")
+			return
+		}
 		h.jsonError(c, http.StatusBadGateway, "api_error", "Failed to submit image task: "+err.Error())
 		return
 	}
