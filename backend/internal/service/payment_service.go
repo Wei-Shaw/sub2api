@@ -342,7 +342,7 @@ const (
 )
 
 func psComputeValidityDays(days int, unit string) int {
-	switch unit {
+	switch strings.TrimSuffix(unit, "s") {
 	case validityUnitWeek:
 		return days * 7
 	case validityUnitMonth:
