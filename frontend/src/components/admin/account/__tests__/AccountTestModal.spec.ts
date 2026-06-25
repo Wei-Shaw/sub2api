@@ -86,6 +86,10 @@ function mountModal() {
   })
 }
 
+function findStartButton(wrapper: ReturnType<typeof mountModal>) {
+  return wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.startTest'))
+}
+
 describe('AccountTestModal', () => {
   beforeEach(() => {
     getAvailableModels.mockResolvedValue([
@@ -125,8 +129,7 @@ describe('AccountTestModal', () => {
     expect(promptInput.exists()).toBe(true)
     await promptInput.setValue('draw a tiny orange cat astronaut')
 
-    const buttons = wrapper.findAll('button')
-    const startButton = buttons.find((button) => button.text().includes('admin.accounts.startTest'))
+    const startButton = findStartButton(wrapper)
     expect(startButton).toBeTruthy()
 
     await startButton!.trigger('click')
@@ -137,6 +140,7 @@ describe('AccountTestModal', () => {
     const [, request] = (global.fetch as any).mock.calls[0]
     expect(JSON.parse(request.body)).toEqual({
       model_id: 'gemini-3.1-flash-image',
+      message: 'hi',
       prompt: 'draw a tiny orange cat astronaut'
     })
 
@@ -155,8 +159,7 @@ describe('AccountTestModal', () => {
     await quickFillButton!.trigger('click')
     expect(global.fetch).not.toHaveBeenCalled()
 
-    const buttons = wrapper.findAll('button')
-    const startButton = buttons.find((button) => button.text().includes('admin.accounts.startTest'))
+    const startButton = findStartButton(wrapper)
     expect(startButton).toBeTruthy()
 
     await startButton!.trigger('click')
@@ -167,7 +170,50 @@ describe('AccountTestModal', () => {
     const [, request] = (global.fetch as any).mock.calls[0]
     expect(JSON.parse(request.body)).toMatchObject({
       model_id: 'gemini-3.1-flash-image',
+      message: 'hi',
       client: 'Codex CLI'
     })
+  })
+
+  it('submits the configured test message', async () => {
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const messageInput = wrapper.find('[data-testid="account-test-message"]')
+    expect(messageInput.exists()).toBe(true)
+    await messageInput.setValue('check upstream client gate')
+
+    const startButton = findStartButton(wrapper)
+    expect(startButton).toBeTruthy()
+    await startButton!.trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({
+      model_id: 'gemini-3.1-flash-image',
+      message: 'check upstream client gate'
+    })
+  })
+
+  it('does not start a test when the test message is blank', async () => {
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const messageInput = wrapper.find('[data-testid="account-test-message"]')
+    expect(messageInput.exists()).toBe(true)
+    await messageInput.setValue('   ')
+
+    const startButton = findStartButton(wrapper)
+    expect(startButton).toBeTruthy()
+    expect(startButton!.attributes('disabled')).toBeDefined()
+
+    await startButton!.trigger('click')
+    await flushPromises()
+
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 })

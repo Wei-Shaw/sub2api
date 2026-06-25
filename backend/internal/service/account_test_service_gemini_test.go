@@ -14,7 +14,7 @@ import (
 func TestCreateGeminiTestPayload_ImageModel(t *testing.T) {
 	t.Parallel()
 
-	payload := createGeminiTestPayload("gemini-2.5-flash-image", "draw a tiny robot")
+	payload := createGeminiTestPayload("gemini-2.5-flash-image", "", "draw a tiny robot")
 
 	var parsed struct {
 		Contents []struct {
@@ -36,6 +36,25 @@ func TestCreateGeminiTestPayload_ImageModel(t *testing.T) {
 	require.Equal(t, "draw a tiny robot", parsed.Contents[0].Parts[0].Text)
 	require.Equal(t, []string{"TEXT", "IMAGE"}, parsed.GenerationConfig.ResponseModalities)
 	require.Equal(t, "1:1", parsed.GenerationConfig.ImageConfig.AspectRatio)
+}
+
+func TestCreateGeminiTestPayload_TextModelUsesMessage(t *testing.T) {
+	t.Parallel()
+
+	payload := createGeminiTestPayload("gemini-2.5-flash", "custom probe text", "image prompt should not be used")
+
+	var parsed struct {
+		Contents []struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"contents"`
+	}
+
+	require.NoError(t, json.Unmarshal(payload, &parsed))
+	require.Len(t, parsed.Contents, 1)
+	require.Len(t, parsed.Contents[0].Parts, 1)
+	require.Equal(t, "custom probe text", parsed.Contents[0].Parts[0].Text)
 }
 
 func TestProcessGeminiStream_EmitsImageEvent(t *testing.T) {

@@ -474,6 +474,52 @@ func TestAccountTestService_OpenAIAPIKeyDefaultTestClientKeepsExistingHeaders(t 
 	require.Empty(t, req.Header.Get("User-Agent"))
 	require.Empty(t, req.Header.Get("Originator"))
 	require.Empty(t, req.Header.Get("Version"))
+	bodyBytes, err := io.ReadAll(req.Body)
+	require.NoError(t, err)
+	require.Equal(t, "hi", gjson.GetBytes(bodyBytes, "input.0.content.0.text").String())
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+}
+
+func TestAccountTestService_OpenAIAPIKeyCustomTestMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"}
+
+`))
+
+	account := &Account{
+		ID:          97,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+		},
+	}
+	repo := &openAIAccountTestRepo{
+		mockAccountRepoForGemini: mockAccountRepoForGemini{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+
+	err := svc.TestAccountConnectionWithOptions(ctx, account.ID, "gpt-5.4", "", AccountTestModeDefault, &AccountTestOptions{
+		Message: "custom probe text",
+	})
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+
+	bodyBytes, err := io.ReadAll(upstream.requests[0].Body)
+	require.NoError(t, err)
+	require.Equal(t, "custom probe text", gjson.GetBytes(bodyBytes, "input.0.content.0.text").String())
 	require.Contains(t, recorder.Body.String(), `"success":true`)
 }
 

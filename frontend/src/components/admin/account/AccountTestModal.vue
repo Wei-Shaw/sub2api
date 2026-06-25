@@ -57,6 +57,21 @@
 
       <div class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {{ t('admin.accounts.testMessage') }}
+        </label>
+        <input
+          v-model="testMessage"
+          type="text"
+          class="input"
+          data-testid="account-test-message"
+          :placeholder="t('admin.accounts.testMessagePlaceholder')"
+          :disabled="status === 'connecting'"
+          required
+        />
+      </div>
+
+      <div class="space-y-1.5">
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.testClient') }}
         </label>
         <input
@@ -203,7 +218,7 @@
           {{
             supportsImageTest
               ? t('admin.accounts.imageTestMode')
-              : t('admin.accounts.testPrompt')
+              : t('admin.accounts.testMessage')
           }}
         </span>
       </div>
@@ -219,10 +234,10 @@
         </button>
         <button
           @click="startTest"
-          :disabled="status === 'connecting' || !selectedModelId"
+          :disabled="status === 'connecting' || !selectedModelId || !testMessage.trim()"
           :class="[
             'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-            status === 'connecting' || !selectedModelId
+            status === 'connecting' || !selectedModelId || !testMessage.trim()
               ? 'cursor-not-allowed bg-primary-400 text-white'
               : status === 'success'
                 ? 'bg-green-500 text-white hover:bg-green-600'
@@ -296,6 +311,7 @@ const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
+const testMessage = ref('hi')
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
@@ -340,6 +356,7 @@ watch(
   async (newVal) => {
     if (newVal && props.account) {
       testPrompt.value = ''
+      testMessage.value = 'hi'
       testClient.value = ''
       resetState()
       await loadAvailableModels()
@@ -419,7 +436,8 @@ const scrollToBottom = async () => {
 }
 
 const startTest = async () => {
-  if (!props.account || !selectedModelId.value) return
+  const message = testMessage.value.trim()
+  if (!props.account || !selectedModelId.value || !message) return
 
   resetState()
   status.value = 'connecting'
@@ -438,6 +456,7 @@ const startTest = async () => {
     // Use fetch with streaming for SSE since EventSource doesn't support POST
     const body: Record<string, string> = {
       model_id: selectedModelId.value,
+      message,
       prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
     }
     const client = testClient.value.trim()
@@ -519,7 +538,7 @@ const handleEvent = (event: {
       addLine(
         supportsImageTest.value
             ? t('admin.accounts.sendingImageRequest')
-            : t('admin.accounts.sendingTestMessage'),
+            : t('admin.accounts.sendingTestMessage', { message: testMessage.value.trim() }),
         'text-gray-400'
       )
       addLine('', 'text-gray-300')

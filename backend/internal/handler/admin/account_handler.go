@@ -700,6 +700,7 @@ func (h *AccountHandler) Delete(c *gin.Context) {
 type TestAccountRequest struct {
 	ModelID string `json:"model_id"`
 	Prompt  string `json:"prompt"`
+	Message string `json:"message"`
 	Mode    string `json:"mode"`
 	Client  string `json:"client"`
 }
@@ -733,7 +734,8 @@ func (h *AccountHandler) Test(c *gin.Context) {
 
 	// Use AccountTestService to test the account with SSE streaming
 	if err := h.accountTestService.TestAccountConnectionWithOptions(c, accountID, req.ModelID, req.Prompt, req.Mode, &service.AccountTestOptions{
-		Client: req.Client,
+		Client:  req.Client,
+		Message: req.Message,
 	}); err != nil {
 		// Error already sent via SSE, just log
 		return
