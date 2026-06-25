@@ -692,6 +692,9 @@ type GatewayConfig struct {
 	// OpenAIResponseHeaderTimeout: OpenAI/Codex 上游等待响应头的超时时间（秒），0表示无超时
 	// OpenAI/Codex 请求可能在上游排队较久；默认不使用通用响应头超时截断。
 	OpenAIResponseHeaderTimeout int `mapstructure:"openai_response_header_timeout"`
+	// CompactResponseHeaderTimeout: OpenAI /responses/compact 等待上游响应头的超时时间（秒）
+	// 0/未显式配置时跟随 ResponseHeaderTimeout；compact 请求仍使用独立 HTTP client。
+	CompactResponseHeaderTimeout int `mapstructure:"compact_response_header_timeout"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
@@ -1400,6 +1403,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 		}
 		// 配置文件不存在时使用默认值
 	}
+	compactResponseHeaderTimeoutExplicit := hasExplicitConfigOrEnv("gateway.compact_response_header_timeout", "GATEWAY_COMPACT_RESPONSE_HEADER_TIMEOUT")
 
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -1474,6 +1478,9 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 			return nil, fmt.Errorf("read forced codex instructions template %q: %w", cfg.Gateway.ForcedCodexInstructionsTemplateFile, err)
 		}
 		cfg.Gateway.ForcedCodexInstructionsTemplate = string(content)
+	}
+	if !compactResponseHeaderTimeoutExplicit {
+		cfg.Gateway.CompactResponseHeaderTimeout = cfg.Gateway.ResponseHeaderTimeout
 	}
 
 	// 兼容旧键 gateway.openai_ws.sticky_previous_response_ttl_seconds。
@@ -1820,6 +1827,7 @@ func setDefaults() {
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
+	viper.SetDefault("gateway.compact_response_header_timeout", 600)
 	viper.SetDefault("gateway.log_upstream_error_body", true)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
@@ -2458,6 +2466,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIResponseHeaderTimeout < 0 {
 		return fmt.Errorf("gateway.openai_response_header_timeout must be non-negative")
+	}
+	if c.Gateway.CompactResponseHeaderTimeout < 0 {
+		return fmt.Errorf("gateway.compact_response_header_timeout must be non-negative")
 	}
 	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
 		switch c.Gateway.ConnectionPoolIsolation {

@@ -152,6 +152,10 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # Timeout for waiting upstream response headers on /responses/compact (seconds).
+  # Uncomment to override response_header_timeout; compact uses a dedicated client either way.
+  # /responses/compact 等待上游响应头超时时间（秒）。取消注释后覆盖 response_header_timeout；compact 始终使用独立客户端。
+  # compact_response_header_timeout: 600
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456

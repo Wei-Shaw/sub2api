@@ -28,6 +28,7 @@ type httpUpstreamRecorder struct {
 	lastBody []byte
 	requests []*http.Request
 	bodies   [][]byte
+	options  []HTTPUpstreamOptions
 
 	resp      *http.Response
 	responses []*http.Response
@@ -57,6 +58,16 @@ func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID 
 
 func (u *httpUpstreamRecorder) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
 	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+func (u *httpUpstreamRecorder) DoWithOptions(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, opts HTTPUpstreamOptions) (*http.Response, error) {
+	u.options = append(u.options, opts)
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+func (u *httpUpstreamRecorder) DoWithTLSOptions(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, opts HTTPUpstreamOptions) (*http.Response, error) {
+	u.options = append(u.options, opts)
+	return u.DoWithTLS(req, proxyURL, accountID, accountConcurrency, profile)
 }
 
 func TestOpenAIGatewayService_ResponsesUnknownModelDoesNotFallbackToGPT54(t *testing.T) {
@@ -453,6 +464,8 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactUsesJSONAndKeepsNonStreami
 	require.NotEmpty(t, upstream.lastReq.Header.Get("Session_Id"))
 	require.Equal(t, "chatgpt.com", upstream.lastReq.Host)
 	require.Equal(t, "chatgpt-acc", upstream.lastReq.Header.Get("chatgpt-account-id"))
+	require.Len(t, upstream.options, 1)
+	require.True(t, upstream.options[0].CompactResponseHeaders)
 	require.Contains(t, rec.Body.String(), `"id":"cmp_123"`)
 }
 

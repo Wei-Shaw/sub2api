@@ -161,6 +161,10 @@ func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 //   - 调用方必须关闭 resp.Body，否则会导致 inFlight 计数泄漏
 //   - inFlight > 0 的客户端不会被淘汰，确保活跃请求不被中断
 func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	return s.DoWithOptions(req, proxyURL, accountID, accountConcurrency, service.HTTPUpstreamOptions{})
+}
+
+func (s *httpUpstreamService) DoWithOptions(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, opts service.HTTPUpstreamOptions) (*http.Response, error) {
 	if err := s.validateRequestHost(req); err != nil {
 		return nil, err
 	}
@@ -170,7 +174,7 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	}
 
 	// 获取或创建对应的客户端，并标记请求占用
-	entry, err := s.acquireClientWithProfile(proxyURL, accountID, accountConcurrency, profile)
+	entry, err := s.acquireClientWithProfileAndOptions(proxyURL, accountID, accountConcurrency, profile, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -204,8 +208,12 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 // profile 为 nil 时不启用 TLS 指纹，行为与 Do 方法相同。
 // profile 非 nil 时使用指定的 Profile 进行 TLS 指纹伪装。
 func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	return s.DoWithTLSOptions(req, proxyURL, accountID, accountConcurrency, profile, service.HTTPUpstreamOptions{})
+}
+
+func (s *httpUpstreamService) DoWithTLSOptions(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, opts service.HTTPUpstreamOptions) (*http.Response, error) {
 	if profile == nil {
-		return s.Do(req, proxyURL, accountID, accountConcurrency)
+		return s.DoWithOptions(req, proxyURL, accountID, accountConcurrency, opts)
 	}
 	upstreamProfile := service.HTTPUpstreamProfileDefault
 	if req != nil {
@@ -226,7 +234,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		return nil, err
 	}
 
-	entry, err := s.acquireClientWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile)
+	entry, err := s.acquireClientWithTLSOptions(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, opts)
 	if err != nil {
 		slog.Debug("tls_fingerprint_acquire_client_failed", "account_id", accountID, "error", err)
 		return nil, err
@@ -250,14 +258,17 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	return resp, nil
 }
 
-// acquireClientWithTLS 获取或创建带 TLS 指纹的客户端
-func (s *httpUpstreamService) acquireClientWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile) (*upstreamClientEntry, error) {
-	return s.getClientEntryWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, true, true)
+func (s *httpUpstreamService) acquireClientWithTLSOptions(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, opts service.HTTPUpstreamOptions) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithTLSOptions(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, opts, true, true)
 }
 
 // getClientEntryWithTLS 获取或创建带 TLS 指纹的客户端条目
 // TLS 指纹客户端使用独立的缓存键，与普通客户端隔离
 func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithTLSOptions(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, service.HTTPUpstreamOptions{}, markInFlight, enforceLimit)
+}
+
+func (s *httpUpstreamService) getClientEntryWithTLSOptions(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, opts service.HTTPUpstreamOptions, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
 	isolation := s.getIsolationMode()
 	proxyKey, parsedProxy, err := normalizeProxyURL(proxyURL)
 	if err != nil {
@@ -265,9 +276,10 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	}
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
+	settings = s.applyRequestOptionsPoolSettings(settings, opts)
 	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
-	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
-	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
+	cacheKey := "tls:" + appendRequestClassToKey(buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault), opts)
+	poolKey := appendRequestClassToKey(buildPoolKey(settings, upstreamProtocolModeDefault), opts) + ":tls"
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -388,7 +400,11 @@ func (s *httpUpstreamService) acquireClient(proxyURL string, accountID int64, ac
 
 // acquireClientWithProfile 获取或创建客户端，并按请求 profile 选择协议策略。
 func (s *httpUpstreamService) acquireClientWithProfile(proxyURL string, accountID int64, accountConcurrency int, profile service.HTTPUpstreamProfile) (*upstreamClientEntry, error) {
-	return s.getClientEntry(proxyURL, accountID, accountConcurrency, profile, true, true)
+	return s.acquireClientWithProfileAndOptions(proxyURL, accountID, accountConcurrency, profile, service.HTTPUpstreamOptions{})
+}
+
+func (s *httpUpstreamService) acquireClientWithProfileAndOptions(proxyURL string, accountID int64, accountConcurrency int, profile service.HTTPUpstreamProfile, opts service.HTTPUpstreamOptions) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithOptions(proxyURL, accountID, accountConcurrency, profile, opts, true, true)
 }
 
 // getOrCreateClient 获取或创建客户端
@@ -414,6 +430,10 @@ func (s *httpUpstreamService) getOrCreateClient(proxyURL string, accountID int64
 // markInFlight=true 时会标记进行中请求，用于请求路径防止被淘汰
 // enforceLimit=true 时会限制客户端数量，超限且无法淘汰时返回错误
 func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, accountConcurrency int, profile service.HTTPUpstreamProfile, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithOptions(proxyURL, accountID, accountConcurrency, profile, service.HTTPUpstreamOptions{}, markInFlight, enforceLimit)
+}
+
+func (s *httpUpstreamService) getClientEntryWithOptions(proxyURL string, accountID int64, accountConcurrency int, profile service.HTTPUpstreamProfile, opts service.HTTPUpstreamOptions, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
 	// 获取隔离模式
 	isolation := s.getIsolationMode()
 	// 标准化代理 URL 并解析
@@ -425,10 +445,11 @@ func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, a
 	protocolMode := s.resolveProtocolMode(profile, proxyKey, parsedProxy)
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, profile)
+	settings = s.applyRequestOptionsPoolSettings(settings, opts)
 	// 构建缓存键（根据隔离策略不同）
-	cacheKey := buildCacheKey(isolation, proxyKey, accountID, protocolMode)
+	cacheKey := appendRequestClassToKey(buildCacheKey(isolation, proxyKey, accountID, protocolMode), opts)
 	// 构建连接池配置键（用于检测配置变更）
-	poolKey := buildPoolKey(settings, protocolMode)
+	poolKey := appendRequestClassToKey(buildPoolKey(settings, protocolMode), opts)
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -679,6 +700,13 @@ func (s *httpUpstreamService) applyProfilePoolSettings(settings poolSettings, pr
 	return settings
 }
 
+func (s *httpUpstreamService) applyRequestOptionsPoolSettings(settings poolSettings, opts service.HTTPUpstreamOptions) poolSettings {
+	if opts.CompactResponseHeaders {
+		settings.responseHeaderTimeout = compactResponseHeaderTimeout(s.cfg, settings.responseHeaderTimeout)
+	}
+	return settings
+}
+
 // buildPoolKey 构建连接池配置键，用于检测连接池配置变更。
 func buildPoolKey(settings poolSettings, protocolMode string) string {
 	base := fmt.Sprintf(
@@ -693,6 +721,26 @@ func buildPoolKey(settings poolSettings, protocolMode string) string {
 		return base
 	}
 	return base + "|proto:" + protocolMode
+}
+
+func appendRequestClassToKey(base string, opts service.HTTPUpstreamOptions) string {
+	if opts.CompactResponseHeaders {
+		return base + "|class:compact"
+	}
+	return base
+}
+
+func compactResponseHeaderTimeout(cfg *config.Config, fallback time.Duration) time.Duration {
+	if cfg == nil {
+		return fallback
+	}
+	if cfg.Gateway.CompactResponseHeaderTimeout > 0 {
+		return time.Duration(cfg.Gateway.CompactResponseHeaderTimeout) * time.Second
+	}
+	if cfg.Gateway.ResponseHeaderTimeout >= 0 {
+		return time.Duration(cfg.Gateway.ResponseHeaderTimeout) * time.Second
+	}
+	return fallback
 }
 
 // buildCacheKey 构建客户端缓存键

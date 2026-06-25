@@ -345,6 +345,41 @@ func TestLoadForcedCodexInstructionsTemplate(t *testing.T) {
 	require.Equal(t, "server-prefix\n\n{{ .ExistingInstructions }}", cfg.Gateway.ForcedCodexInstructionsTemplate)
 }
 
+func TestLoadCompactResponseHeaderTimeoutFollowsGatewayDefault(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_RESPONSE_HEADER_TIMEOUT", "42")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 42, cfg.Gateway.ResponseHeaderTimeout)
+	require.Equal(t, 42, cfg.Gateway.CompactResponseHeaderTimeout)
+}
+
+func TestLoadCompactResponseHeaderTimeoutExplicitEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_RESPONSE_HEADER_TIMEOUT", "42")
+	t.Setenv("GATEWAY_COMPACT_RESPONSE_HEADER_TIMEOUT", "99")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 42, cfg.Gateway.ResponseHeaderTimeout)
+	require.Equal(t, 99, cfg.Gateway.CompactResponseHeaderTimeout)
+}
+
+func TestLoadCompactResponseHeaderTimeoutExplicitConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte("gateway:\n  response_header_timeout: 42\n  compact_response_header_timeout: 88\n"), 0o644))
+	t.Setenv("DATA_DIR", tempDir)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 42, cfg.Gateway.ResponseHeaderTimeout)
+	require.Equal(t, 88, cfg.Gateway.CompactResponseHeaderTimeout)
+}
+
 func TestLoadDefaultSecurityToggles(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
@@ -1282,6 +1317,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway openai response header timeout",
 			mutate:  func(c *Config) { c.Gateway.OpenAIResponseHeaderTimeout = -1 },
 			wantErr: "gateway.openai_response_header_timeout",
+		},
+		{
+			name:    "gateway compact response header timeout",
+			mutate:  func(c *Config) { c.Gateway.CompactResponseHeaderTimeout = -1 },
+			wantErr: "gateway.compact_response_header_timeout",
 		},
 		{
 			name:    "gateway max idle conns",

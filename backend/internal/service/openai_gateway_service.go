@@ -2309,6 +2309,18 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 	}
 }
 
+func (s *OpenAIGatewayService) doOpenAIHTTPUpstream(req *http.Request, proxyURL string, account *Account, compact bool) (*http.Response, error) {
+	if account == nil {
+		return nil, errors.New("openai account is nil")
+	}
+	if compact {
+		if upstream, ok := s.httpUpstream.(HTTPUpstreamWithOptions); ok {
+			return upstream.DoWithOptions(req, proxyURL, account.ID, account.Concurrency, HTTPUpstreamOptions{CompactResponseHeaders: true})
+		}
+	}
+	return s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+}
+
 func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
 	case 401, 402, 403, 429, 529:
@@ -2983,7 +2995,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 		// Send request
 		upstreamStart := time.Now()
-		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		resp, err := s.doOpenAIHTTPUpstream(upstreamReq, proxyURL, account, isOpenAIResponsesCompactPath(c))
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
@@ -3273,7 +3285,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.doOpenAIHTTPUpstream(upstreamReq, proxyURL, account, isOpenAIResponsesCompactPath(c))
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
