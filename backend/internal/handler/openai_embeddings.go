@@ -125,7 +125,8 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			)
 			if len(failedAccountIDs) == 0 {
 				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-				h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
+				status, errType, message := h.openAIAccountSelectionErrorResponse(c, apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "Service temporarily unavailable")
+				h.errorResponse(c, status, errType, message)
 				return
 			}
 			if lastFailoverErr != nil {
@@ -137,7 +138,8 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		}
 		if selection == nil || selection.Account == nil {
 			markOpsRoutingCapacityLimited(c)
-			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+			status, errType, message := h.openAIAccountSelectionErrorResponse(c, apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts")
+			h.errorResponse(c, status, errType, message)
 			return
 		}
 		account := selection.Account

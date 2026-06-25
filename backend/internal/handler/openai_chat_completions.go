@@ -152,7 +152,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			)
 			if len(failedAccountIDs) == 0 {
 				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				status, errType, message := h.openAIAccountSelectionErrorResponse(c, apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "Service temporarily unavailable")
+				h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 				return
 			} else {
 				if lastFailoverErr != nil {
@@ -165,7 +166,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 		if selection == nil || selection.Account == nil {
 			markOpsRoutingCapacityLimited(c)
-			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+			status, errType, message := h.openAIAccountSelectionErrorResponse(c, apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts")
+			h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 			return
 		}
 		account := selection.Account

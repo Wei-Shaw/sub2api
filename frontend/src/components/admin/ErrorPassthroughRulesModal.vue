@@ -371,6 +371,9 @@
                   class="input text-sm"
                   :placeholder="t('admin.errorPassthrough.form.customMessagePlaceholder')"
                 />
+                <p class="input-hint text-xs mt-1">
+                  {{ t('admin.errorPassthrough.form.customMessageHint') }}
+                </p>
               </div>
             </div>
           </div>

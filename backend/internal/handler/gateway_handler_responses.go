@@ -161,7 +161,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
 				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error())
+				status, errType, message := h.openAIAccountSelectionErrorResponse(c, apiKeyGroupPlatform(apiKey), apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts: "+err.Error())
+				h.responsesErrorResponse(c, status, errType, message)
 				return
 			}
 			action := fs.HandleSelectionExhausted(requestCtx)
@@ -187,7 +188,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
 				markOpsRoutingCapacityLimited(c)
-				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+				status, errType, message := h.openAIAccountSelectionErrorResponse(c, apiKeyGroupPlatform(apiKey), apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts")
+				h.responsesErrorResponse(c, status, errType, message)
 				return
 			}
 			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(

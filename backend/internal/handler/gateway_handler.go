@@ -308,7 +308,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.String("platform", platform),
 						zap.Error(err),
 					)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
+					status, errType, message := h.openAIAccountSelectionErrorResponse(c, platform, apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts: "+err.Error())
+					h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 					return
 				}
 				action := fs.HandleSelectionExhausted(c.Request.Context())
@@ -357,7 +358,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.String("model", reqModel),
 						zap.String("platform", platform),
 					)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+					status, errType, message := h.openAIAccountSelectionErrorResponse(c, platform, apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts")
+					h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 					return
 				}
 				accountWaitCounted := false
@@ -586,7 +588,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.Bool("fallback_used", fallbackUsed),
 						zap.Error(err),
 					)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
+					status, errType, message := h.openAIAccountSelectionErrorResponse(c, platform, currentAPIKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts: "+err.Error())
+					h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 					return
 				}
 				action := fs.HandleSelectionExhausted(c.Request.Context())
@@ -645,7 +648,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.String("model", reqModel),
 						zap.String("platform", platform),
 					)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+					status, errType, message := h.openAIAccountSelectionErrorResponse(c, platform, currentAPIKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "No available accounts")
+					h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 					return
 				}
 				accountWaitCounted := false
@@ -1786,7 +1790,8 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	if err != nil {
 		reqLog.Warn("gateway.count_tokens_select_account_failed", zap.Error(err))
 		markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
+		status, errType, message := h.openAIAccountSelectionErrorResponse(c, apiKeyGroupPlatform(apiKey), apiKey.GroupID, service.OpenAIAccountSelectionNoAvailableMessage, "Service temporarily unavailable")
+		h.errorResponse(c, status, errType, message)
 		return
 	}
 	setOpsSelectedAccount(c, account.ID, account.Platform)
