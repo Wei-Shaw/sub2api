@@ -144,4 +144,30 @@ describe('AccountTestModal', () => {
     expect(preview.exists()).toBe(true)
     expect(preview.attributes('src')).toBe('data:image/png;base64,QUJD')
   })
+
+  it('submits client when a quick fill test client is used', async () => {
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const quickFillButton = wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.testClientCodex'))
+    expect(quickFillButton).toBeTruthy()
+    await quickFillButton!.trigger('click')
+    expect(global.fetch).not.toHaveBeenCalled()
+
+    const buttons = wrapper.findAll('button')
+    const startButton = buttons.find((button) => button.text().includes('admin.accounts.startTest'))
+    expect(startButton).toBeTruthy()
+
+    await startButton!.trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({
+      model_id: 'gemini-3.1-flash-image',
+      client: 'Codex CLI'
+    })
+  })
 })

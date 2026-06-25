@@ -55,6 +55,31 @@
         />
       </div>
 
+      <div class="space-y-1.5">
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {{ t('admin.accounts.testClient') }}
+        </label>
+        <input
+          v-model="testClient"
+          type="text"
+          class="input"
+          :placeholder="t('admin.accounts.testClientPlaceholder')"
+          :disabled="status === 'connecting'"
+        />
+        <div class="flex flex-wrap gap-2">
+          <button
+            v-for="option in testClientQuickFillOptions"
+            :key="option.value"
+            type="button"
+            class="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-500 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:bg-primary-500/10 dark:hover:text-primary-300"
+            :disabled="status === 'connecting'"
+            @click="testClient = option.value"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+      </div>
+
       <div v-if="supportsImageTest" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
@@ -275,6 +300,13 @@ const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
 const previewImageUrl = ref('')
+const testClient = ref('')
+const testClientQuickFillOptions = computed(() => [
+  { value: 'Codex CLI', label: t('admin.accounts.testClientCodex') },
+  { value: 'Claude Code Codex plugin', label: t('admin.accounts.testClientClaudeCode') },
+  { value: 'Gemini CLI', label: t('admin.accounts.testClientGemini') },
+  { value: 'Antigravity', label: t('admin.accounts.testClientAntigravity') }
+])
 const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
 const supportsGeminiImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
@@ -308,6 +340,7 @@ watch(
   async (newVal) => {
     if (newVal && props.account) {
       testPrompt.value = ''
+      testClient.value = ''
       resetState()
       await loadAvailableModels()
     } else {
@@ -403,16 +436,22 @@ const startTest = async () => {
     const url = `/api/v1/admin/accounts/${props.account.id}/test`
 
     // Use fetch with streaming for SSE since EventSource doesn't support POST
+    const body: Record<string, string> = {
+      model_id: selectedModelId.value,
+      prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
+    }
+    const client = testClient.value.trim()
+    if (client) {
+      body.client = client
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-              model_id: selectedModelId.value,
-              prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
-            }),
+      body: JSON.stringify(body),
       signal: abortController.signal
     })
 

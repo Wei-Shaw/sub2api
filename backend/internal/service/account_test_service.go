@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -35,6 +36,22 @@ const (
 	testClaudeAPIURL   = "https://api.anthropic.com/v1/messages?beta=true"
 	chatgptCodexAPIURL = "https://chatgpt.com/backend-api/codex/responses"
 )
+
+const (
+	AccountTestClientDefault     = ""
+	AccountTestClientCodexCLI    = "codex_cli"
+	AccountTestClientClaudeCode  = "claude_code"
+	AccountTestClientGeminiCLI   = "gemini_cli"
+	AccountTestClientAntigravity = "antigravity"
+
+	claudeCodeCodexPluginUserAgent = "Claude Code/0.5.0 (Macos 15.5; arm64) iTerm2.app (Claude Code; 1.0.4)"
+)
+
+// AccountTestOptions contains optional settings used only for admin-initiated
+// account connection tests. It does not affect normal user request forwarding.
+type AccountTestOptions struct {
+	Client string
+}
 
 // TestEvent represents a SSE event for account testing
 type TestEvent struct {
@@ -171,7 +188,14 @@ func createTestPayload(modelID string) (map[string]any, error) {
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
 // mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
 func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string) error {
+	return s.TestAccountConnectionWithOptions(c, accountID, modelID, prompt, mode, nil)
+}
+
+// TestAccountConnectionWithOptions tests an account connection with optional
+// admin-provided client identity for the test request only.
+func (s *AccountTestService) TestAccountConnectionWithOptions(c *gin.Context, accountID int64, modelID string, prompt string, mode string, opts *AccountTestOptions) error {
 	ctx := c.Request.Context()
+	opts = normalizeAccountTestOptions(opts)
 
 	// Get account
 	account, err := s.accountRepo.GetByID(ctx, accountID)
@@ -181,22 +205,77 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
-		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
+		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode), opts)
 	}
 
 	if account.IsGemini() {
-		return s.testGeminiAccountConnection(c, account, modelID, prompt)
+		return s.testGeminiAccountConnection(c, account, modelID, prompt, opts)
 	}
 
 	if account.Platform == PlatformAntigravity {
-		return s.routeAntigravityTest(c, account, modelID, prompt)
+		return s.routeAntigravityTest(c, account, modelID, prompt, opts)
 	}
 
-	return s.testClaudeAccountConnection(c, account, modelID)
+	return s.testClaudeAccountConnection(c, account, modelID, opts)
+}
+
+func normalizeAccountTestOptions(opts *AccountTestOptions) *AccountTestOptions {
+	if opts == nil {
+		return &AccountTestOptions{}
+	}
+	normalized := *opts
+	normalized.Client = strings.TrimSpace(normalized.Client)
+	return &normalized
+}
+
+func normalizeAccountTestClient(client string) string {
+	switch strings.ToLower(strings.TrimSpace(client)) {
+	case "", "default":
+		return AccountTestClientDefault
+	case "codex", "codex cli", AccountTestClientCodexCLI:
+		return AccountTestClientCodexCLI
+	case "claude", "claude code", "claude code codex plugin", AccountTestClientClaudeCode:
+		return AccountTestClientClaudeCode
+	case "gemini", "gemini cli", AccountTestClientGeminiCLI:
+		return AccountTestClientGeminiCLI
+	case AccountTestClientAntigravity:
+		return AccountTestClientAntigravity
+	default:
+		return AccountTestClientDefault
+	}
+}
+
+func applyAccountTestClient(req *http.Request, opts *AccountTestOptions) {
+	if req == nil {
+		return
+	}
+	rawClient := ""
+	client := AccountTestClientDefault
+	if opts != nil {
+		rawClient = strings.TrimSpace(opts.Client)
+		client = normalizeAccountTestClient(rawClient)
+	}
+	switch client {
+	case AccountTestClientCodexCLI:
+		req.Header.Set("Originator", "codex_cli_rs")
+		req.Header.Set("User-Agent", codexCLIUserAgent)
+		req.Header.Set("Version", codexCLIVersion)
+	case AccountTestClientClaudeCode:
+		req.Header.Set("Originator", "Claude Code")
+		req.Header.Set("User-Agent", claudeCodeCodexPluginUserAgent)
+	case AccountTestClientGeminiCLI:
+		req.Header.Set("User-Agent", geminicli.GeminiCLIUserAgent)
+	case AccountTestClientAntigravity:
+		req.Header.Set("User-Agent", antigravity.GetUserAgent())
+	default:
+		if rawClient != "" {
+			req.Header.Set("User-Agent", rawClient)
+		}
+	}
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
-func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account *Account, modelID string) error {
+func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account *Account, modelID string, opts *AccountTestOptions) error {
 	ctx := c.Request.Context()
 
 	// Determine the model to use
@@ -215,7 +294,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		return s.testBedrockAccountConnection(c, ctx, account, testModelID)
 	}
 	if account.Type == AccountTypeServiceAccount {
-		return s.testClaudeVertexServiceAccountConnection(c, ctx, account, testModelID)
+		return s.testClaudeVertexServiceAccountConnection(c, ctx, account, testModelID, opts)
 	}
 
 	// Determine authentication method and API URL
@@ -291,6 +370,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 		req.Header.Set("x-api-key", authToken)
 	}
+	applyAccountTestClient(req, opts)
 
 	// Get proxy URL
 	proxyURL := ""
@@ -320,7 +400,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	return s.processClaudeStream(c, resp.Body)
 }
 
-func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string) error {
+func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string, opts *AccountTestOptions) error {
 	if mappedModel, matched := account.ResolveMappedModel(testModelID); matched {
 		testModelID = mappedModel
 	} else {
@@ -364,6 +444,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+	applyAccountTestClient(req, opts)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -492,7 +573,7 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 }
 
 // testOpenAIAccountConnection tests an OpenAI account's connection
-func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string) error {
+func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string, opts *AccountTestOptions) error {
 	ctx := c.Request.Context()
 	mode = normalizeAccountTestMode(mode)
 
@@ -507,7 +588,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	testModelID = account.GetMappedModel(testModelID)
 	if mode == AccountTestModeCompact {
 		testModelID = resolveOpenAICompactForwardModel(account, testModelID)
-		return s.testOpenAICompactConnection(c, account, testModelID)
+		return s.testOpenAICompactConnection(c, account, testModelID, opts)
 	}
 
 	// Route to image generation test if an image model is selected
@@ -517,9 +598,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			imagePrompt = defaultOpenAIImageTestPrompt
 		}
 		if account.Type == "apikey" {
-			return s.testOpenAIImageAPIKey(c, ctx, account, testModelID, imagePrompt)
+			return s.testOpenAIImageAPIKey(c, ctx, account, testModelID, imagePrompt, opts)
 		}
-		return s.testOpenAIImageOAuth(c, ctx, account, testModelID, imagePrompt)
+		return s.testOpenAIImageOAuth(c, ctx, account, testModelID, imagePrompt, opts)
 	}
 
 	// Determine authentication method and API URL
@@ -555,7 +636,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
 		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
-			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
+			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken, opts)
 		}
 		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
 	} else {
@@ -594,6 +675,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			req.Header.Set("chatgpt-account-id", chatgptAccountID)
 		}
 	}
+	applyAccountTestClient(req, opts)
 
 	// Get proxy URL
 	proxyURL := ""
@@ -640,6 +722,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	prompt string,
 	normalizedBaseURL string,
 	authToken string,
+	opts *AccountTestOptions,
 ) error {
 	ctx := c.Request.Context()
 	apiURL := buildOpenAIChatCompletionsURL(normalizedBaseURL)
@@ -664,6 +747,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+	applyAccountTestClient(req, opts)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -693,7 +777,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 
 // testOpenAICompactConnection probes /responses/compact and persists the
 // resulting capability state on the account.
-func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account *Account, testModelID string) error {
+func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account *Account, testModelID string, opts *AccountTestOptions) error {
 	ctx := c.Request.Context()
 
 	authToken := ""
@@ -760,6 +844,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 			req.Header.Set("chatgpt-account-id", chatgptAccountID)
 		}
 	}
+	applyAccountTestClient(req, opts)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -843,7 +928,7 @@ func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, accoun
 }
 
 // testGeminiAccountConnection tests a Gemini account's connection
-func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, opts *AccountTestOptions) error {
 	ctx := c.Request.Context()
 
 	// Determine the model to use
@@ -890,6 +975,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build request: %s", err.Error()))
 	}
+	applyAccountTestClient(req, opts)
 
 	// Send test_start event
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -917,12 +1003,12 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 
 // routeAntigravityTest 路由 Antigravity 账号的测试请求。
 // APIKey 类型走原生协议（与 gateway_handler 路由一致），OAuth/Upstream 走 CRS 中转。
-func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Account, modelID string, prompt string) error {
+func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Account, modelID string, prompt string, opts *AccountTestOptions) error {
 	if account.Type == AccountTypeAPIKey {
 		if strings.HasPrefix(modelID, "gemini-") {
-			return s.testGeminiAccountConnection(c, account, modelID, prompt)
+			return s.testGeminiAccountConnection(c, account, modelID, prompt, opts)
 		}
-		return s.testClaudeAccountConnection(c, account, modelID)
+		return s.testClaudeAccountConnection(c, account, modelID, opts)
 	}
 	return s.testAntigravityAccountConnection(c, account, modelID)
 }
@@ -1471,7 +1557,7 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 }
 
 // testOpenAIImageAPIKey tests OpenAI image generation using an API Key account.
-func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
+func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string, opts *AccountTestOptions) error {
 	authToken := account.GetOpenAIApiKey()
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No API key available")
@@ -1511,6 +1597,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+	applyAccountTestClient(req, opts)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -1565,7 +1652,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 }
 
 // testOpenAIImageOAuth tests OpenAI image generation using an OAuth account via Codex /responses API.
-func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
+func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string, opts *AccountTestOptions) error {
 	authToken := account.GetOpenAIAccessToken()
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No access token available")
@@ -1612,6 +1699,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	if chatgptAccountID := strings.TrimSpace(account.GetChatGPTAccountID()); chatgptAccountID != "" {
 		req.Header.Set("chatgpt-account-id", chatgptAccountID)
 	}
+	applyAccountTestClient(req, opts)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

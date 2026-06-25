@@ -127,7 +127,7 @@ func TestAccountTestService_OpenAISuccessPersistsSnapshotFromHeaders(t *testing.
 		Credentials: map[string]any{"access_token": "test-token"},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "", nil)
 	require.NoError(t, err)
 	require.Len(t, upstream.requests, 1)
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.requests[0].Context()))
@@ -156,7 +156,7 @@ func TestAccountTestService_OpenAIStreamEOFBeforeCompletedFails(t *testing.T) {
 		Credentials: map[string]any{"access_token": "test-token"},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, recorder.Body.String(), "response.completed")
 	require.NotContains(t, recorder.Body.String(), `"success":true`)
@@ -186,7 +186,7 @@ func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimitState(t *testin
 		Credentials: map[string]any{"access_token": "test-token"},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "", nil)
 	require.Error(t, err)
 	require.NotEmpty(t, repo.updatedExtra)
 	require.Equal(t, 100.0, repo.updatedExtra["codex_5h_used_percent"])
@@ -217,7 +217,7 @@ func TestAccountTestService_OpenAI429BodyOnlyPersistsRateLimitAndClearsStaleErro
 		Credentials:  map[string]any{"access_token": "test-token"},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "", nil)
 	require.Error(t, err)
 	require.Equal(t, account.ID, repo.rateLimitedID)
 	require.NotNil(t, repo.rateLimitedAt)
@@ -246,7 +246,7 @@ func TestAccountTestService_OpenAI429SyncsObservedPlanType(t *testing.T) {
 		Credentials: map[string]any{"access_token": "test-token", "plan_type": "plus"},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "", nil)
 	require.Error(t, err)
 	require.Equal(t, []int64{account.ID}, repo.bulkUpdatedIDs)
 	require.Equal(t, "free", repo.bulkUpdatedPayload.Credentials["plan_type"])
@@ -273,7 +273,7 @@ func TestAccountTestService_OpenAI429ActiveAccountDoesNotClearError(t *testing.T
 		Credentials: map[string]any{"access_token": "test-token"},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "", nil)
 	require.Error(t, err)
 	require.Equal(t, account.ID, repo.rateLimitedID)
 	require.NotNil(t, repo.rateLimitedAt)
@@ -301,7 +301,7 @@ func TestAccountTestService_OpenAI429WithoutResetSignalDoesNotMutateRuntimeState
 		Credentials:  map[string]any{"access_token": "test-token"},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "", nil)
 	require.Error(t, err)
 	require.Zero(t, repo.rateLimitedID)
 	require.Nil(t, repo.rateLimitedAt)
@@ -329,7 +329,7 @@ func TestAccountTestService_OpenAI401SetsPermanentErrorOnly(t *testing.T) {
 		Credentials: map[string]any{"access_token": "test-token"},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "", nil)
 	require.Error(t, err)
 	require.Equal(t, account.ID, repo.setErrorID)
 	require.Contains(t, repo.setErrorMsg, "Authentication failed (401)")
@@ -371,7 +371,7 @@ func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsP
 		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "hello", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "hello", "", nil)
 	require.NoError(t, err)
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
@@ -387,6 +387,139 @@ func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsP
 	require.Contains(t, body, "已通过 /v1/chat/completions 验证")
 	require.Contains(t, body, `"success":true`)
 	require.NotContains(t, body, "当前测试接口仅支持 Responses API 路径")
+}
+
+func TestAccountTestService_OpenAIAPIKeyTestClientAppliesCodexHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"}
+
+`))
+
+	account := &Account{
+		ID:          94,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+		},
+	}
+	repo := &openAIAccountTestRepo{
+		mockAccountRepoForGemini: mockAccountRepoForGemini{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+
+	err := svc.TestAccountConnectionWithOptions(ctx, account.ID, "gpt-5.4", "", AccountTestModeDefault, &AccountTestOptions{
+		Client: AccountTestClientCodexCLI,
+	})
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+
+	req := upstream.requests[0]
+	require.Equal(t, "Bearer sk-test", req.Header.Get("Authorization"))
+	require.Equal(t, codexCLIUserAgent, req.Header.Get("User-Agent"))
+	require.Equal(t, "codex_cli_rs", req.Header.Get("Originator"))
+	require.Equal(t, codexCLIVersion, req.Header.Get("Version"))
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+}
+
+func TestAccountTestService_OpenAIAPIKeyDefaultTestClientKeepsExistingHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"}
+
+`))
+
+	account := &Account{
+		ID:          95,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+		},
+	}
+	repo := &openAIAccountTestRepo{
+		mockAccountRepoForGemini: mockAccountRepoForGemini{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+
+	err := svc.TestAccountConnection(ctx, account.ID, "gpt-5.4", "", AccountTestModeDefault)
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+
+	req := upstream.requests[0]
+	require.Equal(t, "Bearer sk-test", req.Header.Get("Authorization"))
+	require.Empty(t, req.Header.Get("User-Agent"))
+	require.Empty(t, req.Header.Get("Originator"))
+	require.Empty(t, req.Header.Get("Version"))
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+}
+
+func TestAccountTestService_OpenAIAPIKeyCustomTestClientUsesUserAgent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"}
+
+`))
+
+	account := &Account{
+		ID:          96,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+		},
+	}
+	repo := &openAIAccountTestRepo{
+		mockAccountRepoForGemini: mockAccountRepoForGemini{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+
+	err := svc.TestAccountConnectionWithOptions(ctx, account.ID, "gpt-5.4", "", AccountTestModeDefault, &AccountTestOptions{
+		Client: "MyCustomClient/1.2.3",
+	})
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+
+	req := upstream.requests[0]
+	require.Equal(t, "Bearer sk-test", req.Header.Get("Authorization"))
+	require.Equal(t, "MyCustomClient/1.2.3", req.Header.Get("User-Agent"))
+	require.Empty(t, req.Header.Get("Originator"))
+	require.Empty(t, req.Header.Get("Version"))
+	require.Contains(t, recorder.Body.String(), `"success":true`)
 }
 
 func TestAccountTestService_OpenAIChatCompletionsPathReturns4xx(t *testing.T) {
@@ -410,7 +543,7 @@ func TestAccountTestService_OpenAIChatCompletionsPathReturns4xx(t *testing.T) {
 		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "", nil)
 	require.Error(t, err)
 	require.Equal(t, "https://compat-upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
 	require.Contains(t, err.Error(), "Chat Completions API (/v1/chat/completions) returned 400")
@@ -439,7 +572,7 @@ func TestAccountTestService_OpenAIChatCompletionsPathTimeout(t *testing.T) {
 		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "", nil)
 	require.Error(t, err)
 	require.Equal(t, "https://compat-upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
 	require.Contains(t, err.Error(), "Chat Completions API (/v1/chat/completions) request failed")
@@ -473,7 +606,7 @@ func TestAccountTestService_OpenAIChatCompletionsPathRejectsNonJSONStream(t *tes
 		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "", nil)
 	require.Error(t, err)
 	require.Equal(t, "https://compat-upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
 	require.Contains(t, err.Error(), "Invalid Chat Completions response from /v1/chat/completions")
