@@ -389,7 +389,7 @@ func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsP
 	require.NotContains(t, body, "当前测试接口仅支持 Responses API 路径")
 }
 
-func TestAccountTestService_OpenAIAPIKeyTestClientAppliesCodexHeaders(t *testing.T) {
+func TestAccountTestService_OpenAIAPIKeyTestClientUsesRawUserAgent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()
 
@@ -420,17 +420,18 @@ func TestAccountTestService_OpenAIAPIKeyTestClientAppliesCodexHeaders(t *testing
 		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
 	}
 
+	const userAgent = "codex_cli_rs/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color"
 	err := svc.TestAccountConnectionWithOptions(ctx, account.ID, "gpt-5.4", "", AccountTestModeDefault, &AccountTestOptions{
-		Client: AccountTestClientCodexCLI,
+		Client: userAgent,
 	})
 	require.NoError(t, err)
 	require.Len(t, upstream.requests, 1)
 
 	req := upstream.requests[0]
 	require.Equal(t, "Bearer sk-test", req.Header.Get("Authorization"))
-	require.Equal(t, codexCLIUserAgent, req.Header.Get("User-Agent"))
-	require.Equal(t, "codex_cli_rs", req.Header.Get("Originator"))
-	require.Equal(t, codexCLIVersion, req.Header.Get("Version"))
+	require.Equal(t, userAgent, req.Header.Get("User-Agent"))
+	require.Empty(t, req.Header.Get("Originator"))
+	require.Empty(t, req.Header.Get("Version"))
 	require.Contains(t, recorder.Body.String(), `"success":true`)
 }
 

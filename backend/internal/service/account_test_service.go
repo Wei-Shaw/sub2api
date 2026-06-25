@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -35,16 +34,6 @@ var sseDataPrefix = regexp.MustCompile(`^data:\s*`)
 const (
 	testClaudeAPIURL   = "https://api.anthropic.com/v1/messages?beta=true"
 	chatgptCodexAPIURL = "https://chatgpt.com/backend-api/codex/responses"
-)
-
-const (
-	AccountTestClientDefault     = ""
-	AccountTestClientCodexCLI    = "codex_cli"
-	AccountTestClientClaudeCode  = "claude_code"
-	AccountTestClientGeminiCLI   = "gemini_cli"
-	AccountTestClientAntigravity = "antigravity"
-
-	claudeCodeCodexPluginUserAgent = "Claude Code/0.5.0 (Macos 15.5; arm64) iTerm2.app (Claude Code; 1.0.4)"
 )
 
 // AccountTestOptions contains optional settings used only for admin-initiated
@@ -239,49 +228,15 @@ func normalizeAccountTestMessage(message string) string {
 	return message
 }
 
-func normalizeAccountTestClient(client string) string {
-	switch strings.ToLower(strings.TrimSpace(client)) {
-	case "", "default":
-		return AccountTestClientDefault
-	case "codex", "codex cli", AccountTestClientCodexCLI:
-		return AccountTestClientCodexCLI
-	case "claude", "claude code", "claude code codex plugin", AccountTestClientClaudeCode:
-		return AccountTestClientClaudeCode
-	case "gemini", "gemini cli", AccountTestClientGeminiCLI:
-		return AccountTestClientGeminiCLI
-	case AccountTestClientAntigravity:
-		return AccountTestClientAntigravity
-	default:
-		return AccountTestClientDefault
-	}
-}
-
 func applyAccountTestClient(req *http.Request, opts *AccountTestOptions) {
 	if req == nil {
 		return
 	}
-	rawClient := ""
-	client := AccountTestClientDefault
-	if opts != nil {
-		rawClient = strings.TrimSpace(opts.Client)
-		client = normalizeAccountTestClient(rawClient)
+	if opts == nil {
+		return
 	}
-	switch client {
-	case AccountTestClientCodexCLI:
-		req.Header.Set("Originator", "codex_cli_rs")
-		req.Header.Set("User-Agent", codexCLIUserAgent)
-		req.Header.Set("Version", codexCLIVersion)
-	case AccountTestClientClaudeCode:
-		req.Header.Set("Originator", "Claude Code")
-		req.Header.Set("User-Agent", claudeCodeCodexPluginUserAgent)
-	case AccountTestClientGeminiCLI:
-		req.Header.Set("User-Agent", geminicli.GeminiCLIUserAgent)
-	case AccountTestClientAntigravity:
-		req.Header.Set("User-Agent", antigravity.GetUserAgent())
-	default:
-		if rawClient != "" {
-			req.Header.Set("User-Agent", rawClient)
-		}
+	if client := strings.TrimSpace(opts.Client); client != "" {
+		req.Header.Set("User-Agent", client)
 	}
 }
 

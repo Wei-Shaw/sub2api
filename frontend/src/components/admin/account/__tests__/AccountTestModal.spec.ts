@@ -74,7 +74,21 @@ function mountModal() {
     global: {
       stubs: {
         BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
-        Select: { template: '<div class="select-stub"></div>' },
+        Select: {
+          props: ['modelValue', 'options', 'valueKey'],
+          emits: ['update:modelValue'],
+          template: `
+            <select
+              class="select-stub"
+              :value="modelValue"
+              @change="$emit('update:modelValue', $event.target.value)"
+            >
+              <option v-for="option in options" :key="option[valueKey]" :value="option[valueKey]">
+                {{ option.display_name }}
+              </option>
+            </select>
+          `
+        },
         TextArea: {
           props: ['modelValue'],
           emits: ['update:modelValue'],
@@ -149,15 +163,20 @@ describe('AccountTestModal', () => {
     expect(preview.attributes('src')).toBe('data:image/png;base64,QUJD')
   })
 
-  it('submits client when a quick fill test client is used', async () => {
+  it('fills the client input from a preset without starting the test', async () => {
     const wrapper = mountModal()
     await wrapper.setProps({ show: true })
     await flushPromises()
 
-    const quickFillButton = wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.testClientCodex'))
-    expect(quickFillButton).toBeTruthy()
-    await quickFillButton!.trigger('click')
+    await wrapper.get('[data-testid="account-test-client-preset-toggle"]').trigger('click')
+    const searchInput = wrapper.get('[data-testid="account-test-client-preset-search"]')
+    await searchInput.setValue('codex')
+    const presetOption = wrapper.get('[data-testid="account-test-client-preset-option-0"]')
+    await presetOption.trigger('click')
     expect(global.fetch).not.toHaveBeenCalled()
+
+    const clientInput = wrapper.get('[data-testid="account-test-client"]').element as HTMLInputElement
+    expect(clientInput.value).toBe('codex_cli_rs/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color')
 
     const startButton = findStartButton(wrapper)
     expect(startButton).toBeTruthy()
@@ -171,7 +190,29 @@ describe('AccountTestModal', () => {
     expect(JSON.parse(request.body)).toMatchObject({
       model_id: 'gemini-3.1-flash-image',
       message: 'hi',
-      client: 'Codex CLI'
+      client: 'codex_cli_rs/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color'
+    })
+  })
+
+  it('allows the client input to be edited after preset fill', async () => {
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="account-test-client-preset-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="account-test-client-preset-option-1"]').trigger('click')
+
+    const clientInput = wrapper.get('[data-testid="account-test-client"]')
+    await clientInput.setValue('MyCustomClient/1.2.3')
+
+    const startButton = findStartButton(wrapper)
+    await startButton!.trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({
+      client: 'MyCustomClient/1.2.3'
     })
   })
 
