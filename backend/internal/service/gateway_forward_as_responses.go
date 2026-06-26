@@ -99,6 +99,8 @@ func (s *GatewayService) ForwardAsResponses(
 
 	if shouldMimicClaudeCode {
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
+	} else {
+		anthropicBody = s.applyAnthropicMessageCacheTransforms(ctx, c, anthropicBody)
 	}
 
 	// 7. Enforce cache_control block limit
@@ -153,16 +155,23 @@ func (s *GatewayService) ForwardAsResponses(
 
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		diagnosticDetail := ""
+		if resp.StatusCode == http.StatusBadRequest {
+			diagnosticDetail = summarizeAnthropicRequestBodyForOps(anthropicBody)
+		}
 
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-				Platform:           account.Platform,
-				AccountID:          account.ID,
-				AccountName:        account.Name,
-				UpstreamStatusCode: resp.StatusCode,
-				UpstreamRequestID:  resp.Header.Get("x-request-id"),
-				Kind:               "failover",
-				Message:            upstreamMsg,
+				Platform:             account.Platform,
+				AccountID:            account.ID,
+				AccountName:          account.Name,
+				UpstreamStatusCode:   resp.StatusCode,
+				UpstreamRequestID:    resp.Header.Get("x-request-id"),
+				Kind:                 "failover",
+				Message:              upstreamMsg,
+				Detail:               diagnosticDetail,
+				UpstreamRequestBody:  string(anthropicBody),
+				UpstreamResponseBody: string(respBody),
 			})
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel)
@@ -202,6 +211,102 @@ func ExtractResponsesReasoningEffortFromBody(body []byte) *string {
 		return nil
 	}
 	return &normalized
+}
+
+func summarizeAnthropicRequestBodyForOps(body []byte) string {
+	model := gjson.GetBytes(body, "model").String()
+	maxTokens := gjson.GetBytes(body, "max_tokens").Int()
+	stream := gjson.GetBytes(body, "stream").Bool()
+	thinkingType := gjson.GetBytes(body, "thinking.type").String()
+	outputEffort := gjson.GetBytes(body, "output_config.effort").String()
+
+	systemCount := 0
+	systemTextBytes := 0
+	if sys := gjson.GetBytes(body, "system"); sys.Exists() {
+		if sys.IsArray() {
+			sys.ForEach(func(_, item gjson.Result) bool {
+				systemCount++
+				systemTextBytes += len(item.Get("text").String())
+				return true
+			})
+		} else {
+			systemCount = 1
+			systemTextBytes = len(sys.String())
+		}
+	}
+
+	messageSummaries := make([]string, 0, 64)
+	emptyContentCount := 0
+	emptyTextCount := 0
+	toolUseCount := 0
+	toolResultCount := 0
+	messages := gjson.GetBytes(body, "messages")
+	if messages.IsArray() {
+		idx := 0
+		messages.ForEach(func(_, msg gjson.Result) bool {
+			role := msg.Get("role").String()
+			content := msg.Get("content")
+			contentKind := content.Type.String()
+			blocks := 0
+			blockSummaries := make([]string, 0, 8)
+			if content.IsArray() {
+				content.ForEach(func(_, block gjson.Result) bool {
+					blocks++
+					blockType := block.Get("type").String()
+					switch blockType {
+					case "text":
+						textLen := len(block.Get("text").String())
+						if textLen == 0 {
+							emptyTextCount++
+						}
+						blockSummaries = append(blockSummaries, fmt.Sprintf("text:%d", textLen))
+					case "tool_use":
+						toolUseCount++
+						blockSummaries = append(blockSummaries, fmt.Sprintf("tool_use:%s:%s", block.Get("id").String(), block.Get("name").String()))
+					case "tool_result":
+						toolResultCount++
+						blockSummaries = append(blockSummaries, fmt.Sprintf("tool_result:%s", block.Get("tool_use_id").String()))
+					default:
+						if blockType == "" {
+							blockType = "<missing>"
+						}
+						blockSummaries = append(blockSummaries, blockType)
+					}
+					return len(blockSummaries) < 8
+				})
+			} else if content.Type == gjson.String {
+				textLen := len(content.String())
+				if textLen == 0 {
+					emptyTextCount++
+				}
+				blocks = 1
+				blockSummaries = append(blockSummaries, fmt.Sprintf("string:%d", textLen))
+			}
+			if blocks == 0 {
+				emptyContentCount++
+			}
+			messageSummaries = append(messageSummaries, fmt.Sprintf("#%d role=%s content=%s blocks=%d [%s]", idx, role, contentKind, blocks, strings.Join(blockSummaries, ",")))
+			idx++
+			return len(messageSummaries) < 80
+		})
+	}
+
+	return fmt.Sprintf(
+		"anthropic_request_summary model=%s max_tokens=%d stream=%v thinking.type=%s output_config.effort=%s system_blocks=%d system_text_bytes=%d messages=%d empty_contents=%d empty_text_blocks=%d tool_use=%d tool_result=%d first_messages=%s",
+		model,
+		maxTokens,
+		stream,
+		thinkingType,
+		outputEffort,
+		systemCount,
+		systemTextBytes,
+		int(messages.Get("#").Int()),
+		emptyContentCount,
+		emptyTextCount,
+		toolUseCount,
+		toolResultCount,
+		strings.Join(messageSummaries, " | "),
+	)
 }
 
 func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
@@ -245,6 +350,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	// Accumulate the final Anthropic response from streaming events
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
+	var upstreamBody strings.Builder
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -261,6 +367,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 		if !strings.HasPrefix(dataLine, "data: ") {
 			continue
 		}
+		appendRawSSEPair(&upstreamBody, line, dataLine)
 		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
@@ -318,8 +425,12 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	}
 
 	if finalResp == nil {
-		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
-		return nil, fmt.Errorf("upstream stream ended without response")
+		logEmptyAnthropicHTTP200Response("forward_as_responses_buffered", c, resp, originalModel, mappedModel, "missing_final_response", upstreamBody.String())
+		return nil, newUpstreamStreamEndedFailoverError("Upstream stream ended without a response")
+	}
+	if !anthropicResponseHasOutput(finalResp) {
+		logEmptyAnthropicHTTP200Response("forward_as_responses_buffered", c, resp, originalModel, mappedModel, "empty_output", upstreamBody.String())
+		return nil, newUpstreamStreamEndedFailoverError(emptyAnthropicCompletionMessage)
 	}
 
 	// Update usage from accumulated delta
@@ -375,20 +486,30 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	headersWritten := false
+	writeStreamHeaders := func() {
+		if headersWritten {
+			return
+		}
+		headersWritten = true
+		if s.responseHeaderFilter != nil {
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		}
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("X-Accel-Buffering", "no")
+		c.Writer.WriteHeader(http.StatusOK)
 	}
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
 
 	state := apicompat.NewAnthropicEventToResponsesState()
 	state.Model = originalModel
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	sawOutput := false
+	var pendingEvents []string
+	var upstreamBody strings.Builder
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -412,6 +533,9 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	// processEvent handles a single parsed Anthropic SSE event.
 	processEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+		if anthropicStreamEventHasVisibleCompletionOutput(event) {
+			sawOutput = true
+		}
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
@@ -439,6 +563,17 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 				continue
 			}
 			out := string(reverseToolNamesIfPresent(c, []byte(sse)))
+			if !sawOutput {
+				pendingEvents = append(pendingEvents, out)
+				continue
+			}
+			writeStreamHeaders()
+			for _, pending := range pendingEvents {
+				if _, err := fmt.Fprint(c.Writer, pending); err != nil {
+					return true
+				}
+			}
+			pendingEvents = nil
 			if _, err := fmt.Fprint(c.Writer, out); err != nil {
 				logger.L().Info("forward_as_responses stream: client disconnected",
 					zap.String("request_id", requestID),
@@ -446,7 +581,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 				return true // client disconnected
 			}
 		}
-		if len(events) > 0 {
+		if len(events) > 0 && sawOutput {
 			c.Writer.Flush()
 		}
 		return false
@@ -460,6 +595,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 					continue
 				}
 				out := string(reverseToolNamesIfPresent(c, []byte(sse)))
+				writeStreamHeaders()
 				fmt.Fprint(c.Writer, out) //nolint:errcheck
 			}
 			c.Writer.Flush()
@@ -483,6 +619,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		if !strings.HasPrefix(dataLine, "data: ") {
 			continue
 		}
+		appendRawSSEPair(&upstreamBody, line, dataLine)
 		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
@@ -509,6 +646,10 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		}
 	}
 
+	if firstChunk || !sawOutput {
+		logEmptyAnthropicHTTP200Response("forward_as_responses_stream", c, resp, originalModel, mappedModel, "empty_stream", upstreamBody.String())
+		return nil, newUpstreamStreamEndedFailoverError(emptyAnthropicCompletionMessage)
+	}
 	return finalizeStream()
 }
 

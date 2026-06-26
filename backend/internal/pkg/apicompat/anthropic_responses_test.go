@@ -12,6 +12,8 @@ import (
 // AnthropicToResponses tests
 // ---------------------------------------------------------------------------
 
+func intPtr(v int) *int { return &v }
+
 func TestAnthropicToResponses_BasicText(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",
@@ -143,7 +145,7 @@ func TestAnthropicToResponses_ToolUse(t *testing.T) {
 	assert.Empty(t, items[2].ID)
 	assert.Equal(t, "function_call_output", items[3].Type)
 	assert.Equal(t, "call_1", items[3].CallID)
-	assert.Equal(t, "Sunny, 72°F", items[3].Output)
+	assert.Equal(t, `"Sunny, 72°F"`, string(items[3].Output))
 }
 
 func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
@@ -794,6 +796,70 @@ func TestStreamingReasoning(t *testing.T) {
 	assert.Equal(t, "content_block_stop", events[0].Type)
 }
 
+func TestAnthropicEventToResponses_ReasoningDoneCarriesFullSummary(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_start",
+		Message: &AnthropicResponse{
+			ID:    "msg_reasoning_done",
+			Model: "claude-sonnet-4-5-20250929",
+		},
+	}, state)
+
+	idx := 0
+	events := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_start",
+		Index: &idx,
+		ContentBlock: &AnthropicContentBlock{
+			Type: "thinking",
+			ID:   "think_1",
+		},
+	}, state)
+	require.Len(t, events, 1)
+	assert.Equal(t, "response.output_item.added", events[0].Type)
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: &idx,
+		Delta: &AnthropicDelta{
+			Type:     "thinking_delta",
+			Thinking: "step one",
+		},
+	}, state)
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: &idx,
+		Delta: &AnthropicDelta{
+			Type:     "thinking_delta",
+			Thinking: " and step two",
+		},
+	}, state)
+
+	events = AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: &idx,
+	}, state)
+
+	var reasoningDone, itemDone *ResponsesStreamEvent
+	for i := range events {
+		switch events[i].Type {
+		case "response.reasoning_summary_text.done":
+			reasoningDone = &events[i]
+		case "response.output_item.done":
+			itemDone = &events[i]
+		}
+	}
+	require.NotNil(t, reasoningDone, "reasoning_summary_text.done missing")
+	assert.Equal(t, "step one and step two", reasoningDone.Text)
+	require.NotNil(t, itemDone, "output_item.done missing")
+	require.NotNil(t, itemDone.Item)
+	assert.Equal(t, "reasoning", itemDone.Item.Type)
+	require.Len(t, itemDone.Item.Summary, 1)
+	assert.Equal(t, "summary_text", itemDone.Item.Summary[0].Type)
+	assert.Equal(t, "step one and step two", itemDone.Item.Summary[0].Text)
+}
+
 func TestStreamingIncomplete(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 
@@ -1256,6 +1322,37 @@ func TestResponsesToAnthropicRequest_ToolChoiceLegacyFunctionName(t *testing.T) 
 	assert.Equal(t, "get_weather", tc["name"])
 }
 
+func TestResponsesToAnthropicRequest_ReasoningUsesAdaptiveThinking(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.5",
+		Input: json.RawMessage(`[{"role":"user","content":"Hello"}]`),
+		Reasoning: &ResponsesReasoning{
+			Effort: "medium",
+		},
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.OutputConfig)
+	assert.Equal(t, "medium", resp.OutputConfig.Effort)
+	require.NotNil(t, resp.Thinking)
+	assert.Equal(t, "adaptive", resp.Thinking.Type)
+	assert.Zero(t, resp.Thinking.BudgetTokens)
+}
+
+func TestResponsesToAnthropicRequest_EmptyUserContentGetsPlaceholder(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.5",
+		Input: json.RawMessage(`[{"role":"user","content":[]}]`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 1)
+	assert.Equal(t, "user", resp.Messages[0].Role)
+	assert.JSONEq(t, `"(empty)"`, string(resp.Messages[0].Content))
+}
+
 // ---------------------------------------------------------------------------
 // Image content block conversion tests
 // ---------------------------------------------------------------------------
@@ -1340,7 +1437,7 @@ func TestAnthropicToResponses_ToolResultWithImage(t *testing.T) {
 	// function_call_output should have text-only output (no image).
 	assert.Equal(t, "function_call_output", items[2].Type)
 	assert.Equal(t, "toolu_1", items[2].CallID)
-	assert.Equal(t, "(empty)", items[2].Output)
+	assert.Equal(t, `"(empty)"`, string(items[2].Output))
 
 	// Image should be in a separate user message.
 	assert.Equal(t, "user", items[3].Role)
@@ -1377,7 +1474,7 @@ func TestAnthropicToResponses_ToolResultMixed(t *testing.T) {
 
 	// function_call_output should have text-only output.
 	assert.Equal(t, "function_call_output", items[2].Type)
-	assert.Equal(t, "File metadata: 800x600 PNG", items[2].Output)
+	assert.Equal(t, `"File metadata: 800x600 PNG"`, string(items[2].Output))
 
 	// Image should be in a separate user message.
 	assert.Equal(t, "user", items[3].Role)
@@ -1412,7 +1509,7 @@ func TestAnthropicToResponses_TextOnlyToolResultBackwardCompat(t *testing.T) {
 	require.Len(t, items, 3)
 
 	// Text-only tool_result should produce a plain string.
-	assert.Equal(t, "Sunny, 72°F", items[2].Output)
+	assert.Equal(t, `"Sunny, 72°F"`, string(items[2].Output))
 }
 
 func TestAnthropicToResponses_ImageEmptyMediaType(t *testing.T) {
@@ -1732,4 +1829,132 @@ func TestAnthropicEventToResponses_CacheTokensFromMessageDelta(t *testing.T) {
 	assert.Equal(t, 8, completed.Response.Usage.OutputTokens)
 	require.NotNil(t, completed.Response.Usage.InputTokensDetails)
 	assert.Equal(t, 11, completed.Response.Usage.InputTokensDetails.CachedTokens)
+}
+
+func TestAnthropicEventToResponses_ToolCallDoneCarriesFullArguments(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_start",
+		Message: &AnthropicResponse{
+			ID:    "msg_tool",
+			Model: "claude-sonnet-4-5-20250929",
+		},
+	}, state)
+
+	idx := 0
+	events := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_start",
+		Index: &idx,
+		ContentBlock: &AnthropicContentBlock{
+			Type: "tool_use",
+			ID:   "toolu_123",
+			Name: "run_shell",
+		},
+	}, state)
+	require.Len(t, events, 1)
+	require.Equal(t, "response.output_item.added", events[0].Type)
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: &idx,
+		Delta: &AnthropicDelta{
+			Type:        "input_json_delta",
+			PartialJSON: `{"cmd":`,
+		},
+	}, state)
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: &idx,
+		Delta: &AnthropicDelta{
+			Type:        "input_json_delta",
+			PartialJSON: `"ls"}`,
+		},
+	}, state)
+
+	events = AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: &idx,
+	}, state)
+
+	var argsDone, itemDone *ResponsesStreamEvent
+	for i := range events {
+		switch events[i].Type {
+		case "response.function_call_arguments.done":
+			argsDone = &events[i]
+		case "response.output_item.done":
+			itemDone = &events[i]
+		}
+	}
+	require.NotNil(t, argsDone, "function_call_arguments.done missing")
+	assert.Equal(t, `{"cmd":"ls"}`, argsDone.Arguments)
+	require.NotNil(t, itemDone, "function_call output_item.done missing")
+	require.NotNil(t, itemDone.Item)
+	assert.Equal(t, "function_call", itemDone.Item.Type)
+	assert.Equal(t, "toolu_123", itemDone.Item.CallID)
+	assert.Equal(t, "run_shell", itemDone.Item.Name)
+	assert.Equal(t, `{"cmd":"ls"}`, itemDone.Item.Arguments)
+}
+
+func TestAnthropicEventToResponses_ToolUseStartEmptyInputDoesNotPrefixDeltaArguments(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_start",
+		Message: &AnthropicResponse{
+			ID:    "msg_tool_empty_start",
+			Model: "claude-sonnet-4-5-20250929",
+		},
+	}, state)
+
+	idx := 0
+	events := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_start",
+		Index: &idx,
+		ContentBlock: &AnthropicContentBlock{
+			Type:  "tool_use",
+			ID:    "toolu_empty_start",
+			Name:  "get_weather",
+			Input: json.RawMessage(`{}`),
+		},
+	}, state)
+	require.Len(t, events, 1)
+	require.Equal(t, "response.output_item.added", events[0].Type)
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: &idx,
+		Delta: &AnthropicDelta{
+			Type:        "input_json_delta",
+			PartialJSON: `{"city":"Beijing"`,
+		},
+	}, state)
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: &idx,
+		Delta: &AnthropicDelta{
+			Type:        "input_json_delta",
+			PartialJSON: `,"unit":"celsius"}`,
+		},
+	}, state)
+
+	events = AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: &idx,
+	}, state)
+
+	var argsDone, itemDone *ResponsesStreamEvent
+	for i := range events {
+		switch events[i].Type {
+		case "response.function_call_arguments.done":
+			argsDone = &events[i]
+		case "response.output_item.done":
+			itemDone = &events[i]
+		}
+	}
+	require.NotNil(t, argsDone, "function_call_arguments.done missing")
+	require.JSONEq(t, `{"city":"Beijing","unit":"celsius"}`, argsDone.Arguments)
+	require.NotNil(t, itemDone, "function_call output_item.done missing")
+	require.NotNil(t, itemDone.Item)
+	require.JSONEq(t, `{"city":"Beijing","unit":"celsius"}`, itemDone.Item.Arguments)
 }

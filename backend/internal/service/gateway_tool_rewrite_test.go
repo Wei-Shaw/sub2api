@@ -10,6 +10,22 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestApplyAnthropicMessageCacheTransforms_RewritesResponsesBridgeBody(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-4.5","system":[{"type":"text","text":"system prompt"}],"messages":[{"role":"user","content":[{"type":"text","text":"stable prompt"}]},{"role":"assistant","content":[{"type":"text","text":"ok"}]},{"role":"user","content":[{"type":"text","text":"latest prompt"}]}],"tools":[{"name":"search","input_schema":{"type":"object"}}]}`)
+	repo := &gatewayTTLSettingRepo{data: map[string]string{
+		SettingKeyRewriteMessageCacheControl: "true",
+	}}
+	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{})
+	svc := &GatewayService{settingService: NewSettingService(repo, &config.Config{})}
+
+	out := svc.applyAnthropicMessageCacheTransforms(context.Background(), nil, body)
+
+	require.Equal(t, "ephemeral", gjson.GetBytes(out, "messages.2.content.0.cache_control.type").String())
+	require.Equal(t, "5m", gjson.GetBytes(out, "messages.2.content.0.cache_control.ttl").String())
+	require.Equal(t, "ephemeral", gjson.GetBytes(out, "tools.0.cache_control.type").String())
+	require.Equal(t, "5m", gjson.GetBytes(out, "tools.0.cache_control.ttl").String())
+}
+
 func TestBuildDynamicToolMap_BelowThreshold(t *testing.T) {
 	// Parrot 行为：tools 数量 ≤ 5 时不做动态映射。
 	names := []string{"bash", "edit", "read", "write", "search"}

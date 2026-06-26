@@ -95,6 +95,23 @@ func (s *GatewayService) rewriteMessageCacheControlIfEnabled(ctx context.Context
 	return addMessageCacheBreakpoints(body)
 }
 
+type toolNameRewriteSetter interface {
+	Set(string, any)
+}
+
+func (s *GatewayService) applyAnthropicMessageCacheTransforms(ctx context.Context, c toolNameRewriteSetter, body []byte) []byte {
+	body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
+	if rw := buildToolNameRewriteFromBody(body); rw != nil {
+		body = applyToolNameRewriteToBody(body, rw)
+		if c != nil {
+			c.Set(toolNameRewriteKey, rw)
+		}
+	} else {
+		body = applyToolsLastCacheBreakpoint(body)
+	}
+	return body
+}
+
 func (s *GatewayService) isRewriteMessageCacheControlEnabled(ctx context.Context) bool {
 	if s == nil {
 		return false
