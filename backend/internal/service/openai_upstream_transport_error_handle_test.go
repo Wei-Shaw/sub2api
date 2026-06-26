@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -35,6 +37,21 @@ func newOpenAITransportErrTestContext() (*gin.Context, *httptest.ResponseRecorde
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	return c, rec
+REDACTED
+
+type failingOpenAIHTTPUpstream struct {
+	err   error
+	calls int
+REDACTED
+
+func (u *failingOpenAIHTTPUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	u.calls++
+	return nil, u.err
+REDACTED
+
+func (u *failingOpenAIHTTPUpstream) DoWithTLS(_ *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	u.calls++
+	return nil, u.err
 REDACTED
 
 // A durable proxy/credential failure must (a) temporarily unschedule the account
@@ -158,4 +175,38 @@ func TestHandleOpenAIUpstreamTransportError_DeadlineExceeded_StillFailsOver(t *t
 
 	var fo *UpstreamFailoverError
 	require.True(t, errors.As(err, &fo), "context.DeadlineExceeded must still return *UpstreamFailoverError")
+REDACTED
+
+func TestForwardAsRawChatCompletions_TransportErrorFailsOver(t *testing.T) {
+	repo := &openaiTransportAccountRepoStub{REDACTED
+	upstream := &failingOpenAIHTTPUpstream{
+		err: errors.New(`Post "https://opencode.ai/zen/v1/chat/completions": EOF`),
+REDACTED
+	svc := &OpenAIGatewayService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg: &config.Config{
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: falseREDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	account := &Account{
+		ID:          81,
+		Name:        "oc-20053",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+REDACTED"api_key": "sk-test", "base_url": "https://opencode.ai/zen/v1"REDACTED,
+REDACTED
+	c, rec := newOpenAITransportErrTestContext()
+	body := []byte(`{"model":"deepseek-v4-flash-free","messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
+
+	_, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+
+	require.Equal(t, 1, upstream.calls)
+	var fo *UpstreamFailoverError
+	require.True(t, errors.As(err, &fo), "transport error must trigger account failover")
+	require.Equal(t, http.StatusBadGateway, fo.StatusCode)
+	require.Empty(t, repo.tempUnschedCalls, "plain EOF is transient: fail over but do not evict")
+	require.Equal(t, 0, rec.Body.Len(), "service must not write a hard 502 before handler can fail over")
 REDACTED
