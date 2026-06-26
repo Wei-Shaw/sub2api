@@ -4,7 +4,7 @@
       <input
         :value="currentValue"
         type="text"
-        class="input rounded-r-none border-r-0"
+        class="input rounded-r-none"
         :data-testid="inputTestId || undefined"
         :placeholder="placeholder"
         :disabled="disabled"
