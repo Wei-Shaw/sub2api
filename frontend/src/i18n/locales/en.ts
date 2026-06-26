@@ -3461,9 +3461,9 @@ export default {
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
-        codexCLIOnlyAllowClaudeCode: "Also allow Claude Code's Codex plugin",
-        codexCLIOnlyAllowClaudeCodeDesc:
-          'Only takes effect when the switch above is on. Additionally allows requests from the Claude Code Codex plugin (exact match on originator=Claude Code) without weakening blocking of other non-official clients.',
+        codexCLIOnlyAppServer: 'Allow Codex app-server clients',
+        codexCLIOnlyAppServerDesc:
+          "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
         codexImageGenerationBridge: 'Codex image-generation bridge',
         codexImageGenerationBridgeDesc:
           'Account policy takes precedence over channel and global settings. Only controls whether Codex requests through the /responses text endpoint receive the image_generation tool; standalone image-generation endpoints are unaffected.',
@@ -5830,9 +5830,41 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: 'Used to bypass Cloudflare browser-UA challenges on the OpenAI upstream. Only applies when the client User-Agent is detected as a browser (Mozilla/...). Leave empty to use the built-in default.',
-        openaiAllowClaudeCodeCodexPlugin: "Allow using the Codex plugin in Claude Code",
-        openaiAllowClaudeCodeCodexPluginDesc:
-          "Global switch; only affects OpenAI OAuth accounts that have 'Codex official clients only' enabled. When on, all such accounts additionally allow requests from the Claude Code Codex plugin (exact match on originator=Claude Code) without per-account config; upstream requests remain pass-through.",
+        codexHardeningTitle: "Codex Settings",
+        codexClientRestrictionTitle: "Codex client restriction",
+        codexHardeningDesc:
+          "Only affects OpenAI OAuth accounts with 'Codex official clients only' enabled (global). Beyond User-Agent/Originator, harden the decision with a version range, an engine-fingerprint gate, and black/whitelists.",
+        minCodexVersion: "Min Codex Version",
+        minCodexVersionPlaceholder: "e.g. 0.142.0",
+        maxCodexVersion: "Max Codex Version",
+        maxCodexVersionPlaceholder: "e.g. 0.200.0",
+        codexVersionHint:
+          "Official clients only: checks their version against the [min, max] range. Leave a side empty to not limit it.",
+        codexFingerprintSignals: "Codex engine fingerprint signals",
+        codexFingerprintSignalsDesc:
+          "Define engine-fingerprint signals: every Required signal must match (AND); within a row, '/'-separated variants are OR'd. None checked = not enforced. Default checks only the x-codex- prefix. Types: header exact / header prefix / body path.",
+        codexFpTypeHeaderExact: "Header exact",
+        codexFpTypeHeaderPrefix: "Header prefix",
+        codexFpTypeBodyPath: "Body path",
+        codexFpMatchPlaceholder: "match; '/'-separate variants (e.g. session-id / session_id or x-codex-)",
+        codexFpRequired: "Required",
+        codexFingerprintNoRequiredWarn: "No signal is marked Required — the engine-fingerprint gate is inactive, allowing every candidate that passes identity/version. Check at least one signal to enable it.",
+        codexAllowAppServer: "Codex app-server",
+        codexAllowAppServerDesc:
+          "Allow third-party clients that embed the Codex engine and connect over the app-server protocol (e.g. Claude Code's codex plugin). Off by default; when on, such clients are allowed once they pass the engine-fingerprint gate (the signal list below); off = only official clients and the whitelist are allowed.",
+        codexBlacklist: "User-Agent/Originator Blacklist",
+        codexBlacklistDesc:
+          "Deny if any field matches; takes precedence over any allow. originator is exact; User-Agent is a 'contains' match (comma-separated).",
+        codexWhitelist: "User-Agent/Originator Whitelist",
+        codexWhitelistDesc:
+          "Allow clients outside the official set: requires exact originator and every User-Agent marker present. Still subject to the fingerprint gate unless 'Skip engine fingerprint' is checked.",
+        codexWhitelistSkipFingerprint: "Skip engine fingerprint",
+        codexWhitelistSkipFingerprintTooltip:
+          "Risk: when checked this entry is allowed on originator + User-Agent alone (both forgeable), with no engine-fingerprint backstop. Use only for trusted third-party clients that genuinely do not send a codex engine fingerprint.",
+        codexOriginatorPlaceholder: "originator (exact, e.g. opencode)",
+        codexUaContainsPlaceholder: "User-Agent contains markers, comma-separated (e.g. opencode/)",
+        codexAddRow: "Add entry",
+        codexRemoveRow: "Remove",
       REDACTED,
       webSearchEmulation: {
         title: 'Web Search Emulation',

@@ -1631,36 +1631,15 @@ REDACTED
 	return ok && enabled
 REDACTED
 
-// GetCodexCLIOnlyAllowedClients 返回 codex_cli_only 之上额外放行的命名客户端预设 ID 列表。
-// 仅 OpenAI OAuth 账号生效；缺失或类型不符时返回空。预设 ID 的具体匹配规则由
-// openai 包的 registry 固化，配置只能引用预设键、不能自定义规则。
-func (a *Account) GetCodexCLIOnlyAllowedClients() []string {
-	if a == nil || !a.IsOpenAIOAuth() || a.Extra == nil {
-		return nil
+// IsCodexCLIOnlyAppServerAllowed 返回 codex_cli_only 账号是否额外放行 Codex app-server
+// 第三方客户端（运行时与全局 app_server 开关 OR）。字段：accounts.extra.codex_cli_only_allow_app_server。
+// 仅在 codex_cli_only 已启用时有意义；字段缺失或类型不符按 false（不放行）处理。
+func (a *Account) IsCodexCLIOnlyAppServerAllowed() bool {
+	if !a.IsCodexCLIOnlyEnabled() {
+		return false
 REDACTED
-	raw, ok := a.Extra["codex_cli_only_allowed_clients"]
-	if !ok || raw == nil {
-		return nil
-REDACTED
-	switch v := raw.(type) {
-	case []string:
-		result := make([]string, 0, len(v))
-		for _, s := range v {
-			if strings.TrimSpace(s) != "" {
-				result = append(result, s)
-		REDACTED
-	REDACTED
-		return result
-	case []any:
-		result := make([]string, 0, len(v))
-		for _, item := range v {
-			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
-				result = append(result, s)
-		REDACTED
-	REDACTED
-		return result
-REDACTED
-	return nil
+	v, ok := a.Extra["codex_cli_only_allow_app_server"].(bool)
+	return ok && v
 REDACTED
 
 // WindowCostSchedulability 窗口费用调度状态

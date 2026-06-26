@@ -1693,23 +1693,23 @@
           class="mt-4 flex items-center justify-between border-l-2 border-gray-200 pl-4 dark:border-dark-600"
         >
           <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexCLIOnlyAllowClaudeCode') REDACTEDREDACTED</label>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexCLIOnlyAppServer') REDACTEDREDACTED</label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.codexCLIOnlyAllowClaudeCodeDesc') REDACTEDREDACTED
+              {{ t('admin.accounts.openai.codexCLIOnlyAppServerDesc') REDACTEDREDACTED
             </p>
           </div>
           <button
             type="button"
-            @click="codexCLIOnlyAllowClaudeCodeEnabled = !codexCLIOnlyAllowClaudeCodeEnabled"
+            @click="codexCLIOnlyAppServerEnabled = !codexCLIOnlyAppServerEnabled"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              codexCLIOnlyAllowClaudeCodeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              codexCLIOnlyAppServerEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
             ]"
           >
             <span
               :class="[
                 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                codexCLIOnlyAllowClaudeCodeEnabled ? 'translate-x-5' : 'translate-x-0'
+                codexCLIOnlyAppServerEnabled ? 'translate-x-5' : 'translate-x-0'
               ]"
             />
           </button>
@@ -2603,7 +2603,7 @@ const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_comple
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
-const codexCLIOnlyAllowClaudeCodeEnabled = ref(false)
+const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexImageGenerationBridgeMode = 'inherit' | 'enabled' | 'disabled'
 const codexImageGenerationBridgeMode = ref<CodexImageGenerationBridgeMode>('inherit')
 const anthropicPassthroughEnabled = ref(false)
@@ -2986,7 +2986,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
-  codexCLIOnlyAllowClaudeCodeEnabled.value = false
+  codexCLIOnlyAppServerEnabled.value = false
   codexImageGenerationBridgeMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   webSearchEmulationMode.value = 'default'
@@ -3024,9 +3024,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     REDACTED)
     if (newAccount.type === 'oauth') {
       codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
-      codexCLIOnlyAllowClaudeCodeEnabled.value =
-        Array.isArray(extra?.codex_cli_only_allowed_clients) &&
-        (extra.codex_cli_only_allowed_clients as unknown[]).includes('claude_code')
+      codexCLIOnlyAppServerEnabled.value =
+        extra?.codex_cli_only_allow_app_server === true
     REDACTED
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
@@ -4169,11 +4168,12 @@ const handleSubmit = async () => {
         REDACTED else {
           delete newExtra.codex_cli_only
         REDACTED
-        // 仅当 codex_cli_only 开启且子开关开启时写入 Claude Code 插件白名单，否则清除避免孤立字段
-        if (codexCLIOnlyEnabled.value && codexCLIOnlyAllowClaudeCodeEnabled.value) {
-          newExtra.codex_cli_only_allowed_clients = ['claude_code']
+        // Claude Code 插件放行已迁移到全局 codex_cli_only_whitelist，编辑时清理废弃账号级快捷字段。
+        delete newExtra.codex_cli_only_allowed_clients
+        if (codexCLIOnlyEnabled.value && codexCLIOnlyAppServerEnabled.value) {
+          newExtra.codex_cli_only_allow_app_server = true
         REDACTED else {
-          delete newExtra.codex_cli_only_allowed_clients
+          delete newExtra.codex_cli_only_allow_app_server
         REDACTED
       REDACTED
 

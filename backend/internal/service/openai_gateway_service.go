@@ -916,18 +916,18 @@ REDACTED
 REDACTED
 REDACTED
 
-func (s *OpenAIGatewayService) detectCodexClientRestriction(c *gin.Context, account *Account) CodexClientRestrictionDetectionResult {
-	var globalAllowedClients []string
+func (s *OpenAIGatewayService) detectCodexClientRestriction(c *gin.Context, account *Account, body []byte) CodexClientRestrictionDetectionResult {
+	// 安全默认：即便缺 settingService（仅测试/误配可达）也保持指纹门为默认种子，
+	// 避免零值 policy（nil 信号）让指纹门失败开放。有 settingService 时整体覆盖为全局策略。
+	policy := CodexRestrictionPolicy{EngineFingerprintSignals: openai.DefaultEngineFingerprintSignalsREDACTED
 	if account != nil && account.IsCodexCLIOnlyEnabled() && s != nil && s.settingService != nil {
 		ctx := context.Background()
 		if c != nil && c.Request != nil {
 			ctx = c.Request.Context()
 	REDACTED
-		if s.settingService.IsOpenAIAllowClaudeCodeCodexPluginEnabled(ctx) {
-			globalAllowedClients = []string{openai.AllowedClientClaudeCodeREDACTED
-	REDACTED
+		policy = s.settingService.GetCodexRestrictionPolicy(ctx)
 REDACTED
-	return s.getCodexClientRestrictionDetector().Detect(c, account, globalAllowedClients)
+	return s.getCodexClientRestrictionDetector().Detect(c, account, policy, body)
 REDACTED
 
 func getAPIKeyIDFromContext(c *gin.Context) int64 {
@@ -2501,7 +2501,7 @@ REDACTED
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 
-	restrictionResult := s.detectCodexClientRestriction(c, account)
+	restrictionResult := s.detectCodexClientRestriction(c, account, body)
 	apiKeyID := getAPIKeyIDFromContext(c)
 	logCodexCLIOnlyDetection(ctx, c, account, apiKeyID, restrictionResult, body)
 	if restrictionResult.Enabled && !restrictionResult.Matched {
