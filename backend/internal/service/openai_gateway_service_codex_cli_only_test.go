@@ -18,7 +18,7 @@ type stubCodexRestrictionDetector struct {
 	result CodexClientRestrictionDetectionResult
 REDACTED
 
-func (s *stubCodexRestrictionDetector) Detect(_ *gin.Context, _ *Account, _ []string) CodexClientRestrictionDetectionResult {
+func (s *stubCodexRestrictionDetector) Detect(_ *gin.Context, _ *Account, _ CodexRestrictionPolicy, _ []byte) CodexClientRestrictionDetectionResult {
 	return s.result
 REDACTED
 
@@ -52,7 +52,7 @@ REDACTED)
 		c.Request.Header.Set("User-Agent", "curl/8.0")
 		account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_cli_only": trueREDACTEDREDACTED
 
-		result := got.Detect(c, account, nil)
+		result := got.Detect(c, account, CodexRestrictionPolicy{REDACTED, nil)
 		require.True(t, result.Enabled)
 		require.True(t, result.Matched)
 		require.Equal(t, CodexClientRestrictionReasonForceCodexCLI, result.Reason)
