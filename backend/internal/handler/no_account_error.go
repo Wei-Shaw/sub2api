@@ -101,7 +101,7 @@ func classifyNoAccountErrorFromGin(
 	displayModel string,
 	platform string,
 ) noAccountErrorClassification {
-	var ctx context.Context = context.Background()
+	ctx := context.Background()
 	if c != nil && c.Request != nil {
 		ctx = c.Request.Context()
 	}
