@@ -708,6 +708,12 @@ type GatewayConfig struct {
 	// CodexImageGenerationBridgeEnabled: 是否为 Codex `/v1/responses` 自动注入 image_generation 工具和桥接指令。
 	// 默认关闭，避免纯文本 Codex 请求被意外改写；显式携带 image_generation 工具的请求仍按分组能力转发。
 	CodexImageGenerationBridgeEnabled bool `mapstructure:"codex_image_generation_bridge_enabled"`
+	// CodexBlockConnectorTools: 是否在转发前剥除请求 tools 中的 ChatGPT 连接器/App（codex_apps.* 等）工具。
+	// 这类工具由上游以「账号主人」的身份在服务端执行（如 GitHub 连接器读取私有仓库），
+	// 在一个 OAuth 账号被多个下游 API key 共享的场景下，下游用户不应能借此调用账号主人的连接器。
+	// 开启后会丢弃命中的工具，并重置指向被丢弃工具的 tool_choice。
+	// 默认关闭以保持兼容；共享账号 / 多租户部署建议开启。
+	CodexBlockConnectorTools bool `mapstructure:"codex_block_connector_tools"`
 	// ForcedCodexInstructionsTemplateFile: 服务端强制附加到 Codex 顶层 instructions 的模板文件路径。
 	// 模板渲染后会直接覆盖最终 instructions；若需要保留客户端 system 转换结果，请在模板中显式引用 {{ .ExistingInstructions }}。
 	ForcedCodexInstructionsTemplateFile string `mapstructure:"forced_codex_instructions_template_file"`
@@ -1828,6 +1834,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
+	viper.SetDefault("gateway.codex_block_connector_tools", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)

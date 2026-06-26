@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"go.uber.org/zap"
 )
 
 var codexModelMap = map[string]string{
@@ -77,6 +79,9 @@ type codexOAuthTransformOptions struct {
 	IsCompact               bool
 	SkipDefaultInstructions bool
 	PreserveToolCallIDs     bool
+	// BlockConnectorTools 开启后，会从 tools 中剥除 ChatGPT 连接器/App（codex_apps.* 等）
+	// 服务端工具，避免共享 OAuth 账号被下游用户借连接器以账号主人身份执行操作。
+	BlockConnectorTools bool
 }
 
 const (
@@ -199,6 +204,13 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 
 	if normalizeCodexTools(reqBody) {
 		result.Modified = true
+	}
+	if opts.BlockConnectorTools {
+		if removed := stripCodexConnectorTools(reqBody); len(removed) > 0 {
+			result.Modified = true
+			logger.L().Warn("codex: stripped connector/app tools from forwarded request",
+				zap.Strings("tools", removed))
+		}
 	}
 	if normalizeCodexToolChoice(reqBody) {
 		result.Modified = true
@@ -1348,4 +1360,126 @@ func normalizeCodexTools(reqBody map[string]any) bool {
 	}
 
 	return modified
+}
+
+// codexConnectorToolPrefixes are normalized tool-name prefixes that map to
+// ChatGPT server-side connectors/apps (the "codex_apps" MCP namespace). Such
+// tools execute on the upstream OAuth account owner's identity (e.g. the GitHub
+// connector reading the owner's private repos), so they must not be forwarded
+// when one account is shared across downstream callers.
+var codexConnectorToolPrefixes = []string{
+	"codex_apps",
+}
+
+// codexConnectorToolExactNames are normalized connector/app management tool
+// names (separators collapsed to "_") that should also be stripped.
+var codexConnectorToolExactNames = map[string]struct{}{
+	"app_list":             {},
+	"apps_list":            {},
+	"mcpserverstatus_list": {},
+	"list_connectors":      {},
+	"connectors_list":      {},
+}
+
+// normalizeCodexToolName lowercases and collapses ".", "-" and "/" separators
+// to "_" so that codex_apps.github / codex_apps__github / codex_apps-github all
+// compare equal.
+func normalizeCodexToolName(name string) string {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if n == "" {
+		return ""
+	}
+	return strings.NewReplacer(".", "_", "-", "_", "/", "_").Replace(n)
+}
+
+// isCodexConnectorToolName reports whether a tool name belongs to the ChatGPT
+// connector/app server-side namespace.
+func isCodexConnectorToolName(name string) bool {
+	normalized := normalizeCodexToolName(name)
+	if normalized == "" {
+		return false
+	}
+	if _, ok := codexConnectorToolExactNames[normalized]; ok {
+		return true
+	}
+	for _, p := range codexConnectorToolPrefixes {
+		if normalized == p || strings.HasPrefix(normalized, p+"_") {
+			return true
+		}
+	}
+	return false
+}
+
+// codexToolName extracts a tool's name from either Responses-style (top-level
+// "name") or ChatCompletions-style ("function".name) tool definitions.
+func codexToolName(tool any) string {
+	toolMap, ok := tool.(map[string]any)
+	if !ok {
+		return ""
+	}
+	if name, ok := toolMap["name"].(string); ok && strings.TrimSpace(name) != "" {
+		return name
+	}
+	if function, ok := toolMap["function"].(map[string]any); ok {
+		if name, ok := function["name"].(string); ok {
+			return name
+		}
+	}
+	return ""
+}
+
+// stripCodexConnectorTools removes connector/app tools from reqBody["tools"] and
+// resets a tool_choice that pinned a removed tool. It returns the names that were
+// removed (nil if none).
+func stripCodexConnectorTools(reqBody map[string]any) []string {
+	rawTools, ok := reqBody["tools"]
+	if !ok || rawTools == nil {
+		return nil
+	}
+	tools, ok := rawTools.([]any)
+	if !ok {
+		return nil
+	}
+
+	var removed []string
+	kept := make([]any, 0, len(tools))
+	for _, tool := range tools {
+		if name := codexToolName(tool); name != "" && isCodexConnectorToolName(name) {
+			removed = append(removed, name)
+			continue
+		}
+		kept = append(kept, tool)
+	}
+	if len(removed) == 0 {
+		return nil
+	}
+
+	reqBody["tools"] = kept
+	resetCodexToolChoiceIfRemoved(reqBody, removed)
+	return removed
+}
+
+// resetCodexToolChoiceIfRemoved sets tool_choice back to "auto" when it forced a
+// specific tool that has just been stripped, avoiding an upstream error about an
+// unknown tool.
+func resetCodexToolChoiceIfRemoved(reqBody map[string]any, removed []string) {
+	choice, ok := reqBody["tool_choice"].(map[string]any)
+	if !ok {
+		return
+	}
+	name, _ := choice["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		if function, ok := choice["function"].(map[string]any); ok {
+			name, _ = function["name"].(string)
+		}
+	}
+	if strings.TrimSpace(name) == "" {
+		return
+	}
+	for _, r := range removed {
+		if r == name {
+			reqBody["tool_choice"] = "auto"
+			return
+		}
+	}
 }
