@@ -3409,6 +3409,16 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        customHeaders: 'Custom request headers',
+        customHeadersDesc:
+          'Sent with upstream OpenAI requests from this account. Authorization can be used for special upstream auth; session, WebSocket, and content headers are protected.',
+        addCustomHeader: 'Add header',
+        customHeaderNamePlaceholder: 'Header name',
+        customHeaderValuePlaceholder: 'Header value',
+        customHeaderIncomplete: 'Enter both a header name and value, or remove this row.',
+        customHeaderInvalid: 'Header name contains unsupported characters.',
+        customHeaderProtected: 'This header is managed by the gateway and cannot be overridden.',
+        customHeaderDuplicate: 'Header names must be unique.',
         responsesWebsocketsV2: 'Responses WebSocket v2',
         responsesWebsocketsV2Desc:
           'Disabled by default. Enable to allow responses_websockets_v2 capability (still gated by global and account-type switches).',
