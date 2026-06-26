@@ -102,6 +102,19 @@ func RegisterGatewayRoutes(
 			}
 			h.OpenAIGateway.Embeddings(c)
 		})
+		gateway.POST("/audio/transcriptions", func(c *gin.Context) {
+			if getGroupPlatform(c) != service.PlatformOpenAI {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				c.JSON(http.StatusNotFound, gin.H{
+					"error": gin.H{
+						"type":    "not_found_error",
+						"message": "Audio Transcriptions API is not supported for this platform",
+					},
+				})
+				return
+			}
+			h.OpenAIGateway.AudioTranscriptions(c)
+		})
 		gateway.POST("/images/generations", func(c *gin.Context) {
 			if getGroupPlatform(c) != service.PlatformOpenAI {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)

@@ -625,6 +625,15 @@ func validatePricingBillingMode(pricing []ChannelModelPricing) error {
 }
 
 func checkBillingModeRequirements(p ChannelModelPricing) error {
+	if p.BillingMode == BillingModeDuration {
+		if p.PerRequestPrice == nil {
+			return infraerrors.BadRequest(
+				"BILLING_MODE_MISSING_PRICE",
+				"per_request_price is required for duration billing mode",
+			)
+		}
+		return nil
+	}
 	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage {
 		if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
 			return infraerrors.BadRequest(

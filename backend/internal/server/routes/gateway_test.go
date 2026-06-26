@@ -77,3 +77,21 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI images handler", path)
 	}
 }
+
+func TestGatewayRoutesOpenAIAudioTranscriptionsPathIsRegisteredOnlyUnderV1(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", strings.NewReader(""))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=test")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
+
+	for _, path := range []string{"/audio/transcriptions", "/backend-api/transcribe"} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(""))
+		req.Header.Set("Content-Type", "multipart/form-data; boundary=test")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusNotFound, w.Code, "path=%s should not be publicly registered", path)
+	}
+}

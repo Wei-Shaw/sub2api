@@ -30,7 +30,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, billable_duration_seconds, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
 
 // usageLogInsertArgTypes must stay in the same order as:
 //  1. prepareUsageLogInsert().args
@@ -74,6 +74,7 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // user_agent
 	"text",        // ip_address
 	"integer",     // image_count
+	"integer",     // billable_duration_seconds
 	"text",        // image_size
 	"text",        // image_input_size
 	"text",        // image_output_size
@@ -391,6 +392,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			user_agent,
 			ip_address,
 			image_count,
+			billable_duration_seconds,
 			image_size,
 			image_input_size,
 			image_output_size,
@@ -413,7 +415,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -833,6 +835,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			user_agent,
 			ip_address,
 			image_count,
+			billable_duration_seconds,
 			image_size,
 			image_input_size,
 			image_output_size,
@@ -851,7 +854,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(keys)*50)
+	args := make([]any, 0, len(keys)*51)
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -914,6 +917,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				user_agent,
 				ip_address,
 				image_count,
+				billable_duration_seconds,
 				image_size,
 				image_input_size,
 				image_output_size,
@@ -966,6 +970,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				user_agent,
 				ip_address,
 				image_count,
+				billable_duration_seconds,
 				image_size,
 				image_input_size,
 				image_output_size,
@@ -1058,6 +1063,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			user_agent,
 			ip_address,
 			image_count,
+			billable_duration_seconds,
 			image_size,
 			image_input_size,
 			image_output_size,
@@ -1076,7 +1082,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*50)
+	args := make([]any, 0, len(preparedList)*51)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1136,6 +1142,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			user_agent,
 			ip_address,
 			image_count,
+			billable_duration_seconds,
 			image_size,
 			image_input_size,
 			image_output_size,
@@ -1188,6 +1195,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			user_agent,
 			ip_address,
 			image_count,
+			billable_duration_seconds,
 			image_size,
 			image_input_size,
 			image_output_size,
@@ -1248,6 +1256,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			user_agent,
 			ip_address,
 			image_count,
+			billable_duration_seconds,
 			image_size,
 			image_input_size,
 			image_output_size,
@@ -1270,7 +1279,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1360,6 +1369,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			userAgent,
 			ipAddress,
 			log.ImageCount,
+			log.BillableDurationSeconds,
 			imageSize,
 			imageInputSize,
 			imageOutputSize,
@@ -4284,6 +4294,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		userAgent             sql.NullString
 		ipAddress             sql.NullString
 		imageCount            int
+		billableDurationSecs  int
 		imageSize             sql.NullString
 		imageInputSize        sql.NullString
 		imageOutputSize       sql.NullString
@@ -4338,6 +4349,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&userAgent,
 		&ipAddress,
 		&imageCount,
+		&billableDurationSecs,
 		&imageSize,
 		&imageInputSize,
 		&imageOutputSize,
@@ -4359,33 +4371,34 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	}
 
 	log := &service.UsageLog{
-		ID:                    id,
-		UserID:                userID,
-		APIKeyID:              apiKeyID,
-		AccountID:             accountID,
-		Model:                 model,
-		RequestedModel:        coalesceTrimmedString(requestedModel, model),
-		InputTokens:           inputTokens,
-		OutputTokens:          outputTokens,
-		CacheCreationTokens:   cacheCreationTokens,
-		CacheReadTokens:       cacheReadTokens,
-		CacheCreation5mTokens: cacheCreation5m,
-		CacheCreation1hTokens: cacheCreation1h,
-		ImageOutputTokens:     imageOutputTokens,
-		ImageOutputCost:       imageOutputCost,
-		InputCost:             inputCost,
-		OutputCost:            outputCost,
-		CacheCreationCost:     cacheCreationCost,
-		CacheReadCost:         cacheReadCost,
-		TotalCost:             totalCost,
-		ActualCost:            actualCost,
-		RateMultiplier:        rateMultiplier,
-		AccountRateMultiplier: nullFloat64Ptr(accountRateMultiplier),
-		BillingType:           int8(billingType),
-		RequestType:           service.RequestTypeFromInt16(requestTypeRaw),
-		ImageCount:            imageCount,
-		CacheTTLOverridden:    cacheTTLOverridden,
-		CreatedAt:             createdAt,
+		ID:                      id,
+		UserID:                  userID,
+		APIKeyID:                apiKeyID,
+		AccountID:               accountID,
+		Model:                   model,
+		RequestedModel:          coalesceTrimmedString(requestedModel, model),
+		InputTokens:             inputTokens,
+		OutputTokens:            outputTokens,
+		CacheCreationTokens:     cacheCreationTokens,
+		CacheReadTokens:         cacheReadTokens,
+		CacheCreation5mTokens:   cacheCreation5m,
+		CacheCreation1hTokens:   cacheCreation1h,
+		ImageOutputTokens:       imageOutputTokens,
+		ImageOutputCost:         imageOutputCost,
+		InputCost:               inputCost,
+		OutputCost:              outputCost,
+		CacheCreationCost:       cacheCreationCost,
+		CacheReadCost:           cacheReadCost,
+		TotalCost:               totalCost,
+		ActualCost:              actualCost,
+		RateMultiplier:          rateMultiplier,
+		AccountRateMultiplier:   nullFloat64Ptr(accountRateMultiplier),
+		BillingType:             int8(billingType),
+		RequestType:             service.RequestTypeFromInt16(requestTypeRaw),
+		ImageCount:              imageCount,
+		BillableDurationSeconds: billableDurationSecs,
+		CacheTTLOverridden:      cacheTTLOverridden,
+		CreatedAt:               createdAt,
 	}
 	// 先回填 legacy 字段，再基于 legacy + request_type 计算最终请求类型，保证历史数据兼容。
 	log.Stream = stream

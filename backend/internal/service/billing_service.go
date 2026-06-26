@@ -156,7 +156,7 @@ type CostBreakdown struct {
 	CacheReadCost     float64
 	TotalCost         float64
 	ActualCost        float64 // 应用倍率后的实际费用
-	BillingMode       string  // 计费模式（"token"/"per_request"/"image"），由 CalculateCostUnified 填充
+	BillingMode       string  // 计费模式（"token"/"per_request"/"image"/"duration"），由 CalculateCostUnified 填充
 }
 
 // ErrModelPricingUnavailable indicates that none of the configured pricing
@@ -746,19 +746,20 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 
 // CostInput 统一计费输入
 type CostInput struct {
-	Ctx            context.Context
-	Model          string
-	GroupID        *int64 // 用于渠道定价查找
-	Tokens         UsageTokens
-	RequestCount   int    // 按次计费时使用
-	SizeTier       string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
-	RateMultiplier float64
-	ServiceTier    string                // "priority","flex","" 等
-	Resolver       *ModelPricingResolver // 定价解析器
-	Resolved       *ResolvedPricing      // 可选：预解析的定价结果（避免重复 Resolve 调用）
+	Ctx             context.Context
+	Model           string
+	GroupID         *int64 // 用于渠道定价查找
+	Tokens          UsageTokens
+	RequestCount    int    // 按次计费时使用
+	SizeTier        string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
+	DurationSeconds int    // 按秒计费时使用
+	RateMultiplier  float64
+	ServiceTier     string                // "priority","flex","" 等
+	Resolver        *ModelPricingResolver // 定价解析器
+	Resolved        *ResolvedPricing      // 可选：预解析的定价结果（避免重复 Resolve 调用）
 }
 
-// CalculateCostUnified 统一计费入口，支持三种计费模式。
+// CalculateCostUnified 统一计费入口，支持 token/per_request/image/duration 计费模式。
 // 使用 ModelPricingResolver 解析定价，然后根据 BillingMode 分发计算。
 func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, error) {
 	if input.Resolver == nil {
@@ -785,6 +786,8 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 	switch resolved.Mode {
 	case BillingModePerRequest, BillingModeImage:
 		breakdown, err = s.calculatePerRequestCost(resolved, input)
+	case BillingModeDuration:
+		breakdown, err = s.calculateDurationCost(resolved, input)
 	default: // BillingModeToken
 		breakdown, err = s.calculateTokenCost(resolved, input)
 	}
@@ -954,6 +957,22 @@ func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, inpu
 	totalCost := unitPrice * float64(count)
 	actualCost := totalCost * input.RateMultiplier
 
+	return &CostBreakdown{
+		TotalCost:  totalCost,
+		ActualCost: actualCost,
+	}, nil
+}
+
+func (s *BillingService) calculateDurationCost(resolved *ResolvedPricing, input CostInput) (*CostBreakdown, error) {
+	seconds := input.DurationSeconds
+	if seconds <= 0 {
+		return nil, fmt.Errorf("duration seconds required for model: %s: %w", input.Model, ErrModelPricingUnavailable)
+	}
+	if resolved.DefaultPerRequestPrice <= 0 {
+		return nil, fmt.Errorf("duration price required for model: %s: %w", input.Model, ErrModelPricingUnavailable)
+	}
+	totalCost := resolved.DefaultPerRequestPrice * float64(seconds)
+	actualCost := totalCost * input.RateMultiplier
 	return &CostBreakdown{
 		TotalCost:  totalCost,
 		ActualCost: actualCost,

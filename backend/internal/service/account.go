@@ -73,6 +73,7 @@ type OpenAIEndpointCapability string
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
+	OpenAIEndpointCapabilityAudioTranscribe OpenAIEndpointCapability = "audio_transcriptions"
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
@@ -1149,6 +1150,7 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		if a.Type != AccountTypeAPIKey {
 			return false
 		}
+	case OpenAIEndpointCapabilityAudioTranscribe:
 	default:
 		return false
 	}

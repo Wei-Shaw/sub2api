@@ -13,7 +13,7 @@ const openaiModels = [
   'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-2026-03-05',
   // GPT-5.3 / Codex 系列
   'gpt-5.3-codex', 'gpt-5.3-codex-spark', 'codex-auto-review',
-  'gpt-4o-audio-preview', 'gpt-4o-realtime-preview',
+  'gpt-4o-audio-preview', 'gpt-4o-realtime-preview', 'gpt-4o-transcribe',
   // GPT Image 系列
   'gpt-image-1', 'gpt-image-1.5', 'gpt-image-2'
 ]

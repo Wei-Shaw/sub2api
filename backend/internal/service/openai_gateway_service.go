@@ -238,20 +238,21 @@ type OpenAIForwardResult struct {
 	ServiceTier *string
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
-	ReasoningEffort    *string
-	Stream             bool
-	OpenAIWSMode       bool
-	ResponseHeaders    http.Header
-	Duration           time.Duration
-	FirstTokenMs       *int
-	ClientDisconnect   bool
-	ImageCount         int
-	ImageSize          string
-	ImageInputSize     string
-	ImageOutputSize    string
-	ImageOutputSizes   []string
-	ImageSizeSource    string
-	ImageSizeBreakdown map[string]int
+	ReasoningEffort         *string
+	Stream                  bool
+	OpenAIWSMode            bool
+	ResponseHeaders         http.Header
+	Duration                time.Duration
+	FirstTokenMs            *int
+	ClientDisconnect        bool
+	ImageCount              int
+	BillableDurationSeconds int
+	ImageSize               string
+	ImageInputSize          string
+	ImageOutputSize         string
+	ImageOutputSizes        []string
+	ImageSizeSource         string
+	ImageSizeBreakdown      map[string]int
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
@@ -5978,6 +5979,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	cost, err = s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels, multiplier, imageMultiplier, tokens, serviceTier)
 	if err != nil {
+		if result.BillableDurationSeconds > 0 {
+			return err
+		}
 		if !isUsagePricingUnavailableError(err) {
 			return err
 		}
@@ -6017,28 +6021,29 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	usageLog := &UsageLog{
-		UserID:              user.ID,
-		APIKeyID:            apiKey.ID,
-		AccountID:           account.ID,
-		RequestID:           requestID,
-		Model:               result.Model,
-		RequestedModel:      requestedModel,
-		UpstreamModel:       optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
-		ServiceTier:         result.ServiceTier,
-		ReasoningEffort:     result.ReasoningEffort,
-		InboundEndpoint:     optionalTrimmedStringPtr(input.InboundEndpoint),
-		UpstreamEndpoint:    optionalTrimmedStringPtr(input.UpstreamEndpoint),
-		InputTokens:         actualInputTokens,
-		OutputTokens:        result.Usage.OutputTokens,
-		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:     result.Usage.CacheReadInputTokens,
-		ImageOutputTokens:   result.Usage.ImageOutputTokens,
-		ImageCount:          result.ImageCount,
-		ImageSize:           optionalTrimmedStringPtr(result.ImageSize),
-		ImageInputSize:      optionalTrimmedStringPtr(result.ImageInputSize),
-		ImageOutputSize:     optionalTrimmedStringPtr(result.ImageOutputSize),
-		ImageSizeSource:     optionalTrimmedStringPtr(result.ImageSizeSource),
-		ImageSizeBreakdown:  result.ImageSizeBreakdown,
+		UserID:                  user.ID,
+		APIKeyID:                apiKey.ID,
+		AccountID:               account.ID,
+		RequestID:               requestID,
+		Model:                   result.Model,
+		RequestedModel:          requestedModel,
+		UpstreamModel:           optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		ServiceTier:             result.ServiceTier,
+		ReasoningEffort:         result.ReasoningEffort,
+		InboundEndpoint:         optionalTrimmedStringPtr(input.InboundEndpoint),
+		UpstreamEndpoint:        optionalTrimmedStringPtr(input.UpstreamEndpoint),
+		InputTokens:             actualInputTokens,
+		OutputTokens:            result.Usage.OutputTokens,
+		CacheCreationTokens:     result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:         result.Usage.CacheReadInputTokens,
+		ImageOutputTokens:       result.Usage.ImageOutputTokens,
+		ImageCount:              result.ImageCount,
+		BillableDurationSeconds: result.BillableDurationSeconds,
+		ImageSize:               optionalTrimmedStringPtr(result.ImageSize),
+		ImageInputSize:          optionalTrimmedStringPtr(result.ImageInputSize),
+		ImageOutputSize:         optionalTrimmedStringPtr(result.ImageOutputSize),
+		ImageSizeSource:         optionalTrimmedStringPtr(result.ImageSizeSource),
+		ImageSizeBreakdown:      result.ImageSizeBreakdown,
 	}
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost
@@ -6073,6 +6078,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.BillingMode = &billingMode
 	} else if result.ImageCount > 0 {
 		billingMode := string(BillingModeImage)
+		usageLog.BillingMode = &billingMode
+	} else if result.BillableDurationSeconds > 0 {
+		billingMode := string(BillingModeDuration)
 		usageLog.BillingMode = &billingMode
 	} else {
 		billingMode := string(BillingModeToken)
@@ -6145,6 +6153,29 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	serviceTier string,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
+	if result != nil && result.BillableDurationSeconds > 0 {
+		if len(billingModels) == 0 || billingModel == "" {
+			return nil, errors.New("openai duration billing model is empty")
+		}
+		if apiKey == nil || apiKey.Group == nil {
+			return nil, fmt.Errorf("duration channel pricing is required for model: %s: %w", billingModel, ErrModelPricingUnavailable)
+		}
+		resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
+		if resolved == nil || resolved.Mode != BillingModeDuration {
+			return nil, fmt.Errorf("duration channel pricing is required for model: %s: %w", billingModel, ErrModelPricingUnavailable)
+		}
+		gid := apiKey.Group.ID
+		return s.billingService.CalculateCostUnified(CostInput{
+			Ctx:             ctx,
+			Model:           billingModel,
+			GroupID:         &gid,
+			RequestCount:    1,
+			DurationSeconds: result.BillableDurationSeconds,
+			RateMultiplier:  multiplier,
+			Resolver:        s.resolver,
+			Resolved:        resolved,
+		})
+	}
 	if result != nil && result.ImageCount > 0 {
 		// 渠道定价为 token 计费时走 token 路径，否则走图片计费
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {

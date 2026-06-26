@@ -25,6 +25,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/messages", EndpointMessages},
 		{"/v1/chat/completions", EndpointChatCompletions},
 		{"/v1/embeddings", EndpointEmbeddings},
+		{"/v1/audio/transcriptions", EndpointAudioTranscriptions},
 		{"/v1/responses", EndpointResponses},
 		{"/v1/images/generations", EndpointImagesGenerations},
 		{"/v1/images/edits", EndpointImagesEdits},
@@ -36,6 +37,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/openai/v1/responses/compact", EndpointResponses},
 		{"/openai/v1/images/generations", EndpointImagesGenerations},
 		{"/openai/v1/images/edits", EndpointImagesEdits},
+		{"/openai/v1/audio/transcriptions", EndpointAudioTranscriptions},
 		{"/antigravity/v1beta/models/gemini:generateContent", EndpointGeminiModels},
 
 		// Gin route patterns with wildcards.
@@ -79,6 +81,7 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 		{"openai from messages", EndpointMessages, "/v1/messages", service.PlatformOpenAI, EndpointResponses},
 		{"openai from completions", EndpointChatCompletions, "/v1/chat/completions", service.PlatformOpenAI, EndpointResponses},
 		{"openai embeddings", EndpointEmbeddings, "/v1/embeddings", service.PlatformOpenAI, EndpointEmbeddings},
+		{"openai audio transcriptions", EndpointAudioTranscriptions, "/v1/audio/transcriptions", service.PlatformOpenAI, EndpointAudioTranscriptions},
 		{"openai image generations", EndpointImagesGenerations, "/v1/images/generations", service.PlatformOpenAI, EndpointImagesGenerations},
 		{"openai image edits", EndpointImagesEdits, "/openai/v1/images/edits", service.PlatformOpenAI, EndpointImagesEdits},
 
