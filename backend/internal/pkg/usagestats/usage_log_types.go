@@ -265,6 +265,7 @@ type UsageLogFilters struct {
 	APIKeyID    int64
 	AccountID   int64
 	GroupID     int64
+	RequestID   string
 	Model       string
 	RequestType *int16
 	Stream      *bool
