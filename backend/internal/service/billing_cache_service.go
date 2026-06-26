@@ -833,6 +833,21 @@ REDACTED
 	return nil
 REDACTED
 
+func (s *BillingCacheService) minimumBalanceReserve() float64 {
+	if s == nil || s.cfg == nil || s.cfg.Billing.MinimumBalanceReserve <= 0 {
+		return 0
+REDACTED
+	return s.cfg.Billing.MinimumBalanceReserve
+REDACTED
+
+func (s *BillingCacheService) balanceBelowEligibilityThreshold(balance float64) bool {
+	if balance <= 0 {
+		return true
+REDACTED
+	minimumReserve := s.minimumBalanceReserve()
+	return minimumReserve > 0 && balance < minimumReserve
+REDACTED
+
 // checkBalanceEligibility 检查余额模式资格
 func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userID int64) error {
 	balance, err := s.GetUserBalance(ctx, userID)
@@ -847,7 +862,7 @@ REDACTED
 		s.circuitBreaker.OnSuccess()
 REDACTED
 
-	if balance <= 0 {
+	if s.balanceBelowEligibilityThreshold(balance) {
 		return ErrInsufficientBalance
 REDACTED
 
