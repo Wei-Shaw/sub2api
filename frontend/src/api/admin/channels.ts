@@ -43,6 +43,14 @@ export interface AccountStatsPricingRule {
   pricing: ChannelModelPricing[]
 }
 
+export interface BillingMultiplierRule {
+  id?: number
+  name: string
+  group_ids: number[]
+  account_ids: number[]
+  rate_multiplier: number
+}
+
 export interface Channel {
   id: number
   name: string
@@ -56,6 +64,7 @@ export interface Channel {
   model_mapping: Record<string, Record<string, string>> // platform → {src→dst}
   apply_pricing_to_account_stats: boolean
   account_stats_pricing_rules: AccountStatsPricingRule[]
+  billing_multiplier_rules?: BillingMultiplierRule[]
   created_at: string
   updated_at: string
 }
@@ -71,6 +80,7 @@ export interface CreateChannelRequest {
   features_config?: Record<string, unknown>
   apply_pricing_to_account_stats?: boolean
   account_stats_pricing_rules?: AccountStatsPricingRule[]
+  billing_multiplier_rules?: BillingMultiplierRule[]
 }
 
 export interface UpdateChannelRequest {
@@ -85,6 +95,7 @@ export interface UpdateChannelRequest {
   features_config?: Record<string, unknown>
   apply_pricing_to_account_stats?: boolean
   account_stats_pricing_rules?: AccountStatsPricingRule[]
+  billing_multiplier_rules?: BillingMultiplierRule[]
 }
 
 interface PaginatedResponse<T> {

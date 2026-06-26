@@ -54,6 +54,22 @@ type Channel struct {
 	// 账号统计定价
 	ApplyPricingToAccountStats bool                      // 是否应用渠道模型定价到账号统计
 	AccountStatsPricingRules   []AccountStatsPricingRule // 自定义账号统计定价规则（按 SortOrder 排序，先命中为准）
+	BillingMultiplierRules     []ChannelBillingMultiplierRule
+}
+
+// ChannelBillingMultiplierRule 渠道实际计费倍率规则。
+// 多条规则按 SortOrder 排序，先命中为准。GroupIDs 为必填匹配范围，
+// AccountIDs 可选；配置后需要同时匹配分组和账号。
+type ChannelBillingMultiplierRule struct {
+	ID             int64
+	ChannelID      int64
+	Name           string
+	GroupIDs       []int64
+	AccountIDs     []int64
+	RateMultiplier float64
+	SortOrder      int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // AccountStatsPricingRule 账号统计定价规则
@@ -229,6 +245,20 @@ func (c *Channel) Clone() *Channel {
 				for j := range rule.Pricing {
 					cp.AccountStatsPricingRules[i].Pricing[j] = rule.Pricing[j].Clone()
 				}
+			}
+		}
+	}
+	if c.BillingMultiplierRules != nil {
+		cp.BillingMultiplierRules = make([]ChannelBillingMultiplierRule, len(c.BillingMultiplierRules))
+		for i, rule := range c.BillingMultiplierRules {
+			cp.BillingMultiplierRules[i] = rule
+			if rule.GroupIDs != nil {
+				cp.BillingMultiplierRules[i].GroupIDs = make([]int64, len(rule.GroupIDs))
+				copy(cp.BillingMultiplierRules[i].GroupIDs, rule.GroupIDs)
+			}
+			if rule.AccountIDs != nil {
+				cp.BillingMultiplierRules[i].AccountIDs = make([]int64, len(rule.AccountIDs))
+				copy(cp.BillingMultiplierRules[i].AccountIDs, rule.AccountIDs)
 			}
 		}
 	}

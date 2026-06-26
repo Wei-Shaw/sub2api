@@ -78,6 +78,13 @@ func (r *channelRepository) Create(ctx context.Context, channel *service.Channel
 			}
 		}
 
+		// 设置实际计费倍率规则
+		if len(channel.BillingMultiplierRules) > 0 {
+			if err := replaceBillingMultiplierRulesTx(ctx, tx, channel.ID, channel.BillingMultiplierRules); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 }
@@ -115,6 +122,12 @@ func (r *channelRepository) GetByID(ctx context.Context, id int64) (*service.Cha
 		return nil, err
 	}
 	ch.AccountStatsPricingRules = statsPricingRules
+
+	billingMultiplierRules, err := r.loadBillingMultiplierRules(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	ch.BillingMultiplierRules = billingMultiplierRules
 
 	return ch, nil
 }
@@ -162,6 +175,13 @@ func (r *channelRepository) Update(ctx context.Context, channel *service.Channel
 		// 更新账号统计定价规则
 		if channel.AccountStatsPricingRules != nil {
 			if err := replaceAccountStatsPricingRulesTx(ctx, tx, channel.ID, channel.AccountStatsPricingRules); err != nil {
+				return err
+			}
+		}
+
+		// 更新实际计费倍率规则
+		if channel.BillingMultiplierRules != nil {
+			if err := replaceBillingMultiplierRulesTx(ctx, tx, channel.ID, channel.BillingMultiplierRules); err != nil {
 				return err
 			}
 		}
@@ -259,10 +279,15 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 		if err != nil {
 			return nil, nil, err
 		}
+		billingRulesMap, err := r.batchLoadBillingMultiplierRules(ctx, channelIDs)
+		if err != nil {
+			return nil, nil, err
+		}
 		for i := range channels {
 			channels[i].GroupIDs = groupMap[channels[i].ID]
 			channels[i].ModelPricing = pricingMap[channels[i].ID]
 			channels[i].AccountStatsPricingRules = statsRulesMap[channels[i].ID]
+			channels[i].BillingMultiplierRules = billingRulesMap[channels[i].ID]
 		}
 	}
 
@@ -354,13 +379,26 @@ func (r *channelRepository) ListAll(ctx context.Context) ([]service.Channel, err
 		return nil, err
 	}
 
+	// 批量加载实际计费倍率规则
+	billingRulesMap, err := r.batchLoadBillingMultiplierRules(ctx, channelIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	for i := range channels {
 		channels[i].GroupIDs = groupMap[channels[i].ID]
 		channels[i].ModelPricing = pricingMap[channels[i].ID]
 		channels[i].AccountStatsPricingRules = statsRulesMap[channels[i].ID]
+		channels[i].BillingMultiplierRules = billingRulesMap[channels[i].ID]
 	}
 
 	return channels, nil
+}
+
+func (r *channelRepository) ReplaceBillingMultiplierRules(ctx context.Context, channelID int64, rules []service.ChannelBillingMultiplierRule) error {
+	return r.runInTx(ctx, func(tx *sql.Tx) error {
+		return replaceBillingMultiplierRulesTx(ctx, tx, channelID, rules)
+	})
 }
 
 // --- 批量加载辅助方法 ---
