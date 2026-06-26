@@ -69,20 +69,35 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 		return mappedModel
 	}
 
+	// Fall back to the group-level default mapped model when no family-specific
+	// mapping is explicitly configured. This preserves backward-compatible
+	// behavior for groups that relied on DefaultMappedModel as a catch-all before
+	// per-family MessagesDispatchModelConfig was introduced.
+	groupDefault := strings.TrimSpace(g.DefaultMappedModel)
+
 	switch claudeMessagesDispatchFamily(requestedModel) {
 	case "opus":
 		if mappedModel := strings.TrimSpace(cfg.OpusMappedModel); mappedModel != "" {
 			return mappedModel
+		}
+		if groupDefault != "" {
+			return groupDefault
 		}
 		return defaultOpenAIMessagesDispatchOpusMappedModel
 	case "sonnet":
 		if mappedModel := strings.TrimSpace(cfg.SonnetMappedModel); mappedModel != "" {
 			return mappedModel
 		}
+		if groupDefault != "" {
+			return groupDefault
+		}
 		return defaultOpenAIMessagesDispatchSonnetMappedModel
 	case "haiku":
 		if mappedModel := strings.TrimSpace(cfg.HaikuMappedModel); mappedModel != "" {
 			return mappedModel
+		}
+		if groupDefault != "" {
+			return groupDefault
 		}
 		return defaultOpenAIMessagesDispatchHaikuMappedModel
 	default:
