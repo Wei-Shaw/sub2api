@@ -2,6 +2,8 @@ package service
 
 import "time"
 
+const SubscriptionWindow5h = 5 * time.Hour
+
 type UserSubscription struct {
 	ID      int64
 	UserID  int64
@@ -11,13 +13,15 @@ type UserSubscription struct {
 	ExpiresAt time.Time
 	Status    string
 
-	DailyWindowStart   *time.Time
-	WeeklyWindowStart  *time.Time
-	MonthlyWindowStart *time.Time
+	FiveHourWindowStart *time.Time
+	DailyWindowStart    *time.Time
+	WeeklyWindowStart   *time.Time
+	MonthlyWindowStart  *time.Time
 
-	DailyUsageUSD   float64
-	WeeklyUsageUSD  float64
-	MonthlyUsageUSD float64
+	FiveHourUsageUSD float64
+	DailyUsageUSD    float64
+	WeeklyUsageUSD   float64
+	MonthlyUsageUSD  float64
 
 	AssignedBy *int64
 	AssignedAt time.Time
@@ -47,7 +51,7 @@ func (s *UserSubscription) DaysRemaining() int {
 }
 
 func (s *UserSubscription) IsWindowActivated() bool {
-	return s.DailyWindowStart != nil || s.WeeklyWindowStart != nil || s.MonthlyWindowStart != nil
+	return s.FiveHourWindowStart != nil || s.DailyWindowStart != nil || s.WeeklyWindowStart != nil || s.MonthlyWindowStart != nil
 }
 
 func (s *UserSubscription) HasOneTimeDailyQuota() bool {
@@ -61,6 +65,13 @@ func (s *UserSubscription) NeedsDailyReset() bool {
 	return s.NeedsDailyResetAt(time.Now())
 }
 
+func (s *UserSubscription) NeedsFiveHourReset() bool {
+	if s.FiveHourWindowStart == nil {
+		return false
+	}
+	return time.Since(*s.FiveHourWindowStart) >= SubscriptionWindow5h
+}
+
 func (s *UserSubscription) NeedsDailyResetAt(now time.Time) bool {
 	if s.DailyWindowStart == nil {
 		return false
@@ -69,6 +80,14 @@ func (s *UserSubscription) NeedsDailyResetAt(now time.Time) bool {
 		return false
 	}
 	return !now.Before(s.DailyWindowStart.Add(24 * time.Hour))
+}
+
+func (s *UserSubscription) FiveHourResetTime() *time.Time {
+	if s.FiveHourWindowStart == nil {
+		return nil
+	}
+	t := s.FiveHourWindowStart.Add(SubscriptionWindow5h)
+	return &t
 }
 
 func (s *UserSubscription) NeedsWeeklyReset() bool {
@@ -113,6 +132,13 @@ func (s *UserSubscription) MonthlyResetTime() *time.Time {
 	return &t
 }
 
+func (s *UserSubscription) CheckFiveHourLimit(group *Group, additionalCost float64) bool {
+	if !group.HasFiveHourLimit() {
+		return true
+	}
+	return s.FiveHourUsageUSD+additionalCost <= *group.FiveHourLimitUSD
+}
+
 func (s *UserSubscription) CheckDailyLimit(group *Group, additionalCost float64) bool {
 	if !group.HasDailyLimit() {
 		return true
@@ -134,7 +160,8 @@ func (s *UserSubscription) CheckMonthlyLimit(group *Group, additionalCost float6
 	return s.MonthlyUsageUSD+additionalCost <= *group.MonthlyLimitUSD
 }
 
-func (s *UserSubscription) CheckAllLimits(group *Group, additionalCost float64) (daily, weekly, monthly bool) {
+func (s *UserSubscription) CheckAllLimits(group *Group, additionalCost float64) (fiveHour, daily, weekly, monthly bool) {
+	fiveHour = s.CheckFiveHourLimit(group, additionalCost)
 	daily = s.CheckDailyLimit(group, additionalCost)
 	weekly = s.CheckWeeklyLimit(group, additionalCost)
 	monthly = s.CheckMonthlyLimit(group, additionalCost)

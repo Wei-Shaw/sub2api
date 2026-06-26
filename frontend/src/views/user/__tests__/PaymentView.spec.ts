@@ -126,6 +126,7 @@ function checkoutInfoWithPlansFixture() {
           validity_days: 30,
           validity_unit: 'day',
           rate_multiplier: 1,
+          five_hour_limit_usd: null,
           daily_limit_usd: null,
           weekly_limit_usd: null,
           monthly_limit_usd: null,

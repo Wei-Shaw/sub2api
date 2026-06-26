@@ -90,3 +90,14 @@ func TestGroup_GetImagePrice_PartialConfig(t *testing.T) {
 	require.Nil(t, group.GetImagePrice("2K"))
 	require.Nil(t, group.GetImagePrice("4K"))
 }
+
+func TestGroup_HasFiveHourLimit(t *testing.T) {
+	positive := 5.0
+	zero := 0.0
+	negative := -1.0
+
+	require.False(t, (&Group{}).HasFiveHourLimit())
+	require.False(t, (&Group{FiveHourLimitUSD: &zero}).HasFiveHourLimit())
+	require.False(t, (&Group{FiveHourLimitUSD: &negative}).HasFiveHourLimit())
+	require.True(t, (&Group{FiveHourLimitUSD: &positive}).HasFiveHourLimit())
+}

@@ -123,8 +123,9 @@ func TestUsageBillingRepositoryApply_DeduplicatesSubscriptionBilling(t *testing.
 	require.NoError(t, err)
 	require.False(t, result2.Applied)
 
-	var dailyUsage float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT daily_usage_usd FROM user_subscriptions WHERE id = $1", subscription.ID).Scan(&dailyUsage))
+	var fiveHourUsage, dailyUsage float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT five_hour_usage_usd, daily_usage_usd FROM user_subscriptions WHERE id = $1", subscription.ID).Scan(&fiveHourUsage, &dailyUsage))
+	require.InDelta(t, 2.5, fiveHourUsage, 0.000001)
 	require.InDelta(t, 2.5, dailyUsage, 0.000001)
 }
 

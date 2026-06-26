@@ -38,6 +38,34 @@ func TestCalculateProgress_BasicFields(t *testing.T) {
 	assert.Nil(t, progress.Daily, "无日限额时 Daily 应为 nil")
 	assert.Nil(t, progress.Weekly, "无周限额时 Weekly 应为 nil")
 	assert.Nil(t, progress.Monthly, "无月限额时 Monthly 应为 nil")
+	assert.Nil(t, progress.FiveHour, "无 5h 限额时 FiveHour 应为 nil")
+}
+
+func TestCalculateProgress_FiveHourUsage(t *testing.T) {
+	svc := newTestSubscriptionService()
+	now := time.Now()
+	fiveHourStart := now.Add(-2 * time.Hour)
+
+	sub := &UserSubscription{
+		ID:                  1,
+		ExpiresAt:           now.Add(10 * 24 * time.Hour),
+		FiveHourUsageUSD:    4.0,
+		FiveHourWindowStart: ptrTime(fiveHourStart),
+	}
+	group := &Group{
+		Name:             "Pro",
+		FiveHourLimitUSD: ptrFloat64(10.0),
+	}
+
+	progress := svc.calculateProgress(sub, group)
+
+	require.NotNil(t, progress.FiveHour, "有 5h 限额和窗口时 FiveHour 不应为 nil")
+	assert.Equal(t, 10.0, progress.FiveHour.LimitUSD)
+	assert.Equal(t, 4.0, progress.FiveHour.UsedUSD)
+	assert.Equal(t, 6.0, progress.FiveHour.RemainingUSD)
+	assert.Equal(t, 40.0, progress.FiveHour.Percentage)
+	assert.Equal(t, fiveHourStart, progress.FiveHour.WindowStart)
+	assert.Equal(t, fiveHourStart.Add(SubscriptionWindow5h), progress.FiveHour.ResetsAt)
 }
 
 func TestCalculateProgress_DailyUsage(t *testing.T) {
@@ -174,13 +202,15 @@ func TestCalculateProgress_NoWindowStart_NoProgress(t *testing.T) {
 		WeeklyUsageUSD: 0,
 	}
 	group := &Group{
-		Name:           "Pro",
-		DailyLimitUSD:  ptrFloat64(10.0),
-		WeeklyLimitUSD: ptrFloat64(50.0),
+		Name:             "Pro",
+		FiveHourLimitUSD: ptrFloat64(5.0),
+		DailyLimitUSD:    ptrFloat64(10.0),
+		WeeklyLimitUSD:   ptrFloat64(50.0),
 	}
 
 	progress := svc.calculateProgress(sub, group)
 
+	assert.Nil(t, progress.FiveHour, "无 FiveHourWindowStart 时 FiveHour 应为 nil")
 	assert.Nil(t, progress.Daily, "无 DailyWindowStart 时 Daily 应为 nil")
 	assert.Nil(t, progress.Weekly, "无 WeeklyWindowStart 时 Weekly 应为 nil")
 }
@@ -190,28 +220,33 @@ func TestCalculateProgress_AllLimits(t *testing.T) {
 	now := time.Now()
 
 	sub := &UserSubscription{
-		ID:                 1,
-		ExpiresAt:          now.Add(10 * 24 * time.Hour),
-		DailyUsageUSD:      5.0,
-		WeeklyUsageUSD:     20.0,
-		MonthlyUsageUSD:    60.0,
-		DailyWindowStart:   ptrTime(now.Add(-6 * time.Hour)),
-		WeeklyWindowStart:  ptrTime(now.Add(-3 * 24 * time.Hour)),
-		MonthlyWindowStart: ptrTime(now.Add(-15 * 24 * time.Hour)),
+		ID:                  1,
+		ExpiresAt:           now.Add(10 * 24 * time.Hour),
+		FiveHourUsageUSD:    2.5,
+		DailyUsageUSD:       5.0,
+		WeeklyUsageUSD:      20.0,
+		MonthlyUsageUSD:     60.0,
+		FiveHourWindowStart: ptrTime(now.Add(-2 * time.Hour)),
+		DailyWindowStart:    ptrTime(now.Add(-6 * time.Hour)),
+		WeeklyWindowStart:   ptrTime(now.Add(-3 * 24 * time.Hour)),
+		MonthlyWindowStart:  ptrTime(now.Add(-15 * 24 * time.Hour)),
 	}
 	group := &Group{
-		Name:            "Full",
-		DailyLimitUSD:   ptrFloat64(10.0),
-		WeeklyLimitUSD:  ptrFloat64(50.0),
-		MonthlyLimitUSD: ptrFloat64(100.0),
+		Name:             "Full",
+		FiveHourLimitUSD: ptrFloat64(5.0),
+		DailyLimitUSD:    ptrFloat64(10.0),
+		WeeklyLimitUSD:   ptrFloat64(50.0),
+		MonthlyLimitUSD:  ptrFloat64(100.0),
 	}
 
 	progress := svc.calculateProgress(sub, group)
 
+	require.NotNil(t, progress.FiveHour)
 	require.NotNil(t, progress.Daily)
 	require.NotNil(t, progress.Weekly)
 	require.NotNil(t, progress.Monthly)
 
+	assert.Equal(t, 50.0, progress.FiveHour.Percentage)
 	assert.Equal(t, 50.0, progress.Daily.Percentage)
 	assert.Equal(t, 40.0, progress.Weekly.Percentage)
 	assert.Equal(t, 60.0, progress.Monthly.Percentage)

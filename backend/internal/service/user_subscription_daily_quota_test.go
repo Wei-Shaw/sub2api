@@ -12,7 +12,19 @@ import (
 type dailyResetTrackingUserSubRepo struct {
 	userSubRepoNoop
 
-	resetDailyCalled bool
+	activateFiveHourCalled bool
+	resetFiveHourCalled    bool
+	resetDailyCalled       bool
+}
+
+func (r *dailyResetTrackingUserSubRepo) ActivateFiveHourWindow(context.Context, int64, time.Time) error {
+	r.activateFiveHourCalled = true
+	return nil
+}
+
+func (r *dailyResetTrackingUserSubRepo) ResetFiveHourUsage(context.Context, int64, time.Time) error {
+	r.resetFiveHourCalled = true
+	return nil
 }
 
 func (r *dailyResetTrackingUserSubRepo) ResetDailyUsage(context.Context, int64, time.Time) error {
@@ -28,19 +40,21 @@ func TestAssignOrExtendSubscription_ExpiredDailyCardStartsNewOneTimeQuota(t *tes
 	oldStart := time.Now().AddDate(0, 0, -3)
 	oldWindowStart := startOfDay(oldStart)
 	subRepo.seed(&UserSubscription{
-		ID:                 100,
-		UserID:             200,
-		GroupID:            1,
-		StartsAt:           oldStart,
-		ExpiresAt:          oldStart.AddDate(0, 0, 1),
-		Status:             SubscriptionStatusExpired,
-		DailyWindowStart:   &oldWindowStart,
-		WeeklyWindowStart:  &oldWindowStart,
-		MonthlyWindowStart: &oldWindowStart,
-		DailyUsageUSD:      10,
-		WeeklyUsageUSD:     20,
-		MonthlyUsageUSD:    30,
-		Notes:              "old",
+		ID:                  100,
+		UserID:              200,
+		GroupID:             1,
+		StartsAt:            oldStart,
+		ExpiresAt:           oldStart.AddDate(0, 0, 1),
+		Status:              SubscriptionStatusExpired,
+		FiveHourWindowStart: &oldWindowStart,
+		DailyWindowStart:    &oldWindowStart,
+		WeeklyWindowStart:   &oldWindowStart,
+		MonthlyWindowStart:  &oldWindowStart,
+		FiveHourUsageUSD:    5,
+		DailyUsageUSD:       10,
+		WeeklyUsageUSD:      20,
+		MonthlyUsageUSD:     30,
+		Notes:               "old",
 	})
 	svc := NewSubscriptionService(groupRepo, subRepo, nil, nil, nil)
 
@@ -57,8 +71,11 @@ func TestAssignOrExtendSubscription_ExpiredDailyCardStartsNewOneTimeQuota(t *tes
 	require.Equal(t, SubscriptionStatusActive, renewed.Status)
 	require.True(t, renewed.StartsAt.After(oldStart), "重新购买过期订阅时应重置当前周期 StartsAt")
 	require.False(t, renewed.ExpiresAt.After(renewed.StartsAt.AddDate(0, 0, 1)))
+	require.NotNil(t, renewed.FiveHourWindowStart)
 	require.NotNil(t, renewed.DailyWindowStart)
+	require.Equal(t, renewed.StartsAt, *renewed.FiveHourWindowStart)
 	require.Equal(t, startOfDay(renewed.StartsAt), *renewed.DailyWindowStart)
+	require.Equal(t, 0.0, renewed.FiveHourUsageUSD)
 	require.Equal(t, 0.0, renewed.DailyUsageUSD)
 	require.Equal(t, 0.0, renewed.WeeklyUsageUSD)
 	require.Equal(t, 0.0, renewed.MonthlyUsageUSD)
@@ -153,6 +170,53 @@ func TestCheckAndResetWindows_MultiDaySubscriptionStillResetsDailyUsage(t *testi
 	require.Equal(t, 0.0, sub.DailyUsageUSD)
 }
 
+func TestCheckAndResetWindows_ExpiredFiveHourWindowResetsUsage(t *testing.T) {
+	now := time.Now()
+	fiveHourWindowStart := now.Add(-6 * time.Hour)
+	repo := &dailyResetTrackingUserSubRepo{}
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	sub := &UserSubscription{
+		ID:                  1,
+		UserID:              10,
+		GroupID:             20,
+		StartsAt:            now.Add(-24 * time.Hour),
+		ExpiresAt:           now.Add(24 * time.Hour),
+		FiveHourUsageUSD:    10,
+		FiveHourWindowStart: &fiveHourWindowStart,
+	}
+
+	err := svc.CheckAndResetWindows(context.Background(), sub)
+
+	require.NoError(t, err)
+	require.True(t, repo.resetFiveHourCalled, "过期 5h window 应重置 five-hour usage")
+	require.Equal(t, 0.0, sub.FiveHourUsageUSD)
+	require.NotNil(t, sub.FiveHourWindowStart)
+	require.WithinDuration(t, now, *sub.FiveHourWindowStart, time.Second)
+}
+
+func TestCheckAndResetWindows_MissingFiveHourWindowActivatesWithoutResettingUsage(t *testing.T) {
+	now := time.Now()
+	repo := &dailyResetTrackingUserSubRepo{}
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	sub := &UserSubscription{
+		ID:               1,
+		UserID:           10,
+		GroupID:          20,
+		StartsAt:         now.Add(-24 * time.Hour),
+		ExpiresAt:        now.Add(24 * time.Hour),
+		FiveHourUsageUSD: 7.5,
+	}
+
+	err := svc.CheckAndResetWindows(context.Background(), sub)
+
+	require.NoError(t, err)
+	require.True(t, repo.activateFiveHourCalled, "缺失 5h window 应只补起点")
+	require.False(t, repo.resetFiveHourCalled, "缺失 5h window 不应清零已有用量")
+	require.Equal(t, 7.5, sub.FiveHourUsageUSD)
+	require.NotNil(t, sub.FiveHourWindowStart)
+	require.WithinDuration(t, now, *sub.FiveHourWindowStart, time.Second)
+}
+
 func TestValidateAndCheckLimits_DailyCardDoesNotAllowSecondQuotaAfterMidnight(t *testing.T) {
 	start := time.Now().Add(-23 * time.Hour)
 	dailyWindowStart := time.Now().Add(-25 * time.Hour)
@@ -175,4 +239,71 @@ func TestValidateAndCheckLimits_DailyCardDoesNotAllowSecondQuotaAfterMidnight(t 
 	require.False(t, needsMaintenance, "日卡跨过日窗口后不应触发 daily reset 维护")
 	require.True(t, errors.Is(err, ErrDailyLimitExceeded))
 	require.Equal(t, dailyLimit+0.01, sub.DailyUsageUSD, "热路径不应清零日卡已用额度")
+}
+
+func TestValidateAndCheckLimits_FiveHourLimitExceeded(t *testing.T) {
+	start := time.Now().Add(-2 * time.Hour)
+	limit := 10.0
+	sub := &UserSubscription{
+		Status:              SubscriptionStatusActive,
+		StartsAt:            start,
+		ExpiresAt:           start.Add(24 * time.Hour),
+		FiveHourWindowStart: &start,
+		FiveHourUsageUSD:    limit + 0.01,
+	}
+	group := &Group{
+		SubscriptionType: SubscriptionTypeSubscription,
+		FiveHourLimitUSD: &limit,
+	}
+	svc := NewSubscriptionService(groupRepoNoop{}, userSubRepoNoop{}, nil, nil, nil)
+
+	needsMaintenance, err := svc.ValidateAndCheckLimits(sub, group)
+
+	require.False(t, needsMaintenance)
+	require.True(t, errors.Is(err, ErrFiveHourLimitExceeded))
+}
+
+func TestValidateAndCheckLimits_MissingFiveHourWindowTriggersMaintenance(t *testing.T) {
+	start := time.Now().Add(-2 * time.Hour)
+	limit := 10.0
+	sub := &UserSubscription{
+		Status:           SubscriptionStatusActive,
+		StartsAt:         start,
+		ExpiresAt:        start.Add(24 * time.Hour),
+		FiveHourUsageUSD: 3.5,
+	}
+	group := &Group{
+		SubscriptionType: SubscriptionTypeSubscription,
+		FiveHourLimitUSD: &limit,
+	}
+	svc := NewSubscriptionService(groupRepoNoop{}, userSubRepoNoop{}, nil, nil, nil)
+
+	needsMaintenance, err := svc.ValidateAndCheckLimits(sub, group)
+
+	require.True(t, needsMaintenance)
+	require.NoError(t, err)
+	require.Equal(t, 3.5, sub.FiveHourUsageUSD, "缺失 5h window 只触发维护，不应在热路径清零当前用量")
+}
+
+func TestValidateAndCheckLimits_ExpiredFiveHourWindowAllowsMaintenance(t *testing.T) {
+	start := time.Now().Add(-6 * time.Hour)
+	limit := 10.0
+	sub := &UserSubscription{
+		Status:              SubscriptionStatusActive,
+		StartsAt:            start,
+		ExpiresAt:           time.Now().Add(24 * time.Hour),
+		FiveHourWindowStart: &start,
+		FiveHourUsageUSD:    limit + 0.01,
+	}
+	group := &Group{
+		SubscriptionType: SubscriptionTypeSubscription,
+		FiveHourLimitUSD: &limit,
+	}
+	svc := NewSubscriptionService(groupRepoNoop{}, userSubRepoNoop{}, nil, nil, nil)
+
+	needsMaintenance, err := svc.ValidateAndCheckLimits(sub, group)
+
+	require.True(t, needsMaintenance)
+	require.NoError(t, err)
+	require.Equal(t, 0.0, sub.FiveHourUsageUSD, "热路径应清除已过期 5h 用量用于本次判定")
 }

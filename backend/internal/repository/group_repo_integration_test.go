@@ -49,6 +49,7 @@ func TestGroupRepoSuite(t *testing.T) {
 // --- Create / GetByID / Update / Delete ---
 
 func (s *GroupRepoSuite) TestCreate() {
+	fiveHourLimit := 7.5
 	group := &service.Group{
 		Name:             "test-create",
 		Platform:         service.PlatformAnthropic,
@@ -56,6 +57,7 @@ func (s *GroupRepoSuite) TestCreate() {
 		IsExclusive:      false,
 		Status:           service.StatusActive,
 		SubscriptionType: service.SubscriptionTypeStandard,
+		FiveHourLimitUSD: &fiveHourLimit,
 	}
 
 	err := s.repo.Create(s.ctx, group)
@@ -65,6 +67,8 @@ func (s *GroupRepoSuite) TestCreate() {
 	got, err := s.repo.GetByID(s.ctx, group.ID)
 	s.Require().NoError(err, "GetByID")
 	s.Require().Equal("test-create", got.Name)
+	s.Require().NotNil(got.FiveHourLimitUSD)
+	s.Require().InDelta(fiveHourLimit, *got.FiveHourLimitUSD, 1e-6)
 }
 
 func (s *GroupRepoSuite) TestGetByID_NotFound() {
@@ -94,6 +98,7 @@ func (s *GroupRepoSuite) TestGetByIDLite_DoesNotUseAccountCount() {
 }
 
 func (s *GroupRepoSuite) TestUpdate() {
+	fiveHourLimit := 5.0
 	group := &service.Group{
 		Name:             "original",
 		Platform:         service.PlatformAnthropic,
@@ -101,16 +106,19 @@ func (s *GroupRepoSuite) TestUpdate() {
 		IsExclusive:      false,
 		Status:           service.StatusActive,
 		SubscriptionType: service.SubscriptionTypeStandard,
+		FiveHourLimitUSD: &fiveHourLimit,
 	}
 	s.Require().NoError(s.repo.Create(s.ctx, group))
 
 	group.Name = "updated"
+	group.FiveHourLimitUSD = nil
 	err := s.repo.Update(s.ctx, group)
 	s.Require().NoError(err, "Update")
 
 	got, err := s.repo.GetByID(s.ctx, group.ID)
 	s.Require().NoError(err, "GetByID after update")
 	s.Require().Equal("updated", got.Name)
+	s.Require().Nil(got.FiveHourLimitUSD)
 }
 
 func (s *GroupRepoSuite) TestGetByID_PreservesMessagesDispatchModelConfig() {

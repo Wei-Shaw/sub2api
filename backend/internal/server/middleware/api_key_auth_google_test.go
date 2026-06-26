@@ -159,10 +159,19 @@ func (f fakeGoogleSubscriptionRepo) UpdateStatus(ctx context.Context, subscripti
 func (f fakeGoogleSubscriptionRepo) UpdateNotes(ctx context.Context, subscriptionID int64, notes string) error {
 	return errors.New("not implemented")
 }
-func (f fakeGoogleSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
+func (f fakeGoogleSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, fiveHourStart, calendarWindowStart time.Time) error {
 	if f.activateWindow != nil {
-		return f.activateWindow(ctx, id, start)
+		return f.activateWindow(ctx, id, calendarWindowStart)
 	}
+	return errors.New("not implemented")
+}
+func (f fakeGoogleSubscriptionRepo) ActivateFiveHourWindow(ctx context.Context, id int64, fiveHourStart time.Time) error {
+	if f.activateWindow != nil {
+		return f.activateWindow(ctx, id, fiveHourStart)
+	}
+	return errors.New("not implemented")
+}
+func (f fakeGoogleSubscriptionRepo) ResetFiveHourUsage(ctx context.Context, id int64, start time.Time) error {
 	return errors.New("not implemented")
 }
 func (f fakeGoogleSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, start time.Time) error {
