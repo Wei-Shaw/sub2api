@@ -1,6 +1,6 @@
 ---
 name: sub2api-admin
-description: Manage Sub2API admin APIs for accounts, redeem codes, groups, proxies, error passthrough rules, TLS fingerprint profiles, imports, exports, batch updates, and raw administrator API calls. Use when the user mentions Sub2API, admin API keys, account management, redeem code management, recharge codes, invitation codes, bulk account import/export, keeping or deleting accounts, refreshing accounts, clearing errors, CRS sync, or managing Sub2API backend settings through the admin API.
+description: Manage Sub2API admin and operator APIs for accounts, user API keys, redeem codes, groups, proxies, error passthrough rules, TLS fingerprint profiles, imports, exports, batch updates, route-backed admin actions, and raw administrator API calls. Use when the user mentions Sub2API, admin API keys, user tokens, account management, redeem code management, recharge codes, invitation codes, bulk account/proxy import/export, keeping or deleting accounts, refreshing accounts, clearing errors, CRS sync, or managing Sub2API backend settings through the admin API.
 ---
 
 # Sub2API Admin
@@ -10,15 +10,17 @@ Use the bundled CLI instead of ad hoc `curl`. Run examples from this skill direc
 ```bash
 export SUB2API_BASE_URL='https://your-sub2api-host'
 export SUB2API_ADMIN_API_KEY='<admin api key>'
+export SUB2API_USER_TOKEN='<login access token>'
 node scripts/sub2api-admin.js accounts list
 ```
 
 For all commands and payload examples, read [references/admin-cli.md](references/admin-cli.md).
+For recent skill changes, read [CHANGELOG.md](CHANGELOG.md).
 
 ## Workflow
 
 1. Reuse `SUB2API_BASE_URL` and `SUB2API_ADMIN_API_KEY` from the environment.
-2. Run read-only commands first: `accounts list`, `accounts get <id>`, `groups all`, or `proxies all`.
+2. Run read-only commands first: `accounts list`, `accounts get <id>`, `groups all`, `groups list`, `proxies all`, or `proxies list`.
 3. Before destructive or bulk writes, print the target account names and IDs.
 4. Execute the write command only after the target set is clear.
 5. Run a follow-up read command to verify the result.
@@ -30,18 +32,28 @@ node scripts/sub2api-admin.js accounts list --page-size 20
 node scripts/sub2api-admin.js accounts get 40
 node scripts/sub2api-admin.js accounts usage 40
 node scripts/sub2api-admin.js accounts set-schedulable 40 true
+node scripts/sub2api-admin.js accounts refresh-tier 40
+node scripts/sub2api-admin.js accounts batch-refresh-tier --ids 40,39
 node scripts/sub2api-admin.js accounts bulk-update --ids 40,39 --json '{"concurrency":10}'
+node scripts/sub2api-admin.js groups list --page-size 20
+node scripts/sub2api-admin.js groups rate-multipliers 2
+node scripts/sub2api-admin.js proxies list --page-size 20
+node scripts/sub2api-admin.js proxies test 3
 node scripts/sub2api-admin.js redeem-codes list --page-size 20
 node scripts/sub2api-admin.js redeem-codes generate --json '{"count":1,"type":"balance","value":10}' --idempotency-key redeem-$(date +%s)
 node scripts/sub2api-admin.js redeem-codes create-and-redeem --json '{"code":"order_123","type":"balance","value":10,"user_id":123}' --idempotency-key order-123
 node scripts/sub2api-admin.js error-rules list
 node scripts/sub2api-admin.js tls-profiles list
+node scripts/sub2api-admin.js auth login --email user@example.com --password '<password>'
+node scripts/sub2api-admin.js user-keys list --page-size 20
 ```
 
 ## Safety Notes
 
 - Authentication uses only `x-api-key`.
+- User API authentication uses `Authorization: Bearer <token>` from `auth login`.
 - If the API returns `INVALID_ADMIN_KEY`, ask the user to regenerate the admin API key.
 - `accounts export` includes credentials and tokens. Prefer `--file` and avoid printing exports in chat.
+- `proxies export` can include proxy credentials. Prefer `--file`.
 - Redeem code create/redeem commands should use `--idempotency-key` for payment or recharge workflows.
 - For uncertain or newly added backend APIs, use `api <METHOD> <admin-path>` after a read-only check.

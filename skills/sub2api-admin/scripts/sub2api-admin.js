@@ -5,6 +5,7 @@ const path = require("path");
 
 const BASE_URL = (process.env.SUB2API_BASE_URL || "").replace(/\/$/, "");
 const ADMIN_API_KEY = process.env.SUB2API_ADMIN_API_KEY || "";
+const USER_TOKEN = process.env.SUB2API_USER_TOKEN || "";
 
 function usage() {
   console.log(`Usage:
@@ -27,14 +28,17 @@ function usage() {
   sub2api-admin.js accounts recover-state <id>
   sub2api-admin.js accounts reset-quota <id>
   sub2api-admin.js accounts refresh <id>
+  sub2api-admin.js accounts refresh-tier <id>
   sub2api-admin.js accounts test <id>
   sub2api-admin.js accounts models <id>
   sub2api-admin.js accounts sync-models <id>
+  sub2api-admin.js accounts sync-models-preview --json '{...}' | --file payload.json
   sub2api-admin.js accounts apply-oauth <id> --json '{...}' | --file credentials.json
   sub2api-admin.js accounts batch-create --file accounts.json
   sub2api-admin.js accounts batch-update-credentials --json '{...}' | --file payload.json
   sub2api-admin.js accounts bulk-update --ids 1,2 --json '{...}' | --file patch.json
   sub2api-admin.js accounts batch-refresh --ids 1,2
+  sub2api-admin.js accounts batch-refresh-tier [--ids 1,2]
   sub2api-admin.js accounts batch-clear-error --ids 1,2
   sub2api-admin.js accounts temp-unschedulable <id>
   sub2api-admin.js accounts reset-temp-unschedulable <id>
@@ -43,8 +47,18 @@ function usage() {
   sub2api-admin.js accounts import-codex-session --json '{...}' | --file payload.json
   sub2api-admin.js accounts antigravity-default-model-mapping
   sub2api-admin.js accounts import-json --file <path> --template-name <name> [--skip-name <name>] [--dry-run]
-  sub2api-admin.js groups all
-  sub2api-admin.js proxies all
+  sub2api-admin.js groups list|all|get|create|update|delete|stats|api-keys ...
+  sub2api-admin.js groups usage-summary|capacity-summary
+  sub2api-admin.js groups models-list-candidates <id> [--platform PLATFORM]
+  sub2api-admin.js groups set-rate-multipliers <id> --json '{"entries":[...]}'
+  sub2api-admin.js groups clear-rate-multipliers <id>
+  sub2api-admin.js groups set-rpm-overrides <id> --json '{"entries":[...]}'
+  sub2api-admin.js groups clear-rpm-overrides <id>
+  sub2api-admin.js proxies list|all|get|create|update|delete|test|quality-check|stats|accounts ...
+  sub2api-admin.js proxies export [--ids 1,2] [--file proxies.json] [list filters...]
+  sub2api-admin.js proxies import-data --file proxies.json
+  sub2api-admin.js proxies batch-create --file proxies.json
+  sub2api-admin.js proxies batch-delete --ids 1,2
   sub2api-admin.js redeem-codes list [--page-size 200] [--page N] [--type balance] [--status unused] [--search TEXT] [--sort-by id] [--sort-order desc]
   sub2api-admin.js redeem-codes export [--file redeem-codes.csv] [list filters...]
   sub2api-admin.js redeem-codes get <id>
@@ -57,6 +71,9 @@ function usage() {
   sub2api-admin.js redeem-codes stats
   sub2api-admin.js error-rules list|get|create|update|delete|toggle ...
   sub2api-admin.js tls-profiles list|get|create|update|delete ...
+  sub2api-admin.js auth login --email <email> --password <password>
+  sub2api-admin.js user-groups available|rates
+  sub2api-admin.js user-keys list|get|create|update|delete|toggle ...
   sub2api-admin.js api <GET|POST|PUT|DELETE> <admin-path> [--json '{...}' | --file payload.json]
 `);
 }
@@ -94,12 +111,22 @@ function authHeaders() {
   throw new Error("Missing SUB2API_ADMIN_API_KEY");
 }
 
-async function apiRequest(method, pathname, body, extraHeaders = {}) {
+function userAuthHeaders() {
+  if (!BASE_URL) throw new Error("Missing SUB2API_BASE_URL");
+  if (USER_TOKEN) return { Authorization: `Bearer ${USER_TOKEN}` };
+  throw new Error("Missing SUB2API_USER_TOKEN");
+}
+
+async function jsonRequest(method, pathname, body, authHeadersValue = {}, extraHeaders = {}) {
+  if (!BASE_URL) throw new Error("Missing SUB2API_BASE_URL");
   const headers = {
-    ...authHeaders(),
+    ...authHeadersValue,
     Accept: "application/json",
     ...extraHeaders,
   };
+  for (const key of Object.keys(headers)) {
+    if (headers[key] === undefined) delete headers[key];
+  }
   const options = { method, headers };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -118,6 +145,19 @@ async function apiRequest(method, pathname, body, extraHeaders = {}) {
     throw new Error(`${method} ${pathname} failed: ${detail}`);
   }
   return data.data;
+}
+
+async function apiRequest(method, pathname, body, extraHeaders = {}) {
+  return jsonRequest(method, pathname, body, authHeaders(), extraHeaders);
+}
+
+async function userRequest(method, userPath, body, extraHeaders = {}) {
+  const pathname = userPath.startsWith("/api/v1/") ? userPath : `/api/v1${userPath.startsWith("/") ? userPath : `/${userPath}`}`;
+  return jsonRequest(method, pathname, body, userAuthHeaders(), extraHeaders);
+}
+
+async function publicRequest(method, pathname, body, extraHeaders = {}) {
+  return jsonRequest(method, pathname, body, {}, extraHeaders);
 }
 
 async function apiRawRequest(method, pathname, body, extraHeaders = {}) {
@@ -271,6 +311,17 @@ function redeemCodesQuery(flags) {
   });
 }
 
+function standardListQuery(flags, extra = {}) {
+  return encodeQuery({
+    page: Number(flags.page || 1),
+    page_size: Number(flags["page-size"] || 20),
+    sort_by: flags["sort-by"],
+    sort_order: flags["sort-order"],
+    search: flags.search,
+    ...extra,
+  });
+}
+
 function idempotencyHeaders(flags) {
   if (!flags["idempotency-key"]) return {};
   return { "Idempotency-Key": flags["idempotency-key"] };
@@ -278,6 +329,89 @@ function idempotencyHeaders(flags) {
 
 function printJson(data) {
   console.log(JSON.stringify(data, null, 2));
+}
+
+async function commandAuth(args) {
+  const sub = args.positional[1];
+  if (sub === "login") {
+    const email = args.flags.email;
+    const password = args.flags.password;
+    if (!email || !password) throw new Error("auth login requires --email and --password");
+    printJson(await publicRequest("POST", "/api/v1/auth/login", { email, password }));
+    return;
+  }
+  throw new Error(`unknown auth subcommand: ${sub || "(missing)"}`);
+}
+
+async function commandUserGroups(args) {
+  const sub = args.positional[1];
+  if (sub === "available") {
+    printJson(await userRequest("GET", `/groups/available${encodeQuery({ timezone: args.flags.timezone || "Asia/Shanghai" })}`));
+    return;
+  }
+  if (sub === "rates") {
+    printJson(await userRequest("GET", "/groups/rates"));
+    return;
+  }
+  throw new Error(`unknown user-groups subcommand: ${sub || "(missing)"}`);
+}
+
+function userKeysQuery(flags) {
+  return standardListQuery(flags, {
+    sort_by: flags["sort-by"] || "created_at",
+    sort_order: flags["sort-order"] || "desc",
+    status: flags.status,
+    group_id: flags["group-id"],
+    timezone: flags.timezone || "Asia/Shanghai",
+  });
+}
+
+function userKeyCreatePayload(flags) {
+  const payload = readJsonPayload(flags, { required: false }) || {};
+  if (flags.name) payload.name = flags.name;
+  if (flags["group-id"]) payload.group_id = Number(flags["group-id"]);
+  if (flags.quota !== undefined) payload.quota = Number(flags.quota);
+  if (flags["expires-in-days"]) payload.expires_in_days = Number(flags["expires-in-days"]);
+  if (flags["expires-at"]) payload.expires_at = flags["expires-at"];
+  if (flags["custom-key"]) payload.custom_key = flags["custom-key"];
+  if (!payload.name) throw new Error("user-keys create requires name");
+  if (payload.quota === undefined) payload.quota = 0;
+  return payload;
+}
+
+async function commandUserKeys(args) {
+  const sub = args.positional[1];
+  const id = args.positional[2];
+  if (sub === "list") {
+    printJson(await userRequest("GET", `/keys${userKeysQuery(args.flags)}`));
+    return;
+  }
+  if (sub === "get") {
+    if (!id) throw new Error("user-keys get requires <id>");
+    printJson(await userRequest("GET", `/keys/${id}`));
+    return;
+  }
+  if (sub === "create") {
+    printJson(await userRequest("POST", "/keys", userKeyCreatePayload(args.flags), idempotencyHeaders(args.flags)));
+    return;
+  }
+  if (sub === "update") {
+    if (!id) throw new Error("user-keys update requires <id>");
+    printJson(await userRequest("PUT", `/keys/${id}`, readJsonPayload(args.flags)));
+    return;
+  }
+  if (sub === "toggle") {
+    const status = args.positional[3];
+    if (!id || !status) throw new Error("user-keys toggle requires <id> <active|inactive>");
+    printJson(await userRequest("PUT", `/keys/${id}`, { status }));
+    return;
+  }
+  if (sub === "delete") {
+    if (!id) throw new Error("user-keys delete requires <id>");
+    printJson(await userRequest("DELETE", `/keys/${id}`));
+    return;
+  }
+  throw new Error(`unknown user-keys subcommand: ${sub || "(missing)"}`);
 }
 
 async function accountData(flags) {
@@ -429,6 +563,7 @@ async function commandAccounts(args) {
     "recover-state": "recover-state",
     "reset-quota": "reset-quota",
     refresh: "refresh",
+    "refresh-tier": "refresh-tier",
     test: "test",
     "sync-models": "models/sync-upstream",
     "set-privacy": "set-privacy",
@@ -482,6 +617,12 @@ async function commandAccounts(args) {
     return;
   }
 
+  if (sub === "batch-refresh-tier") {
+    const payload = args.flags.ids ? { account_ids: parseIds(args.flags.ids) } : {};
+    printJson(await adminRequest("POST", "/admin/accounts/batch-refresh-tier", payload));
+    return;
+  }
+
   if (sub === "batch-clear-error") {
     printJson(await adminRequest("POST", "/admin/accounts/batch-clear-error", { account_ids: parseIds(args.flags.ids) }));
     return;
@@ -508,6 +649,11 @@ async function commandAccounts(args) {
 
   if (sub === "crs-sync") {
     printJson(await adminRequest("POST", "/admin/accounts/sync/crs", readJsonPayload(args.flags)));
+    return;
+  }
+
+  if (sub === "sync-models-preview") {
+    printJson(await adminRequest("POST", "/admin/accounts/models/sync-upstream-preview", readJsonPayload(args.flags)));
     return;
   }
 
@@ -589,8 +735,91 @@ async function commandAccounts(args) {
 
 async function commandGroups(args) {
   const sub = args.positional[1];
+  const id = args.positional[2];
+  if (sub === "list") {
+    printJson(await adminRequest("GET", `/admin/groups${standardListQuery(args.flags, {
+      platform: args.flags.platform,
+      status: args.flags.status,
+      is_exclusive: args.flags["is-exclusive"],
+    })}`));
+    return;
+  }
   if (sub === "all") {
-    printJson(await adminRequest("GET", "/admin/groups/all"));
+    printJson(await adminRequest("GET", `/admin/groups/all${encodeQuery({
+      platform: args.flags.platform,
+      include_inactive: args.flags["include-inactive"] ? "true" : undefined,
+    })}`));
+    return;
+  }
+  if (sub === "get") {
+    if (!id) throw new Error("groups get requires <id>");
+    printJson(await adminRequest("GET", `/admin/groups/${id}`));
+    return;
+  }
+  if (sub === "create") {
+    printJson(await adminRequest("POST", "/admin/groups", readJsonPayload(args.flags)));
+    return;
+  }
+  if (sub === "update") {
+    if (!id) throw new Error("groups update requires <id>");
+    printJson(await adminRequest("PUT", `/admin/groups/${id}`, readJsonPayload(args.flags)));
+    return;
+  }
+  if (sub === "delete") {
+    if (!id) throw new Error("groups delete requires <id>");
+    printJson(await adminRequest("DELETE", `/admin/groups/${id}`));
+    return;
+  }
+  if (sub === "usage-summary") {
+    printJson(await adminRequest("GET", "/admin/groups/usage-summary"));
+    return;
+  }
+  if (sub === "capacity-summary") {
+    printJson(await adminRequest("GET", "/admin/groups/capacity-summary"));
+    return;
+  }
+  if (sub === "sort-order") {
+    printJson(await adminRequest("PUT", "/admin/groups/sort-order", readJsonPayload(args.flags)));
+    return;
+  }
+  if (sub === "models-list-candidates") {
+    if (!id) throw new Error("groups models-list-candidates requires <id>");
+    printJson(await adminRequest("GET", `/admin/groups/${id}/models-list-candidates${encodeQuery({ platform: args.flags.platform })}`));
+    return;
+  }
+  if (sub === "stats") {
+    if (!id) throw new Error("groups stats requires <id>");
+    printJson(await adminRequest("GET", `/admin/groups/${id}/stats`));
+    return;
+  }
+  if (sub === "api-keys") {
+    if (!id) throw new Error("groups api-keys requires <id>");
+    printJson(await adminRequest("GET", `/admin/groups/${id}/api-keys${standardListQuery(args.flags)}`));
+    return;
+  }
+  if (sub === "rate-multipliers") {
+    if (!id) throw new Error("groups rate-multipliers requires <id>");
+    printJson(await adminRequest("GET", `/admin/groups/${id}/rate-multipliers`));
+    return;
+  }
+  if (sub === "set-rate-multipliers") {
+    if (!id) throw new Error("groups set-rate-multipliers requires <id>");
+    printJson(await adminRequest("PUT", `/admin/groups/${id}/rate-multipliers`, readJsonPayload(args.flags)));
+    return;
+  }
+  if (sub === "clear-rate-multipliers") {
+    if (!id) throw new Error("groups clear-rate-multipliers requires <id>");
+    printJson(await adminRequest("DELETE", `/admin/groups/${id}/rate-multipliers`));
+    return;
+  }
+  if (sub === "set-rpm-overrides") {
+    if (!id) throw new Error("groups set-rpm-overrides requires <id>");
+    printJson(await adminRequest("PUT", `/admin/groups/${id}/rpm-overrides`, readJsonPayload(args.flags)));
+    return;
+  }
+  if (sub === "clear-rpm-overrides") {
+    if (!id) throw new Error("groups clear-rpm-overrides requires <id>");
+    printJson(await adminRequest("DELETE", `/admin/groups/${id}/rpm-overrides`));
     return;
   }
   throw new Error(`unknown groups subcommand: ${sub || "(missing)"}`);
@@ -598,8 +827,86 @@ async function commandGroups(args) {
 
 async function commandProxies(args) {
   const sub = args.positional[1];
+  const id = args.positional[2];
+  if (sub === "list") {
+    printJson(await adminRequest("GET", `/admin/proxies${standardListQuery(args.flags, {
+      protocol: args.flags.protocol,
+      status: args.flags.status,
+    })}`));
+    return;
+  }
   if (sub === "all") {
-    printJson(await adminRequest("GET", "/admin/proxies/all"));
+    printJson(await adminRequest("GET", `/admin/proxies/all${encodeQuery({ with_count: args.flags["with-count"] ? "true" : undefined })}`));
+    return;
+  }
+  if (sub === "get") {
+    if (!id) throw new Error("proxies get requires <id>");
+    printJson(await adminRequest("GET", `/admin/proxies/${id}`));
+    return;
+  }
+  if (sub === "create") {
+    printJson(await adminRequest("POST", "/admin/proxies", readJsonPayload(args.flags)));
+    return;
+  }
+  if (sub === "update") {
+    if (!id) throw new Error("proxies update requires <id>");
+    printJson(await adminRequest("PUT", `/admin/proxies/${id}`, readJsonPayload(args.flags)));
+    return;
+  }
+  if (sub === "delete") {
+    if (!id) throw new Error("proxies delete requires <id>");
+    printJson(await adminRequest("DELETE", `/admin/proxies/${id}`));
+    return;
+  }
+  for (const action of ["test", "quality-check"]) {
+    if (sub === action) {
+      if (!id) throw new Error(`proxies ${action} requires <id>`);
+      printJson(await adminRequest("POST", `/admin/proxies/${id}/${action}`));
+      return;
+    }
+  }
+  for (const action of ["stats", "accounts"]) {
+    if (sub === action) {
+      if (!id) throw new Error(`proxies ${action} requires <id>`);
+      printJson(await adminRequest("GET", `/admin/proxies/${id}/${action}`));
+      return;
+    }
+  }
+  if (sub === "export") {
+    const params = {};
+    if (args.flags.ids) {
+      params.ids = parseIds(args.flags.ids).join(",");
+    } else {
+      params.protocol = args.flags.protocol;
+      params.status = args.flags.status;
+      params.search = args.flags.search;
+      params.sort_by = args.flags["sort-by"];
+      params.sort_order = args.flags["sort-order"];
+    }
+    const data = await adminRequest("GET", `/admin/proxies/data${encodeQuery(params)}`);
+    if (args.flags.file) {
+      fs.writeFileSync(path.resolve(args.flags.file), JSON.stringify(data, null, 2));
+      printJson({ file: path.resolve(args.flags.file), count: Array.isArray(data) ? data.length : data.count });
+    } else {
+      printJson(data);
+    }
+    return;
+  }
+  if (sub === "import-data") {
+    const file = args.flags.file;
+    if (!file) throw new Error("proxies import-data requires --file");
+    printJson(await adminRequest("POST", "/admin/proxies/data", { data: JSON.parse(fs.readFileSync(path.resolve(file), "utf8")) }));
+    return;
+  }
+  if (sub === "batch-create") {
+    const payload = readJsonPayload(args.flags);
+    const proxies = Array.isArray(payload) ? payload : payload.proxies;
+    if (!Array.isArray(proxies)) throw new Error("batch-create payload must be an array or {proxies:[...]}");
+    printJson(await adminRequest("POST", "/admin/proxies/batch", { proxies }));
+    return;
+  }
+  if (sub === "batch-delete") {
+    printJson(await adminRequest("POST", "/admin/proxies/batch-delete", { ids: parseIds(args.flags.ids) }));
     return;
   }
   throw new Error(`unknown proxies subcommand: ${sub || "(missing)"}`);
@@ -742,6 +1049,18 @@ async function main() {
   }
   if (root === "tls-profiles") {
     await commandCrudResource(args, "tls-profiles", "/admin/tls-fingerprint-profiles");
+    return;
+  }
+  if (root === "auth") {
+    await commandAuth(args);
+    return;
+  }
+  if (root === "user-groups") {
+    await commandUserGroups(args);
+    return;
+  }
+  if (root === "user-keys") {
+    await commandUserKeys(args);
     return;
   }
   if (root === "api") {
