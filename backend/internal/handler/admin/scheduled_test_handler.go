@@ -3,6 +3,7 @@ package admin
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -22,6 +23,8 @@ func NewScheduledTestHandler(scheduledTestSvc *service.ScheduledTestService) *Sc
 type createScheduledTestPlanRequest struct {
 	AccountID      int64  `json:"account_id" binding:"required"`
 	ModelID        string `json:"model_id"`
+	Client         string `json:"client"`
+	Message        string `json:"message"`
 	CronExpression string `json:"cron_expression" binding:"required"`
 	Enabled        *bool  `json:"enabled"`
 	MaxResults     int    `json:"max_results"`
@@ -29,11 +32,13 @@ type createScheduledTestPlanRequest struct {
 }
 
 type updateScheduledTestPlanRequest struct {
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	ModelID        *string `json:"model_id"`
+	Client         *string `json:"client"`
+	Message        *string `json:"message"`
+	CronExpression *string `json:"cron_expression"`
+	Enabled        *bool   `json:"enabled"`
+	MaxResults     *int    `json:"max_results"`
+	AutoRecover    *bool   `json:"auto_recover"`
 }
 
 // ListByAccount GET /admin/accounts/:id/scheduled-test-plans
@@ -63,6 +68,8 @@ func (h *ScheduledTestHandler) Create(c *gin.Context) {
 	plan := &service.ScheduledTestPlan{
 		AccountID:      req.AccountID,
 		ModelID:        req.ModelID,
+		Client:         normalizeScheduledTestClient(req.Client),
+		Message:        normalizeScheduledTestMessage(req.Message),
 		CronExpression: req.CronExpression,
 		Enabled:        true,
 		MaxResults:     req.MaxResults,
@@ -102,17 +109,23 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 		return
 	}
 
-	if req.ModelID != "" {
-		existing.ModelID = req.ModelID
+	if req.ModelID != nil && strings.TrimSpace(*req.ModelID) != "" {
+		existing.ModelID = strings.TrimSpace(*req.ModelID)
 	}
-	if req.CronExpression != "" {
-		existing.CronExpression = req.CronExpression
+	if req.Client != nil {
+		existing.Client = normalizeScheduledTestClient(*req.Client)
+	}
+	if req.Message != nil {
+		existing.Message = normalizeScheduledTestMessage(*req.Message)
+	}
+	if req.CronExpression != nil && strings.TrimSpace(*req.CronExpression) != "" {
+		existing.CronExpression = strings.TrimSpace(*req.CronExpression)
 	}
 	if req.Enabled != nil {
 		existing.Enabled = *req.Enabled
 	}
-	if req.MaxResults > 0 {
-		existing.MaxResults = req.MaxResults
+	if req.MaxResults != nil && *req.MaxResults > 0 {
+		existing.MaxResults = *req.MaxResults
 	}
 	if req.AutoRecover != nil {
 		existing.AutoRecover = *req.AutoRecover
@@ -160,4 +173,19 @@ func (h *ScheduledTestHandler) ListResults(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, results)
+}
+
+func normalizeScheduledTestMessage(message string) string {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return "hi"
+	}
+	return message
+}
+
+func normalizeScheduledTestClient(client string) string {
+	client = strings.TrimSpace(client)
+	client = strings.ReplaceAll(client, "\r", " ")
+	client = strings.ReplaceAll(client, "\n", " ")
+	return strings.Join(strings.Fields(client), " ")
 }

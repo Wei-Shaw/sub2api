@@ -41,6 +41,29 @@
             />
           </div>
           <div>
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t('admin.scheduledTests.testClient') }}
+            </label>
+            <Select
+              v-model="newPlan.client"
+              :options="testClientPresetOptions"
+              :placeholder="t('admin.scheduledTests.testClient')"
+              :searchable="true"
+              creatable
+              :creatable-prefix="t('admin.scheduledTests.fillClient')"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t('admin.scheduledTests.testMessage') }}
+            </label>
+            <Input
+              v-model="newPlan.message"
+              :placeholder="t('admin.scheduledTests.testMessagePlaceholder')"
+              required
+            />
+          </div>
+          <div>
             <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.cronExpression') }}
               <HelpTooltip>
@@ -110,14 +133,14 @@
         </div>
         <div class="mt-3 flex justify-end gap-2">
           <button
-            @click="showAddForm = false; resetNewPlan()"
+            @click="cancelAddPlan"
             class="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-300 dark:hover:bg-dark-500"
           >
             {{ t('common.cancel') }}
           </button>
           <button
             @click="handleCreate"
-            :disabled="!newPlan.model_id || !newPlan.cron_expression || creating"
+            :disabled="!newPlan.model_id || !newPlan.cron_expression || !newPlan.message.trim() || creating"
             class="flex items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Icon v-if="creating" name="refresh" size="sm" class="animate-spin" :stroke-width="2" />
@@ -251,6 +274,29 @@
                 />
               </div>
               <div>
+                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {{ t('admin.scheduledTests.testClient') }}
+                </label>
+                <Select
+                  v-model="editForm.client"
+                  :options="testClientPresetOptions"
+                  :placeholder="t('admin.scheduledTests.testClient')"
+                  :searchable="true"
+                  creatable
+                  :creatable-prefix="t('admin.scheduledTests.fillClient')"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {{ t('admin.scheduledTests.testMessage') }}
+                </label>
+                <Input
+                  v-model="editForm.message"
+                  :placeholder="t('admin.scheduledTests.testMessagePlaceholder')"
+                  required
+                />
+              </div>
+              <div>
                 <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.scheduledTests.cronExpression') }}
                   <HelpTooltip>
@@ -327,7 +373,7 @@
               </button>
               <button
                 @click="handleEdit"
-                :disabled="!editForm.model_id || !editForm.cron_expression || updating"
+                :disabled="!editForm.model_id || !editForm.cron_expression || !editForm.message.trim() || updating"
                 class="flex items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Icon v-if="updating" name="refresh" size="sm" class="animate-spin" :stroke-width="2" />
@@ -503,8 +549,16 @@ const showDeleteConfirm = ref(false)
 const deletingPlan = ref<ScheduledTestPlan | null>(null)
 const editingPlanId = ref<number | null>(null)
 const updating = ref(false)
+const testClientPresetOptions: SelectOption[] = [
+  { value: 'codex_cli_rs/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color', label: 'codex_cli_rs/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color' },
+  { value: 'Claude Code/0.5.0 (Macos 15.5; arm64) iTerm2.app (Claude Code; 1.0.4)', label: 'Claude Code/0.5.0 (Macos 15.5; arm64) iTerm2.app (Claude Code; 1.0.4)' },
+  { value: 'GeminiCLI/0.1.5 (Windows; AMD64)', label: 'GeminiCLI/0.1.5 (Windows; AMD64)' },
+  { value: 'antigravity/1.23.2 windows/amd64', label: 'antigravity/1.23.2 windows/amd64' }
+]
 const editForm = reactive({
   model_id: '' as string,
+  client: '' as string,
+  message: 'hi' as string,
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
@@ -513,6 +567,8 @@ const editForm = reactive({
 
 const newPlan = reactive({
   model_id: '' as string,
+  client: '' as string,
+  message: 'hi' as string,
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
@@ -521,10 +577,17 @@ const newPlan = reactive({
 
 const resetNewPlan = () => {
   newPlan.model_id = ''
+  newPlan.client = ''
+  newPlan.message = 'hi'
   newPlan.cron_expression = ''
   newPlan.max_results = '100'
   newPlan.enabled = true
   newPlan.auto_recover = false
+}
+
+const cancelAddPlan = () => {
+  showAddForm.value = false
+  resetNewPlan()
 }
 
 // Load plans when dialog opens
@@ -557,13 +620,15 @@ const loadPlans = async () => {
 }
 
 const handleCreate = async () => {
-  if (!props.accountId || !newPlan.model_id || !newPlan.cron_expression) return
+  if (!props.accountId || !newPlan.model_id || !newPlan.cron_expression || !newPlan.message.trim()) return
   creating.value = true
   try {
     const maxResults = Number(newPlan.max_results) || 100
     await adminAPI.scheduledTests.create({
       account_id: props.accountId,
       model_id: newPlan.model_id,
+      client: newPlan.client.trim(),
+      message: newPlan.message.trim(),
       cron_expression: newPlan.cron_expression,
       enabled: newPlan.enabled,
       max_results: maxResults,
@@ -596,6 +661,8 @@ const handleToggleEnabled = async (plan: ScheduledTestPlan, enabled: boolean) =>
 const startEdit = (plan: ScheduledTestPlan) => {
   editingPlanId.value = plan.id
   editForm.model_id = plan.model_id
+  editForm.client = plan.client ?? ''
+  editForm.message = plan.message ?? 'hi'
   editForm.cron_expression = plan.cron_expression
   editForm.max_results = String(plan.max_results)
   editForm.enabled = plan.enabled
@@ -607,11 +674,13 @@ const cancelEdit = () => {
 }
 
 const handleEdit = async () => {
-  if (!editingPlanId.value || !editForm.model_id || !editForm.cron_expression) return
+  if (!editingPlanId.value || !editForm.model_id || !editForm.cron_expression || !editForm.message.trim()) return
   updating.value = true
   try {
     const updated = await adminAPI.scheduledTests.update(editingPlanId.value, {
       model_id: editForm.model_id,
+      client: editForm.client.trim(),
+      message: editForm.message.trim(),
       cron_expression: editForm.cron_expression,
       max_results: Number(editForm.max_results) || 100,
       enabled: editForm.enabled,

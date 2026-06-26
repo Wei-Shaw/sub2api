@@ -132,6 +132,7 @@ type antigravityRetryLoopParams struct {
 	accessToken     string
 	action          string
 	body            []byte
+	customUserAgent string
 	c               *gin.Context
 	httpUpstream    HTTPUpstream
 	settingService  *SettingService
@@ -616,6 +617,9 @@ urlFallbackLoop:
 			if err != nil {
 				return nil, err
 			}
+			if customUserAgent := strings.TrimSpace(p.customUserAgent); customUserAgent != "" {
+				upstreamReq.Header.Set("User-Agent", customUserAgent)
+			}
 
 			resp, err = p.httpUpstream.Do(upstreamReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 			if err == nil && resp == nil {
@@ -1058,6 +1062,11 @@ type TestConnectionResult struct {
 // 复用 antigravityRetryLoop 的完整重试 / credits overages / 智能重试逻辑，
 // 与真实调度行为一致。差异：不做账号切换（测试指定账号）、不记录 ops 错误。
 func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account *Account, modelID string) (*TestConnectionResult, error) {
+	return s.TestConnectionWithOptions(ctx, account, modelID, nil)
+}
+
+func (s *AntigravityGatewayService) TestConnectionWithOptions(ctx context.Context, account *Account, modelID string, opts *AccountTestOptions) (*TestConnectionResult, error) {
+	opts = normalizeAccountTestOptions(opts)
 
 	// 获取 token
 	if s.tokenProvider == nil {
@@ -1080,9 +1089,9 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 	// 构建请求体
 	var requestBody []byte
 	if strings.HasPrefix(modelID, "gemini-") {
-		requestBody, err = s.buildGeminiTestRequest(projectID, mappedModel)
+		requestBody, err = s.buildGeminiTestRequest(projectID, mappedModel, opts.Message)
 	} else {
-		requestBody, err = s.buildClaudeTestRequest(projectID, mappedModel)
+		requestBody, err = s.buildClaudeTestRequest(projectID, mappedModel, opts.Message)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("构建请求失败: %w", err)
@@ -1097,19 +1106,20 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 	// 复用 antigravityRetryLoop：完整的重试 / credits overages / 智能重试
 	prefix := fmt.Sprintf("[antigravity-Test] account=%d(%s)", account.ID, account.Name)
 	p := antigravityRetryLoopParams{
-		ctx:            ctx,
-		prefix:         prefix,
-		account:        account,
-		proxyURL:       proxyURL,
-		accessToken:    accessToken,
-		action:         "streamGenerateContent",
-		body:           requestBody,
-		c:              nil, // 无 gin.Context → 跳过 ops 追踪
-		httpUpstream:   s.httpUpstream,
-		settingService: s.settingService,
-		accountRepo:    s.accountRepo,
-		requestedModel: modelID,
-		handleError:    testConnectionHandleError,
+		ctx:             ctx,
+		prefix:          prefix,
+		account:         account,
+		proxyURL:        proxyURL,
+		accessToken:     accessToken,
+		action:          "streamGenerateContent",
+		body:            requestBody,
+		customUserAgent: opts.Client,
+		c:               nil, // 无 gin.Context → 跳过 ops 追踪
+		httpUpstream:    s.httpUpstream,
+		settingService:  s.settingService,
+		accountRepo:     s.accountRepo,
+		requestedModel:  modelID,
+		handleError:     testConnectionHandleError,
 	}
 
 	result, err := s.antigravityRetryLoop(p)
@@ -1154,14 +1164,14 @@ func testConnectionHandleError(
 }
 
 // buildGeminiTestRequest 构建 Gemini 格式测试请求
-// 使用最小 token 消耗：输入 "." + maxOutputTokens: 1
-func (s *AntigravityGatewayService) buildGeminiTestRequest(projectID, model string) ([]byte, error) {
+// 使用自定义测试消息 + maxOutputTokens: 1 控制输出消耗
+func (s *AntigravityGatewayService) buildGeminiTestRequest(projectID, model string, message string) ([]byte, error) {
 	payload := map[string]any{
 		"contents": []map[string]any{
 			{
 				"role": "user",
 				"parts": []map[string]any{
-					{"text": "."},
+					{"text": normalizeAccountTestMessage(message)},
 				},
 			},
 		},
@@ -1180,14 +1190,15 @@ func (s *AntigravityGatewayService) buildGeminiTestRequest(projectID, model stri
 }
 
 // buildClaudeTestRequest 构建 Claude 格式测试请求并转换为 Gemini 格式
-// 使用最小 token 消耗：输入 "." + MaxTokens: 1
-func (s *AntigravityGatewayService) buildClaudeTestRequest(projectID, mappedModel string) ([]byte, error) {
+// 使用自定义测试消息 + MaxTokens: 1 控制输出消耗
+func (s *AntigravityGatewayService) buildClaudeTestRequest(projectID, mappedModel string, message string) ([]byte, error) {
+	content, _ := json.Marshal(normalizeAccountTestMessage(message))
 	claudeReq := &antigravity.ClaudeRequest{
 		Model: mappedModel,
 		Messages: []antigravity.ClaudeMessage{
 			{
 				Role:    "user",
-				Content: json.RawMessage(`"."`),
+				Content: json.RawMessage(content),
 			},
 		},
 		MaxTokens: 1,

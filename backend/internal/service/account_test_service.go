@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -240,9 +241,17 @@ func applyAccountTestClient(req *http.Request, opts *AccountTestOptions) {
 	}
 }
 
+func (s *AccountTestService) resolveTLSProfile(account *Account) *tlsfingerprint.Profile {
+	if s == nil || s.tlsFPProfileService == nil {
+		return nil
+	}
+	return s.tlsFPProfileService.ResolveTLSProfile(account)
+}
+
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
 func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account *Account, modelID string, opts *AccountTestOptions) error {
 	ctx := c.Request.Context()
+	opts = normalizeAccountTestOptions(opts)
 
 	// Determine the model to use
 	testModelID := modelID
@@ -344,7 +353,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -417,7 +426,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -542,6 +551,11 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string, opts *AccountTestOptions) error {
 	ctx := c.Request.Context()
 	mode = normalizeAccountTestMode(mode)
+	opts = normalizeAccountTestOptions(opts)
+	testMessage := opts.Message
+	if trimmedPrompt := strings.TrimSpace(prompt); trimmedPrompt != "" {
+		testMessage = trimmedPrompt
+	}
 
 	// Default to openai.DefaultTestModel for OpenAI testing
 	testModelID := modelID
@@ -602,7 +616,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
 		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
-			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, opts.Message, normalizedBaseURL, authToken, opts)
+			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, testMessage, normalizedBaseURL, authToken, opts)
 		}
 		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
 	} else {
@@ -617,7 +631,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	c.Writer.Flush()
 
 	// Create OpenAI Responses API payload
-	payload := createOpenAITestPayload(testModelID, isOAuth, opts.Message)
+	payload := createOpenAITestPayload(testModelID, isOAuth, testMessage)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event
@@ -649,7 +663,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -720,7 +734,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) request failed: %s", err.Error()))
 	}
@@ -817,7 +831,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		if s.accountRepo != nil {
 			updates := buildOpenAICompactProbeExtraUpdates(nil, nil, err, time.Now())
@@ -896,6 +910,7 @@ func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, accoun
 // testGeminiAccountConnection tests a Gemini account's connection
 func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, opts *AccountTestOptions) error {
 	ctx := c.Request.Context()
+	opts = normalizeAccountTestOptions(opts)
 
 	// Determine the model to use
 	testModelID := modelID
@@ -952,7 +967,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -976,13 +991,14 @@ func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Accou
 		}
 		return s.testClaudeAccountConnection(c, account, modelID, opts)
 	}
-	return s.testAntigravityAccountConnection(c, account, modelID)
+	return s.testAntigravityAccountConnection(c, account, modelID, opts)
 }
 
 // testAntigravityAccountConnection tests an Antigravity account's connection
 // 支持 Claude 和 Gemini 两种协议，使用非流式请求
-func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, account *Account, modelID string) error {
+func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, account *Account, modelID string, opts *AccountTestOptions) error {
 	ctx := c.Request.Context()
+	opts = normalizeAccountTestOptions(opts)
 
 	// 默认模型：Claude 使用 claude-sonnet-4-5，Gemini 使用 gemini-3-pro-preview
 	testModelID := modelID
@@ -1005,7 +1021,7 @@ func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, ac
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 
 	// 调用 AntigravityGatewayService.TestConnection（复用协议转换逻辑）
-	result, err := s.antigravityGatewayService.TestConnection(ctx, account, testModelID)
+	result, err := s.antigravityGatewayService.TestConnectionWithOptions(ctx, account, testModelID, opts)
 	if err != nil {
 		return s.sendErrorAndEnd(c, err.Error())
 	}
@@ -1560,7 +1576,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -1726,14 +1742,15 @@ func (s *AccountTestService) sendErrorAndEnd(c *gin.Context, errorMsg string) er
 
 // RunTestBackground executes an account test in-memory (no real HTTP client),
 // capturing SSE output via httptest.NewRecorder, then parses the result.
-func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error) {
+func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string, opts *AccountTestOptions) (*ScheduledTestResult, error) {
 	startedAt := time.Now()
+	opts = normalizeAccountTestOptions(opts)
 
 	w := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(w)
 	ginCtx.Request = (&http.Request{}).WithContext(ctx)
 
-	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault)
+	testErr := s.TestAccountConnectionWithOptions(ginCtx, accountID, modelID, "", AccountTestModeDefault, opts)
 
 	finishedAt := time.Now()
 	body := w.Body.String()
