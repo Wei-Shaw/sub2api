@@ -1,7 +1,7 @@
 <template>
   <a
     class="inline-flex max-w-full shrink-0 items-center gap-1 truncate text-xs font-normal text-primary-600 transition-colors hover:underline focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 dark:text-primary-400 dark:focus:ring-offset-dark-800"
-    href="https://bestproxy.com/?keyword=a2e8iuol"
+    href="https://www.ipipgo.com?inviteLink=GRuqxmz7"
     target="_blank"
     rel="noopener noreferrer"
   >
