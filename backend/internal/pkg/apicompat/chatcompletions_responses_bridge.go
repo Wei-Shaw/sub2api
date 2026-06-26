@@ -737,6 +737,13 @@ REDACTED
 					copyCall.ID = generateItemID()
 			REDACTED
 				copyCall.Type = "function"
+				// Arguments are accumulated by the shared block below so the
+				// emitted delta and the stored value stay in sync. Some upstreams
+				// (e.g. GLM/Zhipu) pack id+name+arguments into the first tool_call
+				// chunk; without this reset the first chunk's arguments would be
+				// counted twice (once from this copy, once from the += below),
+				// producing a doubled, invalid JSON like {"a":1REDACTED{"a":1REDACTED.
+				copyCall.Function.Arguments = ""
 				state.ToolCalls[idx] = &copyCall
 				stored = &copyCall
 				itemID := generateItemID()

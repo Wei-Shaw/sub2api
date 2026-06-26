@@ -179,6 +179,41 @@ REDACTED
 	require.True(t, sawItemDone, "function_call output_item.done missing")
 REDACTED
 
+// TestStream_ToolCallArgumentsInFirstChunkNotDoubled guards the GLM/Zhipu shape
+// where a single tool_call delta chunk carries id+name+arguments together.
+// Earlier code copied the whole tool_call (including arguments) into state and
+// then accumulated the same chunk's arguments again, producing a doubled,
+// invalid JSON like {"cmd":"ls"REDACTED{"cmd":"ls"REDACTED that breaks Codex tool parsing
+// ("trailing characters").
+func TestStream_ToolCallArgumentsInFirstChunkNotDoubled(t *testing.T) {
+	events := collectStreamEvents(t, []string{
+		`{"choices":[{"index":0,"delta":{"role":"assistant"REDACTEDREDACTED]REDACTED`,
+		`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"exec","arguments":"{\"cmd\":\"ls\"REDACTED"REDACTEDREDACTED]REDACTEDREDACTED]REDACTED`,
+		`{"choices":[{"index":0,"delta":{REDACTED,"finish_reason":"tool_calls"REDACTED]REDACTED`,
+REDACTED)
+
+	var argsDelta strings.Builder
+	var sawArgsDone, sawItemDone bool
+	for _, e := range events {
+		switch e.Type {
+		case "response.function_call_arguments.delta":
+			_, _ = argsDelta.WriteString(e.Delta)
+		case "response.function_call_arguments.done":
+			sawArgsDone = true
+			require.Equal(t, `{"cmd":"ls"REDACTED`, e.Arguments)
+		case "response.output_item.done":
+			if e.Item != nil && e.Item.Type == "function_call" {
+				sawItemDone = true
+				require.Equal(t, `{"cmd":"ls"REDACTED`, e.Item.Arguments)
+		REDACTED
+	REDACTED
+REDACTED
+	require.True(t, sawArgsDone, "function_call_arguments.done missing")
+	require.True(t, sawItemDone, "function_call output_item.done missing")
+	// Accumulated deltas must equal the final arguments exactly (no duplication).
+	require.Equal(t, `{"cmd":"ls"REDACTED`, argsDelta.String())
+REDACTED
+
 // TestStream_SSEWireComplete drives the full stream through SSE encoding and
 // asserts the function_call events carry complete fields on the wire.
 func TestStream_SSEWireComplete(t *testing.T) {
