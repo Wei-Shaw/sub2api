@@ -34,6 +34,9 @@ type groupRepoStubForAdmin struct {
 }
 
 func (s *groupRepoStubForAdmin) Create(_ context.Context, g *Group) error {
+	if g.ID == 0 {
+		g.ID = 101
+	}
 	s.created = g
 	return nil
 }
@@ -196,6 +199,75 @@ func TestAdminService_CreateGroup_NilImagePricing(t *testing.T) {
 	require.Nil(t, repo.created.ImagePrice1K)
 	require.Nil(t, repo.created.ImagePrice2K)
 	require.Nil(t, repo.created.ImagePrice4K)
+}
+
+func TestAdminService_CreateGroup_ExclusiveStandardGroupAutoGrantsCreator(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	userRepo := &userRepoStubForGroupUpdate{}
+	operatorUserID := int64(7)
+	svc := &adminServiceImpl{
+		groupRepo: repo,
+		userRepo:  userRepo,
+	}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:           "vip-only",
+		Description:    "exclusive group",
+		Platform:       PlatformOpenAI,
+		RateMultiplier: 1.0,
+		IsExclusive:    true,
+		OperatorUserID: &operatorUserID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.True(t, userRepo.addGroupCalled)
+	require.Equal(t, operatorUserID, userRepo.addedUserID)
+	require.Equal(t, group.ID, userRepo.addedGroupID)
+}
+
+func TestAdminService_CreateGroup_PublicGroupDoesNotGrantCreator(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	userRepo := &userRepoStubForGroupUpdate{}
+	operatorUserID := int64(7)
+	svc := &adminServiceImpl{
+		groupRepo: repo,
+		userRepo:  userRepo,
+	}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:           "public-group",
+		Description:    "public",
+		Platform:       PlatformOpenAI,
+		RateMultiplier: 1.0,
+		IsExclusive:    false,
+		OperatorUserID: &operatorUserID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.False(t, userRepo.addGroupCalled)
+}
+
+func TestAdminService_CreateGroup_ExclusiveSubscriptionGroupDoesNotGrantCreator(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	userRepo := &userRepoStubForGroupUpdate{}
+	operatorUserID := int64(7)
+	svc := &adminServiceImpl{
+		groupRepo: repo,
+		userRepo:  userRepo,
+	}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "exclusive-sub",
+		Description:      "subscription group",
+		Platform:         PlatformOpenAI,
+		RateMultiplier:   1.0,
+		IsExclusive:      true,
+		OperatorUserID:   &operatorUserID,
+		SubscriptionType: SubscriptionTypeSubscription,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.False(t, userRepo.addGroupCalled)
 }
 
 // TestAdminService_UpdateGroup_WithImagePricing 测试更新分组时 ImagePrice 字段正确更新
