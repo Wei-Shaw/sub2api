@@ -160,8 +160,15 @@ REDACTED
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(requestCtx, apiKey.GroupID, sessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
-				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error())
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformAnthropic)
+				if !cls.ModelNotFound {
+					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+			REDACTED
+				message := cls.Message
+				if !cls.ModelNotFound {
+					message = "No available accounts: " + err.Error()
+			REDACTED
+				h.responsesErrorResponse(c, cls.Status, cls.ErrType, message)
 				return
 		REDACTED
 			action := fs.HandleSelectionExhausted(requestCtx)
