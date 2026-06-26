@@ -624,5 +624,51 @@ func (r *usageLogRepository) GetAPIKeyDashboardStats(ctx context.Context, apiKey
 	stats.Rpm = rpm
 	stats.Tpm = tpm
 
+	// 按"有效平台"维度拆分（group.platform 优先，否则 account.platform）。
+	platformQuery := `
+		SELECT
+			` + usageLogEffectivePlatformExpr + ` as platform,
+			COUNT(*) as total_requests,
+			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as total_tokens,
+			COALESCE(SUM(ul.actual_cost), 0) as total_actual_cost,
+			COUNT(*) FILTER (WHERE ul.created_at >= $2) as today_requests,
+			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens) FILTER (WHERE ul.created_at >= $2), 0) as today_tokens,
+			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $2), 0) as today_actual_cost
+		FROM usage_logs ul
+		LEFT JOIN groups g ON g.id = ul.group_id
+		LEFT JOIN accounts a ON a.id = ul.account_id
+		WHERE ul.api_key_id = $1
+		  AND ` + usageLogSuccessFilterUL + `
+		GROUP BY ` + usageLogEffectivePlatformExpr + `
+		HAVING ` + usageLogEffectivePlatformExpr + ` IS NOT NULL AND ` + usageLogEffectivePlatformExpr + ` <> ''
+		ORDER BY total_actual_cost DESC
+	`
+	rows, err := r.sql.QueryContext(ctx, platformQuery, apiKeyID, today)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var p PlatformDashboardStats
+		if err := rows.Scan(
+			&p.Platform,
+			&p.TotalRequests,
+			&p.TotalTokens,
+			&p.TotalActualCost,
+			&p.TodayRequests,
+			&p.TodayTokens,
+			&p.TodayActualCost,
+		); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		stats.ByPlatform = append(stats.ByPlatform, p)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return stats, nil
 }

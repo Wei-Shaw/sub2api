@@ -942,14 +942,70 @@ func (s *UsageLogRepoSuite) TestGetUserStatsAggregated_ReturnsSplitCacheTokens()
 func (s *UsageLogRepoSuite) TestGetUserDashboardStats() {
 	user := mustCreateUser(s.T(), s.client, &service.User{Email: "userdash@test.com"})
 	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-userdash", Name: "k"})
-	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-userdash"})
+	openAIAccount := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-userdash-openai", Platform: service.PlatformOpenAI})
+	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "grp-userdash-anthropic", Platform: service.PlatformAnthropic})
 
-	s.createUsageLog(user, apiKey, account, 10, 20, 0.5, time.Now())
+	today := timezone.Today()
+	yesterday := today.Add(-24 * time.Hour)
+	groupID := group.ID
+
+	_, err := s.repo.Create(s.ctx, &service.UsageLog{
+		UserID:              user.ID,
+		APIKeyID:            apiKey.ID,
+		AccountID:           openAIAccount.ID,
+		RequestID:           uuid.NewString(),
+		Model:               "claude-3",
+		InputTokens:         10,
+		OutputTokens:        20,
+		CacheCreationTokens: 2,
+		CacheReadTokens:     1,
+		TotalCost:           0.5,
+		ActualCost:          0.5,
+		CreatedAt:           today.Add(2 * time.Hour),
+	})
+	s.Require().NoError(err)
+
+	_, err = s.repo.Create(s.ctx, &service.UsageLog{
+		UserID:       user.ID,
+		APIKeyID:     apiKey.ID,
+		AccountID:    openAIAccount.ID,
+		GroupID:      &groupID,
+		RequestID:    uuid.NewString(),
+		Model:        "claude-3",
+		InputTokens:  5,
+		OutputTokens: 5,
+		TotalCost:    0.6,
+		ActualCost:   0.6,
+		CreatedAt:    yesterday.Add(3 * time.Hour),
+	})
+	s.Require().NoError(err)
 
 	stats, err := s.repo.GetUserDashboardStats(s.ctx, user.ID)
 	s.Require().NoError(err, "GetUserDashboardStats")
 	s.Require().Equal(int64(1), stats.TotalAPIKeys)
-	s.Require().Equal(int64(1), stats.TotalRequests)
+	s.Require().Equal(int64(2), stats.TotalRequests)
+	s.Require().Len(stats.ByPlatform, 2)
+	byPlatform := map[string]usagestats.PlatformDashboardStats{}
+	for _, item := range stats.ByPlatform {
+		byPlatform[item.Platform] = item
+	}
+	s.Require().Contains(byPlatform, service.PlatformOpenAI)
+	s.Require().Contains(byPlatform, service.PlatformAnthropic)
+	s.Require().Equal(int64(1), byPlatform[service.PlatformOpenAI].TotalRequests)
+	s.Require().Equal(int64(1), byPlatform[service.PlatformOpenAI].TodayRequests)
+	s.Require().Equal(int64(33), byPlatform[service.PlatformOpenAI].TotalTokens)
+	s.Require().Equal(int64(33), byPlatform[service.PlatformOpenAI].TodayTokens)
+	s.Require().InEpsilon(0.5, byPlatform[service.PlatformOpenAI].TotalActualCost, 0.0001)
+	s.Require().InEpsilon(0.5, byPlatform[service.PlatformOpenAI].TodayActualCost, 0.0001)
+	s.Require().Equal(int64(1), byPlatform[service.PlatformAnthropic].TotalRequests)
+	s.Require().Equal(int64(0), byPlatform[service.PlatformAnthropic].TodayRequests)
+	s.Require().Equal(int64(10), byPlatform[service.PlatformAnthropic].TotalTokens)
+	s.Require().Equal(int64(0), byPlatform[service.PlatformAnthropic].TodayTokens)
+	s.Require().InEpsilon(0.6, byPlatform[service.PlatformAnthropic].TotalActualCost, 0.0001)
+
+	apiKeyStats, err := s.repo.GetAPIKeyDashboardStats(s.ctx, apiKey.ID)
+	s.Require().NoError(err, "GetAPIKeyDashboardStats")
+	s.Require().Len(apiKeyStats.ByPlatform, 2)
 }
 
 // --- GetAccountTodayStats ---
