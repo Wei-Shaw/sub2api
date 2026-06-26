@@ -169,8 +169,7 @@ describe('AccountTestModal', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="account-test-client-preset-toggle"]').trigger('click')
-    const searchInput = wrapper.get('[data-testid="account-test-client-preset-search"]')
-    await searchInput.setValue('codex')
+    expect(wrapper.find('[data-testid="account-test-client-preset-search"]').exists()).toBe(false)
     const presetOption = wrapper.get('[data-testid="account-test-client-preset-option-0"]')
     await presetOption.trigger('click')
     expect(global.fetch).not.toHaveBeenCalled()
