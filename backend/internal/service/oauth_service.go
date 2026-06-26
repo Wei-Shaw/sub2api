@@ -24,6 +24,12 @@ type GrokOAuthClient interface {
 	RefreshToken(ctx context.Context, refreshToken, proxyURL, clientID string) (*xai.TokenResponse, error)
 REDACTED
 
+// GrokOAuthTokenService is the narrow refresh port used by Grok token providers.
+type GrokOAuthTokenService interface {
+	RefreshAccountToken(ctx context.Context, account *Account) (*GrokTokenInfo, error)
+	BuildAccountCredentials(tokenInfo *GrokTokenInfo) map[string]any
+REDACTED
+
 // ClaudeOAuthClient handles HTTP requests for Claude OAuth flows
 type ClaudeOAuthClient interface {
 	GetOrganizationUUID(ctx context.Context, sessionKey, proxyURL string) (string, error)

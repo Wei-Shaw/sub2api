@@ -118,7 +118,7 @@ REDACTED
 REDACTEDREDACTED
 	svc := &OpenAIGatewayService{
 		httpUpstream:      upstream,
-		grokTokenProvider: NewGrokTokenProvider(repo, nil, nil),
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
 		accountRepo:       repo,
 REDACTED
 
@@ -182,7 +182,7 @@ REDACTED, "\n")
 REDACTEDREDACTED
 	svc := &OpenAIGatewayService{
 		httpUpstream:      upstream,
-		grokTokenProvider: NewGrokTokenProvider(repo, nil, nil),
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
 		accountRepo:       repo,
 REDACTED
 
@@ -251,7 +251,7 @@ REDACTEDREDACTED
 	svc := &OpenAIGatewayService{
 		cfg:               rawChatCompletionsTestConfig(),
 		httpUpstream:      upstream,
-		grokTokenProvider: NewGrokTokenProvider(repo, nil, nil),
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
 		accountRepo:       repo,
 REDACTED
 

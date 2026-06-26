@@ -76,7 +76,7 @@ REDACTED
 REDACTED)
 	defer oauthSvc.Stop()
 
-	provider := NewGrokTokenProvider(repo, cache, oauthSvc)
+	provider := NewGrokTokenProvider(repo, cache)
 	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, cache), NewGrokTokenRefresher(oauthSvc))
 
 	token, err := provider.GetAccessToken(context.Background(), account)
@@ -109,7 +109,7 @@ REDACTED
 	repo.accountsByID = map[int64]*Account{55: accountREDACTED
 	cache := &grokTokenCacheForProviderTest{lockResult: trueREDACTED
 	tempCache := &tempUnschedCacheStub{REDACTED
-	provider := NewGrokTokenProvider(repo, cache, nil)
+	provider := NewGrokTokenProvider(repo, cache)
 	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, cache), &tokenRefresherStub{
 		err: errors.New("temporary refresh failure access_token=leaked-access refresh_token=leaked-refresh"),
 REDACTED)

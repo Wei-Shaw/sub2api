@@ -37,17 +37,20 @@ REDACTED
 
 type GrokQuotaService struct {
 	accountRepo   AccountRepository
+	proxyRepo     ProxyRepository
 	tokenProvider *GrokTokenProvider
 	httpUpstream  HTTPUpstream
 REDACTED
 
 func NewGrokQuotaService(
 	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
 	tokenProvider *GrokTokenProvider,
 	httpUpstream HTTPUpstream,
 ) *GrokQuotaService {
 	return &GrokQuotaService{
 		accountRepo:   accountRepo,
+		proxyRepo:     proxyRepo,
 		tokenProvider: tokenProvider,
 		httpUpstream:  httpUpstream,
 REDACTED
@@ -134,11 +137,22 @@ REDACTED
 		return nil, "", "", infraerrors.New(http.StatusBadGateway, "GROK_QUOTA_TOKEN_UNAVAILABLE", "access token is empty")
 REDACTED
 
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
+	return account, token, s.resolveProxyURL(ctx, account), nil
 REDACTED
-	return account, token, proxyURL, nil
+
+func (s *GrokQuotaService) resolveProxyURL(ctx context.Context, account *Account) string {
+	if account == nil || account.ProxyID == nil {
+		return ""
+REDACTED
+	switch {
+	case account.Proxy != nil:
+		return account.Proxy.URL()
+	case s != nil && s.proxyRepo != nil:
+		if proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && proxy != nil {
+			return proxy.URL()
+	REDACTED
+REDACTED
+	return ""
 REDACTED
 
 func (s *GrokQuotaService) loadGrokOAuthAccount(ctx context.Context, accountID int64) (*Account, error) {

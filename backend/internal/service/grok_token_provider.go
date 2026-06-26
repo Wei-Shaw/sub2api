@@ -23,7 +23,6 @@ type GrokTokenCache = GeminiTokenCache
 type GrokTokenProvider struct {
 	accountRepo      AccountRepository
 	tokenCache       GrokTokenCache
-	grokOAuthService *GrokOAuthService
 	refreshAPI       *OAuthRefreshAPI
 	executor         OAuthRefreshExecutor
 	refreshPolicy    ProviderRefreshPolicy
@@ -33,13 +32,11 @@ REDACTED
 func NewGrokTokenProvider(
 	accountRepo AccountRepository,
 	tokenCache GrokTokenCache,
-	grokOAuthService *GrokOAuthService,
 ) *GrokTokenProvider {
 	return &GrokTokenProvider{
-		accountRepo:      accountRepo,
-		tokenCache:       tokenCache,
-		grokOAuthService: grokOAuthService,
-		refreshPolicy:    AntigravityProviderRefreshPolicy(),
+		accountRepo:   accountRepo,
+		tokenCache:    tokenCache,
+		refreshPolicy: AntigravityProviderRefreshPolicy(),
 REDACTED
 REDACTED
 

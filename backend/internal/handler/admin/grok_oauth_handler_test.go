@@ -85,7 +85,7 @@ REDACTEDREDACTED
 	REDACTED,
 		Body: io.NopCloser(strings.NewReader(`{"id":"resp_probe"REDACTED`)),
 REDACTEDREDACTED
-	quotaService := service.NewGrokQuotaService(repo, service.NewGrokTokenProvider(repo, nil, nil), upstream)
+	quotaService := service.NewGrokQuotaService(repo, nil, service.NewGrokTokenProvider(repo, nil), upstream)
 	handler := NewGrokOAuthHandler(nil, nil, quotaService)
 
 	router := gin.New()
@@ -112,7 +112,7 @@ func TestGrokOAuthHandlerResetQuotaReturnsUnsupported(t *testing.T) {
 		Platform: service.PlatformGrok,
 		Type:     service.AccountTypeOAuth,
 REDACTEDREDACTED
-	quotaService := service.NewGrokQuotaService(repo, nil, nil)
+	quotaService := service.NewGrokQuotaService(repo, nil, nil, nil)
 	handler := NewGrokOAuthHandler(nil, nil, quotaService)
 
 	router := gin.New()

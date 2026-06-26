@@ -864,7 +864,8 @@ REDACTED
 
 func (s *AccountUsageService) getGrokUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
 	if s.grokQuotaFetcher == nil {
-		s.grokQuotaFetcher = NewGrokQuotaFetcher()
+		now := time.Now()
+		return &UsageInfo{UpdatedAt: &nowREDACTED, nil
 REDACTED
 	usage := s.grokQuotaFetcher.BuildUsageInfo(account)
 	if usage.GrokQuotaSnapshotState == "" {

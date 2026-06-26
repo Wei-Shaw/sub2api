@@ -40,6 +40,17 @@ func (r *grokQuotaAccountRepo) SetTempUnschedulable(_ context.Context, id int64,
 	return nil
 REDACTED
 
+type grokQuotaProxyRepo struct {
+	proxyRepoStub
+	proxies map[int64]*Proxy
+	calls   int
+REDACTED
+
+func (r *grokQuotaProxyRepo) GetByID(_ context.Context, id int64) (*Proxy, error) {
+	r.calls++
+	return r.proxies[id], nil
+REDACTED
+
 func TestGrokQuotaServiceProbeUsageStoresHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -69,7 +80,7 @@ REDACTED
 	REDACTED,
 		Body: io.NopCloser(strings.NewReader(`{"id":"resp_probe"REDACTED`)),
 REDACTEDREDACTED
-	svc := NewGrokQuotaService(repo, NewGrokTokenProvider(repo, nil, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
 
 	result, err := svc.ProbeUsage(context.Background(), 42)
 REDACTED
@@ -88,6 +99,49 @@ REDACTED
 	require.Contains(t, string(upstream.lastBody), `"max_output_tokens":1`)
 	require.Contains(t, string(upstream.lastBody), `"store":false`)
 	require.NotNil(t, repo.updates[42][grokQuotaSnapshotExtraKey])
+REDACTED
+
+func TestGrokQuotaServiceProbeUsageLoadsProxyWhenAccountEdgeMissing(t *testing.T) {
+	t.Parallel()
+
+	proxyID := int64(7)
+	account := &Account{
+		ID:          46,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		ProxyID:     &proxyID,
+REDACTED
+			"access_token": "access-token",
+			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+	REDACTED,
+REDACTED
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{46: accountREDACTED,
+	REDACTED,
+REDACTED
+	proxyRepo := &grokQuotaProxyRepo{
+		proxies: map[int64]*Proxy{
+			proxyID: {
+				ID:       proxyID,
+				Protocol: "http",
+				Host:     "proxy.test",
+				Port:     3128,
+		REDACTED,
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"REDACTED`)),
+REDACTEDREDACTED
+	svc := NewGrokQuotaService(repo, proxyRepo, NewGrokTokenProvider(repo, nil), upstream)
+
+	_, err := svc.ProbeUsage(context.Background(), 46)
+REDACTED
+	require.Equal(t, 1, proxyRepo.calls)
+	require.Equal(t, "http://proxy.test:3128", upstream.lastProxyURL)
 REDACTED
 
 func TestGrokQuotaServiceProbeUsageStoresNoHeadersState(t *testing.T) {
@@ -113,7 +167,7 @@ REDACTED
 		Header:     http.Header{REDACTED,
 		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"REDACTED`)),
 REDACTEDREDACTED
-	svc := NewGrokQuotaService(repo, NewGrokTokenProvider(repo, nil, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
 
 	result, err := svc.ProbeUsage(context.Background(), 45)
 REDACTED
@@ -153,7 +207,7 @@ REDACTED
 		Header:     http.Header{"Retry-After": []string{"45"REDACTEDREDACTED,
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"REDACTEDREDACTED`)),
 REDACTEDREDACTED
-	svc := NewGrokQuotaService(repo, NewGrokTokenProvider(repo, nil, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
 
 	result, err := svc.ProbeUsage(context.Background(), 43)
 REDACTED
@@ -176,7 +230,7 @@ REDACTED
 			accountsByID: map[int64]*Account{44: accountREDACTED,
 	REDACTED,
 REDACTED
-	svc := NewGrokQuotaService(repo, nil, nil)
+	svc := NewGrokQuotaService(repo, nil, nil, nil)
 
 	_, err := svc.ResetQuota(context.Background(), 44)
 REDACTED
