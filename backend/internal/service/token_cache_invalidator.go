@@ -44,6 +44,9 @@ REDACTED
 		keysToDelete = append(keysToDelete, "ag:"+accountIDKey)
 	case PlatformOpenAI:
 		keysToDelete = append(keysToDelete, OpenAITokenCacheKey(account))
+	case PlatformGrok:
+		keysToDelete = append(keysToDelete, GrokTokenCacheKey(account))
+		keysToDelete = append(keysToDelete, "grok:"+accountIDKey)
 	case PlatformAnthropic:
 		keysToDelete = append(keysToDelete, ClaudeTokenCacheKey(account))
 	default:

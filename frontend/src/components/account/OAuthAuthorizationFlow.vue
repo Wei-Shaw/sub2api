@@ -616,9 +616,9 @@
                 <p class="text-sm text-blue-700 dark:text-blue-300">
                   {{ oauthOpenUrlDesc REDACTEDREDACTED
                 </p>
-                <!-- OpenAI Important Notice -->
+                <!-- Local callback notice -->
                 <div
-                  v-if="isOpenAI"
+                  v-if="showLocalCallbackNotice"
                   class="mt-2 rounded border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/30"
                 >
                   <p
@@ -776,13 +776,14 @@ REDACTED>()
 
 const { t REDACTED = useI18n()
 
-const isOpenAI = computed(() => props.platform === 'openai')
+const showLocalCallbackNotice = computed(() => props.platform === 'openai' || props.platform === 'grok')
 
 // Get translation key based on platform
 const getOAuthKey = (key: string) => {
   if (props.platform === 'openai') return `admin.accounts.oauth.openai.${keyREDACTED`
   if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${keyREDACTED`
   if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${keyREDACTED`
+  if (props.platform === 'grok') return `admin.accounts.oauth.grok.${keyREDACTED`
   return `admin.accounts.oauth.${keyREDACTED`
 REDACTED
 
@@ -801,6 +802,7 @@ const oauthAuthCodeHint = computed(() => t(getOAuthKey('authCodeHint')))
 const oauthImportantNotice = computed(() => {
   if (props.platform === 'openai') return t('admin.accounts.oauth.openai.importantNotice')
   if (props.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.importantNotice')
+  if (props.platform === 'grok') return t('admin.accounts.oauth.grok.importantNotice')
   return ''
 REDACTED)
 
@@ -853,20 +855,20 @@ watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
 REDACTED)
 
-// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity)
+// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity/Grok)
 // e.g., http://localhost:8085/callback?code=xxx...&state=...
 watch(authCodeInput, (newVal) => {
-  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity') return
+  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'grok') return
 
   const trimmed = newVal.trim()
   // Check if it looks like a URL with code parameter
-  if (trimmed.includes('?') && trimmed.includes('code=')) {
+  if (trimmed.includes('code=')) {
     try {
       // Try to parse as URL
-      const url = new URL(trimmed)
+      const url = trimmed.includes('?') ? new URL(trimmed) : new URL(`http://localhost/callback?${trimmed.replace(/^\?/, '')REDACTED`)
       const code = url.searchParams.get('code')
       const stateParam = url.searchParams.get('state')
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity') && stateParam) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateParam) {
         oauthState.value = stateParam
       REDACTED
       if (code && code !== trimmed) {
@@ -877,7 +879,7 @@ watch(authCodeInput, (newVal) => {
       // If URL parsing fails, try regex extraction
       const match = trimmed.match(/[?&]code=([^&]+)/)
       const stateMatch = trimmed.match(/[?&]state=([^&]+)/)
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity') && stateMatch && stateMatch[1]) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateMatch && stateMatch[1]) {
         oauthState.value = stateMatch[1]
       REDACTED
       if (match && match[1] && match[1] !== trimmed) {

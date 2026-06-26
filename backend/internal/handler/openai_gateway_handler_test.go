@@ -1341,6 +1341,7 @@ REDACTED
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	cache := &concurrencyCacheMock{
@@ -1521,6 +1522,7 @@ REDACTED
 		billingCacheSvc,
 		nil,
 		&service.DeferredService{REDACTED,
+		nil,
 		nil,
 		nil,
 		channelSvc,
