@@ -138,6 +138,34 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestComputeValidityDaysSupportsSingularAndPluralUnits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		days int
+		unit string
+		want int
+REDACTED{
+		{name: "days", days: 1, unit: "days", want: 1REDACTED,
+		{name: "week", days: 1, unit: "week", want: 7REDACTED,
+		{name: "weeks", days: 2, unit: "weeks", want: 14REDACTED,
+		{name: "month", days: 1, unit: "month", want: 30REDACTED,
+		{name: "months", days: 1, unit: "months", want: 30REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := psComputeValidityDays(tt.days, tt.unit); got != tt.want {
+				t.Fatalf("psComputeValidityDays(%d, %q) = %d, want %d", tt.days, tt.unit, got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestBuildPaymentSubjectAppliesAffixToSubscriptionPlanProductName(t *testing.T) {
 	t.Parallel()
 
