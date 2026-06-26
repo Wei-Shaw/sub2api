@@ -524,25 +524,58 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 				Description: t.Description,
 				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
 		REDACTED)
+		case "custom":
+			out = append(out, AnthropicTool{
+				Name:        t.Name,
+				Description: t.Description,
+				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
+		REDACTED)
 		default:
 			// Pass through unknown tool types
 			out = append(out, AnthropicTool{
 				Type:        t.Type,
 				Name:        t.Name,
 				Description: t.Description,
-				InputSchema: t.Parameters,
+				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
 		REDACTED)
 	REDACTED
 REDACTED
 	return out
 REDACTED
 
-// normalizeAnthropicInputSchema ensures the input_schema has a "type" field.
+// normalizeAnthropicInputSchema ensures input_schema is a valid object schema.
 func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
-	if len(schema) == 0 || string(schema) == "null" {
+	const emptyObjectSchema = `{"type":"object","properties":{REDACTEDREDACTED`
+
+	trimmed := strings.TrimSpace(string(schema))
+	if trimmed == "" || trimmed == "null" {
+		return json.RawMessage(emptyObjectSchema)
+REDACTED
+
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(schema, &m); err != nil {
 		return json.RawMessage(`{"type":"object","properties":{REDACTEDREDACTED`)
 REDACTED
-	return schema
+
+	typeRaw, ok := m["type"]
+	if !ok || strings.TrimSpace(string(typeRaw)) == "" || string(typeRaw) == "null" {
+		m["type"] = json.RawMessage(`"object"`)
+REDACTED else {
+		var typ string
+		if err := json.Unmarshal(typeRaw, &typ); err != nil || typ != "object" {
+			return json.RawMessage(emptyObjectSchema)
+	REDACTED
+REDACTED
+
+	if _, ok := m["properties"]; !ok {
+		m["properties"] = json.RawMessage(`{REDACTED`)
+REDACTED
+
+	out, err := json.Marshal(m)
+	if err != nil {
+		return json.RawMessage(emptyObjectSchema)
+REDACTED
+	return out
 REDACTED
 
 // convertResponsesToAnthropicToolChoice maps Responses tool_choice to Anthropic format.
