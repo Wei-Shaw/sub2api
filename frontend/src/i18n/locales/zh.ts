@@ -4256,6 +4256,7 @@ export default {
       deletePlan: '删除计划',
       model: '模型',
       testClient: '测试客户端',
+      testClientPlaceholder: '留空使用默认客户端构造',
       fillClient: '使用自定义客户端',
       testMessage: '测试消息',
       testMessagePlaceholder: '定时探测时发送的消息',

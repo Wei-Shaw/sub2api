@@ -4164,6 +4164,7 @@ export default {
       deletePlan: 'Delete Plan',
       model: 'Model',
       testClient: 'Test Client',
+      testClientPlaceholder: 'Leave empty to use the default client',
       fillClient: 'Use custom client',
       testMessage: 'Test Message',
       testMessagePlaceholder: 'Message sent by the scheduled probe',

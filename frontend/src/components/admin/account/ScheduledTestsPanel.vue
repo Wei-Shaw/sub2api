@@ -41,29 +41,6 @@
             />
           </div>
           <div>
-            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-              {{ t('admin.scheduledTests.testClient') }}
-            </label>
-            <Select
-              v-model="newPlan.client"
-              :options="testClientPresetOptions"
-              :placeholder="t('admin.scheduledTests.testClient')"
-              :searchable="true"
-              creatable
-              :creatable-prefix="t('admin.scheduledTests.fillClient')"
-            />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-              {{ t('admin.scheduledTests.testMessage') }}
-            </label>
-            <Input
-              v-model="newPlan.message"
-              :placeholder="t('admin.scheduledTests.testMessagePlaceholder')"
-              required
-            />
-          </div>
-          <div>
             <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.cronExpression') }}
               <HelpTooltip>
@@ -88,6 +65,77 @@
               :placeholder="'*/30 * * * *'"
               :hint="t('admin.scheduledTests.cronHelp')"
             />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t('admin.scheduledTests.testMessage') }}
+            </label>
+            <Input
+              v-model="newPlan.message"
+              :placeholder="t('admin.scheduledTests.testMessagePlaceholder')"
+              required
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t('admin.scheduledTests.testClient') }}
+            </label>
+            <div ref="newClientDropdownRef" class="relative">
+              <div class="flex">
+                <input
+                  v-model="newPlan.client"
+                  type="text"
+                  class="input rounded-r-none border-r-0"
+                  :placeholder="t('admin.scheduledTests.testClientPlaceholder')"
+                  @focus="closeClientDropdown"
+                />
+                <button
+                  type="button"
+                  class="flex w-11 flex-shrink-0 items-center justify-center rounded-r-xl border border-l-0 border-gray-200 bg-white text-gray-500 transition hover:border-gray-300 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500 dark:hover:bg-dark-700"
+                  :aria-expanded="clientDropdownOpen === 'new'"
+                  aria-haspopup="listbox"
+                  @click.stop="toggleClientDropdown('new')"
+                >
+                  <Icon
+                    name="chevronDown"
+                    size="sm"
+                    :class="['transition-transform duration-200', clientDropdownOpen === 'new' && 'rotate-180']"
+                    :stroke-width="2"
+                  />
+                </button>
+              </div>
+              <Transition name="select-dropdown">
+                <div
+                  v-if="clientDropdownOpen === 'new'"
+                  class="absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg shadow-black/10 dark:border-dark-700 dark:bg-dark-800 dark:shadow-black/30"
+                  role="listbox"
+                  @click.stop
+                >
+                  <div class="max-h-64 overflow-y-auto py-1">
+                    <button
+                      v-for="(option, index) in testClientPresetOptions"
+                      :key="String(option.value)"
+                      type="button"
+                      role="option"
+                      class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-700 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-dark-700"
+                      :class="newPlan.client === option.value && 'bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300'"
+                      :aria-selected="newPlan.client === option.value"
+                      :data-testid="`scheduled-test-client-preset-option-new-${index}`"
+                      @click="applyClientPreset('new', String(option.value))"
+                    >
+                      <span class="min-w-0 flex-1 break-all leading-5">{{ option.value }}</span>
+                      <Icon
+                        v-if="newPlan.client === option.value"
+                        name="check"
+                        size="sm"
+                        class="flex-shrink-0 text-primary-500"
+                        :stroke-width="2"
+                      />
+                    </button>
+                  </div>
+                </div>
+              </Transition>
+            </div>
           </div>
           <div>
             <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
@@ -274,29 +322,6 @@
                 />
               </div>
               <div>
-                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                  {{ t('admin.scheduledTests.testClient') }}
-                </label>
-                <Select
-                  v-model="editForm.client"
-                  :options="testClientPresetOptions"
-                  :placeholder="t('admin.scheduledTests.testClient')"
-                  :searchable="true"
-                  creatable
-                  :creatable-prefix="t('admin.scheduledTests.fillClient')"
-                />
-              </div>
-              <div>
-                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                  {{ t('admin.scheduledTests.testMessage') }}
-                </label>
-                <Input
-                  v-model="editForm.message"
-                  :placeholder="t('admin.scheduledTests.testMessagePlaceholder')"
-                  required
-                />
-              </div>
-              <div>
                 <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.scheduledTests.cronExpression') }}
                   <HelpTooltip>
@@ -321,6 +346,77 @@
                   :placeholder="'*/30 * * * *'"
                   :hint="t('admin.scheduledTests.cronHelp')"
                 />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {{ t('admin.scheduledTests.testMessage') }}
+                </label>
+                <Input
+                  v-model="editForm.message"
+                  :placeholder="t('admin.scheduledTests.testMessagePlaceholder')"
+                  required
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {{ t('admin.scheduledTests.testClient') }}
+                </label>
+                <div ref="editClientDropdownRef" class="relative">
+                  <div class="flex">
+                    <input
+                      v-model="editForm.client"
+                      type="text"
+                      class="input rounded-r-none border-r-0"
+                      :placeholder="t('admin.scheduledTests.testClientPlaceholder')"
+                      @focus="closeClientDropdown"
+                    />
+                    <button
+                      type="button"
+                      class="flex w-11 flex-shrink-0 items-center justify-center rounded-r-xl border border-l-0 border-gray-200 bg-white text-gray-500 transition hover:border-gray-300 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500 dark:hover:bg-dark-700"
+                      :aria-expanded="clientDropdownOpen === 'edit'"
+                      aria-haspopup="listbox"
+                      @click.stop="toggleClientDropdown('edit')"
+                    >
+                      <Icon
+                        name="chevronDown"
+                        size="sm"
+                        :class="['transition-transform duration-200', clientDropdownOpen === 'edit' && 'rotate-180']"
+                        :stroke-width="2"
+                      />
+                    </button>
+                  </div>
+                  <Transition name="select-dropdown">
+                    <div
+                      v-if="clientDropdownOpen === 'edit'"
+                      class="absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg shadow-black/10 dark:border-dark-700 dark:bg-dark-800 dark:shadow-black/30"
+                      role="listbox"
+                      @click.stop
+                    >
+                      <div class="max-h-64 overflow-y-auto py-1">
+                        <button
+                          v-for="(option, index) in testClientPresetOptions"
+                          :key="String(option.value)"
+                          type="button"
+                          role="option"
+                          class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-700 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-dark-700"
+                          :class="editForm.client === option.value && 'bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300'"
+                          :aria-selected="editForm.client === option.value"
+                          :data-testid="`scheduled-test-client-preset-option-edit-${index}`"
+                          @click="applyClientPreset('edit', String(option.value))"
+                        >
+                          <span class="min-w-0 flex-1 break-all leading-5">{{ option.value }}</span>
+                          <Icon
+                            v-if="editForm.client === option.value"
+                            name="check"
+                            size="sm"
+                            class="flex-shrink-0 text-primary-500"
+                            :stroke-width="2"
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </Transition>
+                </div>
               </div>
               <div>
                 <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
@@ -509,7 +605,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -549,6 +645,10 @@ const showDeleteConfirm = ref(false)
 const deletingPlan = ref<ScheduledTestPlan | null>(null)
 const editingPlanId = ref<number | null>(null)
 const updating = ref(false)
+type ClientDropdownKind = 'new' | 'edit'
+const clientDropdownOpen = ref<ClientDropdownKind | null>(null)
+const newClientDropdownRef = ref<HTMLElement | null>(null)
+const editClientDropdownRef = ref<HTMLElement | null>(null)
 const testClientPresetOptions: SelectOption[] = [
   { value: 'codex_cli_rs/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color', label: 'codex_cli_rs/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color' },
   { value: 'Claude Code/0.5.0 (Macos 15.5; arm64) iTerm2.app (Claude Code; 1.0.4)', label: 'Claude Code/0.5.0 (Macos 15.5; arm64) iTerm2.app (Claude Code; 1.0.4)' },
@@ -587,8 +687,45 @@ const resetNewPlan = () => {
 
 const cancelAddPlan = () => {
   showAddForm.value = false
+  closeClientDropdown()
   resetNewPlan()
 }
+
+const toggleClientDropdown = (kind: ClientDropdownKind) => {
+  clientDropdownOpen.value = clientDropdownOpen.value === kind ? null : kind
+}
+
+const closeClientDropdown = () => {
+  clientDropdownOpen.value = null
+}
+
+const applyClientPreset = (kind: ClientDropdownKind, value: string) => {
+  if (kind === 'new') {
+    newPlan.client = value
+  } else {
+    editForm.client = value
+  }
+  closeClientDropdown()
+}
+
+const handleClientDropdownOutsideClick = (event: MouseEvent) => {
+  if (!clientDropdownOpen.value) return
+  const target = event.target as Node
+  const activeRef = clientDropdownOpen.value === 'new'
+    ? newClientDropdownRef.value
+    : editClientDropdownRef.value
+  if (activeRef && !activeRef.contains(target)) {
+    closeClientDropdown()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClientDropdownOutsideClick)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClientDropdownOutsideClick)
+})
 
 // Load plans when dialog opens
 watch(
@@ -603,6 +740,7 @@ watch(
       expandedResultIds.clear()
       showAddForm.value = false
       showDeleteConfirm.value = false
+      closeClientDropdown()
     }
   }
 )
@@ -621,6 +759,7 @@ const loadPlans = async () => {
 
 const handleCreate = async () => {
   if (!props.accountId || !newPlan.model_id || !newPlan.cron_expression || !newPlan.message.trim()) return
+  closeClientDropdown()
   creating.value = true
   try {
     const maxResults = Number(newPlan.max_results) || 100
@@ -659,6 +798,7 @@ const handleToggleEnabled = async (plan: ScheduledTestPlan, enabled: boolean) =>
 }
 
 const startEdit = (plan: ScheduledTestPlan) => {
+  closeClientDropdown()
   editingPlanId.value = plan.id
   editForm.model_id = plan.model_id
   editForm.client = plan.client ?? ''
@@ -670,11 +810,13 @@ const startEdit = (plan: ScheduledTestPlan) => {
 }
 
 const cancelEdit = () => {
+  closeClientDropdown()
   editingPlanId.value = null
 }
 
 const handleEdit = async () => {
   if (!editingPlanId.value || !editForm.model_id || !editForm.cron_expression || !editForm.message.trim()) return
+  closeClientDropdown()
   updating.value = true
   try {
     const updated = await adminAPI.scheduledTests.update(editingPlanId.value, {
