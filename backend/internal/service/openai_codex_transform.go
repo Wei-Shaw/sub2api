@@ -754,6 +754,20 @@ REDACTED
 	return true
 REDACTED
 
+func ensureOpenAIResponsesImageGenerationToolChoiceAuto(reqBody map[string]any) bool {
+	if len(reqBody) == 0 || !hasOpenAIImageGenerationTool(reqBody) {
+		return false
+REDACTED
+	if isCodexSparkModel(firstNonEmptyString(reqBody["model"])) {
+		return false
+REDACTED
+	if _, ok := reqBody["tool_choice"]; ok {
+		return false
+REDACTED
+	reqBody["tool_choice"] = "auto"
+	return true
+REDACTED
+
 func applyCodexImageGenerationBridgeInstructions(reqBody map[string]any) bool {
 	if len(reqBody) == 0 || !hasOpenAIImageGenerationTool(reqBody) {
 		return false
