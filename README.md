@@ -581,6 +581,50 @@ Simple Mode is designed for individual developers or internal teams who want qui
 
 ---
 
+## Grok / xAI OAuth Support
+
+Sub2API supports Grok subscription accounts through xAI OAuth and forwards OpenAI-compatible Responses traffic to xAI.
+
+### Supported Scope
+
+- Platform name: `grok`
+- Account type: OAuth subscription accounts
+- Public gateway target: `/v1/responses` and `/responses`, forwarded to `${XAI_BASE_URL:-https://api.x.ai/v1}/responses`
+- Initial models: `grok-4.3`, `grok-build-0.1`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, and `grok-4.20-multi-agent-0309`
+- Out of scope for this provider: public Grok Chat Completions routes, image, video, TTS, transcription, browser automation, cookies, and Grok web scraping
+
+### OAuth Configuration
+
+The Grok OAuth flow uses PKCE and does not require committing private secrets. The default client details follow the public xAI OAuth flow used by compatible clients, and every value can be overridden by environment variable:
+
+| Variable | Default |
+|----------|---------|
+| `XAI_OAUTH_CLIENT_ID` | Public xAI OAuth client ID |
+| `XAI_OAUTH_SCOPE` | `openid profile email offline_access grok-cli:access api:access` |
+| `XAI_OAUTH_REDIRECT_URI` | `http://127.0.0.1:56121/callback` |
+| `XAI_OAUTH_AUTHORIZE_URL` | `https://auth.x.ai/oauth2/authorize` |
+| `XAI_OAUTH_TOKEN_URL` | `https://auth.x.ai/oauth2/token` |
+| `XAI_BASE_URL` | `https://api.x.ai/v1` |
+
+Administrators can create or reauthorize Grok accounts from the dashboard, or use the admin API:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/v1/admin/grok/oauth/auth-url` | Generate an xAI OAuth authorization URL |
+| `POST /api/v1/admin/grok/oauth/exchange-code` | Exchange a callback URL, query string, or code for OAuth credentials |
+| `POST /api/v1/admin/grok/oauth/refresh-token` | Validate or refresh a Grok refresh token |
+| `POST /api/v1/admin/grok/accounts/:id/refresh` | Refresh an existing Grok account |
+
+Credential storage reuses the existing account JSON fields: `access_token`, `refresh_token`, `token_type`, `expires_at`, optional `email`, optional `subscription_tier`, and `entitlement_status`.
+
+### Usage And Quota Display
+
+xAI quota is passive. Sub2API does not invent subscription quota values; it records whitelisted xAI rate-limit headers from successful or rate-limited upstream responses when xAI sends them. Before the first usable upstream response, the dashboard shows quota as unknown and still displays local Sub2API usage stats.
+
+`401` responses mark the account as needing reauthorization. `403` responses are treated as entitlement or subscription-tier failures instead of token-refresh loops. `429` responses use `Retry-After` or a short cooldown to temporarily remove the account from scheduling.
+
+---
+
 ## Antigravity Support
 
 Sub2API supports [Antigravity](https://antigravity.so/) accounts. After authorization, dedicated endpoints are available for Claude and Gemini models.
