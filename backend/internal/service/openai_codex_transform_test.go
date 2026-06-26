@@ -8,8 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestApplyCodexOAuthTransform_ToolContinuationPreservesInput(t *testing.T) {
-	// 续链场景：保留 item_reference 与 id，但不再强制 store=true。
+func TestApplyCodexOAuthTransform_ToolContinuationDropsItemReferenceAndStripsIDs(t *testing.T) {
+	// OAuth 路径强制 store=false，任何指向"已存储 item"的引用 (item_reference
+	// 整项 / 其它 item 上的 id 字段) 上游都会 404 "Items are not persisted when
+	// `store` is set to false."。续链上下文靠 input 内 inline 的 function_call +
+	// function_call_output (匹配 call_id) 承载，已经足够。
 
 	reqBody := map[string]any{
 		"model": "gpt-5.2",
@@ -22,26 +25,19 @@ func TestApplyCodexOAuthTransform_ToolContinuationPreservesInput(t *testing.T) {
 
 	applyCodexOAuthTransform(reqBody, false, false)
 
-	// 未显式设置 store=true，默认为 false。
 	store, ok := reqBody["store"].(bool)
 	require.True(t, ok)
 	require.False(t, store)
 
 	input, ok := reqBody["input"].([]any)
 	require.True(t, ok)
-	require.Len(t, input, 2)
+	require.Len(t, input, 1, "item_reference must be dropped on OAuth path")
 
-	// 校验 input[0] 为 map，避免断言失败导致测试中断。
-	first, ok := input[0].(map[string]any)
+	only, ok := input[0].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "item_reference", first["type"])
-	require.Equal(t, "ref1", first["id"])
-
-	// 校验 input[1] 为 map，确保后续字段断言安全。
-	second, ok := input[1].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, "o1", second["id"])
-	require.Equal(t, "fc_1", second["call_id"])
+	require.Equal(t, "function_call_output", only["type"])
+	require.Equal(t, "fc_1", only["call_id"])
+	require.NotContains(t, only, "id", "stored-item id must be stripped on OAuth path")
 }
 
 func TestApplyCodexOAuthTransform_MessagesBridgePromptCacheKeyIsHeaderOnly(t *testing.T) {
@@ -77,7 +73,10 @@ func TestApplyCodexOAuthTransform_MessagesBridgePromptCacheKeyIsHeaderOnly(t *te
 	require.NotContains(t, reqBody, "prompt_cache_key")
 }
 
-func TestApplyCodexOAuthTransform_ToolContinuationPreservesNativeMessageAndReasoningIDs(t *testing.T) {
+func TestApplyCodexOAuthTransform_DropsItemReferenceAndStripsMessageID(t *testing.T) {
+	// 即便 item_reference.id 是 rs_* (reasoning) 或者 message 上挂 id，store=false
+	// 路径下上游同样无法解析任何"先前已存储" item。除了 item_reference 必须丢弃，
+	// 其它 item 上的 id 字段也得剥掉。
 	reqBody := map[string]any{
 		"model": "gpt-5.2",
 		"input": []any{
@@ -91,18 +90,17 @@ func TestApplyCodexOAuthTransform_ToolContinuationPreservesNativeMessageAndReaso
 
 	input, ok := reqBody["input"].([]any)
 	require.True(t, ok)
-	require.Len(t, input, 2)
+	require.Len(t, input, 1, "item_reference must be dropped")
 
 	first, ok := input[0].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "msg_0", first["id"])
-
-	second, ok := input[1].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, "rs_123", second["id"])
+	require.Equal(t, "message", first["type"])
+	require.NotContains(t, first, "id", "stored-item id must be stripped")
 }
 
-func TestApplyCodexOAuthTransform_ToolContinuationNormalizesToolReferenceIDsOnly(t *testing.T) {
+func TestApplyCodexOAuthTransform_DropsItemReferenceButKeepsCallIDOnOutput(t *testing.T) {
+	// item_reference 整项丢弃；function_call_output 保留并按需把 call_* → fc_*。
+	// 续链上下文由保留下来的 function_call_output (匹配 call_id) 承载。
 	reqBody := map[string]any{
 		"model": "gpt-5.2",
 		"input": []any{
@@ -116,15 +114,12 @@ func TestApplyCodexOAuthTransform_ToolContinuationNormalizesToolReferenceIDsOnly
 
 	input, ok := reqBody["input"].([]any)
 	require.True(t, ok)
-	require.Len(t, input, 2)
+	require.Len(t, input, 1, "item_reference must be dropped")
 
-	first, ok := input[0].(map[string]any)
+	only, ok := input[0].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "fc_1", first["id"])
-
-	second, ok := input[1].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, "fc_1", second["call_id"])
+	require.Equal(t, "function_call_output", only["type"])
+	require.Equal(t, "fc_1", only["call_id"])
 }
 
 func TestApplyCodexOAuthTransform_ToolSearchOutputPreservesCallID(t *testing.T) {
@@ -189,12 +184,14 @@ func TestApplyCodexOAuthTransform_ImageAndWebSearchCallsDoNotGainCallID(t *testi
 
 	first, ok := input[0].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "ig_123", first["id"])
+	require.Equal(t, "image_generation_call", first["type"])
+	require.NotContains(t, first, "id", "stored-item id must be stripped on OAuth path")
 	_, hasCallID := first["call_id"]
 	require.False(t, hasCallID)
 
 	second, ok := input[1].(map[string]any)
 	require.True(t, ok)
+	require.Equal(t, "web_search_call", second["type"])
 	_, hasCallID = second["call_id"]
 	require.False(t, hasCallID)
 }
@@ -898,7 +895,6 @@ func TestNormalizeCodexModel_Gpt53(t *testing.T) {
 		"gpt-5.4":                   "gpt-5.4",
 		"gpt5.5":                    "gpt-5.5",
 		"openai/gpt5.5":             "gpt-5.5",
-		"codex-auto-review":         "codex-auto-review",
 		"gpt5.4":                    "gpt-5.4",
 		"gpt-5.4-high":              "gpt-5.4",
 		"gpt-5.4-chat-latest":       "gpt-5.4",

@@ -112,8 +112,6 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 
 func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuthTransformOptions) codexTransformResult {
 	result := codexTransformResult{}
-	// 工具续链需求会影响存储策略与 input 过滤逻辑。
-	needsToolContinuation := NeedsToolContinuation(reqBody)
 
 	model := ""
 	if v, ok := reqBody["model"].(string); ok {
@@ -240,8 +238,24 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 			input = normalizedInput
 			result.Modified = true
 		}
+		// PreserveReferences is intentionally false on the OAuth path: this
+		// transform forces store=false on the upstream request (see line ~140
+		// above, plus normalizeOpenAIPassthroughOAuthBody), and ChatGPT's
+		// internal /v1/responses backend rejects any item_reference (or any
+		// item carrying an `id` from a prior turn) with 404 "Items are not
+		// persisted when `store` is set to false." Continuation context still
+		// works end-to-end because cumora-style clients inline both the
+		// function_call and matching function_call_output items in the same
+		// input, which is the standard Responses API continuation shape.
+		//
+		// Background: 70eaa450 ("修复工具续链校验与存储策略") flipped this to
+		// `needsToolContinuation` on the assumption it could also force
+		// store=true on continuation turns. 3663951d reverted the store=true
+		// half the next day after upstream returned "Store must be set to
+		// false", but left the PreserveReferences flip in place — leaving
+		// every continuation request guaranteed to 404.
 		input = filterCodexInputWithOptions(input, codexInputFilterOptions{
-			PreserveReferences: needsToolContinuation,
+			PreserveReferences: false,
 			PreserveCallIDs:    opts.PreserveToolCallIDs,
 		})
 		reqBody["input"] = input
