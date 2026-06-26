@@ -76,7 +76,10 @@ const (
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
 )
 
-const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
+const (
+	openAIEndpointCapabilitiesCredentialKey       = "openai_capabilities"
+	legacyOpenAIEndpointCapabilitiesCredentialKey = "endpoint_capabilities"
+)
 
 const (
 	OpenAIAuthModePersonalAccessToken = "personalAccessToken"
@@ -1265,11 +1268,17 @@ func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
 	if a == nil || a.Credentials == nil {
 		return nil, false
 	}
-	raw, found := a.Credentials[openAIEndpointCapabilitiesCredentialKey]
-	if !found || raw == nil {
-		return nil, false
+	for _, key := range []string{openAIEndpointCapabilitiesCredentialKey, legacyOpenAIEndpointCapabilitiesCredentialKey} {
+		raw, found := a.Credentials[key]
+		if !found || raw == nil {
+			continue
+		}
+		return parseOpenAIEndpointCapabilitySet(raw), true
 	}
+	return nil, false
+}
 
+func parseOpenAIEndpointCapabilitySet(raw any) map[string]bool {
 	result := make(map[string]bool)
 	add := func(value string) {
 		value = strings.ToLower(strings.TrimSpace(value))
@@ -1290,6 +1299,10 @@ func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
 		for _, value := range capabilities {
 			add(value)
 		}
+	case string:
+		for _, value := range strings.Split(capabilities, ",") {
+			add(value)
+		}
 	case map[string]any:
 		for key, value := range capabilities {
 			enabled, ok := value.(bool)
@@ -1305,7 +1318,7 @@ func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
 		}
 	}
 
-	return result, true
+	return result
 }
 
 func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapability) bool {
