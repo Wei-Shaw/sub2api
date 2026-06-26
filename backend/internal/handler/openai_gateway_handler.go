@@ -132,6 +132,25 @@ func NewOpenAIGatewayHandler(
 	}
 }
 
+// CountTokens handles Anthropic count_tokens for OpenAI-backed /v1/messages compatibility.
+func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
+	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	if err != nil {
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+			return
+		}
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		return
+	}
+	if len(body) == 0 {
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"input_tokens": service.EstimateAnthropicMessagesTokens(body)})
+}
+
 // Responses handles OpenAI Responses API endpoint
 // POST /openai/v1/responses
 func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {

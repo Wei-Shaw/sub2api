@@ -48,17 +48,10 @@ func RegisterGatewayRoutes(
 			}
 			h.Gateway.Messages(c)
 		})
-		// /v1/messages/count_tokens: OpenAI groups get 404
+		// /v1/messages/count_tokens: auto-route based on group platform
 		gateway.POST("/messages/count_tokens", func(c *gin.Context) {
 			if getGroupPlatform(c) == service.PlatformOpenAI {
-				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-				c.JSON(http.StatusNotFound, gin.H{
-					"type": "error",
-					"error": gin.H{
-						"type":    "not_found_error",
-						"message": "Token counting is not supported for this platform",
-					},
-				})
+				h.OpenAIGateway.CountTokens(c)
 				return
 			}
 			h.Gateway.CountTokens(c)

@@ -18,6 +18,9 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
+	cfg := &config.Config{}
+	cfg.Gateway.MaxBodySize = 1 << 20
+
 	RegisterGatewayRoutes(
 		router,
 		&handler.Handlers{
@@ -36,7 +39,7 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 		nil,
 		nil,
 		nil,
-		&config.Config{},
+		cfg,
 	)
 
 	return router
@@ -76,4 +79,19 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI images handler", path)
 	}
+}
+
+func TestGatewayRoutesOpenAIMessagesCountTokensReturnsEstimate(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{
+		"model":"claude-opus-4-7",
+		"messages":[{"role":"user","content":[{"type":"text","text":"test"}]}]
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.JSONEq(t, `{"input_tokens":1}`, w.Body.String())
 }
