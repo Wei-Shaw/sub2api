@@ -4065,7 +4065,7 @@ export default {
       testMessage: 'Test message',
       testMessagePlaceholder: 'Enter test message',
       testClient: 'Test client',
-      testClientPlaceholder: 'User-Agent',
+      testClientPlaceholder: 'Leave empty to use the default client',
       testModel: 'Test model',
       imagePromptLabel: 'Image prompt',
       imagePromptPlaceholder: 'Example: Generate an orange cat astronaut sticker in pixel-art style on a solid background.',
