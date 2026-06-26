@@ -9,13 +9,15 @@ import (
 
 // CustomMenuItem represents a user-configured custom menu entry.
 type CustomMenuItem struct {
-	ID         string `json:"id"`
-	Label      string `json:"label"`
-	IconSVG    string `json:"icon_svg"`
-	URL        string `json:"url"`
-	PageSlug   string `json:"page_slug,omitempty"`
-	Visibility string `json:"visibility"` // "user" or "admin"
-	SortOrder  int    `json:"sort_order"`
+	ID               string   `json:"id"`
+	Label            string   `json:"label"`
+	IconSVG          string   `json:"icon_svg"`
+	URL              string   `json:"url"`
+	PageSlug         string   `json:"page_slug,omitempty"`
+	Visibility       string   `json:"visibility"` // "user" or "admin"
+	SortOrder        int      `json:"sort_order"`
+	AppendEmbedParams bool     `json:"append_embed_params"`
+	EmbeddedParamKeys []string `json:"embedded_param_keys,omitempty"`
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.

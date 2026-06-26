@@ -56,6 +56,40 @@ describe('embedded-url', () => {
     expect(url.searchParams.has('lang')).toBe(false)
   })
 
+  it('keeps original url when embedded params are disabled', () => {
+    const result = buildEmbeddedUrl(
+      'https://pay.example.com/checkout?plan=pro',
+      42,
+      'token-123',
+      'dark',
+      'zh-CN',
+      { appendParams: false },
+    )
+
+    expect(result).toBe('https://pay.example.com/checkout?plan=pro')
+  })
+
+  it('only appends selected embedded params', () => {
+    const result = buildEmbeddedUrl(
+      'https://pay.example.com/checkout?plan=pro',
+      42,
+      'token-123',
+      'dark',
+      'zh-CN',
+      { paramKeys: ['theme', 'lang'] },
+    )
+
+    const url = new URL(result)
+    expect(url.searchParams.get('plan')).toBe('pro')
+    expect(url.searchParams.get('theme')).toBe('dark')
+    expect(url.searchParams.get('lang')).toBe('zh-CN')
+    expect(url.searchParams.has('user_id')).toBe(false)
+    expect(url.searchParams.has('token')).toBe(false)
+    expect(url.searchParams.has('ui_mode')).toBe(false)
+    expect(url.searchParams.has('src_host')).toBe(false)
+    expect(url.searchParams.has('src_url')).toBe(false)
+  })
+
   it('returns original string for invalid url input', () => {
     expect(buildEmbeddedUrl('not a url', 1, 'token')).toBe('not a url')
   })

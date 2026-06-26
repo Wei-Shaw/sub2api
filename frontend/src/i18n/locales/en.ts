@@ -5992,6 +5992,8 @@ export default {
         visibility: 'Visible To',
         visibilityUser: 'Regular Users',
         visibilityAdmin: 'Administrators',
+        appendParams: 'Pass iframe parameters',
+        appendParamsHint: 'When enabled, user, token, theme, language, and source parameters are appended to the page URL. When disabled, the original URL is used.',
         add: 'Add Menu Item',
         remove: 'Remove',
         moveUp: 'Move Up',

@@ -5402,6 +5402,39 @@
                     />
                   </div>
 
+                  <div class="sm:col-span-2">
+                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <input
+                        :checked="item.append_embed_params !== false"
+                        type="checkbox"
+                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        @change="item.append_embed_params = ($event.target as HTMLInputElement).checked"
+                      />
+                      {{ t("admin.settings.customMenu.appendParams") }}
+                    </label>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.customMenu.appendParamsHint") }}
+                    </p>
+                    <div
+                      v-if="item.append_embed_params !== false"
+                      class="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-gray-200 p-3 text-xs dark:border-dark-600 sm:grid-cols-4"
+                    >
+                      <label
+                        v-for="paramKey in embeddedParamKeyOptions"
+                        :key="paramKey"
+                        class="flex items-center gap-2 text-gray-600 dark:text-gray-300"
+                      >
+                        <input
+                          :checked="getMenuItemEmbeddedParamKeys(item).includes(paramKey)"
+                          type="checkbox"
+                          class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                          @change="toggleMenuItemEmbeddedParamKey(item, paramKey, ($event.target as HTMLInputElement).checked)"
+                        />
+                        {{ paramKey }}
+                      </label>
+                    </div>
+                  </div>
+
                   <!-- SVG Icon (full width) -->
                   <div class="sm:col-span-2">
                     <label
@@ -7945,6 +7978,8 @@ const form = reactive<SettingsForm>({
     label: string;
     icon_svg: string;
     url: string;
+    append_embed_params?: boolean;
+    embedded_param_keys?: string[];
     visibility: "user" | "admin";
     sort_order: number;
   }>,
@@ -8589,9 +8624,29 @@ function addMenuItem() {
     label: "",
     icon_svg: "",
     url: "",
+    append_embed_params: true,
+    embedded_param_keys: [...embeddedParamKeyOptions],
     visibility: "user",
     sort_order: form.custom_menu_items.length,
   });
+}
+
+const embeddedParamKeyOptions = ["user_id", "token", "theme", "lang", "ui_mode", "src_host", "src_url"];
+
+function getMenuItemEmbeddedParamKeys(item: { embedded_param_keys?: string[] }) {
+  return Array.isArray(item.embedded_param_keys)
+    ? item.embedded_param_keys
+    : embeddedParamKeyOptions;
+}
+
+function toggleMenuItemEmbeddedParamKey(item: { embedded_param_keys?: string[] }, key: string, checked: boolean) {
+  const keys = new Set(getMenuItemEmbeddedParamKeys(item));
+  if (checked) {
+    keys.add(key);
+  } else {
+    keys.delete(key);
+  }
+  item.embedded_param_keys = embeddedParamKeyOptions.filter((paramKey) => keys.has(paramKey));
 }
 
 function removeMenuItem(index: number) {

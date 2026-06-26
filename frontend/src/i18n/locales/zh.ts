@@ -6148,6 +6148,8 @@ export default {
         visibility: '可见角色',
         visibilityUser: '普通用户',
         visibilityAdmin: '管理员',
+        appendParams: '传递 iframe 参数',
+        appendParamsHint: '开启后会向页面 URL 追加用户、令牌、主题、语言和来源等参数；关闭后保持原始 URL 不变。',
         add: '添加菜单项',
         remove: '删除',
         moveUp: '上移',

@@ -170,6 +170,8 @@ export interface CustomMenuItem {
   icon_svg: string
   url: string
   page_slug?: string
+  append_embed_params?: boolean
+  embedded_param_keys?: string[]
   visibility: 'user' | 'admin'
   sort_order: number
 }
