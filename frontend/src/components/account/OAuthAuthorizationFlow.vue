@@ -92,6 +92,17 @@
                 t('admin.accounts.oauth.openai.codexSessionAuth')
               REDACTEDREDACTED</span>
             </label>
+            <label v-if="showCodexPatOption" class="flex cursor-pointer items-center gap-2">
+              <input
+                v-model="inputMethod"
+                type="radio"
+                value="codex_pat"
+                class="text-blue-600 focus:ring-blue-500"
+              />
+              <span class="text-sm text-blue-900 dark:text-blue-200">{{
+                t('admin.accounts.oauth.openai.codexPatAuth')
+              REDACTEDREDACTED</span>
+            </label>
           </div>
         </div>
 
@@ -179,7 +190,7 @@
           </div>
         </div>
 
-        <!-- Codex JSON / AT 批量输入 -->
+        <!-- Codex OAuth/session JSON batch import -->
         <div v-if="inputMethod === 'codex_session'" class="space-y-4">
           <div
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
@@ -253,6 +264,79 @@
                 loading
                   ? t('admin.accounts.oauth.openai.validating')
                   : t('admin.accounts.oauth.openai.codexSessionImportAndCreate')
+              REDACTEDREDACTED
+            </button>
+          </div>
+        </div>
+
+        <!-- Codex Personal Access Token -->
+        <div v-if="inputMethod === 'codex_pat'" class="space-y-4">
+          <div
+            class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
+          >
+            <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
+              {{ t('admin.accounts.oauth.openai.codexPatDesc') REDACTEDREDACTED
+            </p>
+
+            <div class="mb-4">
+              <label
+                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+              >
+                <Icon name="key" size="sm" class="text-blue-500" />
+                {{ t('admin.accounts.oauth.openai.codexPatInputLabel') REDACTEDREDACTED
+              </label>
+              <textarea
+                v-model="codexPATInput"
+                rows="3"
+                class="input w-full resize-y font-mono text-sm"
+                :placeholder="t('admin.accounts.oauth.openai.codexPatPlaceholder')"
+                spellcheck="false"
+              ></textarea>
+              <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                {{ t('admin.accounts.oauth.openai.codexPatHint') REDACTEDREDACTED
+              </p>
+            </div>
+
+            <div
+              v-if="error"
+              class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30"
+            >
+              <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">
+                {{ error REDACTEDREDACTED
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="btn btn-primary w-full"
+              :disabled="loading || !codexPATInput.trim()"
+              @click="handleImportCodexPAT"
+            >
+              <svg
+                v-if="loading"
+                class="-ml-1 mr-2 h-4 w-4 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              <Icon v-else name="sparkles" size="sm" class="mr-2" />
+              {{
+                loading
+                  ? t('admin.accounts.oauth.openai.validating')
+                  : t('admin.accounts.oauth.openai.codexPatImportAndCreate')
               REDACTEDREDACTED
             </button>
           </div>
@@ -652,6 +736,7 @@ interface Props {
   showSessionTokenOption?: boolean
   showAccessTokenOption?: boolean
   showCodexSessionImportOption?: boolean
+  showCodexPatOption?: boolean
   platform?: AccountPlatform // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
 REDACTED
@@ -671,6 +756,7 @@ const props = withDefaults(defineProps<Props>(), {
   showSessionTokenOption: false,
   showAccessTokenOption: false,
   showCodexSessionImportOption: false,
+  showCodexPatOption: false,
   platform: 'anthropic',
   showProjectId: true
 REDACTED)
@@ -684,6 +770,7 @@ const emit = defineEmits<{
   'validate-session-token': [sessionToken: string]
   'import-access-token': [accessToken: string]
   'import-codex-session': [content: string]
+  'import-codex-pat': [accessToken: string]
   'update:inputMethod': [method: AuthInputMethod]
 REDACTED>()
 
@@ -724,12 +811,13 @@ const sessionKeyInput = ref('')
 const refreshTokenInput = ref('')
 const sessionTokenInput = ref('')
 const codexSessionInput = ref('')
+const codexPATInput = ref('')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
 const projectId = ref('')
 
 // Computed: show method selection when either cookie or refresh token option is enabled
-const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showMobileRefreshTokenOption || props.showSessionTokenOption || props.showAccessTokenOption || props.showCodexSessionImportOption)
+const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showMobileRefreshTokenOption || props.showSessionTokenOption || props.showAccessTokenOption || props.showCodexSessionImportOption || props.showCodexPatOption)
 
 // Clipboard
 const { copied, copyToClipboard REDACTED = useClipboard()
@@ -837,6 +925,12 @@ const handleImportCodexSession = () => {
   REDACTED
 REDACTED
 
+const handleImportCodexPAT = () => {
+  if (codexPATInput.value.trim()) {
+    emit('import-codex-pat', codexPATInput.value.trim())
+  REDACTED
+REDACTED
+
 // Expose methods and state
 defineExpose({
   authCode: authCodeInput,
@@ -846,6 +940,7 @@ defineExpose({
   refreshToken: refreshTokenInput,
   sessionToken: sessionTokenInput,
   codexSession: codexSessionInput,
+  codexPAT: codexPATInput,
   inputMethod,
   reset: () => {
     authCodeInput.value = ''
@@ -855,6 +950,7 @@ defineExpose({
     refreshTokenInput.value = ''
     sessionTokenInput.value = ''
     codexSessionInput.value = ''
+    codexPATInput.value = ''
     inputMethod.value = 'manual'
     showHelpDialog.value = false
   REDACTED

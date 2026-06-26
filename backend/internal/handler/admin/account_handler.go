@@ -849,6 +849,7 @@ REDACTED
 				newCredentials[k] = v
 		REDACTED
 	REDACTED
+		newCredentials = service.NormalizeOpenAIPersonalAccessTokenCredentials(account, tokenInfo, newCredentials)
 REDACTED else if account.Platform == service.PlatformGemini {
 		tokenInfo, err := h.geminiOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {

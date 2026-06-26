@@ -1271,6 +1271,7 @@ REDACTED
 					newCredentials[k] = v
 			REDACTED
 		REDACTED
+			newCredentials = NormalizeOpenAIPersonalAccessTokenCredentials(account, tokenInfo, newCredentials)
 	REDACTED
 	case PlatformGemini:
 		if s.geminiOAuthService == nil {

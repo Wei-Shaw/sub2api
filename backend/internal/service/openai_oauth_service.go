@@ -118,9 +118,11 @@ type OpenAITokenInfo struct {
 	ExpiresIn             int64  `json:"expires_in"`
 	ExpiresAt             int64  `json:"expires_at"`
 	ClientID              string `json:"client_id,omitempty"`
+	AuthMode              string `json:"auth_mode,omitempty"`
 	Email                 string `json:"email,omitempty"`
 	ChatGPTAccountID      string `json:"chatgpt_account_id,omitempty"`
 	ChatGPTUserID         string `json:"chatgpt_user_id,omitempty"`
+	ChatGPTAccountFedRAMP bool   `json:"chatgpt_account_is_fedramp,omitempty"`
 	OrganizationID        string `json:"organization_id,omitempty"`
 	PlanType              string `json:"plan_type,omitempty"`
 	SubscriptionExpiresAt string `json:"subscription_expires_at,omitempty"`
@@ -311,16 +313,23 @@ REDACTED
 REDACTED
 
 	var proxyURL string
-	if account.ProxyID != nil {
+	if account.ProxyID != nil && s.proxyRepo != nil {
 		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
 		if err == nil && proxy != nil {
 			proxyURL = proxy.URL()
 	REDACTED
 REDACTED
 
+	accessToken := account.GetCredential("access_token")
+	if account.IsOpenAIPersonalAccessToken() {
+		if accessToken == "" {
+			return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_CODEX_PAT_REQUIRED", "access token is required")
+	REDACTED
+		return s.ValidateCodexPersonalAccessToken(ctx, accessToken, proxyURL)
+REDACTED
+
 	refreshToken := account.GetCredential("refresh_token")
 	if refreshToken == "" {
-		accessToken := account.GetCredential("access_token")
 		if accessToken != "" {
 			tokenInfo := &OpenAITokenInfo{
 				AccessToken:           accessToken,
@@ -350,11 +359,11 @@ REDACTED
 
 // BuildAccountCredentials builds credentials map from token info
 func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo) map[string]any {
-	expiresAt := time.Unix(tokenInfo.ExpiresAt, 0).Format(time.RFC3339)
-
 	creds := map[string]any{
 		"access_token": tokenInfo.AccessToken,
-		"expires_at":   expiresAt,
+REDACTED
+	if tokenInfo.ExpiresAt > 0 {
+		creds["expires_at"] = time.Unix(tokenInfo.ExpiresAt, 0).Format(time.RFC3339)
 REDACTED
 	// 仅在刷新响应返回了新的 refresh_token 时才更新，防止用空值覆盖已有令牌
 	if strings.TrimSpace(tokenInfo.RefreshToken) != "" {
@@ -385,8 +394,16 @@ REDACTED
 	if strings.TrimSpace(tokenInfo.ClientID) != "" {
 		creds["client_id"] = strings.TrimSpace(tokenInfo.ClientID)
 REDACTED
+	if tokenInfo.AuthMode == OpenAIAuthModePersonalAccessToken {
+		creds[openAIAuthModeCredentialKey] = OpenAIAuthModePersonalAccessToken
+		creds[openAIAuthModeLegacyCredentialKey] = "personal_access_token"
+		creds["token_type"] = "Bearer"
+		creds["chatgpt_account_is_fedramp"] = tokenInfo.ChatGPTAccountFedRAMP
+REDACTED else if tokenInfo.ChatGPTAccountFedRAMP {
+		creds["chatgpt_account_is_fedramp"] = true
+REDACTED
 
-	return creds
+	return NormalizeOpenAIPersonalAccessTokenCredentials(nil, tokenInfo, creds)
 REDACTED
 
 // Stop stops the session store cleanup goroutine
