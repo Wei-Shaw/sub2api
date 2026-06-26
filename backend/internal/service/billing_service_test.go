@@ -147,7 +147,7 @@ func TestGetModelPricing_OpenAICompactAliasesFallback(t *testing.T) {
 		cacheRead   float64
 		longContext int
 	}{
-		{model: "gpt5.5", inputPrice: 2.5e-6, outputPrice: 15e-6, cacheRead: 0.25e-6, longContext: 272000},
+		{model: "gpt5.5", inputPrice: 5e-6, outputPrice: 30e-6, cacheRead: 0.5e-6, longContext: 272000},
 		{model: "openai/gpt5.4", inputPrice: 2.5e-6, outputPrice: 15e-6, cacheRead: 0.25e-6, longContext: 272000},
 		{model: "gpt5.4-mini", inputPrice: 7.5e-7, outputPrice: 4.5e-6, cacheRead: 7.5e-8, longContext: 0},
 		{model: "gpt5.3codexspark", inputPrice: 1.5e-6, outputPrice: 12e-6, cacheRead: 0.15e-6, longContext: 0},
@@ -1062,6 +1062,35 @@ func TestBillingServiceGetModelPricing_OpenAIFallbackGpt52Variants(t *testing.T)
 	require.InDelta(t, 1.75e-6, gpt52Codex.InputPricePerToken, 1e-12)
 	require.InDelta(t, 3.5e-6, gpt52Codex.InputPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 28e-6, gpt52Codex.OutputPricePerTokenPriority, 1e-12)
+}
+
+func TestBillingServiceGetModelPricing_Gpt55FallbackUsesDedicatedPriorityPrices(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing, err := svc.GetModelPricing("gpt-5.5")
+	require.NoError(t, err)
+	require.InDelta(t, 5e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 12.5e-6, pricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 30e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 75e-6, pricing.OutputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 0.5e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.InDelta(t, 1.25e-6, pricing.CacheReadPricePerTokenPriority, 1e-12)
+}
+
+func TestCalculateCostWithServiceTier_Gpt55PriorityUsesDedicatedPrices(t *testing.T) {
+	svc := newTestBillingService()
+
+	cost, err := svc.CalculateCostWithServiceTier("gpt-5.5", UsageTokens{
+		InputTokens:     1000,
+		CacheReadTokens: 1000,
+		OutputTokens:    1000,
+	}, 1.0, "priority")
+	require.NoError(t, err)
+
+	require.InDelta(t, 1000*12.5e-6, cost.InputCost, 1e-10)
+	require.InDelta(t, 1000*1.25e-6, cost.CacheReadCost, 1e-10)
+	require.InDelta(t, 1000*75e-6, cost.OutputCost, 1e-10)
+	require.InDelta(t, 1000*(12.5e-6+1.25e-6+75e-6), cost.TotalCost, 1e-10)
 }
 
 func TestCalculateCostWithServiceTier_PriorityFallsBackToTierMultiplierWhenExplicitPriceMissing(t *testing.T) {
