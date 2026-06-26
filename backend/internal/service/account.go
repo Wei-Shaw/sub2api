@@ -1212,8 +1212,16 @@ func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapabilit
 		return false
 	}
 	switch capability {
-	case OpenAIImagesCapabilityBasic, OpenAIImagesCapabilityNative:
+	case OpenAIImagesCapabilityBasic:
 		return a.Type == AccountTypeOAuth || a.Type == AccountTypeAPIKey
+	case OpenAIImagesCapabilityNative:
+		// Native Images API semantics (explicit custom size/model/native options)
+		// require the platform Images API. The ChatGPT OAuth/Codex bridge accepts
+		// the translated request but may silently coerce arbitrary gpt-image-2 sizes
+		// into canonical portrait/landscape buckets while still returning 200.
+		// Treat OAuth as basic-only so native requests either use an API key account
+		// or fail/fail over instead of producing a wrong-aspect image.
+		return a.Type == AccountTypeAPIKey
 	default:
 		return true
 	}
