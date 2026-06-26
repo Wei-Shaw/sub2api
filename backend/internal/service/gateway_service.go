@@ -1710,6 +1710,11 @@ func (s *GatewayService) SelectImageAccountMixed(
 				rejectReason = "model_or_capability_unsupported"
 				return false
 			}
+			// fal（预扣费）账号未配置出图定价时不进候选池，避免被「免费刷图」。
+			if !s.falAccountPricingConfigured(ctx, acc, requestedModel, falAPI, groupID) {
+				rejectReason = "fal_pricing_missing"
+				return false
+			}
 			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
 				rejectReason = "model_selection_blocked"
 				return false
@@ -1883,6 +1888,35 @@ func (s *GatewayService) imageAccountSupportsRequest(ctx context.Context, acc *A
 		return acc.SupportsOpenAIImageCapability(imageCapability)
 	case PlatformFal:
 		return s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel, falAPI)
+	default:
+		return false
+	}
+}
+
+// falAccountPricingConfigured 判断 fal（预扣费）账号在当前分组/渠道下、对其目标上游模型
+// 是否配置了有效的出图定价。fal 出图采用「先预扣费后退款」，若未配置定价则预扣费会失败，
+// 还可能被「免费刷图」。因此把这一校验前移到选号阶段：未配置定价的 fal 账号直接不进候选池。
+//
+// 仅对 PlatformFal 账号生效；其它平台（如 openai 走后付费）一律放行。
+// 上游模型解析与 AsyncMediaService.estimateCost 完全一致，保证选号预判与实际计费同源。
+func (s *GatewayService) falAccountPricingConfigured(ctx context.Context, acc *Account, requestedModel, falAPI string, groupID *int64) bool {
+	if acc == nil || acc.Platform != PlatformFal {
+		return true
+	}
+	if s.resolver == nil {
+		// 无定价解析器：保守拒绝，避免无定价提交导致免费刷图。
+		return false
+	}
+	upstreamModel := resolveFalUpstreamModel(acc, requestedModel, falAPI == FalAPIEdit)
+	resolved := s.resolver.Resolve(ctx, PricingInput{Model: upstreamModel, GroupID: groupID})
+	if resolved == nil {
+		return false
+	}
+	// fal 出图应按 image / per-request 计费：分层价与默认按次价至少其一 > 0 才算配置；
+	// 解析为 token 模式则说明该模型未配置出图定价，同样视为未配置。
+	switch resolved.Mode {
+	case BillingModeImage, BillingModePerRequest:
+		return len(resolved.RequestTiers) > 0 || resolved.DefaultPerRequestPrice > 0
 	default:
 		return false
 	}
@@ -3521,7 +3555,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, api)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, api)) && s.falAccountPricingConfigured(ctx, account, requestedModel, api, groupID) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 							}
@@ -3576,6 +3610,10 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 				continue
 			}
 			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel, api) {
+				continue
+			}
+			// fal（预扣费）账号未配置出图定价时不进候选池，避免被「免费刷图」。
+			if !s.falAccountPricingConfigured(ctx, acc, requestedModel, api, groupID) {
 				continue
 			}
 			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
@@ -3640,7 +3678,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, api)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, api)) && s.falAccountPricingConfigured(ctx, account, requestedModel, api, groupID) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						return account, nil
 					}
 				}
@@ -3687,6 +3725,10 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			continue
 		}
 		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel, api) {
+			continue
+		}
+		// fal（预扣费）账号未配置出图定价时不进候选池，避免被「免费刷图」。
+		if !s.falAccountPricingConfigured(ctx, acc, requestedModel, api, groupID) {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel) {

@@ -559,6 +559,13 @@ func (s *AsyncMediaService) refund(ctx context.Context, billingType int8, userID
 // resolveUpstreamModel 解析客户端模型到 fal 上游 slug。
 // 账号/渠道自定义映射优先，缺失时按是否为编辑请求选择内置默认 slug。
 func (s *AsyncMediaService) resolveUpstreamModel(account *Account, requestedModel string, isEdit bool) string {
+	return resolveFalUpstreamModel(account, requestedModel, isEdit)
+}
+
+// resolveFalUpstreamModel 解析客户端模型到 fal 上游 slug（账号/渠道自定义映射优先，
+// 缺失时按是否为编辑请求选择内置默认 slug）。抽成包级函数供异步执行与选号阶段共用，
+// 确保「选号时的定价预判」与「提交时的实际计费」使用同一上游模型。
+func resolveFalUpstreamModel(account *Account, requestedModel string, isEdit bool) string {
 	if account != nil {
 		if mapping := account.GetModelMapping(); mapping != nil {
 			if v := strings.TrimSpace(mapping[requestedModel]); v != "" {
