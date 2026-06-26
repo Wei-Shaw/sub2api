@@ -521,13 +521,8 @@ const userTrendChartData = computed(() => {
 })
 
 // Format helpers
-const numericValue = (value: unknown): number => {
-  const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : 0
-}
-
 const formatTokens = (value: number | undefined): string => {
-  const safeValue = numericValue(value)
+  const safeValue = toFiniteNumber(value)
   if (safeValue >= 1_000_000_000) {
     return `${(safeValue / 1_000_000_000).toFixed(2)}B`
   } else if (safeValue >= 1_000_000) {
@@ -538,12 +533,17 @@ const formatTokens = (value: number | undefined): string => {
   return safeValue.toLocaleString()
 }
 
-const formatNumber = (value: number): string => {
-  return numericValue(value).toLocaleString()
+const toFiniteNumber = (value: unknown): number => {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : 0
 }
 
-const formatCost = (value: number): string => {
-  const safeValue = numericValue(value)
+const formatNumber = (value: number | null | undefined): string => {
+  return toFiniteNumber(value).toLocaleString()
+}
+
+const formatCost = (value: number | null | undefined): string => {
+  const safeValue = toFiniteNumber(value)
   if (safeValue >= 1000) {
     return (safeValue / 1000).toFixed(2) + 'K'
   } else if (safeValue >= 1) {

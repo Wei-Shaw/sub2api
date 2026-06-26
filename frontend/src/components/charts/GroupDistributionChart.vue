@@ -185,7 +185,7 @@ const displayGroupStats = computed(() => {
   if (!props.groupStats?.length) return []
 
   const metricKey = props.metric === 'actual_cost' ? 'actual_cost' : 'total_tokens'
-  return [...props.groupStats].sort((a, b) => numericValue(b[metricKey]) - numericValue(a[metricKey]))
+  return [...props.groupStats].sort((a, b) => toFiniteNumber(b[metricKey]) - toFiniteNumber(a[metricKey]))
 })
 
 const chartData = computed(() => {
@@ -195,7 +195,7 @@ const chartData = computed(() => {
     labels: displayGroupStats.value.map((g) => g.group_name || String(g.group_id)),
     datasets: [
       {
-        data: displayGroupStats.value.map((g) => props.metric === 'actual_cost' ? numericValue(g.actual_cost) : numericValue(g.total_tokens)),
+        data: displayGroupStats.value.map((g) => toFiniteNumber(props.metric === 'actual_cost' ? g.actual_cost : g.total_tokens)),
         backgroundColor: chartColors.slice(0, displayGroupStats.value.length),
         borderWidth: 0
       }
@@ -226,13 +226,8 @@ const doughnutOptions = computed(() => ({
   }
 }))
 
-const numericValue = (value: unknown): number => {
-  const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : 0
-}
-
 const formatTokens = (value: number): string => {
-  const safeValue = numericValue(value)
+  const safeValue = toFiniteNumber(value)
   if (safeValue >= 1_000_000_000) {
     return `${(safeValue / 1_000_000_000).toFixed(2)}B`
   } else if (safeValue >= 1_000_000) {
@@ -244,11 +239,16 @@ const formatTokens = (value: number): string => {
 }
 
 const formatNumber = (value: number): string => {
-  return numericValue(value).toLocaleString()
+  return toFiniteNumber(value).toLocaleString()
 }
 
-const formatCost = (value: number): string => {
-  const safeValue = numericValue(value)
+const toFiniteNumber = (value: unknown): number => {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : 0
+}
+
+const formatCost = (value: number | null | undefined): string => {
+  const safeValue = toFiniteNumber(value)
   if (safeValue >= 1000) {
     return (safeValue / 1000).toFixed(2) + 'K'
   } else if (safeValue >= 1) {

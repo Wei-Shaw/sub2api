@@ -137,7 +137,6 @@ describe('EmailVerifyView', () => {
       JSON.stringify({
         email: 'fresh@example.com',
         password: 'secret-123',
-        aff_code: 'AFF123',
       })
     )
 
