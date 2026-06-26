@@ -619,6 +619,19 @@ func (s *OpenAIGatewayService) ForwardImages(
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
+	// DEBUG: 确认是否进入 ForwardImages 入口（图片生成请求转发起点）
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[OpenAI] ForwardImages entered account_id=%d account_type=%s platform=%s model=%s endpoint=%s stream=%t multipart=%t channel_mapped=%s",
+		account.ID,
+		account.Type,
+		account.Platform,
+		strings.TrimSpace(parsed.Model),
+		parsed.Endpoint,
+		parsed.Stream,
+		parsed.Multipart,
+		strings.TrimSpace(channelMappedModel),
+	)
 	switch account.Type {
 	case AccountTypeAPIKey:
 		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
@@ -677,6 +690,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	// DEBUG: 打印发往上游的图片请求（URL + 关键 header + 请求体预览）
+	logOpenAIImagesUpstreamRequest(account, upstreamReq, forwardBody, forwardContentType, parsed.Endpoint, upstreamModel)
 	upstreamStart := time.Now()
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
@@ -931,6 +946,8 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
+	// DEBUG: 打印上游返回的图片响应（status + 关键 header + body 预览）
+	logOpenAIImagesUpstreamResponse(resp, body)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -949,6 +966,14 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	c *gin.Context,
 	startTime time.Time,
 ) (OpenAIUsage, int, []string, *int, error) {
+	// DEBUG: 标记进入流式响应处理（body 由后续 SSE 循环逐块打印走默认链路）
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[debug] [OpenAI] Images upstream response (stream) status=%d content_type=%s request_id=%s",
+		resp.StatusCode,
+		resp.Header.Get("Content-Type"),
+		resp.Header.Get("x-request-id"),
+	)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
 	if contentType == "" {
@@ -1685,4 +1710,163 @@ func dedupeStrings(values []string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+// logOpenAIImagesUpstreamRequest 打印发往上游的图片请求关键信息，便于排查。
+// - JSON 请求体直接预览（截断 2KB）
+// - multipart 请求体只输出长度和 boundary，避免日志爆炸
+func logOpenAIImagesUpstreamRequest(account *Account, req *http.Request, body []byte, contentType string, endpoint string, upstreamModel string) {
+	if req == nil {
+		return
+	}
+	const maxPreview = 2048
+	preview := ""
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	if strings.EqualFold(mediaType, "multipart/form-data") {
+		preview = fmt.Sprintf("<multipart body size=%d>", len(body))
+	} else {
+		if len(body) > maxPreview {
+			preview = string(body[:maxPreview]) + fmt.Sprintf("...(truncated, total=%d)", len(body))
+		} else {
+			preview = string(body)
+		}
+	}
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[OpenAI] Images upstream request account_id=%d account_type=%s platform=%s endpoint=%s upstream_model=%s url=%s content_type=%s authorization=%s user_agent=%s body=%s",
+		account.ID,
+		account.Type,
+		account.Platform,
+		endpoint,
+		upstreamModel,
+		safeUpstreamURL(req.URL.String()),
+		req.Header.Get("Content-Type"),
+		maskAuthorizationHeader(req.Header.Get("Authorization")),
+		req.Header.Get("User-Agent"),
+		preview,
+	)
+}
+
+// logOpenAIImagesUpstreamResponse 以 debug 级别打印上游返回的图片响应。
+//   - body 总长 <= openAIImagesLogLargeBodyThreshold 时，原样打印；
+//   - 超过阈值时，仅把 data[*].b64_json / data[*].url 等"图片字段"替换为占位符，
+//     其他字段保留全文；
+//   - 非 JSON 或解析失败兜底为整体截断，避免极端情况下日志爆炸。
+func logOpenAIImagesUpstreamResponse(resp *http.Response, body []byte) {
+	if resp == nil {
+		return
+	}
+	// 仅在 debug 级别才做 JSON 解码 + 字段裁剪，避免 info 级别下白白付出 CPU/GC。
+	if !strings.EqualFold(logger.CurrentLevel(), "debug") {
+		return
+	}
+	preview := previewOpenAIImagesResponseBody(body)
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[debug] [OpenAI] Images upstream response status=%d content_type=%s request_id=%s body_size=%d body=%s",
+		resp.StatusCode,
+		resp.Header.Get("Content-Type"),
+		resp.Header.Get("x-request-id"),
+		len(body),
+		preview,
+	)
+}
+
+// openAIImagesLogLargeBodyThreshold 判定响应包体是否"较大"的字节阈值。
+// 小于阈值则原样打印；超过则解码 JSON 并对图片字段做裁剪。
+const openAIImagesLogLargeBodyThreshold = 4 * 1024
+
+// openAIImagesLogFallbackPreviewLimit 当 body 不是合法 JSON 时的兜底整体截断长度。
+const openAIImagesLogFallbackPreviewLimit = 8 * 1024
+
+// openAIImagesLogLongURLThreshold URL 长度超过该值即视为 dataURL/embedded 图片，需裁剪。
+const openAIImagesLogLongURLThreshold = 512
+
+// openAIImagesLogImageFieldNames 视为"图片正文"的字符串字段名，命中即裁剪。
+// 这些字段在 OpenAI / 兼容厂商返回里通常承载 base64 编码图片。
+var openAIImagesLogImageFieldNames = map[string]struct{}{
+	"b64_json":     {},
+	"base64":       {},
+	"image_base64": {},
+	"image":        {}, // 兼容部分代理返回
+}
+
+// previewOpenAIImagesResponseBody 在保留响应结构与小字段全文的前提下，
+// 仅把图片字段（base64 / 长 URL）替换为占位符。
+//
+// 实现：直接 json.Unmarshal → map[string]any → 递归替换 → json.Marshal。
+// 相比 gjson+sjson 的好处：逻辑更短、覆盖任意嵌套层级、无需手写路径。
+// 对日志预览场景，字段顺序/数字精度变化都可接受。
+func previewOpenAIImagesResponseBody(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	if len(body) <= openAIImagesLogLargeBodyThreshold {
+		return string(body)
+	}
+	var decoded any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		// 非 JSON：兜底整体截断。
+		if len(body) > openAIImagesLogFallbackPreviewLimit {
+			return string(body[:openAIImagesLogFallbackPreviewLimit]) +
+				fmt.Sprintf("...(truncated, total=%d)", len(body))
+		}
+		return string(body)
+	}
+	redacted := redactOpenAIImagesValue(decoded)
+	out, err := json.Marshal(redacted)
+	if err != nil {
+		// 理论上不会发生；保底返回原文。
+		return string(body)
+	}
+	return string(out)
+}
+
+// redactOpenAIImagesValue 递归遍历 decode 出的任意 JSON 值，
+// 对命中"图片字段"的 string 值替换为占位符，其他原样返回。
+func redactOpenAIImagesValue(v any) any {
+	switch node := v.(type) {
+	case map[string]any:
+		for key, val := range node {
+			if s, ok := val.(string); ok {
+				if _, hit := openAIImagesLogImageFieldNames[key]; hit {
+					node[key] = fmt.Sprintf("<truncated %s len=%d>", key, len(s))
+					continue
+				}
+				if key == "url" && shouldRedactImageURL(s) {
+					node[key] = fmt.Sprintf("<truncated url len=%d>", len(s))
+					continue
+				}
+			}
+			node[key] = redactOpenAIImagesValue(val)
+		}
+		return node
+	case []any:
+		for i, item := range node {
+			node[i] = redactOpenAIImagesValue(item)
+		}
+		return node
+	default:
+		return v
+	}
+}
+
+// shouldRedactImageURL 判断 url 字段是否需要裁剪：超长 URL 或 dataURL。
+func shouldRedactImageURL(raw string) bool {
+	if len(raw) > openAIImagesLogLongURLThreshold {
+		return true
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "data:")
+}
+
+// maskAuthorizationHeader 只保留前后少量字符，避免 Bearer token 全量泄露。
+func maskAuthorizationHeader(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if len(value) <= 12 {
+		return "***"
+	}
+	return value[:8] + "***" + value[len(value)-4:]
 }

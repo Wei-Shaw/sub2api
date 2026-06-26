@@ -44,6 +44,12 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		zap.Int64("api_key_id", apiKey.ID),
 		zap.Any("group_id", apiKey.GroupID),
 	)
+	// DEBUG: 确认 /v1/images/generations 是否进入 OpenAI handler 分支
+	reqLog.Info("openai.images.handler_entered",
+		zap.String("path", c.FullPath()),
+		zap.String("method", c.Request.Method),
+		zap.String("content_type", c.GetHeader("Content-Type")),
+	)
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}

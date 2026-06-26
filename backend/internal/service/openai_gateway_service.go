@@ -2985,6 +2985,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, wsErr
 	}
 
+	if imageIntent {
+		logImageGenerationRequest(fmt.Sprintf("account=%s", account.Name), upstreamModel, body)
+	}
+
 	httpInvalidEncryptedContentRetryTried := false
 	for {
 		// Build upstream request
@@ -3268,6 +3272,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				streamWarnLogger.Warn("OpenAI passthrough 检测到超时相关请求头，将按配置过滤以降低断流风险")
 			}
 		}
+	}
+
+	if IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body) {
+		logImageGenerationRequest(fmt.Sprintf("account=%s passthrough", account.Name), reqModel, body)
 	}
 
 	// Get access token
@@ -3922,6 +3930,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
 			}
 			imageCounter.AddSSEData(dataBytes)
+			if bytes.Contains(dataBytes, []byte("image_generation_call")) && !bytes.Contains(dataBytes, []byte("partial_image")) {
+				logImageGenerationResponse(fmt.Sprintf("account=%s passthrough", account.Name), true, dataBytes)
+			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
 			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
@@ -4043,6 +4054,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 	}
+	if bytes.Contains(body, []byte("image_generation_call")) {
+		logImageGenerationResponse(fmt.Sprintf("model=%s passthrough", mappedModel), false, body)
+	}
+
 	c.Data(resp.StatusCode, contentType, body)
 	return &openaiNonStreamingResultPassthrough{
 		OpenAIUsage:      usage,
@@ -4865,6 +4880,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				sawFailedEvent = true
 			}
 			imageCounter.AddSSEData(dataBytes)
+			if bytes.Contains(dataBytes, []byte("image_generation_call")) && !bytes.Contains(dataBytes, []byte("partial_image")) {
+				logImageGenerationResponse(fmt.Sprintf("account=%s", account.Name), true, dataBytes)
+			}
 
 			// Correct Codex tool calls if needed (apply_patch -> edit, etc.)
 			if correctedData, corrected := s.toolCorrector.CorrectToolCallsInSSEBytes(dataBytes); corrected {
@@ -5310,6 +5328,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		if upstreamType := resp.Header.Get("Content-Type"); upstreamType != "" {
 			contentType = upstreamType
 		}
+	}
+
+	if bytes.Contains(body, []byte("image_generation_call")) {
+		logImageGenerationResponse(fmt.Sprintf("account=%s", account.Name), false, body)
 	}
 
 	c.Data(resp.StatusCode, contentType, body)
