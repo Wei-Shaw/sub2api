@@ -125,6 +125,48 @@ func TestBotSalesFulfillmentAllowsMissingAffiliateAndCreditsBalancePackageGroup(
 	require.NotNil(t, order.CompletedAt)
 }
 
+func TestBotSalesFulfillmentAttachesPlatformGuideMetadataFromRegistry(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	group := createBotSalesGroupWithPlatform(t, client, "bot-gemini-guide", service.PlatformGemini, service.SubscriptionTypeNone)
+	pkg := client.BalancePackage.Create().
+		SetCode("gemini_55").
+		SetLabel("Gemini 55").
+		SetAmountLedger(55).
+		SetActualCredits(67500000).
+		SetCreditUnit("tokens").
+		SetGroupID(group.ID).
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-gemini-guide",
+		Operation:          service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-gemini-guide",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "telegram:gemini-guide",
+			Email:          "bot-gemini-guide@example.test",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways},
+	})
+	require.NoError(t, err)
+	require.Equal(t, service.PlatformGemini, resp.Delivery.Platform)
+	require.Equal(t, "v-claw-gemini", resp.Delivery.ProviderID)
+	require.Equal(t, "google-native", resp.Delivery.APIStyle)
+	require.Equal(t, "gemini", resp.Delivery.GuideProfile)
+	require.Equal(t, "Gemini CLI guide", resp.Delivery.Title)
+	require.Equal(t, "https://ai.google.dev/gemini-api/docs", resp.Delivery.DocsURL)
+	require.NotEmpty(t, resp.Delivery.CopyBlocks)
+	require.Contains(t, resp.Delivery.CopyBlocks[0].ContentTemplate, "GOOGLE_GEMINI_BASE_URL")
+	require.Contains(t, resp.Delivery.CopyBlocks[0].ContentTemplate, "{{gemini_base_url}}")
+	require.NotContains(t, resp.Delivery.CopyBlocks[0].ContentTemplate, "OPENAI_API_KEY")
+}
+
 func TestBotSalesFulfillmentBalanceNewIssuesDeviceCodeAndTopupCreditsExistingDeviceUser(t *testing.T) {
 	ctx := context.Background()
 	client, db := newBotSalesFulfillmentEntClient(t)

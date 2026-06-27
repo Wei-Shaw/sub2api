@@ -136,8 +136,20 @@ type BotSalesFulfillmentBuyerResult struct {
 }
 
 type BotSalesFulfillmentDelivery struct {
-	APIKey     *BotSalesDeliveryAPIKey `json:"api_key,omitempty"`
-	DeviceCode string                  `json:"device_code,omitempty"`
+	APIKey        *BotSalesDeliveryAPIKey  `json:"api_key,omitempty"`
+	DeviceCode    string                   `json:"device_code,omitempty"`
+	Platform      string                   `json:"platform,omitempty"`
+	ProviderID    string                   `json:"provider_id,omitempty"`
+	ProviderName  string                   `json:"provider_name,omitempty"`
+	APIStyle      string                   `json:"api_style,omitempty"`
+	GuideProfile  string                   `json:"guide_profile,omitempty"`
+	Title         string                   `json:"title,omitempty"`
+	Description   string                   `json:"description,omitempty"`
+	Note          string                   `json:"note,omitempty"`
+	DocsURL       string                   `json:"docs_url,omitempty"`
+	DefaultClient string                   `json:"default_client,omitempty"`
+	Clients       []PlatformGuideClient    `json:"clients,omitempty"`
+	CopyBlocks    []PlatformGuideCopyBlock `json:"copy_blocks,omitempty"`
 }
 
 type BotSalesDeliveryAPIKey struct {
@@ -252,8 +264,61 @@ func (s *BotSalesFulfillmentService) Fulfill(ctx context.Context, req BotSalesTo
 			resp.Delivery.APIKey = &BotSalesDeliveryAPIKey{ID: apiKey.ID, Key: apiKey.Key, GroupID: apiKey.GroupID}
 		}
 	}
+	if resp.EntitlementKind != BotSalesEntitlementCreditTopup {
+		s.attachBotSalesDeliveryGuideMetadata(ctx, resp)
+	}
 
 	return resp, nil
+}
+
+func (s *BotSalesFulfillmentService) attachBotSalesDeliveryGuideMetadata(ctx context.Context, resp *BotSalesTokenFulfillmentResponse) {
+	if s == nil || s.entClient == nil || resp == nil || resp.Entitlement.GroupID <= 0 {
+		return
+	}
+	group, err := s.entClient.Group.Get(ctx, resp.Entitlement.GroupID)
+	if err != nil || group == nil {
+		return
+	}
+	platform := strings.ToLower(strings.TrimSpace(group.Platform))
+	if platform == "" {
+		return
+	}
+	providerID, providerName, apiStyle, ok := resolveProviderMeta(platform)
+	if !ok {
+		return
+	}
+	registry := defaultPlatformProfileRegistry()
+	if s.settingService != nil {
+		if raw := s.settingService.GetPlatformProfileRegistryJSON(ctx); strings.TrimSpace(raw) != "" {
+			if parsed, err := ParsePlatformProfileRegistry(raw); err == nil {
+				registry = parsed
+			}
+		}
+	}
+	resp.Delivery.Platform = platform
+	resp.Delivery.ProviderID = providerID
+	resp.Delivery.ProviderName = providerName
+	resp.Delivery.APIStyle = apiStyle
+	if profile, found := registry.ProfileByPlatform(platform); found {
+		if strings.TrimSpace(profile.ProviderID) != "" {
+			resp.Delivery.ProviderID = strings.TrimSpace(profile.ProviderID)
+		}
+		if strings.TrimSpace(profile.ProviderName) != "" {
+			resp.Delivery.ProviderName = strings.TrimSpace(profile.ProviderName)
+		}
+		if strings.TrimSpace(profile.APIStyle) != "" {
+			resp.Delivery.APIStyle = strings.TrimSpace(profile.APIStyle)
+		}
+		guide := profile.Guide
+		resp.Delivery.GuideProfile = strings.TrimSpace(guide.ProfileID)
+		resp.Delivery.Title = strings.TrimSpace(guide.Title)
+		resp.Delivery.Description = strings.TrimSpace(guide.Description)
+		resp.Delivery.Note = strings.TrimSpace(guide.Note)
+		resp.Delivery.DocsURL = strings.TrimSpace(guide.DocsURL)
+		resp.Delivery.DefaultClient = strings.TrimSpace(guide.DefaultClient)
+		resp.Delivery.Clients = guide.Clients
+		resp.Delivery.CopyBlocks = guide.CopyBlocks
+	}
 }
 
 func (s *BotSalesFulfillmentService) issueBotSalesAPIKeyForPolicy(ctx context.Context, userID int64, targetGroupID int64, req BotSalesTokenFulfillmentRequest) (*APIKey, error) {
