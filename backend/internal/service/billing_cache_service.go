@@ -833,6 +833,21 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 	return nil
 }
 
+func (s *BillingCacheService) minimumBalanceReserve() float64 {
+	if s == nil || s.cfg == nil || s.cfg.Billing.MinimumBalanceReserve <= 0 {
+		return 0
+	}
+	return s.cfg.Billing.MinimumBalanceReserve
+}
+
+func (s *BillingCacheService) balanceBelowEligibilityThreshold(balance float64) bool {
+	if balance <= 0 {
+		return true
+	}
+	minimumReserve := s.minimumBalanceReserve()
+	return minimumReserve > 0 && balance < minimumReserve
+}
+
 // checkBalanceEligibility 检查余额模式资格
 func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userID int64) error {
 	balance, err := s.GetUserBalance(ctx, userID)
@@ -847,7 +862,7 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 		s.circuitBreaker.OnSuccess()
 	}
 
-	if balance <= 0 {
+	if s.balanceBelowEligibilityThreshold(balance) {
 		return ErrInsufficientBalance
 	}
 
