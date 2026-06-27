@@ -121,3 +121,50 @@ func TestImagesOAuthNonStreaming_CompletedNoImageTriggersSameAccountRetry(t *tes
 		t.Fatal("soft-failure should prefer same-account retry (probabilistic upstream failure)")
 	}
 }
+
+// 内容审核拒绝（模型未出图但输出文字拒绝）应返回 400 content_policy 错误且不重试，
+// 而非可重试的 UpstreamFailoverError。
+func TestImagesOAuthNonStreaming_ContentRefusalReturns400NoRetry(t *testing.T) {
+	// 上游：completed 无图，但模型输出了文字拒绝（内容审核场景）。
+	upstreamSSE := "event: response.created\n" +
+		"data: {\"type\":\"response.created\",\"response\":{\"id\":\"r\",\"status\":\"in_progress\",\"model\":\"gpt-5.4-mini\",\"output\":[]}}\n\n" +
+		"event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"抱歉，这个请求因涉及违规内容被安全系统判定为不适合生成。\"}\n\n" +
+		"event: response.completed\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"status\":\"completed\",\"model\":\"gpt-5.4-mini\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"抱歉，这个请求因涉及违规内容被安全系统判定为不适合生成。\"}]}],\"tool_usage\":{\"image_gen\":{\"output_tokens\":0}}}}\n\n"
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(upstreamSSE))}
+
+	svc := &OpenAIGatewayService{}
+	_, _, _, err := svc.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, "b64_json", "gpt-image-2")
+
+	if err == nil {
+		t.Fatal("content refusal should return an error")
+	}
+	// 应是不可重试的内容策略错误（400），而非 UpstreamFailoverError。
+	var failoverErr *UpstreamFailoverError
+	if errors.As(err, &failoverErr) {
+		t.Fatalf("content refusal must NOT be a retryable failover error, got %v", failoverErr)
+	}
+	var imgErr *OpenAIImagesUpstreamError
+	if !errors.As(err, &imgErr) {
+		t.Fatalf("expected *OpenAIImagesUpstreamError, got %T: %v", err, err)
+	}
+	if imgErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("content refusal should be 400, got %d", imgErr.StatusCode)
+	}
+	if !strings.Contains(imgErr.Message, "安全系统") && !strings.Contains(imgErr.Message, "违规") {
+		t.Fatalf("refusal message should carry model's reason, got %q", imgErr.Message)
+	}
+}
+
+// extractOpenAIImagesModelRefusal：真空响应（无文字）返回空串。
+func TestExtractModelRefusal_EmptyWhenNoText(t *testing.T) {
+	body := "data: {\"type\":\"response.completed\",\"response\":{\"output\":[],\"tool_usage\":{\"image_gen\":{\"output_tokens\":0}}}}\n\n"
+	if r := extractOpenAIImagesModelRefusal([]byte(body)); r != "" {
+		t.Fatalf("empty response should yield no refusal, got %q", r)
+	}
+}
