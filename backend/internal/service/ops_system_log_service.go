@@ -100,6 +100,9 @@ REDACTED
 	if filter.UserID != nil {
 		payload["user_id"] = *filter.UserID
 REDACTED
+	if filter.APIKeyID != nil {
+		payload["api_key_id"] = *filter.APIKeyID
+REDACTED
 	if filter.AccountID != nil {
 		payload["account_id"] = *filter.AccountID
 REDACTED

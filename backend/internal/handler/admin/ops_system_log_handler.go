@@ -21,6 +21,7 @@ type opsSystemLogCleanupRequest struct {
 	RequestID       string `json:"request_id"`
 	ClientRequestID string `json:"client_request_id"`
 	UserID          *int64 `json:"user_id"`
+	APIKeyID        *int64 `json:"api_key_id"`
 	AccountID       *int64 `json:"account_id"`
 	Platform        string `json:"platform"`
 	Model           string `json:"model"`
@@ -70,6 +71,14 @@ REDACTED
 			return
 	REDACTED
 		filter.UserID = &id
+REDACTED
+	if v := strings.TrimSpace(c.Query("api_key_id")); v != "" {
+		id, parseErr := strconv.ParseInt(v, 10, 64)
+		if parseErr != nil || id <= 0 {
+			response.BadRequest(c, "Invalid api_key_id")
+			return
+	REDACTED
+		filter.APIKeyID = &id
 REDACTED
 	if v := strings.TrimSpace(c.Query("account_id")); v != "" {
 		id, parseErr := strconv.ParseInt(v, 10, 64)
@@ -136,6 +145,10 @@ REDACTED
 		response.BadRequest(c, "Invalid end_time")
 		return
 REDACTED
+	if req.APIKeyID != nil && *req.APIKeyID <= 0 {
+		response.BadRequest(c, "Invalid api_key_id")
+		return
+REDACTED
 
 	filter := &service.OpsSystemLogCleanupFilter{
 		StartTime:       start,
@@ -145,6 +158,7 @@ REDACTED
 		RequestID:       strings.TrimSpace(req.RequestID),
 		ClientRequestID: strings.TrimSpace(req.ClientRequestID),
 		UserID:          req.UserID,
+		APIKeyID:        req.APIKeyID,
 		AccountID:       req.AccountID,
 		Platform:        strings.TrimSpace(req.Platform),
 		Model:           strings.TrimSpace(req.Model),
