@@ -209,6 +209,7 @@ interface Props {
   baseUrl: string
   platform: GroupPlatform | null
   allowMessagesDispatch?: boolean
+  platformProfileRegistry?: string
 }
 
 interface Emits {
@@ -228,6 +229,42 @@ interface FileConfig {
   highlighted?: string
 }
 
+interface PlatformGuideCopyBlock {
+  id?: string
+  client_id: string
+  os?: string
+  path: string
+  hint?: string
+  language?: string
+  content_template: string
+}
+
+interface PlatformGuideClient {
+  id: string
+  label: string
+  os?: string[]
+}
+
+interface PlatformGuideMetadata {
+  profile_id?: string
+  title?: string
+  description?: string
+  note?: string
+  default_client?: string
+  clients?: PlatformGuideClient[]
+  copy_blocks?: PlatformGuideCopyBlock[]
+}
+
+interface PlatformProfile {
+  platform: string
+  guide?: PlatformGuideMetadata
+}
+
+interface PlatformProfileRegistry {
+  version?: number
+  profiles?: PlatformProfile[]
+}
+
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
@@ -240,8 +277,33 @@ const activeClientTab = ref<string>('claude')
 type CodexAuthMode = 'legacy' | 'api-key'
 const codexAuthMode = ref<CodexAuthMode>('legacy')
 
-// Reset tabs when platform changes
+const platformProfileRegistry = computed<PlatformProfileRegistry | null>(() => {
+  const raw = props.platformProfileRegistry?.trim()
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as PlatformProfileRegistry
+    return Array.isArray(parsed.profiles) ? parsed : null
+  } catch (_error) {
+    return null
+  }
+})
+
+const activePlatformProfile = computed<PlatformProfile | null>(() => {
+  if (!props.platform) return null
+  const platform = props.platform.toLowerCase()
+  return platformProfileRegistry.value?.profiles?.find((profile) =>
+    profile.platform?.toLowerCase() === platform
+  ) || null
+})
+
+const activePlatformGuide = computed<PlatformGuideMetadata | null>(() =>
+  activePlatformProfile.value?.guide || null
+)
+
+// Reset tabs when platform/registry changes.
 const defaultClientTab = computed(() => {
+  const registryDefault = activePlatformGuide.value?.default_client?.trim()
+  if (registryDefault) return registryDefault
   switch (props.platform) {
     case 'openai':
       return 'codex'
@@ -256,7 +318,7 @@ const defaultClientTab = computed(() => {
   }
 })
 
-watch(() => props.platform, () => {
+watch([() => props.platform, () => props.platformProfileRegistry], () => {
   activeTab.value = 'unix'
   activeClientTab.value = defaultClientTab.value
   codexAuthMode.value = 'legacy'
@@ -336,7 +398,20 @@ const SparkleIcon = {
   }
 }
 
+const iconForClient = (clientID: string): Component =>
+  clientID === 'gemini' ? SparkleIcon : TerminalIcon
+
 const clientTabs = computed((): TabConfig[] => {
+  const registryClients = activePlatformGuide.value?.clients
+  if (Array.isArray(registryClients) && registryClients.length > 0) {
+    return registryClients
+      .filter((client) => client.id?.trim() && client.label?.trim())
+      .map((client) => ({
+        id: client.id,
+        label: client.label,
+        icon: iconForClient(client.id),
+      }))
+  }
   if (!props.platform) return []
   switch (props.platform) {
     case 'openai': {
@@ -405,6 +480,8 @@ const currentTabs = computed(() => {
 })
 
 const platformDescription = computed(() => {
+  const registryDescription = activePlatformGuide.value?.description?.trim()
+  if (registryDescription) return registryDescription
   switch (props.platform) {
     case 'openai':
       if (activeClientTab.value === 'claude') {
@@ -429,6 +506,8 @@ const platformDescription = computed(() => {
 })
 
 const platformNote = computed(() => {
+  const registryNote = activePlatformGuide.value?.note?.trim()
+  if (registryNote) return registryNote
   switch (props.platform) {
     case 'openai':
       if (activeClientTab.value === 'claude') {
@@ -478,6 +557,50 @@ const operator = (value: string) => wrapToken('text-slate-400', value)
 const string = (value: string) => wrapToken('text-amber-200', value)
 const comment = (value: string) => wrapToken('text-slate-500', value)
 
+const renderGuideTemplate = (template: string, values: Record<string, string>) =>
+  template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) =>
+    values[key] ?? ''
+  )
+
+function registryBlocksForActiveTab(baseUrl: string, apiKey: string): FileConfig[] {
+  const guide = activePlatformGuide.value
+  const blocks = guide?.copy_blocks
+  if (!Array.isArray(blocks) || blocks.length === 0) return []
+
+  const baseRoot = baseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '')
+  const ensureV1 = (value: string) => {
+    const trimmed = value.replace(/\/+$/, '')
+    return trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`
+  }
+  const ensureV1Beta = (value: string) => {
+    const trimmed = value.replace(/\/+$/, '')
+    return trimmed.endsWith('/v1beta') ? trimmed : `${trimmed}/v1beta`
+  }
+  const values: Record<string, string> = {
+    base_url: baseUrl,
+    base_root: baseRoot,
+    api_base_url: ensureV1(baseRoot),
+    api_key: apiKey,
+    openai_model: 'gpt-5.5',
+    gemini_model: 'gemini-2.0-flash',
+    gemini_base_url: ensureV1Beta(baseRoot),
+    antigravity_base_url: ensureV1(`${baseRoot}/antigravity`),
+    antigravity_gemini_base_url: ensureV1Beta(`${baseRoot}/antigravity`),
+  }
+
+  return blocks
+    .filter((block) => {
+      if (block.client_id !== activeClientTab.value) return false
+      if (!block.os) return true
+      return block.os === activeTab.value
+    })
+    .map((block) => ({
+      path: block.path,
+      hint: block.hint,
+      content: renderGuideTemplate(block.content_template, values),
+    }))
+}
+
 // Syntax highlighting helpers
 // Generate file configs based on platform and active tab
 const currentFiles = computed((): FileConfig[] => {
@@ -498,6 +621,10 @@ const currentFiles = computed((): FileConfig[] => {
     const trimmed = baseRoot.replace(/\/+$/, '')
     return trimmed.endsWith('/v1beta') ? trimmed : `${trimmed}/v1beta`
   })()
+  const registryFiles = registryBlocksForActiveTab(baseUrl, apiKey)
+  if (registryFiles.length > 0) {
+    return registryFiles
+  }
 
   if (activeClientTab.value === 'opencode') {
     switch (props.platform) {

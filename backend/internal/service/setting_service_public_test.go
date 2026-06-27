@@ -209,3 +209,47 @@ func TestSettingService_GetPublicSettings_AllowsManualOnlyDeviceActivation(t *te
 	require.NoError(t, err)
 	require.Equal(t, "", settings.DeviceAutoActivationAffCodes)
 }
+
+func TestSettingService_GetPublicSettings_ExposesDBBackedPlatformProfileRegistry(t *testing.T) {
+	customRegistry := `{
+		"version": 1,
+		"profiles": [{
+			"platform": "openai",
+			"guide": {
+				"profile_id": "openai",
+				"title": "Custom OpenAI guide",
+				"description": "Inserted from DB setting",
+				"copy_blocks": [{
+					"id": "openai-custom",
+					"client_id": "codex",
+					"os": "unix",
+					"path": "~/.custom",
+					"content_template": "base={{base_url}} key={{api_key}}"
+				}]
+			}
+		}]
+	}`
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyPlatformProfileRegistry: customRegistry,
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Contains(t, settings.PlatformProfileRegistry, "Custom OpenAI guide")
+	require.Contains(t, settings.PlatformProfileRegistry, "Inserted from DB setting")
+	require.NotContains(t, settings.PlatformProfileRegistry, "OpenAI / Codex guide")
+}
+
+func TestSettingService_GetPublicSettings_DefaultsPlatformProfileRegistryWhenMissing(t *testing.T) {
+	repo := &settingPublicRepoStub{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Contains(t, settings.PlatformProfileRegistry, `"platform": "openai"`)
+	require.Contains(t, settings.PlatformProfileRegistry, `"platform": "anthropic"`)
+	require.Contains(t, settings.PlatformProfileRegistry, `"platform": "gemini"`)
+}

@@ -1301,6 +1301,48 @@ describe("admin SettingsView payment visible method controls", () => {
     ]);
   });
 
+  it("submits platform profile registry from the DB-backed guide metadata editor", async () => {
+    const registry = JSON.stringify({
+      version: 1,
+      profiles: [
+        {
+          platform: "openai",
+          guide: {
+            title: "Inserted OpenAI guide",
+            description: "Inserted from platform_profile_registry",
+            clients: [{ id: "codex", label: "Codex CLI" }],
+            copy_blocks: [
+              {
+                id: "codex-config",
+                client_id: "codex",
+                path: "Terminal",
+                content_template: "export OPENAI_API_KEY=\"{{api_key}}\"",
+              },
+            ],
+          },
+        },
+      ],
+    });
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      platform_profile_registry: registry,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    expect(wrapper.text()).toContain("Inserted OpenAI guide");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform_profile_registry: registry,
+      }),
+    );
+  });
+
   it("renders Antigravity user agent version inside Claude Code settings", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

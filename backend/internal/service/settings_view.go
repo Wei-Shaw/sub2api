@@ -210,6 +210,7 @@ type SystemSettings struct {
 	EnableClaudeOAuthSystemPromptInjection bool   // 是否对 Claude OAuth mimic 路径注入 Claude Code system blocks（默认 true）
 	ClaudeOAuthSystemPrompt                string // Claude OAuth mimic 路径注入的通用扩展 system prompt；空值使用内置默认
 	ClaudeOAuthSystemPromptBlocks          string // Claude OAuth mimic 路径注入的 system blocks JSON 配置；空值使用内置默认
+	PlatformProfileRegistry                string // provider/platform guide metadata registry JSON；空值使用内置 3 平台默认
 	EnableAnthropicCacheTTL1hInjection     bool   // 是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl（默认 false）
 	EnableClientDatelineNormalization      bool   // 是否对 Anthropic OAuth/SetupToken 请求体做客户端 dateline 归一化（默认 true）
 	RewriteMessageCacheControl             bool   // 是否改写 messages[*].content[*].cache_control（默认 false）
@@ -325,6 +326,7 @@ type PublicSettings struct {
 	HomeContent                      string
 	CompactHomeEnabled               bool
 	HideCcsImportButton              bool
+	PlatformProfileRegistry          string
 
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string

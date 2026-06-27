@@ -11,6 +11,7 @@ type ProviderCatalogEntry struct {
 	ProviderID   string                 `json:"provider_id"`
 	ProviderName string                 `json:"provider_name"`
 	APIStyle     string                 `json:"api_style"`
+	Guide        *PlatformGuideMetadata `json:"guide,omitempty"`
 	Models       []ProviderCatalogModel `json:"models"`
 }
 
@@ -218,12 +219,14 @@ func defaultMaxTokens(modelID string) int {
 // ProviderCatalogService builds the provider catalog from channel/group data.
 type ProviderCatalogService struct {
 	channelService *ChannelService
+	settingService *SettingService
 }
 
 // NewProviderCatalogService creates a new ProviderCatalogService.
-func NewProviderCatalogService(channelService *ChannelService) *ProviderCatalogService {
+func NewProviderCatalogService(channelService *ChannelService, settingService *SettingService) *ProviderCatalogService {
 	return &ProviderCatalogService{
 		channelService: channelService,
+		settingService: settingService,
 	}
 }
 
@@ -237,6 +240,14 @@ func (s *ProviderCatalogService) BuildCatalog(ctx context.Context) (*ProviderCat
 	}
 
 	// Aggregate models by provider ID, deduplicating by model name.
+	registry := defaultPlatformProfileRegistry()
+	if s.settingService != nil {
+		if raw := s.settingService.GetPlatformProfileRegistryJSON(ctx); strings.TrimSpace(raw) != "" {
+			if parsed, err := ParsePlatformProfileRegistry(raw); err == nil {
+				registry = parsed
+			}
+		}
+	}
 	type providerAgg struct {
 		entry ProviderCatalogEntry
 		seen  map[string]struct{}
@@ -252,6 +263,20 @@ func (s *ProviderCatalogService) BuildCatalog(ctx context.Context) (*ProviderCat
 			if !ok {
 				continue
 			}
+			var guide *PlatformGuideMetadata
+			if profile, found := registry.ProfileByPlatform(model.Platform); found {
+				if strings.TrimSpace(profile.ProviderID) != "" {
+					providerID = strings.TrimSpace(profile.ProviderID)
+				}
+				if strings.TrimSpace(profile.ProviderName) != "" {
+					providerName = strings.TrimSpace(profile.ProviderName)
+				}
+				if strings.TrimSpace(profile.APIStyle) != "" {
+					apiStyle = strings.TrimSpace(profile.APIStyle)
+				}
+				guideCopy := profile.Guide
+				guide = &guideCopy
+			}
 
 			agg, exists := providers[providerID]
 			if !exists {
@@ -260,6 +285,7 @@ func (s *ProviderCatalogService) BuildCatalog(ctx context.Context) (*ProviderCat
 						ProviderID:   providerID,
 						ProviderName: providerName,
 						APIStyle:     apiStyle,
+						Guide:        guide,
 						Models:       make([]ProviderCatalogModel, 0),
 					},
 					seen: make(map[string]struct{}),

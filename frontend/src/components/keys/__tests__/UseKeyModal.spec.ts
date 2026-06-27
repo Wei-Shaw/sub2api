@@ -561,4 +561,58 @@ describe('UseKeyModal', () => {
     expect(fable.options.thinking).toEqual({ type: 'adaptive' })
     expect(fable.options.thinking).not.toHaveProperty('budgetTokens')
   })
+
+  it('renders DB-backed registry guide blocks before hardcoded fallbacks', () => {
+    const registry = JSON.stringify({
+      version: 1,
+      profiles: [{
+        platform: 'openai',
+        guide: {
+          profile_id: 'openai',
+          title: 'Operator inserted guide',
+          description: 'Inserted from platform_profile_registry',
+          note: 'Registry note from DB',
+          default_client: 'codex',
+          clients: [{ id: 'codex', label: 'Custom Codex', os: ['unix'] }],
+          copy_blocks: [{
+            id: 'custom-codex',
+            client_id: 'codex',
+            os: 'unix',
+            path: '~/.custom-codex/config.toml',
+            hint: 'DB hint',
+            content_template: 'base="{{base_url}}"\nkey="{{api_key}}"\nroot="{{base_root}}"'
+          }]
+        }
+      }]
+    })
+
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-db-backed',
+        baseUrl: 'https://example.com/v1',
+        platform: 'openai',
+        platformProfileRegistry: registry
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('Inserted from platform_profile_registry')
+    expect(wrapper.text()).toContain('Custom Codex')
+    expect(wrapper.text()).toContain('DB hint')
+
+    const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
+    expect(codeBlocks).toEqual([
+      'base="https://example.com/v1"\nkey="sk-db-backed"\nroot="https://example.com"'
+    ])
+  })
 })

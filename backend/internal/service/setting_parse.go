@@ -22,8 +22,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	// 检查是否已有设置
 	_, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEnabled)
 	if err == nil {
-		// 已有设置，不需要初始化
-		return nil
+		// 已有设置：不重写整套默认值，但要补齐新增的 DB-backed registry 默认值。
+		return s.ensurePlatformProfileRegistryDefault(ctx)
 	}
 	if !errors.Is(err, ErrSettingNotFound) {
 		return fmt.Errorf("check existing settings: %w", err)
@@ -227,6 +227,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyEnableAnthropicCacheTTL1hInjection:                 "false",
 		SettingKeyRewriteMessageCacheControl:                         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
 		SettingKeyEnableClientDatelineNormalization:                  "true",
+		SettingKeyPlatformProfileRegistry:                            DefaultPlatformProfileRegistryJSON(),
 		SettingKeyAntigravityUserAgentVersion:                        "",
 		SettingKeyOpenAICodexUserAgent:                               "",
 		SettingPaymentVisibleMethodAlipaySource:                      "",
@@ -267,6 +268,22 @@ func parseForwardedClientIPHeadersSetting(value string) ([]string, error) {
 		return nil, fmt.Errorf("parse forwarded_client_ip_headers: %w", err)
 	}
 	return normalized, nil
+}
+
+func (s *SettingService) ensurePlatformProfileRegistryDefault(ctx context.Context) error {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyPlatformProfileRegistry)
+	if err == nil && strings.TrimSpace(value) != "" {
+		// Normalize malformed/legacy whitespace only when the value is valid; invalid
+		// operator edits are left untouched on read paths and rejected on save.
+		if normalized, normalizeErr := NormalizePlatformProfileRegistryJSON(value); normalizeErr == nil && normalized != value {
+			return s.settingRepo.Set(ctx, SettingKeyPlatformProfileRegistry, normalized)
+		}
+		return nil
+	}
+	if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		return fmt.Errorf("check platform profile registry setting: %w", err)
+	}
+	return s.settingRepo.Set(ctx, SettingKeyPlatformProfileRegistry, DefaultPlatformProfileRegistryJSON())
 }
 
 // parseSettings 解析设置到结构体
@@ -334,6 +351,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		HomeContent:                      settings[SettingKeyHomeContent],
 		CompactHomeEnabled:               settings[SettingKeyCompactHomeEnabled] == "true",
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
+		PlatformProfileRegistry:          EffectivePlatformProfileRegistryJSON(settings[SettingKeyPlatformProfileRegistry]),
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
@@ -818,6 +836,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.ClaudeOAuthSystemPrompt = settings[SettingKeyClaudeOAuthSystemPrompt]
 	result.ClaudeOAuthSystemPromptBlocks = settings[SettingKeyClaudeOAuthSystemPromptBlocks]
+	result.PlatformProfileRegistry = EffectivePlatformProfileRegistryJSON(settings[SettingKeyPlatformProfileRegistry])
 	result.EnableAnthropicCacheTTL1hInjection = settings[SettingKeyEnableAnthropicCacheTTL1hInjection] == "true"
 	if v, ok := settings[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
 		result.RewriteMessageCacheControl = v == "true"
