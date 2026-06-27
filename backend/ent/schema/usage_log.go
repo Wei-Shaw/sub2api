@@ -41,6 +41,9 @@ func (UsageLog) Fields() []ent.Field {
 		field.String("model").
 			MaxLen(100).
 			NotEmpty(),
+		field.String("input_excerpt").
+			Default("").
+			Comment("脱敏后的用户输入摘要"),
 		// RequestedModel stores the client-requested model name for stable display and analytics.
 		// NULL means historical rows written before requested_model dual-write was introduced.
 		field.String("requested_model").
