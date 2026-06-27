@@ -132,6 +132,29 @@ func TestOutputItemCollectorPatchesCompletedEvent(t *testing.T) {
 	require.Equal(t, "item_b", output[1].(map[string]any)["id"])
 }
 
+func TestNormalizeResponsesBodyMapCoalescesInputImageForGrokCLI(t *testing.T) {
+	req := map[string]any{
+		"input": []any{
+			map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "describe this"},
+					map[string]any{"type": "input_image", "image_url": "data:image/png;base64,abc"},
+				},
+			},
+		},
+	}
+
+	NormalizeResponsesBodyMap(req, "grok-composer-2.5-fast", false, "", true)
+
+	content := req["input"].([]any)[0].(map[string]any)["content"].([]any)
+	require.Len(t, content, 1)
+	part := content[0].(map[string]any)
+	require.Equal(t, "input_text", part["type"])
+	require.Equal(t, "describe this", part["text"])
+	require.Equal(t, "data:image/png;base64,abc", part["image_url"])
+}
+
 func TestNormalizeResponsesBodyMapKeepsGrokCLIFields(t *testing.T) {
 	req := map[string]any{
 		"previous_response_id":   "resp_123",

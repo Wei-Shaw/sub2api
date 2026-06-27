@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
 
@@ -476,24 +475,15 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Embeddi
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 }
 
-func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_UsesXAIPlatformFromContext(t *testing.T) {
+func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_AllowsGrokChatAccount(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 
-	ctx := context.WithValue(context.Background(), ctxkey.Platform, PlatformXAI)
-	groupID := int64(10111)
+	ctx := context.Background()
+	groupID := int64(10113)
 	accounts := []Account{
 		{
-			ID:          36101,
-			Platform:    PlatformOpenAI,
-			Type:        AccountTypeAPIKey,
-			Status:      StatusActive,
-			Schedulable: true,
-			Concurrency: 1,
-			Priority:    0,
-		},
-		{
-			ID:          36102,
-			Platform:    PlatformXAI,
+			ID:          36041,
+			Platform:    PlatformGrok,
 			Type:        AccountTypeOAuth,
 			Status:      StatusActive,
 			Schedulable: true,
@@ -520,11 +510,12 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_UsesXAI
 		OpenAIUpstreamTransportAny,
 		OpenAIEndpointCapabilityChatCompletions,
 		false,
+		PlatformGrok,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
-	require.Equal(t, int64(36102), selection.Account.ID)
+	require.Equal(t, int64(36041), selection.Account.ID)
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 }
 

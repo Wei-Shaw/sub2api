@@ -3141,6 +3141,7 @@ const platformOptions = computed(() => [
   { value: "gemini", label: "Gemini" },
   { value: "xai", label: "xAI" },
   { value: "antigravity", label: "Antigravity" },
+  { value: "grok", label: "Grok" },
 ]);
 
 const platformFilterOptions = computed(() => [
@@ -3150,6 +3151,7 @@ const platformFilterOptions = computed(() => [
   { value: "gemini", label: "Gemini" },
   { value: "xai", label: "xAI" },
   { value: "antigravity", label: "Antigravity" },
+  { value: "grok", label: "Grok" },
 ]);
 
 const editStatusOptions = computed(() => [

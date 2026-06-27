@@ -131,12 +131,16 @@ const metaModels = [
 
 // xAI Grok
 const xaiModels = [
-  'grok-4.3', 'grok-4.3-fast',
-  'grok-4.3-mini', 'grok-4.3-mini-fast',
-  'grok-4.20', 'grok-4.20-fast',
-  'grok-4.20-mini', 'grok-4.20-mini-fast',
-  'grok-code-fast-1',
-  'grok-3-mini'
+  'grok-4.3',
+  'grok-build-0.1',
+  'grok-4.20-0309-reasoning',
+  'grok-4.20-0309-non-reasoning',
+  'grok-4.20-multi-agent-0309',
+  'grok',
+  'grok-latest',
+  'grok-build',
+  'grok-4.20-reasoning',
+  'grok-4.20-non-reasoning'
 ]
 
 // Cohere
@@ -266,16 +270,6 @@ const openaiPresetMappings = [
   { label: 'Sonnet→5.4', from: 'claude-sonnet-4-6', to: 'gpt-5.4', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' }
 ]
 
-const xaiPresetMappings = [
-  { label: 'Grok 4.3', from: 'grok-4.3', to: 'grok-4.3', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
-  { label: 'Grok 4.3 Fast', from: 'grok-4.3-fast', to: 'grok-4.3-fast', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
-  { label: 'Grok 4.3 Mini', from: 'grok-4.3-mini', to: 'grok-4.3-mini', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
-  { label: 'Grok 4.20', from: 'grok-4.20', to: 'grok-4.20', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
-  { label: 'Grok Code Fast', from: 'grok-code-fast-1', to: 'grok-code-fast-1', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
-  { label: 'Claude→Grok', from: 'claude-*', to: 'grok-4.3', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
-  { label: 'GPT→Grok', from: 'gpt-*', to: 'grok-4.3', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
-]
-
 const geminiPresetMappings = [
   { label: 'Flash 2.0', from: 'gemini-2.0-flash', to: 'gemini-2.0-flash', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
   { label: '2.5 Flash', from: 'gemini-2.5-flash', to: 'gemini-2.5-flash', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
@@ -283,6 +277,14 @@ const geminiPresetMappings = [
   { label: '2.5 Pro', from: 'gemini-2.5-pro', to: 'gemini-2.5-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
   { label: '3.5 Flash', from: 'gemini-3.5-flash', to: 'gemini-3.5-flash', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' },
   { label: '3.1 Image', from: 'gemini-3.1-flash-image', to: 'gemini-3.1-flash-image', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' }
+]
+
+const grokPresetMappings = [
+  { label: 'Grok 4.3', from: 'grok-4.3', to: 'grok-4.3', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300' },
+  { label: 'Grok Latest', from: 'grok-latest', to: 'grok-4.3', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  { label: 'Build 0.1', from: 'grok-build', to: 'grok-build-0.1', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: '4.20 Reasoning', from: 'grok-4.20-reasoning', to: 'grok-4.20-0309-reasoning', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: '4.20 Non Reasoning', from: 'grok-4.20-non-reasoning', to: 'grok-4.20-0309-non-reasoning', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' }
 ]
 
 // Antigravity 预设映射（支持通配符）
@@ -383,7 +385,8 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'deepseek': return deepseekModels
     case 'mistral': return mistralModels
     case 'meta': return metaModels
-    case 'xai': return xaiModels
+    case 'xai':
+    case 'grok': return xaiModels
     case 'cohere': return cohereModels
     case 'yi': return yiModels
     case 'moonshot': return moonshotModels
@@ -400,8 +403,8 @@ export function getModelsByPlatform(platform: string): string[] {
 // 按平台获取预设映射
 export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
-  if (platform === 'xai') return xaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
+  if (platform === 'grok' || platform === 'xai') return grokPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings
@@ -425,115 +428,6 @@ export type ModelRestrictionMode = 'whitelist' | 'mapping' | 'combined'
 export interface ModelMappingEntry {
   from: string
   to: string
-}
-
-export interface UpstreamModelReplacementResult {
-  upstreamCount: number
-  addedCount: number
-  removedCount: number
-  changed: boolean
-}
-
-export interface ExactModelReplacementResult extends UpstreamModelReplacementResult {
-  models: string[]
-  preservedWildcardCount: number
-}
-
-export interface IdentityMappingReplacementResult extends UpstreamModelReplacementResult {
-  mappings: ModelMappingEntry[]
-  preservedMappingCount: number
-}
-
-function normalizeModelList(models: string[]): string[] {
-  const seen = new Set<string>()
-  const normalized: string[] = []
-  for (const rawModel of models) {
-    const model = rawModel.trim()
-    if (!model || seen.has(model)) continue
-    seen.add(model)
-    normalized.push(model)
-  }
-  return normalized
-}
-
-function haveSameModelOrder(left: string[], right: string[]): boolean {
-  if (left.length !== right.length) return false
-  return left.every((model, index) => model === right[index])
-}
-
-export function replaceExactModelsWithUpstream(
-  currentModels: string[],
-  upstreamModels: string[]
-): ExactModelReplacementResult {
-  const normalizedCurrent = normalizeModelList(currentModels)
-  const normalizedUpstream = normalizeModelList(upstreamModels)
-  const upstreamSet = new Set(normalizedUpstream)
-  const currentExactModels = normalizedCurrent.filter(model => !model.includes('*'))
-  const currentExactSet = new Set(currentExactModels)
-  const preservedWildcards = normalizedCurrent.filter(model => model.includes('*'))
-
-  const nextModels = [...normalizedUpstream]
-  for (const model of preservedWildcards) {
-    if (!upstreamSet.has(model)) {
-      nextModels.push(model)
-    }
-  }
-
-  return {
-    models: nextModels,
-    upstreamCount: normalizedUpstream.length,
-    addedCount: normalizedUpstream.filter(model => !currentExactSet.has(model)).length,
-    removedCount: currentExactModels.filter(model => !upstreamSet.has(model)).length,
-    preservedWildcardCount: preservedWildcards.length,
-    changed: !haveSameModelOrder(normalizedCurrent, nextModels)
-  }
-}
-
-export function replaceIdentityModelMappingsWithUpstream(
-  currentMappings: ModelMappingEntry[],
-  upstreamModels: string[]
-): IdentityMappingReplacementResult {
-  const normalizedUpstream = normalizeModelList(upstreamModels)
-  const normalizedCurrent: ModelMappingEntry[] = []
-  const seenCurrent = new Set<string>()
-
-  for (const mapping of currentMappings) {
-    const from = mapping.from.trim()
-    const to = mapping.to.trim()
-    if (!from || !to) continue
-    const key = `${from}\u0000${to}`
-    if (seenCurrent.has(key)) continue
-    seenCurrent.add(key)
-    normalizedCurrent.push({ from, to })
-  }
-
-  const upstreamSet = new Set(normalizedUpstream)
-  const currentIdentityModels = normalizedCurrent
-    .filter(mapping => mapping.from === mapping.to && !mapping.from.includes('*'))
-    .map(mapping => mapping.from)
-  const currentIdentitySet = new Set(currentIdentityModels)
-  const preservedMappings = normalizedCurrent.filter(
-    mapping => mapping.from !== mapping.to || mapping.from.includes('*')
-  )
-  const preservedFromSet = new Set(preservedMappings.map(mapping => mapping.from))
-
-  const nextMappings: ModelMappingEntry[] = normalizedUpstream
-    .filter(model => !preservedFromSet.has(model))
-    .map(model => ({ from: model, to: model }))
-
-  nextMappings.push(...preservedMappings)
-
-  const currentKeys = normalizedCurrent.map(mapping => `${mapping.from}\u0000${mapping.to}`)
-  const nextKeys = nextMappings.map(mapping => `${mapping.from}\u0000${mapping.to}`)
-
-  return {
-    mappings: nextMappings,
-    upstreamCount: normalizedUpstream.length,
-    addedCount: normalizedUpstream.filter(model => !currentIdentitySet.has(model) && !preservedFromSet.has(model)).length,
-    removedCount: currentIdentityModels.filter(model => !upstreamSet.has(model)).length,
-    preservedMappingCount: preservedMappings.length,
-    changed: !haveSameModelOrder(currentKeys, nextKeys)
-  }
 }
 
 export function splitModelMappingObject(
@@ -602,4 +496,44 @@ export function buildModelMappingObject(
   }
 
   return Object.keys(mapping).length > 0 ? mapping : null
+}
+
+export function replaceIdentityModelMappingsWithUpstream(
+  currentMappings: ModelMappingEntry[],
+  upstreamModels: string[]
+): {
+  mappings: ModelMappingEntry[]
+  changed: boolean
+  upstreamCount: number
+  removedCount: number
+  preservedMappingCount: number
+} {
+  const normalizedUpstream = Array.from(
+    new Set(upstreamModels.map((model) => model.trim()).filter(Boolean))
+  )
+  const identityMappings = currentMappings.filter((mapping) => {
+    const from = mapping.from.trim()
+    const to = mapping.to.trim()
+    return from && from === to
+  })
+  const mappings = normalizedUpstream.map((model, index) => ({
+    from: identityMappings[index]?.from.trim() || model,
+    to: model
+  }))
+  const removedCount = Math.max(identityMappings.length - mappings.length, 0)
+  const preservedMappingCount = Math.min(identityMappings.length, mappings.length)
+  const changed =
+    mappings.length !== identityMappings.length ||
+    mappings.some((mapping, index) => {
+      const previous = identityMappings[index]
+      return !previous || previous.from.trim() !== mapping.from || previous.to.trim() !== mapping.to
+    })
+
+  return {
+    mappings,
+    changed,
+    upstreamCount: normalizedUpstream.length,
+    removedCount,
+    preservedMappingCount
+  }
 }

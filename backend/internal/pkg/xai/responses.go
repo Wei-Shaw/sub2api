@@ -20,6 +20,9 @@ func NormalizeResponsesBodyMap(req map[string]any, model string, stream bool, pr
 	if req == nil {
 		return
 	}
+	if grokCLI {
+		coalesceInputImageParts(req)
+	}
 	if strings.TrimSpace(model) != "" {
 		req["model"] = strings.TrimSpace(model)
 	}
@@ -105,6 +108,73 @@ func ensureToolParameters(tool map[string]any) {
 	if _, ok := tool["parameters"]; !ok {
 		tool["parameters"] = map[string]any{}
 	}
+}
+
+// coalesceInputImageParts attaches standalone input_image parts to the
+// preceding input_text part for Grok CLI compatible requests.
+func coalesceInputImageParts(req map[string]any) {
+	input, ok := req["input"].([]any)
+	if !ok || len(input) == 0 {
+		return
+	}
+	changed := false
+	for _, raw := range input {
+		item, ok := raw.(map[string]any)
+		if !ok || item == nil {
+			continue
+		}
+		content, ok := item["content"].([]any)
+		if !ok || len(content) == 0 {
+			continue
+		}
+		normalized, itemChanged := coalesceInputImageContentParts(content)
+		if !itemChanged {
+			continue
+		}
+		item["content"] = normalized
+		changed = true
+	}
+	if changed {
+		req["input"] = input
+	}
+}
+
+func coalesceInputImageContentParts(parts []any) ([]any, bool) {
+	if len(parts) == 0 {
+		return parts, false
+	}
+	out := make([]any, 0, len(parts))
+	changed := false
+	for _, raw := range parts {
+		part, ok := raw.(map[string]any)
+		if !ok || part == nil || strings.TrimSpace(stringValue(part["type"])) != "input_image" {
+			out = append(out, raw)
+			continue
+		}
+		imageURL := strings.TrimSpace(stringValue(part["image_url"]))
+		if len(out) > 0 {
+			if prev, ok := out[len(out)-1].(map[string]any); ok && strings.TrimSpace(stringValue(prev["type"])) == "input_text" {
+				merged := cloneMap(prev)
+				merged["image_url"] = imageURL
+				if strings.TrimSpace(stringValue(merged["text"])) == "" {
+					merged["text"] = "[image]"
+				}
+				out[len(out)-1] = merged
+				changed = true
+				continue
+			}
+		}
+		out = append(out, map[string]any{
+			"type":      "input_text",
+			"text":      "[image]",
+			"image_url": imageURL,
+		})
+		changed = true
+	}
+	if !changed {
+		return parts, false
+	}
+	return out, true
 }
 
 func normalizeReasoning(req map[string]any) {

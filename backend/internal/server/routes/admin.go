@@ -47,8 +47,8 @@ func RegisterAdminRoutes(
 		// Antigravity OAuth
 		registerAntigravityOAuthRoutes(admin, h)
 
-		// xAI OAuth
-		registerXAIOAuthRoutes(admin, h)
+		// Grok OAuth
+		registerGrokOAuthRoutes(admin, h)
 
 		// 代理管理
 		registerProxyRoutes(admin, h)
@@ -365,6 +365,7 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		openai.POST("/refresh-token", h.Admin.OpenAIOAuth.RefreshToken)
 		openai.POST("/accounts/:id/refresh", h.Admin.OpenAIOAuth.RefreshAccountToken)
 		openai.POST("/create-from-oauth", h.Admin.OpenAIOAuth.CreateAccountFromOAuth)
+		openai.POST("/create-from-codex-pat", h.Admin.OpenAIOAuth.CreateAccountFromCodexPAT)
 		openai.GET("/accounts/:id/quota", h.Admin.OpenAIOAuth.QueryQuota)
 		openai.POST("/accounts/:id/reset-quota", h.Admin.OpenAIOAuth.ResetQuota)
 	}
@@ -388,13 +389,17 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 	}
 }
 
-func registerXAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	xai := admin.Group("/xai")
+func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	grok := admin.Group("/grok")
 	{
-		xai.POST("/oauth/auth-url", h.Admin.XAIOAuth.GenerateAuthURL)
-		xai.POST("/oauth/exchange-code", h.Admin.XAIOAuth.ExchangeCode)
-		xai.POST("/oauth/refresh-token", h.Admin.XAIOAuth.RefreshToken)
-		xai.POST("/accounts/:id/refresh", h.Admin.XAIOAuth.RefreshAccountToken)
+		grok.POST("/oauth/auth-url", h.Admin.GrokOAuth.GenerateAuthURL)
+		grok.POST("/oauth/exchange-code", h.Admin.GrokOAuth.ExchangeCode)
+		grok.POST("/oauth/refresh-token", h.Admin.GrokOAuth.RefreshToken)
+		grok.POST("/oauth/create-from-oauth", h.Admin.GrokOAuth.CreateAccountFromOAuth)
+		grok.POST("/accounts/:id/refresh", h.Admin.GrokOAuth.RefreshAccountToken)
+		grok.GET("/accounts/:id/quota", h.Admin.GrokOAuth.QueryQuota)
+		grok.POST("/accounts/:id/reset-quota", h.Admin.GrokOAuth.ResetQuota)
+		grok.GET("/runtime-sanity", h.Admin.GrokOAuth.RuntimeSanity)
 	}
 }
 
@@ -661,7 +666,6 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	affiliates := admin.Group("/affiliates")
 	{
 		affiliates.GET("/invites", h.Admin.Affiliate.ListInviteRecords)
-		affiliates.POST("/invites/bind", h.Admin.Affiliate.BindInviter)
 		affiliates.GET("/rebates", h.Admin.Affiliate.ListRebateRecords)
 		affiliates.GET("/transfers", h.Admin.Affiliate.ListTransferRecords)
 

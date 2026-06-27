@@ -764,7 +764,6 @@ export default {
       description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行。',
       copy: '复制',
       copied: '已复制',
-      download: '下载',
       note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
       noGroupTitle: '请先分配分组',
       noGroupDescription:
@@ -772,9 +771,6 @@ export default {
       openai: {
         description: '将以下配置文件添加到 Codex CLI 配置目录中。',
         configTomlHint: '请确保以下内容位于 config.toml 文件的开头部分',
-        installScriptHintUnix: '下载后在终端运行 bash install-codex-ws.sh。脚本会自动创建 ~/.codex，并备份已有 config.toml/auth.json。',
-        installScriptHintWindows:
-          '下载后在 PowerShell 中运行 powershell -ExecutionPolicy Bypass -File .\\install-codex-ws.ps1。脚本会自动创建 %userprofile%\\.codex，并备份已有 config.toml/auth.json。',
         note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
         noteWindows:
           '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。'
@@ -782,21 +778,9 @@ export default {
       cliTabs: {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
-        grokCli: 'Grok CLI',
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         opencode: 'OpenCode'
-      },
-      xai: {
-        description:
-          '推荐先用环境变量快速接入；如需长期固定配置，再编辑 ~/.grok/config.toml。两种方式二选一即可。',
-        modelComment: '默认使用 grok-build；也可改为 grok-composer-2.5-fast',
-        logoutHint: '若已 grok login 登录过官方账号，请先运行 grok logout，否则会优先使用官方 OAuth 而非 sub2api 密钥。',
-        note: '方式一（环境变量）：复制到终端即可生效；要永久保存，写入 ~/.bashrc、~/.zshrc 或 ~/.config/fish/config.fish。方式二（配置文件）：先创建目录 mkdir -p ~/.grok，再新建或编辑 ~/.grok/config.toml，把下方内容粘贴进去后保存，重新打开终端运行 grok。',
-        noteWindows:
-          '方式一（环境变量）：复制到 CMD / PowerShell 即可生效。方式二（配置文件）：按 Win+R 输入 %userprofile%\\.grok 打开目录（不存在则先创建），编辑 config.toml 粘贴下方内容后保存，再重新打开终端运行 grok。',
-        configTomlHint: '方式二：将以下内容写入 ~/.grok/config.toml（不存在则新建）。保存后执行 grok logout，再运行 grok。',
-        envHint: '方式一：在终端执行以下命令（或写入 shell 配置文件）'
       },
       antigravity: {
         description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
@@ -1817,19 +1801,6 @@ export default {
       errors: {
         loadFailed: '加载邀请返利记录失败'
       },
-      bind: {
-        action: '手动绑定',
-        title: '手动绑定上下级',
-        inviterUserId: '邀请人用户 ID',
-        inviteeUserId: '被邀请人用户 ID',
-        inviterPlaceholder: '上级用户 ID',
-        inviteePlaceholder: '下级用户 ID',
-        hint: '仅支持给未绑定邀请人的用户新增上级；已绑定关系不会被覆盖。',
-        submit: '确认绑定',
-        success: '上下级绑定成功',
-        invalidUserId: '请输入有效的用户 ID',
-        sameUser: '邀请人和被邀请人不能是同一个用户'
-      },
       records: {
         search: '搜索',
         searchPlaceholder: '邮箱、用户名、用户 ID、订单号',
@@ -2275,7 +2246,6 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        xai: 'xAI',
         antigravity: 'Antigravity',
       },
       saving: '保存中...',
@@ -3344,8 +3314,8 @@ export default {
         openai: 'OpenAI',
         anthropic: 'Anthropic',
         gemini: 'Gemini',
-        xai: 'xAI',
         antigravity: 'Antigravity',
+        grok: 'Grok',
       },
       types: {
         oauth: 'OAuth',
@@ -3354,12 +3324,17 @@ export default {
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
+        grokOauth: 'Grok OAuth',
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游',
         api_key: 'API Key',
         cookie: 'Cookie'
       },
+      antigravityProjectIdLabel: 'GCP Project ID（可选）',
+      antigravityProjectIdPlaceholder: 'your-gcp-project-id',
+      antigravityProjectIdHint:
+        'standard-tier 且未自动返回 project_id 的 Antigravity 账号需要填写用户自带 GCP project。',
       status: {
         active: '正常',
         inactive: '停用',
@@ -3433,6 +3408,18 @@ export default {
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
         claude: 'Claude',
+        grokRequests: '请求',
+        grokTokens: 'Token',
+        grokUnknown: 'Grok 配额需等待首次上游响应返回 xAI rate-limit 头后显示。',
+        grokRetryAfter: '{time} 后重试',
+        grokProbe: '探测',
+        grokProbeTooltip: '发送最小 xAI Responses 探测请求并读取配额响应头',
+        grokResetUnsupported: '不支持重置',
+        grokResetUnsupportedTooltip: 'xAI 未向 Grok OAuth 账号开放重置额度接口',
+        grokNoHeaders: '未观察到配额响应头',
+        grokLastStatus: '状态 {status}',
+        grokLastProbe: '探测 {time}',
+        grokLastHeadersSeen: '响应头 {time}',
         passiveSampled: '被动采样',
         activeQuery: '查询'
       },
@@ -3587,7 +3574,6 @@ export default {
       vertexSaJsonInvalid: 'Service Account JSON 格式无效',
       vertexSaJsonRequired: '请上传 Service Account JSON',
       oauthSetupToken: 'OAuth / Setup Token',
-      xaiAccount: 'xAI 账号',
       addMethod: '添加方式',
       setupTokenLongLived: 'Setup Token（长期有效）',
       baseUrl: 'Base URL',
@@ -3644,8 +3630,8 @@ export default {
         responsesStatusForcedChatCompletions: '已强制 Chat Completions',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
-        codexCLIOnlyAllowClaudeCode: '额外放行 Claude Code 的 Codex 插件',
-        codexCLIOnlyAllowClaudeCodeDesc: '仅在上方开关开启时生效。额外放行通过 Claude Code 的 Codex 插件发起的请求（精确匹配 originator=Claude Code），不影响对其他非官方客户端的拦截。',
+        codexCLIOnlyAppServer: '允许 Codex app-server 客户端',
+        codexCLIOnlyAppServerDesc: '仅在上方开关开启时生效。开启后本账号额外放行内嵌 Codex 引擎、经 app-server 协议接入的第三方客户端（如 Claude Code 的 codex 插件），仍需通过全局引擎指纹门；与全局 app-server 开关取 OR（任一开即放行）。',
         codexImageGenerationBridge: 'Codex 图片生成桥接',
         codexImageGenerationBridgeDesc:
           '账号级策略优先于渠道和全局配置。仅控制 Codex 走 /responses 文本端点时是否注入 image_generation 工具；不影响独立图片生成接口。',
@@ -3677,6 +3663,10 @@ export default {
         testModeCompact: 'Compact 探测',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
       },
+      grok: {
+        baseUrlHint: 'Grok OAuth 账号会转发到官方 xAI API Base URL。',
+        apiKeyHint: 'Grok 订阅支持使用 OAuth refresh token；API Key 账号不在本次范围内。'
+      },
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
         apiKeyPassthroughDesc:
@@ -3687,10 +3677,6 @@ export default {
         webSearchDefault: '默认',
         webSearchEnabled: '开启',
         webSearchDisabled: '关闭',
-      },
-      xai: {
-        baseUrlHint: '默认 xAI API 地址。除非使用兼容网关，否则保持 https://api.x.ai/v1。',
-        apiKeyHint: '可使用 xAI API Key，或选择 OAuth 接入 Grok CLI 凭证。'
       },
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
@@ -3711,8 +3697,7 @@ export default {
       syncUpstreamModels: '同步上游支持的模型',
       syncUpstreamModelsLoading: '同步上游中...',
       syncUpstreamModelsSuccess: '已从上游同步 {count} 个新模型（上游共 {total} 个）',
-      syncUpstreamModelsReplaceSuccess: '已用上游模型覆盖当前配置：保留 {count} 个上游模型，移除 {removed} 个失效模型',
-      syncUpstreamModelsNoChanges: '上游 {count} 个模型已与当前配置一致',
+      syncUpstreamModelsNoChanges: '上游 {count} 个模型均已在白名单中',
       syncUpstreamModelsEmpty: '上游没有返回可同步的模型',
       syncUpstreamModelsFailed: '同步上游模型失败',
       syncUpstreamModelsError: '同步上游模型失败：{message}',
@@ -3984,6 +3969,14 @@ export default {
           codexSessionImportFailed: 'Codex 账号导入失败',
           codexSessionImportSuccess: '导入完成：新增 {created}，更新 {updated}，跳过 {skipped}',
           codexSessionImportPartial: '部分成功：新增 {created}，更新 {updated}，跳过 {skipped}，失败 {failed}',
+          codexPatAuth: 'Codex Personal Access Token',
+          codexPatDesc: '输入 Codex at- Personal Access Token，系统会先调用 OpenAI whoami 校验后再创建账号。',
+          codexPatInputLabel: 'Codex PAT',
+          codexPatPlaceholder: 'at-...',
+          codexPatHint: '这是独立认证模式，不保存 refresh_token，也不会写入 OAuth access_token 过期时间。',
+          codexPatImportAndCreate: '校验并创建 Codex PAT 账号',
+          codexPatEmpty: '请输入 Codex Personal Access Token',
+          codexPatImportFailed: 'Codex PAT 账号创建失败',
           sessionTokenAuth: '手动输入 ST',
           sessionTokenDesc: '输入您已有的 Session Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
           sessionTokenPlaceholder: '粘贴您的 Session Token...\n支持多个，每行一个',
@@ -4001,31 +3994,30 @@ export default {
           pleaseEnterRefreshToken: '请输入 Refresh Token',
           pleaseEnterSessionToken: '请输入 Session Token'
         },
-        // xAI/Grok specific
-        xai: {
-          title: 'xAI 账户授权',
-          followSteps: '请按照以下步骤完成 xAI/Grok 账户授权：',
-          step1GenerateUrl: '生成授权链接',
+        grok: {
+          title: 'Grok 账号授权',
+          followSteps: '请按照以下步骤授权您的 xAI/Grok 账号：',
+          step1GenerateUrl: '生成 xAI 授权链接',
           generateAuthUrl: '生成授权链接',
           step2OpenUrl: '在浏览器中打开链接并完成授权',
-          openUrlDesc: '请在新标签页中打开授权链接，登录您的 xAI 账户并授权。',
-          importantNotice:
-            '重要提示：授权后浏览器地址栏变为 http://127.0.0.1:56121/callback... 或 http://localhost... 时，复制完整回调链接或 code。',
+          openUrlDesc: '在新标签页中打开授权链接，登录 xAI 并授权 API 访问。',
+          importantNotice: '当浏览器跳转到本地 callback URL 后，请复制完整 URL 或 code 参数回填到这里。',
           step3EnterCode: '输入授权链接或 Code',
-          authCodeDesc: '授权完成后，复制回调链接（推荐）或仅复制 code，粘贴到下方即可。',
+          authCodeDesc: '授权完成后，粘贴 callback URL、查询字符串或授权码：',
           authCode: '授权链接或 Code',
-          authCodePlaceholder: '方式1：粘贴完整回调链接\n方式2：仅粘贴 code 参数的值',
-          authCodeHint: '系统会自动从链接中解析 code/state。',
-          failedToGenerateUrl: '生成 xAI 授权链接失败',
-          missingExchangeParams: '缺少 code / session_id / state',
-          failedToExchangeCode: 'xAI 授权码兑换失败',
+          authCodePlaceholder: '粘贴完整 callback URL、?code=... 查询字符串或 code 值',
+          authCodeHint: '支持完整 callback URL、查询字符串或裸 code。',
           refreshTokenAuth: '手动输入 RT',
-          refreshTokenDesc: '输入您已有的 xAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
-          refreshTokenPlaceholder: '粘贴您的 xAI Refresh Token...\n支持多个，每行一个',
+          refreshTokenDesc: '输入已有的 xAI refresh token，支持批量输入（每行一个）。',
+          refreshTokenPlaceholder: '粘贴您的 xAI refresh token...\n支持多个，每行一个',
           validating: '验证中...',
           validateAndCreate: '验证并创建账号',
           pleaseEnterRefreshToken: '请输入 Refresh Token',
-          failedToValidateRT: '验证 xAI Refresh Token 失败'
+          failedToGenerateUrl: '生成 Grok 授权链接失败',
+          missingExchangeParams: '缺少授权码、state 或 OAuth 会话',
+          failedToExchangeCode: 'Grok 授权码兑换失败',
+          failedToValidateRT: '验证 Grok refresh token 失败',
+          oauthOnlyHint: '首版 Grok 支持仅包含 OAuth 订阅的 Responses API 文本/推理转发。'
         },
         // Gemini specific
         gemini: {
@@ -4243,6 +4235,7 @@ export default {
       openaiAccount: 'OpenAI 账号',
       geminiAccount: 'Gemini 账号',
       antigravityAccount: 'Antigravity 账号',
+      grokAccount: 'Grok 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal
@@ -4255,7 +4248,6 @@ export default {
       usingModel: '使用模型：{model}',
       sendingTestMessage: '发送测试消息："hi"',
       sendingImageRequest: '发送生图测试请求...',
-      sendingVideoRequest: '发送视频生成测试请求...',
       response: '响应：',
       startTest: '开始测试',
       retry: '重试',
@@ -4273,15 +4265,6 @@ export default {
       imageTestMode: '模式：生图测试',
       imagePreview: '生成结果：',
       imageReceived: '已收到第 {count} 张测试图片',
-      videoPromptLabel: '视频提示词',
-      videoPromptPlaceholder: '例如：一个蓝色小方块在白色背景上缓慢从左向右移动。',
-      videoPromptDefault: 'A tiny blue square slowly moving left to right on a white background.',
-      videoTestHint: '选择视频模型后，这里会创建视频任务并轮询结果，完成后展示返回视频。',
-      videoTestMode: '模式：视频生成测试',
-      videoPreview: '生成视频：',
-      videoReceived: '已收到第 {count} 个测试视频',
-      videoPlaybackError: '内嵌播放失败，可打开原始视频链接查看。',
-      openVideo: '打开原始视频',
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',
@@ -4949,8 +4932,7 @@ export default {
       errorRate: '错误率：',
       upstreamRate: '上游错误率：',
       latencyDuration: '请求时长',
-      durationLabel: '总耗时（duration_ms）',
-      ttftLabel: 'TTFT（first_token_ms）',
+      ttftLabel: '首 Token 延迟（毫秒）',
       p50: 'p50',
       p90: 'p90',
       p95: 'p95',
@@ -5621,12 +5603,6 @@ export default {
         raw: 'Raw（不聚合）',
         preagg: 'Preagg（聚合）'
       },
-      requestType: {
-        all: '全部请求类型',
-        sync: '同步',
-        stream: '流式',
-        ws_v2: 'WS v2'
-      },
       accountAvailability: {
         available: '可用',
         unavailable: '不可用',
@@ -5651,8 +5627,8 @@ export default {
         tokens: '当前时间窗口内处理的总Token数量。',
         sla: '服务等级协议达成率，排除业务限制（如余额不足、配额超限）的成功请求占比。',
         errors: '错误统计，包括总错误数、错误率和上游错误率。',
-        latency: '基于 duration_ms 的请求总耗时统计，包括 p50、p90、p95、p99 等百分位数。',
-        ttft: '基于 first_token_ms 的首 Token 延迟，衡量收到第一个 Token 之前的等待时间。',
+        latency: '请求时长统计，包括 p50、p90、p95、p99 等百分位数。',
+        ttft: '首 Token 延迟（Time To First Token），衡量流式响应的首 Token 返回速度。',
         health: '系统健康评分（0-100），综合考虑 SLA、错误率和资源使用情况。'
       },
       charts: {
@@ -6008,9 +5984,41 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: '用于规避 OpenAI 上游 Cloudflare 对浏览器 UA 的访问质询。仅在检测到客户端 User-Agent 为浏览器（Mozilla/...）时生效，其他客户端原样透传。留空使用内置默认值。',
-        openaiAllowClaudeCodeCodexPlugin: '允许在 Claude Code 中使用 Codex 插件',
-        openaiAllowClaudeCodeCodexPluginDesc:
-          '全局开关，仅对已开启「仅允许 Codex 官方客户端」的 OpenAI OAuth 账号生效。开启后，所有此类账号都额外放行通过 Claude Code 的 Codex 插件发起的请求（精确匹配 originator=Claude Code），无需逐账号配置；上游请求仍保持透传。',
+        codexHardeningTitle: 'Codex 设置',
+        codexClientRestrictionTitle: 'Codex 客户端限制',
+        codexHardeningDesc:
+          '仅对已开启「仅允许 Codex 官方客户端」的 OpenAI OAuth 账号生效（全局）。在 User-Agent/Originator 之外，用版本区间、引擎指纹门与黑/白名单巩固判定。',
+        minCodexVersion: '最低 Codex 版本',
+        minCodexVersionPlaceholder: '例如 0.142.0',
+        maxCodexVersion: '最高 Codex 版本',
+        maxCodexVersionPlaceholder: '例如 0.200.0',
+        codexVersionHint:
+          '仅对官方客户端生效，校验其版本是否落在 [最低, 最高] 区间。留空表示该侧不限制。',
+        codexFingerprintSignals: 'Codex 引擎指纹信号',
+        codexFingerprintSignalsDesc:
+          '定义引擎指纹信号：勾「必须」的信号需全部命中（AND），每条 / 分隔的变体取或（OR）；一条都不勾即不校验。默认只勾 x-codex- 前缀。类型：头精确 / 头前缀 / body 路径。',
+        codexFpTypeHeaderExact: '头精确',
+        codexFpTypeHeaderPrefix: '头前缀',
+        codexFpTypeBodyPath: 'body 路径',
+        codexFpMatchPlaceholder: '匹配，变体用 / 分隔（如 session-id / session_id 或 x-codex-）',
+        codexFpRequired: '必须',
+        codexFingerprintNoRequiredWarn: '未勾选任何「必须」信号——引擎指纹门当前不生效，等于放行所有通过身份/版本的候选。如需启用校验，请至少勾选一条信号。',
+        codexAllowAppServer: 'Codex app-server',
+        codexAllowAppServerDesc:
+          '放行内嵌 Codex 引擎、经 app-server 协议接入的第三方客户端（如 Claude Code 的 codex 插件）。默认关闭；开启后此类客户端通过引擎指纹门（下方信号列表）即放行，关闭则仅放行官方客户端与白名单。',
+        codexBlacklist: 'User-Agent/Originator 黑名单',
+        codexBlacklistDesc:
+          '命中任一字段即拒，优先于一切放行。originator 精确匹配，User-Agent 为包含匹配（多个用逗号分隔）。',
+        codexWhitelist: 'User-Agent/Originator 白名单',
+        codexWhitelistDesc:
+          '放行官方集之外的客户端：需 originator 精确，且每个 User-Agent 标记都命中。默认仍需过引擎指纹门，勾「跳过引擎指纹」可免。',
+        codexWhitelistSkipFingerprint: '跳过引擎指纹',
+        codexWhitelistSkipFingerprintTooltip:
+          '风险：勾选后该条仅凭 originator + User-Agent（均可伪造）放行，不再要求引擎指纹兜底。仅用于确属可信、但本身不发 codex 引擎指纹的第三方客户端。',
+        codexOriginatorPlaceholder: 'originator（精确，如 opencode）',
+        codexUaContainsPlaceholder: 'User-Agent 包含标记，逗号分隔（如 opencode/）',
+        codexAddRow: '添加一条',
+        codexRemoveRow: '删除',
       },
       webSearchEmulation: {
         title: 'Web Search 模拟',

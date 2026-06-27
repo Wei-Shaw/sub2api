@@ -84,7 +84,7 @@ func provideCleanup(
 	openaiOAuth *service.OpenAIOAuthService,
 	geminiOAuth *service.GeminiOAuthService,
 	antigravityOAuth *service.AntigravityOAuthService,
-	xaiOAuth *service.XAIOAuthService,
+	grokOAuth *service.GrokOAuthService,
 	openAIGateway *service.OpenAIGatewayService,
 	scheduledTestRunner *service.ScheduledTestRunnerService,
 	backupSvc *service.BackupService,
@@ -213,8 +213,10 @@ func provideCleanup(
 				antigravityOAuth.Stop()
 				return nil
 			}},
-			{"XAIOAuthService", func() error {
-				xaiOAuth.Stop()
+			{"GrokOAuthService", func() error {
+				if grokOAuth != nil {
+					grokOAuth.Stop()
+				}
 				return nil
 			}},
 			{"OpenAIWSPool", func() error {

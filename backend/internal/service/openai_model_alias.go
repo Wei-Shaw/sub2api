@@ -115,6 +115,9 @@ func appendUsageBillingModelCandidate(candidates []string, seen map[string]struc
 	if normalized := normalizeKnownOpenAICodexModel(trimmed); normalized != "" {
 		add(normalized)
 	}
+	if normalized := normalizeKnownXAIGrokModel(trimmed); normalized != "" {
+		add(normalized)
+	}
 	return candidates
 }
 

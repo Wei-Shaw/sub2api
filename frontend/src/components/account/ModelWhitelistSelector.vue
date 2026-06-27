@@ -136,7 +136,7 @@ import { accountsAPI } from '@/api/admin/accounts'
 import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { allModels, getModelsByPlatform, replaceExactModelsWithUpstream } from '@/composables/useModelWhitelist'
+import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
 
 const { t } = useI18n()
 
@@ -181,7 +181,7 @@ const normalizedPlatforms = computed(() => {
   )
 })
 
-const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'xai', 'antigravity'])
+const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'antigravity', 'grok'])
 const canSyncUpstream = computed(() => {
   if (props.accountId) {
     if (normalizedPlatforms.value.length === 0) return true
@@ -275,23 +275,26 @@ const syncUpstreamModels = async () => {
       return
     }
 
-    const replacement = replaceExactModelsWithUpstream(props.modelValue, result.models)
-    if (replacement.upstreamCount === 0) {
+    const upstreamModels = result.models.map(model => model.trim()).filter(Boolean)
+    if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
       return
     }
 
-    emit('update:modelValue', replacement.models)
-    if (replacement.changed) {
-      appStore.showSuccess(
-        t('admin.accounts.syncUpstreamModelsReplaceSuccess', {
-          count: replacement.upstreamCount,
-          removed: replacement.removedCount,
-          preserved: replacement.preservedWildcardCount
-        })
-      )
+    const newModels = [...props.modelValue]
+    let addedCount = 0
+    for (const model of upstreamModels) {
+      if (!newModels.includes(model)) {
+        newModels.push(model)
+        addedCount += 1
+      }
+    }
+
+    emit('update:modelValue', newModels)
+    if (addedCount > 0) {
+      appStore.showSuccess(t('admin.accounts.syncUpstreamModelsSuccess', { count: addedCount, total: upstreamModels.length }))
     } else {
-      appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: replacement.upstreamCount }))
+      appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length }))
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')

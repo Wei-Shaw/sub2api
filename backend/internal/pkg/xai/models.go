@@ -61,6 +61,7 @@ type ModelV2ListResponse struct {
 
 var DefaultModels = []Model{
 	{ID: "grok-build", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Build", Name: "Grok Build"},
+	{ID: "grok-build-0.1", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Build 0.1", Name: "Grok Build 0.1"},
 	{ID: "grok-composer-2.5-fast", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Composer 2.5", Name: "Composer 2.5"},
 	{ID: "grok-4.3", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.3", Name: "Grok 4.3"},
 	{ID: "grok-4.3-fast", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.3 Fast", Name: "Grok 4.3 Fast"},
@@ -70,6 +71,9 @@ var DefaultModels = []Model{
 	{ID: "grok-4.20-fast", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.20 Fast", Name: "Grok 4.20 Fast"},
 	{ID: "grok-4.20-mini", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.20 Mini", Name: "Grok 4.20 Mini"},
 	{ID: "grok-4.20-mini-fast", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.20 Mini Fast", Name: "Grok 4.20 Mini Fast"},
+	{ID: "grok-4.20-0309-reasoning", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.20 Reasoning", Name: "Grok 4.20 Reasoning"},
+	{ID: "grok-4.20-0309-non-reasoning", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.20 Non Reasoning", Name: "Grok 4.20 Non Reasoning"},
+	{ID: "grok-4.20-multi-agent-0309", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 4.20 Multi Agent", Name: "Grok 4.20 Multi Agent"},
 	{ID: "grok-code-fast-1", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Code Fast 1", Name: "Grok Code Fast 1"},
 	{ID: "grok-3-mini", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok 3 Mini", Name: "Grok 3 Mini"},
 	{ID: "grok-imagine-image", Object: "model", OwnedBy: "xai", Type: "model", DisplayName: "Grok Imagine Image", Name: "Grok Imagine Image"},
@@ -121,6 +125,19 @@ func DefaultModelIDs() []string {
 		out = append(out, model.ID)
 	}
 	return out
+}
+
+func DefaultModelMapping() map[string]string {
+	mapping := make(map[string]string, len(DefaultModels)+5)
+	for _, model := range DefaultModels {
+		mapping[model.ID] = model.ID
+	}
+	mapping["grok"] = "grok-4.3"
+	mapping["grok-latest"] = "grok-4.3"
+	mapping["grok-build"] = "grok-build-0.1"
+	mapping["grok-4.20-reasoning"] = "grok-4.20-0309-reasoning"
+	mapping["grok-4.20-non-reasoning"] = "grok-4.20-0309-non-reasoning"
+	return mapping
 }
 
 func ParseModelList(body []byte) ([]Model, error) {

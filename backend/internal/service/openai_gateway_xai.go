@@ -189,7 +189,11 @@ func (s *OpenAIGatewayService) buildXAIUpstreamRequest(
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, xai.BuildResponsesURL(validatedURL), bytes.NewReader(body))
+	targetURL, err := xai.BuildResponsesURL(validatedURL)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

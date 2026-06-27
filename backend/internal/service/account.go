@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 type Account struct {
@@ -78,9 +79,24 @@ const (
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
 
 const (
+	OpenAIAuthModePersonalAccessToken = "personalAccessToken"
+	openAIAuthModeCredentialKey       = "auth_mode"
+	openAIAuthModeLegacyCredentialKey = "openai_auth_mode"
+)
+
+const (
 	AccountExtraCloudModelsKey            = "cloud_models"
 	AccountExtraCloudModelsRefreshedAtKey = "cloud_models_refreshed_at"
 )
+
+func isOpenAIPersonalAccessTokenAuthMode(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "personalaccesstoken", "personal_access_token":
+		return true
+	default:
+		return false
+	}
+}
 
 type TempUnschedulableRule struct {
 	ErrorCode       int      `json:"error_code"`
@@ -178,6 +194,30 @@ func (a *Account) IsPrivacySet() bool {
 
 func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
+}
+
+func (a *Account) IsGrok() bool {
+	return a.Platform == PlatformGrok
+}
+
+func (a *Account) IsGrokOAuth() bool {
+	return a.IsGrok() && a.Type == AccountTypeOAuth
+}
+
+func (a *Account) IsXAI() bool {
+	return a.Platform == PlatformXAI
+}
+
+func (a *Account) IsXAIOAuth() bool {
+	return a.IsXAI() && a.Type == AccountTypeOAuth
+}
+
+func (a *Account) IsXAIApiKey() bool {
+	return a.IsXAI() && a.Type == AccountTypeAPIKey
+}
+
+func (a *Account) IsOpenAICompatible() bool {
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformXAI || a.Platform == PlatformGrok)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -360,7 +400,23 @@ func parseTempUnschedStrings(value any) []string {
 	case []any:
 		raw = make([]string, 0, len(v))
 		for _, item := range v {
-			if s, ok := item.(string); ok {
+			switch item := item.(type) {
+			case string:
+				raw = append(raw, item)
+			case map[string]any:
+				if s, ok := item["id"].(string); ok {
+					raw = append(raw, s)
+				}
+			case map[string]string:
+				if s := item["id"]; s != "" {
+					raw = append(raw, s)
+				}
+			}
+		}
+	case []map[string]any:
+		raw = make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item["id"].(string); ok {
 				raw = append(raw, s)
 			}
 		}
@@ -498,6 +554,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		if a.Platform == domain.PlatformAntigravity {
 			return domain.DefaultAntigravityModelMapping
 		}
+		if a.Platform == domain.PlatformGrok {
+			return xai.DefaultModelMapping()
+		}
 		// Bedrock 默认映射由 forwardBedrock 统一处理（需配合 region prefix 调整）
 		return nil
 	}
@@ -505,6 +564,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		// Antigravity 平台使用默认映射
 		if a.Platform == domain.PlatformAntigravity {
 			return domain.DefaultAntigravityModelMapping
+		}
+		if a.Platform == domain.PlatformGrok {
+			return xai.DefaultModelMapping()
 		}
 		return nil
 	}
@@ -529,6 +591,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	// Antigravity 平台使用默认映射
 	if a.Platform == domain.PlatformAntigravity {
 		return domain.DefaultAntigravityModelMapping
+	}
+	if a.Platform == domain.PlatformGrok {
+		return xai.DefaultModelMapping()
 	}
 	return nil
 }
@@ -627,9 +692,6 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 // IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）
 // 如果未配置 mapping，返回 true（允许所有模型）
 func (a *Account) IsModelSupported(requestedModel string) bool {
-	if isXAIGrokCLIModel(a.Platform, requestedModel) {
-		return true
-	}
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
 		return true // 无映射 = 允许所有
@@ -1060,14 +1122,6 @@ func (a *Account) IsOpenAI() bool {
 	return a.Platform == PlatformOpenAI
 }
 
-func (a *Account) IsXAI() bool {
-	return a.Platform == PlatformXAI
-}
-
-func (a *Account) IsOpenAICompatibleGateway() bool {
-	return a.Platform == PlatformOpenAI || a.Platform == PlatformXAI
-}
-
 func (a *Account) IsAnthropic() bool {
 	return a.Platform == PlatformAnthropic
 }
@@ -1076,16 +1130,16 @@ func (a *Account) IsOpenAIOAuth() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeOAuth
 }
 
+func (a *Account) IsOpenAIPersonalAccessToken() bool {
+	if !a.IsOpenAIOAuth() {
+		return false
+	}
+	return isOpenAIPersonalAccessTokenAuthMode(a.GetCredential(openAIAuthModeCredentialKey)) ||
+		isOpenAIPersonalAccessTokenAuthMode(a.GetCredential(openAIAuthModeLegacyCredentialKey))
+}
+
 func (a *Account) IsOpenAIApiKey() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeAPIKey
-}
-
-func (a *Account) IsXAIOAuth() bool {
-	return a.IsXAI() && a.Type == AccountTypeOAuth
-}
-
-func (a *Account) IsXAIApiKey() bool {
-	return a.IsXAI() && a.Type == AccountTypeAPIKey
 }
 
 func (a *Account) GetOpenAIBaseURL() string {
@@ -1113,6 +1167,167 @@ func (a *Account) GetOpenAIRefreshToken() string {
 		return ""
 	}
 	return a.GetCredential("refresh_token")
+}
+
+func (a *Account) GetGrokBaseURL() string {
+	if !a.IsGrok() {
+		return ""
+	}
+	baseURL := a.GetCredential("base_url")
+	if baseURL != "" {
+		return baseURL
+	}
+	return xai.DefaultBaseURL
+}
+
+func (a *Account) GetGrokAccessToken() string {
+	if !a.IsGrok() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+func (a *Account) GetGrokRefreshToken() string {
+	if !a.IsGrokOAuth() {
+		return ""
+	}
+	return a.GetCredential("refresh_token")
+}
+
+func (a *Account) GetXAIBaseURL() string {
+	if !a.IsXAI() {
+		return ""
+	}
+	baseURL := a.GetCredential("base_url")
+	if baseURL != "" {
+		return baseURL
+	}
+	return xai.DefaultAPIBaseURL
+}
+
+func (a *Account) GetXAIAccessToken() string {
+	if !a.IsXAI() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+func (a *Account) GetXAIRefreshToken() string {
+	if !a.IsXAIOAuth() {
+		return ""
+	}
+	return a.GetCredential("refresh_token")
+}
+
+func (a *Account) GetXAIApiKey() string {
+	if !a.IsXAIApiKey() {
+		return ""
+	}
+	return a.GetCredential("api_key")
+}
+
+func (a *Account) GetCloudModelIDs() []string {
+	if a == nil || a.Extra == nil {
+		return nil
+	}
+	return normalizeAccountModelIDs(a.Extra[AccountExtraCloudModelsKey])
+}
+
+func (a *Account) ExtraWithCloudModels(modelIDs []string, refreshedAt time.Time) map[string]any {
+	extraSize := 2
+	if a != nil {
+		extraSize += len(a.Extra)
+	}
+	extra := make(map[string]any, extraSize)
+	if a != nil && a.Extra != nil {
+		for key, value := range a.Extra {
+			extra[key] = value
+		}
+	}
+	extra[AccountExtraCloudModelsKey] = mergeAccountCloudModelIDs(a.GetCloudModelIDs(), modelIDs)
+	extra[AccountExtraCloudModelsRefreshedAtKey] = refreshedAt.UTC().Format(time.RFC3339)
+	return extra
+}
+
+func mergeAccountCloudModelIDs(oldModelIDs []string, newModelIDs []string) []string {
+	newModelIDs = normalizeAccountModelIDs(newModelIDs)
+	if len(oldModelIDs) == 0 {
+		return newModelIDs
+	}
+
+	incoming := make(map[string]struct{}, len(newModelIDs))
+	for _, model := range newModelIDs {
+		incoming[model] = struct{}{}
+	}
+
+	seen := make(map[string]struct{}, len(newModelIDs))
+	models := make([]string, 0, len(newModelIDs))
+	for _, model := range oldModelIDs {
+		if _, ok := incoming[model]; !ok {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+	}
+	for _, model := range newModelIDs {
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+	}
+	return models
+}
+
+func normalizeAccountModelIDs(value any) []string {
+	var raw []string
+	switch v := value.(type) {
+	case []string:
+		raw = v
+	case []any:
+		raw = make([]string, 0, len(v))
+		for _, item := range v {
+			switch item := item.(type) {
+			case string:
+				raw = append(raw, item)
+			case map[string]any:
+				if s, ok := item["id"].(string); ok {
+					raw = append(raw, s)
+				}
+			case map[string]string:
+				if s := item["id"]; s != "" {
+					raw = append(raw, s)
+				}
+			}
+		}
+	case []map[string]any:
+		raw = make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item["id"].(string); ok {
+				raw = append(raw, s)
+			}
+		}
+	default:
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(raw))
+	models := make([]string, 0, len(raw))
+	for _, model := range raw {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+	}
+	return models
 }
 
 func (a *Account) GetOpenAIIDToken() string {
@@ -1143,6 +1358,34 @@ func (a *Account) GetChatGPTAccountID() string {
 	return a.GetCredential("chatgpt_account_id")
 }
 
+func (a *Account) IsChatGPTAccountFedRAMP() bool {
+	if !a.IsOpenAIOAuth() || a.Credentials == nil {
+		return false
+	}
+	v, ok := a.Credentials["chatgpt_account_is_fedramp"]
+	if !ok || v == nil {
+		return false
+	}
+	switch value := v.(type) {
+	case bool:
+		return value
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+		return err == nil && parsed
+	case json.Number:
+		parsed, err := strconv.ParseBool(value.String())
+		return err == nil && parsed
+	case float64:
+		return value != 0
+	case int:
+		return value != 0
+	case int64:
+		return value != 0
+	default:
+		return false
+	}
+}
+
 func (a *Account) GetOpenAIDeviceID() string {
 	if !a.IsOpenAIOAuth() {
 		return ""
@@ -1157,105 +1400,6 @@ func (a *Account) GetOpenAISessionID() string {
 	return strings.TrimSpace(a.GetExtraString("openai_session_id"))
 }
 
-func (a *Account) GetXAIBaseURL() string {
-	if !a.IsXAI() {
-		return ""
-	}
-	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
-	if baseURL == "" {
-		return "https://api.x.ai/v1"
-	}
-	return strings.TrimRight(baseURL, "/")
-}
-
-func (a *Account) GetXAIAccessToken() string {
-	if !a.IsXAI() {
-		return ""
-	}
-	return a.GetCredential("access_token")
-}
-
-func (a *Account) GetXAIRefreshToken() string {
-	if !a.IsXAIOAuth() {
-		return ""
-	}
-	return a.GetCredential("refresh_token")
-}
-
-func (a *Account) GetXAIApiKey() string {
-	if !a.IsXAIApiKey() {
-		return ""
-	}
-	apiKey := a.GetCredential("api_key")
-	if apiKey == "" {
-		apiKey = a.GetCredential("access_token")
-	}
-	return apiKey
-}
-
-func (a *Account) GetCloudModelIDs() []string {
-	if a == nil || a.Extra == nil {
-		return nil
-	}
-	return normalizeAccountModelIDs(a.Extra[AccountExtraCloudModelsKey])
-}
-
-func (a *Account) ExtraWithCloudModels(modelIDs []string, refreshedAt time.Time) map[string]any {
-	extraSize := 2
-	if a != nil {
-		extraSize += len(a.Extra)
-	}
-	extra := make(map[string]any, extraSize)
-	if a != nil && a.Extra != nil {
-		for key, value := range a.Extra {
-			extra[key] = value
-		}
-	}
-	extra[AccountExtraCloudModelsKey] = normalizeAccountModelIDs(modelIDs)
-	extra[AccountExtraCloudModelsRefreshedAtKey] = refreshedAt.UTC().Format(time.RFC3339)
-	return extra
-}
-
-func normalizeAccountModelIDs(value any) []string {
-	var raw []string
-	switch v := value.(type) {
-	case []string:
-		raw = v
-	case []any:
-		raw = make([]string, 0, len(v))
-		for _, item := range v {
-			switch item := item.(type) {
-			case string:
-				raw = append(raw, item)
-			case map[string]any:
-				if s, ok := item["id"].(string); ok {
-					raw = append(raw, s)
-				}
-			case map[string]string:
-				raw = append(raw, item["id"])
-			}
-		}
-	default:
-		return nil
-	}
-
-	seen := make(map[string]struct{}, len(raw))
-	modelIDs := make([]string, 0, len(raw))
-	for _, item := range raw {
-		modelID := strings.TrimSpace(item)
-		if modelID == "" {
-			continue
-		}
-		if _, exists := seen[modelID]; exists {
-			continue
-		}
-		seen[modelID] = struct{}{}
-		modelIDs = append(modelIDs, modelID)
-	}
-	sort.Strings(modelIDs)
-	return modelIDs
-}
-
 func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapability) bool {
 	if a == nil {
 		return false
@@ -1263,18 +1407,14 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	if capability == "" {
 		return true
 	}
-	if a.IsXAI() {
-		if capability != OpenAIEndpointCapabilityChatCompletions {
-			return false
-		}
-		configured, found := a.openAIEndpointCapabilitySet()
-		if !found {
-			return true
-		}
-		return configured[string(capability)]
-	}
-	if !a.IsOpenAI() {
+	if !a.IsOpenAICompatible() {
 		return false
+	}
+	if a.IsGrok() {
+		return capability == OpenAIEndpointCapabilityChatCompletions
+	}
+	if a.IsXAI() {
+		return capability == OpenAIEndpointCapabilityChatCompletions
 	}
 	switch capability {
 	case OpenAIEndpointCapabilityChatCompletions:
@@ -1344,7 +1484,7 @@ func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapabilit
 	if capability == "" {
 		return true
 	}
-	if !a.IsOpenAI() && a.Platform != PlatformXAI {
+	if !a.IsOpenAI() && !a.IsXAI() {
 		return false
 	}
 	switch capability {
@@ -1663,36 +1803,15 @@ func (a *Account) IsCodexCLIOnlyEnabled() bool {
 	return ok && enabled
 }
 
-// GetCodexCLIOnlyAllowedClients 返回 codex_cli_only 之上额外放行的命名客户端预设 ID 列表。
-// 仅 OpenAI OAuth 账号生效；缺失或类型不符时返回空。预设 ID 的具体匹配规则由
-// openai 包的 registry 固化，配置只能引用预设键、不能自定义规则。
-func (a *Account) GetCodexCLIOnlyAllowedClients() []string {
-	if a == nil || !a.IsOpenAIOAuth() || a.Extra == nil {
-		return nil
+// IsCodexCLIOnlyAppServerAllowed 返回 codex_cli_only 账号是否额外放行 Codex app-server
+// 第三方客户端（运行时与全局 app_server 开关 OR）。字段：accounts.extra.codex_cli_only_allow_app_server。
+// 仅在 codex_cli_only 已启用时有意义；字段缺失或类型不符按 false（不放行）处理。
+func (a *Account) IsCodexCLIOnlyAppServerAllowed() bool {
+	if !a.IsCodexCLIOnlyEnabled() {
+		return false
 	}
-	raw, ok := a.Extra["codex_cli_only_allowed_clients"]
-	if !ok || raw == nil {
-		return nil
-	}
-	switch v := raw.(type) {
-	case []string:
-		result := make([]string, 0, len(v))
-		for _, s := range v {
-			if strings.TrimSpace(s) != "" {
-				result = append(result, s)
-			}
-		}
-		return result
-	case []any:
-		result := make([]string, 0, len(v))
-		for _, item := range v {
-			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
-				result = append(result, s)
-			}
-		}
-		return result
-	}
-	return nil
+	v, ok := a.Extra["codex_cli_only_allow_app_server"].(bool)
+	return ok && v
 }
 
 // WindowCostSchedulability 窗口费用调度状态

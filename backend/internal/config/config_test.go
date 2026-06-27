@@ -1158,6 +1158,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "billing.circuit_breaker.half_open_requests",
 		},
 		{
+			name:    "billing minimum balance reserve",
+			mutate:  func(c *Config) { c.Billing.MinimumBalanceReserve = -0.01 },
+			wantErr: "billing.minimum_balance_reserve",
+		},
+		{
 			name:    "database max open conns",
 			mutate:  func(c *Config) { c.Database.MaxOpenConns = 0 },
 			wantErr: "database.max_open_conns",

@@ -766,36 +766,21 @@ export default {
         'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
       copy: 'Copy',
       copied: 'Copied',
-      download: 'Download',
       note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
       noGroupTitle: 'Please assign a group first',
       noGroupDescription: 'This API key has not been assigned to a group. Please click the group column in the key list to assign one before viewing the configuration.',
       openai: {
         description: 'Add the following configuration files to your Codex CLI config directory.',
         configTomlHint: 'Make sure the following content is at the beginning of the config.toml file',
-        installScriptHintUnix: 'Download and run bash install-codex-ws.sh in terminal. The script creates ~/.codex and backs up existing config.toml/auth.json.',
-        installScriptHintWindows: 'Download and run powershell -ExecutionPolicy Bypass -File .\\install-codex-ws.ps1 in PowerShell. The script creates %userprofile%\\.codex and backs up existing config.toml/auth.json.',
         note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
         noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
       },
       cliTabs: {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
-        grokCli: 'Grok CLI',
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         opencode: 'OpenCode',
-      },
-      xai: {
-        description:
-          'Use environment variables for a quick setup, or edit ~/.grok/config.toml for a persistent setup. Pick one approach.',
-        modelComment: 'Defaults to grok-build; you can also use grok-composer-2.5-fast',
-        logoutHint: 'If you previously ran grok login, run grok logout first or Grok will prefer the official OAuth session over your sub2api key.',
-        note: 'Method 1 (env vars): paste into your terminal, or add to ~/.bashrc, ~/.zshrc, or ~/.config/fish/config.fish. Method 2 (config file): run mkdir -p ~/.grok, create or edit ~/.grok/config.toml with the content below, save, reopen your terminal, then run grok.',
-        noteWindows:
-          'Method 1 (env vars): paste into CMD or PowerShell. Method 2 (config file): press Win+R, enter %userprofile%\\.grok, create the folder if needed, edit config.toml with the content below, save, reopen your terminal, then run grok.',
-        configTomlHint: 'Method 2: save the following to ~/.grok/config.toml (create the file if it does not exist). Run grok logout, then start grok again.',
-        envHint: 'Method 1: run in your terminal, or add to your shell profile',
       },
       antigravity: {
         description: 'Configure API access for Antigravity group. Select the configuration method based on your client.',
@@ -1795,19 +1780,6 @@ export default {
       errors: {
         loadFailed: 'Failed to load affiliate records'
       },
-      bind: {
-        action: 'Manual Bind',
-        title: 'Manually Bind Affiliate Users',
-        inviterUserId: 'Inviter User ID',
-        inviteeUserId: 'Invitee User ID',
-        inviterPlaceholder: 'Parent user ID',
-        inviteePlaceholder: 'Child user ID',
-        hint: 'Only unbound invitees can be assigned an inviter. Existing relationships are not overwritten.',
-        submit: 'Bind Users',
-        success: 'Affiliate relationship bound',
-        invalidUserId: 'Enter valid user IDs',
-        sameUser: 'Inviter and invitee cannot be the same user'
-      },
       records: {
         search: 'Search',
         searchPlaceholder: 'Email, username, user ID, or order number',
@@ -2246,8 +2218,8 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        xai: 'xAI',
         antigravity: 'Antigravity',
+        grok: 'Grok',
       },
       deleteConfirm:
         "Are you sure you want to delete '{name}'? All associated API keys will no longer belong to any group.",
@@ -3155,7 +3127,6 @@ export default {
         claude: 'Claude',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        xai: 'xAI',
         antigravity: 'Antigravity',
       },
       types: {
@@ -3165,10 +3136,15 @@ export default {
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
+        grokOauth: 'Grok OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
       },
+      antigravityProjectIdLabel: 'GCP Project ID (optional)',
+      antigravityProjectIdPlaceholder: 'your-gcp-project-id',
+      antigravityProjectIdHint:
+        'Antigravity standard-tier accounts that do not receive an automatic project_id need a user-owned GCP project.',
       status: {
         active: 'Active',
         inactive: 'Inactive',
@@ -3425,7 +3401,6 @@ export default {
       vertexSaJsonInvalid: 'Service Account JSON format is invalid',
       vertexSaJsonRequired: 'Please upload a Service Account JSON',
       oauthSetupToken: 'OAuth / Setup Token',
-      xaiAccount: 'xAI Account',
       addMethod: 'Add Method',
       setupTokenLongLived: 'Setup Token (Long-lived)',
       baseUrl: 'Base URL',
@@ -3486,9 +3461,9 @@ export default {
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
-        codexCLIOnlyAllowClaudeCode: "Also allow Claude Code's Codex plugin",
-        codexCLIOnlyAllowClaudeCodeDesc:
-          'Only takes effect when the switch above is on. Additionally allows requests from the Claude Code Codex plugin (exact match on originator=Claude Code) without weakening blocking of other non-official clients.',
+        codexCLIOnlyAppServer: 'Allow Codex app-server clients',
+        codexCLIOnlyAppServerDesc:
+          "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
         codexImageGenerationBridge: 'Codex image-generation bridge',
         codexImageGenerationBridgeDesc:
           'Account policy takes precedence over channel and global settings. Only controls whether Codex requests through the /responses text endpoint receive the image_generation tool; standalone image-generation endpoints are unaffected.',
@@ -3520,6 +3495,10 @@ export default {
         testModeCompact: 'Compact probe',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
+      grok: {
+        baseUrlHint: 'Grok OAuth accounts forward to the official xAI API base URL.',
+        apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.'
+      },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
         apiKeyPassthroughDesc:
@@ -3530,10 +3509,6 @@ export default {
         webSearchDefault: 'Default',
         webSearchEnabled: 'Enabled',
         webSearchDisabled: 'Disabled',
-      },
-      xai: {
-        baseUrlHint: 'Default xAI API endpoint. Keep https://api.x.ai/v1 unless you use a compatible gateway.',
-        apiKeyHint: 'Use an xAI API key or choose OAuth for Grok CLI credentials.'
       },
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
@@ -3555,8 +3530,7 @@ export default {
       syncUpstreamModels: 'Sync upstream supported models',
       syncUpstreamModelsLoading: 'Syncing upstream...',
       syncUpstreamModelsSuccess: 'Synced {count} new model(s) from upstream ({total} upstream total)',
-      syncUpstreamModelsReplaceSuccess: 'Replaced the current config with upstream models: kept {count} upstream model(s), removed {removed} stale model(s)',
-      syncUpstreamModelsNoChanges: 'The current config already matches {count} upstream model(s)',
+      syncUpstreamModelsNoChanges: 'All {count} upstream model(s) are already in the whitelist',
       syncUpstreamModelsEmpty: 'Upstream returned no models to sync',
       syncUpstreamModelsFailed: 'Failed to sync upstream models',
       syncUpstreamModelsError: 'Failed to sync upstream models: {message}',
@@ -3838,6 +3812,14 @@ export default {
           codexSessionImportFailed: 'Failed to import Codex account',
           codexSessionImportSuccess: 'Import completed: created {created}, updated {updated}, skipped {skipped}',
           codexSessionImportPartial: 'Partial success: created {created}, updated {updated}, skipped {skipped}, failed {failed}',
+          codexPatAuth: 'Codex Personal Access Token',
+          codexPatDesc: 'Enter a Codex at- personal access token. The system validates it with OpenAI whoami before creating the account.',
+          codexPatInputLabel: 'Codex PAT',
+          codexPatPlaceholder: 'at-...',
+          codexPatHint: 'This is a separate auth mode. It does not save refresh_token or write an OAuth access_token expiration.',
+          codexPatImportAndCreate: 'Validate & Create Codex PAT Account',
+          codexPatEmpty: 'Please enter a Codex personal access token',
+          codexPatImportFailed: 'Failed to create Codex PAT account',
           sessionTokenAuth: 'Manual ST Input',
           sessionTokenDesc: 'Enter your existing Session Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
           sessionTokenPlaceholder: 'Paste your Session Token...\nSupports multiple, one per line',
@@ -3855,35 +3837,30 @@ export default {
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
           pleaseEnterSessionToken: 'Please enter Session Token'
         },
-        // xAI/Grok specific
-        xai: {
-          title: 'xAI Account Authorization',
-          followSteps: 'Follow these steps to complete xAI/Grok account authorization:',
-          step1GenerateUrl: 'Generate the authorization URL',
+        grok: {
+          title: 'Grok Account Authorization',
+          followSteps: 'Follow these steps to authorize your xAI/Grok account:',
+          step1GenerateUrl: 'Generate the xAI authorization URL',
           generateAuthUrl: 'Generate Auth URL',
           step2OpenUrl: 'Open the URL in your browser and complete authorization',
-          openUrlDesc:
-            'Open the authorization URL in a new tab, log in to your xAI account, and authorize access.',
-          importantNotice:
-            'Important: After authorization, copy the full callback URL or code when the browser address bar changes to http://127.0.0.1:56121/callback... or http://localhost...',
+          openUrlDesc: 'Open the authorization URL in a new tab, sign in to xAI, and authorize API access.',
+          importantNotice: 'When the browser reaches the local callback URL, copy the full URL or the code query parameter back here.',
           step3EnterCode: 'Enter Authorization URL or Code',
-          authCodeDesc:
-            'After authorization, copy the callback URL (recommended) or only the code and paste it below.',
+          authCodeDesc: 'After authorization, paste the callback URL, query string, or authorization code:',
           authCode: 'Authorization URL or Code',
-          authCodePlaceholder:
-            'Option 1: Paste the complete callback URL\nOption 2: Paste only the code parameter value',
-          authCodeHint: 'The system will auto-extract code/state from the URL.',
-          failedToGenerateUrl: 'Failed to generate xAI auth URL',
-          missingExchangeParams: 'Missing code, session ID, or state',
-          failedToExchangeCode: 'Failed to exchange xAI authorization code',
-          refreshTokenAuth: 'Manual RT',
-          refreshTokenDesc:
-            'Enter your existing xAI Refresh Token. Supports batch input (one per line). The system will automatically validate and create accounts.',
-          refreshTokenPlaceholder: 'Paste your xAI Refresh Token...\nSupports multiple tokens, one per line',
+          authCodePlaceholder: 'Paste the full callback URL, ?code=... query string, or code value',
+          authCodeHint: 'Full callback URLs, query strings, and bare codes are accepted.',
+          refreshTokenAuth: 'Manual RT Input',
+          refreshTokenDesc: 'Enter existing xAI refresh token(s). Supports batch input, one per line.',
+          refreshTokenPlaceholder: 'Paste your xAI refresh token...\nSupports multiple, one per line',
           validating: 'Validating...',
-          validateAndCreate: 'Validate & Create',
+          validateAndCreate: 'Validate & Create Account',
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
-          failedToValidateRT: 'Failed to validate xAI Refresh Token'
+          failedToGenerateUrl: 'Failed to generate Grok auth URL',
+          missingExchangeParams: 'Missing authorization code, state, or OAuth session',
+          failedToExchangeCode: 'Failed to exchange Grok authorization code',
+          failedToValidateRT: 'Failed to validate Grok refresh token',
+          oauthOnlyHint: 'Initial Grok support is OAuth subscription-backed Responses API text and reasoning traffic only.'
         },
         // Gemini specific
 	        gemini: {
@@ -4106,6 +4083,7 @@ export default {
       openaiAccount: 'OpenAI Account',
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
+      grokAccount: 'Grok Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
@@ -4119,7 +4097,6 @@ export default {
       usingModel: 'Using model: {model}',
       sendingTestMessage: 'Sending test message: "hi"',
       sendingImageRequest: 'Sending image generation test request...',
-      sendingVideoRequest: 'Sending video generation test request...',
       response: 'Response:',
       startTest: 'Start Test',
       testing: 'Testing...',
@@ -4138,15 +4115,6 @@ export default {
       imageTestMode: 'Mode: Image generation test',
       imagePreview: 'Generated images:',
       imageReceived: 'Received test image #{count}',
-      videoPromptLabel: 'Video prompt',
-      videoPromptPlaceholder: 'Example: A tiny blue square slowly moving left to right on a white background.',
-      videoPromptDefault: 'A tiny blue square slowly moving left to right on a white background.',
-      videoTestHint: 'When a video model is selected, this test creates a video task, polls for completion, and previews the returned video.',
-      videoTestMode: 'Mode: Video generation test',
-      videoPreview: 'Generated videos:',
-      videoReceived: 'Received test video #{count}',
-      videoPlaybackError: 'Embedded playback failed. Open the original video link to view it.',
-      openVideo: 'Open original video',
       // Stats Modal
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',
@@ -4190,6 +4158,18 @@ export default {
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
         claude: 'Claude',
+        grokRequests: 'Req',
+        grokTokens: 'Tok',
+        grokUnknown: 'Grok quota is unknown until the first upstream response includes xAI rate-limit headers.',
+        grokRetryAfter: 'Retry after {time}',
+        grokProbe: 'Probe',
+        grokProbeTooltip: 'Send a minimal xAI Responses probe and read quota headers',
+        grokResetUnsupported: 'Reset unsupported',
+        grokResetUnsupportedTooltip: 'xAI does not expose reset credits for Grok OAuth accounts',
+        grokNoHeaders: 'No quota headers observed',
+        grokLastStatus: 'Status {status}',
+        grokLastProbe: 'Probe {time}',
+        grokLastHeadersSeen: 'Headers {time}',
         passiveSampled: 'Passive',
         activeQuery: 'Query'
       },
@@ -4798,7 +4778,6 @@ export default {
       errorRate: 'error_rate:',
       upstreamRate: 'upstream_rate:',
       latencyDuration: 'Request Duration',
-      durationLabel: 'Duration (duration_ms)',
       ttftLabel: 'TTFT (first_token_ms)',
       p50: 'p50:',
       p90: 'p90:',
@@ -5464,12 +5443,6 @@ export default {
         raw: 'Raw',
         preagg: 'Preagg'
       },
-      requestType: {
-        all: 'All request types',
-        sync: 'Sync',
-        stream: 'Stream',
-        ws_v2: 'WS v2'
-      },
       accountAvailability: {
         available: 'Available',
         unavailable: 'Unavailable',
@@ -5494,8 +5467,8 @@ export default {
         sla: 'Service Level Agreement success rate, excluding business limits (e.g., insufficient balance, quota exceeded).',
         errors: 'Error statistics, including total errors, error rate, and upstream error rate.',
         upstreamErrors: 'Upstream error statistics, excluding rate limit errors (429/529).',
-        latency: 'Request duration statistics based on duration_ms, including p50, p90, p95, and p99 percentiles.',
-        ttft: 'Time To First Token based on first_token_ms, measuring how long it takes to receive the first token.',
+        latency: 'Request duration statistics, including p50, p90, p95, p99 percentiles.',
+        ttft: 'Time To First Token, measuring the speed of first token return in streaming responses.',
         health: 'System health score (0-100), considering SLA, error rate, and resource usage.'
       },
       charts: {
@@ -5857,9 +5830,41 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: 'Used to bypass Cloudflare browser-UA challenges on the OpenAI upstream. Only applies when the client User-Agent is detected as a browser (Mozilla/...). Leave empty to use the built-in default.',
-        openaiAllowClaudeCodeCodexPlugin: "Allow using the Codex plugin in Claude Code",
-        openaiAllowClaudeCodeCodexPluginDesc:
-          "Global switch; only affects OpenAI OAuth accounts that have 'Codex official clients only' enabled. When on, all such accounts additionally allow requests from the Claude Code Codex plugin (exact match on originator=Claude Code) without per-account config; upstream requests remain pass-through.",
+        codexHardeningTitle: "Codex Settings",
+        codexClientRestrictionTitle: "Codex client restriction",
+        codexHardeningDesc:
+          "Only affects OpenAI OAuth accounts with 'Codex official clients only' enabled (global). Beyond User-Agent/Originator, harden the decision with a version range, an engine-fingerprint gate, and black/whitelists.",
+        minCodexVersion: "Min Codex Version",
+        minCodexVersionPlaceholder: "e.g. 0.142.0",
+        maxCodexVersion: "Max Codex Version",
+        maxCodexVersionPlaceholder: "e.g. 0.200.0",
+        codexVersionHint:
+          "Official clients only: checks their version against the [min, max] range. Leave a side empty to not limit it.",
+        codexFingerprintSignals: "Codex engine fingerprint signals",
+        codexFingerprintSignalsDesc:
+          "Define engine-fingerprint signals: every Required signal must match (AND); within a row, '/'-separated variants are OR'd. None checked = not enforced. Default checks only the x-codex- prefix. Types: header exact / header prefix / body path.",
+        codexFpTypeHeaderExact: "Header exact",
+        codexFpTypeHeaderPrefix: "Header prefix",
+        codexFpTypeBodyPath: "Body path",
+        codexFpMatchPlaceholder: "match; '/'-separate variants (e.g. session-id / session_id or x-codex-)",
+        codexFpRequired: "Required",
+        codexFingerprintNoRequiredWarn: "No signal is marked Required — the engine-fingerprint gate is inactive, allowing every candidate that passes identity/version. Check at least one signal to enable it.",
+        codexAllowAppServer: "Codex app-server",
+        codexAllowAppServerDesc:
+          "Allow third-party clients that embed the Codex engine and connect over the app-server protocol (e.g. Claude Code's codex plugin). Off by default; when on, such clients are allowed once they pass the engine-fingerprint gate (the signal list below); off = only official clients and the whitelist are allowed.",
+        codexBlacklist: "User-Agent/Originator Blacklist",
+        codexBlacklistDesc:
+          "Deny if any field matches; takes precedence over any allow. originator is exact; User-Agent is a 'contains' match (comma-separated).",
+        codexWhitelist: "User-Agent/Originator Whitelist",
+        codexWhitelistDesc:
+          "Allow clients outside the official set: requires exact originator and every User-Agent marker present. Still subject to the fingerprint gate unless 'Skip engine fingerprint' is checked.",
+        codexWhitelistSkipFingerprint: "Skip engine fingerprint",
+        codexWhitelistSkipFingerprintTooltip:
+          "Risk: when checked this entry is allowed on originator + User-Agent alone (both forgeable), with no engine-fingerprint backstop. Use only for trusted third-party clients that genuinely do not send a codex engine fingerprint.",
+        codexOriginatorPlaceholder: "originator (exact, e.g. opencode)",
+        codexUaContainsPlaceholder: "User-Agent contains markers, comma-separated (e.g. opencode/)",
+        codexAddRow: "Add entry",
+        codexRemoveRow: "Remove",
       },
       webSearchEmulation: {
         title: 'Web Search Emulation',
