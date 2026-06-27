@@ -8818,6 +8818,7 @@ type RecordUsageInput struct {
 	Subscription       *UserSubscription  // 可选：订阅信息
 	InboundEndpoint    string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
+	InputExcerpt       string             // 脱敏后的用户输入摘要
 	UserAgent          string             // 请求的 User-Agent
 	IPAddress          string             // 请求的客户端 IP 地址
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
@@ -9328,6 +9329,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		Subscription:       input.Subscription,
 		InboundEndpoint:    input.InboundEndpoint,
 		UpstreamEndpoint:   input.UpstreamEndpoint,
+		InputExcerpt:       input.InputExcerpt,
 		UserAgent:          input.UserAgent,
 		IPAddress:          input.IPAddress,
 		RequestPayloadHash: input.RequestPayloadHash,
@@ -9347,6 +9349,7 @@ type RecordUsageLongContextInput struct {
 	Subscription          *UserSubscription  // 可选：订阅信息
 	InboundEndpoint       string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint      string             // 上游端点（标准化后的上游路径）
+	InputExcerpt          string             // 脱敏后的用户输入摘要
 	UserAgent             string             // 请求的 User-Agent
 	IPAddress             string             // 请求的客户端 IP 地址
 	RequestPayloadHash    string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
@@ -9369,6 +9372,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		Subscription:       input.Subscription,
 		InboundEndpoint:    input.InboundEndpoint,
 		UpstreamEndpoint:   input.UpstreamEndpoint,
+		InputExcerpt:       input.InputExcerpt,
 		UserAgent:          input.UserAgent,
 		IPAddress:          input.IPAddress,
 		RequestPayloadHash: input.RequestPayloadHash,
@@ -9391,6 +9395,7 @@ type recordUsageCoreInput struct {
 	Subscription       *UserSubscription
 	InboundEndpoint    string
 	UpstreamEndpoint   string
+	InputExcerpt       string
 	UserAgent          string
 	IPAddress          string
 	RequestPayloadHash string
@@ -9681,6 +9686,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		Model:                 result.Model,
 		RequestedModel:        requestedModel,
 		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		InputExcerpt:          sanitizeUsageInputExcerpt(input.InputExcerpt),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),

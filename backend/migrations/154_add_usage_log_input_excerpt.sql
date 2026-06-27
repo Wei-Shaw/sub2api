@@ -1,0 +1,2 @@
+ALTER TABLE usage_logs
+ADD COLUMN IF NOT EXISTS input_excerpt TEXT NOT NULL DEFAULT '';

@@ -133,6 +133,22 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 	require.Contains(t, string(adminJSON), `"upstream_model":"claude-sonnet-4-20250514"`)
 }
 
+func TestUsageLogFromService_MapsInputExcerpt(t *testing.T) {
+	t.Parallel()
+
+	log := &service.UsageLog{
+		RequestID:    "req_excerpt",
+		Model:        "gpt-5",
+		InputExcerpt: "hello world",
+	}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	require.Equal(t, "hello world", userDTO.InputExcerpt)
+	require.Equal(t, "hello world", adminDTO.InputExcerpt)
+}
+
 func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *testing.T) {
 	t.Parallel()
 

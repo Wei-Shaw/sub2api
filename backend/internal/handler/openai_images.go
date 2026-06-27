@@ -341,6 +341,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		}
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+		inputExcerpt := service.BuildUsageInputExcerpt(parsed.ModerationBody())
 
 		upstreamModel := ""
 		if result != nil {
@@ -355,6 +356,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				Subscription:       subscription,
 				InboundEndpoint:    inboundEndpoint,
 				UpstreamEndpoint:   upstreamEndpoint,
+				InputExcerpt:       inputExcerpt,
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,

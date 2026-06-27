@@ -65,3 +65,19 @@ func TestBuildUsageLogBatchInsertQuery_UsesConflictDoNothing(t *testing.T) {
 	require.Contains(t, query, "ON CONFLICT (request_id, api_key_id) DO NOTHING")
 	require.NotContains(t, strings.ToUpper(query), "DO UPDATE")
 }
+
+func TestPrepareUsageLogInsert_IncludesInputExcerpt(t *testing.T) {
+	log := &service.UsageLog{
+		UserID:       1,
+		APIKeyID:     2,
+		AccountID:    3,
+		RequestID:    "req-input-excerpt",
+		Model:        "gpt-5",
+		InputExcerpt: "hello",
+		CreatedAt:    time.Now().UTC(),
+	}
+
+	prepared := prepareUsageLogInsert(log)
+	require.GreaterOrEqual(t, len(prepared.args), 7)
+	require.Equal(t, "hello", prepared.args[5])
+}

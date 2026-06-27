@@ -1855,6 +1855,29 @@ func TestRecordUsageMarksCyberRequestType(t *testing.T) {
 	require.Equal(t, 100, logStub.lastLog.InputTokens, "计费 token 不变(正常计费)")
 }
 
+func TestOpenAIRecordUsage_PersistsInputExcerpt(t *testing.T) {
+	logStub := &openAIRecordUsageLogRepoStub{inserted: true}
+	userStub := &openAIRecordUsageUserRepoStub{}
+	subStub := &openAIRecordUsageSubRepoStub{}
+	rateStub := &openAIUserGroupRateRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(logStub, userStub, subStub, rateStub)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		InputExcerpt: "Bearer abcdefghijklmnopqrstuvwxyz123456",
+		Result: &OpenAIForwardResult{
+			Model:    "gpt-5",
+			Duration: time.Second,
+			Usage:    OpenAIUsage{InputTokens: 100, OutputTokens: 20},
+		},
+		APIKey:  &APIKey{ID: 2, Group: &Group{RateMultiplier: 1}},
+		User:    &User{ID: 1},
+		Account: &Account{ID: 3},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, logStub.lastLog)
+	require.Contains(t, logStub.lastLog.InputExcerpt, "[已脱敏]")
+}
+
 func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingNormalizesMissingSizeTier(t *testing.T) {
 	groupID := int64(128)
 	defaultPrice := 0.10

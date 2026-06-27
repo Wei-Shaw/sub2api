@@ -193,6 +193,29 @@ func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testin
 	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)
 }
 
+func TestGatewayServiceRecordUsage_PersistsInputExcerpt(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_input_excerpt",
+			Usage:     ClaudeUsage{InputTokens: 10, OutputTokens: 6},
+			Model:     "claude-sonnet-4",
+			Duration:  time.Second,
+		},
+		APIKey:       &APIKey{ID: 501, Quota: 100},
+		User:         &User{ID: 601},
+		Account:      &Account{ID: 701},
+		InputExcerpt: "token=sk-proj-1234567890abcdef hello",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotContains(t, usageRepo.lastLog.InputExcerpt, "sk-proj-1234567890abcdef")
+	require.Contains(t, usageRepo.lastLog.InputExcerpt, "[已脱敏]")
+}
+
 func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersistence(t *testing.T) {
 	imagePrice2K := 0.19
 	groupID := int64(901)
