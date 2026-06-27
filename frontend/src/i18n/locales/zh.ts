@@ -7192,6 +7192,7 @@ export default {
       failed: '失败',
       refund_requested: '退款申请中',
       refunding: '退款中',
+      refund_pending: '退款处理中',
       refunded: '已退款',
       partially_refunded: '部分退款',
       refund_failed: '退款失败',

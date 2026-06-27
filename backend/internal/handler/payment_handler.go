@@ -454,8 +454,9 @@ REDACTED
 	response.Success(c, sanitizePaymentOrderForResponse(order))
 REDACTED
 
-// PublicOrderResult is the limited order info returned by the public verify endpoint.
-// No user details are exposed — only payment status information.
+// PublicOrderResult is returned after a signed resume-token lookup. The token
+// proves possession of the checkout session, so the result keeps the legacy
+// frontend contract needed by payment result pages.
 type PublicOrderResult struct {
 	ID                  int64      `json:"id"`
 	OutTradeNo          string     `json:"out_trade_no"`
@@ -476,6 +477,18 @@ type PublicOrderResult struct {
 	RefundRequestedBy   *string    `json:"refund_requested_by,omitempty"`
 	RefundRequestReason *string    `json:"refund_request_reason,omitempty"`
 	PlanID              *int64     `json:"plan_id,omitempty"`
+REDACTED
+
+// PublicOrderVerifyResult is returned by the legacy anonymous out_trade_no
+// lookup. Keep this intentionally minimal because out_trade_no is not secret.
+type PublicOrderVerifyResult struct {
+	OutTradeNo  string     `json:"out_trade_no"`
+	Status      string     `json:"status"`
+	Paid        bool       `json:"paid"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	PaidAt      *time.Time `json:"paid_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
 REDACTED
 
 func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
@@ -502,6 +515,34 @@ func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
 REDACTED
 REDACTED
 
+func buildPublicOrderVerifyResult(order *dbent.PaymentOrder) PublicOrderVerifyResult {
+	return PublicOrderVerifyResult{
+		OutTradeNo:  order.OutTradeNo,
+		Status:      order.Status,
+		Paid:        publicOrderStatusPaid(order.Status),
+		CreatedAt:   order.CreatedAt,
+		ExpiresAt:   order.ExpiresAt,
+		PaidAt:      order.PaidAt,
+		CompletedAt: order.CompletedAt,
+REDACTED
+REDACTED
+
+func publicOrderStatusPaid(status string) bool {
+	switch status {
+	case service.OrderStatusPaid,
+		service.OrderStatusCompleted,
+		service.OrderStatusRefundRequested,
+		service.OrderStatusRefunding,
+		service.OrderStatusRefundPending,
+		service.OrderStatusPartiallyRefunded,
+		service.OrderStatusRefunded,
+		service.OrderStatusRefundFailed:
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
 // VerifyOrderPublic keeps the legacy anonymous out_trade_no lookup available as
 // a compatibility path for older result pages and staggered deploys.
 // POST /api/v1/payment/public/orders/verify
@@ -517,7 +558,7 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	response.Success(c, buildPublicOrderResult(order))
+	response.Success(c, buildPublicOrderVerifyResult(order))
 REDACTED
 
 // ResolveOrderPublicByResumeToken resolves a payment order from a signed resume token.
