@@ -8,7 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
 const (
@@ -22,13 +26,15 @@ type ModelMarketplaceService struct {
 	pricingService *PricingService
 	billingService *BillingService
 	apiKeyService  *APIKeyService
+	gatewayService *GatewayService
 }
 
-func NewModelMarketplaceService(pricingService *PricingService, billingService *BillingService, apiKeyService *APIKeyService) *ModelMarketplaceService {
+func NewModelMarketplaceService(pricingService *PricingService, billingService *BillingService, apiKeyService *APIKeyService, gatewayService *GatewayService) *ModelMarketplaceService {
 	return &ModelMarketplaceService{
 		pricingService: pricingService,
 		billingService: billingService,
 		apiKeyService:  apiKeyService,
+		gatewayService: gatewayService,
 	}
 }
 
@@ -158,11 +164,12 @@ type ModelMarketplaceCatalogState struct {
 }
 
 type modelMarketplaceGroupContext struct {
-	groups       []Group
-	userRates    map[int64]float64
-	selectedID   *int64
-	selectedName string
-	rate         float64
+	groups        []Group
+	userRates     map[int64]float64
+	selectedID    *int64
+	selectedName  string
+	selectedGroup *Group
+	rate          float64
 }
 
 func (s *ModelMarketplaceService) ListPricing(ctx context.Context, userID int64, req ModelMarketplaceListRequest) (*ModelMarketplaceResponse, error) {
@@ -172,7 +179,7 @@ func (s *ModelMarketplaceService) ListPricing(ctx context.Context, userID int64,
 		return nil, err
 	}
 
-	items := s.buildItems(groupCtx, req.ServiceTier, req.Unit)
+	items := s.buildItems(ctx, groupCtx, req.ServiceTier, req.Unit)
 	filtered := make([]ModelMarketplaceItem, 0, len(items))
 	for _, item := range items {
 		if !matchesModelMarketplaceFilters(item, req) {
@@ -264,11 +271,13 @@ func (s *ModelMarketplaceService) resolveGroupContext(ctx context.Context, userI
 		if groups[i].ID != *selectedGroupID {
 			continue
 		}
+		selected := groups[i]
 		out.selectedID = selectedGroupID
-		out.selectedName = groups[i].Name
-		out.rate = groups[i].RateMultiplier
+		out.selectedName = selected.Name
+		out.selectedGroup = &selected
+		out.rate = selected.RateMultiplier
 		if userRates != nil {
-			if userRate, ok := userRates[groups[i].ID]; ok && userRate >= 0 {
+			if userRate, ok := userRates[selected.ID]; ok && userRate >= 0 {
 				out.rate = userRate
 			}
 		}
@@ -292,9 +301,17 @@ func (s *ModelMarketplaceService) catalogState() ModelMarketplaceCatalogState {
 	return state
 }
 
-func (s *ModelMarketplaceService) buildItems(groupCtx modelMarketplaceGroupContext, serviceTier, unit string) []ModelMarketplaceItem {
+func (s *ModelMarketplaceService) buildItems(ctx context.Context, groupCtx modelMarketplaceGroupContext, serviceTier, unit string) []ModelMarketplaceItem {
 	items := make([]ModelMarketplaceItem, 0)
 	seen := make(map[string]struct{})
+	scope := s.modelScopeForSelectedGroup(ctx, groupCtx)
+
+	appendIfAllowed := func(item ModelMarketplaceItem) {
+		if !scope.allows(item) {
+			return
+		}
+		items = append(items, item)
+	}
 
 	if s.pricingService != nil {
 		for _, entry := range s.pricingService.ListModelPricingCatalog() {
@@ -304,7 +321,7 @@ func (s *ModelMarketplaceService) buildItems(groupCtx modelMarketplaceGroupConte
 			}
 			seen[modelKey] = struct{}{}
 			pricing := s.modelPricingFor(entry.Model, &entry.Pricing)
-			items = append(items, buildModelMarketplaceItem(entry.Model, "litellm_catalog", &entry.Pricing, pricing, groupCtx, serviceTier, unit))
+			appendIfAllowed(buildModelMarketplaceItem(entry.Model, "litellm_catalog", &entry.Pricing, pricing, groupCtx, serviceTier, unit))
 		}
 	}
 
@@ -317,10 +334,146 @@ func (s *ModelMarketplaceService) buildItems(groupCtx modelMarketplaceGroupConte
 			if _, ok := seen[modelKey]; ok {
 				continue
 			}
-			items = append(items, buildModelMarketplaceItem(model, "sub2api_fallback", nil, pricing, groupCtx, serviceTier, unit))
+			appendIfAllowed(buildModelMarketplaceItem(model, "sub2api_fallback", nil, pricing, groupCtx, serviceTier, unit))
 		}
 	}
 	return items
+}
+
+func (s *ModelMarketplaceService) modelScopeForSelectedGroup(ctx context.Context, groupCtx modelMarketplaceGroupContext) modelMarketplaceModelScope {
+	if groupCtx.selectedGroup == nil {
+		return modelMarketplaceModelScope{}
+	}
+
+	group := groupCtx.selectedGroup
+	scope := modelMarketplaceModelScope{selected: true, platform: group.Platform}
+	if s.gatewayService != nil {
+		scope.models = s.gatewayService.GetAvailableModels(ctx, &group.ID, group.Platform)
+	}
+	if len(scope.models) == 0 {
+		scope.models = defaultModelMarketplaceModelIDsForPlatform(group.Platform)
+	}
+	if len(scope.models) > 0 {
+		scope.restrictModels = true
+	}
+	if group.CustomModelsListEnabled() {
+		scope.models = filterModelMarketplaceModelsByCustomList(scope.models, group.ModelsListConfig.Models)
+		scope.restrictModels = true
+	}
+	return scope
+}
+
+type modelMarketplaceModelScope struct {
+	selected       bool
+	platform       string
+	models         []string
+	restrictModels bool
+}
+
+func (s modelMarketplaceModelScope) allows(item ModelMarketplaceItem) bool {
+	if !s.selected {
+		return true
+	}
+	if s.restrictModels {
+		return modelMarketplaceAllowsModel(s.models, item.Model)
+	}
+	return modelMarketplaceGroupPlatformAllowsItem(s.platform, item)
+}
+
+func filterModelMarketplaceModelsByCustomList(availableModels, selectedModels []string) []string {
+	if len(selectedModels) == 0 {
+		return availableModels
+	}
+	if len(availableModels) == 0 {
+		return nil
+	}
+	filtered := make([]string, 0, len(selectedModels))
+	seen := make(map[string]struct{}, len(selectedModels))
+	for _, model := range selectedModels {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if !modelMarketplaceAllowsModel(availableModels, model) {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		filtered = append(filtered, model)
+	}
+	return filtered
+}
+
+func modelMarketplaceAllowsModel(availablePatterns []string, model string) bool {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return false
+	}
+	for _, pattern := range availablePatterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		if pattern == model {
+			return true
+		}
+		if strings.HasSuffix(pattern, "*") && strings.HasPrefix(model, strings.TrimSuffix(pattern, "*")) {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultModelMarketplaceModelIDsForPlatform(platform string) []string {
+	switch strings.TrimSpace(platform) {
+	case PlatformOpenAI:
+		return openai.DefaultModelIDs()
+	case PlatformGemini:
+		ids := make([]string, 0, len(geminicli.DefaultModels))
+		for _, model := range geminicli.DefaultModels {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	case PlatformAntigravity:
+		models := antigravity.DefaultModels()
+		ids := make([]string, 0, len(models))
+		for _, model := range models {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	case PlatformKiro, PlatformAnthropic:
+		return claude.DefaultModelIDs()
+	default:
+		return nil
+	}
+}
+
+func modelMarketplaceGroupPlatformAllowsItem(platform string, item ModelMarketplaceItem) bool {
+	endpoint := modelMarketplaceEndpointForGroupPlatform(platform)
+	if endpoint == "" {
+		return true
+	}
+	for _, candidate := range item.SupportedEndpoints {
+		if strings.EqualFold(candidate, endpoint) {
+			return true
+		}
+	}
+	return false
+}
+
+func modelMarketplaceEndpointForGroupPlatform(platform string) string {
+	switch strings.TrimSpace(platform) {
+	case PlatformOpenAI:
+		return "openai"
+	case PlatformGemini:
+		return "gemini"
+	case PlatformAnthropic, PlatformKiro:
+		return "anthropic"
+	default:
+		return ""
+	}
 }
 
 func (s *ModelMarketplaceService) modelPricingFor(model string, catalogPricing *LiteLLMModelPricing) *ModelPricing {

@@ -594,7 +594,7 @@ export default {
     filters: {
       title: 'Filters',
       provider: 'Provider',
-      group: 'Group multiplier',
+      group: 'Pricing group',
       billingMode: 'Billing mode',
       endpoint: 'Endpoint',
       mode: 'Mode',
@@ -605,7 +605,7 @@ export default {
       allBillingModes: 'All billing modes',
       allEndpoints: 'All endpoints',
       basePricing: 'Base pricing · 1x',
-      hint: 'Filters query the model catalog endpoint; group selection only adjusts displayed prices.',
+      hint: 'Select a group to see the model list and prices that apply to that group. Leave it empty to view base pricing.',
       rate: 'Rate {rate}'
     },
     serviceTier: {

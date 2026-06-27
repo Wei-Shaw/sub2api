@@ -16,7 +16,7 @@ import (
 func TestModelMarketplaceHandlerListPricing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	billingSvc := service.NewBillingService(&config.Config{}, nil)
-	marketplaceSvc := service.NewModelMarketplaceService(nil, billingSvc, nil)
+	marketplaceSvc := service.NewModelMarketplaceService(nil, billingSvc, nil, nil)
 	h := NewModelMarketplaceHandler(marketplaceSvc)
 
 	r := gin.New()

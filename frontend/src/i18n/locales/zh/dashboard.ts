@@ -599,7 +599,7 @@ export default {
     filters: {
       title: '筛选',
       provider: '供应商',
-      group: '分组倍率',
+      group: '价格分组',
       billingMode: '计费模式',
       endpoint: '端点',
       mode: '模式',
@@ -610,7 +610,7 @@ export default {
       allBillingModes: '全部计费模式',
       allEndpoints: '全部端点',
       basePricing: '基础价格 · 1x',
-      hint: '筛选会查询模型目录端点；选择分组只调整展示价格。',
+      hint: '选择分组后，将按该分组可见的模型列表和价格展示；不选择分组则显示基础价格。',
       rate: '倍率 {rate}'
     },
     serviceTier: {
