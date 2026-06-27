@@ -177,16 +177,22 @@ func (h *FalGatewayHandler) writeOpenAIImagesResponse(c *gin.Context, reqLog *za
 		revisedPrompt = parsed.Prompt
 	}
 
-	for _, u := range task.ResultURLs() {
+	urls := task.ResultURLs()
+	reqLog.Info("fal.images.write_response", zap.Int("image_count", len(urls)), zap.Strings("image_urls", urls))
+
+	for i, u := range urls {
 		item := fal.OpenAIImageData{RevisedPrompt: revisedPrompt}
 		if h.cosService != nil {
+			reqLog.Info("fal.images.try_b64_encode", zap.String("image_url", u), zap.Int("index", i))
 			if b64, err := h.cosService.FetchAsBase64(c.Request.Context(), u); err == nil && b64 != "" {
 				item.B64JSON = b64
+				reqLog.Info("fal.images.b64_encode_success", zap.String("image_url", u), zap.Int("b64_len", len(b64)))
 			} else {
 				reqLog.Warn("fal.images.b64_encode_failed_fallback_url", zap.String("image_url", u), zap.Error(err))
 				item.URL = u
 			}
 		} else {
+			reqLog.Warn("fal.images.cos_service_nil_fallback_url", zap.String("image_url", u))
 			item.URL = u
 		}
 		resp.Data = append(resp.Data, item)

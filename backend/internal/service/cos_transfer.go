@@ -158,8 +158,11 @@ func (s *COSImageTransferService) TransferImages(ctx context.Context, urls []str
 
 	cfg, err := s.loadConfig(ctx)
 	if err != nil || cfg == nil || !cfg.Enabled || !cfg.IsConfigured() {
+		logger.LegacyPrintf("service.cos_transfer", "[COS] transfer disabled or not configured: enabled=%v, configured=%v, err=%v", cfg != nil && cfg.Enabled, cfg != nil && cfg.IsConfigured(), err)
 		return out, false
 	}
+	logger.LegacyPrintf("service.cos_transfer", "[COS] transfer enabled, processing %d images", len(urls))
+
 	store, err := s.getOrCreateStore(ctx, cfg)
 	if err != nil {
 		logger.LegacyPrintf("service.cos_transfer", "[COS] get store failed: %v", err)
@@ -180,9 +183,22 @@ func (s *COSImageTransferService) TransferImages(ctx context.Context, urls []str
 			allOK = false
 			continue
 		}
+		logger.LegacyPrintf("service.cos_transfer", "[COS] transfer succeeded: %s -> %s", rawURL, cosURL)
 		out[i] = cosURL
 	}
+	logger.LegacyPrintf("service.cos_transfer", "[COS] transfer completed: %d/%d succeeded", len(urls)-countEmpty(out), len(urls))
 	return out, allOK
+}
+
+// countEmpty 统计空字符串数量
+func countEmpty(strs []string) int {
+	count := 0
+	for _, s := range strs {
+		if s == "" {
+			count++
+		}
+	}
+	return count
 }
 
 // transferOne 下载单张图片并上传到 COS，最多重试 cosTransferMaxAttempts 次。
@@ -190,23 +206,33 @@ func (s *COSImageTransferService) transferOne(ctx context.Context, store BackupO
 	var lastErr error
 	for attempt := 1; attempt <= cosTransferMaxAttempts; attempt++ {
 		if ctx.Err() != nil {
+			logger.LegacyPrintf("service.cos_transfer", "[COS] transfer cancelled: %v", ctx.Err())
 			return "", ctx.Err()
 		}
+		logger.LegacyPrintf("service.cos_transfer", "[COS] downloading image (attempt %d/%d): %s", attempt, cosTransferMaxAttempts, srcURL)
 		data, contentType, err := s.download(ctx, srcURL)
 		if err != nil {
+			logger.LegacyPrintf("service.cos_transfer", "[COS] download failed (attempt %d): %v", attempt, err)
 			lastErr = err
 			continue
 		}
+		logger.LegacyPrintf("service.cos_transfer", "[COS] download succeeded: size=%d bytes, content-type=%s", len(data), contentType)
+
 		key := s.buildKey(cfg, srcURL, contentType)
+		logger.LegacyPrintf("service.cos_transfer", "[COS] uploading to COS (attempt %d): key=%s", attempt, key)
 		if _, err := store.Upload(ctx, key, strings.NewReader(string(data)), contentType); err != nil {
+			logger.LegacyPrintf("service.cos_transfer", "[COS] upload failed (attempt %d): %v", attempt, err)
 			lastErr = err
 			continue
 		}
-		return s.buildPublicURL(cfg, key), nil
+		cosURL := s.buildPublicURL(cfg, key)
+		logger.LegacyPrintf("service.cos_transfer", "[COS] upload succeeded: %s", cosURL)
+		return cosURL, nil
 	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("transfer failed")
 	}
+	logger.LegacyPrintf("service.cos_transfer", "[COS] all transfer attempts failed: %v", lastErr)
 	return "", lastErr
 }
 
@@ -215,13 +241,18 @@ func (s *COSImageTransferService) transferOne(ctx context.Context, store BackupO
 func (s *COSImageTransferService) FetchAsBase64(ctx context.Context, srcURL string) (string, error) {
 	srcURL = strings.TrimSpace(srcURL)
 	if srcURL == "" {
+		logger.LegacyPrintf("service.cos_transfer", "[COS] FetchAsBase64: empty image url")
 		return "", fmt.Errorf("empty image url")
 	}
+	logger.LegacyPrintf("service.cos_transfer", "[COS] FetchAsBase64: downloading %s", srcURL)
 	data, _, err := s.download(ctx, srcURL)
 	if err != nil {
+		logger.LegacyPrintf("service.cos_transfer", "[COS] FetchAsBase64 download failed: %v", err)
 		return "", err
 	}
-	return base64.StdEncoding.EncodeToString(data), nil
+	b64 := base64.StdEncoding.EncodeToString(data)
+	logger.LegacyPrintf("service.cos_transfer", "[COS] FetchAsBase64 succeeded: size=%d bytes, base64_len=%d", len(data), len(b64))
+	return b64, nil
 }
 
 func (s *COSImageTransferService) download(ctx context.Context, srcURL string) ([]byte, string, error) {
