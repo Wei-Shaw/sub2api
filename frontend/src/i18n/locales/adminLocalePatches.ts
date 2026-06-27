@@ -1428,6 +1428,250 @@ const zhBaselineLocaleCoveragePatches = {
   }
 } as const satisfies Record<string, LocalePatch>
 
+const postRebaseLocaleCoveragePatches = {
+  en: {
+    admin: {
+      accounts: {
+        platforms: {
+          grok: 'Grok'
+        },
+        messages: {
+          accountCreated: 'Account created successfully'
+        }
+      }
+    }
+  },
+  zh: {
+    admin: {
+      accounts: {
+        messages: {
+          accountCreated: '账号创建成功'
+        }
+      }
+    }
+  },
+  vi: {
+    admin: {
+      accounts: {
+        platforms: {
+          grok: 'Grok'
+        },
+        types: {
+          grokOauth: 'Grok OAuth'
+        },
+        messages: {
+          accountCreated: 'Tài khoản đã được tạo thành công'
+        },
+        antigravityProjectIdLabel: 'GCP Project ID (tùy chọn)',
+        antigravityProjectIdPlaceholder: 'your-gcp-project-id',
+        antigravityProjectIdHint: 'Tài khoản Antigravity standard-tier không tự nhận project_id cần GCP project do người dùng sở hữu',
+        usageWindow: {
+          grokRequests: 'Req',
+          grokTokens: 'Tok',
+          grokUnknown: 'Quota Grok chưa rõ cho tới khi phản hồi upstream đầu tiên có header xAI rate-limit.',
+          grokRetryAfter: 'Thử lại sau {time}',
+          grokProbe: 'Probe',
+          grokProbeTooltip: 'Gửi probe xAI Responses tối thiểu và đọc quota headers',
+          grokResetUnsupported: 'Không hỗ trợ reset',
+          grokResetUnsupportedTooltip: 'xAI không cung cấp reset credits cho tài khoản Grok OAuth',
+          grokNoHeaders: 'Chưa thấy quota headers',
+          grokLastStatus: 'Trạng thái {status}',
+          grokLastProbe: 'Probe {time}',
+          grokLastHeadersSeen: 'Headers {time}'
+        },
+        openai: {
+          codexCLIOnlyAppServer: 'Cho phép Codex app-server clients',
+          codexCLIOnlyAppServerDesc: 'Chỉ hiệu lực khi bật giới hạn Codex ở trên. Khi bật, tài khoản này cũng cho phép client bên thứ ba nhúng Codex engine qua giao thức app-server; vẫn phải qua cổng engine-fingerprint toàn cục.'
+        },
+        grok: {
+          baseUrlHint: 'Tài khoản Grok OAuth chuyển tiếp tới base URL API xAI chính thức.',
+          apiKeyHint: 'Grok OAuth không yêu cầu nhập API key thủ công.'
+        },
+        oauth: {
+          openai: {
+            codexPatAuth: 'Codex Personal Access Token',
+            codexPatDesc: 'Nhập Codex at- personal access token. Hệ thống kiểm tra qua OpenAI whoami trước khi tạo tài khoản.',
+            codexPatInputLabel: 'Codex PAT',
+            codexPatPlaceholder: 'at-...',
+            codexPatHint: 'Đây là chế độ xác thực riêng; không lưu refresh_token hoặc hạn dùng OAuth access_token.',
+            codexPatImportAndCreate: 'Xác thực & tạo tài khoản Codex PAT',
+            codexPatEmpty: 'Vui lòng nhập Codex personal access token',
+            codexPatImportFailed: 'Tạo tài khoản Codex PAT thất bại'
+          },
+          grok: {
+            title: 'Ủy quyền tài khoản Grok',
+            followSteps: 'Làm theo các bước để ủy quyền tài khoản xAI/Grok:',
+            step1GenerateUrl: 'Tạo URL ủy quyền xAI',
+            generateAuthUrl: 'Tạo Auth URL',
+            step2OpenUrl: 'Mở URL trong trình duyệt và hoàn tất ủy quyền',
+            openUrlDesc: 'Mở URL ủy quyền trong tab mới, đăng nhập xAI và cấp quyền truy cập API.',
+            importantNotice: 'Khi trình duyệt chuyển tới local callback URL, hãy copy toàn bộ URL hoặc tham số code về đây.',
+            step3EnterCode: 'Nhập Authorization URL hoặc Code',
+            authCodeDesc: 'Sau khi ủy quyền, dán callback URL, query string hoặc authorization code:',
+            authCode: 'Authorization URL hoặc Code',
+            authCodePlaceholder: 'Dán full callback URL, query ?code=... hoặc code',
+            authCodeHint: 'Hỗ trợ full callback URL, query string và code thuần.',
+            refreshTokenAuth: 'Nhập RT thủ công',
+            refreshTokenDesc: 'Nhập refresh token xAI hiện có. Hỗ trợ nhập hàng loạt, mỗi dòng một token.',
+            refreshTokenPlaceholder: 'Dán xAI refresh token...\nHỗ trợ nhiều token, mỗi dòng một token',
+            validating: 'Đang xác thực...',
+            validateAndCreate: 'Xác thực & tạo tài khoản',
+            pleaseEnterRefreshToken: 'Vui lòng nhập Refresh Token',
+            failedToGenerateUrl: 'Tạo Grok auth URL thất bại',
+            missingExchangeParams: 'Thiếu authorization code, state hoặc OAuth session',
+            failedToExchangeCode: 'Đổi Grok authorization code thất bại',
+            failedToValidateRT: 'Xác thực Grok refresh token thất bại',
+            oauthOnlyHint: 'Grok hiện hỗ trợ Responses API text/reasoning dựa trên OAuth subscription.'
+          }
+        },
+        grokAccount: 'Tài khoản Grok'
+      },
+      settings: {
+        gatewayForwarding: {
+          codexHardeningTitle: 'Cài đặt Codex',
+          codexClientRestrictionTitle: 'Giới hạn client Codex',
+          codexHardeningDesc: 'Chỉ ảnh hưởng tài khoản OpenAI OAuth bật “chỉ client Codex chính thức”. Ngoài User-Agent/Originator, có thể siết bằng khoảng version, engine-fingerprint, blacklist và whitelist.',
+          minCodexVersion: 'Codex version tối thiểu',
+          minCodexVersionPlaceholder: 'ví dụ 0.142.0',
+          maxCodexVersion: 'Codex version tối đa',
+          maxCodexVersionPlaceholder: 'ví dụ 0.200.0',
+          codexVersionHint: 'Chỉ client chính thức: kiểm version trong khoảng [min, max]. Để trống một phía để không giới hạn.',
+          codexFingerprintSignals: 'Tín hiệu engine fingerprint Codex',
+          codexFingerprintSignalsDesc: 'Định nghĩa tín hiệu engine fingerprint: mọi dòng Required phải khớp (AND); các biến thể phân tách bằng “/” trong một dòng là OR. Không chọn Required = không bắt buộc.',
+          codexFpTypeHeaderExact: 'Header khớp chính xác',
+          codexFpTypeHeaderPrefix: 'Header prefix',
+          codexFpTypeBodyPath: 'Body path',
+          codexFpMatchPlaceholder: 'match; phân tách biến thể bằng “/” (vd session-id / session_id hoặc x-codex-)',
+          codexFpRequired: 'Bắt buộc',
+          codexFingerprintNoRequiredWarn: 'Không có tín hiệu Required — cổng engine-fingerprint đang tắt.',
+          codexAllowAppServer: 'Codex app-server',
+          codexAllowAppServerDesc: 'Cho phép client bên thứ ba nhúng Codex engine và kết nối qua app-server protocol. Mặc định tắt; khi bật vẫn phải qua engine-fingerprint gate.',
+          codexBlacklist: 'Blacklist User-Agent/Originator',
+          codexBlacklistDesc: 'Từ chối nếu bất kỳ trường nào khớp; ưu tiên hơn mọi allow.',
+          codexWhitelist: 'Whitelist User-Agent/Originator',
+          codexWhitelistDesc: 'Cho phép client ngoài nhóm chính thức: cần originator chính xác và tất cả marker User-Agent.',
+          codexWhitelistSkipFingerprint: 'Bỏ qua engine fingerprint',
+          codexWhitelistSkipFingerprintTooltip: 'Rủi ro: mục này chỉ dựa vào originator + User-Agent, không có engine-fingerprint backstop.',
+          codexOriginatorPlaceholder: 'originator (chính xác, vd opencode)',
+          codexUaContainsPlaceholder: 'User-Agent chứa marker, phân tách bằng dấu phẩy (vd opencode/)',
+          codexAddRow: 'Thêm dòng',
+          codexRemoveRow: 'Xóa'
+        }
+      }
+    }
+  },
+  ko: {
+    admin: {
+      accounts: {
+        platforms: {
+          grok: 'Grok'
+        },
+        types: {
+          grokOauth: 'Grok OAuth'
+        },
+        messages: {
+          accountCreated: '계정이 생성되었습니다'
+        },
+        antigravityProjectIdLabel: 'GCP Project ID (선택)',
+        antigravityProjectIdPlaceholder: 'your-gcp-project-id',
+        antigravityProjectIdHint: 'project_id가 자동 감지되지 않는 Antigravity standard-tier 계정은 사용자 소유 GCP project가 필요합니다',
+        usageWindow: {
+          grokRequests: 'Req',
+          grokTokens: 'Tok',
+          grokUnknown: '첫 upstream 응답에 xAI rate-limit 헤더가 포함되기 전까지 Grok quota는 알 수 없습니다.',
+          grokRetryAfter: '{time} 후 재시도',
+          grokProbe: 'Probe',
+          grokProbeTooltip: '최소 xAI Responses probe를 보내 quota headers를 읽습니다',
+          grokResetUnsupported: 'Reset 미지원',
+          grokResetUnsupportedTooltip: 'xAI는 Grok OAuth 계정의 reset credits를 제공하지 않습니다',
+          grokNoHeaders: 'Quota headers가 아직 없습니다',
+          grokLastStatus: '상태 {status}',
+          grokLastProbe: 'Probe {time}',
+          grokLastHeadersSeen: 'Headers {time}'
+        },
+        openai: {
+          codexCLIOnlyAppServer: 'Codex app-server clients 허용',
+          codexCLIOnlyAppServerDesc: '위 Codex 제한이 켜져 있을 때만 적용됩니다. 활성화하면 app-server 프로토콜로 Codex engine을 내장한 제3자 client도 허용하지만 전역 engine-fingerprint gate를 통과해야 합니다.'
+        },
+        grok: {
+          baseUrlHint: 'Grok OAuth 계정은 공식 xAI API base URL로 전달됩니다.',
+          apiKeyHint: 'Grok OAuth는 수동 API key 입력이 필요하지 않습니다.'
+        },
+        oauth: {
+          openai: {
+            codexPatAuth: 'Codex Personal Access Token',
+            codexPatDesc: 'Codex at- personal access token을 입력하세요. 계정 생성 전 OpenAI whoami로 검증합니다.',
+            codexPatInputLabel: 'Codex PAT',
+            codexPatPlaceholder: 'at-...',
+            codexPatHint: '별도 인증 모드입니다. refresh_token이나 OAuth access_token 만료를 저장하지 않습니다.',
+            codexPatImportAndCreate: '검증 후 Codex PAT 계정 생성',
+            codexPatEmpty: 'Codex personal access token을 입력하세요',
+            codexPatImportFailed: 'Codex PAT 계정 생성 실패'
+          },
+          grok: {
+            title: 'Grok 계정 인증',
+            followSteps: 'xAI/Grok 계정을 인증하려면 다음 단계를 따르세요:',
+            step1GenerateUrl: 'xAI 인증 URL 생성',
+            generateAuthUrl: 'Auth URL 생성',
+            step2OpenUrl: '브라우저에서 URL을 열고 인증 완료',
+            openUrlDesc: '새 탭에서 인증 URL을 열고 xAI에 로그인해 API 접근을 승인하세요.',
+            importantNotice: '브라우저가 local callback URL에 도달하면 전체 URL 또는 code query를 복사해 여기에 붙여넣으세요.',
+            step3EnterCode: 'Authorization URL 또는 Code 입력',
+            authCodeDesc: '인증 후 callback URL, query string 또는 authorization code를 붙여넣으세요:',
+            authCode: 'Authorization URL 또는 Code',
+            authCodePlaceholder: '전체 callback URL, ?code=... query 또는 code 값 붙여넣기',
+            authCodeHint: '전체 callback URL, query string, 순수 code 모두 허용됩니다.',
+            refreshTokenAuth: '수동 RT 입력',
+            refreshTokenDesc: '기존 xAI refresh token을 입력하세요. 여러 줄 일괄 입력을 지원합니다.',
+            refreshTokenPlaceholder: 'xAI refresh token 붙여넣기...\n여러 token은 줄마다 하나씩',
+            validating: '검증 중...',
+            validateAndCreate: '검증 후 계정 생성',
+            pleaseEnterRefreshToken: 'Refresh Token을 입력하세요',
+            failedToGenerateUrl: 'Grok auth URL 생성 실패',
+            missingExchangeParams: 'authorization code, state 또는 OAuth session 누락',
+            failedToExchangeCode: 'Grok authorization code 교환 실패',
+            failedToValidateRT: 'Grok refresh token 검증 실패',
+            oauthOnlyHint: '초기 Grok 지원은 OAuth subscription 기반 Responses API text/reasoning traffic만 지원합니다.'
+          }
+        },
+        grokAccount: 'Grok 계정'
+      },
+      settings: {
+        gatewayForwarding: {
+          codexHardeningTitle: 'Codex 설정',
+          codexClientRestrictionTitle: 'Codex client 제한',
+          codexHardeningDesc: '“Codex 공식 client만”이 켜진 OpenAI OAuth 계정에만 영향을 줍니다. User-Agent/Originator 외에도 version 범위, engine-fingerprint, blacklist/whitelist로 강화할 수 있습니다.',
+          minCodexVersion: '최소 Codex Version',
+          minCodexVersionPlaceholder: '예: 0.142.0',
+          maxCodexVersion: '최대 Codex Version',
+          maxCodexVersionPlaceholder: '예: 0.200.0',
+          codexVersionHint: '공식 client만: [min, max] 범위로 version을 검사합니다. 한쪽을 비우면 제한하지 않습니다.',
+          codexFingerprintSignals: 'Codex engine fingerprint signals',
+          codexFingerprintSignalsDesc: 'engine fingerprint 신호를 정의합니다. 모든 Required 신호는 AND로 만족해야 하며, 한 행의 “/” 변형은 OR입니다. Required가 없으면 비활성입니다.',
+          codexFpTypeHeaderExact: 'Header exact',
+          codexFpTypeHeaderPrefix: 'Header prefix',
+          codexFpTypeBodyPath: 'Body path',
+          codexFpMatchPlaceholder: 'match; “/”로 변형 구분 (예: session-id / session_id 또는 x-codex-)',
+          codexFpRequired: 'Required',
+          codexFingerprintNoRequiredWarn: 'Required 신호가 없어 engine-fingerprint gate가 비활성입니다.',
+          codexAllowAppServer: 'Codex app-server',
+          codexAllowAppServerDesc: 'Codex engine을 내장하고 app-server protocol로 연결하는 제3자 client를 허용합니다. 기본값은 꺼짐이며, 켜도 engine-fingerprint gate를 통과해야 합니다.',
+          codexBlacklist: 'User-Agent/Originator Blacklist',
+          codexBlacklistDesc: '어느 필드든 일치하면 거부하며 모든 allow보다 우선합니다.',
+          codexWhitelist: 'User-Agent/Originator Whitelist',
+          codexWhitelistDesc: '공식 집합 밖 client를 허용합니다: 정확한 originator와 모든 User-Agent marker가 필요합니다.',
+          codexWhitelistSkipFingerprint: 'engine fingerprint 건너뛰기',
+          codexWhitelistSkipFingerprintTooltip: '위험: 이 항목은 originator + User-Agent만으로 허용되며 engine-fingerprint backstop이 없습니다.',
+          codexOriginatorPlaceholder: 'originator (정확히, 예: opencode)',
+          codexUaContainsPlaceholder: 'User-Agent 포함 marker, 쉼표 구분 (예: opencode/)',
+          codexAddRow: '행 추가',
+          codexRemoveRow: '삭제'
+        }
+      }
+    }
+  }
+} as const satisfies Record<string, LocalePatch>
+
 export const adminLocalePatches = mergeLocalePatch(
   mergeLocalePatch(
     adminLocalePatchBase as unknown as Record<string, LocalePatch>,
@@ -1441,6 +1685,7 @@ mergeLocalePatch(adminLocalePatches.ko, zhBaselineLocaleCoveragePatches.ko)
 
 for (const locale of ['en', 'zh', 'vi', 'ko'] as const) {
   mergeLocalePatch(adminLocalePatches[locale], staticI18nCoveragePatches[locale])
+  mergeLocalePatch(adminLocalePatches[locale], postRebaseLocaleCoveragePatches[locale])
 }
 
 for (const locale of ['en', 'zh', 'vi', 'ko'] as const) {

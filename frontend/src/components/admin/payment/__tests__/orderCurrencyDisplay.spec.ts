@@ -103,8 +103,8 @@ describe('admin order currency display', () => {
     const wrapper = mount(OrderTable, {
       props: {
         orders: [
-          orderFactory({ id: 1, currency: 'USD', amount: 100, pay_amount: 108 }),
-          orderFactory({ id: 2, currency: 'CNY', amount: 100, pay_amount: 108 }),
+          orderFactory({ id: 1, currency: 'USD', amount: 100, pay_amount: 108, ledger_amount: 100, ledger_currency: 'USD' }),
+          orderFactory({ id: 2, currency: 'CNY', amount: 100, pay_amount: 108, ledger_amount: 100, ledger_currency: 'USD' }),
         ],
         loading: false,
         showUser: true,
@@ -127,8 +127,8 @@ describe('admin order currency display', () => {
     const wrapper = mount(AdminOrderTable, {
       props: {
         orders: [
-          orderFactory({ id: 1, currency: 'USD', amount: 100, pay_amount: 108 }),
-          orderFactory({ id: 2, currency: 'CNY', amount: 100, pay_amount: 108 }),
+          orderFactory({ id: 1, currency: 'USD', amount: 100, pay_amount: 108, ledger_amount: 100, ledger_currency: 'USD' }),
+          orderFactory({ id: 2, currency: 'CNY', amount: 100, pay_amount: 108, ledger_amount: 100, ledger_currency: 'USD' }),
         ],
         loading: false,
         page: 1,

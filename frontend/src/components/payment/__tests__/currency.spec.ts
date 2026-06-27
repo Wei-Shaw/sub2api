@@ -14,7 +14,7 @@ describe('currencySymbol', () => {
     expect(currencySymbol('USD')).toBe('$')
     expect(currencySymbol('cny')).toBe('¥')
     expect(currencySymbol('EUR')).toBe('€')
-    expect(currencySymbol('')).toBe('¥')
+    expect(currencySymbol('')).toBe('₫')
     expect(currencySymbol('XYZ')).toBe('XYZ')
   })
 })
