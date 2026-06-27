@@ -151,7 +151,7 @@ func NewArchiveService(cfg *config.Config) *ArchiveService {
 		maxShardBytes:    int64(intOrDefault(ac.MaxShardSizeMB, 512)) * 1024 * 1024,
 		maxResponseBytes: intOrDefault(ac.MaxResponseBytes, 16<<20),
 		flushInterval:    time.Duration(intOrDefault(ac.FlushIntervalMs, 1500)) * time.Millisecond,
-		minFreeBytes:     uint64(maxInt(ac.MinFreeDiskGB, 0)) * 1024 * 1024 * 1024,
+		minFreeBytes:     uint64(archiveMaxInt(ac.MinFreeDiskGB, 0)) * 1024 * 1024 * 1024,
 		ipSalt:           salt,
 		queueMaxItems:    intOrDefault(ac.QueueMaxItems, 4096),
 		queueMaxBytes:    ac.QueueMaxBytes,
@@ -509,7 +509,7 @@ func hashClientIP(ip, salt string) string {
 
 // ---- 辅助 ----
 
-func maxInt(a, b int) int {
+func archiveMaxInt(a, b int) int {
 	if a > b {
 		return a
 	}
