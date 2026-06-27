@@ -444,18 +444,30 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 	return nil, fmt.Errorf("account type %s does not support usage query", account.Type)
 }
 
-// GetPassiveUsage 从 Account.Extra 中的被动采样数据构建 UsageInfo，不调用外部 API。
-// 仅适用于 Anthropic OAuth / SetupToken 账号。
+// GetPassiveUsage builds usage from persisted snapshots/local logs without calling upstream APIs.
 func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int64) (*UsageInfo, error) {
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("get account failed: %w", err)
 	}
 
-	if !account.IsAnthropicOAuthOrSetupToken() {
-		return nil, fmt.Errorf("passive usage only supported for Anthropic OAuth/SetupToken accounts")
+	switch {
+	case account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth:
+		return s.getOpenAIUsageSnapshot(ctx, account), nil
+	case account.Platform == PlatformGemini:
+		return s.getGeminiUsage(ctx, account)
+	case account.Platform == PlatformAntigravity:
+		return getAntigravityPassiveUsage(account), nil
+	case account.Platform == PlatformGrok:
+		return s.getGrokUsage(ctx, account)
+	case account.IsAnthropicOAuthOrSetupToken():
+		return s.getAnthropicPassiveUsage(ctx, account), nil
+	default:
+		return nil, fmt.Errorf("passive usage not supported for account platform %s type %s", account.Platform, account.Type)
 	}
+}
 
+func (s *AccountUsageService) getAnthropicPassiveUsage(ctx context.Context, account *Account) *UsageInfo {
 	// 复用 estimateSetupTokenUsage 构建 5h 窗口（OAuth 和 SetupToken 逻辑一致）
 	info := s.estimateSetupTokenUsage(account)
 	info.Source = "passive"
@@ -493,7 +505,55 @@ func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int
 	// 添加窗口统计
 	s.addWindowStats(ctx, account, info)
 
-	return info, nil
+	return info
+}
+
+func (s *AccountUsageService) getOpenAIUsageSnapshot(ctx context.Context, account *Account) *UsageInfo {
+	now := time.Now()
+	usage := &UsageInfo{
+		Source:    "passive",
+		UpdatedAt: &now,
+	}
+	if account == nil {
+		return usage
+	}
+	if updatedAtRaw, ok := account.Extra["codex_usage_updated_at"]; ok {
+		if updatedAt, err := parseTime(fmt.Sprint(updatedAtRaw)); err == nil {
+			usage.UpdatedAt = &updatedAt
+		}
+	}
+	if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
+		usage.FiveHour = progress
+	}
+	if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
+		usage.SevenDay = progress
+	}
+	if s.usageLogRepo == nil {
+		return usage
+	}
+	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.FiveHour, 5*time.Hour, now)); err == nil {
+		if usage.FiveHour == nil {
+			usage.FiveHour = &UsageProgress{Utilization: 0}
+		}
+		usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
+	}
+	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.SevenDay, 7*24*time.Hour, now)); err == nil {
+		if usage.SevenDay == nil {
+			usage.SevenDay = &UsageProgress{Utilization: 0}
+		}
+		usage.SevenDay.WindowStats = windowStatsFromAccountStats(stats)
+	}
+	return usage
+}
+
+func getAntigravityPassiveUsage(account *Account) *UsageInfo {
+	now := time.Now()
+	usage := &UsageInfo{
+		Source:    "passive",
+		UpdatedAt: &now,
+	}
+	enrichUsageWithAccountError(usage, account)
+	return usage
 }
 
 // syncActiveToPassive 将主动查询的最新数据回写到 Extra 被动缓存，

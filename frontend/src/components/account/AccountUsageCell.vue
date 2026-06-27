@@ -106,7 +106,7 @@
       <div v-else class="space-y-1">
         <div class="text-xs text-gray-400">-</div>
         <!-- Always allow on-demand upstream quota probe, even before passive headers exist. -->
-        <GrokQuotaProbeCell :account="account" />
+        <GrokQuotaProbeCell v-if="showActiveQuery" :account="account" />
       </div>
     </template>
 
@@ -179,7 +179,7 @@
       <div v-else>
         <div class="text-xs text-gray-400">-</div>
         <!-- Always allow on-demand upstream quota query, even before local data exists. -->
-        <OpenAIQuotaResetCell :account="account" class="mt-1" />
+        <OpenAIQuotaResetCell v-if="showActiveQuery" :account="account" class="mt-1" />
       </div>
     </template>
 
@@ -393,7 +393,7 @@
         <div v-if="grokQuotaStatusLine" class="text-[10px] text-gray-500 dark:text-gray-400">
           {{ grokQuotaStatusLine }}
         </div>
-        <GrokQuotaProbeCell :account="account" />
+        <GrokQuotaProbeCell v-if="showActiveQuery" :account="account" />
       </div>
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
@@ -1173,6 +1173,11 @@ const isAnthropicOAuthOrSetupToken = computed(() => {
   return props.account.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token')
 })
 
+const defaultUsageSource = computed<'passive' | 'active' | undefined>(() => {
+  if (!props.showActiveQuery) return 'passive'
+  return isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
+})
+
 const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?: boolean }) => {
   if (!shouldFetchUsage.value) return
 
@@ -1190,9 +1195,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
   error.value = null
 
   try {
-    const fetchFn = () => options?.source
-      ? adminAPI.accounts.getUsage(props.account.id, options.source)
-      : adminAPI.accounts.getUsage(props.account.id)
+    const fetchFn = () => adminAPI.accounts.getUsage(props.account.id, options?.source)
     const result = await enqueueUsageRequest(props.account, fetchFn)
     if (!unmounted.value) {
       usageInfo.value = result
@@ -1379,8 +1382,7 @@ onMounted(() => {
   }
 
   if (!shouldAutoLoadUsageOnMount.value) return
-  const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
-  requestAutoLoad(source)
+  requestAutoLoad(defaultUsageSource.value)
 })
 
 watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
@@ -1388,7 +1390,7 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
   _usageCache.delete(props.account.id)
-  requestUsageLoad(undefined, true)
+  requestUsageLoad(defaultUsageSource.value, true)
 })
 
 watch(
@@ -1397,9 +1399,8 @@ watch(
     if (nextToken === prevToken) return
     if (!shouldFetchUsage.value) return
 
-    const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
     _usageCache.delete(props.account.id)
-    loadUsage({ source, bypassCache: true }).catch((e) => {
+    loadUsage({ source: defaultUsageSource.value, bypassCache: true }).catch((e) => {
       console.error('Failed to refresh usage after manual refresh:', e)
     })
   }

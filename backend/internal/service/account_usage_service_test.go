@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
 type accountUsageCodexProbeRepo struct {
@@ -153,6 +155,104 @@ func TestAccountUsageService_GetOpenAIUsage_DoesNotPromoteCodexExtraToRateLimit(
 	select {
 	case got := <-repo.rateLimitCh:
 		t.Fatalf("不应将已耗尽的 codex extra 持久化为运行时限流状态: %v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+type passiveUsageLogRepo struct {
+	UsageLogRepository
+	statsCalls int
+}
+
+func (r *passiveUsageLogRepo) GetAccountWindowStats(_ context.Context, _ int64, _ time.Time) (*usagestats.AccountStats, error) {
+	r.statsCalls++
+	return &usagestats.AccountStats{
+		Requests:     2,
+		Tokens:       300,
+		Cost:         0.03,
+		StandardCost: 0.03,
+		UserCost:     0.03,
+	}, nil
+}
+
+func TestAccountUsageService_GetPassiveUsage_OpenAIReadsSnapshotWithoutProbe(t *testing.T) {
+	t.Parallel()
+
+	updatedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	repo := &accountUsageCodexProbeRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{{
+			ID:       4321,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"codex_usage_updated_at": updatedAt.Format(time.RFC3339),
+				"codex_5h_used_percent":  12.0,
+				"codex_5h_reset_at":      time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second).Format(time.RFC3339),
+				"codex_7d_used_percent":  34.0,
+				"codex_7d_reset_at":      time.Now().Add(6 * 24 * time.Hour).UTC().Truncate(time.Second).Format(time.RFC3339),
+			},
+		}}},
+		updateExtraCh: make(chan map[string]any, 1),
+	}
+	usageRepo := &passiveUsageLogRepo{}
+	svc := &AccountUsageService{
+		accountRepo:  repo,
+		usageLogRepo: usageRepo,
+	}
+
+	usage, err := svc.GetPassiveUsage(context.Background(), 4321)
+	if err != nil {
+		t.Fatalf("GetPassiveUsage() error = %v", err)
+	}
+	if usage.Source != "passive" {
+		t.Fatalf("Source = %q, want passive", usage.Source)
+	}
+	if usage.FiveHour == nil || usage.FiveHour.Utilization != 12.0 || usage.FiveHour.WindowStats == nil {
+		t.Fatalf("unexpected five hour usage: %#v", usage.FiveHour)
+	}
+	if usage.SevenDay == nil || usage.SevenDay.Utilization != 34.0 || usage.SevenDay.WindowStats == nil {
+		t.Fatalf("unexpected seven day usage: %#v", usage.SevenDay)
+	}
+	if usageRepo.statsCalls != 2 {
+		t.Fatalf("GetAccountWindowStats calls = %d, want 2", usageRepo.statsCalls)
+	}
+
+	select {
+	case updates := <-repo.updateExtraCh:
+		t.Fatalf("passive usage must not update account extra: %#v", updates)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestAccountUsageService_GetPassiveUsage_AntigravityDoesNotFetchUpstream(t *testing.T) {
+	t.Parallel()
+
+	repo := &accountUsageCodexProbeRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{{
+			ID:           5432,
+			Platform:     PlatformAntigravity,
+			Type:         AccountTypeOAuth,
+			Status:       StatusError,
+			ErrorMessage: "HTTP 403 validation_required https://example.test/verify",
+		}}},
+		updateExtraCh: make(chan map[string]any, 1),
+	}
+	svc := &AccountUsageService{accountRepo: repo}
+
+	usage, err := svc.GetPassiveUsage(context.Background(), 5432)
+	if err != nil {
+		t.Fatalf("GetPassiveUsage() error = %v", err)
+	}
+	if usage.Source != "passive" {
+		t.Fatalf("Source = %q, want passive", usage.Source)
+	}
+	if !usage.IsForbidden || !usage.NeedsVerify {
+		t.Fatalf("expected persisted forbidden state, got %#v", usage)
+	}
+
+	select {
+	case updates := <-repo.updateExtraCh:
+		t.Fatalf("passive usage must not update account extra: %#v", updates)
 	case <-time.After(200 * time.Millisecond):
 	}
 }
