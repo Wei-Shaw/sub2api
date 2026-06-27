@@ -716,6 +716,8 @@ export default {
     REDACTED,
     allGroups: '全部分组',
     allStatus: '全部状态',
+    columnSettings: '列设置',
+    columnAlwaysVisible: '该列固定显示，不可隐藏',
     createKey: '创建密钥',
     editKey: '编辑密钥',
     deleteKey: '删除密钥',
