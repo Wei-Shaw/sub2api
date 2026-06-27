@@ -122,6 +122,8 @@ func (h *FalGatewayHandler) Images(c *gin.Context) {
 //
 // 供 OpenAI 图片门面统一调度使用：返回的账号可能属于 openai 或 fal 平台，调用方据
 // account.Platform 分发到对应转发路径。fal 账号所需的 api 段由 parsed 推导。
+//
+// preferPlatform: ""/"openai" 维持现状；"fal" 反转为 fal 优先 + openai 兜底。
 func (h *FalGatewayHandler) SelectMixedImageAccount(
 	ctx context.Context,
 	groupID *int64,
@@ -130,8 +132,9 @@ func (h *FalGatewayHandler) SelectMixedImageAccount(
 	excludedIDs map[int64]struct{},
 	imageCapability service.OpenAIImagesCapability,
 	parsed *service.OpenAIImagesRequest,
+	preferPlatform string,
 ) (*service.Account, error) {
-	return h.gatewayService.SelectImageAccountMixed(ctx, groupID, sessionHash, requestedModel, excludedIDs, imageCapability, falAPIForOpenAIImages(parsed))
+	return h.gatewayService.SelectImageAccountMixed(ctx, groupID, sessionHash, requestedModel, excludedIDs, imageCapability, falAPIForOpenAIImages(parsed), preferPlatform)
 }
 
 // ServeOpenAIImagesWithAccount 让已预选的 fal 账号服务 OpenAI 伪同步图片请求：

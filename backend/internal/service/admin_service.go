@@ -17,6 +17,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -211,6 +212,12 @@ type CreateGroupInput struct {
 	ImagePrice1K         *float64
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
+	// 图片二维定价矩阵 tier_key -> quality_key -> price
+	ImagePricingMatrix domain.ImagePricingMatrix
+	// 仅 platform=openai 分组生效：fal 优先、openai 兜底
+	ImagePreferFal bool
+	// 仅 platform=openai 分组生效：回包图片分辨率自检（base64 解码）
+	ImageDecodeSizeOnRsp bool
 	ClaudeCodeOnly       bool   // 仅允许 Claude Code 客户端
 	FallbackGroupID      *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
@@ -252,6 +259,12 @@ type UpdateGroupInput struct {
 	ImagePrice1K         *float64
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
+	// 图片二维定价矩阵；non-nil 表示需要覆盖（空 map 清除）
+	ImagePricingMatrix *domain.ImagePricingMatrix
+	// 仅 platform=openai 分组生效；nil 表示未提供不变
+	ImagePreferFal *bool
+	// 仅 platform=openai 分组生效；nil 表示未提供不变
+	ImageDecodeSizeOnRsp *bool
 	ClaudeCodeOnly       *bool  // 仅允许 Claude Code 客户端
 	FallbackGroupID      *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
@@ -1821,6 +1834,19 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		imageRateMultiplier = *input.ImageRateMultiplier
 	}
 
+	// 校验图片二维定价矩阵：每格必须 ≥ 0 且不超过阈值
+	if err := validateImagePricingMatrix(input.ImagePricingMatrix); err != nil {
+		return nil, err
+	}
+	// image_prefer_fal 仅在 platform=openai 上允许开启
+	if input.ImagePreferFal && platform != PlatformOpenAI {
+		return nil, errors.New("image_prefer_fal requires platform=openai")
+	}
+	// image_decode_size_on_rsp 仅在 platform=openai 上允许开启
+	if input.ImageDecodeSizeOnRsp && platform != PlatformOpenAI {
+		return nil, errors.New("image_decode_size_on_rsp requires platform=openai")
+	}
+
 	// 校验降级分组
 	if input.FallbackGroupID != nil {
 		if err := s.validateFallbackGroup(ctx, 0, *input.FallbackGroupID); err != nil {
@@ -1893,6 +1919,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
+		ImagePricingMatrix:              normalizeImagePricingMatrix(input.ImagePricingMatrix),
+		ImagePreferFal:                  input.ImagePreferFal,
+		ImageDecodeSizeOnRsp:            input.ImageDecodeSizeOnRsp,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
@@ -2087,6 +2116,28 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.ImagePrice4K != nil {
 		group.ImagePrice4K = normalizePrice(input.ImagePrice4K)
+	}
+
+	// 图片二维定价矩阵：non-nil 表示需要覆盖（空 map 清除）
+	if input.ImagePricingMatrix != nil {
+		if err := validateImagePricingMatrix(*input.ImagePricingMatrix); err != nil {
+			return nil, err
+		}
+		group.ImagePricingMatrix = normalizeImagePricingMatrix(*input.ImagePricingMatrix)
+	}
+	// image_prefer_fal：仅 platform=openai 分组可置 true
+	if input.ImagePreferFal != nil {
+		if *input.ImagePreferFal && group.Platform != PlatformOpenAI {
+			return nil, errors.New("image_prefer_fal requires platform=openai")
+		}
+		group.ImagePreferFal = *input.ImagePreferFal
+	}
+	// image_decode_size_on_rsp：仅 platform=openai 分组可置 true
+	if input.ImageDecodeSizeOnRsp != nil {
+		if *input.ImageDecodeSizeOnRsp && group.Platform != PlatformOpenAI {
+			return nil, errors.New("image_decode_size_on_rsp requires platform=openai")
+		}
+		group.ImageDecodeSizeOnRsp = *input.ImageDecodeSizeOnRsp
 	}
 
 	// Claude Code 客户端限制

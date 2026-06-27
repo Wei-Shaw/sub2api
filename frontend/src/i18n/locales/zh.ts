@@ -2401,7 +2401,25 @@ export default {
         imageMultiplier: '生图独立倍率',
         modeHint: '默认关闭独立倍率时，图片费用 = 图片价格 × 当前分组有效倍率；开启独立倍率后，图片费用 = 图片价格 × 生图独立倍率。',
         finalPricePreview: '最终单张价格预览',
-        notConfigured: '未配置'
+        notConfigured: '未配置',
+        matrixTitle: '尺寸 × 质量 二维定价矩阵',
+        matrixHint: '每格为单张美元价；任一格命中即按该价计费。整列留空时回退到下方「兼容回退价」。',
+        matrixSizeHeader: '尺寸',
+        fillDefaults: '填入官方默认表',
+        clearAll: '全部清空',
+        clearRow: '清空该行',
+        invalidCells: '有 {count} 个格子值非法（必须 ≥ 0）',
+        quality: {
+          low: '低质量',
+          medium: '中质量',
+          high: '高质量'
+        },
+        fallbackTitle: '兼容回退价（旧版 1K / 2K / 4K 单维定价）',
+        fallbackHint: '当上方矩阵未命中或被清空时，按尺寸最大边长归并到 1K / 2K / 4K 三档使用此处单价。',
+preferFalLabel: 'fal 优先调度（仅 OpenAI 分组）',
+          preferFalHint: '开启后图片请求优先使用本分组下的 fal 账号承载，仅当 fal 全部不可用时回退到 OpenAI 账号。计费金额仍按本分组定价表，与承载平台无关。',
+          decodeSizeOnRspLabel: '回包分辨率自检（仅 OpenAI 分组）',
+decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto 时，系统会解码 b64_json 内容识别真实宽高用于计费；URL 模式不受影响。'
       },
       modelsList: {
         title: '自定义 /v1/models 模型列表',

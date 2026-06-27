@@ -2322,7 +2322,25 @@ export default {
         imageMultiplier: 'Image multiplier',
         modeHint: 'By default, image billing uses image price × current effective group multiplier. Independent mode uses image price × image multiplier.',
         finalPricePreview: 'Final per-image price preview',
-        notConfigured: 'Not configured'
+        notConfigured: 'Not configured',
+        matrixTitle: 'Size × Quality pricing matrix',
+        matrixHint: 'Each cell is the per-image USD price. A matched cell wins. Leave a column empty to fall back to the legacy single-dimension prices below.',
+        matrixSizeHeader: 'Size',
+        fillDefaults: 'Fill official defaults',
+        clearAll: 'Clear all',
+        clearRow: 'Clear row',
+        invalidCells: '{count} cell(s) have invalid values (must be ≥ 0)',
+        quality: {
+          low: 'Low',
+          medium: 'Medium',
+          high: 'High'
+        },
+        fallbackTitle: 'Compatibility fallback prices (legacy 1K / 2K / 4K)',
+        fallbackHint: 'When the matrix above does not match (or is empty), images are billed by their longest edge bucketed into 1K / 2K / 4K using these prices.',
+preferFalLabel: 'Prefer Fal accounts (OpenAI groups only)',
+          preferFalHint: 'When enabled, image requests on this group are scheduled to fal accounts first and only fall back to OpenAI accounts when no fal account is available. The billed amount is unaffected and always uses this group\'s pricing table.',
+          decodeSizeOnRspLabel: 'Decode response size from base64 (OpenAI groups only)',
+decodeSizeOnRspHint: 'When the upstream response omits the size field or returns size=auto, decode the b64_json content to recover the real width and height for billing. URL-only responses are not affected.'
       },
       modelsList: {
         title: 'Custom /v1/models Model List',

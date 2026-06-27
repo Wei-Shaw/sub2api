@@ -301,6 +301,40 @@ func (_c *GroupCreate) SetNillableImagePrice4k(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetImagePricingMatrix sets the "image_pricing_matrix" field.
+func (_c *GroupCreate) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupCreate {
+	_c.mutation.SetImagePricingMatrix(v)
+	return _c
+}
+
+// SetImagePreferFal sets the "image_prefer_fal" field.
+func (_c *GroupCreate) SetImagePreferFal(v bool) *GroupCreate {
+	_c.mutation.SetImagePreferFal(v)
+	return _c
+}
+
+// SetNillableImagePreferFal sets the "image_prefer_fal" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImagePreferFal(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImagePreferFal(*v)
+	}
+	return _c
+}
+
+// SetImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field.
+func (_c *GroupCreate) SetImageDecodeSizeOnRsp(v bool) *GroupCreate {
+	_c.mutation.SetImageDecodeSizeOnRsp(v)
+	return _c
+}
+
+// SetNillableImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageDecodeSizeOnRsp(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageDecodeSizeOnRsp(*v)
+	}
+	return _c
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_c *GroupCreate) SetClaudeCodeOnly(v bool) *GroupCreate {
 	_c.mutation.SetClaudeCodeOnly(v)
@@ -672,6 +706,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultImageRateMultiplier
 		_c.mutation.SetImageRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.ImagePreferFal(); !ok {
+		v := group.DefaultImagePreferFal
+		_c.mutation.SetImagePreferFal(v)
+	}
+	if _, ok := _c.mutation.ImageDecodeSizeOnRsp(); !ok {
+		v := group.DefaultImageDecodeSizeOnRsp
+		_c.mutation.SetImageDecodeSizeOnRsp(v)
+	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
@@ -780,6 +822,12 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.ImagePreferFal(); !ok {
+		return &ValidationError{Name: "image_prefer_fal", err: errors.New(`ent: missing required field "Group.image_prefer_fal"`)}
+	}
+	if _, ok := _c.mutation.ImageDecodeSizeOnRsp(); !ok {
+		return &ValidationError{Name: "image_decode_size_on_rsp", err: errors.New(`ent: missing required field "Group.image_decode_size_on_rsp"`)}
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
@@ -928,6 +976,18 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImagePrice4k(); ok {
 		_spec.SetField(group.FieldImagePrice4k, field.TypeFloat64, value)
 		_node.ImagePrice4k = &value
+	}
+	if value, ok := _c.mutation.ImagePricingMatrix(); ok {
+		_spec.SetField(group.FieldImagePricingMatrix, field.TypeJSON, value)
+		_node.ImagePricingMatrix = value
+	}
+	if value, ok := _c.mutation.ImagePreferFal(); ok {
+		_spec.SetField(group.FieldImagePreferFal, field.TypeBool, value)
+		_node.ImagePreferFal = value
+	}
+	if value, ok := _c.mutation.ImageDecodeSizeOnRsp(); ok {
+		_spec.SetField(group.FieldImageDecodeSizeOnRsp, field.TypeBool, value)
+		_node.ImageDecodeSizeOnRsp = value
 	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1472,6 +1532,48 @@ func (u *GroupUpsert) AddImagePrice4k(v float64) *GroupUpsert {
 // ClearImagePrice4k clears the value of the "image_price_4k" field.
 func (u *GroupUpsert) ClearImagePrice4k() *GroupUpsert {
 	u.SetNull(group.FieldImagePrice4k)
+	return u
+}
+
+// SetImagePricingMatrix sets the "image_pricing_matrix" field.
+func (u *GroupUpsert) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupUpsert {
+	u.Set(group.FieldImagePricingMatrix, v)
+	return u
+}
+
+// UpdateImagePricingMatrix sets the "image_pricing_matrix" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImagePricingMatrix() *GroupUpsert {
+	u.SetExcluded(group.FieldImagePricingMatrix)
+	return u
+}
+
+// ClearImagePricingMatrix clears the value of the "image_pricing_matrix" field.
+func (u *GroupUpsert) ClearImagePricingMatrix() *GroupUpsert {
+	u.SetNull(group.FieldImagePricingMatrix)
+	return u
+}
+
+// SetImagePreferFal sets the "image_prefer_fal" field.
+func (u *GroupUpsert) SetImagePreferFal(v bool) *GroupUpsert {
+	u.Set(group.FieldImagePreferFal, v)
+	return u
+}
+
+// UpdateImagePreferFal sets the "image_prefer_fal" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImagePreferFal() *GroupUpsert {
+	u.SetExcluded(group.FieldImagePreferFal)
+	return u
+}
+
+// SetImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field.
+func (u *GroupUpsert) SetImageDecodeSizeOnRsp(v bool) *GroupUpsert {
+	u.Set(group.FieldImageDecodeSizeOnRsp, v)
+	return u
+}
+
+// UpdateImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageDecodeSizeOnRsp() *GroupUpsert {
+	u.SetExcluded(group.FieldImageDecodeSizeOnRsp)
 	return u
 }
 
@@ -2124,6 +2226,55 @@ func (u *GroupUpsertOne) UpdateImagePrice4k() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearImagePrice4k() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetImagePricingMatrix sets the "image_pricing_matrix" field.
+func (u *GroupUpsertOne) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePricingMatrix(v)
+	})
+}
+
+// UpdateImagePricingMatrix sets the "image_pricing_matrix" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImagePricingMatrix() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePricingMatrix()
+	})
+}
+
+// ClearImagePricingMatrix clears the value of the "image_pricing_matrix" field.
+func (u *GroupUpsertOne) ClearImagePricingMatrix() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePricingMatrix()
+	})
+}
+
+// SetImagePreferFal sets the "image_prefer_fal" field.
+func (u *GroupUpsertOne) SetImagePreferFal(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePreferFal(v)
+	})
+}
+
+// UpdateImagePreferFal sets the "image_prefer_fal" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImagePreferFal() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePreferFal()
+	})
+}
+
+// SetImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field.
+func (u *GroupUpsertOne) SetImageDecodeSizeOnRsp(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageDecodeSizeOnRsp(v)
+	})
+}
+
+// UpdateImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageDecodeSizeOnRsp() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageDecodeSizeOnRsp()
 	})
 }
 
@@ -2979,6 +3130,55 @@ func (u *GroupUpsertBulk) UpdateImagePrice4k() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearImagePrice4k() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetImagePricingMatrix sets the "image_pricing_matrix" field.
+func (u *GroupUpsertBulk) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePricingMatrix(v)
+	})
+}
+
+// UpdateImagePricingMatrix sets the "image_pricing_matrix" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImagePricingMatrix() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePricingMatrix()
+	})
+}
+
+// ClearImagePricingMatrix clears the value of the "image_pricing_matrix" field.
+func (u *GroupUpsertBulk) ClearImagePricingMatrix() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePricingMatrix()
+	})
+}
+
+// SetImagePreferFal sets the "image_prefer_fal" field.
+func (u *GroupUpsertBulk) SetImagePreferFal(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePreferFal(v)
+	})
+}
+
+// UpdateImagePreferFal sets the "image_prefer_fal" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImagePreferFal() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePreferFal()
+	})
+}
+
+// SetImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field.
+func (u *GroupUpsertBulk) SetImageDecodeSizeOnRsp(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageDecodeSizeOnRsp(v)
+	})
+}
+
+// UpdateImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageDecodeSizeOnRsp() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageDecodeSizeOnRsp()
 	})
 }
 

@@ -238,23 +238,30 @@ type OpenAIForwardResult struct {
 	ServiceTier *string
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
-	ReasoningEffort    *string
-	Stream             bool
-	OpenAIWSMode       bool
-	ResponseHeaders    http.Header
-	Duration           time.Duration
-	FirstTokenMs       *int
-	ClientDisconnect   bool
-	ImageCount         int
-	ImageSize          string
-	ImageInputSize     string
-	ImageOutputSize    string
-	ImageOutputSizes   []string
+	ReasoningEffort  *string
+	Stream           bool
+	OpenAIWSMode     bool
+	ResponseHeaders  http.Header
+	Duration         time.Duration
+	FirstTokenMs     *int
+	ClientDisconnect bool
+	ImageCount       int
+	ImageSize        string
+	ImageInputSize   string
+	ImageOutputSize  string
+	ImageOutputSizes []string
+	// ImageOutputBase64 与 ImageOutputSizes 同序、同长度（counter 收尾时统一回填）；
+	// URL 模式或未携带 b64 的 slot 占位空字符串。仅供 §5 回包图片分辨率自检消费。
+	ImageOutputBase64  []string
 	ImageSizeSource    string
 	ImageSizeBreakdown map[string]int
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
+
+	// imageSizeDecoded 由 DecodeOpenAIImageOutputSizes 设置：本次记账中至少一个 slot
+	// 由 base64 解码出真实尺寸，供 ApplyOpenAIImageBillingResolution 标记 Source。
+	imageSizeDecoded bool
 }
 
 type OpenAIWSRetryMetricsSnapshot struct {
@@ -5948,7 +5955,38 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
-	ApplyOpenAIImageBillingResolution(result)
+	var billingGroup *Group
+	if apiKey != nil {
+		billingGroup = apiKey.Group
+	}
+
+	ApplyOpenAIImageBillingResolution(result, billingGroup)
+
+	// 截断 base64 内容以避免日志过大
+	truncatedBase64 := make([]string, len(result.ImageOutputBase64))
+	for i, base64Str := range result.ImageOutputBase64 {
+		if len(base64Str) > 100 {
+			truncatedBase64[i] = base64Str[:50] + "..." + base64Str[len(base64Str)-50:]
+		} else {
+			truncatedBase64[i] = base64Str
+		}
+	}
+
+	logger.L().Debug("openai.images.billing_resolution_applied",
+		zap.String("component", "service.openai_gateway"),
+		zap.Int("image_count", result.ImageCount),
+		zap.String("image_size", result.ImageSize),
+		zap.Strings("image_output_sizes", result.ImageOutputSizes),
+		zap.Strings("image_output_base64_lens", func() []string {
+			lens := make([]string, len(result.ImageOutputBase64))
+			for i, s := range result.ImageOutputBase64 {
+				lens[i] = strconv.Itoa(len(s))
+			}
+			return lens
+		}()),
+		zap.Strings("image_output_base64_truncated", truncatedBase64),
+		zap.String("image_size_source", result.ImageSizeSource),
+	)
 
 	// 计算实际的新输入token（减去缓存读取的token）
 	// 因为 input_tokens 包含了 cache_read_tokens，而缓存读取的token不应按输入价格计费

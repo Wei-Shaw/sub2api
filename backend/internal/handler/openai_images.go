@@ -44,12 +44,6 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		zap.Int64("api_key_id", apiKey.ID),
 		zap.Any("group_id", apiKey.GroupID),
 	)
-	// DEBUG: 确认 /v1/images/generations 是否进入 OpenAI handler 分支
-	reqLog.Info("openai.images.handler_entered",
-		zap.String("path", c.FullPath()),
-		zap.String("method", c.Request.Method),
-		zap.String("content_type", c.GetHeader("Content-Type")),
-	)
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}
@@ -143,6 +137,12 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 	requestCtx := service.WithOpenAIImageGenerationIntent(c.Request.Context())
 
+	// 分组的 image_prefer_fal 开关：true 时混合调度反转为「fal 优先 + openai 兜底」
+	preferPlatform := ""
+	if apiKey.Group != nil && apiKey.Group.ImagePreferFalEnabled() {
+		preferPlatform = service.PlatformFal
+	}
+
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
@@ -157,6 +157,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 		if h.falImageFallback != nil {
 			// 混合调度：openai + fal 账号同池，按“优先级 + 最久未用”统一选号（不做 fallback）。
+			// preferPlatform="fal" 时反转为 fal 优先 + openai 兜底。
 			account, selErr := h.falImageFallback.SelectMixedImageAccount(
 				requestCtx,
 				apiKey.GroupID,
@@ -165,6 +166,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				failedAccountIDs,
 				parsed.RequiredCapability,
 				parsed,
+				preferPlatform,
 			)
 			if selErr != nil || account == nil {
 				reqLog.Warn("openai.images.account_select_failed",
@@ -274,6 +276,43 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			}()
 			return h.gatewayService.ForwardImages(requestCtx, c, account, body, parsed, channelMapping.MappedModel)
 		}()
+
+		// DEBUG: 打印 ForwardImages 返回结果（截断 base64 内容）
+		if result != nil {
+			// 创建截断版本的 ImageOutputBase64 数组
+			truncatedBase64 := make([]string, len(result.ImageOutputBase64))
+			for i, base64Str := range result.ImageOutputBase64 {
+				if len(base64Str) > 100 {
+					truncatedBase64[i] = base64Str[:50] + "..." + base64Str[len(base64Str)-50:]
+				} else {
+					truncatedBase64[i] = base64Str
+				}
+			}
+
+			reqLog.Debug("openai.images.forward_result",
+				zap.Int("image_count", result.ImageCount),
+				zap.String("image_size", result.ImageSize),
+				zap.Strings("image_output_sizes", result.ImageOutputSizes),
+				zap.Strings("image_output_base64_lens", func() []string {
+					lens := make([]string, len(result.ImageOutputBase64))
+					for i, s := range result.ImageOutputBase64 {
+						lens[i] = strconv.Itoa(len(s))
+					}
+					return lens
+				}()),
+				zap.Strings("image_output_base64_truncated", truncatedBase64),
+				zap.String("image_size_source", result.ImageSizeSource),
+				zap.Error(err),
+				zap.Int64("account_id", account.ID),
+			)
+		} else {
+			reqLog.Debug("openai.images.forward_result",
+				zap.Any("result", result),
+				zap.Error(err),
+				zap.Int64("account_id", account.ID),
+			)
+		}
+
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs

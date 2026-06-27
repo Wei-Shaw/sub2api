@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKeyRateLimitCacheData holds rate limit usage data cached in Redis.
@@ -1168,10 +1169,35 @@ func (s *BillingService) ForceUpdatePricing() error {
 }
 
 // ImagePriceConfig 图片计费配置
+//
+// 老调用方仍可只填 Price1K/Price2K/Price4K（兼容旧三档定价）。
+// 新调用方推荐同时填充 PricingMatrix + RawWidth + RawHeight + Quality，
+// 此时计费命中按 spec D5 三级回退顺序：
+//
+//	1. 矩阵命中: PricingMatrix[tier_key][quality_key]，
+//	   tier_key 由 (RawWidth, RawHeight) 经 ClassifyImagePricingTier6 计算，
+//	   quality_key 由 Quality 经 NormalizeImageQuality 归一。
+//	2. 旧三档命中: 按已归一的 imageSize ("1K"/"2K"/"4K") 命中 Price1K/2K/4K。
+//	3. LiteLLM 默认价: getDefaultImagePrice 提供。
+//
+// 任意一级缺失即跳到下一级；矩阵中只缺某 (tier,quality) 单元格也会回退。
 type ImagePriceConfig struct {
-	Price1K *float64 // 1K 尺寸价格（nil 表示使用默认值）
-	Price2K *float64 // 2K 尺寸价格（nil 表示使用默认值）
-	Price4K *float64 // 4K 尺寸价格（nil 表示使用默认值）
+	Price1K *float64 // 1K 尺寸价格（nil 表示未配置）
+	Price2K *float64 // 2K 尺寸价格（nil 表示未配置）
+	Price4K *float64 // 4K 尺寸价格（nil 表示未配置）
+
+	// 二维定价矩阵：tier_key -> quality_key -> 单价（USD per image）。
+	// 为 nil/空 map 时视为分组未启用矩阵定价，跳到第 2 级。
+	PricingMatrix domain.ImagePricingMatrix
+
+	// 原始请求尺寸（像素）。仅当 PricingMatrix 非空时才被使用。
+	// 任一字段 <=0 视为未提供，矩阵命中失败回退到第 2 级。
+	RawWidth  int
+	RawHeight int
+
+	// 原始 quality（"low"/"medium"/"high"/"auto"/空/任意大小写）。
+	// 仅当 PricingMatrix 非空时被使用，内部经 NormalizeImageQuality 归一。
+	Quality string
 }
 
 // CalculateImageCost 计算图片生成费用
@@ -1205,10 +1231,19 @@ func (s *BillingService) CalculateImageCost(model string, imageSize string, imag
 	}
 }
 
-// getImageUnitPrice 获取图片单价
+// getImageUnitPrice 获取图片单价。
+//
+// 按 spec D5 三级回退：
+//  1. groupConfig.PricingMatrix[tier_key][quality_key] —— 命中即返回
+//  2. groupConfig.Price1K/Price2K/Price4K —— 按 imageSize ("1K"/"2K"/"4K") 命中
+//  3. getDefaultImagePrice(model, imageSize) —— LiteLLM 默认/硬编码兜底
 func (s *BillingService) getImageUnitPrice(model string, imageSize string, groupConfig *ImagePriceConfig) float64 {
-	// 优先使用分组配置的价格
 	if groupConfig != nil {
+		// 第 1 级：二维矩阵命中
+		if price, ok := lookupImagePricingMatrix(groupConfig); ok {
+			return price
+		}
+		// 第 2 级：旧三档命中
 		switch imageSize {
 		case "1K":
 			if groupConfig.Price1K != nil {
@@ -1225,8 +1260,37 @@ func (s *BillingService) getImageUnitPrice(model string, imageSize string, group
 		}
 	}
 
-	// 回退到 LiteLLM 默认价格
+	// 第 3 级：LiteLLM 默认价格
 	return s.getDefaultImagePrice(model, imageSize)
+}
+
+// lookupImagePricingMatrix 在 groupConfig.PricingMatrix 中查找命中的单价。
+//
+// 仅当以下条件全部满足才命中：
+//   - PricingMatrix 非空
+//   - RawWidth>0 && RawHeight>0，且能归一到 6 档之一
+//   - 矩阵中存在 tier_key -> quality_key 对应单元格
+//
+// 任一缺失返回 (0, false)，由调用方走下一级回退。
+func lookupImagePricingMatrix(cfg *ImagePriceConfig) (float64, bool) {
+	if cfg == nil || len(cfg.PricingMatrix) == 0 {
+		return 0, false
+	}
+	tierKey, ok := ClassifyImagePricingTier6(cfg.RawWidth, cfg.RawHeight)
+	if !ok {
+		return 0, false
+	}
+	qualityKey := NormalizeImageQuality(cfg.Quality)
+
+	row, ok := cfg.PricingMatrix[tierKey]
+	if !ok || len(row) == 0 {
+		return 0, false
+	}
+	price, ok := row[qualityKey]
+	if !ok {
+		return 0, false
+	}
+	return price, true
 }
 
 // getDefaultImagePrice 获取 LiteLLM 默认图片价格

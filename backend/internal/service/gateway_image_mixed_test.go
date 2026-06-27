@@ -70,7 +70,7 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		})
 		svc := newSvc(repo, nil)
 
-		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityBasic, "")
+		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityBasic, "", "")
 		require.NoError(t, err)
 		require.NotNil(t, acc)
 		require.Equal(t, int64(2), acc.ID, "fal 优先级更高应被选中")
@@ -84,7 +84,7 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		})
 		svc := newSvc(repo, nil)
 
-		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityBasic, "")
+		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityBasic, "", "")
 		require.NoError(t, err)
 		require.NotNil(t, acc)
 		require.Equal(t, int64(1), acc.ID, "同优先级且均未使用时 openai 先入池应保持稳定")
@@ -102,7 +102,7 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		repo := newImageMixedRepo([]Account{openai, fal})
 		svc := newSvc(repo, nil)
 
-		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityBasic, "")
+		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityBasic, "", "")
 		require.NoError(t, err)
 		require.NotNil(t, acc)
 		require.Equal(t, int64(2), acc.ID, "同优先级时最久未用的 fal 账号应被选中")
@@ -116,13 +116,13 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		svc := newSvc(repo, nil)
 
 		// 首选 openai（优先级更高）
-		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityBasic, "")
+		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityBasic, "", "")
 		require.NoError(t, err)
 		require.Equal(t, int64(1), acc.ID)
 
 		// 排除 openai 后混合池天然切到 fal
 		excluded := map[int64]struct{}{1: {}}
-		acc, err = svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, excluded, OpenAIImagesCapabilityBasic, "")
+		acc, err = svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, excluded, OpenAIImagesCapabilityBasic, "", "")
 		require.NoError(t, err)
 		require.NotNil(t, acc)
 		require.Equal(t, int64(2), acc.ID, "openai 被排除后应跨平台切到 fal")
@@ -137,7 +137,7 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		})
 		svc := newSvc(repo, nil)
 
-		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", "dall-e-3", nil, OpenAIImagesCapabilityBasic, "")
+		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", "dall-e-3", nil, OpenAIImagesCapabilityBasic, "", "")
 		require.NoError(t, err)
 		require.NotNil(t, acc)
 		require.Equal(t, int64(1), acc.ID, "fal 不支持请求模型时应跳过，由 openai 兜底")
@@ -152,7 +152,7 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		})
 		svc := newSvc(repo, nil)
 
-		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityNative, "edit")
+		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityNative, "edit", "")
 		require.NoError(t, err)
 		require.NotNil(t, acc)
 		require.Equal(t, int64(1), acc.ID, "edit 请求时仅支持文生图的 fal 账号应被跳过")
@@ -168,7 +168,7 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		})
 		svc := newSvc(repo, nil)
 
-		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityNative, "edit")
+		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityNative, "edit", "")
 		require.NoError(t, err)
 		require.NotNil(t, acc)
 		require.Equal(t, int64(2), acc.ID, "支持 edit 的 fal 账号应被选中")
@@ -179,7 +179,7 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		repo := newImageMixedRepo(nil)
 		svc := newSvc(repo, nil)
 
-		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityBasic, "")
+		acc, err := svc.SelectImageAccountMixed(ctx, nil, "", t2iModel, nil, OpenAIImagesCapabilityBasic, "", "")
 		require.Nil(t, acc)
 		require.ErrorIs(t, err, ErrNoAvailableAccounts)
 	})
@@ -195,7 +195,7 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		}
 		svc := newSvc(repo, cache)
 
-		acc, err := svc.SelectImageAccountMixed(ctx, nil, "session-img", t2iModel, nil, OpenAIImagesCapabilityBasic, "")
+		acc, err := svc.SelectImageAccountMixed(ctx, nil, "session-img", t2iModel, nil, OpenAIImagesCapabilityBasic, "", "")
 		require.NoError(t, err)
 		require.NotNil(t, acc)
 		require.Equal(t, int64(2), acc.ID, "粘性会话命中应允许跨平台返回 fal 账号")
@@ -214,7 +214,7 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 
 		// fal(2) 被排除，粘性命中失效，回退优先级选号选中 openai(1)
 		excluded := map[int64]struct{}{2: {}}
-		acc, err := svc.SelectImageAccountMixed(ctx, nil, "session-img", t2iModel, excluded, OpenAIImagesCapabilityBasic, "")
+		acc, err := svc.SelectImageAccountMixed(ctx, nil, "session-img", t2iModel, excluded, OpenAIImagesCapabilityBasic, "", "")
 		require.NoError(t, err)
 		require.NotNil(t, acc)
 		require.Equal(t, int64(1), acc.ID)

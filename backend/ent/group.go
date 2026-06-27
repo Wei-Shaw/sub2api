@@ -59,6 +59,12 @@ type Group struct {
 	ImagePrice2k *float64 `json:"image_price_2k,omitempty"`
 	// ImagePrice4k holds the value of the "image_price_4k" field.
 	ImagePrice4k *float64 `json:"image_price_4k,omitempty"`
+	// 图片二维定价矩阵：{tier_key}{quality_key} -> 单价；为空表示沿用旧 image_price_1k/2k/4k 字段
+	ImagePricingMatrix domain.ImagePricingMatrix `json:"image_pricing_matrix,omitempty"`
+	// 仅 openai 分组生效：是否在图片调度时优先选择 fal 账号，openai 账号兜底
+	ImagePreferFal bool `json:"image_prefer_fal,omitempty"`
+	// 仅 openai 分组生效：上游不返回 size 或返回 auto 时是否解码 b64_json 识别真实分辨率用于计费
+	ImageDecodeSizeOnRsp bool `json:"image_decode_size_on_rsp,omitempty"`
 	// 是否仅允许 Claude Code 客户端
 	ClaudeCodeOnly bool `json:"claude_code_only,omitempty"`
 	// 非 Claude Code 请求降级使用的分组 ID
@@ -195,9 +201,9 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
+		case group.FieldImagePricingMatrix, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
+		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldImagePreferFal, group.FieldImageDecodeSizeOnRsp, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
@@ -355,6 +361,26 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ImagePrice4k = new(float64)
 				*_m.ImagePrice4k = value.Float64
+			}
+		case group.FieldImagePricingMatrix:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field image_pricing_matrix", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ImagePricingMatrix); err != nil {
+					return fmt.Errorf("unmarshal field image_pricing_matrix: %w", err)
+				}
+			}
+		case group.FieldImagePreferFal:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_prefer_fal", values[i])
+			} else if value.Valid {
+				_m.ImagePreferFal = value.Bool
+			}
+		case group.FieldImageDecodeSizeOnRsp:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_decode_size_on_rsp", values[i])
+			} else if value.Valid {
+				_m.ImageDecodeSizeOnRsp = value.Bool
 			}
 		case group.FieldClaudeCodeOnly:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -607,6 +633,15 @@ func (_m *Group) String() string {
 		builder.WriteString("image_price_4k=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("image_pricing_matrix=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImagePricingMatrix))
+	builder.WriteString(", ")
+	builder.WriteString("image_prefer_fal=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImagePreferFal))
+	builder.WriteString(", ")
+	builder.WriteString("image_decode_size_on_rsp=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageDecodeSizeOnRsp))
 	builder.WriteString(", ")
 	builder.WriteString("claude_code_only=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ClaudeCodeOnly))

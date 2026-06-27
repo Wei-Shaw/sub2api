@@ -17741,6 +17741,9 @@ type GroupMutation struct {
 	addimage_price_2k                       *float64
 	image_price_4k                          *float64
 	addimage_price_4k                       *float64
+	image_pricing_matrix                    *domain.ImagePricingMatrix
+	image_prefer_fal                        *bool
+	image_decode_size_on_rsp                *bool
 	claude_code_only                        *bool
 	fallback_group_id                       *int64
 	addfallback_group_id                    *int64
@@ -18893,6 +18896,127 @@ func (m *GroupMutation) ResetImagePrice4k() {
 	delete(m.clearedFields, group.FieldImagePrice4k)
 }
 
+// SetImagePricingMatrix sets the "image_pricing_matrix" field.
+func (m *GroupMutation) SetImagePricingMatrix(dpm domain.ImagePricingMatrix) {
+	m.image_pricing_matrix = &dpm
+}
+
+// ImagePricingMatrix returns the value of the "image_pricing_matrix" field in the mutation.
+func (m *GroupMutation) ImagePricingMatrix() (r domain.ImagePricingMatrix, exists bool) {
+	v := m.image_pricing_matrix
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImagePricingMatrix returns the old "image_pricing_matrix" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldImagePricingMatrix(ctx context.Context) (v domain.ImagePricingMatrix, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImagePricingMatrix is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImagePricingMatrix requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImagePricingMatrix: %w", err)
+	}
+	return oldValue.ImagePricingMatrix, nil
+}
+
+// ClearImagePricingMatrix clears the value of the "image_pricing_matrix" field.
+func (m *GroupMutation) ClearImagePricingMatrix() {
+	m.image_pricing_matrix = nil
+	m.clearedFields[group.FieldImagePricingMatrix] = struct{}{}
+}
+
+// ImagePricingMatrixCleared returns if the "image_pricing_matrix" field was cleared in this mutation.
+func (m *GroupMutation) ImagePricingMatrixCleared() bool {
+	_, ok := m.clearedFields[group.FieldImagePricingMatrix]
+	return ok
+}
+
+// ResetImagePricingMatrix resets all changes to the "image_pricing_matrix" field.
+func (m *GroupMutation) ResetImagePricingMatrix() {
+	m.image_pricing_matrix = nil
+	delete(m.clearedFields, group.FieldImagePricingMatrix)
+}
+
+// SetImagePreferFal sets the "image_prefer_fal" field.
+func (m *GroupMutation) SetImagePreferFal(b bool) {
+	m.image_prefer_fal = &b
+}
+
+// ImagePreferFal returns the value of the "image_prefer_fal" field in the mutation.
+func (m *GroupMutation) ImagePreferFal() (r bool, exists bool) {
+	v := m.image_prefer_fal
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImagePreferFal returns the old "image_prefer_fal" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldImagePreferFal(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImagePreferFal is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImagePreferFal requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImagePreferFal: %w", err)
+	}
+	return oldValue.ImagePreferFal, nil
+}
+
+// ResetImagePreferFal resets all changes to the "image_prefer_fal" field.
+func (m *GroupMutation) ResetImagePreferFal() {
+	m.image_prefer_fal = nil
+}
+
+// SetImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field.
+func (m *GroupMutation) SetImageDecodeSizeOnRsp(b bool) {
+	m.image_decode_size_on_rsp = &b
+}
+
+// ImageDecodeSizeOnRsp returns the value of the "image_decode_size_on_rsp" field in the mutation.
+func (m *GroupMutation) ImageDecodeSizeOnRsp() (r bool, exists bool) {
+	v := m.image_decode_size_on_rsp
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageDecodeSizeOnRsp returns the old "image_decode_size_on_rsp" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldImageDecodeSizeOnRsp(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageDecodeSizeOnRsp is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageDecodeSizeOnRsp requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageDecodeSizeOnRsp: %w", err)
+	}
+	return oldValue.ImageDecodeSizeOnRsp, nil
+}
+
+// ResetImageDecodeSizeOnRsp resets all changes to the "image_decode_size_on_rsp" field.
+func (m *GroupMutation) ResetImageDecodeSizeOnRsp() {
+	m.image_decode_size_on_rsp = nil
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (m *GroupMutation) SetClaudeCodeOnly(b bool) {
 	m.claude_code_only = &b
@@ -19927,7 +20051,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 35)
+	fields := make([]string, 0, 38)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -19987,6 +20111,15 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.image_price_4k != nil {
 		fields = append(fields, group.FieldImagePrice4k)
+	}
+	if m.image_pricing_matrix != nil {
+		fields = append(fields, group.FieldImagePricingMatrix)
+	}
+	if m.image_prefer_fal != nil {
+		fields = append(fields, group.FieldImagePreferFal)
+	}
+	if m.image_decode_size_on_rsp != nil {
+		fields = append(fields, group.FieldImageDecodeSizeOnRsp)
 	}
 	if m.claude_code_only != nil {
 		fields = append(fields, group.FieldClaudeCodeOnly)
@@ -20081,6 +20214,12 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ImagePrice2k()
 	case group.FieldImagePrice4k:
 		return m.ImagePrice4k()
+	case group.FieldImagePricingMatrix:
+		return m.ImagePricingMatrix()
+	case group.FieldImagePreferFal:
+		return m.ImagePreferFal()
+	case group.FieldImageDecodeSizeOnRsp:
+		return m.ImageDecodeSizeOnRsp()
 	case group.FieldClaudeCodeOnly:
 		return m.ClaudeCodeOnly()
 	case group.FieldFallbackGroupID:
@@ -20160,6 +20299,12 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldImagePrice2k(ctx)
 	case group.FieldImagePrice4k:
 		return m.OldImagePrice4k(ctx)
+	case group.FieldImagePricingMatrix:
+		return m.OldImagePricingMatrix(ctx)
+	case group.FieldImagePreferFal:
+		return m.OldImagePreferFal(ctx)
+	case group.FieldImageDecodeSizeOnRsp:
+		return m.OldImageDecodeSizeOnRsp(ctx)
 	case group.FieldClaudeCodeOnly:
 		return m.OldClaudeCodeOnly(ctx)
 	case group.FieldFallbackGroupID:
@@ -20338,6 +20483,27 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetImagePrice4k(v)
+		return nil
+	case group.FieldImagePricingMatrix:
+		v, ok := value.(domain.ImagePricingMatrix)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImagePricingMatrix(v)
+		return nil
+	case group.FieldImagePreferFal:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImagePreferFal(v)
+		return nil
+	case group.FieldImageDecodeSizeOnRsp:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageDecodeSizeOnRsp(v)
 		return nil
 	case group.FieldClaudeCodeOnly:
 		v, ok := value.(bool)
@@ -20657,6 +20823,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldImagePrice4k) {
 		fields = append(fields, group.FieldImagePrice4k)
 	}
+	if m.FieldCleared(group.FieldImagePricingMatrix) {
+		fields = append(fields, group.FieldImagePricingMatrix)
+	}
 	if m.FieldCleared(group.FieldFallbackGroupID) {
 		fields = append(fields, group.FieldFallbackGroupID)
 	}
@@ -20703,6 +20872,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldImagePrice4k:
 		m.ClearImagePrice4k()
+		return nil
+	case group.FieldImagePricingMatrix:
+		m.ClearImagePricingMatrix()
 		return nil
 	case group.FieldFallbackGroupID:
 		m.ClearFallbackGroupID()
@@ -20780,6 +20952,15 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldImagePrice4k:
 		m.ResetImagePrice4k()
+		return nil
+	case group.FieldImagePricingMatrix:
+		m.ResetImagePricingMatrix()
+		return nil
+	case group.FieldImagePreferFal:
+		m.ResetImagePreferFal()
+		return nil
+	case group.FieldImageDecodeSizeOnRsp:
+		m.ResetImageDecodeSizeOnRsp()
 		return nil
 	case group.FieldClaudeCodeOnly:
 		m.ResetClaudeCodeOnly()

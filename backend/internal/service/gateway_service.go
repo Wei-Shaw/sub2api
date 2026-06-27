@@ -1638,16 +1638,25 @@ func (s *GatewayService) SelectFalAccountInGroup(ctx context.Context, groupID *i
 	return s.hydrateSelectedAccount(ctx, account)
 }
 
-// SelectImageAccountMixed 在指定分组内构建 openai + fal 两平台的统一候选池，按
-// “优先级 + 最久未用” 混合选号（参照 anthropic+antigravity 混合调度范式），
-// 不区分平台先后、不做 fallback：两类账号同池竞争，优先级相同时一起按 LRU 比较。
+// SelectImageAccountMixed 在指定分组内构建 openai + fal 两平台的统一候选池，
+// 按「优先级 + 最久未用」混合选号（参照 anthropic+antigravity 混合调度范式）。
 //
-// 返回的账号可能属于 openai 或 fal 平台，调用方据 account.Platform 分发到对应转发路径
-// （openai 同步 ForwardImages / fal 伪同步 runPseudoSync）。failover 时把失败账号加入
-// excludedIDs 重新选号即可天然实现跨平台切换。
+// 返回的账号可能属于 openai 或 fal 平台，调用方据 account.Platform 分发到对应
+// 转发路径（openai 同步 ForwardImages / fal 伪同步 runPseudoSync）。failover
+// 时把失败账号加入 excludedIDs 重新选号即可天然实现跨平台切换。
+//
+// 当 preferPlatform="fal" 时反转候选池的平台优先级（fal 优先入池，openai 兜底）；
+// preferPlatform="" 或 "openai" 时维持「openai 优先 + fal 兜底」的现状语义。
+// 兜底语义：偏好平台候选池为空或全部不合格时，自动选择对侧平台账号——绝不
+// 因「反转开关开了但 fal 账号都不可用」而拒服务。
+//
+// 计费金额不受 preferPlatform 影响（参见 spec D3 不变量）：相同分组、相同
+// (size, quality) 的请求，无论实际由 openai 还是 fal 账号承载，金额一律按
+// 分组 image_pricing_matrix / image_price_1k/2k/4k 计算。
 //
 //	imageCapability: openai 账号所需的图片能力门控（basic/native）；fal 账号忽略该参数。
 //	falAPI:          fal 账号所需的 api 段（edit=图生图，空串=文生图）；openai 账号忽略该参数。
+//	preferPlatform:  ""/"openai" 维持现状；"fal" 反转为 fal 优先 + openai 兜底。
 func (s *GatewayService) SelectImageAccountMixed(
 	ctx context.Context,
 	groupID *int64,
@@ -1656,6 +1665,7 @@ func (s *GatewayService) SelectImageAccountMixed(
 	excludedIDs map[int64]struct{},
 	imageCapability OpenAIImagesCapability,
 	falAPI string,
+	preferPlatform string,
 ) (*Account, error) {
 	if groupID != nil {
 		group, resolvedGroupID, err := s.resolveGatewayGroup(ctx, groupID)
@@ -1779,32 +1789,60 @@ func (s *GatewayService) SelectImageAccountMixed(
 	}
 
 	// 3. 按优先级 + 最久未用统一选号（openai/fal 同池竞争）
-	var selected *Account
-	for i := range accounts {
-		acc := &accounts[i]
-		if !eligible(acc) {
-			continue
-		}
-		if selected == nil {
-			selected = acc
-			continue
-		}
-		if acc.Priority < selected.Priority {
-			selected = acc
-		} else if acc.Priority == selected.Priority {
-			switch {
-			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
-				selected = acc
-			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
-				// keep selected (never used is preferred)
-			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
-				// 均未使用：保持稳定（openai 列表先入池）
-			default:
-				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
-					selected = acc
+	//
+	// 当 preferPlatform="fal" 时，先只在 fal 子池中选号；该子池为空或全部不合格时，
+	// 再回退到 openai 子池。preferPlatform="" / "openai" 维持原有「同池竞争」语义。
+	pickFrom := func(filter func(*Account) bool) *Account {
+		var picked *Account
+		for i := range accounts {
+			acc := &accounts[i]
+			if filter != nil && !filter(acc) {
+				continue
+			}
+			if !eligible(acc) {
+				continue
+			}
+			if picked == nil {
+				picked = acc
+				continue
+			}
+			if acc.Priority < picked.Priority {
+				picked = acc
+			} else if acc.Priority == picked.Priority {
+				switch {
+				case acc.LastUsedAt == nil && picked.LastUsedAt != nil:
+					picked = acc
+				case acc.LastUsedAt != nil && picked.LastUsedAt == nil:
+					// keep picked (never used is preferred)
+				case acc.LastUsedAt == nil && picked.LastUsedAt == nil:
+					// 均未使用：保持稳定（先入池者优先）
+				default:
+					if acc.LastUsedAt.Before(*picked.LastUsedAt) {
+						picked = acc
+					}
 				}
 			}
 		}
+		return picked
+	}
+
+	var selected *Account
+	preferFalEnabled := strings.EqualFold(strings.TrimSpace(preferPlatform), string(PlatformFal))
+	if preferFalEnabled {
+		// fal 优先：先只在 fal 子池中选号，没有合格的再退到 openai 子池兜底
+		selected = pickFrom(func(acc *Account) bool { return acc.Platform == PlatformFal })
+		if selected == nil {
+			selected = pickFrom(func(acc *Account) bool { return acc.Platform != PlatformFal })
+			if selected != nil && slog.Default().Enabled(ctx, slog.LevelDebug) {
+				slog.Debug("image_account_prefer_fal_fallback_to_openai",
+					"selected_account_id", selected.ID,
+					"selected_platform", string(selected.Platform),
+				)
+			}
+		}
+	} else {
+		// 维持现状：openai/fal 同池竞争（按优先级 + 最久未用）
+		selected = pickFrom(nil)
 	}
 
 	// debug：汇总候选池全貌（每个账号的 platform/priority/last_used）与最终选中账号，

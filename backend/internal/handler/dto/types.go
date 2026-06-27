@@ -104,6 +104,13 @@ type Group struct {
 	ImagePrice2K         *float64 `json:"image_price_2k"`
 	ImagePrice4K         *float64 `json:"image_price_4k"`
 
+	// 图片二维定价矩阵 tier_key -> quality_key -> price
+	ImagePricingMatrix domain.ImagePricingMatrix `json:"image_pricing_matrix,omitempty"`
+	// 仅 platform=openai 分组生效：fal 优先、openai 兑底
+	ImagePreferFal bool `json:"image_prefer_fal,omitempty"`
+	// 仅 platform=openai 分组生效：上游不返 size 或返 auto 时按 b64 内容解码识别真实分辨率用于计费
+	ImageDecodeSizeOnRsp bool `json:"image_decode_size_on_rsp,omitempty"`
+
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
