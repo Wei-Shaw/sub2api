@@ -24,6 +24,7 @@ type contentModerationConfigRequest struct {
 	Mode                 *string             `json:"mode"`
 	BaseURL              *string             `json:"base_url"`
 	Model                *string             `json:"model"`
+	ProxyID              *int64              `json:"proxy_id"`
 	APIKey               *string             `json:"api_key"`
 	APIKeys              *[]string           `json:"api_keys"`
 	APIKeysMode          string              `json:"api_keys_mode"`
@@ -59,6 +60,7 @@ type contentModerationAPIKeyTestRequest struct {
 	APIKeys   []string `json:"api_keys"`
 	BaseURL   string   `json:"base_url"`
 	Model     string   `json:"model"`
+	ProxyID   *int64   `json:"proxy_id"`
 	TimeoutMS int      `json:"timeout_ms"`
 	Prompt    string   `json:"prompt"`
 	Images    []string `json:"images"`
@@ -88,6 +90,7 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		Mode:                           req.Mode,
 		BaseURL:                        req.BaseURL,
 		Model:                          req.Model,
+		ProxyID:                        req.ProxyID,
 		APIKey:                         req.APIKey,
 		APIKeys:                        req.APIKeys,
 		APIKeysMode:                    req.APIKeysMode,
@@ -133,6 +136,7 @@ func (h *ContentModerationHandler) TestAPIKeys(c *gin.Context) {
 		APIKeys:   req.APIKeys,
 		BaseURL:   req.BaseURL,
 		Model:     req.Model,
+		ProxyID:   req.ProxyID,
 		TimeoutMS: req.TimeoutMS,
 		Prompt:    req.Prompt,
 		Images:    req.Images,
