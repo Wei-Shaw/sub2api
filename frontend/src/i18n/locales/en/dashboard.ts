@@ -568,6 +568,116 @@ export default {
     }
   },
 
+  modelMarketplace: {
+    title: 'Model Pricing',
+    description: 'Compare supported model families, endpoints, billing modes, and group-adjusted prices before choosing a model.',
+    searchPlaceholder: 'Search model, provider, family, or tag...',
+    loadFailed: 'Failed to load model pricing',
+    catalogTitle: 'Model catalog',
+    resultSummary: 'Showing {shown} of {total} models · page {page}/{pages}',
+    hero: {
+      badge: 'User-facing marketplace',
+      formulaTitle: 'Transparent calculation',
+      baseFormula: 'Base price is shown with rate multiplier {rate}. Actual burn remains TotalCost × rate_multiplier.',
+      groupFormula: 'Showing prices for {group}: base catalog price × {rate}.',
+      billingNote: 'This page is display-only and does not change admin channel pricing or runtime billing.'
+    },
+    stats: {
+      results: 'Results',
+      providers: 'Providers',
+      tokenModels: 'Token models',
+      imageModels: '{count} image models',
+      lowestInput: 'Lowest input',
+      catalog: '{count} catalog models',
+      currentPage: 'current page'
+    },
+    filters: {
+      title: 'Filters',
+      provider: 'Provider',
+      group: 'Group multiplier',
+      billingMode: 'Billing mode',
+      endpoint: 'Endpoint',
+      mode: 'Mode',
+      serviceTier: 'Service tier',
+      unit: 'Display unit',
+      allProviders: 'All providers',
+      allModes: 'All modes',
+      allBillingModes: 'All billing modes',
+      allEndpoints: 'All endpoints',
+      basePricing: 'Base pricing · 1x',
+      hint: 'Filters query the model catalog endpoint; group selection only adjusts displayed prices.',
+      rate: 'Rate {rate}'
+    },
+    serviceTier: {
+      standard: 'Standard',
+      priority: 'Priority / fast',
+      flex: 'Flex'
+    },
+    units: {
+      oneMillion: '1M tokens',
+      oneThousand: '1K tokens',
+      oneMillionShort: '1M tokens',
+      oneThousandShort: '1K tokens',
+      request: 'request'
+    },
+    view: {
+      cards: 'Cards',
+      table: 'Table'
+    },
+    actions: {
+      copyVisible: 'Copy visible',
+      copyModel: 'Copy model name',
+      modelCopied: 'Model name copied',
+      visibleCopied: 'Visible model names copied',
+      noModelsToCopy: 'No models to copy'
+    },
+    billingMode: {
+      token: 'Token',
+      image: 'Image / request'
+    },
+    price: {
+      input: 'Input',
+      output: 'Output',
+      cacheRead: 'Cache read',
+      cacheWrite: 'Cache write',
+      cacheWrite5m: 'Cache write 5m',
+      cacheWrite1h: 'Cache write 1h',
+      imageOutput: 'Image output',
+      perRequest: 'Per request'
+    },
+    table: {
+      model: 'Model',
+      provider: 'Provider',
+      pricing: 'Pricing',
+      endpoints: 'Endpoints',
+      features: 'Features',
+      context: 'Context',
+      source: 'Source',
+      actions: 'Actions'
+    },
+    features: {
+      promptCaching: 'Prompt cache',
+      serviceTier: 'Service tier',
+      vision: 'Vision',
+      reasoning: 'Reasoning',
+      webSearch: 'Web search',
+      audioOutput: 'Audio output'
+    },
+    source: {
+      catalog: 'Catalog',
+      fallback: 'Fallback'
+    },
+    formula: {
+      base: 'Base display uses multiplier {rate}.',
+      group: '{group} display uses multiplier {rate}.',
+      longContext: 'Long context after {threshold}: input {input}, output {output}.'
+    },
+    empty: {
+      title: 'No matching models',
+      description: 'Try clearing filters or searching another model family.'
+    }
+  },
+
   affiliate: {
     title: 'Affiliate Rebates',
     description: 'Invite new users and convert your rebate quota into account balance',

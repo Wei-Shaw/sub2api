@@ -535,6 +535,9 @@ const RING_GRADIENTS = [
 
 const ringAnimated = ref(false)
 const displayPcts = ref<number[]>([])
+let ringAnimationRaf: number | null = null
+let ringAnimationTimer: ReturnType<typeof setTimeout> | null = null
+let ringAnimationActive = true
 
 const ringTrackColor = computed(() => isDark.value ? '#222222' : '#F0F0EE')
 
@@ -553,13 +556,34 @@ function getRingOffset(ring: RingItem): number {
   return CIRCUMFERENCE - (Math.min(ring.pct, 100) / 100) * CIRCUMFERENCE
 }
 
+function clearRingAnimationTimers() {
+  if (ringAnimationRaf !== null) {
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(ringAnimationRaf)
+    } else {
+      clearTimeout(ringAnimationRaf)
+    }
+    ringAnimationRaf = null
+  }
+  if (ringAnimationTimer !== null) {
+    clearTimeout(ringAnimationTimer)
+    ringAnimationTimer = null
+  }
+}
+
 function triggerRingAnimation(items: RingItem[]) {
+  clearRingAnimationTimers()
   ringAnimated.value = false
   displayPcts.value = items.map(() => 0)
 
   nextTick(() => {
-    requestAnimationFrame(() => {
-      setTimeout(() => {
+    if (!ringAnimationActive) return
+    ringAnimationRaf = requestAnimationFrame(() => {
+      ringAnimationRaf = null
+      if (!ringAnimationActive) return
+      ringAnimationTimer = setTimeout(() => {
+        ringAnimationTimer = null
+        if (!ringAnimationActive) return
         ringAnimated.value = true
 
         // Animate percentage numbers
@@ -568,13 +592,18 @@ function triggerRingAnimation(items: RingItem[]) {
         const targets = items.map(item => item.isBalance ? 0 : item.pct)
 
         function tick() {
+          if (!ringAnimationActive) return
           const elapsed = performance.now() - startTime
           const p = Math.min(elapsed / duration, 1)
           const ease = 1 - Math.pow(1 - p, 3)
           displayPcts.value = targets.map(target => Math.round(ease * target))
-          if (p < 1) requestAnimationFrame(tick)
+          if (p < 1) {
+            ringAnimationRaf = requestAnimationFrame(tick)
+          } else {
+            ringAnimationRaf = null
+          }
         }
-        requestAnimationFrame(tick)
+        ringAnimationRaf = requestAnimationFrame(tick)
       }, 50)
     })
   })
@@ -927,6 +956,7 @@ function formatResetTime(resetAt: string | null | undefined): string {
 }
 
 onMounted(() => {
+  ringAnimationActive = true
   initTheme()
   if (!appStore.publicSettingsLoaded) {
     appStore.fetchPublicSettings()
@@ -935,6 +965,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  ringAnimationActive = false
+  clearRingAnimationTimers()
   if (resetTimer) clearInterval(resetTimer)
 })
 </script>

@@ -573,6 +573,116 @@ export default {
     }
   },
 
+  modelMarketplace: {
+    title: '模型价格',
+    description: '在选择模型前，对比模型系列、供应商、端点、计费模式和按分组倍率调整后的价格。',
+    searchPlaceholder: '搜索模型、供应商、系列或标签...',
+    loadFailed: '加载模型价格失败',
+    catalogTitle: '模型目录',
+    resultSummary: '正在显示 {shown}/{total} 个模型 · 第 {page}/{pages} 页',
+    hero: {
+      badge: '用户侧模型市场',
+      formulaTitle: '透明计算公式',
+      baseFormula: '基础价格按倍率 {rate} 展示。实际扣费仍为 TotalCost × rate_multiplier。',
+      groupFormula: '当前展示 {group}：基础目录价格 × {rate}。',
+      billingNote: '本页仅用于展示，不会改变管理员渠道定价或运行时计费。'
+    },
+    stats: {
+      results: '结果',
+      providers: '供应商',
+      tokenModels: 'Token 模型',
+      imageModels: '{count} 个图像模型',
+      lowestInput: '最低输入价',
+      catalog: '{count} 个目录模型',
+      currentPage: '当前页'
+    },
+    filters: {
+      title: '筛选',
+      provider: '供应商',
+      group: '分组倍率',
+      billingMode: '计费模式',
+      endpoint: '端点',
+      mode: '模式',
+      serviceTier: '服务档位',
+      unit: '展示单位',
+      allProviders: '全部供应商',
+      allModes: '全部模式',
+      allBillingModes: '全部计费模式',
+      allEndpoints: '全部端点',
+      basePricing: '基础价格 · 1x',
+      hint: '筛选会查询模型目录端点；选择分组只调整展示价格。',
+      rate: '倍率 {rate}'
+    },
+    serviceTier: {
+      standard: '标准',
+      priority: '优先 / 快速',
+      flex: 'Flex'
+    },
+    units: {
+      oneMillion: '1M tokens',
+      oneThousand: '1K tokens',
+      oneMillionShort: '1M tokens',
+      oneThousandShort: '1K tokens',
+      request: '次请求'
+    },
+    view: {
+      cards: '卡片',
+      table: '表格'
+    },
+    actions: {
+      copyVisible: '复制当前列表',
+      copyModel: '复制模型名',
+      modelCopied: '模型名已复制',
+      visibleCopied: '当前模型名已复制',
+      noModelsToCopy: '没有可复制的模型'
+    },
+    billingMode: {
+      token: 'Token',
+      image: '图像 / 请求'
+    },
+    price: {
+      input: '输入',
+      output: '输出',
+      cacheRead: '缓存读取',
+      cacheWrite: '缓存写入',
+      cacheWrite5m: '缓存写入 5m',
+      cacheWrite1h: '缓存写入 1h',
+      imageOutput: '图像输出',
+      perRequest: '每次请求'
+    },
+    table: {
+      model: '模型',
+      provider: '供应商',
+      pricing: '价格',
+      endpoints: '端点',
+      features: '特性',
+      context: '上下文',
+      source: '来源',
+      actions: '操作'
+    },
+    features: {
+      promptCaching: 'Prompt 缓存',
+      serviceTier: '服务档位',
+      vision: '视觉',
+      reasoning: '推理',
+      webSearch: '联网搜索',
+      audioOutput: '音频输出'
+    },
+    source: {
+      catalog: '目录',
+      fallback: '兜底'
+    },
+    formula: {
+      base: '基础展示使用倍率 {rate}。',
+      group: '{group} 展示使用倍率 {rate}。',
+      longContext: '长上下文超过 {threshold}：输入 {input}，输出 {output}。'
+    },
+    empty: {
+      title: '没有匹配的模型',
+      description: '请清除筛选条件，或搜索其他模型系列。'
+    }
+  },
+
   affiliate: {
     title: '邀请返利',
     description: '邀请新用户注册，并将返利额度转入账户余额',

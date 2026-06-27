@@ -394,6 +394,7 @@ const messages = {
     groups: '그룹 관리',
     channels: '채널 관리',
     availableChannels: '사용 가능한 채널',
+    modelMarketplace: '모델 가격',
     subscriptions: '구독 관리',
     accounts: '계정 관리',
     proxies: 'IP 관리',
@@ -1119,6 +1120,116 @@ const messages = {
       intervals: '구간별 가격',
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 회'
+    }
+  },
+
+  modelMarketplace: {
+    title: '모델 가격',
+    description: '모델 선택 전에 지원 모델, 제공자, 엔드포인트, 과금 방식, 그룹 배율이 적용된 가격을 비교합니다.',
+    searchPlaceholder: '모델, 제공자, 패밀리 또는 태그 검색...',
+    loadFailed: '모델 가격을 불러오지 못했습니다',
+    catalogTitle: '모델 카탈로그',
+    resultSummary: '{total}개 중 {shown}개 표시 · {page}/{pages} 페이지',
+    hero: {
+      badge: '사용자용 마켓플레이스',
+      formulaTitle: '투명한 계산식',
+      baseFormula: '기본 가격은 배율 {rate}로 표시됩니다. 실제 차감은 TotalCost × rate_multiplier 입니다.',
+      groupFormula: '{group} 가격 표시: 기본 카탈로그 가격 × {rate}.',
+      billingNote: '이 페이지는 표시 전용이며 관리자 채널 가격 또는 런타임 과금을 변경하지 않습니다.'
+    },
+    stats: {
+      results: '결과',
+      providers: '제공자',
+      tokenModels: '토큰 모델',
+      imageModels: '이미지 모델 {count}개',
+      lowestInput: '최저 입력가',
+      catalog: '카탈로그 모델 {count}개',
+      currentPage: '현재 페이지'
+    },
+    filters: {
+      title: '필터',
+      provider: '제공자',
+      group: '그룹 배율',
+      billingMode: '과금 방식',
+      endpoint: '엔드포인트',
+      mode: '모드',
+      serviceTier: '서비스 티어',
+      unit: '표시 단위',
+      allProviders: '모든 제공자',
+      allModes: '모든 모드',
+      allBillingModes: '모든 과금 방식',
+      allEndpoints: '모든 엔드포인트',
+      basePricing: '기본 가격 · 1x',
+      hint: '필터는 모델 카탈로그 엔드포인트를 조회하며, 그룹 선택은 표시 가격만 조정합니다.',
+      rate: '배율 {rate}'
+    },
+    serviceTier: {
+      standard: 'Standard',
+      priority: 'Priority / fast',
+      flex: 'Flex'
+    },
+    units: {
+      oneMillion: '1M tokens',
+      oneThousand: '1K tokens',
+      oneMillionShort: '1M tokens',
+      oneThousandShort: '1K tokens',
+      request: '요청'
+    },
+    view: {
+      cards: '카드',
+      table: '표'
+    },
+    actions: {
+      copyVisible: '보이는 목록 복사',
+      copyModel: '모델명 복사',
+      modelCopied: '모델명을 복사했습니다',
+      visibleCopied: '현재 모델명을 복사했습니다',
+      noModelsToCopy: '복사할 모델이 없습니다'
+    },
+    billingMode: {
+      token: 'Token',
+      image: 'Image / request'
+    },
+    price: {
+      input: '입력',
+      output: '출력',
+      cacheRead: '캐시 읽기',
+      cacheWrite: '캐시 쓰기',
+      cacheWrite5m: '캐시 쓰기 5m',
+      cacheWrite1h: '캐시 쓰기 1h',
+      imageOutput: '이미지 출력',
+      perRequest: '요청당'
+    },
+    table: {
+      model: '모델',
+      provider: '제공자',
+      pricing: '가격',
+      endpoints: '엔드포인트',
+      features: '기능',
+      context: '컨텍스트',
+      source: '출처',
+      actions: '작업'
+    },
+    features: {
+      promptCaching: 'Prompt cache',
+      serviceTier: 'Service tier',
+      vision: 'Vision',
+      reasoning: 'Reasoning',
+      webSearch: 'Web search',
+      audioOutput: 'Audio output'
+    },
+    source: {
+      catalog: 'Catalog',
+      fallback: 'Fallback'
+    },
+    formula: {
+      base: '기본 표시는 배율 {rate}를 사용합니다.',
+      group: '{group} 표시는 배율 {rate}를 사용합니다.',
+      longContext: '{threshold} 이후 long context: 입력 {input}, 출력 {output}.'
+    },
+    empty: {
+      title: '일치하는 모델이 없습니다',
+      description: '필터를 지우거나 다른 모델 패밀리를 검색해 보세요.'
     }
   },
 

@@ -195,6 +195,21 @@ func NewBillingService(cfg *config.Config, pricingService *PricingService) *Bill
 	return s
 }
 
+func (s *BillingService) ListFallbackModelPricing() map[string]*ModelPricing {
+	if s == nil {
+		return nil
+	}
+	out := make(map[string]*ModelPricing, len(s.fallbackPrices))
+	for model, pricing := range s.fallbackPrices {
+		if strings.TrimSpace(model) == "" || pricing == nil {
+			continue
+		}
+		clone := *pricing
+		out[model] = &clone
+	}
+	return out
+}
+
 // initFallbackPricing 初始化硬编码回退价格（当动态价格不可用时使用）
 // 价格单位：USD per token（与LiteLLM格式一致）
 func (s *BillingService) initFallbackPricing() {

@@ -1305,7 +1305,9 @@ const zhBaselineLocaleCoveragePatches = {
           resetTooltipNeedQuery: 'Bấm “Lượt” trước để tải số lượt reset còn lại',
           resetTooltipNoCredits: 'Không còn lượt reset khả dụng',
           noCreditsAvailable: 'Không còn lượt reset khả dụng',
-          resetSuccess: 'Đã reset {windows} cửa sổ'
+          resetSuccess: 'Đã reset {windows} cửa sổ',
+          confirmTitle: 'Xác nhận đặt lại giới hạn tuần',
+          confirmMessage: 'Thao tác này sẽ dùng 1 lượt reset để khôi phục ngay cửa sổ hiện tại ({count} lượt còn lại). Không thể hoàn tác. Tiếp tục?'
         }
       },
       settings: {
@@ -1382,7 +1384,9 @@ const zhBaselineLocaleCoveragePatches = {
           resetTooltipNeedQuery: '먼저 “횟수”를 클릭해 남은 재설정 횟수를 불러오세요',
           resetTooltipNoCredits: '사용 가능한 재설정 횟수가 없습니다',
           noCreditsAvailable: '사용 가능한 재설정 횟수가 없습니다',
-          resetSuccess: '{windows}개 창을 재설정했습니다'
+          resetSuccess: '{windows}개 창을 재설정했습니다',
+          confirmTitle: '주간 제한 재설정 확인',
+          confirmMessage: '재설정 횟수 1회를 사용해 현재 창을 즉시 복구합니다(남은 {count}회). 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?'
         }
       },
       settings: {

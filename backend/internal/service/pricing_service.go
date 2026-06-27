@@ -123,6 +123,8 @@ type LiteLLMModelPricing struct {
 	LiteLLMProvider                     string  `json:"litellm_provider"`
 	Mode                                string  `json:"mode"`
 	SupportsPromptCaching               bool    `json:"supports_prompt_caching"`
+	MaxInputTokens                      int     `json:"max_input_tokens,omitempty"`
+	MaxOutputTokens                     int     `json:"max_output_tokens,omitempty"`
 	OutputCostPerImage                  float64 `json:"output_cost_per_image"`       // 图片生成模型每张图片价格
 	OutputCostPerImageToken             float64 `json:"output_cost_per_image_token"` // 图片输出 token 价格
 	InputCostPerImageToken              float64 `json:"input_cost_per_image_token"`  // 图片输入 token 价格（如 gpt-image-2 图片编辑）
@@ -160,6 +162,9 @@ type LiteLLMRawEntry struct {
 	LiteLLMProvider                     string   `json:"litellm_provider"`
 	Mode                                string   `json:"mode"`
 	SupportsPromptCaching               bool     `json:"supports_prompt_caching"`
+	MaxInputTokens                      *int     `json:"max_input_tokens"`
+	MaxTokens                           *int     `json:"max_tokens"`
+	MaxOutputTokens                     *int     `json:"max_output_tokens"`
 	OutputCostPerImage                  *float64 `json:"output_cost_per_image"`
 	OutputCostPerImageToken             *float64 `json:"output_cost_per_image_token"`
 	InputCostPerImageToken              *float64 `json:"input_cost_per_image_token"`
@@ -456,6 +461,14 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 			SupportsServiceTier:   entry.SupportsServiceTier,
 			TokenPricingAbsent:    entry.InputCostPerToken == nil && entry.OutputCostPerToken == nil,
 		}
+		if entry.MaxInputTokens != nil {
+			pricing.MaxInputTokens = *entry.MaxInputTokens
+		} else if entry.MaxTokens != nil {
+			pricing.MaxInputTokens = *entry.MaxTokens
+		}
+		if entry.MaxOutputTokens != nil {
+			pricing.MaxOutputTokens = *entry.MaxOutputTokens
+		}
 
 		if entry.InputCostPerToken != nil {
 			pricing.InputCostPerToken = *entry.InputCostPerToken
@@ -649,6 +662,47 @@ func (s *PricingService) validatePricingURL(raw string) (string, error) {
 		return "", fmt.Errorf("invalid pricing url: %w", err)
 	}
 	return normalized, nil
+}
+
+type ModelPricingCatalogEntry struct {
+	Model   string
+	Pricing LiteLLMModelPricing
+}
+
+type PricingCatalogStatus struct {
+	LastUpdated time.Time
+	LocalHash   string
+	ModelCount  int
+}
+
+func (s *PricingService) ListModelPricingCatalog() []ModelPricingCatalogEntry {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]ModelPricingCatalogEntry, 0, len(s.pricingData))
+	for model, pricing := range s.pricingData {
+		if strings.TrimSpace(model) == "" || pricing == nil {
+			continue
+		}
+		out = append(out, ModelPricingCatalogEntry{Model: model, Pricing: *pricing})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Model < out[j].Model })
+	return out
+}
+
+func (s *PricingService) CatalogStatus() PricingCatalogStatus {
+	if s == nil {
+		return PricingCatalogStatus{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return PricingCatalogStatus{
+		LastUpdated: s.lastUpdated,
+		LocalHash:   s.localHash,
+		ModelCount:  len(s.pricingData),
+	}
 }
 
 // GetModelPricing 获取模型价格（带模糊匹配）

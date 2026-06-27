@@ -394,6 +394,7 @@ const messages = {
     groups: 'Quản lý nhóm',
     channels: 'Quản lý kênh',
     availableChannels: 'Kênh khả dụng',
+    modelMarketplace: 'Giá mô hình',
     subscriptions: 'Quản lý đăng ký',
     accounts: 'Quản lý tài khoản',
     proxies: 'Quản lý IP',
@@ -1119,6 +1120,116 @@ const messages = {
       intervals: 'Giá theo bậc',
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ lần'
+    }
+  },
+
+  modelMarketplace: {
+    title: 'Giá mô hình',
+    description: 'So sánh model, nhà cung cấp, endpoint, chế độ tính phí và giá sau khi áp multiplier nhóm trước khi chọn model.',
+    searchPlaceholder: 'Tìm model, nhà cung cấp, family hoặc tag...',
+    loadFailed: 'Tải giá mô hình thất bại',
+    catalogTitle: 'Danh mục model',
+    resultSummary: 'Đang hiển thị {shown}/{total} model · trang {page}/{pages}',
+    hero: {
+      badge: 'Marketplace phía người dùng',
+      formulaTitle: 'Công thức minh bạch',
+      baseFormula: 'Giá gốc đang hiển thị với rate multiplier {rate}. Burn thật vẫn là TotalCost × rate_multiplier.',
+      groupFormula: 'Đang hiển thị giá cho {group}: giá catalog gốc × {rate}.',
+      billingNote: 'Trang này chỉ để hiển thị, không đổi giá kênh admin hoặc runtime billing.'
+    },
+    stats: {
+      results: 'Kết quả',
+      providers: 'Nhà cung cấp',
+      tokenModels: 'Model tính token',
+      imageModels: '{count} model ảnh',
+      lowestInput: 'Input thấp nhất',
+      catalog: '{count} model catalog',
+      currentPage: 'trang hiện tại'
+    },
+    filters: {
+      title: 'Bộ lọc',
+      provider: 'Nhà cung cấp',
+      group: 'Multiplier nhóm',
+      billingMode: 'Chế độ tính phí',
+      endpoint: 'Endpoint',
+      mode: 'Mode',
+      serviceTier: 'Service tier',
+      unit: 'Đơn vị hiển thị',
+      allProviders: 'Tất cả nhà cung cấp',
+      allModes: 'Tất cả mode',
+      allBillingModes: 'Tất cả chế độ tính phí',
+      allEndpoints: 'Tất cả endpoint',
+      basePricing: 'Giá gốc · 1x',
+      hint: 'Bộ lọc truy vấn endpoint catalog model; chọn nhóm chỉ điều chỉnh giá hiển thị.',
+      rate: 'Rate {rate}'
+    },
+    serviceTier: {
+      standard: 'Standard',
+      priority: 'Priority / nhanh',
+      flex: 'Flex'
+    },
+    units: {
+      oneMillion: '1M token',
+      oneThousand: '1K token',
+      oneMillionShort: '1M token',
+      oneThousandShort: '1K token',
+      request: 'lượt'
+    },
+    view: {
+      cards: 'Thẻ',
+      table: 'Bảng'
+    },
+    actions: {
+      copyVisible: 'Copy danh sách',
+      copyModel: 'Copy tên model',
+      modelCopied: 'Đã copy tên model',
+      visibleCopied: 'Đã copy danh sách model đang hiển thị',
+      noModelsToCopy: 'Không có model để copy'
+    },
+    billingMode: {
+      token: 'Token',
+      image: 'Ảnh / lượt'
+    },
+    price: {
+      input: 'Input',
+      output: 'Output',
+      cacheRead: 'Đọc cache',
+      cacheWrite: 'Ghi cache',
+      cacheWrite5m: 'Ghi cache 5m',
+      cacheWrite1h: 'Ghi cache 1h',
+      imageOutput: 'Output ảnh',
+      perRequest: 'Theo lượt'
+    },
+    table: {
+      model: 'Model',
+      provider: 'Nhà cung cấp',
+      pricing: 'Giá',
+      endpoints: 'Endpoint',
+      features: 'Tính năng',
+      context: 'Context',
+      source: 'Nguồn',
+      actions: 'Thao tác'
+    },
+    features: {
+      promptCaching: 'Prompt cache',
+      serviceTier: 'Service tier',
+      vision: 'Vision',
+      reasoning: 'Reasoning',
+      webSearch: 'Web search',
+      audioOutput: 'Audio output'
+    },
+    source: {
+      catalog: 'Catalog',
+      fallback: 'Fallback'
+    },
+    formula: {
+      base: 'Giá hiển thị gốc dùng multiplier {rate}.',
+      group: '{group} dùng multiplier hiển thị {rate}.',
+      longContext: 'Long context sau {threshold}: input {input}, output {output}.'
+    },
+    empty: {
+      title: 'Không có model phù hợp',
+      description: 'Thử xoá bộ lọc hoặc tìm family model khác.'
     }
   },
 
