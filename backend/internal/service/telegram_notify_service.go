@@ -408,6 +408,7 @@ func (s *TelegramNotifyService) NotifyOpsAlert(ctx context.Context, ruleName, se
 	case "info":
 		severityIcon = ""
 	}
+	descriptionText := escapeHTML(truncateTelegram(strings.TrimSpace(description), 2800))
 	text := fmt.Sprintf(
 		"%s <b>Ops Alert: %s</b>\n\n"+
 			" Severity: <b>%s</b>\n"+
@@ -418,7 +419,7 @@ func (s *TelegramNotifyService) NotifyOpsAlert(ctx context.Context, ruleName, se
 		escapeHTML(ruleName),
 		escapeHTML(severity),
 		metricValue,
-		escapeHTML(truncateTelegram(description, 200)),
+		descriptionText,
 		time.Now().Format("2006-01-02 15:04:05"),
 	)
 	if err := s.sendMessage(ctx, text); err != nil {

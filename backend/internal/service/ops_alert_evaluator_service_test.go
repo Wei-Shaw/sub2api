@@ -427,3 +427,94 @@ func TestComputeRuleMetricLatencyPercentiles(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, float64(3200), gotP99)
 }
+
+func TestFormatOpsAlertAccountContextIncludesAccountNames(t *testing.T) {
+	t.Parallel()
+
+	accountID := int64(42)
+	groupID := int64(7)
+	statusCode := 500
+	ctx := formatOpsAlertAccountContext("error_rate", []*OpsAlertAccountBreakdown{
+		{
+			AccountID:           &accountID,
+			AccountName:         "acc-prod-1",
+			Platform:            PlatformOpenAI,
+			GroupID:             &groupID,
+			GroupName:           "main",
+			SuccessCount:        80,
+			ErrorCountSLA:       20,
+			UpstreamErrorCount:  18,
+			RequestCountSLA:     100,
+			ErrorRate:           20,
+			LastErrorStatusCode: &statusCode,
+			LastErrorType:       "provider_error",
+			LastErrorMessage:    "server overloaded",
+		},
+	})
+
+	require.Contains(t, ctx, "Tài khoản lỗi cần kiểm tra")
+	require.Contains(t, ctx, "acc-prod-1 (#42)")
+	require.Contains(t, ctx, "openai")
+	require.Contains(t, ctx, "main #7")
+	require.Contains(t, ctx, "lỗi SLA 20/100 (20.00%)")
+	require.Contains(t, ctx, "upstream 18")
+	require.Contains(t, ctx, "HTTP 500")
+}
+
+func TestFormatOpsAlertAccountContextLatencyIncludesPercentiles(t *testing.T) {
+	t.Parallel()
+
+	accountID := int64(99)
+	ctx := formatOpsAlertAccountContext("p99_latency_ms", []*OpsAlertAccountBreakdown{
+		{
+			AccountID:       &accountID,
+			AccountName:     "slow-account",
+			Platform:        PlatformAnthropic,
+			SuccessCount:    3,
+			RequestCountSLA: 3,
+			DurationP95Ms:   intPtr(56000),
+			DurationP99Ms:   intPtr(70000),
+			DurationAvgMs:   intPtr(41000),
+			DurationMaxMs:   intPtr(71000),
+		},
+	})
+
+	require.Contains(t, ctx, "Tài khoản độ trễ cao cần kiểm tra")
+	require.Contains(t, ctx, "slow-account (#99)")
+	require.Contains(t, ctx, "success 3 req")
+	require.Contains(t, ctx, "p95 56000ms")
+	require.Contains(t, ctx, "p99 70000ms")
+}
+
+func TestFormatOpsAlertAvailabilityContextIncludesBadAccounts(t *testing.T) {
+	t.Parallel()
+
+	remaining := int64(120)
+	ctx := formatOpsAlertAvailabilityContext("account_rate_limited_count", &OpsAccountAvailability{
+		Accounts: map[int64]*AccountAvailability{
+			2: {
+				AccountID:             2,
+				AccountName:           "rate-limited-account",
+				Platform:              PlatformOpenAI,
+				GroupID:               7,
+				GroupName:             "main",
+				Status:                StatusActive,
+				IsAvailable:           false,
+				IsRateLimited:         true,
+				RateLimitRemainingSec: &remaining,
+			},
+			3: {
+				AccountID:   3,
+				AccountName: "healthy-account",
+				IsAvailable: true,
+			},
+		},
+	})
+
+	require.Contains(t, ctx, "Tài khoản cần kiểm tra")
+	require.Contains(t, ctx, "rate-limited-account (#2)")
+	require.Contains(t, ctx, "openai")
+	require.Contains(t, ctx, "main #7")
+	require.Contains(t, ctx, "rate_limited còn 120s")
+	require.NotContains(t, ctx, "healthy-account")
+}

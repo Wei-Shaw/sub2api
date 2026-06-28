@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,6 +62,10 @@ type OpsAlertEvaluatorService struct {
 type opsAlertRuleState struct {
 	LastEvaluatedAt     time.Time
 	ConsecutiveBreaches int
+}
+
+type opsAlertAccountBreakdownRepository interface {
+	ListAlertAccountBreakdown(ctx context.Context, filter *OpsAlertAccountBreakdownFilter) ([]*OpsAlertAccountBreakdown, error)
 }
 
 func NewOpsAlertEvaluatorService(
@@ -277,12 +282,16 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				}
 			}
 
+			baseDescription := buildOpsAlertDescription(rule, metricValue, windowMinutes, scopePlatform, scopeGroupID)
+			accountContext := s.buildOpsAlertAccountContext(ctx, rule, windowStart, windowEnd, scopePlatform, scopeGroupID)
+			eventDescription := appendOpsAlertAccountContext(baseDescription, accountContext)
+
 			firedEvent := &OpsAlertEvent{
 				RuleID:         rule.ID,
 				Severity:       strings.TrimSpace(rule.Severity),
 				Status:         OpsAlertStatusFiring,
 				Title:          buildOpsAlertTitle(rule),
-				Description:    buildOpsAlertDescription(rule, metricValue, windowMinutes, scopePlatform, scopeGroupID),
+				Description:    eventDescription,
 				MetricValue:    float64Ptr(metricValue),
 				ThresholdValue: float64Ptr(rule.Threshold),
 				Dimensions:     buildOpsAlertDimensions(scopePlatform, scopeGroupID),
@@ -727,6 +736,303 @@ func buildOpsAlertDescription(rule *OpsAlertRule, value float64, windowMinutes i
 		windowMinutes,
 		strings.TrimSpace(scope),
 	)
+}
+
+func (s *OpsAlertEvaluatorService) buildOpsAlertAccountContext(ctx context.Context, rule *OpsAlertRule, start, end time.Time, platform string, groupID *int64) string {
+	if s == nil || rule == nil || s.opsRepo == nil {
+		return ""
+	}
+	metricType := strings.TrimSpace(rule.MetricType)
+	if opsAlertMetricNeedsAvailabilityBreakdown(metricType) {
+		return s.buildOpsAlertAvailabilityContext(ctx, metricType, platform, groupID)
+	}
+	if !opsAlertMetricNeedsRequestAccountBreakdown(metricType) {
+		return ""
+	}
+	repo, ok := s.opsRepo.(opsAlertAccountBreakdownRepository)
+	if !ok {
+		return ""
+	}
+	items, err := repo.ListAlertAccountBreakdown(ctx, &OpsAlertAccountBreakdownFilter{
+		StartTime:  start,
+		EndTime:    end,
+		Platform:   platform,
+		GroupID:    groupID,
+		MetricType: metricType,
+		Limit:      5,
+	})
+	if err != nil {
+		logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] list alert account breakdown failed (metric=%s): %v", metricType, err)
+		return ""
+	}
+	return formatOpsAlertAccountContext(metricType, items)
+}
+
+func (s *OpsAlertEvaluatorService) buildOpsAlertAvailabilityContext(ctx context.Context, metricType string, platform string, groupID *int64) string {
+	if s == nil || s.opsService == nil {
+		return ""
+	}
+	availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
+	if err != nil || availability == nil {
+		if err != nil {
+			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] get account availability failed (metric=%s): %v", metricType, err)
+		}
+		return ""
+	}
+	return formatOpsAlertAvailabilityContext(metricType, availability)
+}
+
+func opsAlertMetricNeedsAvailabilityBreakdown(metricType string) bool {
+	switch strings.TrimSpace(metricType) {
+	case "account_rate_limited_count", "account_error_count", "account_error_ratio", "account_temp_unscheduled_count", "overload_account_count", "account_available_count", "account_available_ratio":
+		return true
+	default:
+		return false
+	}
+}
+
+func opsAlertMetricNeedsRequestAccountBreakdown(metricType string) bool {
+	switch strings.TrimSpace(metricType) {
+	case "success_rate", "error_rate", "upstream_error_rate", "p95_latency_ms", "p99_latency_ms":
+		return true
+	default:
+		return false
+	}
+}
+
+func appendOpsAlertAccountContext(description, accountContext string) string {
+	description = strings.TrimSpace(description)
+	accountContext = strings.TrimSpace(accountContext)
+	if accountContext == "" {
+		return description
+	}
+	if description == "" {
+		return accountContext
+	}
+	return description + "\n\n" + accountContext
+}
+
+func formatOpsAlertAvailabilityContext(metricType string, availability *OpsAccountAvailability) string {
+	if availability == nil || len(availability.Accounts) == 0 {
+		return "Tài khoản cần kiểm tra: không có account trong phạm vi rule."
+	}
+	accounts := make([]*AccountAvailability, 0, len(availability.Accounts))
+	for _, acc := range availability.Accounts {
+		if acc == nil || !opsAlertAvailabilityAccountMatches(metricType, acc) {
+			continue
+		}
+		accounts = append(accounts, acc)
+	}
+	if len(accounts) == 0 {
+		return "Tài khoản cần kiểm tra: không tìm thấy account khớp trạng thái cảnh báo trong snapshot hiện tại."
+	}
+	sort.SliceStable(accounts, func(i, j int) bool {
+		return accounts[i].AccountID < accounts[j].AccountID
+	})
+	if len(accounts) > 5 {
+		accounts = accounts[:5]
+	}
+
+	var b strings.Builder
+	_, _ = b.WriteString("Tài khoản cần kiểm tra:")
+	for i, acc := range accounts {
+		_, _ = b.WriteString("\n")
+		fmt.Fprintf(&b, "%d) %s", i+1, formatOpsAlertAvailabilityAccountLabel(acc))
+		reasons := opsAlertAvailabilityReasons(acc)
+		if len(reasons) > 0 {
+			fmt.Fprintf(&b, " — %s", strings.Join(reasons, ", "))
+		}
+		if strings.TrimSpace(acc.ErrorMessage) != "" {
+			fmt.Fprintf(&b, ", lỗi: %s", truncateString(strings.TrimSpace(acc.ErrorMessage), 80))
+		}
+	}
+	return b.String()
+}
+
+func opsAlertAvailabilityAccountMatches(metricType string, acc *AccountAvailability) bool {
+	if acc == nil {
+		return false
+	}
+	switch strings.TrimSpace(metricType) {
+	case "account_rate_limited_count":
+		return acc.IsRateLimited
+	case "account_error_count", "account_error_ratio":
+		return acc.HasError && acc.TempUnschedulableUntil == nil
+	case "account_temp_unscheduled_count":
+		return acc.TempUnschedulableUntil != nil && time.Now().UTC().Before(*acc.TempUnschedulableUntil)
+	case "overload_account_count":
+		return acc.IsOverloaded
+	case "account_available_count", "account_available_ratio":
+		return !acc.IsAvailable
+	default:
+		return false
+	}
+}
+
+func opsAlertAvailabilityReasons(acc *AccountAvailability) []string {
+	if acc == nil {
+		return nil
+	}
+	reasons := make([]string, 0, 4)
+	if strings.TrimSpace(acc.Status) != "" {
+		reasons = append(reasons, "status="+strings.TrimSpace(acc.Status))
+	}
+	if acc.HasError {
+		reasons = append(reasons, "has_error")
+	}
+	if acc.IsRateLimited {
+		reason := "rate_limited"
+		if acc.RateLimitRemainingSec != nil && *acc.RateLimitRemainingSec > 0 {
+			reason = fmt.Sprintf("%s còn %ds", reason, *acc.RateLimitRemainingSec)
+		}
+		reasons = append(reasons, reason)
+	}
+	if acc.IsOverloaded {
+		reason := "overloaded"
+		if acc.OverloadRemainingSec != nil && *acc.OverloadRemainingSec > 0 {
+			reason = fmt.Sprintf("%s còn %ds", reason, *acc.OverloadRemainingSec)
+		}
+		reasons = append(reasons, reason)
+	}
+	if acc.TempUnschedulableUntil != nil && time.Now().UTC().Before(*acc.TempUnschedulableUntil) {
+		reasons = append(reasons, "temp_unscheduled đến "+acc.TempUnschedulableUntil.UTC().Format(time.RFC3339))
+	}
+	if !acc.IsAvailable {
+		reasons = append(reasons, "unavailable")
+	}
+	return reasons
+}
+
+func formatOpsAlertAvailabilityAccountLabel(acc *AccountAvailability) string {
+	if acc == nil {
+		return "Không rõ account"
+	}
+	name := strings.TrimSpace(acc.AccountName)
+	if name == "" {
+		name = "Không rõ account"
+	}
+	if acc.AccountID > 0 {
+		name = fmt.Sprintf("%s (#%d)", name, acc.AccountID)
+	}
+	scope := make([]string, 0, 2)
+	if platform := strings.TrimSpace(acc.Platform); platform != "" {
+		scope = append(scope, platform)
+	}
+	groupLabel := strings.TrimSpace(acc.GroupName)
+	if acc.GroupID > 0 {
+		if groupLabel != "" {
+			groupLabel = fmt.Sprintf("%s #%d", groupLabel, acc.GroupID)
+		} else {
+			groupLabel = fmt.Sprintf("group #%d", acc.GroupID)
+		}
+	}
+	if groupLabel != "" {
+		scope = append(scope, groupLabel)
+	}
+	if len(scope) > 0 {
+		name = fmt.Sprintf("%s [%s]", name, strings.Join(scope, ", "))
+	}
+	return name
+}
+
+func formatOpsAlertAccountContext(metricType string, items []*OpsAlertAccountBreakdown) string {
+	metricType = strings.TrimSpace(metricType)
+	if len(items) == 0 {
+		return "Tài khoản cần kiểm tra: không tìm thấy account_id trong log của window này (có thể lỗi xảy ra trước khi chọn account, ở auth, hoặc runtime nội bộ)."
+	}
+
+	var b strings.Builder
+	if metricType == "p95_latency_ms" || metricType == "p99_latency_ms" {
+		_, _ = b.WriteString("Tài khoản độ trễ cao cần kiểm tra:")
+	} else {
+		_, _ = b.WriteString("Tài khoản lỗi cần kiểm tra:")
+	}
+	for i, item := range items {
+		if item == nil {
+			continue
+		}
+		_, _ = b.WriteString("\n")
+		fmt.Fprintf(&b, "%d) %s — ", i+1, formatOpsAlertAccountLabel(item))
+		if metricType == "p95_latency_ms" || metricType == "p99_latency_ms" {
+			fmt.Fprintf(&b, "success %d req, p95 %s, p99 %s, avg %s, max %s",
+				item.SuccessCount,
+				formatOpsAlertMs(item.DurationP95Ms),
+				formatOpsAlertMs(item.DurationP99Ms),
+				formatOpsAlertMs(item.DurationAvgMs),
+				formatOpsAlertMs(item.DurationMaxMs),
+			)
+			if item.ErrorCountSLA > 0 {
+				fmt.Fprintf(&b, ", lỗi SLA %d", item.ErrorCountSLA)
+			}
+		} else {
+			fmt.Fprintf(&b, "lỗi SLA %d/%d (%.2f%%), success %d",
+				item.ErrorCountSLA,
+				item.RequestCountSLA,
+				item.ErrorRate,
+				item.SuccessCount,
+			)
+			if item.UpstreamErrorCount > 0 {
+				fmt.Fprintf(&b, ", upstream %d", item.UpstreamErrorCount)
+			}
+			if item.BusinessLimitedCount > 0 {
+				fmt.Fprintf(&b, ", business-limited %d", item.BusinessLimitedCount)
+			}
+		}
+		if item.LastErrorStatusCode != nil || strings.TrimSpace(item.LastErrorType) != "" || strings.TrimSpace(item.LastErrorMessage) != "" {
+			_, _ = b.WriteString(", lỗi gần nhất: ")
+			parts := make([]string, 0, 3)
+			if item.LastErrorStatusCode != nil {
+				parts = append(parts, fmt.Sprintf("HTTP %d", *item.LastErrorStatusCode))
+			}
+			if strings.TrimSpace(item.LastErrorType) != "" {
+				parts = append(parts, strings.TrimSpace(item.LastErrorType))
+			}
+			if strings.TrimSpace(item.LastErrorMessage) != "" {
+				parts = append(parts, truncateString(strings.TrimSpace(item.LastErrorMessage), 80))
+			}
+			_, _ = b.WriteString(strings.Join(parts, " | "))
+		}
+	}
+	return b.String()
+}
+
+func formatOpsAlertAccountLabel(item *OpsAlertAccountBreakdown) string {
+	if item == nil {
+		return "Không rõ account"
+	}
+	name := strings.TrimSpace(item.AccountName)
+	if name == "" {
+		name = "Không rõ account"
+	}
+	if item.AccountID != nil && *item.AccountID > 0 {
+		name = fmt.Sprintf("%s (#%d)", name, *item.AccountID)
+	}
+	scope := make([]string, 0, 2)
+	if platform := strings.TrimSpace(item.Platform); platform != "" {
+		scope = append(scope, platform)
+	}
+	groupLabel := strings.TrimSpace(item.GroupName)
+	if item.GroupID != nil && *item.GroupID > 0 {
+		if groupLabel != "" {
+			groupLabel = fmt.Sprintf("%s #%d", groupLabel, *item.GroupID)
+		} else {
+			groupLabel = fmt.Sprintf("group #%d", *item.GroupID)
+		}
+	}
+	if groupLabel != "" {
+		scope = append(scope, groupLabel)
+	}
+	if len(scope) > 0 {
+		name = fmt.Sprintf("%s [%s]", name, strings.Join(scope, ", "))
+	}
+	return name
+}
+
+func formatOpsAlertMs(value *int) string {
+	if value == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%dms", *value)
 }
 
 func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, rule *OpsAlertRule, event *OpsAlertEvent) bool {

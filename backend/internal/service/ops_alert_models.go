@@ -93,3 +93,37 @@ type OpsAlertEventFilter struct {
 	Platform string
 	GroupID  *int64
 }
+
+type OpsAlertAccountBreakdownFilter struct {
+	StartTime  time.Time
+	EndTime    time.Time
+	Platform   string
+	GroupID    *int64
+	MetricType string
+	Limit      int
+}
+
+type OpsAlertAccountBreakdown struct {
+	AccountID   *int64
+	AccountName string
+	Platform    string
+	GroupID     *int64
+	GroupName   string
+
+	SuccessCount         int64
+	ErrorCountTotal      int64
+	ErrorCountSLA        int64
+	BusinessLimitedCount int64
+	UpstreamErrorCount   int64
+	RequestCountSLA      int64
+	ErrorRate            float64
+
+	DurationP95Ms *int
+	DurationP99Ms *int
+	DurationAvgMs *int
+	DurationMaxMs *int
+
+	LastErrorStatusCode *int
+	LastErrorType       string
+	LastErrorMessage    string
+}

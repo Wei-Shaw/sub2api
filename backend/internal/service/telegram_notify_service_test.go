@@ -236,3 +236,44 @@ func TestTelegramNotifyService_NotifyBalanceLow_GlobalAdminChatRespectsBalanceLo
 		t.Fatalf("expected global/admin balance-low Telegram alert to remain disabled by telegram_notify_balance_low=false")
 	}
 }
+
+func TestTelegramNotifyService_NotifyOpsAlertIncludesAccountContext(t *testing.T) {
+	repo := &telegramNotifyTestSettingRepo{values: map[string]string{
+		SettingTelegramBotToken:       "telegram-saved-token-fixture",
+		SettingTelegramChatID:         "-1000000000000",
+		SettingTelegramNotifyOpsAlert: "true",
+	}}
+	svc := NewTelegramNotifyService(repo)
+
+	var requestForm url.Values
+	svc.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read request body: %v", err)
+			}
+			requestForm, err = url.ParseQuery(string(body))
+			if err != nil {
+				t.Fatalf("parse request body: %v", err)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"ok":true}`)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	svc.NotifyOpsAlert(context.Background(), "Tỷ lệ lỗi cao", "P1", "error_rate > 5\n\nTài khoản lỗi cần kiểm tra:\n1) acc<&> (#42) — lỗi SLA 2/10 (20.00%)", 20)
+
+	text := requestForm.Get("text")
+	if !strings.Contains(text, "Tài khoản lỗi cần kiểm tra") {
+		t.Fatalf("expected account context in ops alert, got %q", text)
+	}
+	if !strings.Contains(text, "acc&lt;&amp;&gt; (#42)") {
+		t.Fatalf("expected account label to be escaped and preserved, got %q", text)
+	}
+	if !strings.Contains(text, "lỗi SLA 2/10") {
+		t.Fatalf("expected error count context, got %q", text)
+	}
+}
