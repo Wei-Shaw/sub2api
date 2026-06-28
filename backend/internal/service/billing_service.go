@@ -499,6 +499,22 @@ func (s *BillingService) initFallbackPricing() {
 		OutputPricePerToken:     0,
 		SupportsCacheBreakdown:  false,
 	}
+
+	// xAI Grok 4.3 (official docs: $1.25 input / $2.50 output per MTok)
+	s.fallbackPrices["grok-4.3"] = &ModelPricing{
+		InputPricePerToken:         1.25e-6,
+		OutputPricePerToken:        2.5e-6,
+		CacheReadPricePerToken:     0,
+		SupportsCacheBreakdown:     false,
+		LongContextInputThreshold:  1000000,
+		LongContextInputMultiplier: 1,
+	}
+	// xAI Grok Build 0.1 (official docs: $1 input / $2 output per MTok)
+	s.fallbackPrices["grok-build-0.1"] = &ModelPricing{
+		InputPricePerToken:     1e-6,
+		OutputPricePerToken:    2e-6,
+		SupportsCacheBreakdown: false,
+	}
 }
 
 // getFallbackPricing 根据模型系列获取回退价格
@@ -657,6 +673,13 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		case "gpt-5.3-codex", "gpt-5.3-codex-spark":
 			return s.fallbackPrices["gpt-5.3-codex"]
 		}
+	}
+
+	switch modelLower {
+	case "grok", "grok-latest", "grok-4.3":
+		return s.fallbackPrices["grok-4.3"]
+	case "grok-build", "grok-build-0.1":
+		return s.fallbackPrices["grok-build-0.1"]
 	}
 
 	return nil
