@@ -59,7 +59,58 @@ export const platformProfileRegistryPlaceholders = [
   "{{antigravity_gemini_base_url}}",
 ] as const;
 
+export const platformProfileRegistryPlaceholderSamples: Record<string, string> = {
+  "{{base_url}}": "https://token.v-claw.org/v1",
+  "{{base_root}}": "https://token.v-claw.org",
+  "{{api_base_url}}": "https://token.v-claw.org/v1",
+  "{{api_key}}": "sk-vcl...cted",
+  "{{openai_model}}": "gpt-5.5",
+  "{{gemini_model}}": "gemini-2.5-pro",
+  "{{gemini_base_url}}": "https://token.v-claw.org/gemini/v1beta",
+  "{{antigravity_base_url}}": "https://token.v-claw.org/antigravity/v1",
+  "{{antigravity_gemini_base_url}}": "https://token.v-claw.org/antigravity/gemini/v1beta",
+};
+
+export const platformProfileRegistryPlaceholderSampleValues = Object.fromEntries(
+  Object.entries(platformProfileRegistryPlaceholderSamples).map(([placeholder, value]) => [
+    placeholder.replace(/^\{\{\s*/, "").replace(/\s*\}\}$/, ""),
+    value,
+  ]),
+) as Record<string, string>;
+
+export const platformProfileRegistryOSOptions = ["unix", "windows", "cmd", "powershell"] as const;
+
+export const platformProfileRegistryLanguageOptions = [
+  "toml",
+  "json",
+  "shell",
+  "bash",
+  "bat",
+  "powershell",
+  "text",
+] as const;
+
+export function renderPlatformProfileGuideTemplate(
+  template: string,
+  values: Record<string, string>,
+): string {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
+}
+
 const defaultPlatformIDs = ["openai", "anthropic", "gemini"] as const;
+
+export function createEmptyPlatformProfileRegistry(): PlatformProfileRegistry {
+  return {
+    version: 1,
+    profiles: [],
+  };
+}
+
+export function clonePlatformProfileRegistry(
+  registry: PlatformProfileRegistry,
+): PlatformProfileRegistry {
+  return JSON.parse(JSON.stringify(registry)) as PlatformProfileRegistry;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
