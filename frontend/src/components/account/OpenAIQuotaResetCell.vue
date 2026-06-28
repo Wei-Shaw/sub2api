@@ -107,6 +107,10 @@ const props = defineProps<{
   account: Account
 }>()
 
+const emit = defineEmits<{
+  resetCreditExpiry: [expiresAtList: string[]]
+}>()
+
 const { t } = useI18n()
 
 // Visible only for OpenAI OAuth accounts.
@@ -118,6 +122,29 @@ const error = ref<string | null>(null)
 const data = ref<OpenAIQuotaUsage | null>(null)
 const resetMessage = ref<string | null>(null)
 const showResetConfirm = ref(false)
+
+const readCachedResetCredits = (account: Account): OpenAIQuotaUsage | null => {
+  const extra = account.extra ?? {}
+  const count = Number(extra.codex_reset_credit_available_count)
+  const expiresAtList = Array.isArray(extra.codex_reset_credit_expires_at_list)
+    ? extra.codex_reset_credit_expires_at_list.filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+    : []
+  const earliest = typeof extra.codex_reset_credit_earliest_expires_at === 'string'
+    ? extra.codex_reset_credit_earliest_expires_at
+    : expiresAtList[0]
+
+  if (!Number.isFinite(count) && expiresAtList.length === 0 && !earliest) return null
+  return {
+    fetched_at: 0,
+    rate_limit_reset_credits: {
+      available_count: Number.isFinite(count) ? count : 0,
+      earliest_expires_at: earliest || undefined,
+      expires_at_list: expiresAtList
+    }
+  }
+}
+
+data.value = readCachedResetCredits(props.account)
 
 const availableResetCount = computed(() => data.value?.rate_limit_reset_credits?.available_count ?? 0)
 const canReset = computed(() => availableResetCount.value > 0)
@@ -139,6 +166,15 @@ const truncatedError = computed(() => {
   if (!error.value) return ''
   return error.value.length > 80 ? `${error.value.slice(0, 80)}…` : error.value
 })
+
+const resolveResetExpiryList = (usage: OpenAIQuotaUsage): string[] => {
+  const credits = usage.rate_limit_reset_credits
+  if (!credits) return []
+  if (Array.isArray(credits.expires_at_list) && credits.expires_at_list.length > 0) {
+    return credits.expires_at_list.filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+  }
+  return credits.earliest_expires_at ? [credits.earliest_expires_at] : []
+}
 
 const extractErrorMessage = (e: unknown): string => {
   // The project's axios response interceptor (api/client.ts) flattens server
@@ -167,6 +203,7 @@ const handleQuery = async () => {
   resetMessage.value = null
   try {
     data.value = await queryOpenAIQuota(props.account.id)
+    emit('resetCreditExpiry', resolveResetExpiryList(data.value))
   } catch (e) {
     error.value = extractErrorMessage(e)
   } finally {
@@ -195,10 +232,6 @@ const confirmReset = async () => {
   resetMessage.value = null
   try {
     const result: OpenAIQuotaResetResult = await resetOpenAIQuota(props.account.id)
-    // Refresh the reset-credit count so the badge reflects the consumed credit.
-    // handleQuery clears resetMessage on entry, so the success toast is set
-    // AFTER it resolves.
-    await handleQuery()
     resetMessage.value = t('admin.accounts.openaiQuotaReset.resetSuccess', {
       windows: result.windows_reset
     })
@@ -213,7 +246,7 @@ watch(
   () => props.account.id,
   () => {
     // Account row may be reused across paginated lists; reset local state.
-    data.value = null
+    data.value = readCachedResetCredits(props.account)
     error.value = null
     resetMessage.value = null
     loading.value = false
