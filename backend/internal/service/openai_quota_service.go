@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/imroc/req/v3"
 )
 
 // Endpoints used by the OpenAI/ChatGPT/Codex quota query and reset feature.
@@ -24,6 +26,8 @@ const (
 	openaiQuotaSecFetchMode     = "no-cors"
 	openaiQuotaSecFetchDest     = "empty"
 )
+
+const chatGPTRateLimitResetInfoURL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 
 // OpenAIRateLimitWindow describes a single rate-limit window returned by
 // /wham/usage. The upstream returns an explicit `null` window when the slot
@@ -53,7 +57,14 @@ type OpenAIAdditionalRateLimit struct {
 // OpenAIRateLimitResetCredits captures the "available_count" surfaced for the
 // rate_limit_reset_credit grant type, which the reset action consumes.
 type OpenAIRateLimitResetCredits struct {
-	AvailableCount int `json:"available_count"`
+	AvailableCount    int      `json:"available_count"`
+	EarliestExpiresAt string   `json:"earliest_expires_at,omitempty"`
+	ExpiresAtList     []string `json:"expires_at_list,omitempty"`
+}
+
+type openAIRateLimitResetCreditsResponse struct {
+	AvailableCount int                      `json:"available_count"`
+	Credits        []OpenAIQuotaResetCredit `json:"credits"`
 }
 
 // OpenAIQuotaUsage is the typed projection of /wham/usage we expose to the UI.
@@ -151,8 +162,109 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 		return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
 	}
 
+	if resetCredits, err := s.queryResetCredits(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID); err != nil {
+		slog.Warn("openai_quota_reset_credits_query_failed", "account_id", accountID, "error", err)
+	} else if resetCredits != nil {
+		if payload.RateLimitResetCredits == nil {
+			payload.RateLimitResetCredits = resetCredits
+		} else {
+			payload.RateLimitResetCredits.EarliestExpiresAt = resetCredits.EarliestExpiresAt
+			payload.RateLimitResetCredits.ExpiresAtList = resetCredits.ExpiresAtList
+		}
+		s.persistResetCreditsSnapshot(ctx, accountID, resetCredits)
+	}
+
 	payload.FetchedAt = time.Now().Unix()
 	return &payload, nil
+}
+
+func (s *OpenAIQuotaService) queryResetCredits(
+	ctx context.Context,
+	client *req.Client,
+	accessToken string,
+	chatGPTAccountID string,
+	fedRAMP bool,
+	accountID int64,
+) (*OpenAIRateLimitResetCredits, error) {
+	var payload openAIRateLimitResetCreditsResponse
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeaders(buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)).
+		SetSuccessResult(&payload).
+		Get(chatGPTRateLimitResetInfoURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_RESET_CREDITS_REQUEST_FAILED", "upstream request failed: %v", err)
+	}
+	if !resp.IsSuccessState() {
+		status := resp.StatusCode
+		body := truncate(resp.String(), 240)
+		slog.Warn("openai_quota_reset_credits_failed", "account_id", accountID, "status", status, "body", body)
+		return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_RESET_CREDITS_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
+	}
+
+	return &OpenAIRateLimitResetCredits{
+		AvailableCount:    payload.AvailableCount,
+		EarliestExpiresAt: firstResetCreditExpiresAt(payload.Credits),
+		ExpiresAtList:     resetCreditExpiresAtList(payload.Credits, 5),
+	}, nil
+}
+
+func (s *OpenAIQuotaService) persistResetCreditsSnapshot(ctx context.Context, accountID int64, credits *OpenAIRateLimitResetCredits) {
+	if s == nil || s.accountRepo == nil || credits == nil {
+		return
+	}
+	updates := map[string]any{
+		"codex_reset_credit_available_count":    credits.AvailableCount,
+		"codex_reset_credit_expires_at_list":    credits.ExpiresAtList,
+		"codex_reset_credit_earliest_expires_at": credits.EarliestExpiresAt,
+		"codex_reset_credit_updated_at":         time.Now().UTC().Format(time.RFC3339),
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, accountID, updates); err != nil {
+		slog.Warn("openai_quota_reset_credits_persist_failed", "account_id", accountID, "error", err)
+	}
+}
+
+func firstResetCreditExpiresAt(credits []OpenAIQuotaResetCredit) string {
+	list := resetCreditExpiresAtList(credits, 1)
+	if len(list) == 0 {
+		return ""
+	}
+	return list[0]
+}
+
+func resetCreditExpiresAtList(credits []OpenAIQuotaResetCredit, limit int) []string {
+	if limit <= 0 {
+		return nil
+	}
+
+	type expiresAtItem struct {
+		raw string
+		t   time.Time
+	}
+	items := make([]expiresAtItem, 0, len(credits))
+	for _, credit := range credits {
+		raw := strings.TrimSpace(credit.ExpiresAt)
+		if raw == "" {
+			continue
+		}
+		expiresAt, err := parseTime(raw)
+		if err != nil {
+			continue
+		}
+		items = append(items, expiresAtItem{raw: raw, t: expiresAt})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].t.Before(items[j].t)
+	})
+
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		result = append(result, item.raw)
+	}
+	return result
 }
 
 // ResetCredit consumes one rate_limit_reset_credit for the given OpenAI account.

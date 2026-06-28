@@ -288,7 +288,21 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
+              @reset-credit-expiry="handleResetCreditExpiry(row, $event)"
             />
+          </template>
+          <template #cell-reset_credit_expires_at="{ row }">
+            <div
+              class="flex flex-col gap-0.5 text-xs text-gray-500 dark:text-dark-400"
+              :title="formatResetCreditExpiryTitle(row)"
+            >
+              <template v-if="formatResetCreditExpiryList(row).length > 0">
+                <span v-for="expiresAt in formatResetCreditExpiryList(row)" :key="expiresAt">
+                  {{ expiresAt }}
+                </span>
+              </template>
+              <span v-else>-</span>
+            </div>
           </template>
           <template #cell-proxy="{ row }">
             <div class="flex flex-col gap-1">
@@ -576,6 +590,7 @@ const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
+const resetCreditExpiryByAccountId = ref<Record<string, string[]>>({})
 
 const buildDefaultTodayStats = (): WindowStats => ({
   requests: 0,
@@ -1152,6 +1167,7 @@ const allColumns = computed(() => {
   }
   c.push(
     { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false },
+    { key: 'reset_credit_expires_at', label: t('admin.accounts.columns.resetCreditExpiresAt'), sortable: false },
     { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false },
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },
     { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true },
@@ -1493,6 +1509,34 @@ const syncPaginationAfterLocalRemoval = () => {
   }
   // 行被本地移除后不立刻全量补页，改为提示用户手动同步。
   hasPendingListSync.value = nextTotal > 0
+}
+
+const handleResetCreditExpiry = (account: Account, expiresAtList: string[]) => {
+  resetCreditExpiryByAccountId.value = {
+    ...resetCreditExpiryByAccountId.value,
+    [String(account.id)]: expiresAtList
+  }
+}
+
+const cachedResetCreditExpiryList = (account: Account): string[] => {
+  const list = account.extra?.codex_reset_credit_expires_at_list
+  if (!Array.isArray(list)) return []
+  return list.filter((item): item is string => typeof item === 'string' && item.trim() !== '').slice(0, 5)
+}
+
+const resolveResetCreditExpiryList = (account: Account): string[] => {
+  if (account.platform !== 'openai' || account.type !== 'oauth') return []
+  return resetCreditExpiryByAccountId.value[String(account.id)] ?? cachedResetCreditExpiryList(account)
+}
+
+const formatResetCreditExpiryList = (account: Account): string[] => {
+  return resolveResetCreditExpiryList(account).map((expiresAt) => formatDateTime(expiresAt))
+}
+
+const formatResetCreditExpiryTitle = (account: Account): string => {
+  const list = formatResetCreditExpiryList(account)
+  if (list.length === 0) return t('admin.accounts.resetCreditExpiresAt.empty')
+  return t('admin.accounts.resetCreditExpiresAt.tooltip', { time: list.join('\n') })
 }
 
 const patchAccountInList = (updatedAccount: Account) => {
