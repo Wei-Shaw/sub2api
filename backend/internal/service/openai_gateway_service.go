@@ -252,7 +252,13 @@ type OpenAIForwardResult struct {
 	ImageOutputSizes []string
 	// ImageOutputBase64 与 ImageOutputSizes 同序、同长度（counter 收尾时统一回填）；
 	// URL 模式或未携带 b64 的 slot 占位空字符串。仅供 §5 回包图片分辨率自检消费。
-	ImageOutputBase64  []string
+	ImageOutputBase64 []string
+	// ImageOutputCosURLs 与 ImageOutputSizes 同序、同长度；当 COS 转存失败或未启用时，
+	// 对应槽位为空字符串。仅由 §image-cos-upload 异步上传协程回填，写 usage_log 前需 join。
+	ImageOutputCosURLs []string
+	// imageCosUploadDone 当存在异步 COS 上传任务时，该 channel 将在所有上传协程结束后被关闭；
+	// 为 nil 表示无异步任务，无需等待。RecordUsage 写库前会等待该信号（带超时）。
+	imageCosUploadDone <-chan struct{}
 	ImageSizeSource    string
 	ImageSizeBreakdown map[string]int
 
@@ -363,6 +369,8 @@ type OpenAIGatewayService struct {
 	balanceNotifyService  *BalanceNotifyService
 	settingService        *SettingService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	// cosService 为 nil 表示未启用图片转存（OpenAI 出图响应直接返回 b64_json，不写 cos url 到 usage_log）。
+	cosService *COSImageTransferService
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -408,6 +416,7 @@ func NewOpenAIGatewayService(
 	balanceNotifyService *BalanceNotifyService,
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	cosService *COSImageTransferService,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -440,6 +449,7 @@ func NewOpenAIGatewayService(
 		balanceNotifyService:  balanceNotifyService,
 		settingService:        settingService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		cosService:            cosService,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 	}
@@ -6083,6 +6093,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		requestedModel = input.OriginalModel
 	}
 
+	// 在写 usage_log 之前等待异步 COS 转存完成（如果存在）。
+	// COS 上传与计费/扣费是并行进行的，这里只在两者之中较慢的一项上多花时间。
+	// 超时回退：上传未在期限内完成时，CosURLs 可能为空字符串数组，仍允许 usage_log 写入，避免阻塞计费。
+	waitOpenAIImageCosUpload(ctx, result)
+
 	usageLog := &UsageLog{
 		UserID:              user.ID,
 		APIKeyID:            apiKey.ID,
@@ -6106,6 +6121,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageOutputSize:     optionalTrimmedStringPtr(result.ImageOutputSize),
 		ImageSizeSource:     optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:  result.ImageSizeBreakdown,
+		CosURLs:             nonEmptyStringSlice(result.ImageOutputCosURLs),
 	}
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost

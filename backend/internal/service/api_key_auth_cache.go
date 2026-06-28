@@ -1,6 +1,10 @@
 package service
 
-import "time"
+import (
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+)
 
 // APIKeyAuthSnapshot API Key 认证缓存快照（仅包含认证所需字段）
 type APIKeyAuthSnapshot struct {
@@ -72,6 +76,9 @@ type APIKeyAuthGroupSnapshot struct {
 	ImagePrice1K         *float64 `json:"image_price_1k,omitempty"`
 	ImagePrice2K         *float64 `json:"image_price_2k,omitempty"`
 	ImagePrice4K         *float64 `json:"image_price_4k,omitempty"`
+	// ImagePricingMatrix 二维定价矩阵：tier_key -> quality_key -> 单价（USD per image）。
+	// 写入认证快照后由 fal 调度判定 / 计费链路读取。
+	ImagePricingMatrix domain.ImagePricingMatrix `json:"image_pricing_matrix,omitempty"`
 	// ImagePreferFal/ImageDecodeSizeOnRsp 仅在 platform=openai 分组生效；
 	// 写入认证快照后由 OpenAI 网关计费链路读取（image_decode_size_on_rsp 控制回包图片分辨率自检）。
 	ImagePreferFal                  bool   `json:"image_prefer_fal"`

@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 13 // v13: include image_prefer_fal & image_decode_size_on_rsp in group snapshot
+const apiKeyAuthSnapshotVersion = 14 // v14: include image_pricing_matrix in group snapshot
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -264,6 +264,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ImagePrice1K:                    apiKey.Group.ImagePrice1K,
 			ImagePrice2K:                    apiKey.Group.ImagePrice2K,
 			ImagePrice4K:                    apiKey.Group.ImagePrice4K,
+			ImagePricingMatrix:              apiKey.Group.ImagePricingMatrix,
 			ImagePreferFal:                  apiKey.Group.ImagePreferFal,
 			ImageDecodeSizeOnRsp:            apiKey.Group.ImageDecodeSizeOnRsp,
 			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
@@ -339,6 +340,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ImagePrice1K:                    snapshot.Group.ImagePrice1K,
 			ImagePrice2K:                    snapshot.Group.ImagePrice2K,
 			ImagePrice4K:                    snapshot.Group.ImagePrice4K,
+			ImagePricingMatrix:              snapshot.Group.ImagePricingMatrix,
 			ImagePreferFal:                  snapshot.Group.ImagePreferFal,
 			ImageDecodeSizeOnRsp:            snapshot.Group.ImageDecodeSizeOnRsp,
 			ClaudeCodeOnly:                  snapshot.Group.ClaudeCodeOnly,

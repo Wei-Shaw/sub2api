@@ -677,13 +677,14 @@ func ProvideChannelMonitorService(
 func ProvideAsyncMediaService(
 	taskRepo AsyncMediaTaskRepository,
 	userRepo UserRepository,
+	groupRepo GroupRepository,
 	billing *BillingService,
 	resolver *ModelPricingResolver,
 	cos *COSImageTransferService,
 	deferred *DeferredService,
 	cfg *config.Config,
 ) *AsyncMediaService {
-	svc := NewAsyncMediaService(taskRepo, userRepo, billing, resolver, cos)
+	svc := NewAsyncMediaService(taskRepo, userRepo, groupRepo, billing, resolver, cos)
 	svc.SetDeferredService(deferred)
 	if cfg != nil {
 		if cfg.AsyncMedia.PollIntervalSeconds > 0 {

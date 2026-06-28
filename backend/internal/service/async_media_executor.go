@@ -36,21 +36,26 @@ const (
 //
 // 余额账本仅对 BillingTypeBalance 生效；订阅计费的额度核算沿用既有 usage_log 记录路径。
 type AsyncMediaService struct {
-	taskRepo AsyncMediaTaskRepository
-	userRepo UserRepository
-	billing  *BillingService
-	resolver *ModelPricingResolver
-	cos      *COSImageTransferService
-	deferred *DeferredService
+	taskRepo  AsyncMediaTaskRepository
+	userRepo  UserRepository
+	groupRepo GroupRepository
+	billing   *BillingService
+	resolver  *ModelPricingResolver
+	cos       *COSImageTransferService
+	deferred  *DeferredService
 
 	pollInterval time.Duration
 	failTimeout  time.Duration
 }
 
 // NewAsyncMediaService 创建异步媒体执行内核。
+//
+// groupRepo 用于 estimateCost 在渠道无定价时回查分组二维价格矩阵；可为 nil，
+// 此时仅依赖 resolver 解析的渠道定价（与历史行为一致）。
 func NewAsyncMediaService(
 	taskRepo AsyncMediaTaskRepository,
 	userRepo UserRepository,
+	groupRepo GroupRepository,
 	billing *BillingService,
 	resolver *ModelPricingResolver,
 	cos *COSImageTransferService,
@@ -58,6 +63,7 @@ func NewAsyncMediaService(
 	return &AsyncMediaService{
 		taskRepo:     taskRepo,
 		userRepo:     userRepo,
+		groupRepo:    groupRepo,
 		billing:      billing,
 		resolver:     resolver,
 		cos:          cos,
@@ -130,7 +136,8 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 	}
 
 	upstreamModel := s.resolveUpstreamModel(in.Account, in.RequestedModel, in.Input.IsEdit)
-	sizeTier := NormalizeImageBillingTierOrDefault(in.Input.Size)
+	rawSize := in.Input.Size
+	sizeTier := NormalizeImageBillingTierOrDefault(rawSize)
 	quality := fal.MapQualityToFal(in.Input.Quality)
 	numImages := in.Input.N
 	if numImages <= 0 {
@@ -138,7 +145,7 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 	}
 
 	// 预估并预扣费用（按 num_images 的满额预扣）。
-	heldCost, err := s.estimateCost(ctx, upstreamModel, in.GroupID, sizeTier, quality, numImages, in.RateMultiplier)
+	heldCost, err := s.estimateCost(ctx, upstreamModel, in.GroupID, rawSize, sizeTier, quality, numImages, in.RateMultiplier)
 	if err != nil {
 		return nil, fmt.Errorf("async media: estimate cost: %w", err)
 	}
@@ -157,18 +164,20 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 		Facade:            in.Facade,
 		RequestedModel:    in.RequestedModel,
 		UpstreamModel:     amStrPtr(upstreamModel),
-		ImageSize:         amStrPtr(sizeTier),
-		Quality:           amStrPtr(quality),
-		NumImages:         numImages,
-		Status:            AsyncMediaStatusPending,
-		HeldCost:          heldCost,
-		RateMultiplier:    in.RateMultiplier,
-		SizeTier:          amStrPtr(sizeTier),
-		FailDeadlineAt:    &failDeadline,
-		ClientIP:          amStrPtr(in.ClientIP),
-		UserAgent:         amStrPtr(in.UserAgent),
-		InboundEndpoint:   amStrPtr(in.InboundEndpoint),
-		UpstreamEndpoint:  amStrPtr(falUpstreamEndpoint(upstreamModel)),
+		// ImageSize 存客户端原始 size（如 "1024x1024"），结算阶段据此命中分组二维矩阵；
+		// 已归一化的计费档位（"2K" 等）单独存入 SizeTier 字段。
+		ImageSize:        amStrPtr(rawSize),
+		Quality:          amStrPtr(quality),
+		NumImages:        numImages,
+		Status:           AsyncMediaStatusPending,
+		HeldCost:         heldCost,
+		RateMultiplier:   in.RateMultiplier,
+		SizeTier:         amStrPtr(sizeTier),
+		FailDeadlineAt:   &failDeadline,
+		ClientIP:         amStrPtr(in.ClientIP),
+		UserAgent:        amStrPtr(in.UserAgent),
+		InboundEndpoint:  amStrPtr(in.InboundEndpoint),
+		UpstreamEndpoint: amStrPtr(falUpstreamEndpoint(upstreamModel)),
 	}
 	if err := s.taskRepo.Create(ctx, task); err != nil {
 		// 落库失败：回滚预扣费，避免漏退。
@@ -375,9 +384,10 @@ func (s *AsyncMediaService) markSucceeded(ctx context.Context, task *AsyncMediaT
 
 	// 结算 finalCost：按实际出图数量重算。
 	upstreamModel := amDerefStr(task.UpstreamModel)
+	rawSize := amDerefStr(task.ImageSize)
 	sizeTier := amDerefStr(task.SizeTier)
 	quality := amDerefStr(task.Quality)
-	finalCost, err := s.estimateCost(ctx, upstreamModel, task.GroupID, sizeTier, quality, len(imageURLs), task.RateMultiplier)
+	finalCost, err := s.estimateCost(ctx, upstreamModel, task.GroupID, rawSize, sizeTier, quality, len(imageURLs), task.RateMultiplier)
 	if err != nil {
 		// 结算失败时按预扣额结算，避免误退。
 		finalCost = task.HeldCost
@@ -475,15 +485,20 @@ func (s *AsyncMediaService) writeTerminalUsageLog(
 	}
 }
 
-// estimateCost 通过统一计费入口估算 (size_tier × quality × count) 的实际费用。
+// estimateCost 通过统一计费入口估算 (size × quality × count) 的实际费用。
 //
-// 强校验：image / per-request 模式下，若该模型在分组/渠道中未配置任何有效定价
-// （RequestTiers 与 DefaultPerRequestPrice 均为 0），返回 ErrAsyncMediaPricingMissing，
+// 计费优先级（与 OpenAI 网关 calculateOpenAIImageCost 保持一致）：
+//  1. 渠道定价（resolved.Source == PricingSourceChannel）且模式为 PerRequest/Image
+//     → 走 CalculateCostUnified（按 size_tier 命中渠道分层价或默认按次价）。
+//  2. 否则回退分组二维价格矩阵（image_pricing_matrix），按原始分辨率 + quality
+//     命中后调用 CalculateImageCostWithQuality；旧三档（Price1K/2K/4K）作为兼容兜底。
+//
+// 强校验：两条路径均未拿到正向费用时返回 ErrAsyncMediaPricingMissing，
 // 调用方据此拒绝提交任务，避免账户被「0 费用刷图」。
 func (s *AsyncMediaService) estimateCost(
 	ctx context.Context,
 	model string, groupID *int64,
-	sizeTier, quality string, count int, rateMultiplier float64,
+	rawSize, sizeTier, quality string, count int, rateMultiplier float64,
 ) (float64, error) {
 	if s.billing == nil {
 		return 0, fmt.Errorf("%w: billing service not initialized", ErrAsyncMediaPricingMissing)
@@ -495,46 +510,74 @@ func (s *AsyncMediaService) estimateCost(
 		count = 1
 	}
 
-	// 先解析定价，校验是否存在有效配置（image/per-request 模式必须命中 tier 或默认价）。
 	resolved := s.resolver.Resolve(ctx, PricingInput{
 		Model:   model,
 		GroupID: groupID,
 	})
-	if resolved == nil {
-		return 0, fmt.Errorf("%w: model=%s", ErrAsyncMediaPricingMissing, model)
-	}
-	if resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage {
-		if len(resolved.RequestTiers) == 0 && resolved.DefaultPerRequestPrice <= 0 {
-			return 0, fmt.Errorf("%w: model=%s mode=%s", ErrAsyncMediaPricingMissing, model, resolved.Mode)
+
+	// 路径 1：渠道定价且模式为 PerRequest / Image，走统一计费。
+	if resolved != nil && resolved.Source == PricingSourceChannel &&
+		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
+		if len(resolved.RequestTiers) > 0 || resolved.DefaultPerRequestPrice > 0 {
+			breakdown, err := s.billing.CalculateCostUnified(CostInput{
+				Ctx:            ctx,
+				Model:          model,
+				GroupID:        groupID,
+				RequestCount:   count,
+				SizeTier:       sizeTier,
+				Quality:        quality,
+				RateMultiplier: rateMultiplier,
+				Resolver:       s.resolver,
+				Resolved:       resolved,
+			})
+			if err != nil && !errors.Is(err, ErrModelPricingUnavailable) {
+				return 0, err
+			}
+			if err == nil && breakdown != nil && (rateMultiplier <= 0 || breakdown.ActualCost > 0) {
+				return breakdown.ActualCost, nil
+			}
+			// 渠道定价计算未拿到正向费用：继续走分组兜底（沉默回退，与 openai 路径一致）。
 		}
 	}
 
-	breakdown, err := s.billing.CalculateCostUnified(CostInput{
-		Ctx:            ctx,
-		Model:          model,
-		GroupID:        groupID,
-		RequestCount:   count,
-		SizeTier:       sizeTier,
-		Quality:        quality,
-		RateMultiplier: rateMultiplier,
-		Resolver:       s.resolver,
-		Resolved:       resolved,
-	})
+	// 路径 2：分组二维价格矩阵兜底。
+	groupCfg, err := s.buildGroupImagePriceConfig(ctx, groupID, rawSize, quality)
 	if err != nil {
-		// 统一计费层上抛的「定价不可用」视为配置缺失，转化为我们的 sentinel。
-		if errors.Is(err, ErrModelPricingUnavailable) {
-			return 0, fmt.Errorf("%w: model=%s: %v", ErrAsyncMediaPricingMissing, model, err)
-		}
 		return 0, err
 	}
-	if breakdown == nil {
-		return 0, fmt.Errorf("%w: model=%s empty breakdown", ErrAsyncMediaPricingMissing, model)
+	if groupCfg == nil {
+		return 0, fmt.Errorf("%w: model=%s group=%v no channel pricing and group not loadable",
+			ErrAsyncMediaPricingMissing, model, groupID)
 	}
-	// 二次防御：在合法计费倍率下结算价仍为 0，视为定价缺失。
+	breakdown := s.billing.CalculateImageCostWithQuality(model, sizeTier, quality, count, groupCfg, rateMultiplier)
+	if breakdown == nil {
+		return 0, fmt.Errorf("%w: model=%s empty group breakdown", ErrAsyncMediaPricingMissing, model)
+	}
 	if rateMultiplier > 0 && breakdown.ActualCost <= 0 {
-		return 0, fmt.Errorf("%w: model=%s size=%s quality=%s zero cost", ErrAsyncMediaPricingMissing, model, sizeTier, quality)
+		return 0, fmt.Errorf("%w: model=%s size=%s quality=%s group fallback zero cost",
+			ErrAsyncMediaPricingMissing, model, sizeTier, quality)
 	}
 	return breakdown.ActualCost, nil
+}
+
+// buildGroupImagePriceConfig 拉取分组并构造带原始分辨率/quality 的 ImagePriceConfig，
+// 用于命中分组的二维价格矩阵 (tier_key × quality_key)。
+//
+// 当 groupRepo 未注入或 groupID 为空、加载失败时返回 (nil, error)；分组本身缺失
+// image_pricing_matrix 等字段不视为错误，仍返回 cfg 由上层 CalculateImageCost 兜底。
+func (s *AsyncMediaService) buildGroupImagePriceConfig(ctx context.Context, groupID *int64, rawSize, quality string) (*ImagePriceConfig, error) {
+	if s.groupRepo == nil || groupID == nil || *groupID == 0 {
+		return nil, nil
+	}
+	group, err := s.groupRepo.GetByID(ctx, *groupID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: load group %d: %v", ErrAsyncMediaPricingMissing, *groupID, err)
+	}
+	if group == nil {
+		return nil, nil
+	}
+	rawW, rawH, _ := parseImageBillingDimensions(rawSize)
+	return group.BuildImagePriceConfig(rawW, rawH, quality), nil
 }
 
 // charge 预扣费用（仅 BillingTypeBalance 走余额账本）。

@@ -1174,11 +1174,11 @@ func (s *BillingService) ForceUpdatePricing() error {
 // 新调用方推荐同时填充 PricingMatrix + RawWidth + RawHeight + Quality，
 // 此时计费命中按 spec D5 三级回退顺序：
 //
-//	1. 矩阵命中: PricingMatrix[tier_key][quality_key]，
-//	   tier_key 由 (RawWidth, RawHeight) 经 ClassifyImagePricingTier6 计算，
-//	   quality_key 由 Quality 经 NormalizeImageQuality 归一。
-//	2. 旧三档命中: 按已归一的 imageSize ("1K"/"2K"/"4K") 命中 Price1K/2K/4K。
-//	3. LiteLLM 默认价: getDefaultImagePrice 提供。
+//  1. 矩阵命中: PricingMatrix[tier_key][quality_key]，
+//     tier_key 由 (RawWidth, RawHeight) 经 ClassifyImagePricingTier6 计算，
+//     quality_key 由 Quality 经 NormalizeImageQuality 归一。
+//  2. 旧三档命中: 按已归一的 imageSize ("1K"/"2K"/"4K") 命中 Price1K/2K/4K。
+//  3. LiteLLM 默认价: getDefaultImagePrice 提供。
 //
 // 任意一级缺失即跳到下一级；矩阵中只缺某 (tier,quality) 单元格也会回退。
 type ImagePriceConfig struct {
@@ -1229,6 +1229,24 @@ func (s *BillingService) CalculateImageCost(model string, imageSize string, imag
 		ActualCost:  actualCost,
 		BillingMode: string(BillingModeImage),
 	}
+}
+
+// CalculateImageCostWithQuality 在 CalculateImageCost 基础上显式带入 quality 维度，
+// 用于命中分组的二维价格矩阵 (tier_key × quality_key)。
+//
+// quality 仅作用于二维矩阵查找；旧三档（Price1K/2K/4K）与 LiteLLM 默认兜底
+// 仍按 imageSize 命中，与 CalculateImageCost 行为完全一致。
+//
+// 注意：调用方应已经把分组的原始分辨率 (RawWidth/RawHeight) 写入 groupConfig，
+// 二维矩阵命中需要这两个字段；本方法只负责把 quality 注入 cfg 副本，不解析尺寸。
+func (s *BillingService) CalculateImageCostWithQuality(model string, imageSize string, quality string, imageCount int, groupConfig *ImagePriceConfig, rateMultiplier float64) *CostBreakdown {
+	if groupConfig != nil && quality != "" {
+		// 复制一份避免污染调用方传入的 cfg。
+		cfg := *groupConfig
+		cfg.Quality = quality
+		groupConfig = &cfg
+	}
+	return s.CalculateImageCost(model, imageSize, imageCount, groupConfig, rateMultiplier)
 }
 
 // getImageUnitPrice 获取图片单价。

@@ -745,7 +745,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		streamUsage, streamCount, streamSizes, streamBase64s, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime)
 		if err != nil {
 			if streamCount > 0 {
-				return &OpenAIForwardResult{
+				res := &OpenAIForwardResult{
 					RequestID:         resp.Header.Get("x-request-id"),
 					Usage:             streamUsage,
 					Model:             requestModel,
@@ -759,7 +759,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 					ImageInputSize:    parsed.Size,
 					ImageOutputSizes:  streamSizes,
 					ImageOutputBase64: streamBase64s,
-				}, err
+				}
+				s.scheduleOpenAIImageCosUpload(ctx, res)
+				return res, err
 			}
 			return nil, err
 		}
@@ -768,7 +770,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		imageOutputSizes := streamSizes
 		imageOutputBase64s := streamBase64s
 		firstTokenMs = ttft
-		return &OpenAIForwardResult{
+		res := &OpenAIForwardResult{
 			RequestID:         resp.Header.Get("x-request-id"),
 			Usage:             usage,
 			Model:             requestModel,
@@ -782,7 +784,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageInputSize:    parsed.Size,
 			ImageOutputSizes:  imageOutputSizes,
 			ImageOutputBase64: imageOutputBase64s,
-		}, nil
+		}
+		s.scheduleOpenAIImageCosUpload(ctx, res)
+		return res, nil
 	} else {
 		nonStreamUsage, nonStreamCount, nonStreamSizes, nonStreamBase64s, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
 		if err != nil {
@@ -792,7 +796,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		if nonStreamCount > 0 {
 			imageCount = nonStreamCount
 		}
-		return &OpenAIForwardResult{
+		res := &OpenAIForwardResult{
 			RequestID:         resp.Header.Get("x-request-id"),
 			Usage:             usage,
 			Model:             requestModel,
@@ -806,7 +810,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageInputSize:    parsed.Size,
 			ImageOutputSizes:  nonStreamSizes,
 			ImageOutputBase64: nonStreamBase64s,
-		}, nil
+		}
+		s.scheduleOpenAIImageCosUpload(ctx, res)
+		return res, nil
 	}
 }
 

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -113,10 +114,25 @@ func (s *COSImageTransferService) UpdateConfig(ctx context.Context, cfg COSImage
 			return nil, fmt.Errorf("encrypt cos secret: %w", err)
 		}
 		toStore.SecretAccessKey = encrypted
+		logger.LegacyPrintf("service.cos_transfer",
+			"[COS] UpdateConfig: encrypted new SecretAccessKey, plaintext_len=%d cipher_len=%d cipher_prefix=%s",
+			len(secret), len(encrypted), safePrefix(encrypted, 16))
+		// 立即用同一个 encryptor 自检解密，确保本进程能正确读回（排除 key 不一致或 Encrypt/Decrypt 实现 bug）。
+		if back, derr := s.encryptor.Decrypt(encrypted); derr != nil || back != secret {
+			logger.LegacyPrintf("service.cos_transfer",
+				"[COS] UpdateConfig: 自检解密失败！encryptor 可能配置错误: err=%v match=%v", derr, back == secret)
+			return nil, fmt.Errorf("cos secret encrypt self-check failed: err=%v match=%v", derr, back == secret)
+		}
 	} else if existing := s.loadRawSecret(ctx); existing != "" {
 		// 留空表示保持原密钥不变（避免管理后台每次都要重输）。
 		toStore.SecretAccessKey = existing
 		cfg.SecretAccessKey = ""
+		logger.LegacyPrintf("service.cos_transfer",
+			"[COS] UpdateConfig: 前端未提交新 SecretAccessKey，沿用数据库中已有密文 cipher_len=%d cipher_prefix=%s（如希望换 SK，请在表单中填入新值）",
+			len(existing), safePrefix(existing, 16))
+	} else {
+		logger.LegacyPrintf("service.cos_transfer",
+			"[COS] UpdateConfig: SecretAccessKey 为空且数据库无历史密文，将保存为空")
 	}
 
 	data, err := json.Marshal(&toStore)
@@ -126,6 +142,9 @@ func (s *COSImageTransferService) UpdateConfig(ctx context.Context, cfg COSImage
 	if err := s.settingRepo.Set(ctx, settingKeyCOSImageConfig, string(data)); err != nil {
 		return nil, fmt.Errorf("persist cos config: %w", err)
 	}
+	logger.LegacyPrintf("service.cos_transfer",
+		"[COS] UpdateConfig: 配置已持久化 stored_secret_len=%d stored_secret_prefix=%s",
+		len(toStore.SecretAccessKey), safePrefix(toStore.SecretAccessKey, 16))
 
 	s.mu.Lock()
 	s.store = nil
@@ -255,6 +274,106 @@ func (s *COSImageTransferService) FetchAsBase64(ctx context.Context, srcURL stri
 	return b64, nil
 }
 
+// UploadImageBytes 把已在内存中的图片字节直接上传到 COS，返回对外可访问的 URL。
+//
+// 适用场景：上游（如 OpenAI Images）直接返回 base64 图片内容，无需再次下载，
+// 由调用方解码后传入字节数据。contentTypeHint 仅作为提示，最终上传到 COS 的 ContentType
+// 会被规范化为不含参数（如 charset）的 image/* 形式，避免 v4 签名 canonical 化差异
+// 在腾讯云 COS / 阿里云 OSS 上引发 SignatureDoesNotMatch。srcHint 仅用于日志与扩展名推断，可为空。
+//
+// 转存未启用或未配置时返回 ("", nil)，调用方据此判定是否应回退（不视作错误）。
+func (s *COSImageTransferService) UploadImageBytes(ctx context.Context, data []byte, contentTypeHint, srcHint string) (string, error) {
+	if len(data) == 0 {
+		return "", fmt.Errorf("empty image bytes")
+	}
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.cos_transfer", "[COS] UploadImageBytes load config failed: %v", err)
+		return "", err
+	}
+	if cfg == nil || !cfg.Enabled || !cfg.IsConfigured() {
+		logger.LegacyPrintf("service.cos_transfer", "[COS] UploadImageBytes disabled or not configured")
+		return "", nil
+	}
+	store, err := s.getOrCreateStore(ctx, cfg)
+	if err != nil {
+		logger.LegacyPrintf("service.cos_transfer", "[COS] UploadImageBytes get store failed: %v", err)
+		return "", err
+	}
+
+	// 规范化 ContentType：
+	//  1) 优先使用调用方提供的 hint（裁掉参数部分，如 ";charset=utf-8"）
+	//  2) hint 为空时用 http.DetectContentType 嗅探，但同样裁掉参数
+	//  3) 嗅探结果不是合法 image/* 时，按 OpenAI 出图默认 image/png 兜底
+	// 这一步是为了规避部分 S3 兼容服务（COS/OSS）在 v4 签名 canonical
+	// 处理 ContentType 带参数时与服务端不一致导致 403 SignatureDoesNotMatch。
+	rawHint := contentTypeHint
+	contentType := normalizeImageContentType(strings.TrimSpace(contentTypeHint))
+	if contentType == "" {
+		detected := normalizeImageContentType(http.DetectContentType(data))
+		if detected != "" {
+			contentType = detected
+		}
+	}
+	if contentType == "" {
+		contentType = "image/png"
+	}
+
+	key := s.buildKey(cfg, srcHint, contentType)
+	logger.LegacyPrintf("service.cos_transfer",
+		"[COS] UploadImageBytes uploading: size=%d hint=%q final-content-type=%s key=%s",
+		len(data), rawHint, contentType, key)
+	if _, err := store.Upload(ctx, key, bytes.NewReader(data), contentType); err != nil {
+		logger.LegacyPrintf("service.cos_transfer", "[COS] UploadImageBytes upload failed: %v", err)
+		return "", err
+	}
+	cosURL := s.buildPublicURL(cfg, key)
+	logger.LegacyPrintf("service.cos_transfer", "[COS] UploadImageBytes succeeded: %s", cosURL)
+	return cosURL, nil
+}
+
+// normalizeImageContentType 把 ContentType 截断到分号前，仅保留 type/subtype 部分；
+// 对非 image/* 的输入返回空串。这样可避免 ";charset=utf-8" 等参数进入 S3 v4 签名的 canonical request。
+func normalizeImageContentType(ct string) string {
+	ct = strings.TrimSpace(ct)
+	if ct == "" {
+		return ""
+	}
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	ct = strings.ToLower(ct)
+	if !strings.HasPrefix(ct, "image/") {
+		return ""
+	}
+	return ct
+}
+
+// isCipherAuthFailure 判断 AESEncryptor.Decrypt 返回的错误是否属于
+// "数据是合法密文、但加密密钥不匹配"（GCM 认证失败）的情形。
+// 该情形下不能把原值当明文使用，否则上层会拿密文去做签名导致 403。
+func isCipherAuthFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	// AESEncryptor.Decrypt 在 gcm.Open 失败时返回 "decrypt: cipher: message authentication failed"
+	return strings.Contains(msg, "message authentication failed")
+}
+
+// safePrefix 返回字符串前 n 个字符的安全展示形式，用于在日志中诊断密文是否变化。
+// 由于密文是 base64(nonce+ciphertext+tag)，nonce 每次随机，前缀也每次不同，
+// 所以"两次保存得到不同前缀"是正常的；但"保存前后数据库里前缀一样"则说明根本没换。
+func safePrefix(s string, n int) string {
+	if n <= 0 || s == "" {
+		return ""
+	}
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
 func (s *COSImageTransferService) download(ctx context.Context, srcURL string) ([]byte, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srcURL, nil)
 	if err != nil {
@@ -320,8 +439,21 @@ func (s *COSImageTransferService) loadConfig(ctx context.Context) (*COSImageConf
 	if cfg.SecretAccessKey != "" {
 		decrypted, err := s.encryptor.Decrypt(cfg.SecretAccessKey)
 		if err != nil {
-			// 兼容未加密旧数据：解密失败保持原值
-			logger.LegacyPrintf("service.cos_transfer", "[COS] secret 解密失败（可能为旧的未加密数据）: %v", err)
+			// AES-GCM Decrypt 的错误分两类：
+			//  1) 不是合法 base64 / 长度过短 —— 极大概率是历史明文，回退保留原值
+			//  2) "cipher: message authentication failed" —— 数据是密文但加密 key 不匹配，
+			//     此时若回退原值，会把密文当 SecretKey 拿去签名，必然 403 SignatureDoesNotMatch。
+			//     这种情况必须直接返回错误，提示运维去后台重新保存配置或修正 TOTP_ENCRYPTION_KEY。
+			if isCipherAuthFailure(err) {
+				logger.LegacyPrintf("service.cos_transfer",
+					"[COS] secret 解密失败：密文与当前加密密钥不匹配（请到后台 COS 配置页重新保存 SecretAccessKey，或检查 TOTP_ENCRYPTION_KEY 是否被改动）"+
+						" cipher_len=%d cipher_prefix=%s err=%v",
+					len(cfg.SecretAccessKey), safePrefix(cfg.SecretAccessKey, 16), err)
+				return nil, fmt.Errorf("cos secret decrypt failed (key mismatch): %w", err)
+			}
+			logger.LegacyPrintf("service.cos_transfer",
+				"[COS] secret 解密失败（疑似历史明文，按明文使用）cipher_len=%d cipher_prefix=%s err=%v",
+				len(cfg.SecretAccessKey), safePrefix(cfg.SecretAccessKey, 16), err)
 		} else {
 			cfg.SecretAccessKey = decrypted
 		}

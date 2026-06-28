@@ -210,10 +210,10 @@ func (r *fakeTaskRepo) lastUsageLog() *TerminalUsageLogInput {
 // falTestServer 模拟 fal queue 协议，状态/结果可配置。
 type falTestServer struct {
 	*httptest.Server
-	statusCode     int      // status 接口返回的 HTTP code（非 200 表示上游错误）
-	queueStatus    string   // status 接口返回的 fal status 字段
-	images         []string // result 接口返回的图片
-	statusHits     int32
+	statusCode  int      // status 接口返回的 HTTP code（非 200 表示上游错误）
+	queueStatus string   // status 接口返回的 fal status 字段
+	images      []string // result 接口返回的图片
+	statusHits  int32
 }
 
 func newFalTestServer(t *testing.T) *falTestServer {
@@ -348,7 +348,7 @@ func TestAsyncMedia_SubmitAndSucceed_RefundsDelta(t *testing.T) {
 	taskRepo := newFakeTaskRepo()
 	billing := newTestBillingService()
 
-	svc := NewAsyncMediaService(taskRepo, userRepo, billing, resolver, nil)
+	svc := NewAsyncMediaService(taskRepo, userRepo, nil, billing, resolver, nil)
 	svc.SetPollInterval(time.Millisecond)
 
 	acc := newFalAccount(fs.URL)
@@ -383,7 +383,7 @@ func TestAsyncMedia_UpstreamFailure_RefundsFull(t *testing.T) {
 	resolver := newImageBillingResolver(t, groupID, domain.FalSlugTextToImage, 0.05)
 	userRepo := &fakeUserRepo{balance: 100}
 	taskRepo := newFakeTaskRepo()
-	svc := NewAsyncMediaService(taskRepo, userRepo, newTestBillingService(), resolver, nil)
+	svc := NewAsyncMediaService(taskRepo, userRepo, nil, newTestBillingService(), resolver, nil)
 	svc.SetPollInterval(time.Millisecond)
 
 	acc := newFalAccount(fs.URL)
@@ -411,7 +411,7 @@ func TestAsyncMedia_PseudoSyncTimeout_NoRefundNoTerminal(t *testing.T) {
 	resolver := newImageBillingResolver(t, groupID, domain.FalSlugTextToImage, 0.05)
 	userRepo := &fakeUserRepo{balance: 100}
 	taskRepo := newFakeTaskRepo()
-	svc := NewAsyncMediaService(taskRepo, userRepo, newTestBillingService(), resolver, nil)
+	svc := NewAsyncMediaService(taskRepo, userRepo, nil, newTestBillingService(), resolver, nil)
 	svc.SetPollInterval(5 * time.Millisecond)
 
 	acc := newFalAccount(fs.URL)
@@ -442,7 +442,7 @@ func TestAsyncMedia_Idempotent_NoDoubleRefund(t *testing.T) {
 	resolver := newImageBillingResolver(t, groupID, domain.FalSlugTextToImage, 0.05)
 	userRepo := &fakeUserRepo{balance: 100}
 	taskRepo := newFakeTaskRepo()
-	svc := NewAsyncMediaService(taskRepo, userRepo, newTestBillingService(), resolver, nil)
+	svc := NewAsyncMediaService(taskRepo, userRepo, nil, newTestBillingService(), resolver, nil)
 	svc.SetPollInterval(time.Millisecond)
 
 	acc := newFalAccount(fs.URL)
@@ -478,7 +478,7 @@ func TestAsyncMedia_DeadlineExceeded_Reconciler_Refunds(t *testing.T) {
 	resolver := newImageBillingResolver(t, groupID, domain.FalSlugTextToImage, 0.05)
 	userRepo := &fakeUserRepo{balance: 100}
 	taskRepo := newFakeTaskRepo()
-	svc := NewAsyncMediaService(taskRepo, userRepo, newTestBillingService(), resolver, nil)
+	svc := NewAsyncMediaService(taskRepo, userRepo, nil, newTestBillingService(), resolver, nil)
 	svc.SetPollInterval(time.Millisecond)
 
 	acc := newFalAccount(fs.URL)
@@ -509,7 +509,7 @@ func TestAsyncMedia_PricingMissing_RejectsSubmit(t *testing.T) {
 	resolver := newEmptyPricingResolver(t, groupID)
 	userRepo := &fakeUserRepo{balance: 100}
 	taskRepo := newFakeTaskRepo()
-	svc := NewAsyncMediaService(taskRepo, userRepo, newTestBillingService(), resolver, nil)
+	svc := NewAsyncMediaService(taskRepo, userRepo, nil, newTestBillingService(), resolver, nil)
 	svc.SetPollInterval(time.Millisecond)
 
 	acc := newFalAccount(fs.URL)

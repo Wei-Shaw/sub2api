@@ -1939,25 +1939,61 @@ func (s *GatewayService) imageAccountSupportsRequest(ctx context.Context, acc *A
 // 上游模型解析与 AsyncMediaService.estimateCost 完全一致，保证选号预判与实际计费同源。
 func (s *GatewayService) falAccountPricingConfigured(ctx context.Context, acc *Account, requestedModel, falAPI string, groupID *int64) bool {
 	if acc == nil || acc.Platform != PlatformFal {
+		logger.LegacyPrintf("service.gateway", "falAccountPricingConfigured: non-fal account, skipping pricing check: account_id=%d platform=%s", acc.ID, acc.Platform)
 		return true
 	}
 	if s.resolver == nil {
 		// 无定价解析器：保守拒绝，避免无定价提交导致免费刷图。
+		logger.LegacyPrintf("service.gateway", "falAccountPricingConfigured: resolver is nil, skipping pricing check: account_id=%d requested_model=%s fal_api=%s", acc.ID, requestedModel, falAPI)
 		return false
 	}
 	upstreamModel := resolveFalUpstreamModel(acc, requestedModel, falAPI == FalAPIEdit)
 	resolved := s.resolver.Resolve(ctx, PricingInput{Model: upstreamModel, GroupID: groupID})
-	if resolved == nil {
+	// 优先：分组（渠道）二维价格表命中 → 必须为 image / per-request 模式且至少配置一档价格。
+	if resolved != nil && resolved.Source == PricingSourceChannel {
+		switch resolved.Mode {
+		case BillingModeImage, BillingModePerRequest:
+			return len(resolved.RequestTiers) > 0 || resolved.DefaultPerRequestPrice > 0
+		default:
+			logger.LegacyPrintf("service.gateway", "falAccountPricingConfigured: channel pricing not in image/per_request mode: account_id=%d requested_model=%s fal_api=%s upstream_model=%s mode=%s", acc.ID, requestedModel, falAPI, upstreamModel, resolved.Mode)
+			return false
+		}
+	}
+	// 兜底：渠道二维价格表未命中（resolved 来自 LiteLLM/Fallback 或 nil），
+	// 退回到「分组的 image_pricing_matrix」：只要 Group 配置了至少一格非零单价，
+	// 就视为该分组对 fal 出图已配置定价（与 BillingService 的 D5 矩阵计费同源）。
+	return s.falGroupImagePricingMatrixConfigured(ctx, acc, groupID, upstreamModel, requestedModel, falAPI)
+}
+
+// falGroupImagePricingMatrixConfigured 检查 Group.ImagePricingMatrix 是否至少配置了一格 > 0 的单价。
+// 该矩阵与模型名无关，仅按 (尺寸档位 × 质量) 二维定价；它是 fal 出图（以及 openai 出图按矩阵计费）
+// 在没有渠道二维价格表配置时的兜底定价表。
+func (s *GatewayService) falGroupImagePricingMatrixConfigured(ctx context.Context, acc *Account, groupID *int64, upstreamModel, requestedModel, falAPI string) bool {
+	if groupID == nil {
+		logger.LegacyPrintf("service.gateway", "falAccountPricingConfigured: group_id is nil, skipping matrix check: account_id=%d requested_model=%s fal_api=%s", acc.ID, requestedModel, falAPI)
 		return false
 	}
-	// fal 出图应按 image / per-request 计费：分层价与默认按次价至少其一 > 0 才算配置；
-	// 解析为 token 模式则说明该模型未配置出图定价，同样视为未配置。
-	switch resolved.Mode {
-	case BillingModeImage, BillingModePerRequest:
-		return len(resolved.RequestTiers) > 0 || resolved.DefaultPerRequestPrice > 0
-	default:
-		return false
+	// 优先从 ctx 取已 hydrate 的 Group；若 ctx 缺失或 ID 不一致再回退到 lite 查询。
+	groupSrc := "ctx"
+	group := s.groupFromContext(ctx, *groupID)
+	if group == nil {
+		groupSrc = "db_lite"
+		g, err := s.groupRepo.GetByIDLite(ctx, *groupID)
+		if err != nil || g == nil {
+			logger.LegacyPrintf("service.gateway", "falAccountPricingConfigured: resolve group failed: account_id=%d group_id=%d err=%v", acc.ID, *groupID, err)
+			return false
+		}
+		group = g
 	}
+	for _, row := range group.ImagePricingMatrix {
+		for _, price := range row {
+			if price > 0 {
+				return true
+			}
+		}
+	}
+	logger.LegacyPrintf("service.gateway", "falAccountPricingConfigured: group image_pricing_matrix has no positive cell: account_id=%d group_id=%d group_src=%s hydrated=%v matrix_len=%d requested_model=%s fal_api=%s upstream_model=%s", acc.ID, *groupID, groupSrc, group.Hydrated, len(group.ImagePricingMatrix), requestedModel, falAPI, upstreamModel)
+	return false
 }
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
