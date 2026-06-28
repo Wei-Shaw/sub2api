@@ -1271,6 +1271,7 @@ func (s *CRSSyncService) refreshOAuthToken(ctx context.Context, account *Account
 					newCredentials[k] = v
 				}
 			}
+			newCredentials = NormalizeOpenAIPersonalAccessTokenCredentials(account, tokenInfo, newCredentials)
 		}
 	case PlatformGemini:
 		if s.geminiOAuthService == nil {
