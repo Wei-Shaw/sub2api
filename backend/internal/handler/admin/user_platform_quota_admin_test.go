@@ -112,9 +112,9 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != 2 {
 		t.Errorf("unexpected upsert call: %+v", repo.upsertCalls[0])
 	}
-	// 缓存失效：请求中 2 个 platform + 软删除的 2 个 platform（gemini, antigravity）= 4 次
-	if len(cache.deleteCalls) != 4 {
-		t.Errorf("expected 4 cache delete calls, got %d: %+v", len(cache.deleteCalls), cache.deleteCalls)
+	// 缓存失效：请求中 2 个 platform + 软删除的 3 个 platform（gemini, antigravity, grok）= 5 次
+	if len(cache.deleteCalls) != 5 {
+		t.Errorf("expected 5 cache delete calls, got %d: %+v", len(cache.deleteCalls), cache.deleteCalls)
 	}
 }
 

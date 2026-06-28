@@ -751,6 +751,65 @@ func TestApplyCodexOAuthTransform_DoesNotAddSparkImageUnsupportedForNonSpark(t *
 	require.NotContains(t, instructions, codexSparkImageUnsupportedMarker)
 }
 
+// gpt-5.3-codex-spark rejects the image_generation tool upstream (HTTP 400
+// invalid_request_error, param=tools). Codex CLI advertises that tool by default,
+// so the OAuth transform must strip it for spark while keeping the rest.
+func TestApplyCodexOAuthTransform_StripsImageGenerationToolForSpark(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.3-codex-spark",
+		"input": "hello",
+		"tools": []any{
+			map[string]any{"type": "function", "name": "shell"},
+			map[string]any{"type": "image_generation", "output_format": "png"},
+		},
+	}
+
+	result := applyCodexOAuthTransform(reqBody, true, false)
+	require.True(t, result.Modified)
+	require.False(t, hasOpenAIImageGenerationTool(reqBody))
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 1)
+	first, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "function", first["type"])
+	require.Equal(t, "shell", first["name"])
+}
+
+// Spark reasoning-effort aliases (e.g. -low/-high) normalize to gpt-5.3-codex-spark,
+// so they must be stripped too.
+func TestApplyCodexOAuthTransform_StripsImageGenerationToolForSparkAlias(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.3-codex-spark-high",
+		"input": "hello",
+		"tools": []any{
+			map[string]any{"type": "image_generation", "output_format": "png"},
+		},
+	}
+
+	result := applyCodexOAuthTransform(reqBody, true, false)
+	require.True(t, result.Modified)
+	require.False(t, hasOpenAIImageGenerationTool(reqBody))
+	// tools became empty after stripping the only entry; the key is dropped.
+	_, hasTools := reqBody["tools"]
+	require.False(t, hasTools)
+}
+
+// Non-spark Codex models support image_generation; the tool must be preserved.
+func TestApplyCodexOAuthTransform_KeepsImageGenerationToolForNonSpark(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.3-codex",
+		"input": "hello",
+		"tools": []any{
+			map[string]any{"type": "image_generation", "output_format": "png"},
+		},
+	}
+
+	applyCodexOAuthTransform(reqBody, true, false)
+	require.True(t, hasOpenAIImageGenerationTool(reqBody))
+}
+
 func TestNormalizeOpenAIResponsesImageOnlyModel_BuildsImageToolRequest(t *testing.T) {
 	reqBody := map[string]any{
 		"model":         "gpt-image-2",
