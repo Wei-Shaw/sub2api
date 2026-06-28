@@ -18,7 +18,7 @@ type stubCodexRestrictionDetector struct {
 	result CodexClientRestrictionDetectionResult
 }
 
-func (s *stubCodexRestrictionDetector) Detect(_ *gin.Context, _ *Account, _ []string) CodexClientRestrictionDetectionResult {
+func (s *stubCodexRestrictionDetector) Detect(_ *gin.Context, _ *Account, _ CodexRestrictionPolicy, _ []byte) CodexClientRestrictionDetectionResult {
 	return s.result
 }
 
@@ -52,7 +52,7 @@ func TestOpenAIGatewayService_GetCodexClientRestrictionDetector(t *testing.T) {
 		c.Request.Header.Set("User-Agent", "curl/8.0")
 		account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_cli_only": true}}
 
-		result := got.Detect(c, account, nil)
+		result := got.Detect(c, account, CodexRestrictionPolicy{}, nil)
 		require.True(t, result.Enabled)
 		require.True(t, result.Matched)
 		require.Equal(t, CodexClientRestrictionReasonForceCodexCLI, result.Reason)
@@ -226,6 +226,18 @@ func TestIsOpenAITransientProcessingError(t *testing.T) {
 		http.StatusBadRequest,
 		"Selected model is at capacity. Please try a different model.",
 		[]byte(`{"error":{"message":"Selected model is at capacity. Please try a different model.","type":"invalid_request_error"}}`),
+	))
+
+	require.True(t, isOpenAITransientProcessingError(
+		http.StatusBadRequest,
+		"",
+		[]byte(`{"error":{"code":"server_is_overloaded","message":"Please retry later.","type":"invalid_request_error"}}`),
+	))
+
+	require.True(t, isOpenAITransientProcessingError(
+		http.StatusServiceUnavailable,
+		"",
+		[]byte(`{"error":{"code":"slow_down","message":"Please retry later."}}`),
 	))
 
 	require.True(t, isOpenAITransientProcessingError(

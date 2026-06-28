@@ -197,23 +197,42 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
-  it('OpenAI OAuth 批量编辑应提交 codex_cli_only_allowed_clients 字段', async () => {
+  it('OpenAI OAuth 批量编辑应提交 codex_cli_only_allow_app_server 字段（需同时开启父开关）', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
       selectedTypes: ['oauth']
     })
 
-    await wrapper.get('#bulk-edit-openai-codex-allow-claude-code-enabled').setValue(true)
-    await wrapper.get('#bulk-edit-openai-codex-allow-claude-code-toggle').trigger('click')
+    // 子开关从属于 codex_cli_only：必须同时批量开启父开关才写入
+    await wrapper.get('#bulk-edit-openai-codex-cli-only-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-codex-cli-only-toggle').trigger('click')
+    await wrapper.get('#bulk-edit-openai-codex-app-server-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-codex-app-server-toggle').trigger('click')
     await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
     await flushPromises()
 
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
-        codex_cli_only_allowed_clients: ['claude_code']
+        codex_cli_only: true,
+        codex_cli_only_allow_app_server: true
       }
     })
+  })
+
+  it('未同时开启父开关时不应写入 codex_cli_only_allow_app_server', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    // 仅开启子开关、不批量设置父开关 codex_cli_only：不应写入孤立字段，也不应调用接口
+    await wrapper.get('#bulk-edit-openai-codex-app-server-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-codex-app-server-toggle').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).not.toHaveBeenCalled()
   })
 
   it('OpenAI API Key 批量编辑应提交 API Key 专属 WS mode 字段', async () => {
