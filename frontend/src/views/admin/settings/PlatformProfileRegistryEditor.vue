@@ -84,7 +84,7 @@
 
     <div
       v-if="canEditVisual"
-      class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[18rem_minmax(0,1fr)_minmax(22rem,0.85fr)]"
+      class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]"
       data-test="registry-visual-editor"
     >
       <aside class="rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900/60">
@@ -171,6 +171,34 @@
             >
               Remove platform
             </button>
+          </div>
+
+          <div class="mt-4 rounded-lg border border-primary-100 bg-primary-50/60 p-3 text-sm dark:border-primary-900/40 dark:bg-primary-950/20">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div class="min-w-0">
+                <div class="font-semibold text-gray-900 dark:text-white">
+                  {{ selectedProfile.guide?.title || 'Guide chưa có title' }}
+                </div>
+                <p class="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
+                  {{ selectedProfile.guide?.description || 'Guide chưa có description' }}
+                </p>
+                <p
+                  v-if="selectedProfile.guide?.note"
+                  class="mt-2 text-xs font-medium text-primary-800 dark:text-primary-200"
+                >
+                  {{ selectedProfile.guide.note }}
+                </p>
+              </div>
+              <a
+                v-if="selectedProfile.guide?.docs_url"
+                class="shrink-0 text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                :href="selectedProfile.guide.docs_url"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Docs
+              </a>
+            </div>
           </div>
 
           <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -401,30 +429,75 @@
             </button>
           </div>
 
-          <div v-if="selectedProfileBlocks.length" class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-            <div class="space-y-2">
-              <button
-                v-for="block in selectedProfileBlocks"
-                :key="block.id || `${block.client_id}-${block.path}`"
-                type="button"
-                class="w-full rounded-lg border p-3 text-left transition-colors"
-                :class="
-                  selectedBlockId === block.id
-                    ? 'border-primary-300 bg-primary-50 text-primary-900 dark:border-primary-700 dark:bg-primary-950/30 dark:text-primary-100'
-                    : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-primary-200 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-200'
-                "
-                data-test="copy-block-tab"
-                @click="selectedBlockId = block.id || ''"
-              >
-                <div class="font-mono text-xs font-semibold">{{ block.id || 'missing-id' }}</div>
-                <div class="mt-1 text-xs opacity-75">{{ block.client_id }} · {{ block.os || 'all OS' }}</div>
-                <div class="mt-1 truncate text-[11px] opacity-70">{{ block.path }}</div>
-              </button>
+          <div
+            v-if="selectedProfileBlocks.length"
+            class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(14rem,0.38fr)_minmax(0,1fr)]"
+            data-test="copy-block-workspace"
+          >
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-700 dark:bg-dark-800/50">
+              <div class="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Blocks trong platform
+              </div>
+              <div class="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
+                <button
+                  v-for="block in selectedProfileBlocks"
+                  :key="block.id || `${block.client_id}-${block.path}`"
+                  type="button"
+                  class="w-full rounded-lg border p-3 text-left transition-colors"
+                  :class="
+                    selectedBlockId === block.id
+                      ? 'border-primary-300 bg-white text-primary-900 shadow-sm ring-1 ring-primary-100 dark:border-primary-700 dark:bg-primary-950/30 dark:text-primary-100 dark:ring-primary-900/40'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-primary-200 hover:bg-primary-50/50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200 dark:hover:border-primary-700 dark:hover:bg-primary-950/20'
+                  "
+                  data-test="copy-block-tab"
+                  @click="selectedBlockId = block.id || ''"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <div class="truncate font-mono text-xs font-semibold">{{ block.id || 'missing-id' }}</div>
+                      <div class="mt-1 text-xs opacity-75">{{ block.client_id || 'no-client' }} · {{ block.os || 'all OS' }}</div>
+                    </div>
+                    <span
+                      v-if="block.language"
+                      class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500 dark:bg-dark-800 dark:text-gray-300"
+                    >
+                      {{ block.language }}
+                    </span>
+                  </div>
+                  <div class="mt-2 truncate text-[11px] opacity-70">{{ block.path || 'Chưa có target' }}</div>
+                </button>
+              </div>
             </div>
 
-            <div v-if="selectedBlock" class="space-y-3" data-test="copy-block-editor">
-              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
+            <div
+              v-if="selectedBlock"
+              class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900/70"
+              data-test="copy-block-editor"
+            >
+              <div class="flex flex-col gap-3 border-b border-gray-100 pb-3 dark:border-dark-700 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
+                  <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Editing copy block
+                  </div>
+                  <div class="mt-1 truncate font-mono text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ selectedBlock.id || 'missing-id' }}
+                  </div>
+                  <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                    Chỉnh target và template dạng text thật. Preview phía dưới dùng placeholder mẫu, không dùng API key thật.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-danger btn-sm shrink-0"
+                  :disabled="disabled"
+                  @click="removeSelectedCopyBlock"
+                >
+                  Remove block
+                </button>
+              </div>
+
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div class="md:col-span-2 xl:col-span-2">
                   <label class="input-label" for="registry-block-id">Block ID</label>
                   <input
                     id="registry-block-id"
@@ -489,8 +562,8 @@
                     </option>
                   </select>
                 </div>
-                <div class="md:col-span-2">
-                  <label class="input-label" for="registry-block-path">Path / target</label>
+                <div class="md:col-span-2 xl:col-span-3">
+                  <label class="input-label" for="registry-block-path">Target path / nơi paste</label>
                   <input
                     id="registry-block-path"
                     :value="selectedBlock.path || ''"
@@ -500,8 +573,8 @@
                     @input="updateSelectedBlockField('path', inputValue($event))"
                   />
                 </div>
-                <div class="md:col-span-2">
-                  <label class="input-label" for="registry-block-hint">Hint</label>
+                <div class="md:col-span-2 xl:col-span-4">
+                  <label class="input-label" for="registry-block-hint">Hint cho operator/customer</label>
                   <input
                     id="registry-block-hint"
                     :value="selectedBlock.hint || ''"
@@ -515,43 +588,60 @@
 
               <div>
                 <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <label class="input-label mb-0" for="registry-block-template">Content template</label>
-                  <button
-                    type="button"
-                    class="btn btn-danger btn-sm"
-                    :disabled="disabled"
-                    @click="removeSelectedCopyBlock"
-                  >
-                    Remove block
-                  </button>
+                  <div>
+                    <label class="input-label mb-0" for="registry-block-template">Content template</label>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Editor chiếm full width để đọc/sửa command nhiều dòng, không còn phải edit JSON escape.
+                    </p>
+                  </div>
+                  <span class="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500 dark:bg-dark-800 dark:text-gray-300">
+                    {{ selectedBlock.language || 'text' }}
+                  </span>
                 </div>
                 <textarea
                   id="registry-block-template"
                   :value="selectedBlock.content_template || ''"
-                  rows="10"
-                  class="input resize-y font-mono text-xs leading-5"
+                  rows="14"
+                  class="input min-h-[18rem] w-full resize-y whitespace-pre font-mono text-xs leading-5"
                   :disabled="disabled"
                   data-test="block-template-textarea"
                   @input="updateSelectedBlockField('content_template', rawInputValue($event))"
                 ></textarea>
               </div>
 
-              <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/60">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  Placeholder picker
+              <div class="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,0.95fr)_minmax(20rem,1.05fr)]">
+                <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/60">
+                  <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Placeholder picker
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Bấm để append vào cuối template đang chọn.
+                  </p>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <button
+                      v-for="placeholder in placeholders"
+                      :key="placeholder"
+                      type="button"
+                      class="rounded-full border border-gray-200 bg-white px-3 py-1 font-mono text-xs text-gray-700 transition-colors hover:border-primary-300 hover:text-primary-600 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-200 dark:hover:border-primary-500 dark:hover:text-primary-300"
+                      :disabled="disabled"
+                      data-test="placeholder-button"
+                      @click="appendPlaceholderToSelectedBlock(placeholder)"
+                    >
+                      {{ placeholder }}
+                    </button>
+                  </div>
                 </div>
-                <div class="mt-2 flex flex-wrap gap-2">
-                  <button
-                    v-for="placeholder in placeholders"
-                    :key="placeholder"
-                    type="button"
-                    class="rounded-full border border-gray-200 bg-white px-3 py-1 font-mono text-xs text-gray-700 transition-colors hover:border-primary-300 hover:text-primary-600 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-200 dark:hover:border-primary-500 dark:hover:text-primary-300"
-                    :disabled="disabled"
-                    data-test="placeholder-button"
-                    @click="appendPlaceholderToSelectedBlock(placeholder)"
-                  >
-                    {{ placeholder }}
-                  </button>
+
+                <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/60">
+                  <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Render preview
+                  </div>
+                  <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <code class="font-semibold text-gray-900 dark:text-white">{{ selectedBlock.path || 'Target chưa đặt' }}</code>
+                    <span class="text-gray-400">{{ selectedBlock.client_id || 'no-client' }}</span>
+                    <span v-if="selectedBlock.os" class="text-gray-400">{{ selectedBlock.os }}</span>
+                  </div>
+                  <pre class="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-3 text-[11px] leading-5 text-gray-100">{{ renderedSelectedBlock }}</pre>
                 </div>
               </div>
             </div>
@@ -563,72 +653,6 @@
         </div>
       </div>
 
-      <aside v-if="selectedProfile" class="space-y-4" data-test="registry-preview">
-        <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900/60">
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <div class="text-sm font-semibold text-gray-900 dark:text-white">
-                Live guide preview
-              </div>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Preview render placeholder sample, không dùng API key thật.
-              </p>
-            </div>
-            <span class="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-              v{{ registryVersion }}
-            </span>
-          </div>
-
-          <div class="mt-4">
-            <div class="font-mono text-sm font-semibold text-gray-900 dark:text-white">
-              {{ selectedProfile.platform }}
-            </div>
-            <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ selectedProfile.provider_name || selectedProfile.provider_id || 'Provider chưa đặt tên' }}
-              <span v-if="selectedProfile.api_style">· {{ selectedProfile.api_style }}</span>
-            </div>
-            <a
-              v-if="selectedProfile.guide?.docs_url"
-              class="mt-2 inline-flex text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
-              :href="selectedProfile.guide.docs_url"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Docs
-            </a>
-          </div>
-
-          <div class="mt-4 rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
-            <div class="text-sm font-semibold text-gray-900 dark:text-white">
-              {{ selectedProfile.guide?.title || 'Guide chưa có title' }}
-            </div>
-            <p class="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
-              {{ selectedProfile.guide?.description || 'Guide chưa có description' }}
-            </p>
-            <p
-              v-if="selectedProfile.guide?.note"
-              class="mt-2 rounded-md bg-primary-50 px-3 py-2 text-xs text-primary-800 dark:bg-primary-950/30 dark:text-primary-200"
-            >
-              {{ selectedProfile.guide.note }}
-            </p>
-          </div>
-        </div>
-
-        <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900/60">
-          <div class="text-sm font-semibold text-gray-900 dark:text-white">Selected copy block render</div>
-          <div v-if="selectedBlock" class="mt-3">
-            <div class="flex flex-wrap items-center gap-2 text-xs">
-              <code class="font-semibold text-gray-900 dark:text-white">{{ selectedBlock.path }}</code>
-              <span class="text-gray-400">{{ selectedBlock.client_id }}</span>
-              <span v-if="selectedBlock.os" class="text-gray-400">{{ selectedBlock.os }}</span>
-            </div>
-            <pre class="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-3 text-[11px] leading-5 text-gray-100">{{ renderedSelectedBlock }}</pre>
-          </div>
-          <div v-else class="mt-3 text-sm text-gray-500 dark:text-gray-400">
-            Chọn hoặc tạo copy block để xem preview.
-          </div>
-        </div>
-      </aside>
     </div>
 
     <div class="mt-4 rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900/60">
@@ -738,7 +762,6 @@ const clientCount = computed(() =>
 const copyBlockCount = computed(() =>
   profiles.value.reduce((total, profile) => total + profileBlocks(profile).length, 0),
 );
-const registryVersion = computed(() => editableRegistry.value?.version || 1);
 
 const canFormat = computed(() => validation.value.ok && !validation.value.isEmpty);
 const canEditVisual = computed(() => Boolean(editableRegistry.value));
