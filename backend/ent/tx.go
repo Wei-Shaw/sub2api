@@ -30,6 +30,10 @@ type Tx struct {
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
 	AuthIdentityChannel *AuthIdentityChannelClient
+	// BalanceLedger is the client for interacting with the BalanceLedger builders.
+	BalanceLedger *BalanceLedgerClient
+	// BillingApp is the client for interacting with the BillingApp builders.
+	BillingApp *BillingAppClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -239,6 +243,8 @@ func (tx *Tx) init() {
 	tx.AsyncMediaTask = NewAsyncMediaTaskClient(tx.config)
 	tx.AuthIdentity = NewAuthIdentityClient(tx.config)
 	tx.AuthIdentityChannel = NewAuthIdentityChannelClient(tx.config)
+	tx.BalanceLedger = NewBalanceLedgerClient(tx.config)
+	tx.BillingApp = NewBillingAppClient(tx.config)
 	tx.ChannelMonitor = NewChannelMonitorClient(tx.config)
 	tx.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(tx.config)
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)

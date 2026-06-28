@@ -95,6 +95,7 @@ type Config struct {
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	AsyncMedia              AsyncMediaConfig              `mapstructure:"async_media"`
+	BalanceRPC              BalanceRPCConfig              `mapstructure:"balance_rpc"`
 }
 
 // AsyncMediaConfig 异步媒体（fal 等异步图片平台）任务相关配置。
@@ -1102,6 +1103,17 @@ type GatewaySchedulingConfig struct {
 	// 全量重建周期配置
 	// 全量重建周期（秒），0 表示禁用
 	FullRebuildIntervalSeconds int `mapstructure:"full_rebuild_interval_seconds"`
+}
+
+// BalanceRPCConfig 余额 RPC（tRPC-Go）服务配置。监听端口独立于 HTTP server.port。
+type BalanceRPCConfig struct {
+	Enabled bool   `mapstructure:"enabled"` // 是否启用第二端口的余额 RPC 服务
+	Host    string `mapstructure:"host"`    // 监听 IP，默认 0.0.0.0
+	Port    int    `mapstructure:"port"`    // 监听端口（必须 != server.port）
+	// EncryptionKey 接入方 token 的本地加解密密钥（32 字节，64 hex 字符）。
+	// token = AES-256-GCM(EncryptionKey, payload{app_id})；鉴权 = 解密成功 + app 未停用。
+	// 独立于 TOTP 密钥；动钱场景单独管理。
+	EncryptionKey string `mapstructure:"encryption_key"`
 }
 
 func (s *ServerConfig) Address() string {

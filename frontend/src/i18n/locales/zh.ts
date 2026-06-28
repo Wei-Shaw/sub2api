@@ -484,6 +484,7 @@ export default {
     channelStatus: '渠道状态',
     riskControl: '风控中心',
     oidcClients: 'OIDC 客户端',
+    billingApps: '扣费 App',
   },
 
   // Auth
@@ -7712,6 +7713,72 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
   },
 
   // OIDC Provider（sub2api 作为 OIDC 身份提供方对外提供单点登录）
+  billingApps: {
+    admin: {
+      title: '扣费 App 管理',
+      description: '管理通过余额 RPC 接入的扣费应用（创建、启停）',
+      createButton: '创建 App',
+      empty: '暂无扣费 App',
+      loadFailed: '加载扣费 App 列表失败',
+      toggleFailed: '启停失败',
+      table: {
+        name: '名称',
+        appId: 'App ID',
+        enabled: '状态',
+        actions: '操作'
+      },
+      status: {
+        enabled: '已启用',
+        disabled: '已停用'
+      },
+      actions: {
+        enable: '启用',
+        disable: '停用',
+        stats: '费用',
+        refreshToken: '刷新 Token',
+        delete: '删除'
+      },
+      stats: {
+        title: '{name} 的累计费用',
+        netDeducted: '净扣费',
+        totalDeducted: '累计扣费',
+        totalRefunded: '累计退费',
+        deductCount: '扣费笔数',
+        refundCount: '退费笔数',
+        failed: '加载费用统计失败'
+      },
+      refreshConfirm: {
+        title: '⚠️ 刷新 Token',
+        body: '高风险操作：刷新后旧 Token 立即失效，该接入方所有正在进行的扣费/退费调用会立即鉴权失败，可能影响相关用户的计费与下单，直到对方换用新 Token。请确认接入方已准备好更新 Token 后再继续。',
+        confirm: '我已知晓风险，刷新',
+        cancel: '取消',
+        failed: '刷新失败'
+      },
+      deleteConfirm: {
+        title: '⚠️ 删除扣费 App',
+        body: '高风险操作：确定删除「{name}」？删除后该 App 的 Token 立即失效且无法恢复，其所有扣费/退费调用将全部失败，可能影响相关用户的计费与下单（历史流水保留）。请确认该 App 确实不再使用。',
+        confirm: '我已知晓风险，删除',
+        cancel: '取消',
+        failed: '删除失败'
+      },
+      form: {
+        createTitle: '创建扣费 App',
+        appName: '名称',
+        appNamePlaceholder: '例如：结算服务',
+        nameRequired: '请填写名称',
+        cancel: '取消',
+        save: '创建',
+        saveFailed: '创建失败'
+      },
+      tokenReveal: {
+        title: '一次性 Token',
+        banner: '请立即复制并妥善保存。此 Token 仅显示这一次，关闭后无法再次获取。',
+        copy: '复制',
+        copied: '已复制',
+        done: '我已保存'
+      }
+    }
+  },
   oidc: {
     consent: {
       title: '授权应用访问',

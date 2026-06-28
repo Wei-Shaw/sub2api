@@ -40,6 +40,7 @@ type AdminHandlers struct {
 	OidcClient             *admin.OidcClientHandler
 	OidcSigningKey         *admin.OidcSigningKeyHandler
 	OidcProviderSettings   *admin.OidcProviderSettingsHandler
+	BillingApp             *admin.BillingAppHandler
 	Compliance             *admin.ComplianceHandler
 	COSImage               *admin.COSImageHandler
 	AsyncMediaConfig       *admin.AsyncMediaConfigHandler

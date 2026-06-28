@@ -43,6 +43,7 @@ func ProvideAdminHandlers(
 	oidcClientHandler *admin.OidcClientHandler,
 	oidcSigningKeyHandler *admin.OidcSigningKeyHandler,
 	oidcProviderSettingsHandler *admin.OidcProviderSettingsHandler,
+	billingAppHandler *admin.BillingAppHandler,
 	complianceHandler *admin.ComplianceHandler,
 	cosImageHandler *admin.COSImageHandler,
 	asyncMediaConfigHandler *admin.AsyncMediaConfigHandler,
@@ -82,6 +83,7 @@ func ProvideAdminHandlers(
 		OidcClient:             oidcClientHandler,
 		OidcSigningKey:         oidcSigningKeyHandler,
 		OidcProviderSettings:   oidcProviderSettingsHandler,
+		BillingApp:             billingAppHandler,
 		Compliance:             complianceHandler,
 		COSImage:               cosImageHandler,
 		AsyncMediaConfig:       asyncMediaConfigHandler,
@@ -213,6 +215,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewOidcClientHandler,
 	admin.NewOidcSigningKeyHandler,
 	admin.NewOidcProviderSettingsHandler,
+	admin.NewBillingAppHandler,
 	admin.NewComplianceHandler,
 
 	// AdminHandlers and Handlers constructors

@@ -600,6 +600,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/billing-apps',
+    name: 'AdminBillingApps',
+    component: () => import('@/views/admin/BillingAppsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Billing Apps',
+      titleKey: 'billingApps.admin.title',
+      descriptionKey: 'billingApps.admin.description'
+    }
+  },
+  {
     path: '/admin/settings',
     name: 'AdminSettings',
     component: () => import('@/views/admin/SettingsView.vue'),

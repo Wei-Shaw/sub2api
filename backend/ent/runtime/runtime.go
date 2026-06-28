@@ -13,6 +13,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/asyncmediatask"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/balanceledger"
+	"github.com/Wei-Shaw/sub2api/ent/billingapp"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -553,6 +555,132 @@ func init() {
 	authidentitychannelDescMetadata := authidentitychannelFields[6].Descriptor()
 	// authidentitychannel.DefaultMetadata holds the default value on creation for the metadata field.
 	authidentitychannel.DefaultMetadata = authidentitychannelDescMetadata.Default.(func() map[string]interface{})
+	balanceledgerMixin := schema.BalanceLedger{}.Mixin()
+	balanceledgerMixinFields0 := balanceledgerMixin[0].Fields()
+	_ = balanceledgerMixinFields0
+	balanceledgerFields := schema.BalanceLedger{}.Fields()
+	_ = balanceledgerFields
+	// balanceledgerDescCreatedAt is the schema descriptor for created_at field.
+	balanceledgerDescCreatedAt := balanceledgerMixinFields0[0].Descriptor()
+	// balanceledger.DefaultCreatedAt holds the default value on creation for the created_at field.
+	balanceledger.DefaultCreatedAt = balanceledgerDescCreatedAt.Default.(func() time.Time)
+	// balanceledgerDescUpdatedAt is the schema descriptor for updated_at field.
+	balanceledgerDescUpdatedAt := balanceledgerMixinFields0[1].Descriptor()
+	// balanceledger.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	balanceledger.DefaultUpdatedAt = balanceledgerDescUpdatedAt.Default.(func() time.Time)
+	// balanceledger.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	balanceledger.UpdateDefaultUpdatedAt = balanceledgerDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// balanceledgerDescRequestID is the schema descriptor for request_id field.
+	balanceledgerDescRequestID := balanceledgerFields[0].Descriptor()
+	// balanceledger.RequestIDValidator is a validator for the "request_id" field. It is called by the builders before save.
+	balanceledger.RequestIDValidator = func() func(string) error {
+		validators := balanceledgerDescRequestID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(request_id string) error {
+			for _, fn := range fns {
+				if err := fn(request_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// balanceledgerDescAppID is the schema descriptor for app_id field.
+	balanceledgerDescAppID := balanceledgerFields[1].Descriptor()
+	// balanceledger.AppIDValidator is a validator for the "app_id" field. It is called by the builders before save.
+	balanceledger.AppIDValidator = func() func(string) error {
+		validators := balanceledgerDescAppID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(app_id string) error {
+			for _, fn := range fns {
+				if err := fn(app_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// balanceledgerDescRefundedAmount is the schema descriptor for refunded_amount field.
+	balanceledgerDescRefundedAmount := balanceledgerFields[5].Descriptor()
+	// balanceledger.DefaultRefundedAmount holds the default value on creation for the refunded_amount field.
+	balanceledger.DefaultRefundedAmount = balanceledgerDescRefundedAmount.Default.(float64)
+	// balanceledgerDescRefundOf is the schema descriptor for refund_of field.
+	balanceledgerDescRefundOf := balanceledgerFields[6].Descriptor()
+	// balanceledger.RefundOfValidator is a validator for the "refund_of" field. It is called by the builders before save.
+	balanceledger.RefundOfValidator = balanceledgerDescRefundOf.Validators[0].(func(string) error)
+	// balanceledgerDescDescription is the schema descriptor for description field.
+	balanceledgerDescDescription := balanceledgerFields[7].Descriptor()
+	// balanceledger.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
+	balanceledger.DescriptionValidator = balanceledgerDescDescription.Validators[0].(func(string) error)
+	// balanceledgerDescExtra is the schema descriptor for extra field.
+	balanceledgerDescExtra := balanceledgerFields[8].Descriptor()
+	// balanceledger.DefaultExtra holds the default value on creation for the extra field.
+	balanceledger.DefaultExtra = balanceledgerDescExtra.Default.(string)
+	billingappMixin := schema.BillingApp{}.Mixin()
+	billingappMixinFields0 := billingappMixin[0].Fields()
+	_ = billingappMixinFields0
+	billingappFields := schema.BillingApp{}.Fields()
+	_ = billingappFields
+	// billingappDescCreatedAt is the schema descriptor for created_at field.
+	billingappDescCreatedAt := billingappMixinFields0[0].Descriptor()
+	// billingapp.DefaultCreatedAt holds the default value on creation for the created_at field.
+	billingapp.DefaultCreatedAt = billingappDescCreatedAt.Default.(func() time.Time)
+	// billingappDescUpdatedAt is the schema descriptor for updated_at field.
+	billingappDescUpdatedAt := billingappMixinFields0[1].Descriptor()
+	// billingapp.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	billingapp.DefaultUpdatedAt = billingappDescUpdatedAt.Default.(func() time.Time)
+	// billingapp.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	billingapp.UpdateDefaultUpdatedAt = billingappDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// billingappDescAppID is the schema descriptor for app_id field.
+	billingappDescAppID := billingappFields[0].Descriptor()
+	// billingapp.AppIDValidator is a validator for the "app_id" field. It is called by the builders before save.
+	billingapp.AppIDValidator = func() func(string) error {
+		validators := billingappDescAppID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(app_id string) error {
+			for _, fn := range fns {
+				if err := fn(app_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// billingappDescAppName is the schema descriptor for app_name field.
+	billingappDescAppName := billingappFields[1].Descriptor()
+	// billingapp.AppNameValidator is a validator for the "app_name" field. It is called by the builders before save.
+	billingapp.AppNameValidator = func() func(string) error {
+		validators := billingappDescAppName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(app_name string) error {
+			for _, fn := range fns {
+				if err := fn(app_name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// billingappDescEnabled is the schema descriptor for enabled field.
+	billingappDescEnabled := billingappFields[2].Descriptor()
+	// billingapp.DefaultEnabled holds the default value on creation for the enabled field.
+	billingapp.DefaultEnabled = billingappDescEnabled.Default.(bool)
+	// billingappDescTokenVersion is the schema descriptor for token_version field.
+	billingappDescTokenVersion := billingappFields[3].Descriptor()
+	// billingapp.DefaultTokenVersion holds the default value on creation for the token_version field.
+	billingapp.DefaultTokenVersion = billingappDescTokenVersion.Default.(int)
 	channelmonitorMixin := schema.ChannelMonitor{}.Mixin()
 	channelmonitorMixinFields0 := channelmonitorMixin[0].Fields()
 	_ = channelmonitorMixinFields0

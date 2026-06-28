@@ -77,6 +77,8 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementReadRepository,
 	NewUsageLogRepository,
 	NewUsageBillingRepository,
+	NewBillingAppRepository,    // 余额 RPC：接入方身份仓储
+	NewBalanceLedgerRepository, // 余额 RPC：永久流水账本仓储
 	NewIdempotencyRepository,
 	NewAsyncMediaTaskRepository,
 	NewUsageCleanupRepository,

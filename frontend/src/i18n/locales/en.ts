@@ -488,6 +488,7 @@ export default {
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
     oidcClients: 'OIDC Clients',
+    billingApps: 'Billing Apps',
   },
 
   // Auth
@@ -7536,6 +7537,72 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
     buy_now: 'Buy now',
   },
 
+  billingApps: {
+    admin: {
+      title: 'Billing Apps',
+      description: 'Manage apps that call the balance RPC (create, enable/disable)',
+      createButton: 'Create App',
+      empty: 'No billing apps yet',
+      loadFailed: 'Failed to load billing apps',
+      toggleFailed: 'Failed to update status',
+      table: {
+        name: 'Name',
+        appId: 'App ID',
+        enabled: 'Status',
+        actions: 'Actions'
+      },
+      status: {
+        enabled: 'Enabled',
+        disabled: 'Disabled'
+      },
+      actions: {
+        enable: 'Enable',
+        disable: 'Disable',
+        stats: 'Cost',
+        refreshToken: 'Refresh Token',
+        delete: 'Delete'
+      },
+      stats: {
+        title: 'Cumulative cost of {name}',
+        netDeducted: 'Net deducted',
+        totalDeducted: 'Total deducted',
+        totalRefunded: 'Total refunded',
+        deductCount: 'Deduction count',
+        refundCount: 'Refund count',
+        failed: 'Failed to load cost stats'
+      },
+      refreshConfirm: {
+        title: '⚠️ Refresh Token',
+        body: 'High-risk action: the old token is invalidated immediately. All in-flight deduct/refund calls from this integrator will fail authentication right away — potentially affecting billing and orders for the related users — until they switch to the new token. Make sure the integrator is ready to update the token before continuing.',
+        confirm: 'I understand the risk, refresh',
+        cancel: 'Cancel',
+        failed: 'Failed to refresh'
+      },
+      deleteConfirm: {
+        title: '⚠️ Delete Billing App',
+        body: 'High-risk action: delete "{name}"? Its token is invalidated immediately and cannot be recovered; all of its deduct/refund calls will fail — potentially affecting billing and orders for the related users (historical ledger is kept). Make sure this app is truly no longer in use.',
+        confirm: 'I understand the risk, delete',
+        cancel: 'Cancel',
+        failed: 'Failed to delete'
+      },
+      form: {
+        createTitle: 'Create Billing App',
+        appName: 'Name',
+        appNamePlaceholder: 'e.g. Settlement service',
+        nameRequired: 'Name is required',
+        cancel: 'Cancel',
+        save: 'Create',
+        saveFailed: 'Failed to create'
+      },
+      tokenReveal: {
+        title: 'One-time Token',
+        banner: 'Copy and store it now. This token is shown only once and cannot be retrieved again.',
+        copy: 'Copy',
+        copied: 'Copied',
+        done: 'I have saved it'
+      }
+    }
+  },
   // OIDC Provider (sub2api acting as an OIDC identity provider for third-party apps)
   oidc: {
     consent: {

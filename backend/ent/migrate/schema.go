@@ -505,6 +505,68 @@ var (
 			},
 		},
 	}
+	// BalanceLedgerColumns holds the columns for the "balance_ledger" table.
+	BalanceLedgerColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "request_id", Type: field.TypeString, Size: 128},
+		{Name: "app_id", Type: field.TypeString, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "kind", Type: field.TypeInt8},
+		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "refunded_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "refund_of", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "description", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "extra", Type: field.TypeString, Default: "{}", SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "balance_after", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+	}
+	// BalanceLedgerTable holds the schema information for the "balance_ledger" table.
+	BalanceLedgerTable = &schema.Table{
+		Name:       "balance_ledger",
+		Columns:    BalanceLedgerColumns,
+		PrimaryKey: []*schema.Column{BalanceLedgerColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "balanceledger_app_id_request_id",
+				Unique:  true,
+				Columns: []*schema.Column{BalanceLedgerColumns[4], BalanceLedgerColumns[3]},
+			},
+			{
+				Name:    "balanceledger_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{BalanceLedgerColumns[5], BalanceLedgerColumns[1]},
+			},
+			{
+				Name:    "balanceledger_refund_of",
+				Unique:  false,
+				Columns: []*schema.Column{BalanceLedgerColumns[9]},
+			},
+		},
+	}
+	// BillingAppsColumns holds the columns for the "billing_apps" table.
+	BillingAppsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "app_id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "app_name", Type: field.TypeString, Size: 100},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "token_version", Type: field.TypeInt, Default: 1},
+	}
+	// BillingAppsTable holds the schema information for the "billing_apps" table.
+	BillingAppsTable = &schema.Table{
+		Name:       "billing_apps",
+		Columns:    BillingAppsColumns,
+		PrimaryKey: []*schema.Column{BillingAppsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "billingapp_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{BillingAppsColumns[5]},
+			},
+		},
+	}
 	// ChannelMonitorsColumns holds the columns for the "channel_monitors" table.
 	ChannelMonitorsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2129,6 +2191,8 @@ var (
 		AsyncMediaTasksTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
+		BalanceLedgerTable,
+		BillingAppsTable,
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
@@ -2200,6 +2264,12 @@ func init() {
 	AuthIdentityChannelsTable.ForeignKeys[0].RefTable = AuthIdentitiesTable
 	AuthIdentityChannelsTable.Annotation = &entsql.Annotation{
 		Table: "auth_identity_channels",
+	}
+	BalanceLedgerTable.Annotation = &entsql.Annotation{
+		Table: "balance_ledger",
+	}
+	BillingAppsTable.Annotation = &entsql.Annotation{
+		Table: "billing_apps",
 	}
 	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{

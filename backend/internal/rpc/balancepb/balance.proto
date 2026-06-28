@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package sub2api.balance.v1;
+
+option go_package = "github.com/Wei-Shaw/sub2api/internal/rpc/balancepb";
+
+// BalanceLedger 余额账本 RPC：扣费 / 退费 / 查询余额。
+// 金额一律用十进制字符串传输，避免二进制浮点污染账本。
+// 鉴权走 tRPC metadata（app_id / app_secret），不在 message 内。
+service BalanceLedger {
+  rpc Deduct(DeductRequest) returns (DeductResponse);
+  rpc Refund(RefundRequest) returns (RefundResponse);
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+}
+
+message DeductRequest {
+  int64  user_id     = 1;
+  string request_id  = 2;  // 幂等键
+  string amount      = 3;  // 十进制字符串
+  string description = 4;  // 必填，扣费原因
+  string extra       = 5;  // jsonb 文本，接入方自存
+}
+
+message DeductResponse {
+  bool   applied       = 1;  // false = 幂等重放
+  string balance_after = 2;
+}
+
+message RefundRequest {
+  string refund_request_id   = 1;  // 本笔退款幂等键
+  string original_request_id = 2;  // 被冲销的原扣 request_id
+  string amount              = 3;  // 部分退金额，十进制字符串
+  string description         = 4;  // 必填，退费原因
+  string extra               = 5;
+}
+
+message RefundResponse {
+  bool   applied        = 1;
+  string balance_after  = 2;
+  string refunded_total = 3;  // 原扣累计已退
+}
+
+message GetBalanceRequest  { int64 user_id = 1; }
+message GetBalanceResponse { string balance = 1; }

@@ -105,6 +105,30 @@ func (f AuthIdentityChannelFunc) Mutate(ctx context.Context, m ent.Mutation) (en
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuthIdentityChannelMutation", m)
 }
 
+// The BalanceLedgerFunc type is an adapter to allow the use of ordinary
+// function as BalanceLedger mutator.
+type BalanceLedgerFunc func(context.Context, *ent.BalanceLedgerMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BalanceLedgerFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BalanceLedgerMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BalanceLedgerMutation", m)
+}
+
+// The BillingAppFunc type is an adapter to allow the use of ordinary
+// function as BillingApp mutator.
+type BillingAppFunc func(context.Context, *ent.BillingAppMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BillingAppFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BillingAppMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BillingAppMutation", m)
+}
+
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary
 // function as ChannelMonitor mutator.
 type ChannelMonitorFunc func(context.Context, *ent.ChannelMonitorMutation) (ent.Value, error)
