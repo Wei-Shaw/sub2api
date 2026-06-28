@@ -3242,6 +3242,48 @@ func (h *SettingHandler) DeleteAdminAPIKey(c *gin.Context) {
 
 // GetOverloadCooldownSettings 获取529过载冷却配置
 // GET /api/v1/admin/settings/overload-cooldown
+// GetFalUpscaleSettings 获取 fal upscale 系统配置（token 仅回显是否已设置，不回显明文）。
+// GET /api/v1/admin/settings/fal-upscale
+func (h *SettingHandler) GetFalUpscaleSettings(c *gin.Context) {
+	s := h.settingService.GetFalUpscaleSettings(c.Request.Context())
+	response.Success(c, gin.H{
+		"endpoint":        s.Endpoint,
+		"timeout_seconds": s.TimeoutSeconds,
+		"token_set":       strings.TrimSpace(s.Token) != "",
+	})
+}
+
+// UpdateFalUpscaleSettingsRequest 更新 fal upscale 系统配置请求。token 为空表示保留现有。
+type UpdateFalUpscaleSettingsRequest struct {
+	Endpoint       string `json:"endpoint"`
+	Token          string `json:"token"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
+}
+
+// UpdateFalUpscaleSettings 更新 fal upscale 系统配置
+// PUT /api/v1/admin/settings/fal-upscale
+func (h *SettingHandler) UpdateFalUpscaleSettings(c *gin.Context) {
+	var req UpdateFalUpscaleSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.settingService.SetFalUpscaleSettings(c.Request.Context(), &service.FalUpscaleSettings{
+		Endpoint:       req.Endpoint,
+		Token:          req.Token,
+		TimeoutSeconds: req.TimeoutSeconds,
+	}); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	s := h.settingService.GetFalUpscaleSettings(c.Request.Context())
+	response.Success(c, gin.H{
+		"endpoint":        s.Endpoint,
+		"timeout_seconds": s.TimeoutSeconds,
+		"token_set":       strings.TrimSpace(s.Token) != "",
+	})
+}
+
 func (h *SettingHandler) GetOverloadCooldownSettings(c *gin.Context) {
 	settings, err := h.settingService.GetOverloadCooldownSettings(c.Request.Context())
 	if err != nil {

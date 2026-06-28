@@ -120,6 +120,16 @@ export function toMatrixDTO(
 }
 
 /**
+ * Form -> update API DTO. An empty matrix must be sent as {} so the Go
+ * patch request can distinguish "clear this field" from "field omitted".
+ */
+export function toMatrixUpdateDTO(
+  editable: EditableImagePricingMatrix,
+): ImagePricingMatrix {
+  return toMatrixDTO(editable) ?? {}
+}
+
+/**
  * \u68c0\u67e5\u8868\u5355\u77e9\u9635\u662f\u5426\u6709\u975e\u6cd5\u8f93\u5165\uff08\u8d1f\u6570\u6216 NaN\uff09\u3002
  * \u8fd4\u56de\u9519\u8bef\u63cf\u8ff0\u6570\u7ec4\uff1b\u7a7a\u6570\u7ec4\u4ee3\u8868\u5168\u90e8\u5408\u6cd5\u3002
  */

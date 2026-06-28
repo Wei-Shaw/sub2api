@@ -58,6 +58,6 @@
 - [x] 7.2 frontend `pnpm typecheck && pnpm lint` 全过（首轮，未含 §4.7-4.8）
 - [x] 7.3 backend `go test ./...` 全过（含 §1.6-1.8 / §5 解码模块）【本任务新增的所有单测全部通过；`TestGatewayService_SelectImageAccountMixed` 的 5 个子用例在上游 baseline 即已 fail（与本 change 无关、已验证）】
 - [x] 7.4 frontend `pnpm typecheck && pnpm lint` 全过（含 §4.7-4.8）
-- [ ] 7.5 手工冒烟：建一个 openai 分组配满矩阵 → 1024×1024 high 请求金额命中矩阵；删除矩阵某格 → 同请求金额回退到 image_price_1k；置 prefer_fal=true → 调度日志显示 fal 优先
-- [ ] 7.6 手工冒烟：开 `image_decode_size_on_rsp`，构造一个不返回 size 的代理上游 → 计费命中真实分辨率档；关 toggle → 同请求回退默认 2K 档
-- [ ] 7.7 archive 流程：`openspec archive add-image-pricing-matrix-and-fal-prefer`
+- [x] 7.5 手工冒烟：建一个 openai 分组配满矩阵 → 1024×1024 high 请求金额命中矩阵；删除矩阵某格 → 同请求金额回退到 image_price_1k；置 prefer_fal=true → 调度日志显示 fal 优先
+- [x] 7.6 手工冒烟：开 `image_decode_size_on_rsp`，构造一个不返回 size 的代理上游 → 计费命中真实分辨率档；关 toggle → 同请求回退默认 2K 档
+- [x] 7.7 archive 流程：`openspec archive add-image-pricing-matrix-and-fal-prefer`

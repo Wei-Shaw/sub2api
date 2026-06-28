@@ -30,6 +30,8 @@ const (
 	defaultClientTimeout = 120 * time.Second
 	// bodyLimit 限制响应体大小，避免无界内存占用。
 	bodyLimit int64 = 32 << 20
+	// debugRequestBodyLogLimitBytes 限制 debug 日志中清洗后请求体的最大长度。
+	debugRequestBodyLogLimitBytes = 4 << 10
 	// falPlatformModelsURL 是 fal 平台模型列表 API（固定域名，独立于 queue/sync）。
 	// 文档：https://fal.ai/docs/platform-apis/v1/models
 	falPlatformModelsURL = "https://api.fal.ai/v1/models"
@@ -356,11 +358,13 @@ func (c *Client) BuildCancelURL(model, requestID string) string {
 // doJSON 执行一次 HTTP 请求，序列化 reqBody（可为 nil）并将响应解码到 out（可为 nil）。
 func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody, out any) error {
 	var bodyReader io.Reader
+	var rawBody []byte
 	if reqBody != nil {
 		raw, err := json.Marshal(reqBody)
 		if err != nil {
 			return fmt.Errorf("fal: marshal request: %w", err)
 		}
+		rawBody = raw
 		bodyReader = bytes.NewReader(raw)
 	}
 
@@ -374,20 +378,19 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody, o
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	// debug：打印向 fal 上游发起的请求 header 与包体，便于排查鉴权/参数问题。
-	// Authorization 含 FAL_KEY，做掩码避免日志泄露密钥。
+	// debug：打印向 fal 上游发起的请求 header 与清洗后的 JSON body，便于排查鉴权/参数问题。
+	// Authorization 含 FAL_KEY，做掩码避免日志泄露密钥；body 中的文件内容会替换为长度摘要。
 	if slog.Default().Enabled(ctx, slog.LevelDebug) {
-		var reqBodyStr string
-		if bodyReader != nil {
-			if raw, err := json.Marshal(reqBody); err == nil {
-				reqBodyStr = string(raw)
-			}
-		}
+		logBody, bodySanitized, bodyTruncated := sanitizeRequestBodyForLog(rawBody)
 		slog.Debug("fal_http_request_dump",
 			"method", method,
 			"endpoint", endpoint,
 			"headers", maskedHeaderString(req.Header),
-			"body", reqBodyStr,
+			"body", logBody,
+			"body_bytes", len(rawBody),
+			"body_sanitized", bodySanitized,
+			"body_truncated", bodyTruncated,
+			"body_log_limit_bytes", debugRequestBodyLogLimitBytes,
 		)
 	}
 
@@ -431,6 +434,107 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody, o
 		return fmt.Errorf("fal: decode response: %w", err)
 	}
 	return nil
+}
+
+func sanitizeRequestBodyForLog(raw []byte) (body string, sanitized bool, truncated bool) {
+	if len(raw) == 0 {
+		return "", false, false
+	}
+
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		body = string(raw)
+	} else {
+		var cleaned any
+		cleaned, sanitized = sanitizeJSONValueForLog(decoded, "")
+		encoded, err := json.Marshal(cleaned)
+		if err != nil {
+			body = string(raw)
+		} else {
+			body = string(encoded)
+		}
+	}
+
+	if len(body) <= debugRequestBodyLogLimitBytes {
+		return body, sanitized, false
+	}
+	return body[:debugRequestBodyLogLimitBytes] + fmt.Sprintf("...(truncated, bytes=%d)", len(body)), sanitized, true
+}
+
+func sanitizeJSONValueForLog(v any, key string) (any, bool) {
+	switch typed := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		changed := false
+		for k, value := range typed {
+			cleaned, didChange := sanitizeJSONValueForLog(value, k)
+			out[k] = cleaned
+			changed = changed || didChange
+		}
+		return out, changed
+	case []any:
+		out := make([]any, len(typed))
+		changed := false
+		for i, value := range typed {
+			cleaned, didChange := sanitizeJSONValueForLog(value, key)
+			out[i] = cleaned
+			changed = changed || didChange
+		}
+		return out, changed
+	case string:
+		return sanitizeStringForLog(key, typed)
+	default:
+		return v, false
+	}
+}
+
+func sanitizeStringForLog(key, value string) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "data:") {
+		media := "data"
+		if comma := strings.Index(trimmed, ","); comma > 0 {
+			media = trimmed[:comma]
+			if len(media) > 80 {
+				media = media[:80] + "..."
+			}
+		}
+		return fmt.Sprintf("<redacted file content: kind=%s bytes=%d>", media, len(value)), true
+	}
+	if isBase64BodyField(key) && looksLikeBase64Payload(trimmed) {
+		return fmt.Sprintf("<redacted file content: bytes=%d>", len(value)), true
+	}
+	return value, false
+}
+
+func isBase64BodyField(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	switch key {
+	case "image_url", "image_urls", "mask_url", "b64_json", "base64", "image_base64":
+		return true
+	default:
+		return strings.Contains(key, "base64") || strings.Contains(key, "b64")
+	}
+}
+
+func looksLikeBase64Payload(value string) bool {
+	if len(value) < 256 || strings.Contains(value, "://") {
+		return false
+	}
+	allowed := 0
+	for _, r := range value {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			allowed++
+		case r >= 'a' && r <= 'z':
+			allowed++
+		case r >= '0' && r <= '9':
+			allowed++
+		case r == '+' || r == '/' || r == '=' || r == '-' || r == '_' || r == '\n' || r == '\r':
+			allowed++
+		}
+	}
+	return allowed*100 >= len(value)*98
 }
 
 // maskedHeaderString 将请求 header 拼成可读字符串，并对敏感头（Authorization）做掩码，

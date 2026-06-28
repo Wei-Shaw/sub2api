@@ -83,6 +83,7 @@ type APIKeyAuthGroupSnapshot struct {
 	// 写入认证快照后由 OpenAI 网关计费链路读取（image_decode_size_on_rsp 控制回包图片分辨率自检）。
 	ImagePreferFal                  bool   `json:"image_prefer_fal"`
 	ImageDecodeSizeOnRsp            bool   `json:"image_decode_size_on_rsp"`
+	ImageUpscaleOnRsp               bool   `json:"image_upscale_on_rsp"`
 	ClaudeCodeOnly                  bool   `json:"claude_code_only"`
 	FallbackGroupID                 *int64 `json:"fallback_group_id,omitempty"`
 	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request,omitempty"`

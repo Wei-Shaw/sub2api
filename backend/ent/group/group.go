@@ -62,6 +62,8 @@ const (
 	FieldImagePreferFal = "image_prefer_fal"
 	// FieldImageDecodeSizeOnRsp holds the string denoting the image_decode_size_on_rsp field in the database.
 	FieldImageDecodeSizeOnRsp = "image_decode_size_on_rsp"
+	// FieldImageUpscaleOnRsp holds the string denoting the image_upscale_on_rsp field in the database.
+	FieldImageUpscaleOnRsp = "image_upscale_on_rsp"
 	// FieldClaudeCodeOnly holds the string denoting the claude_code_only field in the database.
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
@@ -190,6 +192,7 @@ var Columns = []string{
 	FieldImagePricingMatrix,
 	FieldImagePreferFal,
 	FieldImageDecodeSizeOnRsp,
+	FieldImageUpscaleOnRsp,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
@@ -270,6 +273,8 @@ var (
 	DefaultImagePreferFal bool
 	// DefaultImageDecodeSizeOnRsp holds the default value on creation for the "image_decode_size_on_rsp" field.
 	DefaultImageDecodeSizeOnRsp bool
+	// DefaultImageUpscaleOnRsp holds the default value on creation for the "image_upscale_on_rsp" field.
+	DefaultImageUpscaleOnRsp bool
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
@@ -414,6 +419,11 @@ func ByImagePreferFal(opts ...sql.OrderTermOption) OrderOption {
 // ByImageDecodeSizeOnRsp orders the results by the image_decode_size_on_rsp field.
 func ByImageDecodeSizeOnRsp(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImageDecodeSizeOnRsp, opts...).ToFunc()
+}
+
+// ByImageUpscaleOnRsp orders the results by the image_upscale_on_rsp field.
+func ByImageUpscaleOnRsp(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageUpscaleOnRsp, opts...).ToFunc()
 }
 
 // ByClaudeCodeOnly orders the results by the claude_code_only field.

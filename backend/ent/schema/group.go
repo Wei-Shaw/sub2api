@@ -111,6 +111,10 @@ func (Group) Fields() []ent.Field {
 		field.Bool("image_decode_size_on_rsp").
 			Default(false).
 			Comment("仅 openai 分组生效：上游不返回 size 或返回 auto 时是否解码 b64_json 识别真实分辨率用于计费"),
+		// 仅 platform=openai 分组消费；依赖 image_decode_size_on_rsp；true 时真实档位低于目标档位则调 fal upscale 放大后再交付（added by migration 163）
+		field.Bool("image_upscale_on_rsp").
+			Default(false).
+			Comment("仅 openai 分组生效：回包真实档位低于请求目标档位(≥2K)时是否调 fal upscale 放大到目标档位后再交付，依赖 image_decode_size_on_rsp"),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").

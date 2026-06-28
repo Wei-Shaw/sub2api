@@ -4997,6 +4997,71 @@ func (s *SettingService) SetRectifierSettings(ctx context.Context, settings *Rec
 	return s.settingRepo.Set(ctx, SettingKeyRectifierSettings, string(data))
 }
 
+const (
+	defaultFalUpscaleEndpoint       = "fal-ai/seedvr/upscale/image"
+	defaultFalUpscaleTimeoutSeconds = 300
+)
+
+// FalUpscaleSettings 是 OpenAI 出图回包分辨率不足时同步放大的系统配置。
+type FalUpscaleSettings struct {
+	Endpoint       string
+	Token          string
+	TimeoutSeconds int
+}
+
+// DefaultFalUpscaleSettings 返回默认（endpoint=seedvr，timeout=300s，token 空）。
+func DefaultFalUpscaleSettings() *FalUpscaleSettings {
+	return &FalUpscaleSettings{Endpoint: defaultFalUpscaleEndpoint, TimeoutSeconds: defaultFalUpscaleTimeoutSeconds}
+}
+
+// Configured 返回 endpoint + token 是否齐备（未齐备时放大链路安全降级、走原图兜底）。
+func (c *FalUpscaleSettings) Configured() bool {
+	return c != nil && strings.TrimSpace(c.Endpoint) != "" && strings.TrimSpace(c.Token) != ""
+}
+
+// GetFalUpscaleSettings 读取 fal upscale 系统配置（带默认值，永不报错）。
+func (s *SettingService) GetFalUpscaleSettings(ctx context.Context) *FalUpscaleSettings {
+	out := DefaultFalUpscaleSettings()
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyFalUpscaleEndpoint,
+		SettingKeyFalUpscaleToken,
+		SettingKeyFalUpscaleTimeoutSeconds,
+	})
+	if err != nil {
+		return out
+	}
+	if ep := strings.TrimSpace(vals[SettingKeyFalUpscaleEndpoint]); ep != "" {
+		out.Endpoint = ep
+	}
+	out.Token = strings.TrimSpace(vals[SettingKeyFalUpscaleToken])
+	if ts := strings.TrimSpace(vals[SettingKeyFalUpscaleTimeoutSeconds]); ts != "" {
+		if n, e := strconv.Atoi(ts); e == nil && n > 0 {
+			out.TimeoutSeconds = n
+		}
+	}
+	return out
+}
+
+// SetFalUpscaleSettings 写入 fal upscale 系统配置。token 为空表示保留现有 token（便于只改 endpoint/timeout）。
+func (s *SettingService) SetFalUpscaleSettings(ctx context.Context, in *FalUpscaleSettings) error {
+	if in == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+	timeout := in.TimeoutSeconds
+	if timeout <= 0 {
+		timeout = defaultFalUpscaleTimeoutSeconds
+	}
+	token := strings.TrimSpace(in.Token)
+	if token == "" {
+		token = s.GetFalUpscaleSettings(ctx).Token // 空 = 保留现有
+	}
+	return s.settingRepo.SetMultiple(ctx, map[string]string{
+		SettingKeyFalUpscaleEndpoint:       strings.TrimSpace(in.Endpoint),
+		SettingKeyFalUpscaleToken:          token,
+		SettingKeyFalUpscaleTimeoutSeconds: strconv.Itoa(timeout),
+	})
+}
+
 // IsSignatureRectifierEnabled 判断签名整流是否启用（总开关 && 签名子开关）
 func (s *SettingService) IsSignatureRectifierEnabled(ctx context.Context) bool {
 	settings, err := s.GetRectifierSettings(ctx)

@@ -956,10 +956,13 @@ func (s *OpenAIGatewayService) tryWriteOpenAIImagesStreamEvent(
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
+	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
 	responseFormat string,
 	fallbackModel string,
+	group *Group,
+	requestedSize string,
 ) (OpenAIUsage, int, []string, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
@@ -992,19 +995,115 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, nil, err
 	}
+
+	// 写客户端前同步 upscale：放大成功则改写 body 内 b64，使客户端与 COS 一致、计费按目标档位。
+	b64s := openAIResponsesImageResultBase64s(results)
+	sizes := openAIResponsesImageResultSizes(results)
+	newB64s, newSizes, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, b64s, sizes)
+	if changed {
+		responseBody = rewriteOpenAIImageBase64InBody(responseBody, b64s, newB64s)
+		b64s = newB64s
+		sizes = newSizes
+	}
+
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Data(resp.StatusCode, "application/json; charset=utf-8", responseBody)
-	return usage, len(results), openAIResponsesImageResultSizes(results), openAIResponsesImageResultBase64s(results), nil
+	return usage, len(results), sizes, b64s, nil
 }
 
-func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
+// handleOpenAIImagesOAuthStreamingUpscale 是 Responses-API 流式 + upscale 命中时的缓冲实现：
+// 缓冲整段上游，收集最终图，放大后以 streamPrefix+".completed" 事件一次性吐出（无渐进预览）。
+func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingUpscale(
+	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
 	startTime time.Time,
 	responseFormat string,
 	streamPrefix string,
 	fallbackModel string,
+	group *Group,
+	requestedSize string,
 ) (OpenAIUsage, int, []string, []string, *int, error) {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, resolveUpstreamResponseReadLimit(s.cfg)))
+	if err != nil {
+		return OpenAIUsage{}, 0, nil, nil, nil, err
+	}
+	var usage OpenAIUsage
+	forEachOpenAISSEDataPayload(string(body), func(data []byte) {
+		s.parseSSEUsageBytes(data, &usage)
+	})
+	results, createdAt, _, firstMeta, _, cerr := collectOpenAIImagesFromResponsesBody(body)
+	if cerr != nil {
+		return OpenAIUsage{}, 0, nil, nil, nil, cerr
+	}
+	if len(results) == 0 {
+		return OpenAIUsage{}, 0, nil, nil, nil, fmt.Errorf("upstream did not return image output")
+	}
+	if strings.TrimSpace(firstMeta.Model) == "" {
+		firstMeta.Model = strings.TrimSpace(fallbackModel)
+	}
+
+	// 按 result 顺序对齐 b64/size，放大后写回。
+	b64s := make([]string, len(results))
+	sizes := make([]string, len(results))
+	for i, r := range results {
+		b64s[i] = strings.TrimSpace(r.Result)
+		sizes[i] = strings.TrimSpace(r.Size)
+	}
+	newB64s, newSizes, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, b64s, sizes)
+	if changed {
+		for i := range results {
+			if i < len(newB64s) && newB64s[i] != "" {
+				results[i].Result = newB64s[i]
+			}
+			if i < len(newSizes) && newSizes[i] != "" {
+				results[i].Size = newSizes[i]
+			}
+		}
+	}
+
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Status(resp.StatusCode)
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return OpenAIUsage{}, 0, nil, nil, nil, fmt.Errorf("streaming is not supported by response writer")
+	}
+
+	format := strings.ToLower(strings.TrimSpace(responseFormat))
+	if format == "" {
+		format = "b64_json"
+	}
+	ms := int(time.Since(startTime).Milliseconds())
+	firstTokenMs := &ms
+	eventName := streamPrefix + ".completed"
+	clientDisconnected := false
+	lastWrite := time.Now()
+	for _, img := range results {
+		mergeOpenAIResponsesImageMeta(&img, firstMeta)
+		payload := buildOpenAIImagesStreamCompletedPayload(eventName, img, format, createdAt, nil)
+		s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastWrite, eventName, payload)
+	}
+	return usage, len(results), openAIResponsesImageResultSizes(results), openAIResponsesImageResultBase64s(results), firstTokenMs, nil
+}
+
+func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	startTime time.Time,
+	responseFormat string,
+	streamPrefix string,
+	fallbackModel string,
+	group *Group,
+	requestedSize string,
+) (OpenAIUsage, int, []string, []string, *int, error) {
+	// upscale 命中时：缓冲整段 → 收集最终图 → 放大 → 以 .completed 事件一次性吐出（流式退化，无渐进预览）。
+	if s.shouldBufferOpenAIImagesForUpscale(ctx, group, requestedSize) {
+		return s.handleOpenAIImagesOAuthStreamingUpscale(ctx, resp, c, startTime, responseFormat, streamPrefix, fallbackModel, group, requestedSize)
+	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
@@ -1454,8 +1553,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		firstTokenMs       *int
 	)
 	writerSizeBeforeResponse := c.Writer.Size()
+	// upscale 依赖：分组（取自鉴权上下文）与显式请求尺寸（目标档位）。
+	var upscaleGroup *Group
+	if ak := getAPIKeyFromContext(c); ak != nil {
+		upscaleGroup = ak.Group
+	}
+	requestedUpscaleSize := requestedUpscaleTargetSize(parsed)
 	if parsed.Stream {
-		usage, imageCount, imageOutputSizes, imageOutputBase64s, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel)
+		usage, imageCount, imageOutputSizes, imageOutputBase64s, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(ctx, resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel, upscaleGroup, requestedUpscaleSize)
 		if err != nil {
 			if imageCount > 0 {
 				res := &OpenAIForwardResult{
@@ -1488,7 +1593,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			)
 		}
 	} else {
-		usage, imageCount, imageOutputSizes, imageOutputBase64s, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel)
+		usage, imageCount, imageOutputSizes, imageOutputBase64s, err = s.handleOpenAIImagesOAuthNonStreamingResponse(ctx, resp, c, parsed.ResponseFormat, requestModel, upscaleGroup, requestedUpscaleSize)
 		if err != nil {
 			return nil, s.handleOpenAIImagesOAuthResponseError(
 				upstreamCtx,

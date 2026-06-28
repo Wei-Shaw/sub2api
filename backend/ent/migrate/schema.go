@@ -806,6 +806,7 @@ var (
 		{Name: "image_pricing_matrix", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "image_prefer_fal", Type: field.TypeBool, Default: false},
 		{Name: "image_decode_size_on_rsp", Type: field.TypeBool, Default: false},
+		{Name: "image_upscale_on_rsp", Type: field.TypeBool, Default: false},
 		{Name: "claude_code_only", Type: field.TypeBool, Default: false},
 		{Name: "fallback_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "fallback_group_id_on_invalid_request", Type: field.TypeInt64, Nullable: true},
@@ -856,7 +857,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[31]},
+				Columns: []*schema.Column{GroupsColumns[32]},
 			},
 		},
 	}

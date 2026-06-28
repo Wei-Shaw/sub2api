@@ -57,6 +57,7 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetImagePreferFal(groupIn.ImagePreferFal).
 		SetImageDecodeSizeOnRsp(groupIn.ImageDecodeSizeOnRsp).
+		SetImageUpscaleOnRsp(groupIn.ImageUpscaleOnRsp).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
@@ -142,6 +143,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetImagePreferFal(groupIn.ImagePreferFal).
 		SetImageDecodeSizeOnRsp(groupIn.ImageDecodeSizeOnRsp).
+		SetImageUpscaleOnRsp(groupIn.ImageUpscaleOnRsp).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).

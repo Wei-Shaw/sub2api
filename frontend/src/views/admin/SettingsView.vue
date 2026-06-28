@@ -790,6 +790,89 @@
               </template>
             </div>
           </div>
+
+          <!-- Fal Upscale Settings -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.falUpscale.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.falUpscale.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="falUpscaleLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+              <template v-else>
+                <div>
+                  <label
+                    class="mb-1 block font-medium text-gray-900 dark:text-white"
+                    >{{ t("admin.settings.falUpscale.endpoint") }}</label
+                  >
+                  <input
+                    v-model="falUpscaleForm.endpoint"
+                    type="text"
+                    class="input"
+                    placeholder="fal-ai/seedvr/upscale/image"
+                  />
+                </div>
+                <div>
+                  <label
+                    class="mb-1 block font-medium text-gray-900 dark:text-white"
+                    >{{ t("admin.settings.falUpscale.token") }}</label
+                  >
+                  <input
+                    v-model="falUpscaleForm.token"
+                    type="password"
+                    autocomplete="new-password"
+                    class="input"
+                    :placeholder="
+                      falUpscaleTokenSet
+                        ? t('admin.settings.falUpscale.tokenSetPlaceholder')
+                        : t('admin.settings.falUpscale.tokenPlaceholder')
+                    "
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.falUpscale.tokenHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-1 block font-medium text-gray-900 dark:text-white"
+                    >{{ t("admin.settings.falUpscale.timeout") }}</label
+                  >
+                  <input
+                    v-model.number="falUpscaleForm.timeout_seconds"
+                    type="number"
+                    min="1"
+                    class="input"
+                  />
+                </div>
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    @click="saveFalUpscaleSettings"
+                    :disabled="falUpscaleSaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    {{
+                      falUpscaleSaving ? t("common.saving") : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
           <!-- Beta Policy Settings -->
           <div class="card">
             <div
@@ -7367,6 +7450,53 @@ const rectifierForm = reactive({
   apikey_signature_patterns: [] as string[],
 });
 
+// fal upscale 系统配置
+const falUpscaleLoading = ref(true);
+const falUpscaleSaving = ref(false);
+const falUpscaleTokenSet = ref(false);
+const falUpscaleForm = reactive({
+  endpoint: "fal-ai/seedvr/upscale/image",
+  token: "",
+  timeout_seconds: 300,
+});
+
+async function loadFalUpscaleSettings() {
+  falUpscaleLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getFalUpscaleSettings();
+    falUpscaleForm.endpoint = settings.endpoint;
+    falUpscaleForm.timeout_seconds = settings.timeout_seconds;
+    falUpscaleForm.token = "";
+    falUpscaleTokenSet.value = settings.token_set;
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    falUpscaleLoading.value = false;
+  }
+}
+
+async function saveFalUpscaleSettings() {
+  falUpscaleSaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateFalUpscaleSettings({
+      endpoint: falUpscaleForm.endpoint.trim(),
+      token: falUpscaleForm.token,
+      timeout_seconds: falUpscaleForm.timeout_seconds,
+    });
+    falUpscaleForm.endpoint = updated.endpoint;
+    falUpscaleForm.timeout_seconds = updated.timeout_seconds;
+    falUpscaleForm.token = "";
+    falUpscaleTokenSet.value = updated.token_set;
+    appStore.showSuccess(t("admin.settings.falUpscale.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.settings.falUpscale.saveFailed")),
+    );
+  } finally {
+    falUpscaleSaving.value = false;
+  }
+}
+
 // Beta Policy 状态
 const betaPolicyLoading = ref(true);
 const betaPolicySaving = ref(false);
@@ -10207,6 +10337,7 @@ onMounted(() => {
   loadRateLimit429CooldownSettings();
   loadStreamTimeoutSettings();
   loadRectifierSettings();
+  loadFalUpscaleSettings();
   loadBetaPolicySettings();
   loadProviders();
 });

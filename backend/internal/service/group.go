@@ -49,6 +49,12 @@ type Group struct {
 	// false（默认）保持现状默认 2K 档兜底语义。
 	ImageDecodeSizeOnRsp bool
 
+	// ImageUpscaleOnRsp 仅在 platform=openai 分组下生效，且依赖 ImageDecodeSizeOnRsp：
+	// true 表示当请求归一目标档位 ≥ 2K、而回包 b64_json 解码出的真实档位更低时，
+	// 系统在把图返回客户端（及转存 COS）之前调用 fal upscale 放大到目标档位后再交付。
+	// false（默认）保持现状（不放大）。
+	ImageUpscaleOnRsp bool
+
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
 	FallbackGroupID *int64
@@ -226,4 +232,16 @@ func (g *Group) ImageDecodeSizeOnRspEnabled() bool {
 		return false
 	}
 	return g.Platform == PlatformOpenAI
+}
+
+// ImageUpscaleOnRspEnabled 仅在 platform=openai 分组、且同时开启了回包分辨率解析时才生效。
+// 依赖 decode：没有真实分辨率就无法判断是否需要放大。
+func (g *Group) ImageUpscaleOnRspEnabled() bool {
+	if g == nil {
+		return false
+	}
+	if !g.ImageUpscaleOnRsp {
+		return false
+	}
+	return g.ImageDecodeSizeOnRspEnabled()
 }

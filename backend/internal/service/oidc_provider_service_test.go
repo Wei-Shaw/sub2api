@@ -498,8 +498,6 @@ func TestOidcProvider_BuildUserInfo_ScopedClaims(t *testing.T) {
 	require.False(t, hasBalance)
 }
 
-
-
 func TestOidcProvider_BuildUserInfo_ApikeyScopeCountOnly(t *testing.T) {
 	e := newProviderTestEnv(t)
 	rp := e.newRP(t, []string{"openid", "sub2api:apikey"}, true)

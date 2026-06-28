@@ -513,7 +513,6 @@ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
 	}
 }
 
-
 func TestSupportedModels_MissingPricingKeepsNilPricing(t *testing.T) {
 	ch := &Channel{
 		ModelMapping: map[string]map[string]string{

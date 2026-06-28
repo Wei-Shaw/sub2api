@@ -104,7 +104,9 @@ type CreateGroupRequest struct {
 	// image_prefer_fal：仅 platform=openai 分组生效
 	ImagePreferFal bool `json:"image_prefer_fal"`
 	// image_decode_size_on_rsp：仅 platform=openai 分组生效
-	ImageDecodeSizeOnRsp            bool   `json:"image_decode_size_on_rsp"`
+	ImageDecodeSizeOnRsp bool `json:"image_decode_size_on_rsp"`
+	// image_upscale_on_rsp：仅 platform=openai 分组生效，依赖 image_decode_size_on_rsp
+	ImageUpscaleOnRsp               bool   `json:"image_upscale_on_rsp"`
 	ClaudeCodeOnly                  bool   `json:"claude_code_only"`
 	FallbackGroupID                 *int64 `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request"`
@@ -150,6 +152,7 @@ type UpdateGroupRequest struct {
 	ImagePricingMatrix              *domain.ImagePricingMatrix `json:"image_pricing_matrix"`
 	ImagePreferFal                  *bool                      `json:"image_prefer_fal"`
 	ImageDecodeSizeOnRsp            *bool                      `json:"image_decode_size_on_rsp"`
+	ImageUpscaleOnRsp               *bool                      `json:"image_upscale_on_rsp"`
 	ClaudeCodeOnly                  *bool                      `json:"claude_code_only"`
 	FallbackGroupID                 *int64                     `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64                     `json:"fallback_group_id_on_invalid_request"`
@@ -307,6 +310,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ImagePricingMatrix:              req.ImagePricingMatrix,
 		ImagePreferFal:                  req.ImagePreferFal,
 		ImageDecodeSizeOnRsp:            req.ImageDecodeSizeOnRsp,
+		ImageUpscaleOnRsp:               req.ImageUpscaleOnRsp,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
@@ -366,6 +370,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ImagePricingMatrix:              req.ImagePricingMatrix,
 		ImagePreferFal:                  req.ImagePreferFal,
 		ImageDecodeSizeOnRsp:            req.ImageDecodeSizeOnRsp,
+		ImageUpscaleOnRsp:               req.ImageUpscaleOnRsp,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,

@@ -110,6 +110,7 @@ type Group struct {
 	ImagePreferFal bool `json:"image_prefer_fal,omitempty"`
 	// 仅 platform=openai 分组生效：上游不返 size 或返 auto 时按 b64 内容解码识别真实分辨率用于计费
 	ImageDecodeSizeOnRsp bool `json:"image_decode_size_on_rsp,omitempty"`
+	ImageUpscaleOnRsp    bool `json:"image_upscale_on_rsp,omitempty"`
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`

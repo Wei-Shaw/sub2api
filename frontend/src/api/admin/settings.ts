@@ -1233,6 +1233,40 @@ export async function updateRectifierSettings(
   return data;
 }
 
+// ==================== Fal Upscale Settings ====================
+
+/** fal upscale 系统配置（OpenAI 出图回包分辨率不足时同步放大）。 */
+export interface FalUpscaleSettings {
+  endpoint: string;
+  timeout_seconds: number;
+  /** token 仅回显是否已设置，不回显明文 */
+  token_set: boolean;
+}
+
+/** 更新入参：token 为空表示保留现有 token。 */
+export interface UpdateFalUpscaleSettings {
+  endpoint: string;
+  timeout_seconds: number;
+  token: string;
+}
+
+export async function getFalUpscaleSettings(): Promise<FalUpscaleSettings> {
+  const { data } = await apiClient.get<FalUpscaleSettings>(
+    "/admin/settings/fal-upscale",
+  );
+  return data;
+}
+
+export async function updateFalUpscaleSettings(
+  settings: UpdateFalUpscaleSettings,
+): Promise<FalUpscaleSettings> {
+  const { data } = await apiClient.put<FalUpscaleSettings>(
+    "/admin/settings/fal-upscale",
+    settings,
+  );
+  return data;
+}
+
 // ==================== OpenAI Fast Policy Settings ====================
 
 /**
@@ -1385,6 +1419,8 @@ export const settingsAPI = {
   updateStreamTimeoutSettings,
   getRectifierSettings,
   updateRectifierSettings,
+  getFalUpscaleSettings,
+  updateFalUpscaleSettings,
   getBetaPolicySettings,
   updateBetaPolicySettings,
   getWebSearchEmulationConfig,

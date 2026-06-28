@@ -2341,7 +2341,9 @@ export default {
 preferFalLabel: 'Prefer Fal accounts (OpenAI groups only)',
           preferFalHint: 'When enabled, image requests on this group are scheduled to fal accounts first and only fall back to OpenAI accounts when no fal account is available. The billed amount is unaffected and always uses this group\'s pricing table.',
           decodeSizeOnRspLabel: 'Decode response size from base64 (OpenAI groups only)',
-decodeSizeOnRspHint: 'When the upstream response omits the size field or returns size=auto, decode the b64_json content to recover the real width and height for billing. URL-only responses are not affected.'
+decodeSizeOnRspHint: 'When the upstream response omits the size field or returns size=auto, decode the b64_json content to recover the real width and height for billing. URL-only responses are not affected.',
+          upscaleOnRspLabel: 'Upscale when response resolution is below target (OpenAI groups only, depends on decode above)',
+          upscaleOnRspHint: 'When 2K/4K was requested but the response tier is lower, call fal SeedVR to upscale to the target tier before returning to the client (client and COS stay consistent, billed at the target tier; on failure/timeout falls back to the original). Requires the decode toggle above and fal upscale configured in system settings. Streaming requests degrade to non-streaming (returned after upscaling completes).'
       },
       modelsList: {
         title: 'Custom /v1/models Model List',
@@ -6573,6 +6575,18 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         thresholdWindowMinutesHint: 'Time window for counting timeouts (1-60 minutes)',
         saved: 'Stream timeout settings saved',
         saveFailed: 'Failed to save stream timeout settings'
+      },
+      falUpscale: {
+        title: 'fal Image Upscale (SeedVR)',
+        description: 'When an OpenAI image response is below the requested resolution, call fal upscale to scale it to the target tier before delivery. Enable "Upscale when below target" on the group too.',
+        endpoint: 'fal upscale endpoint',
+        token: 'fal upscale token',
+        tokenPlaceholder: 'Enter fal token',
+        tokenSetPlaceholder: 'Already set (leave blank to keep)',
+        tokenHint: 'Token is used only for upscale calls, independent of other keys; leave blank to keep the existing token.',
+        timeout: 'Per-upscale timeout (seconds)',
+        saved: 'fal upscale settings saved',
+        saveFailed: 'Failed to save fal upscale settings',
       },
       rectifier: {
         title: 'Request Rectifier',

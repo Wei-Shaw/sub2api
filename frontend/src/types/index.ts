@@ -536,6 +536,7 @@ export interface Group {
   // 仅 platform=openai 分组生效：true 时混合调度“fal 优先 + openai 兜底”
   image_prefer_fal?: boolean
   image_decode_size_on_rsp?: boolean
+  image_upscale_on_rsp?: boolean
   claude_code_only: boolean
   fallback_group_id: number | null
   fallback_group_id_on_invalid_request: number | null
@@ -656,6 +657,7 @@ export interface CreateGroupRequest {
   image_pricing_matrix?: Record<string, Record<string, number>> | null
   image_prefer_fal?: boolean
   image_decode_size_on_rsp?: boolean
+  image_upscale_on_rsp?: boolean
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -694,6 +696,7 @@ export interface UpdateGroupRequest {
   image_pricing_matrix?: Record<string, Record<string, number>> | null
   image_prefer_fal?: boolean
   image_decode_size_on_rsp?: boolean
+  image_upscale_on_rsp?: boolean
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null

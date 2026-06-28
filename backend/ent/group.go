@@ -65,6 +65,8 @@ type Group struct {
 	ImagePreferFal bool `json:"image_prefer_fal,omitempty"`
 	// 仅 openai 分组生效：上游不返回 size 或返回 auto 时是否解码 b64_json 识别真实分辨率用于计费
 	ImageDecodeSizeOnRsp bool `json:"image_decode_size_on_rsp,omitempty"`
+	// 仅 openai 分组生效：回包真实档位低于请求目标档位(≥2K)时是否调 fal upscale 放大到目标档位后再交付，依赖 image_decode_size_on_rsp
+	ImageUpscaleOnRsp bool `json:"image_upscale_on_rsp,omitempty"`
 	// 是否仅允许 Claude Code 客户端
 	ClaudeCodeOnly bool `json:"claude_code_only,omitempty"`
 	// 非 Claude Code 请求降级使用的分组 ID
@@ -203,7 +205,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldImagePricingMatrix, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldImagePreferFal, group.FieldImageDecodeSizeOnRsp, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
+		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldImagePreferFal, group.FieldImageDecodeSizeOnRsp, group.FieldImageUpscaleOnRsp, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
@@ -381,6 +383,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field image_decode_size_on_rsp", values[i])
 			} else if value.Valid {
 				_m.ImageDecodeSizeOnRsp = value.Bool
+			}
+		case group.FieldImageUpscaleOnRsp:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_upscale_on_rsp", values[i])
+			} else if value.Valid {
+				_m.ImageUpscaleOnRsp = value.Bool
 			}
 		case group.FieldClaudeCodeOnly:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -642,6 +650,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("image_decode_size_on_rsp=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageDecodeSizeOnRsp))
+	builder.WriteString(", ")
+	builder.WriteString("image_upscale_on_rsp=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageUpscaleOnRsp))
 	builder.WriteString(", ")
 	builder.WriteString("claude_code_only=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ClaudeCodeOnly))

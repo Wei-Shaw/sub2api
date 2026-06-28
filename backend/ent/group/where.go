@@ -165,6 +165,11 @@ func ImageDecodeSizeOnRsp(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageDecodeSizeOnRsp, v))
 }
 
+// ImageUpscaleOnRsp applies equality check predicate on the "image_upscale_on_rsp" field. It's identical to ImageUpscaleOnRspEQ.
+func ImageUpscaleOnRsp(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageUpscaleOnRsp, v))
+}
+
 // ClaudeCodeOnly applies equality check predicate on the "claude_code_only" field. It's identical to ClaudeCodeOnlyEQ.
 func ClaudeCodeOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldClaudeCodeOnly, v))
@@ -1163,6 +1168,16 @@ func ImageDecodeSizeOnRspEQ(v bool) predicate.Group {
 // ImageDecodeSizeOnRspNEQ applies the NEQ predicate on the "image_decode_size_on_rsp" field.
 func ImageDecodeSizeOnRspNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldImageDecodeSizeOnRsp, v))
+}
+
+// ImageUpscaleOnRspEQ applies the EQ predicate on the "image_upscale_on_rsp" field.
+func ImageUpscaleOnRspEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageUpscaleOnRsp, v))
+}
+
+// ImageUpscaleOnRspNEQ applies the NEQ predicate on the "image_upscale_on_rsp" field.
+func ImageUpscaleOnRspNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImageUpscaleOnRsp, v))
 }
 
 // ClaudeCodeOnlyEQ applies the EQ predicate on the "claude_code_only" field.

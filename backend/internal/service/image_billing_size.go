@@ -41,10 +41,6 @@ func ClassifyImageBillingTier(size string) (string, bool) {
 		return ImageBillingSize2K, true
 	case "4k":
 		return ImageBillingSize4K, true
-	case "2048x2048", "2048x1152":
-		return ImageBillingSize2K, true
-	case "3840x2160", "2160x3840":
-		return ImageBillingSize4K, true
 	}
 
 	width, height, ok := parseImageBillingDimensions(trimmed)
@@ -56,9 +52,9 @@ func ClassifyImageBillingTier(size string) (string, bool) {
 		maxEdge = height
 	}
 	switch {
-	case maxEdge <= 1024:
-		return ImageBillingSize1K, true
 	case maxEdge <= 2048:
+		return ImageBillingSize1K, true
+	case maxEdge < 3840:
 		return ImageBillingSize2K, true
 	default:
 		return ImageBillingSize4K, true

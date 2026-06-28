@@ -445,6 +445,20 @@ func (_u *GroupUpdate) SetNillableImageDecodeSizeOnRsp(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetImageUpscaleOnRsp sets the "image_upscale_on_rsp" field.
+func (_u *GroupUpdate) SetImageUpscaleOnRsp(v bool) *GroupUpdate {
+	_u.mutation.SetImageUpscaleOnRsp(v)
+	return _u
+}
+
+// SetNillableImageUpscaleOnRsp sets the "image_upscale_on_rsp" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageUpscaleOnRsp(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImageUpscaleOnRsp(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdate) SetClaudeCodeOnly(v bool) *GroupUpdate {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -1115,6 +1129,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ImageDecodeSizeOnRsp(); ok {
 		_spec.SetField(group.FieldImageDecodeSizeOnRsp, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageUpscaleOnRsp(); ok {
+		_spec.SetField(group.FieldImageUpscaleOnRsp, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1910,6 +1927,20 @@ func (_u *GroupUpdateOne) SetNillableImageDecodeSizeOnRsp(v *bool) *GroupUpdateO
 	return _u
 }
 
+// SetImageUpscaleOnRsp sets the "image_upscale_on_rsp" field.
+func (_u *GroupUpdateOne) SetImageUpscaleOnRsp(v bool) *GroupUpdateOne {
+	_u.mutation.SetImageUpscaleOnRsp(v)
+	return _u
+}
+
+// SetNillableImageUpscaleOnRsp sets the "image_upscale_on_rsp" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageUpscaleOnRsp(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageUpscaleOnRsp(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdateOne) SetClaudeCodeOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -2610,6 +2641,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ImageDecodeSizeOnRsp(); ok {
 		_spec.SetField(group.FieldImageDecodeSizeOnRsp, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageUpscaleOnRsp(); ok {
+		_spec.SetField(group.FieldImageUpscaleOnRsp, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)

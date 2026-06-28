@@ -524,6 +524,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// 请求整流器配置
 		adminSettings.GET("/rectifier", h.Admin.Setting.GetRectifierSettings)
 		adminSettings.PUT("/rectifier", h.Admin.Setting.UpdateRectifierSettings)
+		// fal upscale（OpenAI 出图回包分辨率不足时同步放大）系统配置
+		adminSettings.GET("/fal-upscale", h.Admin.Setting.GetFalUpscaleSettings)
+		adminSettings.PUT("/fal-upscale", h.Admin.Setting.UpdateFalUpscaleSettings)
 		// Beta 策略配置
 		adminSettings.GET("/beta-policy", h.Admin.Setting.GetBetaPolicySettings)
 		adminSettings.PUT("/beta-policy", h.Admin.Setting.UpdateBetaPolicySettings)

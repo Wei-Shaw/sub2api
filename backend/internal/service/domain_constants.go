@@ -464,6 +464,11 @@ const (
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
+
+	// fal upscale（OpenAI 出图回包分辨率不足时同步放大）系统配置
+	SettingKeyFalUpscaleEndpoint       = "fal_upscale_endpoint"        // fal upscale 模型 endpoint（含模型 slug）
+	SettingKeyFalUpscaleToken          = "fal_upscale_token"           // fal upscale token
+	SettingKeyFalUpscaleTimeoutSeconds = "fal_upscale_timeout_seconds" // 单次放大超时秒数
 )
 
 // SettingKeyDefaultPlatformQuotas —— 系统全局：每用户 × 平台日/周/月 USD 上限（JSON）。

@@ -2420,7 +2420,9 @@ export default {
 preferFalLabel: 'fal 优先调度（仅 OpenAI 分组）',
           preferFalHint: '开启后图片请求优先使用本分组下的 fal 账号承载，仅当 fal 全部不可用时回退到 OpenAI 账号。计费金额仍按本分组定价表，与承载平台无关。',
           decodeSizeOnRspLabel: '回包分辨率自检（仅 OpenAI 分组）',
-decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto 时，系统会解码 b64_json 内容识别真实宽高用于计费；URL 模式不受影响。'
+decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto 时，系统会解码 b64_json 内容识别真实宽高用于计费；URL 模式不受影响。',
+          upscaleOnRspLabel: '回包分辨率不足自动放大（仅 OpenAI 分组，依赖上方自检）',
+          upscaleOnRspHint: '开启后：请求了 2K/4K 但回包真实档位更低时，调用 fal SeedVR 放大到目标档位后再返回客户端（客户端与 COS 一致，按目标档位计费；放大失败/超时按原图兜底）。需先开启「回包分辨率自检」并在系统设置配置 fal upscale。流式请求开启后将退化为非流式（等放大完成才返回）。'
       },
       modelsList: {
         title: '自定义 /v1/models 模型列表',
@@ -6724,6 +6726,18 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         thresholdWindowMinutesHint: '超时计数的时间窗口（1-60分钟）',
         saved: '流超时设置保存成功',
         saveFailed: '保存流超时设置失败'
+      },
+      falUpscale: {
+        title: 'fal 出图放大（SeedVR）',
+        description: 'OpenAI 出图回包分辨率不足时，调用 fal upscale 放大到目标档位后再交付。需在分组开启「回包分辨率不足自动放大」。',
+        endpoint: 'fal upscale endpoint',
+        token: 'fal upscale token',
+        tokenPlaceholder: '输入 fal token',
+        tokenSetPlaceholder: '已设置（留空保持不变）',
+        tokenHint: 'token 仅用于放大调用，独立于其它密钥；留空表示保留现有 token。',
+        timeout: '单次放大超时（秒）',
+        saved: 'fal upscale 配置已保存',
+        saveFailed: '保存 fal upscale 配置失败',
       },
       rectifier: {
         title: '请求整流器',

@@ -218,8 +218,10 @@ type CreateGroupInput struct {
 	ImagePreferFal bool
 	// 仅 platform=openai 分组生效：回包图片分辨率自检（base64 解码）
 	ImageDecodeSizeOnRsp bool
-	ClaudeCodeOnly       bool   // 仅允许 Claude Code 客户端
-	FallbackGroupID      *int64 // 降级分组 ID
+	// 仅 platform=openai 分组生效，依赖 ImageDecodeSizeOnRsp：回包真实档位低于目标档位则 fal upscale 放大后交付
+	ImageUpscaleOnRsp bool
+	ClaudeCodeOnly    bool   // 仅允许 Claude Code 客户端
+	FallbackGroupID   *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -265,8 +267,10 @@ type UpdateGroupInput struct {
 	ImagePreferFal *bool
 	// 仅 platform=openai 分组生效；nil 表示未提供不变
 	ImageDecodeSizeOnRsp *bool
-	ClaudeCodeOnly       *bool  // 仅允许 Claude Code 客户端
-	FallbackGroupID      *int64 // 降级分组 ID
+	// 仅 platform=openai 分组生效，依赖 ImageDecodeSizeOnRsp；nil 表示未提供不变
+	ImageUpscaleOnRsp *bool
+	ClaudeCodeOnly    *bool  // 仅允许 Claude Code 客户端
+	FallbackGroupID   *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -1846,6 +1850,15 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.ImageDecodeSizeOnRsp && platform != PlatformOpenAI {
 		return nil, errors.New("image_decode_size_on_rsp requires platform=openai")
 	}
+	// image_upscale_on_rsp 仅在 platform=openai 上允许，且依赖 image_decode_size_on_rsp
+	if input.ImageUpscaleOnRsp {
+		if platform != PlatformOpenAI {
+			return nil, errors.New("image_upscale_on_rsp requires platform=openai")
+		}
+		if !input.ImageDecodeSizeOnRsp {
+			return nil, errors.New("image_upscale_on_rsp requires image_decode_size_on_rsp")
+		}
+	}
 
 	// 校验降级分组
 	if input.FallbackGroupID != nil {
@@ -1922,6 +1935,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ImagePricingMatrix:              normalizeImagePricingMatrix(input.ImagePricingMatrix),
 		ImagePreferFal:                  input.ImagePreferFal,
 		ImageDecodeSizeOnRsp:            input.ImageDecodeSizeOnRsp,
+		ImageUpscaleOnRsp:               input.ImageUpscaleOnRsp,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
@@ -2138,6 +2152,14 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, errors.New("image_decode_size_on_rsp requires platform=openai")
 		}
 		group.ImageDecodeSizeOnRsp = *input.ImageDecodeSizeOnRsp
+	}
+	// image_upscale_on_rsp：依赖 image_decode_size_on_rsp + platform=openai。
+	// 在 decode 应用之后判定最终状态，覆盖「同次更新关掉 decode 却留着 upscale」等组合。
+	if input.ImageUpscaleOnRsp != nil {
+		group.ImageUpscaleOnRsp = *input.ImageUpscaleOnRsp
+	}
+	if group.ImageUpscaleOnRsp && (group.Platform != PlatformOpenAI || !group.ImageDecodeSizeOnRsp) {
+		return nil, errors.New("image_upscale_on_rsp requires platform=openai and image_decode_size_on_rsp")
 	}
 
 	// Claude Code 客户端限制

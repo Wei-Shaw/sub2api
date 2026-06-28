@@ -906,6 +906,31 @@
             </div>
           </div>
 
+          <!-- upscale_on_rsp 开关：仅 platform=openai 显示，依赖 decode_size_on_rsp -->
+          <div
+            v-if="createForm.platform === 'openai'"
+            class="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30"
+          >
+            <input
+              id="create-image-upscale-on-rsp"
+              v-model="createForm.image_upscale_on_rsp"
+              type="checkbox"
+              :disabled="!createForm.image_decode_size_on_rsp"
+              class="mt-0.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500 disabled:opacity-50"
+            />
+            <div class="flex-1">
+              <label
+                for="create-image-upscale-on-rsp"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-200"
+              >
+                {{ t("admin.groups.imagePricing.upscaleOnRspLabel") }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.upscaleOnRspHint") }}
+              </p>
+            </div>
+          </div>
+
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t("admin.groups.imagePricing.modeHint") }}
           </p>
@@ -2263,6 +2288,31 @@
             </div>
           </div>
 
+          <!-- upscale_on_rsp 开关：仅 platform=openai 显示，依赖 decode_size_on_rsp -->
+          <div
+            v-if="editForm.platform === 'openai'"
+            class="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30"
+          >
+            <input
+              id="edit-image-upscale-on-rsp"
+              v-model="editForm.image_upscale_on_rsp"
+              type="checkbox"
+              :disabled="!editForm.image_decode_size_on_rsp"
+              class="mt-0.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500 disabled:opacity-50"
+            />
+            <div class="flex-1">
+              <label
+                for="edit-image-upscale-on-rsp"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-200"
+              >
+                {{ t("admin.groups.imagePricing.upscaleOnRspLabel") }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.upscaleOnRspHint") }}
+              </p>
+            </div>
+          </div>
+
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t("admin.groups.imagePricing.modeHint") }}
           </p>
@@ -3203,6 +3253,7 @@ import {
   createEmptyImagePricingMatrix,
   loadEditableImagePricingMatrix,
   toMatrixDTO,
+  toMatrixUpdateDTO,
   validateEditableMatrix,
   type EditableImagePricingMatrix,
 } from "@/constants/imagePricingMatrix";
@@ -3498,6 +3549,7 @@ const createForm = reactive({
   image_prefer_fal: false,
   // 仅 platform=openai 时生效：回包 size 缺失或 auto 时按 b64 解码识别真实分辨率用于计费
   image_decode_size_on_rsp: false,
+  image_upscale_on_rsp: false,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -3835,6 +3887,7 @@ const editForm = reactive({
   image_prefer_fal: false,
   // 仅 platform=openai 时生效：回包 size 缺失或 auto 时按 b64 解码识别真实分辨率用于计费
   image_decode_size_on_rsp: false,
+  image_upscale_on_rsp: false,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -4089,6 +4142,7 @@ const closeCreateModal = () => {
   createForm.image_pricing_matrix = createEmptyImagePricingMatrix();
   createForm.image_prefer_fal = false;
   createForm.image_decode_size_on_rsp = false;
+  createForm.image_upscale_on_rsp = false;
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
@@ -4149,6 +4203,11 @@ const handleCreateGroup = async () => {
         createForm.platform === "openai" ? createForm.image_prefer_fal : false,
       image_decode_size_on_rsp:
         createForm.platform === "openai" ? createForm.image_decode_size_on_rsp : false,
+      image_upscale_on_rsp:
+        createForm.platform === "openai" &&
+        createForm.image_decode_size_on_rsp
+          ? createForm.image_upscale_on_rsp
+          : false,
       daily_limit_usd: normalizeOptionalLimit(
         createForm.daily_limit_usd as number | string | null,
       ),
@@ -4205,6 +4264,7 @@ const handleCreateGroup = async () => {
     if (requestData.platform !== "openai") {
       requestData.image_prefer_fal = false;
       requestData.image_decode_size_on_rsp = false;
+      requestData.image_upscale_on_rsp = false;
     }
     await adminAPI.groups.create(requestData);
     appStore.showSuccess(t("admin.groups.groupCreated"));
@@ -4248,6 +4308,7 @@ const handleEdit = async (group: AdminGroup) => {
   );
   editForm.image_prefer_fal = group.image_prefer_fal ?? false;
   editForm.image_decode_size_on_rsp = group.image_decode_size_on_rsp ?? false;
+  editForm.image_upscale_on_rsp = group.image_upscale_on_rsp ?? false;
   editForm.claude_code_only = group.claude_code_only || false;
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
@@ -4314,6 +4375,10 @@ const handleUpdateGroup = async () => {
         editForm.platform === "openai" ? editForm.image_prefer_fal : false,
       image_decode_size_on_rsp:
         editForm.platform === "openai" ? editForm.image_decode_size_on_rsp : false,
+      image_upscale_on_rsp:
+        editForm.platform === "openai" && editForm.image_decode_size_on_rsp
+          ? editForm.image_upscale_on_rsp
+          : false,
       daily_limit_usd: normalizeOptionalLimit(
         editForm.daily_limit_usd as number | string | null,
       ),
@@ -4368,7 +4433,7 @@ const handleUpdateGroup = async () => {
       submitting.value = false;
       return;
     }
-    payload.image_pricing_matrix = toMatrixDTO(
+    payload.image_pricing_matrix = toMatrixUpdateDTO(
       editForm.image_pricing_matrix,
     );
 
@@ -4376,6 +4441,7 @@ const handleUpdateGroup = async () => {
     if (payload.platform !== "openai") {
       payload.image_prefer_fal = false;
       payload.image_decode_size_on_rsp = false;
+      payload.image_upscale_on_rsp = false;
     }
     await adminAPI.groups.update(editingGroup.value.id, payload);
     appStore.showSuccess(t("admin.groups.groupUpdated"));

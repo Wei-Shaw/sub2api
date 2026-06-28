@@ -8,6 +8,7 @@ import {
   IMAGE_PRICING_TIER_KEYS,
   loadEditableImagePricingMatrix,
   toMatrixDTO,
+  toMatrixUpdateDTO,
   validateEditableMatrix,
   type EditableImagePricingMatrix,
 } from '@/constants/imagePricingMatrix'
@@ -77,6 +78,20 @@ describe('toMatrixDTO', () => {
     expect(dto).toEqual({
       '1024x1024': { low: 0.006 },
       '3840x2160': { high: 0.401 },
+    })
+  })
+})
+
+describe('toMatrixUpdateDTO', () => {
+  it('全空时返回空对象，用于更新接口显式清空矩阵', () => {
+    expect(toMatrixUpdateDTO(createEmptyImagePricingMatrix())).toEqual({})
+  })
+
+  it('有值时与 toMatrixDTO 保持一致', () => {
+    const editable: EditableImagePricingMatrix = createEmptyImagePricingMatrix()
+    editable['1024x1024'].high = 0.211
+    expect(toMatrixUpdateDTO(editable)).toEqual({
+      '1024x1024': { high: 0.211 },
     })
   })
 })

@@ -25,7 +25,6 @@ import (
 	"github.com/imroc/req/v3"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
-	"go.uber.org/zap"
 )
 
 const (
@@ -741,8 +740,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	var usage OpenAIUsage
 	imageCount := parsed.N
 	var firstTokenMs *int
+	// upscale 依赖：分组（取自鉴权上下文）与显式请求尺寸（目标档位）。
+	var upscaleGroup *Group
+	if ak := getAPIKeyFromContext(c); ak != nil {
+		upscaleGroup = ak.Group
+	}
+	requestedUpscaleSize := requestedUpscaleTargetSize(parsed)
 	if parsed.Stream && isEventStreamResponse(resp.Header) {
-		streamUsage, streamCount, streamSizes, streamBase64s, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime)
+		streamUsage, streamCount, streamSizes, streamBase64s, ttft, err := s.handleOpenAIImagesStreamingResponse(ctx, resp, c, startTime, upscaleGroup, requestedUpscaleSize)
 		if err != nil {
 			if streamCount > 0 {
 				res := &OpenAIForwardResult{
@@ -788,7 +793,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		s.scheduleOpenAIImageCosUpload(ctx, res)
 		return res, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, nonStreamBase64s, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
+		nonStreamUsage, nonStreamCount, nonStreamSizes, nonStreamBase64s, err := s.handleOpenAIImagesNonStreamingResponse(ctx, resp, c, upscaleGroup, requestedUpscaleSize)
 		if err != nil {
 			return nil, err
 		}
@@ -952,13 +957,29 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 	return dst
 }
 
-func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context) (OpenAIUsage, int, []string, []string, error) {
+func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, group *Group, requestedSize string) (OpenAIUsage, int, []string, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, nil, err
 	}
 	// DEBUG: 打印上游返回的图片响应（status + 关键 header + body 预览）
 	logOpenAIImagesUpstreamResponse(resp, body)
+
+	usage, _ := extractOpenAIUsageFromJSONBytes(body)
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse(body)
+	b64s := counter.Base64Payloads()
+	sizes := counter.SizesPerSlot()
+
+	// 写客户端响应之前同步 upscale：放大成功则改写 body 内的 b64，使客户端与 COS 都拿放大图，
+	// 并据放大后尺寸计费（成功按目标档位、失败保留原图档位）。
+	newB64s, newSizes, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, b64s, sizes)
+	if changed {
+		body = rewriteOpenAIImageBase64InBody(body, b64s, newB64s)
+		b64s = newB64s
+		sizes = newSizes
+	}
+
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -968,33 +989,22 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 	}
 	c.Data(resp.StatusCode, contentType, body)
 
-	usage, _ := extractOpenAIUsageFromJSONBytes(body)
-	counter := newOpenAIImageOutputCounter()
-	counter.AddJSONResponse(body)
-
-	// === DEBUG: 查看 counter 中的数据 ===
-	logger.L().Info("[debug] openai.images.non_streaming_response.counter_data",
-		zap.String("component", "service.openai_gateway"),
-		zap.Int("image_count", counter.Count()),
-		zap.Strings("image_output_sizes", counter.SizesPerSlot()),
-		zap.Int("image_output_base64_count", len(counter.Base64Payloads())),
-		zap.Ints("image_output_base64_lens", func() []int {
-			lens := make([]int, len(counter.Base64Payloads()))
-			for i, p := range counter.Base64Payloads() {
-				lens[i] = len(p)
-			}
-			return lens
-		}()),
-	)
-
-	return usage, counter.Count(), counter.SizesPerSlot(), counter.Base64Payloads(), nil
+	return usage, counter.Count(), sizes, b64s, nil
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
+	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
 	startTime time.Time,
+	group *Group,
+	requestedSize string,
 ) (OpenAIUsage, int, []string, []string, *int, error) {
+	// 当本请求命中 upscale 条件时，流式退化为「缓冲整段 → 放大 → 一次性吐出」，
+	// 以保证客户端拿到放大后的图；不命中时维持下方原有的逐块实时流式（零行为变化）。
+	if s.shouldBufferOpenAIImagesForUpscale(ctx, group, requestedSize) {
+		return s.handleOpenAIImagesStreamingUpscale(ctx, resp, c, group, requestedSize, startTime)
+	}
 	// DEBUG: 标记进入流式响应处理（body 由后续 SSE 循环逐块打印走默认链路）
 	logger.LegacyPrintf(
 		"service.openai_gateway",
@@ -1201,6 +1211,60 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 			lastDownstreamWriteAt = time.Now()
 		}
 	}
+}
+
+// handleOpenAIImagesStreamingUpscale 是流式 + upscale 命中时的「缓冲→放大→一次性吐出」实现。
+// 缓冲整段上游 SSE，解析图片，按需放大并字面量改写缓冲字节，再写给客户端（流式退化为非流式）。
+func (s *OpenAIGatewayService) handleOpenAIImagesStreamingUpscale(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	group *Group,
+	requestedSize string,
+	startTime time.Time,
+) (OpenAIUsage, int, []string, []string, *int, error) {
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, resolveUpstreamResponseReadLimit(s.cfg)))
+	if err != nil {
+		return OpenAIUsage{}, 0, nil, nil, nil, err
+	}
+
+	usage := OpenAIUsage{}
+	counter := newOpenAIImageOutputCounter()
+	forEachOpenAISSEDataPayload(string(raw), func(data []byte) {
+		mergeOpenAIUsage(&usage, data)
+		counter.AddSSEData(data)
+	})
+	// 非 SSE 兜底：个别上游用一次性 JSON 回包。
+	if counter.Count() == 0 {
+		counter.AddJSONResponse(raw)
+		mergeOpenAIUsage(&usage, raw)
+	}
+
+	b64s := counter.Base64Payloads()
+	sizes := counter.SizesPerSlot()
+	newB64s, newSizes, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, b64s, sizes)
+	out := raw
+	if changed {
+		out = rewriteOpenAIImageBase64InBody(raw, b64s, newB64s)
+		b64s = newB64s
+		sizes = newSizes
+	}
+
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = "text/event-stream"
+	}
+	c.Status(resp.StatusCode)
+	c.Header("Content-Type", contentType)
+	ms := int(time.Since(startTime).Milliseconds())
+	firstTokenMs := &ms
+	if _, werr := c.Writer.Write(out); werr == nil {
+		if f, ok := c.Writer.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+	return usage, counter.Count(), sizes, b64s, firstTokenMs, nil
 }
 
 func (s *OpenAIGatewayService) openAIImageStreamDataInterval() time.Duration {
