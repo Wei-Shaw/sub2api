@@ -212,7 +212,9 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 提取 input 中 role:"system" 消息至 instructions（OAuth 上游不支持 system role）。
+	// ChatGPT internal Codex endpoint does not accept role:"system".
+	// Keep the guidance in input as developer for Responses JSON mode, and
+	// also mirror it into instructions because Codex OAuth requires it.
 	if extractSystemMessagesFromInput(reqBody) {
 		result.Modified = true
 REDACTED
@@ -948,10 +950,10 @@ func extractTextFromContent(content any) string {
 REDACTED
 REDACTED
 
-// extractSystemMessagesFromInput scans the input array for items with role=="system",
-// removes them, and merges their content into reqBody["instructions"].
-// If instructions is already non-empty, extracted content is prepended with "\n\n".
-// Returns true if any system messages were extracted.
+// extractSystemMessagesFromInput scans input for role=="system", maps those
+// items to developer, and mirrors their text into reqBody["instructions"].
+// It preserves the input items so Responses JSON mode can still see JSON
+// instructions in input messages.
 func extractSystemMessagesFromInput(reqBody map[string]any) bool {
 	input, ok := reqBody["input"].([]any)
 	if !ok || len(input) == 0 {
@@ -959,25 +961,24 @@ func extractSystemMessagesFromInput(reqBody map[string]any) bool {
 REDACTED
 
 	var systemTexts []string
-	remaining := make([]any, 0, len(input))
-
+	modified := false
 	for _, item := range input {
 		m, ok := item.(map[string]any)
 		if !ok {
-			remaining = append(remaining, item)
 			continue
 	REDACTED
 		if role, _ := m["role"].(string); role != "system" {
-			remaining = append(remaining, item)
 			continue
 	REDACTED
+		m["role"] = "developer"
+		modified = true
 		if text := extractTextFromContent(m["content"]); text != "" {
 			systemTexts = append(systemTexts, text)
 	REDACTED
 REDACTED
 
 	if len(systemTexts) == 0 {
-		return false
+		return modified
 REDACTED
 
 	extracted := strings.Join(systemTexts, "\n\n")
@@ -986,7 +987,6 @@ REDACTED
 REDACTED else {
 		reqBody["instructions"] = extracted
 REDACTED
-	reqBody["input"] = remaining
 	return true
 REDACTED
 
