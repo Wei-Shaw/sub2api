@@ -60,18 +60,18 @@ REDACTED
 	return NewSettingService(repo, &config.Config{REDACTED)
 REDACTED
 
-func TestGetDefaultPlatformQuotas_ReturnsFourPlatforms(t *testing.T) {
+func TestGetDefaultPlatformQuotas_ReturnsAllowedPlatforms(t *testing.T) {
 	zero := 0.0
 	svc := newSettingServiceForPlatformQuotaTest(map[string]string{
-		// 新 JSON 格式：anthropic daily=10.5, openai monthly=0, gemini/antigravity 无配置
+		// 新 JSON 格式：anthropic daily=10.5, openai monthly=0, 其他平台无配置
 		SettingKeyDefaultPlatformQuotas: `{"anthropic":{"daily":10.5REDACTED,"openai":{"monthly":0REDACTEDREDACTED`,
 REDACTED)
 	got, err := svc.GetDefaultPlatformQuotas(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 REDACTED
-	// 必须包含全部 4 个 platform key（补齐契约）
-	for _, platform := range []string{"anthropic", "openai", "gemini", "antigravity"REDACTED {
+	// 必须包含全部允许 platform key（补齐契约）
+	for _, platform := range AllowedQuotaPlatforms {
 		if _, ok := got[platform]; !ok {
 			t.Errorf("missing platform key: %q", platform)
 	REDACTED
@@ -188,7 +188,7 @@ REDACTED
 REDACTED
 
 // TestSystemPlatformQuotas_EmptyMapClearsAll 验证空 map 的整体替换语义：
-// 写入 DefaultPlatformQuotas={REDACTED 后，GetDefaultPlatformQuotas 返回 4 个平台、所有字段均为 nil，
+// 写入 DefaultPlatformQuotas={REDACTED 后，GetDefaultPlatformQuotas 返回全部允许平台、所有字段均为 nil，
 // 明确文档化"空 map = 清空全部配额"是有意为之的 whole-replace 语义。
 func TestSystemPlatformQuotas_EmptyMapClearsAll(t *testing.T) {
 	svc := newSettingServiceForPlatformQuotaTest(nil)
@@ -215,10 +215,10 @@ REDACTED
 	if err != nil {
 		t.Fatal(err)
 REDACTED
-	// 4 个 key 仍然存在（补齐契约）
-	for _, p := range []string{"anthropic", "openai", "gemini", "antigravity"REDACTED {
+	// 全部允许平台 key 仍然存在（补齐契约）
+	for _, p := range AllowedQuotaPlatforms {
 		if _, ok := got[p]; !ok {
-			t.Errorf("4-key contract violated after empty write: missing %q", p)
+			t.Errorf("allowed-platform contract violated after empty write: missing %q", p)
 	REDACTED
 REDACTED
 	// 所有字段 nil（全部已清空）
