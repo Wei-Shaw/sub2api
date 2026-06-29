@@ -678,6 +678,7 @@ REDACTED
 		"request_id",
 		"client_request_id",
 		"user_id",
+		"api_key_id",
 		"account_id",
 		"platform",
 		"model",
@@ -719,6 +720,7 @@ REDACTED
 			opsNullString(input.RequestID),
 			opsNullString(input.ClientRequestID),
 			opsNullInt64(input.UserID),
+			opsNullInt64(input.APIKeyID),
 			opsNullInt64(input.AccountID),
 			opsNullString(input.Platform),
 			opsNullString(input.Model),
@@ -785,6 +787,7 @@ SELECT
   COALESCE(l.request_id, ''),
   COALESCE(l.client_request_id, ''),
   l.user_id,
+  l.api_key_id,
   l.account_id,
   COALESCE(l.platform, ''),
   COALESCE(l.model, ''),
@@ -804,6 +807,7 @@ REDACTED
 	for rows.Next() {
 		item := &service.OpsSystemLog{REDACTED
 		var userID sql.NullInt64
+		var apiKeyID sql.NullInt64
 		var accountID sql.NullInt64
 		var extraRaw string
 		if err := rows.Scan(
@@ -815,6 +819,7 @@ REDACTED
 			&item.RequestID,
 			&item.ClientRequestID,
 			&userID,
+			&apiKeyID,
 			&accountID,
 			&item.Platform,
 			&item.Model,
@@ -825,6 +830,10 @@ REDACTED
 		if userID.Valid {
 			v := userID.Int64
 			item.UserID = &v
+	REDACTED
+		if apiKeyID.Valid {
+			v := apiKeyID.Int64
+			item.APIKeyID = &v
 	REDACTED
 		if accountID.Valid {
 			v := accountID.Int64
@@ -1098,6 +1107,11 @@ REDACTED
 			clauses = append(clauses, "l.user_id = $"+itoa(len(args)))
 			hasConstraint = true
 	REDACTED
+		if filter.APIKeyID != nil && *filter.APIKeyID > 0 {
+			args = append(args, *filter.APIKeyID)
+			clauses = append(clauses, "l.api_key_id = $"+itoa(len(args)))
+			hasConstraint = true
+	REDACTED
 		if filter.AccountID != nil && *filter.AccountID > 0 {
 			args = append(args, *filter.AccountID)
 			clauses = append(clauses, "l.account_id = $"+itoa(len(args)))
@@ -1137,6 +1151,7 @@ REDACTED
 		RequestID:       filter.RequestID,
 		ClientRequestID: filter.ClientRequestID,
 		UserID:          filter.UserID,
+		APIKeyID:        filter.APIKeyID,
 		AccountID:       filter.AccountID,
 		Platform:        filter.Platform,
 		Model:           filter.Model,
