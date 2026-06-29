@@ -174,3 +174,27 @@ func TestAPIKeyService_UpdateQuotaUsed_UsesAtomicStatePath(t *testing.T) {
 	require.Equal(t, 0, repo.getByIDCalls, "fast path should not re-read API key by id")
 	require.Equal(t, []string{svc.authCacheKey("sk-test-quota")}, cache.deleteAuthKeys)
 }
+
+func TestAPIKeyService_Update_ReactivatesQuotaExhaustedWhenQuotaUnlimited(t *testing.T) {
+	repo := &apiKeyRepoStub{
+		apiKey: &APIKey{
+			ID:        10,
+			UserID:    7,
+			Key:       "sk-test-unlimited",
+			Status:    StatusAPIKeyQuotaExhausted,
+			Quota:     10,
+			QuotaUsed: 12,
+		},
+	}
+	svc := &APIKeyService{apiKeyRepo: repo}
+	quota := 0.0
+
+	updated, err := svc.Update(context.Background(), 10, 7, UpdateAPIKeyRequest{Quota: &quota})
+
+	require.NoError(t, err)
+	require.Equal(t, StatusActive, updated.Status)
+	require.Equal(t, 0.0, updated.Quota)
+	require.Len(t, repo.updatedKeys, 1)
+	require.Equal(t, StatusActive, repo.updatedKeys[0].Status)
+	require.Equal(t, 0.0, repo.updatedKeys[0].Quota)
+}
