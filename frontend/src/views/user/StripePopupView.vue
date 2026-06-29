@@ -58,6 +58,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { useRoute REDACTED from 'vue-router'
 import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import { isMobileDevice REDACTED from '@/utils/device'
+import { buildApiUrl REDACTED from '@/api/client'
 
 interface StripeWithWechatPay {
   confirmWechatPayPayment(clientSecret: string, options: Record<string, unknown>): Promise<{ error?: { message?: string REDACTED; paymentIntent?: { status: string REDACTED REDACTED>
@@ -152,7 +153,7 @@ function startPolling() {
     try {
       const token = document.cookie.split('; ').find(c => c.startsWith('token='))?.split('=')[1]
         || localStorage.getItem('token') || ''
-      const res = await fetch('/api/v1/payment/orders/' + orderId, {
+      const res = await fetch(buildApiUrl(`/payment/orders/${orderIdREDACTED`), {
         headers: token ? { Authorization: 'Bearer ' + token REDACTED : {REDACTED,
         credentials: 'include',
       REDACTED)

@@ -493,6 +493,7 @@
 import { ref, reactive, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { testDatabase, testRedis, install, type InstallRequest REDACTED from '@/api/setup'
+import { buildGatewayUrl REDACTED from '@/api/client'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -644,7 +645,7 @@ async function waitForServiceRestart() {
     try {
       // Use setup status endpoint as it tells us the real mode
       // Service might return 404 or connection refused while restarting
-      const response = await fetch('/setup/status', {
+      const response = await fetch(buildGatewayUrl('/setup/status'), {
         method: 'GET',
         cache: 'no-store'
       REDACTED)
