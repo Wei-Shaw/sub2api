@@ -147,7 +147,166 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED
+	out, err = sanitizeGrokResponsesUnsupportedFields(out)
+	if err != nil {
+		return nil, err
+REDACTED
+	out, err = sanitizeGrokResponsesTools(out)
+	if err != nil {
+		return nil, err
+REDACTED
 	return out, nil
+REDACTED
+
+var grokResponsesUnsupportedRecursiveFields = map[string]struct{REDACTED{
+	"external_web_access": {REDACTED,
+REDACTED
+
+func sanitizeGrokResponsesUnsupportedFields(body []byte) ([]byte, error) {
+	if !bytes.Contains(body, []byte(`"external_web_access"`)) {
+		return body, nil
+REDACTED
+
+	var payload any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+REDACTED
+	if !deleteJSONFields(payload, grokResponsesUnsupportedRecursiveFields) {
+		return body, nil
+REDACTED
+	return json.Marshal(payload)
+REDACTED
+
+func deleteJSONFields(value any, fields map[string]struct{REDACTED) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		changed := false
+		for field := range fields {
+			if _, ok := typed[field]; ok {
+				delete(typed, field)
+				changed = true
+		REDACTED
+	REDACTED
+		for _, child := range typed {
+			if deleteJSONFields(child, fields) {
+				changed = true
+		REDACTED
+	REDACTED
+		return changed
+	case []any:
+		changed := false
+		for _, child := range typed {
+			if deleteJSONFields(child, fields) {
+				changed = true
+		REDACTED
+	REDACTED
+		return changed
+	default:
+		return false
+REDACTED
+REDACTED
+
+var grokResponsesSupportedToolTypes = map[string]struct{REDACTED{
+	"code_execution":     {REDACTED,
+	"code_interpreter":   {REDACTED,
+	"collections_search": {REDACTED,
+	"file_search":        {REDACTED,
+	"function":           {REDACTED,
+	"mcp":                {REDACTED,
+	"shell":              {REDACTED,
+	"web_search":         {REDACTED,
+	"x_search":           {REDACTED,
+REDACTED
+
+func sanitizeGrokResponsesTools(body []byte) ([]byte, error) {
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.Exists() || !tools.IsArray() {
+		return body, nil
+REDACTED
+
+	rawTools := tools.Array()
+	filteredTools := make([]json.RawMessage, 0, len(rawTools))
+	for _, tool := range rawTools {
+		toolType := strings.TrimSpace(tool.Get("type").String())
+		if _, ok := grokResponsesSupportedToolTypes[toolType]; ok {
+			filteredTools = append(filteredTools, json.RawMessage(tool.Raw))
+	REDACTED
+REDACTED
+
+	var err error
+	if len(filteredTools) != len(rawTools) {
+		if len(filteredTools) == 0 {
+			body, err = sjson.DeleteBytes(body, "tools")
+	REDACTED else {
+			var encoded []byte
+			encoded, err = json.Marshal(filteredTools)
+			if err != nil {
+				return nil, err
+		REDACTED
+			body, err = sjson.SetRawBytes(body, "tools", encoded)
+	REDACTED
+		if err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+
+	toolChoice := gjson.GetBytes(body, "tool_choice")
+	if !toolChoice.Exists() {
+		return body, nil
+REDACTED
+	if shouldDropGrokToolChoice(toolChoice, filteredTools) {
+		body, err = sjson.DeleteBytes(body, "tool_choice")
+		if err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	return body, nil
+REDACTED
+
+func shouldDropGrokToolChoice(toolChoice gjson.Result, tools []json.RawMessage) bool {
+	if len(tools) == 0 {
+		return true
+REDACTED
+	if !toolChoice.IsObject() {
+		return false
+REDACTED
+	choiceType := strings.TrimSpace(toolChoice.Get("type").String())
+	if choiceType == "" {
+		return false
+REDACTED
+	if _, ok := grokResponsesSupportedToolTypes[choiceType]; !ok {
+		return true
+REDACTED
+	if choiceType == "function" {
+		choiceName := strings.TrimSpace(toolChoice.Get("name").String())
+		if choiceName == "" {
+			choiceName = strings.TrimSpace(toolChoice.Get("function.name").String())
+	REDACTED
+		if choiceName == "" {
+			return false
+	REDACTED
+		for _, tool := range tools {
+			var item struct {
+				Type     string `json:"type"`
+				Name     string `json:"name"`
+				Function struct {
+					Name string `json:"name"`
+			REDACTED `json:"function"`
+		REDACTED
+			if err := json.Unmarshal(tool, &item); err != nil {
+				continue
+		REDACTED
+			name := strings.TrimSpace(item.Name)
+			if name == "" {
+				name = strings.TrimSpace(item.Function.Name)
+		REDACTED
+			if strings.TrimSpace(item.Type) == "function" && name == choiceName {
+				return false
+		REDACTED
+	REDACTED
+		return true
+REDACTED
+	return false
 REDACTED
 
 func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string) (*http.Request, error) {
