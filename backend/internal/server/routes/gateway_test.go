@@ -106,6 +106,14 @@ REDACTED {
 		require.Contains(t, w.Body.String(), "not supported for Grok groups")
 REDACTED
 
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED]REDACTED`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Contains(t, w.Body.String(), "Token counting is not supported for this platform")
+
 	for _, path := range []string{
 		"/v1/responses",
 		"/responses",
@@ -118,4 +126,15 @@ REDACTED {
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should still reach Responses handler", path)
 REDACTED
+REDACTED
+
+func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"REDACTED]REDACTED`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
 REDACTED

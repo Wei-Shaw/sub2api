@@ -41,8 +41,9 @@ const (
 	// ChatGPT internal API for OAuth accounts
 	chatgptCodexURL = "https://chatgpt.com/backend-api/codex/responses"
 	// OpenAI Platform API for API Key accounts (fallback)
-	openaiPlatformAPIURL   = "https://api.openai.com/v1/responses"
-	openaiStickySessionTTL = time.Hour // 粘性会话TTL
+	openaiPlatformAPIURL            = "https://api.openai.com/v1/responses"
+	openaiPlatformAPIInputTokensURL = "https://api.openai.com/v1/responses/input_tokens"
+	openaiStickySessionTTL          = time.Hour // 粘性会话TTL
 	// 与真实 Codex CLI 的 User-Agent 结构对齐：
 	// {originatorREDACTED/{versionREDACTED ({OSREDACTED {OS_versionREDACTED; {archREDACTED) {terminalREDACTED
 	// 旧值 "codex_cli_rs/0.125.0" 缺少 OS/架构/终端后缀，易被上游指纹识别为非官方客户端。
