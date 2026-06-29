@@ -436,12 +436,21 @@ type ChatCompletionsRequest struct {
 	Tools               []ChatTool         `json:"tools,omitempty"`
 	ToolChoice          json.RawMessage    `json:"tool_choice,omitempty"`
 	ReasoningEffort     string             `json:"reasoning_effort,omitempty"` // "low" | "medium" | "high" | "xhigh"
+	Thinking            *ChatThinking      `json:"thinking,omitempty"`         // GLM/DeepSeek/Qwen-style thinking toggle
 	ServiceTier         string             `json:"service_tier,omitempty"`
 	Stop                json.RawMessage    `json:"stop,omitempty"` // string or []string
 
 	// Legacy function calling (deprecated but still supported)
 	Functions    []ChatFunction  `json:"functions,omitempty"`
 	FunctionCall json.RawMessage `json:"function_call,omitempty"`
+}
+
+// ChatThinking toggles extended thinking on chat upstreams that follow the
+// Anthropic-style {"type":"enabled"|"disabled"} shape (GLM, DeepSeek, Qwen,
+// Kimi, MiniMax, ...). Only "type" is carried — never Anthropic-only fields
+// such as budget_tokens, which strict upstreams may reject.
+type ChatThinking struct {
+	Type string `json:"type"`
 }
 
 // ChatStreamOptions configures streaming behavior.
