@@ -197,8 +197,8 @@ func TestApplyOpenAIImageBillingResolution_WithDecodingEndToEnd(t *testing.T) {
 	}
 	g := &Group{Platform: PlatformOpenAI, ImageDecodeSizeOnRsp: true}
 	ApplyOpenAIImageBillingResolution(result, g)
-	// 1920x1080 命中 2K 档
-	require.Equal(t, ImageBillingSize2K, result.ImageSize)
+	// 1920x1080 命中 1K 档
+	require.Equal(t, ImageBillingSize1K, result.ImageSize)
 	// Source 应为 output_decoded（D9）
 	require.Equal(t, ImageSizeSourceOutputDecoded, result.ImageSizeSource)
 }

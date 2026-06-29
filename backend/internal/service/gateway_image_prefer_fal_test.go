@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
@@ -37,6 +38,11 @@ func withTestGroup(ctx context.Context, groupID int64) context.Context {
 		Platform: PlatformOpenAI,
 		Status:   StatusActive,
 		Hydrated: true,
+		ImagePricingMatrix: domain.ImagePricingMatrix{
+			domain.ImagePricingTierKey("1024x1024"): {
+				ImageQualityHigh: 0.25,
+			},
+		},
 	}
 	return context.WithValue(ctx, ctxkey.Group, g)
 }

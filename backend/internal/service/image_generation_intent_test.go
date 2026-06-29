@@ -81,7 +81,7 @@ func TestResolveOpenAIResponsesImageBillingConfigToolModelWins(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-image-2", imageModel)
-	require.Equal(t, "2K", imageSize)
+	require.Equal(t, "1K", imageSize)
 }
 
 func TestResolveOpenAIResponsesImageBillingConfigFromBodyIgnoresUnrelatedLargeInput(t *testing.T) {
@@ -145,7 +145,7 @@ func TestResolveOpenAIResponsesImageBillingConfigDoesNotRejectUnknownSizes(t *te
 	)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-image-1.5", imageModel)
-	require.Equal(t, "2K", imageSize)
+	require.Equal(t, "1K", imageSize)
 }
 
 func TestOpenAIImageOutputCounterDeduplicatesFinalImages(t *testing.T) {
