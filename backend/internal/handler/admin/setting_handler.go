@@ -1445,6 +1445,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")
 				return
 			}
+			action := strings.TrimSpace(item.Action)
+			if action == "" {
+				action = "iframe"
+			}
+			if action != "iframe" && action != "same_tab" && action != "new_tab" {
+				response.BadRequest(c, "Custom menu item action must be 'iframe', 'same_tab', or 'new_tab'")
+				return
+			}
+			items[i].Action = action
 			if len(item.IconSVG) > maxMenuItemIconSVGLen {
 				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
 				return

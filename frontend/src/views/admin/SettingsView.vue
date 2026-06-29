@@ -5371,8 +5371,28 @@
                     </select>
                   </div>
 
+                  <!-- Action -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.customMenu.action") }}
+                    </label>
+                    <select v-model="item.action" class="input text-sm">
+                      <option value="iframe">
+                        {{ t("admin.settings.customMenu.actionIframe") }}
+                      </option>
+                      <option value="same_tab">
+                        {{ t("admin.settings.customMenu.actionSameTab") }}
+                      </option>
+                      <option value="new_tab">
+                        {{ t("admin.settings.customMenu.actionNewTab") }}
+                      </option>
+                    </select>
+                  </div>
+
                   <!-- URL (full width) -->
-                  <div class="sm:col-span-2">
+                  <div>
                     <label
                       class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
                     >
@@ -8047,6 +8067,7 @@ const form = reactive<SettingsForm>({
     label: string;
     icon_svg: string;
     url: string;
+    action: "iframe" | "same_tab" | "new_tab";
     visibility: "user" | "admin";
     sort_order: number;
   }>,
@@ -8696,6 +8717,7 @@ function addMenuItem() {
     label: "",
     icon_svg: "",
     url: "",
+    action: "iframe",
     visibility: "user",
     sort_order: form.custom_menu_items.length,
   });
@@ -8720,6 +8742,20 @@ function moveMenuItem(index: number, direction: -1 | 1) {
   items.forEach((item, i) => {
     item.sort_order = i;
   });
+}
+
+function normalizeMenuItems(
+  items: typeof form.custom_menu_items,
+): typeof form.custom_menu_items {
+  return Array.isArray(items)
+    ? items.map((item) => ({
+        ...item,
+        action:
+          item.action === "same_tab" || item.action === "new_tab"
+            ? item.action
+            : "iframe",
+      }))
+    : [];
 }
 
 // Custom endpoint management
@@ -8840,6 +8876,7 @@ async function loadSettings() {
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
+    form.custom_menu_items = normalizeMenuItems(form.custom_menu_items);
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
@@ -9210,7 +9247,7 @@ async function saveSettings() {
       hide_ccs_import_button: form.hide_ccs_import_button,
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
-      custom_menu_items: form.custom_menu_items,
+      custom_menu_items: normalizeMenuItems(form.custom_menu_items),
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,

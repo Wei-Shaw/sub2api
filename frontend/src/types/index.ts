@@ -173,12 +173,15 @@ export interface SendVerifyCodeResponse {
   countdown: number
 }
 
+export type CustomMenuAction = 'iframe' | 'same_tab' | 'new_tab'
+
 export interface CustomMenuItem {
   id: string
   label: string
   icon_svg: string
   url: string
   page_slug?: string
+  action?: CustomMenuAction
   visibility: 'user' | 'admin'
   sort_order: number
 }

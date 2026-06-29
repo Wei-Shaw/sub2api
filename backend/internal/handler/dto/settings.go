@@ -15,7 +15,8 @@ type CustomMenuItem struct {
 	IconSVG    string `json:"icon_svg"`
 	URL        string `json:"url"`
 	PageSlug   string `json:"page_slug,omitempty"`
-	Visibility string `json:"visibility"` // "user" or "admin"
+	Action     string `json:"action,omitempty"` // "iframe", "same_tab", or "new_tab"
+	Visibility string `json:"visibility"`       // "user" or "admin"
 	SortOrder  int    `json:"sort_order"`
 }
 
@@ -547,6 +548,11 @@ func ParseCustomMenuItems(raw string) []CustomMenuItem {
 	var items []CustomMenuItem
 	if err := json.Unmarshal([]byte(raw), &items); err != nil {
 		return []CustomMenuItem{}
+	}
+	for i := range items {
+		if items[i].Action == "" {
+			items[i].Action = "iframe"
+		}
 	}
 	return items
 }
