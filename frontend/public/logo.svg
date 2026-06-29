@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" role="img" aria-label="Flymux logo cool variant">
+  <defs>
+    <linearGradient id="body" x1="75" y1="38" x2="219" y2="266" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#62f5ff"/>
+      <stop offset="0.48" stop-color="#2f8cff"/>
+      <stop offset="1" stop-color="#6f3cff"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="60" y1="32" x2="241" y2="267" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c7fff4"/>
+      <stop offset="0.34" stop-color="#35d7ff"/>
+      <stop offset="1" stop-color="#6848ff"/>
+    </linearGradient>
+    <linearGradient id="eyeFill" x1="96" y1="114" x2="118" y2="149" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7dfcff"/>
+      <stop offset="1" stop-color="#4b63ff"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#2633a6" flood-opacity="0.18"/>
+    </filter>
+    <clipPath id="ghostClip">
+      <path d="M57 251V121c0-52.5 42.5-95 95-95s91 42.5 91 95v130c0 8.8-6.2 15-14 15-8.4 0-14-6.4-14-16 0-8.4-4.6-14-12.5-14S190 241.6 190 250c0 9.6-5.6 16-14 16s-14-6.4-14-16c0-8.4-4.6-14-12.5-14S137 241.6 137 250c0 9.6-5.6 16-14 16s-14-6.4-14-16c0-8.4-4.6-14-12.5-14S84 241.6 84 250c0 9.6-5.6 16-14 16-7.8 0-13-6.2-13-15Z"/>
+    </clipPath>
+    <mask id="eyeCutouts" maskUnits="userSpaceOnUse">
+      <rect width="300" height="300" fill="#fff"/>
+      <circle cx="109.5" cy="133.5" r="27.5" fill="#000"/>
+      <circle cx="190.5" cy="133.5" r="27.5" fill="#000"/>
+      <circle cx="109.5" cy="133.5" r="15.8" fill="#fff"/>
+      <circle cx="190.5" cy="133.5" r="15.8" fill="#fff"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#eyeCutouts)">
+    <path fill="url(#rim)" d="M57 251V121c0-52.5 42.5-95 95-95s91 42.5 91 95v130c0 8.8-6.2 15-14 15-8.4 0-14-6.4-14-16 0-8.4-4.6-14-12.5-14S190 241.6 190 250c0 9.6-5.6 16-14 16s-14-6.4-14-16c0-8.4-4.6-14-12.5-14S137 241.6 137 250c0 9.6-5.6 16-14 16s-14-6.4-14-16c0-8.4-4.6-14-12.5-14S84 241.6 84 250c0 9.6-5.6 16-14 16-7.8 0-13-6.2-13-15Z"/>
+    <path fill="url(#body)" filter="url(#softShadow)" d="M61 250V122c0-50.2 40.7-91 91-91s87 40.8 87 91v128c0 6.4-4.4 11-10 11-6.2 0-10-4.8-10-12 0-10.8-6.8-18-16.5-18S186 238.2 186 249c0 7.2-3.8 12-10 12s-10-4.8-10-12c0-10.8-6.8-18-16.5-18S133 238.2 133 249c0 7.2-3.8 12-10 12s-10-4.8-10-12c0-10.8-6.8-18-16.5-18S80 238.2 80 249c0 7.2-3.8 12-10 12-5.5 0-9-4.6-9-11Z"/>
+
+    <g clip-path="url(#ghostClip)" opacity="0.9">
+      <path fill="#9dfcff" d="M126 204c38.8-8.8 73.2-21.6 109-43-24.6 24.5-60.5 40-109 43Z" opacity="0.78"/>
+      <path fill="#67e8ff" d="M136 218c36.5-8.2 67.8-20.8 97-42.5-21.2 25.8-51.9 40.6-97 42.5Z" opacity="0.68"/>
+      <path fill="#55a8ff" d="M149 231c31.2-8.8 57.5-21.5 82-42.5-17.2 24.2-44 39.2-82 42.5Z" opacity="0.7"/>
+    </g>
+  </g>
+
+  <circle cx="109.5" cy="133.5" r="15.8" fill="url(#eyeFill)"/>
+  <circle cx="190.5" cy="133.5" r="15.8" fill="url(#eyeFill)"/>
+</svg>

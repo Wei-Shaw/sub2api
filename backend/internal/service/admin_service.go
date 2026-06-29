@@ -231,6 +231,12 @@ type CreateGroupInput struct {
 	ModelsListConfig            GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled   bool
+	KiroAutoStickyEnabled       *bool
+	KiroStickySessionTTLSeconds *int
+	KiroCacheEmulationRatio     *float64
+	KiroEndpointMode            *string
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -272,6 +278,12 @@ type UpdateGroupInput struct {
 	ModelsListConfig            *GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled   *bool
+	KiroAutoStickyEnabled       *bool
+	KiroStickySessionTTLSeconds *int
+	KiroCacheEmulationRatio     *float64
+	KiroEndpointMode            *string
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -1847,6 +1859,11 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		mcpXMLInject = *input.MCPXMLInject
 	}
 
+	kiroAutoStickyEnabled := platform == PlatformKiro
+	if input.KiroAutoStickyEnabled != nil {
+		kiroAutoStickyEnabled = *input.KiroAutoStickyEnabled
+	}
+
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
 	if len(input.CopyAccountsFromGroupIDs) > 0 {
@@ -1909,14 +1926,28 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
 		RPMLimit:                        input.RPMLimit,
+		KiroCacheEmulationEnabled:       input.KiroCacheEmulationEnabled,
+		KiroAutoStickyEnabled:           kiroAutoStickyEnabled,
+	}
+	if input.KiroStickySessionTTLSeconds != nil {
+		group.KiroStickySessionTTLSeconds = *input.KiroStickySessionTTLSeconds
+	}
+	if input.KiroCacheEmulationRatio != nil {
+		group.KiroCacheEmulationRatio = *input.KiroCacheEmulationRatio
+	}
+	if input.KiroEndpointMode != nil {
+		group.KiroEndpointMode = *input.KiroEndpointMode
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	normalizeKiroCacheEmulationFields(group)
+	normalizeKiroEndpointFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 	}
 
 	// require_oauth_only: 过滤掉 apikey 类型账号
 	if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini || group.Platform == PlatformGrok) && len(accountIDsToCopy) > 0 {
+	if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini || group.Platform == PlatformKiro) && len(accountIDsToCopy) > 0 {
 		accounts, err := s.accountRepo.GetByIDs(ctx, accountIDsToCopy)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch accounts for oauth filter: %w", err)
@@ -2161,7 +2192,24 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
 	}
+	if input.KiroCacheEmulationEnabled != nil {
+		group.KiroCacheEmulationEnabled = *input.KiroCacheEmulationEnabled
+	}
+	if input.KiroAutoStickyEnabled != nil {
+		group.KiroAutoStickyEnabled = *input.KiroAutoStickyEnabled
+	}
+	if input.KiroStickySessionTTLSeconds != nil {
+		group.KiroStickySessionTTLSeconds = *input.KiroStickySessionTTLSeconds
+	}
+	if input.KiroCacheEmulationRatio != nil {
+		group.KiroCacheEmulationRatio = *input.KiroCacheEmulationRatio
+	}
+	if input.KiroEndpointMode != nil {
+		group.KiroEndpointMode = *input.KiroEndpointMode
+	}
 	sanitizeGroupMessagesDispatchFields(group)
+	normalizeKiroCacheEmulationFields(group)
+	normalizeKiroEndpointFields(group)
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
@@ -2212,6 +2260,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 
 		// require_oauth_only: 过滤掉 apikey 类型账号
 		if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini || group.Platform == PlatformGrok) && len(accountIDsToCopy) > 0 {
+		if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini || group.Platform == PlatformKiro) && len(accountIDsToCopy) > 0 {
 			accounts, err := s.accountRepo.GetByIDs(ctx, accountIDsToCopy)
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch accounts for oauth filter: %w", err)
@@ -2627,6 +2676,14 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 			return nil, err
 		}
 		ComputeQuotaResetAt(account.Extra)
+		if err := validateAccountCustomHeadersFromExtra(account.Extra); err != nil {
+			return nil, err
+		}
+		if account.Platform == PlatformKiro && account.Type == AccountTypeOAuth {
+			if err := ValidateKiroCreditUnitPriceFromExtra(account.Extra); err != nil {
+				return nil, err
+			}
+		}
 		NormalizeFixedQuotaWindows(account.Extra)
 	}
 	if input.ExpiresAt != nil && *input.ExpiresAt > 0 {
@@ -2736,6 +2793,14 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 		ComputeQuotaResetAt(account.Extra)
+		if err := validateAccountCustomHeadersFromExtra(account.Extra); err != nil {
+			return nil, err
+		}
+		if account.Platform == PlatformKiro && account.Type == AccountTypeOAuth {
+			if err := ValidateKiroCreditUnitPriceFromExtra(account.Extra); err != nil {
+				return nil, err
+			}
+		}
 		NormalizeFixedQuotaWindows(account.Extra)
 	}
 	if input.ProxyID != nil {

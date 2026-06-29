@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -66,8 +68,8 @@ type DataAccount struct {
 }
 
 type DataImportRequest struct {
-	Data                 DataPayload `json:"data"`
-	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+	Data                 json.RawMessage `json:"data"`
+	SkipDefaultGroupBind *bool           `json:"skip_default_group_bind"`
 }
 
 type DataImportResult struct {
@@ -206,23 +208,27 @@ func (h *AccountHandler) ImportData(c *gin.Context) {
 		return
 	}
 
-	if err := validateDataHeader(req.Data); err != nil {
+	dataPayload, err := parseDataImportPayload(req.Data)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := validateDataHeader(dataPayload); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
 
 	executeAdminIdempotentJSON(c, "admin.accounts.import_data", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
-		return h.importData(ctx, req)
+		return h.importData(ctx, req, dataPayload)
 	})
 }
 
-func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) (DataImportResult, error) {
+func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, dataPayload DataPayload) (DataImportResult, error) {
 	skipDefaultGroupBind := true
 	if req.SkipDefaultGroupBind != nil {
 		skipDefaultGroupBind = *req.SkipDefaultGroupBind
 	}
 
-	dataPayload := req.Data
 	result := DataImportResult{}
 
 	existingProxies, err := h.listAllProxies(ctx)
@@ -605,6 +611,24 @@ func parseIncludeProxies(c *gin.Context) (bool, error) {
 		return false, nil
 	default:
 		return true, fmt.Errorf("invalid include_proxies value: %s", raw)
+	}
+}
+
+func parseDataImportPayload(raw json.RawMessage) (DataPayload, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return DataPayload{}, errors.New("data is required")
+	}
+
+	switch trimmed[0] {
+	case '{':
+		var payload DataPayload
+		if err := json.Unmarshal(trimmed, &payload); err != nil {
+			return DataPayload{}, fmt.Errorf("data JSON 解析失败: %w", err)
+		}
+		return payload, nil
+	default:
+		return DataPayload{}, errors.New("unsupported data format: expected sub2api data export object")
 	}
 }
 

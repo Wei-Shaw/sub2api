@@ -1102,6 +1102,7 @@
           </div>
         </template>
       </BaseDialog>
+      <ConfirmDialog :show="showClearHashesDialog" :title="t('admin.riskControl.clearFlaggedHashesConfirm')" :message="t('admin.riskControl.clearFlaggedHashesConfirm')" :confirm-text="t('common.confirm')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmClearFlaggedHashes" @cancel="showClearHashesDialog = false" />
     </div>
   </AppLayout>
 </template>
@@ -1115,6 +1116,7 @@ import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Pagination from '@/components/common/Pagination.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import { adminAPI } from '@/api/admin'
 import type {
@@ -1902,10 +1904,13 @@ async function deleteFlaggedHash() {
   }
 }
 
-async function clearFlaggedHashes() {
+const showClearHashesDialog = ref(false)
+function clearFlaggedHashes() {
   if (hashActionLoading.value) return
-  const confirmed = window.confirm(t('admin.riskControl.clearFlaggedHashesConfirm'))
-  if (!confirmed) return
+  showClearHashesDialog.value = true
+}
+async function confirmClearFlaggedHashes() {
+  showClearHashesDialog.value = false
   hashActionLoading.value = true
   try {
     const result = await adminAPI.riskControl.clearFlaggedHashes()

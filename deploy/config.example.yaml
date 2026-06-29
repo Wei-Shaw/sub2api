@@ -89,6 +89,10 @@ security:
     enabled: false
     # Allowed upstream hosts for API proxying
     # 允许代理的上游 API 主机列表
+    # If you enable Kiro OAuth / IDC, also allow Kiro auth and AWS SSO OIDC hosts.
+    # 如果启用 Kiro OAuth / IDC，请同时放行 Kiro 鉴权域名和 AWS SSO OIDC 域名。
+    # If you enable Kiro runtime forwarding, also allow the corresponding AWS Q API endpoint.
+    # 如果启用 Kiro 运行时转发，还需要放行对应的 AWS Q API 域名。
     upstream_hosts:
       - "api.openai.com"
       - "api.anthropic.com"
@@ -97,6 +101,11 @@ security:
       - "api.minimaxi.com"
       - "generativelanguage.googleapis.com"
       - "cloudcode-pa.googleapis.com"
+      - "prod.us-east-1.auth.desktop.kiro.dev"
+      - "oidc.us-east-1.amazonaws.com"
+      - "oidc.*.amazonaws.com"
+      - "device.sso.*.amazonaws.com"
+      - "q.*.amazonaws.com"
       - "*.openai.azure.com"
     # Allowed hosts for pricing data download
     # 允许下载定价数据的主机列表
@@ -372,6 +381,9 @@ gateway:
   # Stream keepalive interval (seconds), 0=disable
   # 流式 keepalive 间隔（秒），0=禁用
   stream_keepalive_interval: 10
+  # Kiro stream keepalive interval (seconds), 0=use default 25
+  # Kiro 流式 keepalive 间隔（秒），0=使用默认 25
+  kiro_stream_keepalive_interval: 25
   # Image stream data interval timeout (seconds), 0=disable; independent from ordinary text streams
   # 图片流数据间隔超时（秒），0=禁用；独立于普通文本流式
   image_stream_data_interval_timeout: 900

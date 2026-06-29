@@ -123,6 +123,14 @@ type OpsUpstreamErrorEvent struct {
 	AccountID   int64  `json:"account_id,omitempty"`
 	AccountName string `json:"account_name,omitempty"`
 
+	// Model diagnostics.
+	RequestedModel      string `json:"requested_model,omitempty"`
+	MappedModel         string `json:"mapped_model,omitempty"`
+	KiroModelID         string `json:"kiro_model_id,omitempty"`
+	HasTools            bool   `json:"has_tools,omitempty"`
+	HasAdaptiveThinking bool   `json:"has_adaptive_thinking,omitempty"`
+	HasContext1MBeta    bool   `json:"has_context_1m_beta,omitempty"`
+
 	// Outcome
 	UpstreamStatusCode int    `json:"upstream_status_code,omitempty"`
 	UpstreamRequestID  string `json:"upstream_request_id,omitempty"`

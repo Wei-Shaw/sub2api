@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"strconv"
@@ -629,8 +630,9 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 		return
 	}
 
-	if len(req.Quotas) > 4 {
-		response.BadRequest(c, "quotas length must be <= 4")
+	maxQuotaPlatforms := len(service.AllowedQuotaPlatforms)
+	if len(req.Quotas) > maxQuotaPlatforms {
+		response.BadRequest(c, fmt.Sprintf("quotas length must be <= %d", maxQuotaPlatforms))
 		return
 	}
 	seen := make(map[string]struct{}, len(req.Quotas))

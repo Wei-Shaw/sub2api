@@ -251,7 +251,8 @@ const PLATFORM_LABELS: Record<string, string> = {
   anthropic: 'Claude',
   openai: 'OpenAI',
   gemini: 'Gemini',
-  antigravity: 'Antigravity'
+  antigravity: 'Antigravity',
+  kiro: 'Kiro'
 }
 
 const platformLabel = (p: string) => PLATFORM_LABELS[p] ?? p
@@ -279,6 +280,7 @@ const platformCards = computed<FusedPlatformCard[]>(() => {
   const platforms = new Set<string>([...byPlat.keys(), ...byQuota.keys()])
 
   const PLATFORM_ORDER = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok']
+  const PLATFORM_ORDER = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro']
   const cards: FusedPlatformCard[] = []
 
   for (const p of platforms) {

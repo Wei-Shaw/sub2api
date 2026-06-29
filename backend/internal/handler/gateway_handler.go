@@ -37,6 +37,30 @@ const gatewayCompatibilityMetricsLogInterval = 1024
 
 var gatewayCompatibilityMetricsLogCounter atomic.Uint64
 
+var stickySessionHeaderNames = []string{
+	"X-Session-ID",
+	"Anthropic-Session-Id",
+	"X-Claude-Code-Session-Id",
+	"X-OpenCode-Session",
+	"X-Session-Affinity",
+	"X-Conversation-ID",
+	"Session-Id",
+	"session_id",
+	"conversation_id",
+}
+
+func explicitStickySessionIDFromHeaders(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	for _, name := range stickySessionHeaderNames {
+		if value := strings.TrimSpace(c.GetHeader(name)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 // GatewayHandler handles API gateway requests
 type GatewayHandler struct {
 	gatewayService            *service.GatewayService
@@ -75,7 +99,7 @@ func NewGatewayHandler(
 	settingService *service.SettingService,
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
-	maxAccountSwitches := 10
+	maxAccountSwitches := 15
 	maxAccountSwitchesGemini := 3
 	if cfg != nil {
 		pingInterval = time.Duration(cfg.Concurrency.PingInterval) * time.Second
@@ -238,13 +262,21 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	// 设置请求所属分组 ID（用于渠道级功能判断，如 WebSearch 模拟）
 	parsedReq.GroupID = apiKey.GroupID
+	parsedReq.Group = apiKey.Group
 
 	// 计算粘性会话hash
 	parsedReq.SessionContext = &service.SessionContext{
 		ClientIP:  ip.GetClientIP(c),
 		UserAgent: c.GetHeader("User-Agent"),
 		APIKeyID:  apiKey.ID,
+		UserID:    subject.UserID,
 	}
+
+	// 优先从 HTTP 请求头提取显式 Session ID，作为粘性会话最高优先级标识。
+	// 写入独立字段 ExplicitSessionID（不污染 metadata.user_id，后者还用于客户端亲和调度），
+	// 让 Kiro 等分组的客户端可以显式传递稳定 session 标识符，避免依赖请求体内容 hash。
+	parsedReq.ExplicitSessionID = explicitStickySessionIDFromHeaders(c)
+
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
 	// [DEBUG-STICKY] 打印会话 hash 生成结果
@@ -407,7 +439,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				// Slot acquired: no longer waiting in queue.
 				releaseWait()
-				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionKey, account.ID); err != nil {
+				if err := h.gatewayService.BindStickySessionForGroup(c.Request.Context(), apiKey.GroupID, sessionKey, account.ID, apiKey.Group); err != nil {
 					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
@@ -707,7 +739,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					zap.String("session_key", sessionKey),
 					zap.Int64("account_id", account.ID),
 				)
-				if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+				if err := h.gatewayService.BindStickySessionForGroup(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID, currentAPIKey.Group); err != nil {
 					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
@@ -921,7 +953,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// - 粘性账号因负载/RPM 被跳过、选中了其他账号：不覆盖原绑定，
 			//   下次请求粘性账号恢复后仍可命中
 			if sessionKey != "" && (sessionBoundAccountID == 0 || sessionBoundAccountID == account.ID) {
-				if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+				if err := h.gatewayService.BindStickySessionForGroup(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID, currentAPIKey.Group); err != nil {
 					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
@@ -1726,7 +1758,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 
-	_, ok = middleware2.GetAuthSubjectFromContext(c)
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
@@ -1797,7 +1829,9 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		ClientIP:  ip.GetClientIP(c),
 		UserAgent: c.GetHeader("User-Agent"),
 		APIKeyID:  apiKey.ID,
+		UserID:    subject.UserID,
 	}
+	parsedReq.ExplicitSessionID = explicitStickySessionIDFromHeaders(c)
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
 	// 选择支持该模型的账号

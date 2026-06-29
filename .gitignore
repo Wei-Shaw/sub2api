@@ -138,3 +138,4 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+.ace-tool/

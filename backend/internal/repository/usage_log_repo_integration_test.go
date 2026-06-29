@@ -867,6 +867,7 @@ func (s *UsageLogRepoSuite) TestGetAccountTodayStats() {
 
 	m1 := 1.5
 	m2 := 0.0
+	kiroCredits := 0.17
 	_, err := s.repo.Create(s.ctx, &service.UsageLog{
 		UserID:                user.ID,
 		APIKeyID:              apiKey.ID,
@@ -878,6 +879,7 @@ func (s *UsageLogRepoSuite) TestGetAccountTodayStats() {
 		TotalCost:             1.0,
 		ActualCost:            2.0,
 		AccountRateMultiplier: &m1,
+		KiroCredits:           &kiroCredits,
 		CreatedAt:             createdAt,
 	})
 	s.Require().NoError(err)
@@ -906,6 +908,7 @@ func (s *UsageLogRepoSuite) TestGetAccountTodayStats() {
 	s.Require().InEpsilon(1.5, stats.StandardCost, 0.0001)
 	// user cost = SUM(actual_cost)
 	s.Require().InEpsilon(3.0, stats.UserCost, 0.0001)
+	s.Require().InEpsilon(0.17, stats.KiroCredits, 0.0001)
 }
 
 func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
@@ -1255,18 +1258,29 @@ func (s *UsageLogRepoSuite) TestGetAccountWindowStats() {
 	user := mustCreateUser(s.T(), s.client, &service.User{Email: "windowstats@test.com"})
 	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-windowstats", Name: "k"})
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-windowstats"})
+	otherAccount := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-windowstats-other"})
 
 	now := time.Now()
 	windowStart := now.Add(-10 * time.Minute)
 
 	s.createUsageLog(user, apiKey, account, 10, 20, 0.5, now.Add(-5*time.Minute))
-	s.createUsageLog(user, apiKey, account, 15, 25, 0.6, now.Add(-3*time.Minute))
+	log := s.createUsageLog(user, apiKey, account, 15, 25, 0.6, now.Add(-3*time.Minute))
+	credits := 0.33
+	log.KiroCredits = &credits
+	_, err := s.tx.ExecContext(s.ctx, "UPDATE usage_logs SET kiro_credits = $1 WHERE id = $2", credits, log.ID)
+	s.Require().NoError(err)
 	s.createUsageLog(user, apiKey, account, 20, 30, 0.7, now.Add(-30*time.Minute)) // outside window
 
 	stats, err := s.repo.GetAccountWindowStats(s.ctx, account.ID, windowStart)
 	s.Require().NoError(err, "GetAccountWindowStats")
 	s.Require().Equal(int64(2), stats.Requests)
 	s.Require().Equal(int64(70), stats.Tokens) // (10+20) + (15+25)
+	s.Require().InEpsilon(0.33, stats.KiroCredits, 0.0001)
+
+	batchStats, err := s.repo.GetAccountWindowStatsBatch(s.ctx, []int64{account.ID, otherAccount.ID}, windowStart)
+	s.Require().NoError(err, "GetAccountWindowStatsBatch")
+	s.Require().InEpsilon(0.33, batchStats[account.ID].KiroCredits, 0.0001)
+	s.Require().Zero(batchStats[otherAccount.ID].KiroCredits)
 }
 
 // --- GetUserUsageTrendByUserID ---

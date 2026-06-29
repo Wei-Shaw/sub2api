@@ -506,6 +506,96 @@
       </div>
     </template>
 
+    <!-- Kiro platform: show credits + bonus + overage summary -->
+    <template v-else-if="account.platform === 'kiro' && account.type === 'oauth'">
+      <div v-if="loading" class="space-y-1.5">
+        <div class="h-4 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        <div class="space-y-1">
+          <div class="h-1.5 w-32 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-28 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="error" class="text-xs text-red-500">
+        {{ error }}
+      </div>
+      <div v-else-if="kiroUsageAvailable || kiroStatusBadgeLabel" class="space-y-2">
+        <div v-if="kiroStatusBadgeLabel" class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span
+            :class="[
+              'inline-flex items-center gap-1 text-[10px] font-medium',
+              kiroStatusToneClass
+            ]"
+            :title="usageInfo?.error || undefined"
+          >
+            <span class="h-1.5 w-1.5 rounded-full bg-current opacity-80"></span>
+            {{ kiroStatusBadgeLabel }}
+          </span>
+        </div>
+
+        <div v-if="kiroStatusHint" class="text-[9px] leading-tight text-gray-500 dark:text-gray-400">
+          {{ kiroStatusHint }}
+        </div>
+
+        <div v-if="usageInfo?.kiro_credit" class="space-y-1">
+          <div class="flex items-baseline justify-between gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+            <span class="font-medium tracking-[0.01em]">{{ t('admin.accounts.usageWindow.kiroCredits') }}</span>
+            <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-200">{{ formatKiroAmount(usageInfo.kiro_credit.current_usage) }} / {{ formatKiroAmount(usageInfo.kiro_credit.usage_limit) }}</span>
+          </div>
+          <div class="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div class="h-full rounded-full bg-amber-500 transition-all" :style="{ width: `${kiroCreditPercent}%` }"></div>
+          </div>
+        </div>
+
+        <div v-if="usageInfo?.kiro_bonus" class="space-y-1">
+          <div class="flex items-baseline justify-between gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+            <span class="font-medium tracking-[0.01em]">{{ t('admin.accounts.usageWindow.kiroBonus') }}</span>
+            <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-200">{{ formatKiroAmount(usageInfo.kiro_bonus.current_usage) }} / {{ formatKiroAmount(usageInfo.kiro_bonus.usage_limit) }}</span>
+          </div>
+          <div class="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: `${kiroBonusPercent}%` }"></div>
+          </div>
+          <div v-if="kiroBonusMeta" class="text-[9px] leading-tight text-gray-500 dark:text-gray-400">
+            {{ kiroBonusMeta }}
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500 dark:text-gray-400">
+          <span v-if="kiroResetDisplay" class="inline-flex items-center gap-1">
+            <span class="text-gray-400 dark:text-gray-500">{{ t('admin.accounts.usageWindow.kiroReset') }}</span>
+            <span class="font-medium tabular-nums text-gray-600 dark:text-gray-300">{{ kiroResetDisplay }}</span>
+          </span>
+          <span v-if="kiroOverageSummary" class="inline-flex items-center gap-1 font-medium">
+            {{ kiroOverageSummary }}
+          </span>
+        </div>
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <button
+            type="button"
+            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
+            :disabled="activeQueryLoading"
+            @click="loadActiveUsage"
+          >
+            <svg
+              class="h-2.5 w-2.5"
+              :class="{ 'animate-spin': activeQueryLoading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ t('admin.accounts.usageWindow.activeQuery') }}
+          </button>
+        </div>
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
     <!-- Other accounts: no usage window -->
     <template v-else>
       <div class="text-xs text-gray-400">-</div>
@@ -611,6 +701,10 @@ const props = withDefaults(
   }
 )
 
+const emit = defineEmits<{
+  kiroUsageMeta: [meta: { plan_type?: string; kiro_overages_enabled: boolean }]
+}>()
+
 const { t } = useI18n()
 const desktopViewportQuery = '(min-width: 768px)'
 
@@ -623,7 +717,9 @@ const error = ref<string | null>(null)
 const usageInfo = ref<AccountUsageInfo | null>(null)
 const rootRef = ref<HTMLElement | null>(null)
 const isDesktopViewport = ref(
-  typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
+  typeof window === 'undefined' || typeof window.matchMedia !== 'function'
+    ? true
+    : window.matchMedia(desktopViewportQuery).matches
 )
 const hasEnteredViewport = ref(false)
 const pendingAutoLoad = ref(false)
@@ -643,6 +739,9 @@ const showUsageWindows = computed(() => {
 const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'anthropic') {
     return props.account.type === 'oauth' || props.account.type === 'setup-token'
+  }
+  if (props.account.platform === 'kiro') {
+    return props.account.type === 'oauth'
   }
   if (props.account.platform === 'gemini') {
     return true
@@ -1168,6 +1267,179 @@ const isAnthropicOAuthOrSetupToken = computed(() => {
   return props.account.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token')
 })
 
+const isKiroOAuth = computed(() => {
+  return props.account.platform === 'kiro' && props.account.type === 'oauth'
+})
+
+const defaultUsageSource = computed<'passive' | 'active' | undefined>(() => {
+  if (isAnthropicOAuthOrSetupToken.value || isKiroOAuth.value) {
+    return 'passive'
+  }
+  return undefined
+})
+
+const manualRefreshUsageSource = computed<'passive' | 'active' | undefined>(() => {
+  if (isKiroOAuth.value) {
+    return 'active'
+  }
+  return defaultUsageSource.value
+})
+
+const kiroUsageAvailable = computed(() => {
+  return !!(
+    usageInfo.value?.kiro_credit ||
+    usageInfo.value?.kiro_bonus ||
+    usageInfo.value?.kiro_overage ||
+    usageInfo.value?.kiro_reset_at ||
+    usageInfo.value?.kiro_overages_enabled
+  )
+})
+
+const syncKiroUsageMeta = (info?: AccountUsageInfo | null) => {
+  if (!isKiroOAuth.value) return
+
+  const planType = (
+    info?.kiro_subscription_name ||
+    info?.kiro_subscription_type ||
+    ''
+  ).trim()
+
+  emit('kiroUsageMeta', {
+    ...(planType ? { plan_type: planType } : {}),
+    kiro_overages_enabled: info?.kiro_overages_enabled === true
+  })
+}
+
+const clampPercent = (value?: number | null) => {
+  if (value == null || !Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, value))
+}
+
+const kiroCreditPercent = computed(() => clampPercent(usageInfo.value?.kiro_credit?.percentage_used))
+const kiroBonusPercent = computed(() => clampPercent(usageInfo.value?.kiro_bonus?.percentage_used))
+
+const formatKiroAmount = (value?: number | null) => {
+  if (value == null || !Number.isFinite(value)) return '0'
+  if (Math.abs(value) >= 1000 || Number.isInteger(value)) {
+    return formatCompactNumber(value, { allowBillions: false })
+  }
+  return value.toFixed(2).replace(/\.?0+$/, '')
+}
+
+const kiroResetDisplay = computed(() => {
+  const raw = usageInfo.value?.kiro_reset_at
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleDateString()
+})
+
+const kiroBonusMeta = computed(() => {
+  const bonus = usageInfo.value?.kiro_bonus
+  if (!bonus) return ''
+  if ((bonus.days_remaining ?? 0) > 0) {
+    return t('admin.accounts.usageWindow.kiroDaysLeft', { days: bonus.days_remaining })
+  }
+  if (bonus.expiry_date) {
+    const parsed = new Date(bonus.expiry_date)
+    if (!Number.isNaN(parsed.getTime())) {
+      return `${t('admin.accounts.usageWindow.kiroExpires')} ${parsed.toLocaleDateString()}`
+    }
+  }
+  return ''
+})
+
+const kiroRuntimeResetDisplay = computed(() => {
+  const raw = usageInfo.value?.kiro_runtime_reset_at
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleString()
+})
+
+const kiroQuotaResetDisplay = computed(() => {
+  const raw = usageInfo.value?.kiro_quota_reset_at
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleString()
+})
+
+const isKiroProfileError = computed(() => {
+  if (!isKiroOAuth.value) return false
+  const err = (usageInfo.value?.error || '').toLowerCase()
+  return err.includes('profilearn is required') ||
+    (err.includes('profile arn') && err.includes('required')) ||
+    err.includes('profilearn') ||
+    err.includes('listavailableprofiles')
+})
+
+const isKiroUsageForbidden = computed(() => {
+  if (!isKiroOAuth.value) return false
+  return usageInfo.value?.error_code === 'forbidden' && !usageInfo.value?.needs_reauth && !isKiroProfileError.value
+})
+
+const kiroQuotaState = computed(() => usageInfo.value?.kiro_quota_state || '')
+
+const kiroStatusBadgeLabel = computed(() => {
+  const runtimeState = usageInfo.value?.kiro_runtime_state
+  if (runtimeState === 'suspended') return t('admin.accounts.forbidden')
+  if (runtimeState === 'cooldown') return t('admin.accounts.status.rateLimited')
+  if (usageInfo.value?.needs_reauth) return t('admin.accounts.needsReauth')
+  if (isKiroProfileError.value) return t('admin.accounts.usageError')
+  if (isKiroUsageForbidden.value) return t('admin.accounts.forbidden')
+  if (kiroQuotaState.value === 'overage_active') return t('admin.accounts.status.overageActive')
+  if (kiroQuotaState.value === 'credits_exhausted') return t('admin.accounts.status.creditsExhausted')
+  if (kiroQuotaState.value === 'overage_exhausted') return t('admin.accounts.status.overageExhausted')
+  return ''
+})
+
+const kiroStatusToneClass = computed(() => {
+  const runtimeState = usageInfo.value?.kiro_runtime_state
+  if (runtimeState === 'suspended') return 'text-red-700 dark:text-red-300'
+  if (runtimeState === 'cooldown') return 'text-amber-700 dark:text-amber-300'
+  if (usageInfo.value?.needs_reauth) return 'text-orange-700 dark:text-orange-300'
+  if (isKiroProfileError.value) return 'text-yellow-700 dark:text-yellow-300'
+  if (isKiroUsageForbidden.value) return 'text-rose-700 dark:text-rose-300'
+  if (kiroQuotaState.value === 'overage_active') return 'text-amber-700 dark:text-amber-300'
+  if (kiroQuotaState.value === 'credits_exhausted' || kiroQuotaState.value === 'overage_exhausted') {
+    return 'text-red-700 dark:text-red-300'
+  }
+  return 'text-gray-600 dark:text-gray-300'
+})
+
+const kiroStatusHint = computed(() => {
+  const runtimeState = usageInfo.value?.kiro_runtime_state
+  if (runtimeState === 'cooldown' && kiroRuntimeResetDisplay.value) {
+    return t('admin.accounts.status.rateLimitedUntil', { time: kiroRuntimeResetDisplay.value })
+  }
+  if (kiroQuotaState.value === 'credits_exhausted' && kiroQuotaResetDisplay.value) {
+    return t('admin.accounts.status.creditsExhaustedUntil', { time: kiroQuotaResetDisplay.value })
+  }
+  if (kiroQuotaState.value === 'overage_exhausted' && kiroQuotaResetDisplay.value) {
+    return t('admin.accounts.status.overageExhaustedUntil', { time: kiroQuotaResetDisplay.value })
+  }
+  return ''
+})
+
+const kiroOverageSummary = computed(() => {
+  const overage = usageInfo.value?.kiro_overage
+  if (!overage) return ''
+  const hasOverageCount = (overage.current_overages ?? 0) > 0
+  const hasCharges = (overage.overage_charges ?? 0) > 0
+  if (!hasOverageCount && !hasCharges) return ''
+
+  const parts: string[] = [t('admin.accounts.usageWindow.kiroOverage')]
+  if (hasOverageCount) {
+    parts.push(formatKiroAmount(overage.current_overages))
+  }
+  if (hasCharges) {
+    const symbol = overage.currency_symbol || overage.currency_code || ''
+    parts.push(`(${symbol}${(overage.overage_charges ?? 0).toFixed(2)})`)
+  }
+  return parts.join(' ')
+})
+
 const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?: boolean }) => {
   if (!shouldFetchUsage.value) return
 
@@ -1176,6 +1448,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     const cached = _usageCache.get(props.account.id)
     if (cached && Date.now() - cached.ts < USAGE_CACHE_TTL) {
       usageInfo.value = cached.data
+      syncKiroUsageMeta(cached.data)
       loading.value = false
       return
     }
@@ -1191,6 +1464,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     const result = await enqueueUsageRequest(props.account, fetchFn)
     if (!unmounted.value) {
       usageInfo.value = result
+      syncKiroUsageMeta(result)
       _usageCache.set(props.account.id, { data: result, ts: Date.now() })
     }
   } catch (e: any) {
@@ -1256,7 +1530,10 @@ const attachVisibilityObserver = () => {
 const loadActiveUsage = async () => {
   activeQueryLoading.value = true
   try {
-    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    const result = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    usageInfo.value = result
+    syncKiroUsageMeta(result)
+    _usageCache.set(props.account.id, { data: result, ts: Date.now() })
   } catch (e: any) {
     console.error('Failed to load active usage:', e)
   } finally {
@@ -1352,7 +1629,7 @@ const formatKeyUserCost = computed(() => {
 })
 
 onMounted(() => {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
     desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
     isDesktopViewport.value = desktopViewportMediaQuery.matches
     desktopViewportListener = (event: MediaQueryListEvent) => {
@@ -1366,8 +1643,7 @@ onMounted(() => {
   }
 
   if (!shouldAutoLoadUsageOnMount.value) return
-  const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
-  requestAutoLoad(source)
+  requestAutoLoad(defaultUsageSource.value)
 })
 
 watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
@@ -1376,6 +1652,9 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
 
   _usageCache.delete(props.account.id)
   requestAutoLoad()
+  loadUsage({ bypassCache: true }).catch((e) => {
+    console.error('Failed to reload OpenAI usage after row refresh:', e)
+  })
 })
 
 watch(
@@ -1384,9 +1663,8 @@ watch(
     if (nextToken === prevToken) return
     if (!shouldFetchUsage.value) return
 
-    const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
     _usageCache.delete(props.account.id)
-    loadUsage({ source, bypassCache: true }).catch((e) => {
+    loadUsage({ source: manualRefreshUsageSource.value, bypassCache: true }).catch((e) => {
       console.error('Failed to refresh usage after manual refresh:', e)
     })
   }

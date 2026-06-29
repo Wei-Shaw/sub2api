@@ -195,6 +195,75 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 	response.Paginated(c, result.Errors, int64(result.Total), result.Page, result.PageSize)
 }
 
+// DeleteErrorLogs deletes ops error logs matched by admin filters.
+// DELETE /api/v1/admin/ops/errors
+func (h *OpsHandler) DeleteErrorLogs(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if strings.TrimSpace(c.Query("start_time")) == "" || strings.TrimSpace(c.Query("end_time")) == "" {
+		response.BadRequest(c, "start_time and end_time are required")
+		return
+	}
+
+	startTime, endTime, err := parseOpsTimeRange(c, "1h")
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	filter := &service.OpsErrorLogFilter{
+		StartTime: &startTime,
+		EndTime:   &endTime,
+		View:      parseOpsViewParam(c),
+		Model:     strings.TrimSpace(c.Query("model")),
+	}
+	if v := strings.TrimSpace(c.Query("group_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid group_id")
+			return
+		}
+		filter.GroupID = &id
+	}
+	if v := strings.TrimSpace(c.Query("account_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid account_id")
+			return
+		}
+		filter.AccountID = &id
+	}
+	if v := strings.TrimSpace(c.Query("user_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		filter.UserID = &id
+	}
+	if v := strings.TrimSpace(c.Query("api_key_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid api_key_id")
+			return
+		}
+		filter.APIKeyID = &id
+	}
+
+	deleted, err := h.opsService.DeleteErrorLogs(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted_rows": deleted})
+}
+
 // ListRequestErrors lists client-visible request errors.
 // GET /api/v1/admin/ops/request-errors
 func (h *OpsHandler) ListRequestErrors(c *gin.Context) {

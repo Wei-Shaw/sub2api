@@ -93,6 +93,13 @@ type APIKeyAuthGroupSnapshot struct {
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）；用于 billing_cache_service.checkRPM 级联判断。
 	RPMLimit int `json:"rpm_limit"`
+
+	// Kiro 模拟缓存配置（仅 Kiro 分组生效）
+	KiroCacheEmulationEnabled   bool    `json:"kiro_cache_emulation_enabled"`
+	KiroAutoStickyEnabled       bool    `json:"kiro_auto_sticky_enabled"`
+	KiroStickySessionTTLSeconds int     `json:"kiro_sticky_session_ttl_seconds"`
+	KiroCacheEmulationRatio     float64 `json:"kiro_cache_emulation_ratio"`
+	KiroEndpointMode            string  `json:"kiro_endpoint_mode"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

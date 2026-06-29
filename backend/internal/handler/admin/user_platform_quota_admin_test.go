@@ -113,6 +113,7 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 		t.Errorf("unexpected upsert call: %+v", repo.upsertCalls[0])
 	}
 	// 缓存失效：请求中 2 个 platform + 软删除的 3 个 platform（gemini, antigravity, grok）= 5 次
+	// 缓存失效：请求中 2 个 platform + 软删除的 3 个 platform（gemini, antigravity, kiro）= 5 次。
 	if len(cache.deleteCalls) != 5 {
 		t.Errorf("expected 5 cache delete calls, got %d: %+v", len(cache.deleteCalls), cache.deleteCalls)
 	}
@@ -154,7 +155,7 @@ func TestUpdateUserPlatformQuotas_RejectsNegativeLimit(t *testing.T) {
 func TestUpdateUserPlatformQuotas_RejectsTooManyEntries(t *testing.T) {
 	h := buildTestHandler(&upsertCapturingQuotaRepo{}, &billingCacheStub{})
 	body := `{"quotas":[
-		{"platform":"anthropic"},{"platform":"openai"},{"platform":"gemini"},{"platform":"antigravity"},{"platform":"anthropic"}
+		{"platform":"anthropic"},{"platform":"openai"},{"platform":"gemini"},{"platform":"antigravity"},{"platform":"kiro"},{"platform":"anthropic"}
 	]}`
 	c, w := putReq(t, body)
 	h.UpdateUserPlatformQuotas(c)

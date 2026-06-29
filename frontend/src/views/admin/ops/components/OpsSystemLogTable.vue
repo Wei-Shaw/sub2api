@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { opsAPI, type OpsRuntimeLogConfig, type OpsSystemLog, type OpsSystemLogSinkHealth } from '@/api/admin/ops'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useAppStore } from '@/stores'
 
 const appStore = useAppStore()
@@ -255,10 +256,12 @@ const saveRuntimeConfig = async () => {
   }
 }
 
-const resetRuntimeConfig = async () => {
-  const ok = window.confirm('确认回滚为启动配置（env/yaml）并立即生效？')
-  if (!ok) return
+const showResetConfigDialog = ref(false)
+const showCleanupDialog = ref(false)
 
+const resetRuntimeConfig = () => { showResetConfigDialog.value = true }
+const confirmResetRuntimeConfig = async () => {
+  showResetConfigDialog.value = false
   runtimeSaving.value = true
   try {
     const saved = await opsAPI.resetRuntimeLogConfig()
@@ -279,9 +282,9 @@ const resetRuntimeConfig = async () => {
   }
 }
 
-const cleanupCurrentFilter = async () => {
-  const ok = window.confirm('确认按当前筛选条件清理系统日志？该操作不可撤销。')
-  if (!ok) return
+const cleanupCurrentFilter = () => { showCleanupDialog.value = true }
+const confirmCleanup = async () => {
+  showCleanupDialog.value = false
   try {
     const payload = {
       start_time: toRFC3339(filters.start_time),
@@ -529,4 +532,6 @@ onMounted(async () => {
       />
     </div>
   </section>
+  <ConfirmDialog :show="showResetConfigDialog" title="回滚运行时配置" message="确认回滚为启动配置（env/yaml）并立即生效？" :confirm-text="'确认'" :cancel-text="'取消'" :danger="true" @confirm="confirmResetRuntimeConfig" @cancel="showResetConfigDialog = false" />
+  <ConfirmDialog :show="showCleanupDialog" title="清理系统日志" message="确认按当前筛选条件清理系统日志？该操作不可撤销。" :confirm-text="'确认'" :cancel-text="'取消'" :danger="true" @confirm="confirmCleanup" @cancel="showCleanupDialog = false" />
 </template>

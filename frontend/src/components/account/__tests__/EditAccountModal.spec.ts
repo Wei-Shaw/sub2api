@@ -181,6 +181,21 @@ function buildAntigravityAccount(projectId = 'configured-project') {
       }
     },
     extra: {},
+function buildKiroOAuthAccount() {
+  return {
+    id: 3,
+    name: 'Kiro OAuth',
+    notes: '',
+    platform: 'kiro',
+    type: 'oauth',
+    credentials: {
+      model_mapping: {
+        'kiro-model': 'kiro-model'
+      }
+    },
+    extra: {
+      kiro_credit_unit_price_usd: 0.071
+    },
     proxy_id: null,
     concurrency: 1,
     priority: 1,
@@ -485,6 +500,25 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_image_generation_bridge).toBe(true)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_bridge_enabled')
+  })
+
+  it('hydrates and submits Kiro OAuth credit unit price in extra', async () => {
+    const account = buildKiroOAuthAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const input = wrapper.get<HTMLInputElement>('[data-testid="kiro-credit-unit-price-usd"]')
+
+    expect(input.element.value).toBe('0.071')
+
+    await input.setValue('0.08')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.kiro_credit_unit_price_usd).toBe(0.08)
   })
 
   it('allows saving apikey account when backend redacted api_key but credentials_status reports it exists', async () => {

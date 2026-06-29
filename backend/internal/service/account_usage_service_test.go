@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
 type accountUsageCodexProbeRepo struct {
@@ -154,6 +156,44 @@ func TestAccountUsageService_GetOpenAIUsage_DoesNotPromoteCodexExtraToRateLimit(
 	case got := <-repo.rateLimitCh:
 		t.Fatalf("不应将已耗尽的 codex extra 持久化为运行时限流状态: %v", got)
 	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestAccountUsageService_AddWindowStatsKeepsKiroCredits(t *testing.T) {
+	t.Parallel()
+
+	repo := &usageLogWindowBatchRepoStub{
+		singleResult: map[int64]*usagestats.AccountStats{
+			123: {
+				Requests:    2,
+				Tokens:      140600,
+				Cost:        0.77,
+				UserCost:    0.7,
+				KiroCredits: 0.17,
+			},
+		},
+	}
+	svc := &AccountUsageService{
+		usageLogRepo: repo,
+		cache:        NewUsageCache(),
+	}
+	usage := &UsageInfo{FiveHour: &UsageProgress{}}
+
+	svc.addWindowStats(context.Background(), &Account{ID: 123}, usage)
+
+	if usage.FiveHour.WindowStats == nil {
+		t.Fatal("expected five-hour window stats")
+	}
+	if usage.FiveHour.WindowStats.KiroCredits != 0.17 {
+		t.Fatalf("KiroCredits = %v, want 0.17", usage.FiveHour.WindowStats.KiroCredits)
+	}
+	if cached, ok := svc.cache.windowStatsCache.Load(int64(123)); ok {
+		cache := cached.(*windowStatsCache)
+		if cache.stats.KiroCredits != 0.17 {
+			t.Fatalf("cached KiroCredits = %v, want 0.17", cache.stats.KiroCredits)
+		}
+	} else {
+		t.Fatal("expected cached window stats")
 	}
 }
 

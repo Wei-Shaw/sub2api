@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
+	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 )
 
 // tokenRefreshTempUnschedDuration token 刷新重试耗尽后临时不可调度的持续时间
@@ -46,11 +47,12 @@ func NewTokenRefreshService(
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
+	grokOAuthService *GrokOAuthService,
+	kiroOAuthService *KiroOAuthService,
 	cacheInvalidator TokenCacheInvalidator,
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
 	tempUnschedCache TempUnschedCache,
-	grokOAuthServices ...*GrokOAuthService,
 ) *TokenRefreshService {
 	s := &TokenRefreshService{
 		accountRepo:      accountRepo,
@@ -67,11 +69,8 @@ func NewTokenRefreshService(
 	claudeRefresher := NewClaudeTokenRefresher(oauthService)
 	geminiRefresher := NewGeminiTokenRefresher(geminiOAuthService)
 	agRefresher := NewAntigravityTokenRefresher(antigravityOAuthService)
-	var grokOAuthService *GrokOAuthService
-	if len(grokOAuthServices) > 0 {
-		grokOAuthService = grokOAuthServices[0]
-	}
 	grokRefresher := NewGrokTokenRefresher(grokOAuthService)
+	kiroRefresher := NewKiroTokenRefresher(kiroOAuthService)
 
 	// 注册平台特定的刷新器（TokenRefresher 接口）
 	s.refreshers = []TokenRefresher{
@@ -80,6 +79,7 @@ func NewTokenRefreshService(
 		geminiRefresher,
 		agRefresher,
 		grokRefresher,
+		kiroRefresher,
 	}
 
 	// 注册对应的 OAuthRefreshExecutor（带 CacheKey 方法）
@@ -89,6 +89,7 @@ func NewTokenRefreshService(
 		geminiRefresher,
 		agRefresher,
 		grokRefresher,
+		kiroRefresher,
 	}
 
 	return s
@@ -441,6 +442,10 @@ var errRefreshSkipped = fmt.Errorf("refresh skipped")
 func isNonRetryableRefreshError(err error) bool {
 	if err == nil {
 		return false
+	}
+	var kiroInvalidGrant *kiropkg.RefreshTokenInvalidError
+	if errors.As(err, &kiroInvalidGrant) {
+		return true
 	}
 	msg := strings.ToLower(err.Error())
 	nonRetryable := []string{

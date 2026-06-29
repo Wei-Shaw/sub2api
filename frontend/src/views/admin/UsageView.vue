@@ -140,6 +140,15 @@
     :end-date="endDate"
     @close="cleanupDialogVisible = false"
   />
+  <ConfirmDialog
+    :show="errorCleanupConfirmVisible"
+    :title="t('admin.usage.cleanup.confirmTitle')"
+    :message="t('admin.usage.cleanup.errorConfirm')"
+    :confirm-text="t('admin.usage.cleanup.confirmSubmit')"
+    danger
+    @confirm="confirmErrorCleanup"
+    @cancel="errorCleanupConfirmVisible = false"
+  />
   <!-- Balance history modal triggered from usage table user click -->
   <UserBalanceHistoryModal
     :show="showBalanceHistoryModal"
@@ -162,11 +171,12 @@ import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination fro
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
 import OpsErrorDetailModal from '@/views/admin/ops/components/OpsErrorDetailModal.vue'
-import { listErrorLogs } from '@/api/admin/ops'
-import type { OpsErrorLog } from '@/api/admin/ops'
+import { clearErrorLogs, listErrorLogs } from '@/api/admin/ops'
+import type { OpsErrorListQueryParams, OpsErrorLog } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -200,6 +210,7 @@ let statsReqSeq = 0
 let modelStatsReqSeq = 0
 const exportProgress = reactive({ show: false, progress: 0, current: 0, total: 0, estimatedTime: '' })
 const cleanupDialogVisible = ref(false)
+const errorCleanupConfirmVisible = ref(false)
 // Balance history modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
@@ -487,7 +498,25 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadLogs()
 }
 const cancelExport = () => exportAbortController?.abort()
-const openCleanupDialog = () => { cleanupDialogVisible.value = true }
+const openCleanupDialog = async () => {
+  if (activeTab.value !== 'errors') {
+    cleanupDialogVisible.value = true
+    return
+  }
+  errorCleanupConfirmVisible.value = true
+}
+const confirmErrorCleanup = async () => {
+  errorCleanupConfirmVisible.value = false
+  try {
+    const result = await clearErrorLogs(buildAdminErrorLogParams(false))
+    appStore.showSuccess(t('admin.usage.cleanup.errorSubmitSuccess', { count: result.deleted_rows }))
+    errPage.value = 1
+    await loadAdminErrors()
+  } catch (error) {
+    console.error('Failed to clear error logs:', error)
+    appStore.showError(t('admin.usage.cleanup.errorSubmitFailed'))
+  }
+}
 const getRequestTypeLabel = (log: AdminUsageLog): string => {
   const requestType = resolveUsageRequestType(log)
   if (requestType === 'cyber') return t('usage.cyber')
@@ -637,21 +666,28 @@ const selectedErrorId = ref<number | null>(null)
 const toRFC3339 = (d: string | undefined, endOfDay = false): string | undefined =>
   d ? new Date(d + (endOfDay ? 'T23:59:59.999' : 'T00:00:00')).toISOString() : undefined
 
+const buildAdminErrorLogParams = (includePagination = true): OpsErrorListQueryParams => {
+  const params: OpsErrorListQueryParams = {
+    view: 'all',
+    start_time: toRFC3339(filters.value.start_date),
+    end_time: toRFC3339(filters.value.end_date, true),
+    user_id: filters.value.user_id ?? undefined,
+    api_key_id: filters.value.api_key_id ?? undefined,
+    account_id: filters.value.account_id ?? undefined,
+    group_id: filters.value.group_id ?? undefined,
+    model: filters.value.model || undefined,
+  }
+  if (includePagination) {
+    params.page = errPage.value
+    params.page_size = errPageSize.value
+  }
+  return params
+}
+
 const loadAdminErrors = async () => {
   errLoading.value = true
   try {
-    const resp = await listErrorLogs({
-      page: errPage.value,
-      page_size: errPageSize.value,
-      view: 'all',
-      start_time: toRFC3339(filters.value.start_date),
-      end_time: toRFC3339(filters.value.end_date, true),
-      user_id: filters.value.user_id ?? undefined,
-      api_key_id: filters.value.api_key_id ?? undefined,
-      account_id: filters.value.account_id ?? undefined,
-      group_id: filters.value.group_id ?? undefined,
-      model: filters.value.model || undefined,
-    })
+    const resp = await listErrorLogs(buildAdminErrorLogParams())
     errRows.value = resp.items
     errTotal.value = resp.total
   } catch (error) {

@@ -120,6 +120,13 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
 
+	// Kiro 模拟缓存配置（仅 Kiro 平台生效）
+	KiroCacheEmulationEnabled   bool    `json:"kiro_cache_emulation_enabled"`
+	KiroAutoStickyEnabled       bool    `json:"kiro_auto_sticky_enabled"`
+	KiroStickySessionTTLSeconds int     `json:"kiro_sticky_session_ttl_seconds"`
+	KiroCacheEmulationRatio     float64 `json:"kiro_cache_emulation_ratio"`
+	KiroEndpointMode            string  `json:"kiro_endpoint_mode"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -186,6 +193,12 @@ type Account struct {
 
 	TempUnschedulableUntil  *time.Time `json:"temp_unschedulable_until"`
 	TempUnschedulableReason string     `json:"temp_unschedulable_reason"`
+	KiroQuotaState          string     `json:"kiro_quota_state,omitempty"`
+	KiroQuotaReason         string     `json:"kiro_quota_reason,omitempty"`
+	KiroQuotaResetAt        *time.Time `json:"kiro_quota_reset_at,omitempty"`
+	KiroRuntimeState        string     `json:"kiro_runtime_state,omitempty"`
+	KiroRuntimeReason       string     `json:"kiro_runtime_reason,omitempty"`
+	KiroRuntimeResetAt      *time.Time `json:"kiro_runtime_reset_at,omitempty"`
 
 	SessionWindowStart  *time.Time `json:"session_window_start"`
 	SessionWindowEnd    *time.Time `json:"session_window_end"`

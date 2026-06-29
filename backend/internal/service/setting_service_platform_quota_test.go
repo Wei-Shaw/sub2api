@@ -71,7 +71,7 @@ func TestGetDefaultPlatformQuotas_ReturnsFourPlatforms(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// 必须包含全部 4 个 platform key（补齐契约）
-	for _, platform := range []string{"anthropic", "openai", "gemini", "antigravity"} {
+	for _, platform := range AllowedQuotaPlatforms {
 		if _, ok := got[platform]; !ok {
 			t.Errorf("missing platform key: %q", platform)
 		}
@@ -172,7 +172,7 @@ func TestSystemPlatformQuotas_WriteReadRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 4-key 补齐契约：无论写了几个 platform，读回必须含全部 4 个
-	for _, p := range []string{"anthropic", "openai", "gemini", "antigravity"} {
+	for _, p := range AllowedQuotaPlatforms {
 		if _, ok := got[p]; !ok {
 			t.Errorf("4-key contract violated: missing platform %q", p)
 		}
@@ -216,7 +216,7 @@ func TestSystemPlatformQuotas_EmptyMapClearsAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 4 个 key 仍然存在（补齐契约）
-	for _, p := range []string{"anthropic", "openai", "gemini", "antigravity"} {
+	for _, p := range AllowedQuotaPlatforms {
 		if _, ok := got[p]; !ok {
 			t.Errorf("4-key contract violated after empty write: missing %q", p)
 		}

@@ -598,7 +598,7 @@ export async function exportData(options?: {
 }
 
 export async function importData(payload: {
-  data: AdminDataPayload
+  data: unknown
   skip_default_group_bind?: boolean
 }): Promise<AdminDataImportResult> {
   const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
@@ -625,6 +625,13 @@ export async function createOpenAICodexPAT(payload: OpenAICodexPATCreateRequest)
 export async function getAntigravityDefaultModelMapping(): Promise<Record<string, string>> {
   const { data } = await apiClient.get<Record<string, string>>(
     '/admin/accounts/antigravity/default-model-mapping'
+  )
+  return data
+}
+
+export async function getKiroDefaultModelMapping(): Promise<Record<string, string>> {
+  const { data } = await apiClient.get<Record<string, string>>(
+    '/admin/accounts/kiro/default-model-mapping'
   )
   return data
 }

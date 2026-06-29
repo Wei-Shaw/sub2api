@@ -17,6 +17,11 @@ type dataResponse struct {
 	Data dataPayload `json:"data"`
 }
 
+type dataImportResponse struct {
+	Code int              `json:"code"`
+	Data DataImportResult `json:"data"`
+}
+
 type dataPayload struct {
 	Type     string        `json:"type"`
 	Version  int           `json:"version"`
@@ -53,6 +58,7 @@ func setupAccountDataRouter() (*gin.Engine, *stubAdminService) {
 
 	h := NewAccountHandler(
 		adminSvc,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -274,4 +280,42 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdProxies, 0)
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+}
+
+func TestImportDataRejectsKiroAccountManagerJSON(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	dataPayload := map[string]any{
+		"data": []map[string]any{
+			{
+				"id":           "source-id-1",
+				"email":        "builder@example.com",
+				"label":        "Kiro BuilderId 账号",
+				"status":       "inactive",
+				"addedAt":      "2026/06/15 13:59:19",
+				"accessToken":  "access-token",
+				"refreshToken": "refresh-token",
+				"provider":     "BuilderId",
+				"userId":       "d-user-id",
+				"authMethod":   "IdC",
+				"clientId":     "client-id",
+				"clientSecret": "client-secret",
+				"region":       "us-east-1",
+				"clientIdHash": "client-id-hash",
+				"profileArn":   "arn:aws:codewhisperer:us-east-1:123456789012:profile/test",
+				"machineId":    "2582956e-cc88-4669-b546-07adbffcb894",
+				"enabled":      false,
+			},
+		},
+		"skip_default_group_bind": true,
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "unsupported data format")
+	require.Len(t, adminSvc.createdAccounts, 0)
 }

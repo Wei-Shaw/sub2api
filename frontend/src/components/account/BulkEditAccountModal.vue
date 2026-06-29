@@ -1130,6 +1130,7 @@
     @confirm="handleMixedChannelConfirm"
     @cancel="handleMixedChannelCancel"
   />
+  <ConfirmDialog :show="showErrorCodeWarning" :title="t('admin.accounts.customErrorCodes')" :message="errorCodeWarningMessage" :confirm-text="t('common.confirm')" :cancel-text="t('common.cancel')" @confirm="confirmAddErrorCode" @cancel="showErrorCodeWarning = false" />
 </template>
 
 <script setup lang="ts">
@@ -1370,21 +1371,43 @@ const addPresetMapping = (from: string, to: string) => {
   modelMappings.value.push({ from, to })
 }
 
+// Error code warning dialog state
+const showErrorCodeWarning = ref(false)
+const errorCodeWarningMessage = ref('')
+const pendingErrorCode = ref<number | null>(null)
+const pendingErrorCodeIsCustom = ref(false)
+
+const promptErrorCodeWarning = (code: number, isCustom: boolean): boolean => {
+  if (code === 429 || code === 529) {
+    pendingErrorCode.value = code
+    pendingErrorCodeIsCustom.value = isCustom
+    errorCodeWarningMessage.value = t(code === 429 ? 'admin.accounts.customErrorCodes429Warning' : 'admin.accounts.customErrorCodes529Warning')
+    showErrorCodeWarning.value = true
+    return true
+  }
+  return false
+}
+
+const confirmAddErrorCode = () => {
+  showErrorCodeWarning.value = false
+  const code = pendingErrorCode.value
+  if (code === null) return
+  if (!selectedErrorCodes.value.includes(code)) {
+    selectedErrorCodes.value.push(code)
+  }
+  if (pendingErrorCodeIsCustom.value) {
+    customErrorCodeInput.value = null
+  }
+  pendingErrorCode.value = null
+}
+
 // Error code helpers
 const toggleErrorCode = (code: number) => {
   const index = selectedErrorCodes.value.indexOf(code)
   if (index === -1) {
-    // Adding code - check for 429/529 warning
-    if (code === 429) {
-      if (!confirm(t('admin.accounts.customErrorCodes429Warning'))) {
-        return
-      }
-    } else if (code === 529) {
-      if (!confirm(t('admin.accounts.customErrorCodes529Warning'))) {
-        return
-      }
+    if (!promptErrorCodeWarning(code, false)) {
+      selectedErrorCodes.value.push(code)
     }
-    selectedErrorCodes.value.push(code)
   } else {
     selectedErrorCodes.value.splice(index, 1)
   }
@@ -1400,18 +1423,10 @@ const addCustomErrorCode = () => {
     appStore.showInfo(t('admin.accounts.errorCodeExists'))
     return
   }
-  // Check for 429/529 warning
-  if (code === 429) {
-    if (!confirm(t('admin.accounts.customErrorCodes429Warning'))) {
-      return
-    }
-  } else if (code === 529) {
-    if (!confirm(t('admin.accounts.customErrorCodes529Warning'))) {
-      return
-    }
+  if (!promptErrorCodeWarning(code, true)) {
+    selectedErrorCodes.value.push(code)
+    customErrorCodeInput.value = null
   }
-  selectedErrorCodes.value.push(code)
-  customErrorCodeInput.value = null
 }
 
 const removeErrorCode = (code: number) => {

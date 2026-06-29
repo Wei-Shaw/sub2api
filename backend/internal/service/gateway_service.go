@@ -29,6 +29,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kirocooldown"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -74,6 +75,7 @@ IMPORTANT: You must NEVER generate or guess URLs for the user unless you are con
 	defaultModelsListCacheTTL    = 15 * time.Second
 	postUsageBillingTimeout      = 15 * time.Second
 	debugGatewayBodyEnv          = "SUB2API_DEBUG_GATEWAY_BODY"
+	defaultKiroStreamKeepalive   = 25 * time.Second
 	// 上游错误体只需要提取错误 JSON/日志摘要，默认 512KiB 避免错误风暴叠加大请求体。
 	gatewayUpstreamErrorBodyReadLimit int64 = 512 << 10
 )
@@ -90,6 +92,7 @@ const (
 // ForceCacheBillingContextKey 强制缓存计费上下文键
 // 用于粘性会话切换时，将 input_tokens 转为 cache_read_input_tokens 计费
 type forceCacheBillingKeyType struct{}
+type kiroCooldownRecoveryAttemptedKeyType struct{}
 
 // accountWithLoad 账号与负载信息的组合，用于负载感知调度
 type accountWithLoad struct {
@@ -98,6 +101,7 @@ type accountWithLoad struct {
 }
 
 var ForceCacheBillingContextKey = forceCacheBillingKeyType{}
+var kiroCooldownRecoveryAttemptedKey = kiroCooldownRecoveryAttemptedKeyType{}
 
 var (
 	windowCostPrefetchCacheHitTotal  atomic.Int64
@@ -547,6 +551,7 @@ type ClaudeUsage struct {
 	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	KiroCredits              float64
 }
 
 // ForwardResult 转发结果
@@ -633,6 +638,8 @@ type GatewayService struct {
 	deferredService       *DeferredService
 	concurrencyService    *ConcurrencyService
 	claudeTokenProvider   *ClaudeTokenProvider
+	kiroTokenProvider     *KiroTokenProvider
+	kiroCooldownStore     KiroCooldownStore
 	sessionLimitCache     SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
 	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
 	userGroupRateResolver *userGroupRateResolver
@@ -672,6 +679,8 @@ func NewGatewayService(
 	httpUpstream HTTPUpstream,
 	deferredService *DeferredService,
 	claudeTokenProvider *ClaudeTokenProvider,
+	kiroTokenProvider *KiroTokenProvider,
+	kiroCooldownStore KiroCooldownStore,
 	sessionLimitCache SessionLimitCache,
 	rpmCache RPMCache,
 	digestStore *DigestSessionStore,
@@ -705,6 +714,8 @@ func NewGatewayService(
 		httpUpstream:          httpUpstream,
 		deferredService:       deferredService,
 		claudeTokenProvider:   claudeTokenProvider,
+		kiroTokenProvider:     kiroTokenProvider,
+		kiroCooldownStore:     kiroCooldownStore,
 		sessionLimitCache:     sessionLimitCache,
 		rpmCache:              rpmCache,
 		userGroupRateCache:    gocache.New(userGroupRateTTL, time.Minute),
@@ -739,7 +750,14 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 		return ""
 	}
 
-	// 1. 最高优先级：从 metadata.user_id 提取 session_xxx
+	// 0. 最高优先级：客户端通过 HTTP 请求头显式传递的 Session ID。
+	//    由 Handler 从 X-Session-ID / Anthropic-Session-Id 等 header 写入 ExplicitSessionID。
+	//    混入 APIKeyID 隔离不同用户使用相同 session id（如都用 "default"）的情况。
+	if hash, ok := s.hashStickySessionHint(parsed, parsed.ExplicitSessionID, "explicit_session_header"); ok {
+		return hash
+	}
+
+	// 1. 从 metadata.user_id 提取 session_xxx（Claude Code 等客户端的标准会话标识）
 	if parsed.MetadataUserID != "" {
 		uid := ParseMetadataUserID(parsed.MetadataUserID)
 		if uid != nil && uid.SessionID != "" {
@@ -757,6 +775,12 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 		)
 	}
 
+	// 1.5. 从请求体提取客户端已经提供的稳定会话标识。
+	// 支持 prompt_cache_key/conversation_id/thread_id/session_id 及 metadata 下同名字段。
+	if hash, ok := s.hashStickySessionHint(parsed, parsed.BodySessionID, "body_session_id"); ok {
+		return hash
+	}
+
 	// 2. 提取带 cache_control: {type: "ephemeral"} 的内容
 	cacheableContent := s.extractCacheableContent(parsed)
 	if cacheableContent != "" {
@@ -766,6 +790,46 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 			"hash", hash,
 		)
 		return hash
+	}
+
+	// 2.5. Kiro 分组专用：使用对话生命周期内稳定的内容做 hash
+	//
+	// 背景：Kiro 采用 stateless replay 架构，每次请求都生成新的 conversationId，
+	// 无法依赖 conversationId 做粘性。同时 Claude Code / cursor 等客户端通常
+	// 不传 metadata.user_id，也不使用 cache_control: ephemeral。
+	//
+	// 解法：优先用 system prompt；如果客户端没有传 system prompt，则退到第一条 user
+	// 消息。它们在同一对话后续轮次中通常保持不变，而完整 messages 会每轮追加导致 hash
+	// 变化。混入 APIKeyID 后，可以让同一个 API Key 下的同一对话固定路由到同一账号。
+	if isKiroGroup(parsed.Group) {
+		if !parsed.Group.EffectiveKiroAutoStickyEnabled() {
+			slog.Info("sticky.hash_source",
+				"source", "kiro_auto_sticky_disabled",
+			)
+			return ""
+		}
+		stableSeed := extractTextFromSystemRaw(parsed.SystemRaw())
+		source := "kiro_system_prompt"
+		if stableSeed == "" {
+			stableSeed = extractFirstUserMessageTextFromRaw(parsed.MessagesRaw())
+			source = "kiro_first_user_message"
+		}
+		if stableSeed != "" {
+			var sb strings.Builder
+			if parsed.SessionContext != nil {
+				_, _ = sb.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
+				_, _ = sb.WriteString("|")
+			}
+			_, _ = sb.WriteString(stableSeed)
+			hash := s.hashContent(sb.String())
+			slog.Info("sticky.hash_source",
+				"source", source,
+				"hash", hash,
+				"seed_len", len(stableSeed),
+			)
+			return hash
+		}
+		return ""
 	}
 
 	// 3. 最后 fallback: 使用 session上下文 + system + 所有消息的完整摘要串
@@ -800,12 +864,68 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 	return ""
 }
 
+func (s *GatewayService) hashStickySessionHint(parsed *ParsedRequest, sessionID, source string) (string, bool) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return "", false
+	}
+
+	var sb strings.Builder
+	if parsed != nil && parsed.SessionContext != nil {
+		_, _ = sb.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
+		_, _ = sb.WriteString("|")
+	}
+	_, _ = sb.WriteString(sessionID)
+	hash := s.hashContent(sb.String())
+	slog.Info("sticky.hash_source",
+		"source", source,
+		"hash", hash,
+	)
+	return hash, true
+}
+
+// isKiroGroup 判断请求所属分组是否为 Kiro 平台分组。
+func isKiroGroup(group *Group) bool {
+	return group != nil && group.Platform == PlatformKiro
+}
+
 // BindStickySession sets session -> account binding with standard TTL.
 func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	return s.BindStickySessionWithTTL(ctx, groupID, sessionHash, accountID, stickySessionTTL)
+}
+
+func (s *GatewayService) BindStickySessionForGroup(ctx context.Context, groupID *int64, sessionHash string, accountID int64, group *Group) error {
+	return s.BindStickySessionWithTTL(ctx, groupID, sessionHash, accountID, stickySessionTTLForGroup(group))
+}
+
+func (s *GatewayService) BindStickySessionWithTTL(ctx context.Context, groupID *int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
 		return nil
 	}
-	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
+	if ttl <= 0 {
+		ttl = stickySessionTTL
+	}
+	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, ttl)
+}
+
+func stickySessionTTLForGroup(group *Group) time.Duration {
+	if group != nil && group.Platform == PlatformKiro {
+		return group.EffectiveKiroStickySessionTTL()
+	}
+	return stickySessionTTL
+}
+
+func (s *GatewayService) stickySessionTTLForGroupID(ctx context.Context, groupID *int64) time.Duration {
+	resolvedGroupID := derefGroupID(groupID)
+	if group := s.groupFromContext(ctx, resolvedGroupID); group != nil {
+		return stickySessionTTLForGroup(group)
+	}
+	if groupID != nil && s.groupRepo != nil {
+		if group, err := s.groupRepo.GetByIDLite(ctx, *groupID); err == nil {
+			return stickySessionTTLForGroup(group)
+		}
+	}
+	return stickySessionTTL
 }
 
 // GetCachedSessionAccountID retrieves the account ID bound to a sticky session.
@@ -945,6 +1065,41 @@ func appendMessageTextsFromRaw(builder *strings.Builder, raw []byte) {
 	})
 }
 
+func extractFirstUserMessageTextFromRaw(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	messages := parseRawJSONView(raw)
+	if !messages.IsArray() {
+		return ""
+	}
+	var firstText string
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		role := strings.ToLower(strings.TrimSpace(msg.Get("role").String()))
+		if role != "" && role != "user" {
+			return true
+		}
+		if content := msg.Get("content"); content.Exists() {
+			firstText = extractTextFromContentRaw(content)
+		}
+		if firstText == "" {
+			parts := msg.Get("parts")
+			if parts.IsArray() {
+				var builder strings.Builder
+				parts.ForEach(func(_, part gjson.Result) bool {
+					if text := part.Get("text").String(); text != "" {
+						_, _ = builder.WriteString(text)
+					}
+					return true
+				})
+				firstText = builder.String()
+			}
+		}
+		return strings.TrimSpace(firstText) == ""
+	})
+	return strings.TrimSpace(firstText)
+}
+
 func appendResponsesSessionAnchorFromRaw(builder *strings.Builder, raw []byte) {
 	if builder == nil || len(raw) == 0 {
 		return
@@ -1079,6 +1234,7 @@ type claudeOAuthNormalizeOptions struct {
 	injectMetadata          bool
 	metadataUserID          string
 	stripSystemCacheControl bool
+	preserveToolChoice      bool
 }
 
 // sanitizeSystemText rewrites only the fixed OpenCode identity sentence (if present).
@@ -1300,6 +1456,12 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	// 策略：客户端传了什么就透传；没传则补默认 1。
 	if !gjson.GetBytes(out, "temperature").Exists() {
 		if next, ok := setJSONValueBytes(out, "temperature", 1); ok {
+			out = next
+			modified = true
+		}
+	}
+	if !opts.preserveToolChoice && gjson.GetBytes(out, "tool_choice").Exists() {
+		if next, ok := deleteJSONPathBytes(out, "tool_choice"); ok {
 			out = next
 			modified = true
 		}
@@ -1991,7 +2153,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							continue
 						}
 						if sessionHash != "" && s.cache != nil {
-							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, stickySessionTTL)
+							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, s.stickySessionTTLForGroupID(ctx, groupID))
 						}
 						if s.debugModelRoutingEnabled() {
 							logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
@@ -2082,7 +2244,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 								"result", "slot_acquired",
 							)
 							if s.cache != nil {
-								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, s.stickySessionTTLForGroupID(ctx, groupID))
 							}
 							return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 						}
@@ -2185,6 +2347,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	if len(candidates) == 0 {
+		if s.tryRecoverKiroCooldownPool(ctx, accounts, requestedModel, excludedIDs, useMixed) {
+			retryCtx := context.WithValue(ctx, kiroCooldownRecoveryAttemptedKey, true)
+			return s.SelectAccountWithLoadAwareness(retryCtx, groupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
+		}
 		return nil, ErrNoAvailableAccounts
 	}
 
@@ -2241,7 +2407,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
 				} else {
 					if sessionHash != "" && s.cache != nil {
-						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
+						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, s.stickySessionTTLForGroupID(ctx, groupID))
 					}
 					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 				}
@@ -2289,7 +2455,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 				continue
 			}
 			if sessionHash != "" && s.cache != nil {
-				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
+				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, s.stickySessionTTLForGroupID(ctx, groupID))
 			}
 			selection, err := s.newSelectionResult(ctx, acc, true, result.ReleaseFunc, nil)
 			if err != nil {
@@ -2574,14 +2740,91 @@ func (s *GatewayService) isAccountSchedulableForSelection(account *Account) bool
 	if account == nil {
 		return false
 	}
-	return account.IsSchedulable()
+	if !account.IsSchedulable() {
+		return false
+	}
+	return s.isKiroRuntimeSchedulable(context.Background(), account)
 }
 
 func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Context, account *Account, requestedModel string) bool {
 	if account == nil {
 		return false
 	}
-	return account.IsSchedulableForModelWithContext(ctx, requestedModel)
+	if !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+		return false
+	}
+	return s.isKiroRuntimeSchedulable(ctx, account)
+}
+
+func (s *GatewayService) isKiroRuntimeSchedulable(ctx context.Context, account *Account) bool {
+	if account == nil || account.Platform != PlatformKiro || account.Type != AccountTypeOAuth || s == nil || s.kiroCooldownStore == nil {
+		return true
+	}
+	state, err := s.getKiroCooldownState(ctx, buildKiroAccountKey(account))
+	if err != nil {
+		return true
+	}
+	return state == nil || !state.Active
+}
+
+func (s *GatewayService) tryRecoverKiroCooldownPool(ctx context.Context, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, allowMixedScheduling bool) bool {
+	if s == nil || s.kiroCooldownStore == nil || ctx.Value(kiroCooldownRecoveryAttemptedKey) == true {
+		return false
+	}
+	tokenKeys := s.kiroTransientCooldownRecoveryKeys(ctx, accounts, requestedModel, excludedIDs, allowMixedScheduling)
+	if len(tokenKeys) == 0 {
+		return false
+	}
+	cleared, err := s.kiroCooldownStore.ClearEarliestTransientCooldown(ctx, tokenKeys)
+	if err != nil {
+		logger.LegacyPrintf("service.gateway", "Kiro cooldown pool recovery failed: %v", err)
+		return false
+	}
+	if cleared {
+		logger.LegacyPrintf("service.gateway", "Kiro cooldown pool recovery cleared one transient cooldown")
+	}
+	return cleared
+}
+
+func (s *GatewayService) kiroTransientCooldownRecoveryKeys(ctx context.Context, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, allowMixedScheduling bool) []string {
+	tokenKeys := make([]string, 0, len(accounts))
+	eligible := 0
+	for i := range accounts {
+		acc := &accounts[i]
+		if acc == nil || acc.Platform != PlatformKiro || acc.Type != AccountTypeOAuth {
+			if allowMixedScheduling {
+				continue
+			}
+			return nil
+		}
+		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+		}
+		if !acc.IsSchedulable() {
+			continue
+		}
+		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+			continue
+		}
+		if !s.isAccountSchedulableForQuota(acc) ||
+			!s.isAccountSchedulableForWindowCost(ctx, acc, false) ||
+			!s.isAccountSchedulableForRPM(ctx, acc, false) {
+			continue
+		}
+		eligible++
+		state, err := s.getKiroCooldownState(ctx, buildKiroAccountKey(acc))
+		if err != nil || state == nil || !state.Active {
+			return nil
+		}
+		if state.Reason != kirocooldown.CooldownReason429 {
+			return nil
+		}
+		tokenKeys = append(tokenKeys, buildKiroAccountKey(acc))
+	}
+	if eligible == 0 || len(tokenKeys) != eligible {
+		return nil
+	}
+	return tokenKeys
 }
 
 // isAccountInGroup checks if the account belongs to the specified group.
@@ -3379,7 +3622,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 		if selected != nil {
 			if sessionHash != "" && s.cache != nil {
-				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, s.stickySessionTTLForGroupID(ctx, groupID)); err != nil {
 					logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 				}
 			}
@@ -3493,6 +3736,10 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 	if selected == nil {
 		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, false)
+		if s.tryRecoverKiroCooldownPool(ctx, accounts, requestedModel, excludedIDs, false) {
+			retryCtx := context.WithValue(ctx, kiroCooldownRecoveryAttemptedKey, true)
+			return s.selectAccountForModelWithPlatform(retryCtx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+		}
 		if requestedModel != "" {
 			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
 		}
@@ -3501,7 +3748,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 	// 4. 建立粘性绑定
 	if sessionHash != "" && s.cache != nil {
-		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, s.stickySessionTTLForGroupID(ctx, groupID)); err != nil {
 			logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 		}
 	}
@@ -3639,7 +3886,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 		if selected != nil {
 			if sessionHash != "" && s.cache != nil {
-				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, s.stickySessionTTLForGroupID(ctx, groupID)); err != nil {
 					logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 				}
 			}
@@ -3762,7 +4009,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 	// 4. 建立粘性绑定
 	if sessionHash != "" && s.cache != nil {
-		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, s.stickySessionTTLForGroupID(ctx, groupID)); err != nil {
 			logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 		}
 	}
@@ -3871,6 +4118,17 @@ func (s *GatewayService) diagnoseSelectionFailure(
 	}
 	if _, excluded := excludedIDs[acc.ID]; excluded {
 		return selectionFailureDiagnosis{Category: "excluded"}
+	}
+	if !acc.IsSchedulable() {
+		return selectionFailureDiagnosis{Category: "unschedulable", Detail: "generic_unschedulable"}
+	}
+	if acc.Platform == PlatformKiro && acc.Type == AccountTypeOAuth {
+		if state, err := s.getKiroCooldownState(ctx, buildKiroAccountKey(acc)); err == nil && state != nil && state.Active {
+			return selectionFailureDiagnosis{
+				Category: "unschedulable",
+				Detail:   fmt.Sprintf("kiro_runtime_%s remaining=%s", state.Reason, state.Remaining.Truncate(time.Second)),
+			}
+		}
 	}
 	if !s.isAccountSchedulableForSelection(acc) {
 		return selectionFailureDiagnosis{Category: "unschedulable", Detail: "generic_unschedulable"}
@@ -4030,6 +4288,13 @@ func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (s
 	// 对于 Anthropic OAuth 账号，使用 ClaudeTokenProvider 获取缓存的 token
 	if account.Platform == PlatformAnthropic && account.Type == AccountTypeOAuth && s.claudeTokenProvider != nil {
 		accessToken, err := s.claudeTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return "", "", err
+		}
+		return accessToken, "oauth", nil
+	}
+	if account.Platform == PlatformKiro && account.Type == AccountTypeOAuth && s.kiroTokenProvider != nil {
+		accessToken, err := s.kiroTokenProvider.GetAccessToken(ctx, account)
 		if err != nil {
 			return "", "", err
 		}
@@ -4795,8 +5060,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return nil, fmt.Errorf("parse request: empty request")
 	}
 
-	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
-	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body.Bytes()) {
+	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应。
+	// Kiro OAuth 在 forwardKiroMessages 内部完成模型映射后再判断，避免使用未映射的请求体。
+	if account != nil && (account.Platform != PlatformKiro || account.Type != AccountTypeOAuth) && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body.Bytes()) {
 		return s.handleWebSearchEmulation(ctx, c, account, parsed)
 	}
 
@@ -4822,6 +5088,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	if account != nil && account.IsBedrock() {
 		return s.forwardBedrock(ctx, c, account, parsed, startTime)
+	}
+
+	if account != nil && account.Platform == PlatformKiro && account.Type == AccountTypeOAuth {
+		return s.forwardKiroMessages(ctx, c, account, parsed, startTime)
 	}
 
 	// Beta policy: evaluate once; block check + cache filter set for buildUpstreamRequest.
@@ -4891,7 +5161,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		// system 被重写时保留 CC prompt 的 cache_control: ephemeral（匹配真实 Claude Code 行为）；
 		// 未重写时（haiku / 注入开关关闭）剥离客户端 cache_control，与原有行为一致。
 		// 两种情况下 enforceCacheControlLimit 都会兜底处理上限。
-		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
+		normalizeOpts := claudeOAuthNormalizeOptions{
+			stripSystemCacheControl: !systemRewritten,
+			preserveToolChoice:      account.Platform == PlatformKiro,
+		}
 		if s.identityService != nil {
 			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 			if err == nil && fp != nil {
@@ -4940,7 +5213,12 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// - OAuth/SetupToken 账号：使用 Anthropic 标准映射（短ID → 长ID）
 	mappedModel := reqModel
 	mappingSource := ""
-	if account.Type == AccountTypeAPIKey {
+	if account.Platform == PlatformKiro {
+		if next := account.GetMappedModel(reqModel); next != "" && next != reqModel {
+			mappedModel = next
+			mappingSource = "account"
+		}
+	} else if account.Type == AccountTypeAPIKey {
 		mappedModel = account.GetMappedModel(reqModel)
 		if mappedModel != reqModel {
 			mappingSource = "account"
@@ -5856,6 +6134,9 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
 
+	// 账号级自定义请求头（最后应用，覆盖同名 header）
+	applyAccountCustomHeaders(req, account)
+
 	return req, body, nil
 }
 
@@ -6025,6 +6306,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 
 			if !clientDisconnected {
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
+				restored = stripSub2apiInternalUsageFields(restored)
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
@@ -6087,6 +6369,21 @@ func extractAnthropicSSEDataLine(line string) (string, bool) {
 	return line[start:], true
 }
 
+func stripSub2apiInternalUsageFields(line string) string {
+	if !strings.Contains(line, "_sub2api_kiro_credits") {
+		return line
+	}
+	data, ok := extractAnthropicSSEDataLine(line)
+	if !ok {
+		return line
+	}
+	cleaned, err := sjson.Delete(data, "usage._sub2api_kiro_credits")
+	if err != nil {
+		return line
+	}
+	return line[:len(line)-len(data)] + cleaned
+}
+
 func (s *GatewayService) parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 	if usage == nil || data == "" || data == "[DONE]" {
 		return
@@ -6132,6 +6429,9 @@ func (s *GatewayService) parseSSEUsagePassthrough(data string, usage *ClaudeUsag
 			}
 			if cc1h.Exists() && cc1h.Int() > 0 {
 				usage.CacheCreation1hTokens = int(cc1h.Int())
+			}
+			if v := deltaUsage.Get("_sub2api_kiro_credits"); v.Exists() && v.Float() > 0 {
+				usage.KiroCredits = v.Float()
 			}
 		}
 	}
@@ -6690,6 +6990,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	targetURL := claudeAPIURL
 	if account.Type == AccountTypeAPIKey {
 		baseURL := account.GetBaseURL()
+		if baseURL == "" && account.Platform == PlatformKiro {
+			return nil, nil, fmt.Errorf("kiro api key account requires base_url")
+		}
 		if baseURL != "" {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
@@ -6839,6 +7142,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			}
 		}
 	}
+
+	// 账号级自定义请求头（最后应用，覆盖同名 header）
+	applyAccountCustomHeaders(req, account)
 
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
 	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
@@ -7068,6 +7374,22 @@ func applyClaudeOAuthHeaderDefaults(req *http.Request) {
 		if getHeaderRaw(req.Header, key) == "" {
 			setHeaderRaw(req.Header, resolveWireCasing(key), value)
 		}
+	}
+}
+
+// applyAccountCustomHeaders 注入账号级自定义请求头。
+// 作为最后一步调用，覆盖同名 header。运行时兜底跳过禁止的 header。
+func applyAccountCustomHeaders(req *http.Request, account *Account) {
+	headers := account.GetCustomHeaders()
+	if len(headers) == 0 {
+		return
+	}
+	for k, v := range headers {
+		lower := strings.ToLower(strings.TrimSpace(k))
+		if IsForbiddenHeaderName(k) || accountCustomHeaderForbidden[lower] {
+			continue
+		}
+		setHeaderRaw(req.Header, k, v)
 	}
 }
 
@@ -8165,10 +8487,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	}
 
 	// 下游 keepalive：防止代理/Cloudflare Tunnel 因连接空闲而断开
-	keepaliveInterval := time.Duration(0)
-	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
-		keepaliveInterval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
-	}
+	keepaliveInterval := s.streamKeepaliveIntervalForAccount(account)
 	var keepaliveTicker *time.Ticker
 	if keepaliveInterval > 0 {
 		keepaliveTicker = time.NewTicker(keepaliveInterval)
@@ -8308,6 +8627,14 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 
 		usagePatch := s.extractSSEUsagePatch(event)
+		if eventType == "message_delta" {
+			if u, ok := event["usage"].(map[string]any); ok {
+				if _, exists := u["_sub2api_kiro_credits"]; exists {
+					delete(u, "_sub2api_kiro_credits")
+					eventChanged = true
+				}
+			}
+		}
 		if anthropicStreamEventIsTerminal(eventName, dataLine) {
 			sawTerminalEvent = true
 		}
@@ -8499,6 +8826,8 @@ type sseUsagePatch struct {
 	hasCacheCreation5m       bool
 	cacheCreation1hTokens    int
 	hasCacheCreation1h       bool
+	kiroCredits              float64
+	hasKiroCredits           bool
 }
 
 func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePatch {
@@ -8573,6 +8902,10 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 				patch.hasCacheCreation1h = true
 			}
 		}
+		if v, ok := parseSSEUsageFloat(usageObj["_sub2api_kiro_credits"]); ok && v > 0 {
+			patch.kiroCredits = v
+			patch.hasKiroCredits = true
+		}
 		return patch
 	}
 
@@ -8602,6 +8935,33 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	if patch.hasCacheCreation1h {
 		usage.CacheCreation1hTokens = patch.cacheCreation1hTokens
 	}
+	if patch.hasKiroCredits {
+		usage.KiroCredits = patch.kiroCredits
+	}
+}
+
+func parseSSEUsageFloat(value any) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f, true
+		}
+	case string:
+		if parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
 }
 
 func parseSSEUsageInt(value any) (int, bool) {
@@ -9316,6 +9676,9 @@ type recordUsageOpts struct {
 	// 长上下文计费（仅 Gemini 路径需要）
 	LongContextThreshold  int
 	LongContextMultiplier float64
+
+	// Kiro 账号在上游返回 auto 等无法定价模型时使用保守计费兜底。
+	IsKiroAccount bool
 }
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
@@ -9454,6 +9817,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	// 计算费用
+	opts.IsKiroAccount = account != nil && account.Platform == PlatformKiro
 	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
 
 	// 判断计费方式：订阅模式 vs 余额模式
@@ -9541,6 +9905,28 @@ func (s *GatewayService) calculateRecordUsageCost(
 
 	// Token 计费
 	return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, opts)
+}
+
+const kiroConservativeFallbackBillingModel = "claude-opus-4-6"
+
+func shouldUseKiroConservativeBillingFallback(result *ForwardResult, billingModel string, opts *recordUsageOpts) bool {
+	if result == nil {
+		return false
+	}
+
+	return opts != nil && opts.IsKiroAccount
+}
+
+func (s *GatewayService) calculateKiroConservativeTokenCost(tokens UsageTokens, multiplier float64) *CostBreakdown {
+	if s == nil || s.billingService == nil {
+		return nil
+	}
+	cost, err := s.billingService.CalculateCost(kiroConservativeFallbackBillingModel, tokens, multiplier)
+	if err != nil {
+		logger.LegacyPrintf("service.gateway", "Calculate conservative Kiro fallback cost failed: %v", err)
+		return nil
+	}
+	return cost
 }
 
 // resolveChannelPricing 检查指定模型是否存在渠道级别定价。
@@ -9648,6 +10034,12 @@ func (s *GatewayService) calculateTokenCost(
 	}
 	if err != nil {
 		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
+		if shouldUseKiroConservativeBillingFallback(result, billingModel, opts) {
+			if fallback := s.calculateKiroConservativeTokenCost(tokens, multiplier); fallback != nil {
+				logger.LegacyPrintf("service.gateway", "Using conservative Kiro fallback pricing for model=%s", billingModel)
+				return fallback
+			}
+		}
 		return &CostBreakdown{ActualCost: 0}
 	}
 	return cost
@@ -9724,6 +10116,10 @@ func (s *GatewayService) buildRecordUsageLog(
 		usageLog.CacheReadCost = cost.CacheReadCost
 		usageLog.TotalCost = cost.TotalCost
 		usageLog.ActualCost = cost.ActualCost
+	}
+	if result.Usage.KiroCredits > 0 {
+		kiroCredits := result.Usage.KiroCredits
+		usageLog.KiroCredits = &kiroCredits
 	}
 
 	return usageLog
@@ -9929,6 +10325,10 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	// 返回 nil 避免 handler 层记录为错误，也不设置 ops 上游错误上下文。
 	if account.Platform == PlatformAntigravity {
 		s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported for this platform")
+		return nil
+	}
+	if account.Platform == PlatformKiro && account.Type == AccountTypeOAuth {
+		s.countTokensError(c, http.StatusNotFound, "not_found_error", "Token counting is not supported for this platform")
 		return nil
 	}
 
@@ -10590,6 +10990,19 @@ func reconcileCachedTokens(usage map[string]any) bool {
 	}
 	usage["cache_read_input_tokens"] = cached
 	return true
+}
+
+func (s *GatewayService) streamKeepaliveIntervalForAccount(account *Account) time.Duration {
+	if account != nil && account.Platform == PlatformKiro {
+		if s != nil && s.cfg != nil && s.cfg.Gateway.KiroStreamKeepaliveInterval > 0 {
+			return time.Duration(s.cfg.Gateway.KiroStreamKeepaliveInterval) * time.Second
+		}
+		return defaultKiroStreamKeepalive
+	}
+	if s != nil && s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		return time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
+	}
+	return 0
 }
 
 const debugGatewayBodyDefaultFilename = "gateway_debug.log"

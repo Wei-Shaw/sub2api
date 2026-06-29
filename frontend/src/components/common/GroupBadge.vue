@@ -115,6 +115,9 @@ const labelClass = computed(() => {
   }
 
   // 正常状态或无天数：根据平台显示主题色
+  if (props.platform === 'kiro') {
+    return `${base} bg-violet-200/60 text-violet-800 dark:bg-violet-800/40 dark:text-violet-300`
+  }
   if (props.platform === 'anthropic') {
     return `${base} bg-orange-200/60 text-orange-800 dark:bg-orange-800/40 dark:text-orange-300`
   }
@@ -129,6 +132,11 @@ const labelClass = computed(() => {
 
 // Badge color based on platform and subscription type
 const badgeClass = computed(() => {
+  if (props.platform === 'kiro') {
+    return isSubscription.value
+      ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+      : 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300'
+  }
   if (props.platform === 'anthropic') {
     // Claude: orange theme
     return isSubscription.value

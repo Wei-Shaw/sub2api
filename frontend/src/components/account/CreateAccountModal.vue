@@ -160,6 +160,19 @@
             <PlatformIcon platform="grok" size="sm" />
             Grok
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'kiro'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'kiro'
+                ? 'bg-white text-amber-700 shadow-sm dark:bg-dark-600 dark:text-amber-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <Icon name="sparkles" size="sm" />
+            Kiro
+          </button>
         </div>
       </div>
 
@@ -732,33 +745,23 @@
         <div v-if="accountCategory !== 'service_account'" class="mt-4">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
           <div class="mt-2">
-            <select
+            <Select
               v-if="geminiOAuthType === 'google_one'"
               v-model="geminiTierGoogleOne"
-              class="input"
-            >
-              <option value="google_one_free">{{ t('admin.accounts.gemini.tier.googleOne.free') }}</option>
-              <option value="google_ai_pro">{{ t('admin.accounts.gemini.tier.googleOne.pro') }}</option>
-              <option value="google_ai_ultra">{{ t('admin.accounts.gemini.tier.googleOne.ultra') }}</option>
-            </select>
+              :options="geminiTierGoogleOneOptions"
+            />
 
-            <select
+            <Select
               v-else-if="geminiOAuthType === 'code_assist'"
               v-model="geminiTierGcp"
-              class="input"
-            >
-              <option value="gcp_standard">{{ t('admin.accounts.gemini.tier.gcp.standard') }}</option>
-              <option value="gcp_enterprise">{{ t('admin.accounts.gemini.tier.gcp.enterprise') }}</option>
-            </select>
+              :options="geminiTierGcpOptions"
+            />
 
-            <select
+            <Select
               v-else
               v-model="geminiTierAIStudio"
-              class="input"
-            >
-              <option value="aistudio_free">{{ t('admin.accounts.gemini.tier.aiStudio.free') }}</option>
-              <option value="aistudio_paid">{{ t('admin.accounts.gemini.tier.aiStudio.paid') }}</option>
-            </select>
+              :options="geminiTierAIStudioOptions"
+            />
           </div>
           <p class="input-hint">{{ t('admin.accounts.gemini.tier.hint') }}</p>
         </div>
@@ -832,6 +835,469 @@
           :placeholder="t('admin.accounts.antigravityProjectIdPlaceholder')"
         />
         <p class="input-hint">{{ t('admin.accounts.antigravityProjectIdHint') }}</p>
+      <!-- Kiro account type selection -->
+      <div v-if="form.platform === 'kiro'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="mt-2 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            @click="accountCategory = 'oauth-based'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'oauth-based'
+                ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                : 'border-gray-200 hover:border-amber-300 dark:border-dark-600 dark:hover:border-amber-700'
+            ]"
+          >
+            <div :class="['flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', accountCategory === 'oauth-based' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400']">
+              <Icon name="key" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.types.oauth') }}
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.types.kiroOauth') }}
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="accountCategory = 'apikey'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'apikey'
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
+            ]"
+          >
+            <div :class="['flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', accountCategory === 'apikey' ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400']">
+              <Icon name="cloud" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                API Key
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.types.kiroApikey') }}
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Kiro OAuth auth mode selection -->
+      <div v-if="form.platform === 'kiro' && accountCategory === 'oauth-based'">
+        <label class="input-label">{{ t('admin.accounts.oauth.kiro.authModeTitle') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <button
+            type="button"
+            @click="kiroAccountType = 'oauth'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              kiroAccountType === 'oauth'
+                ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                : 'border-gray-200 hover:border-amber-300 dark:border-dark-600 dark:hover:border-amber-700'
+            ]"
+          >
+            <div :class="['flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', kiroAccountType === 'oauth' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400']">
+              <Icon name="key" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.oauth.kiro.oauthTitle') }}
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.oauth.kiro.oauthSubtitle') }}
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="kiroAccountType = 'idc'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              kiroAccountType === 'idc'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                : 'border-gray-200 hover:border-blue-300 dark:border-dark-600 dark:hover:border-blue-700'
+            ]"
+          >
+            <div :class="['flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', kiroAccountType === 'idc' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400']">
+              <Icon name="cloud" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.oauth.kiro.idcTitle') }}
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.oauth.kiro.idcSubtitle') }}
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="kiroAccountType = 'import'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              kiroAccountType === 'import'
+                ? 'border-slate-500 bg-slate-50 dark:bg-slate-900/20'
+                : 'border-gray-200 hover:border-slate-300 dark:border-dark-600 dark:hover:border-slate-700'
+            ]"
+          >
+            <div :class="['flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', kiroAccountType === 'import' ? 'bg-slate-700 text-white dark:bg-slate-500' : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400']">
+              <Icon name="download" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.oauth.kiro.importTitle') }}
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.oauth.kiro.importSubtitle') }}
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="form.platform === 'kiro' && accountCategory === 'oauth-based' && kiroAccountType === 'oauth'" class="mt-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <label class="input-label">{{ t('admin.accounts.oauth.kiro.oauthProviderTitle') }}</label>
+          <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.oauth.kiro.socialSubtitle') }}</span>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            @click="kiroOAuthProvider = 'google'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              kiroOAuthProvider === 'google'
+                ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                : 'border-gray-200 hover:border-amber-300 dark:border-dark-600 dark:hover:border-amber-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                kiroOAuthProvider === 'google'
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="user" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.oauth.kiro.googleTitle') }}
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.oauth.kiro.googleDesc') }}
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="kiroOAuthProvider = 'github'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              kiroOAuthProvider === 'github'
+                ? 'border-slate-500 bg-slate-50 dark:bg-slate-900/20'
+                : 'border-gray-200 hover:border-slate-300 dark:border-dark-600 dark:hover:border-slate-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                kiroOAuthProvider === 'github'
+                  ? 'bg-slate-700 text-white dark:bg-slate-500'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="terminal" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.oauth.kiro.githubTitle') }}
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.oauth.kiro.githubDesc') }}
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="form.platform === 'kiro' && accountCategory === 'oauth-based' && kiroAccountType === 'idc'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.oauth.kiro.startUrlLabel') }}</label>
+          <input
+            v-model="kiroIDCStartUrl"
+            type="text"
+            class="input"
+            :placeholder="t('admin.accounts.oauth.kiro.startUrlPlaceholder')"
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.oauth.kiro.regionLabel') }}</label>
+          <input
+            v-model="kiroIDCRegion"
+            type="text"
+            class="input"
+            :placeholder="t('admin.accounts.oauth.kiro.regionPlaceholder')"
+          />
+        </div>
+      </div>
+
+      <div v-if="form.platform === 'kiro' && accountCategory === 'oauth-based'" class="space-y-2">
+        <label class="input-label">{{ t('admin.accounts.kiroCreditUnitPriceUsd') }}</label>
+        <input
+          v-model.number="kiroCreditUnitPriceUsd"
+          type="number"
+          min="0"
+          step="0.001"
+          class="input"
+          placeholder="0"
+          data-testid="kiro-credit-unit-price-usd"
+        />
+        <p class="input-hint">{{ t('admin.accounts.kiroCreditUnitPriceUsdHint') }}</p>
+      </div>
+
+      <div v-if="form.platform === 'kiro' && accountCategory === 'apikey'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
+          <input
+            v-model="apiKeyBaseUrl"
+            type="text"
+            required
+            class="input"
+            placeholder="https://your-kiro-upstream.example.com"
+          />
+          <p class="input-hint">{{ baseUrlHint }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
+          <input
+            v-model="apiKeyValue"
+            type="password"
+            required
+            class="input font-mono"
+            placeholder="sk-..."
+          />
+          <p class="input-hint">{{ apiKeyHint }}</p>
+        </div>
+      </div>
+
+      <div v-if="form.platform === 'kiro' && accountCategory === 'apikey'" class="space-y-4">
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.poolMode') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.poolModeHint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="poolModeEnabled = !poolModeEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                poolModeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  poolModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <div v-if="poolModeEnabled" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+            <p class="text-xs text-blue-700 dark:text-blue-400">
+              <Icon name="exclamationCircle" size="sm" class="mr-1 inline" :stroke-width="2" />
+              {{ t('admin.accounts.poolModeInfo') }}
+            </p>
+          </div>
+          <div v-if="poolModeEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.poolModeRetryCount') }}</label>
+            <input
+              v-model.number="poolModeRetryCount"
+              type="number"
+              min="0"
+              :max="MAX_POOL_MODE_RETRY_COUNT"
+              step="1"
+              class="input"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{
+                t('admin.accounts.poolModeRetryCountHint', {
+                  default: DEFAULT_POOL_MODE_RETRY_COUNT,
+                  max: MAX_POOL_MODE_RETRY_COUNT
+                })
+              }}
+            </p>
+          </div>
+        </div>
+
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.customErrorCodes') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.customErrorCodesHint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="customErrorCodesEnabled = !customErrorCodesEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                customErrorCodesEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  customErrorCodesEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="customErrorCodesEnabled" class="space-y-3">
+            <div class="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
+              <p class="text-xs text-amber-700 dark:text-amber-400">
+                <Icon name="exclamationTriangle" size="sm" class="mr-1 inline" :stroke-width="2" />
+                {{ t('admin.accounts.customErrorCodesWarning') }}
+              </p>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="code in commonErrorCodes"
+                :key="code.value"
+                type="button"
+                @click="toggleErrorCode(code.value)"
+                :class="[
+                  'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                  selectedErrorCodes.includes(code.value)
+                    ? 'bg-red-100 text-red-700 ring-1 ring-red-500 dark:bg-red-900/30 dark:text-red-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+              >
+                {{ code.value }} {{ code.label }}
+              </button>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <input
+                v-model.number="customErrorCodeInput"
+                type="number"
+                min="100"
+                max="599"
+                class="input flex-1"
+                :placeholder="t('admin.accounts.enterErrorCode')"
+                @keyup.enter="addCustomErrorCode"
+              />
+              <button
+                type="button"
+                @click="addCustomErrorCode"
+                class="btn btn-secondary shrink-0"
+              >
+                {{ t('admin.accounts.add') }}
+              </button>
+            </div>
+
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="code in selectedErrorCodes.sort((a, b) => a - b)"
+                :key="code"
+                class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
+              >
+                {{ code }}
+                <button
+                  type="button"
+                  @click="removeErrorCode(code)"
+                  class="hover:text-red-900 dark:hover:text-red-300"
+                >
+                  <Icon name="x" size="sm" :stroke-width="2" />
+                </button>
+              </span>
+              <span v-if="selectedErrorCodes.length === 0" class="text-xs text-gray-400">
+                {{ t('admin.accounts.noneSelectedUsesDefault') }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kiro 只支持模型映射模式，不支持白名单模式 -->
+      <div v-if="form.platform === 'kiro'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+        <div>
+          <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+            <p class="text-xs text-purple-700 dark:text-purple-400">
+              {{ t('admin.accounts.mapRequestModels') }}
+            </p>
+          </div>
+
+          <div v-if="kiroModelMappings.length > 0" class="mb-3 space-y-2">
+            <div
+              v-for="(mapping, index) in kiroModelMappings"
+              :key="getKiroModelMappingKey(mapping)"
+              class="space-y-1"
+            >
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="mapping.from"
+                  type="text"
+                  :class="[
+                    'input flex-1',
+                    !isValidWildcardPattern(mapping.from) ? 'border-red-500 dark:border-red-500' : ''
+                  ]"
+                  :placeholder="t('admin.accounts.requestModel')"
+                />
+                <svg class="h-4 w-4 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+                <input
+                  v-model="mapping.to"
+                  type="text"
+                  :class="[
+                    'input flex-1',
+                    mapping.to.includes('*') ? 'border-red-500 dark:border-red-500' : ''
+                  ]"
+                  :placeholder="t('admin.accounts.actualModel')"
+                />
+                <button
+                  type="button"
+                  @click="removeKiroModelMapping(index)"
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                >
+                  <Icon name="x" size="sm" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <button type="button" @click="addKiroModelMapping" class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300">
+            <svg class="mr-1 inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            {{ t('admin.accounts.addMapping') }}
+          </button>
+
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="preset in kiroPresetMappings"
+              :key="preset.label"
+              type="button"
+              @click="addKiroPresetMapping(preset.from, preset.to)"
+              :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+            >
+              + {{ preset.label }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Upstream config (only for Antigravity upstream type) -->
@@ -926,25 +1392,10 @@
           </div>
           <div>
             <label class="input-label">Location</label>
-            <select
+            <Select
               v-model="vertexLocation"
-              required
-              class="input font-mono"
-            >
-              <optgroup
-                v-for="group in VERTEX_LOCATION_OPTIONS"
-                :key="group.label"
-                :label="group.label"
-              >
-                <option
-                  v-for="option in group.options"
-                  :key="option.value"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </option>
-              </optgroup>
-            </select>
+              :options="VERTEX_LOCATION_SELECT_OPTIONS"
+            />
             <p class="input-hint">{{ t('admin.accounts.vertexLocationHint') }}</p>
           </div>
         </div>
@@ -1069,7 +1520,7 @@
       </div>
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
-      <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
+      <div v-if="form.type === 'apikey' && form.platform !== 'antigravity' && form.platform !== 'kiro'" class="space-y-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -1107,10 +1558,7 @@
         <!-- Gemini API Key tier selection -->
         <div v-if="form.platform === 'gemini'">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
-          <select v-model="geminiTierAIStudio" class="input">
-            <option value="aistudio_free">{{ t('admin.accounts.gemini.tier.aiStudio.free') }}</option>
-            <option value="aistudio_paid">{{ t('admin.accounts.gemini.tier.aiStudio.paid') }}</option>
-          </select>
+          <Select v-model="geminiTierAIStudio" :options="geminiTierAIStudioOptions" />
           <p class="input-hint">{{ t('admin.accounts.gemini.tier.aiStudioHint') }}</p>
         </div>
 
@@ -1537,41 +1985,7 @@
         <!-- Shared: Region -->
         <div>
           <label class="input-label">{{ t('admin.accounts.bedrockRegion') }}</label>
-          <select v-model="bedrockRegion" class="input">
-            <optgroup label="US">
-              <option value="us-east-1">us-east-1 (N. Virginia)</option>
-              <option value="us-east-2">us-east-2 (Ohio)</option>
-              <option value="us-west-1">us-west-1 (N. California)</option>
-              <option value="us-west-2">us-west-2 (Oregon)</option>
-              <option value="us-gov-east-1">us-gov-east-1 (GovCloud US-East)</option>
-              <option value="us-gov-west-1">us-gov-west-1 (GovCloud US-West)</option>
-            </optgroup>
-            <optgroup label="Europe">
-              <option value="eu-west-1">eu-west-1 (Ireland)</option>
-              <option value="eu-west-2">eu-west-2 (London)</option>
-              <option value="eu-west-3">eu-west-3 (Paris)</option>
-              <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
-              <option value="eu-central-2">eu-central-2 (Zurich)</option>
-              <option value="eu-south-1">eu-south-1 (Milan)</option>
-              <option value="eu-south-2">eu-south-2 (Spain)</option>
-              <option value="eu-north-1">eu-north-1 (Stockholm)</option>
-            </optgroup>
-            <optgroup label="Asia Pacific">
-              <option value="ap-northeast-1">ap-northeast-1 (Tokyo)</option>
-              <option value="ap-northeast-2">ap-northeast-2 (Seoul)</option>
-              <option value="ap-northeast-3">ap-northeast-3 (Osaka)</option>
-              <option value="ap-south-1">ap-south-1 (Mumbai)</option>
-              <option value="ap-south-2">ap-south-2 (Hyderabad)</option>
-              <option value="ap-southeast-1">ap-southeast-1 (Singapore)</option>
-              <option value="ap-southeast-2">ap-southeast-2 (Sydney)</option>
-            </optgroup>
-            <optgroup label="Canada">
-              <option value="ca-central-1">ca-central-1 (Canada)</option>
-            </optgroup>
-            <optgroup label="South America">
-              <option value="sa-east-1">sa-east-1 (São Paulo)</option>
-            </optgroup>
-          </select>
+          <Select v-model="bedrockRegion" :options="BEDROCK_REGION_SELECT_OPTIONS" />
           <p class="input-hint">{{ t('admin.accounts.bedrockRegionHint') }}</p>
         </div>
 
@@ -2411,11 +2825,7 @@
           </div>
           <!-- Profile selector -->
           <div v-if="tlsFingerprintEnabled" class="mt-3">
-            <select v-model="tlsFingerprintProfileId" class="input">
-              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
-              <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
-              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
-            </select>
+            <Select v-model="tlsFingerprintProfileId" :options="tlsProfileOptions" />
           </div>
         </div>
 
@@ -2473,13 +2883,9 @@
           </div>
           <div v-if="cacheTTLOverrideEnabled" class="mt-3">
             <label class="input-label text-xs">{{ t('admin.accounts.quotaControl.cacheTTLOverride.target') }}</label>
-            <select
-              v-model="cacheTTLOverrideTarget"
-              class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700 dark:text-white"
-            >
-              <option value="5m">5m</option>
-              <option value="1h">1h</option>
-            </select>
+            <div class="mt-1">
+              <Select v-model="cacheTTLOverrideTarget" :options="cacheTTLTargetOptions" />
+            </div>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.quotaControl.cacheTTLOverride.targetHint') }}
             </p>
@@ -2523,10 +2929,7 @@
       </div>
 
       <div>
-        <div class="mb-1 flex items-center gap-2">
-          <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
-          <ProxyAdBanner />
-        </div>
+        <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
@@ -2659,11 +3062,62 @@
               {{ t('admin.accounts.anthropic.webSearchEmulationDesc') }}
             </p>
           </div>
-          <select v-model="webSearchEmulationMode" class="input w-24 text-sm">
-            <option value="default">{{ t('admin.accounts.anthropic.webSearchDefault') }}</option>
-            <option value="enabled">{{ t('admin.accounts.anthropic.webSearchEnabled') }}</option>
-            <option value="disabled">{{ t('admin.accounts.anthropic.webSearchDisabled') }}</option>
-          </select>
+          <div class="w-24">
+            <Select size="sm" v-model="webSearchEmulationMode" :options="webSearchModeOptions" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Anthropic API Key: Custom Request Headers -->
+      <div
+        v-if="form.platform === 'anthropic' && accountCategory === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div>
+          <label class="input-label">{{ t('admin.accounts.anthropic.customHeaders') }}</label>
+          <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.anthropic.customHeadersDesc') }}
+          </p>
+          <div class="space-y-1.5">
+            <div v-for="(row, i) in anthropicCustomHeaders" :key="i" class="flex items-center gap-2">
+              <input
+                v-model="row.name"
+                type="text"
+                spellcheck="false"
+                :placeholder="t('admin.accounts.anthropic.headerNamePlaceholder')"
+                class="input w-52 flex-none font-mono text-xs"
+              />
+              <input
+                v-model="row.value"
+                type="text"
+                spellcheck="false"
+                :placeholder="t('admin.accounts.anthropic.headerValuePlaceholder')"
+                class="input flex-1 font-mono text-xs"
+              />
+              <button
+                type="button"
+                class="flex-none rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                @click="anthropicCustomHeaders.splice(i, 1); if (anthropicCustomHeaders.length === 0) anthropicCustomHeaders.push({ name: '', value: '' })"
+              >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1 rounded border border-dashed border-gray-300 px-2 py-1 text-xs text-gray-500 hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+              @click="anthropicCustomHeaders.push({ name: '', value: '' })"
+            >
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+              {{ t('admin.accounts.anthropic.headerAddRow') }}
+            </button>
+          </div>
+          <p class="mt-1 text-xs text-gray-400">
+            {{ t('admin.accounts.anthropic.customHeadersHint') }}
+          </p>
         </div>
       </div>
 
@@ -2739,10 +3193,12 @@
             <Select v-model="openAICompactMode" :options="openAICompactModeOptions" />
           </div>
         </div>
-        <div>
-          <label class="input-label">{{ t('admin.accounts.openai.compactModelMapping') }}</label>
-          <p class="input-hint">{{ t('admin.accounts.openai.compactModelMappingDesc') }}</p>
-          <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-2">
+        <div class="space-y-3 border-t border-gray-200 pt-5 dark:border-dark-600">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.openai.compactModelMapping') }}</label>
+            <p class="input-hint">{{ t('admin.accounts.openai.compactModelMappingDesc') }}</p>
+          </div>
+          <div v-if="openAICompactModelMappings.length > 0" class="space-y-2">
             <div
               v-for="(mapping, index) in openAICompactModelMappings"
               :key="getOpenAICompactModelMappingKey(mapping)"
@@ -2840,9 +3296,9 @@
         </div>
       </div>
 
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="form.platform === 'antigravity'" class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600">
         <!-- Mixed Scheduling (only for antigravity accounts) -->
-        <div v-if="form.platform === 'antigravity'" class="flex items-center gap-2">
+        <div class="flex items-center gap-2">
           <label class="flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"
@@ -2870,7 +3326,7 @@
             </div>
           </div>
         </div>
-        <div v-if="form.platform === 'antigravity'" class="mt-3 flex items-center gap-2">
+        <div class="flex items-center gap-2">
           <label class="flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"
@@ -2897,10 +3353,14 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Group Selection - 仅标准模式显示 -->
+      <!-- Group Selection - 仅标准模式显示 -->
+      <div
+        v-if="!authStore.isSimpleMode"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
         <GroupSelector
-          v-if="!authStore.isSimpleMode"
           v-model="form.group_ids"
           :groups="groups"
           :platform="form.platform"
@@ -2913,7 +3373,23 @@
 
     <!-- Step 2: OAuth Authorization -->
     <div v-else class="space-y-5">
+      <div v-if="isKiroImportMode" class="space-y-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/20">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.oauth.kiro.tokenJsonLabel') }}</label>
+          <textarea v-model="kiroTokenJson" rows="8" class="input font-mono text-xs" placeholder='{"accessToken":"...","refreshToken":"..."}'></textarea>
+          <p class="input-hint">{{ t('admin.accounts.oauth.kiro.tokenJsonHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.oauth.kiro.deviceRegistrationLabel') }}</label>
+          <textarea v-model="kiroDeviceRegistrationJson" rows="6" class="input font-mono text-xs" placeholder='{"clientId":"...","clientSecret":"..."}'></textarea>
+          <p class="input-hint">{{ t('admin.accounts.oauth.kiro.deviceRegistrationHint') }}</p>
+        </div>
+        <div v-if="currentOAuthError" class="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30">
+          <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">{{ currentOAuthError }}</p>
+        </div>
+      </div>
       <OAuthAuthorizationFlow
+        v-else
         ref="oauthFlowRef"
         :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
         :auth-url="currentAuthUrl"
@@ -2989,7 +3465,16 @@
           {{ t('common.back') }}
         </button>
         <button
-          v-if="isManualInputMethod"
+          v-if="isKiroImportMode"
+          type="button"
+          :disabled="currentOAuthLoading || !kiroTokenJson.trim()"
+          class="btn btn-primary"
+          @click="handleKiroImport"
+        >
+          {{ currentOAuthLoading ? t('admin.accounts.creating') : t('common.create') }}
+        </button>
+        <button
+          v-else-if="isManualInputMethod"
           type="button"
           :disabled="!canExchangeCode"
           class="btn btn-primary"
@@ -3253,6 +3738,7 @@
     @confirm="handleMixedChannelConfirm"
     @cancel="handleMixedChannelCancel"
   />
+  <ConfirmDialog :show="showErrorCodeWarning" :title="t('admin.accounts.customErrorCodes')" :message="errorCodeWarningMessage" :confirm-text="t('common.confirm')" :cancel-text="t('common.cancel')" @confirm="confirmAddErrorCode" @cancel="showErrorCodeWarning = false" />
 </template>
 
 <script setup lang="ts">
@@ -3266,6 +3752,7 @@ import {
   commonErrorCodes,
   buildModelMappingObject,
   fetchAntigravityDefaultMappings,
+  fetchKiroDefaultMappings,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
@@ -3280,6 +3767,7 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
+import { useKiroOAuth } from '@/composables/useKiroOAuth'
 import type {
   Proxy,
   AdminGroup,
@@ -3298,7 +3786,6 @@ import Select from '@/components/common/Select.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
-import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
@@ -3308,7 +3795,7 @@ import {
 } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
-import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
+import { VERTEX_LOCATION_SELECT_OPTIONS, BEDROCK_REGION_SELECT_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -3324,6 +3811,8 @@ import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 interface OAuthFlowExposed {
   authCode: string
   oauthState: string
+  oauthCallbackPath: string
+  oauthLoginOption: string
   projectId: string
   sessionKey: string
   refreshToken: string
@@ -3342,6 +3831,11 @@ const oauthStepTitle = computed(() => {
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   if (form.platform === 'grok') return t('admin.accounts.oauth.grok.title')
+  if (form.platform === 'kiro') {
+    return kiroAccountType.value === 'import'
+      ? t('admin.accounts.oauth.kiro.importDialogTitle')
+      : t('admin.accounts.oauth.kiro.title')
+  }
   return t('admin.accounts.oauth.title')
 })
 
@@ -3350,6 +3844,7 @@ const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'grok') return t('admin.accounts.grok.baseUrlHint')
+  if (form.platform === 'kiro') return t('admin.accounts.kiro.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -3357,6 +3852,7 @@ const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   if (form.platform === 'grok') return t('admin.accounts.grok.apiKeyHint')
+  if (form.platform === 'kiro') return t('admin.accounts.kiro.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
 })
 
@@ -3380,6 +3876,7 @@ const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
 const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
 const grokOAuth = useGrokOAuth() // For Grok OAuth
+const kiroOAuth = useKiroOAuth() // For Kiro OAuth / IDC
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
@@ -3387,6 +3884,7 @@ const currentAuthUrl = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.authUrl.value
   if (form.platform === 'antigravity') return antigravityOAuth.authUrl.value
   if (form.platform === 'grok') return grokOAuth.authUrl.value
+  if (form.platform === 'kiro') return kiroOAuth.authUrl.value
   return oauth.authUrl.value
 })
 
@@ -3395,6 +3893,7 @@ const currentSessionId = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.sessionId.value
   if (form.platform === 'antigravity') return antigravityOAuth.sessionId.value
   if (form.platform === 'grok') return grokOAuth.sessionId.value
+  if (form.platform === 'kiro') return kiroOAuth.sessionId.value
   return oauth.sessionId.value
 })
 
@@ -3403,6 +3902,7 @@ const currentOAuthLoading = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.loading.value
   if (form.platform === 'antigravity') return antigravityOAuth.loading.value
   if (form.platform === 'grok') return grokOAuth.loading.value
+  if (form.platform === 'kiro') return kiroOAuth.loading.value
   return oauth.loading.value
 })
 
@@ -3411,6 +3911,7 @@ const currentOAuthError = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.error.value
   if (form.platform === 'antigravity') return antigravityOAuth.error.value
   if (form.platform === 'grok') return grokOAuth.error.value
+  if (form.platform === 'kiro') return kiroOAuth.error.value
   return oauth.error.value
 })
 
@@ -3499,6 +4000,7 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
+const anthropicCustomHeaders = ref<Array<{ name: string; value: string }>>([{ name: '', value: '' }])
 const webSearchGlobalEnabled = ref(false)
 const {
   globalEnabled: quotaNotifyGlobalEnabled,
@@ -3523,6 +4025,15 @@ const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist'
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
+const kiroAccountType = ref<'oauth' | 'idc' | 'import'>('oauth')
+const kiroOAuthProvider = ref<'google' | 'github'>('google')
+const kiroIDCStartUrl = ref('https://view.awsapps.com/start')
+const kiroIDCRegion = ref('us-east-1')
+const kiroTokenJson = ref('')
+const kiroDeviceRegistrationJson = ref('')
+const kiroModelMappings = ref<ModelMapping[]>([])
+const kiroCreditUnitPriceUsd = ref(0)
+const kiroPresetMappings = computed(() => getPresetMappingsByPlatform('kiro'))
 const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
 // Bedrock credentials
@@ -3544,6 +4055,7 @@ const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-model-mapping')
 const getOpenAICompactModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-openai-compact-model-mapping')
 const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-antigravity-model-mapping')
+const getKiroModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-kiro-model-mapping')
 const getTempUnschedRuleKey = createStableObjectKeyResolver<TempUnschedRuleForm>('create-temp-unsched-rule')
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
 const geminiAIStudioOAuthEnabled = ref(false)
@@ -3650,6 +4162,17 @@ const umqModeOptions = computed(() => [
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
+// TLS 指纹 profile 选项：默认(null) + 随机(-1,条件) + 已有 profile 列表
+const tlsProfileOptions = computed(() => {
+  const opts: { value: number | null; label: string }[] = [
+    { value: null, label: t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }
+  ]
+  if (tlsFingerprintProfiles.value.length > 0) {
+    opts.push({ value: -1, label: t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') })
+  }
+  opts.push(...tlsFingerprintProfiles.value.map((p) => ({ value: p.id, label: p.name })))
+  return opts
+})
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
@@ -3660,6 +4183,30 @@ const customBaseUrl = ref('')
 const geminiTierGoogleOne = ref<'google_one_free' | 'google_ai_pro' | 'google_ai_ultra'>('google_one_free')
 const geminiTierGcp = ref<'gcp_standard' | 'gcp_enterprise'>('gcp_standard')
 const geminiTierAIStudio = ref<'aistudio_free' | 'aistudio_paid'>('aistudio_free')
+
+// Select 选项（i18n label 用 computed 保证切换语言响应式）
+const geminiTierGoogleOneOptions = computed(() => [
+  { value: 'google_one_free', label: t('admin.accounts.gemini.tier.googleOne.free') },
+  { value: 'google_ai_pro', label: t('admin.accounts.gemini.tier.googleOne.pro') },
+  { value: 'google_ai_ultra', label: t('admin.accounts.gemini.tier.googleOne.ultra') }
+])
+const geminiTierGcpOptions = computed(() => [
+  { value: 'gcp_standard', label: t('admin.accounts.gemini.tier.gcp.standard') },
+  { value: 'gcp_enterprise', label: t('admin.accounts.gemini.tier.gcp.enterprise') }
+])
+const geminiTierAIStudioOptions = computed(() => [
+  { value: 'aistudio_free', label: t('admin.accounts.gemini.tier.aiStudio.free') },
+  { value: 'aistudio_paid', label: t('admin.accounts.gemini.tier.aiStudio.paid') }
+])
+const cacheTTLTargetOptions = [
+  { value: '5m', label: '5m' },
+  { value: '1h', label: '1h' }
+]
+const webSearchModeOptions = computed(() => [
+  { value: 'default', label: t('admin.accounts.anthropic.webSearchDefault') },
+  { value: 'enabled', label: t('admin.accounts.anthropic.webSearchEnabled') },
+  { value: 'disabled', label: t('admin.accounts.anthropic.webSearchDisabled') }
+])
 
 const geminiSelectedTier = computed(() => {
   if (form.platform !== 'gemini') return ''
@@ -3786,6 +4333,8 @@ const isOAuthFlow = computed(() => {
   return accountCategory.value === 'oauth-based'
 })
 
+const isKiroImportMode = computed(() => form.platform === 'kiro' && kiroAccountType.value === 'import')
+
 const isManualInputMethod = computed(() => {
   return oauthFlowRef.value?.inputMethod === 'manual'
 })
@@ -3810,6 +4359,8 @@ const canExchangeCode = computed(() => {
   }
   if (form.platform === 'grok') {
     return authCode.trim() && grokOAuth.sessionId.value && !grokOAuth.loading.value
+  if (form.platform === 'kiro') {
+    return authCode.trim() && kiroOAuth.sessionId.value && !kiroOAuth.loading.value
   }
   return authCode.trim() && oauth.sessionId.value && !oauth.loading.value
 })
@@ -3832,10 +4383,15 @@ watch(
           antigravityModelMappings.value = [...mappings]
         })
         antigravityWhitelistModels.value = []
+      } else if (form.platform === 'kiro') {
+        fetchKiroDefaultMappings().then(mappings => {
+          kiroModelMappings.value = [...mappings]
+        })
       } else {
         antigravityWhitelistModels.value = []
         antigravityModelMappings.value = []
         antigravityModelRestrictionMode.value = 'mapping'
+        kiroModelMappings.value = []
       }
     } else {
       resetForm()
@@ -3850,6 +4406,10 @@ watch(
     // Antigravity upstream 类型（实际创建为 apikey）
     if (form.platform === 'antigravity' && agType === 'upstream') {
       form.type = 'apikey'
+      return
+    }
+    if (form.platform === 'kiro') {
+      form.type = category === 'oauth-based' ? 'oauth' : 'apikey'
       return
     }
     // Bedrock 类型
@@ -3881,6 +4441,9 @@ watch(
           : newPlatform === 'grok'
             ? 'https://api.x.ai/v1'
             : 'https://api.anthropic.com'
+          : newPlatform === 'kiro'
+            ? ''
+          : 'https://api.anthropic.com'
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
@@ -3893,12 +4456,22 @@ watch(
       antigravityWhitelistModels.value = []
       accountCategory.value = 'oauth-based'
       antigravityAccountType.value = 'oauth'
+    } else if (newPlatform === 'kiro') {
+      fetchKiroDefaultMappings().then(mappings => {
+        kiroModelMappings.value = [...mappings]
+      })
+      accountCategory.value = 'oauth-based'
+      kiroAccountType.value = 'oauth'
+      kiroOAuthProvider.value = 'google'
+      apiKeyBaseUrl.value = ''
+      apiKeyValue.value = ''
     } else {
       allowOverages.value = false
       antigravityProjectId.value = ''
       antigravityWhitelistModels.value = []
       antigravityModelMappings.value = []
       antigravityModelRestrictionMode.value = 'mapping'
+      kiroModelMappings.value = []
     }
     if (newPlatform === 'grok') {
       accountCategory.value = 'oauth-based'
@@ -3948,6 +4521,7 @@ watch(
     geminiOAuth.resetState()
     antigravityOAuth.resetState()
     grokOAuth.resetState()
+    kiroOAuth.resetState()
   }
 )
 
@@ -4050,21 +4624,59 @@ const addAntigravityPresetMapping = (from: string, to: string) => {
   antigravityModelMappings.value.push({ from, to })
 }
 
+const addKiroModelMapping = () => {
+  kiroModelMappings.value.push({ from: '', to: '' })
+}
+
+const removeKiroModelMapping = (index: number) => {
+  kiroModelMappings.value.splice(index, 1)
+}
+
+const addKiroPresetMapping = (from: string, to: string) => {
+  if (kiroModelMappings.value.some((m) => m.from === from)) {
+    appStore.showInfo(t('admin.accounts.mappingExists', { model: from }))
+    return
+  }
+  kiroModelMappings.value.push({ from, to })
+}
+
+// Error code warning dialog state
+const showErrorCodeWarning = ref(false)
+const errorCodeWarningMessage = ref('')
+const pendingErrorCode = ref<number | null>(null)
+const pendingErrorCodeIsCustom = ref(false)
+
+const promptErrorCodeWarning = (code: number, isCustom: boolean): boolean => {
+  if (code === 429 || code === 529) {
+    pendingErrorCode.value = code
+    pendingErrorCodeIsCustom.value = isCustom
+    errorCodeWarningMessage.value = t(code === 429 ? 'admin.accounts.customErrorCodes429Warning' : 'admin.accounts.customErrorCodes529Warning')
+    showErrorCodeWarning.value = true
+    return true
+  }
+  return false
+}
+
+const confirmAddErrorCode = () => {
+  showErrorCodeWarning.value = false
+  const code = pendingErrorCode.value
+  if (code === null) return
+  if (!selectedErrorCodes.value.includes(code)) {
+    selectedErrorCodes.value.push(code)
+  }
+  if (pendingErrorCodeIsCustom.value) {
+    customErrorCodeInput.value = null
+  }
+  pendingErrorCode.value = null
+}
+
 // Error code toggle helper
 const toggleErrorCode = (code: number) => {
   const index = selectedErrorCodes.value.indexOf(code)
   if (index === -1) {
-    // Adding code - check for 429/529 warning
-    if (code === 429) {
-      if (!confirm(t('admin.accounts.customErrorCodes429Warning'))) {
-        return
-      }
-    } else if (code === 529) {
-      if (!confirm(t('admin.accounts.customErrorCodes529Warning'))) {
-        return
-      }
+    if (!promptErrorCodeWarning(code, false)) {
+      selectedErrorCodes.value.push(code)
     }
-    selectedErrorCodes.value.push(code)
   } else {
     selectedErrorCodes.value.splice(index, 1)
   }
@@ -4081,18 +4693,10 @@ const addCustomErrorCode = () => {
     appStore.showInfo(t('admin.accounts.errorCodeExists'))
     return
   }
-  // Check for 429/529 warning
-  if (code === 429) {
-    if (!confirm(t('admin.accounts.customErrorCodes429Warning'))) {
-      return
-    }
-  } else if (code === 529) {
-    if (!confirm(t('admin.accounts.customErrorCodes529Warning'))) {
-      return
-    }
+  if (!promptErrorCodeWarning(code, true)) {
+    selectedErrorCodes.value.push(code)
+    customErrorCodeInput.value = null
   }
-  selectedErrorCodes.value.push(code)
-  customErrorCodeInput.value = null
 }
 
 // Remove error code
@@ -4323,6 +4927,16 @@ const resetForm = () => {
   fetchAntigravityDefaultMappings().then(mappings => {
     antigravityModelMappings.value = [...mappings]
   })
+  kiroAccountType.value = 'oauth'
+  kiroOAuthProvider.value = 'google'
+  kiroIDCStartUrl.value = 'https://view.awsapps.com/start'
+  kiroIDCRegion.value = 'us-east-1'
+  kiroTokenJson.value = ''
+  kiroDeviceRegistrationJson.value = ''
+  kiroCreditUnitPriceUsd.value = 0
+  fetchKiroDefaultMappings().then(mappings => {
+    kiroModelMappings.value = [...mappings]
+  })
   poolModeEnabled.value = false
   poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
   poolModeRetryStatusCodesInput.value = ''
@@ -4341,6 +4955,7 @@ const resetForm = () => {
   codexCLIOnlyAppServerEnabled.value = false
   anthropicPassthroughEnabled.value = false
   webSearchEmulationMode.value = 'default'
+  anthropicCustomHeaders.value = [{ name: '', value: '' }]
   // Reset quota control state
   windowCostEnabled.value = false
   windowCostLimit.value = null
@@ -4380,6 +4995,7 @@ const resetForm = () => {
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   grokOAuth.resetState()
+  kiroOAuth.resetState()
   oauthFlowRef.value?.reset()
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
@@ -4463,6 +5079,19 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
     delete extra.web_search_emulation
   } else {
     extra.web_search_emulation = webSearchEmulationMode.value
+  }
+
+  const headersMap: Record<string, string> = {}
+  for (const row of anthropicCustomHeaders.value) {
+    const name = row.name.trim()
+    if (name !== '') {
+      headersMap[name] = row.value
+    }
+  }
+  if (Object.keys(headersMap).length > 0) {
+    extra.custom_headers = headersMap
+  } else {
+    delete extra.custom_headers
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
@@ -4699,6 +5328,45 @@ const handleSubmit = async () => {
     return
   }
 
+  // For Kiro API key type, create directly
+  if (form.platform === 'kiro' && accountCategory.value === 'apikey') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    if (!apiKeyBaseUrl.value.trim()) {
+      appStore.showError(t('admin.accounts.upstream.pleaseEnterBaseUrl'))
+      return
+    }
+    if (!apiKeyValue.value.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
+      return
+    }
+
+    const credentials: Record<string, unknown> = {
+      base_url: apiKeyBaseUrl.value.trim(),
+      api_key: apiKeyValue.value.trim()
+    }
+
+    const modelMapping = buildModelMappingObject('mapping', [], kiroModelMappings.value)
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    }
+
+    if (poolModeEnabled.value) {
+      credentials.pool_mode = true
+      credentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
+    }
+
+    if (customErrorCodesEnabled.value) {
+      credentials.custom_error_codes_enabled = true
+      credentials.custom_error_codes = [...selectedErrorCodes.value]
+    }
+
+    await createAccountAndFinish('kiro', 'apikey', credentials)
+    return
+  }
+
   // For apikey type, create directly
   if (!apiKeyValue.value.trim()) {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
@@ -4776,6 +5444,7 @@ const goBackToBasicInfo = () => {
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   grokOAuth.resetState()
+  kiroOAuth.resetState()
   oauthFlowRef.value?.reset()
 }
 
@@ -4793,6 +5462,19 @@ const handleGenerateUrl = async () => {
     await antigravityOAuth.generateAuthUrl(form.proxy_id)
   } else if (form.platform === 'grok') {
     await grokOAuth.generateAuthUrl(form.proxy_id)
+  } else if (form.platform === 'kiro') {
+    if (kiroAccountType.value === 'idc') {
+      await kiroOAuth.generateIDCAuthUrl({
+        proxyId: form.proxy_id,
+        startUrl: kiroIDCStartUrl.value.trim() || undefined,
+        region: kiroIDCRegion.value.trim() || undefined
+      })
+    } else {
+      await kiroOAuth.generateAuthUrl(
+        form.proxy_id,
+        kiroOAuthProvider.value === 'github' ? 'Github' : 'Google'
+      )
+    }
   } else {
     await oauth.generateAuthUrl(addMethod.value, form.proxy_id)
   }
@@ -4878,6 +5560,11 @@ const createAccountAndFinish = async (
     } else {
       delete credentials.model_mapping
     }
+  if (platform === 'kiro' && type === 'oauth') {
+    const kiroExtra: Record<string, unknown> = { ...(finalExtra || {}) }
+    const unitPrice = Number(kiroCreditUnitPriceUsd.value ?? 0)
+    kiroExtra.kiro_credit_unit_price_usd = Number.isFinite(unitPrice) ? unitPrice : 0
+    finalExtra = kiroExtra
   }
   await doCreateAccount({
     name: form.name,
@@ -5554,6 +6241,50 @@ const handleGrokExchange = async (authCode: string) => {
   }
 }
 
+const buildKiroCredentials = (tokenInfo: Parameters<typeof kiroOAuth.buildCredentials>[0]) => {
+  const credentials = kiroOAuth.buildCredentials(tokenInfo)
+  const modelMapping = buildModelMappingObject('mapping', [], kiroModelMappings.value)
+  if (modelMapping) {
+    credentials.model_mapping = modelMapping
+  }
+  return credentials
+}
+
+const handleKiroExchange = async (authCode: string) => {
+  if (!authCode.trim() || !kiroOAuth.sessionId.value) return
+
+  kiroOAuth.loading.value = true
+  kiroOAuth.error.value = ''
+
+  try {
+    const stateFromInput = oauthFlowRef.value?.oauthState || ''
+    const stateToUse = stateFromInput || kiroOAuth.state.value
+    if (!stateToUse) {
+      kiroOAuth.error.value = t('admin.accounts.oauth.authFailed')
+      appStore.showError(kiroOAuth.error.value)
+      return
+    }
+
+    const tokenInfo = await kiroOAuth.exchangeAuthCode({
+      code: authCode.trim(),
+      sessionId: kiroOAuth.sessionId.value,
+      state: stateToUse,
+      callbackPath: oauthFlowRef.value?.oauthCallbackPath || '',
+      loginOption: oauthFlowRef.value?.oauthLoginOption || '',
+      proxyId: form.proxy_id
+    })
+    if (!tokenInfo) return
+
+    const credentials = buildKiroCredentials(tokenInfo)
+    await createAccountAndFinish('kiro', 'oauth', credentials)
+  } catch (error: any) {
+    kiroOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(kiroOAuth.error.value)
+  } finally {
+    kiroOAuth.loading.value = false
+  }
+}
+
 // Anthropic OAuth 授权码兑换
 const handleAnthropicExchange = async (authCode: string) => {
   if (!authCode.trim() || !oauth.sessionId.value) return
@@ -5652,12 +6383,32 @@ const handleExchangeCode = async () => {
       return handleOpenAIExchange(authCode)
     case 'gemini':
       return handleGeminiExchange(authCode)
+    case 'kiro':
+      return handleKiroExchange(authCode)
     case 'antigravity':
       return handleAntigravityExchange(authCode)
     case 'grok':
       return handleGrokExchange(authCode)
     default:
       return handleAnthropicExchange(authCode)
+  }
+}
+
+const handleKiroImport = async () => {
+  if (!isKiroImportMode.value || !kiroTokenJson.value.trim()) return
+
+  const tokenInfo = await kiroOAuth.importToken(
+    kiroTokenJson.value,
+    kiroDeviceRegistrationJson.value || undefined
+  )
+  if (!tokenInfo) return
+
+  try {
+    const credentials = buildKiroCredentials(tokenInfo)
+    await createAccountAndFinish('kiro', 'oauth', credentials)
+  } catch (error: any) {
+    kiroOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(kiroOAuth.error.value)
   }
 }
 
