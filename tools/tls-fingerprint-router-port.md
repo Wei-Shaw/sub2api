@@ -142,6 +142,8 @@
 ### Phase H — ⚠️ OpenAI **WebSocket** 集成
 
 > fork WS 走 `coder/websocket`,当前无任何 TLS 指纹。移植 TokenRouter 做法:给 dialer 传 profile → 自定义 `http.Client` 的 `Transport.DialTLSContext` 用 `tlsfingerprint` 拨号器,强制 HTTP/1.1。
+>
+> ⚠️ **作用域守护**:TokenRouter 的 `openai_ws_forwarder.go` 现已混入与本移植**无关**的功能(`ApplyUserPromptReplacement` 用户提示词替换、`BeforeRequest` 钩子返回值签名改动等)。Phase H **只移植下表列出的 TLS 相关符号**(`resolveOpenAIWSTLSProfile` / 拨号器传 `TLSProfile`+`TLSProfileKey` / 连接池 key 含指纹 / `matchTLSFingerprintRouter` / UA·Originator 覆写),**不要连带 user-prompt-replacement、ingress-session 或 hook 签名改动**——fork 没有这些,带进来会编译失败或扩大作用域。
 
 | 操作 | 文件 | 说明 |
 |---|---|---|
