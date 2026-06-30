@@ -353,6 +353,37 @@ describe('PaymentResultView', () => {
     expect(wrapper.text()).toContain('payment.result.success')
   REDACTED)
 
+  it('renders the minimal public out_trade_no verification result without payment_type', async () => {
+    routeState.query = {
+      out_trade_no: 'legacy-minimal',
+      trade_status: 'TRADE_SUCCESS',
+    REDACTED
+    verifyOrder.mockRejectedValue(new Error('auth required'))
+    verifyOrderPublic.mockResolvedValue({
+      data: {
+        out_trade_no: 'legacy-minimal',
+        status: 'PAID',
+        paid: true,
+        created_at: '2026-04-20T12:00:00Z',
+        expires_at: '2026-04-20T12:30:00Z',
+      REDACTED,
+    REDACTED)
+
+    const wrapper = mount(PaymentResultView, {
+      global: {
+        stubs: {
+          OrderStatusBadge: true,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('payment.result.success')
+    expect(wrapper.text()).toContain('legacy-minimal')
+    expect(wrapper.text()).not.toContain('payment.orders.paymentMethod')
+  REDACTED)
+
   it('prefers authenticated order verification before falling back to public lookup', async () => {
     routeState.query = {
       out_trade_no: 'auth-verify-123',

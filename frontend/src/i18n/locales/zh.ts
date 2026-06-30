@@ -7381,6 +7381,8 @@ export default {
       refundReasonPlaceholder: '请输入退款原因',
       confirmRefund: '确认退款',
       refundSuccess: '退款成功',
+      refundPending: '退款处理中，待网关确认',
+      queryRefundStatus: '查询退款状态',
       refundInfo: '退款信息',
       refundEnabled: '允许退款',
       alreadyRefunded: '已退款',
