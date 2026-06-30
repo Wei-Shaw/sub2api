@@ -431,6 +431,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_InjectsCodexImag
 	upstreamPayload := requestToJSONString(captureConn.writes[0])
 	require.True(t, gjson.Get(upstreamPayload, `tools.#(type=="image_generation")`).Exists())
 	require.Equal(t, "png", gjson.Get(upstreamPayload, `tools.#(type=="image_generation").output_format`).String())
+	require.Equal(t, "auto", gjson.Get(upstreamPayload, "tool_choice").String())
 	require.Contains(t, gjson.Get(upstreamPayload, "instructions").String(), "image_generation")
 }
 

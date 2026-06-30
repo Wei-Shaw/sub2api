@@ -83,7 +83,7 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 	}
 }
 
-func TestGatewayRoutesGrokOnlyAllowsResponsesHTTP(t *testing.T) {
+func TestGatewayRoutesGrokAllowsCLICompatibilityEntrypoints(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformGrok)
 
 	for _, tc := range []struct {
@@ -102,9 +102,17 @@ func TestGatewayRoutesGrokOnlyAllowsResponsesHTTP(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
-		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
-		require.Contains(t, w.Body.String(), "not supported for Grok groups")
+		require.NotEqual(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
+		require.NotContains(t, w.Body.String(), "not supported for Grok groups")
 	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"grok","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Contains(t, w.Body.String(), "Token counting is not supported for this platform")
 
 	for _, path := range []string{
 		"/v1/responses",
@@ -118,4 +126,15 @@ func TestGatewayRoutesGrokOnlyAllowsResponsesHTTP(t *testing.T) {
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should still reach Responses handler", path)
 	}
+}
+
+func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
 }
