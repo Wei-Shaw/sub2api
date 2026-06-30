@@ -529,7 +529,7 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	} else {
 		slog.Info("subscription already assigned for order, skipping", "orderID", o.ID, "groupID", gid)
 	}
-	// 订阅成功后结算邀请返利（开关关闭时内部直接跳过）。
+	// 订阅成功后结算邀请返利。
 	// 返利按订单 ID + 金额做审计去重，重复调用是安全的。
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
@@ -553,14 +553,9 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	if s.affiliateService == nil {
 		return nil
 	}
-	// 余额充值订单始终参与返利；订阅订单仅在「订阅计入返利」开关打开时参与。
 	switch o.OrderType {
-	case payment.OrderTypeBalance:
-		// always eligible
-	case payment.OrderTypeSubscription:
-		if !s.affiliateService.IncludeSubscriptionRebate(ctx) {
-			return nil
-		}
+	case payment.OrderTypeBalance, payment.OrderTypeSubscription:
+		// eligible
 	default:
 		return nil
 	}

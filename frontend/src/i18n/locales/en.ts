@@ -5740,8 +5740,6 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
           durationDaysDesc: 'Rebate relationship expires after this many days since invitee registration. 0 = permanent.',
           perInviteeCap: 'Per-Invitee Rebate Cap',
           perInviteeCapDesc: 'Maximum total rebate from a single invitee. 0 = no limit.',
-          includeSubscription: 'Include Subscription Purchases',
-          includeSubscriptionDesc: 'When enabled, subscription plan purchases also accrue invite rebate (based on the paid amount). Disabled by default.',
           customUsers: {
             title: 'Per-User Overrides',
             description: 'Set a custom invite code or exclusive rebate rate for specific users. Lists only users that have an override applied.',

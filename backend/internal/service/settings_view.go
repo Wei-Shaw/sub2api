@@ -174,10 +174,8 @@ type SystemSettings struct {
 	AffiliateRebateFreezeHours   int
 	AffiliateRebateDurationDays  int
 	AffiliateRebatePerInviteeCap float64
-	// AffiliateRebateIncludeSubscription 为 true 时，订阅套餐购买订单也计入邀请返利。
-	AffiliateRebateIncludeSubscription bool
-	DefaultUserRPMLimit                int
-	DefaultSubscriptions               []DefaultSubscriptionSetting
+	DefaultUserRPMLimit          int
+	DefaultSubscriptions         []DefaultSubscriptionSetting
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
