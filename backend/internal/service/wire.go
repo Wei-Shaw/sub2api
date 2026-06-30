@@ -134,6 +134,12 @@ func ProvideGrokQuotaService(
 	return NewGrokQuotaService(accountRepo, proxyRepo, tokenProvider, httpUpstream)
 }
 
+// ProvideTLSFingerprintRouterServices 为 Wire 把单个 TLS 路由器服务包成 slice，
+// 供 GatewayService / OpenAIGatewayService 的可变参数构造注入(wire 生成 `v...`)。
+func ProvideTLSFingerprintRouterServices(tlsFPRouterService *TLSFingerprintRouterService) []*TLSFingerprintRouterService {
+	return []*TLSFingerprintRouterService{tlsFPRouterService}
+}
+
 // ProvideGeminiTokenProvider creates GeminiTokenProvider with OAuthRefreshAPI injection
 func ProvideGeminiTokenProvider(
 	accountRepo AccountRepository,
@@ -627,6 +633,7 @@ var ProviderSet = wire.NewSet(
 	NewTLSFingerprintProfileService,
 	NewTLSFingerprintRouterService,
 	NewTLSFingerprintCollectorService,
+	ProvideTLSFingerprintRouterServices,
 	NewDigestSessionStore,
 	ProvideIdempotencyCoordinator,
 	ProvideSystemOperationLockService,

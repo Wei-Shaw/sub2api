@@ -30,6 +30,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -648,6 +649,7 @@ type GatewayService struct {
 	resolver              *ModelPricingResolver
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
+	tlsFPRouterService    *TLSFingerprintRouterService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 }
@@ -681,9 +683,16 @@ func NewGatewayService(
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	tlsFPRouterServices ...*TLSFingerprintRouterService,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
+
+	// 可变参数注入 TLS 路由器服务，使既有非 Wire 调用方(测试等)无需改签名即可编译。
+	var tlsFPRouterService *TLSFingerprintRouterService
+	if len(tlsFPRouterServices) > 0 {
+		tlsFPRouterService = tlsFPRouterServices[0]
+	}
 
 	svc := &GatewayService{
 		accountRepo:           accountRepo,
@@ -713,6 +722,7 @@ func NewGatewayService(
 		modelsListCacheTTL:    modelsListTTL,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		tlsFPProfileService:   tlsFPProfileService,
+		tlsFPRouterService:    tlsFPRouterService,
 		channelService:        channelService,
 		resolver:              resolver,
 		balanceNotifyService:  balanceNotifyService,
@@ -4789,6 +4799,30 @@ func (s *GatewayService) claudeOAuthSystemPromptInjectionSettings(ctx context.Co
 }
 
 // Forward 转发请求到Claude API
+// matchTLSFingerprintRouter 读取入站 User-Agent，按账号绑定的路由器匹配规则。
+// 未绑路由器(router_id<=0)/无 router service/无请求上下文 → Matched=false(向后兼容)。
+func (s *GatewayService) matchTLSFingerprintRouter(c *gin.Context, account *Account) TLSFingerprintRouterMatchResult {
+	if s == nil || s.tlsFPRouterService == nil || account == nil || account.GetTLSFingerprintRouterID() <= 0 {
+		return TLSFingerprintRouterMatchResult{}
+	}
+	userAgent := ""
+	if c != nil {
+		userAgent = c.GetHeader("User-Agent")
+	}
+	return s.tlsFPRouterService.MatchUserAgent(account.GetTLSFingerprintRouterID(), userAgent)
+}
+
+// resolveTLSProfileForRequest 路由感知地解析运行时 TLS Profile。
+// 命中路由器规则 → 用规则指定的 profile;未命中/未配路由器 → 回落账号固定 profile(行为同现状)。
+func (s *GatewayService) resolveTLSProfileForRequest(c *gin.Context, account *Account) *tlsfingerprint.Profile {
+	if m := s.matchTLSFingerprintRouter(c, account); m.Matched {
+		if profile, ok := s.tlsFPProfileService.ResolveRoutableTLSProfileByID(account, m.TLSFingerprintProfileID); ok {
+			return profile
+		}
+	}
+	return s.tlsFPProfileService.ResolveTLSProfile(account)
+}
+
 func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (*ForwardResult, error) {
 	startTime := time.Now()
 	if parsed == nil {
@@ -4996,7 +5030,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}
 
 	// 解析 TLS 指纹 profile（同一请求生命周期内不变，避免重试循环中重复解析）
-	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
+	tlsProfile := s.resolveTLSProfileForRequest(c, account)
 
 	// 调试日志：记录即将转发的账号信息
 	logger.LegacyPrintf("service.gateway", "[Forward] Using account: ID=%d Name=%s Platform=%s Type=%s TLSFingerprint=%v Proxy=%s",
@@ -5612,7 +5646,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			input.Body = input.Parsed.Body.Bytes()
 		}
 
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfileForRequest(c, account))
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -9987,7 +10021,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	}
 
 	// 发送请求
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfileForRequest(c, account))
 	if err != nil {
 		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
@@ -10014,7 +10048,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		filteredBody := FilterThinkingBlocksForRetry(body, reqModel)
 		retryReq, retryWireBody, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
 		if buildErr == nil {
-			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfileForRequest(c, account))
 			if retryErr == nil {
 				if retryResp.StatusCode < 400 {
 					// count_tokens 签名重试成功后记录最终 wire body，错误响应仍保留原 body 便于后续处理。
@@ -10111,7 +10145,7 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfileForRequest(c, account))
 	if err != nil {
 		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{

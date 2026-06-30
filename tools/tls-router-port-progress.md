@@ -16,7 +16,7 @@
 | D | repository(router repo + cache) | ✅ 完成 | `0e5c588d` | gofmt✅ build✅ vet✅ svc-test✅ | 含 router service(接口与 repo 互依,合并提交);6 子测全绿 |
 | E | service(router + collector)+ config | ✅ 完成 | `0e5c588d`+`3161a1df` | gofmt✅ build✅ vet✅ svc-test✅ | router svc 随 D;本提交:collector+config+profile 编辑+wire providers。变参 provider/wire.Bind 推迟到 G(依赖 gateway/OAuth) |
 | F | handler + 路由 + wire | ✅ 完成 | `8f57d2c6` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | wire 重生成成功;cmd/server wire_gen_test 通过 |
-| G | OpenAI HTTP 集成 | 🟡 进行中(G1 done) | `<G1待填>` | gofmt✅ build✅ vet✅ test✅ | G1 account getters done;余 G2-G5 |
+| G | OpenAI HTTP 集成 | 🟡 进行中(G1+G3 done) | `21e18825`+`<G3待填>` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | G1 getters + G3 GatewayService 路由感知解析 done;余 G4(UA/Originator)+G5(OAuth) |
 | H | OpenAI WS 集成 | ⬜ 未开始 | — | — | 硬骨头;连接池 key 须含指纹 |
 | I | cmd/server 优雅关闭 | ⬜ 未开始 | — | — | |
 | J | 代码生成 + 编译 | ⬜ 未开始 | — | — | |
@@ -164,8 +164,22 @@
   - 加 `GetTLSFingerprintRouterID() int64`(镜像 profile getter 的 float64/int64/int/json.Number 转换;0=未绑路由器)。
   - **改 `IsTLSFingerprintEnabled`** 的门控:`IsAnthropicOAuthOrSetupToken()` → `SupportsTLSFingerprint()`。**这是方案 §0「完整覆盖 OpenAI」所必需**(resolvers 都查 IsTLSFingerprintEnabled;不改则 OpenAI 账号无法启用 → 路由器对 OpenAI 失效),且与 TR 实现一致。**向后兼容**:Anthropic 行为完全不变(SupportsTLSFingerprint 对 Anthropic OAuth/SetupToken 恒为 true);OpenAI OAuth 仅在管理员显式置 `enable_tls_fingerprint` 时才生效,存量账号无此标志 → 行为不变。
 - 命令与结果(容器内):`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./internal/service/...` → **VET_OK**;`go test -run "TLSFingerprint|Account"` → **ok**。无既有测试引用这些方法(不破坏)。
-- commit:`<G1待填>`
+- commit:`21e18825`
 - 遗留/风险:G2-G5 未做(gateway helper/struct/wire 变参、call-site 替换、UA/Originator 改写、OAuth token 路径)。
+
+### Phase G3 — GatewayService 路由感知 TLS 解析 — ✅ 完成(2026-07-01)
+
+- 架构核对(关键 · 与 TR 不同):fork 的 `ResolveTLSProfile`/`DoWithTLS` 调用点在**共享 `GatewayService`**(gateway_service.go)+ 两个 forward 文件;TR 则在 `OpenAIGatewayService`。故 helper+field 加在 `GatewayService`(fork 实际解析点),非照搬 TR 的归属。
+- 全量核对解析点(grep 实证):gateway_service.go 5 处(4999 源 + 5615/9990/10017/10114 内联)+ forward_as_responses:128 + forward_as_chat_completions:129 —— **全部 enclosing func 都有 `c *gin.Context`**(Forward/forwardAnthropicAPIKeyPassthroughWithInput/ForwardCountTokens/forwardCountTokensAnthropicAPIKeyPassthrough/ForwardAsResponses/ForwardAsChatCompletions)。4999 的 `tlsProfile` 变量被 5048/5126/5167/5246 复用 → 只改 4999 源。**后台无 c 的调用点(account_test_service/account_usage_service/openai_apikey_responses_probe/upstream_models)保持原样**(probe 无入站 UA,改不改等价)。
+- 改动文件:
+  - `internal/service/gateway_service.go`:struct 加 `tlsFPRouterService` 字段;`NewGatewayService` 末尾加可变参 `tlsFPRouterServices ...` + 提取赋值;加 import `pkg/tlsfingerprint`;新增方法 `matchTLSFingerprintRouter(c,account)`(无 router/无 c → Matched=false)、`resolveTLSProfileForRequest(c,account)`(命中→ResolveRoutableTLSProfileByID;否则回落 ResolveTLSProfile);替换 5 处解析点(源 4999 + 4 处 DoWithTLS 内联)。**注意避开 helper 自身的 fallback 行,防自递归**。
+  - `internal/service/gateway_forward_as_responses.go` / `gateway_forward_as_chat_completions.go`:各 1 处内联替换为 `s.resolveTLSProfileForRequest(c, account)`。
+  - `internal/service/wire.go`:加 `ProvideTLSFingerprintRouterServices(x) []*TLSFingerprintRouterService`(单实例包 slice,供两个变参构造共享,避免两个同类型 provider 冲突)+ 入 ProviderSet。
+  - 重生成 `cmd/server/wire_gen.go`:`v := ProvideTLSFingerprintRouterServices(...)`;`NewGatewayService(..., v...)`。
+- 命令与结果(容器内):`go generate ./cmd/server` OK(go.mod/go.sum **未污染**);`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./internal/service/...` → **VET_OK**;`go test -run "TLSFingerprint|Gateway|Forward"` → **ok 30s**。
+- 向后兼容:router_id=0 或无 router service → matchTLSFingerprintRouter 返回 Matched=false → 回落 ResolveTLSProfile,行为同现状。
+- commit:`<G3待填>`
+- 遗留/风险:G4(openai_gateway_service.go 的 UA/Originator 改写,buildUpstreamRequest)+ G5(OAuth token 路径)未做。HTTP 出站指纹/JA3 属【运行时·人工】。
 
 ## 待人工验证(运行时)
 
