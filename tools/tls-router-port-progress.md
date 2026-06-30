@@ -9,8 +9,8 @@
 
 | Phase | 名称 | 状态 | commit | 静态验证(build/vet/test) | 备注 |
 |---|---|---|---|---|---|
-| 0 | 环境自检 `go build ./...` | ✅ 完成 | `<待填>` | gofmt✅ build✅ vet✅ routes-test✅ | Blocker #1 已按**方案 A**(人工拍板)修复;基线转绿,无隐藏编译错 |
-| A | tlsfingerprint 包补 3 文件 | ⬜ 未开始(基线已绿,可开工) | — | — | |
+| 0 | 环境自检 `go build ./...` | ✅ 完成 | `e6ba7d0a` | gofmt✅ build✅ vet✅ routes-test✅ | Blocker #1 已按**方案 A**(人工拍板)修复;基线转绿,无隐藏编译错 |
+| A | tlsfingerprint 包补 3 文件 | ✅ 完成 | `<A待填>` | gofmt✅ build✅ vet✅ pkg-test✅ | Profile 结构两边逐字一致;照抄 3 源 +2 测;`isGREASEValue` 依赖已存在 |
 | B | ent schema + model + 生成 | ⬜ 未开始 | — | — | |
 | C | 迁移 158_add_tls_fingerprint_routers.sql | ⬜ 未开始 | — | — | |
 | D | repository(router repo + cache) | ⬜ 未开始 | — | — | |
@@ -64,8 +64,27 @@
   - `go build ./...` → **BUILD_OK**
   - `go vet ./...` → **VET_OK**
   - `go test ./internal/server/routes/...` → **ok 1.495s**
-- commit:`<待填>`
+- commit:`e6ba7d0a`
 - 遗留/风险:此修复仅在本 TLS 分支;父分支 `feat/req-resp-archive` 仍存同样破损(契约禁改,留待人工在源头处理或后续 rebase 携带)。Grok 端点行为变更(不再路由层拒绝)属【运行时·人工】可灰度复核项,但与 main 完全一致。
+
+### Phase A — tlsfingerprint 包补齐 — ✅ 完成(2026-07-01)
+
+- 前置核对(关键):fork 与 TokenRouter 的 `Profile` 结构**逐字一致**(11 字段:Name/CipherSuites/Curves/PointFormats/EnableGREASE/SignatureAlgorithms/ALPNProtocols/SupportedVersions/KeyShareGroups/PSKModes/Extensions,类型/顺序/注释全同)→ 满足「结构一致 → 直接照抄」。
+  - `dialer.go` 两边有差异(TR 多 `stdtls`/`errors`/`strings` import 与 `HTTPProxyDialer.proxyTLSConfig` 字段),**属 dialer.go 范畴,本期不动**;已确认 3 个新文件不依赖这些差异。
+- 依赖/碰撞核对:`clienthello_capture.go` 用到的 `isGREASEValue` 已存在于 fork `dialer.go:330`✅;新增符号(`SupportsHTTP2`/`HTTP1OnlyProfile`/`NegotiatedProtocol`/`CacheKey`/`CapturedClientHello`/`ParseCapturedClientHello` 及各解析 helper)与 fork 现有**无重名**✅;`test_types_test.go` 两边 identical(未动);新测试函数名与 fork 现有无碰撞✅;`NewDialer(profile,nil)` 签名匹配✅;`testify v1.11.1` 在 go.mod✅。
+- 改动文件(从 TokenRouter 照抄,byte-identical):
+  - 新增 `backend/internal/pkg/tlsfingerprint/profile_alpn.go`(`SupportsHTTP2`/`HTTP1OnlyProfile`/`NegotiatedProtocol`/内部 `effectiveALPNProtocols`/`profileHasALPNExtension`)
+  - 新增 `backend/internal/pkg/tlsfingerprint/profile_cache_key.go`(`CacheKey`,Profile 稳定 SHA256)
+  - 新增 `backend/internal/pkg/tlsfingerprint/clienthello_capture.go`(`CapturedClientHello`+`ParseCapturedClientHello`,解析 ClientHello → JA3/cipher/curves/ext/ALPN)
+  - 新增测试 `profile_alpn_test.go`、`clienthello_capture_test.go`
+- 注:Phase A 不触 ent/schema/wire → `go generate` N/A(留待 Phase B 起)。
+- 命令与结果(容器内):
+  - `gofmt -l <5 files>` → 空(clean)
+  - `go build ./...` → **BUILD_OK**
+  - `go vet ./internal/pkg/tlsfingerprint/...` → **VET_OK**
+  - `go test ./internal/pkg/tlsfingerprint/...` → **ok 0.005s**(含新增 3 测试)
+- commit:`<A待填>`
+- 遗留/风险:无。纯增量、leaf 包,不影响既有 importer。
 
 ## 待人工验证(运行时)
 
