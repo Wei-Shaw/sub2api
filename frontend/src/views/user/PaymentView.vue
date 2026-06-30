@@ -275,7 +275,7 @@ import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, pl
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency REDACTED from '@/components/payment/currency'
+import { formatPaymentAmount, normalizePaymentCurrency REDACTED from '@/components/payment/currency'
 import type { PaymentMethodOption REDACTED from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError REDACTED from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery REDACTED from './paymentWechatResume'
@@ -540,10 +540,6 @@ const localeCode = computed(() => {
   return undefined
 REDACTED)
 
-interface PaymentAmountFormatOptions {
-  subscription?: boolean
-REDACTED
-
 function currencyFractionDigits(currency: string): number {
   try {
     return new Intl.NumberFormat(undefined, {
@@ -567,22 +563,12 @@ function ceilPaymentAmount(value: number, currency: string): number {
   return Math.ceil(value * factor) / factor
 REDACTED
 
-function subscriptionPaymentAmountForCurrency(value: number, currency: string): number {
-  if (currency !== DEFAULT_PAYMENT_CURRENCY) return value
-  return roundPaymentAmount(value / balanceRechargeMultiplier.value, currency)
-REDACTED
-
-function subscriptionPaymentAmount(value: number): number {
-  return subscriptionPaymentAmountForCurrency(value, selectedCurrency.value)
-REDACTED
-
-function formatSelectedPaymentAmount(value: number, options: PaymentAmountFormatOptions = {REDACTED): string {
-  const amount = options.subscription ? subscriptionPaymentAmount(value) : value
-  return formatPaymentAmount(amount, selectedCurrency.value, localeCode.value)
+function formatSelectedPaymentAmount(value: number): string {
+  return formatPaymentAmount(value, selectedCurrency.value, localeCode.value)
 REDACTED
 
 function formatSelectedSubscriptionPaymentAmount(value: number): string {
-  return formatSelectedPaymentAmount(value, { subscription: true REDACTED)
+  return formatSelectedPaymentAmount(roundPaymentAmount(value, selectedCurrency.value))
 REDACTED
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
@@ -631,7 +617,7 @@ const canSubmit = computed(() =>
 
 const subPaymentAmount = computed(() => {
   const price = selectedPlan.value?.price ?? 0
-  return subscriptionPaymentAmount(price)
+  return roundPaymentAmount(price, selectedCurrency.value)
 REDACTED)
 
 const subFeeAmount = computed(() => {
@@ -645,7 +631,7 @@ const subTotalAmount = computed(() => {
 REDACTED)
 
 function subscriptionTotalAmountForCurrency(value: number, currency: string): number {
-  const paymentAmount = subscriptionPaymentAmountForCurrency(value, currency)
+  const paymentAmount = roundPaymentAmount(value, currency)
   if (feeRate.value <= 0 || paymentAmount <= 0) return paymentAmount
   const fee = ceilPaymentAmount((paymentAmount * feeRate.value) / 100, currency)
   return roundPaymentAmount(paymentAmount + fee, currency)
