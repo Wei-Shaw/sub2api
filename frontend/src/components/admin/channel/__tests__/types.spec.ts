@@ -16,6 +16,10 @@ function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
   REDACTED
 REDACTED
 
+function t(key: string, params?: Record<string, unknown>): string {
+  return `${keyREDACTED${params ? ` ${JSON.stringify(params)REDACTED` : ''REDACTED`
+REDACTED
+
 describe('validateIntervals', () => {
   describe('token mode', () => {
     it('rejects unbounded interval that is not last', () => {
@@ -23,7 +27,7 @@ describe('validateIntervals', () => {
         makeInterval({ min_tokens: 0, max_tokens: null, input_price: 1, output_price: 1 REDACTED),
         makeInterval({ min_tokens: 200000, max_tokens: 500000, input_price: 2, output_price: 2 REDACTED),
       ]
-      expect(validateIntervals(intervals, 'token')).toMatch(/unbounded interval/)
+      expect(validateIntervals(intervals, 'token', t)).toContain('unboundedLast')
     REDACTED)
 
     it('accepts unbounded interval at the end', () => {
@@ -31,7 +35,7 @@ describe('validateIntervals', () => {
         makeInterval({ min_tokens: 0, max_tokens: 200000, input_price: 1, output_price: 1 REDACTED),
         makeInterval({ min_tokens: 200000, max_tokens: null, input_price: 2, output_price: 2 REDACTED),
       ]
-      expect(validateIntervals(intervals, 'token')).toBeNull()
+      expect(validateIntervals(intervals, 'token', t)).toBeNull()
     REDACTED)
 
     it('rejects overlapping intervals', () => {
@@ -39,15 +43,15 @@ describe('validateIntervals', () => {
         makeInterval({ min_tokens: 0, max_tokens: 250000, input_price: 1, output_price: 1 REDACTED),
         makeInterval({ min_tokens: 200000, max_tokens: 500000, input_price: 2, output_price: 2 REDACTED),
       ]
-      expect(validateIntervals(intervals, 'token')).toMatch(/overlap/)
+      expect(validateIntervals(intervals, 'token', t)).toContain('overlap')
     REDACTED)
 
-    it('defaults mode to token when omitted', () => {
+    it('rejects unbounded interval in token mode', () => {
       const intervals: IntervalFormEntry[] = [
         makeInterval({ min_tokens: 0, max_tokens: null, input_price: 1, output_price: 1 REDACTED),
         makeInterval({ min_tokens: 100, max_tokens: 200, input_price: 2, output_price: 2 REDACTED),
       ]
-      expect(validateIntervals(intervals)).toMatch(/unbounded interval/)
+      expect(validateIntervals(intervals, 'token', t)).toContain('unboundedLast')
     REDACTED)
   REDACTED)
 
@@ -58,22 +62,22 @@ describe('validateIntervals', () => {
         makeInterval({ tier_label: '2K', per_request_price: 0.06 REDACTED),
         makeInterval({ tier_label: '4K', per_request_price: 0.08 REDACTED),
       ]
-      expect(validateIntervals(intervals, 'image')).toBeNull()
-      expect(validateIntervals(intervals, 'per_request')).toBeNull()
+      expect(validateIntervals(intervals, 'image', t)).toBeNull()
+      expect(validateIntervals(intervals, 'per_request', t)).toBeNull()
     REDACTED)
 
     it('still rejects negative prices', () => {
       const intervals: IntervalFormEntry[] = [
         makeInterval({ tier_label: '1K', per_request_price: -1 REDACTED),
       ]
-      expect(validateIntervals(intervals, 'image')).toMatch(/cannot be negative/)
+      expect(validateIntervals(intervals, 'image', t)).toContain('negativePrice')
     REDACTED)
 
     it('still rejects max <= min on a single tier', () => {
       const intervals: IntervalFormEntry[] = [
         makeInterval({ tier_label: '1K', min_tokens: 100, max_tokens: 50, per_request_price: 0.04 REDACTED),
       ]
-      expect(validateIntervals(intervals, 'image')).toMatch(/must be greater/)
+      expect(validateIntervals(intervals, 'image', t)).toContain('maxGreaterThanMin')
     REDACTED)
   REDACTED)
 REDACTED)
