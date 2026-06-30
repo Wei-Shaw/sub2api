@@ -12,9 +12,9 @@
 | 0 | 环境自检 `go build ./...` | ✅ 完成 | `e6ba7d0a` | gofmt✅ build✅ vet✅ routes-test✅ | Blocker #1 已按**方案 A**(人工拍板)修复;基线转绿,无隐藏编译错 |
 | A | tlsfingerprint 包补 3 文件 | ✅ 完成 | `4488db9c` | gofmt✅ build✅ vet✅ pkg-test✅ | Profile 结构两边逐字一致;照抄 3 源 +2 测;`isGREASEValue` 依赖已存在 |
 | B | ent schema + model + 生成 | ✅ 完成 | `ce925be7` | gofmt✅ generate✅ build✅ vet✅ | 表/列/索引与方案逐项核对一致;go.mod/sum 未被 codegen 污染 |
-| C | 迁移 158_add_tls_fingerprint_routers.sql | ✅ 完成(静态) | `<C待填>` | build✅ vet✅ runner-test✅ | DB 幂等执行=【运行时·人工】(本环境镜像拉取过慢,未跑成 ephemeral PG) |
-| D | repository(router repo + cache) | ⬜ 未开始 | — | — | |
-| E | service(router + collector)+ config | ⬜ 未开始 | — | — | |
+| C | 迁移 158_add_tls_fingerprint_routers.sql | ✅ 完成(静态) | `d6cec220` | build✅ vet✅ runner-test✅ | DB 幂等执行=【运行时·人工】(本环境镜像拉取过慢,未跑成 ephemeral PG) |
+| D | repository(router repo + cache) | ✅ 完成 | `<D待填>` | gofmt✅ build✅ vet✅ svc-test✅ | 含 router service(接口与 repo 互依,合并提交);6 子测全绿 |
+| E | service(router + collector)+ config | 🟡 部分(router service 已随 D) | `<D待填>` | — | 余:collector service + config + profile service 编辑 + service/wire |
 | F | handler + 路由 + wire | ⬜ 未开始 | — | — | |
 | G | OpenAI HTTP 集成 | ⬜ 未开始 | — | — | 硬骨头;运行时验证留人工 |
 | H | OpenAI WS 集成 | ⬜ 未开始 | — | — | 硬骨头;连接池 key 须含指纹 |
@@ -111,8 +111,23 @@
   - runner 校验:`validateMigrationExecutionMode` 仅对非 _notx 文件禁止 `CONCURRENTLY`(158 无)→ 合法。
   - baseline:`latestMigrationBaseline` 动态取最高号(无硬编码 157),`ensureAtlasBaselineAligned` 亦动态 → 158 自然成为新 baseline,无需改常量;无 checksum 兼容规则(158 是全新文件,非编辑旧迁移)。
 - 命令与结果(容器内):`go build ./...` → **BUILD_OK**;`go vet ./internal/repository/...` → **VET_OK**;`go test ./internal/repository/`(非 DB 的 runner 单测:ValidateMigrationExecutionMode/LatestMigrationBaseline/ApplyMigrationsFS/Checksum/EnsureAtlasBaselineAligned 等)→ **ok 0.021s**。
-- commit:`<C待填>`
+- commit:`d6cec220`
 - 遗留/风险:**DB 幂等执行属【运行时·人工】**(方案 §5)。本想用 ephemeral `postgres:18-alpine` 容器跑两遍验证语法+幂等,但本环境 Docker Hub 拉取过慢(>8min 未完成),遂回退到方案既定分类,**不宣称 DB 已验证**。迁移系 TR 生产已验证 DDL 的近逐字合并 + 列类型对齐 ent + 全 IF NOT EXISTS,DB 风险低;人工灰度时在测试库 `\i 158` 跑两遍确认幂等即可。repo 自带 `migrations_schema_integration_test.go`(`//go:build integration`,testcontainers `postgres:18.1-alpine3.23`)可作人工集成验证入口。
+
+### Phase D(+E 的 router service)— repository + router service — ✅ 完成(2026-07-01)
+
+- 关键决策(顺序):router **repo/cache** 的构造函数返回 `service.TLSFingerprintRouterRepository`/`service.TLSFingerprintRouterCache` 接口,而这两个接口定义在 TR 的 `tls_fingerprint_router_service.go`(E 文件)里。二者**互依**,无法各自单独 build 绿。故把 router service 文件随 D 一并引入并合并提交(faithful 照抄 TR 文件布局,不拆分接口);E 余下 collector/config/profile 编辑/service-wire 仍单独做。
+- 前置核对:fork 与 TR 的 `tls_fingerprint_profile_repo.go`、`tls_fingerprint_profile_cache.go` **逐字一致**(仅 import path)→ repo/cache 基础设施(ent client、redis 包装、cache+pubsub 模式)完全对齐;`logger.LegacyPrintf` fork 已有(logger.go:477,签名同);repository→service import 是 fork 既有无环模式。
+- 改动文件(TR 照抄 + import path swap):
+  - 新增 `internal/repository/tls_fingerprint_router_repo.go`(List/GetByID/Create/Update/Delete + toModel;Update 用 Clear* 处理 nil)
+  - 新增 `internal/repository/tls_fingerprint_router_cache.go`(redis key `tls_fingerprint_routers` + pubsub `tls_fingerprint_routers_updated` + TTL 24h + 本地缓存)
+  - 新增 `internal/service/tls_fingerprint_router_service.go`(接口×2、`TLSFingerprintRouterMatchResult`、`TLSFingerprintRouterService`:MatchUserAgent/GetRuntimeRouter/CRUD/本地缓存+订阅刷新+预编译 regex)
+  - 新增 `internal/service/tls_fingerprint_router_service_test.go`(照抄 TR,6 子测)
+  - 编辑 `internal/repository/wire.go`:ProviderSet 加 `NewTLSFingerprintRouterRepository`(repo 段)、`NewTLSFingerprintRouterCache`(cache 段)
+- 命令与结果(容器内):`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./internal/repository/... ./internal/service/...` → **VET_OK**;`go test ./internal/service/ -run TestTLSFingerprintRouter` → **ok**(MatchUserAgent 5 子用例[exact/contains/prefix/regex/未命中]+ 大小写敏感 + 校验规则 + Create 归一化 + ProfileID 校验,全 PASS)。
+- 注:`NewTLSFingerprintRouterService` 暂未被 wire 消费(service/wire.go 留待 E);repo/cache provider 已入 ProviderSet 但未重生成 wire_gen(未消费 → build 不受影响,wire 重生成留待 Phase F/J)。
+- commit:`<D待填>`
+- 遗留/风险:无。E 余下部分见下阶段。
 
 ## 待人工验证(运行时)
 
