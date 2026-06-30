@@ -40,7 +40,10 @@ REDACTED
 	return s.cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes
 REDACTED
 
-func (s *OpenAIGatewayService) shouldBridgeOpenAIWSHTTP(payloadBytes int, previousResponseID string) bool {
+func (s *OpenAIGatewayService) shouldBridgeOpenAIWSHTTP(account *Account, payloadBytes int, previousResponseID string) bool {
+	if account != nil && account.Platform == PlatformGrok {
+		return true
+REDACTED
 	if !s.openAIWSHTTPBridgeEnabled() {
 		return false
 REDACTED
@@ -174,7 +177,26 @@ REDACTED
 REDACTED
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
+	var upstreamReq *http.Request
+	if account.Platform == PlatformGrok {
+		upstreamModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+		if originalModel != "" {
+			if mappedModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel)); mappedModel != "" {
+				upstreamModel = mappedModel
+		REDACTED
+	REDACTED
+		if upstreamModel == "" {
+			upstreamModel = "grok-4.3"
+	REDACTED
+		body, err = patchGrokResponsesBody(body, upstreamModel)
+		if err != nil {
+			releaseUpstreamCtx()
+			return nil, err
+	REDACTED
+		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token)
+REDACTED else {
+		upstreamReq, err = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
+REDACTED
 	releaseUpstreamCtx()
 	if err != nil {
 		return nil, err
