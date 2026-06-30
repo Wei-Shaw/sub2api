@@ -983,7 +983,8 @@ func detectConflicts(entries []modelEntry, platform, errCode, label string) erro
 		for j := i + 1; j < len(entries); j++ {
 			if conflictsBetween(entries[i], entries[j]) {
 				return infraerrors.BadRequest(errCode,
-					fmt.Sprintf("%s '%s' and '%s' conflict in platform '%s': overlapping match range",
+					fmt.Sprintf("%s '%s' and '%s' conflict in platform '%s': overlapping match range "+
+						"(model names are matched case-insensitively, so an existing entry already covers all case variants)",
 						label, entries[i].pattern, entries[j].pattern, platform))
 			}
 		}
