@@ -550,14 +550,14 @@ func maskedHeaderString(h http.Header) string {
 	for _, k := range keys {
 		for _, v := range h[k] {
 			if b.Len() > 0 {
-				b.WriteString("; ")
+				_, _ = b.WriteString("; ")
 			}
-			b.WriteString(k)
-			b.WriteString(": ")
+			_, _ = b.WriteString(k)
+			_, _ = b.WriteString(": ")
 			if strings.EqualFold(k, "Authorization") {
-				b.WriteString(maskSecret(v))
+				_, _ = b.WriteString(maskSecret(v))
 			} else {
-				b.WriteString(v)
+				_, _ = b.WriteString(v)
 			}
 		}
 	}

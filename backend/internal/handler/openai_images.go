@@ -189,7 +189,6 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			// fal 平台：走 fal 伪同步门面，响应一旦写出即终结（计费由 AsyncMediaService 承担，
 			// 本 handler 不再重复记账）。失败的 openai 账号可经混合池重选切到 fal，反之亦然。
 			if account.Platform == service.PlatformFal {
-				sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 				setOpsSelectedAccount(c, account.ID, account.Platform)
 				reqLog.Debug("openai.images.fal_account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 				h.falImageFallback.ServeOpenAIImagesWithAccount(c, reqLog, apiKey, subject, parsed, account)

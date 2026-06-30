@@ -116,7 +116,7 @@ func (s *BalanceRPCServer) Stop() {
 }
 
 // authFilter 在每个 RPC 前用 metadata 中的 token 鉴权（解密成功 + app 未停用），并把 app_id 注入 ctx。
-func (s *BalanceRPCServer) authFilter(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
+func (s *BalanceRPCServer) authFilter(ctx context.Context, req any, next filter.ServerHandleFunc) (any, error) {
 	md := codec.Message(ctx).ServerMetaData()
 	token := metaString(md, mdKeyAppToken)
 

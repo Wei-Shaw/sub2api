@@ -981,11 +981,6 @@ func containsString(haystack []string, needle string) bool {
 	return slices.Contains(haystack, needle)
 }
 
-// formatDecimal 把余额类 float 格式化为定点字符串 (避免科学计数法)。
-func formatDecimal(v float64) string {
-	return strconv.FormatFloat(v, 'f', -1, 64)
-}
-
 // ─── Admin 设置读写 (task 8.1/8.2) ───────────────────────────────────────────
 
 // OidcProviderSettingsView 是 admin GET 设置返回的快照 (已套用默认值)。
