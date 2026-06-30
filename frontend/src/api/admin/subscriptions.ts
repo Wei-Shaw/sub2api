@@ -117,7 +117,7 @@ REDACTED
  * @returns Success confirmation
  */
 export async function revoke(id: number): Promise<{ message: string REDACTED> {
-  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>(`/admin/subscriptions/${idREDACTED`)
+  const { data REDACTED = await apiClient.post<{ message: string REDACTED>(`/admin/subscriptions/${idREDACTED/revoke`)
   return data
 REDACTED
 
