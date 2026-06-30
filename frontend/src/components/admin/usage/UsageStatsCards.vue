@@ -68,9 +68,14 @@
           ${{ (stats?.total_actual_cost || 0).toFixed(4) }}
         </p>
         <p class="text-xs text-gray-400">
-          <span class="text-orange-500">{{ t('usage.accountCost') }} ${{ (stats?.total_account_cost || 0).toFixed(4) }}</span>
-          <span> · </span>
-          <span>{{ t('usage.standardCost') }} ${{ (stats?.total_cost || 0).toFixed(4) }}</span>
+          <template v-if="showAccountCost && totalAccountCost != null">
+            <span class="text-orange-500">{{ t('usage.accountCost') }} ${{ totalAccountCost.toFixed(4) }}</span>
+            <span> · </span>
+          </template>
+          <span>
+            {{ t('usage.standardCost') }}
+            <span :class="{ 'line-through': strikeStandardCost }">${{ (stats?.total_cost || 0).toFixed(4) }}</span>
+          </span>
         </p>
       </div>
     </div>
@@ -84,13 +89,29 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AdminUsageStatsResponse } from '@/api/admin/usage'
+import type { UsageStatsResponse } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 
-defineProps<{ stats: AdminUsageStatsResponse | null }>()
+const props = withDefaults(defineProps<{
+  stats: (AdminUsageStatsResponse | UsageStatsResponse) | null
+  showAccountCost?: boolean
+  strikeStandardCost?: boolean
+}>(), {
+  showAccountCost: true,
+  strikeStandardCost: false,
+})
 
 const { t } = useI18n()
+
+const totalAccountCost = computed(() => {
+  const stats = props.stats as (AdminUsageStatsResponse & { total_account_cost?: number }) | null
+  return stats?.total_account_cost ?? null
+})
+const showAccountCost = computed(() => props.showAccountCost)
+const strikeStandardCost = computed(() => props.strikeStandardCost)
 
 const formatDuration = (ms: number) =>
   ms < 1000 ? `${ms.toFixed(0)}ms` : `${(ms / 1000).toFixed(2)}s`
