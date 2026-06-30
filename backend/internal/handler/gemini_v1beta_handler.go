@@ -41,7 +41,7 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 REDACTED
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
+	if !hasForcePlatform && effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 REDACTED
@@ -88,7 +88,7 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 REDACTED
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
+	if !hasForcePlatform && effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 REDACTED
@@ -155,7 +155,7 @@ REDACTED
 
 	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组
 	if !middleware.HasForcePlatform(c) {
-		if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
+		if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
 			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 			return
 	REDACTED

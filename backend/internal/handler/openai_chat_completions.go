@@ -75,6 +75,11 @@ REDACTED
 		return
 REDACTED
 	reqModel := modelResult.String()
+	ensureCompositeTargetPlatform(c, apiKey, reqModel)
+	if !compositeTargetPlatformAllowed(c, apiKey, reqModel, service.PlatformOpenAI) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
+		return
+REDACTED
 	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
 		if cappedBody, changed := service.ApplyOpenAIReasoningEffortPolicy(body, apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings); changed {
 			body = cappedBody
@@ -111,7 +116,7 @@ REDACTED
 REDACTED
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
-	requestPlatform := openAICompatibleRequestPlatform(apiKey)
+	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()

@@ -8,6 +8,9 @@ const (
 	// ForcePlatform 强制平台（用于 /antigravity 路由），由 middleware.ForcePlatform 设置
 	ForcePlatform Key = "ctx_force_platform"
 
+	// ResolvedTargetPlatform 是 composite 分组按请求模型解析出的真实目标平台。
+	ResolvedTargetPlatform Key = "ctx_resolved_target_platform"
+
 	// RequestID 为服务端生成/透传的请求 ID。
 	RequestID Key = "ctx_request_id"
 

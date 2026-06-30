@@ -3841,6 +3841,7 @@ const platformOptions = computed(() => [
   { value: "gemini", label: "Gemini" REDACTED,
   { value: "antigravity", label: "Antigravity" REDACTED,
   { value: "grok", label: "Grok" REDACTED,
+  { value: "composite", label: "Composite" REDACTED,
 ]);
 
 const platformFilterOptions = computed(() => [
@@ -3850,6 +3851,7 @@ const platformFilterOptions = computed(() => [
   { value: "gemini", label: "Gemini" REDACTED,
   { value: "antigravity", label: "Antigravity" REDACTED,
   { value: "grok", label: "Grok" REDACTED,
+  { value: "composite", label: "Composite" REDACTED,
 ]);
 
 const editStatusOptions = computed(() => [
@@ -3936,29 +3938,40 @@ const invalidRequestFallbackOptionsForEdit = computed(() => {
   return options;
 REDACTED);
 
-// 复制账号的源分组选项（创建时）- 仅包含相同平台且有账号的分组
+const canCopyAccountsFromGroup = (targetPlatform: GroupPlatform, sourcePlatform: GroupPlatform) =>
+  targetPlatform === "composite" || sourcePlatform === targetPlatform;
+
+const copyAccountsGroupLabel = (g: AdminGroup) => {
+  const count = g.account_count || 0;
+  const platform = t("admin.groups.platforms." + g.platform);
+  return `${g.nameREDACTED - ${platformREDACTED (${t("admin.groups.accountsCount", { count REDACTED)REDACTED)`;
+REDACTED;
+
+// 复制账号的源分组选项（创建时）- 相同平台；composite 分组可汇总各平台账号
 const copyAccountsGroupOptions = computed(() => {
   const eligibleGroups = groups.value.filter(
-    (g) => g.platform === createForm.platform && (g.account_count || 0) > 0,
+    (g) =>
+      canCopyAccountsFromGroup(createForm.platform, g.platform) &&
+      (g.account_count || 0) > 0,
   );
   return eligibleGroups.map((g) => ({
     value: g.id,
-    label: `${g.nameREDACTED (${t("admin.groups.accountsCount", { count: g.account_count || 0 REDACTED)REDACTED)`,
+    label: copyAccountsGroupLabel(g),
   REDACTED));
 REDACTED);
 
-// 复制账号的源分组选项（编辑时）- 仅包含相同平台且有账号的分组，排除自身
+// 复制账号的源分组选项（编辑时）- 相同平台；composite 分组可汇总各平台账号，排除自身
 const copyAccountsGroupOptionsForEdit = computed(() => {
   const currentId = editingGroup.value?.id;
   const eligibleGroups = groups.value.filter(
     (g) =>
-      g.platform === editForm.platform &&
+      canCopyAccountsFromGroup(editForm.platform, g.platform) &&
       (g.account_count || 0) > 0 &&
       g.id !== currentId,
   );
   return eligibleGroups.map((g) => ({
     value: g.id,
-    label: `${g.nameREDACTED (${t("admin.groups.accountsCount", { count: g.account_count || 0 REDACTED)REDACTED)`,
+    label: copyAccountsGroupLabel(g),
   REDACTED));
 REDACTED);
 
