@@ -51,6 +51,7 @@ const filters = reactive({
   request_id: '',
   client_request_id: '',
   user_id: '',
+  api_key_id: '',
   account_id: '',
   platform: '',
   model: '',
@@ -138,6 +139,7 @@ const formatSystemLogDetail = (row: OpsSystemLog) => {
   if (row.request_id) corrParts.push(`req=${row.request_id}`)
   if (row.client_request_id) corrParts.push(`client_req=${row.client_request_id}`)
   if (row.user_id != null) corrParts.push(`user=${row.user_id}`)
+  if (row.api_key_id != null) corrParts.push(`key=${row.api_key_id}`)
   if (row.account_id != null) corrParts.push(`acc=${row.account_id}`)
   if (row.platform) corrParts.push(`platform=${row.platform}`)
   if (row.model) corrParts.push(`model=${row.model}`)
@@ -178,6 +180,10 @@ const buildQuery = () => {
   if (filters.user_id.trim()) {
     const v = Number.parseInt(filters.user_id.trim(), 10)
     if (Number.isFinite(v) && v > 0) query.user_id = v
+  }
+  if (filters.api_key_id.trim()) {
+    const v = Number.parseInt(filters.api_key_id.trim(), 10)
+    if (Number.isFinite(v) && v > 0) query.api_key_id = v
   }
   if (filters.account_id.trim()) {
     const v = Number.parseInt(filters.account_id.trim(), 10)
@@ -285,6 +291,7 @@ const cleanupCurrentFilter = async () => {
       request_id: filters.request_id.trim() || undefined,
       client_request_id: filters.client_request_id.trim() || undefined,
       user_id: filters.user_id.trim() ? Number.parseInt(filters.user_id.trim(), 10) : undefined,
+      api_key_id: filters.api_key_id.trim() ? Number.parseInt(filters.api_key_id.trim(), 10) : undefined,
       account_id: filters.account_id.trim() ? Number.parseInt(filters.account_id.trim(), 10) : undefined,
       platform: filters.platform.trim() || undefined,
       model: filters.model.trim() || undefined,
@@ -309,6 +316,7 @@ const resetFilters = () => {
   filters.request_id = ''
   filters.client_request_id = ''
   filters.user_id = ''
+  filters.api_key_id = ''
   filters.account_id = ''
   filters.platform = props.platformFilter || ''
   filters.model = ''
@@ -455,6 +463,10 @@ onMounted(async () => {
       <label class="text-xs text-gray-600 dark:text-gray-300">
         user_id
         <input v-model="filters.user_id" type="text" class="input mt-1" />
+      </label>
+      <label class="text-xs text-gray-600 dark:text-gray-300">
+        KEY ID
+        <input v-model="filters.api_key_id" type="text" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         account_id
