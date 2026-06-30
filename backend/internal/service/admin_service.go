@@ -93,9 +93,9 @@ type AdminService interface {
 	EnsureOpenAIPrivacy(ctx context.Context, account *Account) string
 	// EnsureAntigravityPrivacy 检查 Antigravity OAuth 账号 privacy_mode，未设置则调用 setUserSettings 并持久化。
 	EnsureAntigravityPrivacy(ctx context.Context, account *Account) string
-	// ForceOpenAIPrivacy 强制重新设置 OpenAI OAuth 账号隐私，无论当前状态。
+	// ForceOpenAIPrivacy 为 OpenAI OAuth 账号设置隐私；已成功设置时幂等返回当前成功状态。
 	ForceOpenAIPrivacy(ctx context.Context, account *Account) string
-	// ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
+	// ForceAntigravityPrivacy 为 Antigravity OAuth 账号设置隐私；已成功设置时幂等返回当前成功状态。
 	ForceAntigravityPrivacy(ctx context.Context, account *Account) string
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
@@ -3887,10 +3887,13 @@ func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Acc
 	return mode
 }
 
-// ForceOpenAIPrivacy 强制重新设置 OpenAI OAuth 账号隐私，无论当前状态。
+// ForceOpenAIPrivacy 为 OpenAI OAuth 账号设置隐私；已成功设置时幂等返回当前成功状态。
 func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Account) string {
 	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
 		return ""
+	}
+	if isOpenAIPrivacyModeSuccess(account.Extra) {
+		return PrivacyModeTrainingOff
 	}
 	if s.privacyClientFactory == nil {
 		return ""
@@ -3964,10 +3967,13 @@ func (s *adminServiceImpl) EnsureAntigravityPrivacy(ctx context.Context, account
 	return mode
 }
 
-// ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
+// ForceAntigravityPrivacy 为 Antigravity OAuth 账号设置隐私；已成功设置时幂等返回当前成功状态。
 func (s *adminServiceImpl) ForceAntigravityPrivacy(ctx context.Context, account *Account) string {
 	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
 		return ""
+	}
+	if account.IsPrivacySet() {
+		return AntigravityPrivacySet
 	}
 
 	token, _ := account.Credentials["access_token"].(string)

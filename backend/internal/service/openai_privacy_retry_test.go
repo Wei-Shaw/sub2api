@@ -15,8 +15,15 @@ import (
 func TestAdminService_EnsureOpenAIPrivacy_RetriesNonSuccessModes(t *testing.T) {
 	t.Parallel()
 
-	for _, mode := range []string{PrivacyModeFailed, PrivacyModeCFBlocked} {
-		t.Run(mode, func(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mode string
+	}{
+		{name: "failed", mode: PrivacyModeFailed},
+		{name: "cf_blocked", mode: PrivacyModeCFBlocked},
+		{name: "empty", mode: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			privacyCalls := 0
@@ -36,7 +43,7 @@ func TestAdminService_EnsureOpenAIPrivacy_RetriesNonSuccessModes(t *testing.T) {
 					"access_token": "token-1",
 				},
 				Extra: map[string]any{
-					"privacy_mode": mode,
+					"privacy_mode": tc.mode,
 				},
 			}
 
@@ -46,6 +53,56 @@ func TestAdminService_EnsureOpenAIPrivacy_RetriesNonSuccessModes(t *testing.T) {
 			require.Equal(t, 1, privacyCalls)
 		})
 	}
+}
+
+func TestAdminService_ForceOpenAIPrivacy_IdempotentWhenAlreadyTrainingOff(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockAccountRepoForGemini{}
+	privacyCalls := 0
+	svc := &adminServiceImpl{
+		accountRepo: repo,
+		privacyClientFactory: func(proxyURL string) (*req.Client, error) {
+			privacyCalls++
+			return nil, errors.New("unexpected privacy call")
+		},
+	}
+
+	account := &Account{
+		ID:       101,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"privacy_mode": PrivacyModeTrainingOff,
+		},
+	}
+
+	got := svc.ForceOpenAIPrivacy(context.Background(), account)
+
+	require.Equal(t, PrivacyModeTrainingOff, got)
+	require.Equal(t, 0, privacyCalls)
+	require.Equal(t, 0, repo.updateExtraCalls)
+}
+
+func TestAdminService_ForceAntigravityPrivacy_IdempotentWhenAlreadySet(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockAccountRepoForGemini{}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	account := &Account{
+		ID:       102,
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"privacy_mode": AntigravityPrivacySet,
+		},
+	}
+
+	got := svc.ForceAntigravityPrivacy(context.Background(), account)
+
+	require.Equal(t, AntigravityPrivacySet, got)
+	require.Equal(t, 0, repo.updateExtraCalls)
 }
 
 func TestTokenRefreshService_ensureOpenAIPrivacy_RetriesNonSuccessModes(t *testing.T) {

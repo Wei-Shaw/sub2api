@@ -20,6 +20,7 @@ func setupAccountMixedChannelRouter(adminSvc *stubAdminService) *gin.Engine {
 	router.POST("/api/v1/admin/accounts", accountHandler.Create)
 	router.PUT("/api/v1/admin/accounts/:id", accountHandler.Update)
 	router.POST("/api/v1/admin/accounts/bulk-update", accountHandler.BulkUpdate)
+	router.POST("/api/v1/admin/accounts/:id/set-privacy", accountHandler.SetPrivacy)
 	return router
 }
 
@@ -221,4 +222,62 @@ func TestBulkUpdateAcceptsFilterTargetRequest(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, float64(0), resp["code"])
+}
+
+func TestAccountHandlerSetPrivacyInitializesMissingExtra(t *testing.T) {
+	adminSvc := newStubAdminService()
+	adminSvc.accounts = []service.Account{{
+		ID:       7,
+		Name:     "openai-oauth",
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Status:   service.StatusActive,
+		Credentials: map[string]any{
+			"access_token": "token-1",
+		},
+	}}
+	router := setupAccountMixedChannelRouter(adminSvc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/7/set-privacy", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, float64(0), resp["code"])
+	data, ok := resp["data"].(map[string]any)
+	require.True(t, ok)
+	extra, ok := data["extra"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, service.PrivacyModeTrainingOff, extra["privacy_mode"])
+}
+
+func TestAccountHandlerSetPrivacyAlreadySetReturnsSuccess(t *testing.T) {
+	adminSvc := newStubAdminService()
+	adminSvc.accounts = []service.Account{{
+		ID:       8,
+		Name:     "antigravity-oauth",
+		Platform: service.PlatformAntigravity,
+		Type:     service.AccountTypeOAuth,
+		Status:   service.StatusActive,
+		Extra: map[string]any{
+			"privacy_mode": service.AntigravityPrivacySet,
+		},
+	}}
+	router := setupAccountMixedChannelRouter(adminSvc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/8/set-privacy", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, float64(0), resp["code"])
+	data, ok := resp["data"].(map[string]any)
+	require.True(t, ok)
+	extra, ok := data["extra"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, service.AntigravityPrivacySet, extra["privacy_mode"])
 }

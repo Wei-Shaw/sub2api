@@ -3232,6 +3232,7 @@ export default {
       privacyAntigravitySet: '已关闭遥测和营销邮件',
       privacyAntigravityFailed: '隐私设置失败',
       setPrivacy: '设置隐私',
+      privacyAlreadySet: '已设置隐私',
       subscriptionAbnormal: '异常',
       subscriptionExpires: '到期',
       // 容量状态提示

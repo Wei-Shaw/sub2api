@@ -32,7 +32,15 @@ func shouldSkipOpenAIPrivacyEnsure(extra map[string]any) bool {
 	}
 	mode, _ := raw.(string)
 	mode = strings.TrimSpace(mode)
-	return mode != PrivacyModeFailed && mode != PrivacyModeCFBlocked
+	return mode != "" && mode != PrivacyModeFailed && mode != PrivacyModeCFBlocked
+}
+
+func isOpenAIPrivacyModeSuccess(extra map[string]any) bool {
+	if extra == nil {
+		return false
+	}
+	mode, _ := extra["privacy_mode"].(string)
+	return strings.TrimSpace(mode) == PrivacyModeTrainingOff
 }
 
 // disableOpenAITraining calls ChatGPT settings API to turn off "Improve the model for everyone".
