@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import { opsAPI, type OpsRuntimeLogConfig, type OpsSystemLog, type OpsSystemLogSinkHealth REDACTED from '@/api/admin/ops'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import { useAppStore REDACTED from '@/stores'
 
 const appStore = useAppStore()
+const { t REDACTED = useI18n()
 
 const props = withDefaults(defineProps<{
   platformFilter?: string
@@ -81,13 +83,13 @@ const timeRangeOptions = [
   { value: '30d', label: '30d' REDACTED
 ]
 
-const filterLevelOptions = [
-  { value: '', label: 'All' REDACTED,
+const filterLevelOptions = computed(() => [
+  { value: '', label: t('admin.ops.systemLogs.all') REDACTED,
   { value: 'debug', label: 'debug' REDACTED,
   { value: 'info', label: 'info' REDACTED,
   { value: 'warn', label: 'warn' REDACTED,
   { value: 'error', label: 'error' REDACTED
-]
+])
 
 const levelBadgeClass = (level: string) => {
   const v = String(level || '').toLowerCase()
@@ -203,7 +205,7 @@ const fetchLogs = async () => {
     total.value = res.total || 0
   REDACTED catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to fetch logs', err)
-    appStore.showError(err?.response?.data?.detail || 'Failed to load system logs')
+    appStore.showError(err?.response?.data?.detail || t('admin.ops.systemLogs.loadFailed'))
   REDACTED finally {
     loading.value = false
   REDACTED
@@ -246,17 +248,17 @@ const saveRuntimeConfig = async () => {
     runtimeConfig.caller = saved.caller
     runtimeConfig.stacktrace_level = saved.stacktrace_level
     runtimeConfig.retention_days = saved.retention_days
-    appStore.showSuccess('Runtime log configuration is active')
+    appStore.showSuccess(t('admin.ops.systemLogs.runtimeConfigActive'))
   REDACTED catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to save runtime log config', err)
-    appStore.showError(err?.response?.data?.detail || 'Failed to save log configuration')
+    appStore.showError(err?.response?.data?.detail || t('admin.ops.systemLogs.runtimeConfigSaveFailed'))
   REDACTED finally {
     runtimeSaving.value = false
   REDACTED
 REDACTED
 
 const resetRuntimeConfig = async () => {
-  const ok = window.confirm('Reset to startup configuration (env/yaml) and apply immediately?')
+  const ok = window.confirm(t('admin.ops.systemLogs.resetRuntimeConfigConfirm'))
   if (!ok) return
 
   runtimeSaving.value = true
@@ -269,18 +271,18 @@ const resetRuntimeConfig = async () => {
     runtimeConfig.caller = saved.caller
     runtimeConfig.stacktrace_level = saved.stacktrace_level
     runtimeConfig.retention_days = saved.retention_days
-    appStore.showSuccess('Reset to startup log configuration')
+    appStore.showSuccess(t('admin.ops.systemLogs.runtimeConfigReset'))
     await fetchHealth()
   REDACTED catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to reset runtime log config', err)
-    appStore.showError(err?.response?.data?.detail || 'Failed to reset log configuration')
+    appStore.showError(err?.response?.data?.detail || t('admin.ops.systemLogs.runtimeConfigResetFailed'))
   REDACTED finally {
     runtimeSaving.value = false
   REDACTED
 REDACTED
 
 const cleanupCurrentFilter = async () => {
-  const ok = window.confirm('Clean up system logs matching the current filters? This cannot be undone.')
+  const ok = window.confirm(t('admin.ops.systemLogs.cleanupConfirm'))
   if (!ok) return
   try {
     const payload = {
@@ -298,12 +300,12 @@ const cleanupCurrentFilter = async () => {
       q: filters.q.trim() || undefined
     REDACTED
     const res = await opsAPI.cleanupSystemLogs(payload)
-    appStore.showSuccess(`Cleanup complete. Deleted ${res.deleted || 0REDACTED log entries.`)
+    appStore.showSuccess(t('admin.ops.systemLogs.cleanupSuccess', { count: res.deleted || 0 REDACTED))
     page.value = 1
     await Promise.all([fetchLogs(), fetchHealth()])
   REDACTED catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to cleanup logs', err)
-    appStore.showError(err?.response?.data?.detail || 'Failed to clean up system logs')
+    appStore.showError(err?.response?.data?.detail || t('admin.ops.systemLogs.cleanupFailed'))
   REDACTED
 REDACTED
 
@@ -368,41 +370,41 @@ REDACTED)
   <section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-900/60">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h3 class="text-sm font-bold text-gray-900 dark:text-white">System Logs</h3>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Newest logs are shown first. Filter, search, and clean up by condition.</p>
+        <h3 class="text-sm font-bold text-gray-900 dark:text-white">{{ t('admin.ops.systemLogs.title') REDACTEDREDACTED</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.systemLogs.description') REDACTEDREDACTED</p>
       </div>
       <div class="flex flex-wrap items-center gap-2 text-xs">
-        <span class="rounded-md bg-gray-100 px-2 py-1 text-gray-700 dark:bg-dark-700 dark:text-gray-200">Queue {{ health.queue_depth REDACTEDREDACTED/{{ health.queue_capacity REDACTEDREDACTED</span>
-        <span class="rounded-md bg-gray-100 px-2 py-1 text-gray-700 dark:bg-dark-700 dark:text-gray-200">Written {{ health.written_count REDACTEDREDACTED</span>
-        <span class="rounded-md bg-amber-100 px-2 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Dropped {{ health.dropped_count REDACTEDREDACTED</span>
-        <span class="rounded-md bg-red-100 px-2 py-1 text-red-700 dark:bg-red-900/30 dark:text-red-300">Failed {{ health.write_failed_count REDACTEDREDACTED</span>
+        <span class="rounded-md bg-gray-100 px-2 py-1 text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ t('admin.ops.systemLogs.queue') REDACTEDREDACTED {{ health.queue_depth REDACTEDREDACTED/{{ health.queue_capacity REDACTEDREDACTED</span>
+        <span class="rounded-md bg-gray-100 px-2 py-1 text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ t('admin.ops.systemLogs.written') REDACTEDREDACTED {{ health.written_count REDACTEDREDACTED</span>
+        <span class="rounded-md bg-amber-100 px-2 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{{ t('admin.ops.systemLogs.dropped') REDACTEDREDACTED {{ health.dropped_count REDACTEDREDACTED</span>
+        <span class="rounded-md bg-red-100 px-2 py-1 text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('admin.ops.systemLogs.failed') REDACTEDREDACTED {{ health.write_failed_count REDACTEDREDACTED</span>
       </div>
     </div>
 
     <div class="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/70">
       <div class="mb-2 flex items-center justify-between">
-        <div class="text-xs font-semibold text-gray-700 dark:text-gray-200">Runtime Log Configuration (applies immediately)</div>
-        <span v-if="runtimeLoading" class="text-xs text-gray-500">Loading...</span>
+        <div class="text-xs font-semibold text-gray-700 dark:text-gray-200">{{ t('admin.ops.systemLogs.runtimeConfig') REDACTEDREDACTED</div>
+        <span v-if="runtimeLoading" class="text-xs text-gray-500">{{ t('common.loading') REDACTEDREDACTED</span>
       </div>
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
         <label class="text-xs text-gray-600 dark:text-gray-300">
-          Level
+          {{ t('admin.ops.systemLogs.level') REDACTEDREDACTED
           <Select v-model="runtimeConfig.level" class="mt-1" :options="runtimeLevelOptions" />
         </label>
         <label class="text-xs text-gray-600 dark:text-gray-300">
-          Stacktrace threshold
+          {{ t('admin.ops.systemLogs.stacktraceThreshold') REDACTEDREDACTED
           <Select v-model="runtimeConfig.stacktrace_level" class="mt-1" :options="stacktraceLevelOptions" />
         </label>
         <label class="text-xs text-gray-600 dark:text-gray-300">
-          Sampling initial
+          {{ t('admin.ops.systemLogs.samplingInitial') REDACTEDREDACTED
           <input v-model.number="runtimeConfig.sampling_initial" type="number" min="1" class="input mt-1" />
         </label>
         <label class="text-xs text-gray-600 dark:text-gray-300">
-          Sampling thereafter
+          {{ t('admin.ops.systemLogs.samplingThereafter') REDACTEDREDACTED
           <input v-model.number="runtimeConfig.sampling_thereafter" type="number" min="1" class="input mt-1" />
         </label>
         <label class="text-xs text-gray-600 dark:text-gray-300">
-          Retention days
+          {{ t('admin.ops.systemLogs.retentionDays') REDACTEDREDACTED
           <input v-model.number="runtimeConfig.retention_days" type="number" min="1" max="3650" class="input mt-1" />
         </label>
         <div class="md:col-span-2 xl:col-span-6">
@@ -410,47 +412,47 @@ REDACTED)
             <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
               <label class="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                 <input v-model="runtimeConfig.caller" type="checkbox" />
-                caller
+                {{ t('admin.ops.systemLogs.caller') REDACTEDREDACTED
               </label>
               <label class="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                 <input v-model="runtimeConfig.enable_sampling" type="checkbox" />
-                sampling
+                {{ t('admin.ops.systemLogs.sampling') REDACTEDREDACTED
               </label>
             </div>
             <div class="flex flex-wrap items-center gap-2 lg:justify-end">
               <button type="button" class="btn btn-primary btn-sm" :disabled="runtimeSaving" @click="saveRuntimeConfig">
-                {{ runtimeSaving ? 'Saving...' : 'Save and apply' REDACTEDREDACTED
+                {{ runtimeSaving ? t('common.saving') : t('admin.ops.systemLogs.saveAndApply') REDACTEDREDACTED
               </button>
               <button type="button" class="btn btn-secondary btn-sm" :disabled="runtimeSaving" @click="resetRuntimeConfig">
-                Reset defaults
+                {{ t('admin.ops.systemLogs.resetDefaults') REDACTEDREDACTED
               </button>
             </div>
           </div>
         </div>
       </div>
-      <p v-if="health.last_error" class="mt-2 text-xs text-red-600 dark:text-red-400">Latest write error: {{ health.last_error REDACTEDREDACTED</p>
+      <p v-if="health.last_error" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ t('admin.ops.systemLogs.latestWriteError') REDACTEDREDACTED {{ health.last_error REDACTEDREDACTED</p>
     </div>
 
     <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-5">
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        Time range
+        {{ t('admin.ops.systemLogs.timeRange') REDACTEDREDACTED
         <Select v-model="filters.time_range" class="mt-1" :options="timeRangeOptions" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        Start time (optional)
+        {{ t('admin.ops.systemLogs.startTime') REDACTEDREDACTED
         <input v-model="filters.start_time" type="datetime-local" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        End time (optional)
+        {{ t('admin.ops.systemLogs.endTime') REDACTEDREDACTED
         <input v-model="filters.end_time" type="datetime-local" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        Level
+        {{ t('admin.ops.systemLogs.level') REDACTEDREDACTED
         <Select v-model="filters.level" class="mt-1" :options="filterLevelOptions" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        Component
-        <input v-model="filters.component" type="text" class="input mt-1" placeholder="e.g. http.access" />
+        {{ t('admin.ops.systemLogs.component') REDACTEDREDACTED
+        <input v-model="filters.component" type="text" class="input mt-1" :placeholder="t('admin.ops.systemLogs.componentPlaceholder')" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         request_id
@@ -465,7 +467,7 @@ REDACTED)
         <input v-model="filters.user_id" type="text" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        KEY ID
+        {{ t('admin.ops.systemLogs.keyId') REDACTEDREDACTED
         <input v-model="filters.api_key_id" type="text" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
@@ -473,36 +475,36 @@ REDACTED)
         <input v-model="filters.account_id" type="text" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        Platform
+        {{ t('admin.ops.systemLogs.platform') REDACTEDREDACTED
         <input v-model="filters.platform" type="text" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        Model
+        {{ t('admin.ops.systemLogs.model') REDACTEDREDACTED
         <input v-model="filters.model" type="text" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        Keyword
-        <input v-model="filters.q" type="text" class="input mt-1" placeholder="message/request_id" />
+        {{ t('admin.ops.systemLogs.keyword') REDACTEDREDACTED
+        <input v-model="filters.q" type="text" class="input mt-1" :placeholder="t('admin.ops.systemLogs.keywordPlaceholder')" />
       </label>
     </div>
 
     <div class="mb-3 flex flex-wrap gap-2">
-      <button type="button" class="btn btn-primary btn-sm" @click="applyFilters">Search</button>
-      <button type="button" class="btn btn-secondary btn-sm" @click="resetFilters">Reset</button>
-      <button type="button" class="btn btn-danger btn-sm" @click="cleanupCurrentFilter">Clean current filters</button>
-      <button type="button" class="btn btn-secondary btn-sm" @click="fetchHealth">Refresh health</button>
+      <button type="button" class="btn btn-primary btn-sm" @click="applyFilters">{{ t('admin.ops.systemLogs.search') REDACTEDREDACTED</button>
+      <button type="button" class="btn btn-secondary btn-sm" @click="resetFilters">{{ t('common.reset') REDACTEDREDACTED</button>
+      <button type="button" class="btn btn-danger btn-sm" @click="cleanupCurrentFilter">{{ t('admin.ops.systemLogs.cleanCurrentFilters') REDACTEDREDACTED</button>
+      <button type="button" class="btn btn-secondary btn-sm" @click="fetchHealth">{{ t('admin.ops.systemLogs.refreshHealth') REDACTEDREDACTED</button>
     </div>
 
     <div class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
-      <div v-if="loading" class="px-4 py-8 text-center text-sm text-gray-500">Loading...</div>
-      <div v-else-if="!hasData" class="px-4 py-8 text-center text-sm text-gray-500">No system logs</div>
+      <div v-if="loading" class="px-4 py-8 text-center text-sm text-gray-500">{{ t('common.loading') REDACTEDREDACTED</div>
+      <div v-else-if="!hasData" class="px-4 py-8 text-center text-sm text-gray-500">{{ t('admin.ops.systemLogs.empty') REDACTEDREDACTED</div>
       <div v-else class="overflow-auto">
         <table class="min-w-full table-fixed divide-y divide-gray-200 dark:divide-dark-700">
           <thead class="bg-gray-50 dark:bg-dark-900">
             <tr>
-              <th class="w-[170px] px-3 py-2 text-left text-[11px] font-semibold text-gray-500">Time</th>
-              <th class="w-[80px] px-3 py-2 text-left text-[11px] font-semibold text-gray-500">Level</th>
-              <th class="px-3 py-2 text-left text-[11px] font-semibold text-gray-500">Log Details</th>
+              <th class="w-[170px] px-3 py-2 text-left text-[11px] font-semibold text-gray-500">{{ t('admin.ops.systemLogs.time') REDACTEDREDACTED</th>
+              <th class="w-[80px] px-3 py-2 text-left text-[11px] font-semibold text-gray-500">{{ t('admin.ops.systemLogs.level') REDACTEDREDACTED</th>
+              <th class="px-3 py-2 text-left text-[11px] font-semibold text-gray-500">{{ t('admin.ops.systemLogs.logDetails') REDACTEDREDACTED</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-dark-800">
