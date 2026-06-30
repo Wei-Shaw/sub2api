@@ -137,17 +137,26 @@ func (c *openAIImageOutputCounter) addDataArray(data gjson.Result) {
 		return
 	}
 	items := data.Array()
-	count := len(items)
-	if count > c.maxDataCount {
-		c.maxDataCount = count
-	}
+	imageCount := 0
 	sizes := make([]string, 0, len(items))
 	for _, item := range items {
+		if !item.IsObject() {
+			continue
+		}
+		hasImageOutput := strings.TrimSpace(item.Get("url").String()) != "" ||
+			strings.TrimSpace(item.Get("b64_json").String()) != ""
+		if !hasImageOutput {
+			continue
+		}
+		imageCount++
 		if size := strings.TrimSpace(item.Get("size").String()); size != "" {
 			sizes = append(sizes, size)
 		}
 		// 修复：对 data 数组中的每个项目也调用 addImageOutputItem 来处理 b64_json 字段
 		c.addImageOutputItem(item)
+	}
+	if imageCount > c.maxDataCount {
+		c.maxDataCount = imageCount
 	}
 	if len(sizes) > 0 {
 		c.dataSizes = sizes
@@ -186,7 +195,7 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 	if result == "" {
 		result = urlPayload
 	}
-	if result == "" && itemType != "image_generation.completed" {
+	if result == "" {
 		return
 	}
 	key := strings.TrimSpace(item.Get("id").String())

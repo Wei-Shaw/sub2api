@@ -27,7 +27,9 @@ type apiKeyRepoStub struct {
 	apiKey             *APIKey // GetKeyAndOwnerID 的返回值
 	getByIDErr         error   // GetKeyAndOwnerID 的错误返回值
 	deleteErr          error   // Delete 的错误返回值
+	updateErr          error   // Update 的错误返回值
 	deletedIDs         []int64 // 记录已删除的 API Key ID 列表
+	updatedKeys        []APIKey
 	allowListByUserID  bool
 	listByUserIDKeys   []APIKey
 	listByUserIDErr    error
@@ -74,7 +76,10 @@ func (s *apiKeyRepoStub) GetByKeyForAuth(ctx context.Context, key string) (*APIK
 }
 
 func (s *apiKeyRepoStub) Update(ctx context.Context, key *APIKey) error {
-	panic("unexpected Update call")
+	if key != nil {
+		s.updatedKeys = append(s.updatedKeys, *key)
+	}
+	return s.updateErr
 }
 
 // Delete 记录被删除的 API Key ID 并返回预设的错误。

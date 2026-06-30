@@ -14,15 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newGatewayRoutesTestRouter() *gin.Engine {
-	return newGatewayRoutesTestRouterForPlatform(service.PlatformOpenAI, false)
-}
-
-// newGatewayRoutesTestRouterForPlatform 构造一个测试路由器，认证桩按指定平台分组，
-// setAuthSubject 控制是否注入 AuthSubject（不注入时门面会在早期返回，避免触达 nil 依赖）。
-func newGatewayRoutesTestRouterForPlatform(platform string, setAuthSubject bool) *gin.Engine {
+func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
+
+	groupPlatform := service.PlatformOpenAI
+	if len(platform) > 0 && platform[0] != "" {
+		groupPlatform = platform[0]
+	}
 
 	RegisterGatewayRoutes(
 		router,
@@ -35,11 +34,8 @@ func newGatewayRoutesTestRouterForPlatform(platform string, setAuthSubject bool)
 			groupID := int64(1)
 			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
 				GroupID: &groupID,
-				Group:   &service.Group{Platform: platform},
+				Group:   &service.Group{Platform: groupPlatform},
 			})
-			if setAuthSubject {
-				c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 1})
-			}
 			c.Next()
 		}),
 		nil,
@@ -92,7 +88,7 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 // 不注入 AuthSubject，使 Fal.Images 在 "User context not found" 处早返回 500，
 // 既证明命中了 fal 门面（而非 OpenAI 或 404），又避免触达 nil 依赖。
 func TestGatewayRoutesFalImagesDispatch(t *testing.T) {
-	router := newGatewayRoutesTestRouterForPlatform(service.PlatformFal, false)
+	router := newGatewayRoutesTestRouter(service.PlatformFal)
 
 	for _, path := range []string{
 		"/v1/images/generations",
@@ -110,9 +106,54 @@ func TestGatewayRoutesFalImagesDispatch(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesGrokAllowsCLICompatibilityEntrypoints(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformGrok)
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/v1/messages"},
+		{http.MethodPost, "/v1/chat/completions"},
+		{http.MethodPost, "/chat/completions"},
+		{http.MethodGet, "/v1/responses"},
+		{http.MethodGet, "/responses"},
+		{http.MethodGet, "/backend-api/codex/responses"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"model":"grok"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
+		require.NotContains(t, w.Body.String(), "not supported for Grok groups")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"grok","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Contains(t, w.Body.String(), "Token counting is not supported for this platform")
+
+	for _, path := range []string{
+		"/v1/responses",
+		"/responses",
+		"/backend-api/codex/responses",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"grok","input":"hi"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should still reach Responses handler", path)
+	}
+}
+
 // TestGatewayRoutesImagesUnsupportedPlatformReturns404 验证非 OpenAI/fal 平台的 images 请求返回 404。
 func TestGatewayRoutesImagesUnsupportedPlatformReturns404(t *testing.T) {
-	router := newGatewayRoutesTestRouterForPlatform(service.PlatformAntigravity, false)
+	router := newGatewayRoutesTestRouter(service.PlatformAntigravity)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"x"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -127,7 +168,7 @@ func TestGatewayRoutesImagesUnsupportedPlatformReturns404(t *testing.T) {
 // GET /fal/{model}（无 /requests、无 /status）命中 Native 的 default 分支，返回门面自定义 404，
 // 据此与「路由未注册」的 gin 默认 404 区分。
 func TestGatewayRoutesFalNativeGroupIsRegistered(t *testing.T) {
-	router := newGatewayRoutesTestRouterForPlatform(service.PlatformFal, false)
+	router := newGatewayRoutesTestRouter(service.PlatformFal)
 
 	req := httptest.NewRequest(http.MethodGet, "/fal/openai/gpt-image-2", nil)
 	w := httptest.NewRecorder()
@@ -135,4 +176,15 @@ func TestGatewayRoutesFalNativeGroupIsRegistered(t *testing.T) {
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusNotFound, w.Code)
 	require.Contains(t, w.Body.String(), "Unsupported fal endpoint")
+}
+
+func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
 }

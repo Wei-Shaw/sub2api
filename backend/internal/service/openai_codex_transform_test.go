@@ -751,6 +751,65 @@ func TestApplyCodexOAuthTransform_DoesNotAddSparkImageUnsupportedForNonSpark(t *
 	require.NotContains(t, instructions, codexSparkImageUnsupportedMarker)
 }
 
+// gpt-5.3-codex-spark rejects the image_generation tool upstream (HTTP 400
+// invalid_request_error, param=tools). Codex CLI advertises that tool by default,
+// so the OAuth transform must strip it for spark while keeping the rest.
+func TestApplyCodexOAuthTransform_StripsImageGenerationToolForSpark(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.3-codex-spark",
+		"input": "hello",
+		"tools": []any{
+			map[string]any{"type": "function", "name": "shell"},
+			map[string]any{"type": "image_generation", "output_format": "png"},
+		},
+	}
+
+	result := applyCodexOAuthTransform(reqBody, true, false)
+	require.True(t, result.Modified)
+	require.False(t, hasOpenAIImageGenerationTool(reqBody))
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 1)
+	first, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "function", first["type"])
+	require.Equal(t, "shell", first["name"])
+}
+
+// Spark reasoning-effort aliases (e.g. -low/-high) normalize to gpt-5.3-codex-spark,
+// so they must be stripped too.
+func TestApplyCodexOAuthTransform_StripsImageGenerationToolForSparkAlias(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.3-codex-spark-high",
+		"input": "hello",
+		"tools": []any{
+			map[string]any{"type": "image_generation", "output_format": "png"},
+		},
+	}
+
+	result := applyCodexOAuthTransform(reqBody, true, false)
+	require.True(t, result.Modified)
+	require.False(t, hasOpenAIImageGenerationTool(reqBody))
+	// tools became empty after stripping the only entry; the key is dropped.
+	_, hasTools := reqBody["tools"]
+	require.False(t, hasTools)
+}
+
+// Non-spark Codex models support image_generation; the tool must be preserved.
+func TestApplyCodexOAuthTransform_KeepsImageGenerationToolForNonSpark(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.3-codex",
+		"input": "hello",
+		"tools": []any{
+			map[string]any{"type": "image_generation", "output_format": "png"},
+		},
+	}
+
+	applyCodexOAuthTransform(reqBody, true, false)
+	require.True(t, hasOpenAIImageGenerationTool(reqBody))
+}
+
 func TestNormalizeOpenAIResponsesImageOnlyModel_BuildsImageToolRequest(t *testing.T) {
 	reqBody := map[string]any{
 		"model":         "gpt-image-2",
@@ -949,6 +1008,21 @@ func TestApplyCodexOAuthTransform_CodexCLI_SuppliesDefaultWhenEmpty(t *testing.T
 	require.True(t, result.Modified)
 }
 
+func TestApplyCodexOAuthTransform_GPT55SuppliesModelSpecificInstructions(t *testing.T) {
+	reqBody := map[string]any{
+		"model":        "gpt-5.5",
+		"instructions": "   ",
+	}
+
+	result := applyCodexOAuthTransform(reqBody, true, false)
+
+	instructions, ok := reqBody["instructions"].(string)
+	require.True(t, ok)
+	require.Contains(t, instructions, "You are Codex, a coding agent based on GPT-5")
+	require.NotContains(t, instructions, "You are GPT-5.1 running in the Codex CLI")
+	require.True(t, result.Modified)
+}
+
 func TestApplyCodexOAuthTransform_NonCodexCLI_PreservesExistingInstructions(t *testing.T) {
 	// 非 Codex CLI 场景：已有 instructions 时保留客户端的值，不再覆盖
 
@@ -1035,10 +1109,14 @@ func TestExtractSystemMessagesFromInput(t *testing.T) {
 		require.True(t, result)
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
-		require.Len(t, input, 1)
+		require.Len(t, input, 2)
 		msg, ok := input[0].(map[string]any)
 		require.True(t, ok)
-		require.Equal(t, "user", msg["role"])
+		require.Equal(t, "developer", msg["role"])
+		require.Equal(t, "You are an assistant.", msg["content"])
+		user, ok := input[1].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "user", user["role"])
 		require.Equal(t, "You are an assistant.", reqBody["instructions"])
 	})
 
@@ -1058,7 +1136,14 @@ func TestExtractSystemMessagesFromInput(t *testing.T) {
 		require.Equal(t, "Be helpful.", reqBody["instructions"])
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
-		require.Len(t, input, 0)
+		require.Len(t, input, 1)
+		msg, ok := input[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "developer", msg["role"])
+		require.Equal(t, []any{
+			map[string]any{"type": "text", "text": "Be helpful."},
+		}, msg["content"])
+		require.Equal(t, "Be helpful.", reqBody["instructions"])
 	})
 
 	t.Run("multiple system messages concatenated", func(t *testing.T) {
@@ -1074,7 +1159,17 @@ func TestExtractSystemMessagesFromInput(t *testing.T) {
 		require.Equal(t, "First.\n\nSecond.", reqBody["instructions"])
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
-		require.Len(t, input, 1)
+		require.Len(t, input, 3)
+		first, ok := input[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "developer", first["role"])
+		second, ok := input[1].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "developer", second["role"])
+		user, ok := input[2].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "user", user["role"])
+		require.Equal(t, "First.\n\nSecond.", reqBody["instructions"])
 	})
 
 	t.Run("mixed system and non-system preserves non-system", func(t *testing.T) {
@@ -1089,13 +1184,17 @@ func TestExtractSystemMessagesFromInput(t *testing.T) {
 		require.True(t, result)
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
-		require.Len(t, input, 2)
+		require.Len(t, input, 3)
 		first, ok := input[0].(map[string]any)
 		require.True(t, ok)
 		require.Equal(t, "user", first["role"])
 		second, ok := input[1].(map[string]any)
 		require.True(t, ok)
-		require.Equal(t, "assistant", second["role"])
+		require.Equal(t, "developer", second["role"])
+		third, ok := input[2].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "assistant", third["role"])
+		require.Equal(t, "Sys prompt.", reqBody["instructions"])
 	})
 
 	t.Run("existing instructions prepended", func(t *testing.T) {
@@ -1109,6 +1208,11 @@ func TestExtractSystemMessagesFromInput(t *testing.T) {
 		result := extractSystemMessagesFromInput(reqBody)
 		require.True(t, result)
 		require.Equal(t, "Extracted.\n\nExisting instructions.", reqBody["instructions"])
+		input, ok := reqBody["input"].([]any)
+		require.True(t, ok)
+		msg, ok := input[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "developer", msg["role"])
 	})
 }
 
@@ -1168,14 +1272,53 @@ func TestApplyCodexOAuthTransform_ExtractsSystemMessages(t *testing.T) {
 
 	input, ok := reqBody["input"].([]any)
 	require.True(t, ok)
-	require.Len(t, input, 1)
-	msg, ok := input[0].(map[string]any)
+	require.Len(t, input, 2)
+	system, ok := input[0].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "user", msg["role"])
+	require.Equal(t, "developer", system["role"])
+	require.Equal(t, "You are a coding assistant.", system["content"])
+	user, ok := input[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "user", user["role"])
+	require.Equal(t, "You are a coding assistant.", reqBody["instructions"])
+}
 
+func TestApplyCodexOAuthTransform_JsonObjectKeepsJsonInstructionInInput(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"input": []any{
+			map[string]any{
+				"role":    "system",
+				"content": "You are an assistant. Output JSON only.",
+			},
+			map[string]any{
+				"role":    "user",
+				"content": "symbol data without the keyword",
+			},
+		},
+		"text": map[string]any{
+			"format": map[string]any{
+				"type": "json_object",
+			},
+		},
+	}
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+
+	require.True(t, result.Modified)
 	instructions, ok := reqBody["instructions"].(string)
 	require.True(t, ok)
-	require.Equal(t, "You are a coding assistant.", instructions)
+	require.Contains(t, instructions, "JSON")
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 2)
+	developer, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "developer", developer["role"])
+	require.Contains(t, developer["content"], "JSON")
+	user, ok := input[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "user", user["role"])
 }
 
 func TestIsInstructionsEmpty(t *testing.T) {
