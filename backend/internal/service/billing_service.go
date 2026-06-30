@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -168,6 +169,11 @@ type BillingService struct {
 	cfg            *config.Config
 	pricingService *PricingService
 	fallbackPrices map[string]*ModelPricing // 硬编码回退价格
+
+	// fallbackWarnSeen 记录已打过 fallback 警告日志的(已小写化)模型名,
+	// 让 "[Billing] Using fallback pricing" 每个模型每进程最多打一条,
+	// 避免热路径上每请求刷屏(issue #3394)。零值即可用,无需在构造函数初始化。
+	fallbackWarnSeen sync.Map
 }
 
 // NewBillingService 创建计费服务实例
@@ -499,6 +505,22 @@ func (s *BillingService) initFallbackPricing() {
 		OutputPricePerToken:     0,
 		SupportsCacheBreakdown:  false,
 	}
+
+	// xAI Grok 4.3 (official docs: $1.25 input / $2.50 output per MTok)
+	s.fallbackPrices["grok-4.3"] = &ModelPricing{
+		InputPricePerToken:         1.25e-6,
+		OutputPricePerToken:        2.5e-6,
+		CacheReadPricePerToken:     0,
+		SupportsCacheBreakdown:     false,
+		LongContextInputThreshold:  1000000,
+		LongContextInputMultiplier: 1,
+	}
+	// xAI Grok Build 0.1 (official docs: $1 input / $2 output per MTok)
+	s.fallbackPrices["grok-build-0.1"] = &ModelPricing{
+		InputPricePerToken:     1e-6,
+		OutputPricePerToken:    2e-6,
+		SupportsCacheBreakdown: false,
+	}
 }
 
 // getFallbackPricing 根据模型系列获取回退价格
@@ -659,6 +681,13 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		}
 	}
 
+	switch modelLower {
+	case "grok", "grok-latest", "grok-4.3":
+		return s.fallbackPrices["grok-4.3"]
+	case "grok-build", "grok-build-0.1":
+		return s.fallbackPrices["grok-build-0.1"]
+	}
+
 	return nil
 }
 
@@ -699,7 +728,11 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	// 2. 使用硬编码回退价格
 	fallback := s.getFallbackPricing(model)
 	if fallback != nil {
-		log.Printf("[Billing] Using fallback pricing for model: %s", model)
+		// 按模型名去重:每个模型每进程最多打一条 warn,避免热路径每请求刷屏（issue #3394）。
+		// model 在函数入口已 ToLower,故 GLM-5.2 / glm-5.2 视为同一条目。
+		if _, seen := s.fallbackWarnSeen.LoadOrStore(model, struct{}{}); !seen {
+			log.Printf("[Billing] Using fallback pricing for model: %s", model)
+		}
 		return s.applyModelSpecificPricingPolicy(model, fallback), nil
 	}
 
