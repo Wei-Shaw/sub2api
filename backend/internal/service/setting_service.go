@@ -793,6 +793,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyContactInfo,
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
+		SettingKeyHomeProductMenuItems,
 		SettingKeyHideCcsImportButton,
 		SettingKeyPurchaseSubscriptionEnabled,
 		SettingKeyPurchaseSubscriptionURL,
@@ -922,6 +923,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ContactInfo:                      settings[SettingKeyContactInfo],
 		DocURL:                           settings[SettingKeyDocURL],
 		HomeContent:                      settings[SettingKeyHomeContent],
+		HomeProductMenuItems:             settings[SettingKeyHomeProductMenuItems],
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
@@ -1400,6 +1402,7 @@ type PublicSettingsInjectionPayload struct {
 	ContactInfo                      string                   `json:"contact_info"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
+	HomeProductMenuItems             json.RawMessage          `json:"home_product_menu_items"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
@@ -1469,6 +1472,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ContactInfo:                      settings.ContactInfo,
 		DocURL:                           settings.DocURL,
 		HomeContent:                      settings.HomeContent,
+		HomeProductMenuItems:             safeRawJSONArray(settings.HomeProductMenuItems),
 		HideCcsImportButton:              settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:          settings.PurchaseSubscriptionURL,
@@ -1731,6 +1735,9 @@ func (s *SettingService) GetFrameSrcOrigins(ctx context.Context) ([]string, erro
 
 	// all custom menu items (including admin-only, since CSP must allow all iframes)
 	for _, item := range parseCustomMenuItemURLs(settings.CustomMenuItems) {
+		addOrigin(item)
+	}
+	for _, item := range parseCustomMenuItemURLs(settings.HomeProductMenuItems) {
 		addOrigin(item)
 	}
 
@@ -2088,6 +2095,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
+	updates[SettingKeyHomeProductMenuItems] = settings.HomeProductMenuItems
 	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
 	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)
 	updates[SettingKeyPurchaseSubscriptionURL] = strings.TrimSpace(settings.PurchaseSubscriptionURL)
@@ -3025,6 +3033,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyTableDefaultPageSize:                      "20",
 		SettingKeyTablePageSizeOptions:                      "[10,20,50,100]",
 		SettingKeyCustomMenuItems:                           "[]",
+		SettingKeyHomeProductMenuItems:                      "[]",
 		SettingKeyCustomEndpoints:                           "[]",
 		SettingKeyWeChatConnectEnabled:                      "false",
 		SettingKeyWeChatConnectAppID:                        "",
@@ -3228,6 +3237,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		ContactInfo:                       settings[SettingKeyContactInfo],
 		DocURL:                            settings[SettingKeyDocURL],
 		HomeContent:                       settings[SettingKeyHomeContent],
+		HomeProductMenuItems:              settings[SettingKeyHomeProductMenuItems],
 		HideCcsImportButton:               settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:       settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:           strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),

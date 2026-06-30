@@ -3,6 +3,7 @@ export default {
   home: {
     viewOnGithub: '在 GitHub 上查看',
     viewDocs: '查看文档',
+    products: '其他产品',
     docs: '文档',
     switchToLight: '切换到浅色模式',
     switchToDark: '切换到深色模式',
@@ -6271,6 +6272,30 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         description: '控制是否在侧边栏展示 Sora 客户端入口',
         enabled: '启用 Sora 客户端',
         enabledHint: '开启后，侧边栏将显示 Sora 入口，用户可访问 Sora 功能'
+      },
+      homeProducts: {
+        title: '首页其他产品配置',
+        description: '配置公共首页「其他产品」菜单下展示的产品链接。',
+        itemLabel: '产品 #{n}',
+        name: '菜单名',
+        namePlaceholder: '如：API 控制台',
+        url: 'URL',
+        urlPlaceholder: 'https://example.com/product',
+        action: '跳转方式',
+        icon: '图标',
+        uploadSvg: '上传 SVG',
+        removeSvg: '清除',
+        iconPresets: '预设图标',
+        iconPresetApi: 'API',
+        iconPresetChat: '聊天',
+        iconPresetPrice: '价格',
+        iconPresetDocs: '文档',
+        iconPresetTools: '工具',
+        iconPresetLaunch: '跳转',
+        iconPresetCloud: '云服务',
+        iconPresetSparkles: 'AI',
+        add: '添加产品',
+        remove: '删除'
       },
       customMenu: {
         title: '自定义菜单页面',

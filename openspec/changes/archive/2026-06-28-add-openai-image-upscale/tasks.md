@@ -33,7 +33,7 @@
 - [x] 4.1 `internal/service/openai_images.go` 非流式：`c.Data` 前对 b64 图按需放大 + 改写 body；失败兜底原图
 - [x] 4.2 `internal/service/openai_images.go` 流式：缓冲整段 → 放大 → 一次性吐出
 - [x] 4.3 `internal/service/openai_images_responses.go` 非流式 + 流式：同上两处
-- [ ] 4.4 多图：当前为**串行**放大（每图独立，任一失败仅该图兜底）；并发优化待办
+- [x] 4.4 多图：最多 4 张并发放大；每图独立处理，任一失败仅该图兜底
 - [x] 4.5 放大后的字节回填 `ImageOutputBase64`/sizes（供 COS 与计费解码复用）；`imageUpscaled` 审计标记未加（可选）
 - [x] 4.6 `internal/service/openai_image_cos_upload.go`：确认上传的是放大后字节（upscale 在前、COS 在后）
 - [x] 4.7 计费自洽验证：成功→目标档位、失败→原图档位（由现有解码路径得出，无特判）

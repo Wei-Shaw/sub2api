@@ -33,6 +33,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import HomeView from '../HomeView.vue'
+import { useAppStore } from '@/stores'
 
 function makeRouter() {
   return createRouter({
@@ -96,5 +97,178 @@ describe('HomeView (smoke)', () => {
     expect(html).toContain('href="/plaza/models"')
     // 新的转化区 stub 必须挂在 DOM 上。
     expect(wrapper.find('[data-test="showcase-stub"]').exists()).toBe(true)
+  })
+
+  it('点击其他产品会展开已配置的首页产品菜单', async () => {
+    const router = makeRouter()
+    router.push('/')
+    await router.isReady()
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const appStore = useAppStore()
+    appStore.cachedPublicSettings = {
+      site_name: 'Sub2API',
+      site_logo: '',
+      site_subtitle: '',
+      contact_info: '',
+      doc_url: '',
+      home_content: '',
+      home_product_menu_items: [
+        {
+          id: 'one',
+          label: 'First Product',
+          icon_svg: '',
+          url: 'https://example.com/one',
+          action: 'same_tab',
+          visibility: 'user',
+          sort_order: 0,
+        },
+        {
+          id: 'two',
+          label: 'Second Product',
+          icon_svg: '',
+          url: 'https://example.com/two',
+          action: 'new_tab',
+          visibility: 'user',
+          sort_order: 1,
+        },
+      ],
+    } as any
+    appStore.publicSettingsLoaded = true
+
+    const wrapper = mount(HomeView, {
+      attachTo: document.body,
+      global: {
+        plugins: [pinia, router],
+        stubs: {
+          HomeShowcaseSection: { template: '<section data-test="showcase-stub" />' },
+          LocaleSwitcher: { template: '<div />' },
+          Icon: { template: '<i />' },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('button[aria-haspopup="menu"]').trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('First Product')
+    expect(document.body.textContent).toContain('Second Product')
+    expect(document.body.innerHTML).toContain('https://example.com/one')
+    expect(document.body.innerHTML).toContain('https://example.com/two')
+
+    wrapper.unmount()
+  })
+
+  it('鼠标 hover 其他产品会展开已配置的首页产品菜单', async () => {
+    const router = makeRouter()
+    router.push('/')
+    await router.isReady()
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const appStore = useAppStore()
+    appStore.cachedPublicSettings = {
+      site_name: 'Sub2API',
+      site_logo: '',
+      site_subtitle: '',
+      contact_info: '',
+      doc_url: '',
+      home_content: '',
+      home_product_menu_items: [
+        {
+          id: 'hover-one',
+          label: 'Hover Product',
+          icon_svg: '',
+          url: 'https://example.com/hover',
+          action: 'same_tab',
+          visibility: 'user',
+          sort_order: 0,
+        },
+      ],
+    } as any
+    appStore.publicSettingsLoaded = true
+
+    const wrapper = mount(HomeView, {
+      attachTo: document.body,
+      global: {
+        plugins: [pinia, router],
+        stubs: {
+          HomeShowcaseSection: { template: '<section data-test="showcase-stub" />' },
+          LocaleSwitcher: { template: '<div />' },
+          Icon: { template: '<i />' },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-test="home-products-menu"]').trigger('mouseenter')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('Hover Product')
+    expect(document.body.innerHTML).toContain('https://example.com/hover')
+
+    wrapper.unmount()
+  })
+
+  it('开始使用区域下方也展示其他产品按钮并可展开菜单', async () => {
+    const router = makeRouter()
+    router.push('/')
+    await router.isReady()
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const appStore = useAppStore()
+    appStore.cachedPublicSettings = {
+      site_name: 'Sub2API',
+      site_logo: '',
+      site_subtitle: '',
+      contact_info: '',
+      doc_url: '',
+      home_content: '',
+      home_product_menu_items: [
+        {
+          id: 'hero-product',
+          label: 'Hero Product',
+          icon_svg: '',
+          url: 'https://example.com/hero',
+          action: 'same_tab',
+          visibility: 'user',
+          sort_order: 0,
+        },
+      ],
+    } as any
+    appStore.publicSettingsLoaded = true
+
+    const wrapper = mount(HomeView, {
+      attachTo: document.body,
+      global: {
+        plugins: [pinia, router],
+        stubs: {
+          HomeShowcaseSection: { template: '<section data-test="showcase-stub" />' },
+          LocaleSwitcher: { template: '<div />' },
+          Icon: { template: '<i />' },
+        },
+      },
+    })
+    await flushPromises()
+
+    const heroButton = wrapper.get('[data-test="home-products-hero-button"]')
+    expect(heroButton.text()).toContain('home.products')
+
+    await heroButton.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="home-products-hero-button"] i:last-child').classes()).toContain(
+      'rotate-180',
+    )
+    expect(wrapper.get('[data-test="home-products-menu"] button i:last-child').classes()).not.toContain(
+      'rotate-180',
+    )
+    expect(document.body.textContent).toContain('Hero Product')
+    expect(document.body.innerHTML).toContain('https://example.com/hero')
+
+    wrapper.unmount()
   })
 })

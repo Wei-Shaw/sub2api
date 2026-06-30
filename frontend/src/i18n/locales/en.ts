@@ -3,6 +3,7 @@ export default {
   home: {
     viewOnGithub: 'View on GitHub',
     viewDocs: 'View Documentation',
+    products: 'Other Products',
     docs: 'Docs',
     switchToLight: 'Switch to Light Mode',
     switchToDark: 'Switch to Dark Mode',
@@ -6119,6 +6120,30 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         description: 'Control whether to show the Sora client entry in the sidebar',
         enabled: 'Enable Sora Client',
         enabledHint: 'When enabled, the Sora entry will be shown in the sidebar for users to access Sora features'
+      },
+      homeProducts: {
+        title: 'Home Product Menu',
+        description: 'Configure product links shown under the Other Products menu on the public homepage.',
+        itemLabel: 'Product #{n}',
+        name: 'Menu Name',
+        namePlaceholder: 'e.g. API Console',
+        url: 'URL',
+        urlPlaceholder: 'https://example.com/product',
+        action: 'Open Mode',
+        icon: 'Icon',
+        uploadSvg: 'Upload SVG',
+        removeSvg: 'Remove',
+        iconPresets: 'Preset Icons',
+        iconPresetApi: 'API',
+        iconPresetChat: 'Chat',
+        iconPresetPrice: 'Pricing',
+        iconPresetDocs: 'Docs',
+        iconPresetTools: 'Tools',
+        iconPresetLaunch: 'Launch',
+        iconPresetCloud: 'Cloud',
+        iconPresetSparkles: 'AI',
+        add: 'Add Product',
+        remove: 'Remove'
       },
       customMenu: {
         title: 'Custom Menu Pages',

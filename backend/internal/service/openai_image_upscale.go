@@ -9,12 +9,15 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/fal"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"go.uber.org/zap"
 )
+
+const maxConcurrentOpenAIImageUpscales = 4
 
 // rewriteOpenAIImageBase64InBody 把响应体里发生改动的 base64 图片字符串替换为放大后的版本。
 // 采用字面量替换：base64 标准字母表（A-Za-z0-9+/=）在 JSON 字符串中无需转义、且单张 b64 很长且唯一，
@@ -122,6 +125,10 @@ func (s *OpenAIGatewayService) maybeUpscaleOpenAIImages(
 	resultSizes := make([]string, len(b64s))
 	copy(resultSizes, sizes)
 
+	var wg sync.WaitGroup
+	var changedMu sync.Mutex
+	sem := make(chan struct{}, maxConcurrentOpenAIImageUpscales)
+
 	for i, b64 := range b64s {
 		if strings.TrimSpace(b64) == "" {
 			continue
@@ -138,38 +145,49 @@ func (s *OpenAIGatewayService) maybeUpscaleOpenAIImages(
 		if factor == 0 {
 			continue
 		}
-		logger.L().Debug("openai.images.upscale.begin",
-			zap.Int("index", i),
-			zap.String("real_sizeStr", sizeStr),
-			zap.String("real_tier", realTier),
-			zap.String("target_tier", targetTier),
-			zap.Int("factor", factor),
-		)
 
-		newB64, uerr := s.runSeedVRUpscale(ctx, client, cfg, b64, factor)
-		if uerr != nil {
-			logger.L().Error("openai.images.upscale.failed",
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(i int, b64, sizeStr, realTier string, factor int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			logger.L().Debug("openai.images.upscale.begin",
+				zap.Int("index", i),
+				zap.String("real_sizeStr", sizeStr),
+				zap.String("real_tier", realTier),
+				zap.String("target_tier", targetTier),
+				zap.Int("factor", factor),
+			)
+
+			newB64, uerr := s.runSeedVRUpscale(ctx, client, cfg, b64, factor)
+			if uerr != nil {
+				logger.L().Error("openai.images.upscale.failed",
+					zap.Int("index", i),
+					zap.String("real_tier", realTier),
+					zap.String("target_tier", targetTier),
+					zap.Int("factor", factor),
+					zap.Error(uerr),
+				)
+				return // 兜底原图
+			}
+			resultB64[i] = newB64
+			// 用放大后真实尺寸更新 size，使计费按目标档位结算（成功按目标、失败保留原图档位）。
+			if newSize, e := decodeImageSizeFromBase64(newB64); e == nil {
+				resultSizes[i] = newSize
+			}
+			changedMu.Lock()
+			changed = true
+			changedMu.Unlock()
+			logger.L().Info("openai.images.upscale.ok",
 				zap.Int("index", i),
 				zap.String("real_tier", realTier),
 				zap.String("target_tier", targetTier),
 				zap.Int("factor", factor),
-				zap.Error(uerr),
 			)
-			continue // 兜底原图
-		}
-		resultB64[i] = newB64
-		// 用放大后真实尺寸更新 size，使计费按目标档位结算（成功按目标、失败保留原图档位）。
-		if newSize, e := decodeImageSizeFromBase64(newB64); e == nil {
-			resultSizes[i] = newSize
-		}
-		changed = true
-		logger.L().Info("openai.images.upscale.ok",
-			zap.Int("index", i),
-			zap.String("real_tier", realTier),
-			zap.String("target_tier", targetTier),
-			zap.Int("factor", factor),
-		)
+		}(i, b64, sizeStr, realTier, factor)
 	}
+	wg.Wait()
 	return resultB64, resultSizes, changed
 }
 

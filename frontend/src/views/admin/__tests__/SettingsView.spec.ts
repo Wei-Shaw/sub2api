@@ -308,6 +308,7 @@ const baseSettingsResponse = {
   contact_info: "",
   doc_url: "",
   home_content: "",
+  home_product_menu_items: [],
   hide_ccs_import_button: false,
   table_default_page_size: 20,
   table_page_size_options: [10, 20, 50, 100],
@@ -702,6 +703,46 @@ describe("admin SettingsView payment visible method controls", () => {
         antigravity_user_agent_version: "1.23.2",
       }),
     );
+  });
+
+  it("supports selecting a preset icon for home product menu items", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      home_product_menu_items: [
+        {
+          id: "api-console",
+          label: "API Console",
+          icon_svg: "",
+          url: "https://example.com/console",
+          action: "same_tab",
+          visibility: "user",
+          sort_order: 0,
+        },
+      ],
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const apiPreset = wrapper
+      .findAll('[data-test="home-product-icon-preset"]')
+      .find((node) => node.attributes("data-preset") === "api");
+
+    expect(apiPreset).toBeDefined();
+    await apiPreset!.trigger("click");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    const payload = updateSettings.mock.calls[0]?.[0] as {
+      home_product_menu_items?: Array<{ icon_svg?: string }>;
+    };
+    const iconSvg = payload.home_product_menu_items?.[0]?.icon_svg || "";
+
+    expect(iconSvg).toContain("<svg");
+    expect(iconSvg).toContain("stroke=\"currentColor\"");
+    expect(iconSvg).toContain("M5.25 14.25h13.5");
   });
 
   it("updates provider enablement immediately and reloads providers", async () => {

@@ -5361,14 +5361,10 @@
                     >
                       {{ t("admin.settings.customMenu.visibility") }}
                     </label>
-                    <select v-model="item.visibility" class="input text-sm">
-                      <option value="user">
-                        {{ t("admin.settings.customMenu.visibilityUser") }}
-                      </option>
-                      <option value="admin">
-                        {{ t("admin.settings.customMenu.visibilityAdmin") }}
-                      </option>
-                    </select>
+                    <Select
+                      v-model="item.visibility"
+                      :options="menuVisibilityOptions"
+                    />
                   </div>
 
                   <!-- Action -->
@@ -5378,17 +5374,7 @@
                     >
                       {{ t("admin.settings.customMenu.action") }}
                     </label>
-                    <select v-model="item.action" class="input text-sm">
-                      <option value="iframe">
-                        {{ t("admin.settings.customMenu.actionIframe") }}
-                      </option>
-                      <option value="same_tab">
-                        {{ t("admin.settings.customMenu.actionSameTab") }}
-                      </option>
-                      <option value="new_tab">
-                        {{ t("admin.settings.customMenu.actionNewTab") }}
-                      </option>
-                    </select>
+                    <Select v-model="item.action" :options="menuActionOptions" />
                   </div>
 
                   <!-- URL (full width) -->
@@ -5447,6 +5433,171 @@
                   />
                 </svg>
                 {{ t("admin.settings.customMenu.add") }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Home Product Menu Items -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.homeProducts.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.homeProducts.description") }}
+              </p>
+            </div>
+            <div class="space-y-4 p-6">
+              <div
+                v-for="(item, index) in form.home_product_menu_items"
+                :key="item.id || index"
+                class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+              >
+                <div class="mb-3 flex items-center justify-between">
+                  <span
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t("admin.settings.homeProducts.itemLabel", {
+                        n: index + 1,
+                      })
+                    }}
+                  </span>
+                  <button
+                    type="button"
+                    class="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    :title="t('admin.settings.homeProducts.remove')"
+                    @click="removeHomeProductMenuItem(index)"
+                  >
+                    <svg
+                      class="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.homeProducts.name") }}
+                    </label>
+                    <input
+                      v-model="item.label"
+                      type="text"
+                      class="input text-sm"
+                      :placeholder="
+                        t('admin.settings.homeProducts.namePlaceholder')
+                      "
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.homeProducts.action") }}
+                    </label>
+                    <Select
+                      v-model="item.action"
+                      :options="homeProductActionOptions"
+                    />
+                  </div>
+
+                  <div class="sm:col-span-2">
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.homeProducts.url") }}
+                    </label>
+                    <input
+                      v-model="item.url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.homeProducts.urlPlaceholder')
+                      "
+                    />
+                  </div>
+
+                  <div class="sm:col-span-2">
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.homeProducts.icon") }}
+                    </label>
+                    <ImageUpload
+                      :model-value="item.icon_svg"
+                      mode="svg"
+                      size="sm"
+                      :upload-label="t('admin.settings.homeProducts.uploadSvg')"
+                      :remove-label="t('admin.settings.homeProducts.removeSvg')"
+                      @update:model-value="(v: string) => (item.icon_svg = v)"
+                    />
+                    <div class="mt-3">
+                      <p class="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+                        {{ t("admin.settings.homeProducts.iconPresets") }}
+                      </p>
+                      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <button
+                          v-for="preset in homeProductIconPresets"
+                          :key="preset.key"
+                          type="button"
+                          data-test="home-product-icon-preset"
+                          :data-preset="preset.key"
+                          :aria-pressed="item.icon_svg === preset.svg"
+                          :title="preset.label"
+                          :class="[
+                            'flex h-10 min-w-0 items-center gap-2 rounded-lg border px-2 text-left text-xs font-medium transition-colors',
+                            item.icon_svg === preset.svg
+                              ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-500/10 dark:text-primary-300'
+                              : 'border-gray-200 bg-white text-gray-600 hover:border-primary-300 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300',
+                          ]"
+                          @click="applyHomeProductIconPreset(item, preset.svg)"
+                        >
+                          <span
+                            class="flex h-5 w-5 shrink-0 items-center justify-center [&>svg]:h-5 [&>svg]:w-5"
+                            v-html="preset.svg"
+                          ></span>
+                          <span class="min-w-0 truncate">{{ preset.label }}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-3 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                @click="addHomeProductMenuItem"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                {{ t("admin.settings.homeProducts.add") }}
               </button>
             </div>
           </div>
@@ -7327,6 +7478,64 @@ const captchaProviderOptions = computed(() => [
   { value: "tencent_captcha", label: t("admin.settings.captcha.tencentProviderLabel") },
 ]);
 
+const homeProductIconPresetPaths = {
+  api: "M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z",
+  chat: "M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z",
+  price: "M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+  docs: "M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25",
+  tools: "M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
+  launch: "M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14",
+  cloud: "M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z",
+  sparkles: "M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z",
+} as const;
+
+function createHomeProductPresetSvg(path: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="${path}"/></svg>`;
+}
+
+const homeProductIconPresets = computed(() => [
+  {
+    key: "api",
+    label: t("admin.settings.homeProducts.iconPresetApi"),
+    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.api),
+  },
+  {
+    key: "chat",
+    label: t("admin.settings.homeProducts.iconPresetChat"),
+    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.chat),
+  },
+  {
+    key: "price",
+    label: t("admin.settings.homeProducts.iconPresetPrice"),
+    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.price),
+  },
+  {
+    key: "docs",
+    label: t("admin.settings.homeProducts.iconPresetDocs"),
+    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.docs),
+  },
+  {
+    key: "tools",
+    label: t("admin.settings.homeProducts.iconPresetTools"),
+    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.tools),
+  },
+  {
+    key: "launch",
+    label: t("admin.settings.homeProducts.iconPresetLaunch"),
+    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.launch),
+  },
+  {
+    key: "cloud",
+    label: t("admin.settings.homeProducts.iconPresetCloud"),
+    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.cloud),
+  },
+  {
+    key: "sparkles",
+    label: t("admin.settings.homeProducts.iconPresetSparkles"),
+    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.sparkles),
+  },
+]);
+
 const captchaEnabled = computed({
   get: () => form.captcha_config.enabled === "true",
   set: (enabled: boolean) => {
@@ -7995,6 +8204,22 @@ type SettingsForm = Omit<
   default_platform_quotas: DefaultPlatformQuotasMap;
 };
 
+const menuVisibilityOptions = computed(() => [
+  { value: "user", label: t("admin.settings.customMenu.visibilityUser") },
+  { value: "admin", label: t("admin.settings.customMenu.visibilityAdmin") },
+]);
+
+const menuActionOptions = computed(() => [
+  { value: "iframe", label: t("admin.settings.customMenu.actionIframe") },
+  { value: "same_tab", label: t("admin.settings.customMenu.actionSameTab") },
+  { value: "new_tab", label: t("admin.settings.customMenu.actionNewTab") },
+]);
+
+const homeProductActionOptions = computed(() => [
+  { value: "same_tab", label: t("admin.settings.customMenu.actionSameTab") },
+  { value: "new_tab", label: t("admin.settings.customMenu.actionNewTab") },
+]);
+
 const form = reactive<SettingsForm>({
   registration_enabled: true,
   email_verify_enabled: false,
@@ -8069,6 +8294,15 @@ const form = reactive<SettingsForm>({
     url: string;
     action: "iframe" | "same_tab" | "new_tab";
     visibility: "user" | "admin";
+    sort_order: number;
+  }>,
+  home_product_menu_items: [] as Array<{
+    id: string;
+    label: string;
+    icon_svg: string;
+    url: string;
+    action: "same_tab" | "new_tab";
+    visibility: "user";
     sort_order: number;
   }>,
   custom_endpoints: [] as Array<{
@@ -8758,6 +8992,45 @@ function normalizeMenuItems(
     : [];
 }
 
+function addHomeProductMenuItem() {
+  form.home_product_menu_items.push({
+    id: "",
+    label: "",
+    icon_svg: "",
+    url: "",
+    action: "same_tab",
+    visibility: "user",
+    sort_order: form.home_product_menu_items.length,
+  });
+}
+
+function applyHomeProductIconPreset(
+  item: (typeof form.home_product_menu_items)[number],
+  svg: string,
+) {
+  item.icon_svg = svg;
+}
+
+function removeHomeProductMenuItem(index: number) {
+  form.home_product_menu_items.splice(index, 1);
+  form.home_product_menu_items.forEach((item, i) => {
+    item.sort_order = i;
+  });
+}
+
+function normalizeHomeProductMenuItems(
+  items: typeof form.home_product_menu_items,
+): typeof form.home_product_menu_items {
+  return Array.isArray(items)
+    ? items.map((item, index) => ({
+        ...item,
+        action: item.action === "new_tab" ? "new_tab" : "same_tab",
+        visibility: "user",
+        sort_order: index,
+      }))
+    : [];
+}
+
 // Custom endpoint management
 function addEndpoint() {
   form.custom_endpoints.push({ name: "", endpoint: "", description: "" });
@@ -8877,6 +9150,7 @@ async function loadSettings() {
       settings.default_subscriptions,
     );
     form.custom_menu_items = normalizeMenuItems(form.custom_menu_items);
+    form.home_product_menu_items = normalizeHomeProductMenuItems(form.home_product_menu_items);
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
@@ -9248,6 +9522,7 @@ async function saveSettings() {
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: normalizeMenuItems(form.custom_menu_items),
+      home_product_menu_items: normalizeHomeProductMenuItems(form.home_product_menu_items),
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,
