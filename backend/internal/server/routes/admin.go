@@ -335,6 +335,9 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Antigravity 默认模型映射
 		accounts.GET("/antigravity/default-model-mapping", h.Admin.Account.GetAntigravityDefaultModelMapping)
 
+		// Spark 影子账号
+		accounts.POST("/:id/shadow", h.Admin.OpenAIOAuth.CreateShadow)
+
 		// Claude OAuth routes
 		accounts.POST("/generate-auth-url", h.Admin.OAuth.GenerateAuthURL)
 		accounts.POST("/generate-setup-token-url", h.Admin.OAuth.GenerateSetupTokenURL)

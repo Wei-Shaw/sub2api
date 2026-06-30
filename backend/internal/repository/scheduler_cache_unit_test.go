@@ -134,3 +134,32 @@ REDACTED
 	require.Contains(t, limits, "antigravity:gemini")
 	require.Nil(t, got.Extra["unused_large_field"])
 REDACTED
+
+func TestBuildSchedulerMetadataAccount_KeepsSparkShadowRoutingIdentity(t *testing.T) {
+	parentID := int64(100)
+	account := service.Account{
+		ID:              200,
+		Platform:        service.PlatformOpenAI,
+		Type:            service.AccountTypeOAuth,
+		ParentAccountID: &parentID,
+		QuotaDimension:  service.QuotaDimensionSpark,
+REDACTED
+			"model_mapping": map[string]any{
+				"gpt-5.3-codex-spark": "gpt-5.3-codex-spark",
+		REDACTED,
+			"compact_model_mapping": map[string]any{
+				"gpt-5.4": "gpt-5.4-openai-compact",
+		REDACTED,
+			"access_token": "drop-me",
+	REDACTED,
+REDACTED
+
+	got := buildSchedulerMetadataAccount(account)
+
+	require.NotNil(t, got.ParentAccountID)
+	require.Equal(t, parentID, *got.ParentAccountID)
+	require.Equal(t, service.QuotaDimensionSpark, got.QuotaDimension)
+	require.Equal(t, map[string]any{"gpt-5.3-codex-spark": "gpt-5.3-codex-spark"REDACTED, got.Credentials["model_mapping"])
+	require.Equal(t, map[string]any{"gpt-5.4": "gpt-5.4-openai-compact"REDACTED, got.Credentials["compact_model_mapping"])
+	require.Nil(t, got.Credentials["access_token"])
+REDACTED
