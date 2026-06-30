@@ -53,12 +53,15 @@ func (h *AvailableChannelHandler) featureEnabled(c *gin.Context) bool {
 // 订阅视觉加深），并用 RateMultiplier 作为默认倍率；用户专属倍率前端走
 // /groups/rates，和 API 密钥页面保持一致。
 type userAvailableGroup struct {
-	ID               int64   `json:"id"`
-	Name             string  `json:"name"`
-	Platform         string  `json:"platform"`
-	SubscriptionType string  `json:"subscription_type"`
-	RateMultiplier   float64 `json:"rate_multiplier"`
-	IsExclusive      bool    `json:"is_exclusive"`
+	ID               int64    `json:"id"`
+	Name             string   `json:"name"`
+	Platform         string   `json:"platform"`
+	SubscriptionType string   `json:"subscription_type"`
+	RateMultiplier   float64  `json:"rate_multiplier"`
+	IsExclusive      bool     `json:"is_exclusive"`
+	ImagePrice1K     *float64 `json:"image_price_1k"`
+	ImagePrice2K     *float64 `json:"image_price_2k"`
+	ImagePrice4K     *float64 `json:"image_price_4k"`
 }
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
@@ -219,6 +222,9 @@ func filterUserVisibleGroups(
 			SubscriptionType: g.SubscriptionType,
 			RateMultiplier:   g.RateMultiplier,
 			IsExclusive:      g.IsExclusive,
+			ImagePrice1K:     g.ImagePrice1K,
+			ImagePrice2K:     g.ImagePrice2K,
+			ImagePrice4K:     g.ImagePrice4K,
 		})
 	}
 	return visible

@@ -176,6 +176,80 @@ func TestListAvailable_DefaultsEmptyBillingModelSource(t *testing.T) {
 	require.Equal(t, BillingModelSourceUpstream, byName["explicit"])
 }
 
+func TestListAvailable_AppendsAccountMappedModelsWhenChannelIsUnrestricted(t *testing.T) {
+	channels := []Channel{{
+		ID:             1,
+		Name:           "open-channel",
+		Status:         StatusActive,
+		RestrictModels: false,
+		GroupIDs:       []int64{10},
+		ModelPricing: []ChannelModelPricing{{
+			Platform:    "anthropic",
+			Models:      []string{"claude-sonnet-4-6"},
+			BillingMode: BillingModeToken,
+			InputPrice:  testPtrFloat64(1e-6),
+		}},
+	}}
+	repo := &mockChannelRepository{
+		listAllFn: func(ctx context.Context) ([]Channel, error) { return channels, nil },
+		listAccountMappingModelsByGroupIDsFn: func(ctx context.Context, groupIDs []int64) (map[int64][]string, error) {
+			require.ElementsMatch(t, []int64{10}, groupIDs)
+			return map[int64][]string{
+				10: {"claude-opus-4-5", "claude-sonnet-4-6"},
+			}, nil
+		},
+	}
+	groupRepo := &stubGroupRepoForAvailable{
+		activeGroups: []Group{{ID: 10, Name: "anthropic-go", Platform: "anthropic"}},
+	}
+	svc := NewChannelService(repo, groupRepo, nil, nil)
+
+	out, err := svc.ListAvailable(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+
+	byName := make(map[string]SupportedModel)
+	for _, model := range out[0].SupportedModels {
+		byName[model.Name] = model
+	}
+	require.Contains(t, byName, "claude-sonnet-4-6")
+	require.NotNil(t, byName["claude-sonnet-4-6"].Pricing, "channel pricing keeps priority")
+	require.Contains(t, byName, "claude-opus-4-5")
+	require.Equal(t, "anthropic", byName["claude-opus-4-5"].Platform)
+	require.Len(t, out[0].SupportedModels, 2, "mapped duplicate should not be added twice")
+}
+
+func TestListAvailable_DoesNotAppendAccountMappedModelsWhenChannelRestrictsModels(t *testing.T) {
+	channels := []Channel{{
+		ID:             1,
+		Name:           "restricted-channel",
+		Status:         StatusActive,
+		RestrictModels: true,
+		GroupIDs:       []int64{10},
+		ModelPricing: []ChannelModelPricing{{
+			Platform:    "anthropic",
+			Models:      []string{"claude-sonnet-4-6"},
+			BillingMode: BillingModeToken,
+		}},
+	}}
+	repo := &mockChannelRepository{
+		listAllFn: func(ctx context.Context) ([]Channel, error) { return channels, nil },
+		listAccountMappingModelsByGroupIDsFn: func(ctx context.Context, groupIDs []int64) (map[int64][]string, error) {
+			return map[int64][]string{10: {"claude-opus-4-5"}}, nil
+		},
+	}
+	groupRepo := &stubGroupRepoForAvailable{
+		activeGroups: []Group{{ID: 10, Name: "anthropic-go", Platform: "anthropic"}},
+	}
+	svc := NewChannelService(repo, groupRepo, nil, nil)
+
+	out, err := svc.ListAvailable(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Len(t, out[0].SupportedModels, 1)
+	require.Equal(t, "claude-sonnet-4-6", out[0].SupportedModels[0].Name)
+}
+
 func TestPricingNeedsFallback(t *testing.T) {
 	tests := []struct {
 		name string
@@ -221,13 +295,19 @@ func TestSynthesizePricingFromLiteLLM_ImageGenerationMode(t *testing.T) {
 	// LiteLLM mode=image_generation 且渠道未声明模式时，按 image 合成。
 	lp := &LiteLLMModelPricing{
 		Mode:                    "image_generation",
+		OutputCostPerImage:      0.134,
 		OutputCostPerImageToken: 4e-5,
 	}
 	got := synthesizePricingFromLiteLLM(lp, nil)
 	require.NotNil(t, got)
 	require.Equal(t, BillingModeImage, got.BillingMode)
-	require.Nil(t, got.PerRequestPrice)
+	require.NotNil(t, got.PerRequestPrice)
+	require.InDelta(t, 0.134, *got.PerRequestPrice, 1e-12)
 	require.NotNil(t, got.ImageOutputPrice)
+	require.Len(t, got.Intervals, 3)
+	require.Equal(t, "2K", got.Intervals[1].TierLabel)
+	require.NotNil(t, got.Intervals[1].PerRequestPrice)
+	require.InDelta(t, 0.201, *got.Intervals[1].PerRequestPrice, 1e-12)
 }
 
 func TestSynthesizePricingFromLiteLLM_RespectsExistingChannelMode(t *testing.T) {
@@ -286,6 +366,34 @@ func TestFillGlobalPricingFallback_EmptyPricingFillsFromLiteLLM(t *testing.T) {
 	require.Equal(t, BillingModeImage, models[0].Pricing.BillingMode)
 	require.NotNil(t, models[0].Pricing.ImageOutputPrice)
 	require.InDelta(t, 4e-5, *models[0].Pricing.ImageOutputPrice, 1e-12)
+	require.NotNil(t, models[0].Pricing.PerRequestPrice)
+	require.InDelta(t, 0.134, *models[0].Pricing.PerRequestPrice, 1e-12)
+	require.Len(t, models[0].Pricing.Intervals, 3)
+	require.Equal(t, "4K", models[0].Pricing.Intervals[2].TierLabel)
+	require.NotNil(t, models[0].Pricing.Intervals[2].PerRequestPrice)
+	require.InDelta(t, 0.268, *models[0].Pricing.Intervals[2].PerRequestPrice, 1e-12)
+}
+
+func TestFillGlobalPricingFallback_OpenAIImageWithoutLiteLLMUsesDefaultImagePrice(t *testing.T) {
+	pricingSvc := newStubPricingServiceFromMap(map[string]*LiteLLMModelPricing{})
+	svc := &ChannelService{pricingService: pricingSvc}
+
+	models := []SupportedModel{
+		{
+			Name:     "gpt-image-2-2K",
+			Platform: "openai",
+			Pricing:  &ChannelModelPricing{BillingMode: BillingModeImage},
+		},
+	}
+	svc.fillGlobalPricingFallback(models)
+	require.NotNil(t, models[0].Pricing)
+	require.Equal(t, BillingModeImage, models[0].Pricing.BillingMode)
+	require.NotNil(t, models[0].Pricing.PerRequestPrice)
+	require.InDelta(t, 0.134, *models[0].Pricing.PerRequestPrice, 1e-12)
+	require.Len(t, models[0].Pricing.Intervals, 3)
+	require.Equal(t, "2K", models[0].Pricing.Intervals[1].TierLabel)
+	require.NotNil(t, models[0].Pricing.Intervals[1].PerRequestPrice)
+	require.InDelta(t, 0.201, *models[0].Pricing.Intervals[1].PerRequestPrice, 1e-12)
 }
 
 func TestFillGlobalPricingFallback_KeepsExistingPrice(t *testing.T) {
