@@ -1,10 +1,13 @@
 package service
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
@@ -16,7 +19,13 @@ type Group struct {
 	Description    string
 	Platform       string
 	RateMultiplier float64
-	IsExclusive    bool
+	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
+	// 文本计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
+	PeakRateEnabled    bool
+	PeakStart          string
+	PeakEnd            string
+	PeakRateMultiplier float64
+	IsExclusive        bool
 	Status         string
 	Hydrated       bool // indicates the group was loaded from a trusted repository source
 
@@ -166,4 +175,79 @@ REDACTED
 REDACTED
 
 	return false
+REDACTED
+
+// parseMinutes 把 "HH:MM" 解析为当日分钟数（0..1439）。格式非法返回 (0,false)。
+func parseMinutes(hhmm string) (int, bool) {
+	t, err := time.Parse("15:04", hhmm)
+	if err != nil {
+		return 0, false
+REDACTED
+	return t.Hour()*60 + t.Minute(), true
+REDACTED
+
+// PeakMultiplierAt 返回指定时刻 now 的高峰因子。
+//   - 未启用 / 未配置 / 配置非法（start>=end 或格式错误） / 非高峰时段 → 返回 1.0（安全降级）
+//   - 区间为左闭右开 [PeakStart, PeakEnd)，仅支持当日区间，不支持跨天（如 22:00-次日02:00）
+//   - 时刻基于全局系统时区（timezone.Location）判定
+// 该方法是纯函数，不读取任何外部状态，便于单测。
+func (g *Group) PeakMultiplierAt(now time.Time) float64 {
+	if g == nil || !g.IsSubscriptionType() || !g.PeakRateEnabled || g.PeakStart == "" || g.PeakEnd == "" {
+		return 1.0
+REDACTED
+	start, ok1 := parseMinutes(g.PeakStart)
+	end, ok2 := parseMinutes(g.PeakEnd)
+	if !ok1 || !ok2 || start >= end {
+		return 1.0
+REDACTED
+	t := now.In(timezone.Location())
+	cur := t.Hour()*60 + t.Minute()
+	if cur >= start && cur < end {
+		return g.PeakRateMultiplier
+REDACTED
+	return 1.0
+REDACTED
+
+// ValidatePeakRateConfig 是高峰倍率配置的唯一校验来源，供 handler 与 service 层共用。
+// enabled=true 时仅允许订阅类型分组；并要求 start/end 合法且 end>start（不支持跨天），multiplier>=0。
+// enabled=false 时放行（不关心类型）。subscriptionType 为空按 standard 处理。
+func ValidatePeakRateConfig(subscriptionType string, enabled bool, start, end string, multiplier float64) error {
+	if !enabled {
+		return nil
+REDACTED
+	if subscriptionType != SubscriptionTypeSubscription {
+		return errors.New("高峰时段倍率仅支持订阅类型分组")
+REDACTED
+	if start == "" || end == "" {
+		return errors.New("peak_rate_enabled 为 true 时 peak_start 与 peak_end 必填")
+REDACTED
+	st, err1 := time.Parse("15:04", start)
+	if err1 != nil {
+		return fmt.Errorf("peak_start 格式应为 HH:MM，got %q", start)
+REDACTED
+	en, err2 := time.Parse("15:04", end)
+	if err2 != nil {
+		return fmt.Errorf("peak_end 格式应为 HH:MM，got %q", end)
+REDACTED
+	if st.Hour()*60+st.Minute() >= en.Hour()*60+en.Minute() {
+		return errors.New("peak_end 必须大于 peak_start（不支持跨天区间，如 22:00-02:00）")
+REDACTED
+	if multiplier < 0 {
+		return errors.New("peak_rate_multiplier 不能为负")
+REDACTED
+	return nil
+REDACTED
+
+// computePeakAwareMultipliers 把"基础文本倍率 base"（已含系统/分组/用户级倍率，但不含高峰）
+// 拆分为最终文本倍率与图片倍率：图片倍率基于 base 现算、不受高峰影响；文本倍率在 base 上叠加高峰因子。
+// gateway_service.recordUsageCore 与 openai_gateway_service.RecordUsage 共用此函数，
+// 锁死"高峰因子只乘入文本倍率、图片倍率不受影响"这一叠加顺序——任何调换都会被 group_peak_rate_test 覆盖。
+func computePeakAwareMultipliers(apiKey *APIKey, base float64, now time.Time) (text, image float64) {
+	image = resolveImageRateMultiplier(apiKey, base)
+	peak := 1.0
+	if apiKey != nil && apiKey.Group != nil {
+		peak = apiKey.Group.PeakMultiplierAt(now)
+REDACTED
+	text = base * peak
+	return
 REDACTED
