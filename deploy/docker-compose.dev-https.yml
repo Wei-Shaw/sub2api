@@ -1,0 +1,25 @@
+services:
+  sub2api:
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${SUB2API_HTTP_PORT:-8081}:8080"
+
+  https-proxy:
+    image: caddy:2.8.4-alpine
+    container_name: sub2api-https-dev
+    restart: unless-stopped
+    depends_on:
+      sub2api:
+        condition: service_healthy
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:8080:8080"
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - ./local-tls:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - sub2api-network
+
+volumes:
+  caddy_data:
+  caddy_config:

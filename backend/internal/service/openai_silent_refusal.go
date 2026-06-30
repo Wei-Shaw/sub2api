@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
@@ -16,6 +17,9 @@ const (
 	openAISilentRefusalErrorCode           = "openai_silent_refusal"
 	openAISilentRefusalUpstreamMessage     = "OpenAI upstream returned an empty completion stream with finish_reason=stop and no usage"
 	openAISilentRefusalClientMessage       = "Upstream returned an empty completion without usage; no fallback account was available"
+	openAIShortRefusalErrorCode            = "openai_short_refusal"
+	openAIShortRefusalUpstreamMessage      = "OpenAI upstream returned a short refusal completion"
+	openAIShortRefusalClientMessage        = "Upstream returned a short refusal completion; no fallback account was available"
 )
 
 type openAIChatSilentRefusalDetector struct {
@@ -28,6 +32,7 @@ type openAIChatSilentRefusalDetector struct {
 	sawReasoning    bool
 	sawFinish       bool
 	finishReason    string
+	contentBuilder  strings.Builder
 }
 
 func newOpenAIChatSilentRefusalDetector(requestBodyLen int) *openAIChatSilentRefusalDetector {
@@ -96,6 +101,7 @@ func (d *openAIChatSilentRefusalDetector) ObserveChatChunk(chunk apicompat.ChatC
 		delta := choice.Delta
 		if delta.Content != nil && *delta.Content != "" {
 			d.sawContent = true
+			d.contentBuilder.WriteString(*delta.Content)
 		}
 		if delta.ReasoningContent != nil {
 			d.sawReasoning = true
@@ -110,7 +116,13 @@ func (d *openAIChatSilentRefusalDetector) ShouldReleaseClientOutput() bool {
 	if d == nil || !d.enabled {
 		return true
 	}
-	if d.sawContent || d.sawToolCall || d.sawFunctionCall || d.sawUsage || d.sawError || d.sawReasoning {
+	if d.sawToolCall || d.sawFunctionCall || d.sawError || d.sawReasoning {
+		return true
+	}
+	if d.sawContent {
+		return !d.isShortRefusalCandidate()
+	}
+	if d.sawUsage {
 		return true
 	}
 	return d.sawFinish && d.finishReason != "" && d.finishReason != "stop"
@@ -167,6 +179,7 @@ func (d *openAIChatSilentRefusalDetector) observeChatChoicesPayload(payload []by
 		}
 		if content := delta.Get("content"); content.Exists() && content.String() != "" {
 			d.sawContent = true
+			d.contentBuilder.WriteString(content.String())
 		}
 		if delta.Get("tool_calls").Exists() {
 			d.sawToolCall = true
@@ -185,7 +198,7 @@ func (d *openAIChatSilentRefusalDetector) observeChatChoicesPayload(payload []by
 func (d *openAIChatSilentRefusalDetector) observeResponsesPayload(payload []byte, eventType string) {
 	switch eventType {
 	case "response.output_text.delta":
-		if gjson.GetBytes(payload, "delta").String() != "" {
+		if delta := gjson.GetBytes(payload, "delta").String(); delta != "" {
 			d.sawContent = true
 		}
 	case "response.output_item.added":
@@ -227,14 +240,26 @@ func (d *openAIChatSilentRefusalDetector) observeResponseMessageItem(item gjson.
 		return
 	}
 	for _, part := range content.Array() {
-		if part.Get("text").String() != "" {
+		if text := part.Get("text").String(); text != "" {
 			d.sawContent = true
+			if d.contentBuilder.Len() == 0 || isOpenAIRefusalTerminalTextExtension(d.contentBuilder.String(), text) {
+				d.contentBuilder.Reset()
+				d.contentBuilder.WriteString(text)
+			}
 			return
 		}
 	}
 }
 
 func newOpenAISilentRefusalFailoverError(c *gin.Context, account *Account, upstreamRequestID string) *UpstreamFailoverError {
+	return newOpenAIRefusalFailoverError(c, account, upstreamRequestID, openAISilentRefusalErrorCode, openAISilentRefusalUpstreamMessage)
+}
+
+func newOpenAIShortRefusalFailoverError(c *gin.Context, account *Account, upstreamRequestID string) *UpstreamFailoverError {
+	return newOpenAIRefusalFailoverError(c, account, upstreamRequestID, openAIShortRefusalErrorCode, openAIShortRefusalUpstreamMessage)
+}
+
+func newOpenAIRefusalFailoverError(c *gin.Context, account *Account, upstreamRequestID, code, message string) *UpstreamFailoverError {
 	accountID := int64(0)
 	accountName := ""
 	platform := PlatformOpenAI
@@ -244,7 +269,7 @@ func newOpenAISilentRefusalFailoverError(c *gin.Context, account *Account, upstr
 		platform = account.Platform
 	}
 
-	setOpsUpstreamError(c, http.StatusBadGateway, openAISilentRefusalUpstreamMessage, "")
+	setOpsUpstreamError(c, http.StatusBadGateway, message, "")
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		Platform:           platform,
 		AccountID:          accountID,
@@ -252,7 +277,7 @@ func newOpenAISilentRefusalFailoverError(c *gin.Context, account *Account, upstr
 		UpstreamStatusCode: http.StatusBadGateway,
 		UpstreamRequestID:  upstreamRequestID,
 		Kind:               "failover",
-		Message:            openAISilentRefusalUpstreamMessage,
+		Message:            message,
 	})
 
 	headers := http.Header{}
@@ -261,21 +286,25 @@ func newOpenAISilentRefusalFailoverError(c *gin.Context, account *Account, upstr
 	}
 	return &UpstreamFailoverError{
 		StatusCode:      http.StatusBadGateway,
-		ResponseBody:    openAISilentRefusalErrorBody(),
+		ResponseBody:    openAIRefusalErrorBody(code, message),
 		ResponseHeaders: headers,
 	}
 }
 
 func openAISilentRefusalErrorBody() []byte {
+	return openAIRefusalErrorBody(openAISilentRefusalErrorCode, openAISilentRefusalUpstreamMessage)
+}
+
+func openAIRefusalErrorBody(code, message string) []byte {
 	body, err := json.Marshal(map[string]any{
 		"error": map[string]any{
 			"type":    "upstream_error",
-			"code":    openAISilentRefusalErrorCode,
-			"message": openAISilentRefusalUpstreamMessage,
+			"code":    code,
+			"message": message,
 		},
 	})
 	if err != nil {
-		return []byte(`{"error":{"type":"upstream_error","code":"openai_silent_refusal","message":"OpenAI upstream returned an empty completion stream with finish_reason=stop and no usage"}}`)
+		return []byte(`{"error":{"type":"upstream_error","code":"openai_refusal","message":"OpenAI upstream returned a refusal completion"}}`)
 	}
 	return body
 }
@@ -283,11 +312,87 @@ func openAISilentRefusalErrorBody() []byte {
 // IsOpenAISilentRefusalErrorBody reports whether a failover body was produced
 // by the OpenAI silent-refusal detector.
 func IsOpenAISilentRefusalErrorBody(body []byte) bool {
-	return strings.TrimSpace(gjson.GetBytes(body, "error.code").String()) == openAISilentRefusalErrorCode
+	return OpenAIRefusalCodeForBody(body) != ""
 }
 
 // OpenAISilentRefusalClientMessage returns the exhausted-failover client message
 // for OpenAI silent refusals.
 func OpenAISilentRefusalClientMessage() string {
 	return openAISilentRefusalClientMessage
+}
+
+func OpenAIRefusalClientMessageForBody(body []byte) string {
+	if OpenAIRefusalCodeForBody(body) == openAIShortRefusalErrorCode {
+		return openAIShortRefusalClientMessage
+	}
+	return openAISilentRefusalClientMessage
+}
+
+func OpenAIRefusalCodeForBody(body []byte) string {
+	code := strings.TrimSpace(gjson.GetBytes(body, "error.code").String())
+	switch code {
+	case openAISilentRefusalErrorCode, openAIShortRefusalErrorCode:
+		return code
+	default:
+		return ""
+	}
+}
+
+var openAIShortRefusalTexts = []string{
+	"无法处理",
+}
+
+func (d *openAIChatSilentRefusalDetector) IsShortRefusal() bool {
+	if d == nil || !d.enabled {
+		return false
+	}
+	if d.sawToolCall || d.sawFunctionCall || d.sawError || d.sawReasoning {
+		return false
+	}
+	if !d.sawFinish || d.finishReason != "stop" {
+		return false
+	}
+	return isOpenAIShortRefusalText(d.contentBuilder.String())
+}
+
+func (d *openAIChatSilentRefusalDetector) isShortRefusalCandidate() bool {
+	text := normalizeOpenAIRefusalText(d.contentBuilder.String())
+	if text == "" {
+		return false
+	}
+	if d.sawFinish {
+		return isOpenAIShortRefusalText(text)
+	}
+	return isOpenAIShortRefusalPrefix(text)
+}
+
+func isOpenAIShortRefusalText(text string) bool {
+	normalized := normalizeOpenAIRefusalText(text)
+	return normalized != "" && slices.Contains(openAIShortRefusalTexts, normalized)
+}
+
+func isOpenAIShortRefusalPrefix(text string) bool {
+	normalized := normalizeOpenAIRefusalText(text)
+	if normalized == "" {
+		return false
+	}
+	for _, refusal := range openAIShortRefusalTexts {
+		if strings.HasPrefix(refusal, normalized) {
+			return true
+		}
+	}
+	return false
+}
+
+func isOpenAIRefusalTerminalTextExtension(current, terminal string) bool {
+	current = normalizeOpenAIRefusalText(current)
+	terminal = normalizeOpenAIRefusalText(terminal)
+	return current != "" && terminal != "" && current != terminal && strings.HasPrefix(terminal, current)
+}
+
+func normalizeOpenAIRefusalText(text string) string {
+	text = strings.TrimSpace(text)
+	text = strings.Trim(text, " \t\r\n。.!！?？")
+	text = strings.Join(strings.Fields(text), "")
+	return text
 }

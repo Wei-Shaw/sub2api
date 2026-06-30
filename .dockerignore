@@ -30,6 +30,7 @@ Thumbs.db
 # Build artifacts
 dist/
 build/
+backups/
 # Keep frontend dist for Docker build (needed by COPY --from=frontend-builder)
 !frontend/dist/
 

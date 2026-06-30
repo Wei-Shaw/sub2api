@@ -53,6 +53,10 @@ type responsesFailedEvent struct {
 // 此时 caller 也无法回退到 JSON（HTTP 200 已固化），通常意味着连接已经损坏，
 // 应当让请求处理函数 return，由上层关闭连接。
 func writeResponsesFailedSSE(c *gin.Context, errType, message string) bool {
+	return writeResponsesFailedSSEWithCode(c, errType, "", message)
+}
+
+func writeResponsesFailedSSEWithCode(c *gin.Context, errType, code, message string) bool {
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return false
@@ -67,7 +71,7 @@ func writeResponsesFailedSSE(c *gin.Context, errType, message string) bool {
 			Status: "failed",
 			Output: []any{},
 			Error: responsesFailedError{
-				Code:    mapResponsesErrorCode(errType),
+				Code:    responseFailedErrorCode(errType, code),
 				Message: message,
 			},
 		},
@@ -83,6 +87,14 @@ func writeResponsesFailedSSE(c *gin.Context, errType, message string) bool {
 	}
 	flusher.Flush()
 	return true
+}
+
+func responseFailedErrorCode(errType, code string) string {
+	code = strings.TrimSpace(code)
+	if code != "" {
+		return code
+	}
+	return mapResponsesErrorCode(errType)
 }
 
 // inboundIsResponses 判断当前请求是否落在任何 /responses 路由上。

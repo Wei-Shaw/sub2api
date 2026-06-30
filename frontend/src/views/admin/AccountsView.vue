@@ -1152,25 +1152,18 @@ const tokenPresenceBadgeSpecs: Array<{
   key: TokenCredentialKey
   label: string
   presentTitleKey: string
-  missingTitleKey: string
 }> = [
   {
     key: 'access_token',
     label: 'AT',
-    presentTitleKey: 'admin.accounts.tokenPresence.accessTokenPresent',
-    missingTitleKey: 'admin.accounts.tokenPresence.accessTokenMissing'
+    presentTitleKey: 'admin.accounts.tokenPresence.accessTokenPresent'
   },
   {
     key: 'refresh_token',
     label: 'RT',
-    presentTitleKey: 'admin.accounts.tokenPresence.refreshTokenPresent',
-    missingTitleKey: 'admin.accounts.tokenPresence.refreshTokenMissing'
+    presentTitleKey: 'admin.accounts.tokenPresence.refreshTokenPresent'
   }
 ]
-
-function hasOwnCredentialStatus(account: Account, statusKey: string): boolean {
-  return Object.prototype.hasOwnProperty.call(account.credentials_status ?? {}, statusKey)
-}
 
 function hasLegacyCredentialValue(account: Account, key: TokenCredentialKey): boolean {
   const value = account.credentials?.[key]
@@ -1179,33 +1172,24 @@ function hasLegacyCredentialValue(account: Account, key: TokenCredentialKey): bo
 
 function hasTokenCredential(account: Account, key: TokenCredentialKey): boolean {
   const statusKey = `has_${key}`
-  if (hasOwnCredentialStatus(account, statusKey)) {
+  if (Object.prototype.hasOwnProperty.call(account.credentials_status ?? {}, statusKey)) {
     return account.credentials_status?.[statusKey] === true
   }
   return hasLegacyCredentialValue(account, key)
 }
 
-function shouldShowTokenPresenceBadges(account: Account): boolean {
-  return (
-    account.type === 'oauth' ||
-    account.type === 'setup-token' ||
-    hasTokenCredential(account, 'access_token') ||
-    hasTokenCredential(account, 'refresh_token')
-  )
-}
-
 function getTokenPresenceBadges(account: Account): TokenPresenceBadge[] {
-  if (!shouldShowTokenPresenceBadges(account)) return []
-
-  return tokenPresenceBadgeSpecs.map(spec => {
-    const present = hasTokenCredential(account, spec.key)
-    return {
-      key: spec.key,
-      label: spec.label,
-      present,
-      title: t(present ? spec.presentTitleKey : spec.missingTitleKey)
-    }
-  })
+  return tokenPresenceBadgeSpecs
+    .map(spec => {
+      const present = hasTokenCredential(account, spec.key)
+      return {
+        key: spec.key,
+        label: spec.label,
+        present,
+        title: t(spec.presentTitleKey)
+      }
+    })
+    .filter(badge => badge.present)
 }
 
 function getOpenAICompactState(row: any): OpenAICompactBadgeState | null {

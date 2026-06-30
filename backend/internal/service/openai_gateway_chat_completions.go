@@ -493,6 +493,9 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	imageCounter.AddJSONResponse(finalResponseBody)
 
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
+	if isChatCompletionsResponseShortRefusal(chatResp) {
+		return nil, newOpenAIShortRefusalFailoverError(c, account, requestID)
+	}
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -515,6 +518,27 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		ImageCount:       imageCounter.Count(),
 		ImageOutputSizes: imageCounter.Sizes(),
 	}, nil
+}
+
+func isChatCompletionsResponseShortRefusal(resp *apicompat.ChatCompletionsResponse) bool {
+	if resp == nil {
+		return false
+	}
+	var content strings.Builder
+	sawStop := false
+	for _, choice := range resp.Choices {
+		if strings.TrimSpace(choice.FinishReason) == "stop" {
+			sawStop = true
+		}
+		if len(choice.Message.Content) == 0 {
+			continue
+		}
+		var text string
+		if err := json.Unmarshal(choice.Message.Content, &text); err == nil {
+			content.WriteString(text)
+		}
+	}
+	return sawStop && isOpenAIShortRefusalText(content.String())
 }
 
 // handleChatStreamingResponse reads Responses SSE events from upstream,
@@ -760,6 +784,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		if !clientDisconnected && !clientOutputStarted {
 			if refusalDetector.IsSilentRefusal() {
 				return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
+			}
+			if refusalDetector.IsShortRefusal() {
+				return nil, newOpenAIShortRefusalFailoverError(c, account, requestID)
 			}
 			if len(pendingSSE) > 0 {
 				writeStreamHeaders()

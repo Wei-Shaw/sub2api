@@ -1334,7 +1334,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationWithInputImageUsesMul
 	require.Contains(t, upstreamBody, "1088x1440")
 	require.Contains(t, upstreamBody, `name="response_format"`)
 	require.Contains(t, upstreamBody, "url")
-	require.Contains(t, upstreamBody, `name="image"; filename="image-1.png"`)
+	require.Contains(t, upstreamBody, `name="image[]"; filename="image-1.png"`)
 	require.Contains(t, upstreamBody, "Content-Type: image/png")
 	require.Contains(t, upstreamBody, "reference-image")
 
@@ -1410,6 +1410,77 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationWithInputImageFallsBa
 	require.Equal(t, "https://image-upstream.example/v1/images/generations", upstream.requests[1].URL.String())
 	require.Equal(t, "application/json", upstream.requests[1].Header.Get("Content-Type"))
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(upstream.bodies[1], "model").String())
+	require.Equal(t, "data:image/png;base64,cmVmZXJlbmNlLWltYWdl", gjson.GetBytes(upstream.bodies[1], "image.0").String())
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Empty(t, gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	url := gjson.Get(rec.Body.String(), "data.0.url").String()
+	require.True(t, strings.HasPrefix(url, "http://api.example.com/api/v1/generated-images/"), url)
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationWithInputImageFallsBackOnForbiddenToGenerations(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{
+		"model":"gpt-image-2",
+		"prompt":"make a portrait book cover in the same anime style",
+		"response_format":"url",
+		"size":"1088x1440",
+		"image":["data:image/png;base64,cmVmZXJlbmNlLWltYWdl"]
+	}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Host = "api.example.com"
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusForbidden,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"X-Request-Id": []string{"req_img_edits_403"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"error":{"type":"permission_error","code":"forbidden","message":"access forbidden"}}`)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"X-Request-Id": []string{"req_img_generation_fallback_403"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"created":1710000014,"data":[{"b64_json":"ZmFsbGJhY2stb3V0","revised_prompt":"make a portrait book cover in the same anime style","output_format":"png"}]}`)),
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       11,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://image-upstream.example/v1/images/edits", upstream.requests[0].URL.String())
+	require.Equal(t, "https://image-upstream.example/v1/images/generations", upstream.requests[1].URL.String())
+	require.Equal(t, "application/json", upstream.requests[1].Header.Get("Content-Type"))
 	require.Equal(t, "data:image/png;base64,cmVmZXJlbmNlLWltYWdl", gjson.GetBytes(upstream.bodies[1], "image.0").String())
 
 	require.Equal(t, http.StatusOK, rec.Code)

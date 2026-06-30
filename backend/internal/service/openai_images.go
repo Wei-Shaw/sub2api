@@ -685,8 +685,6 @@ func shouldFallbackOpenAIImagesAPIKeyMultipartEdit(
 		"billing",
 		"authentication",
 		"unauthorized",
-		"forbidden",
-		"permission",
 		"rate_limit",
 		"rate limit",
 	} {
@@ -696,6 +694,8 @@ func shouldFallbackOpenAIImagesAPIKeyMultipartEdit(
 	}
 
 	switch statusCode {
+	case http.StatusForbidden:
+		return true
 	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusUnsupportedMediaType, http.StatusNotImplemented:
 		return true
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
@@ -781,10 +781,9 @@ func buildOpenAIImagesAPIKeyMultipartEditBody(ctx context.Context, parsed *OpenA
 		if err != nil {
 			return nil, "", err
 		}
-		fieldName := "image"
-		if index > 0 {
-			fieldName = fmt.Sprintf("image[%d]", index)
-		}
+		// OpenAI's images edit examples use repeated `image[]` parts.
+		// Using that exact field name avoids the reference image being silently ignored.
+		fieldName := "image[]"
 		if err := writeOpenAIImagesMultipartUpload(writer, fieldName, upload); err != nil {
 			return nil, "", err
 		}

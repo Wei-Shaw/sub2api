@@ -245,7 +245,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if clientStream {
 		return s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
 	}
-	return s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	return s.bufferRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
 
 func (s *OpenAIGatewayService) rawChatCompletionsURL(account *Account) (string, error) {
@@ -390,6 +390,9 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		if refusalDetector.IsSilentRefusal() {
 			return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
 		}
+		if refusalDetector.IsShortRefusal() {
+			return nil, newOpenAIShortRefusalFailoverError(c, account, requestID)
+		}
 		if len(pendingLines) > 0 {
 			writeStreamHeaders()
 			for _, pending := range pendingLines {
@@ -466,6 +469,7 @@ func extractCCStreamUsage(payload string) *OpenAIUsage {
 func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -494,6 +498,9 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 			usage.CacheReadInputTokens = ccResp.Usage.PromptTokensDetails.CachedTokens
 		}
 	}
+	if isRawChatCompletionsShortRefusal(respBody) {
+		return nil, newOpenAIShortRefusalFailoverError(c, account, requestID)
+	}
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -517,6 +524,25 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		Stream:          false,
 		Duration:        time.Since(startTime),
 	}, nil
+}
+
+func isRawChatCompletionsShortRefusal(body []byte) bool {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+	choices := gjson.GetBytes(body, "choices")
+	if !choices.Exists() || !choices.IsArray() {
+		return false
+	}
+	var content strings.Builder
+	sawStop := false
+	for _, choice := range choices.Array() {
+		if strings.TrimSpace(choice.Get("finish_reason").String()) == "stop" {
+			sawStop = true
+		}
+		content.WriteString(choice.Get("message.content").String())
+	}
+	return sawStop && isOpenAIShortRefusalText(content.String())
 }
 
 // buildOpenAIChatCompletionsURL 拼接上游 Chat Completions 端点 URL。
