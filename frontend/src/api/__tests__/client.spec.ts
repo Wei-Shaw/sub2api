@@ -20,11 +20,24 @@ describe('API Client', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
   })
 
   // --- 请求拦截器 ---
 
   describe('请求拦截器', () => {
+    it('规范化相对 API base，避免在回调页拼出相对 v1 路径', async () => {
+      vi.resetModules()
+      vi.stubEnv('VITE_API_BASE_URL', 'api/v1')
+
+      const mod = await import('@/api/client')
+
+      expect(mod.apiClient.defaults.baseURL).toBe('/api/v1')
+      expect(mod.buildApiUrl('/auth/oauth/github/callback?code=abc')).toBe(
+        '/api/v1/auth/oauth/github/callback?code=abc'
+      )
+    })
+
     it('自动附加 Authorization 头', async () => {
       localStorage.setItem('auth_token', 'my-jwt-token')
 

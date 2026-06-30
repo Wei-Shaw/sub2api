@@ -548,6 +548,25 @@ If you disable URL validation or response header filtering, harden your network 
 - Enforce TLS-only outbound traffic
 - Strip sensitive upstream response headers at the proxy
 
+#### ⚠️ Important: Creating the Admin Account
+
+The initial admin account is **only created via the setup wizard** (served at `http://<host>:8080` on first run). The `default.admin_email` / `default.admin_password` fields in `config.yaml` are **not used** to create it — they exist in the template for historical reasons.
+
+Because step 5 above pre-creates `config.yaml`, the setup wizard will be **skipped on first run**: the server detects an existing config and boots straight into normal mode with an empty `users` table, so the first login attempt fails with `invalid email or password`.
+
+**Two ways to create the admin account:**
+
+1. **Recommended — let the wizard generate `config.yaml`:** Skip step 5 (do not run the `cp`). Start `./sub2api` directly; the setup wizard at `http://localhost:8080` walks you through database, Redis, and admin account setup, then writes `config.yaml` for you.
+
+2. **If you already created `config.yaml`:** Temporarily move it aside so the wizard can trigger on first run, then restore it afterwards:
+   ```bash
+   mv config.yaml config.yaml.bak
+   ./sub2api        # wizard runs at http://localhost:8080 and writes a fresh config.yaml
+   # stop the server (Ctrl+C) once the wizard completes, then restore your config:
+   mv config.yaml.bak config.yaml
+   ./sub2api        # restart in normal mode and log in with the admin you just created
+   ```
+
 ```bash
 # 6. Run the application
 ./sub2api
@@ -595,9 +614,12 @@ Sub2API supports Grok subscription accounts through xAI OAuth and forwards OpenA
 
 - Platform name: `grok`
 - Account type: OAuth subscription accounts
-- Public gateway target: `/v1/responses` and `/responses`, forwarded to `${XAI_BASE_URL:-https://api.x.ai/v1}/responses`
+- Public Responses targets: `/v1/responses`, `/responses`, and `/backend-api/codex/responses`, forwarded to `${XAI_BASE_URL:-https://api.x.ai/v1}/responses`
+- Public Claude-compatible target: `/v1/messages`, converted to xAI Responses and returned as Anthropic Messages output for Claude CLI style clients
+- Public Chat Completions targets: `/v1/chat/completions` and `/chat/completions`, forwarded to `${XAI_BASE_URL:-https://api.x.ai/v1}/chat/completions`
+- Codex CLI style Responses WebSocket ingress is accepted on the Responses targets and bridged to xAI HTTP/SSE Responses upstream
 - Initial models: `grok-4.3`, `grok-build-0.1`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, and `grok-4.20-multi-agent-0309`
-- Out of scope for this provider: public Grok Chat Completions routes, image, video, TTS, transcription, browser automation, cookies, and Grok web scraping
+- Out of scope for this provider: image, video, TTS, transcription, browser automation, cookies, and Grok web scraping
 
 ### OAuth Configuration
 
