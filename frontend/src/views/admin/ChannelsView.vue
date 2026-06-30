@@ -155,7 +155,7 @@
             class="channel-tab"
             :class="activeTab === 'basic' ? 'channel-tab-active' : 'channel-tab-inactive'"
           >
-            {{ t('admin.channels.form.basicSettings', 'Basic Settings') REDACTEDREDACTED
+            {{ t('admin.channels.form.basicSettings') REDACTEDREDACTED
           </button>
           <!-- Platform Tabs (only enabled) -->
           <button
@@ -230,7 +230,7 @@
 
             <!-- Platform Management -->
             <div class="space-y-3">
-              <label class="input-label mb-0">{{ t('admin.channels.form.platformConfig', 'Platform Configuration') REDACTEDREDACTED</label>
+              <label class="input-label mb-0">{{ t('admin.channels.form.platformConfig') REDACTEDREDACTED</label>
               <div class="flex flex-wrap gap-2">
                 <label
                   v-for="p in platformOrder"
@@ -283,7 +283,7 @@
               <label class="input-label text-xs">
                 {{ t('admin.channels.form.groups', 'Associated Groups') REDACTEDREDACTED <span class="text-red-500">*</span>
                 <span v-if="section.group_ids.length > 0" class="ml-1 font-normal text-gray-400">
-                  ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length REDACTED, `${section.group_ids.lengthREDACTED selected`) REDACTEDREDACTED)
+                  ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length REDACTED) REDACTEDREDACTED)
                 </span>
               </label>
               <div class="max-h-40 overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-900">
@@ -1434,14 +1434,14 @@ async function handleSubmit() {
   for (const section of form.platforms.filter(s => s.enabled)) {
     if (section.group_ids.length === 0) {
       const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
-      appStore.showError(t('admin.channels.noGroupsSelected', { platform: platformLabel REDACTED, `${platformLabelREDACTED has no selected group. Select at least one group or disable this platform.`))
+      appStore.showError(t('admin.channels.noGroupsSelected', { platform: platformLabel REDACTED))
       activeTab.value = section.platform
       return
     REDACTED
     for (const entry of section.model_pricing) {
       if (entry.models.length === 0) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
-        appStore.showError(t('admin.channels.emptyModelsInPricing', { platform: platformLabel REDACTED, `${platformLabelREDACTED has a pricing entry without models. Add models or remove the entry.`))
+        appStore.showError(t('admin.channels.emptyModelsInPricing', { platform: platformLabel REDACTED))
         activeTab.value = section.platform
         return
       REDACTED
@@ -1459,8 +1459,7 @@ async function handleSubmit() {
     if (pricingConflict) {
       appStore.showError(
         t('admin.channels.modelConflict',
-          { model1: pricingConflict[0], model2: pricingConflict[1] REDACTED,
-          `Model patterns '${pricingConflict[0]REDACTED' and '${pricingConflict[1]REDACTED' conflict: overlapping match range.`)
+          { model1: pricingConflict[0], model2: pricingConflict[1] REDACTED)
       )
       activeTab.value = section.platform
       return
@@ -1472,8 +1471,7 @@ async function handleSubmit() {
       if (mappingConflict) {
         appStore.showError(
           t('admin.channels.mappingConflict',
-            { model1: mappingConflict[0], model2: mappingConflict[1] REDACTED,
-            `Mapping source patterns '${mappingConflict[0]REDACTED' and '${mappingConflict[1]REDACTED' conflict: overlapping match range.`)
+            { model1: mappingConflict[0], model2: mappingConflict[1] REDACTED)
         )
         activeTab.value = section.platform
         return
@@ -1488,7 +1486,7 @@ async function handleSubmit() {
       if ((entry.billing_mode === 'per_request' || entry.billing_mode === 'image') &&
           (entry.per_request_price == null || entry.per_request_price === '') &&
           (!entry.intervals || entry.intervals.length === 0)) {
-        appStore.showError(t('admin.channels.form.perRequestPriceRequired', 'Per-request price or billing tiers required for per-request/image billing mode'))
+        appStore.showError(t('admin.channels.form.perRequestPriceRequired'))
         return
       REDACTED
     REDACTED
