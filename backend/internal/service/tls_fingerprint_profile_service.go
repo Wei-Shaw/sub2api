@@ -194,6 +194,50 @@ func (s *TLSFingerprintProfileService) ResolveTLSProfile(account *Account) *tlsf
 	return &tlsfingerprint.Profile{Name: "Built-in Default (Node.js 24.x)"}
 }
 
+// ResolveRoutableTLSProfileByID 解析 TLS 路由器规则指向的 Profile。
+// 与账号固定模板不同，正数 ID 不存在时返回 ok=false，让调用方回退账号固定模板。
+func (s *TLSFingerprintProfileService) ResolveRoutableTLSProfileByID(account *Account, id int64) (*tlsfingerprint.Profile, bool) {
+	if account == nil || !account.IsTLSFingerprintEnabled() {
+		return nil, false
+	}
+	if id > 0 {
+		if p := s.GetProfileByID(id); p != nil {
+			return p, true
+		}
+		return nil, false
+	}
+	if id == -1 {
+		if p := s.getRandomProfile(); p != nil {
+			return p, true
+		}
+		return nil, false
+	}
+	// 规则显式选择 0 时使用内置默认指纹，仍属于一次有效路由命中。
+	return &tlsfingerprint.Profile{Name: "Built-in Default (Node.js 24.x)"}, true
+}
+
+// ResolveTokenTLSProfileByID 解析 ChatGPT OAuth token 请求专用的 TLS 模板。
+// 该路径可能发生在账号创建前，因此不依赖账号上的 TLS 开关。
+func (s *TLSFingerprintProfileService) ResolveTokenTLSProfileByID(id int64) (*tlsfingerprint.Profile, bool) {
+	if s == nil {
+		return nil, false
+	}
+	if id > 0 {
+		if p := s.GetProfileByID(id); p != nil {
+			return p, true
+		}
+		return nil, false
+	}
+	if id == -1 {
+		if p := s.getRandomProfile(); p != nil {
+			return p, true
+		}
+		return nil, false
+	}
+	// 0 表示使用内置默认指纹模板。
+	return &tlsfingerprint.Profile{Name: "Built-in Default (Node.js 24.x)"}, true
+}
+
 // --- 缓存管理 ---
 
 func (s *TLSFingerprintProfileService) refreshLocalCache(ctx context.Context) error {

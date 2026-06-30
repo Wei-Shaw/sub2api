@@ -13,8 +13,8 @@
 | A | tlsfingerprint 包补 3 文件 | ✅ 完成 | `4488db9c` | gofmt✅ build✅ vet✅ pkg-test✅ | Profile 结构两边逐字一致;照抄 3 源 +2 测;`isGREASEValue` 依赖已存在 |
 | B | ent schema + model + 生成 | ✅ 完成 | `ce925be7` | gofmt✅ generate✅ build✅ vet✅ | 表/列/索引与方案逐项核对一致;go.mod/sum 未被 codegen 污染 |
 | C | 迁移 158_add_tls_fingerprint_routers.sql | ✅ 完成(静态) | `d6cec220` | build✅ vet✅ runner-test✅ | DB 幂等执行=【运行时·人工】(本环境镜像拉取过慢,未跑成 ephemeral PG) |
-| D | repository(router repo + cache) | ✅ 完成 | `<D待填>` | gofmt✅ build✅ vet✅ svc-test✅ | 含 router service(接口与 repo 互依,合并提交);6 子测全绿 |
-| E | service(router + collector)+ config | 🟡 部分(router service 已随 D) | `<D待填>` | — | 余:collector service + config + profile service 编辑 + service/wire |
+| D | repository(router repo + cache) | ✅ 完成 | `0e5c588d` | gofmt✅ build✅ vet✅ svc-test✅ | 含 router service(接口与 repo 互依,合并提交);6 子测全绿 |
+| E | service(router + collector)+ config | ✅ 完成 | `0e5c588d`+`<E待填>` | gofmt✅ build✅ vet✅ svc-test✅ | router svc 随 D;本提交:collector+config+profile 编辑+wire providers。变参 provider/wire.Bind 推迟到 G(依赖 gateway/OAuth) |
 | F | handler + 路由 + wire | ⬜ 未开始 | — | — | |
 | G | OpenAI HTTP 集成 | ⬜ 未开始 | — | — | 硬骨头;运行时验证留人工 |
 | H | OpenAI WS 集成 | ⬜ 未开始 | — | — | 硬骨头;连接池 key 须含指纹 |
@@ -126,8 +126,22 @@
   - 编辑 `internal/repository/wire.go`:ProviderSet 加 `NewTLSFingerprintRouterRepository`(repo 段)、`NewTLSFingerprintRouterCache`(cache 段)
 - 命令与结果(容器内):`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./internal/repository/... ./internal/service/...` → **VET_OK**;`go test ./internal/service/ -run TestTLSFingerprintRouter` → **ok**(MatchUserAgent 5 子用例[exact/contains/prefix/regex/未命中]+ 大小写敏感 + 校验规则 + Create 归一化 + ProfileID 校验,全 PASS)。
 - 注:`NewTLSFingerprintRouterService` 暂未被 wire 消费(service/wire.go 留待 E);repo/cache provider 已入 ProviderSet 但未重生成 wire_gen(未消费 → build 不受影响,wire 重生成留待 Phase F/J)。
-- commit:`<D待填>`
+- commit:`0e5c588d`
 - 遗留/风险:无。E 余下部分见下阶段。
+
+### Phase E(余下)— collector + config + profile 编辑 + service wire — ✅ 完成(2026-07-01)
+
+- 改动文件:
+  - 编辑 `internal/config/config.go`:`ServerConfig` 加 `TLSFingerprintCollector` 字段 + `TLSFingerprintCollectorConfig` 结构(host/port/public_base_url/cert_file/key_file/session_ttl_seconds/max_records_per_session)+ 7 个 `viper.SetDefault`。**安全默认偏离 TR**:host=`127.0.0.1`(TR 为 `0.0.0.0`),且默认不自动启动(需 collector/start)——遵方案「默认安全」。
+  - 新增 `internal/service/tls_fingerprint_collector_service.go`(841 行,TR 照抄+path swap):独立 HTTPS 监听、自签 CA、内存采集会话(TTL/最多 N 条)、Start/Stop/Status/CreateSession/ListCaptures/DeleteSession;**token 复用行为原样照搬**(captureTokenFromRequest 读 query/header/Authorization Bearer/X-Api-Key)。所有 helper(writeCollectorJSON/detectTLSFingerprintClientKind/tlsFingerprintProfileToYAML/summarize*/strconvItoa/hostFromURL 等)均在本文件内,YAML 为手工拼接(无外部 yaml 库)。
+  - 新增 `internal/service/tls_fingerprint_collector_service_test.go`(TR 照抄):lifecycle+capture(loopback 实跑 HTTPS)、captureToken 解析、session limits、大 ClientHello。
+  - 编辑 `internal/service/tls_fingerprint_profile_service.go`:加 `ResolveRoutableTLSProfileByID`(正数不存在→ok=false 回退;-1 随机;0 内置默认)、`ResolveTokenTLSProfileByID`(不依赖账号开关;-1/0/正数同义)。**仅加 2 方法,不动现有 `ResolveTLSProfile`**(fork 是内联写法,无需 TR 的 ResolveTLSProfileByID 重构;GetProfileByID/getRandomProfile fork 已有)。
+  - 编辑 `internal/service/wire.go`:ProviderSet 加 `NewTLSFingerprintRouterService`、`NewTLSFingerprintCollectorService`(repo/cache 构造直接返回接口,无需 wire.Bind;cfg 已提供)。
+- **推迟到 G**:`ProvideOpenAIGatewayTLSFingerprintRouterServices`(变参 provider)+ `wire.Bind(OpenAIOAuthTokenRouterReader/ProfileResolver)`——这些依赖 gateway service 消费 router service 及 OAuth-token 接口(fork 暂无这些接口),放 G 一并做,避免引用不存在的类型。
+- 命令与结果(容器内):`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./internal/service/... ./internal/config/...` → **VET_OK**;`go test ./internal/service/ -run TLSFingerprint` → **ok**(router 6 子测 + collector lifecycle/token/limits/大 ClientHello 全 PASS)。
+- 注:新 provider 暂未被消费、未重生成 wire_gen(build 不受影响);wire 重生成留待 F(handler 消费 collector/router)+ J。
+- commit:`<E待填>`
+- 遗留/风险:collector 真实抓包/JA3/对端验证属【运行时·人工】(只静态跑了 loopback 自测)。
 
 ## 待人工验证(运行时)
 
