@@ -23,7 +23,7 @@ describe('validateIntervals', () => {
         makeInterval({ min_tokens: 0, max_tokens: null, input_price: 1, output_price: 1 REDACTED),
         makeInterval({ min_tokens: 200000, max_tokens: 500000, input_price: 2, output_price: 2 REDACTED),
       ]
-      expect(validateIntervals(intervals, 'token')).toMatch(/无上限/)
+      expect(validateIntervals(intervals, 'token')).toMatch(/unbounded interval/)
     REDACTED)
 
     it('accepts unbounded interval at the end', () => {
@@ -39,7 +39,7 @@ describe('validateIntervals', () => {
         makeInterval({ min_tokens: 0, max_tokens: 250000, input_price: 1, output_price: 1 REDACTED),
         makeInterval({ min_tokens: 200000, max_tokens: 500000, input_price: 2, output_price: 2 REDACTED),
       ]
-      expect(validateIntervals(intervals, 'token')).toMatch(/重叠/)
+      expect(validateIntervals(intervals, 'token')).toMatch(/overlap/)
     REDACTED)
 
     it('defaults mode to token when omitted', () => {
@@ -47,7 +47,7 @@ describe('validateIntervals', () => {
         makeInterval({ min_tokens: 0, max_tokens: null, input_price: 1, output_price: 1 REDACTED),
         makeInterval({ min_tokens: 100, max_tokens: 200, input_price: 2, output_price: 2 REDACTED),
       ]
-      expect(validateIntervals(intervals)).toMatch(/无上限/)
+      expect(validateIntervals(intervals)).toMatch(/unbounded interval/)
     REDACTED)
   REDACTED)
 
@@ -66,14 +66,14 @@ describe('validateIntervals', () => {
       const intervals: IntervalFormEntry[] = [
         makeInterval({ tier_label: '1K', per_request_price: -1 REDACTED),
       ]
-      expect(validateIntervals(intervals, 'image')).toMatch(/不能为负数/)
+      expect(validateIntervals(intervals, 'image')).toMatch(/cannot be negative/)
     REDACTED)
 
     it('still rejects max <= min on a single tier', () => {
       const intervals: IntervalFormEntry[] = [
         makeInterval({ tier_label: '1K', min_tokens: 100, max_tokens: 50, per_request_price: 0.04 REDACTED),
       ]
-      expect(validateIntervals(intervals, 'image')).toMatch(/必须大于/)
+      expect(validateIntervals(intervals, 'image')).toMatch(/must be greater/)
     REDACTED)
   REDACTED)
 REDACTED)
