@@ -332,6 +332,12 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 }
 
 func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.Account, error) {
+	for i := range s.accounts {
+		if s.accounts[i].ID == id {
+			account := s.accounts[i]
+			return &account, nil
+		}
+	}
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 	return &account, nil
 }
@@ -621,11 +627,41 @@ func (s *stubAdminService) EnsureAntigravityPrivacy(ctx context.Context, account
 }
 
 func (s *stubAdminService) ForceOpenAIPrivacy(ctx context.Context, account *service.Account) string {
-	return ""
+	if account != nil {
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		account.Extra["privacy_mode"] = service.PrivacyModeTrainingOff
+		for i := range s.accounts {
+			if s.accounts[i].ID == account.ID {
+				if s.accounts[i].Extra == nil {
+					s.accounts[i].Extra = make(map[string]any)
+				}
+				s.accounts[i].Extra["privacy_mode"] = service.PrivacyModeTrainingOff
+				break
+			}
+		}
+	}
+	return service.PrivacyModeTrainingOff
 }
 
 func (s *stubAdminService) ForceAntigravityPrivacy(ctx context.Context, account *service.Account) string {
-	return ""
+	if account != nil {
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		account.Extra["privacy_mode"] = service.AntigravityPrivacySet
+		for i := range s.accounts {
+			if s.accounts[i].ID == account.ID {
+				if s.accounts[i].Extra == nil {
+					s.accounts[i].Extra = make(map[string]any)
+				}
+				s.accounts[i].Extra["privacy_mode"] = service.AntigravityPrivacySet
+				break
+			}
+		}
+	}
+	return service.AntigravityPrivacySet
 }
 
 func (s *stubAdminService) ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*service.ReplaceUserGroupResult, error) {

@@ -32,9 +32,19 @@
                 {{ t('admin.accounts.refreshToken') }}
               </button>
             </template>
-            <button v-if="supportsPrivacy" @click="$emit('set-privacy', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-emerald-600 hover:bg-gray-100 dark:hover:bg-dark-700">
+            <button
+              v-if="supportsPrivacy"
+              :disabled="privacyAlreadySet"
+              :class="[
+                'flex w-full items-center gap-2 px-4 py-2 text-sm',
+                privacyAlreadySet
+                  ? 'cursor-not-allowed text-gray-400 dark:text-gray-500'
+                  : 'text-emerald-600 hover:bg-gray-100 dark:hover:bg-dark-700'
+              ]"
+              @click="$emit('set-privacy', account); $emit('close')"
+            >
               <Icon name="shield" size="sm" />
-              {{ t('admin.accounts.setPrivacy') }}
+              {{ privacyAlreadySet ? t('admin.accounts.privacyAlreadySet') : t('admin.accounts.setPrivacy') }}
             </button>
             <div v-if="hasRecoverableState" class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
             <button v-if="hasRecoverableState" @click="$emit('recover-state', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-emerald-600 hover:bg-gray-100 dark:hover:bg-dark-700">
@@ -82,6 +92,14 @@ const hasRecoverableState = computed(() => {
 const isAntigravityOAuth = computed(() => props.account?.platform === 'antigravity' && props.account?.type === 'oauth')
 const isOpenAIOAuth = computed(() => props.account?.platform === 'openai' && props.account?.type === 'oauth')
 const supportsPrivacy = computed(() => isAntigravityOAuth.value || isOpenAIOAuth.value)
+const privacyMode = computed(() => {
+  const mode = props.account?.extra?.privacy_mode
+  return typeof mode === 'string' ? mode.trim() : ''
+})
+const privacyAlreadySet = computed(() => {
+  return (isOpenAIOAuth.value && privacyMode.value === 'training_off') ||
+    (isAntigravityOAuth.value && privacyMode.value === 'privacy_set')
+})
 const hasQuotaLimit = computed(() => {
   return (props.account?.type === 'apikey' || props.account?.type === 'bedrock') && (
     (props.account?.quota_limit ?? 0) > 0 ||
