@@ -14,8 +14,8 @@
 | B | ent schema + model + 生成 | ✅ 完成 | `ce925be7` | gofmt✅ generate✅ build✅ vet✅ | 表/列/索引与方案逐项核对一致;go.mod/sum 未被 codegen 污染 |
 | C | 迁移 158_add_tls_fingerprint_routers.sql | ✅ 完成(静态) | `d6cec220` | build✅ vet✅ runner-test✅ | DB 幂等执行=【运行时·人工】(本环境镜像拉取过慢,未跑成 ephemeral PG) |
 | D | repository(router repo + cache) | ✅ 完成 | `0e5c588d` | gofmt✅ build✅ vet✅ svc-test✅ | 含 router service(接口与 repo 互依,合并提交);6 子测全绿 |
-| E | service(router + collector)+ config | ✅ 完成 | `0e5c588d`+`<E待填>` | gofmt✅ build✅ vet✅ svc-test✅ | router svc 随 D;本提交:collector+config+profile 编辑+wire providers。变参 provider/wire.Bind 推迟到 G(依赖 gateway/OAuth) |
-| F | handler + 路由 + wire | ⬜ 未开始 | — | — | |
+| E | service(router + collector)+ config | ✅ 完成 | `0e5c588d`+`3161a1df` | gofmt✅ build✅ vet✅ svc-test✅ | router svc 随 D;本提交:collector+config+profile 编辑+wire providers。变参 provider/wire.Bind 推迟到 G(依赖 gateway/OAuth) |
+| F | handler + 路由 + wire | ✅ 完成 | `<F待填>` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | wire 重生成成功;cmd/server wire_gen_test 通过 |
 | G | OpenAI HTTP 集成 | ⬜ 未开始 | — | — | 硬骨头;运行时验证留人工 |
 | H | OpenAI WS 集成 | ⬜ 未开始 | — | — | 硬骨头;连接池 key 须含指纹 |
 | I | cmd/server 优雅关闭 | ⬜ 未开始 | — | — | |
@@ -140,8 +140,22 @@
 - **推迟到 G**:`ProvideOpenAIGatewayTLSFingerprintRouterServices`(变参 provider)+ `wire.Bind(OpenAIOAuthTokenRouterReader/ProfileResolver)`——这些依赖 gateway service 消费 router service 及 OAuth-token 接口(fork 暂无这些接口),放 G 一并做,避免引用不存在的类型。
 - 命令与结果(容器内):`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./internal/service/... ./internal/config/...` → **VET_OK**;`go test ./internal/service/ -run TLSFingerprint` → **ok**(router 6 子测 + collector lifecycle/token/limits/大 ClientHello 全 PASS)。
 - 注:新 provider 暂未被消费、未重生成 wire_gen(build 不受影响);wire 重生成留待 F(handler 消费 collector/router)+ J。
-- commit:`<E待填>`
+- commit:`3161a1df`
 - 遗留/风险:collector 真实抓包/JA3/对端验证属【运行时·人工】(只静态跑了 loopback 自测)。
+
+### Phase F — handler + 路由 + wire — ✅ 完成(2026-07-01)
+
+- 改动文件:
+  - 新增 `internal/handler/admin/tls_fingerprint_router_handler.go`(照抄 TR:List/GetByID/Create/Update/Delete + DTO + `nullableInt64Patch` 区分 null/缺省)。`response.{Success,ErrorFrom,BadRequest,NotFound}` fork 均有。
+  - 编辑 `internal/handler/admin/tls_fingerprint_profile_handler.go`:加 `net/http` import + `collector` 字段 + 构造函数改可变参数(`collectors ...`,使既有调用仍可编译)+ 6 个采集器方法(CollectorStatus/Start/Stop/CreateSession/ListCaptures/DeleteSession)。`response.Error` fork 有。
+  - 编辑 `internal/server/routes/admin.go`:`/tls-fingerprint-profiles` 下加 `collector/{status,start,stop,sessions,sessions/:token/captures,DELETE sessions/:token}`;新增 `registerTLSFingerprintRouterRoutes`(5 CRUD)并在注册处调用。
+  - 编辑 `internal/handler/handler.go`:`AdminHandlers` 加 `TLSFingerprintRouter` 字段。
+  - 编辑 `internal/handler/wire.go`:`ProvideAdminHandlers` 加 router handler 参数 + 返回赋值;ProviderSet 把 `admin.NewTLSFingerprintProfileHandler` 换成 `ProvideTLSFingerprintProfileHandler`(注入 collector 的非变参包装)+ 加 `admin.NewTLSFingerprintRouterHandler`;新增 `ProvideTLSFingerprintProfileHandler` 包装函数。
+  - 重生成 `cmd/server/wire_gen.go`(`go generate ./cmd/server`)。
+- 采集器注入模式(照抄 TR):profile handler 构造用变参 `collectors ...`,wire 用非变参包装 `ProvideTLSFingerprintProfileHandler(profileService, collector)` 注入,既保留既有调用兼容又让 wire 直接解析 collector。
+- 命令与结果(容器内):`go generate ./cmd/server` → wire 成功写 wire_gen.go(go.mod/go.sum **未污染**;wire_gen 含 2 个新 provider 引用);`gofmt -l`(我的文件)空(`auth_current_user_test.go` 是**既有**未格式化文件,非本次改动,未碰);`go build ./...` → **BUILD_OK**;`go vet ./internal/handler/... ./internal/server/...` → **VET_OK**;`go test ./internal/server/routes/...` **ok**;`./internal/service/ -run TLSFingerprint` **ok**;`./cmd/server/...`(含 wire_gen_test)**ok**。
+- commit:`<F待填>`
+- 遗留/风险:CRUD/采集器 API 端到端 + 多实例 pubsub 缓存失效属【运行时·人工】。变参 provider/wire.Bind(OAuth)仍待 G。
 
 ## 待人工验证(运行时)
 

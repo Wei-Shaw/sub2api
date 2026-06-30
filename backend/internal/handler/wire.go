@@ -32,6 +32,7 @@ func ProvideAdminHandlers(
 	userAttributeHandler *admin.UserAttributeHandler,
 	errorPassthroughHandler *admin.ErrorPassthroughHandler,
 	tlsFingerprintProfileHandler *admin.TLSFingerprintProfileHandler,
+	tlsFingerprintRouterHandler *admin.TLSFingerprintRouterHandler,
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
 	channelHandler *admin.ChannelHandler,
@@ -66,6 +67,7 @@ func ProvideAdminHandlers(
 		UserAttribute:          userAttributeHandler,
 		ErrorPassthrough:       errorPassthroughHandler,
 		TLSFingerprintProfile:  tlsFingerprintProfileHandler,
+		TLSFingerprintRouter:   tlsFingerprintRouterHandler,
 		APIKey:                 apiKeyHandler,
 		ScheduledTest:          scheduledTestHandler,
 		Channel:                channelHandler,
@@ -95,6 +97,11 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 	h := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, paymentConfigService, paymentService, userAttributeService)
 	h.SetNotificationEmailService(notificationEmailService)
 	return h
+}
+
+// ProvideTLSFingerprintProfileHandler 注入采集器到 TLS 指纹模板处理器（变参构造的非变参 Wire 包装）。
+func ProvideTLSFingerprintProfileHandler(profileService *service.TLSFingerprintProfileService, collector *service.TLSFingerprintCollectorService) *admin.TLSFingerprintProfileHandler {
+	return admin.NewTLSFingerprintProfileHandler(profileService, collector)
 }
 
 // ProvideHandlers creates the Handlers struct
@@ -180,7 +187,8 @@ var ProviderSet = wire.NewSet(
 	admin.NewUsageHandler,
 	admin.NewUserAttributeHandler,
 	admin.NewErrorPassthroughHandler,
-	admin.NewTLSFingerprintProfileHandler,
+	ProvideTLSFingerprintProfileHandler,
+	admin.NewTLSFingerprintRouterHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
 	admin.NewChannelHandler,

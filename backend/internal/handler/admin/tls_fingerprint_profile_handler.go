@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"net/http"
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
@@ -11,12 +12,18 @@ import (
 
 // TLSFingerprintProfileHandler 处理 TLS 指纹模板的 HTTP 请求
 type TLSFingerprintProfileHandler struct {
-	service *service.TLSFingerprintProfileService
+	service   *service.TLSFingerprintProfileService
+	collector *service.TLSFingerprintCollectorService
 }
 
-// NewTLSFingerprintProfileHandler 创建 TLS 指纹模板处理器
-func NewTLSFingerprintProfileHandler(service *service.TLSFingerprintProfileService) *TLSFingerprintProfileHandler {
-	return &TLSFingerprintProfileHandler{service: service}
+// NewTLSFingerprintProfileHandler 创建 TLS 指纹模板处理器。
+// collector 用可变参数注入，使既有(仅 profileService)调用方仍可编译。
+func NewTLSFingerprintProfileHandler(profileService *service.TLSFingerprintProfileService, collectors ...*service.TLSFingerprintCollectorService) *TLSFingerprintProfileHandler {
+	h := &TLSFingerprintProfileHandler{service: profileService}
+	if len(collectors) > 0 {
+		h.collector = collectors[0]
+	}
+	return h
 }
 
 // CreateTLSFingerprintProfileRequest 创建模板请求
@@ -231,4 +238,84 @@ func (h *TLSFingerprintProfileHandler) Delete(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "Profile deleted successfully"})
+}
+
+// CollectorStatus 获取 TLS 指纹收集器状态
+// GET /api/v1/admin/tls-fingerprint-profiles/collector/status
+func (h *TLSFingerprintProfileHandler) CollectorStatus(c *gin.Context) {
+	if h.collector == nil {
+		response.Success(c, service.TLSFingerprintCollectorStatus{})
+		return
+	}
+	response.Success(c, h.collector.Status())
+}
+
+// StartCollector 从页面启动 TLS 指纹收集器
+// POST /api/v1/admin/tls-fingerprint-profiles/collector/start
+func (h *TLSFingerprintProfileHandler) StartCollector(c *gin.Context) {
+	if h.collector == nil {
+		response.Error(c, http.StatusServiceUnavailable, "TLS fingerprint collector is unavailable")
+		return
+	}
+	status, err := h.collector.Start(c.Request.Context())
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, status)
+}
+
+// StopCollector 从页面停止 TLS 指纹收集器
+// POST /api/v1/admin/tls-fingerprint-profiles/collector/stop
+func (h *TLSFingerprintProfileHandler) StopCollector(c *gin.Context) {
+	if h.collector == nil {
+		response.Error(c, http.StatusServiceUnavailable, "TLS fingerprint collector is unavailable")
+		return
+	}
+	if err := h.collector.Stop(c.Request.Context()); err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, h.collector.Status())
+}
+
+// CreateCollectorSession 创建一次短期采集会话
+// POST /api/v1/admin/tls-fingerprint-profiles/collector/sessions
+func (h *TLSFingerprintProfileHandler) CreateCollectorSession(c *gin.Context) {
+	if h.collector == nil {
+		response.Error(c, http.StatusServiceUnavailable, "TLS fingerprint collector is unavailable")
+		return
+	}
+	session, err := h.collector.CreateSession()
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, session)
+}
+
+// ListCollectorCaptures 获取采集会话结果
+// GET /api/v1/admin/tls-fingerprint-profiles/collector/sessions/:token/captures
+func (h *TLSFingerprintProfileHandler) ListCollectorCaptures(c *gin.Context) {
+	if h.collector == nil {
+		response.Error(c, http.StatusServiceUnavailable, "TLS fingerprint collector is unavailable")
+		return
+	}
+	records, err := h.collector.ListCaptures(c.Param("token"))
+	if err != nil {
+		response.NotFound(c, err.Error())
+		return
+	}
+	response.Success(c, records)
+}
+
+// DeleteCollectorSession 删除采集会话
+// DELETE /api/v1/admin/tls-fingerprint-profiles/collector/sessions/:token
+func (h *TLSFingerprintProfileHandler) DeleteCollectorSession(c *gin.Context) {
+	if h.collector == nil {
+		response.Error(c, http.StatusServiceUnavailable, "TLS fingerprint collector is unavailable")
+		return
+	}
+	h.collector.DeleteSession(c.Param("token"))
+	response.Success(c, gin.H{"deleted": true})
 }
