@@ -181,14 +181,10 @@ func RegisterGatewayRoutes(
 		h.Gateway.Responses(c)
 	}
 	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, archiveCapture, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesHandler)
-  r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, archiveCapture, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesHandler)
-  r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, archiveCapture, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
-	  if getGroupPlatform(c) == service.PlatformGrok {
-		  rejectGrokUnsupportedEndpoint(c, "Responses WebSocket API")
-		  return
-	  }
-	  h.OpenAIGateway.ResponsesWebSocket(c)
-  })
+	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, archiveCapture, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesHandler)
+	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, archiveCapture, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		h.OpenAIGateway.ResponsesWebSocket(c)
+	})
 	codexDirect := r.Group("/backend-api/codex")
 	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, archiveCapture, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic)
 	{
@@ -200,18 +196,13 @@ func RegisterGatewayRoutes(
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, archiveCapture, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
-	  if getGroupPlatform(c) == service.PlatformGrok {
-	  	rejectGrokUnsupportedEndpoint(c, "Chat Completions API")
-	  	return
-	  }
-  
-	  if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-	  	h.OpenAIGateway.ChatCompletions(c)
-	  	return
-	  }
-  
-	  h.Gateway.ChatCompletions(c)
-  })
+		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+			h.OpenAIGateway.ChatCompletions(c)
+			return
+		}
+
+		h.Gateway.ChatCompletions(c)
+	})
 	r.POST("/embeddings", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, archiveCapture, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
 		if getGroupPlatform(c) != service.PlatformOpenAI {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)

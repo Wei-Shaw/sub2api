@@ -9,8 +9,8 @@
 
 | Phase | 名称 | 状态 | commit | 静态验证(build/vet/test) | 备注 |
 |---|---|---|---|---|---|
-| 0 | 环境自检 `go build ./...` | ⛔ 受阻 | — | build 红(**非**工具链问题) | base 分支预存编译错误,见 Blocker #1;阻断后续全部 Phase |
-| A | tlsfingerprint 包补 3 文件 | ⬜ 未开始(被 #1 阻断) | — | — | |
+| 0 | 环境自检 `go build ./...` | ✅ 完成 | `<待填>` | gofmt✅ build✅ vet✅ routes-test✅ | Blocker #1 已按**方案 A**(人工拍板)修复;基线转绿,无隐藏编译错 |
+| A | tlsfingerprint 包补 3 文件 | ⬜ 未开始(基线已绿,可开工) | — | — | |
 | B | ent schema + model + 生成 | ⬜ 未开始 | — | — | |
 | C | 迁移 158_add_tls_fingerprint_routers.sql | ⬜ 未开始 | — | — | |
 | D | repository(router repo + cache) | ⬜ 未开始 | — | — | |
@@ -51,6 +51,22 @@
 - 改动文件:无(仅本账本)。工作树:干净(只读/grep,未改任何代码)。
 - 待人工:决定 Blocker #1 的修复方向后,我方可在绿色基线上从 Phase A 续作。
 
+### Phase 0 (续)— baseline fix:按方案 A 修复 Blocker #1 — ✅ 完成(2026-07-01)
+
+- 人工拍板:**方案 A**(删除两处孤儿 Grok 拒绝块,使行为与 main 一致 / 恢复 Grok-CLI 兼容)。修在**本分支**(契约禁改 `feat/req-resp-archive`),作为独立 baseline-fix commit。
+- 改动文件:`backend/internal/server/routes/gateway.go`
+  - `gofmt -w`:把 `330c35c1` 合并残留的空格缩进归一为 tab(仅该破损区域,20±/20∓,纯空白)。
+  - 删 `GET /responses` 闭包内 `if getGroupPlatform(c)==service.PlatformGrok { reject; return }`(4 行)→ 闭包仅 `h.OpenAIGateway.ResponsesWebSocket(c)`(保留 `archiveCapture`)。
+  - 删 `POST /chat/completions` 闭包内同款 Grok 块 + 其后空行 → 落到 `isOpenAIResponsesCompatibleGatewayPlatform(c)` 分支(该闭包对 OpenAI+Grok 均返回 true,line 42-47),Grok 走 OpenAI 兼容处理(保留 `archiveCapture`)。
+- 行为校验(静态):`isOpenAIResponsesCompatibleGatewayPlatform` 对 Grok 返回 true → Grok `/chat/completions` 进 `h.OpenAIGateway.ChatCompletions`;`GET /responses` 所有平台进 `ResponsesWebSocket`(与 `/v1` 组 line 107-109 一致)。无其它 undefined 符号。
+- 命令与结果(容器内):
+  - `gofmt -l internal/server/routes/gateway.go` → 空(clean)
+  - `go build ./...` → **BUILD_OK**
+  - `go vet ./...` → **VET_OK**
+  - `go test ./internal/server/routes/...` → **ok 1.495s**
+- commit:`<待填>`
+- 遗留/风险:此修复仅在本 TLS 分支;父分支 `feat/req-resp-archive` 仍存同样破损(契约禁改,留待人工在源头处理或后续 rebase 携带)。Grok 端点行为变更(不再路由层拒绝)属【运行时·人工】可灰度复核项,但与 main 完全一致。
+
 ## 待人工验证(运行时)
 
 <!-- 无人值守做完后,把所有【运行时·人工】项列在此,供回来逐项验证 -->
@@ -61,7 +77,9 @@
 
 <!-- 任何"不猜不编"触发的停机点记在此:是什么、卡在哪、需要什么决策 -->
 
-### Blocker #1 — base 分支编译不过:`330c35c1` 合并误删 `rejectGrokUnsupportedEndpoint` 定义(2026-07-01,开工即停)
+### Blocker #1 — ✅ 已解决(方案 A,2026-07-01)— base 分支编译不过:`330c35c1` 合并误删 `rejectGrokUnsupportedEndpoint` 定义
+
+> **解决**:人工拍板方案 A,已在本分支 baseline-fix commit 修复,基线 `go build ./...`/`vet`/`routes test` 全绿。详见上方「Phase 0 (续)」。下方为原始诊断,保留供追溯。
 
 **现象**:`go build ./...` 报 `internal/server/routes/gateway.go:187 & :204: undefined: rejectGrokUnsupportedEndpoint`(调用存在、定义缺失)。
 
