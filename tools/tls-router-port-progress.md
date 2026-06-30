@@ -16,7 +16,7 @@
 | D | repository(router repo + cache) | ✅ 完成 | `0e5c588d` | gofmt✅ build✅ vet✅ svc-test✅ | 含 router service(接口与 repo 互依,合并提交);6 子测全绿 |
 | E | service(router + collector)+ config | ✅ 完成 | `0e5c588d`+`3161a1df` | gofmt✅ build✅ vet✅ svc-test✅ | router svc 随 D;本提交:collector+config+profile 编辑+wire providers。变参 provider/wire.Bind 推迟到 G(依赖 gateway/OAuth) |
 | F | handler + 路由 + wire | ✅ 完成 | `8f57d2c6` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | wire 重生成成功;cmd/server wire_gen_test 通过 |
-| G | OpenAI HTTP 集成 | 🟡 进行中(G1+G3 done) | `21e18825`+`<G3待填>` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | G1 getters + G3 GatewayService 路由感知解析 done;余 G4(UA/Originator)+G5(OAuth) |
+| G | OpenAI HTTP 集成 | 🟡 G1+G3 done;G4/native 停(见 Blocker #2) | `21e18825`+`dedb31e6` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | G1+G3 覆盖 Anthropic+转换转发;**native OpenAI 路径走裸 Do 未覆盖=方案缺口**,记 Blocker #2 待人工 |
 | H | OpenAI WS 集成 | ⬜ 未开始 | — | — | 硬骨头;连接池 key 须含指纹 |
 | I | cmd/server 优雅关闭 | ⬜ 未开始 | — | — | |
 | J | 代码生成 + 编译 | ⬜ 未开始 | — | — | |
@@ -178,7 +178,7 @@
   - 重生成 `cmd/server/wire_gen.go`:`v := ProvideTLSFingerprintRouterServices(...)`;`NewGatewayService(..., v...)`。
 - 命令与结果(容器内):`go generate ./cmd/server` OK(go.mod/go.sum **未污染**);`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./internal/service/...` → **VET_OK**;`go test -run "TLSFingerprint|Gateway|Forward"` → **ok 30s**。
 - 向后兼容:router_id=0 或无 router service → matchTLSFingerprintRouter 返回 Matched=false → 回落 ResolveTLSProfile,行为同现状。
-- commit:`<G3待填>`
+- commit:`dedb31e6`
 - 遗留/风险:G4(openai_gateway_service.go 的 UA/Originator 改写,buildUpstreamRequest)+ G5(OAuth token 路径)未做。HTTP 出站指纹/JA3 属【运行时·人工】。
 
 ## 待人工验证(运行时)
@@ -235,3 +235,56 @@
 **残余不确定**:`go build ./...` 在 routes 包即失败,**其后的包是否还有别的编译错误尚未可知**;修好本处后需重跑全量 build 才能确认基线真绿。
 
 **续作路径**:人工给出 A/B 决策并使基线 `go build ./...` 全绿后,我从 Phase A 按 §8 顺序续作;本账本 Phase 0 行改 ✅,继续逐 Phase 记录。
+
+---
+
+### Blocker #2 — ⚠️ 方案 G 与代码不符:**native OpenAI HTTP 路径不走 DoWithTLS,G3 未覆盖**(2026-07-01,实证发现)
+
+**这是方案的一处实质性缺口,影响"完整覆盖 OpenAI"目标,需人工确认后再续作 G4/native-OpenAI。**
+
+**实证**:
+- fork 的 **native OpenAI 转发路径**(`OpenAIGatewayService.Forward` @ openai_gateway_service.go:2550、`forwardOpenAIPassthrough` @ 3323)出站用 `s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)`(:3187、:3477)——**完全不带 TLS profile**。
+- 方案 §3/§G3 列的解析点全部在 `GatewayService` + forward 文件,是基于 grep `ResolveTLSProfile` 得来;而 native OpenAI 路径根本没调 `ResolveTLSProfile`(用裸 `Do`),故**既未被方案列出,也未被我 G3 覆盖**。
+- **TR 对照**:TR 的同名路径用 `s.httpUpstream.DoWithTLS(..., s.resolveOpenAITLSProfile(account, tlsRouterMatch))`(TR openai_gateway_service.go:3454、:3761)。TR 的 `OpenAIGatewayService` 同时持有 `tlsFPProfileService`(:481)与 `tlsFPRouterService`(:482)。
+
+**结论**:G1+G3 已覆盖 **Anthropic 原生 + Anthropic→OpenAI/responses 转换转发**两类 HTTP 路径(经 `GatewayService`);但**以 OpenAI 格式打到 OpenAI 账号的 native 路径(OpenAI 覆盖的主用例)仍未应用 TLS 指纹**。要达成 §0「完整覆盖 OpenAI」,必须给 native 路径补 TLS 集成。
+
+**续作所需(faithful 参照 TR,scope-guard:只移 TLS+UA,不带 codex policy / user-prompt-replacement / ingress-session)**:
+1. `OpenAIGatewayService` 加 **两个**字段:`tlsFPProfileService *TLSFingerprintProfileService`(当前**没有**)+ `tlsFPRouterService *TLSFingerprintRouterService`。
+2. `NewOpenAIGatewayService` 加 `tlsFPProfileService`(必填参)+ `tlsFPRouterServices ...*TLSFingerprintRouterService`(可变参,复用已建的 `ProvideTLSFingerprintRouterServices` slice provider)。**注意**:加必填参 `tlsFPProfileService` 会破坏约 5 处非 wire 调用方(多为测试),需一并补参。
+3. 加 helper:`matchTLSFingerprintRouter(c,account)`(同 GatewayService 版)+ `resolveOpenAITLSProfile(account, routerMatch ...TLSFingerprintRouterMatchResult) *tlsfingerprint.Profile`(照抄 TR @ :621:命中→ResolveRoutableTLSProfileByID,否则 ResolveTLSProfile)。
+4. `Forward`(2550)、`forwardOpenAIPassthrough`(3323):各 `m := s.matchTLSFingerprintRouter(c, account)` 一次,把 `Do(...)`(:3187、:3477)改成 `DoWithTLS(..., s.resolveOpenAITLSProfile(account, m))`。
+5. **G4 UA/Originator**:`buildUpstreamRequest`(4377;UA~4461 originator~4438)、`buildUpstreamRequestOpenAIPassthrough`(3587;UA~3678 originator~3660):就地 `m := s.matchTLSFingerprintRouter(c, account)`,`m.Matched && m.UpstreamUserAgent!="" ` 覆盖 UA、`m.UpstreamOriginator!=""` 覆盖 originator(优先级高于账号默认/resolveOpenAIUpstreamOriginator)。
+6. wire:`NewOpenAIGatewayService` 变参注入 + 必填 `tlsFPProfileService`;重生成 wire_gen;补测试调用方参数。
+7. **G5(OAuth token)**:`openai_oauth_service.go` 换 token 用 router 的 `ChatGPTOAuthTokenUserAgent`+`ChatGPTOAuthTokenTLSFingerprintProfileID`(经 `GetRuntimeRouter`/`ResolveTokenTLSProfileByID`)。需 `wire.Bind` OAuth-token reader/profile resolver 接口——**fork 当前无 `OpenAIOAuthTokenRouterReader`/`OpenAIOAuthTokenProfileResolver` 接口**,照搬要新建,属 §G5「若不臆测无法修复则回滚 G5 并停」范畴,建议人工评估。Codex invite-reset:fork 经查**无** `codex_invite_reset_service.go`,按方案跳过。
+
+**为何停**:① 这是「文档与代码不符」(契约明令记录+停);② native 集成在最热文件 `openai_gateway_service.go`,需加 2 个服务依赖 + 改 4 处热点 + 动约 5 个测试调用方,且出站指纹正确性本就属【运行时·人工】;③ 方案 G3 的前提(覆盖 OpenAI)不成立,人工应先知悉再决定 native 集成的取舍/范围。**不臆测、不硬凑热点路径**。
+
+## 阶段性总结 / 续作指南(2026-07-01 无人值守批次)
+
+**已完成并验证(静态全绿 + 已 commit;运行时验证一律留人工)**:
+| Phase | 内容 | commit |
+|---|---|---|
+| 0(baseline) | 修 base 分支预存编译错(Grok 孤儿调用,方案 A) | e6ba7d0a |
+| A | tlsfingerprint 包补 3 文件(HTTP1OnlyProfile/CacheKey/ClientHello capture)+2 测 | 4488db9c |
+| B | ent schema + model + 生成(tls_fingerprint_routers 表) | ce925be7 |
+| C | 迁移 158(静态;DB 幂等待人工) | d6cec220 |
+| D | repository repo+cache + router service(+6 子测) | 0e5c588d |
+| E | collector service(+测)+ config(安全默认 127.0.0.1)+ profile resolvers + service wire | 3161a1df |
+| F | admin router handler + profile collector 端点 + 路由 + handler wire(wire 重生成) | 8f57d2c6 |
+| G1 | account getters(SupportsTLSFingerprint/GetTLSFingerprintRouterID;IsTLSFingerprintEnabled 改门控) | 21e18825 |
+| G3 | GatewayService 路由感知 TLS 解析(Anthropic + 转换转发 HTTP 路径) | dedb31e6 |
+
+每个 commit 均在 `golang:1.26.4-alpine` 容器内 `gofmt`+`go build ./...`+`go vet`+相关 `go test`(及涉及 ent/wire 处 `go generate`)全绿。**新增单测**:tlsfingerprint(3)、router service(6)、collector(4),均 PASS。
+
+**未完成**:
+- **G4 + native-OpenAI TLS 集成**:见 Blocker #2(方案缺口,需人工确认范围)。
+- **G5 OAuth token 路径**:见 Blocker #2 第 7 点(需新建 OAuth 接口或评估)。
+- **H WS 集成**:未开始(最高风险,连接池 key 须含指纹防串号;方案 §Phase H 有 scope-guard)。
+- **I cmd/server 采集器优雅关闭**:未开始(小、独立、安全;collector 已可经 admin API Start/Stop,I 仅补进程退出时优雅 Stop)。
+- **J 最终全量生成/编译**:每阶段已局部 `go generate`+全量 `go build` 绿;最终再跑一次确认即可。
+- **K 前端**:未开始(~880 行弹窗等;前端工具链未在本批次验证,留人工或后续批次)。
+
+**待人工验证(运行时,见方案 §5)**:迁移 158 测试库幂等;router CRUD+采集器 API+前端;HTTP/WS 抓包 JA3;OpenAI native 路径指纹(取决于 Blocker #2 决策);回归未命中回落;OAuth 换 token。
+
+**如何续作**:先读 Blocker #2 决定 native-OpenAI 集成范围(强烈建议做,否则 OpenAI 主用例无指纹);其余按 §8 H→I→J→K。工作树干净,9 个 commit 均可独立 build 绿,可安全从任一处接续。
