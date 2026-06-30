@@ -33,6 +33,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
+	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintrouter"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -1584,6 +1585,55 @@ func init() {
 	tlsfingerprintprofileDescEnableGrease := tlsfingerprintprofileFields[2].Descriptor()
 	// tlsfingerprintprofile.DefaultEnableGrease holds the default value on creation for the enable_grease field.
 	tlsfingerprintprofile.DefaultEnableGrease = tlsfingerprintprofileDescEnableGrease.Default.(bool)
+	tlsfingerprintrouterMixin := schema.TLSFingerprintRouter{}.Mixin()
+	tlsfingerprintrouterMixinFields0 := tlsfingerprintrouterMixin[0].Fields()
+	_ = tlsfingerprintrouterMixinFields0
+	tlsfingerprintrouterFields := schema.TLSFingerprintRouter{}.Fields()
+	_ = tlsfingerprintrouterFields
+	// tlsfingerprintrouterDescCreatedAt is the schema descriptor for created_at field.
+	tlsfingerprintrouterDescCreatedAt := tlsfingerprintrouterMixinFields0[0].Descriptor()
+	// tlsfingerprintrouter.DefaultCreatedAt holds the default value on creation for the created_at field.
+	tlsfingerprintrouter.DefaultCreatedAt = tlsfingerprintrouterDescCreatedAt.Default.(func() time.Time)
+	// tlsfingerprintrouterDescUpdatedAt is the schema descriptor for updated_at field.
+	tlsfingerprintrouterDescUpdatedAt := tlsfingerprintrouterMixinFields0[1].Descriptor()
+	// tlsfingerprintrouter.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	tlsfingerprintrouter.DefaultUpdatedAt = tlsfingerprintrouterDescUpdatedAt.Default.(func() time.Time)
+	// tlsfingerprintrouter.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	tlsfingerprintrouter.UpdateDefaultUpdatedAt = tlsfingerprintrouterDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// tlsfingerprintrouterDescName is the schema descriptor for name field.
+	tlsfingerprintrouterDescName := tlsfingerprintrouterFields[0].Descriptor()
+	// tlsfingerprintrouter.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	tlsfingerprintrouter.NameValidator = func() func(string) error {
+		validators := tlsfingerprintrouterDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// tlsfingerprintrouterDescEnabled is the schema descriptor for enabled field.
+	tlsfingerprintrouterDescEnabled := tlsfingerprintrouterFields[2].Descriptor()
+	// tlsfingerprintrouter.DefaultEnabled holds the default value on creation for the enabled field.
+	tlsfingerprintrouter.DefaultEnabled = tlsfingerprintrouterDescEnabled.Default.(bool)
+	// tlsfingerprintrouterDescChatgptOauthTokenUserAgent is the schema descriptor for chatgpt_oauth_token_user_agent field.
+	tlsfingerprintrouterDescChatgptOauthTokenUserAgent := tlsfingerprintrouterFields[3].Descriptor()
+	// tlsfingerprintrouter.DefaultChatgptOauthTokenUserAgent holds the default value on creation for the chatgpt_oauth_token_user_agent field.
+	tlsfingerprintrouter.DefaultChatgptOauthTokenUserAgent = tlsfingerprintrouterDescChatgptOauthTokenUserAgent.Default.(string)
+	// tlsfingerprintrouter.ChatgptOauthTokenUserAgentValidator is a validator for the "chatgpt_oauth_token_user_agent" field. It is called by the builders before save.
+	tlsfingerprintrouter.ChatgptOauthTokenUserAgentValidator = tlsfingerprintrouterDescChatgptOauthTokenUserAgent.Validators[0].(func(string) error)
+	// tlsfingerprintrouterDescCodexInviteResetUserAgent is the schema descriptor for codex_invite_reset_user_agent field.
+	tlsfingerprintrouterDescCodexInviteResetUserAgent := tlsfingerprintrouterFields[5].Descriptor()
+	// tlsfingerprintrouter.DefaultCodexInviteResetUserAgent holds the default value on creation for the codex_invite_reset_user_agent field.
+	tlsfingerprintrouter.DefaultCodexInviteResetUserAgent = tlsfingerprintrouterDescCodexInviteResetUserAgent.Default.(string)
+	// tlsfingerprintrouter.CodexInviteResetUserAgentValidator is a validator for the "codex_invite_reset_user_agent" field. It is called by the builders before save.
+	tlsfingerprintrouter.CodexInviteResetUserAgentValidator = tlsfingerprintrouterDescCodexInviteResetUserAgent.Validators[0].(func(string) error)
 	usagecleanuptaskMixin := schema.UsageCleanupTask{}.Mixin()
 	usagecleanuptaskMixinFields0 := usagecleanuptaskMixin[0].Fields()
 	_ = usagecleanuptaskMixinFields0

@@ -10,8 +10,8 @@
 | Phase | 名称 | 状态 | commit | 静态验证(build/vet/test) | 备注 |
 |---|---|---|---|---|---|
 | 0 | 环境自检 `go build ./...` | ✅ 完成 | `e6ba7d0a` | gofmt✅ build✅ vet✅ routes-test✅ | Blocker #1 已按**方案 A**(人工拍板)修复;基线转绿,无隐藏编译错 |
-| A | tlsfingerprint 包补 3 文件 | ✅ 完成 | `<A待填>` | gofmt✅ build✅ vet✅ pkg-test✅ | Profile 结构两边逐字一致;照抄 3 源 +2 测;`isGREASEValue` 依赖已存在 |
-| B | ent schema + model + 生成 | ⬜ 未开始 | — | — | |
+| A | tlsfingerprint 包补 3 文件 | ✅ 完成 | `4488db9c` | gofmt✅ build✅ vet✅ pkg-test✅ | Profile 结构两边逐字一致;照抄 3 源 +2 测;`isGREASEValue` 依赖已存在 |
+| B | ent schema + model + 生成 | ✅ 完成 | `<B待填>` | gofmt✅ generate✅ build✅ vet✅ | 表/列/索引与方案逐项核对一致;go.mod/sum 未被 codegen 污染 |
 | C | 迁移 158_add_tls_fingerprint_routers.sql | ⬜ 未开始 | — | — | |
 | D | repository(router repo + cache) | ⬜ 未开始 | — | — | |
 | E | service(router + collector)+ config | ⬜ 未开始 | — | — | |
@@ -83,8 +83,22 @@
   - `go build ./...` → **BUILD_OK**
   - `go vet ./internal/pkg/tlsfingerprint/...` → **VET_OK**
   - `go test ./internal/pkg/tlsfingerprint/...` → **ok 0.005s**(含新增 3 测试)
-- commit:`<A待填>`
+- commit:`4488db9c`
 - 遗留/风险:无。纯增量、leaf 包,不影响既有 importer。
+
+### Phase B — ent schema + model + 生成 — ✅ 完成(2026-07-01)
+
+- 核对:fork 与 TR 的 `tls_fingerprint_profile.go` ent schema **逐字一致**(仅 import path)→ 约定对齐;router schema 直接照搬 TR,仅换 import path(`mixins`、`internal/model`)。model 文件 stdlib-only + `ValidationError`(fork 已有 `Field/Message`,error_passthrough_rule.go:69)→ 逐字照抄。
+- 导入环检查:fork `internal/model` 无任何 ent import → `ent/schema`(及生成的 `ent`)依赖 `internal/model` 不成环(与 TR 同模式)。
+- 改动文件:
+  - 新增 `backend/internal/model/tls_fingerprint_router.go`(照抄 TR:match 常量 contains/prefix/exact/regex、`TLSFingerprintRouterRule`、`TLSFingerprintRouter`、`Validate()`×2、`NormalizeTLSRouterMatchType()`)
+  - 新增 `backend/ent/schema/tls_fingerprint_router.go`(TimeMixin;字段 name 唯一/description/enabled/chatgpt_oauth_token_user_agent/chatgpt_oauth_token_tls_fingerprint_profile_id(int64 nillable)/codex_invite_reset_*/rules(jsonb);索引 enabled)
+  - 生成(`go generate ./ent`):新增 `ent/tlsfingerprintrouter.go`+`ent/tlsfingerprintrouter/`+`_create/_delete/_query/_update.go`;改 `ent/{client,ent,mutation,tx,runtime/runtime,hook/hook,intercept/intercept,predicate/predicate,migrate/schema}.go`
+- 生成结果核对(`migrate/schema.go`):表 `tls_fingerprint_routers`,列 id/created_at/updated_at/name(Unique,100)/description(Text,nullable)/enabled(Bool,default true)/chatgpt_oauth_token_user_agent(512,default "")/chatgpt_oauth_token_tls_fingerprint_profile_id(Int64,nullable)/codex_invite_reset_user_agent(512,default "")/codex_invite_reset_tls_fingerprint_profile_id(Int64,nullable)/rules(jsonb,nullable);索引 `tlsfingerprintrouter_enabled` on enabled。**与方案逐项一致**。
+- 命令与结果(容器内):`gofmt -l` 空;`go generate ./ent` exit 0(go.mod/go.sum **未改**,codegen 工具 cobra/tablewriter 等只进缓存);`go build ./...` → **BUILD_OK**;`go vet ./ent/... ./internal/model/...` → **VET_OK**;`go test ./internal/model/...` → no test files。
+- 单测:TR **无** router model 单测 → 无可照抄,未新建(契约「不新建方案外的东西」;Validate/Normalize 逻辑后续经 service 测试间接覆盖)。
+- commit:`<B待填>`
+- 遗留/风险:无。建表 DDL 留待 Phase C 手写迁移(生产以 SQL 文件为准,非 ent auto-migrate)。
 
 ## 待人工验证(运行时)
 

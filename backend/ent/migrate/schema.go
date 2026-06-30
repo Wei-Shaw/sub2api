@@ -1290,6 +1290,33 @@ var (
 		Columns:    TLSFingerprintProfilesColumns,
 		PrimaryKey: []*schema.Column{TLSFingerprintProfilesColumns[0]},
 	}
+	// TLSFingerprintRoutersColumns holds the columns for the "tls_fingerprint_routers" table.
+	TLSFingerprintRoutersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Unique: true, Size: 100},
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "chatgpt_oauth_token_user_agent", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "chatgpt_oauth_token_tls_fingerprint_profile_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "codex_invite_reset_user_agent", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "codex_invite_reset_tls_fingerprint_profile_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "rules", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+	}
+	// TLSFingerprintRoutersTable holds the schema information for the "tls_fingerprint_routers" table.
+	TLSFingerprintRoutersTable = &schema.Table{
+		Name:       "tls_fingerprint_routers",
+		Columns:    TLSFingerprintRoutersColumns,
+		PrimaryKey: []*schema.Column{TLSFingerprintRoutersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "tlsfingerprintrouter_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{TLSFingerprintRoutersColumns[5]},
+			},
+		},
+	}
 	// UsageCleanupTasksColumns holds the columns for the "usage_cleanup_tasks" table.
 	UsageCleanupTasksColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1802,6 +1829,7 @@ var (
 		SettingsTable,
 		SubscriptionPlansTable,
 		TLSFingerprintProfilesTable,
+		TLSFingerprintRoutersTable,
 		UsageCleanupTasksTable,
 		UsageLogsTable,
 		UsersTable,
@@ -1915,6 +1943,9 @@ func init() {
 	}
 	TLSFingerprintProfilesTable.Annotation = &entsql.Annotation{
 		Table: "tls_fingerprint_profiles",
+	}
+	TLSFingerprintRoutersTable.Annotation = &entsql.Annotation{
+		Table: "tls_fingerprint_routers",
 	}
 	UsageCleanupTasksTable.Annotation = &entsql.Annotation{
 		Table: "usage_cleanup_tasks",

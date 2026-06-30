@@ -42,6 +42,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
+	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintrouter"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -113,6 +114,8 @@ type Client struct {
 	SubscriptionPlan *SubscriptionPlanClient
 	// TLSFingerprintProfile is the client for interacting with the TLSFingerprintProfile builders.
 	TLSFingerprintProfile *TLSFingerprintProfileClient
+	// TLSFingerprintRouter is the client for interacting with the TLSFingerprintRouter builders.
+	TLSFingerprintRouter *TLSFingerprintRouterClient
 	// UsageCleanupTask is the client for interacting with the UsageCleanupTask builders.
 	UsageCleanupTask *UsageCleanupTaskClient
 	// UsageLog is the client for interacting with the UsageLog builders.
@@ -167,6 +170,7 @@ func (c *Client) init() {
 	c.Setting = NewSettingClient(c.config)
 	c.SubscriptionPlan = NewSubscriptionPlanClient(c.config)
 	c.TLSFingerprintProfile = NewTLSFingerprintProfileClient(c.config)
+	c.TLSFingerprintRouter = NewTLSFingerprintRouterClient(c.config)
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
 	c.UsageLog = NewUsageLogClient(c.config)
 	c.User = NewUserClient(c.config)
@@ -294,6 +298,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Setting:                       NewSettingClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
 		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
+		TLSFingerprintRouter:          NewTLSFingerprintRouterClient(cfg),
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
 		UsageLog:                      NewUsageLogClient(cfg),
 		User:                          NewUserClient(cfg),
@@ -348,6 +353,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Setting:                       NewSettingClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
 		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
+		TLSFingerprintRouter:          NewTLSFingerprintRouterClient(cfg),
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
 		UsageLog:                      NewUsageLogClient(cfg),
 		User:                          NewUserClient(cfg),
@@ -392,9 +398,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.TLSFingerprintRouter,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -411,9 +418,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.TLSFingerprintRouter,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -476,6 +484,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SubscriptionPlan.mutate(ctx, m)
 	case *TLSFingerprintProfileMutation:
 		return c.TLSFingerprintProfile.mutate(ctx, m)
+	case *TLSFingerprintRouterMutation:
+		return c.TLSFingerprintRouter.mutate(ctx, m)
 	case *UsageCleanupTaskMutation:
 		return c.UsageCleanupTask.mutate(ctx, m)
 	case *UsageLogMutation:
@@ -4719,6 +4729,139 @@ func (c *TLSFingerprintProfileClient) mutate(ctx context.Context, m *TLSFingerpr
 	}
 }
 
+// TLSFingerprintRouterClient is a client for the TLSFingerprintRouter schema.
+type TLSFingerprintRouterClient struct {
+	config
+}
+
+// NewTLSFingerprintRouterClient returns a client for the TLSFingerprintRouter from the given config.
+func NewTLSFingerprintRouterClient(c config) *TLSFingerprintRouterClient {
+	return &TLSFingerprintRouterClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `tlsfingerprintrouter.Hooks(f(g(h())))`.
+func (c *TLSFingerprintRouterClient) Use(hooks ...Hook) {
+	c.hooks.TLSFingerprintRouter = append(c.hooks.TLSFingerprintRouter, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `tlsfingerprintrouter.Intercept(f(g(h())))`.
+func (c *TLSFingerprintRouterClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TLSFingerprintRouter = append(c.inters.TLSFingerprintRouter, interceptors...)
+}
+
+// Create returns a builder for creating a TLSFingerprintRouter entity.
+func (c *TLSFingerprintRouterClient) Create() *TLSFingerprintRouterCreate {
+	mutation := newTLSFingerprintRouterMutation(c.config, OpCreate)
+	return &TLSFingerprintRouterCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TLSFingerprintRouter entities.
+func (c *TLSFingerprintRouterClient) CreateBulk(builders ...*TLSFingerprintRouterCreate) *TLSFingerprintRouterCreateBulk {
+	return &TLSFingerprintRouterCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TLSFingerprintRouterClient) MapCreateBulk(slice any, setFunc func(*TLSFingerprintRouterCreate, int)) *TLSFingerprintRouterCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TLSFingerprintRouterCreateBulk{err: fmt.Errorf("calling to TLSFingerprintRouterClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TLSFingerprintRouterCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TLSFingerprintRouterCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TLSFingerprintRouter.
+func (c *TLSFingerprintRouterClient) Update() *TLSFingerprintRouterUpdate {
+	mutation := newTLSFingerprintRouterMutation(c.config, OpUpdate)
+	return &TLSFingerprintRouterUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TLSFingerprintRouterClient) UpdateOne(_m *TLSFingerprintRouter) *TLSFingerprintRouterUpdateOne {
+	mutation := newTLSFingerprintRouterMutation(c.config, OpUpdateOne, withTLSFingerprintRouter(_m))
+	return &TLSFingerprintRouterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TLSFingerprintRouterClient) UpdateOneID(id int64) *TLSFingerprintRouterUpdateOne {
+	mutation := newTLSFingerprintRouterMutation(c.config, OpUpdateOne, withTLSFingerprintRouterID(id))
+	return &TLSFingerprintRouterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TLSFingerprintRouter.
+func (c *TLSFingerprintRouterClient) Delete() *TLSFingerprintRouterDelete {
+	mutation := newTLSFingerprintRouterMutation(c.config, OpDelete)
+	return &TLSFingerprintRouterDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TLSFingerprintRouterClient) DeleteOne(_m *TLSFingerprintRouter) *TLSFingerprintRouterDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TLSFingerprintRouterClient) DeleteOneID(id int64) *TLSFingerprintRouterDeleteOne {
+	builder := c.Delete().Where(tlsfingerprintrouter.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TLSFingerprintRouterDeleteOne{builder}
+}
+
+// Query returns a query builder for TLSFingerprintRouter.
+func (c *TLSFingerprintRouterClient) Query() *TLSFingerprintRouterQuery {
+	return &TLSFingerprintRouterQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTLSFingerprintRouter},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TLSFingerprintRouter entity by its id.
+func (c *TLSFingerprintRouterClient) Get(ctx context.Context, id int64) (*TLSFingerprintRouter, error) {
+	return c.Query().Where(tlsfingerprintrouter.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TLSFingerprintRouterClient) GetX(ctx context.Context, id int64) *TLSFingerprintRouter {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *TLSFingerprintRouterClient) Hooks() []Hook {
+	return c.hooks.TLSFingerprintRouter
+}
+
+// Interceptors returns the client interceptors.
+func (c *TLSFingerprintRouterClient) Interceptors() []Interceptor {
+	return c.inters.TLSFingerprintRouter
+}
+
+func (c *TLSFingerprintRouterClient) mutate(ctx context.Context, m *TLSFingerprintRouterMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TLSFingerprintRouterCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TLSFingerprintRouterUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TLSFingerprintRouterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TLSFingerprintRouterDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TLSFingerprintRouter mutation op: %q", m.Op())
+	}
+}
+
 // UsageCleanupTaskClient is a client for the UsageCleanupTask schema.
 type UsageCleanupTaskClient struct {
 	config
@@ -6215,9 +6358,9 @@ type (
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		TLSFingerprintProfile, TLSFingerprintRouter, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -6226,9 +6369,9 @@ type (
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		TLSFingerprintProfile, TLSFingerprintRouter, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 
