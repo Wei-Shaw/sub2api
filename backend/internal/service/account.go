@@ -1661,11 +1661,11 @@ func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
 }
 
 // IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装
-// 仅适用于 Anthropic OAuth/SetupToken 类型账号
-// 启用后将模拟 Claude Code (Node.js) 客户端的 TLS 握手特征
+// 适用于支持 TLS 指纹的账号(Anthropic OAuth/SetupToken 或 OpenAI OAuth)
+// 启用后将模拟 Claude Code/Codex CLI (Node.js) 客户端的 TLS 握手特征
 func (a *Account) IsTLSFingerprintEnabled() bool {
-	// 仅支持 Anthropic OAuth/SetupToken 账号
-	if !a.IsAnthropicOAuthOrSetupToken() {
+	// 支持 Anthropic OAuth/SetupToken 或 OpenAI OAuth 账号(见 SupportsTLSFingerprint)
+	if !a.SupportsTLSFingerprint() {
 		return false
 	}
 	if a.Extra == nil {
@@ -1686,6 +1686,43 @@ func (a *Account) GetTLSFingerprintProfileID() int64 {
 		return 0
 	}
 	v, ok := a.Extra["tls_fingerprint_profile_id"]
+	if !ok {
+		return 0
+	}
+	switch id := v.(type) {
+	case float64:
+		return int64(id)
+	case int64:
+		return id
+	case int:
+		return int64(id)
+	case json.Number:
+		if i, err := id.Int64(); err == nil {
+			return i
+		}
+	}
+	return 0
+}
+
+// SupportsTLSFingerprint 判断账号类型是否支持 TLS 指纹伪装。
+// Anthropic OAuth/SetupToken 或 OpenAI OAuth 返回 true(供前端门控与 resolve 使用)。
+func (a *Account) SupportsTLSFingerprint() bool {
+	if a == nil {
+		return false
+	}
+	if a.IsAnthropicOAuthOrSetupToken() {
+		return true
+	}
+	return a.Platform == PlatformOpenAI && a.Type == AccountTypeOAuth
+}
+
+// GetTLSFingerprintRouterID 获取账号绑定的 TLS 路由器 ID。
+// 返回 0 表示未绑定路由器(行为完全不变,向后兼容)。
+func (a *Account) GetTLSFingerprintRouterID() int64 {
+	if a.Extra == nil {
+		return 0
+	}
+	v, ok := a.Extra["tls_fingerprint_router_id"]
 	if !ok {
 		return 0
 	}

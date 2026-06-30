@@ -15,8 +15,8 @@
 | C | 迁移 158_add_tls_fingerprint_routers.sql | ✅ 完成(静态) | `d6cec220` | build✅ vet✅ runner-test✅ | DB 幂等执行=【运行时·人工】(本环境镜像拉取过慢,未跑成 ephemeral PG) |
 | D | repository(router repo + cache) | ✅ 完成 | `0e5c588d` | gofmt✅ build✅ vet✅ svc-test✅ | 含 router service(接口与 repo 互依,合并提交);6 子测全绿 |
 | E | service(router + collector)+ config | ✅ 完成 | `0e5c588d`+`3161a1df` | gofmt✅ build✅ vet✅ svc-test✅ | router svc 随 D;本提交:collector+config+profile 编辑+wire providers。变参 provider/wire.Bind 推迟到 G(依赖 gateway/OAuth) |
-| F | handler + 路由 + wire | ✅ 完成 | `<F待填>` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | wire 重生成成功;cmd/server wire_gen_test 通过 |
-| G | OpenAI HTTP 集成 | ⬜ 未开始 | — | — | 硬骨头;运行时验证留人工 |
+| F | handler + 路由 + wire | ✅ 完成 | `8f57d2c6` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | wire 重生成成功;cmd/server wire_gen_test 通过 |
+| G | OpenAI HTTP 集成 | 🟡 进行中(G1 done) | `<G1待填>` | gofmt✅ build✅ vet✅ test✅ | G1 account getters done;余 G2-G5 |
 | H | OpenAI WS 集成 | ⬜ 未开始 | — | — | 硬骨头;连接池 key 须含指纹 |
 | I | cmd/server 优雅关闭 | ⬜ 未开始 | — | — | |
 | J | 代码生成 + 编译 | ⬜ 未开始 | — | — | |
@@ -154,8 +154,18 @@
   - 重生成 `cmd/server/wire_gen.go`(`go generate ./cmd/server`)。
 - 采集器注入模式(照抄 TR):profile handler 构造用变参 `collectors ...`,wire 用非变参包装 `ProvideTLSFingerprintProfileHandler(profileService, collector)` 注入,既保留既有调用兼容又让 wire 直接解析 collector。
 - 命令与结果(容器内):`go generate ./cmd/server` → wire 成功写 wire_gen.go(go.mod/go.sum **未污染**;wire_gen 含 2 个新 provider 引用);`gofmt -l`(我的文件)空(`auth_current_user_test.go` 是**既有**未格式化文件,非本次改动,未碰);`go build ./...` → **BUILD_OK**;`go vet ./internal/handler/... ./internal/server/...` → **VET_OK**;`go test ./internal/server/routes/...` **ok**;`./internal/service/ -run TLSFingerprint` **ok**;`./cmd/server/...`(含 wire_gen_test)**ok**。
-- commit:`<F待填>`
+- commit:`8f57d2c6`
 - 遗留/风险:CRUD/采集器 API 端到端 + 多实例 pubsub 缓存失效属【运行时·人工】。变参 provider/wire.Bind(OAuth)仍待 G。
+
+### Phase G1 — account getters — ✅ 完成(2026-07-01)
+
+- 改动文件:`internal/service/account.go`
+  - 加 `SupportsTLSFingerprint() bool`(Anthropic OAuth/SetupToken 或 OpenAI OAuth)。
+  - 加 `GetTLSFingerprintRouterID() int64`(镜像 profile getter 的 float64/int64/int/json.Number 转换;0=未绑路由器)。
+  - **改 `IsTLSFingerprintEnabled`** 的门控:`IsAnthropicOAuthOrSetupToken()` → `SupportsTLSFingerprint()`。**这是方案 §0「完整覆盖 OpenAI」所必需**(resolvers 都查 IsTLSFingerprintEnabled;不改则 OpenAI 账号无法启用 → 路由器对 OpenAI 失效),且与 TR 实现一致。**向后兼容**:Anthropic 行为完全不变(SupportsTLSFingerprint 对 Anthropic OAuth/SetupToken 恒为 true);OpenAI OAuth 仅在管理员显式置 `enable_tls_fingerprint` 时才生效,存量账号无此标志 → 行为不变。
+- 命令与结果(容器内):`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./internal/service/...` → **VET_OK**;`go test -run "TLSFingerprint|Account"` → **ok**。无既有测试引用这些方法(不破坏)。
+- commit:`<G1待填>`
+- 遗留/风险:G2-G5 未做(gateway helper/struct/wire 变参、call-site 替换、UA/Originator 改写、OAuth token 路径)。
 
 ## 待人工验证(运行时)
 
