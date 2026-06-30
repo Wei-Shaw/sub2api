@@ -9,7 +9,8 @@
 
 | Phase | 名称 | 状态 | commit | 静态验证(build/vet/test) | 备注 |
 |---|---|---|---|---|---|
-| A | tlsfingerprint 包补 3 文件 | ⬜ 未开始 | — | — | |
+| 0 | 环境自检 `go build ./...` | ⛔ 受阻 | — | build 红(**非**工具链问题) | base 分支预存编译错误,见 Blocker #1;阻断后续全部 Phase |
+| A | tlsfingerprint 包补 3 文件 | ⬜ 未开始(被 #1 阻断) | — | — | |
 | B | ent schema + model + 生成 | ⬜ 未开始 | — | — | |
 | C | 迁移 158_add_tls_fingerprint_routers.sql | ⬜ 未开始 | — | — | |
 | D | repository(router repo + cache) | ⬜ 未开始 | — | — | |
@@ -33,7 +34,22 @@
 - 遗留/风险:...
 -->
 
-(待 /goal 填写)
+### Phase 0 — 环境自检(`go build ./...`)— ⛔ 受阻(2026-07-01)
+
+- 工具链:**可用**。`golang:1.26.4-alpine` 容器正常拉依赖、编译、报出真实错误(记忆 build-without-local-go 的命令有效)。
+- 命令与结果:
+  ```
+  docker run --rm -e CGO_ENABLED=0 -e GOFLAGS=-mod=mod -v "$PWD":/app -w /app \
+    -v sub2api-gomod:/go/pkg/mod -v sub2api-gobuild:/root/.cache/go-build \
+    golang:1.26.4-alpine sh -c 'go build ./... && echo BUILD_OK'
+  → exit 1:
+  internal/server/routes/gateway.go:187:5: undefined: rejectGrokUnsupportedEndpoint
+  internal/server/routes/gateway.go:204:5: undefined: rejectGrokUnsupportedEndpoint
+  ```
+- 结论:**base 分支 `feat/tls-fingerprint-router` 自身编译不过**,且该错误**与本次 TLS 移植无关**(本分支仅 2 个 docs commit)。这违反契约前提「build 全绿才提交」,无法在此基线上做任何可验证的 Phase。
+- 处置:依契约「环境自检跑不通 → 记录 + 停」「符号找不到 / 与现状冲突 → 记录 + 停,不猜不编」「不越界」,**停机**,不擅自修复(修复方向是行为决策,见 Blocker #1)。
+- 改动文件:无(仅本账本)。工作树:干净(只读/grep,未改任何代码)。
+- 待人工:决定 Blocker #1 的修复方向后,我方可在绿色基线上从 Phase A 续作。
 
 ## 待人工验证(运行时)
 
@@ -45,4 +61,45 @@
 
 <!-- 任何"不猜不编"触发的停机点记在此:是什么、卡在哪、需要什么决策 -->
 
-(暂无)
+### Blocker #1 — base 分支编译不过:`330c35c1` 合并误删 `rejectGrokUnsupportedEndpoint` 定义(2026-07-01,开工即停)
+
+**现象**:`go build ./...` 报 `internal/server/routes/gateway.go:187 & :204: undefined: rejectGrokUnsupportedEndpoint`(调用存在、定义缺失)。
+
+**根因(已实证)**:
+- `rejectGrokUnsupportedEndpoint` 原是 `RegisterGatewayRoutes` 内的**局部闭包**。
+- main 的 `4a7148e2 "fix: support grok cli compatibility routes"`(Heatherm Huang,06-29)**故意删除**了该闭包及其全部调用点(净 -40 行),改走 `isOpenAIResponsesCompatibleGatewayPlatform` 路由 + `sanitizeGrokResponsesUnsupportedFields`——目的就是让 Grok CLI 能用这些端点。
+- `feat/req-resp-archive`(LeGo,合并前 `70588e1e`)仍保留 Grok 拒绝(闭包 + 调用)。
+- 合并 `330c35c1 "Merge branch 'main' into feat/req-resp-archive"`(LeGo,07-01 00:24)**冲突解决出错**:保留了 2 处调用(`gateway.go:186-189`、`202-205`,空格缩进=手工冲突残留),却采纳了 main 对定义区的删除 → 调用无定义。
+- blame 实证:186-189 行归属 `330c35c1`(空格缩进),周围为 tab。
+
+**影响面**:`feat/req-resp-archive` HEAD **同样破损**(调用在 187/204、无定义)——即父分支也编译不过(记忆称其"已部署",推测部署版本早于 07-01 此次合并)。`main` 无此问题。本 TLS 分支的 2 个 commit 仅 docs,未引入此错。
+
+**为何停而不修(契约)**:修复方向是**用户可见的行为决策**,不可无人值守臆断:
+- **方案 A(推荐)— 删除 2 处孤儿调用块**(各 3 行 `if getGroupPlatform(c)==service.PlatformGrok { rejectGrokUnsupportedEndpoint(...); return }`,保留 `archiveCapture` 中间件与其余逻辑)。结果:这两个端点对 Grok 组**不再路由层拒绝**,与 `main` 完全一致。**理由**:`4a7148e2` 标题与改动证明删除是为"支持 Grok CLI 兼容路由";恢复拒绝(方案 B)等于回退该兼容修复。这也正是"merge main into archive"应得的结果(取 main 改动 + 保留 archive 新增的 archiveCapture)。
+- **方案 B — 恢复闭包定义**(从 `4a7148e2^:gateway.go` 可取回原文,非 fabricate)。结果:保持 Grok 在这两个端点被拒绝(archive 分支合并前的行为),但**与 main 的 Grok-CLI 兼容意图冲突**,可能再次破坏 Grok CLI。
+
+**精确位置(当前 worktree `gateway.go`)**:
+```
+185  r.GET("/responses", ...archiveCapture..., func(c *gin.Context) {
+186    if getGroupPlatform(c) == service.PlatformGrok {        ← 方案A删此3行
+187      rejectGrokUnsupportedEndpoint(c, "Responses WebSocket API")
+188      return
+189    }
+190    h.OpenAIGateway.ResponsesWebSocket(c)
+191  })
+...
+201  r.POST("/chat/completions", ...archiveCapture..., func(c *gin.Context) {
+202    if getGroupPlatform(c) == service.PlatformGrok {        ← 方案A删此3行
+203      rejectGrokUnsupportedEndpoint(c, "Chat Completions API")
+204      return
+205    }
+206    （空行）
+207    if isOpenAIResponsesCompatibleGatewayPlatform(c) { ... }
+```
+> 旁注:这两处的空格缩进与文件其余 tab 不一致,建议修复时一并改回 tab(`gofmt`)。
+
+**需人工决策**:选 A 还是 B?并决定**在哪修**——(i) 在本 TLS 分支修(作为独立的 baseline-fix commit,我可代劳),还是 (ii) 在源头 `feat/req-resp-archive` 修好再让本分支 rebase/merge(更干净,避免两分支各修一次)。
+
+**残余不确定**:`go build ./...` 在 routes 包即失败,**其后的包是否还有别的编译错误尚未可知**;修好本处后需重跑全量 build 才能确认基线真绿。
+
+**续作路径**:人工给出 A/B 决策并使基线 `go build ./...` 全绿后,我从 Phase A 按 §8 顺序续作;本账本 Phase 0 行改 ✅,继续逐 Phase 记录。
