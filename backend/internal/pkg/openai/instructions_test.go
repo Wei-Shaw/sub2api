@@ -25,6 +25,7 @@ REDACTED{
 		{"gpt-5.1-codex-max", "You are Codex, based on GPT-5"REDACTED,
 		{"gpt-5.2-codex", "You are Codex, based on GPT-5"REDACTED,
 		{"gpt-5.5", "You are Codex, a coding agent based on GPT-5"REDACTED,
+		{" GPT-5.5 ", "You are Codex, a coding agent based on GPT-5"REDACTED,
 		{"gpt-5.2", "You are GPT-5.2 running in the Codex CLI"REDACTED,
 		{"gpt-5.1", "You are GPT-5.1 running in the Codex CLI"REDACTED,
 		{"gpt-5", "You are Codex, a coding agent based on GPT-5"REDACTED,   // 回退到最新（GPT-5.5）
