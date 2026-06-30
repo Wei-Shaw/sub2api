@@ -152,7 +152,7 @@ REDACTED
 REDACTED
 
 // TestSystemPlatformQuotas_WriteReadRoundTrip 验证系统层 platform quota 经 buildSystemSettingsUpdates（写）
-// 再由 GetDefaultPlatformQuotas（读）正确往返——覆盖真实 write→read 路径，锁住 4-key 补齐契约。
+// 再由 GetDefaultPlatformQuotas（读）正确往返，覆盖真实 write→read 路径并锁住平台补齐契约。
 func TestSystemPlatformQuotas_WriteReadRoundTrip(t *testing.T) {
 	svc := newSettingServiceForPlatformQuotaTest(nil)
 	ctx := context.Background()
@@ -171,10 +171,10 @@ REDACTED
 	if err != nil {
 		t.Fatal(err)
 REDACTED
-	// 4-key 补齐契约：无论写了几个 platform，读回必须含全部 4 个
-	for _, p := range []string{"anthropic", "openai", "gemini", "antigravity"REDACTED {
+	// 平台补齐契约：无论写了几个 platform，读回必须含全部允许平台
+	for _, p := range AllowedQuotaPlatforms {
 		if _, ok := got[p]; !ok {
-			t.Errorf("4-key contract violated: missing platform %q", p)
+			t.Errorf("allowed-platform contract violated: missing platform %q", p)
 	REDACTED
 REDACTED
 	// 写入值正确往返
