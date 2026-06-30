@@ -14,7 +14,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"go.uber.org/zap"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -182,6 +184,10 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldImagePrice1k,
 				group.FieldImagePrice2k,
 				group.FieldImagePrice4k,
+				group.FieldImagePricingMatrix,
+				group.FieldImagePreferFal,
+				group.FieldImageDecodeSizeOnRsp,
+				group.FieldImageUpscaleOnRsp,
 				group.FieldClaudeCodeOnly,
 				group.FieldFallbackGroupID,
 				group.FieldFallbackGroupIDOnInvalidRequest,
@@ -779,6 +785,13 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 	if g == nil {
 		return nil
 	}
+	// === DEBUG: 看 ent.Group 转换时 ImageDecodeSizeOnRsp / Platform 的实时取值 ===
+	logger.L().Info("[debug] repo.group_entity_to_service",
+		zap.Int64("group_id", int64(g.ID)),
+		zap.String("platform", g.Platform),
+		zap.Bool("image_decode_size_on_rsp", g.ImageDecodeSizeOnRsp),
+		zap.Bool("image_prefer_fal", g.ImagePreferFal),
+	)
 	return &service.Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
@@ -798,6 +811,10 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		ImagePrice1K:                    g.ImagePrice1k,
 		ImagePrice2K:                    g.ImagePrice2k,
 		ImagePrice4K:                    g.ImagePrice4k,
+		ImagePricingMatrix:              g.ImagePricingMatrix,
+		ImagePreferFal:                  g.ImagePreferFal,
+		ImageDecodeSizeOnRsp:            g.ImageDecodeSizeOnRsp,
+		ImageUpscaleOnRsp:               g.ImageUpscaleOnRsp,
 		DefaultValidityDays:             g.DefaultValidityDays,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,

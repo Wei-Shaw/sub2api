@@ -173,12 +173,15 @@ export interface SendVerifyCodeResponse {
   countdown: number
 }
 
+export type CustomMenuAction = 'iframe' | 'same_tab' | 'new_tab'
+
 export interface CustomMenuItem {
   id: string
   label: string
   icon_svg: string
   url: string
   page_slug?: string
+  action?: CustomMenuAction
   visibility: 'user' | 'admin'
   sort_order: number
 }
@@ -220,6 +223,7 @@ export interface PublicSettings {
   contact_info: string
   doc_url: string
   home_content: string
+  home_product_menu_items: CustomMenuItem[]
   hide_ccs_import_button: boolean
   payment_enabled: boolean
   risk_control_enabled: boolean
@@ -499,7 +503,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'fal'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -530,7 +534,13 @@ export interface Group {
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
-  // Claude Code 客户端限制
+  // 按分辨率 + quality 二维计费矩阵（最高优先级，未命中时回退到上面单维价）
+  // shape: { "1024x1024": { "low": 0.006, "medium": 0.053, "high": 0.211 }, ... }
+  image_pricing_matrix?: Record<string, Record<string, number>> | null
+  // 仅 platform=openai 分组生效：true 时混合调度“fal 优先 + openai 兜底”
+  image_prefer_fal?: boolean
+  image_decode_size_on_rsp?: boolean
+  image_upscale_on_rsp?: boolean
   claude_code_only: boolean
   fallback_group_id: number | null
   fallback_group_id_on_invalid_request: number | null
@@ -648,6 +658,10 @@ export interface CreateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  image_pricing_matrix?: Record<string, Record<string, number>> | null
+  image_prefer_fal?: boolean
+  image_decode_size_on_rsp?: boolean
+  image_upscale_on_rsp?: boolean
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -683,6 +697,10 @@ export interface UpdateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  image_pricing_matrix?: Record<string, Record<string, number>> | null
+  image_prefer_fal?: boolean
+  image_decode_size_on_rsp?: boolean
+  image_upscale_on_rsp?: boolean
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -701,8 +719,7 @@ export interface UpdateGroupRequest {
 }
 
 // ==================== Account & Proxy Types ====================
-
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'fal'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -956,6 +973,13 @@ export interface AntigravityModelQuota {
   reset_time: string  // 重置时间 ISO8601
 }
 
+export interface GrokQuotaWindow {
+  limit?: number
+  remaining?: number
+  reset_unix?: number
+  reset_at?: string
+}
+
 export interface AccountUsageInfo {
   source?: 'passive' | 'active'
   updated_at: string | null
@@ -969,6 +993,15 @@ export interface AccountUsageInfo {
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
+  grok_request_quota?: GrokQuotaWindow | null
+  grok_token_quota?: GrokQuotaWindow | null
+  grok_retry_after_seconds?: number | null
+  grok_entitlement_status?: string
+  grok_quota_snapshot_state?: string
+  grok_last_quota_probe_at?: string
+  grok_last_headers_seen_at?: string
+  grok_last_status_code?: number
+  grok_local_usage?: WindowStats | null
   ai_credits?: Array<{
     credit_type?: string
     amount?: number
@@ -1187,6 +1220,24 @@ export interface CodexSessionImportRequest {
   confirm_mixed_channel_risk?: boolean
 }
 
+export interface OpenAICodexPATCreateRequest {
+  access_token: string
+  name?: string
+  notes?: string | null
+  group_ids?: number[]
+  proxy_id?: number | null
+  concurrency?: number
+  priority?: number
+  rate_multiplier?: number
+  load_factor?: number | null
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+  credential_extras?: Record<string, unknown>
+  extra?: Record<string, unknown>
+  skip_default_group_bind?: boolean
+  confirm_mixed_channel_risk?: boolean
+}
+
 export interface CodexSessionImportMessage {
   index: number
   name?: string
@@ -1265,6 +1316,12 @@ export interface UsageLog {
   image_size_breakdown: ImageSizeBreakdown | null
   image_output_tokens: number
   image_output_cost: number
+
+  // 异步媒体任务结果（fal 等异步出图）
+  task_id?: number | null
+  image_urls?: string[] | null
+  cos_urls?: string[] | null
+  billing_status?: string | null
 
   // User-Agent
   user_agent: string | null

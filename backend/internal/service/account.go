@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 type Account struct {
@@ -66,6 +67,17 @@ type Account struct {
 	modelMappingCacheRawPtr         uintptr
 	modelMappingCacheRawLen         int
 	modelMappingCacheRawSig         uint64
+
+	// fal 平台 model→api 能力缓存（非持久化字段）。
+	// fal 账号「支持的模型」由 model_mapping 的 value（fal endpoint，形如
+	// organization/model/api）决定。这里在账号数据层面把每个 endpoint 预切出
+	// model 段（第二部分）与 api 段（第三部分，空串表示文生图）聚合成
+	// model→api 集合，既能判断模型是否支持，也能判断是否支持 edit 等具体 api，
+	// 避免每次选号都重复切分。
+	// 缓存键为 GetModelMapping 返回 map 的指针，随 modelMappingCache 一同失效重建。
+	falModelAPICache       map[string]map[string]struct{}
+	falModelAPICacheReady  bool
+	falModelAPICacheMapPtr uintptr
 }
 
 type OpenAIEndpointCapability string
@@ -76,6 +88,21 @@ const (
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
+
+const (
+	OpenAIAuthModePersonalAccessToken = "personalAccessToken"
+	openAIAuthModeCredentialKey       = "auth_mode"
+	openAIAuthModeLegacyCredentialKey = "openai_auth_mode"
+)
+
+func isOpenAIPersonalAccessTokenAuthMode(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "personalaccesstoken", "personal_access_token":
+		return true
+	default:
+		return false
+	}
+}
 
 type TempUnschedulableRule struct {
 	ErrorCode       int      `json:"error_code"`
@@ -173,6 +200,18 @@ func (a *Account) IsPrivacySet() bool {
 
 func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
+}
+
+func (a *Account) IsGrok() bool {
+	return a.Platform == PlatformGrok
+}
+
+func (a *Account) IsGrokOAuth() bool {
+	return a.IsGrok() && a.Type == AccountTypeOAuth
+}
+
+func (a *Account) IsOpenAICompatible() bool {
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -493,6 +532,13 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		if a.Platform == domain.PlatformAntigravity {
 			return domain.DefaultAntigravityModelMapping
 		}
+		// fal 平台使用默认映射
+		if a.Platform == domain.PlatformFal {
+			return domain.DefaultFalModelMapping
+		}
+		if a.Platform == domain.PlatformGrok {
+			return xai.DefaultModelMapping()
+		}
 		// Bedrock 默认映射由 forwardBedrock 统一处理（需配合 region prefix 调整）
 		return nil
 	}
@@ -500,6 +546,13 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		// Antigravity 平台使用默认映射
 		if a.Platform == domain.PlatformAntigravity {
 			return domain.DefaultAntigravityModelMapping
+		}
+		// fal 平台使用默认映射
+		if a.Platform == domain.PlatformFal {
+			return domain.DefaultFalModelMapping
+		}
+		if a.Platform == domain.PlatformGrok {
+			return xai.DefaultModelMapping()
 		}
 		return nil
 	}
@@ -525,6 +578,13 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	if a.Platform == domain.PlatformAntigravity {
 		return domain.DefaultAntigravityModelMapping
 	}
+	// fal 平台使用默认映射
+	if a.Platform == domain.PlatformFal {
+		return domain.DefaultFalModelMapping
+	}
+	if a.Platform == domain.PlatformGrok {
+		return xai.DefaultModelMapping()
+	}
 	return nil
 }
 
@@ -533,6 +593,59 @@ func mapPtr(m map[string]any) uintptr {
 		return 0
 	}
 	return reflect.ValueOf(m).Pointer()
+}
+
+func mapPtrStr(m map[string]string) uintptr {
+	if m == nil {
+		return 0
+	}
+	return reflect.ValueOf(m).Pointer()
+}
+
+// FalSupportedModelAPIs 返回 fal 账号支持的「模型名 → api 段集合」映射（均已小写归一）。
+// fal 账号「支持的模型」由 model_mapping 的 value（fal endpoint，形如
+// organization/model/api）决定，value 的第三段 api（空串表示文生图、edit 表示图生图）
+// 决定该 endpoint 的能力。此处在账号数据层面把每条 model_mapping 预切并缓存：
+//   - value 的 model 段（第二部分）→ 加入 value 的 api 段（覆盖请求传入 endpoint slug 或裸模型名的形态）；
+//   - key 本身（对外别名，如 dall-e-3、gpt-image-2-edit）→ 加入其 value 的 api 段（覆盖请求传入对外别名的形态）。
+//
+// 外层 key 为模型名（value 的 model 段或别名 key），内层 set 为该名字支持的全部 api 段。
+// 供选号热路径直接查表：既判断模型是否支持，也判断是否支持 edit 等具体 api，
+// 避免每次请求重复切分账号的全部 endpoint。
+// 缓存键为 GetModelMapping 返回 map 的指针，底层 model_mapping 变化时自动失效重建。
+func (a *Account) FalSupportedModelAPIs() map[string]map[string]struct{} {
+	mapping := a.GetModelMapping()
+	mappingPtr := mapPtrStr(mapping)
+	if a.falModelAPICacheReady && a.falModelAPICacheMapPtr == mappingPtr {
+		return a.falModelAPICache
+	}
+
+	set := make(map[string]map[string]struct{}, len(mapping)*2)
+	add := func(name, api string) {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name == "" {
+			return
+		}
+		apis := set[name]
+		if apis == nil {
+			apis = make(map[string]struct{}, 2)
+			set[name] = apis
+		}
+		apis[strings.ToLower(api)] = struct{}{}
+	}
+
+	for key, endpoint := range mapping {
+		model, api := falEndpointModelAPI(endpoint)
+		// value 的 model 段 → value 的 api 段
+		add(model, api)
+		// 对外别名 key → value 的 api 段
+		add(key, api)
+	}
+
+	a.falModelAPICache = set
+	a.falModelAPICacheReady = true
+	a.falModelAPICacheMapPtr = mappingPtr
+	return set
 }
 
 func modelMappingSignature(rawMapping map[string]any) uint64 {
@@ -742,6 +855,33 @@ func (a *Account) GetBaseURL() string {
 		return strings.TrimRight(baseURL, "/") + "/antigravity"
 	}
 	return baseURL
+}
+
+// FalAPIKey 返回 fal 账号的上游凭证（FAL_KEY）。
+// 优先读取 credential "api_key"，回退 "fal_key"。
+func (a *Account) FalAPIKey() string {
+	if key := strings.TrimSpace(a.GetCredential("api_key")); key != "" {
+		return key
+	}
+	return strings.TrimSpace(a.GetCredential("fal_key"))
+}
+
+// FalQueueBaseURL 返回 fal 队列协议 base URL（默认 https://queue.fal.run）。
+// 支持通过 credential "base_url" 覆盖（用于代理/自建网关）。
+func (a *Account) FalQueueBaseURL() string {
+	if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+	return domain.FalQueueBaseURL
+}
+
+// FalSyncBaseURL 返回 fal 同步协议 base URL（默认 https://fal.run）。
+// 支持通过 credential "sync_base_url" 覆盖。
+func (a *Account) FalSyncBaseURL() string {
+	if baseURL := strings.TrimSpace(a.GetCredential("sync_base_url")); baseURL != "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+	return domain.FalSyncBaseURL
 }
 
 // GetGeminiBaseURL 返回 Gemini 兼容端点的 base URL。
@@ -1060,6 +1200,14 @@ func (a *Account) IsOpenAIOAuth() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeOAuth
 }
 
+func (a *Account) IsOpenAIPersonalAccessToken() bool {
+	if !a.IsOpenAIOAuth() {
+		return false
+	}
+	return isOpenAIPersonalAccessTokenAuthMode(a.GetCredential(openAIAuthModeCredentialKey)) ||
+		isOpenAIPersonalAccessTokenAuthMode(a.GetCredential(openAIAuthModeLegacyCredentialKey))
+}
+
 func (a *Account) IsOpenAIApiKey() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeAPIKey
 }
@@ -1086,6 +1234,31 @@ func (a *Account) GetOpenAIAccessToken() string {
 
 func (a *Account) GetOpenAIRefreshToken() string {
 	if !a.IsOpenAIOAuth() {
+		return ""
+	}
+	return a.GetCredential("refresh_token")
+}
+
+func (a *Account) GetGrokBaseURL() string {
+	if !a.IsGrok() {
+		return ""
+	}
+	baseURL := a.GetCredential("base_url")
+	if baseURL != "" {
+		return baseURL
+	}
+	return xai.DefaultBaseURL
+}
+
+func (a *Account) GetGrokAccessToken() string {
+	if !a.IsGrok() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+func (a *Account) GetGrokRefreshToken() string {
+	if !a.IsGrokOAuth() {
 		return ""
 	}
 	return a.GetCredential("refresh_token")
@@ -1119,6 +1292,34 @@ func (a *Account) GetChatGPTAccountID() string {
 	return a.GetCredential("chatgpt_account_id")
 }
 
+func (a *Account) IsChatGPTAccountFedRAMP() bool {
+	if !a.IsOpenAIOAuth() || a.Credentials == nil {
+		return false
+	}
+	v, ok := a.Credentials["chatgpt_account_is_fedramp"]
+	if !ok || v == nil {
+		return false
+	}
+	switch value := v.(type) {
+	case bool:
+		return value
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+		return err == nil && parsed
+	case json.Number:
+		parsed, err := strconv.ParseBool(value.String())
+		return err == nil && parsed
+	case float64:
+		return value != 0
+	case int:
+		return value != 0
+	case int64:
+		return value != 0
+	default:
+		return false
+	}
+}
+
 func (a *Account) GetOpenAIDeviceID() string {
 	if !a.IsOpenAIOAuth() {
 		return ""
@@ -1140,8 +1341,11 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	if capability == "" {
 		return true
 	}
-	if !a.IsOpenAI() {
+	if !a.IsOpenAICompatible() {
 		return false
+	}
+	if a.IsGrok() {
+		return capability == OpenAIEndpointCapabilityChatCompletions
 	}
 	switch capability {
 	case OpenAIEndpointCapabilityChatCompletions:
@@ -1208,6 +1412,9 @@ func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
 }
 
 func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapability) bool {
+	if capability == "" {
+		return true
+	}
 	if !a.IsOpenAI() {
 		return false
 	}
@@ -1527,36 +1734,15 @@ func (a *Account) IsCodexCLIOnlyEnabled() bool {
 	return ok && enabled
 }
 
-// GetCodexCLIOnlyAllowedClients 返回 codex_cli_only 之上额外放行的命名客户端预设 ID 列表。
-// 仅 OpenAI OAuth 账号生效；缺失或类型不符时返回空。预设 ID 的具体匹配规则由
-// openai 包的 registry 固化，配置只能引用预设键、不能自定义规则。
-func (a *Account) GetCodexCLIOnlyAllowedClients() []string {
-	if a == nil || !a.IsOpenAIOAuth() || a.Extra == nil {
-		return nil
+// IsCodexCLIOnlyAppServerAllowed 返回 codex_cli_only 账号是否额外放行 Codex app-server
+// 第三方客户端（运行时与全局 app_server 开关 OR）。字段：accounts.extra.codex_cli_only_allow_app_server。
+// 仅在 codex_cli_only 已启用时有意义；字段缺失或类型不符按 false（不放行）处理。
+func (a *Account) IsCodexCLIOnlyAppServerAllowed() bool {
+	if !a.IsCodexCLIOnlyEnabled() {
+		return false
 	}
-	raw, ok := a.Extra["codex_cli_only_allowed_clients"]
-	if !ok || raw == nil {
-		return nil
-	}
-	switch v := raw.(type) {
-	case []string:
-		result := make([]string, 0, len(v))
-		for _, s := range v {
-			if strings.TrimSpace(s) != "" {
-				result = append(result, s)
-			}
-		}
-		return result
-	case []any:
-		result := make([]string, 0, len(v))
-		for _, item := range v {
-			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
-				result = append(result, s)
-			}
-		}
-		return result
-	}
-	return nil
+	v, ok := a.Extra["codex_cli_only_allow_app_server"].(bool)
+	return ok && v
 }
 
 // WindowCostSchedulability 窗口费用调度状态

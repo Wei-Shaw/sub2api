@@ -57,10 +57,6 @@ linters:
         - G304
         - G306
         - G404
-        # G703/G704: 基于污点分析的路径穿越/SSRF 误报。受信任来源（运维方环境变量
-        # 配置的调试日志路径、测试用例内固定的 test server URL），与已排除的 G304 同类。
-        - G703
-        - G704
       severity: high
       confidence: high
     errcheck:

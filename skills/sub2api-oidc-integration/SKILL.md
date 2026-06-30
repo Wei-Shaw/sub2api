@@ -67,8 +67,8 @@ Use the returned `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`
   + family revocation → user must re-authenticate.
 - **`scope` must include `openid`** and stay within the client's allowed set.
 - Keep `client_secret` server-side only.
-- Request the **minimum scopes**; `sub2api:balance` / `sub2api:apikey` are sensitive
-  and warn the user on the consent screen.
+- Request the **minimum scopes**; `sub2api:apikey` is sensitive
+  and warns the user on the consent screen.
 
 ## Full reference
 

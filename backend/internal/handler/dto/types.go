@@ -104,6 +104,14 @@ type Group struct {
 	ImagePrice2K         *float64 `json:"image_price_2k"`
 	ImagePrice4K         *float64 `json:"image_price_4k"`
 
+	// 图片二维定价矩阵 tier_key -> quality_key -> price
+	ImagePricingMatrix domain.ImagePricingMatrix `json:"image_pricing_matrix,omitempty"`
+	// 仅 platform=openai 分组生效：fal 优先、openai 兑底
+	ImagePreferFal bool `json:"image_prefer_fal,omitempty"`
+	// 仅 platform=openai 分组生效：上游不返 size 或返 auto 时按 b64 内容解码识别真实分辨率用于计费
+	ImageDecodeSizeOnRsp bool `json:"image_decode_size_on_rsp,omitempty"`
+	ImageUpscaleOnRsp    bool `json:"image_upscale_on_rsp,omitempty"`
+
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
@@ -477,6 +485,14 @@ type UsageLog struct {
 	ImageSizeSource    *string        `json:"image_size_source"`
 	ImageSizeBreakdown map[string]int `json:"image_size_breakdown"`
 	MediaType          *string        `json:"media_type"`
+
+	// 异步媒体任务结果（fal 等异步出图）。
+	// TaskID 关联异步任务；ImageURLs/CosURLs 为出图结果地址（供下载，包含失败/退费记录仍可展示已产出图片）；
+	// BillingStatus 终态计费状态：charged / refunded。
+	TaskID        *int64   `json:"task_id,omitempty"`
+	ImageURLs     []string `json:"image_urls,omitempty"`
+	CosURLs       []string `json:"cos_urls,omitempty"`
+	BillingStatus *string  `json:"billing_status,omitempty"`
 
 	// User-Agent
 	UserAgent *string `json:"user_agent"`

@@ -96,6 +96,25 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		// 图片二维定价矩阵（added by migration 158）
+		// 结构：tier_key -> quality_key -> price，详见 domain.ImagePricingMatrix。
+		// 为 nil/空 map 时分组未启用矩阵定价，保持兼容现网行为。
+		field.JSON("image_pricing_matrix", domain.ImagePricingMatrix{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("图片二维定价矩阵：{tier_key}{quality_key} -> 单价；为空表示沿用旧 image_price_1k/2k/4k 字段"),
+		// 仅 platform=openai 分组消费；true 时图片调度反转优先级（fal 优先、openai 兜底）
+		field.Bool("image_prefer_fal").
+			Default(false).
+			Comment("仅 openai 分组生效：是否在图片调度时优先选择 fal 账号，openai 账号兜底"),
+		// 仅 platform=openai 分组消费；true 时回包 size 缺失或 auto 时按 b64 解码识别真实分辨率（added by migration 159）
+		field.Bool("image_decode_size_on_rsp").
+			Default(false).
+			Comment("仅 openai 分组生效：上游不返回 size 或返回 auto 时是否解码 b64_json 识别真实分辨率用于计费"),
+		// 仅 platform=openai 分组消费；依赖 image_decode_size_on_rsp；true 时真实档位低于目标档位则调 fal upscale 放大后再交付（added by migration 163）
+		field.Bool("image_upscale_on_rsp").
+			Default(false).
+			Comment("仅 openai 分组生效：回包真实档位低于请求目标档位(≥2K)时是否调 fal upscale 放大到目标档位后再交付，依赖 image_decode_size_on_rsp"),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").

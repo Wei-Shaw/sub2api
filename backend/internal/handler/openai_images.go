@@ -137,6 +137,12 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 	requestCtx := service.WithOpenAIImageGenerationIntent(c.Request.Context())
 
+	// 分组的 image_prefer_fal 开关：true 时混合调度反转为「fal 优先 + openai 兜底」
+	preferPlatform := ""
+	if apiKey.Group != nil && apiKey.Group.ImagePreferFalEnabled() {
+		preferPlatform = service.PlatformFal
+	}
+
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
@@ -145,35 +151,119 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 	for {
 		reqLog.Debug("openai.images.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForImages(
-			requestCtx,
-			apiKey.GroupID,
-			sessionHash,
-			requestModel,
-			failedAccountIDs,
-			parsed.RequiredCapability,
-		)
-		if err != nil {
-			reqLog.Warn("openai.images.account_select_failed",
-				zap.Error(err),
-				zap.Int("excluded_account_count", len(failedAccountIDs)),
+
+		var selection *service.AccountSelectionResult
+		var scheduleDecision service.OpenAIAccountScheduleDecision
+
+		if h.falImageFallback != nil {
+			// 混合调度：openai + fal 账号同池，按“优先级 + 最久未用”统一选号（不做 fallback）。
+			// preferPlatform="fal" 时反转为 fal 优先 + openai 兜底。
+			account, selErr := h.falImageFallback.SelectMixedImageAccount(
+				requestCtx,
+				apiKey.GroupID,
+				sessionHash,
+				requestModel,
+				failedAccountIDs,
+				parsed.RequiredCapability,
+				parsed,
+				preferPlatform,
 			)
-			if len(failedAccountIDs) == 0 {
-				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available compatible accounts", streamStarted)
+			if selErr != nil || account == nil {
+				reqLog.Warn("openai.images.account_select_failed",
+					zap.Error(selErr),
+					zap.Int("excluded_account_count", len(failedAccountIDs)),
+				)
+				if len(failedAccountIDs) == 0 {
+					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, requestModel, service.PlatformOpenAI)
+					if !cls.ModelNotFound {
+						markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+					}
+					message := cls.Message
+					if !cls.ModelNotFound {
+						message = "No available compatible accounts"
+					}
+					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
+					return
+				}
+				if lastFailoverErr != nil {
+					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+				} else {
+					h.handleFailoverExhaustedSimple(c, 502, streamStarted)
+				}
 				return
 			}
-			if lastFailoverErr != nil {
-				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
-			} else {
-				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
+
+			// fal 平台：走 fal 伪同步门面，响应一旦写出即终结（计费由 AsyncMediaService 承担，
+			// 本 handler 不再重复记账）。失败的 openai 账号可经混合池重选切到 fal，反之亦然。
+			if account.Platform == service.PlatformFal {
+				setOpsSelectedAccount(c, account.ID, account.Platform)
+				reqLog.Debug("openai.images.fal_account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
+				h.falImageFallback.ServeOpenAIImagesWithAccount(c, reqLog, apiKey, subject, parsed, account)
+				reqLog.Debug("openai.images.served_by_fal", zap.Int64("account_id", account.ID), zap.Int("switch_count", switchCount))
+				return
 			}
-			return
-		}
-		if selection == nil || selection.Account == nil {
-			markOpsRoutingCapacityLimited(c)
-			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available compatible accounts", streamStarted)
-			return
+
+			// openai 平台：为预选账号获取并发槽，构造调度结果走同步转发路径。
+			sel, prepErr := h.gatewayService.PrepareImageAccountSelection(requestCtx, account)
+			if prepErr != nil || sel == nil || sel.Account == nil {
+				reqLog.Warn("openai.images.account_slot_prepare_failed", zap.Int64("account_id", account.ID), zap.Error(prepErr))
+				failedAccountIDs[account.ID] = struct{}{}
+				if switchCount >= maxAccountSwitches {
+					h.handleFailoverExhaustedSimple(c, http.StatusServiceUnavailable, streamStarted)
+					return
+				}
+				switchCount++
+				continue
+			}
+			selection = sel
+		} else {
+			// 未挂载 fal 门面：退化为纯 openai 调度。
+			sel, decision, selErr := h.gatewayService.SelectAccountWithSchedulerForImages(
+				requestCtx,
+				apiKey.GroupID,
+				sessionHash,
+				requestModel,
+				failedAccountIDs,
+				parsed.RequiredCapability,
+			)
+			if selErr != nil {
+				reqLog.Warn("openai.images.account_select_failed",
+					zap.Error(selErr),
+					zap.Int("excluded_account_count", len(failedAccountIDs)),
+				)
+				if len(failedAccountIDs) == 0 {
+					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, requestModel, service.PlatformOpenAI)
+					if !cls.ModelNotFound {
+						markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+					}
+					message := cls.Message
+					if !cls.ModelNotFound {
+						message = "No available compatible accounts"
+					}
+					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
+					return
+				}
+				if lastFailoverErr != nil {
+					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+				} else {
+					h.handleFailoverExhaustedSimple(c, 502, streamStarted)
+				}
+				return
+			}
+			if sel == nil || sel.Account == nil {
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, requestModel, service.PlatformOpenAI)
+				if !cls.ModelNotFound {
+					markOpsRoutingCapacityLimited(c)
+				}
+				message := cls.Message
+				if !cls.ModelNotFound {
+					message = "No available compatible accounts"
+				}
+				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
+				return
+			}
+			selection = sel
+			scheduleDecision = decision
 		}
 
 		reqLog.Debug("openai.images.account_schedule_decision",
@@ -206,6 +296,43 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			}()
 			return h.gatewayService.ForwardImages(requestCtx, c, account, body, parsed, channelMapping.MappedModel)
 		}()
+
+		// DEBUG: 打印 ForwardImages 返回结果（截断 base64 内容）
+		if result != nil {
+			// 创建截断版本的 ImageOutputBase64 数组
+			truncatedBase64 := make([]string, len(result.ImageOutputBase64))
+			for i, base64Str := range result.ImageOutputBase64 {
+				if len(base64Str) > 100 {
+					truncatedBase64[i] = base64Str[:50] + "..." + base64Str[len(base64Str)-50:]
+				} else {
+					truncatedBase64[i] = base64Str
+				}
+			}
+
+			reqLog.Debug("openai.images.forward_result",
+				zap.Int("image_count", result.ImageCount),
+				zap.String("image_size", result.ImageSize),
+				zap.Strings("image_output_sizes", result.ImageOutputSizes),
+				zap.Strings("image_output_base64_lens", func() []string {
+					lens := make([]string, len(result.ImageOutputBase64))
+					for i, s := range result.ImageOutputBase64 {
+						lens[i] = strconv.Itoa(len(s))
+					}
+					return lens
+				}()),
+				zap.Strings("image_output_base64_truncated", truncatedBase64),
+				zap.String("image_size_source", result.ImageSizeSource),
+				zap.Error(err),
+				zap.Int64("account_id", account.ID),
+			)
+		} else {
+			reqLog.Debug("openai.images.forward_result",
+				zap.Any("result", result),
+				zap.Error(err),
+				zap.Int64("account_id", account.ID),
+			)
+		}
+
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs
@@ -327,6 +454,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		}
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 
 		upstreamModel := ""
 		if result != nil {
@@ -345,6 +473,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
+				QuotaPlatform:      quotaPlatform,
 				ChannelUsageFields: channelMapping.ToUsageFields(requestModel, upstreamModel),
 			}); err != nil {
 				logger.L().With(

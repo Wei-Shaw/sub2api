@@ -4,6 +4,7 @@ export interface IntervalFormEntry {
   min_tokens: number
   max_tokens: number | null
   tier_label: string
+  quality: string
   input_price: number | string | null
   output_price: number | string | null
   cache_write_price: number | string | null
@@ -51,6 +52,7 @@ export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEn
     min_tokens: iv.min_tokens,
     max_tokens: iv.max_tokens,
     tier_label: iv.tier_label || '',
+    quality: iv.quality || '',
     input_price: perTokenToMTok(iv.input_price),
     output_price: perTokenToMTok(iv.output_price),
     cache_write_price: perTokenToMTok(iv.cache_write_price),
@@ -65,6 +67,7 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
     min_tokens: iv.min_tokens,
     max_tokens: iv.max_tokens,
     tier_label: iv.tier_label,
+    quality: iv.quality || '',
     input_price: mTokToPerToken(iv.input_price),
     output_price: mTokToPerToken(iv.output_price),
     cache_write_price: mTokToPerToken(iv.cache_write_price),
@@ -196,6 +199,7 @@ export function getPlatformTagClass(platform: string): string {
     case 'openai': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
     case 'gemini': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
     case 'antigravity': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+    case 'grok': return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
     default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
   }
 }
@@ -207,6 +211,7 @@ export function getPlatformTextClass(platform: string): string {
     case 'openai': return 'text-emerald-700 dark:text-emerald-400'
     case 'gemini': return 'text-blue-700 dark:text-blue-400'
     case 'antigravity': return 'text-purple-700 dark:text-purple-400'
+    case 'grok': return 'text-slate-700 dark:text-slate-300'
     default: return ''
   }
 }

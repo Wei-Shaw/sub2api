@@ -131,6 +131,7 @@ func TestToUserErrorRequestDetail_WhitelistAndRedacts(t *testing.T) {
 	out := ToUserErrorRequestDetail(src)
 	if out == nil {
 		t.Fatal("expected non-nil detail")
+		return
 	}
 
 	// 基础字段正确映射

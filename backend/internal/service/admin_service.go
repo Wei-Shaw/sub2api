@@ -17,6 +17,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -25,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/httputil"
 )
 
@@ -211,8 +213,16 @@ type CreateGroupInput struct {
 	ImagePrice1K         *float64
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
-	ClaudeCodeOnly       bool   // 仅允许 Claude Code 客户端
-	FallbackGroupID      *int64 // 降级分组 ID
+	// 图片二维定价矩阵 tier_key -> quality_key -> price
+	ImagePricingMatrix domain.ImagePricingMatrix
+	// 仅 platform=openai 分组生效：fal 优先、openai 兜底
+	ImagePreferFal bool
+	// 仅 platform=openai 分组生效：回包图片分辨率自检（base64 解码）
+	ImageDecodeSizeOnRsp bool
+	// 仅 platform=openai 分组生效，依赖 ImageDecodeSizeOnRsp：回包真实档位低于目标档位则 fal upscale 放大后交付
+	ImageUpscaleOnRsp bool
+	ClaudeCodeOnly    bool   // 仅允许 Claude Code 客户端
+	FallbackGroupID   *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -252,8 +262,16 @@ type UpdateGroupInput struct {
 	ImagePrice1K         *float64
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
-	ClaudeCodeOnly       *bool  // 仅允许 Claude Code 客户端
-	FallbackGroupID      *int64 // 降级分组 ID
+	// 图片二维定价矩阵；non-nil 表示需要覆盖（空 map 清除）
+	ImagePricingMatrix *domain.ImagePricingMatrix
+	// 仅 platform=openai 分组生效；nil 表示未提供不变
+	ImagePreferFal *bool
+	// 仅 platform=openai 分组生效；nil 表示未提供不变
+	ImageDecodeSizeOnRsp *bool
+	// 仅 platform=openai 分组生效，依赖 ImageDecodeSizeOnRsp；nil 表示未提供不变
+	ImageUpscaleOnRsp *bool
+	ClaudeCodeOnly    *bool  // 仅允许 Claude Code 客户端
+	FallbackGroupID   *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -1780,6 +1798,8 @@ func defaultModelsListCandidateIDs(platform string) []string {
 			ids = append(ids, model.ID)
 		}
 		return ids
+	case PlatformGrok:
+		return xai.DefaultModelIDs()
 	default:
 		ids := make([]string, 0, len(claude.DefaultModels))
 		for _, model := range claude.DefaultModels {
@@ -1819,6 +1839,28 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, errors.New("image_rate_multiplier must be >= 0")
 		}
 		imageRateMultiplier = *input.ImageRateMultiplier
+	}
+
+	// 校验图片二维定价矩阵：每格必须 ≥ 0 且不超过阈值
+	if err := validateImagePricingMatrix(input.ImagePricingMatrix); err != nil {
+		return nil, err
+	}
+	// image_prefer_fal 仅在 platform=openai 上允许开启
+	if input.ImagePreferFal && platform != PlatformOpenAI {
+		return nil, errors.New("image_prefer_fal requires platform=openai")
+	}
+	// image_decode_size_on_rsp 仅在 platform=openai 上允许开启
+	if input.ImageDecodeSizeOnRsp && platform != PlatformOpenAI {
+		return nil, errors.New("image_decode_size_on_rsp requires platform=openai")
+	}
+	// image_upscale_on_rsp 仅在 platform=openai 上允许，且依赖 image_decode_size_on_rsp
+	if input.ImageUpscaleOnRsp {
+		if platform != PlatformOpenAI {
+			return nil, errors.New("image_upscale_on_rsp requires platform=openai")
+		}
+		if !input.ImageDecodeSizeOnRsp {
+			return nil, errors.New("image_upscale_on_rsp requires image_decode_size_on_rsp")
+		}
 	}
 
 	// 校验降级分组
@@ -1893,6 +1935,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
+		ImagePricingMatrix:              normalizeImagePricingMatrix(input.ImagePricingMatrix),
+		ImagePreferFal:                  input.ImagePreferFal,
+		ImageDecodeSizeOnRsp:            input.ImageDecodeSizeOnRsp,
+		ImageUpscaleOnRsp:               input.ImageUpscaleOnRsp,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
@@ -1913,7 +1959,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 
 	// require_oauth_only: 过滤掉 apikey 类型账号
-	if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini) && len(accountIDsToCopy) > 0 {
+	if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini || group.Platform == PlatformGrok) && len(accountIDsToCopy) > 0 {
 		accounts, err := s.accountRepo.GetByIDs(ctx, accountIDsToCopy)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch accounts for oauth filter: %w", err)
@@ -2089,6 +2135,36 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.ImagePrice4K = normalizePrice(input.ImagePrice4K)
 	}
 
+	// 图片二维定价矩阵：non-nil 表示需要覆盖（空 map 清除）
+	if input.ImagePricingMatrix != nil {
+		if err := validateImagePricingMatrix(*input.ImagePricingMatrix); err != nil {
+			return nil, err
+		}
+		group.ImagePricingMatrix = normalizeImagePricingMatrix(*input.ImagePricingMatrix)
+	}
+	// image_prefer_fal：仅 platform=openai 分组可置 true
+	if input.ImagePreferFal != nil {
+		if *input.ImagePreferFal && group.Platform != PlatformOpenAI {
+			return nil, errors.New("image_prefer_fal requires platform=openai")
+		}
+		group.ImagePreferFal = *input.ImagePreferFal
+	}
+	// image_decode_size_on_rsp：仅 platform=openai 分组可置 true
+	if input.ImageDecodeSizeOnRsp != nil {
+		if *input.ImageDecodeSizeOnRsp && group.Platform != PlatformOpenAI {
+			return nil, errors.New("image_decode_size_on_rsp requires platform=openai")
+		}
+		group.ImageDecodeSizeOnRsp = *input.ImageDecodeSizeOnRsp
+	}
+	// image_upscale_on_rsp：依赖 image_decode_size_on_rsp + platform=openai。
+	// 在 decode 应用之后判定最终状态，覆盖「同次更新关掉 decode 却留着 upscale」等组合。
+	if input.ImageUpscaleOnRsp != nil {
+		group.ImageUpscaleOnRsp = *input.ImageUpscaleOnRsp
+	}
+	if group.ImageUpscaleOnRsp && (group.Platform != PlatformOpenAI || !group.ImageDecodeSizeOnRsp) {
+		return nil, errors.New("image_upscale_on_rsp requires platform=openai and image_decode_size_on_rsp")
+	}
+
 	// Claude Code 客户端限制
 	if input.ClaudeCodeOnly != nil {
 		group.ClaudeCodeOnly = *input.ClaudeCodeOnly
@@ -2208,7 +2284,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 
 		// require_oauth_only: 过滤掉 apikey 类型账号
-		if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini) && len(accountIDsToCopy) > 0 {
+		if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini || group.Platform == PlatformGrok) && len(accountIDsToCopy) > 0 {
 			accounts, err := s.accountRepo.GetByIDs(ctx, accountIDsToCopy)
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch accounts for oauth filter: %w", err)
@@ -2569,7 +2645,46 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 	return accounts, nil
 }
 
+// validateFalAccountCredentials 校验 fal apikey 账号必须携带 FAL_KEY
+// （存于 credentials["api_key"] 或 credentials["fal_key"]）。
+func validateFalAccountCredentials(platform, accountType string, credentials map[string]any) error {
+	if platform != PlatformFal {
+		return nil
+	}
+	if accountType != "" && accountType != AccountTypeAPIKey {
+		return fmt.Errorf("fal platform only supports apikey account type")
+	}
+	getStr := func(key string) string {
+		if credentials == nil {
+			return ""
+		}
+		if v, ok := credentials[key].(string); ok {
+			return strings.TrimSpace(v)
+		}
+		return ""
+	}
+	if getStr("api_key") == "" && getStr("fal_key") == "" {
+		return fmt.Errorf("fal account requires FAL_KEY in credentials (api_key or fal_key)")
+	}
+	return nil
+}
+
+func normalizeAccountConcurrency(platform, accountType string, concurrency int) int {
+	if platform == PlatformGrok && accountType == AccountTypeOAuth {
+		if concurrency <= 0 {
+			return 1
+		}
+		if concurrency > 1 && !xai.AllowUnsafeHighConcurrency() {
+			return 1
+		}
+	}
+	return concurrency
+}
+
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if err := validateFalAccountCredentials(input.Platform, input.Type, input.Credentials); err != nil {
+		return nil, err
+	}
 	// 绑定分组
 	groupIDs := input.GroupIDs
 	// 如果没有指定分组,自动绑定对应平台的默认分组
@@ -2601,7 +2716,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		Credentials: input.Credentials,
 		Extra:       input.Extra,
 		ProxyID:     input.ProxyID,
-		Concurrency: input.Concurrency,
+		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,
@@ -2694,6 +2809,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
 		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		if err := validateFalAccountCredentials(account.Platform, account.Type, account.Credentials); err != nil {
+			return nil, err
+		}
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。
@@ -2734,7 +2852,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	// 只在指针非 nil 时更新 Concurrency（支持设置为 0）
 	if input.Concurrency != nil {
-		account.Concurrency = *input.Concurrency
+		account.Concurrency = normalizeAccountConcurrency(account.Platform, account.Type, *input.Concurrency)
 	}
 	// 只在指针非 nil 时更新 Priority（支持设置为 0）
 	if input.Priority != nil {

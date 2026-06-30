@@ -149,6 +149,27 @@ func (UsageLog) Fields() []ent.Field {
 		field.JSON("image_size_breakdown", map[string]int{}).
 			Optional().
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+
+		// 异步媒体任务关联字段（fal 等异步图片平台）
+		// task_id 关联 async_media_tasks.id；NULL 表示非异步任务的历史/普通日志。
+		field.Int64("task_id").
+			Optional().
+			Nillable().
+			Comment("关联的 async_media_tasks ID"),
+		field.JSON("image_urls", []string{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("成功出图的 fal 原始 url 列表"),
+		field.JSON("cos_url", []string{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("转存 COS 后的 url 列表"),
+		field.String("billing_status").
+			MaxLen(16).
+			Optional().
+			Nillable().
+			Comment("计费状态：charged（已扣费）/refunded（已退费）；NULL 表示普通日志"),
+
 		// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 		field.Bool("cache_ttl_overridden").
 			Default(false),

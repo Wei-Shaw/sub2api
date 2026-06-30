@@ -9,6 +9,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -811,6 +812,89 @@ func (_u *UsageLogUpdate) ClearImageSizeBreakdown() *UsageLogUpdate {
 	return _u
 }
 
+// SetTaskID sets the "task_id" field.
+func (_u *UsageLogUpdate) SetTaskID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetTaskID()
+	_u.mutation.SetTaskID(v)
+	return _u
+}
+
+// SetNillableTaskID sets the "task_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableTaskID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetTaskID(*v)
+	}
+	return _u
+}
+
+// AddTaskID adds value to the "task_id" field.
+func (_u *UsageLogUpdate) AddTaskID(v int64) *UsageLogUpdate {
+	_u.mutation.AddTaskID(v)
+	return _u
+}
+
+// ClearTaskID clears the value of the "task_id" field.
+func (_u *UsageLogUpdate) ClearTaskID() *UsageLogUpdate {
+	_u.mutation.ClearTaskID()
+	return _u
+}
+
+// SetImageUrls sets the "image_urls" field.
+func (_u *UsageLogUpdate) SetImageUrls(v []string) *UsageLogUpdate {
+	_u.mutation.SetImageUrls(v)
+	return _u
+}
+
+// AppendImageUrls appends value to the "image_urls" field.
+func (_u *UsageLogUpdate) AppendImageUrls(v []string) *UsageLogUpdate {
+	_u.mutation.AppendImageUrls(v)
+	return _u
+}
+
+// ClearImageUrls clears the value of the "image_urls" field.
+func (_u *UsageLogUpdate) ClearImageUrls() *UsageLogUpdate {
+	_u.mutation.ClearImageUrls()
+	return _u
+}
+
+// SetCosURL sets the "cos_url" field.
+func (_u *UsageLogUpdate) SetCosURL(v []string) *UsageLogUpdate {
+	_u.mutation.SetCosURL(v)
+	return _u
+}
+
+// AppendCosURL appends value to the "cos_url" field.
+func (_u *UsageLogUpdate) AppendCosURL(v []string) *UsageLogUpdate {
+	_u.mutation.AppendCosURL(v)
+	return _u
+}
+
+// ClearCosURL clears the value of the "cos_url" field.
+func (_u *UsageLogUpdate) ClearCosURL() *UsageLogUpdate {
+	_u.mutation.ClearCosURL()
+	return _u
+}
+
+// SetBillingStatus sets the "billing_status" field.
+func (_u *UsageLogUpdate) SetBillingStatus(v string) *UsageLogUpdate {
+	_u.mutation.SetBillingStatus(v)
+	return _u
+}
+
+// SetNillableBillingStatus sets the "billing_status" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableBillingStatus(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetBillingStatus(*v)
+	}
+	return _u
+}
+
+// ClearBillingStatus clears the value of the "billing_status" field.
+func (_u *UsageLogUpdate) ClearBillingStatus() *UsageLogUpdate {
+	_u.mutation.ClearBillingStatus()
+	return _u
+}
+
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (_u *UsageLogUpdate) SetCacheTTLOverridden(v bool) *UsageLogUpdate {
 	_u.mutation.SetCacheTTLOverridden(v)
@@ -977,6 +1061,11 @@ func (_u *UsageLogUpdate) check() error {
 	if v, ok := _u.mutation.ImageSizeSource(); ok {
 		if err := usagelog.ImageSizeSourceValidator(v); err != nil {
 			return &ValidationError{Name: "image_size_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size_source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.BillingStatus(); ok {
+		if err := usagelog.BillingStatusValidator(v); err != nil {
+			return &ValidationError{Name: "billing_status", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_status": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -1209,6 +1298,43 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ImageSizeBreakdownCleared() {
 		_spec.ClearField(usagelog.FieldImageSizeBreakdown, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.TaskID(); ok {
+		_spec.SetField(usagelog.FieldTaskID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedTaskID(); ok {
+		_spec.AddField(usagelog.FieldTaskID, field.TypeInt64, value)
+	}
+	if _u.mutation.TaskIDCleared() {
+		_spec.ClearField(usagelog.FieldTaskID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ImageUrls(); ok {
+		_spec.SetField(usagelog.FieldImageUrls, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedImageUrls(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, usagelog.FieldImageUrls, value)
+		})
+	}
+	if _u.mutation.ImageUrlsCleared() {
+		_spec.ClearField(usagelog.FieldImageUrls, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.CosURL(); ok {
+		_spec.SetField(usagelog.FieldCosURL, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedCosURL(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, usagelog.FieldCosURL, value)
+		})
+	}
+	if _u.mutation.CosURLCleared() {
+		_spec.ClearField(usagelog.FieldCosURL, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.BillingStatus(); ok {
+		_spec.SetField(usagelog.FieldBillingStatus, field.TypeString, value)
+	}
+	if _u.mutation.BillingStatusCleared() {
+		_spec.ClearField(usagelog.FieldBillingStatus, field.TypeString)
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
@@ -2157,6 +2283,89 @@ func (_u *UsageLogUpdateOne) ClearImageSizeBreakdown() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetTaskID sets the "task_id" field.
+func (_u *UsageLogUpdateOne) SetTaskID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetTaskID()
+	_u.mutation.SetTaskID(v)
+	return _u
+}
+
+// SetNillableTaskID sets the "task_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableTaskID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetTaskID(*v)
+	}
+	return _u
+}
+
+// AddTaskID adds value to the "task_id" field.
+func (_u *UsageLogUpdateOne) AddTaskID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddTaskID(v)
+	return _u
+}
+
+// ClearTaskID clears the value of the "task_id" field.
+func (_u *UsageLogUpdateOne) ClearTaskID() *UsageLogUpdateOne {
+	_u.mutation.ClearTaskID()
+	return _u
+}
+
+// SetImageUrls sets the "image_urls" field.
+func (_u *UsageLogUpdateOne) SetImageUrls(v []string) *UsageLogUpdateOne {
+	_u.mutation.SetImageUrls(v)
+	return _u
+}
+
+// AppendImageUrls appends value to the "image_urls" field.
+func (_u *UsageLogUpdateOne) AppendImageUrls(v []string) *UsageLogUpdateOne {
+	_u.mutation.AppendImageUrls(v)
+	return _u
+}
+
+// ClearImageUrls clears the value of the "image_urls" field.
+func (_u *UsageLogUpdateOne) ClearImageUrls() *UsageLogUpdateOne {
+	_u.mutation.ClearImageUrls()
+	return _u
+}
+
+// SetCosURL sets the "cos_url" field.
+func (_u *UsageLogUpdateOne) SetCosURL(v []string) *UsageLogUpdateOne {
+	_u.mutation.SetCosURL(v)
+	return _u
+}
+
+// AppendCosURL appends value to the "cos_url" field.
+func (_u *UsageLogUpdateOne) AppendCosURL(v []string) *UsageLogUpdateOne {
+	_u.mutation.AppendCosURL(v)
+	return _u
+}
+
+// ClearCosURL clears the value of the "cos_url" field.
+func (_u *UsageLogUpdateOne) ClearCosURL() *UsageLogUpdateOne {
+	_u.mutation.ClearCosURL()
+	return _u
+}
+
+// SetBillingStatus sets the "billing_status" field.
+func (_u *UsageLogUpdateOne) SetBillingStatus(v string) *UsageLogUpdateOne {
+	_u.mutation.SetBillingStatus(v)
+	return _u
+}
+
+// SetNillableBillingStatus sets the "billing_status" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableBillingStatus(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetBillingStatus(*v)
+	}
+	return _u
+}
+
+// ClearBillingStatus clears the value of the "billing_status" field.
+func (_u *UsageLogUpdateOne) ClearBillingStatus() *UsageLogUpdateOne {
+	_u.mutation.ClearBillingStatus()
+	return _u
+}
+
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (_u *UsageLogUpdateOne) SetCacheTTLOverridden(v bool) *UsageLogUpdateOne {
 	_u.mutation.SetCacheTTLOverridden(v)
@@ -2336,6 +2545,11 @@ func (_u *UsageLogUpdateOne) check() error {
 	if v, ok := _u.mutation.ImageSizeSource(); ok {
 		if err := usagelog.ImageSizeSourceValidator(v); err != nil {
 			return &ValidationError{Name: "image_size_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size_source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.BillingStatus(); ok {
+		if err := usagelog.BillingStatusValidator(v); err != nil {
+			return &ValidationError{Name: "billing_status", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_status": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -2585,6 +2799,43 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.ImageSizeBreakdownCleared() {
 		_spec.ClearField(usagelog.FieldImageSizeBreakdown, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.TaskID(); ok {
+		_spec.SetField(usagelog.FieldTaskID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedTaskID(); ok {
+		_spec.AddField(usagelog.FieldTaskID, field.TypeInt64, value)
+	}
+	if _u.mutation.TaskIDCleared() {
+		_spec.ClearField(usagelog.FieldTaskID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ImageUrls(); ok {
+		_spec.SetField(usagelog.FieldImageUrls, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedImageUrls(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, usagelog.FieldImageUrls, value)
+		})
+	}
+	if _u.mutation.ImageUrlsCleared() {
+		_spec.ClearField(usagelog.FieldImageUrls, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.CosURL(); ok {
+		_spec.SetField(usagelog.FieldCosURL, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedCosURL(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, usagelog.FieldCosURL, value)
+		})
+	}
+	if _u.mutation.CosURLCleared() {
+		_spec.ClearField(usagelog.FieldCosURL, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.BillingStatus(); ok {
+		_spec.SetField(usagelog.FieldBillingStatus, field.TypeString, value)
+	}
+	if _u.mutation.BillingStatusCleared() {
+		_spec.ClearField(usagelog.FieldBillingStatus, field.TypeString)
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)

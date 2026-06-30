@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
@@ -24,6 +25,11 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
+
+// timeFromNow 返回 time.Now() 之后 sec 秒的 UTC 时间，仅供测试构造过期时间。
+func timeFromNow(sec int) time.Time {
+	return time.Now().UTC().Add(time.Duration(sec) * time.Second)
+}
 
 // ─── 测试基础设施 ────────────────────────────────────────────────────────────
 
@@ -141,7 +147,7 @@ func newOidcHandlerTestEnv(t *testing.T, enabled bool) *oidcHandlerTestEnv {
 	provider := service.NewOidcProviderService(client, repo, signing, clientSvc, consentSvc)
 	sso := service.NewSsoSessionService(client, repo)
 
-	h := NewOidcProviderHandler(provider, sso)
+	h := NewOidcProviderHandler(provider, sso, nil)
 
 	r := gin.New()
 	r.GET("/.well-known/openid-configuration", h.Discovery)
@@ -435,4 +441,104 @@ func TestOidcHandler_Authorize_RejectsBadRedirectURI(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.Equal(t, "invalid_request", body["error"])
+}
+
+// ─── Resource: ListAPIKeys (鉴权分支) ───────────────────────────────────────
+//
+// 完整成功路径需要装配真实 APIKeyService（含 repo 图），由集成测试覆盖；
+// 此处仅覆盖 OIDC 鉴权与 scope 控制分支。
+
+// newOidcHandlerTestEnvWithResource 构造一个带 ListAPIKeys 路由的测试 env
+// （apiKeyService 注入为 nil，仅用于触发鉴权前的 401 / 403 分支）。
+func newOidcHandlerTestEnvWithResource(t *testing.T, enabled bool) *oidcHandlerTestEnv {
+	t.Helper()
+	e := newOidcHandlerTestEnv(t, enabled)
+	h := NewOidcProviderHandler(e.provider, e.sso, nil)
+	e.router.GET("/oidc/resource/api-keys", h.ListAPIKeys)
+	return e
+}
+
+func TestOidcHandler_ListAPIKeys_MissingTokenReturns401(t *testing.T) {
+	e := newOidcHandlerTestEnvWithResource(t, true)
+	w := httptest.NewRecorder()
+	e.router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/oidc/resource/api-keys", nil))
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	require.Contains(t, w.Header().Get("WWW-Authenticate"), "Bearer")
+}
+
+func TestOidcHandler_ListAPIKeys_InvalidTokenReturns401(t *testing.T) {
+	e := newOidcHandlerTestEnvWithResource(t, true)
+	req := httptest.NewRequest(http.MethodGet, "/oidc/resource/api-keys", nil)
+	req.Header.Set("Authorization", "Bearer not-real")
+	w := httptest.NewRecorder()
+	e.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	require.Contains(t, w.Header().Get("WWW-Authenticate"), `error="invalid_token"`)
+}
+
+func TestOidcHandler_ListAPIKeys_DisabledProviderReturns404(t *testing.T) {
+	e := newOidcHandlerTestEnvWithResource(t, false)
+	req := httptest.NewRequest(http.MethodGet, "/oidc/resource/api-keys", nil)
+	req.Header.Set("Authorization", "Bearer whatever")
+	w := httptest.NewRecorder()
+	e.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestOidcHandler_ListAPIKeys_InsufficientScopeReturns403(t *testing.T) {
+	e := newOidcHandlerTestEnvWithResource(t, true)
+
+	// 直接注入一条仅含 "openid profile" scope 的 access_token 行，
+	// 触发 resolveOidcBearer 中的 insufficient_scope 分支。
+	ctx := context.Background()
+	tokenVal := "test-access-token-no-apikey-scope"
+	_, err := e.client.OidcAccessToken.Create().
+		SetToken(tokenVal).
+		SetClientID("rp-test").
+		SetUserID(1).
+		SetScopes([]string{"openid", "profile"}).
+		SetRefreshFamilyID("").
+		SetExpiresAt(timeFromNow(3600)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/oidc/resource/api-keys", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenVal)
+	w := httptest.NewRecorder()
+	e.router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Header().Get("WWW-Authenticate"), `error="insufficient_scope"`)
+	require.Contains(t, w.Header().Get("WWW-Authenticate"), `scope="sub2api:apikey"`)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "insufficient_scope", body["error"])
+}
+
+func TestOidcHandler_ListAPIKeys_ScopeOKButServiceMissingReturns500(t *testing.T) {
+	e := newOidcHandlerTestEnvWithResource(t, true)
+
+	// 注入一条带 sub2api:apikey scope 的 access_token；apiKeys==nil 触发 500 兜底分支。
+	ctx := context.Background()
+	tokenVal := "test-access-token-with-apikey-scope"
+	_, err := e.client.OidcAccessToken.Create().
+		SetToken(tokenVal).
+		SetClientID("rp-test").
+		SetUserID(1).
+		SetScopes([]string{"openid", "sub2api:apikey"}).
+		SetRefreshFamilyID("").
+		SetExpiresAt(timeFromNow(3600)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/oidc/resource/api-keys", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenVal)
+	w := httptest.NewRecorder()
+	e.router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "server_error", body["error"])
 }

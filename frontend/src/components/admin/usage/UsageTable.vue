@@ -148,6 +148,24 @@
           </div>
         </template>
 
+        <template #cell-result="{ row }">
+          <div v-if="resultImageURLs(row).length" class="flex max-w-[180px] flex-wrap items-center gap-1.5">
+            <a
+              v-for="(url, idx) in resultImageURLs(row)"
+              :key="idx"
+              :href="url"
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              :title="t('usage.resultDownload')"
+              class="block h-12 w-12 overflow-hidden rounded border border-gray-200 transition hover:ring-2 hover:ring-blue-400 dark:border-dark-700"
+            >
+              <img :src="url" loading="lazy" alt="result" class="h-full w-full object-cover" />
+            </a>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-cost="{ row }">
           <div class="text-sm">
             <div class="flex items-center gap-1.5">
@@ -301,7 +319,7 @@
               <span class="font-medium text-pink-300">${{ tooltipData.image_output_cost.toFixed(6) }}</span>
             </div>
             <!-- Token billing: show unit prices per 1M tokens -->
-            <template v-if="!tooltipData?.billing_mode || tooltipData.billing_mode === BILLING_MODE_TOKEN">
+            <template v-if="tooltipData && !isImageUsage(tooltipData) && (!tooltipData.billing_mode || tooltipData.billing_mode === BILLING_MODE_TOKEN)">
               <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
                 <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) }} {{ t('usage.perMillionTokens') }}</span>
@@ -315,7 +333,7 @@
                 <span class="font-medium text-pink-300">{{ formatTokenPricePerMillion(tooltipData.image_output_cost ?? 0, tooltipData.image_output_tokens) }} {{ t('usage.perMillionTokens') }}</span>
               </div>
             </template>
-            <template v-else-if="isImageUsage(tooltipData)">
+            <template v-else-if="tooltipData && isImageUsage(tooltipData)">
               <div class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.imageCount') }}</span>
                 <span class="font-medium text-white">{{ tooltipData.image_count }}{{ t('usage.imageUnit') }}</span>
@@ -495,6 +513,13 @@ const getRequestTypeBadgeClass = (row: AdminUsageLog): string => {
 
 const formatUserAgent = (ua: string): string => {
   return ua
+}
+
+// 出图结果地址：优先 COS 转存地址，回退上游原始地址（失败/退费记录已产出图片仍可展示）。
+const resultImageURLs = (row: AdminUsageLog): string[] => {
+  const cos = row.cos_urls
+  if (cos && cos.length > 0) return cos
+  return row.image_urls ?? []
 }
 
 const formatDuration = (ms: number | null | undefined): string => {

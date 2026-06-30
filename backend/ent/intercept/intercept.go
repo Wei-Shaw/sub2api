@@ -13,8 +13,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/asyncmediatask"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/balanceledger"
+	"github.com/Wei-Shaw/sub2api/ent/billingapp"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -244,6 +247,33 @@ func (f TraverseAnnouncementRead) Traverse(ctx context.Context, q ent.Query) err
 	return fmt.Errorf("unexpected query type %T. expect *ent.AnnouncementReadQuery", q)
 }
 
+// The AsyncMediaTaskFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AsyncMediaTaskFunc func(context.Context, *ent.AsyncMediaTaskQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AsyncMediaTaskFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AsyncMediaTaskQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AsyncMediaTaskQuery", q)
+}
+
+// The TraverseAsyncMediaTask type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAsyncMediaTask func(context.Context, *ent.AsyncMediaTaskQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAsyncMediaTask) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAsyncMediaTask) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AsyncMediaTaskQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AsyncMediaTaskQuery", q)
+}
+
 // The AuthIdentityFunc type is an adapter to allow the use of ordinary function as a Querier.
 type AuthIdentityFunc func(context.Context, *ent.AuthIdentityQuery) (ent.Value, error)
 
@@ -296,6 +326,60 @@ func (f TraverseAuthIdentityChannel) Traverse(ctx context.Context, q ent.Query) 
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.AuthIdentityChannelQuery", q)
+}
+
+// The BalanceLedgerFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BalanceLedgerFunc func(context.Context, *ent.BalanceLedgerQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BalanceLedgerFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BalanceLedgerQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BalanceLedgerQuery", q)
+}
+
+// The TraverseBalanceLedger type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBalanceLedger func(context.Context, *ent.BalanceLedgerQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBalanceLedger) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBalanceLedger) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BalanceLedgerQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BalanceLedgerQuery", q)
+}
+
+// The BillingAppFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BillingAppFunc func(context.Context, *ent.BillingAppQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BillingAppFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BillingAppQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BillingAppQuery", q)
+}
+
+// The TraverseBillingApp type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBillingApp func(context.Context, *ent.BillingAppQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBillingApp) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBillingApp) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BillingAppQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BillingAppQuery", q)
 }
 
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1256,10 +1340,16 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AnnouncementQuery, predicate.Announcement, announcement.OrderOption]{typ: ent.TypeAnnouncement, tq: q}, nil
 	case *ent.AnnouncementReadQuery:
 		return &query[*ent.AnnouncementReadQuery, predicate.AnnouncementRead, announcementread.OrderOption]{typ: ent.TypeAnnouncementRead, tq: q}, nil
+	case *ent.AsyncMediaTaskQuery:
+		return &query[*ent.AsyncMediaTaskQuery, predicate.AsyncMediaTask, asyncmediatask.OrderOption]{typ: ent.TypeAsyncMediaTask, tq: q}, nil
 	case *ent.AuthIdentityQuery:
 		return &query[*ent.AuthIdentityQuery, predicate.AuthIdentity, authidentity.OrderOption]{typ: ent.TypeAuthIdentity, tq: q}, nil
 	case *ent.AuthIdentityChannelQuery:
 		return &query[*ent.AuthIdentityChannelQuery, predicate.AuthIdentityChannel, authidentitychannel.OrderOption]{typ: ent.TypeAuthIdentityChannel, tq: q}, nil
+	case *ent.BalanceLedgerQuery:
+		return &query[*ent.BalanceLedgerQuery, predicate.BalanceLedger, balanceledger.OrderOption]{typ: ent.TypeBalanceLedger, tq: q}, nil
+	case *ent.BillingAppQuery:
+		return &query[*ent.BillingAppQuery, predicate.BillingApp, billingapp.OrderOption]{typ: ent.TypeBillingApp, tq: q}, nil
 	case *ent.ChannelMonitorQuery:
 		return &query[*ent.ChannelMonitorQuery, predicate.ChannelMonitor, channelmonitor.OrderOption]{typ: ent.TypeChannelMonitor, tq: q}, nil
 	case *ent.ChannelMonitorDailyRollupQuery:

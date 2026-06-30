@@ -56,6 +56,14 @@ const (
 	FieldImagePrice2k = "image_price_2k"
 	// FieldImagePrice4k holds the string denoting the image_price_4k field in the database.
 	FieldImagePrice4k = "image_price_4k"
+	// FieldImagePricingMatrix holds the string denoting the image_pricing_matrix field in the database.
+	FieldImagePricingMatrix = "image_pricing_matrix"
+	// FieldImagePreferFal holds the string denoting the image_prefer_fal field in the database.
+	FieldImagePreferFal = "image_prefer_fal"
+	// FieldImageDecodeSizeOnRsp holds the string denoting the image_decode_size_on_rsp field in the database.
+	FieldImageDecodeSizeOnRsp = "image_decode_size_on_rsp"
+	// FieldImageUpscaleOnRsp holds the string denoting the image_upscale_on_rsp field in the database.
+	FieldImageUpscaleOnRsp = "image_upscale_on_rsp"
 	// FieldClaudeCodeOnly holds the string denoting the claude_code_only field in the database.
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
@@ -181,6 +189,10 @@ var Columns = []string{
 	FieldImagePrice1k,
 	FieldImagePrice2k,
 	FieldImagePrice4k,
+	FieldImagePricingMatrix,
+	FieldImagePreferFal,
+	FieldImageDecodeSizeOnRsp,
+	FieldImageUpscaleOnRsp,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
@@ -257,6 +269,12 @@ var (
 	DefaultImageRateIndependent bool
 	// DefaultImageRateMultiplier holds the default value on creation for the "image_rate_multiplier" field.
 	DefaultImageRateMultiplier float64
+	// DefaultImagePreferFal holds the default value on creation for the "image_prefer_fal" field.
+	DefaultImagePreferFal bool
+	// DefaultImageDecodeSizeOnRsp holds the default value on creation for the "image_decode_size_on_rsp" field.
+	DefaultImageDecodeSizeOnRsp bool
+	// DefaultImageUpscaleOnRsp holds the default value on creation for the "image_upscale_on_rsp" field.
+	DefaultImageUpscaleOnRsp bool
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
@@ -391,6 +409,21 @@ func ByImagePrice2k(opts ...sql.OrderTermOption) OrderOption {
 // ByImagePrice4k orders the results by the image_price_4k field.
 func ByImagePrice4k(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImagePrice4k, opts...).ToFunc()
+}
+
+// ByImagePreferFal orders the results by the image_prefer_fal field.
+func ByImagePreferFal(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImagePreferFal, opts...).ToFunc()
+}
+
+// ByImageDecodeSizeOnRsp orders the results by the image_decode_size_on_rsp field.
+func ByImageDecodeSizeOnRsp(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageDecodeSizeOnRsp, opts...).ToFunc()
+}
+
+// ByImageUpscaleOnRsp orders the results by the image_upscale_on_rsp field.
+func ByImageUpscaleOnRsp(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageUpscaleOnRsp, opts...).ToFunc()
 }
 
 // ByClaudeCodeOnly orders the results by the claude_code_only field.

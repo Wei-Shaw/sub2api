@@ -276,6 +276,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ContactInfo:                            settings.ContactInfo,
 		DocURL:                                 settings.DocURL,
 		HomeContent:                            settings.HomeContent,
+		HomeProductMenuItems:                   dto.ParseCustomMenuItems(settings.HomeProductMenuItems),
 		HideCcsImportButton:                    settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:                settings.PurchaseSubscriptionURL,
@@ -292,7 +293,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           settings.AffiliateRebatePerInviteeCap,
-		AffiliateRebateIncludeSubscription:     settings.AffiliateRebateIncludeSubscription,
 		DefaultUserRPMLimit:                    settings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    settings.EnableModelFallback,
@@ -320,7 +320,12 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		RewriteMessageCacheControl:             settings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            settings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                   settings.OpenAICodexUserAgent,
-		OpenAIAllowClaudeCodeCodexPlugin:       settings.OpenAIAllowClaudeCodeCodexPlugin,
+		MinCodexVersion:                        settings.MinCodexVersion,
+		MaxCodexVersion:                        settings.MaxCodexVersion,
+		CodexCLIOnlyBlacklist:                  settings.CodexCLIOnlyBlacklist,
+		CodexCLIOnlyWhitelist:                  settings.CodexCLIOnlyWhitelist,
+		CodexCLIOnlyAllowAppServerClients:      settings.CodexCLIOnlyAllowAppServerClients,
+		CodexCLIOnlyEngineFingerprintSignals:   settings.CodexCLIOnlyEngineFingerprintSignals,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
 		PaymentVisibleMethodAlipaySource:       settings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        settings.PaymentVisibleMethodWxpaySource,
@@ -566,6 +571,7 @@ type UpdateSettingsRequest struct {
 	ContactInfo                 string                `json:"contact_info"`
 	DocURL                      string                `json:"doc_url"`
 	HomeContent                 string                `json:"home_content"`
+	HomeProductMenuItems        *[]dto.CustomMenuItem `json:"home_product_menu_items"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
@@ -581,7 +587,6 @@ type UpdateSettingsRequest struct {
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
 	AffiliateRebatePerInviteeCap              *float64                          `json:"affiliate_rebate_per_invitee_cap"`
-	AffiliateRebateIncludeSubscription        *bool                             `json:"affiliate_rebate_include_subscription"`
 	DefaultUserRPMLimit                       int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                      []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
 	AuthSourceDefaultEmailBalance             *float64                          `json:"auth_source_default_email_balance"`
@@ -658,7 +663,14 @@ type UpdateSettingsRequest struct {
 	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
 	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
-	OpenAIAllowClaudeCodeCodexPlugin       *bool   `json:"openai_allow_claude_code_codex_plugin"`
+
+	// codex_cli_only 加固（global-only）
+	MinCodexVersion                      string `json:"min_codex_version"`
+	MaxCodexVersion                      string `json:"max_codex_version"`
+	CodexCLIOnlyBlacklist                string `json:"codex_cli_only_blacklist"`
+	CodexCLIOnlyWhitelist                string `json:"codex_cli_only_whitelist"`
+	CodexCLIOnlyAllowAppServerClients    *bool  `json:"codex_cli_only_allow_app_server_clients"`
+	CodexCLIOnlyEngineFingerprintSignals string `json:"codex_cli_only_engine_fingerprint_signals"`
 
 	// Payment visible method routing
 	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
@@ -806,10 +818,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if affiliateRebatePerInviteeCap < 0 {
 		affiliateRebatePerInviteeCap = service.AffiliateRebatePerInviteeCapDefault
-	}
-	affiliateRebateIncludeSubscription := previousSettings.AffiliateRebateIncludeSubscription
-	if req.AffiliateRebateIncludeSubscription != nil {
-		affiliateRebateIncludeSubscription = *req.AffiliateRebateIncludeSubscription
 	}
 	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
 	if req.TableDefaultPageSize <= 0 {
@@ -1445,6 +1453,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")
 				return
 			}
+			action := strings.TrimSpace(item.Action)
+			if action == "" {
+				action = "iframe"
+			}
+			if action != "iframe" && action != "same_tab" && action != "new_tab" {
+				response.BadRequest(c, "Custom menu item action must be 'iframe', 'same_tab', or 'new_tab'")
+				return
+			}
+			items[i].Action = action
 			if len(item.IconSVG) > maxMenuItemIconSVGLen {
 				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
 				return
@@ -1480,6 +1497,81 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 		customMenuJSON = string(menuBytes)
+	}
+
+	homeProductMenuJSON := previousSettings.HomeProductMenuItems
+	if req.HomeProductMenuItems != nil {
+		items := *req.HomeProductMenuItems
+		if len(items) > maxCustomMenuItems {
+			response.BadRequest(c, "Too many home product menu items (max 20)")
+			return
+		}
+		for i, item := range items {
+			if strings.TrimSpace(item.Label) == "" {
+				response.BadRequest(c, "Home product menu item label is required")
+				return
+			}
+			if len(item.Label) > maxMenuItemLabelLen {
+				response.BadRequest(c, "Home product menu item label is too long (max 50 characters)")
+				return
+			}
+			urlTrimmed := strings.TrimSpace(item.URL)
+			if urlTrimmed == "" {
+				response.BadRequest(c, "Home product menu item URL is required")
+				return
+			}
+			if len(item.URL) > maxMenuItemURLLen {
+				response.BadRequest(c, "Home product menu item URL is too long (max 2048 characters)")
+				return
+			}
+			if err := config.ValidateAbsoluteHTTPURL(urlTrimmed); err != nil {
+				response.BadRequest(c, "Home product menu item URL must be an absolute http(s) URL")
+				return
+			}
+			action := strings.TrimSpace(item.Action)
+			if action == "" {
+				action = "same_tab"
+			}
+			if action != "same_tab" && action != "new_tab" {
+				response.BadRequest(c, "Home product menu item action must be 'same_tab' or 'new_tab'")
+				return
+			}
+			items[i].Action = action
+			items[i].Visibility = "user"
+			items[i].SortOrder = i
+			if len(item.IconSVG) > maxMenuItemIconSVGLen {
+				response.BadRequest(c, "Home product menu item icon SVG is too large (max 10KB)")
+				return
+			}
+			if strings.TrimSpace(item.ID) == "" {
+				id, err := generateMenuItemID()
+				if err != nil {
+					response.Error(c, http.StatusInternalServerError, "Failed to generate home product menu item ID")
+					return
+				}
+				items[i].ID = id
+			} else if len(item.ID) > maxMenuItemIDLen {
+				response.BadRequest(c, "Home product menu item ID is too long (max 32 characters)")
+				return
+			} else if !menuItemIDPattern.MatchString(item.ID) {
+				response.BadRequest(c, "Home product menu item ID contains invalid characters (only a-z, A-Z, 0-9, - and _ are allowed)")
+				return
+			}
+		}
+		seen := make(map[string]struct{}, len(items))
+		for _, item := range items {
+			if _, exists := seen[item.ID]; exists {
+				response.BadRequest(c, "Duplicate home product menu item ID: "+item.ID)
+				return
+			}
+			seen[item.ID] = struct{}{}
+		}
+		menuBytes, err := json.Marshal(items)
+		if err != nil {
+			response.BadRequest(c, "Failed to serialize home product menu items")
+			return
+		}
+		homeProductMenuJSON = string(menuBytes)
 	}
 
 	// 自定义端点验证
@@ -1581,6 +1673,34 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			response.Error(c, http.StatusBadRequest, "openai_codex_user_agent must be at most 512 characters")
 			return
 		}
+	}
+
+	// codex_cli_only 加固：最低/最高 Codex 版本（空=禁用，或合法 semver；max>=min）
+	if req.MinCodexVersion != "" && !semverPattern.MatchString(req.MinCodexVersion) {
+		response.Error(c, http.StatusBadRequest, "min_codex_version must be empty or a valid semver (e.g. 0.141.0)")
+		return
+	}
+	if req.MaxCodexVersion != "" && !semverPattern.MatchString(req.MaxCodexVersion) {
+		response.Error(c, http.StatusBadRequest, "max_codex_version must be empty or a valid semver (e.g. 0.200.0)")
+		return
+	}
+	if req.MinCodexVersion != "" && req.MaxCodexVersion != "" && service.CompareVersions(req.MaxCodexVersion, req.MinCodexVersion) < 0 {
+		response.Error(c, http.StatusBadRequest, "max_codex_version must be greater than or equal to min_codex_version")
+		return
+	}
+	// codex_cli_only 黑/白名单：非空须为合法 []AllowedClientEntry JSON。
+	// 黑名单 OR 宽 deny（允许 originator-only）；白名单双因子 AND，额外要求每条可命中（非空 originator + ua_contains）。
+	if err := service.ValidateCodexClientEntriesJSON(req.CodexCLIOnlyBlacklist); err != nil {
+		response.Error(c, http.StatusBadRequest, "codex_cli_only_blacklist "+err.Error())
+		return
+	}
+	if err := service.ValidateCodexWhitelistEntriesJSON(req.CodexCLIOnlyWhitelist); err != nil {
+		response.Error(c, http.StatusBadRequest, "codex_cli_only_whitelist "+err.Error())
+		return
+	}
+	if err := service.ValidateEngineFingerprintSignalsJSON(req.CodexCLIOnlyEngineFingerprintSignals); err != nil {
+		response.Error(c, http.StatusBadRequest, "codex_cli_only_engine_fingerprint_signals "+err.Error())
+		return
 	}
 
 	// 交叉验证：如果同时设置了最低和最高版本号，最高版本号必须 >= 最低版本号
@@ -1706,6 +1826,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ContactInfo:                            req.ContactInfo,
 		DocURL:                                 req.DocURL,
 		HomeContent:                            req.HomeContent,
+		HomeProductMenuItems:                   homeProductMenuJSON,
 		HideCcsImportButton:                    req.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            purchaseEnabled,
 		PurchaseSubscriptionURL:                purchaseURL,
@@ -1719,7 +1840,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
-		AffiliateRebateIncludeSubscription:     affiliateRebateIncludeSubscription,
 		DefaultUserRPMLimit:                    req.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    req.EnableModelFallback,
@@ -1823,12 +1943,17 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexUserAgent
 		}(),
-		OpenAIAllowClaudeCodeCodexPlugin: func() bool {
-			if req.OpenAIAllowClaudeCodeCodexPlugin != nil {
-				return *req.OpenAIAllowClaudeCodeCodexPlugin
+		MinCodexVersion:       strings.TrimSpace(req.MinCodexVersion),
+		MaxCodexVersion:       strings.TrimSpace(req.MaxCodexVersion),
+		CodexCLIOnlyBlacklist: strings.TrimSpace(req.CodexCLIOnlyBlacklist),
+		CodexCLIOnlyWhitelist: strings.TrimSpace(req.CodexCLIOnlyWhitelist),
+		CodexCLIOnlyAllowAppServerClients: func() bool {
+			if req.CodexCLIOnlyAllowAppServerClients != nil {
+				return *req.CodexCLIOnlyAllowAppServerClients
 			}
-			return previousSettings.OpenAIAllowClaudeCodeCodexPlugin
+			return previousSettings.CodexCLIOnlyAllowAppServerClients
 		}(),
+		CodexCLIOnlyEngineFingerprintSignals: strings.TrimSpace(req.CodexCLIOnlyEngineFingerprintSignals),
 		PaymentVisibleMethodAlipaySource: func() string {
 			if req.PaymentVisibleMethodAlipaySource != nil {
 				return strings.TrimSpace(*req.PaymentVisibleMethodAlipaySource)
@@ -2187,6 +2312,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ContactInfo:                            updatedSettings.ContactInfo,
 		DocURL:                                 updatedSettings.DocURL,
 		HomeContent:                            updatedSettings.HomeContent,
+		HomeProductMenuItems:                   dto.ParseCustomMenuItems(updatedSettings.HomeProductMenuItems),
 		HideCcsImportButton:                    updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            updatedSettings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:                updatedSettings.PurchaseSubscriptionURL,
@@ -2200,7 +2326,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           updatedSettings.AffiliateRebatePerInviteeCap,
-		AffiliateRebateIncludeSubscription:     updatedSettings.AffiliateRebateIncludeSubscription,
 		DefaultUserRPMLimit:                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   updatedDefaultSubscriptions,
 		EnableModelFallback:                    updatedSettings.EnableModelFallback,
@@ -2228,7 +2353,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RewriteMessageCacheControl:             updatedSettings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            updatedSettings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                   updatedSettings.OpenAICodexUserAgent,
-		OpenAIAllowClaudeCodeCodexPlugin:       updatedSettings.OpenAIAllowClaudeCodeCodexPlugin,
+		MinCodexVersion:                        updatedSettings.MinCodexVersion,
+		MaxCodexVersion:                        updatedSettings.MaxCodexVersion,
+		CodexCLIOnlyBlacklist:                  updatedSettings.CodexCLIOnlyBlacklist,
+		CodexCLIOnlyWhitelist:                  updatedSettings.CodexCLIOnlyWhitelist,
+		CodexCLIOnlyAllowAppServerClients:      updatedSettings.CodexCLIOnlyAllowAppServerClients,
+		CodexCLIOnlyEngineFingerprintSignals:   updatedSettings.CodexCLIOnlyEngineFingerprintSignals,
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
@@ -2621,9 +2751,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AffiliateRebatePerInviteeCap != after.AffiliateRebatePerInviteeCap {
 		changed = append(changed, "affiliate_rebate_per_invitee_cap")
 	}
-	if before.AffiliateRebateIncludeSubscription != after.AffiliateRebateIncludeSubscription {
-		changed = append(changed, "affiliate_rebate_include_subscription")
-	}
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")
 	}
@@ -2666,6 +2793,24 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.MaxClaudeCodeVersion != after.MaxClaudeCodeVersion {
 		changed = append(changed, "max_claude_code_version")
 	}
+	if before.MinCodexVersion != after.MinCodexVersion {
+		changed = append(changed, "min_codex_version")
+	}
+	if before.MaxCodexVersion != after.MaxCodexVersion {
+		changed = append(changed, "max_codex_version")
+	}
+	if before.CodexCLIOnlyAllowAppServerClients != after.CodexCLIOnlyAllowAppServerClients {
+		changed = append(changed, "codex_cli_only_allow_app_server_clients")
+	}
+	if before.CodexCLIOnlyEngineFingerprintSignals != after.CodexCLIOnlyEngineFingerprintSignals {
+		changed = append(changed, "codex_cli_only_engine_fingerprint_signals")
+	}
+	if before.CodexCLIOnlyBlacklist != after.CodexCLIOnlyBlacklist {
+		changed = append(changed, "codex_cli_only_blacklist")
+	}
+	if before.CodexCLIOnlyWhitelist != after.CodexCLIOnlyWhitelist {
+		changed = append(changed, "codex_cli_only_whitelist")
+	}
 	if before.AllowUngroupedKeyScheduling != after.AllowUngroupedKeyScheduling {
 		changed = append(changed, "allow_ungrouped_key_scheduling")
 	}
@@ -2686,6 +2831,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.CustomMenuItems != after.CustomMenuItems {
 		changed = append(changed, "custom_menu_items")
+	}
+	if before.HomeProductMenuItems != after.HomeProductMenuItems {
+		changed = append(changed, "home_product_menu_items")
 	}
 	if before.CustomEndpoints != after.CustomEndpoints {
 		changed = append(changed, "custom_endpoints")
@@ -2719,9 +2867,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAICodexUserAgent != after.OpenAICodexUserAgent {
 		changed = append(changed, "openai_codex_user_agent")
-	}
-	if before.OpenAIAllowClaudeCodeCodexPlugin != after.OpenAIAllowClaudeCodeCodexPlugin {
-		changed = append(changed, "openai_allow_claude_code_codex_plugin")
 	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")
@@ -3242,6 +3387,48 @@ func (h *SettingHandler) DeleteAdminAPIKey(c *gin.Context) {
 
 // GetOverloadCooldownSettings 获取529过载冷却配置
 // GET /api/v1/admin/settings/overload-cooldown
+// GetFalUpscaleSettings 获取 fal upscale 系统配置（token 仅回显是否已设置，不回显明文）。
+// GET /api/v1/admin/settings/fal-upscale
+func (h *SettingHandler) GetFalUpscaleSettings(c *gin.Context) {
+	s := h.settingService.GetFalUpscaleSettings(c.Request.Context())
+	response.Success(c, gin.H{
+		"endpoint":        s.Endpoint,
+		"timeout_seconds": s.TimeoutSeconds,
+		"token_set":       strings.TrimSpace(s.Token) != "",
+	})
+}
+
+// UpdateFalUpscaleSettingsRequest 更新 fal upscale 系统配置请求。token 为空表示保留现有。
+type UpdateFalUpscaleSettingsRequest struct {
+	Endpoint       string `json:"endpoint"`
+	Token          string `json:"token"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
+}
+
+// UpdateFalUpscaleSettings 更新 fal upscale 系统配置
+// PUT /api/v1/admin/settings/fal-upscale
+func (h *SettingHandler) UpdateFalUpscaleSettings(c *gin.Context) {
+	var req UpdateFalUpscaleSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.settingService.SetFalUpscaleSettings(c.Request.Context(), &service.FalUpscaleSettings{
+		Endpoint:       req.Endpoint,
+		Token:          req.Token,
+		TimeoutSeconds: req.TimeoutSeconds,
+	}); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	s := h.settingService.GetFalUpscaleSettings(c.Request.Context())
+	response.Success(c, gin.H{
+		"endpoint":        s.Endpoint,
+		"timeout_seconds": s.TimeoutSeconds,
+		"token_set":       strings.TrimSpace(s.Token) != "",
+	})
+}
+
 func (h *SettingHandler) GetOverloadCooldownSettings(c *gin.Context) {
 	settings, err := h.settingService.GetOverloadCooldownSettings(c.Request.Context())
 	if err != nil {

@@ -310,15 +310,6 @@ ${detail ? `<pre>${esc(typeof detail === 'string' ? detail : JSON.stringify(deta
   );
 }
 
-// ── Request body reader ───────────────────────────────────────────────────────
-function readBody(req) {
-  return new Promise((resolve) => {
-    let data = '';
-    req.on('data', (c) => (data += c));
-    req.on('end', () => resolve(data));
-  });
-}
-
 // ── Router ─────────────────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);

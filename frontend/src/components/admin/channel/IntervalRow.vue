@@ -44,6 +44,11 @@
         <input :value="interval.tier_label" @input="emitField('tier_label', ($event.target as HTMLInputElement).value)"
           type="text" class="input mt-0.5 text-xs" :placeholder="mode === 'image' ? '1K / 2K / 4K' : ''" />
       </div>
+      <div v-if="mode === 'image'" class="w-24">
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.quality', '质量') }}</label>
+        <input :value="interval.quality" @input="emitField('quality', ($event.target as HTMLInputElement).value)"
+          type="text" class="input mt-0.5 text-xs" :placeholder="t('admin.channels.form.qualityPlaceholder', 'standard / hd')" />
+      </div>
       <div class="w-20">
         <label class="text-xs text-gray-400">Min</label>
         <input :value="interval.min_tokens" @input="emitField('min_tokens', toInt(($event.target as HTMLInputElement).value))"

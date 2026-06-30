@@ -123,7 +123,7 @@ const scopes = ref<OidcConsentScope[]>([])
 const consentToken = computed(() => String(route.query.consent || ''))
 const hasSensitiveScope = computed(() => scopes.value.some((s) => s.sensitive))
 
-/** scope -> i18n key 片段（把 `sub2api:balance` 这类带冒号的 scope 归一化）。 */
+/** scope -> i18n key 片段（把 `sub2api:apikey` 这类带冒号的 scope 归一化）。 */
 function scopeKey(scope: string): string {
   switch (scope) {
     case 'openid':
@@ -134,8 +134,6 @@ function scopeKey(scope: string): string {
       return 'email'
     case 'offline_access':
       return 'offlineAccess'
-    case 'sub2api:balance':
-      return 'balance'
     case 'sub2api:apikey':
       return 'apikey'
     default:

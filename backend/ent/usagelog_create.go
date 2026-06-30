@@ -525,6 +525,46 @@ func (_c *UsageLogCreate) SetImageSizeBreakdown(v map[string]int) *UsageLogCreat
 	return _c
 }
 
+// SetTaskID sets the "task_id" field.
+func (_c *UsageLogCreate) SetTaskID(v int64) *UsageLogCreate {
+	_c.mutation.SetTaskID(v)
+	return _c
+}
+
+// SetNillableTaskID sets the "task_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableTaskID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetTaskID(*v)
+	}
+	return _c
+}
+
+// SetImageUrls sets the "image_urls" field.
+func (_c *UsageLogCreate) SetImageUrls(v []string) *UsageLogCreate {
+	_c.mutation.SetImageUrls(v)
+	return _c
+}
+
+// SetCosURL sets the "cos_url" field.
+func (_c *UsageLogCreate) SetCosURL(v []string) *UsageLogCreate {
+	_c.mutation.SetCosURL(v)
+	return _c
+}
+
+// SetBillingStatus sets the "billing_status" field.
+func (_c *UsageLogCreate) SetBillingStatus(v string) *UsageLogCreate {
+	_c.mutation.SetBillingStatus(v)
+	return _c
+}
+
+// SetNillableBillingStatus sets the "billing_status" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableBillingStatus(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetBillingStatus(*v)
+	}
+	return _c
+}
+
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (_c *UsageLogCreate) SetCacheTTLOverridden(v bool) *UsageLogCreate {
 	_c.mutation.SetCacheTTLOverridden(v)
@@ -817,6 +857,11 @@ func (_c *UsageLogCreate) check() error {
 			return &ValidationError{Name: "image_size_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size_source": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.BillingStatus(); ok {
+		if err := usagelog.BillingStatusValidator(v); err != nil {
+			return &ValidationError{Name: "billing_status", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_status": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.CacheTTLOverridden(); !ok {
 		return &ValidationError{Name: "cache_ttl_overridden", err: errors.New(`ent: missing required field "UsageLog.cache_ttl_overridden"`)}
 	}
@@ -994,6 +1039,22 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImageSizeBreakdown(); ok {
 		_spec.SetField(usagelog.FieldImageSizeBreakdown, field.TypeJSON, value)
 		_node.ImageSizeBreakdown = value
+	}
+	if value, ok := _c.mutation.TaskID(); ok {
+		_spec.SetField(usagelog.FieldTaskID, field.TypeInt64, value)
+		_node.TaskID = &value
+	}
+	if value, ok := _c.mutation.ImageUrls(); ok {
+		_spec.SetField(usagelog.FieldImageUrls, field.TypeJSON, value)
+		_node.ImageUrls = value
+	}
+	if value, ok := _c.mutation.CosURL(); ok {
+		_spec.SetField(usagelog.FieldCosURL, field.TypeJSON, value)
+		_node.CosURL = value
+	}
+	if value, ok := _c.mutation.BillingStatus(); ok {
+		_spec.SetField(usagelog.FieldBillingStatus, field.TypeString, value)
+		_node.BillingStatus = &value
 	}
 	if value, ok := _c.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
@@ -1827,6 +1888,84 @@ func (u *UsageLogUpsert) UpdateImageSizeBreakdown() *UsageLogUpsert {
 // ClearImageSizeBreakdown clears the value of the "image_size_breakdown" field.
 func (u *UsageLogUpsert) ClearImageSizeBreakdown() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldImageSizeBreakdown)
+	return u
+}
+
+// SetTaskID sets the "task_id" field.
+func (u *UsageLogUpsert) SetTaskID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldTaskID, v)
+	return u
+}
+
+// UpdateTaskID sets the "task_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateTaskID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldTaskID)
+	return u
+}
+
+// AddTaskID adds v to the "task_id" field.
+func (u *UsageLogUpsert) AddTaskID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldTaskID, v)
+	return u
+}
+
+// ClearTaskID clears the value of the "task_id" field.
+func (u *UsageLogUpsert) ClearTaskID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldTaskID)
+	return u
+}
+
+// SetImageUrls sets the "image_urls" field.
+func (u *UsageLogUpsert) SetImageUrls(v []string) *UsageLogUpsert {
+	u.Set(usagelog.FieldImageUrls, v)
+	return u
+}
+
+// UpdateImageUrls sets the "image_urls" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateImageUrls() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldImageUrls)
+	return u
+}
+
+// ClearImageUrls clears the value of the "image_urls" field.
+func (u *UsageLogUpsert) ClearImageUrls() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldImageUrls)
+	return u
+}
+
+// SetCosURL sets the "cos_url" field.
+func (u *UsageLogUpsert) SetCosURL(v []string) *UsageLogUpsert {
+	u.Set(usagelog.FieldCosURL, v)
+	return u
+}
+
+// UpdateCosURL sets the "cos_url" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCosURL() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCosURL)
+	return u
+}
+
+// ClearCosURL clears the value of the "cos_url" field.
+func (u *UsageLogUpsert) ClearCosURL() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCosURL)
+	return u
+}
+
+// SetBillingStatus sets the "billing_status" field.
+func (u *UsageLogUpsert) SetBillingStatus(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldBillingStatus, v)
+	return u
+}
+
+// UpdateBillingStatus sets the "billing_status" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateBillingStatus() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldBillingStatus)
+	return u
+}
+
+// ClearBillingStatus clears the value of the "billing_status" field.
+func (u *UsageLogUpsert) ClearBillingStatus() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldBillingStatus)
 	return u
 }
 
@@ -2689,6 +2828,97 @@ func (u *UsageLogUpsertOne) UpdateImageSizeBreakdown() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearImageSizeBreakdown() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearImageSizeBreakdown()
+	})
+}
+
+// SetTaskID sets the "task_id" field.
+func (u *UsageLogUpsertOne) SetTaskID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetTaskID(v)
+	})
+}
+
+// AddTaskID adds v to the "task_id" field.
+func (u *UsageLogUpsertOne) AddTaskID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddTaskID(v)
+	})
+}
+
+// UpdateTaskID sets the "task_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateTaskID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateTaskID()
+	})
+}
+
+// ClearTaskID clears the value of the "task_id" field.
+func (u *UsageLogUpsertOne) ClearTaskID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearTaskID()
+	})
+}
+
+// SetImageUrls sets the "image_urls" field.
+func (u *UsageLogUpsertOne) SetImageUrls(v []string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageUrls(v)
+	})
+}
+
+// UpdateImageUrls sets the "image_urls" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateImageUrls() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageUrls()
+	})
+}
+
+// ClearImageUrls clears the value of the "image_urls" field.
+func (u *UsageLogUpsertOne) ClearImageUrls() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageUrls()
+	})
+}
+
+// SetCosURL sets the "cos_url" field.
+func (u *UsageLogUpsertOne) SetCosURL(v []string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCosURL(v)
+	})
+}
+
+// UpdateCosURL sets the "cos_url" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCosURL() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCosURL()
+	})
+}
+
+// ClearCosURL clears the value of the "cos_url" field.
+func (u *UsageLogUpsertOne) ClearCosURL() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCosURL()
+	})
+}
+
+// SetBillingStatus sets the "billing_status" field.
+func (u *UsageLogUpsertOne) SetBillingStatus(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBillingStatus(v)
+	})
+}
+
+// UpdateBillingStatus sets the "billing_status" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateBillingStatus() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBillingStatus()
+	})
+}
+
+// ClearBillingStatus clears the value of the "billing_status" field.
+func (u *UsageLogUpsertOne) ClearBillingStatus() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearBillingStatus()
 	})
 }
 
@@ -3719,6 +3949,97 @@ func (u *UsageLogUpsertBulk) UpdateImageSizeBreakdown() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearImageSizeBreakdown() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearImageSizeBreakdown()
+	})
+}
+
+// SetTaskID sets the "task_id" field.
+func (u *UsageLogUpsertBulk) SetTaskID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetTaskID(v)
+	})
+}
+
+// AddTaskID adds v to the "task_id" field.
+func (u *UsageLogUpsertBulk) AddTaskID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddTaskID(v)
+	})
+}
+
+// UpdateTaskID sets the "task_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateTaskID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateTaskID()
+	})
+}
+
+// ClearTaskID clears the value of the "task_id" field.
+func (u *UsageLogUpsertBulk) ClearTaskID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearTaskID()
+	})
+}
+
+// SetImageUrls sets the "image_urls" field.
+func (u *UsageLogUpsertBulk) SetImageUrls(v []string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageUrls(v)
+	})
+}
+
+// UpdateImageUrls sets the "image_urls" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateImageUrls() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageUrls()
+	})
+}
+
+// ClearImageUrls clears the value of the "image_urls" field.
+func (u *UsageLogUpsertBulk) ClearImageUrls() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageUrls()
+	})
+}
+
+// SetCosURL sets the "cos_url" field.
+func (u *UsageLogUpsertBulk) SetCosURL(v []string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCosURL(v)
+	})
+}
+
+// UpdateCosURL sets the "cos_url" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCosURL() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCosURL()
+	})
+}
+
+// ClearCosURL clears the value of the "cos_url" field.
+func (u *UsageLogUpsertBulk) ClearCosURL() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCosURL()
+	})
+}
+
+// SetBillingStatus sets the "billing_status" field.
+func (u *UsageLogUpsertBulk) SetBillingStatus(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBillingStatus(v)
+	})
+}
+
+// UpdateBillingStatus sets the "billing_status" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateBillingStatus() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBillingStatus()
+	})
+}
+
+// ClearBillingStatus clears the value of the "billing_status" field.
+func (u *UsageLogUpsertBulk) ClearBillingStatus() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearBillingStatus()
 	})
 }
 

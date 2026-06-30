@@ -458,6 +458,79 @@ func isOpenAIImageGenerationModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-image-")
 }
 
+// FalAPIEdit 是 fal endpoint 第三段（api 段）中代表「图生图 / 编辑」的取值。
+const FalAPIEdit = "edit"
+
+// falEndpointModelAPI 从 fal endpoint 中解析出 model 段与 api 段。
+// fal endpoint 形如 organization/model/api（api 段可缺省）：
+//   - openai/gpt-image-2        → organization=openai, model=gpt-image-2, api=（无，文生图）
+//   - openai/gpt-image-2/edit   → organization=openai, model=gpt-image-2, api=edit
+//   - openai/gpt-image-2/vision → organization=openai, model=gpt-image-2, api=vision
+//
+// 同时兼容请求侧传入的对外模型名形态（单段，如 gpt-image-2），此时整段即为 model、api 为空。
+func falEndpointModelAPI(endpoint string) (model, api string) {
+	e := strings.TrimSpace(endpoint)
+	if e == "" {
+		return "", ""
+	}
+	segs := strings.Split(e, "/")
+	switch {
+	case len(segs) >= 3:
+		// organization/model/api
+		return strings.TrimSpace(segs[1]), strings.TrimSpace(segs[2])
+	case len(segs) == 2:
+		// organization/model（无 api 段，文生图）
+		return strings.TrimSpace(segs[1]), ""
+	default:
+		// 对外模型名形态，整段即为 model
+		return strings.TrimSpace(segs[0]), ""
+	}
+}
+
+// falAccountSupportsModel 判断 fal 账号是否支持请求模型（含 edit 能力校验）。
+// fal 账号「支持的模型」由其 model_mapping 决定，每个 value 是 fal endpoint，
+// 形如 organization/model/api（如 openai/gpt-image-2、openai/gpt-image-2/edit），
+// value 的第三段 api（空串=文生图、edit=图生图）决定该 endpoint 的能力。
+// 账号侧的「模型名 → api 段集合」已由 Account.FalSupportedModelAPIs 预切并缓存
+// （同时索引了对外别名 key 与 value 的 model 段），这里只需确定本次请求所需的 api 段，
+// 再查表匹配，避免每次请求重复切分账号的全部 endpoint。
+//
+// 请求名与所需 api 段的判定：
+//   - 请求模型本身带 api 段（如原生门面 slug openai/gpt-image-2/edit）→ 以该 api 段为准；
+//   - 否则使用调用方传入的 api 参数（如 edit 来自 /v1/images/edits 门面，空串=文生图），
+//     api 请求需要对应 api 段的 endpoint，文生图请求需要无 api 段的 endpoint。
+//
+// 查表时同时按「请求原串（对外别名）」与「请求的 model 段」两个键尝试命中，任一命中即支持。
+// 即：api 请求必须命中映射里对应 api 段的 endpoint 才算支持；文生图请求必须命中无 api 段的 endpoint。
+func falAccountSupportsModel(account *Account, requestedModel string, api string) bool {
+	if account == nil {
+		return false
+	}
+	reqModel, reqAPI := falEndpointModelAPI(requestedModel)
+	if strings.TrimSpace(requestedModel) == "" {
+		return false
+	}
+	neededAPI := strings.ToLower(reqAPI)
+	if neededAPI == "" {
+		neededAPI = strings.ToLower(strings.TrimSpace(api))
+	}
+
+	supported := account.FalSupportedModelAPIs()
+	// 先按请求原串（对外别名，如 dall-e-3、gpt-image-2-edit）匹配，
+	// 再按请求的 model 段（如 slug openai/gpt-image-2[/edit] 取 gpt-image-2）匹配。
+	for _, name := range []string{strings.ToLower(strings.TrimSpace(requestedModel)), strings.ToLower(reqModel)} {
+		if name == "" {
+			continue
+		}
+		if apis, ok := supported[name]; ok {
+			if _, ok := apis[neededAPI]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func validateOpenAIImagesModel(model string) error {
 	model = strings.TrimSpace(model)
 	if isOpenAIImageGenerationModel(model) {
@@ -546,6 +619,19 @@ func (s *OpenAIGatewayService) ForwardImages(
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
+	// DEBUG: 确认是否进入 ForwardImages 入口（图片生成请求转发起点）
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[OpenAI] ForwardImages entered account_id=%d account_type=%s platform=%s model=%s endpoint=%s stream=%t multipart=%t channel_mapped=%s",
+		account.ID,
+		account.Type,
+		account.Platform,
+		strings.TrimSpace(parsed.Model),
+		parsed.Endpoint,
+		parsed.Stream,
+		parsed.Multipart,
+		strings.TrimSpace(channelMappedModel),
+	)
 	switch account.Type {
 	case AccountTypeAPIKey:
 		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
@@ -604,6 +690,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	// DEBUG: 打印发往上游的图片请求（URL + 关键 header + 请求体预览）
+	logOpenAIImagesUpstreamRequest(account, upstreamReq, forwardBody, forwardContentType, parsed.Endpoint, upstreamModel)
 	upstreamStart := time.Now()
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
@@ -652,47 +740,60 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	var usage OpenAIUsage
 	imageCount := parsed.N
 	var firstTokenMs *int
+	// upscale 依赖：分组（取自鉴权上下文）与显式请求尺寸（目标档位）。
+	var upscaleGroup *Group
+	if ak := getAPIKeyFromContext(c); ak != nil {
+		upscaleGroup = ak.Group
+	}
+	requestedUpscaleSize := requestedUpscaleTargetSize(parsed)
 	if parsed.Stream && isEventStreamResponse(resp.Header) {
-		streamUsage, streamCount, streamSizes, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime)
+		streamUsage, streamCount, streamSizes, streamBase64s, ttft, err := s.handleOpenAIImagesStreamingResponse(ctx, resp, c, startTime, upscaleGroup, requestedUpscaleSize)
 		if err != nil {
 			if streamCount > 0 {
-				return &OpenAIForwardResult{
-					RequestID:        resp.Header.Get("x-request-id"),
-					Usage:            streamUsage,
-					Model:            requestModel,
-					UpstreamModel:    upstreamModel,
-					Stream:           parsed.Stream,
-					ResponseHeaders:  resp.Header.Clone(),
-					Duration:         time.Since(startTime),
-					FirstTokenMs:     ttft,
-					ImageCount:       streamCount,
-					ImageSize:        parsed.SizeTier,
-					ImageInputSize:   parsed.Size,
-					ImageOutputSizes: streamSizes,
-				}, err
+				res := &OpenAIForwardResult{
+					RequestID:         resp.Header.Get("x-request-id"),
+					Usage:             streamUsage,
+					Model:             requestModel,
+					UpstreamModel:     upstreamModel,
+					Stream:            parsed.Stream,
+					ResponseHeaders:   resp.Header.Clone(),
+					Duration:          time.Since(startTime),
+					FirstTokenMs:      ttft,
+					ImageCount:        streamCount,
+					ImageSize:         parsed.SizeTier,
+					ImageInputSize:    parsed.Size,
+					ImageOutputSizes:  streamSizes,
+					ImageOutputBase64: streamBase64s,
+				}
+				s.scheduleOpenAIImageCosUpload(ctx, res)
+				return res, err
 			}
 			return nil, err
 		}
 		usage = streamUsage
 		imageCount = streamCount
 		imageOutputSizes := streamSizes
+		imageOutputBase64s := streamBase64s
 		firstTokenMs = ttft
-		return &OpenAIForwardResult{
-			RequestID:        resp.Header.Get("x-request-id"),
-			Usage:            usage,
-			Model:            requestModel,
-			UpstreamModel:    upstreamModel,
-			Stream:           parsed.Stream,
-			ResponseHeaders:  resp.Header.Clone(),
-			Duration:         time.Since(startTime),
-			FirstTokenMs:     firstTokenMs,
-			ImageCount:       imageCount,
-			ImageSize:        parsed.SizeTier,
-			ImageInputSize:   parsed.Size,
-			ImageOutputSizes: imageOutputSizes,
-		}, nil
+		res := &OpenAIForwardResult{
+			RequestID:         resp.Header.Get("x-request-id"),
+			Usage:             usage,
+			Model:             requestModel,
+			UpstreamModel:     upstreamModel,
+			Stream:            parsed.Stream,
+			ResponseHeaders:   resp.Header.Clone(),
+			Duration:          time.Since(startTime),
+			FirstTokenMs:      firstTokenMs,
+			ImageCount:        imageCount,
+			ImageSize:         parsed.SizeTier,
+			ImageInputSize:    parsed.Size,
+			ImageOutputSizes:  imageOutputSizes,
+			ImageOutputBase64: imageOutputBase64s,
+		}
+		s.scheduleOpenAIImageCosUpload(ctx, res)
+		return res, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
+		nonStreamUsage, nonStreamCount, nonStreamSizes, nonStreamBase64s, err := s.handleOpenAIImagesNonStreamingResponse(ctx, resp, c, upscaleGroup, requestedUpscaleSize)
 		if err != nil {
 			return nil, err
 		}
@@ -700,20 +801,23 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		if nonStreamCount > 0 {
 			imageCount = nonStreamCount
 		}
-		return &OpenAIForwardResult{
-			RequestID:        resp.Header.Get("x-request-id"),
-			Usage:            usage,
-			Model:            requestModel,
-			UpstreamModel:    upstreamModel,
-			Stream:           parsed.Stream,
-			ResponseHeaders:  resp.Header.Clone(),
-			Duration:         time.Since(startTime),
-			FirstTokenMs:     firstTokenMs,
-			ImageCount:       imageCount,
-			ImageSize:        parsed.SizeTier,
-			ImageInputSize:   parsed.Size,
-			ImageOutputSizes: nonStreamSizes,
-		}, nil
+		res := &OpenAIForwardResult{
+			RequestID:         resp.Header.Get("x-request-id"),
+			Usage:             usage,
+			Model:             requestModel,
+			UpstreamModel:     upstreamModel,
+			Stream:            parsed.Stream,
+			ResponseHeaders:   resp.Header.Clone(),
+			Duration:          time.Since(startTime),
+			FirstTokenMs:      firstTokenMs,
+			ImageCount:        imageCount,
+			ImageSize:         parsed.SizeTier,
+			ImageInputSize:    parsed.Size,
+			ImageOutputSizes:  nonStreamSizes,
+			ImageOutputBase64: nonStreamBase64s,
+		}
+		s.scheduleOpenAIImageCosUpload(ctx, res)
+		return res, nil
 	}
 }
 
@@ -853,11 +957,29 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 	return dst
 }
 
-func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context) (OpenAIUsage, int, []string, error) {
+func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, group *Group, requestedSize string) (OpenAIUsage, int, []string, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		return OpenAIUsage{}, 0, nil, err
+		return OpenAIUsage{}, 0, nil, nil, err
 	}
+	// DEBUG: 打印上游返回的图片响应（status + 关键 header + body 预览）
+	logOpenAIImagesUpstreamResponse(resp, body)
+
+	usage, _ := extractOpenAIUsageFromJSONBytes(body)
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse(body)
+	b64s := counter.Base64Payloads()
+	sizes := counter.SizesPerSlot()
+
+	// 写客户端响应之前同步 upscale：放大成功则改写 body 内的 b64，使客户端与 COS 都拿放大图，
+	// 并据放大后尺寸计费（成功按目标档位、失败保留原图档位）。
+	newB64s, newSizes, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, b64s, sizes)
+	if changed {
+		body = rewriteOpenAIImageBase64InBody(body, b64s, newB64s)
+		b64s = newB64s
+		sizes = newSizes
+	}
+
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -867,15 +989,30 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 	}
 	c.Data(resp.StatusCode, contentType, body)
 
-	usage, _ := extractOpenAIUsageFromJSONBytes(body)
-	return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
+	return usage, counter.Count(), sizes, b64s, nil
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
+	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
 	startTime time.Time,
-) (OpenAIUsage, int, []string, *int, error) {
+	group *Group,
+	requestedSize string,
+) (OpenAIUsage, int, []string, []string, *int, error) {
+	// 当本请求命中 upscale 条件时，流式退化为「缓冲整段 → 放大 → 一次性吐出」，
+	// 以保证客户端拿到放大后的图；不命中时维持下方原有的逐块实时流式（零行为变化）。
+	if s.shouldBufferOpenAIImagesForUpscale(ctx, group, requestedSize) {
+		return s.handleOpenAIImagesStreamingUpscale(ctx, resp, c, group, requestedSize, startTime)
+	}
+	// DEBUG: 标记进入流式响应处理（body 由后续 SSE 循环逐块打印走默认链路）
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[debug] [OpenAI] Images upstream response (stream) status=%d content_type=%s request_id=%s",
+		resp.StatusCode,
+		resp.Header.Get("Content-Type"),
+		resp.Header.Get("x-request-id"),
+	)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
 	if contentType == "" {
@@ -886,7 +1023,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
-		return OpenAIUsage{}, 0, nil, nil, fmt.Errorf("streaming is not supported by response writer")
+		return OpenAIUsage{}, 0, nil, nil, nil, fmt.Errorf("streaming is not supported by response writer")
 	}
 
 	usage := OpenAIUsage{}
@@ -971,12 +1108,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 			}
 			if err != nil {
 				flushSSEEvent()
-				return usage, imageCounter.Count(), imageCounter.Sizes(), firstTokenMs, err
+				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, err
 			}
 		}
 		flushSSEEvent()
 		finalizeFallbackBody()
-		return usage, imageCounter.Count(), imageCounter.Sizes(), firstTokenMs, nil
+		return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, nil
 	}
 
 	type readEvent struct {
@@ -1043,11 +1180,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 			if !ok {
 				flushSSEEvent()
 				finalizeFallbackBody()
-				return usage, imageCounter.Count(), imageCounter.Sizes(), firstTokenMs, nil
+				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, nil
 			}
 			if ev.err != nil {
 				flushSSEEvent()
-				return usage, imageCounter.Count(), imageCounter.Sizes(), firstTokenMs, ev.err
+				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, ev.err
 			}
 			processLine(ev.line)
 		case <-intervalCh:
@@ -1056,11 +1193,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 				continue
 			}
 			if clientDisconnected {
-				return usage, imageCounter.Count(), imageCounter.Sizes(), firstTokenMs, fmt.Errorf("image stream incomplete after timeout")
+				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, fmt.Errorf("image stream incomplete after timeout")
 			}
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream data interval timeout: interval=%s", streamInterval)
 			_ = s.writeOpenAIImagesStreamEvent(c, flusher, "error", buildOpenAIImagesStreamErrorBody(fmt.Sprintf("upstream image stream idle for %s", streamInterval)))
-			return usage, imageCounter.Count(), imageCounter.Sizes(), firstTokenMs, fmt.Errorf("image stream data interval timeout")
+			return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, fmt.Errorf("image stream data interval timeout")
 		case <-keepaliveCh:
 			if clientDisconnected || time.Since(lastDownstreamWriteAt) < keepaliveInterval {
 				continue
@@ -1074,6 +1211,60 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 			lastDownstreamWriteAt = time.Now()
 		}
 	}
+}
+
+// handleOpenAIImagesStreamingUpscale 是流式 + upscale 命中时的「缓冲→放大→一次性吐出」实现。
+// 缓冲整段上游 SSE，解析图片，按需放大并字面量改写缓冲字节，再写给客户端（流式退化为非流式）。
+func (s *OpenAIGatewayService) handleOpenAIImagesStreamingUpscale(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	group *Group,
+	requestedSize string,
+	startTime time.Time,
+) (OpenAIUsage, int, []string, []string, *int, error) {
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, resolveUpstreamResponseReadLimit(s.cfg)))
+	if err != nil {
+		return OpenAIUsage{}, 0, nil, nil, nil, err
+	}
+
+	usage := OpenAIUsage{}
+	counter := newOpenAIImageOutputCounter()
+	forEachOpenAISSEDataPayload(string(raw), func(data []byte) {
+		mergeOpenAIUsage(&usage, data)
+		counter.AddSSEData(data)
+	})
+	// 非 SSE 兜底：个别上游用一次性 JSON 回包。
+	if counter.Count() == 0 {
+		counter.AddJSONResponse(raw)
+		mergeOpenAIUsage(&usage, raw)
+	}
+
+	b64s := counter.Base64Payloads()
+	sizes := counter.SizesPerSlot()
+	newB64s, newSizes, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, b64s, sizes)
+	out := raw
+	if changed {
+		out = rewriteOpenAIImageBase64InBody(raw, b64s, newB64s)
+		b64s = newB64s
+		sizes = newSizes
+	}
+
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = "text/event-stream"
+	}
+	c.Status(resp.StatusCode)
+	c.Header("Content-Type", contentType)
+	ms := int(time.Since(startTime).Milliseconds())
+	firstTokenMs := &ms
+	if _, werr := c.Writer.Write(out); werr == nil {
+		if f, ok := c.Writer.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+	return usage, counter.Count(), sizes, b64s, firstTokenMs, nil
 }
 
 func (s *OpenAIGatewayService) openAIImageStreamDataInterval() time.Duration {
@@ -1612,4 +1803,163 @@ func dedupeStrings(values []string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+// logOpenAIImagesUpstreamRequest 打印发往上游的图片请求关键信息，便于排查。
+// - JSON 请求体直接预览（截断 2KB）
+// - multipart 请求体只输出长度和 boundary，避免日志爆炸
+func logOpenAIImagesUpstreamRequest(account *Account, req *http.Request, body []byte, contentType string, endpoint string, upstreamModel string) {
+	if req == nil {
+		return
+	}
+	const maxPreview = 2048
+	preview := ""
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	if strings.EqualFold(mediaType, "multipart/form-data") {
+		preview = fmt.Sprintf("<multipart body size=%d>", len(body))
+	} else {
+		if len(body) > maxPreview {
+			preview = string(body[:maxPreview]) + fmt.Sprintf("...(truncated, total=%d)", len(body))
+		} else {
+			preview = string(body)
+		}
+	}
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[OpenAI] Images upstream request account_id=%d account_type=%s platform=%s endpoint=%s upstream_model=%s url=%s content_type=%s authorization=%s user_agent=%s body=%s",
+		account.ID,
+		account.Type,
+		account.Platform,
+		endpoint,
+		upstreamModel,
+		safeUpstreamURL(req.URL.String()),
+		req.Header.Get("Content-Type"),
+		maskAuthorizationHeader(req.Header.Get("Authorization")),
+		req.Header.Get("User-Agent"),
+		preview,
+	)
+}
+
+// logOpenAIImagesUpstreamResponse 以 debug 级别打印上游返回的图片响应。
+//   - body 总长 <= openAIImagesLogLargeBodyThreshold 时，原样打印；
+//   - 超过阈值时，仅把 data[*].b64_json / data[*].url 等"图片字段"替换为占位符，
+//     其他字段保留全文；
+//   - 非 JSON 或解析失败兜底为整体截断，避免极端情况下日志爆炸。
+func logOpenAIImagesUpstreamResponse(resp *http.Response, body []byte) {
+	if resp == nil {
+		return
+	}
+	// 仅在 debug 级别才做 JSON 解码 + 字段裁剪，避免 info 级别下白白付出 CPU/GC。
+	if !strings.EqualFold(logger.CurrentLevel(), "debug") {
+		return
+	}
+	preview := previewOpenAIImagesResponseBody(body)
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[debug] [OpenAI] Images upstream response status=%d content_type=%s request_id=%s body_size=%d body=%s",
+		resp.StatusCode,
+		resp.Header.Get("Content-Type"),
+		resp.Header.Get("x-request-id"),
+		len(body),
+		preview,
+	)
+}
+
+// openAIImagesLogLargeBodyThreshold 判定响应包体是否"较大"的字节阈值。
+// 小于阈值则原样打印；超过则解码 JSON 并对图片字段做裁剪。
+const openAIImagesLogLargeBodyThreshold = 4 * 1024
+
+// openAIImagesLogFallbackPreviewLimit 当 body 不是合法 JSON 时的兜底整体截断长度。
+const openAIImagesLogFallbackPreviewLimit = 8 * 1024
+
+// openAIImagesLogLongURLThreshold URL 长度超过该值即视为 dataURL/embedded 图片，需裁剪。
+const openAIImagesLogLongURLThreshold = 512
+
+// openAIImagesLogImageFieldNames 视为"图片正文"的字符串字段名，命中即裁剪。
+// 这些字段在 OpenAI / 兼容厂商返回里通常承载 base64 编码图片。
+var openAIImagesLogImageFieldNames = map[string]struct{}{
+	"b64_json":     {},
+	"base64":       {},
+	"image_base64": {},
+	"image":        {}, // 兼容部分代理返回
+}
+
+// previewOpenAIImagesResponseBody 在保留响应结构与小字段全文的前提下，
+// 仅把图片字段（base64 / 长 URL）替换为占位符。
+//
+// 实现：直接 json.Unmarshal → map[string]any → 递归替换 → json.Marshal。
+// 相比 gjson+sjson 的好处：逻辑更短、覆盖任意嵌套层级、无需手写路径。
+// 对日志预览场景，字段顺序/数字精度变化都可接受。
+func previewOpenAIImagesResponseBody(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	if len(body) <= openAIImagesLogLargeBodyThreshold {
+		return string(body)
+	}
+	var decoded any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		// 非 JSON：兜底整体截断。
+		if len(body) > openAIImagesLogFallbackPreviewLimit {
+			return string(body[:openAIImagesLogFallbackPreviewLimit]) +
+				fmt.Sprintf("...(truncated, total=%d)", len(body))
+		}
+		return string(body)
+	}
+	redacted := redactOpenAIImagesValue(decoded)
+	out, err := json.Marshal(redacted)
+	if err != nil {
+		// 理论上不会发生；保底返回原文。
+		return string(body)
+	}
+	return string(out)
+}
+
+// redactOpenAIImagesValue 递归遍历 decode 出的任意 JSON 值，
+// 对命中"图片字段"的 string 值替换为占位符，其他原样返回。
+func redactOpenAIImagesValue(v any) any {
+	switch node := v.(type) {
+	case map[string]any:
+		for key, val := range node {
+			if s, ok := val.(string); ok {
+				if _, hit := openAIImagesLogImageFieldNames[key]; hit {
+					node[key] = fmt.Sprintf("<truncated %s len=%d>", key, len(s))
+					continue
+				}
+				if key == "url" && shouldRedactImageURL(s) {
+					node[key] = fmt.Sprintf("<truncated url len=%d>", len(s))
+					continue
+				}
+			}
+			node[key] = redactOpenAIImagesValue(val)
+		}
+		return node
+	case []any:
+		for i, item := range node {
+			node[i] = redactOpenAIImagesValue(item)
+		}
+		return node
+	default:
+		return v
+	}
+}
+
+// shouldRedactImageURL 判断 url 字段是否需要裁剪：超长 URL 或 dataURL。
+func shouldRedactImageURL(raw string) bool {
+	if len(raw) > openAIImagesLogLongURLThreshold {
+		return true
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "data:")
+}
+
+// maskAuthorizationHeader 只保留前后少量字符，避免 Bearer token 全量泄露。
+func maskAuthorizationHeader(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if len(value) <= 12 {
+		return "***"
+	}
+	return value[:8] + "***" + value[len(value)-4:]
 }

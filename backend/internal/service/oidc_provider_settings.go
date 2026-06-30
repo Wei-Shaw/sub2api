@@ -80,7 +80,6 @@ var AllowedOidcProviderScopes = []string{
 	"profile",
 	"email",
 	"offline_access",
-	"sub2api:balance",
 	"sub2api:apikey",
 }
 

@@ -3,6 +3,7 @@ export default {
   home: {
     viewOnGithub: '在 GitHub 上查看',
     viewDocs: '查看文档',
+    products: '其他产品',
     docs: '文档',
     switchToLight: '切换到浅色模式',
     switchToDark: '切换到深色模式',
@@ -484,6 +485,7 @@ export default {
     channelStatus: '渠道状态',
     riskControl: '风控中心',
     oidcClients: 'OIDC 客户端',
+    billingApps: '扣费 App',
   },
 
   // Auth
@@ -787,6 +789,8 @@ export default {
     },
     allGroups: '全部分组',
     allStatus: '全部状态',
+    columnSettings: '列设置',
+    columnAlwaysVisible: '该列固定显示，不可隐藏',
     createKey: '创建密钥',
     editKey: '编辑密钥',
     deleteKey: '删除密钥',
@@ -953,6 +957,10 @@ export default {
     cacheTtlOverridden1h: '按 1h 计费',
     totalRequests: '总请求数',
     totalTokens: '总 Token',
+    cacheTotal: '缓存',
+    cacheBreakdown: '缓存 Token 明细',
+    cacheCreationTokensLabel: '缓存创建',
+    cacheReadTokensLabel: '缓存读取',
     totalCost: '总消费',
     standardCost: '标准',
     actualCost: '实际',
@@ -1046,6 +1054,9 @@ export default {
     exportExcelFailed: '使用数据导出失败',
     imageUnit: '张',
     userAgent: 'User-Agent',
+    result: '出图结果',
+    resultDownload: '下载',
+    resultEmpty: '无',
     tabs: { usage: '用量明细', errors: '错误请求' },
     errors: {
       time: '时间', model: '模型', endpoint: '端点', status: '状态码',
@@ -2314,6 +2325,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        fal: 'fal',
       },
       saving: '保存中...',
       noGroups: '暂无分组',
@@ -2397,7 +2409,27 @@ export default {
         imageMultiplier: '生图独立倍率',
         modeHint: '默认关闭独立倍率时，图片费用 = 图片价格 × 当前分组有效倍率；开启独立倍率后，图片费用 = 图片价格 × 生图独立倍率。',
         finalPricePreview: '最终单张价格预览',
-        notConfigured: '未配置'
+        notConfigured: '未配置',
+        matrixTitle: '尺寸 × 质量 二维定价矩阵',
+        matrixHint: '每格为单张美元价；任一格命中即按该价计费。整列留空时回退到下方「兼容回退价」。',
+        matrixSizeHeader: '尺寸',
+        fillDefaults: '填入官方默认表',
+        clearAll: '全部清空',
+        clearRow: '清空该行',
+        invalidCells: '有 {count} 个格子值非法（必须 ≥ 0）',
+        quality: {
+          low: '低质量',
+          medium: '中质量',
+          high: '高质量'
+        },
+        fallbackTitle: '兼容回退价（旧版 1K / 2K / 4K 单维定价）',
+        fallbackHint: '当上方矩阵未命中或被清空时，按尺寸最大边长归并到 1K / 2K / 4K 三档使用此处单价。',
+preferFalLabel: 'fal 优先调度（仅 OpenAI 分组）',
+          preferFalHint: '开启后图片请求优先使用本分组下的 fal 账号承载，仅当 fal 全部不可用时回退到 OpenAI 账号。计费金额仍按本分组定价表，与承载平台无关。',
+          decodeSizeOnRspLabel: '回包分辨率自检（仅 OpenAI 分组）',
+decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto 时，系统会解码 b64_json 内容识别真实宽高用于计费；URL 模式不受影响。',
+          upscaleOnRspLabel: '回包分辨率不足自动放大（仅 OpenAI 分组，依赖上方自检）',
+          upscaleOnRspHint: '开启后：请求了 2K/4K 但回包真实档位更低时，调用 fal SeedVR 放大到目标档位后再返回客户端（客户端与 COS 一致，按目标档位计费；放大失败/超时按原图兜底）。需先开启「回包分辨率自检」并在系统设置配置 fal upscale。流式请求开启后将退化为非流式（等放大完成才返回）。'
       },
       modelsList: {
         title: '自定义 /v1/models 模型列表',
@@ -2551,8 +2583,8 @@ export default {
       deleteError: '删除渠道失败',
       nameRequired: '请输入渠道名称',
       duplicateModels: '模型「{0}」在多个定价条目中重复',
-      modelConflict: "模型模式 '{model1}' 和 '{model2}' 冲突：匹配范围重叠",
-      mappingConflict: "模型映射源 '{model1}' 和 '{model2}' 冲突：匹配范围重叠",
+      modelConflict: "模型模式 '{model1}' 和 '{model2}' 冲突：匹配范围重叠。模型名称按大小写不敏感匹配，已有条目已覆盖其所有大小写变体，无需重复添加。",
+      mappingConflict: "模型映射源 '{model1}' 和 '{model2}' 冲突：匹配范围重叠。源模式按大小写不敏感匹配，已有条目已覆盖其所有大小写变体。",
       deleteConfirm: '确定要删除渠道「{name}」吗？此操作不可撤销。',
       columns: {
         name: '名称',
@@ -2792,6 +2824,7 @@ export default {
       unbanFailed: '解封用户失败',
       inputDetailTitle: '输入摘要详情',
       inputDetailContent: '完整内容',
+      matchedKeyword: '命中关键词',
       queueDelay: '排队 {ms} ms',
       allGroups: '全部分组',
       allGroupsHint: '当前审计全部分组',
@@ -3382,6 +3415,8 @@ export default {
         anthropic: 'Anthropic',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        fal: 'fal',
+        grok: 'Grok',
       },
       types: {
         oauth: 'OAuth',
@@ -3390,12 +3425,17 @@ export default {
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
+        grokOauth: 'Grok OAuth',
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游',
         api_key: 'API Key',
         cookie: 'Cookie'
       },
+      antigravityProjectIdLabel: 'GCP Project ID（可选）',
+      antigravityProjectIdPlaceholder: 'your-gcp-project-id',
+      antigravityProjectIdHint:
+        'standard-tier 且未自动返回 project_id 的 Antigravity 账号需要填写用户自带 GCP project。',
       status: {
         active: '正常',
         inactive: '停用',
@@ -3469,6 +3509,18 @@ export default {
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
         claude: 'Claude',
+        grokRequests: '请求',
+        grokTokens: 'Token',
+        grokUnknown: 'Grok 配额需等待首次上游响应返回 xAI rate-limit 头后显示。',
+        grokRetryAfter: '{time} 后重试',
+        grokProbe: '探测',
+        grokProbeTooltip: '发送最小 xAI Responses 探测请求并读取配额响应头',
+        grokResetUnsupported: '不支持重置',
+        grokResetUnsupportedTooltip: 'xAI 未向 Grok OAuth 账号开放重置额度接口',
+        grokNoHeaders: '未观察到配额响应头',
+        grokLastStatus: '状态 {status}',
+        grokLastProbe: '探测 {time}',
+        grokLastHeadersSeen: '响应头 {time}',
         passiveSampled: '被动采样',
         activeQuery: '查询'
       },
@@ -3481,7 +3533,9 @@ export default {
         resetTooltipNeedQuery: '先点击「次数」加载剩余重置次数',
         resetTooltipNoCredits: '没有可用的重置次数',
         noCreditsAvailable: '没有可用的重置次数',
-        resetSuccess: '已重置 {windows} 个窗口'
+        resetSuccess: '已重置 {windows} 个窗口',
+        confirmTitle: '确认重置周限',
+        confirmMessage: '将消耗 1 次重置次数立即恢复当前窗口，剩余 {count} 次。此操作不可撤销，确定继续吗？'
       },
       tier: {
         free: 'Free',
@@ -3628,6 +3682,11 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
+      // fal specific hints
+      fal: {
+        baseUrlHint: '留空使用 fal 官方 API（https://fal.run）',
+        apiKeyHint: '您的 fal API Key（FAL_KEY），直接填写密钥本身，不要带 “Key ” 前缀',
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',
@@ -3677,8 +3736,8 @@ export default {
         responsesStatusForcedChatCompletions: '已强制 Chat Completions',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
-        codexCLIOnlyAllowClaudeCode: '额外放行 Claude Code 的 Codex 插件',
-        codexCLIOnlyAllowClaudeCodeDesc: '仅在上方开关开启时生效。额外放行通过 Claude Code 的 Codex 插件发起的请求（精确匹配 originator=Claude Code），不影响对其他非官方客户端的拦截。',
+        codexCLIOnlyAppServer: '允许 Codex app-server 客户端',
+        codexCLIOnlyAppServerDesc: '仅在上方开关开启时生效。开启后本账号额外放行内嵌 Codex 引擎、经 app-server 协议接入的第三方客户端（如 Claude Code 的 codex 插件），仍需通过全局引擎指纹门；与全局 app-server 开关取 OR（任一开即放行）。',
         codexImageGenerationBridge: 'Codex 图片生成桥接',
         codexImageGenerationBridgeDesc:
           '账号级策略优先于渠道和全局配置。仅控制 Codex 走 /responses 文本端点时是否注入 image_generation 工具；不影响独立图片生成接口。',
@@ -3710,6 +3769,10 @@ export default {
         testModeCompact: 'Compact 探测',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
       },
+      grok: {
+        baseUrlHint: 'Grok OAuth 账号会转发到官方 xAI API Base URL。',
+        apiKeyHint: 'Grok 订阅支持使用 OAuth refresh token；API Key 账号不在本次范围内。'
+      },
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
         apiKeyPassthroughDesc:
@@ -3736,6 +3799,9 @@ export default {
       targetNoWildcard: '目标模型不能包含通配符 *',
       searchModels: '搜索模型...',
       noMatchingModels: '没有匹配的模型',
+      dynamicModelsHint: '该平台模型列表从上游接口获取，请先填写凭证并点击「同步上游支持的模型」',
+      dynamicModelsSearchHint: '输入关键词搜索上游模型，或点击「同步上游支持的模型」拉取全部',
+      searchingModels: '搜索中...',
       fillRelatedModels: '同步最新支持模型',
       syncUpstreamModels: '同步上游支持的模型',
       syncUpstreamModelsLoading: '同步上游中...',
@@ -4012,6 +4078,14 @@ export default {
           codexSessionImportFailed: 'Codex 账号导入失败',
           codexSessionImportSuccess: '导入完成：新增 {created}，更新 {updated}，跳过 {skipped}',
           codexSessionImportPartial: '部分成功：新增 {created}，更新 {updated}，跳过 {skipped}，失败 {failed}',
+          codexPatAuth: 'Codex Personal Access Token',
+          codexPatDesc: '输入 Codex at- Personal Access Token，系统会先调用 OpenAI whoami 校验后再创建账号。',
+          codexPatInputLabel: 'Codex PAT',
+          codexPatPlaceholder: 'at-...',
+          codexPatHint: '这是独立认证模式，不保存 refresh_token，也不会写入 OAuth access_token 过期时间。',
+          codexPatImportAndCreate: '校验并创建 Codex PAT 账号',
+          codexPatEmpty: '请输入 Codex Personal Access Token',
+          codexPatImportFailed: 'Codex PAT 账号创建失败',
           sessionTokenAuth: '手动输入 ST',
           sessionTokenDesc: '输入您已有的 Session Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
           sessionTokenPlaceholder: '粘贴您的 Session Token...\n支持多个，每行一个',
@@ -4028,6 +4102,31 @@ export default {
           validateAndCreate: '验证并创建账号',
           pleaseEnterRefreshToken: '请输入 Refresh Token',
           pleaseEnterSessionToken: '请输入 Session Token'
+        },
+        grok: {
+          title: 'Grok 账号授权',
+          followSteps: '请按照以下步骤授权您的 xAI/Grok 账号：',
+          step1GenerateUrl: '生成 xAI 授权链接',
+          generateAuthUrl: '生成授权链接',
+          step2OpenUrl: '在浏览器中打开链接并完成授权',
+          openUrlDesc: '在新标签页中打开授权链接，登录 xAI 并授权 API 访问。',
+          importantNotice: '当浏览器跳转到本地 callback URL 后，请复制完整 URL 或 code 参数回填到这里。',
+          step3EnterCode: '输入授权链接或 Code',
+          authCodeDesc: '授权完成后，粘贴 callback URL、查询字符串或授权码：',
+          authCode: '授权链接或 Code',
+          authCodePlaceholder: '粘贴完整 callback URL、?code=... 查询字符串或 code 值',
+          authCodeHint: '支持完整 callback URL、查询字符串或裸 code。',
+          refreshTokenAuth: '手动输入 RT',
+          refreshTokenDesc: '输入已有的 xAI refresh token，支持批量输入（每行一个）。',
+          refreshTokenPlaceholder: '粘贴您的 xAI refresh token...\n支持多个，每行一个',
+          validating: '验证中...',
+          validateAndCreate: '验证并创建账号',
+          pleaseEnterRefreshToken: '请输入 Refresh Token',
+          failedToGenerateUrl: '生成 Grok 授权链接失败',
+          missingExchangeParams: '缺少授权码、state 或 OAuth 会话',
+          failedToExchangeCode: 'Grok 授权码兑换失败',
+          failedToValidateRT: '验证 Grok refresh token 失败',
+          oauthOnlyHint: '首版 Grok 支持仅包含 OAuth 订阅的 Responses API 文本/推理转发。'
         },
         // Gemini specific
         gemini: {
@@ -4245,6 +4344,7 @@ export default {
       openaiAccount: 'OpenAI 账号',
       geminiAccount: 'Gemini 账号',
       antigravityAccount: 'Antigravity 账号',
+      grokAccount: 'Grok 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal
@@ -5719,6 +5819,42 @@ export default {
         backup: '数据备份',
         payment: '支付设置',
         oidc: 'OIDC 提供方',
+        media: '图片转存',
+      },
+      cosImage: {
+        title: '图片转存（COS / S3 兼容）',
+        description: '将 fal 等异步图片平台产出的临时图片转存到对象存储，生成持久可访问的地址。',
+        enabled: '启用图片转存',
+        enabledHint: '关闭后将直接返回上游临时地址，可能很快失效。',
+        endpoint: 'Endpoint',
+        endpointHint: '对象存储访问地址，如 https://cos.ap-guangzhou.myqcloud.com',
+        region: '地域（Region）',
+        bucket: '存储桶（Bucket）',
+        accessKeyId: 'SecretId / AccessKeyID',
+        secretAccessKey: 'SecretKey',
+        secretAccessKeyPlaceholder: '请输入 SecretKey',
+        secretAccessKeySetPlaceholder: '已配置，留空保持不变',
+        secretAccessKeyHint: '用于访问对象存储的密钥，仅在保存时写入，不会回显。',
+        secretAccessKeyKeepHint: '已配置密钥。留空表示保持原值，填写则覆盖。',
+        prefix: 'Key 前缀',
+        publicBaseUrl: '公开访问域名',
+        publicBaseUrlHint: '用于拼接对外可访问的图片地址（如自定义 CDN 域名）；为空时回退使用 Endpoint + Bucket 拼接。',
+        forcePathStyle: '强制 Path-Style 寻址',
+        forcePathStyleHint: '部分 S3 兼容存储需要开启；腾讯云 COS 通常无需开启。',
+        loadFailed: '加载图片转存配置失败',
+        saveSuccess: '图片转存配置已保存',
+        saveFailed: '保存图片转存配置失败',
+      },
+      asyncMedia: {
+        title: '异步媒体对账（fal 等）',
+        description: '调整异步图片任务的后台对账参数，保存后即时热生效，无需重启。',
+        reconcileInterval: '对账扫描间隔（秒）',
+        reconcileIntervalHint: 'reconciler 扫描未终结任务的间隔，范围 1–3600 秒；越小越实时，但数据库压力越大。',
+        failTimeout: '失败兜底时间（秒）',
+        failTimeoutHint: '任务从创建到强制判失并退费的最长时间，范围 60–86400 秒；仅对之后新提交的任务生效。',
+        loadFailed: '加载异步媒体配置失败',
+        saveSuccess: '异步媒体配置已保存',
+        saveFailed: '保存异步媒体配置失败',
       },
       features: {
         channelMonitor: {
@@ -5760,8 +5896,6 @@ export default {
           durationDaysDesc: '被邀请用户注册后多少天内的充值产生返利。0 = 永久有效。',
           perInviteeCap: '单人返利上限',
           perInviteeCapDesc: '每个被邀请用户最多产生的返利总额。0 = 无上限。',
-          includeSubscription: '订阅套餐计入返利',
-          includeSubscriptionDesc: '开启后，购买订阅套餐也会按实付金额产生邀请返利。默认关闭。',
           customUsers: {
             title: '专属用户配置',
             description: '为指定用户设置专属邀请码或专属返利比例。仅展示已设置过专属配置的用户。',
@@ -6086,9 +6220,41 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: '用于规避 OpenAI 上游 Cloudflare 对浏览器 UA 的访问质询。仅在检测到客户端 User-Agent 为浏览器（Mozilla/...）时生效，其他客户端原样透传。留空使用内置默认值。',
-        openaiAllowClaudeCodeCodexPlugin: '允许在 Claude Code 中使用 Codex 插件',
-        openaiAllowClaudeCodeCodexPluginDesc:
-          '全局开关，仅对已开启「仅允许 Codex 官方客户端」的 OpenAI OAuth 账号生效。开启后，所有此类账号都额外放行通过 Claude Code 的 Codex 插件发起的请求（精确匹配 originator=Claude Code），无需逐账号配置；上游请求仍保持透传。',
+        codexHardeningTitle: 'Codex 设置',
+        codexClientRestrictionTitle: 'Codex 客户端限制',
+        codexHardeningDesc:
+          '仅对已开启「仅允许 Codex 官方客户端」的 OpenAI OAuth 账号生效（全局）。在 User-Agent/Originator 之外，用版本区间、引擎指纹门与黑/白名单巩固判定。',
+        minCodexVersion: '最低 Codex 版本',
+        minCodexVersionPlaceholder: '例如 0.142.0',
+        maxCodexVersion: '最高 Codex 版本',
+        maxCodexVersionPlaceholder: '例如 0.200.0',
+        codexVersionHint:
+          '仅对官方客户端生效，校验其版本是否落在 [最低, 最高] 区间。留空表示该侧不限制。',
+        codexFingerprintSignals: 'Codex 引擎指纹信号',
+        codexFingerprintSignalsDesc:
+          '定义引擎指纹信号：勾「必须」的信号需全部命中（AND），每条 / 分隔的变体取或（OR）；一条都不勾即不校验。默认只勾 x-codex- 前缀。类型：头精确 / 头前缀 / body 路径。',
+        codexFpTypeHeaderExact: '头精确',
+        codexFpTypeHeaderPrefix: '头前缀',
+        codexFpTypeBodyPath: 'body 路径',
+        codexFpMatchPlaceholder: '匹配，变体用 / 分隔（如 session-id / session_id 或 x-codex-）',
+        codexFpRequired: '必须',
+        codexFingerprintNoRequiredWarn: '未勾选任何「必须」信号——引擎指纹门当前不生效，等于放行所有通过身份/版本的候选。如需启用校验，请至少勾选一条信号。',
+        codexAllowAppServer: 'Codex app-server',
+        codexAllowAppServerDesc:
+          '放行内嵌 Codex 引擎、经 app-server 协议接入的第三方客户端（如 Claude Code 的 codex 插件）。默认关闭；开启后此类客户端通过引擎指纹门（下方信号列表）即放行，关闭则仅放行官方客户端与白名单。',
+        codexBlacklist: 'User-Agent/Originator 黑名单',
+        codexBlacklistDesc:
+          '命中任一字段即拒，优先于一切放行。originator 精确匹配，User-Agent 为包含匹配（多个用逗号分隔）。',
+        codexWhitelist: 'User-Agent/Originator 白名单',
+        codexWhitelistDesc:
+          '放行官方集之外的客户端：需 originator 精确，且每个 User-Agent 标记都命中。默认仍需过引擎指纹门，勾「跳过引擎指纹」可免。',
+        codexWhitelistSkipFingerprint: '跳过引擎指纹',
+        codexWhitelistSkipFingerprintTooltip:
+          '风险：勾选后该条仅凭 originator + User-Agent（均可伪造）放行，不再要求引擎指纹兜底。仅用于确属可信、但本身不发 codex 引擎指纹的第三方客户端。',
+        codexOriginatorPlaceholder: 'originator（精确，如 opencode）',
+        codexUaContainsPlaceholder: 'User-Agent 包含标记，逗号分隔（如 opencode/）',
+        codexAddRow: '添加一条',
+        codexRemoveRow: '删除',
       },
       webSearchEmulation: {
         title: 'Web Search 模拟',
@@ -6137,7 +6303,7 @@ export default {
         siteSubtitleHint: '显示在登录和注册页面',
         siteSubtitlePlaceholder: '订阅转 API 转换平台',
         apiBaseUrl: 'API 端点地址',
-        apiBaseUrlHint: '用于"使用密钥"和"导入到 CC Switch"功能，留空则使用当前站点地址',
+        apiBaseUrlHint: '用于"使用密钥"、"导入到 CC Switch"和回调地址建议，留空则使用当前站点地址',
         apiBaseUrlPlaceholder: 'https://api.example.com',
         tablePreferencesTitle: '通用表格设置',
         tablePreferencesDescription: '设置后台与用户侧表格组件的默认分页行为',
@@ -6202,6 +6368,30 @@ export default {
         enabled: '启用 Sora 客户端',
         enabledHint: '开启后，侧边栏将显示 Sora 入口，用户可访问 Sora 功能'
       },
+      homeProducts: {
+        title: '首页其他产品配置',
+        description: '配置公共首页「其他产品」菜单下展示的产品链接。',
+        itemLabel: '产品 #{n}',
+        name: '菜单名',
+        namePlaceholder: '如：API 控制台',
+        url: 'URL',
+        urlPlaceholder: 'https://example.com/product',
+        action: '跳转方式',
+        icon: '图标',
+        uploadSvg: '上传 SVG',
+        removeSvg: '清除',
+        iconPresets: '预设图标',
+        iconPresetApi: 'API',
+        iconPresetChat: '聊天',
+        iconPresetPrice: '价格',
+        iconPresetDocs: '文档',
+        iconPresetTools: '工具',
+        iconPresetLaunch: '跳转',
+        iconPresetCloud: '云服务',
+        iconPresetSparkles: 'AI',
+        add: '添加产品',
+        remove: '删除'
+      },
       customMenu: {
         title: '自定义菜单页面',
         description: '添加自定义 iframe 页面到侧边栏导航。每个页面可以设置为普通用户或管理员可见。',
@@ -6218,6 +6408,10 @@ export default {
         visibility: '可见角色',
         visibilityUser: '普通用户',
         visibilityAdmin: '管理员',
+        action: '打开方式',
+        actionIframe: 'iframe 内嵌',
+        actionSameTab: '原地跳转',
+        actionNewTab: '新开页跳转',
         add: '添加菜单项',
         remove: '删除',
         moveUp: '上移',
@@ -6656,6 +6850,18 @@ export default {
         thresholdWindowMinutesHint: '超时计数的时间窗口（1-60分钟）',
         saved: '流超时设置保存成功',
         saveFailed: '保存流超时设置失败'
+      },
+      falUpscale: {
+        title: 'fal 出图放大（SeedVR）',
+        description: 'OpenAI 出图回包分辨率不足时，调用 fal upscale 放大到目标档位后再交付。需在分组开启「回包分辨率不足自动放大」。',
+        endpoint: 'fal upscale endpoint',
+        token: 'fal upscale token',
+        tokenPlaceholder: '输入 fal token',
+        tokenSetPlaceholder: '已设置（留空保持不变）',
+        tokenHint: 'token 仅用于放大调用，独立于其它密钥；留空表示保留现有 token。',
+        timeout: '单次放大超时（秒）',
+        saved: 'fal upscale 配置已保存',
+        saveFailed: '保存 fal upscale 配置失败',
       },
       rectifier: {
         title: '请求整流器',
@@ -7280,6 +7486,7 @@ export default {
       failed: '失败',
       refund_requested: '退款申请中',
       refunding: '退款中',
+      refund_pending: '退款处理中',
       refunded: '已退款',
       partially_refunded: '部分退款',
       refund_failed: '退款失败',
@@ -7497,6 +7704,8 @@ export default {
       refundReasonPlaceholder: '请输入退款原因',
       confirmRefund: '确认退款',
       refundSuccess: '退款成功',
+      refundPending: '退款处理中，待网关确认',
+      queryRefundStatus: '查询退款状态',
       refundInfo: '退款信息',
       refundEnabled: '允许退款',
       alreadyRefunded: '已退款',
@@ -7645,6 +7854,72 @@ export default {
   },
 
   // OIDC Provider（sub2api 作为 OIDC 身份提供方对外提供单点登录）
+  billingApps: {
+    admin: {
+      title: '扣费 App 管理',
+      description: '管理通过余额 RPC 接入的扣费应用（创建、启停）',
+      createButton: '创建 App',
+      empty: '暂无扣费 App',
+      loadFailed: '加载扣费 App 列表失败',
+      toggleFailed: '启停失败',
+      table: {
+        name: '名称',
+        appId: 'App ID',
+        enabled: '状态',
+        actions: '操作'
+      },
+      status: {
+        enabled: '已启用',
+        disabled: '已停用'
+      },
+      actions: {
+        enable: '启用',
+        disable: '停用',
+        stats: '费用',
+        refreshToken: '刷新 Token',
+        delete: '删除'
+      },
+      stats: {
+        title: '{name} 的累计费用',
+        netDeducted: '净扣费',
+        totalDeducted: '累计扣费',
+        totalRefunded: '累计退费',
+        deductCount: '扣费笔数',
+        refundCount: '退费笔数',
+        failed: '加载费用统计失败'
+      },
+      refreshConfirm: {
+        title: '⚠️ 刷新 Token',
+        body: '高风险操作：刷新后旧 Token 立即失效，该接入方所有正在进行的扣费/退费调用会立即鉴权失败，可能影响相关用户的计费与下单，直到对方换用新 Token。请确认接入方已准备好更新 Token 后再继续。',
+        confirm: '我已知晓风险，刷新',
+        cancel: '取消',
+        failed: '刷新失败'
+      },
+      deleteConfirm: {
+        title: '⚠️ 删除扣费 App',
+        body: '高风险操作：确定删除「{name}」？删除后该 App 的 Token 立即失效且无法恢复，其所有扣费/退费调用将全部失败，可能影响相关用户的计费与下单（历史流水保留）。请确认该 App 确实不再使用。',
+        confirm: '我已知晓风险，删除',
+        cancel: '取消',
+        failed: '删除失败'
+      },
+      form: {
+        createTitle: '创建扣费 App',
+        appName: '名称',
+        appNamePlaceholder: '例如：结算服务',
+        nameRequired: '请填写名称',
+        cancel: '取消',
+        save: '创建',
+        saveFailed: '创建失败'
+      },
+      tokenReveal: {
+        title: '一次性 Token',
+        banner: '请立即复制并妥善保存。此 Token 仅显示这一次，关闭后无法再次获取。',
+        copy: '复制',
+        copied: '已复制',
+        done: '我已保存'
+      }
+    }
+  },
   oidc: {
     consent: {
       title: '授权应用访问',

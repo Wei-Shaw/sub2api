@@ -55,6 +55,9 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice1k(groupIn.ImagePrice1K).
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
+		SetImagePreferFal(groupIn.ImagePreferFal).
+		SetImageDecodeSizeOnRsp(groupIn.ImageDecodeSizeOnRsp).
+		SetImageUpscaleOnRsp(groupIn.ImageUpscaleOnRsp).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
@@ -72,6 +75,11 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 	// 设置模型路由配置
 	if groupIn.ModelRouting != nil {
 		builder = builder.SetModelRouting(groupIn.ModelRouting)
+	}
+
+	// 设置图片二维定价矩阵（map 为空视作未配置，留 NULL）
+	if len(groupIn.ImagePricingMatrix) > 0 {
+		builder = builder.SetImagePricingMatrix(groupIn.ImagePricingMatrix)
 	}
 
 	// 设置支持的模型系列（始终设置，空数组表示不限制）
@@ -133,6 +141,9 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice1k(groupIn.ImagePrice1K).
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
+		SetImagePreferFal(groupIn.ImagePreferFal).
+		SetImageDecodeSizeOnRsp(groupIn.ImageDecodeSizeOnRsp).
+		SetImageUpscaleOnRsp(groupIn.ImageUpscaleOnRsp).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
@@ -175,6 +186,13 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetImagePrice4k(*groupIn.ImagePrice4K)
 	} else {
 		builder = builder.ClearImagePrice4k()
+	}
+
+	// 处理 ImagePricingMatrix：空 map/nil 时清除，否则全量覆盖。
+	if len(groupIn.ImagePricingMatrix) > 0 {
+		builder = builder.SetImagePricingMatrix(groupIn.ImagePricingMatrix)
+	} else {
+		builder = builder.ClearImagePricingMatrix()
 	}
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置

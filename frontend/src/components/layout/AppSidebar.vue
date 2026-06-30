@@ -93,11 +93,12 @@
               </div>
             </template>
             <!-- Normal item (no children) -->
-            <router-link
+            <component
               v-else
-              :to="item.path"
+              :is="navLinkComponent(item)"
+              v-bind="navLinkAttrs(item)"
               class="sidebar-link mb-1 relative"
-              :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+              :class="{ 'sidebar-link-active': isNavItemActive(item), 'sidebar-link-collapsed': sidebarCollapsed }"
               :title="sidebarCollapsed ? item.label : undefined"
               :id="
                 item.path === '/admin/accounts'
@@ -106,9 +107,9 @@
                     ? 'sidebar-group-manage'
                     : item.path === '/admin/redeem'
                       ? 'sidebar-wallet'
-                      : undefined
+                    : undefined
               "
-              @click="handleMenuItemClick(item.path)"
+              @click="handleNavItemClick(item)"
             >
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -118,7 +119,7 @@
                 class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
                 :aria-label="t('payment.promo.redDotAria')"
               ></span>
-            </router-link>
+            </component>
           </template>
         </div>
 
@@ -130,15 +131,16 @@
             </span>
           </div>
 
-          <router-link
+          <component
             v-for="item in personalNavItems"
             :key="item.path"
-            :to="item.path"
+            :is="navLinkComponent(item)"
+            v-bind="navLinkAttrs(item)"
             class="sidebar-link mb-1 relative"
-            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+            :class="{ 'sidebar-link-active': isNavItemActive(item), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleMenuItemClick(item.path)"
+            @click="handleNavItemClick(item)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -148,22 +150,23 @@
               class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
               :aria-label="t('payment.promo.redDotAria')"
             ></span>
-          </router-link>
+          </component>
         </div>
       </template>
 
       <!-- Regular User View -->
       <template v-else-if="!appStore.backendModeEnabled">
         <div class="sidebar-section">
-          <router-link
+          <component
             v-for="item in userNavItems"
             :key="item.path"
-            :to="item.path"
+            :is="navLinkComponent(item)"
+            v-bind="navLinkAttrs(item)"
             class="sidebar-link mb-1 relative"
-            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+            :class="{ 'sidebar-link-active': isNavItemActive(item), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleMenuItemClick(item.path)"
+            @click="handleNavItemClick(item)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -173,7 +176,7 @@
               class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
               :aria-label="t('payment.promo.redDotAria')"
             ></span>
-          </router-link>
+          </component>
         </div>
       </template>
     </nav>
@@ -227,12 +230,16 @@ import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useRechargePromoDot } from '@/composables/useRechargePromoDot'
+import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
+import type { CustomMenuItem } from '@/types'
 
 interface NavItem {
   path: string
   label: string
   icon: unknown
   iconSvg?: string
+  externalUrl?: string
+  externalTarget?: '_self' | '_blank'
   hideInSimpleMode?: boolean
   children?: NavItem[]
   /**
@@ -269,7 +276,7 @@ function applyFeatureFlags(items: NavItem[]): NavItem[] {
   return out
 }
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -730,12 +737,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
-      path: `/custom/${item.id}`,
-      label: item.label,
-      icon: null,
-      iconSvg: item.icon_svg,
-    })),
+    ...customMenuItemsForUser.value.map(customMenuToNavItem),
   )
   return items
 }
@@ -821,7 +823,8 @@ const adminNavItems = computed((): NavItem[] => {
       ],
     },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
-    { path: '/admin/oidc-clients', label: t('nav.oidcClients'), icon: KeyIcon, hideInSimpleMode: true }
+    { path: '/admin/oidc-clients', label: t('nav.oidcClients'), icon: KeyIcon, hideInSimpleMode: true },
+    { path: '/admin/billing-apps', label: t('nav.billingApps'), icon: KeyIcon, hideInSimpleMode: true }
   ]
 
   const visible = applyFeatureFlags(baseItems)
@@ -832,17 +835,47 @@ const adminNavItems = computed((): NavItem[] => {
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     for (const cm of customMenuItemsForAdmin.value) {
-      filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
+      filtered.push(customMenuToNavItem(cm))
     }
     return filtered
   }
 
   visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
   for (const cm of customMenuItemsForAdmin.value) {
-    visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
+    visible.push(customMenuToNavItem(cm))
   }
   return visible
 })
+
+function customMenuToNavItem(item: CustomMenuItem): NavItem {
+  const action = item.action || 'iframe'
+  const path = `/custom/${item.id}`
+  const externalUrl = buildCustomMenuAnchorUrl(item.url, path, action)
+  return {
+    path,
+    label: item.label,
+    icon: null,
+    iconSvg: item.icon_svg,
+    externalUrl: externalUrl || undefined,
+    externalTarget: externalUrl && action === 'new_tab' ? '_blank' : '_self',
+  }
+}
+
+function buildCustomMenuAnchorUrl(rawUrl: string, path: string, action: string): string {
+  if (action !== 'same_tab' && action !== 'new_tab') return ''
+  if (rawUrl.trim().startsWith('md:')) {
+    return action === 'new_tab' ? path : ''
+  }
+  const trimmed = rawUrl.trim()
+  if (!/^https?:\/\//i.test(trimmed)) return ''
+  return buildEmbeddedUrl(
+    trimmed,
+    authStore.user?.id,
+    authStore.token,
+    detectTheme(),
+    locale.value,
+  )
+}
 
 function toggleSidebar() {
   appStore.toggleSidebar()
@@ -885,6 +918,27 @@ function handleMenuItemClick(itemPath: string) {
   if (selector && onboardingStore.isCurrentStep(selector)) {
     onboardingStore.nextStep(500)
   }
+}
+
+function handleNavItemClick(item: NavItem) {
+  handleMenuItemClick(item.path)
+}
+
+function navLinkComponent(item: NavItem) {
+  return item.externalUrl ? 'a' : 'router-link'
+}
+
+function navLinkAttrs(item: NavItem) {
+  if (!item.externalUrl) return { to: item.path }
+  return {
+    href: item.externalUrl,
+    target: item.externalTarget,
+    rel: item.externalTarget === '_blank' ? 'noopener noreferrer' : undefined,
+  }
+}
+
+function isNavItemActive(item: NavItem): boolean {
+  return !item.externalUrl && isActive(item.path)
 }
 
 function isActive(path: string): boolean {

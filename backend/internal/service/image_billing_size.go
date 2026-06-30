@@ -4,6 +4,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -11,10 +14,11 @@ const (
 	ImageBillingSize2K = "2K"
 	ImageBillingSize4K = "4K"
 
-	ImageSizeSourceOutput  = "output"
-	ImageSizeSourceInput   = "input"
-	ImageSizeSourceDefault = "default"
-	ImageSizeSourceLegacy  = "legacy"
+	ImageSizeSourceOutput        = "output"
+	ImageSizeSourceInput         = "input"
+	ImageSizeSourceDefault       = "default"
+	ImageSizeSourceLegacy        = "legacy"
+	ImageSizeSourceOutputDecoded = "output_decoded"
 )
 
 type ImageBillingSizeResolution struct {
@@ -37,10 +41,6 @@ func ClassifyImageBillingTier(size string) (string, bool) {
 		return ImageBillingSize2K, true
 	case "4k":
 		return ImageBillingSize4K, true
-	case "2048x2048", "2048x1152":
-		return ImageBillingSize2K, true
-	case "3840x2160", "2160x3840":
-		return ImageBillingSize4K, true
 	}
 
 	width, height, ok := parseImageBillingDimensions(trimmed)
@@ -52,9 +52,9 @@ func ClassifyImageBillingTier(size string) (string, bool) {
 		maxEdge = height
 	}
 	switch {
-	case maxEdge <= 1024:
-		return ImageBillingSize1K, true
 	case maxEdge <= 2048:
+		return ImageBillingSize1K, true
+	case maxEdge < 3840:
 		return ImageBillingSize2K, true
 	default:
 		return ImageBillingSize4K, true
@@ -112,10 +112,49 @@ func ResolveImageBillingSize(inputSize string, outputSizes []string) ImageBillin
 	}
 }
 
-func ApplyOpenAIImageBillingResolution(result *OpenAIForwardResult) {
+func ApplyOpenAIImageBillingResolution(result *OpenAIForwardResult, group *Group) {
 	if result == nil || result.ImageCount <= 0 {
+		// === DEBUG ===
+		var imageCount int
+		if result != nil {
+			imageCount = result.ImageCount
+		}
+		logger.L().Info("[debug] openai.images.apply_billing_resolution.skip",
+			zap.String("component", "service.openai_gateway"),
+			zap.Bool("result_nil", result == nil),
+			zap.Int("image_count", imageCount),
+		)
 		return
 	}
+	// === DEBUG: Apply 入口快照 ===
+	{
+		var (
+			groupID       int64
+			groupPlatform string
+			toggleEnabled bool
+		)
+		if group != nil {
+			groupID = int64(group.ID)
+			groupPlatform = group.Platform
+			toggleEnabled = group.ImageDecodeSizeOnRsp
+		}
+		logger.L().Info("[debug] openai.images.apply_billing_resolution.enter",
+			zap.String("component", "service.openai_gateway"),
+			zap.Bool("group_nil", group == nil),
+			zap.Int64("group_id", groupID),
+			zap.String("group_platform", groupPlatform),
+			zap.Bool("decode_size_on_rsp", toggleEnabled),
+			zap.Int("image_count", result.ImageCount),
+			zap.String("image_size_before", result.ImageSize),
+			zap.String("image_input_size_before", result.ImageInputSize),
+			zap.Strings("image_output_sizes_before", result.ImageOutputSizes),
+		)
+	}
+
+	// 在归档之前先做回包图片分辨率自检（D8）：仅当分组开启 image_decode_size_on_rsp 且
+	// 平台为 openai 时才会真正解码；其他情况是 nil-safe no-op，与 group=nil 的旧行为等价。
+	DecodeOpenAIImageOutputSizes(result, group)
+
 	inputSize := strings.TrimSpace(result.ImageInputSize)
 	if inputSize == "" && strings.TrimSpace(result.ImageSize) != ImageBillingSize2K {
 		inputSize = strings.TrimSpace(result.ImageSize)
@@ -132,6 +171,20 @@ func ApplyOpenAIImageBillingResolution(result *OpenAIForwardResult) {
 		&result.ImageSizeSource,
 		&result.ImageSizeBreakdown,
 		resolved,
+	)
+	// 当 size 是由 b64 解码出来的，覆写 Source 标记为 output_decoded（D9 审计字段）。
+	if result.imageSizeDecoded && result.ImageSizeSource == ImageSizeSourceOutput {
+		result.ImageSizeSource = ImageSizeSourceOutputDecoded
+	}
+	// === DEBUG: Apply 出口快照 ===
+	logger.L().Info("[debug] openai.images.apply_billing_resolution.done",
+		zap.String("component", "service.openai_gateway"),
+		zap.Bool("image_size_decoded", result.imageSizeDecoded),
+		zap.String("image_size_after", result.ImageSize),
+		zap.String("image_input_size_after", result.ImageInputSize),
+		zap.String("image_output_size_after", result.ImageOutputSize),
+		zap.String("image_size_source", result.ImageSizeSource),
+		zap.Strings("image_output_sizes_after", result.ImageOutputSizes),
 	)
 }
 

@@ -270,6 +270,34 @@ func (r *ModelPricingResolver) GetRequestTierPrice(resolved *ResolvedPricing, ti
 	return 0
 }
 
+// GetRequestTierPriceWithQuality 按 (尺寸档位 × 质量) 二维查找按次/图片单价。
+//
+// 匹配优先级：
+//  1. tierLabel + quality 完全匹配（二维定价）；
+//  2. tierLabel + 空 quality（存量单维定价，兼容回退）；
+//  3. 0（未命中，由调用方继续回退默认价）。
+//
+// quality 为空字符串时直接退化为单维查找（等价于 GetRequestTierPrice）。
+func (r *ModelPricingResolver) GetRequestTierPriceWithQuality(resolved *ResolvedPricing, tierLabel, quality string) float64 {
+	if resolved == nil {
+		return 0
+	}
+	if quality != "" {
+		for _, tier := range resolved.RequestTiers {
+			if tier.TierLabel == tierLabel && tier.Quality == quality && tier.PerRequestPrice != nil {
+				return *tier.PerRequestPrice
+			}
+		}
+	}
+	// 回退：尺寸档位匹配且 quality 维度为空（存量单维定价）
+	for _, tier := range resolved.RequestTiers {
+		if tier.TierLabel == tierLabel && tier.Quality == "" && tier.PerRequestPrice != nil {
+			return *tier.PerRequestPrice
+		}
+	}
+	return 0
+}
+
 // GetRequestTierPriceByContext 根据 context token 数获取按次价格
 func (r *ModelPricingResolver) GetRequestTierPriceByContext(resolved *ResolvedPricing, totalContextTokens int) float64 {
 	iv := FindMatchingInterval(resolved.RequestTiers, totalContextTokens)

@@ -110,20 +110,20 @@ describe('ConsentView', () => {
     expect(assignMock).toHaveBeenCalledWith('https://rp.example.com/cb?error=access_denied')
   })
 
-  it('请求包含 sub2api:balance 时展示红色敏感 scope 警示', async () => {
+  it('请求包含 sub2api:apikey 时展示红色敏感 scope 警示', async () => {
     getConsentInfo.mockResolvedValue({
       client_id: 'rp_demo',
       client_name: 'Demo RP',
       scopes: [
         { scope: 'openid', sensitive: false },
-        { scope: 'sub2api:balance', sensitive: true }
+        { scope: 'sub2api:apikey', sensitive: true }
       ]
     })
     const { wrapper } = await mountConsent()
 
     expect(wrapper.find('[data-testid="consent-sensitive-warning"]').exists()).toBe(true)
     // 敏感 scope 行使用红色文字 class
-    const sensitiveRow = wrapper.find('[data-testid="consent-scope-sub2api:balance"]')
+    const sensitiveRow = wrapper.find('[data-testid="consent-scope-sub2api:apikey"]')
     expect(sensitiveRow.exists()).toBe(true)
     expect(sensitiveRow.html()).toContain('text-red-600')
   })

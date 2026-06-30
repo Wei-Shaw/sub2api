@@ -47,6 +47,9 @@ func RegisterAdminRoutes(
 		// Antigravity OAuth
 		registerAntigravityOAuthRoutes(admin, h)
 
+		// Grok OAuth
+		registerGrokOAuthRoutes(admin, h)
+
 		// 代理管理
 		registerProxyRoutes(admin, h)
 
@@ -64,6 +67,12 @@ func RegisterAdminRoutes(
 
 		// 数据库备份恢复
 		registerBackupRoutes(admin, h)
+
+		// 图片转存（COS）配置
+		registerCOSImageRoutes(admin, h)
+
+		// 异步媒体（fal 等）reconciler 运行时配置
+		registerAsyncMediaConfigRoutes(admin, h)
 
 		// 运维监控（Ops）
 		registerOpsRoutes(admin, h)
@@ -106,6 +115,9 @@ func RegisterAdminRoutes(
 
 		// OIDC Provider（第三方客户端 + 签名密钥管理）
 		registerOidcAdminRoutes(admin, h)
+
+		// 余额 RPC 接入方（扣费 app）管理
+		registerBillingAppRoutes(admin, h)
 	}
 }
 
@@ -139,6 +151,22 @@ func registerOidcAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 				keys.DELETE("/:kid", h.Admin.OidcSigningKey.Delete)
 			}
 		}
+	}
+}
+
+// registerBillingAppRoutes 注册余额 RPC 接入方（扣费 app）的 admin 管理路由。
+func registerBillingAppRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.BillingApp == nil {
+		return
+	}
+	apps := admin.Group("/billing-apps")
+	{
+		apps.GET("", h.Admin.BillingApp.List)
+		apps.POST("", h.Admin.BillingApp.Create)
+		apps.GET("/:app_id/stats", h.Admin.BillingApp.Stats)
+		apps.PATCH("/:app_id/enabled", h.Admin.BillingApp.SetEnabled)
+		apps.POST("/:app_id/refresh-token", h.Admin.BillingApp.RefreshToken)
+		apps.DELETE("/:app_id", h.Admin.BillingApp.Delete)
 	}
 }
 
@@ -354,8 +382,10 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.DELETE("/:id/temp-unschedulable", h.Admin.Account.ClearTempUnschedulable)
 		accounts.POST("/:id/schedulable", h.Admin.Account.SetSchedulable)
 		accounts.POST("/models/sync-upstream-preview", h.Admin.Account.SyncUpstreamModelsPreview)
+		accounts.POST("/models/search-upstream-preview", h.Admin.Account.SearchUpstreamModelsPreview)
 		accounts.GET("/:id/models", h.Admin.Account.GetAvailableModels)
 		accounts.POST("/:id/models/sync-upstream", h.Admin.Account.SyncUpstreamModels)
+		accounts.POST("/:id/models/search-upstream", h.Admin.Account.SearchUpstreamModels)
 		accounts.POST("/batch", h.Admin.Account.BatchCreate)
 		accounts.GET("/data", h.Admin.Account.ExportData)
 		accounts.POST("/data", h.Admin.Account.ImportData)
@@ -398,6 +428,7 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		openai.POST("/refresh-token", h.Admin.OpenAIOAuth.RefreshToken)
 		openai.POST("/accounts/:id/refresh", h.Admin.OpenAIOAuth.RefreshAccountToken)
 		openai.POST("/create-from-oauth", h.Admin.OpenAIOAuth.CreateAccountFromOAuth)
+		openai.POST("/create-from-codex-pat", h.Admin.OpenAIOAuth.CreateAccountFromCodexPAT)
 		openai.GET("/accounts/:id/quota", h.Admin.OpenAIOAuth.QueryQuota)
 		openai.POST("/accounts/:id/reset-quota", h.Admin.OpenAIOAuth.ResetQuota)
 	}
@@ -418,6 +449,20 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		antigravity.POST("/oauth/auth-url", h.Admin.AntigravityOAuth.GenerateAuthURL)
 		antigravity.POST("/oauth/exchange-code", h.Admin.AntigravityOAuth.ExchangeCode)
 		antigravity.POST("/oauth/refresh-token", h.Admin.AntigravityOAuth.RefreshToken)
+	}
+}
+
+func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	grok := admin.Group("/grok")
+	{
+		grok.POST("/oauth/auth-url", h.Admin.GrokOAuth.GenerateAuthURL)
+		grok.POST("/oauth/exchange-code", h.Admin.GrokOAuth.ExchangeCode)
+		grok.POST("/oauth/refresh-token", h.Admin.GrokOAuth.RefreshToken)
+		grok.POST("/oauth/create-from-oauth", h.Admin.GrokOAuth.CreateAccountFromOAuth)
+		grok.POST("/accounts/:id/refresh", h.Admin.GrokOAuth.RefreshAccountToken)
+		grok.GET("/accounts/:id/quota", h.Admin.GrokOAuth.QueryQuota)
+		grok.POST("/accounts/:id/reset-quota", h.Admin.GrokOAuth.ResetQuota)
+		grok.GET("/runtime-sanity", h.Admin.GrokOAuth.RuntimeSanity)
 	}
 }
 
@@ -497,6 +542,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// 请求整流器配置
 		adminSettings.GET("/rectifier", h.Admin.Setting.GetRectifierSettings)
 		adminSettings.PUT("/rectifier", h.Admin.Setting.UpdateRectifierSettings)
+		// fal upscale（OpenAI 出图回包分辨率不足时同步放大）系统配置
+		adminSettings.GET("/fal-upscale", h.Admin.Setting.GetFalUpscaleSettings)
+		adminSettings.PUT("/fal-upscale", h.Admin.Setting.UpdateFalUpscaleSettings)
 		// Beta 策略配置
 		adminSettings.GET("/beta-policy", h.Admin.Setting.GetBetaPolicySettings)
 		adminSettings.PUT("/beta-policy", h.Admin.Setting.UpdateBetaPolicySettings)
@@ -528,6 +576,22 @@ func registerDataManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dataManagement.POST("/backups", h.Admin.DataManagement.CreateBackupJob)
 		dataManagement.GET("/backups", h.Admin.DataManagement.ListBackupJobs)
 		dataManagement.GET("/backups/:job_id", h.Admin.DataManagement.GetBackupJob)
+	}
+}
+
+func registerCOSImageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	cos := admin.Group("/cos-image")
+	{
+		cos.GET("/config", h.Admin.COSImage.GetConfig)
+		cos.PUT("/config", h.Admin.COSImage.UpdateConfig)
+	}
+}
+
+func registerAsyncMediaConfigRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	am := admin.Group("/async-media")
+	{
+		am.GET("/config", h.Admin.AsyncMediaConfig.GetConfig)
+		am.PUT("/config", h.Admin.AsyncMediaConfig.UpdateConfig)
 	}
 }
 

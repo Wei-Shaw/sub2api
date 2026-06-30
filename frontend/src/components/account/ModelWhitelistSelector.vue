@@ -47,31 +47,36 @@
           />
         </div>
         <div class="max-h-52 overflow-auto">
-          <button
-            v-for="model in filteredModels"
-            :key="model.value"
-            type="button"
-            @click="toggleModel(model.value)"
-            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-600"
-          >
-            <span
-              :class="[
-                'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
-                modelValue.includes(model.value)
-                  ? 'border-primary-500 bg-primary-500 text-white'
-                  : 'border-gray-300 dark:border-dark-500'
-              ]"
-            >
-              <svg v-if="modelValue.includes(model.value)" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-              </svg>
-            </span>
-            <ModelIcon :model="model.value" size="18px" />
-            <span class="truncate text-gray-900 dark:text-white">{{ model.value }}</span>
-          </button>
-          <div v-if="filteredModels.length === 0" class="px-3 py-4 text-center text-sm text-gray-500">
-            {{ t('admin.accounts.noMatchingModels') }}
+          <div v-if="isSearchingModels || isSyncingUpstream" class="px-3 py-4 text-center text-sm text-gray-500">
+            {{ isSyncingUpstream ? t('admin.accounts.syncUpstreamModelsLoading') : t('admin.accounts.searchingModels') }}
           </div>
+          <template v-else>
+            <button
+              v-for="model in filteredModels"
+              :key="model.value"
+              type="button"
+              @click="toggleModel(model.value)"
+              class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-600"
+            >
+              <span
+                :class="[
+                  'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                  modelValue.includes(model.value)
+                    ? 'border-primary-500 bg-primary-500 text-white'
+                    : 'border-gray-300 dark:border-dark-500'
+                ]"
+              >
+                <svg v-if="modelValue.includes(model.value)" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              <ModelIcon :model="model.value" size="18px" />
+              <span class="truncate text-gray-900 dark:text-white">{{ model.value }}</span>
+            </button>
+            <div v-if="filteredModels.length === 0" class="px-3 py-4 text-center text-sm text-gray-500">
+              {{ dynamicEmptyHint }}
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -79,6 +84,7 @@
     <!-- Quick Actions -->
     <div class="mb-4 flex flex-wrap gap-2">
       <button
+        v-if="!isDynamicModelPlatform"
         type="button"
         @click="fillRelated"
         class="rounded-lg border border-blue-200 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/30"
@@ -129,11 +135,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
-import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
+import type { SyncUpstreamPreviewParams, SearchUpstreamPreviewParams } from '@/api/admin/accounts'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
@@ -181,7 +187,7 @@ const normalizedPlatforms = computed(() => {
   )
 })
 
-const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
+const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'fal'])
 const canSyncUpstream = computed(() => {
   if (props.accountId) {
     if (normalizedPlatforms.value.length === 0) return true
@@ -192,6 +198,23 @@ const canSyncUpstream = computed(() => {
   }
   return false
 })
+
+// 动态平台：可选模型清单不是硬编码，而是来自上游 models 接口（如 fal）。
+// 这类平台打开下拉时按需从接口拉取可选项。
+const dynamicModelPlatforms = new Set(['fal'])
+const isDynamicModelPlatform = computed(() => {
+  if (props.syncCredentials) {
+    return dynamicModelPlatforms.has(props.syncCredentials.platform.toLowerCase())
+  }
+  return normalizedPlatforms.value.some(platform => dynamicModelPlatforms.has(platform.toLowerCase()))
+})
+
+// dynamicModels 缓存「同步上游支持的模型」手动拉取的全量结果，作为下拉可选项。
+const dynamicModels = ref<string[]>([])
+// 动态平台搜索：输入关键词时走上游搜索接口（fal /v1/models?q=），结果存这里。
+const searchResults = ref<string[]>([])
+const isSearchingModels = ref(false)
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const availableOptions = computed(() => {
   if (normalizedPlatforms.value.length === 0) {
@@ -209,6 +232,20 @@ const availableOptions = computed(() => {
 })
 
 const filteredModels = computed(() => {
+  // 动态平台（如 fal）：列表来自上游接口，不做本地子串过滤。
+  if (isDynamicModelPlatform.value) {
+    const query = searchQuery.value.trim()
+    if (query) {
+      // 有关键词：仅展示上游搜索结果（服务端已按名称/描述/类别匹配）。
+      // 已选模型以上方标签形式始终可见，无需在此重复展示。
+      return searchResults.value.map(value => ({ value, label: value }))
+    }
+    // 无关键词：展示已选模型 + 手动同步缓存的全量清单。
+    const merged = new Set<string>(dynamicModels.value)
+    for (const model of props.modelValue) merged.add(model)
+    return Array.from(merged).map(value => ({ value, label: value }))
+  }
+
   const query = searchQuery.value.toLowerCase().trim()
   if (!query) return availableOptions.value
   return availableOptions.value.filter(
@@ -216,9 +253,73 @@ const filteredModels = computed(() => {
   )
 })
 
+// dynamicEmptyHint 决定动态平台空列表时的提示语：
+// 有关键词但无结果 → 无匹配；无关键词 → 引导搜索或同步。
+const dynamicEmptyHint = computed(() => {
+  if (!isDynamicModelPlatform.value) return t('admin.accounts.noMatchingModels')
+  if (searchQuery.value.trim()) return t('admin.accounts.noMatchingModels')
+  return t('admin.accounts.dynamicModelsSearchHint')
+})
+
+// searchDynamicModels 走上游搜索接口按关键词检索模型（仅动态平台）。
+const searchDynamicModels = async (query: string) => {
+  if (!isDynamicModelPlatform.value) return
+  if (!props.accountId && !props.syncCredentials) return
+
+  isSearchingModels.value = true
+  try {
+    let result
+    if (props.accountId) {
+      result = await accountsAPI.searchUpstreamModels(props.accountId, query)
+    } else if (props.syncCredentials) {
+      result = await accountsAPI.searchUpstreamModelsPreview({
+        ...(props.syncCredentials as SyncUpstreamPreviewParams),
+        q: query,
+      } as SearchUpstreamPreviewParams)
+    } else {
+      return
+    }
+    searchResults.value = result.models.map(model => model.trim()).filter(Boolean)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
+    appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))
+  } finally {
+    isSearchingModels.value = false
+  }
+}
+
+// 动态平台：监听输入框，防抖后走上游搜索接口；非动态平台沿用本地过滤。
+watch(searchQuery, value => {
+  if (!isDynamicModelPlatform.value) return
+  if (searchTimer) clearTimeout(searchTimer)
+  const query = value.trim()
+  if (!query) {
+    searchResults.value = []
+    isSearchingModels.value = false
+    return
+  }
+  if (!props.accountId && !props.syncCredentials) return
+  // 立即进入加载态：防抖期间 searchResults 仍为空，若不置位会先闪现「无匹配模型」，
+  // 等请求返回后再跳出结果。提前置位可让下拉始终显示「搜索中…」直到结果返回。
+  isSearchingModels.value = true
+  searchTimer = setTimeout(() => {
+    void searchDynamicModels(query)
+  }, 350)
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
+
 const toggleDropdown = () => {
   showDropdown.value = !showDropdown.value
-  if (!showDropdown.value) searchQuery.value = ''
+  if (!showDropdown.value) {
+    searchQuery.value = ''
+    // 关闭时清空搜索结果，避免下次打开残留上次搜索项。
+    searchResults.value = []
+  }
+  // 动态平台（如 fal）打开下拉时不再自动全量拉取；改为输入关键词时走搜索接口，
+  // 或由用户手动点击「同步上游支持的模型」拉取全部。
 }
 
 const removeModel = (model: string) => {
@@ -279,6 +380,11 @@ const syncUpstreamModels = async () => {
     if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
       return
+    }
+
+    // 动态平台：缓存拉取结果作为下拉可选项，避免再次请求。
+    if (isDynamicModelPlatform.value) {
+      dynamicModels.value = upstreamModels
     }
 
     const newModels = [...props.modelValue]

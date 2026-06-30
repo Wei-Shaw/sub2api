@@ -405,6 +405,60 @@ func (_u *GroupUpdate) ClearImagePrice4k() *GroupUpdate {
 	return _u
 }
 
+// SetImagePricingMatrix sets the "image_pricing_matrix" field.
+func (_u *GroupUpdate) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupUpdate {
+	_u.mutation.SetImagePricingMatrix(v)
+	return _u
+}
+
+// ClearImagePricingMatrix clears the value of the "image_pricing_matrix" field.
+func (_u *GroupUpdate) ClearImagePricingMatrix() *GroupUpdate {
+	_u.mutation.ClearImagePricingMatrix()
+	return _u
+}
+
+// SetImagePreferFal sets the "image_prefer_fal" field.
+func (_u *GroupUpdate) SetImagePreferFal(v bool) *GroupUpdate {
+	_u.mutation.SetImagePreferFal(v)
+	return _u
+}
+
+// SetNillableImagePreferFal sets the "image_prefer_fal" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImagePreferFal(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImagePreferFal(*v)
+	}
+	return _u
+}
+
+// SetImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field.
+func (_u *GroupUpdate) SetImageDecodeSizeOnRsp(v bool) *GroupUpdate {
+	_u.mutation.SetImageDecodeSizeOnRsp(v)
+	return _u
+}
+
+// SetNillableImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageDecodeSizeOnRsp(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImageDecodeSizeOnRsp(*v)
+	}
+	return _u
+}
+
+// SetImageUpscaleOnRsp sets the "image_upscale_on_rsp" field.
+func (_u *GroupUpdate) SetImageUpscaleOnRsp(v bool) *GroupUpdate {
+	_u.mutation.SetImageUpscaleOnRsp(v)
+	return _u
+}
+
+// SetNillableImageUpscaleOnRsp sets the "image_upscale_on_rsp" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageUpscaleOnRsp(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImageUpscaleOnRsp(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdate) SetClaudeCodeOnly(v bool) *GroupUpdate {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -1063,6 +1117,21 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ImagePrice4kCleared() {
 		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImagePricingMatrix(); ok {
+		_spec.SetField(group.FieldImagePricingMatrix, field.TypeJSON, value)
+	}
+	if _u.mutation.ImagePricingMatrixCleared() {
+		_spec.ClearField(group.FieldImagePricingMatrix, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ImagePreferFal(); ok {
+		_spec.SetField(group.FieldImagePreferFal, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageDecodeSizeOnRsp(); ok {
+		_spec.SetField(group.FieldImageDecodeSizeOnRsp, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageUpscaleOnRsp(); ok {
+		_spec.SetField(group.FieldImageUpscaleOnRsp, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1818,6 +1887,60 @@ func (_u *GroupUpdateOne) ClearImagePrice4k() *GroupUpdateOne {
 	return _u
 }
 
+// SetImagePricingMatrix sets the "image_pricing_matrix" field.
+func (_u *GroupUpdateOne) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupUpdateOne {
+	_u.mutation.SetImagePricingMatrix(v)
+	return _u
+}
+
+// ClearImagePricingMatrix clears the value of the "image_pricing_matrix" field.
+func (_u *GroupUpdateOne) ClearImagePricingMatrix() *GroupUpdateOne {
+	_u.mutation.ClearImagePricingMatrix()
+	return _u
+}
+
+// SetImagePreferFal sets the "image_prefer_fal" field.
+func (_u *GroupUpdateOne) SetImagePreferFal(v bool) *GroupUpdateOne {
+	_u.mutation.SetImagePreferFal(v)
+	return _u
+}
+
+// SetNillableImagePreferFal sets the "image_prefer_fal" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImagePreferFal(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImagePreferFal(*v)
+	}
+	return _u
+}
+
+// SetImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field.
+func (_u *GroupUpdateOne) SetImageDecodeSizeOnRsp(v bool) *GroupUpdateOne {
+	_u.mutation.SetImageDecodeSizeOnRsp(v)
+	return _u
+}
+
+// SetNillableImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageDecodeSizeOnRsp(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageDecodeSizeOnRsp(*v)
+	}
+	return _u
+}
+
+// SetImageUpscaleOnRsp sets the "image_upscale_on_rsp" field.
+func (_u *GroupUpdateOne) SetImageUpscaleOnRsp(v bool) *GroupUpdateOne {
+	_u.mutation.SetImageUpscaleOnRsp(v)
+	return _u
+}
+
+// SetNillableImageUpscaleOnRsp sets the "image_upscale_on_rsp" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageUpscaleOnRsp(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageUpscaleOnRsp(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdateOne) SetClaudeCodeOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -2506,6 +2629,21 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.ImagePrice4kCleared() {
 		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImagePricingMatrix(); ok {
+		_spec.SetField(group.FieldImagePricingMatrix, field.TypeJSON, value)
+	}
+	if _u.mutation.ImagePricingMatrixCleared() {
+		_spec.ClearField(group.FieldImagePricingMatrix, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ImagePreferFal(); ok {
+		_spec.SetField(group.FieldImagePreferFal, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageDecodeSizeOnRsp(); ok {
+		_spec.SetField(group.FieldImageDecodeSizeOnRsp, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageUpscaleOnRsp(); ok {
+		_spec.SetField(group.FieldImageUpscaleOnRsp, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)

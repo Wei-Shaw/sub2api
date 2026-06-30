@@ -34,7 +34,7 @@ All endpoints return **HTTP 404** when the provider feature is disabled on the i
   "grant_types_supported": ["authorization_code", "refresh_token"],
   "subject_types_supported": ["public"],
   "id_token_signing_alg_values_supported": ["RS256"],
-  "scopes_supported": ["openid","profile","email","offline_access","sub2api:balance","sub2api:apikey"],
+  "scopes_supported": ["openid","profile","email","offline_access","sub2api:apikey"],
   "token_endpoint_auth_methods_supported": ["client_secret_basic","client_secret_post"],
   "code_challenge_methods_supported": ["S256"],
   "claims_supported": ["sub","iss","aud","exp","iat","auth_time","nonce","acr","name","preferred_username","email","email_verified"]
@@ -64,8 +64,7 @@ All endpoints return **HTTP 404** when the provider feature is disabled on the i
 | `profile` | `name`, `preferred_username` | ID Token + UserInfo |
 | `email` | `email`, `email_verified` | ID Token + UserInfo |
 | `offline_access` | (enables `refresh_token`) | — |
-| `sub2api:balance` ⚠️ | `sub2api_balance`, `sub2api_total_recharged` | **UserInfo only** |
-| `sub2api:apikey` ⚠️ | `sub2api_apikey_count` | **UserInfo only** |
+| `sub2api:apikey` ⚠️ | `sub2api_apikey_count`, `sub2api_apikeys` | **UserInfo only** |
 
 ID Token always carries `iss`, `aud`, `exp`, `iat`, `auth_time`, `acr`, and `nonce`
 (if sent). The sensitive `sub2api_*` claims are **never** in the ID Token.
@@ -184,14 +183,74 @@ Authorization: Bearer {access_token}
   "name": "alice",
   "email": "alice@example.com",
   "email_verified": true,
-  "sub2api_balance": "42.5",
-  "sub2api_total_recharged": "100",
-  "sub2api_apikey_count": 3
+  "sub2api_apikey_count": 2,
+  "sub2api_apikeys": [
+    {
+      "id": 101,
+      "key": "sk-xxxxxxxxxxxxxxxxxxxxxxxx",
+      "name": "prod",
+      "status": "active",
+      "created_at": "2026-01-01T00:00:00Z",
+      "last_used_at": "2026-06-01T08:00:00Z",
+      "expires_at": null
+    },
+    {
+      "id": 102,
+      "key": "sk-yyyyyyyyyyyyyyyyyyyyyyyy",
+      "name": "dev",
+      "status": "active",
+      "created_at": "2026-02-01T00:00:00Z",
+      "last_used_at": null,
+      "expires_at": null
+    }
+  ]
 }
 ```
 
 Fields depend on granted scopes. Invalid/expired/revoked token → `401` with
 `WWW-Authenticate: Bearer error="invalid_token"`.
+
+---
+
+## 7a. Resource: API Keys (paginated)
+
+Protected resource endpoint for RPs that need a structured / paginated view of
+the authenticated user's API Keys (instead of the bulk list returned by
+UserInfo).
+
+```http
+GET {issuer}/oidc/resource/api-keys?page=1&page_size=20&search=&status=&group_id=
+Authorization: Bearer {access_token}
+```
+
+- Requires the access token to carry scope `sub2api:apikey`.
+- Supported query params: `page`, `page_size`, `sort_by` (default `created_at`),
+  `sort_order` (`desc` / `asc`), `search`, `status` (`active` / `inactive`),
+  `group_id`.
+
+```json
+{
+  "data": [
+    {
+      "id": 101,
+      "key": "sk-xxxxxxxxxxxxxxxxxxxxxxxx",
+      "name": "prod",
+      "status": "active",
+      "created_at": "2026-01-01T00:00:00Z",
+      "last_used_at": "2026-06-01T08:00:00Z",
+      "expires_at": null
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "page_size": 20
+}
+```
+
+Errors:
+- Missing/invalid token → `401` with `WWW-Authenticate: Bearer error="invalid_token"`.
+- Token without `sub2api:apikey` → `403` with
+  `WWW-Authenticate: Bearer error="insufficient_scope", scope="sub2api:apikey"`.
 
 ---
 
@@ -222,7 +281,8 @@ Token/UserInfo → JSON `{ "error": "...", "error_description": "..." }`.
 | 400 | `invalid_scope` | scope exceeds grant |
 | 400 | `unsupported_grant_type` | unsupported grant |
 | 401 | `invalid_client` | bad client creds / disabled |
-| 401 | `invalid_token` | UserInfo token expired/revoked/unknown |
+| 401 | `invalid_token` | UserInfo / resource token expired/revoked/unknown |
+| 403 | `insufficient_scope` | resource endpoint called without required scope |
 
 Authorize errors redirect to `redirect_uri?error=...&state=...` when the URI is
 valid; otherwise a `400` JSON body (it won't redirect to an untrusted URI).

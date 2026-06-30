@@ -3,6 +3,7 @@ export default {
   home: {
     viewOnGithub: 'View on GitHub',
     viewDocs: 'View Documentation',
+    products: 'Other Products',
     docs: 'Docs',
     switchToLight: 'Switch to Light Mode',
     switchToDark: 'Switch to Dark Mode',
@@ -488,6 +489,7 @@ export default {
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
     oidcClients: 'OIDC Clients',
+    billingApps: 'Billing Apps',
   },
 
   // Auth
@@ -792,6 +794,8 @@ export default {
     },
     allGroups: 'All Groups',
     allStatus: 'All Status',
+    columnSettings: 'Column Settings',
+    columnAlwaysVisible: 'This column is always visible',
     createKey: 'Create API Key',
     editKey: 'Edit API Key',
     deleteKey: 'Delete API Key',
@@ -953,6 +957,10 @@ export default {
     cacheTtlOverridden1h: 'Billed as 1h',
     totalRequests: 'Total Requests',
     totalTokens: 'Total Tokens',
+    cacheTotal: 'Cache',
+    cacheBreakdown: 'Cache Token Breakdown',
+    cacheCreationTokensLabel: 'Cache Creation',
+    cacheReadTokensLabel: 'Cache Read',
     totalCost: 'Total Cost',
     standardCost: 'Standard',
     actualCost: 'Actual',
@@ -1046,6 +1054,9 @@ export default {
     exportExcelFailed: 'Failed to export usage data',
     imageUnit: ' images',
     userAgent: 'User-Agent',
+    result: 'Result',
+    resultDownload: 'Download',
+    resultEmpty: 'None',
     tabs: { usage: 'Usage', errors: 'Error Requests' },
     errors: {
       time: 'Time', model: 'Model', endpoint: 'Endpoint', status: 'Status',
@@ -2290,6 +2301,8 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        fal: 'fal',
+        grok: 'Grok',
       },
       deleteConfirm:
         "Are you sure you want to delete '{name}'? All associated API keys will no longer belong to any group.",
@@ -2318,7 +2331,27 @@ export default {
         imageMultiplier: 'Image multiplier',
         modeHint: 'By default, image billing uses image price × current effective group multiplier. Independent mode uses image price × image multiplier.',
         finalPricePreview: 'Final per-image price preview',
-        notConfigured: 'Not configured'
+        notConfigured: 'Not configured',
+        matrixTitle: 'Size × Quality pricing matrix',
+        matrixHint: 'Each cell is the per-image USD price. A matched cell wins. Leave a column empty to fall back to the legacy single-dimension prices below.',
+        matrixSizeHeader: 'Size',
+        fillDefaults: 'Fill official defaults',
+        clearAll: 'Clear all',
+        clearRow: 'Clear row',
+        invalidCells: '{count} cell(s) have invalid values (must be ≥ 0)',
+        quality: {
+          low: 'Low',
+          medium: 'Medium',
+          high: 'High'
+        },
+        fallbackTitle: 'Compatibility fallback prices (legacy 1K / 2K / 4K)',
+        fallbackHint: 'When the matrix above does not match (or is empty), images are billed by their longest edge bucketed into 1K / 2K / 4K using these prices.',
+preferFalLabel: 'Prefer Fal accounts (OpenAI groups only)',
+          preferFalHint: 'When enabled, image requests on this group are scheduled to fal accounts first and only fall back to OpenAI accounts when no fal account is available. The billed amount is unaffected and always uses this group\'s pricing table.',
+          decodeSizeOnRspLabel: 'Decode response size from base64 (OpenAI groups only)',
+decodeSizeOnRspHint: 'When the upstream response omits the size field or returns size=auto, decode the b64_json content to recover the real width and height for billing. URL-only responses are not affected.',
+          upscaleOnRspLabel: 'Upscale when response resolution is below target (OpenAI groups only, depends on decode above)',
+          upscaleOnRspHint: 'When 2K/4K was requested but the response tier is lower, call fal SeedVR to upscale to the target tier before returning to the client (client and COS stay consistent, billed at the target tier; on failure/timeout falls back to the original). Requires the decode toggle above and fal upscale configured in system settings. Streaming requests degrade to non-streaming (returned after upscaling completes).'
       },
       modelsList: {
         title: 'Custom /v1/models Model List',
@@ -2478,8 +2511,8 @@ export default {
       deleteError: 'Failed to delete channel',
       nameRequired: 'Please enter a channel name',
       duplicateModels: 'Model "{0}" appears in multiple pricing entries',
-      modelConflict: "Model patterns '{model1}' and '{model2}' conflict: overlapping match range",
-      mappingConflict: "Mapping source patterns '{model1}' and '{model2}' conflict: overlapping match range",
+      modelConflict: "Model patterns '{model1}' and '{model2}' conflict: overlapping match range. Model names are matched case-insensitively, so an existing entry already covers all case variants — no need to add the variant separately.",
+      mappingConflict: "Mapping source patterns '{model1}' and '{model2}' conflict: overlapping match range. Source patterns are matched case-insensitively, so an existing entry already covers all case variants.",
       deleteConfirm: 'Are you sure you want to delete channel "{name}"? This cannot be undone.',
       columns: {
         name: 'Name',
@@ -2719,6 +2752,7 @@ export default {
       unbanFailed: 'Failed to unban user',
       inputDetailTitle: 'Input Summary Detail',
       inputDetailContent: 'Full Content',
+      matchedKeyword: 'Matched Keyword',
       queueDelay: 'Queued {ms} ms',
       allGroups: 'All Groups',
       allGroupsHint: 'Auditing all groups',
@@ -3198,6 +3232,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        fal: 'fal',
       },
       types: {
         oauth: 'OAuth',
@@ -3206,10 +3241,15 @@ export default {
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
+        grokOauth: 'Grok OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
       },
+      antigravityProjectIdLabel: 'GCP Project ID (optional)',
+      antigravityProjectIdPlaceholder: 'your-gcp-project-id',
+      antigravityProjectIdHint:
+        'Antigravity standard-tier accounts that do not receive an automatic project_id need a user-owned GCP project.',
       status: {
         active: 'Active',
         inactive: 'Inactive',
@@ -3473,6 +3513,11 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
+      // fal specific hints
+      fal: {
+        baseUrlHint: 'Leave empty to use the official fal API (https://fal.run)',
+        apiKeyHint: 'Your fal API Key (FAL_KEY) — enter the key itself, without the "Key " prefix',
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',
@@ -3526,9 +3571,9 @@ export default {
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
-        codexCLIOnlyAllowClaudeCode: "Also allow Claude Code's Codex plugin",
-        codexCLIOnlyAllowClaudeCodeDesc:
-          'Only takes effect when the switch above is on. Additionally allows requests from the Claude Code Codex plugin (exact match on originator=Claude Code) without weakening blocking of other non-official clients.',
+        codexCLIOnlyAppServer: 'Allow Codex app-server clients',
+        codexCLIOnlyAppServerDesc:
+          "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
         codexImageGenerationBridge: 'Codex image-generation bridge',
         codexImageGenerationBridgeDesc:
           'Account policy takes precedence over channel and global settings. Only controls whether Codex requests through the /responses text endpoint receive the image_generation tool; standalone image-generation endpoints are unaffected.',
@@ -3560,6 +3605,10 @@ export default {
         testModeCompact: 'Compact probe',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
+      grok: {
+        baseUrlHint: 'Grok OAuth accounts forward to the official xAI API base URL.',
+        apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.'
+      },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
         apiKeyPassthroughDesc:
@@ -3587,6 +3636,9 @@ export default {
       targetNoWildcard: 'Target model cannot contain wildcard *',
       searchModels: 'Search models...',
       noMatchingModels: 'No matching models',
+      dynamicModelsHint: 'Model list for this platform is fetched from the upstream API. Enter credentials and click "Sync upstream supported models" first.',
+      dynamicModelsSearchHint: 'Type a keyword to search upstream models, or click "Sync upstream supported models" to fetch all.',
+      searchingModels: 'Searching...',
       fillRelatedModels: 'Sync latest supported models',
       syncUpstreamModels: 'Sync upstream supported models',
       syncUpstreamModelsLoading: 'Syncing upstream...',
@@ -3873,6 +3925,14 @@ export default {
           codexSessionImportFailed: 'Failed to import Codex account',
           codexSessionImportSuccess: 'Import completed: created {created}, updated {updated}, skipped {skipped}',
           codexSessionImportPartial: 'Partial success: created {created}, updated {updated}, skipped {skipped}, failed {failed}',
+          codexPatAuth: 'Codex Personal Access Token',
+          codexPatDesc: 'Enter a Codex at- personal access token. The system validates it with OpenAI whoami before creating the account.',
+          codexPatInputLabel: 'Codex PAT',
+          codexPatPlaceholder: 'at-...',
+          codexPatHint: 'This is a separate auth mode. It does not save refresh_token or write an OAuth access_token expiration.',
+          codexPatImportAndCreate: 'Validate & Create Codex PAT Account',
+          codexPatEmpty: 'Please enter a Codex personal access token',
+          codexPatImportFailed: 'Failed to create Codex PAT account',
           sessionTokenAuth: 'Manual ST Input',
           sessionTokenDesc: 'Enter your existing Session Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
           sessionTokenPlaceholder: 'Paste your Session Token...\nSupports multiple, one per line',
@@ -3889,6 +3949,31 @@ export default {
           validateAndCreate: 'Validate & Create Account',
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
           pleaseEnterSessionToken: 'Please enter Session Token'
+        },
+        grok: {
+          title: 'Grok Account Authorization',
+          followSteps: 'Follow these steps to authorize your xAI/Grok account:',
+          step1GenerateUrl: 'Generate the xAI authorization URL',
+          generateAuthUrl: 'Generate Auth URL',
+          step2OpenUrl: 'Open the URL in your browser and complete authorization',
+          openUrlDesc: 'Open the authorization URL in a new tab, sign in to xAI, and authorize API access.',
+          importantNotice: 'When the browser reaches the local callback URL, copy the full URL or the code query parameter back here.',
+          step3EnterCode: 'Enter Authorization URL or Code',
+          authCodeDesc: 'After authorization, paste the callback URL, query string, or authorization code:',
+          authCode: 'Authorization URL or Code',
+          authCodePlaceholder: 'Paste the full callback URL, ?code=... query string, or code value',
+          authCodeHint: 'Full callback URLs, query strings, and bare codes are accepted.',
+          refreshTokenAuth: 'Manual RT Input',
+          refreshTokenDesc: 'Enter existing xAI refresh token(s). Supports batch input, one per line.',
+          refreshTokenPlaceholder: 'Paste your xAI refresh token...\nSupports multiple, one per line',
+          validating: 'Validating...',
+          validateAndCreate: 'Validate & Create Account',
+          pleaseEnterRefreshToken: 'Please enter Refresh Token',
+          failedToGenerateUrl: 'Failed to generate Grok auth URL',
+          missingExchangeParams: 'Missing authorization code, state, or OAuth session',
+          failedToExchangeCode: 'Failed to exchange Grok authorization code',
+          failedToValidateRT: 'Failed to validate Grok refresh token',
+          oauthOnlyHint: 'Initial Grok support is OAuth subscription-backed Responses API text and reasoning traffic only.'
         },
         // Gemini specific
 	        gemini: {
@@ -4111,6 +4196,7 @@ export default {
       openaiAccount: 'OpenAI Account',
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
+      grokAccount: 'Grok Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
@@ -4185,6 +4271,18 @@ export default {
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
         claude: 'Claude',
+        grokRequests: 'Req',
+        grokTokens: 'Tok',
+        grokUnknown: 'Grok quota is unknown until the first upstream response includes xAI rate-limit headers.',
+        grokRetryAfter: 'Retry after {time}',
+        grokProbe: 'Probe',
+        grokProbeTooltip: 'Send a minimal xAI Responses probe and read quota headers',
+        grokResetUnsupported: 'Reset unsupported',
+        grokResetUnsupportedTooltip: 'xAI does not expose reset credits for Grok OAuth accounts',
+        grokNoHeaders: 'No quota headers observed',
+        grokLastStatus: 'Status {status}',
+        grokLastProbe: 'Probe {time}',
+        grokLastHeadersSeen: 'Headers {time}',
         passiveSampled: 'Passive',
         activeQuery: 'Query'
       },
@@ -4197,7 +4295,9 @@ export default {
         resetTooltipNeedQuery: 'Click Credits first to load the available count',
         resetTooltipNoCredits: 'No reset credits available',
         noCreditsAvailable: 'No reset credits available',
-        resetSuccess: 'Reset {windows} window(s)'
+        resetSuccess: 'Reset {windows} window(s)',
+        confirmTitle: 'Confirm Weekly Limit Reset',
+        confirmMessage: 'This will consume 1 reset credit to immediately restore the current window ({count} remaining). This action cannot be undone. Continue?'
       },
       tier: {
         free: 'Free',
@@ -5563,6 +5663,42 @@ export default {
         backup: 'Backup',
         payment: 'Payment',
         oidc: 'OIDC Provider',
+        media: 'Image Transfer',
+      },
+      cosImage: {
+        title: 'Image Transfer (COS / S3-compatible)',
+        description: 'Transfer transient images produced by async platforms like fal into object storage to get persistent, accessible URLs.',
+        enabled: 'Enable image transfer',
+        enabledHint: 'When disabled, the upstream transient URL is returned directly and may expire quickly.',
+        endpoint: 'Endpoint',
+        endpointHint: 'Object storage endpoint, e.g. https://cos.ap-guangzhou.myqcloud.com',
+        region: 'Region',
+        bucket: 'Bucket',
+        accessKeyId: 'SecretId / AccessKeyID',
+        secretAccessKey: 'SecretKey',
+        secretAccessKeyPlaceholder: 'Enter SecretKey',
+        secretAccessKeySetPlaceholder: 'Configured. Leave blank to keep unchanged',
+        secretAccessKeyHint: 'Key used to access object storage. Written only on save and never echoed back.',
+        secretAccessKeyKeepHint: 'A key is configured. Leave blank to keep it, or enter a new value to overwrite.',
+        prefix: 'Key prefix',
+        publicBaseUrl: 'Public base URL',
+        publicBaseUrlHint: 'Used to build publicly accessible image URLs (e.g. a custom CDN domain). Falls back to Endpoint + Bucket when empty.',
+        forcePathStyle: 'Force path-style addressing',
+        forcePathStyleHint: 'Required by some S3-compatible stores; typically not needed for Tencent COS.',
+        loadFailed: 'Failed to load image transfer config',
+        saveSuccess: 'Image transfer config saved',
+        saveFailed: 'Failed to save image transfer config',
+      },
+      asyncMedia: {
+        title: 'Async Media Reconciliation (fal, etc.)',
+        description: 'Tune background reconciliation parameters for async image tasks. Changes take effect immediately without a restart.',
+        reconcileInterval: 'Reconcile interval (seconds)',
+        reconcileIntervalHint: 'Interval at which the reconciler scans unfinished tasks. Range 1–3600s; smaller is more real-time but adds DB load.',
+        failTimeout: 'Fail timeout (seconds)',
+        failTimeoutHint: 'Max time from task creation to forced failure and refund. Range 60–86400s; applies only to newly submitted tasks.',
+        loadFailed: 'Failed to load async media config',
+        saveSuccess: 'Async media config saved',
+        saveFailed: 'Failed to save async media config',
       },
       features: {
         channelMonitor: {
@@ -5604,8 +5740,6 @@ export default {
           durationDaysDesc: 'Rebate relationship expires after this many days since invitee registration. 0 = permanent.',
           perInviteeCap: 'Per-Invitee Rebate Cap',
           perInviteeCapDesc: 'Maximum total rebate from a single invitee. 0 = no limit.',
-          includeSubscription: 'Include Subscription Purchases',
-          includeSubscriptionDesc: 'When enabled, subscription plan purchases also accrue invite rebate (based on the paid amount). Disabled by default.',
           customUsers: {
             title: 'Per-User Overrides',
             description: 'Set a custom invite code or exclusive rebate rate for specific users. Lists only users that have an override applied.',
@@ -5936,9 +6070,41 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: 'Used to bypass Cloudflare browser-UA challenges on the OpenAI upstream. Only applies when the client User-Agent is detected as a browser (Mozilla/...). Leave empty to use the built-in default.',
-        openaiAllowClaudeCodeCodexPlugin: "Allow using the Codex plugin in Claude Code",
-        openaiAllowClaudeCodeCodexPluginDesc:
-          "Global switch; only affects OpenAI OAuth accounts that have 'Codex official clients only' enabled. When on, all such accounts additionally allow requests from the Claude Code Codex plugin (exact match on originator=Claude Code) without per-account config; upstream requests remain pass-through.",
+        codexHardeningTitle: "Codex Settings",
+        codexClientRestrictionTitle: "Codex client restriction",
+        codexHardeningDesc:
+          "Only affects OpenAI OAuth accounts with 'Codex official clients only' enabled (global). Beyond User-Agent/Originator, harden the decision with a version range, an engine-fingerprint gate, and black/whitelists.",
+        minCodexVersion: "Min Codex Version",
+        minCodexVersionPlaceholder: "e.g. 0.142.0",
+        maxCodexVersion: "Max Codex Version",
+        maxCodexVersionPlaceholder: "e.g. 0.200.0",
+        codexVersionHint:
+          "Official clients only: checks their version against the [min, max] range. Leave a side empty to not limit it.",
+        codexFingerprintSignals: "Codex engine fingerprint signals",
+        codexFingerprintSignalsDesc:
+          "Define engine-fingerprint signals: every Required signal must match (AND); within a row, '/'-separated variants are OR'd. None checked = not enforced. Default checks only the x-codex- prefix. Types: header exact / header prefix / body path.",
+        codexFpTypeHeaderExact: "Header exact",
+        codexFpTypeHeaderPrefix: "Header prefix",
+        codexFpTypeBodyPath: "Body path",
+        codexFpMatchPlaceholder: "match; '/'-separate variants (e.g. session-id / session_id or x-codex-)",
+        codexFpRequired: "Required",
+        codexFingerprintNoRequiredWarn: "No signal is marked Required — the engine-fingerprint gate is inactive, allowing every candidate that passes identity/version. Check at least one signal to enable it.",
+        codexAllowAppServer: "Codex app-server",
+        codexAllowAppServerDesc:
+          "Allow third-party clients that embed the Codex engine and connect over the app-server protocol (e.g. Claude Code's codex plugin). Off by default; when on, such clients are allowed once they pass the engine-fingerprint gate (the signal list below); off = only official clients and the whitelist are allowed.",
+        codexBlacklist: "User-Agent/Originator Blacklist",
+        codexBlacklistDesc:
+          "Deny if any field matches; takes precedence over any allow. originator is exact; User-Agent is a 'contains' match (comma-separated).",
+        codexWhitelist: "User-Agent/Originator Whitelist",
+        codexWhitelistDesc:
+          "Allow clients outside the official set: requires exact originator and every User-Agent marker present. Still subject to the fingerprint gate unless 'Skip engine fingerprint' is checked.",
+        codexWhitelistSkipFingerprint: "Skip engine fingerprint",
+        codexWhitelistSkipFingerprintTooltip:
+          "Risk: when checked this entry is allowed on originator + User-Agent alone (both forgeable), with no engine-fingerprint backstop. Use only for trusted third-party clients that genuinely do not send a codex engine fingerprint.",
+        codexOriginatorPlaceholder: "originator (exact, e.g. opencode)",
+        codexUaContainsPlaceholder: "User-Agent contains markers, comma-separated (e.g. opencode/)",
+        codexAddRow: "Add entry",
+        codexRemoveRow: "Remove",
       },
       webSearchEmulation: {
         title: 'Web Search Emulation',
@@ -5989,7 +6155,7 @@ export default {
         apiBaseUrl: 'API Base URL',
         apiBaseUrlPlaceholder: 'https://api.example.com',
         apiBaseUrlHint:
-          'Used for "Use Key" and "Import to CC Switch" features. Leave empty to use current site URL.',
+          'Used for "Use Key", "Import to CC Switch", and callback URL suggestions. Leave empty to use current site URL.',
         tablePreferencesTitle: 'Global Table Preferences',
         tablePreferencesDescription: 'Configure default pagination behavior for shared table components',
         tableDefaultPageSize: 'Default Rows Per Page',
@@ -6050,6 +6216,30 @@ export default {
         enabled: 'Enable Sora Client',
         enabledHint: 'When enabled, the Sora entry will be shown in the sidebar for users to access Sora features'
       },
+      homeProducts: {
+        title: 'Home Product Menu',
+        description: 'Configure product links shown under the Other Products menu on the public homepage.',
+        itemLabel: 'Product #{n}',
+        name: 'Menu Name',
+        namePlaceholder: 'e.g. API Console',
+        url: 'URL',
+        urlPlaceholder: 'https://example.com/product',
+        action: 'Open Mode',
+        icon: 'Icon',
+        uploadSvg: 'Upload SVG',
+        removeSvg: 'Remove',
+        iconPresets: 'Preset Icons',
+        iconPresetApi: 'API',
+        iconPresetChat: 'Chat',
+        iconPresetPrice: 'Pricing',
+        iconPresetDocs: 'Docs',
+        iconPresetTools: 'Tools',
+        iconPresetLaunch: 'Launch',
+        iconPresetCloud: 'Cloud',
+        iconPresetSparkles: 'AI',
+        add: 'Add Product',
+        remove: 'Remove'
+      },
       customMenu: {
         title: 'Custom Menu Pages',
         description: 'Add custom iframe pages to the sidebar navigation. Each page can be visible to regular users or administrators.',
@@ -6066,6 +6256,10 @@ export default {
         visibility: 'Visible To',
         visibilityUser: 'Regular Users',
         visibilityAdmin: 'Administrators',
+        action: 'Open Mode',
+        actionIframe: 'Embedded iframe',
+        actionSameTab: 'Same tab',
+        actionNewTab: 'New tab',
         add: 'Add Menu Item',
         remove: 'Remove',
         moveUp: 'Move Up',
@@ -6505,6 +6699,18 @@ export default {
         thresholdWindowMinutesHint: 'Time window for counting timeouts (1-60 minutes)',
         saved: 'Stream timeout settings saved',
         saveFailed: 'Failed to save stream timeout settings'
+      },
+      falUpscale: {
+        title: 'fal Image Upscale (SeedVR)',
+        description: 'When an OpenAI image response is below the requested resolution, call fal upscale to scale it to the target tier before delivery. Enable "Upscale when below target" on the group too.',
+        endpoint: 'fal upscale endpoint',
+        token: 'fal upscale token',
+        tokenPlaceholder: 'Enter fal token',
+        tokenSetPlaceholder: 'Already set (leave blank to keep)',
+        tokenHint: 'Token is used only for upscale calls, independent of other keys; leave blank to keep the existing token.',
+        timeout: 'Per-upscale timeout (seconds)',
+        saved: 'fal upscale settings saved',
+        saveFailed: 'Failed to save fal upscale settings',
       },
       rectifier: {
         title: 'Request Rectifier',
@@ -7104,6 +7310,7 @@ export default {
       failed: 'Failed',
       refund_requested: 'Refund Requested',
       refunding: 'Refunding',
+      refund_pending: 'Refund Pending',
       refunded: 'Refunded',
       partially_refunded: 'Partially Refunded',
       refund_failed: 'Refund Failed',
@@ -7321,6 +7528,8 @@ export default {
       refundReasonPlaceholder: 'Please enter refund reason',
       confirmRefund: 'Confirm Refund',
       refundSuccess: 'Refund successful',
+      refundPending: 'Refund pending gateway confirmation',
+      queryRefundStatus: 'Query refund status',
       refundInfo: 'Refund Info',
       refundEnabled: 'Refund Enabled',
       allowUserRefund: 'Allow User Refund',
@@ -7469,6 +7678,72 @@ export default {
     buy_now: 'Buy now',
   },
 
+  billingApps: {
+    admin: {
+      title: 'Billing Apps',
+      description: 'Manage apps that call the balance RPC (create, enable/disable)',
+      createButton: 'Create App',
+      empty: 'No billing apps yet',
+      loadFailed: 'Failed to load billing apps',
+      toggleFailed: 'Failed to update status',
+      table: {
+        name: 'Name',
+        appId: 'App ID',
+        enabled: 'Status',
+        actions: 'Actions'
+      },
+      status: {
+        enabled: 'Enabled',
+        disabled: 'Disabled'
+      },
+      actions: {
+        enable: 'Enable',
+        disable: 'Disable',
+        stats: 'Cost',
+        refreshToken: 'Refresh Token',
+        delete: 'Delete'
+      },
+      stats: {
+        title: 'Cumulative cost of {name}',
+        netDeducted: 'Net deducted',
+        totalDeducted: 'Total deducted',
+        totalRefunded: 'Total refunded',
+        deductCount: 'Deduction count',
+        refundCount: 'Refund count',
+        failed: 'Failed to load cost stats'
+      },
+      refreshConfirm: {
+        title: '⚠️ Refresh Token',
+        body: 'High-risk action: the old token is invalidated immediately. All in-flight deduct/refund calls from this integrator will fail authentication right away — potentially affecting billing and orders for the related users — until they switch to the new token. Make sure the integrator is ready to update the token before continuing.',
+        confirm: 'I understand the risk, refresh',
+        cancel: 'Cancel',
+        failed: 'Failed to refresh'
+      },
+      deleteConfirm: {
+        title: '⚠️ Delete Billing App',
+        body: 'High-risk action: delete "{name}"? Its token is invalidated immediately and cannot be recovered; all of its deduct/refund calls will fail — potentially affecting billing and orders for the related users (historical ledger is kept). Make sure this app is truly no longer in use.',
+        confirm: 'I understand the risk, delete',
+        cancel: 'Cancel',
+        failed: 'Failed to delete'
+      },
+      form: {
+        createTitle: 'Create Billing App',
+        appName: 'Name',
+        appNamePlaceholder: 'e.g. Settlement service',
+        nameRequired: 'Name is required',
+        cancel: 'Cancel',
+        save: 'Create',
+        saveFailed: 'Failed to create'
+      },
+      tokenReveal: {
+        title: 'One-time Token',
+        banner: 'Copy and store it now. This token is shown only once and cannot be retrieved again.',
+        copy: 'Copy',
+        copied: 'Copied',
+        done: 'I have saved it'
+      }
+    }
+  },
   // OIDC Provider (sub2api acting as an OIDC identity provider for third-party apps)
   oidc: {
     consent: {

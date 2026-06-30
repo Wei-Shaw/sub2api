@@ -63,6 +63,7 @@ func ProvideTokenRefreshService(
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
+	grokOAuthService *GrokOAuthService,
 	cacheInvalidator TokenCacheInvalidator,
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
@@ -72,7 +73,7 @@ func ProvideTokenRefreshService(
 	refreshAPI *OAuthRefreshAPI,
 	runtimeBlocker AccountRuntimeBlocker,
 ) *TokenRefreshService {
-	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache)
+	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, grokOAuthService)
 	// 注入 OpenAI privacy opt-out 依赖
 	svc.SetPrivacyDeps(privacyClientFactory, proxyRepo)
 	// 注入统一 OAuth 刷新 API（消除 TokenRefreshService 与 TokenProvider 之间的竞争条件）
@@ -124,6 +125,15 @@ func ProvideOpenAIQuotaService(
 	return NewOpenAIQuotaService(accountRepo, proxyRepo, tokenProvider, privacyClientFactory)
 }
 
+func ProvideGrokQuotaService(
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	tokenProvider *GrokTokenProvider,
+	httpUpstream HTTPUpstream,
+) *GrokQuotaService {
+	return NewGrokQuotaService(accountRepo, proxyRepo, tokenProvider, httpUpstream)
+}
+
 // ProvideGeminiTokenProvider creates GeminiTokenProvider with OAuthRefreshAPI injection
 func ProvideGeminiTokenProvider(
 	accountRepo AccountRepository,
@@ -148,6 +158,22 @@ func ProvideAntigravityTokenProvider(
 ) *AntigravityTokenProvider {
 	p := NewAntigravityTokenProvider(accountRepo, tokenCache, antigravityOAuthService)
 	executor := NewAntigravityTokenRefresher(antigravityOAuthService)
+	p.SetRefreshAPI(refreshAPI, executor)
+	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
+	p.SetTempUnschedCache(tempUnschedCache)
+	return p
+}
+
+// ProvideGrokTokenProvider creates GrokTokenProvider with OAuthRefreshAPI injection.
+func ProvideGrokTokenProvider(
+	accountRepo AccountRepository,
+	tokenCache GeminiTokenCache,
+	grokOAuthService *GrokOAuthService,
+	refreshAPI *OAuthRefreshAPI,
+	tempUnschedCache TempUnschedCache,
+) *GrokTokenProvider {
+	p := NewGrokTokenProvider(accountRepo, tokenCache)
+	executor := NewGrokTokenRefresher(grokOAuthService)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
 	p.SetTempUnschedCache(tempUnschedCache)
@@ -477,6 +503,12 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	if err := svc.LoadAPIKeyACLTrustForwardedIPSetting(context.Background()); err != nil {
 		logger.LegacyPrintf("service.setting", "Warning: load api key acl forwarded ip setting failed: %v", err)
 	}
+	if err := svc.MigrateOpenAIAllowClaudeCodeCodexPluginSetting(context.Background()); err != nil {
+		logger.LegacyPrintf("service.setting", "Warning: migrate openai allow Claude Code Codex plugin setting failed: %v", err)
+	}
+	if err := svc.MigrateCodexBodyFingerprintToSignals(context.Background()); err != nil {
+		logger.LegacyPrintf("service.setting", "Warning: migrate codex body fingerprint to signals failed: %v", err)
+	}
 	antigravity.SetUserAgentVersionResolver(svc.GetAntigravityUserAgentVersion)
 	return svc
 }
@@ -535,6 +567,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
 	ProvideOpenAIOAuthService,
+	NewGrokOAuthService,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,
@@ -544,8 +577,10 @@ var ProviderSet = wire.NewSet(
 	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
+	ProvideGrokTokenProvider,
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
+	ProvideGrokQuotaService,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
@@ -583,6 +618,7 @@ var ProviderSet = wire.NewSet(
 	ProvideUsageCleanupService,
 	ProvideDeferredService,
 	NewAntigravityQuotaFetcher,
+	NewGrokQuotaFetcher,
 	NewUserAttributeService,
 	NewUsageCache,
 	NewTotpService,
@@ -597,6 +633,10 @@ var ProviderSet = wire.NewSet(
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,
+	NewCOSImageTransferService,
+	ProvideAsyncMediaService,
+	ProvideAsyncMediaReconciler,
+	ProvideAsyncMediaConfigService,
 	NewContentModerationService,
 	NewAffiliateService,
 	NewRechargePromoActivityService,
@@ -615,6 +655,9 @@ var ProviderSet = wire.NewSet(
 	NewSsoSessionService,
 	NewOidcSigningService,
 	NewOidcClientService,
+	NewBillingAppTokenCodec, // 余额 RPC：接入方 token AES-GCM 加解密
+	NewBillingAppService,    // 余额 RPC：接入方身份与鉴权
+	NewBalanceLedgerService, // 余额 RPC：扣/退/查账本服务
 	NewOidcConsentService,
 	NewOidcProviderService,
 )
@@ -667,6 +710,57 @@ func ProvideChannelMonitorService(
 	encryptor SecretEncryptor,
 ) *ChannelMonitorService {
 	return NewChannelMonitorService(repo, encryptor)
+}
+
+// ProvideAsyncMediaService 创建异步媒体执行内核，并按 config 配置轮询间隔与失败兜底时间。
+func ProvideAsyncMediaService(
+	taskRepo AsyncMediaTaskRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	billing *BillingService,
+	resolver *ModelPricingResolver,
+	cos *COSImageTransferService,
+	deferred *DeferredService,
+	cfg *config.Config,
+) *AsyncMediaService {
+	svc := NewAsyncMediaService(taskRepo, userRepo, groupRepo, billing, resolver, cos)
+	svc.SetDeferredService(deferred)
+	if cfg != nil {
+		if cfg.AsyncMedia.PollIntervalSeconds > 0 {
+			svc.SetPollInterval(time.Duration(cfg.AsyncMedia.PollIntervalSeconds) * time.Second)
+		}
+		if cfg.AsyncMedia.FailTimeoutSeconds > 0 {
+			svc.SetFailTimeout(time.Duration(cfg.AsyncMedia.FailTimeoutSeconds) * time.Second)
+		}
+	}
+	return svc
+}
+
+// ProvideAsyncMediaReconciler 创建并启动异步媒体对账 worker，按 config 配置扫描间隔。
+func ProvideAsyncMediaReconciler(
+	taskRepo AsyncMediaTaskRepository,
+	exec *AsyncMediaService,
+	accountRepo AccountRepository,
+	cfg *config.Config,
+) *AsyncMediaReconciler {
+	r := NewAsyncMediaReconciler(taskRepo, exec, accountRepo)
+	if cfg != nil && cfg.AsyncMedia.ReconcileIntervalSeconds > 0 {
+		r.SetInterval(time.Duration(cfg.AsyncMedia.ReconcileIntervalSeconds) * time.Second)
+	}
+	r.Start()
+	return r
+}
+
+// ProvideAsyncMediaConfigService 创建异步媒体运行时配置服务，并在启动时用 DB 中
+// 已保存的配置覆盖静态配置（热更新运行中的 reconciler / service）。
+func ProvideAsyncMediaConfigService(
+	settingRepo SettingRepository,
+	svc *AsyncMediaService,
+	reconciler *AsyncMediaReconciler,
+) *AsyncMediaConfigService {
+	s := NewAsyncMediaConfigService(settingRepo, svc, reconciler)
+	s.LoadAndApply(context.Background())
+	return s
 }
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。

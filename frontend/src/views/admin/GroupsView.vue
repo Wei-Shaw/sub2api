@@ -106,7 +106,9 @@
                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                     : value === 'antigravity'
                       ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                      : value === 'fal'
+                        ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
+                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
               ]"
             >
               <PlatformIcon :platform="value" size="xs" />
@@ -800,41 +802,135 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="input-label">1K ($)</label>
-              <input
-                v-model.number="createForm.image_price_1k"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.134"
-              />
+
+          <!-- 6×3 二维定价矩阵（最高优先级） -->
+          <div class="mb-3">
+            <label class="input-label">{{
+              t("admin.groups.imagePricing.matrixTitle")
+            }}</label>
+            <ImagePricingMatrixEditor v-model="createForm.image_pricing_matrix" />
+          </div>
+
+          <!-- 兼容回退价（旧版 1K/2K/4K 单维定价） -->
+          <details class="mb-3 rounded-md border border-gray-200 dark:border-gray-700">
+            <summary class="cursor-pointer select-none px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.imagePricing.fallbackTitle") }}
+            </summary>
+            <div class="border-t border-gray-200 px-3 py-3 dark:border-gray-700">
+              <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.fallbackHint") }}
+              </p>
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="input-label">1K ($)</label>
+                  <input
+                    v-model.number="createForm.image_price_1k"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    class="input"
+                    placeholder="0.134"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">2K ($)</label>
+                  <input
+                    v-model.number="createForm.image_price_2k"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    class="input"
+                    placeholder="0.201"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">4K ($)</label>
+                  <input
+                    v-model.number="createForm.image_price_4k"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    class="input"
+                    placeholder="0.268"
+                  />
+                </div>
+              </div>
             </div>
-            <div>
-              <label class="input-label">2K ($)</label>
-              <input
-                v-model.number="createForm.image_price_2k"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.201"
-              />
-            </div>
-            <div>
-              <label class="input-label">4K ($)</label>
-              <input
-                v-model.number="createForm.image_price_4k"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.268"
-              />
+          </details>
+
+          <!-- prefer_fal 反转开关：仅 platform=openai 显示 -->
+          <div
+            v-if="createForm.platform === 'openai'"
+            class="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30"
+          >
+            <input
+              id="create-image-prefer-fal"
+              v-model="createForm.image_prefer_fal"
+              type="checkbox"
+              class="mt-0.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+            />
+            <div class="flex-1">
+              <label
+                for="create-image-prefer-fal"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-200"
+              >
+                {{ t("admin.groups.imagePricing.preferFalLabel") }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.preferFalHint") }}
+              </p>
             </div>
           </div>
+
+          <!-- decode_size_on_rsp 开关：仅 platform=openai 显示 -->
+          <div
+            v-if="createForm.platform === 'openai'"
+            class="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30"
+          >
+            <input
+              id="create-image-decode-size-on-rsp"
+              v-model="createForm.image_decode_size_on_rsp"
+              type="checkbox"
+              class="mt-0.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+            />
+            <div class="flex-1">
+              <label
+                for="create-image-decode-size-on-rsp"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-200"
+              >
+                {{ t("admin.groups.imagePricing.decodeSizeOnRspLabel") }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.decodeSizeOnRspHint") }}
+              </p>
+            </div>
+          </div>
+
+          <!-- upscale_on_rsp 开关：仅 platform=openai 显示，依赖 decode_size_on_rsp -->
+          <div
+            v-if="createForm.platform === 'openai'"
+            class="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30"
+          >
+            <input
+              id="create-image-upscale-on-rsp"
+              v-model="createForm.image_upscale_on_rsp"
+              type="checkbox"
+              :disabled="!createForm.image_decode_size_on_rsp"
+              class="mt-0.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500 disabled:opacity-50"
+            />
+            <div class="flex-1">
+              <label
+                for="create-image-upscale-on-rsp"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-200"
+              >
+                {{ t("admin.groups.imagePricing.upscaleOnRspLabel") }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.upscaleOnRspHint") }}
+              </p>
+            </div>
+          </div>
+
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t("admin.groups.imagePricing.modeHint") }}
           </p>
@@ -2088,41 +2184,135 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="input-label">1K ($)</label>
-              <input
-                v-model.number="editForm.image_price_1k"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.134"
-              />
+
+          <!-- 6×3 二维定价矩阵（最高优先级） -->
+          <div class="mb-3">
+            <label class="input-label">{{
+              t("admin.groups.imagePricing.matrixTitle")
+            }}</label>
+            <ImagePricingMatrixEditor v-model="editForm.image_pricing_matrix" />
+          </div>
+
+          <!-- 兼容回退价（旧版 1K/2K/4K 单维定价） -->
+          <details class="mb-3 rounded-md border border-gray-200 dark:border-gray-700">
+            <summary class="cursor-pointer select-none px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.imagePricing.fallbackTitle") }}
+            </summary>
+            <div class="border-t border-gray-200 px-3 py-3 dark:border-gray-700">
+              <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.fallbackHint") }}
+              </p>
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="input-label">1K ($)</label>
+                  <input
+                    v-model.number="editForm.image_price_1k"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    class="input"
+                    placeholder="0.134"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">2K ($)</label>
+                  <input
+                    v-model.number="editForm.image_price_2k"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    class="input"
+                    placeholder="0.201"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">4K ($)</label>
+                  <input
+                    v-model.number="editForm.image_price_4k"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    class="input"
+                    placeholder="0.268"
+                  />
+                </div>
+              </div>
             </div>
-            <div>
-              <label class="input-label">2K ($)</label>
-              <input
-                v-model.number="editForm.image_price_2k"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.201"
-              />
-            </div>
-            <div>
-              <label class="input-label">4K ($)</label>
-              <input
-                v-model.number="editForm.image_price_4k"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                placeholder="0.268"
-              />
+          </details>
+
+          <!-- prefer_fal 反转开关：仅 platform=openai 显示 -->
+          <div
+            v-if="editForm.platform === 'openai'"
+            class="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30"
+          >
+            <input
+              id="edit-image-prefer-fal"
+              v-model="editForm.image_prefer_fal"
+              type="checkbox"
+              class="mt-0.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+            />
+            <div class="flex-1">
+              <label
+                for="edit-image-prefer-fal"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-200"
+              >
+                {{ t("admin.groups.imagePricing.preferFalLabel") }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.preferFalHint") }}
+              </p>
             </div>
           </div>
+
+          <!-- decode_size_on_rsp 开关：仅 platform=openai 显示 -->
+          <div
+            v-if="editForm.platform === 'openai'"
+            class="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30"
+          >
+            <input
+              id="edit-image-decode-size-on-rsp"
+              v-model="editForm.image_decode_size_on_rsp"
+              type="checkbox"
+              class="mt-0.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+            />
+            <div class="flex-1">
+              <label
+                for="edit-image-decode-size-on-rsp"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-200"
+              >
+                {{ t("admin.groups.imagePricing.decodeSizeOnRspLabel") }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.decodeSizeOnRspHint") }}
+              </p>
+            </div>
+          </div>
+
+          <!-- upscale_on_rsp 开关：仅 platform=openai 显示，依赖 decode_size_on_rsp -->
+          <div
+            v-if="editForm.platform === 'openai'"
+            class="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30"
+          >
+            <input
+              id="edit-image-upscale-on-rsp"
+              v-model="editForm.image_upscale_on_rsp"
+              type="checkbox"
+              :disabled="!editForm.image_decode_size_on_rsp"
+              class="mt-0.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500 disabled:opacity-50"
+            />
+            <div class="flex-1">
+              <label
+                for="edit-image-upscale-on-rsp"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-200"
+              >
+                {{ t("admin.groups.imagePricing.upscaleOnRspLabel") }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.upscaleOnRspHint") }}
+              </p>
+            </div>
+          </div>
+
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t("admin.groups.imagePricing.modeHint") }}
           </p>
@@ -2966,7 +3156,9 @@
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                         : group.platform === 'antigravity'
                           ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                          : group.platform === 'fal'
+                            ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
+                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
                   ]"
                 >
                   {{ t("admin.groups.platforms." + group.platform) }}
@@ -3056,6 +3248,15 @@ import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
+import ImagePricingMatrixEditor from "@/components/admin/group/ImagePricingMatrixEditor.vue";
+import {
+  createEmptyImagePricingMatrix,
+  loadEditableImagePricingMatrix,
+  toMatrixDTO,
+  toMatrixUpdateDTO,
+  validateEditableMatrix,
+  type EditableImagePricingMatrix,
+} from "@/constants/imagePricingMatrix";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
@@ -3138,6 +3339,8 @@ const platformOptions = computed(() => [
   { value: "openai", label: "OpenAI" },
   { value: "gemini", label: "Gemini" },
   { value: "antigravity", label: "Antigravity" },
+  { value: "fal", label: "fal" },
+  { value: "grok", label: "Grok" },
 ]);
 
 const platformFilterOptions = computed(() => [
@@ -3146,6 +3349,8 @@ const platformFilterOptions = computed(() => [
   { value: "openai", label: "OpenAI" },
   { value: "gemini", label: "Gemini" },
   { value: "antigravity", label: "Antigravity" },
+  { value: "fal", label: "fal" },
+  { value: "grok", label: "Grok" },
 ]);
 
 const editStatusOptions = computed(() => [
@@ -3340,6 +3545,13 @@ const createForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // 二维图片定价矩阵（行=分辨率，列=quality）；为空对象时以 image_price_*K 单维价兜底
+  image_pricing_matrix: createEmptyImagePricingMatrix() as EditableImagePricingMatrix,
+  // 仅 platform=openai 时生效：true 反转为「fal 优先 + openai 兜底」
+  image_prefer_fal: false,
+  // 仅 platform=openai 时生效：回包 size 缺失或 auto 时按 b64 解码识别真实分辨率用于计费
+  image_decode_size_on_rsp: false,
+  image_upscale_on_rsp: false,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -3671,6 +3883,13 @@ const editForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // 二维图片定价矩阵（行=分辨率，列=quality）；为空对象时以 image_price_*K 单维价兜底
+  image_pricing_matrix: createEmptyImagePricingMatrix() as EditableImagePricingMatrix,
+  // 仅 platform=openai 时生效：true 反转为「fal 优先 + openai 兜底」
+  image_prefer_fal: false,
+  // 仅 platform=openai 时生效：回包 size 缺失或 auto 时按 b64 解码识别真实分辨率用于计费
+  image_decode_size_on_rsp: false,
+  image_upscale_on_rsp: false,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -3922,6 +4141,10 @@ const closeCreateModal = () => {
   createForm.image_price_1k = null;
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
+  createForm.image_pricing_matrix = createEmptyImagePricingMatrix();
+  createForm.image_prefer_fal = false;
+  createForm.image_decode_size_on_rsp = false;
+  createForm.image_upscale_on_rsp = false;
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
@@ -3975,6 +4198,18 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createForm,
+      // 覆盖 spread 出的 EditableImagePricingMatrix，转为 API DTO 类型。
+      // 合法性校验与“非 openai 平台强制 prefer_fal=false”在下面补充。
+      image_pricing_matrix: toMatrixDTO(createForm.image_pricing_matrix),
+      image_prefer_fal:
+        createForm.platform === "openai" ? createForm.image_prefer_fal : false,
+      image_decode_size_on_rsp:
+        createForm.platform === "openai" ? createForm.image_decode_size_on_rsp : false,
+      image_upscale_on_rsp:
+        createForm.platform === "openai" &&
+        createForm.image_decode_size_on_rsp
+          ? createForm.image_upscale_on_rsp
+          : false,
       daily_limit_usd: normalizeOptionalLimit(
         createForm.daily_limit_usd as number | string | null,
       ),
@@ -4011,6 +4246,28 @@ const handleCreateGroup = async () => {
     requestData.image_rate_multiplier = normalizeImageRateMultiplier(
       requestData.image_rate_multiplier,
     );
+
+    // 图片二维定价矩阵：表单结构 → API DTO（过滤 null/负数；全空时为 null）
+    const matrixErrors = validateEditableMatrix(createForm.image_pricing_matrix);
+    if (matrixErrors.length > 0) {
+      appStore.showError(
+        t("admin.groups.imagePricing.invalidCells", {
+          count: matrixErrors.length,
+        }),
+      );
+      submitting.value = false;
+      return;
+    }
+    requestData.image_pricing_matrix = toMatrixDTO(
+      createForm.image_pricing_matrix,
+    );
+
+    // image_prefer_fal 仅在 openai 平台生效，其他平台强制为 false 避免脏数据
+    if (requestData.platform !== "openai") {
+      requestData.image_prefer_fal = false;
+      requestData.image_decode_size_on_rsp = false;
+      requestData.image_upscale_on_rsp = false;
+    }
     await adminAPI.groups.create(requestData);
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
@@ -4048,6 +4305,12 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
+  editForm.image_pricing_matrix = loadEditableImagePricingMatrix(
+    group.image_pricing_matrix,
+  );
+  editForm.image_prefer_fal = group.image_prefer_fal ?? false;
+  editForm.image_decode_size_on_rsp = group.image_decode_size_on_rsp ?? false;
+  editForm.image_upscale_on_rsp = group.image_upscale_on_rsp ?? false;
   editForm.claude_code_only = group.claude_code_only || false;
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
@@ -4108,6 +4371,16 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
+      // 覆盖 spread 出的 EditableImagePricingMatrix，转为 API DTO 类型。
+      image_pricing_matrix: toMatrixDTO(editForm.image_pricing_matrix),
+      image_prefer_fal:
+        editForm.platform === "openai" ? editForm.image_prefer_fal : false,
+      image_decode_size_on_rsp:
+        editForm.platform === "openai" ? editForm.image_decode_size_on_rsp : false,
+      image_upscale_on_rsp:
+        editForm.platform === "openai" && editForm.image_decode_size_on_rsp
+          ? editForm.image_upscale_on_rsp
+          : false,
       daily_limit_usd: normalizeOptionalLimit(
         editForm.daily_limit_usd as number | string | null,
       ),
@@ -4150,6 +4423,28 @@ const handleUpdateGroup = async () => {
     payload.image_rate_multiplier = normalizeImageRateMultiplier(
       payload.image_rate_multiplier,
     );
+
+    // 图片二维定价矩阵：表单结构 → API DTO（过滤 null/负数；全空时为 null）
+    const matrixErrors = validateEditableMatrix(editForm.image_pricing_matrix);
+    if (matrixErrors.length > 0) {
+      appStore.showError(
+        t("admin.groups.imagePricing.invalidCells", {
+          count: matrixErrors.length,
+        }),
+      );
+      submitting.value = false;
+      return;
+    }
+    payload.image_pricing_matrix = toMatrixUpdateDTO(
+      editForm.image_pricing_matrix,
+    );
+
+    // image_prefer_fal 仅在 openai 平台生效，其他平台强制为 false 避免脏数据
+    if (payload.platform !== "openai") {
+      payload.image_prefer_fal = false;
+      payload.image_decode_size_on_rsp = false;
+      payload.image_upscale_on_rsp = false;
+    }
     await adminAPI.groups.update(editingGroup.value.id, payload);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();

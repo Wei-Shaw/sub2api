@@ -16,7 +16,7 @@
 //   - id_token 的 auth_time 取授权码的 created_at (≈ 用户完成 authorize 的时刻)；
 //     acr 固定为 urn:sub2api:authn:basic。mfa-aware acr/amr 因授权码表未持久化
 //     认证上下文字段而推迟 (避免本期再次 ent codegen + 改 migration)。
-//   - 私有 scope (sub2api:balance / sub2api:apikey) 只在 UserInfo 暴露，绝不进 id_token (D8)。
+//   - 私有 scope (sub2api:apikey) 只在 UserInfo 暴露，绝不进 id_token (D8)。
 package service
 
 import (
@@ -56,8 +56,8 @@ const (
 	OidcScopeProfile       = "profile"
 	OidcScopeEmail         = "email"
 	OidcScopeOfflineAccess = "offline_access"
-	OidcScopeBalance       = "sub2api:balance"
-	OidcScopeAPIKey        = "sub2api:apikey"
+
+	OidcScopeAPIKey = "sub2api:apikey"
 )
 
 // ─── OAuth2 错误 ─────────────────────────────────────────────────────────────
@@ -720,10 +720,27 @@ func (s *OidcProviderService) RevokeFamily(ctx context.Context, familyID string)
 
 // ─── UserInfo ────────────────────────────────────────────────────────────────
 
-// BuildUserInfo 依据 access token 存储的 scope 投影用户声明。
+// OidcResolvedAccessToken 是 ResolveAccessToken 的解析结果，供资源端点
+// (如 /oidc/resource/api-keys) 在拿到不透明 access token 后做用户/scope 鉴权。
+type OidcResolvedAccessToken struct {
+	UserID   int64
+	ClientID string
+	Scopes   []string
+}
+
+// HasScope 检测 token 是否携带指定 scope。
+func (r *OidcResolvedAccessToken) HasScope(scope string) bool {
+	if r == nil {
+		return false
+	}
+	return containsString(r.Scopes, scope)
+}
+
+// ResolveAccessToken 校验不透明 access token 并返回其绑定的 (user_id, client_id, scopes)。
 //
-// access token 未知/已吊销/过期 → 返回 *OidcError (handler → 401 + WWW-Authenticate)。
-func (s *OidcProviderService) BuildUserInfo(ctx context.Context, accessTokenValue string) (map[string]any, *OidcError) {
+// 失败语义与 BuildUserInfo 完全一致：未知 / 已吊销 / 过期 → invalid_token (401)，
+// 其他内部错 → server_error (500)。资源端点应据此设置 WWW-Authenticate 响应头。
+func (s *OidcProviderService) ResolveAccessToken(ctx context.Context, accessTokenValue string) (*OidcResolvedAccessToken, *OidcError) {
 	tokenVal := strings.TrimSpace(accessTokenValue)
 	if tokenVal == "" {
 		return nil, newOidcError("invalid_token", "missing access token", 401)
@@ -743,8 +760,24 @@ func (s *OidcProviderService) BuildUserInfo(ctx context.Context, accessTokenValu
 	if !row.ExpiresAt.IsZero() && s.now().After(row.ExpiresAt) {
 		return nil, newOidcError("invalid_token", "access token expired", 401)
 	}
+	scopes := append([]string(nil), row.Scopes...)
+	return &OidcResolvedAccessToken{
+		UserID:   row.UserID,
+		ClientID: row.ClientID,
+		Scopes:   scopes,
+	}, nil
+}
 
-	user, err := s.client.User.Get(ctx, row.UserID)
+// BuildUserInfo 依据 access token 存储的 scope 投影用户声明。
+//
+// access token 未知/已吊销/过期 → 返回 *OidcError (handler → 401 + WWW-Authenticate)。
+func (s *OidcProviderService) BuildUserInfo(ctx context.Context, accessTokenValue string) (map[string]any, *OidcError) {
+	resolved, oerr := s.ResolveAccessToken(ctx, accessTokenValue)
+	if oerr != nil {
+		return nil, oerr
+	}
+
+	user, err := s.client.User.Get(ctx, resolved.UserID)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, newOidcError("invalid_token", "user not found", 401)
@@ -753,9 +786,9 @@ func (s *OidcProviderService) BuildUserInfo(ctx context.Context, accessTokenValu
 	}
 
 	claims := map[string]any{
-		"sub": strconv.FormatInt(row.UserID, 10),
+		"sub": strconv.FormatInt(resolved.UserID, 10),
 	}
-	scopes := row.Scopes
+	scopes := resolved.Scopes
 	if containsString(scopes, OidcScopeProfile) {
 		claims["name"] = user.Username
 		claims["preferred_username"] = user.Username
@@ -764,16 +797,28 @@ func (s *OidcProviderService) BuildUserInfo(ctx context.Context, accessTokenValu
 		claims["email"] = user.Email
 		claims["email_verified"] = true
 	}
-	if containsString(scopes, OidcScopeBalance) {
-		claims["sub2api_balance"] = formatDecimal(user.Balance)
-		claims["sub2api_total_recharged"] = formatDecimal(user.TotalRecharged)
-	}
+
 	if containsString(scopes, OidcScopeAPIKey) {
-		count, err := user.QueryAPIKeys().Count(ctx)
+		// 获取用户的 API Key 列表（包含明文 key 值，供 RP 直接调用 sub2api 网关）
+		apiKeys, err := user.QueryAPIKeys().All(ctx)
 		if err != nil {
-			return nil, errServerError("apikey count failed")
+			return nil, errServerError("apikey list failed")
 		}
-		claims["sub2api_apikey_count"] = count
+
+		apiKeyInfos := make([]map[string]any, len(apiKeys))
+		for i, apiKey := range apiKeys {
+			apiKeyInfos[i] = map[string]any{
+				"id":           apiKey.ID,
+				"key":          apiKey.Key,
+				"name":         apiKey.Name,
+				"status":       apiKey.Status,
+				"created_at":   apiKey.CreatedAt,
+				"last_used_at": apiKey.LastUsedAt,
+				"expires_at":   apiKey.ExpiresAt,
+			}
+		}
+		claims["sub2api_apikeys"] = apiKeyInfos
+		claims["sub2api_apikey_count"] = len(apiKeys)
 	}
 	return claims, nil
 }
@@ -934,11 +979,6 @@ func splitScopes(raw string) []string {
 
 func containsString(haystack []string, needle string) bool {
 	return slices.Contains(haystack, needle)
-}
-
-// formatDecimal 把余额类 float 格式化为定点字符串 (避免科学计数法)。
-func formatDecimal(v float64) string {
-	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
 // ─── Admin 设置读写 (task 8.1/8.2) ───────────────────────────────────────────

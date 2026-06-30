@@ -20,8 +20,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/asyncmediatask"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/balanceledger"
+	"github.com/Wei-Shaw/sub2api/ent/billingapp"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -76,10 +79,16 @@ type Client struct {
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
 	AnnouncementRead *AnnouncementReadClient
+	// AsyncMediaTask is the client for interacting with the AsyncMediaTask builders.
+	AsyncMediaTask *AsyncMediaTaskClient
 	// AuthIdentity is the client for interacting with the AuthIdentity builders.
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
 	AuthIdentityChannel *AuthIdentityChannelClient
+	// BalanceLedger is the client for interacting with the BalanceLedger builders.
+	BalanceLedger *BalanceLedgerClient
+	// BillingApp is the client for interacting with the BillingApp builders.
+	BillingApp *BillingAppClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -166,8 +175,11 @@ func (c *Client) init() {
 	c.AccountGroup = NewAccountGroupClient(c.config)
 	c.Announcement = NewAnnouncementClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
+	c.AsyncMediaTask = NewAsyncMediaTaskClient(c.config)
 	c.AuthIdentity = NewAuthIdentityClient(c.config)
 	c.AuthIdentityChannel = NewAuthIdentityChannelClient(c.config)
+	c.BalanceLedger = NewBalanceLedgerClient(c.config)
+	c.BillingApp = NewBillingAppClient(c.config)
 	c.ChannelMonitor = NewChannelMonitorClient(c.config)
 	c.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(c.config)
 	c.ChannelMonitorHistory = NewChannelMonitorHistoryClient(c.config)
@@ -300,8 +312,11 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
+		AsyncMediaTask:                NewAsyncMediaTaskClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
+		BalanceLedger:                 NewBalanceLedgerClient(cfg),
+		BillingApp:                    NewBillingAppClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -361,8 +376,11 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
+		AsyncMediaTask:                NewAsyncMediaTaskClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
+		BalanceLedger:                 NewBalanceLedgerClient(cfg),
+		BillingApp:                    NewBillingAppClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -428,17 +446,18 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
-		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
-		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.OidcAccessToken,
-		c.OidcAuthorizationCode, c.OidcClient, c.OidcConsent, c.OidcRefreshToken,
-		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
-		c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage, c.Proxy,
-		c.RechargePromoActivity, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SsoSession, c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask,
-		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
-		c.UserAttributeValue, c.UserPlatformQuota, c.UserSubscription,
+		c.AsyncMediaTask, c.AuthIdentity, c.AuthIdentityChannel, c.BalanceLedger,
+		c.BillingApp, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
+		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
+		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
+		c.IdentityAdoptionDecision, c.OidcAccessToken, c.OidcAuthorizationCode,
+		c.OidcClient, c.OidcConsent, c.OidcRefreshToken, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RechargePromoActivity, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SsoSession, c.SubscriptionPlan,
+		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -449,17 +468,18 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
-		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
-		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.OidcAccessToken,
-		c.OidcAuthorizationCode, c.OidcClient, c.OidcConsent, c.OidcRefreshToken,
-		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
-		c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage, c.Proxy,
-		c.RechargePromoActivity, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SsoSession, c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask,
-		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
-		c.UserAttributeValue, c.UserPlatformQuota, c.UserSubscription,
+		c.AsyncMediaTask, c.AuthIdentity, c.AuthIdentityChannel, c.BalanceLedger,
+		c.BillingApp, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
+		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
+		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
+		c.IdentityAdoptionDecision, c.OidcAccessToken, c.OidcAuthorizationCode,
+		c.OidcClient, c.OidcConsent, c.OidcRefreshToken, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RechargePromoActivity, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SsoSession, c.SubscriptionPlan,
+		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -478,10 +498,16 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Announcement.mutate(ctx, m)
 	case *AnnouncementReadMutation:
 		return c.AnnouncementRead.mutate(ctx, m)
+	case *AsyncMediaTaskMutation:
+		return c.AsyncMediaTask.mutate(ctx, m)
 	case *AuthIdentityMutation:
 		return c.AuthIdentity.mutate(ctx, m)
 	case *AuthIdentityChannelMutation:
 		return c.AuthIdentityChannel.mutate(ctx, m)
+	case *BalanceLedgerMutation:
+		return c.BalanceLedger.mutate(ctx, m)
+	case *BillingAppMutation:
+		return c.BillingApp.mutate(ctx, m)
 	case *ChannelMonitorMutation:
 		return c.ChannelMonitor.mutate(ctx, m)
 	case *ChannelMonitorDailyRollupMutation:
@@ -1369,6 +1395,139 @@ func (c *AnnouncementReadClient) mutate(ctx context.Context, m *AnnouncementRead
 	}
 }
 
+// AsyncMediaTaskClient is a client for the AsyncMediaTask schema.
+type AsyncMediaTaskClient struct {
+	config
+}
+
+// NewAsyncMediaTaskClient returns a client for the AsyncMediaTask from the given config.
+func NewAsyncMediaTaskClient(c config) *AsyncMediaTaskClient {
+	return &AsyncMediaTaskClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `asyncmediatask.Hooks(f(g(h())))`.
+func (c *AsyncMediaTaskClient) Use(hooks ...Hook) {
+	c.hooks.AsyncMediaTask = append(c.hooks.AsyncMediaTask, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `asyncmediatask.Intercept(f(g(h())))`.
+func (c *AsyncMediaTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AsyncMediaTask = append(c.inters.AsyncMediaTask, interceptors...)
+}
+
+// Create returns a builder for creating a AsyncMediaTask entity.
+func (c *AsyncMediaTaskClient) Create() *AsyncMediaTaskCreate {
+	mutation := newAsyncMediaTaskMutation(c.config, OpCreate)
+	return &AsyncMediaTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AsyncMediaTask entities.
+func (c *AsyncMediaTaskClient) CreateBulk(builders ...*AsyncMediaTaskCreate) *AsyncMediaTaskCreateBulk {
+	return &AsyncMediaTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AsyncMediaTaskClient) MapCreateBulk(slice any, setFunc func(*AsyncMediaTaskCreate, int)) *AsyncMediaTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AsyncMediaTaskCreateBulk{err: fmt.Errorf("calling to AsyncMediaTaskClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AsyncMediaTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AsyncMediaTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AsyncMediaTask.
+func (c *AsyncMediaTaskClient) Update() *AsyncMediaTaskUpdate {
+	mutation := newAsyncMediaTaskMutation(c.config, OpUpdate)
+	return &AsyncMediaTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AsyncMediaTaskClient) UpdateOne(_m *AsyncMediaTask) *AsyncMediaTaskUpdateOne {
+	mutation := newAsyncMediaTaskMutation(c.config, OpUpdateOne, withAsyncMediaTask(_m))
+	return &AsyncMediaTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AsyncMediaTaskClient) UpdateOneID(id int64) *AsyncMediaTaskUpdateOne {
+	mutation := newAsyncMediaTaskMutation(c.config, OpUpdateOne, withAsyncMediaTaskID(id))
+	return &AsyncMediaTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AsyncMediaTask.
+func (c *AsyncMediaTaskClient) Delete() *AsyncMediaTaskDelete {
+	mutation := newAsyncMediaTaskMutation(c.config, OpDelete)
+	return &AsyncMediaTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AsyncMediaTaskClient) DeleteOne(_m *AsyncMediaTask) *AsyncMediaTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AsyncMediaTaskClient) DeleteOneID(id int64) *AsyncMediaTaskDeleteOne {
+	builder := c.Delete().Where(asyncmediatask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AsyncMediaTaskDeleteOne{builder}
+}
+
+// Query returns a query builder for AsyncMediaTask.
+func (c *AsyncMediaTaskClient) Query() *AsyncMediaTaskQuery {
+	return &AsyncMediaTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAsyncMediaTask},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AsyncMediaTask entity by its id.
+func (c *AsyncMediaTaskClient) Get(ctx context.Context, id int64) (*AsyncMediaTask, error) {
+	return c.Query().Where(asyncmediatask.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AsyncMediaTaskClient) GetX(ctx context.Context, id int64) *AsyncMediaTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AsyncMediaTaskClient) Hooks() []Hook {
+	return c.hooks.AsyncMediaTask
+}
+
+// Interceptors returns the client interceptors.
+func (c *AsyncMediaTaskClient) Interceptors() []Interceptor {
+	return c.inters.AsyncMediaTask
+}
+
+func (c *AsyncMediaTaskClient) mutate(ctx context.Context, m *AsyncMediaTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AsyncMediaTaskCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AsyncMediaTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AsyncMediaTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AsyncMediaTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AsyncMediaTask mutation op: %q", m.Op())
+	}
+}
+
 // AuthIdentityClient is a client for the AuthIdentity schema.
 type AuthIdentityClient struct {
 	config
@@ -1696,6 +1855,272 @@ func (c *AuthIdentityChannelClient) mutate(ctx context.Context, m *AuthIdentityC
 		return (&AuthIdentityChannelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AuthIdentityChannel mutation op: %q", m.Op())
+	}
+}
+
+// BalanceLedgerClient is a client for the BalanceLedger schema.
+type BalanceLedgerClient struct {
+	config
+}
+
+// NewBalanceLedgerClient returns a client for the BalanceLedger from the given config.
+func NewBalanceLedgerClient(c config) *BalanceLedgerClient {
+	return &BalanceLedgerClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `balanceledger.Hooks(f(g(h())))`.
+func (c *BalanceLedgerClient) Use(hooks ...Hook) {
+	c.hooks.BalanceLedger = append(c.hooks.BalanceLedger, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `balanceledger.Intercept(f(g(h())))`.
+func (c *BalanceLedgerClient) Intercept(interceptors ...Interceptor) {
+	c.inters.BalanceLedger = append(c.inters.BalanceLedger, interceptors...)
+}
+
+// Create returns a builder for creating a BalanceLedger entity.
+func (c *BalanceLedgerClient) Create() *BalanceLedgerCreate {
+	mutation := newBalanceLedgerMutation(c.config, OpCreate)
+	return &BalanceLedgerCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of BalanceLedger entities.
+func (c *BalanceLedgerClient) CreateBulk(builders ...*BalanceLedgerCreate) *BalanceLedgerCreateBulk {
+	return &BalanceLedgerCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *BalanceLedgerClient) MapCreateBulk(slice any, setFunc func(*BalanceLedgerCreate, int)) *BalanceLedgerCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &BalanceLedgerCreateBulk{err: fmt.Errorf("calling to BalanceLedgerClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*BalanceLedgerCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &BalanceLedgerCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for BalanceLedger.
+func (c *BalanceLedgerClient) Update() *BalanceLedgerUpdate {
+	mutation := newBalanceLedgerMutation(c.config, OpUpdate)
+	return &BalanceLedgerUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *BalanceLedgerClient) UpdateOne(_m *BalanceLedger) *BalanceLedgerUpdateOne {
+	mutation := newBalanceLedgerMutation(c.config, OpUpdateOne, withBalanceLedger(_m))
+	return &BalanceLedgerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *BalanceLedgerClient) UpdateOneID(id int64) *BalanceLedgerUpdateOne {
+	mutation := newBalanceLedgerMutation(c.config, OpUpdateOne, withBalanceLedgerID(id))
+	return &BalanceLedgerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for BalanceLedger.
+func (c *BalanceLedgerClient) Delete() *BalanceLedgerDelete {
+	mutation := newBalanceLedgerMutation(c.config, OpDelete)
+	return &BalanceLedgerDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *BalanceLedgerClient) DeleteOne(_m *BalanceLedger) *BalanceLedgerDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *BalanceLedgerClient) DeleteOneID(id int64) *BalanceLedgerDeleteOne {
+	builder := c.Delete().Where(balanceledger.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &BalanceLedgerDeleteOne{builder}
+}
+
+// Query returns a query builder for BalanceLedger.
+func (c *BalanceLedgerClient) Query() *BalanceLedgerQuery {
+	return &BalanceLedgerQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeBalanceLedger},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a BalanceLedger entity by its id.
+func (c *BalanceLedgerClient) Get(ctx context.Context, id int64) (*BalanceLedger, error) {
+	return c.Query().Where(balanceledger.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *BalanceLedgerClient) GetX(ctx context.Context, id int64) *BalanceLedger {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *BalanceLedgerClient) Hooks() []Hook {
+	return c.hooks.BalanceLedger
+}
+
+// Interceptors returns the client interceptors.
+func (c *BalanceLedgerClient) Interceptors() []Interceptor {
+	return c.inters.BalanceLedger
+}
+
+func (c *BalanceLedgerClient) mutate(ctx context.Context, m *BalanceLedgerMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&BalanceLedgerCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&BalanceLedgerUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&BalanceLedgerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&BalanceLedgerDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown BalanceLedger mutation op: %q", m.Op())
+	}
+}
+
+// BillingAppClient is a client for the BillingApp schema.
+type BillingAppClient struct {
+	config
+}
+
+// NewBillingAppClient returns a client for the BillingApp from the given config.
+func NewBillingAppClient(c config) *BillingAppClient {
+	return &BillingAppClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `billingapp.Hooks(f(g(h())))`.
+func (c *BillingAppClient) Use(hooks ...Hook) {
+	c.hooks.BillingApp = append(c.hooks.BillingApp, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `billingapp.Intercept(f(g(h())))`.
+func (c *BillingAppClient) Intercept(interceptors ...Interceptor) {
+	c.inters.BillingApp = append(c.inters.BillingApp, interceptors...)
+}
+
+// Create returns a builder for creating a BillingApp entity.
+func (c *BillingAppClient) Create() *BillingAppCreate {
+	mutation := newBillingAppMutation(c.config, OpCreate)
+	return &BillingAppCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of BillingApp entities.
+func (c *BillingAppClient) CreateBulk(builders ...*BillingAppCreate) *BillingAppCreateBulk {
+	return &BillingAppCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *BillingAppClient) MapCreateBulk(slice any, setFunc func(*BillingAppCreate, int)) *BillingAppCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &BillingAppCreateBulk{err: fmt.Errorf("calling to BillingAppClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*BillingAppCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &BillingAppCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for BillingApp.
+func (c *BillingAppClient) Update() *BillingAppUpdate {
+	mutation := newBillingAppMutation(c.config, OpUpdate)
+	return &BillingAppUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *BillingAppClient) UpdateOne(_m *BillingApp) *BillingAppUpdateOne {
+	mutation := newBillingAppMutation(c.config, OpUpdateOne, withBillingApp(_m))
+	return &BillingAppUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *BillingAppClient) UpdateOneID(id int64) *BillingAppUpdateOne {
+	mutation := newBillingAppMutation(c.config, OpUpdateOne, withBillingAppID(id))
+	return &BillingAppUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for BillingApp.
+func (c *BillingAppClient) Delete() *BillingAppDelete {
+	mutation := newBillingAppMutation(c.config, OpDelete)
+	return &BillingAppDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *BillingAppClient) DeleteOne(_m *BillingApp) *BillingAppDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *BillingAppClient) DeleteOneID(id int64) *BillingAppDeleteOne {
+	builder := c.Delete().Where(billingapp.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &BillingAppDeleteOne{builder}
+}
+
+// Query returns a query builder for BillingApp.
+func (c *BillingAppClient) Query() *BillingAppQuery {
+	return &BillingAppQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeBillingApp},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a BillingApp entity by its id.
+func (c *BillingAppClient) Get(ctx context.Context, id int64) (*BillingApp, error) {
+	return c.Query().Where(billingapp.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *BillingAppClient) GetX(ctx context.Context, id int64) *BillingApp {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *BillingAppClient) Hooks() []Hook {
+	return c.hooks.BillingApp
+}
+
+// Interceptors returns the client interceptors.
+func (c *BillingAppClient) Interceptors() []Interceptor {
+	return c.inters.BillingApp
+}
+
+func (c *BillingAppClient) mutate(ctx context.Context, m *BillingAppMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&BillingAppCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&BillingAppUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&BillingAppUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&BillingAppDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown BillingApp mutation op: %q", m.Op())
 	}
 }
 
@@ -7232,28 +7657,30 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
-		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, OidcAccessToken,
-		OidcAuthorizationCode, OidcClient, OidcConsent, OidcRefreshToken,
-		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
-		PromoCode, PromoCodeUsage, Proxy, RechargePromoActivity, RedeemCode,
-		SecuritySecret, Setting, SsoSession, SubscriptionPlan, TLSFingerprintProfile,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
+		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AsyncMediaTask,
+		AuthIdentity, AuthIdentityChannel, BalanceLedger, BillingApp, ChannelMonitor,
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
+		IdentityAdoptionDecision, OidcAccessToken, OidcAuthorizationCode, OidcClient,
+		OidcConsent, OidcRefreshToken, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
+		RechargePromoActivity, RedeemCode, SecuritySecret, Setting, SsoSession,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
-		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, OidcAccessToken,
-		OidcAuthorizationCode, OidcClient, OidcConsent, OidcRefreshToken,
-		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
-		PromoCode, PromoCodeUsage, Proxy, RechargePromoActivity, RedeemCode,
-		SecuritySecret, Setting, SsoSession, SubscriptionPlan, TLSFingerprintProfile,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Interceptor
+		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AsyncMediaTask,
+		AuthIdentity, AuthIdentityChannel, BalanceLedger, BillingApp, ChannelMonitor,
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
+		IdentityAdoptionDecision, OidcAccessToken, OidcAuthorizationCode, OidcClient,
+		OidcConsent, OidcRefreshToken, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
+		RechargePromoActivity, RedeemCode, SecuritySecret, Setting, SsoSession,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

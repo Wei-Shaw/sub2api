@@ -59,6 +59,34 @@
               {{ t('plaza.title') }}
             </router-link>
 
+
+            <div
+              v-if="homeProductMenuItems.length > 0"
+              ref="homeProductsMenuRef"
+              data-test="home-products-menu"
+              class="shrink-0"
+              @mouseenter="openHomeProductsMenuFromEvent"
+              @mouseleave="scheduleCloseHomeProductsMenu"
+            >
+              <button
+                ref="homeProductsButtonRef"
+                type="button"
+                :aria-expanded="homeProductsOpen"
+                aria-haspopup="menu"
+                class="flex items-center gap-1.5 whitespace-nowrap text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-dark-300 dark:hover:text-white"
+                @click.stop="openHomeProductsMenuFromEvent"
+              >
+                <Icon name="grid" size="sm" />
+                {{ t('home.products') }}
+                <Icon
+                  name="chevronDown"
+                  size="sm"
+                  class="transition-transform"
+                  :class="{ 'rotate-180': isHomeProductsNavOpen }"
+                />
+              </button>
+            </div>
+
             <!-- Language Switcher -->
             <LocaleSwitcher class="shrink-0" />
 
@@ -159,6 +187,33 @@
                 {{ t('home.cta_view_pricing') }}
                 <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
               </router-link>
+            </div>
+
+            <div
+              v-if="homeProductMenuItems.length > 0"
+              ref="homeProductsHeroMenuRef"
+              data-test="home-products-hero-menu"
+              class="mt-4 flex justify-center lg:justify-start"
+              @mouseenter="openHomeProductsMenuFromEvent"
+              @mouseleave="scheduleCloseHomeProductsMenu"
+            >
+              <button
+                ref="homeProductsHeroButtonRef"
+                type="button"
+                data-test="home-products-hero-button"
+                :aria-expanded="homeProductsOpen"
+                aria-haspopup="menu"
+                class="btn btn-secondary px-6 py-3 text-base"
+                @click.stop="openHomeProductsMenuFromEvent"
+              >
+                {{ t('home.products') }}
+                <Icon
+                  name="chevronDown"
+                  size="md"
+                  class="ml-2 transition-transform"
+                  :class="{ 'rotate-180': isHomeProductsHeroOpen }"
+                />
+              </button>
             </div>
           </div>
 
@@ -418,11 +473,42 @@
         </div>
       </div>
     </footer>
+
+    <Teleport to="body">
+      <div
+        v-if="homeProductsOpen"
+        ref="homeProductsDropdownRef"
+        class="fixed z-50 max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white py-2 shadow-lg dark:border-dark-700 dark:bg-dark-900"
+        :style="homeProductsDropdownStyle"
+        role="menu"
+        @mouseenter="clearHomeProductsCloseTimer"
+        @mouseleave="scheduleCloseHomeProductsMenu"
+      >
+        <a
+          v-for="item in homeProductMenuItems"
+          :key="item.id || item.url || item.label"
+          :href="item.url"
+          :target="item.action === 'new_tab' ? '_blank' : undefined"
+          :rel="item.action === 'new_tab' ? 'noopener noreferrer' : undefined"
+          class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-dark-200 dark:hover:bg-dark-800 dark:hover:text-white"
+          role="menuitem"
+          @click="closeHomeProductsMenu"
+        >
+          <span
+            v-if="item.icon_svg"
+            class="h-4 w-4 shrink-0 [&>svg]:h-4 [&>svg]:w-4"
+            v-html="item.icon_svg"
+          ></span>
+          <Icon v-else name="grid" size="sm" class="shrink-0" />
+          <span class="truncate">{{ item.label }}</span>
+        </a>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
@@ -441,6 +527,121 @@ const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appS
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
+const homeProductMenuItems = computed(() =>
+  (appStore.cachedPublicSettings?.home_product_menu_items || []).filter(
+    (item) => item.label && item.url,
+  ),
+)
+const homeProductsOpen = ref(false)
+const homeProductsMenuRef = ref<HTMLElement | null>(null)
+const homeProductsButtonRef = ref<HTMLElement | null>(null)
+const homeProductsHeroMenuRef = ref<HTMLElement | null>(null)
+const homeProductsHeroButtonRef = ref<HTMLElement | null>(null)
+const homeProductsActiveButtonRef = ref<HTMLElement | null>(null)
+const homeProductsActiveTrigger = ref<'nav' | 'hero' | null>(null)
+const homeProductsDropdownRef = ref<HTMLElement | null>(null)
+const homeProductsDropdownStyle = ref<Record<string, string>>({
+  top: '64px',
+  right: '16px',
+  minWidth: '12rem',
+})
+const isHomeProductsNavOpen = computed(
+  () => homeProductsOpen.value && homeProductsActiveTrigger.value === 'nav',
+)
+const isHomeProductsHeroOpen = computed(
+  () => homeProductsOpen.value && homeProductsActiveTrigger.value === 'hero',
+)
+let homeProductsCloseTimer: number | null = null
+
+function clearHomeProductsCloseTimer() {
+  if (homeProductsCloseTimer) {
+    window.clearTimeout(homeProductsCloseTimer)
+    homeProductsCloseTimer = null
+  }
+}
+
+function closeHomeProductsMenu() {
+  clearHomeProductsCloseTimer()
+  homeProductsOpen.value = false
+  homeProductsActiveTrigger.value = null
+}
+
+function resolveHomeProductsTrigger(event?: Event): {
+  button: HTMLElement | null
+  trigger: 'nav' | 'hero' | null
+} {
+  const target = event?.currentTarget as HTMLElement | null
+  if (target && homeProductsHeroMenuRef.value?.contains(target)) {
+    return { button: homeProductsHeroButtonRef.value, trigger: 'hero' }
+  }
+  if (target && homeProductsMenuRef.value?.contains(target)) {
+    return { button: homeProductsButtonRef.value, trigger: 'nav' }
+  }
+  return {
+    button: homeProductsActiveButtonRef.value || homeProductsButtonRef.value,
+    trigger: homeProductsActiveTrigger.value || 'nav',
+  }
+}
+
+async function openHomeProductsMenu(
+  trigger?: { button: HTMLElement | null; trigger: 'nav' | 'hero' | null },
+) {
+  clearHomeProductsCloseTimer()
+  homeProductsActiveButtonRef.value =
+    trigger?.button || homeProductsActiveButtonRef.value || homeProductsButtonRef.value
+  homeProductsActiveTrigger.value = trigger?.trigger || homeProductsActiveTrigger.value || 'nav'
+  homeProductsOpen.value = true
+  await nextTick()
+  updateHomeProductsDropdownPosition()
+}
+
+async function openHomeProductsMenuFromEvent(event: Event) {
+  await openHomeProductsMenu(resolveHomeProductsTrigger(event))
+}
+
+function scheduleCloseHomeProductsMenu() {
+  clearHomeProductsCloseTimer()
+  homeProductsCloseTimer = window.setTimeout(() => {
+    closeHomeProductsMenu()
+  }, 120)
+}
+
+function updateHomeProductsDropdownPosition() {
+  const button = homeProductsActiveButtonRef.value || homeProductsButtonRef.value
+  if (!button) return
+
+  const rect = button.getBoundingClientRect()
+  const minWidth = Math.max(192, Math.ceil(rect.width))
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+  const left = Math.max(16, Math.min(rect.right - minWidth, viewportWidth - minWidth - 16))
+
+  homeProductsDropdownStyle.value = {
+    top: `${Math.ceil(rect.bottom + 8)}px`,
+    left: `${Math.ceil(left)}px`,
+    minWidth: `${minWidth}px`,
+  }
+}
+
+function handleHomeProductsDocumentClick(event: MouseEvent) {
+  if (!homeProductsOpen.value) return
+  const target = event.target as Node | null
+  if (target && homeProductsMenuRef.value?.contains(target)) return
+  if (target && homeProductsHeroMenuRef.value?.contains(target)) return
+  if (target && homeProductsDropdownRef.value?.contains(target)) return
+  closeHomeProductsMenu()
+}
+
+function handleHomeProductsKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    closeHomeProductsMenu()
+  }
+}
+
+function handleHomeProductsViewportChange() {
+  if (homeProductsOpen.value) {
+    updateHomeProductsDropdownPosition()
+  }
+}
 
 // Check if homeContent is a URL (for iframe display)
 const isHomeContentUrl = computed(() => {
@@ -485,6 +686,10 @@ function initTheme() {
 
 onMounted(() => {
   initTheme()
+  document.addEventListener('click', handleHomeProductsDocumentClick)
+  document.addEventListener('keydown', handleHomeProductsKeydown)
+  window.addEventListener('resize', handleHomeProductsViewportChange)
+  window.addEventListener('scroll', handleHomeProductsViewportChange, true)
 
   // Check auth state
   authStore.checkAuth()
@@ -493,6 +698,14 @@ onMounted(() => {
   if (!appStore.publicSettingsLoaded) {
     appStore.fetchPublicSettings()
   }
+})
+
+onBeforeUnmount(() => {
+  clearHomeProductsCloseTimer()
+  document.removeEventListener('click', handleHomeProductsDocumentClick)
+  document.removeEventListener('keydown', handleHomeProductsKeydown)
+  window.removeEventListener('resize', handleHomeProductsViewportChange)
+  window.removeEventListener('scroll', handleHomeProductsViewportChange, true)
 })
 </script>
 

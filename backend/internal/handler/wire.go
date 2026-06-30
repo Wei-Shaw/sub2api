@@ -20,6 +20,7 @@ func ProvideAdminHandlers(
 	openaiOAuthHandler *admin.OpenAIOAuthHandler,
 	geminiOAuthHandler *admin.GeminiOAuthHandler,
 	antigravityOAuthHandler *admin.AntigravityOAuthHandler,
+	grokOAuthHandler *admin.GrokOAuthHandler,
 	proxyHandler *admin.ProxyHandler,
 	redeemHandler *admin.RedeemHandler,
 	promoHandler *admin.PromoHandler,
@@ -43,7 +44,10 @@ func ProvideAdminHandlers(
 	oidcClientHandler *admin.OidcClientHandler,
 	oidcSigningKeyHandler *admin.OidcSigningKeyHandler,
 	oidcProviderSettingsHandler *admin.OidcProviderSettingsHandler,
+	billingAppHandler *admin.BillingAppHandler,
 	complianceHandler *admin.ComplianceHandler,
+	cosImageHandler *admin.COSImageHandler,
+	asyncMediaConfigHandler *admin.AsyncMediaConfigHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -57,6 +61,7 @@ func ProvideAdminHandlers(
 		OpenAIOAuth:            openaiOAuthHandler,
 		GeminiOAuth:            geminiOAuthHandler,
 		AntigravityOAuth:       antigravityOAuthHandler,
+		GrokOAuth:              grokOAuthHandler,
 		Proxy:                  proxyHandler,
 		Redeem:                 redeemHandler,
 		Promo:                  promoHandler,
@@ -80,7 +85,10 @@ func ProvideAdminHandlers(
 		OidcClient:             oidcClientHandler,
 		OidcSigningKey:         oidcSigningKeyHandler,
 		OidcProviderSettings:   oidcProviderSettingsHandler,
+		BillingApp:             billingAppHandler,
 		Compliance:             complianceHandler,
+		COSImage:               cosImageHandler,
+		AsyncMediaConfig:       asyncMediaConfigHandler,
 	}
 }
 
@@ -116,6 +124,7 @@ func ProvideHandlers(
 	adminHandlers *AdminHandlers,
 	gatewayHandler *GatewayHandler,
 	openaiGatewayHandler *OpenAIGatewayHandler,
+	falGatewayHandler *FalGatewayHandler,
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
 	paymentHandler *PaymentHandler,
@@ -138,6 +147,7 @@ func ProvideHandlers(
 		Admin:            adminHandlers,
 		Gateway:          gatewayHandler,
 		OpenAIGateway:    openaiGatewayHandler,
+		FalGateway:       falGatewayHandler,
 		Setting:          settingHandler,
 		Totp:             totpHandler,
 		Payment:          paymentHandler,
@@ -161,6 +171,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorUserHandler,
 	NewGatewayHandler,
 	NewOpenAIGatewayHandler,
+	NewFalGatewayHandler,
 	NewTotpHandler,
 	ProvideSettingHandler,
 	NewPaymentHandler,
@@ -177,10 +188,13 @@ var ProviderSet = wire.NewSet(
 	admin.NewAnnouncementHandler,
 	admin.NewDataManagementHandler,
 	admin.NewBackupHandler,
+	admin.NewCOSImageHandler,
+	admin.NewAsyncMediaConfigHandler,
 	admin.NewOAuthHandler,
 	admin.NewOpenAIOAuthHandler,
 	admin.NewGeminiOAuthHandler,
 	admin.NewAntigravityOAuthHandler,
+	admin.NewGrokOAuthHandler,
 	admin.NewProxyHandler,
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
@@ -204,6 +218,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewOidcClientHandler,
 	admin.NewOidcSigningKeyHandler,
 	admin.NewOidcProviderSettingsHandler,
+	admin.NewBillingAppHandler,
 	admin.NewComplianceHandler,
 
 	// AdminHandlers and Handlers constructors
