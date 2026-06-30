@@ -253,6 +253,29 @@ func TestIsOpenAITransientProcessingError(t *testing.T) {
 	))
 REDACTED
 
+func TestIsOpenAIContextWindowError(t *testing.T) {
+	require.True(t, isOpenAIContextWindowError(
+		"",
+		[]byte(`{"error":{"message":"Your input exceeds the context window of this model. Please adjust your input and try again.","type":"upstream_error","code":nullREDACTEDREDACTED`),
+	))
+	require.True(t, isOpenAIContextWindowError(
+		"maximum context length exceeded",
+		nil,
+	))
+	require.False(t, isOpenAIContextWindowError(
+		"context canceled",
+		nil,
+	))
+REDACTED
+
+func TestShouldFailoverOpenAIUpstreamResponseContextWindow502(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+	body := []byte(`{"error":{"message":"Your input exceeds the context window of this model. Please adjust your input and try again.","type":"upstream_error","code":nullREDACTEDREDACTED`)
+
+	require.False(t, svc.shouldFailoverOpenAIUpstreamResponse(http.StatusBadGateway, "", body))
+	require.True(t, svc.shouldFailoverOpenAIUpstreamResponse(http.StatusBadGateway, "temporary upstream outage", []byte(`{"error":{"message":"temporary upstream outage"REDACTEDREDACTED`)))
+REDACTED
+
 func TestOpenAIGatewayService_Forward_LogsInstructionsRequiredDetails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	logSink, restore := captureStructuredLog(t)

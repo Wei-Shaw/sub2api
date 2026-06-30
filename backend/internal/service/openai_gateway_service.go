@@ -1196,6 +1196,51 @@ REDACTED
 	return match(string(upstreamBody))
 REDACTED
 
+func isOpenAIContextWindowError(upstreamMsg string, upstreamBody []byte) bool {
+	match := func(text string) bool {
+		lower := strings.ToLower(strings.TrimSpace(text))
+		if lower == "" {
+			return false
+	REDACTED
+		if strings.Contains(lower, "context_too_large") || strings.Contains(lower, "context_length_exceeded") {
+			return true
+	REDACTED
+		if strings.Contains(lower, "maximum context length") || strings.Contains(lower, "max context length") {
+			return true
+	REDACTED
+		hasExceeded := strings.Contains(lower, "exceed") || strings.Contains(lower, "too large") || strings.Contains(lower, "too long")
+		if strings.Contains(lower, "context window") && hasExceeded {
+			return true
+	REDACTED
+		if strings.Contains(lower, "context length") && hasExceeded {
+			return true
+	REDACTED
+		return strings.Contains(lower, "token limit") &&
+			strings.Contains(lower, "context") &&
+			hasExceeded
+REDACTED
+
+	if match(upstreamMsg) {
+		return true
+REDACTED
+	if len(upstreamBody) == 0 {
+		return false
+REDACTED
+	for _, path := range []string{
+		"error.message",
+		"response.error.message",
+		"message",
+		"error.code",
+		"response.error.code",
+		"code",
+REDACTED {
+		if match(gjson.GetBytes(upstreamBody, path).String()) {
+			return true
+	REDACTED
+REDACTED
+	return match(string(upstreamBody))
+REDACTED
+
 // ExtractSessionID extracts the raw session ID from headers or body without hashing.
 // Used by ForwardAsAnthropic to pass as prompt_cache_key for upstream cache.
 func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) string {
@@ -2450,6 +2495,9 @@ REDACTED
 REDACTED
 
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
+		return false
+REDACTED
 	if s.shouldFailoverUpstreamError(statusCode) {
 		return true
 REDACTED
@@ -3854,6 +3902,9 @@ REDACTED
 REDACTED
 
 func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool {
+	if isOpenAIContextWindowError(message, payload) {
+		return false
+REDACTED
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
 		return true
 REDACTED
@@ -3886,17 +3937,18 @@ REDACTED
 	return true
 REDACTED
 
-func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
+func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 	c *gin.Context,
 	account *Account,
 	passthrough bool,
 	upstreamRequestID string,
+	kind string,
 	payload []byte,
 	message string,
-) *UpstreamFailoverError {
+) string {
 	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
 	if message == "" {
-		message = "OpenAI stream disconnected before completion"
+		message = "OpenAI upstream response failed"
 REDACTED
 	detail := ""
 	if len(payload) > 0 && s != nil && s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
@@ -3913,7 +3965,7 @@ REDACTED
 			UpstreamStatusCode: http.StatusBadGateway,
 			UpstreamRequestID:  strings.TrimSpace(upstreamRequestID),
 			Passthrough:        passthrough,
-			Kind:               "failover",
+			Kind:               kind,
 			Message:            message,
 			Detail:             detail,
 	REDACTED
@@ -3924,6 +3976,22 @@ REDACTED
 	REDACTED
 		appendOpsUpstreamError(c, event)
 REDACTED
+	return message
+REDACTED
+
+func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
+	c *gin.Context,
+	account *Account,
+	passthrough bool,
+	upstreamRequestID string,
+	payload []byte,
+	message string,
+) *UpstreamFailoverError {
+	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
+	if message == "" {
+		message = "OpenAI stream disconnected before completion"
+REDACTED
+	message = s.recordOpenAIStreamUpstreamError(c, account, passthrough, upstreamRequestID, "failover", payload, message)
 	body, _ := json.Marshal(gin.H{
 		"error": gin.H{
 			"type":    "upstream_error",
@@ -4602,6 +4670,9 @@ REDACTED
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"
 		errMsg = "Upstream request failed"
+REDACTED
+	if isOpenAIContextWindowError(upstreamMsg, body) && upstreamMsg != "" {
+		errMsg = upstreamMsg
 REDACTED
 
 	c.JSON(statusCode, gin.H{

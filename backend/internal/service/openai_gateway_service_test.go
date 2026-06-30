@@ -1417,6 +1417,43 @@ REDACTED
 	require.NotContains(t, body, `"usage"`)
 REDACTED
 
+func TestOpenAIStreamingContextWindowResponseFailedBeforeOutputPassesThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+	REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{cfg: cfgREDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_1"REDACTEDREDACTED`,
+			"",
+			"event: response.failed",
+			`data: {"type":"response.failed","error":{"type":"upstream_error","message":"Your input exceeds the context window of this model. Please adjust your input and try again.","code":nullREDACTEDREDACTED`,
+			"",
+	REDACTED, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-context-window-failed"REDACTEDREDACTED,
+REDACTED
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"REDACTED, time.Now(), "model", "model")
+REDACTED
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.True(t, c.Writer.Written())
+	require.Contains(t, rec.Body.String(), "response.failed")
+	require.Contains(t, rec.Body.String(), "Your input exceeds the context window")
+REDACTED
+
 func TestOpenAIStreamingPreambleOnlyMissingTerminalReturnsFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
