@@ -35,3 +35,10 @@ exceptions:
     mitigation: "Proxy configuration not user-controlled; upgrade when axios releases fix"
     expires_on: "2026-07-10"
     owner: "security@your-domain"
+  - package: form-data
+    advisory: "GHSA-hmw2-7cc7-3qxx"
+    severity: high
+    reason: "Transitive axios dependency; frontend does not pass untrusted multipart field names or filenames to form-data"
+    mitigation: "Keep lockfile on patched form-data release and remove exception once pnpm audit no longer reports this advisory"
+    expires_on: "2026-07-15"
+    owner: "security@your-domain"
