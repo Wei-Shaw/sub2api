@@ -133,3 +133,78 @@ REDACTED
 	require.Equal(t, "gpt-5", decision.UpstreamModel)
 	require.Nil(t, decision.Route)
 REDACTED
+
+func TestCompositeRouteResolverExplicitRoutesCoverBucketTwoProviders(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{
+		routes: []CompositeModelRoute{
+			{
+				ID:             1,
+				GroupID:        7,
+				PublicModel:    "all/gpt-5",
+				MatchType:      CompositeRouteMatchExact,
+				TargetPlatform: PlatformOpenAI,
+				UpstreamModel:  "gpt-5",
+				Endpoint:       CompositeRouteEndpointResponses,
+				Priority:       100,
+				Enabled:        true,
+		REDACTED,
+			{
+				ID:             2,
+				GroupID:        7,
+				PublicModel:    "all/claude-sonnet",
+				MatchType:      CompositeRouteMatchExact,
+				TargetPlatform: PlatformAnthropic,
+				UpstreamModel:  "claude-sonnet-4-6",
+				Endpoint:       CompositeRouteEndpointMessages,
+				Priority:       100,
+				Enabled:        true,
+		REDACTED,
+			{
+				ID:             3,
+				GroupID:        7,
+				PublicModel:    "all/gemini-pro",
+				MatchType:      CompositeRouteMatchExact,
+				TargetPlatform: PlatformGemini,
+				UpstreamModel:  "gemini-2.5-pro",
+				Endpoint:       CompositeRouteEndpointGemini,
+				Priority:       100,
+				Enabled:        true,
+		REDACTED,
+			{
+				ID:             4,
+				GroupID:        7,
+				PublicModel:    "all/grok",
+				MatchType:      CompositeRouteMatchExact,
+				TargetPlatform: PlatformGrok,
+				UpstreamModel:  "grok-4",
+				Endpoint:       CompositeRouteEndpointResponses,
+				Priority:       100,
+				Enabled:        true,
+		REDACTED,
+	REDACTED,
+REDACTED)
+
+	tests := []struct {
+		model        string
+		endpoint     string
+		wantPlatform string
+		wantUpstream string
+REDACTED{
+		{"all/gpt-5", CompositeRouteEndpointResponses, PlatformOpenAI, "gpt-5"REDACTED,
+		{"all/claude-sonnet", CompositeRouteEndpointMessages, PlatformAnthropic, "claude-sonnet-4-6"REDACTED,
+		{"all/gemini-pro", CompositeRouteEndpointGemini, PlatformGemini, "gemini-2.5-pro"REDACTED,
+		{"all/grok", CompositeRouteEndpointResponses, PlatformGrok, "grok-4"REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			decision, err := resolver.Resolve(context.Background(), 7, tt.model, tt.endpoint)
+
+		REDACTED
+			require.True(t, decision.Matched)
+			require.Equal(t, CompositeRouteSourceExplicit, decision.Source)
+			require.Equal(t, tt.wantPlatform, decision.TargetPlatform)
+			require.Equal(t, tt.wantUpstream, decision.UpstreamModel)
+	REDACTED)
+REDACTED
+REDACTED
