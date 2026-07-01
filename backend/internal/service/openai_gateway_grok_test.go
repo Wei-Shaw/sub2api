@@ -146,6 +146,25 @@ REDACTED
 	require.Contains(t, err.Error(), "invalid base url")
 REDACTED
 
+func TestGrokMediaGenerationGateCoversImagesAndVideo(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint GrokMediaEndpoint
+		want     bool
+REDACTED{
+		{name: "image generation", endpoint: GrokMediaEndpointImagesGenerations, want: trueREDACTED,
+		{name: "image edit", endpoint: GrokMediaEndpointImagesEdits, want: trueREDACTED,
+		{name: "video generation", endpoint: GrokMediaEndpointVideosGenerations, want: trueREDACTED,
+		{name: "video status", endpoint: GrokMediaEndpointVideoStatus, want: falseREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.endpoint.IsGenerationRequest())
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestExtractGrokMediaModelSupportsJSONAndMultipart(t *testing.T) {
 	require.Equal(t, "grok-imagine", ExtractGrokMediaModel("application/json", []byte(`{"model":"grok-imagine"REDACTED`)))
 
