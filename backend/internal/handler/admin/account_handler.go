@@ -171,11 +171,19 @@ type CheckMixedChannelRequest struct {
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
 	*dto.Account
-	CurrentConcurrency int `json:"current_concurrency"`
+	CurrentConcurrency int                    `json:"current_concurrency"`
+	SchedulerScore     *AccountSchedulerScore `json:"scheduler_score,omitempty"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
 	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
+}
+
+type AccountSchedulerScore struct {
+	BaseScore             float64 `json:"base_score"`
+	StickyScore           float64 `json:"sticky_score"`
+	StickyScoreInfinity   bool    `json:"sticky_score_infinity"`
+	StickyWeightedEnabled bool    `json:"sticky_weighted_enabled"`
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
@@ -222,6 +230,49 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	}
 
 	return item
+}
+
+func (h *AccountHandler) buildOpenAIAccountSchedulerScores(ctx context.Context, accounts []service.Account) map[int64]*AccountSchedulerScore {
+	openAIAccounts := make([]*service.Account, 0, len(accounts))
+	loadReq := make([]service.AccountWithConcurrency, 0, len(accounts))
+	for i := range accounts {
+		account := &accounts[i]
+		if account.Platform != service.PlatformOpenAI {
+			continue
+		}
+		openAIAccounts = append(openAIAccounts, account)
+		loadReq = append(loadReq, service.AccountWithConcurrency{
+			ID:             account.ID,
+			MaxConcurrency: account.EffectiveLoadFactor(),
+		})
+	}
+	if len(openAIAccounts) == 0 {
+		return nil
+	}
+
+	loadMap := map[int64]*service.AccountLoadInfo{}
+	if h.concurrencyService != nil {
+		if batchLoad, err := h.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); err == nil && batchLoad != nil {
+			loadMap = batchLoad
+		}
+	}
+
+	var scores map[int64]service.OpenAIAccountSchedulerScoreSnapshot
+	if h.rateLimitService != nil {
+		scores = h.rateLimitService.BuildOpenAIAccountSchedulerScoreSnapshot(ctx, openAIAccounts, loadMap)
+	} else {
+		scores = service.BuildOpenAIAccountSchedulerScoreSnapshot(openAIAccounts, loadMap)
+	}
+	result := make(map[int64]*AccountSchedulerScore, len(scores))
+	for accountID, score := range scores {
+		result[accountID] = &AccountSchedulerScore{
+			BaseScore:             score.BaseScore,
+			StickyScore:           score.StickyScore,
+			StickyScoreInfinity:   score.StickyScoreInfinity,
+			StickyWeightedEnabled: score.StickyWeightedEnabled,
+		}
+	}
+	return result
 }
 
 // List handles listing all accounts with pagination
@@ -276,6 +327,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
+	schedulerScores := h.buildOpenAIAccountSchedulerScores(c.Request.Context(), accounts)
 
 	// 始终获取并发数（Redis ZCARD，极低开销）
 	if h.concurrencyService != nil {
@@ -356,6 +408,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		item := AccountWithConcurrency{
 			Account:            dto.AccountFromService(acc),
 			CurrentConcurrency: concurrencyCounts[acc.ID],
+			SchedulerScore:     schedulerScores[acc.ID],
 		}
 
 		// 添加窗口费用（仅当启用时）

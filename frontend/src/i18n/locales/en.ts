@@ -3180,6 +3180,7 @@ export default {
         priority: 'Priority',
         billingRateMultiplier: 'Billing Rate',
         weight: 'Weight',
+        schedulerScore: 'Scheduler Score',
         status: 'Status',
         schedulable: 'Schedulable',
         todayStats: 'Today Stats',
@@ -3190,6 +3191,10 @@ export default {
         createdAt: 'Created',
         expiresAt: 'Expires At',
         actions: 'Actions'
+      },
+      schedulerScore: {
+        baseShort: 'Base',
+        stickyShort: 'Sticky'
       },
       usageWindowsHint: '"5h / 7d" are the upstream account\'s official rolling usage windows (e.g. OpenAI ChatGPT, Claude). They are imposed by the upstream provider on the account itself — not configured by sub2api, and unrelated to the models you map. Usage resets automatically once each window rolls over, and the limit cannot be lifted from within sub2api.',
       allPrivacyModes: 'All Privacy States',
@@ -6565,7 +6570,11 @@ export default {
       },
       openaiExperimentalScheduler: {
         title: 'OpenAI experimental scheduler policy',
-        description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability."
+        description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability.",
+        stickyWeightedTitle: 'Sticky weighting',
+        stickyWeightedDescription: 'When enabled, previous_response_id and session_hash affinity are scored by the advanced scheduler. When disabled, sticky accounts keep the legacy hard-hit behavior.',
+        subscriptionPriorityTitle: 'Subscription priority',
+        subscriptionPriorityDescription: 'When enabled, the scheduler scores ChatGPT subscription accounts first and falls back to non-subscription accounts only if no subscription slot can be acquired.'
       },
       usageRecords: {
         title: 'Usage Records',
