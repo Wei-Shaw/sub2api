@@ -12,7 +12,7 @@
 | 0 | 环境自检 `go build ./...` | ✅ 完成 | `e6ba7d0a` | gofmt✅ build✅ vet✅ routes-test✅ | Blocker #1 已按**方案 A**(人工拍板)修复;基线转绿,无隐藏编译错 |
 | A | tlsfingerprint 包补 3 文件 | ✅ 完成 | `4488db9c` | gofmt✅ build✅ vet✅ pkg-test✅ | Profile 结构两边逐字一致;照抄 3 源 +2 测;`isGREASEValue` 依赖已存在 |
 | B | ent schema + model + 生成 | ✅ 完成 | `ce925be7` | gofmt✅ generate✅ build✅ vet✅ | 表/列/索引与方案逐项核对一致;go.mod/sum 未被 codegen 污染 |
-| C | 迁移 158_add_tls_fingerprint_routers.sql | ✅ 完成(静态) | `d6cec220` | build✅ vet✅ runner-test✅ | DB 幂等执行=【运行时·人工】(本环境镜像拉取过慢,未跑成 ephemeral PG) |
+| C | 迁移 158_add_tls_fingerprint_routers.sql | ✅ 完成(静态+ephemeral PG) | `d6cec220` | build✅ vet✅ runner-test✅ + ephemeral PG 幂等✅ | postgres:18-alpine 跑两遍幂等通过,11 列/3 索引与 ent 一致;生产/测试库应用仍留人工 |
 | D | repository(router repo + cache) | ✅ 完成 | `0e5c588d` | gofmt✅ build✅ vet✅ svc-test✅ | 含 router service(接口与 repo 互依,合并提交);6 子测全绿 |
 | E | service(router + collector)+ config | ✅ 完成 | `0e5c588d`+`3161a1df` | gofmt✅ build✅ vet✅ svc-test✅ | router svc 随 D;本提交:collector+config+profile 编辑+wire providers。变参 provider/wire.Bind 推迟到 G(依赖 gateway/OAuth) |
 | F | handler + 路由 + wire | ✅ 完成 | `8f57d2c6` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | wire 重生成成功;cmd/server wire_gen_test 通过 |
@@ -112,7 +112,8 @@
   - baseline:`latestMigrationBaseline` 动态取最高号(无硬编码 157),`ensureAtlasBaselineAligned` 亦动态 → 158 自然成为新 baseline,无需改常量;无 checksum 兼容规则(158 是全新文件,非编辑旧迁移)。
 - 命令与结果(容器内):`go build ./...` → **BUILD_OK**;`go vet ./internal/repository/...` → **VET_OK**;`go test ./internal/repository/`(非 DB 的 runner 单测:ValidateMigrationExecutionMode/LatestMigrationBaseline/ApplyMigrationsFS/Checksum/EnsureAtlasBaselineAligned 等)→ **ok 0.021s**。
 - commit:`d6cec220`
-- 遗留/风险:**DB 幂等执行属【运行时·人工】**(方案 §5)。本想用 ephemeral `postgres:18-alpine` 容器跑两遍验证语法+幂等,但本环境 Docker Hub 拉取过慢(>8min 未完成),遂回退到方案既定分类,**不宣称 DB 已验证**。迁移系 TR 生产已验证 DDL 的近逐字合并 + 列类型对齐 ent + 全 IF NOT EXISTS,DB 风险低;人工灰度时在测试库 `\i 158` 跑两遍确认幂等即可。repo 自带 `migrations_schema_integration_test.go`(`//go:build integration`,testcontainers `postgres:18.1-alpine3.23`)可作人工集成验证入口。
+- 遗留/风险:**生产/测试库应用属【运行时·人工】**(方案 §5)。
+- **补充验证(2026-07-01,镜像拉取完成后补跑)**:ephemeral `postgres:18-alpine` 容器内 `psql --single-transaction -v ON_ERROR_STOP=1 -f 158.sql` **连跑两遍均成功(幂等 ✅)**;结果 11 列(id/name/description/enabled/rules/created_at/updated_at/chatgpt_oauth_token_user_agent/chatgpt_oauth_token_tls_fingerprint_profile_id/codex_invite_reset_user_agent/codex_invite_reset_tls_fingerprint_profile_id)+ 3 索引(pkey / name_key 唯一 / idx_tls_fingerprint_routers_enabled),类型与 Phase B ent 生成**逐项一致**。容器用完即删。**仍不宣称生产/测试库已验证**(那需在真实库跑,留人工;但语法+幂等+结构已在真 PG 引擎上验证)。
 
 ### Phase D(+E 的 router service)— repository + router service — ✅ 完成(2026-07-01)
 
