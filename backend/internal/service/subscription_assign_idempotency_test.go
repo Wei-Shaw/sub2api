@@ -73,6 +73,9 @@ REDACTED
 func (userSubRepoNoop) GetByID(context.Context, int64) (*UserSubscription, error) {
 	panic("unexpected GetByID call")
 REDACTED
+func (userSubRepoNoop) GetByIDIncludeDeleted(context.Context, int64) (*UserSubscription, error) {
+	panic("unexpected GetByIDIncludeDeleted call")
+REDACTED
 func (userSubRepoNoop) GetByUserIDAndGroupID(context.Context, int64, int64) (*UserSubscription, error) {
 	panic("unexpected GetByUserIDAndGroupID call")
 REDACTED
@@ -83,6 +86,9 @@ func (userSubRepoNoop) Update(context.Context, *UserSubscription) error {
 	panic("unexpected Update call")
 REDACTED
 func (userSubRepoNoop) Delete(context.Context, int64) error { panic("unexpected Delete call") REDACTED
+func (userSubRepoNoop) Restore(context.Context, int64, string) (*UserSubscription, error) {
+	panic("unexpected Restore call")
+REDACTED
 func (userSubRepoNoop) ListByUserID(context.Context, int64) ([]UserSubscription, error) {
 	panic("unexpected ListByUserID call")
 REDACTED
@@ -97,6 +103,9 @@ func (userSubRepoNoop) List(context.Context, pagination.PaginationParams, *int64
 REDACTED
 func (userSubRepoNoop) ExistsByUserIDAndGroupID(context.Context, int64, int64) (bool, error) {
 	panic("unexpected ExistsByUserIDAndGroupID call")
+REDACTED
+func (userSubRepoNoop) ExistsActiveByUserIDAndGroupID(context.Context, int64, int64) (bool, error) {
+	panic("unexpected ExistsActiveByUserIDAndGroupID call")
 REDACTED
 func (userSubRepoNoop) ExtendExpiry(context.Context, int64, time.Time) error {
 	panic("unexpected ExtendExpiry call")
