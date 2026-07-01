@@ -2572,6 +2572,15 @@ func (s *OpenAIGatewayService) matchTLSFingerprintRouter(c *gin.Context, account
 	return s.tlsFPRouterService.MatchUserAgent(account.GetTLSFingerprintRouterID(), userAgent)
 }
 
+// firstRouterMatchOrCompute 复用调用方线程化传入的路由器匹配结果(避免每请求重复匹配);
+// 未传入时即时匹配,供未线程化该结果的调用方(chat_completions/messages/images 等)保持原行为。
+func (s *OpenAIGatewayService) firstRouterMatchOrCompute(c *gin.Context, account *Account, routerMatch ...TLSFingerprintRouterMatchResult) TLSFingerprintRouterMatchResult {
+	if len(routerMatch) > 0 {
+		return routerMatch[0]
+	}
+	return s.matchTLSFingerprintRouter(c, account)
+}
+
 // resolveOpenAITLSProfile 解析 native OpenAI 出站请求的运行时 TLS Profile。
 // 命中路由器规则 → 规则指定 profile;否则回落账号固定 profile。tlsFPProfileService 为 nil(如测试)→ nil。
 func (s *OpenAIGatewayService) resolveOpenAITLSProfile(account *Account, routerMatch ...TLSFingerprintRouterMatchResult) *tlsfingerprint.Profile {
@@ -3226,11 +3235,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, wsErr
 	}
 
+	// 每请求只匹配一次路由器,线程化给 UA 改写与 TLS profile 解析(避免重复匹配 + 重试循环内重复计算)。
+	tlsRouterMatch := s.matchTLSFingerprintRouter(c, account)
 	httpInvalidEncryptedContentRetryTried := false
 	for {
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI)
+		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI, tlsRouterMatch)
 		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
@@ -3244,7 +3255,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 		// Send request
 		upstreamStart := time.Now()
-		resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, s.matchTLSFingerprintRouter(c, account)))
+		resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, tlsRouterMatch))
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
@@ -3517,8 +3528,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, err
 	}
 
+	// 每请求只匹配一次路由器,线程化给 UA 改写与 TLS profile 解析(避免重复匹配)。
+	tlsRouterMatch := s.matchTLSFingerprintRouter(c, account)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
+	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token, tlsRouterMatch)
 	releaseUpstreamCtx()
 	if err != nil {
 		return nil, err
@@ -3534,7 +3547,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, s.matchTLSFingerprintRouter(c, account)))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, tlsRouterMatch))
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
@@ -3650,6 +3663,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	account *Account,
 	body []byte,
 	token string,
+	routerMatch ...TLSFingerprintRouterMatchResult,
 ) (*http.Request, error) {
 	targetURL := openaiPlatformAPIURL
 	switch account.Type {
@@ -3752,7 +3766,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	s.overrideBrowserUserAgent(ctx, account, req)
 
 	// TLS 路由器命中且规则给了 UA/Originator 时以其覆盖(优先级最高,使出站 UA 与所选指纹一致)。
-	if m := s.matchTLSFingerprintRouter(c, account); m.Matched {
+	if m := s.firstRouterMatchOrCompute(c, account, routerMatch...); m.Matched {
 		if m.UpstreamUserAgent != "" {
 			req.Header.Set("user-agent", m.UpstreamUserAgent)
 		}
@@ -4444,7 +4458,7 @@ func writeOpenAIPassthroughResponseHeaders(dst http.Header, src http.Header, fil
 	}
 }
 
-func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
+func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool, routerMatch ...TLSFingerprintRouterMatchResult) (*http.Request, error) {
 	// Determine target URL based on account type
 	var targetURL string
 	switch account.Type {
@@ -4544,7 +4558,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	s.overrideBrowserUserAgent(ctx, account, req)
 
 	// TLS 路由器命中且规则给了 UA/Originator 时以其覆盖(优先级最高,使出站 UA 与所选指纹一致)。
-	if m := s.matchTLSFingerprintRouter(c, account); m.Matched {
+	if m := s.firstRouterMatchOrCompute(c, account, routerMatch...); m.Matched {
 		if m.UpstreamUserAgent != "" {
 			req.Header.Set("user-agent", m.UpstreamUserAgent)
 		}

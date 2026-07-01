@@ -632,3 +632,9 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 - **兄弟路径已核实无同类缺口**:EditAccountModal(无 cookie 路径,主 4065-4080 正常)、ReAuth ×2(传后端)、OpenAI OAuth 换码 5025 / 手动 RT 导入 5273(传后端 `CreateAccountFromOAuth` 持久化 Extra)。
 - **验证**:`pnpm typecheck` exit 0。
 - **待人工(运行时)**:此前所有 JA3/WS/迁移/前端点测项仍留人工(静态不可证)。
+
+### LOW#1 对齐 — native OpenAI 每请求只匹配一次路由器 — ✅ 完成
+- **现象**:fork 的 `Forward`/`forwardOpenAIPassthrough` 每请求把 `matchTLSFingerprintRouter` 调 2 次(buildUpstreamRequest* 里为 UA 改写 + DoWithTLS 处为 profile),且 `Forward` 的匹配在重试 `for` 循环内、每次重试重算。TR 在 `Forward:2824` 只算一次 `tlsRouterMatch :=` 再线程化。
+- **改法(`openai_gateway_service.go`,+21/-7)**:① 加 `firstRouterMatchOrCompute(c,account,routerMatch...)`(传入则复用、否则即时匹配);② `buildUpstreamRequest`/`buildUpstreamRequestOpenAIPassthrough` 加变参 `routerMatch ...TLSFingerprintRouterMatchResult`,UA 改写块改用该 helper;③ `Forward`(**for 循环外**)/`forwardOpenAIPassthrough` 各 `tlsRouterMatch := s.matchTLSFingerprintRouter(...)` 一次,线程化给 build + DoWithTLS。**变参 + recompute-fallback** 保证其它调用方(chat_completions/messages/images_responses/ws_http_bridge/测试,不传 routerMatch)行为逐字不变——fork 这几处调用方比 TR 多,不能照抄 TR 的裸变参(否则丢 UA 改写)。
+- **验证(容器)**:gofmt clean;`go build ./...` BUILD_OK;`go vet ./internal/service/...` VET_OK;`go test ./internal/service/ ./cmd/server/...` **ok(service 46s,无 FAIL/panic)**。
+- **范围**:仅对齐两条 flagged 的 native 路径(Forward/passthrough);其余 Blocker#3 出站路径保留无害的 recompute-fallback(单次 inline 重算,非本 LOW 关注点)。
