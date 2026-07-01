@@ -98,7 +98,10 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 
 	body := `{"quotas":[
 		{"platform":"anthropic","daily_limit_usd":10.0,"weekly_limit_usd":null,"monthly_limit_usd":100.0REDACTED,
-		{"platform":"openai","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":nullREDACTED
+		{"platform":"openai","daily_limit_usd":80.0,"weekly_limit_usd":300.0,"monthly_limit_usd":nullREDACTED,
+		{"platform":"gemini","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":nullREDACTED,
+		{"platform":"antigravity","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":nullREDACTED,
+		{"platform":"grok","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":nullREDACTED
 	]REDACTED`
 	c, w := putReq(t, body)
 	h.UpdateUserPlatformQuotas(c)
@@ -109,10 +112,10 @@ REDACTED
 	if len(repo.upsertCalls) != 1 {
 		t.Fatalf("UpsertForUser should be called once, got %d", len(repo.upsertCalls))
 REDACTED
-	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != 2 {
+	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != len(service.AllowedQuotaPlatforms) {
 		t.Errorf("unexpected upsert call: %+v", repo.upsertCalls[0])
 REDACTED
-	// 缓存失效：请求中 2 个 platform + 软删除的 3 个 platform（gemini, antigravity, grok）= 5 次
+	// 缓存失效：按全部允许平台统一失效。
 	if len(cache.deleteCalls) != 5 {
 		t.Errorf("expected 5 cache delete calls, got %d: %+v", len(cache.deleteCalls), cache.deleteCalls)
 REDACTED
@@ -154,7 +157,7 @@ REDACTED
 func TestUpdateUserPlatformQuotas_RejectsTooManyEntries(t *testing.T) {
 	h := buildTestHandler(&upsertCapturingQuotaRepo{REDACTED, &billingCacheStub{REDACTED)
 	body := `{"quotas":[
-		{"platform":"anthropic"REDACTED,{"platform":"openai"REDACTED,{"platform":"gemini"REDACTED,{"platform":"antigravity"REDACTED,{"platform":"anthropic"REDACTED
+		{"platform":"anthropic"REDACTED,{"platform":"openai"REDACTED,{"platform":"gemini"REDACTED,{"platform":"antigravity"REDACTED,{"platform":"grok"REDACTED,{"platform":"anthropic"REDACTED
 	]REDACTED`
 	c, w := putReq(t, body)
 	h.UpdateUserPlatformQuotas(c)
