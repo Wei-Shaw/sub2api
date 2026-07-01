@@ -62,6 +62,42 @@ export interface UpdateProfileRequest {
   extensions?: number[]
 }
 
+export interface TLSFingerprintCollectorStatus {
+  running: boolean
+  listen_address: string
+  public_base_url: string
+  using_generated_cert: boolean
+  ca_pem?: string
+  session_ttl_seconds: number
+  max_records_per_session: number
+  started_at?: string
+  last_error?: string
+}
+
+export interface TLSFingerprintCollectorSession {
+  token: string
+  expires_at: string
+  capture_url: string
+  ca_pem?: string
+}
+
+export interface TLSFingerprintCaptureRecord {
+  id: string
+  captured_at: string
+  client_kind: string
+  request_path: string
+  method: string
+  user_agent: string
+  ja3_raw: string
+  ja3_hash: string
+  negotiated_alpn: string
+  http_proto: string
+  profile: TLSFingerprintProfile
+  yaml: string
+  headers_summary: Record<string, string>
+  stainless_summary: Record<string, string>
+}
+
 export async function list(): Promise<TLSFingerprintProfile[]> {
   const { data } = await apiClient.get<TLSFingerprintProfile[]>('/admin/tls-fingerprint-profiles')
   return data
@@ -87,12 +123,48 @@ export async function deleteProfile(id: number): Promise<{ message: string }> {
   return data
 }
 
+export async function collectorStatus(): Promise<TLSFingerprintCollectorStatus> {
+  const { data } = await apiClient.get<TLSFingerprintCollectorStatus>('/admin/tls-fingerprint-profiles/collector/status')
+  return data
+}
+
+export async function startCollector(): Promise<TLSFingerprintCollectorStatus> {
+  const { data } = await apiClient.post<TLSFingerprintCollectorStatus>('/admin/tls-fingerprint-profiles/collector/start')
+  return data
+}
+
+export async function stopCollector(): Promise<TLSFingerprintCollectorStatus> {
+  const { data } = await apiClient.post<TLSFingerprintCollectorStatus>('/admin/tls-fingerprint-profiles/collector/stop')
+  return data
+}
+
+export async function createCollectorSession(): Promise<TLSFingerprintCollectorSession> {
+  const { data } = await apiClient.post<TLSFingerprintCollectorSession>('/admin/tls-fingerprint-profiles/collector/sessions')
+  return data
+}
+
+export async function listCollectorCaptures(token: string): Promise<TLSFingerprintCaptureRecord[]> {
+  const { data } = await apiClient.get<TLSFingerprintCaptureRecord[]>(`/admin/tls-fingerprint-profiles/collector/sessions/${encodeURIComponent(token)}/captures`)
+  return data
+}
+
+export async function deleteCollectorSession(token: string): Promise<{ deleted: boolean }> {
+  const { data } = await apiClient.delete<{ deleted: boolean }>(`/admin/tls-fingerprint-profiles/collector/sessions/${encodeURIComponent(token)}`)
+  return data
+}
+
 export const tlsFingerprintProfileAPI = {
   list,
   getById,
   create,
   update,
-  delete: deleteProfile
+  delete: deleteProfile,
+  collectorStatus,
+  startCollector,
+  stopCollector,
+  createCollectorSession,
+  listCollectorCaptures,
+  deleteCollectorSession
 }
 
 export default tlsFingerprintProfileAPI

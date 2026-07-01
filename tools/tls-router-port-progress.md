@@ -20,7 +20,7 @@
 | H | OpenAI WS 集成 | ✅ 完成(静态) | `ef966a8f` | gofmt✅ build✅ vet✅ ws-test✅ | 连接池每处取连接点都按 matchesTLSProfile 过滤;串号须人工抓包验证 |
 | I | cmd/server 优雅关闭 | ✅ 完成 | `0f2624f7` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | 采集器 Stop 入 provideCleanup;先于 H 做(独立+安全,H 已记录待续) |
 | J | 代码生成 + 编译 | ✅ 完成 | (无码改) | generate 无 drift✅ build✅ vet✅ | 全量 `go generate ./ent`+`./cmd/server` 后 git status 空=生成码与 schema/providers 完全一致 |
-| K | 前端 | ⏸️ 记录待续 | — | — | 大件(~880 行弹窗等)+ 需前端工具链;本批次未做,见续作清单 |
+| K | 前端 | 🟡 router UI done(typecheck✅) | `49547eb3` | pnpm typecheck✅(exit 0) | RoutersModal+API+AccountsView 入口+i18n 完成绿;余:账号绑定下拉 + ProfilesModal 采集器 UI |
 
 状态图例:⬜ 未开始 / 🟡 进行中 / ✅ 完成(静态绿+commit)/ ⛔ 受阻(见下方记录)
 
@@ -355,6 +355,20 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
   8. 编辑 `frontend/src/i18n/locales/en.ts`、`zh.ts`(补 `admin.tlsFingerprintRouters.*` + 账号表单 router 键)。
   9. 验证:`pnpm -C frontend type-check`/`build`(读 `frontend/package.json` scripts);工具链不可用则记「前端待人工构建验证」。
 - 后端已就绪:router CRUD API(`/admin/tls-fingerprint-routers`)+ 采集器 API(`/admin/tls-fingerprint-profiles/collector/*`)+ 账号 `extra.tls_fingerprint_router_id` 字段均可用,前端直接对接即可。
+
+### Phase K(part 1)— 前端 router CRUD UI — ✅ 完成(typecheck 绿)(2026-07-01)
+
+- 前端工具链**可用**(本机 node v22 + pnpm 10.30;`pnpm install` 后 `pnpm typecheck`=vue-tsc --noEmit)。
+- 改动文件:
+  - 新增 `frontend/src/api/admin/tlsFingerprintRouter.ts`(照抄 TR,API client 模式与 fork 完全一致,verbatim)。
+  - 编辑 `frontend/src/api/admin/tlsFingerprintProfile.ts`(fork 是 TR 的严格子集 → 直接用 TR 版覆盖,补 3 采集器类型 + 6 采集器函数)。
+  - 编辑 `frontend/src/api/admin/index.ts`(镜像 profile:import + aggregate + re-export + type export)。
+  - 新增 `frontend/src/components/admin/TLSFingerprintRoutersModal.vue`(883 行,照抄 TR;依赖 `useClipboard`/`Select.vue`/`BaseDialog`/`ConfirmDialog`/`Icon` fork 均有)。
+  - 编辑 `frontend/src/views/admin/AccountsView.vue`(镜像 profiles:工具菜单按钮 + 弹窗挂载 + import + `showTLSFingerprintRouters` state + closeAll 守卫 + `openTLSFingerprintRouters`)。
+  - 编辑 `frontend/src/i18n/locales/en.ts`、`zh.ts`(从 TR 抽取 `admin.tlsFingerprintRouters` 整块,插入到 profiles 块之后)。
+- 命令与结果:`pnpm install` exit 0(未改 pnpm-lock);`pnpm typecheck` → **exit 0,无错误**(RoutersModal 对 fork 组件的 prop 用法全部匹配)。
+- commit:`49547eb3`
+- 遗留:①账号绑定下拉(EditAccountModal/CreateAccountModal 加 `tls_fingerprint_router_id`)②ProfilesModal 采集器 UI(fork 与 TR 该文件 diff 618 行,须手术式合并,非整档覆盖)——见下。
 
 ## 阶段性总结 / 续作指南(2026-07-01 无人值守批次)
 

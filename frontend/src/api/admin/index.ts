@@ -26,6 +26,7 @@ import apiKeysAPI from './apiKeys'
 import scheduledTestsAPI from './scheduledTests'
 import backupAPI from './backup'
 import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
+import tlsFingerprintRouterAPI from './tlsFingerprintRouter'
 import channelsAPI from './channels'
 import channelMonitorAPI from './channelMonitor'
 import channelMonitorTemplateAPI from './channelMonitorTemplate'
@@ -61,6 +62,7 @@ export const adminAPI = {
   scheduledTests: scheduledTestsAPI,
   backup: backupAPI,
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
+  tlsFingerprintRouters: tlsFingerprintRouterAPI,
   channels: channelsAPI,
   channelMonitor: channelMonitorAPI,
   channelMonitorTemplate: channelMonitorTemplateAPI,
@@ -94,6 +96,7 @@ export {
   scheduledTestsAPI,
   backupAPI,
   tlsFingerprintProfileAPI,
+  tlsFingerprintRouterAPI,
   channelsAPI,
   channelMonitorAPI,
   channelMonitorTemplateAPI,
@@ -110,4 +113,11 @@ export type { BalanceHistoryItem } from './users'
 export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from './errorPassthrough'
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
 export type { TLSFingerprintProfile, CreateProfileRequest, UpdateProfileRequest } from './tlsFingerprintProfile'
+export type {
+  TLSFingerprintRouter,
+  TLSFingerprintRouterRule,
+  TLSFingerprintRouterMatchType,
+  CreateTLSFingerprintRouterRequest,
+  UpdateTLSFingerprintRouterRequest
+} from './tlsFingerprintRouter'
 export type { ContentModerationConfig, ContentModerationLog, ModerationMode } from './riskControl'
