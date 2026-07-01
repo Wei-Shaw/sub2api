@@ -20,6 +20,9 @@
         {{ labelText REDACTEDREDACTED
       </template>
     </span>
+    <span v-if="hasPeakRate" :class="peakRateClass" :title="peakRateTitle">
+      {{ peakRateText REDACTEDREDACTED
+    </span>
   </span>
 </template>
 
@@ -35,6 +38,10 @@ interface Props {
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
   userRateMultiplier?: number | null // 用户专属倍率
+  peakRateEnabled?: boolean
+  peakStart?: string
+  peakEnd?: string
+  peakRateMultiplier?: number
   showRate?: boolean
   daysRemaining?: number | null // 剩余天数（订阅类型时使用）
   /**
@@ -50,6 +57,7 @@ const props = withDefaults(defineProps<Props>(), {
   showRate: true,
   daysRemaining: null,
   userRateMultiplier: null,
+  peakRateEnabled: false,
   alwaysShowRate: false
 REDACTED)
 
@@ -65,6 +73,18 @@ const hasCustomRate = computed(() => {
     props.rateMultiplier !== undefined &&
     props.userRateMultiplier !== props.rateMultiplier
   )
+REDACTED)
+
+const hasPeakRate = computed(() => {
+  return Boolean(props.showRate && props.peakRateEnabled && props.peakStart && props.peakEnd)
+REDACTED)
+
+const peakRateText = computed(() => {
+  return `${props.peakStartREDACTED-${props.peakEndREDACTED ×${props.peakRateMultiplier ?? 1REDACTED`
+REDACTED)
+
+const peakRateTitle = computed(() => {
+  return `高峰倍率：${peakRateText.valueREDACTED`
 REDACTED)
 
 // 是否显示右侧标签
@@ -125,6 +145,10 @@ const labelClass = computed(() => {
     return `${baseREDACTED bg-blue-200/60 text-blue-800 dark:bg-blue-800/40 dark:text-blue-300`
   REDACTED
   return `${baseREDACTED bg-violet-200/60 text-violet-800 dark:bg-violet-800/40 dark:text-violet-300`
+REDACTED)
+
+const peakRateClass = computed(() => {
+  return 'px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
 REDACTED)
 
 // Badge color based on platform and subscription type

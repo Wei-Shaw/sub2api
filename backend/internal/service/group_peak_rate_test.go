@@ -148,32 +148,32 @@ REDACTED
 
 // TestPeakMultiplier_GatewayBillingSequence 调用 gateway_service.recordUsageCore 与
 // openai_gateway_service.RecordUsage 共用的 computePeakAwareMultipliers，验证计费叠加顺序：
-// 图片倍率基于基础倍率算出且不受高峰影响，高峰因子只乘入文本倍率。
+// 图片按次倍率基于基础倍率算出且不受高峰影响，高峰因子只乘入 token 倍率。
 // 若有人调换叠加顺序或把高峰并入 imageMultiplier，此测试会失败。
 func TestPeakMultiplier_GatewayBillingSequence(t *testing.T) {
 	const baseMultiplier = 0.8
 	apiKey := &APIKey{Group: newPeakGroup(true, "14:00", "18:00", 3.0)REDACTED
 	approxEq := func(a, b float64) bool { return math.Abs(a-b) < 1e-9 REDACTED
 
-	t.Run("peak hour amplifies text only", func(t *testing.T) {
+	t.Run("peak hour amplifies token multiplier only", func(t *testing.T) {
 		now := at(15, 30) // 处于 [14:00, 18:00)
-		textMultiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, now)
+		tokenMultiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, now)
 		if !approxEq(imageMultiplier, baseMultiplier) {
 			t.Fatalf("image multiplier must not be affected by peak: got %v, want %v", imageMultiplier, baseMultiplier)
 	REDACTED
-		if want := baseMultiplier * 3.0; !approxEq(textMultiplier, want) {
-			t.Fatalf("text multiplier should include peak factor: got %v, want %v", textMultiplier, want)
+		if want := baseMultiplier * 3.0; !approxEq(tokenMultiplier, want) {
+			t.Fatalf("token multiplier should include peak factor: got %v, want %v", tokenMultiplier, want)
 	REDACTED
 REDACTED)
 
 	t.Run("off-peak leaves both multipliers at base", func(t *testing.T) {
 		now := at(20, 0)
-		textMultiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, now)
+		tokenMultiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, now)
 		if !approxEq(imageMultiplier, baseMultiplier) {
 			t.Fatalf("image multiplier: got %v, want %v", imageMultiplier, baseMultiplier)
 	REDACTED
-		if !approxEq(textMultiplier, baseMultiplier) {
-			t.Fatalf("text multiplier should equal base off-peak: got %v, want %v", textMultiplier, baseMultiplier)
+		if !approxEq(tokenMultiplier, baseMultiplier) {
+			t.Fatalf("token multiplier should equal base off-peak: got %v, want %v", tokenMultiplier, baseMultiplier)
 	REDACTED
 REDACTED)
 
@@ -183,20 +183,20 @@ REDACTED)
 		indGroup.ImageRateMultiplier = 0.5
 		indKey := &APIKey{Group: indGroupREDACTED
 		now := at(15, 30)
-		textMultiplier, imageMultiplier := computePeakAwareMultipliers(indKey, baseMultiplier, now)
+		tokenMultiplier, imageMultiplier := computePeakAwareMultipliers(indKey, baseMultiplier, now)
 		if !approxEq(imageMultiplier, 0.5) {
 			t.Fatalf("independent image multiplier: got %v, want 0.5", imageMultiplier)
 	REDACTED
-		if want := baseMultiplier * 3.0; !approxEq(textMultiplier, want) {
-			t.Fatalf("text multiplier should include peak factor: got %v, want %v", textMultiplier, want)
+		if want := baseMultiplier * 3.0; !approxEq(tokenMultiplier, want) {
+			t.Fatalf("token multiplier should include peak factor: got %v, want %v", tokenMultiplier, want)
 	REDACTED
 REDACTED)
 
 	t.Run("nil api key degrades to base multipliers", func(t *testing.T) {
 		now := at(15, 30)
-		textMultiplier, imageMultiplier := computePeakAwareMultipliers(nil, baseMultiplier, now)
-		if !approxEq(textMultiplier, baseMultiplier) {
-			t.Fatalf("nil group text multiplier: got %v, want %v", textMultiplier, baseMultiplier)
+		tokenMultiplier, imageMultiplier := computePeakAwareMultipliers(nil, baseMultiplier, now)
+		if !approxEq(tokenMultiplier, baseMultiplier) {
+			t.Fatalf("nil group token multiplier: got %v, want %v", tokenMultiplier, baseMultiplier)
 	REDACTED
 		if !approxEq(imageMultiplier, baseMultiplier) {
 			t.Fatalf("nil group image multiplier: got %v, want %v", imageMultiplier, baseMultiplier)

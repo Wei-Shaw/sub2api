@@ -20,7 +20,7 @@ type Group struct {
 	Platform       string
 	RateMultiplier float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
-	// 文本计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
+	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
 	PeakRateEnabled    bool
 	PeakStart          string
 	PeakEnd            string
@@ -211,6 +211,7 @@ REDACTED
 
 // ValidatePeakRateConfig 是高峰倍率配置的唯一校验来源，供 handler 与 service 层共用。
 // enabled=true 时仅允许订阅类型分组；并要求 start/end 合法且 end>start（不支持跨天），multiplier>=0。
+// multiplier=0 是允许的，表示高峰 token 请求按 0 倍计费，可用于折扣/免费策略。
 // enabled=false 时放行（不关心类型）。subscriptionType 为空按 standard 处理。
 func ValidatePeakRateConfig(subscriptionType string, enabled bool, start, end string, multiplier float64) error {
 	if !enabled {
@@ -239,10 +240,10 @@ REDACTED
 	return nil
 REDACTED
 
-// computePeakAwareMultipliers 把"基础文本倍率 base"（已含系统/分组/用户级倍率，但不含高峰）
-// 拆分为最终文本倍率与图片倍率：图片倍率基于 base 现算、不受高峰影响；文本倍率在 base 上叠加高峰因子。
+// computePeakAwareMultipliers 把"基础 token 倍率 base"（已含系统/分组/用户级倍率，但不含高峰）
+// 拆分为最终 token 倍率与图片按次倍率：图片按次倍率基于 base 现算、不受高峰影响；token 倍率在 base 上叠加高峰因子。
 // gateway_service.recordUsageCore 与 openai_gateway_service.RecordUsage 共用此函数，
-// 锁死"高峰因子只乘入文本倍率、图片倍率不受影响"这一叠加顺序——任何调换都会被 group_peak_rate_test 覆盖。
+// 锁死"高峰因子只乘入 token 倍率、图片按次倍率不受影响"这一叠加顺序——任何调换都会被 group_peak_rate_test 覆盖。
 func computePeakAwareMultipliers(apiKey *APIKey, base float64, now time.Time) (text, image float64) {
 	image = resolveImageRateMultiplier(apiKey, base)
 	peak := 1.0

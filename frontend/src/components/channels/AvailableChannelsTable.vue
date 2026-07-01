@@ -85,16 +85,28 @@
                   <Icon name="shield" size="xs" class="h-3 w-3" />
                   {{ t('availableChannels.exclusive') REDACTEDREDACTED
                 </span>
-                <GroupBadge
+                <div
                   v-for="g in exclusiveGroups(section)"
                   :key="`ex-${g.idREDACTED`"
-                  :name="g.name"
-                  :platform="g.platform as GroupPlatform"
-                  :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
-                  :rate-multiplier="g.rate_multiplier"
-                  :user-rate-multiplier="userGroupRates[g.id] ?? null"
-                  always-show-rate
-                />
+                  class="inline-flex flex-wrap items-center gap-1"
+                >
+                  <GroupBadge
+                    :name="g.name"
+                    :platform="g.platform as GroupPlatform"
+                    :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
+                    :rate-multiplier="g.rate_multiplier"
+                    :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                    always-show-rate
+                  />
+                  <span
+                    v-if="hasPeakRate(g)"
+                    class="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                    :title="peakRateTitle(g)"
+                  >
+                    <Icon name="clock" size="xs" class="h-3 w-3" />
+                    {{ peakRateLabel(g) REDACTEDREDACTED
+                  </span>
+                </div>
               </div>
               <div
                 v-if="publicGroups(section).length > 0"
@@ -107,16 +119,28 @@
                   <Icon name="globe" size="xs" class="h-3 w-3" />
                   {{ t('availableChannels.public') REDACTEDREDACTED
                 </span>
-                <GroupBadge
+                <div
                   v-for="g in publicGroups(section)"
                   :key="`pub-${g.idREDACTED`"
-                  :name="g.name"
-                  :platform="g.platform as GroupPlatform"
-                  :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
-                  :rate-multiplier="g.rate_multiplier"
-                  :user-rate-multiplier="userGroupRates[g.id] ?? null"
-                  always-show-rate
-                />
+                  class="inline-flex flex-wrap items-center gap-1"
+                >
+                  <GroupBadge
+                    :name="g.name"
+                    :platform="g.platform as GroupPlatform"
+                    :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
+                    :rate-multiplier="g.rate_multiplier"
+                    :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                    always-show-rate
+                  />
+                  <span
+                    v-if="hasPeakRate(g)"
+                    class="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                    :title="peakRateTitle(g)"
+                  >
+                    <Icon name="clock" size="xs" class="h-3 w-3" />
+                    {{ peakRateLabel(g) REDACTEDREDACTED
+                  </span>
+                </div>
               </div>
               <span v-if="section.groups.length === 0" class="text-xs text-gray-400">-</span>
             </div>
@@ -185,5 +209,17 @@ REDACTED
 
 function publicGroups(section: UserChannelPlatformSection): UserAvailableGroup[] {
   return section.groups.filter((g) => !g.is_exclusive)
+REDACTED
+
+function hasPeakRate(group: UserAvailableGroup): boolean {
+  return Boolean(group.peak_rate_enabled && group.peak_start && group.peak_end)
+REDACTED
+
+function peakRateLabel(group: UserAvailableGroup): string {
+  return `${group.peak_startREDACTED-${group.peak_endREDACTED ${group.peak_rate_multiplierREDACTEDx`
+REDACTED
+
+function peakRateTitle(group: UserAvailableGroup): string {
+  return `高峰倍率：${group.peak_startREDACTED-${group.peak_endREDACTED ${group.peak_rate_multiplierREDACTEDx；token 计费的图片 token 同样适用，图片按次计费不受高峰影响`
 REDACTED
 </script>

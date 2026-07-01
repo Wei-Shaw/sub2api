@@ -2128,6 +2128,12 @@ REDACTED
 	if input.PeakRateMultiplier != nil {
 		group.PeakRateMultiplier = *input.PeakRateMultiplier
 REDACTED
+	if group.SubscriptionType != SubscriptionTypeSubscription {
+		group.PeakRateEnabled = false
+		group.PeakStart = ""
+		group.PeakEnd = ""
+		group.PeakRateMultiplier = 1.0
+REDACTED
 	// 收敛校验：Update 可能只传部分 peak 字段，需对合并后的最终配置统一校验，
 	// 防止单独修改 start/end 导致最终 start>=end 等非法配置入库。
 	if err := ValidatePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier); err != nil {

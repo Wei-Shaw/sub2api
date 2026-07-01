@@ -1080,15 +1080,19 @@ REDACTED
 // 拆分为：范围内 (200k, 0) + 范围外 (10k, 10k)
 // 范围内正常计费，范围外 × 2 计费
 func (s *BillingService) CalculateCostWithLongContext(model string, tokens UsageTokens, rateMultiplier float64, threshold int, extraMultiplier float64) (*CostBreakdown, error) {
+	return s.calculateCostWithLongContext(model, tokens, rateMultiplier, threshold, extraMultiplier)
+REDACTED
+
+func (s *BillingService) calculateCostWithLongContext(model string, tokens UsageTokens, rateMultiplier float64, threshold int, extraMultiplier float64) (*CostBreakdown, error) {
 	// 未启用长上下文计费，直接走正常计费
 	if threshold <= 0 || extraMultiplier <= 1 {
-		return s.CalculateCost(model, tokens, rateMultiplier)
+		return s.calculateCostInternal(model, tokens, rateMultiplier, "", nil)
 REDACTED
 
 	// 计算总输入 token（缓存读取 + 新输入）
 	total := tokens.CacheReadTokens + tokens.InputTokens
 	if total <= threshold {
-		return s.CalculateCost(model, tokens, rateMultiplier)
+		return s.calculateCostInternal(model, tokens, rateMultiplier, "", nil)
 REDACTED
 
 	// 拆分成范围内和范围外
@@ -1119,7 +1123,7 @@ REDACTED
 		CacheCreation1hTokens: tokens.CacheCreation1hTokens,
 		ImageOutputTokens:     tokens.ImageOutputTokens,
 REDACTED
-	inRangeCost, err := s.CalculateCost(model, inRangeTokens, rateMultiplier)
+	inRangeCost, err := s.calculateCostInternal(model, inRangeTokens, rateMultiplier, "", nil)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -1129,7 +1133,7 @@ REDACTED
 		InputTokens:     outRangeInputTokens,
 		CacheReadTokens: outRangeCacheTokens,
 REDACTED
-	outRangeCost, err := s.CalculateCost(model, outRangeTokens, rateMultiplier*extraMultiplier)
+	outRangeCost, err := s.calculateCostInternal(model, outRangeTokens, rateMultiplier*extraMultiplier, "", nil)
 	if err != nil {
 		return inRangeCost, fmt.Errorf("out-range cost: %w", err)
 REDACTED
