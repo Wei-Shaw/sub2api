@@ -520,7 +520,7 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
   - `src/components/account/ReAuthAccountModal.vue`(account 版 + `admin/account/` 版):`exchangeAuthCode(..., props.account.tls_fingerprint_router_id)`(TR :366 / :380)。
   - `types/index.ts`:`Account` 已有 `tls_fingerprint_router_id`(K part2 加);账号表单 router 下拉已存在(K part2),复用。
 
-**A2 — ⏸️ 评估后暂缓(2026-07-01,见文末「## 收尾批次」)** — `BulkEditAccountModal` 批量设 TLS profile/router:TR 有(实测 37 处命中,`src/components/account/BulkEditAccountModal.vue`);fork **0 处**。⚠️ **注意**:fork 该文件**连原有的 profile 绑定也没有**(是 fork 与 TR 的既有差异,非本 port 回归)。补则需同时加 profile+router 两者,面较大;**非必要,低优先**。
+**A2 — ✅ 已完成(2026-07-01,用户拍板做;commit `f8a81017`;详见文末「## 收尾批次」)** — `BulkEditAccountModal` 批量设 TLS profile/router:TR 有(实测 37 处命中,`src/components/account/BulkEditAccountModal.vue`);fork **0 处**。⚠️ **注意**:fork 该文件**连原有的 profile 绑定也没有**(是 fork 与 TR 的既有差异,非本 port 回归)。补则需同时加 profile+router 两者,面较大;**非必要,低优先**。
 
 ### B. 有意跳过(已记录,scope 决策,非遗漏 —— 除非明确要,否则勿动)
 - **profile 列表行「Copy as YAML」按钮** + `buildProfileYaml`/`handleCopyYaml`/`formatYaml*`(TR ProfilesModal:298-306, :998):K part3 有意跳过(采集面板内复制 YAML 仍在)。
@@ -567,9 +567,12 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 - 改动文件(5):`src/api/admin/index.ts`(聚合再导出 3 采集器类型,零功能影响)+ `CreateAccountModal.vue`/`EditAccountModal.vue`(router 下拉后加 `<p class="input-hint">routerHint</p>`)+ `i18n/locales/en.ts`/`zh.ts`(`admin.accounts.quotaControl.tlsFingerprint.routerHint`,照抄 TR 文案)。
 - 命令与结果:`pnpm typecheck` exit 0。
 
-### A2 — BulkEditAccountModal 批量设 TLS — ⏸️ 评估后暂缓(2026-07-01,非本次范围)
-- 实证:fork `BulkEditAccountModal.vue` **TLS 引用 0 处**(profile+router 皆无);TR 该文件 37 处 TLS 命中。故 A2 = **移植一个 fork 从未有的批量编辑功能**(profile+router 一起),非「对齐既有部分残缺」——含模板下拉×2 + state/加载 routers&profiles + 批量写 extra 的 submit 逻辑 + 需调和 fork「router 绑定独立」与 TR「开关门控」模型 + 核对批量更新后端端点是否接受这些 extra 字段。
-- 决策:任务标 A2 为「可选·低优先·面大·谨慎评估」;契约「不越界/不硬凑」。**评估结论:超出安全无人值守范围,暂缓,留人工决策**(拖入 profile 批量编辑,本身非 TLS-router port 纯范畴,且改变 bulk-edit UX)。续作路径:参照 TR BulkEditAccountModal 的 37 行 TLS 块,先加 profile 批量绑定再加 router,复用现有 tlsFingerprintRouters/Profiles 加载 + 批量 extra 写入端点。
+### A2 — BulkEditAccountModal 批量设 TLS — ✅ 已完成(2026-07-01,用户拍板对齐核心功能)— commit `f8a81017`
+- 背景:用户澄清「目标是对齐 TR 核心功能点,不因体量大而跳过」。A2 是 TLS 路由器功能的批量形态,遂实施(下方保留原评估作追溯)。
+- 前置实证:fork `BulkEditAccountModal.vue` **TLS 引用 0 处**(profile+router 皆无);TR 37 处。**后端无需改**——bulkUpdate 走 `UpdateAccountExtra` JSONB key 级 merge(account_handler.go:999),已接受任意 extra key(fork 早已批量写 openai_passthrough/ws/codex/base_rpm 等)。
+- 改动(纯前端 `BulkEditAccountModal.vue`):① 门控 `allTLSFingerprintCapable = allOpenAIOAuth || allAnthropicOAuthOrSetupToken`(镜像后端 `SupportsTLSFingerprint`);② TLS section:enable 复选 → 固定指纹开关 + profile 下拉(开关门控,0=默认/-1=随机)+ router 下拉(**独立于开关**,与 fork 单账号 Edit 一致,非 TR 的开关门控)+ routerHint;③ state/computed + `loadTLSFingerprintProfiles/Routers`(复用 `adminAPI.tlsFingerprint*.list`,同 Create/Edit 写法);④ `buildUpdatePayload` 写 `extra.enable_tls_fingerprint`/`tls_fingerprint_profile_id`(开关?id:0)/`tls_fingerprint_router_id`(routerId??0),0/false 显式重置(JSONB merge 语义);⑤ hasAnyFieldEnabled/reset/open-load(show=true 且 capable 时加载列表)接线。
+- 命令与结果:`pnpm typecheck` exit 0。批量出站 JA3/UA 属【运行时·人工】。
+- (原评估,保留追溯):曾判 A2「移植 fork 从未有的批量功能、非纯 TLS port、改 bulk-edit UX」故暂缓;用户纠正后实施。
 
 ### 本批次收尾状态
 - 工作树:干净(A1 后端 `13e0c929` + A1 前端 `ad4df180` + D `8c3d8280` 各自静态全绿已 commit;本账本 docs 另提交;无半成品)。
