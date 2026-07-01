@@ -575,7 +575,11 @@ REDACTED
 	REDACTED))
 REDACTED
 
-	total, err := q.Count(ctx)
+	// Clone before Count so interceptor-appended predicates (SoftDeleteMixin's
+	// deleted_at IS NULL) don't accumulate on the shared builder and pollute the
+	// subsequent list query. Same pattern used in group_repo/promo_code_repo/user_repo
+	// (P1-03 audit fix, commit 2588fa6a).
+	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, nil, err
 REDACTED

@@ -445,9 +445,14 @@ REDACTED
 
 			tt.setup(client)
 
-			accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, tt.platform, tt.accType, tt.status, tt.search, tt.groupID, tt.privacyMode)
+			accounts, page, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, tt.platform, tt.accType, tt.status, tt.search, tt.groupID, tt.privacyMode)
 			s.Require().NoError(err)
 			s.Require().Len(accounts, tt.wantCount)
+			// Regression guard for issue #3601: when the whole result set fits on a single page,
+			// pagination.Total must match len(items). A mismatch means the Count query was applied
+			// against different predicates than the list query — the exact symptom reported.
+			s.Require().NotNil(page)
+			s.Require().Equal(int64(tt.wantCount), page.Total, "total must match items on single page")
 			if tt.validate != nil {
 				tt.validate(accounts)
 		REDACTED
