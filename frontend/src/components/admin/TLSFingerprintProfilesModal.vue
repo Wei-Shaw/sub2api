@@ -17,6 +17,203 @@
         </button>
       </div>
 
+      <!-- Collector -->
+      <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-800/60">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div class="flex items-center gap-2">
+              <Icon name="beaker" size="sm" class="text-primary-600 dark:text-primary-400" />
+              <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.tlsFingerprintProfiles.collector.title') }}
+              </h4>
+              <span
+                :class="[
+                  'rounded-full px-2 py-0.5 text-xs font-medium',
+                  isCollectorRunning
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                    : 'bg-gray-200 text-gray-600 dark:bg-dark-600 dark:text-gray-300'
+                ]"
+              >
+                {{ isCollectorRunning ? t('admin.tlsFingerprintProfiles.collector.running') : t('admin.tlsFingerprintProfiles.collector.stopped') }}
+              </span>
+            </div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.tlsFingerprintProfiles.collector.description') }}
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="collectorLoading"
+              @click="loadCollectorStatus"
+            >
+              <Icon name="refresh" size="sm" :class="['mr-1', collectorLoading ? 'animate-spin' : '']" />
+              {{ t('common.refresh') }}
+            </button>
+            <button
+              type="button"
+              :class="['btn btn-sm', isCollectorRunning ? 'btn-secondary' : 'btn-primary']"
+              :disabled="collectorActionLoading"
+              @click="toggleCollector"
+            >
+              <Icon
+                :name="collectorActionLoading ? 'refresh' : (isCollectorRunning ? 'x' : 'play')"
+                size="sm"
+                :class="['mr-1', collectorActionLoading ? 'animate-spin' : '']"
+              />
+              {{ isCollectorRunning ? t('admin.tlsFingerprintProfiles.collector.stop') : t('admin.tlsFingerprintProfiles.collector.start') }}
+            </button>
+          </div>
+        </div>
+
+        <div class="mt-3 grid gap-3 text-xs sm:grid-cols-3">
+          <div>
+            <div class="text-gray-500 dark:text-gray-400">{{ t('admin.tlsFingerprintProfiles.collector.listenAddress') }}</div>
+            <div class="mt-1 font-mono text-gray-900 dark:text-gray-100">{{ collectorStatus?.listen_address || '—' }}</div>
+          </div>
+          <div>
+            <div class="text-gray-500 dark:text-gray-400">{{ t('admin.tlsFingerprintProfiles.collector.publicBaseURL') }}</div>
+            <div class="mt-1 break-all font-mono text-gray-900 dark:text-gray-100">{{ collectorStatus?.public_base_url || '—' }}</div>
+          </div>
+          <div>
+            <div class="text-gray-500 dark:text-gray-400">{{ t('admin.tlsFingerprintProfiles.collector.certificate') }}</div>
+            <div class="mt-1 text-gray-900 dark:text-gray-100">
+              {{ collectorStatus?.using_generated_cert ? t('admin.tlsFingerprintProfiles.collector.generatedCert') : t('admin.tlsFingerprintProfiles.collector.configuredCert') }}
+            </div>
+          </div>
+        </div>
+
+        <p v-if="collectorStatus?.last_error" class="mt-3 text-xs text-red-600 dark:text-red-400">
+          {{ collectorStatus.last_error }}
+        </p>
+
+        <div v-if="isCollectorRunning" class="mt-4 space-y-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              :disabled="collectorSessionLoading"
+              @click="createCollectorSession"
+            >
+              <Icon name="plus" size="sm" class="mr-1" />
+              {{ t('admin.tlsFingerprintProfiles.collector.createSession') }}
+            </button>
+            <button
+              v-if="collectorSession"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="collectorCapturesLoading"
+              @click="refreshCollectorCaptures"
+            >
+              <Icon name="refresh" size="sm" :class="['mr-1', collectorCapturesLoading ? 'animate-spin' : '']" />
+              {{ t('admin.tlsFingerprintProfiles.collector.refreshCaptures') }}
+            </button>
+          </div>
+
+          <div v-if="collectorSession" class="space-y-3 rounded-md border border-gray-200 bg-white p-3 dark:border-dark-600 dark:bg-dark-900/60">
+            <div class="grid gap-3 text-xs sm:grid-cols-2">
+              <div>
+                <div class="text-gray-500 dark:text-gray-400">{{ t('admin.tlsFingerprintProfiles.collector.captureURL') }}</div>
+                <div class="mt-1 break-all font-mono text-gray-900 dark:text-gray-100">{{ collectorSession.capture_url }}</div>
+              </div>
+              <div>
+                <div class="text-gray-500 dark:text-gray-400">{{ t('admin.tlsFingerprintProfiles.collector.expiresAt') }}</div>
+                <div class="mt-1 text-gray-900 dark:text-gray-100">{{ formatDateTime(collectorSession.expires_at) }}</div>
+              </div>
+            </div>
+
+            <div class="grid gap-3 lg:grid-cols-3">
+              <div class="min-w-0">
+                <div class="mb-1 flex items-center justify-between">
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.tlsFingerprintProfiles.collector.claudeCommand') }}</span>
+                  <button type="button" class="btn btn-secondary btn-xs" @click="copyText(claudeCommand)">
+                    <Icon name="copy" size="xs" class="mr-1" />
+                    {{ t('common.copy') }}
+                  </button>
+                </div>
+                <pre class="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded bg-gray-900 p-2 text-xs leading-relaxed text-gray-100">{{ claudeCommand }}</pre>
+              </div>
+              <div class="min-w-0">
+                <div class="mb-1 flex items-center justify-between">
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.tlsFingerprintProfiles.collector.codexCommand') }}</span>
+                  <button type="button" class="btn btn-secondary btn-xs" @click="copyText(codexCommand)">
+                    <Icon name="copy" size="xs" class="mr-1" />
+                    {{ t('common.copy') }}
+                  </button>
+                </div>
+                <pre class="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded bg-gray-900 p-2 text-xs leading-relaxed text-gray-100">{{ codexCommand }}</pre>
+              </div>
+              <div class="min-w-0">
+                <div class="mb-1 flex items-center justify-between">
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.tlsFingerprintProfiles.collector.codexConfig') }}</span>
+                  <button type="button" class="btn btn-secondary btn-xs" @click="copyText(codexConfigSnippet)">
+                    <Icon name="copy" size="xs" class="mr-1" />
+                    {{ t('common.copy') }}
+                  </button>
+                </div>
+                <pre class="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded bg-gray-900 p-2 text-xs leading-relaxed text-gray-100">{{ codexConfigSnippet }}</pre>
+              </div>
+            </div>
+
+            <div v-if="activeCAPEM" class="flex flex-wrap items-center gap-2">
+              <button type="button" class="btn btn-secondary btn-sm" @click="copyText(activeCAPEM)">
+                <Icon name="copy" size="sm" class="mr-1" />
+                {{ t('admin.tlsFingerprintProfiles.collector.copyCA') }}
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" @click="downloadCA">
+                <Icon name="download" size="sm" class="mr-1" />
+                {{ t('admin.tlsFingerprintProfiles.collector.downloadCA') }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="collectorSession" class="space-y-2" data-testid="tls-collector-captures">
+            <div class="flex items-center justify-between">
+              <h5 class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
+                {{ t('admin.tlsFingerprintProfiles.collector.captures') }}
+              </h5>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.tlsFingerprintProfiles.collector.captureCount', { count: collectorCaptures.length }) }}
+              </span>
+            </div>
+            <div v-if="collectorCaptures.length === 0" class="rounded-md border border-dashed border-gray-300 px-3 py-4 text-center text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
+              {{ t('admin.tlsFingerprintProfiles.collector.noCaptures') }}
+            </div>
+            <div
+              v-for="record in collectorCaptures"
+              :key="record.id"
+              class="rounded-md border border-gray-200 bg-white p-3 dark:border-dark-600 dark:bg-dark-900/60"
+            >
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0 text-xs">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="font-medium text-gray-900 dark:text-white">{{ formatClientKind(record.client_kind) }}</span>
+                    <span class="font-mono text-gray-500 dark:text-gray-400">{{ record.ja3_hash }}</span>
+                  </div>
+                  <div class="mt-1 break-all text-gray-500 dark:text-gray-400">
+                    {{ record.user_agent || '—' }}
+                  </div>
+                  <div class="mt-1 text-gray-500 dark:text-gray-400">
+                    {{ formatDateTime(record.captured_at) }} · {{ record.http_proto || '—' }} · ALPN {{ record.negotiated_alpn || '—' }}
+                  </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <button type="button" class="btn btn-secondary btn-xs" @click="copyText(record.yaml)">
+                    <Icon name="copy" size="xs" class="mr-1" />
+                    {{ t('admin.tlsFingerprintProfiles.collector.copyYaml') }}
+                  </button>
+                  <button type="button" class="btn btn-primary btn-xs" @click="applyCapture(record)">
+                    <Icon name="check" size="xs" class="mr-1" />
+                    {{ t('admin.tlsFingerprintProfiles.collector.applyCapture') }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Profiles Table -->
       <div v-if="loading" class="flex items-center justify-center py-8">
         <Icon name="refresh" size="lg" class="animate-spin text-gray-400" />
@@ -327,11 +524,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { computed, onUnmounted, ref, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { TLSFingerprintProfile } from '@/api/admin/tlsFingerprintProfile'
+import type {
+  TLSFingerprintCaptureRecord,
+  TLSFingerprintCollectorSession,
+  TLSFingerprintCollectorStatus,
+  TLSFingerprintProfile
+} from '@/api/admin/tlsFingerprintProfile'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -359,6 +561,14 @@ const showDeleteDialog = ref(false)
 const editingProfile = ref<TLSFingerprintProfile | null>(null)
 const deletingProfile = ref<TLSFingerprintProfile | null>(null)
 const yamlInput = ref('')
+const collectorStatus = ref<TLSFingerprintCollectorStatus | null>(null)
+const collectorSession = ref<TLSFingerprintCollectorSession | null>(null)
+const collectorCaptures = ref<TLSFingerprintCaptureRecord[]>([])
+const collectorLoading = ref(false)
+const collectorActionLoading = ref(false)
+const collectorSessionLoading = ref(false)
+const collectorCapturesLoading = ref(false)
+let collectorPollTimer: number | null = null
 
 // Raw string inputs for array fields
 const fieldInputs = reactive({
@@ -379,11 +589,46 @@ const form = reactive({
   enable_grease: false
 })
 
-// Load profiles when dialog opens
+const isCollectorRunning = computed(() => Boolean(collectorStatus.value?.running))
+const activeCAPEM = computed(() => collectorSession.value?.ca_pem || collectorStatus.value?.ca_pem || '')
+const claudeCommand = computed(() => {
+  if (!collectorSession.value) return ''
+  const tlsPrefix = activeCAPEM.value ? 'NODE_TLS_REJECT_UNAUTHORIZED=0 ' : ''
+  const settings = {
+    env: {
+      ANTHROPIC_BASE_URL: collectorSession.value.capture_url,
+      ANTHROPIC_AUTH_TOKEN: collectorSession.value.token
+    }
+  }
+  // Claude Code prefers its own settings.env, so pass --settings to force the capture URL over any global config.
+  return `${tlsPrefix}claude --settings '${JSON.stringify(settings)}' "test"`
+})
+const codexCommand = computed(() => {
+  if (!collectorSession.value) return ''
+  const caPrefix = activeCAPEM.value ? 'CODEX_CA_CERTIFICATE=/path/to/sub2api-tls-collector-ca.pem ' : ''
+  const captureURL = collectorSession.value.capture_url
+  return `${caPrefix}codex -c 'openai_base_url="${captureURL}"' -c 'chatgpt_base_url="${captureURL}"'`
+})
+const codexConfigSnippet = computed(() => {
+  if (!collectorSession.value) return ''
+  return [
+    `openai_base_url = "${collectorSession.value.capture_url}"`,
+    `chatgpt_base_url = "${collectorSession.value.capture_url}"`
+  ].join('\n')
+})
+
+// Load profiles and collector status when the dialog opens; stop polling when it closes.
 watch(() => props.show, (newVal) => {
   if (newVal) {
     loadProfiles()
+    loadCollectorStatus()
+  } else {
+    stopCollectorPolling()
   }
+})
+
+onUnmounted(() => {
+  stopCollectorPolling()
 })
 
 const loadProfiles = async () => {
@@ -396,6 +641,129 @@ const loadProfiles = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const loadCollectorStatus = async () => {
+  collectorLoading.value = true
+  try {
+    collectorStatus.value = await adminAPI.tlsFingerprintProfiles.collectorStatus()
+  } catch (error) {
+    appStore.showError(t('admin.tlsFingerprintProfiles.collector.statusFailed'))
+    console.error('Error loading TLS fingerprint collector status:', error)
+  } finally {
+    collectorLoading.value = false
+  }
+}
+
+const toggleCollector = async () => {
+  collectorActionLoading.value = true
+  try {
+    if (isCollectorRunning.value) {
+      await adminAPI.tlsFingerprintProfiles.stopCollector()
+      collectorSession.value = null
+      collectorCaptures.value = []
+      stopCollectorPolling()
+      appStore.showSuccess(t('admin.tlsFingerprintProfiles.collector.stopSuccess'))
+    } else {
+      collectorStatus.value = await adminAPI.tlsFingerprintProfiles.startCollector()
+      appStore.showSuccess(t('admin.tlsFingerprintProfiles.collector.startSuccess'))
+    }
+    await loadCollectorStatus()
+  } catch (error: any) {
+    const message = error?.message || error?.response?.data?.detail || t('admin.tlsFingerprintProfiles.collector.actionFailed')
+    appStore.showError(message)
+    console.error('Error toggling TLS fingerprint collector:', error)
+  } finally {
+    collectorActionLoading.value = false
+  }
+}
+
+const createCollectorSession = async () => {
+  collectorSessionLoading.value = true
+  try {
+    collectorSession.value = await adminAPI.tlsFingerprintProfiles.createCollectorSession()
+    collectorCaptures.value = []
+    startCollectorPolling()
+    appStore.showSuccess(t('admin.tlsFingerprintProfiles.collector.sessionCreated'))
+  } catch (error: any) {
+    const message = error?.message || error?.response?.data?.detail || t('admin.tlsFingerprintProfiles.collector.sessionFailed')
+    appStore.showError(message)
+    console.error('Error creating TLS fingerprint collector session:', error)
+  } finally {
+    collectorSessionLoading.value = false
+  }
+}
+
+const refreshCollectorCaptures = async () => {
+  if (!collectorSession.value) return
+  collectorCapturesLoading.value = true
+  try {
+    collectorCaptures.value = await adminAPI.tlsFingerprintProfiles.listCollectorCaptures(collectorSession.value.token)
+  } catch (error: any) {
+    console.error('Error loading TLS fingerprint captures:', error)
+  } finally {
+    collectorCapturesLoading.value = false
+  }
+}
+
+const startCollectorPolling = () => {
+  stopCollectorPolling()
+  collectorPollTimer = window.setInterval(() => {
+    refreshCollectorCaptures()
+  }, 3000)
+  refreshCollectorCaptures()
+}
+
+const stopCollectorPolling = () => {
+  if (collectorPollTimer) {
+    window.clearInterval(collectorPollTimer)
+    collectorPollTimer = null
+  }
+}
+
+const applyCapture = (record: TLSFingerprintCaptureRecord) => {
+  if (!record.profile) return
+  fillFormFromProfile(record.profile)
+  yamlInput.value = record.yaml || ''
+  editingProfile.value = null
+  showEditModal.value = false
+  showCreateModal.value = true
+  appStore.showSuccess(t('admin.tlsFingerprintProfiles.collector.applied'))
+}
+
+const copyText = async (text: string) => {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    appStore.showSuccess(t('admin.tlsFingerprintProfiles.collector.copied'))
+  } catch (error) {
+    appStore.showError(t('admin.tlsFingerprintProfiles.collector.copyFailed'))
+    console.error('Error copying text:', error)
+  }
+}
+
+const downloadCA = () => {
+  if (!activeCAPEM.value) return
+  const blob = new Blob([activeCAPEM.value], { type: 'application/x-pem-file' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'sub2api-tls-collector-ca.pem'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+const formatDateTime = (value?: string) => {
+  if (!value) return '—'
+  return new Date(value).toLocaleString()
+}
+
+const formatClientKind = (kind: string) => {
+  if (kind === 'claude_code') return 'Claude Code'
+  if (kind === 'codex') return 'Codex CLI'
+  return t('admin.tlsFingerprintProfiles.collector.unknownClient')
 }
 
 const resetForm = () => {
@@ -545,8 +913,8 @@ const formatNumericArray = (arr: number[] | null | undefined): string => (arr ??
 // For point_formats and psk_modes (uint8), show as plain numbers (null-safe)
 const formatPlainNumericArray = (arr: number[] | null | undefined): string => (arr ?? []).join(', ')
 
-const handleEdit = (profile: TLSFingerprintProfile) => {
-  editingProfile.value = profile
+// Populate the create/edit form fields from an existing profile.
+const fillFormFromProfile = (profile: TLSFingerprintProfile) => {
   form.name = profile.name
   form.description = profile.description
   form.enable_grease = profile.enable_grease
@@ -559,6 +927,11 @@ const handleEdit = (profile: TLSFingerprintProfile) => {
   fieldInputs.key_share_groups = formatPlainNumericArray(profile.key_share_groups)
   fieldInputs.psk_modes = formatPlainNumericArray(profile.psk_modes)
   fieldInputs.extensions = formatNumericArray(profile.extensions)
+}
+
+const handleEdit = (profile: TLSFingerprintProfile) => {
+  editingProfile.value = profile
+  fillFormFromProfile(profile)
   showEditModal.value = true
 }
 
