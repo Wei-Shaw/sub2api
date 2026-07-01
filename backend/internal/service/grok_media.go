@@ -292,6 +292,11 @@ REDACTED
 		return nil, err
 REDACTED
 
+	body, contentType, err = prepareGrokMediaForwardBody(endpoint, body, contentType)
+	if err != nil {
+		return nil, err
+REDACTED
+
 	var bodyReader io.Reader
 	if endpoint.RequiresRequestBody() {
 		bodyReader = bytes.NewReader(body)
@@ -354,6 +359,69 @@ REDACTED
 		ImageInputSize:   usage.ImageInputSize,
 		ImageOutputSizes: usage.ImageOutputSizes,
 REDACTED, nil
+REDACTED
+
+func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {
+	if endpoint != GrokMediaEndpointImagesEdits || gjson.ValidBytes(body) {
+		return body, contentType, nil
+REDACTED
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType))
+	if err != nil || !strings.EqualFold(mediaType, "multipart/form-data") {
+		return body, contentType, nil
+REDACTED
+
+	info := ParseGrokMediaRequest(contentType, body)
+	payload := make(map[string]any)
+	if info.Model != "" {
+		payload["model"] = info.Model
+REDACTED
+	if info.Prompt != "" {
+		payload["prompt"] = info.Prompt
+REDACTED
+	if info.N > 1 {
+		payload["n"] = info.N
+REDACTED
+	if info.Size != "" {
+		payload["size"] = info.Size
+REDACTED
+
+	images := make([]map[string]string, 0, len(info.InputImageURLs)+len(info.Uploads))
+	for _, imageURL := range info.InputImageURLs {
+		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
+			images = append(images, map[string]string{"image_url": imageURLREDACTED)
+	REDACTED
+REDACTED
+	for _, upload := range info.Uploads {
+		dataURL, err := openAIImageUploadToDataURL(upload)
+		if err != nil {
+			return nil, "", err
+	REDACTED
+		images = append(images, map[string]string{"image_url": dataURLREDACTED)
+REDACTED
+	if len(images) > 0 {
+		payload["image"] = images[0]
+		if len(images) > 1 {
+			payload["images"] = images
+	REDACTED
+REDACTED
+
+	maskImageURL := strings.TrimSpace(info.MaskImageURL)
+	if info.MaskUpload != nil {
+		dataURL, err := openAIImageUploadToDataURL(*info.MaskUpload)
+		if err != nil {
+			return nil, "", err
+	REDACTED
+		maskImageURL = dataURL
+REDACTED
+	if maskImageURL != "" {
+		payload["mask"] = map[string]string{"image_url": maskImageURLREDACTED
+REDACTED
+
+	out, err := marshalOpenAIUpstreamJSON(payload)
+	if err != nil {
+		return nil, "", err
+REDACTED
+	return out, "application/json", nil
 REDACTED
 
 type grokMediaUsageMetadata struct {

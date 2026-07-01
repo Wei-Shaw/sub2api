@@ -229,6 +229,58 @@ REDACTED
 	require.Equal(t, ImageBillingSize2K, result.ImageSize)
 REDACTED
 
+func TestForwardGrokMediaImagesEditMultipartConvertsToJSON(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	require.NoError(t, writer.WriteField("model", "grok-imagine-edit"))
+	require.NoError(t, writer.WriteField("prompt", "edit this private image"))
+	partHeader := textproto.MIMEHeader{REDACTED
+	partHeader.Set("Content-Disposition", `form-data; name="image"; filename="input.png"`)
+	partHeader.Set("Content-Type", "image/png")
+	part, err := writer.CreatePart(partHeader)
+REDACTED
+	_, err = part.Write([]byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0aREDACTED)
+REDACTED
+	require.NoError(t, writer.Close())
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(buf.Bytes()))
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	account := &Account{
+		ID:          62,
+		Name:        "grok",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "api-key",
+			"base_url": "https://xai.test/v1",
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"application/json"REDACTED,
+	REDACTED,
+		Body: io.NopCloser(strings.NewReader(`{"data":[]REDACTED`)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
+
+	_, err = svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointImagesEdits, "", buf.Bytes(), writer.FormDataContentType())
+REDACTED
+	require.Equal(t, "https://xai.test/v1/images/edits", upstream.lastReq.URL.String())
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
+	require.True(t, json.Valid(upstream.lastBody))
+	require.Equal(t, "grok-imagine-edit", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "edit this private image", gjson.GetBytes(upstream.lastBody, "prompt").String())
+	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "image.image_url").String(), "data:image/png;base64,"))
+REDACTED
+
 func TestForwardGrokMediaVideoGenerationReturnsUsageAndResponseID(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	gin.SetMode(gin.TestMode)
