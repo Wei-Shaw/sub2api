@@ -177,7 +177,7 @@ REDACTED
 	return false
 REDACTED
 
-// parseMinutes 把 "HH:MM" 解析为当日分钟数（0..1439）。格式非法返回 (0,false)。
+// parseMinutes 把 "HH:MM" 解析为当日分钟数（0..1439），格式非法返回 (0,false)。
 func parseMinutes(hhmm string) (int, bool) {
 	t, err := time.Parse("15:04", hhmm)
 	if err != nil {
