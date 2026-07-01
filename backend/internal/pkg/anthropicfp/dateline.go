@@ -28,8 +28,8 @@ import (
 // user-authored prose like "Today is foo." or "His date is 2026-06-30." from
 // being touched.
 var (
-	datelineRegexHyphen = regexp.MustCompile("Today(['’ʼʹ])s date is (\\d{4REDACTED)-(\\d{2REDACTED)-(\\d{2REDACTED)\\.")
-	datelineRegexSlash  = regexp.MustCompile("Today(['’ʼʹ])s date is (\\d{4REDACTED)/(\\d{2REDACTED)/(\\d{2REDACTED)\\.")
+	datelineRegexHyphen = regexp.MustCompile(`Today(['’ʼʹ])s date is (\d{4REDACTED)-(\d{2REDACTED)-(\d{2REDACTED)\.`)
+	datelineRegexSlash  = regexp.MustCompile(`Today(['’ʼʹ])s date is (\d{4REDACTED)/(\d{2REDACTED)/(\d{2REDACTED)\.`)
 )
 
 // systemReminderRegex matches a <system-reminder> block. The dateline lives in
@@ -66,10 +66,10 @@ REDACTED
 REDACTED
 
 type datelineMatch struct {
-	start, end            int
-	apoRune               rune
-	sep                   string
-	year, month, day      string
+	start, end       int
+	apoRune          rune
+	sep              string
+	year, month, day string
 REDACTED
 
 func collectMatches(text string, re *regexp.Regexp, sep string) []datelineMatch {
@@ -124,8 +124,8 @@ REDACTED
 			// Already canonical: no rewrite, no hit.
 			continue
 	REDACTED
-		b.WriteString(text[prev:m.start])
-		b.WriteString(canonical)
+		_, _ = b.WriteString(text[prev:m.start])
+		_, _ = b.WriteString(canonical)
 		prev = m.end
 		changed = true
 		hits = append(hits, DatelineHit{
@@ -136,7 +136,7 @@ REDACTED
 	if !changed {
 		return text, nil
 REDACTED
-	b.WriteString(text[prev:])
+	_, _ = b.WriteString(text[prev:])
 	return b.String(), hits
 REDACTED
 
@@ -159,20 +159,20 @@ REDACTED
 	var hits []DatelineHit
 	changed := false
 	for _, loc := range locs {
-		b.WriteString(text[prev:loc[0]])
+		_, _ = b.WriteString(text[prev:loc[0]])
 		block := text[loc[0]:loc[1]]
 		normalized, blockHits := NormalizeText(block)
 		if normalized != block {
 			changed = true
 	REDACTED
-		b.WriteString(normalized)
+		_, _ = b.WriteString(normalized)
 		hits = append(hits, blockHits...)
 		prev = loc[1]
 REDACTED
 	if !changed {
 		return text, nil
 REDACTED
-	b.WriteString(text[prev:])
+	_, _ = b.WriteString(text[prev:])
 	return b.String(), hits
 REDACTED
 
