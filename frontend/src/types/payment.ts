@@ -14,6 +14,7 @@ export type OrderStatus =
   | 'FAILED'
   | 'REFUND_REQUESTED'
   | 'REFUNDING'
+  | 'REFUND_PENDING'
   | 'PARTIALLY_REFUNDED'
   | 'REFUNDED'
   | 'REFUND_FAILED'

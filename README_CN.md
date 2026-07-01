@@ -136,6 +136,16 @@
 </td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://anpin.ai"><img src="assets/partners/logos/anpin.jpg" alt="anpin" width="150"></a></td>
+<td>感谢 <a href="https://anpin.ai">anpin.ai</a> 赞助本项目！anpin.ai 是一家致力于推动 AI 普惠的高端 AI 中转服务平台。我们以先进的技术架构和全球分布式部署，为用户提供直达国际顶尖大模型的高速通道。<br>
+自建一手号池：1-3S超快响应 支持同行分发<br>
+极致稳定：多线智能路由 + 冗余备份系统，确保服务全年无休、高可用运行；<br>
+模型真实性：不做任何内容干预与二次过滤，让您体验到最纯粹、最强大的原生模型能力。<br>
+充值1：1 企业级服务可开票，安品Ai不只是中转站，更是您连接前沿智能世界的安全、可靠、高效桥梁
+</td>
+</tr>
+
 </table>
 
 ## 项目概述
@@ -462,7 +472,8 @@ pnpm run build
 
 # 4. 编译后端（嵌入前端）
 cd ../backend
-go build -tags embed -o sub2api ./cmd/server
+VERSION="$(./scripts/resolve-version.sh)"
+go build -tags embed -ldflags="-X main.Version=${VERSION}" -o sub2api ./cmd/server
 
 # 5. 创建配置文件
 cp ../deploy/config.example.yaml ./config.yaml
@@ -591,6 +602,25 @@ Invalid base URL: invalid url scheme: http
 - 阻断私网/回环/链路本地地址
 - 强制仅允许 TLS 出站
 - 在反向代理层移除敏感响应头
+
+#### ⚠️ 重要：创建管理员账号
+
+初始管理员账号**只能通过 setup 向导创建**（首次启动时访问 `http://<host>:8080`）。`config.yaml` 中的 `default.admin_email` / `default.admin_password` 字段**不会被用来创建管理员**——它们只是出于历史原因保留在模板里。
+
+由于上面第 5 步预先创建了 `config.yaml`，**setup 向导在首次启动时会被跳过**：服务检测到 config 已存在，会直接进入正常模式，此时 `users` 表为空，首次登录会返回 `invalid email or password`。
+
+**创建管理员的两种方式：**
+
+1. **推荐——让向导自动生成 `config.yaml`：** 跳过上面的第 5 步（不要执行 `cp`）。直接运行 `./sub2api`，访问 `http://localhost:8080`，向导会引导你完成数据库、Redis 和管理员账号配置，并自动写出 `config.yaml`。
+
+2. **如果你已经创建了 `config.yaml`：** 首次启动前先把它临时移走以触发向导，完成后再恢复：
+   ```bash
+   mv config.yaml config.yaml.bak
+   ./sub2api        # 向导在 http://localhost:8080 启动，并生成新的 config.yaml
+   # 向导完成后 Ctrl+C 停服，再恢复你的配置：
+   mv config.yaml.bak config.yaml
+   ./sub2api        # 重启进入正常模式，用刚创建的管理员登录
+   ```
 
 ```bash
 # 6. 运行应用

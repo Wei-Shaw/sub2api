@@ -3,12 +3,31 @@
 package service
 
 import (
+	"bytes"
+	"log"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+// captureStdLog 重定向 stdlib log 输出到 buffer,返回该 buffer;通过 t.Cleanup 还原。
+// 用于断言 GetModelPricing 的 fallback warn(log.Printf)打了几次。
+func captureStdLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prevOut := log.Writer()
+	prevFlags := log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	})
+	return &buf
+}
 
 func newTestBillingService() *BillingService {
 	return NewBillingService(&config.Config{}, nil)
@@ -105,6 +124,53 @@ func TestGetModelPricing_CaseInsensitive(t *testing.T) {
 	require.Equal(t, p1.InputPricePerToken, p2.InputPricePerToken)
 }
 
+// issue #3394: fallback warn 应按模型名去重,每个模型每进程最多打一条,
+// 避免热路径每请求刷屏 ops_system_logs。
+func TestGetModelPricing_FallbackWarnLoggedOncePerModel(t *testing.T) {
+	svc := newTestBillingService()
+	buf := captureStdLog(t)
+
+	// glm-5.2 不在 LiteLLM,经 strings.Contains 命中 glm-5 兜底价 → 触发 fallback warn。
+	for i := 0; i < 5; i++ {
+		pricing, err := svc.GetModelPricing("glm-5.2")
+		require.NoError(t, err)
+		require.NotNil(t, pricing)
+	}
+
+	got := strings.Count(buf.String(), "Using fallback pricing for model: glm-5.2")
+	require.Equal(t, 1, got, "同一模型的 fallback warn 应只打一条,实际日志:\n%s", buf.String())
+}
+
+// 去重按"每模型"而非全局:不同模型各打一条;大小写变体经入口 ToLower 归一,视为同一条目。
+func TestGetModelPricing_FallbackWarnPerModelNotGlobal(t *testing.T) {
+	svc := newTestBillingService()
+	buf := captureStdLog(t)
+
+	for i := 0; i < 3; i++ {
+		_, _ = svc.GetModelPricing("glm-5.2")
+		_, _ = svc.GetModelPricing("GLM-5.2") // 与上一行同模型(ToLower 后),去重后不再打
+		_, _ = svc.GetModelPricing("glm-4.6")
+	}
+
+	out := buf.String()
+	require.Equal(t, 1, strings.Count(out, "model: glm-5.2"), out)
+	require.Equal(t, 1, strings.Count(out, "model: glm-4.6"), out)
+	require.Equal(t, 0, strings.Count(out, "model: GLM-5.2"), out) // 大写经 ToLower 归一,不应单独成行
+}
+
+// 回归:glm-5.2 仍解析到 glm-5 兜底价(计费金额不变,防止日志改动掩盖未来计费回归)。
+func TestGetModelPricing_GLM52FallsBackToGLM5Price(t *testing.T) {
+	svc := newTestBillingService()
+
+	got, err := svc.GetModelPricing("glm-5.2")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	// glm-5 base：Input 1e-6 / Output 3.2e-6(见 TestGetFallbackPricing_FamilyMatching)。
+	require.InDelta(t, 1e-6, got.InputPricePerToken, 1e-12)
+	require.InDelta(t, 3.2e-6, got.OutputPricePerToken, 1e-12)
+}
+
 func TestGetModelPricing_UnknownClaudeModelFallsBackToSonnet(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -187,6 +253,25 @@ func TestCalculateCost_OpenAIGPT54LongContextAppliesWholeSessionMultipliers(t *t
 	}
 
 	cost, err := svc.CalculateCost("gpt-5.4-2026-03-05", tokens, 1.0)
+	require.NoError(t, err)
+
+	expectedInput := float64(tokens.InputTokens) * 2.5e-6 * 2.0
+	expectedOutput := float64(tokens.OutputTokens) * 15e-6 * 1.5
+	require.InDelta(t, expectedInput, cost.InputCost, 1e-10)
+	require.InDelta(t, expectedOutput, cost.OutputCost, 1e-10)
+	require.InDelta(t, expectedInput+expectedOutput, cost.TotalCost, 1e-10)
+	require.InDelta(t, expectedInput+expectedOutput, cost.ActualCost, 1e-10)
+}
+
+func TestCalculateCost_OpenAIGPT55ProUsesGPT55PricingPolicy(t *testing.T) {
+	svc := newTestBillingService()
+
+	tokens := UsageTokens{
+		InputTokens:  300000,
+		OutputTokens: 4000,
+	}
+
+	cost, err := svc.CalculateCost("gpt-5.5-pro", tokens, 1.0)
 	require.NoError(t, err)
 
 	expectedInput := float64(tokens.InputTokens) * 2.5e-6 * 2.0
