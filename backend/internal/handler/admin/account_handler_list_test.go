@@ -99,7 +99,10 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 	var payload struct {
 		Data struct {
 			Items []struct {
-				ID              int64 `json:"id"`
+				ID             int64 `json:"id"`
+				SchedulerScore struct {
+					BaseScore float64 `json:"base_score"`
+				} `json:"scheduler_score"`
 				SchedulerScores []struct {
 					GroupID       *int64  `json:"group_id"`
 					GroupName     string  `json:"group_name"`
@@ -113,7 +116,10 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 	require.Len(t, payload.Data.Items, 2)
 
 	var high, low *struct {
-		ID              int64 `json:"id"`
+		ID             int64 `json:"id"`
+		SchedulerScore struct {
+			BaseScore float64 `json:"base_score"`
+		} `json:"scheduler_score"`
 		SchedulerScores []struct {
 			GroupID       *int64  `json:"group_id"`
 			GroupName     string  `json:"group_name"`
@@ -139,4 +145,71 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 	require.Equal(t, 100, *high.SchedulerScores[0].GroupPriority)
 	require.Equal(t, 1, *low.SchedulerScores[0].GroupPriority)
 	require.Greater(t, high.SchedulerScores[0].BaseScore, low.SchedulerScores[0].BaseScore)
+}
+
+func TestAccountHandlerListKeepsSchedulerScoreScopedToList(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	now := time.Now().UTC()
+	groupID := int64(42)
+	visibleAccount := service.Account{
+		ID:          201,
+		Name:        "visible-low-priority",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeAPIKey,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Concurrency: 10,
+		Priority:    100000,
+		AccountGroups: []service.AccountGroup{
+			{AccountID: 201, GroupID: groupID, Priority: 1, Group: &service.Group{ID: groupID, Name: "openai"}},
+		},
+		GroupIDs:  []int64{groupID},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	hiddenGroupPeer := service.Account{
+		ID:          202,
+		Name:        "hidden-high-priority",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeAPIKey,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Concurrency: 10,
+		Priority:    1,
+		AccountGroups: []service.AccountGroup{
+			{AccountID: 202, GroupID: groupID, Priority: 2, Group: &service.Group{ID: groupID, Name: "openai"}},
+		},
+		GroupIDs:  []int64{groupID},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	adminSvc.accounts = []service.Account{visibleAccount}
+	adminSvc.openAISchedulerScorePoolAccounts = []service.Account{visibleAccount, hiddenGroupPeer}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=1&platform=openai", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var payload struct {
+		Data struct {
+			Items []struct {
+				ID             int64 `json:"id"`
+				SchedulerScore struct {
+					BaseScore float64 `json:"base_score"`
+				} `json:"scheduler_score"`
+				SchedulerScores []struct {
+					GroupID   *int64  `json:"group_id"`
+					BaseScore float64 `json:"base_score"`
+				} `json:"scheduler_scores"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Len(t, payload.Data.Items, 1)
+	item := payload.Data.Items[0]
+	require.Equal(t, int64(201), item.ID)
+	require.Len(t, item.SchedulerScores, 1)
+	require.Equal(t, groupID, *item.SchedulerScores[0].GroupID)
+	require.Greater(t, item.SchedulerScore.BaseScore, item.SchedulerScores[0].BaseScore)
 }

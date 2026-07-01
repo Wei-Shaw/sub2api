@@ -1807,20 +1807,7 @@ func (s *RateLimitService) BuildOpenAIAccountSchedulerScoreSnapshot(
 	if s != nil {
 		gateway.cfg = s.cfg
 	}
-	return buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, gateway.openAIWSSchedulerWeights(), gateway.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx), 0)
-}
-
-func (s *RateLimitService) BuildOpenAIAccountSchedulerScoreSnapshotForGroup(
-	ctx context.Context,
-	accounts []*Account,
-	loadMap map[int64]*AccountLoadInfo,
-	groupID int64,
-) map[int64]OpenAIAccountSchedulerScoreSnapshot {
-	gateway := &OpenAIGatewayService{cfg: nil, rateLimitService: s}
-	if s != nil {
-		gateway.cfg = s.cfg
-	}
-	return buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, gateway.openAIWSSchedulerWeights(), gateway.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx), groupID)
+	return buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, gateway.openAIWSSchedulerWeights(), gateway.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx))
 }
 
 func BuildOpenAIAccountSchedulerScoreSnapshot(
@@ -1828,16 +1815,7 @@ func BuildOpenAIAccountSchedulerScoreSnapshot(
 	loadMap map[int64]*AccountLoadInfo,
 ) map[int64]OpenAIAccountSchedulerScoreSnapshot {
 	gateway := &OpenAIGatewayService{}
-	return buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, gateway.openAIWSSchedulerWeights(), false, 0)
-}
-
-func BuildOpenAIAccountSchedulerScoreSnapshotForGroup(
-	accounts []*Account,
-	loadMap map[int64]*AccountLoadInfo,
-	groupID int64,
-) map[int64]OpenAIAccountSchedulerScoreSnapshot {
-	gateway := &OpenAIGatewayService{}
-	return buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, gateway.openAIWSSchedulerWeights(), false, groupID)
+	return buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, gateway.openAIWSSchedulerWeights(), false)
 }
 
 func buildOpenAIAccountSchedulerScoreSnapshot(
@@ -1845,7 +1823,6 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 	loadMap map[int64]*AccountLoadInfo,
 	weights GatewayOpenAIWSSchedulerScoreWeightsView,
 	stickyWeightedEnabled bool,
-	groupID int64,
 ) map[int64]OpenAIAccountSchedulerScoreSnapshot {
 	if len(accounts) == 0 {
 		return nil
