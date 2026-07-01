@@ -214,10 +214,10 @@ func (s *OpenAIQuotaService) persistResetCreditsSnapshot(ctx context.Context, ac
 		return
 	}
 	updates := map[string]any{
-		"codex_reset_credit_available_count":    credits.AvailableCount,
-		"codex_reset_credit_expires_at_list":    credits.ExpiresAtList,
+		"codex_reset_credit_available_count":     credits.AvailableCount,
+		"codex_reset_credit_expires_at_list":     credits.ExpiresAtList,
 		"codex_reset_credit_earliest_expires_at": credits.EarliestExpiresAt,
-		"codex_reset_credit_updated_at":         time.Now().UTC().Format(time.RFC3339),
+		"codex_reset_credit_updated_at":          time.Now().UTC().Format(time.RFC3339),
 	}
 	if err := s.accountRepo.UpdateExtra(ctx, accountID, updates); err != nil {
 		slog.Warn("openai_quota_reset_credits_persist_failed", "account_id", accountID, "error", err)
