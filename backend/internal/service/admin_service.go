@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -43,6 +45,10 @@ type AdminService interface {
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 	GetUserRPMStatus(ctx context.Context, userID int64) (*UserRPMStatus, error)
+	GetUserUsageIPStats(ctx context.Context, userID int64, limit int) ([]UserUsageIPStats, error)
+	TestUserUsageIPs(ctx context.Context, ips []string) ([]UserUsageIPTestResult, error)
+	BlockUserUsageIPs(ctx context.Context, ips []string) (int, error)
+	UnblockUserUsageIPs(ctx context.Context, ips []string) (int, error)
 	// GetUserBalanceHistory returns paginated balance/concurrency change records for a user.
 	// codeType is optional - pass empty string to return all types.
 	// Also returns totalRecharged (sum of all positive balance top-ups).
@@ -379,6 +385,21 @@ type UserGroupRPMStatus struct {
 	Used      int    `json:"used"`
 	Limit     int    `json:"limit"`
 	Source    string `json:"source"` // "group" | "override"
+}
+
+type UserUsageIPStats struct {
+	IPAddress    string     `json:"ip_address"`
+	RequestCount int64      `json:"request_count"`
+	FirstUsedAt  *time.Time `json:"first_used_at,omitempty"`
+	LastUsedAt   *time.Time `json:"last_used_at,omitempty"`
+	InBlocklist  bool       `json:"in_blocklist"`
+}
+
+type UserUsageIPTestResult struct {
+	IP         string `json:"ip"`
+	Reachable  bool   `json:"reachable"`
+	HTTPStatus int    `json:"http_status,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // BulkUpdateAccountsResult is the aggregated response for bulk updates.
@@ -1132,6 +1153,105 @@ func (s *adminServiceImpl) GetUserRPMStatus(ctx context.Context, userID int64) (
 		UserRPMLimit: user.RPMLimit,
 		PerGroup:     perGroup,
 	}, nil
+}
+
+func (s *adminServiceImpl) GetUserUsageIPStats(ctx context.Context, userID int64, limit int) ([]UserUsageIPStats, error) {
+	if s == nil || s.entClient == nil || userID <= 0 {
+		return []UserUsageIPStats{}, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	logs, err := s.entClient.UsageLog.Query().
+		Where(usagelog.UserIDEQ(userID), usagelog.IPAddressNotNil()).
+		Order(usagelog.ByCreatedAt()).
+		Limit(5000).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	blocklist := []string(nil)
+	if s.settingService != nil && s.settingService.cfg != nil {
+		blocklist = s.settingService.cfg.Security.APIRequestIPBlocklist
+	}
+	grouped := make(map[string]*UserUsageIPStats)
+	for _, log := range logs {
+		if log == nil || log.IPAddress == nil || strings.TrimSpace(*log.IPAddress) == "" {
+			continue
+		}
+		key := normalizeUsageIPStatsKey(*log.IPAddress)
+		item := grouped[key]
+		if item == nil {
+			item = &UserUsageIPStats{IPAddress: key}
+			grouped[key] = item
+		}
+		item.RequestCount++
+		createdAt := log.CreatedAt
+		if item.FirstUsedAt == nil || createdAt.Before(*item.FirstUsedAt) {
+			item.FirstUsedAt = &createdAt
+		}
+		if item.LastUsedAt == nil || createdAt.After(*item.LastUsedAt) {
+			item.LastUsedAt = &createdAt
+		}
+	}
+	out := make([]UserUsageIPStats, 0, len(grouped))
+	for _, item := range grouped {
+		item.InBlocklist = usageIPPatternInBlocklist(item.IPAddress, blocklist)
+		out = append(out, *item)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].RequestCount != out[j].RequestCount {
+			return out[i].RequestCount > out[j].RequestCount
+		}
+		if out[i].LastUsedAt == nil || out[j].LastUsedAt == nil {
+			return out[i].LastUsedAt != nil
+		}
+		return out[i].LastUsedAt.After(*out[j].LastUsedAt)
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *adminServiceImpl) TestUserUsageIPs(ctx context.Context, ips []string) ([]UserUsageIPTestResult, error) {
+	results := make([]UserUsageIPTestResult, 0, len(ips))
+	seen := map[string]struct{}{}
+	dialer := &net.Dialer{Timeout: 3 * time.Second}
+	for _, raw := range ips {
+		target, ok := normalizeUsageIPProbeTarget(raw)
+		if !ok {
+			continue
+		}
+		if _, exists := seen[target.Key]; exists {
+			continue
+		}
+		seen[target.Key] = struct{}{}
+		result := UserUsageIPTestResult{IP: target.Key}
+		conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(target.ProbeIP, "80"))
+		if err == nil {
+			result.Reachable = true
+			_ = conn.Close()
+		} else {
+			result.Error = err.Error()
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+func (s *adminServiceImpl) BlockUserUsageIPs(ctx context.Context, ips []string) (int, error) {
+	if s.settingService == nil {
+		return 0, infraerrors.New(http.StatusServiceUnavailable, "SETTING_SERVICE_UNAVAILABLE", "setting service unavailable")
+	}
+	return s.settingService.AddAPIRequestIPBlocklistIPs(ctx, ips)
+}
+
+func (s *adminServiceImpl) UnblockUserUsageIPs(ctx context.Context, ips []string) (int, error) {
+	if s.settingService == nil {
+		return 0, infraerrors.New(http.StatusServiceUnavailable, "SETTING_SERVICE_UNAVAILABLE", "setting service unavailable")
+	}
+	return s.settingService.RemoveAPIRequestIPBlocklistIPs(ctx, ips)
 }
 
 func (s *adminServiceImpl) GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error) {

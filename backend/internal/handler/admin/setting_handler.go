@@ -143,6 +143,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TurnstileSiteKey:                       settings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:           settings.TurnstileSecretKeyConfigured,
 		APIKeyACLTrustForwardedIP:              settings.APIKeyACLTrustForwardedIP,
+		APIRequestIPBlocklist:                     settings.APIRequestIPBlocklist,
+		APIRequestIPBlockAction:                   settings.APIRequestIPBlockAction,
+		APIRequestIPBlockTrustForwardedIP:         settings.APIRequestIPBlockTrustForwardedIP,
+		APIRequestIPBlockAutoExtractOnUserDisable: settings.APIRequestIPBlockAutoExtractOnUserDisable,
 		LinuxDoConnectEnabled:                  settings.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                 settings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured:   settings.LinuxDoConnectClientSecretConfigured,
@@ -424,6 +428,10 @@ type UpdateSettingsRequest struct {
 
 	// API Key IP 访问控制设置
 	APIKeyACLTrustForwardedIP *bool `json:"api_key_acl_trust_forwarded_ip"`
+	APIRequestIPBlocklist                     []string `json:"api_request_ip_blocklist"`
+	APIRequestIPBlockAction                   string   `json:"api_request_ip_block_action"`
+	APIRequestIPBlockTrustForwardedIP         *bool    `json:"api_request_ip_block_trust_forwarded_ip"`
+	APIRequestIPBlockAutoExtractOnUserDisable *bool    `json:"api_request_ip_block_auto_extract_on_user_disable"`
 
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled      bool   `json:"linuxdo_connect_enabled"`
@@ -1554,6 +1562,25 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.APIKeyACLTrustForwardedIP
 		}(),
+		APIRequestIPBlocklist: func() []string {
+			if req.APIRequestIPBlocklist != nil {
+				return req.APIRequestIPBlocklist
+			}
+			return previousSettings.APIRequestIPBlocklist
+		}(),
+		APIRequestIPBlockAction: firstNonEmpty(req.APIRequestIPBlockAction, previousSettings.APIRequestIPBlockAction, "block"),
+		APIRequestIPBlockTrustForwardedIP: func() bool {
+			if req.APIRequestIPBlockTrustForwardedIP != nil {
+				return *req.APIRequestIPBlockTrustForwardedIP
+			}
+			return previousSettings.APIRequestIPBlockTrustForwardedIP
+		}(),
+		APIRequestIPBlockAutoExtractOnUserDisable: func() bool {
+			if req.APIRequestIPBlockAutoExtractOnUserDisable != nil {
+				return *req.APIRequestIPBlockAutoExtractOnUserDisable
+			}
+			return previousSettings.APIRequestIPBlockAutoExtractOnUserDisable
+		}(),
 		LinuxDoConnectEnabled:                  req.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                 req.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecret:             req.LinuxDoConnectClientSecret,
@@ -2038,6 +2065,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TurnstileSiteKey:                       updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:           updatedSettings.TurnstileSecretKeyConfigured,
 		APIKeyACLTrustForwardedIP:              updatedSettings.APIKeyACLTrustForwardedIP,
+		APIRequestIPBlocklist:                     updatedSettings.APIRequestIPBlocklist,
+		APIRequestIPBlockAction:                   updatedSettings.APIRequestIPBlockAction,
+		APIRequestIPBlockTrustForwardedIP:         updatedSettings.APIRequestIPBlockTrustForwardedIP,
+		APIRequestIPBlockAutoExtractOnUserDisable: updatedSettings.APIRequestIPBlockAutoExtractOnUserDisable,
 		LinuxDoConnectEnabled:                  updatedSettings.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                 updatedSettings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured:   updatedSettings.LinuxDoConnectClientSecretConfigured,
@@ -2337,6 +2368,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.APIKeyACLTrustForwardedIP != after.APIKeyACLTrustForwardedIP {
 		changed = append(changed, "api_key_acl_trust_forwarded_ip")
+	}
+	if !equalStringSlice(before.APIRequestIPBlocklist, after.APIRequestIPBlocklist) {
+		changed = append(changed, "api_request_ip_blocklist")
+	}
+	if before.APIRequestIPBlockAction != after.APIRequestIPBlockAction {
+		changed = append(changed, "api_request_ip_block_action")
+	}
+	if before.APIRequestIPBlockTrustForwardedIP != after.APIRequestIPBlockTrustForwardedIP {
+		changed = append(changed, "api_request_ip_block_trust_forwarded_ip")
+	}
+	if before.APIRequestIPBlockAutoExtractOnUserDisable != after.APIRequestIPBlockAutoExtractOnUserDisable {
+		changed = append(changed, "api_request_ip_block_auto_extract_on_user_disable")
 	}
 	if before.LinuxDoConnectEnabled != after.LinuxDoConnectEnabled {
 		changed = append(changed, "linuxdo_connect_enabled")

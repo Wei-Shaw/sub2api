@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -203,12 +204,20 @@ type APIKeyService struct {
 	userGroupRateRepo     UserGroupRateRepository
 	cache                 APIKeyCache
 	rateLimitCacheInvalid RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
+	settingService        *SettingService
 	cfg                   *config.Config
 	authCacheL1           *ristretto.Cache
 	authCfg               apiKeyAuthCacheConfig
 	authGroup             singleflight.Group
 	lastUsedTouchL1       sync.Map // keyID -> nextAllowedAt(time.Time)
 	lastUsedTouchSF       singleflight.Group
+}
+
+func (s *APIKeyService) SetSettingService(settingService *SettingService) {
+	if s == nil {
+		return
+	}
+	s.settingService = settingService
 }
 
 // NewAPIKeyService 创建API Key服务实例
@@ -876,6 +885,32 @@ func (s *APIKeyService) UpdateQuotaUsed(ctx context.Context, apiKeyID int64, cos
 // GetRateLimitData returns rate limit usage and window state for an API key.
 func (s *APIKeyService) GetRateLimitData(ctx context.Context, id int64) (*APIKeyRateLimitData, error) {
 	return s.apiKeyRepo.GetRateLimitData(ctx, id)
+}
+
+// DisableUserForIPBlock disables a non-admin user after a global API IP blocklist hit.
+func (s *APIKeyService) DisableUserForIPBlock(ctx context.Context, userID int64, clientIPs ...string) error {
+	if s == nil || s.userRepo == nil || userID <= 0 {
+		return nil
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user.IsAdmin() {
+		slog.Warn("api request ip blocklist hit for admin user; skipping disable", "user_id", userID, "client_ips", clientIPs)
+		return nil
+	}
+	if user.Status == StatusDisabled {
+		return nil
+	}
+	user.Status = StatusDisabled
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return err
+	}
+	if s.settingService != nil && s.settingService.IsAPIRequestIPBlockAutoExtractOnUserDisableEnabled(ctx) {
+		_, err = s.settingService.AddAPIRequestIPBlocklistIPsForUser(ctx, userID, clientIPs)
+	}
+	return err
 }
 
 // UpdateRateLimitUsage atomically increments rate limit usage counters in the DB.

@@ -161,6 +161,10 @@ const (
 
 	// API Key IP 访问控制设置
 	SettingKeyAPIKeyACLTrustForwardedIP = "api_key_acl_trust_forwarded_ip" // API Key IP 白/黑名单是否信任转发 IP
+	SettingKeyAPIRequestIPBlocklist                     = "api_request_ip_blocklist"
+	SettingKeyAPIRequestIPBlockAction                   = "api_request_ip_block_action"
+	SettingKeyAPIRequestIPBlockTrustForwardedIP         = "api_request_ip_block_trust_forwarded_ip"
+	SettingKeyAPIRequestIPBlockAutoExtractOnUserDisable = "api_request_ip_block_auto_extract_on_user_disable"
 
 	// TOTP 双因素认证设置
 	SettingKeyTotpEnabled = "totp_enabled" // 是否启用 TOTP 2FA 功能

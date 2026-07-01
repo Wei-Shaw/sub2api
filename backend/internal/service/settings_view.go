@@ -39,6 +39,10 @@ type SystemSettings struct {
 	TurnstileSecretKey           string
 	TurnstileSecretKeyConfigured bool
 	APIKeyACLTrustForwardedIP    bool
+	APIRequestIPBlocklist                     []string
+	APIRequestIPBlockAction                   string
+	APIRequestIPBlockTrustForwardedIP         bool
+	APIRequestIPBlockAutoExtractOnUserDisable bool
 
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled                bool

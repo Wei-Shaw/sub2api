@@ -122,6 +122,7 @@ func (h *UserHandler) List(c *gin.Context) {
 		Role:       c.Query("role"),
 		Search:     search,
 		GroupName:  strings.TrimSpace(c.Query("group_name")),
+		ClientIP:   strings.TrimSpace(c.Query("client_ip")),
 		Attributes: parseAttributeFilters(c),
 	}
 	if raw := strings.TrimSpace(c.Query("api_key_group_id")); raw != "" {
@@ -487,6 +488,72 @@ func (h *UserHandler) ReplaceGroup(c *gin.Context) {
 
 // GetUserRPMStatus 返回指定用户当前分钟的 RPM 用量
 // GET /api/v1/admin/users/:id/rpm-status
+type userUsageIPRequest struct {
+	IPs []string `json:"ips" binding:"required"`
+}
+
+func (h *UserHandler) GetUserUsageIPs(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	limit := 100
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		if parsed, parseErr := strconv.Atoi(raw); parseErr == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	items, err := h.adminService.GetUserUsageIPStats(c.Request.Context(), userID, limit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
+func (h *UserHandler) TestUserUsageIPs(c *gin.Context) {
+	var req userUsageIPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	items, err := h.adminService.TestUserUsageIPs(c.Request.Context(), req.IPs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
+func (h *UserHandler) BlockUserUsageIPs(c *gin.Context) {
+	var req userUsageIPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	count, err := h.adminService.BlockUserUsageIPs(c.Request.Context(), req.IPs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"added": count})
+}
+
+func (h *UserHandler) UnblockUserUsageIPs(c *gin.Context) {
+	var req userUsageIPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	count, err := h.adminService.UnblockUserUsageIPs(c.Request.Context(), req.IPs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"removed": count})
+}
+
 func (h *UserHandler) GetUserRPMStatus(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
