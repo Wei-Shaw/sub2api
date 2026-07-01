@@ -31,7 +31,7 @@
           <span class="font-bold">{{ userRateMultiplier }}x</span>
         </template>
         <template v-else>
-          {{ rateMultiplier }}x 倍率
+          {{ rateMultiplier }}x {{ t('usage.rate') }}
         </template>
       </span>
       <!-- Checkmark -->
@@ -51,6 +51,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
 import type { SubscriptionType, GroupPlatform } from '@/types'
 
@@ -71,6 +72,8 @@ const props = withDefaults(defineProps<Props>(), {
   showCheckmark: true,
   userRateMultiplier: null
 })
+
+const { t } = useI18n()
 
 // Whether user has a custom rate different from default
 const hasCustomRate = computed(() => {
