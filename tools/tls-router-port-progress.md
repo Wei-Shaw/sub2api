@@ -261,6 +261,8 @@
 
 **为何停**:① 这是「文档与代码不符」(契约明令记录+停);② native 集成在最热文件 `openai_gateway_service.go`,需加 2 个服务依赖 + 改 4 处热点 + 动约 5 个测试调用方,且出站指纹正确性本就属【运行时·人工】;③ 方案 G3 的前提(覆盖 OpenAI)不成立,人工应先知悉再决定 native 集成的取舍/范围。**不臆测、不硬凑热点路径**。
 
+**补充(2026-07-01,试做后回滚的实证)**:曾按上述清单在 `openai_gateway_service.go` 内完成源改(struct 2 字段 + 构造变参 + `matchTLSFingerprintRouter`/`resolveOpenAITLSProfile` 两 helper + 两处 `Do`→`DoWithTLS(..., resolveOpenAITLSProfile(account, matchTLSFingerprintRouter(c,account)))` @ Forward:3226/forwardOpenAIPassthrough:3516),**源改本身干净可行**。但 `NewOpenAIGatewayService` 加必填参 `tlsFPProfileService` 会波及 **5 个测试调用方**(`openai_gateway_handler_test.go`×2、`openai_images_failover_test.go`、`openai_ws_protocol_forward_test.go`、`openai_gateway_record_usage_test.go`,均需补一个 `nil` 实参),且 `Do`→`DoWithTLS` 后,**跑到 Forward/forwardOpenAIPassthrough 的测试其 `HTTPUpstream` mock 必须实现 `DoWithTLS`**——已确认 `openai_ws_protocol_forward_test.go` 的 mock `DoWithTLS` 委托给 `Do`(✅ 可过),但 handler / record_usage 测试的 mock 与断言(是否区分 Do/DoWithTLS 调用)**未逐一核实**。**无法在不逐测核实的前提下保证全绿 → 已 `git checkout` 回滚该文件(工作树干净,build 仍绿)**。续作者:先给这些 mock 补 `DoWithTLS`→`Do` 委托,再逐测跑 `go test ./internal/handler/... ./internal/service/ -run "OpenAIGateway|Forward|Images|RecordUsage"` 确认,方可提交。
+
 ## 阶段性总结 / 续作指南(2026-07-01 无人值守批次)
 
 **已完成并验证(静态全绿 + 已 commit;运行时验证一律留人工)**:
