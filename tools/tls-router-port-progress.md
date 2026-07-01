@@ -606,3 +606,29 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 - **与 TR 未对齐清单现状**:A1 ✅ / A2 ✅ / C① quota ✅ / D 测试 ✅ / B② Copy-YAML 有意留 / **B① codex_invite_reset 用户拍板暂不搬** / C② embeddings 假差异(两边一致)。**功能性缺口已清零**(除用户明确不搬的 codex_invite_reset 独立功能)。
 - 工作树:干净。第二轮 commit:A2 `f8a81017` + 账本 `b75d620c` + quota `a175ab4c` + D 测试 `95e34cc9`(+ 本账本)。
 - **待人工验证(运行时,静态不可证)**:① A1 OAuth 换 token/RT 导入/重新授权出站 JA3+UA;② A2 批量设 TLS 后账号 extra 生效 + 前端点测;③ **quota 出站 JA3(尤其无 profile 回落 plain Do 的 Cloudflare 风险)**;④ 迁移 158 生产库;⑤ 各前端 UI 点测。
+
+---
+
+## 独立审查 + MEDIUM 修复(2026-07-02)
+
+> 用户要求审查移植是否有问题、是否影响现有项目。6 路并行 agent 审查 + 容器实测,结论:**移植整体正确、可安全上线,未启用账号零影响**;发现并修复 1 个 MEDIUM,其余仅 LOW(非阻塞)。
+
+### 静态验证(容器 golang:1.26.4-alpine + 本机 node v22)
+- gofmt(核心文件)clean;`go build ./...` BUILD_OK;`go vet ./...` VET_OK。
+- `go test`:service 46s / handler 22s / repository / config / routes / cmd/server / tlsfingerprint / model / dto —— **全 ok,无 FAIL**。
+- 前端 `vue-tsc --noEmit` → exit 0。
+
+### 审查结论(未启用零影响的四条硬证据)
+1. `DoWithTLS(nil)` 首行 `if profile==nil { return Do(...) }`,`http_upstream.go` 本移植未改 → 无 profile 账号走原路径。
+2. `resolveTLSProfileForRequest` 无 router 命中 → 逐字回落旧 `ResolveTLSProfile`。
+3. gating `IsAnthropicOAuthOrSetupToken`→`SupportsTLSFingerprint` 是严格超集;OpenAI 仍需显式 `enable_tls_fingerprint` extra(存量账号无)→ 不变。
+4. WS 连接池每处 checkout 过 `matchesTLSProfile`,不串号;router service 构造函数 reloadFromDB 失败仅 log 不 panic/不阻断启动。
+- 触及现有行为仅 2 点:Grok baseline fix(e6ba7d0a=对齐 main,父分支 archive 遗留破损,非本移植引入)+ gating 扩容(需显式 flag)。LOW 项:OpenAI 每请求重复 match router(cosmetic)、ForceNewConn 满池淘汰 profile-agnostic(仅 churn)、random 模式单一 stable pool key(有意粘性)。
+
+### MEDIUM 修复 — CreateAccountModal cookie 建号漏持久化 router — ✅ 完成
+- **现象**:`handleCookieAuth`(Anthropic cookie/session-key 建号)写 `enable_tls_fingerprint`+`profile_id` 却漏 `tls_fingerprint_router_id`;router 下拉无条件显示,选了被静默丢弃。
+- **深层实证(与 TR 逐行比对)**:非"漏抄一行"。TR 的 `handleCookieAuth`(6302)那段带 `form.platform==='openai' && oauth-based` guard,而 cookie=Anthropic 端点 → TR 该段永不触发(inert 死代码),即 TR 自己 cookie 路径也不写 router。fork 真正原因是**主动把 router 扩到全平台**:后端 Anthropic 网关改 router-aware(TR 走裸 `ResolveTLSProfile`)+ 主提交路径 5636 去掉 OpenAI guard、独立于 `if(tlsFingerprintEnabled)` 写;但 cookie 支路未同步扩 → fork 自身两条 Anthropic 建号路径不一致。
+- **修法**:cookie 路径照抄主路径 5635-5638 的独立 router 块(**无平台 guard**,勿照抄 TR 带 guard 版本 —— 那对 Anthropic 仍无效)。改 `CreateAccountModal.vue`(+5 行)。
+- **兄弟路径已核实无同类缺口**:EditAccountModal(无 cookie 路径,主 4065-4080 正常)、ReAuth ×2(传后端)、OpenAI OAuth 换码 5025 / 手动 RT 导入 5273(传后端 `CreateAccountFromOAuth` 持久化 Extra)。
+- **验证**:`pnpm typecheck` exit 0。
+- **待人工(运行时)**:此前所有 JA3/WS/迁移/前端点测项仍留人工(静态不可证)。

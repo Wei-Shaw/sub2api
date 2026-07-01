@@ -5762,6 +5762,11 @@ const handleCookieAuth = async (sessionKey: string) => {
           }
         }
 
+        // TLS router binding (independent of the TLS fingerprint toggle)
+        if (tlsFingerprintRouterId.value) {
+          extra.tls_fingerprint_router_id = tlsFingerprintRouterId.value
+        }
+
         // Add session ID masking settings
         if (sessionIdMaskingEnabled.value) {
           extra.session_id_masking_enabled = true
