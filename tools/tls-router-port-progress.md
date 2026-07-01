@@ -16,7 +16,7 @@
 | D | repository(router repo + cache) | ✅ 完成 | `0e5c588d` | gofmt✅ build✅ vet✅ svc-test✅ | 含 router service(接口与 repo 互依,合并提交);6 子测全绿 |
 | E | service(router + collector)+ config | ✅ 完成 | `0e5c588d`+`3161a1df` | gofmt✅ build✅ vet✅ svc-test✅ | router svc 随 D;本提交:collector+config+profile 编辑+wire providers。变参 provider/wire.Bind 推迟到 G(依赖 gateway/OAuth) |
 | F | handler + 路由 + wire | ✅ 完成 | `8f57d2c6` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | wire 重生成成功;cmd/server wire_gen_test 通过 |
-| G | OpenAI HTTP 集成 | ✅ 主路径完成(G5 推迟) | `21e18825`+`dedb31e6`+`727f3bb7`+`ae324f7a` | gofmt✅ build✅ vet✅ test✅ | HTTP 全主路径路由感知 TLS + UA/Originator 完成;G5(OAuth token,次要路径)主动推迟(方案允许,见下) |
+| G | OpenAI HTTP 集成 | ✅ 完成(含 G5) | `21e18825`+`dedb31e6`+`727f3bb7`+`ae324f7a`+`162b8377` | gofmt✅ build✅ vet✅ test✅ | HTTP 全主路径路由感知 TLS + UA/Originator;**G5(OAuth 换 token 专用 UA/profile)已完成**(`162b8377`,见下) |
 | H | OpenAI WS 集成 | ✅ 完成(静态) | `ef966a8f` | gofmt✅ build✅ vet✅ ws-test✅ | 连接池每处取连接点都按 matchesTLSProfile 过滤;串号须人工抓包验证 |
 | I | cmd/server 优雅关闭 | ✅ 完成 | `0f2624f7` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | 采集器 Stop 入 provideCleanup;先于 H 做(独立+安全,H 已记录待续) |
 | J | 代码生成 + 编译 | ✅ 完成 | (无码改) | generate 无 drift✅ build✅ vet✅ | 全量 `go generate ./ent`+`./cmd/server` 后 git status 空=生成码与 schema/providers 完全一致 |
@@ -293,6 +293,27 @@
   2. 属**次要路径**(token 交换/刷新,非主 API 请求路径;主路径 G1-G4 已完成生效)。
 - 续作清单(不臆测的前提下):① 在 service 包定义两接口(`GetRuntimeRouter(int64) *model.TLSFingerprintRouter` / `ResolveTokenTLSProfileByID(int64)(*tlsfingerprint.Profile,bool)`——实现已在 router/profile service 上现成);② `OpenAIOAuthService` 加 2 字段 + `SetTokenTLSRouterDeps` setter(在 `ProvideOpenAIOAuthService` wrapper 里调 setter 注入,避免构造签名变更 + 免 wire.Bind);③ 加 `OpenAIOAuthTokenRequestOptions` + `resolveChatGPTOAuthTokenRequestOptions`;④ **核对 fork `OpenAIOAuthClient` 接口能否接 options 应用 UA/DoWithTLS**——这步是关键,若 fork 客户端无对应能力需先加(此处最易触发臆测,务必对照 fork 现状);⑤ 调用点(ExchangeCode/RefreshToken/RefreshAccountToken)传 options;⑥ build/vet/test。Codex invite-reset:fork **无** `codex_invite_reset_service.go`,按方案跳过。
 
+### Phase G5 — OAuth token 专用 UA/profile — ✅ 完成(build/vet/test 绿)(2026-07-01)
+
+- **关键实证(解除推迟顾虑)**:fork 的 OAuth 客户端(`repository/openai_oauth_service.go`)**恰是 TR 客户端去掉 G5 的版本**——两者都用 `imroc/req/v3` 的 `getSharedReqClient`、`shouldReturnOpenAINoProxyHint`/`newOpenAINoProxyHintError` 逐字一致、同样的兜底 UA `codex-cli/0.91.0`。故「OpenAIOAuthClient 接口+HTTP 实现接 options 应用 UA/DoWithTLS」是**faithful 移植而非臆造**。逐项核对 fork 现状均满足(**无一处臆测**):
+  - `service.HTTPUpstream.DoWithTLS(req, proxyURL, accountID, concurrency, profile)` 签名与 TR 用法**逐字一致**;
+  - `service.WithHTTPUpstreamProfile` / `service.HTTPUpstreamProfileOpenAI` 在 fork 已导出存在(openai_images/openai_gateway_* 在用);
+  - `SettingService.GetOpenAICodexUserAgent(ctx)` 存在(setting_service.go:1092);
+  - `NewHTTPUpstream(cfg) service.HTTPUpstream` 直接返回接口(**无需 wire.Bind**),且 `NewHTTPUpstream` 已在 repository ProviderSet → 客户端可消费;
+  - `TLSFingerprintRouterService.GetRuntimeRouter(int64) *model.TLSFingerprintRouter` / `TLSFingerprintProfileService.ResolveTokenTLSProfileByID(int64)(*tlsfingerprint.Profile,bool)` 与两接口签名**逐字一致**(concrete 直接满足 interface,setter 注入免 wire.Bind);
+  - `model.TLSFingerprintRouter` 有 `Enabled`/`ChatGPTOAuthTokenUserAgent`/`ChatGPTOAuthTokenTLSFingerprintProfileID *int64`;`Account.ID int64`/`Account.Concurrency int`/`GetTLSFingerprintRouterID()`(G1)均在;service 包已 import model+tlsfingerprint(无新环);`valueFromInt64Ptr` 无重名。
+- 改动文件:
+  - `internal/service/oauth_service.go`:加 3 类型/接口(`OpenAIOAuthTokenRequestOptions`{UserAgent/TLSProfile/AccountID/AccountConcurrency}、`OpenAIOAuthTokenRouterReader`.GetRuntimeRouter、`OpenAIOAuthTokenProfileResolver`.ResolveTokenTLSProfileByID);import model+tlsfingerprint;`OpenAIOAuthClient` 三方法加 `options ...OpenAIOAuthTokenRequestOptions` 变参(变参=对既有调用向后兼容)。
+  - `internal/repository/openai_oauth_service.go`:`NewOpenAIOAuthClient(httpUpstream)` + struct 加 `httpUpstream` 字段;三方法加变参;把内联 POST 抽成 `postTokenForm`(无 TLS:原 req/v3 路径 + `resolveOpenAIOAuthTokenUserAgent(option)` 取 UA)+ `postTokenFormWithTLS`(`http.NewRequestWithContext` + `WithHTTPUpstreamProfile(OpenAI)` + `httpUpstream.DoWithTLS(..., option.TLSProfile)` + 手动读 body/json 解析);加 `firstOpenAIOAuthTokenRequestOption`;import encoding/json+io。保留 fork 既有中文注释(fork 后端约定)。
+  - `internal/service/openai_oauth_service.go`:struct 加 `settingService`/`tlsFPRouterReader`/`tlsFPProfileResolver`;`SetTokenTLSRouterDeps` setter;`OpenAIExchangeCodeInput` 加 `TLSFingerprintRouterID *int64`;`ExchangeCode` 解析 options 并 `ExchangeCode(..., tokenOptions...)`;`RefreshTokenWithClientID` 拆出私有 `refreshTokenWithClientID(..., routerID, account)`;`resolveChatGPTOAuthTokenRequestOptions`(命中 enabled router → tokenUA/tokenProfileID,UA 空则回落 codex UA,account 填 ID/并发,profileID→ResolveTokenTLSProfileByID;全空→nil)+ `valueFromInt64Ptr`;`RefreshAccountToken` 改走 `refreshTokenWithClientID(..., account.GetTLSFingerprintRouterID(), account)`。
+  - `internal/service/wire.go`:`ProvideOpenAIOAuthService` 加 3 参(settingService/tlsFPRouterService/tlsFPProfileService)+ 末尾 `svc.SetTokenTLSRouterDeps(...)`(镜像既有 SetPrivacyClientFactory 注入模式)。
+  - 3 个测试 stub(state/refresh/auth_url)各 3 方法补变参;`repository/openai_oauth_service_test.go` 的 `NewOpenAIOAuthClient()`→`NewOpenAIOAuthClient(nil)`。
+  - 重生成 `cmd/server/wire_gen.go`:`NewOpenAIOAuthClient(httpUpstream)` + `ProvideOpenAIOAuthService(..., settingService, tlsFingerprintRouterService, tlsFingerprintProfileService)`——**无 wire 环**(两 service 早已被 gateway/openai 构造,wire 复用);go.mod/go.sum **未污染**。
+- **范围守卫(faithful,不越界)**:**未**移 TR 的 `RefreshTokenWithClientIDAndRouter`(TR 唯一调用方是其 handler 用 `req.TLSFingerprintRouterID`,而 fork 该 handler DTO **无**此字段;续作清单⑤只列 ExchangeCode/RefreshToken/RefreshAccountToken);ExchangeCode 的 `TLSFingerprintRouterID` 字段已加但 handler 暂不填(nil→no-op,向后兼容,待日后 DTO/前端补)。Codex invite-reset 按方案跳过(fork 无该 service)。
+- 命令与结果(容器内 golang:1.26.4-alpine):`gofmt -l`(8 改动文件)空;`go generate ./cmd/server`(wire)OK;`go build ./...` → **BUILD_OK**;`go vet ./...` → **VET_OK**(编译全部含测试→证明所有 mock/调用方一致);`go test ./internal/repository/... ./cmd/server/...` → **ok**;`go test ./internal/service/ -run "OpenAIOAuth|OAuth|TLSFingerprint|Refresh|Exchange|Passthrough|Codex"` → **ok 11.7s**;`go test ./internal/handler/...` → **ok**(admin openai_oauth handler 等全过);`go test ./internal/service/ -run "TokenRefresh|TokenProvider|RefreshAccount|OpenAIToken"` → **ok**。
+- commit:`162b8377`
+- 遗留/风险:**OAuth 换 token 的真实出站(JA3 指纹 + 专用 UA)属【运行时·人工】**抓包验证(静态不可证,未宣称已验证)。向后兼容:router_id=0 / router 未 enabled / 未设 token UA+profile → resolveChatGPTOAuthTokenRequestOptions 返回 nil → 客户端用默认 UA、无 TLS profile,行为同现状(无 TLS 路径仍走原 req/v3 shared client)。ExchangeCode 的 router 绑定当前恒 nil(handler 未填),仅 RefreshAccountToken 路径实际生效。
+
 ### Phase H — OpenAI WS 集成 — ✅ 完成(静态)(2026-07-01)
 
 - 按下方 TR 清单整体实现,一次做完,build/vet/ws-test 全绿。**核心防串号:连接池每一处取连接点都加了 `matchesTLSProfile` 过滤**(见下),不同指纹连接不复用。
@@ -423,7 +444,7 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 
 **最新状态(2026-07-01 批次收尾)——已完成并验证(静态全绿 + 已 commit)**:
 - Phase 0/A/B/**C(+ephemeral PG 幂等)**/D/E/F 全部 ✅。
-- **Phase G 主路径全部 ✅**:G1(getters)+G3(GatewayService 解析,`dedb31e6`)+**native-OpenAI TLS**(解 Blocker #2,`d9c213ec`)+**G4 UA/Originator**(`577d4e88`)。即 **OpenAI HTTP 三类路径(Anthropic 原生 / Anthropic→OpenAI 转换转发 / native OpenAI)全部路由感知 TLS + UA 改写**。
+- **Phase G 全部 ✅(含 G5)**:G1(getters)+G3(GatewayService 解析,`dedb31e6`)+**native-OpenAI TLS**(解 Blocker #2,`d9c213ec`)+**G4 UA/Originator**(`577d4e88`)+**G5 OAuth 换 token 专用 UA/profile**(`162b8377`)。即 **OpenAI HTTP 三类路径(Anthropic 原生 / Anthropic→OpenAI 转换转发 / native OpenAI)全部路由感知 TLS + UA 改写,且 OAuth 换 token 亦按账号 router 应用专用 UA/指纹**。
 - **Phase H ✅(静态)**(`1c9dfae5`,WS 集成:连接池按指纹隔离防串号;串号/JA3 留人工抓包)。
 - **Phase I ✅**(`dc6896ff`,采集器优雅关闭)。
 - **Phase J ✅**(全量 generate 无 drift + build/vet 绿)。
@@ -433,9 +454,8 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 
 **后端全部完成 + 前端全部完成**(G1-G4 HTTP 三路径 + H WS + 采集器 + I 优雅关闭 + 迁移/schema/repo/service/handler/wire;前端 router CRUD + 账号绑定 + **采集器 UI** typecheck 绿)。**TLS 指纹路由器 + 采集器功能端到端可用**(管理员 UI 建路由器/规则 + 绑定账号 → 后端 HTTP/WS 出站按 UA 路由指纹;管理员 UI 启动内置采集器抓真实 ClientHello → 存为 profile)。
 
-**未完成(唯一剩余,次要路径,已记录精确续作清单)**:
-- **G5**(OAuth token 换 token 专用 UA/profile,次要路径)— ⏸️ 推迟(需改 OpenAIOAuthClient HTTP 层,fork 与 TR 异构;见上「Phase G5」续作清单)。若不臆测无法改则回滚 G5 + 账本记原因 + 停(方案允许后补)。
+**未完成:无。** 移植清单(方案 §8 A→K + G5)**全部完成**并静态验证。前次批次遗留的两个次要/便利项(K part3 采集器 UI、G5 OAuth token)本批次均已做绿并 commit(`a71b135b`、`162b8377`)。
 
-**待人工验证(运行时,方案 §5)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端 UI(含采集器 start/建会话/抓取/存 profile/命令可用性);**HTTP 抓包 JA3(含 native OpenAI + UA/指纹一致)**;**WS 抓包 + 不同指纹不串号**;未命中回落;OAuth 换 token(G5 做完后)。
+**待人工验证(运行时,方案 §5,静态不可证一律留人工)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端 UI(含采集器 start/建会话/抓取/存 profile/命令可用性);**HTTP 抓包 JA3(含 native OpenAI + UA/指纹一致)**;**WS 抓包 + 不同指纹不串号**;未命中回落;**OAuth 换 token 出站 JA3 + 专用 UA(G5)**。
 
-**如何续作**:工作树干净,所有 commit 各自 build/typecheck 绿,可从任一处安全接续。**核心功能 + 采集器 UI(router HTTP+WS+账号绑定+CRUD UI+采集器 UI)已完整**。剩余仅 1 个次要/便利项:G5(OAuth token,需改 OAuth 客户端 HTTP 层,异构风险)。续作清单见「Phase G5」记录。
+**如何续作/收尾**:工作树干净,所有 commit 各自 build/vet/typecheck 绿,可安全接续。**功能端到端完整**:router HTTP(三路径)+WS+OAuth 换 token(G5)+ 账号绑定 + CRUD UI + 采集器 UI + i18n。移植代码工作**已全部完成**;剩余只有【运行时·人工】灰度/抓包验证(见上),无代码续作项。
