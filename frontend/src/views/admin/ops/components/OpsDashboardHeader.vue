@@ -889,7 +889,7 @@ REDACTED
 
           <template v-if="props.autoRefreshEnabled && props.autoRefreshCountdown !== undefined">
             <span>·</span>
-            <span>剩余 {{ props.autoRefreshCountdown REDACTEDREDACTEDs</span>
+            <span>{{ t('admin.ops.autoRefreshRemaining', { seconds: props.autoRefreshCountdown REDACTED) REDACTEDREDACTED</span>
           </template>
         </div>
       </div>

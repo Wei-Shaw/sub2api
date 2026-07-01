@@ -2537,7 +2537,7 @@
                         <input
                           v-model="form.dingtalk_connect_sync_display_name_attr_name"
                           type="text"
-                          placeholder="钉钉姓名"
+                          :placeholder="localText('钉钉姓名', 'DingTalk Name')"
                           class="input text-sm flex-1 max-w-xs"
                         />
                       </div>
@@ -2583,7 +2583,7 @@
                         <input
                           v-model="form.dingtalk_connect_sync_corp_email_attr_name"
                           type="text"
-                          placeholder="钉钉企业邮箱"
+                          :placeholder="localText('钉钉企业邮箱', 'DingTalk Corporate Email')"
                           class="input text-sm flex-1 max-w-xs"
                         />
                       </div>
@@ -2629,7 +2629,7 @@
                         <input
                           v-model="form.dingtalk_connect_sync_dept_attr_name"
                           type="text"
-                          placeholder="钉钉部门"
+                          :placeholder="localText('钉钉部门', 'DingTalk Department')"
                           class="input text-sm flex-1 max-w-xs"
                         />
                       </div>
@@ -7460,22 +7460,22 @@ function defaultLoginAgreementDocuments(): LoginAgreementDocument[] {
   return [
     {
       id: "terms",
-      title: "服务条款",
+      title: localText("服务条款", "Terms of Service"),
       content_md: "",
     REDACTED,
     {
       id: "usage-policy",
-      title: "使用政策",
+      title: localText("使用政策", "Usage Policy"),
       content_md: "",
     REDACTED,
     {
       id: "supported-regions",
-      title: "支持的国家和地区",
+      title: localText("支持的国家和地区", "Supported Countries and Regions"),
       content_md: "",
     REDACTED,
     {
       id: "service-specific-terms",
-      title: "服务特定条款",
+      title: localText("服务特定条款", "Service-Specific Terms"),
       content_md: "",
     REDACTED,
   ];
@@ -8014,9 +8014,9 @@ const form = reactive<SettingsForm>({
   dingtalk_connect_sync_corp_email_attr_key: "dingtalk_email",
   dingtalk_connect_sync_display_name_attr_key: "dingtalk_name",
   dingtalk_connect_sync_dept_attr_key: "dingtalk_department",
-  dingtalk_connect_sync_corp_email_attr_name: "钉钉企业邮箱",
-  dingtalk_connect_sync_display_name_attr_name: "钉钉姓名",
-  dingtalk_connect_sync_dept_attr_name: "钉钉部门",
+  dingtalk_connect_sync_corp_email_attr_name: localText("钉钉企业邮箱", "DingTalk Corporate Email"),
+  dingtalk_connect_sync_display_name_attr_name: localText("钉钉姓名", "DingTalk Name"),
+  dingtalk_connect_sync_dept_attr_name: localText("钉钉部门", "DingTalk Department"),
   wechat_connect_enabled: false,
   wechat_connect_app_id: "",
   wechat_connect_app_secret: "",
@@ -8174,7 +8174,7 @@ const authSourceDefaultsMeta = computed(() => [
   REDACTED,
   {
     source: "dingtalk" as AuthSourceType,
-    title: "钉钉",
+    title: t("auth.dingtalkProviderName"),
     description: localText(
       "通过钉钉首次注册或首次绑定时应用。",
       "Applied on first signup or first bind through DingTalk.",

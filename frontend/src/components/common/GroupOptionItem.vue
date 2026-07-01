@@ -31,7 +31,7 @@
           <span class="font-bold">{{ userRateMultiplier REDACTEDREDACTEDx</span>
         </template>
         <template v-else>
-          {{ rateMultiplier REDACTEDREDACTEDx 倍率
+          {{ rateMultiplier REDACTEDREDACTEDx {{ t('admin.groups.rateLabel') REDACTEDREDACTED
         </template>
       </span>
       <!-- Checkmark -->
@@ -51,8 +51,11 @@
 
 <script setup lang="ts">
 import { computed REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
 import type { SubscriptionType, GroupPlatform REDACTED from '@/types'
+
+const { t REDACTED = useI18n()
 
 interface Props {
   name: string
