@@ -19,8 +19,8 @@
 | G | OpenAI HTTP 集成 | ✅ 主路径完成(G5 推迟) | `21e18825`+`dedb31e6`+`727f3bb7`+`ae324f7a` | gofmt✅ build✅ vet✅ test✅ | HTTP 全主路径路由感知 TLS + UA/Originator 完成;G5(OAuth token,次要路径)主动推迟(方案允许,见下) |
 | H | OpenAI WS 集成 | ⬜ 未开始 | — | — | 硬骨头;连接池 key 须含指纹 |
 | I | cmd/server 优雅关闭 | ✅ 完成 | `0f2624f7` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | 采集器 Stop 入 provideCleanup;先于 H 做(独立+安全,H 已记录待续) |
-| J | 代码生成 + 编译 | ⬜ 未开始 | — | — | |
-| K | 前端 | ⬜ 未开始 | — | — | 工具链不可用则记待人工 |
+| J | 代码生成 + 编译 | ✅ 完成 | (无码改) | generate 无 drift✅ build✅ vet✅ | 全量 `go generate ./ent`+`./cmd/server` 后 git status 空=生成码与 schema/providers 完全一致 |
+| K | 前端 | ⏸️ 记录待续 | — | — | 大件(~880 行弹窗等)+ 需前端工具链;本批次未做,见续作清单 |
 
 状态图例:⬜ 未开始 / 🟡 进行中 / ✅ 完成(静态绿+commit)/ ⛔ 受阻(见下方记录)
 
@@ -318,6 +318,26 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 - commit:`0f2624f7`
 - 遗留/风险:无。
 
+### Phase J — 全量生成 + 编译确认 — ✅ 完成(2026-07-01)
+
+- 容器内跑 `go generate ./ent` + `go generate ./cmd/server` 后 **git status 为空**——即所有已提交的生成码(ent 全套 + wire_gen)与当前 schema/providers **完全一致,无 drift**(强完整性校验)。`go build ./...` → **BUILD_OK**;`go vet ./...` → 无报错;`go test ./internal/pkg/tlsfingerprint/...` → ok。
+- 无码改(纯确认),仅本账本记录。
+
+### Phase K — 前端 — ⏸️ 记录待续(2026-07-01)
+
+- 未做原因:K 是大件(router 弹窗 ~880 行 + 采集器 UI + 账号绑定下拉 + i18n ~74 键 + AccountsView 挂载),且需前端工具链(pnpm/vite type-check/build)验证;本批次预算已深,留作专门批次。方案 §K 明允「前端工具链不可用则记待人工构建验证」。
+- 续作清单(方案 §K 文件表,照抄 TR 前端但**对照 fork 现有 `TLSFingerprintProfilesModal.vue` 约定**,勿引 fork 不存在的组件/工具):
+  1. 新增 `frontend/src/api/admin/tlsFingerprintRouter.ts`(router CRUD + 类型)。
+  2. 编辑 `frontend/src/api/admin/tlsFingerprintProfile.ts`(补采集器 6 函数 + 3 类型:status/session/captureRecord)。
+  3. 编辑 `frontend/src/api/admin/index.ts`(导出 routerAPI + 类型)。
+  4. 新增 `frontend/src/components/admin/TLSFingerprintRoutersModal.vue`(列表/编辑/规则编辑器/YAML 粘贴 + chatgpt_oauth_token / codex_invite_reset 两槽)。
+  5. 编辑 `frontend/src/components/admin/TLSFingerprintProfilesModal.vue`(加采集器 UI:start/stop/建会话/capture URL+CA PEM/命令/采集列表/存为 profile)。
+  6. 编辑 `frontend/src/views/admin/AccountsView.vue`(加 "TLS Routers" 入口 + 弹窗挂载 + openTLSFingerprintRouters + state;按符号定位)。
+  7. 编辑 `frontend/src/components/account/EditAccountModal.vue`、`CreateAccountModal.vue`(加 `tls_fingerprint_router_id` 下拉「不使用路由器」+ 提交写入 `extra`)。
+  8. 编辑 `frontend/src/i18n/locales/en.ts`、`zh.ts`(补 `admin.tlsFingerprintRouters.*` + 账号表单 router 键)。
+  9. 验证:`pnpm -C frontend type-check`/`build`(读 `frontend/package.json` scripts);工具链不可用则记「前端待人工构建验证」。
+- 后端已就绪:router CRUD API(`/admin/tls-fingerprint-routers`)+ 采集器 API(`/admin/tls-fingerprint-profiles/collector/*`)+ 账号 `extra.tls_fingerprint_router_id` 字段均可用,前端直接对接即可。
+
 ## 阶段性总结 / 续作指南(2026-07-01 无人值守批次)
 
 **已完成并验证(静态全绿 + 已 commit;运行时验证一律留人工)**:
@@ -333,16 +353,20 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 | G1 | account getters(SupportsTLSFingerprint/GetTLSFingerprintRouterID;IsTLSFingerprintEnabled 改门控) | 21e18825 |
 | G3 | GatewayService 路由感知 TLS 解析(Anthropic + 转换转发 HTTP 路径) | dedb31e6 |
 
-每个 commit 均在 `golang:1.26.4-alpine` 容器内 `gofmt`+`go build ./...`+`go vet`+相关 `go test`(及涉及 ent/wire 处 `go generate`)全绿。**新增单测**:tlsfingerprint(3)、router service(6)、collector(4),均 PASS。
+> **注**:上表是首批(停在 G3)的快照;下方「最新状态」为完整现状。
 
-**未完成**:
-- **G4 + native-OpenAI TLS 集成**:见 Blocker #2(方案缺口,需人工确认范围)。
-- **G5 OAuth token 路径**:见 Blocker #2 第 7 点(需新建 OAuth 接口或评估)。
-- **H WS 集成**:未开始(最高风险,连接池 key 须含指纹防串号;方案 §Phase H 有 scope-guard)。
-- **I cmd/server 采集器优雅关闭**:未开始(小、独立、安全;collector 已可经 admin API Start/Stop,I 仅补进程退出时优雅 Stop)。
-- **J 最终全量生成/编译**:每阶段已局部 `go generate`+全量 `go build` 绿;最终再跑一次确认即可。
-- **K 前端**:未开始(~880 行弹窗等;前端工具链未在本批次验证,留人工或后续批次)。
+**最新状态(2026-07-01 批次收尾)——已完成并验证(静态全绿 + 已 commit)**:
+- Phase 0/A/B/**C(+ephemeral PG 幂等)**/D/E/F 全部 ✅。
+- **Phase G 主路径全部 ✅**:G1(getters)+G3(GatewayService 解析,`dedb31e6`)+**native-OpenAI TLS**(解 Blocker #2,`d9c213ec`)+**G4 UA/Originator**(`577d4e88`)。即 **OpenAI HTTP 三类路径(Anthropic 原生 / Anthropic→OpenAI 转换转发 / native OpenAI)全部路由感知 TLS + UA 改写**。
+- **Phase I ✅**(`dc6896ff`,采集器优雅关闭)。
+- **Phase J ✅**(全量 generate 无 drift + build/vet 绿)。
+- 每 commit 容器内 gofmt+build+vet+相关 test(及 ent/wire 处 generate)全绿;**新增单测**:tlsfingerprint(3)、router service(6)、collector(4),均 PASS;OpenAI/gateway/handler 既有测试全过。
 
-**待人工验证(运行时,见方案 §5)**:迁移 158 测试库幂等;router CRUD+采集器 API+前端;HTTP/WS 抓包 JA3;OpenAI native 路径指纹(取决于 Blocker #2 决策);回归未命中回落;OAuth 换 token。
+**未完成(均已记录精确续作清单)**:
+- **G5**(OAuth token UA/profile,次要路径)— ⏸️ 推迟(需改 OpenAIOAuthClient HTTP 层,fork 与 TR 异构;见上「Phase G5」)。
+- **H**(WS 集成)— ⏸️ 记录待续(最高风险,连接池 key 防串号,须整体做 + 人工抓包;见上「Phase H」完整 TR 改动清单)。
+- **K**(前端)— ⏸️ 记录待续(大件 + 需前端工具链;见上「Phase K」文件清单;后端 API 已就绪可直接对接)。
 
-**如何续作**:先读 Blocker #2 决定 native-OpenAI 集成范围(强烈建议做,否则 OpenAI 主用例无指纹);其余按 §8 H→I→J→K。工作树干净,9 个 commit 均可独立 build 绿,可安全从任一处接续。
+**待人工验证(运行时,方案 §5)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端;**HTTP 抓包 JA3(含 native OpenAI 路径 + UA/指纹一致)**;WS 抓包 + 不串号(H 做完后);未命中回落;采集器抓取;OAuth 换 token(G5 做完后)。
+
+**如何续作**:工作树干净,**16 个 commit 各自 build 绿**,可从任一处安全接续。优先级建议:H(WS,主路径,高价值高风险,专门批次)> K(前端,让管理员能 UI 配置)> G5(次要)。各自续作清单见对应 Phase 记录 / Blocker #2。
