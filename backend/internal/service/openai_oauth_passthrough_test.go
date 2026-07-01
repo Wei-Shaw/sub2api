@@ -201,8 +201,12 @@ func TestOpenAIGatewayService_OAuthMessagesBridgeDoesNotInjectDefaultInstruction
 
 type openAIPassthroughFailoverRepo struct {
 	stubOpenAIAccountRepo
-	rateLimitCalls []time.Time
-	overloadCalls  []time.Time
+	rateLimitCalls       []time.Time
+	overloadCalls        []time.Time
+	tempUnschedulableIDs []int64
+	tempUnschedulableAt  []time.Time
+	tempUnschedulableWhy []string
+	setErrorCalls        []string
 }
 
 func (r *openAIPassthroughFailoverRepo) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
@@ -212,6 +216,35 @@ func (r *openAIPassthroughFailoverRepo) SetRateLimited(_ context.Context, _ int6
 
 func (r *openAIPassthroughFailoverRepo) SetOverloaded(_ context.Context, _ int64, until time.Time) error {
 	r.overloadCalls = append(r.overloadCalls, until)
+	return nil
+}
+
+func (r *openAIPassthroughFailoverRepo) SetTempUnschedulable(_ context.Context, id int64, until time.Time, reason string) error {
+	r.tempUnschedulableIDs = append(r.tempUnschedulableIDs, id)
+	r.tempUnschedulableAt = append(r.tempUnschedulableAt, until)
+	r.tempUnschedulableWhy = append(r.tempUnschedulableWhy, reason)
+	return nil
+}
+
+func (r *openAIPassthroughFailoverRepo) SetError(_ context.Context, _ int64, errorMsg string) error {
+	r.setErrorCalls = append(r.setErrorCalls, errorMsg)
+	return nil
+}
+
+type openAIPassthrough403CounterStub struct {
+	counts []int64
+}
+
+func (s *openAIPassthrough403CounterStub) IncrementOpenAI403Count(context.Context, int64, int) (int64, error) {
+	if len(s.counts) == 0 {
+		return 1, nil
+	}
+	count := s.counts[0]
+	s.counts = s.counts[1:]
+	return count, nil
+}
+
+func (s *openAIPassthrough403CounterStub) ResetOpenAI403Count(context.Context, int64) error {
 	return nil
 }
 
@@ -799,7 +832,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_UpstreamErrorIncludesPassthroughF
 	require.Equal(t, "http_error", arr[len(arr)-1].Kind)
 }
 
-func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *testing.T) {
+func TestOpenAIGatewayService_OpenAIPassthrough_FailoverStatusesTriggerAccountSwitch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalBody := []byte(`{"model":"gpt-5.2","stream":false,"instructions":"local-test-instructions","input":[{"type":"text","text":"hi"}]}`)
 
@@ -831,6 +864,20 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 		body        string
 		assertRepo  func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time)
 	}{
+		{
+			name:        "oauth_403_temp_unschedulable",
+			accountType: AccountTypeOAuth,
+			statusCode:  http.StatusForbidden,
+			body:        `{"error":{"message":"usage limit reached","type":"forbidden_error"}}`,
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
+				require.Empty(t, repo.rateLimitCalls)
+				require.Empty(t, repo.overloadCalls)
+				require.Equal(t, []int64{123}, repo.tempUnschedulableIDs)
+				require.Len(t, repo.tempUnschedulableAt, 1)
+				require.True(t, time.Until(repo.tempUnschedulableAt[0]) > 9*time.Minute)
+				require.Contains(t, repo.tempUnschedulableWhy[0], "OpenAI 403 temporary cooldown")
+			},
+		},
 		{
 			name:        "oauth_429_rate_limit",
 			accountType: AccountTypeOAuth,
@@ -906,6 +953,7 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 					RateLimit: config.RateLimitConfig{OverloadCooldownMinutes: 10},
 				},
 			}
+			rateSvc.SetOpenAI403CounterCache(&openAIPassthrough403CounterStub{counts: []int64{1}})
 
 			svc := &OpenAIGatewayService{
 				cfg:              &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
