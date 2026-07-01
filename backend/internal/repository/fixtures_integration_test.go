@@ -8,6 +8,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -232,6 +233,12 @@ REDACTED
 REDACTED
 	if !a.UpdatedAt.IsZero() {
 		create.SetUpdatedAt(a.UpdatedAt)
+REDACTED
+	if a.ParentAccountID != nil {
+		create.SetParentAccountID(*a.ParentAccountID)
+REDACTED
+	if a.QuotaDimension != "" {
+		create.SetQuotaDimension(dbaccount.QuotaDimension(a.QuotaDimension))
 REDACTED
 
 	created, err := create.Save(ctx)

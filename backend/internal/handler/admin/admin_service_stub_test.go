@@ -26,6 +26,7 @@ type stubAdminService struct {
 	testedProxyIDs       []int64
 	getUserErr           error
 	createAccountErr     error
+	createSparkShadowErr error
 	updateAccountErr     error
 	bulkUpdateAccountErr error
 	checkMixedErr        error
@@ -634,6 +635,26 @@ REDACTED
 
 func (s *stubAdminService) RevertAccountProxyFallback(ctx context.Context, id int64) error {
 	return nil
+REDACTED
+
+func (s *stubAdminService) CreateShadow(ctx context.Context, parentID int64, opts service.ShadowOptions) (*service.Account, error) {
+	if s.createSparkShadowErr != nil {
+		return nil, s.createSparkShadowErr
+REDACTED
+	pid := parentID
+	return &service.Account{
+		ID:              9001,
+		Name:            opts.Name,
+		Platform:        service.PlatformOpenAI,
+		Type:            service.AccountTypeOAuth,
+		Priority:        opts.Priority,
+		Concurrency:     opts.Concurrency,
+		GroupIDs:        opts.GroupIDs,
+		ParentAccountID: &pid,
+		QuotaDimension:  service.QuotaDimensionSpark,
+		Credentials:     map[string]any{REDACTED,
+		Extra:           map[string]any{REDACTED,
+REDACTED, nil
 REDACTED
 
 // Ensure stub implements interface.

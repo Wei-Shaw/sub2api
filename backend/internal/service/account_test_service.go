@@ -530,29 +530,38 @@ REDACTED
 		return s.testOpenAIImageOAuth(c, ctx, account, testModelID, imagePrompt)
 REDACTED
 
+	credentialAccount := account
+	if account.IsCredentialShadow() {
+		resolved, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil {
+			return s.sendErrorAndEnd(c, err.Error())
+	REDACTED
+		credentialAccount = resolved
+REDACTED
+
 	// Determine authentication method and API URL
 	var authToken string
 	var apiURL string
 	var isOAuth bool
 
-	if account.IsOAuth() {
+	if credentialAccount.IsOAuth() {
 		isOAuth = true
 		// OAuth - use Bearer token with ChatGPT internal API
-		authToken = account.GetOpenAIAccessToken()
+		authToken = credentialAccount.GetOpenAIAccessToken()
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No access token available")
 	REDACTED
 
 		// OAuth uses ChatGPT internal API
 		apiURL = chatgptCodexAPIURL
-REDACTED else if account.Type == "apikey" {
+REDACTED else if credentialAccount.Type == "apikey" {
 		// API Key - use Platform API
-		authToken = account.GetOpenAIApiKey()
+		authToken = credentialAccount.GetOpenAIApiKey()
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No API key available")
 	REDACTED
 
-		baseURL := account.GetOpenAIBaseURL()
+		baseURL := credentialAccount.GetOpenAIBaseURL()
 		if baseURL == "" {
 			baseURL = "https://api.openai.com"
 	REDACTED
@@ -596,7 +605,7 @@ REDACTED
 	if isOAuth {
 		req.Host = "chatgpt.com"
 		req.Header.Set("accept", "text/event-stream")
-		setOpenAIChatGPTAccountHeaders(req.Header, account)
+		setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
 REDACTED
 
 	// Get proxy URL

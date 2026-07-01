@@ -124,7 +124,9 @@ REDACTED
 		{Name: "session_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "session_window_end", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "session_window_status", Type: field.TypeString, Nullable: true, Size: 20REDACTED,
+		{Name: "quota_dimension", Type: field.TypeEnum, Enums: []string{"global", "spark"REDACTED, Default: "global"REDACTED,
 		{Name: "proxy_id", Type: field.TypeInt64, Nullable: trueREDACTED,
+		{Name: "parent_account_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 REDACTED
 	// AccountsTable holds the schema information for the "accounts" table.
 	AccountsTable = &schema.Table{
@@ -134,9 +136,15 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "accounts_proxies_proxy",
-				Columns:    []*schema.Column{AccountsColumns[29]REDACTED,
+				Columns:    []*schema.Column{AccountsColumns[30]REDACTED,
 				RefColumns: []*schema.Column{ProxiesColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
+		REDACTED,
+			{
+				Symbol:     "accounts_accounts_children",
+				Columns:    []*schema.Column{AccountsColumns[31]REDACTED,
+				RefColumns: []*schema.Column{AccountsColumns[0]REDACTED,
+				OnDelete:   schema.Restrict,
 		REDACTED,
 	REDACTED,
 		Indexes: []*schema.Index{
@@ -158,7 +166,7 @@ REDACTED
 			{
 				Name:    "account_proxy_id",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[29]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[30]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_priority",
@@ -204,6 +212,11 @@ REDACTED
 				Name:    "account_deleted_at",
 				Unique:  false,
 				Columns: []*schema.Column{AccountsColumns[3]REDACTED,
+		REDACTED,
+			{
+				Name:    "account_parent_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{AccountsColumns[31]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -1824,6 +1837,7 @@ func init() {
 		Table: "api_keys",
 REDACTED
 	AccountsTable.ForeignKeys[0].RefTable = ProxiesTable
+	AccountsTable.ForeignKeys[1].RefTable = AccountsTable
 	AccountsTable.Annotation = &entsql.Annotation{
 		Table: "accounts",
 REDACTED
