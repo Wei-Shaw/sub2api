@@ -11,6 +11,15 @@ const (
 	// ResolvedTargetPlatform 是 composite 分组按请求模型解析出的真实目标平台。
 	ResolvedTargetPlatform Key = "ctx_resolved_target_platform"
 
+	// ResolvedUpstreamModel 是 composite 分组将公开模型名解析到的上游模型名。
+	ResolvedUpstreamModel Key = "ctx_resolved_upstream_model"
+
+	// RequestedPublicModel 是客户端原始请求中的公开模型名。
+	RequestedPublicModel Key = "ctx_requested_public_model"
+
+	// CompositeRouteSource 标识 composite 解析结果来自显式路由还是内置模型探测。
+	CompositeRouteSource Key = "ctx_composite_route_source"
+
 	// RequestID 为服务端生成/透传的请求 ID。
 	RequestID Key = "ctx_request_id"
 

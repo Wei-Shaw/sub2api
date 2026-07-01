@@ -589,6 +589,63 @@ export interface ModelsListConfig {
   models: string[]
 REDACTED
 
+export type CompositeRouteMatchType = 'exact' | 'prefix'
+
+export type CompositeRouteEndpoint =
+  | 'any'
+  | 'messages'
+  | 'count_tokens'
+  | 'responses'
+  | 'chat_completions'
+  | 'embeddings'
+  | 'images'
+  | 'gemini'
+
+export type CompositeRouteSource = 'route' | 'detector' | string
+
+export interface CompositeModelRoute {
+  id: number
+  group_id: number
+  public_model: string
+  match_type: CompositeRouteMatchType
+  target_platform: Exclude<GroupPlatform, 'composite'>
+  upstream_model: string
+  endpoint: CompositeRouteEndpoint
+  priority: number
+  enabled: boolean
+  notes: string
+  created_at?: string
+  updated_at?: string
+REDACTED
+
+export interface CompositeModelRouteInput {
+  public_model: string
+  match_type: CompositeRouteMatchType
+  target_platform: Exclude<GroupPlatform, 'composite'>
+  upstream_model?: string
+  endpoint: CompositeRouteEndpoint
+  priority?: number
+  enabled?: boolean
+  notes?: string
+REDACTED
+
+export interface CompositeRoutePreviewRequest {
+  model: string
+  endpoint: CompositeRouteEndpoint
+REDACTED
+
+export interface CompositeRouteDecision {
+  matched: boolean
+  source: CompositeRouteSource
+  group_id: number
+  public_model: string
+  target_platform: Exclude<GroupPlatform, 'composite'> | ''
+  upstream_model: string
+  endpoint: CompositeRouteEndpoint
+  route?: CompositeModelRoute
+  reason?: string
+REDACTED
+
 export interface ApiKey {
   id: number
   user_id: number

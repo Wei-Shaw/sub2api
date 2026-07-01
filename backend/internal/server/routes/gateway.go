@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // RegisterGatewayRoutes 注册 API 网关路由（Claude/OpenAI/Gemini 兼容）
@@ -27,6 +28,7 @@ func RegisterGatewayRoutes(
 	subscriptionService *service.SubscriptionService,
 	opsService *service.OpsService,
 	settingService *service.SettingService,
+	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 ) {
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
@@ -34,8 +36,8 @@ func RegisterGatewayRoutes(
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
-	compositeTarget := compositeTargetPlatformMiddleware()
-	compositeGeminiTarget := compositeImplicitTargetPlatformMiddleware(service.PlatformGemini)
+	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)
+	compositeGeminiTarget := compositeGeminiTargetPlatformMiddleware(compositeResolver)
 
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
@@ -356,7 +358,10 @@ REDACTED
 	return apiKey.Group.Platform
 REDACTED
 
-func compositeTargetPlatformMiddleware() gin.HandlerFunc {
+func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver) gin.HandlerFunc {
+	if resolver == nil {
+		resolver = service.NewCompositeRouteResolver(nil)
+REDACTED
 	return func(c *gin.Context) {
 		apiKey, ok := middleware.GetAPIKeyFromContext(c)
 		if !ok || apiKey == nil || apiKey.Group == nil || apiKey.Group.Platform != service.PlatformComposite {
@@ -381,30 +386,96 @@ func compositeTargetPlatformMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 	REDACTED
-		resetRequestBody(c, body)
 
 		model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 		if model != "" {
-			if platform, ok := service.DetectModelPlatform(model); ok {
-				c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), platform))
+			decision, err := resolver.Resolve(c.Request.Context(), apiKey.Group.ID, model, compositeRouteEndpointForPath(c.Request.URL.Path))
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"type": "server_error", "message": "Failed to resolve composite model route"REDACTEDREDACTED)
+				c.Abort()
+				return
+		REDACTED
+			if decision.Matched {
+				c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
+				if upstreamModel := strings.TrimSpace(decision.UpstreamModel); upstreamModel != "" && upstreamModel != model && gjson.ValidBytes(body) {
+					if rewritten, rewriteErr := sjson.SetBytes(body, "model", upstreamModel); rewriteErr == nil {
+						body = rewritten
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+		resetRequestBody(c, body)
+		c.Next()
+REDACTED
+REDACTED
+
+func compositeGeminiTargetPlatformMiddleware(resolver *service.CompositeRouteResolver) gin.HandlerFunc {
+	if resolver == nil {
+		resolver = service.NewCompositeRouteResolver(nil)
+REDACTED
+	return func(c *gin.Context) {
+		apiKey, ok := middleware.GetAPIKeyFromContext(c)
+		if ok && apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
+			model := compositeGeminiModelFromParams(c)
+			if model != "" {
+				decision, err := resolver.Resolve(c.Request.Context(), apiKey.Group.ID, model, service.CompositeRouteEndpointGemini)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"type": "server_error", "message": "Failed to resolve composite model route"REDACTEDREDACTED)
+					c.Abort()
+					return
+			REDACTED
+				if decision.Matched {
+					c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
+			REDACTED
+		REDACTED
+			if _, resolved := service.ResolvedTargetPlatformFromContext(c.Request.Context()); !resolved {
+				c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), service.PlatformGemini))
 		REDACTED
 	REDACTED
 		c.Next()
 REDACTED
 REDACTED
 
-func compositeImplicitTargetPlatformMiddleware(platform string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		apiKey, ok := middleware.GetAPIKeyFromContext(c)
-		if ok && apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
-			c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), platform))
-	REDACTED
-		c.Next()
+func compositeGeminiModelFromParams(c *gin.Context) string {
+	if c == nil {
+		return ""
 REDACTED
+	if model := strings.TrimSpace(c.Param("model")); model != "" {
+		return model
+REDACTED
+	modelAction := strings.TrimPrefix(strings.TrimSpace(c.Param("modelAction")), "/")
+	if modelAction == "" {
+		return ""
+REDACTED
+	if idx := strings.LastIndex(modelAction, ":"); idx >= 0 {
+		return strings.TrimSpace(modelAction[:idx])
+REDACTED
+	return modelAction
 REDACTED
 
 func resetRequestBody(c *gin.Context, body []byte) {
 	c.Request.Body = io.NopCloser(bytes.NewReader(body))
 	c.Request.ContentLength = int64(len(body))
 	c.Request.Header.Set("Content-Length", strconv.Itoa(len(body)))
+REDACTED
+
+func compositeRouteEndpointForPath(path string) string {
+	switch {
+	case strings.Contains(path, "/messages/count_tokens"):
+		return service.CompositeRouteEndpointCountTokens
+	case strings.Contains(path, "/messages"):
+		return service.CompositeRouteEndpointMessages
+	case strings.Contains(path, "/responses"):
+		return service.CompositeRouteEndpointResponses
+	case strings.Contains(path, "/chat/completions"):
+		return service.CompositeRouteEndpointChatCompletions
+	case strings.Contains(path, "/embeddings"):
+		return service.CompositeRouteEndpointEmbeddings
+	case strings.Contains(path, "/images/"):
+		return service.CompositeRouteEndpointImages
+	case strings.Contains(path, "/v1beta/"):
+		return service.CompositeRouteEndpointGemini
+	default:
+		return service.CompositeRouteEndpointAny
+REDACTED
 REDACTED

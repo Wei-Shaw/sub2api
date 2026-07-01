@@ -49,10 +49,17 @@ func TestQuotaPlatformCompositeUsesResolvedOrForceOnly(t *testing.T) {
 	require.Equal(t, PlatformAntigravity, QuotaPlatform(ctx, apiKey))
 REDACTED
 
-func TestSchedulerPlatformsForCompositeGroup(t *testing.T) {
+func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
+	seen := make(map[string]struct{REDACTED)
+	for _, bucket := range schedulerCanonicalBuckets(99) {
+		seen[bucket.Platform] = struct{REDACTED{REDACTED
+REDACTED
+	platforms := make([]string, 0, len(seen))
+	for platform := range seen {
+		platforms = append(platforms, platform)
+REDACTED
 	require.ElementsMatch(t,
 		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrokREDACTED,
-		schedulerPlatformsForGroup(PlatformComposite),
+		platforms,
 	)
-	require.Equal(t, []string{PlatformAnthropicREDACTED, schedulerPlatformsForGroup(PlatformAnthropic))
 REDACTED
