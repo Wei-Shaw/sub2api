@@ -67,9 +67,9 @@ COPY backend/ ./
 COPY --from=frontend-builder /app/backend/internal/web/dist ./internal/web/dist
 
 # Build the binary (BuildType=release for CI builds, embed frontend)
-# Version precedence: build arg VERSION > cmd/server/VERSION
+# Version precedence: build arg VERSION > exact git tag > cmd/server/VERSION
 RUN VERSION_VALUE="${VERSIONREDACTED" && \
-    if [ -z "${VERSION_VALUEREDACTED" ]; then VERSION_VALUE="$(tr -d '\r\n' < ./cmd/server/VERSION)"; fi && \
+    if [ -z "${VERSION_VALUEREDACTED" ]; then VERSION_VALUE="$(./scripts/resolve-version.sh)"; fi && \
     DATE_VALUE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)REDACTED" && \
     CGO_ENABLED=0 GOOS=linux go build \
     -tags embed \
