@@ -463,7 +463,7 @@ REDACTED
 
 	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "stream").Exists())
-	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "gpt-5.1-codex", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "compact me", gjson.GetBytes(upstream.lastBody, "input.0.text").String())
 	require.Equal(t, "local-test-instructions", strings.TrimSpace(gjson.GetBytes(upstream.lastBody, "instructions").String()))
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Accept"))
