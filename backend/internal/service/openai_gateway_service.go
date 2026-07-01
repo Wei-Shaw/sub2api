@@ -3730,6 +3730,16 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
 	s.overrideBrowserUserAgent(ctx, account, req)
 
+	// TLS 路由器命中且规则给了 UA/Originator 时以其覆盖(优先级最高,使出站 UA 与所选指纹一致)。
+	if m := s.matchTLSFingerprintRouter(c, account); m.Matched {
+		if m.UpstreamUserAgent != "" {
+			req.Header.Set("user-agent", m.UpstreamUserAgent)
+		}
+		if m.UpstreamOriginator != "" {
+			req.Header.Set("originator", m.UpstreamOriginator)
+		}
+	}
+
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
 	}
@@ -4511,6 +4521,16 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// 浏览器型 UA 兜底：仅 OAuth（ChatGPT 内部接口）账号生效，若最终 user-agent 仍为浏览器
 	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
 	s.overrideBrowserUserAgent(ctx, account, req)
+
+	// TLS 路由器命中且规则给了 UA/Originator 时以其覆盖(优先级最高,使出站 UA 与所选指纹一致)。
+	if m := s.matchTLSFingerprintRouter(c, account); m.Matched {
+		if m.UpstreamUserAgent != "" {
+			req.Header.Set("user-agent", m.UpstreamUserAgent)
+		}
+		if m.UpstreamOriginator != "" {
+			req.Header.Set("originator", m.UpstreamOriginator)
+		}
+	}
 
 	// Ensure required headers exist
 	if req.Header.Get("content-type") == "" {

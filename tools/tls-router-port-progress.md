@@ -16,7 +16,7 @@
 | D | repository(router repo + cache) | ✅ 完成 | `0e5c588d` | gofmt✅ build✅ vet✅ svc-test✅ | 含 router service(接口与 repo 互依,合并提交);6 子测全绿 |
 | E | service(router + collector)+ config | ✅ 完成 | `0e5c588d`+`3161a1df` | gofmt✅ build✅ vet✅ svc-test✅ | router svc 随 D;本提交:collector+config+profile 编辑+wire providers。变参 provider/wire.Bind 推迟到 G(依赖 gateway/OAuth) |
 | F | handler + 路由 + wire | ✅ 完成 | `8f57d2c6` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | wire 重生成成功;cmd/server wire_gen_test 通过 |
-| G | OpenAI HTTP 集成 | 🟡 G1+G3+native-TLS done;余 G4 UA/G5 | `21e18825`+`dedb31e6`+`727f3bb7` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | Blocker #2 已解(native OpenAI 补 DoWithTLS);余 G4 UA/Originator 改写 + G5 OAuth |
+| G | OpenAI HTTP 集成 | 🟡 G1+G3+native-TLS+G4 done;余 G5 | `21e18825`+`dedb31e6`+`727f3bb7`+`ae324f7a` | gofmt✅ build✅ vet✅ test✅ | HTTP 全路径路由感知 TLS + UA/Originator 改写完成;仅剩 G5 OAuth token 路径 |
 | H | OpenAI WS 集成 | ⬜ 未开始 | — | — | 硬骨头;连接池 key 须含指纹 |
 | I | cmd/server 优雅关闭 | ⬜ 未开始 | — | — | |
 | J | 代码生成 + 编译 | ⬜ 未开始 | — | — | |
@@ -274,6 +274,15 @@
 - 命令与结果(容器内):`go generate ./cmd/server` OK(go.mod/go.sum **未污染**;wire_gen `v...`);`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./internal/service/... ./internal/handler/...` → **VET_OK**;`go test ./internal/service/ -run "OpenAI|TLSFingerprint|Gateway|Forward|RecordUsage"` → **ok 37s**;`go test ./internal/handler/ -run "OpenAI|Images|Gateway"` → **ok**。
 - commit:`727f3bb7`
 - 遗留/风险:native OpenAI 出站现按 router/账号解析 TLS profile(向后兼容:router_id=0/无 service → resolveOpenAITLSProfile 回落 ResolveTLSProfile,OpenAI APIKey 账号 IsTLSFingerprintEnabled=false → nil,行为同现状)。**G4 UA/Originator 改写未做**(下一步);出站指纹/JA3 属【运行时·人工】。
+
+### Phase G4 — OpenAI UA/Originator 改写 — ✅ 完成(2026-07-01)
+
+- 改动文件:`internal/service/openai_gateway_service.go`(仅此一处,无签名/wire/测试改动)。
+  - `buildUpstreamRequest`(native)与 `buildUpstreamRequestOpenAIPassthrough`(透传):在各自 UA/originator 逻辑末尾(`overrideBrowserUserAgent` 之后、content-type 兜底之前)加:`if m := s.matchTLSFingerprintRouter(c, account); m.Matched { m.UpstreamUserAgent!=""→set user-agent; m.UpstreamOriginator!=""→set originator }`。
+- 设计选择:采**方案 G4 的就地 match + 最小内联覆盖**(非 TR 的 `applyOpenAIUpstreamUserAgent`/`resolveOpenAIUpstreamOriginator` 大重构,避免带入 codex policy 纠缠)。放最末=命中且规则给值时**优先级最高**(压过账号自定义 UA / ForceCodexCLI / resolveOpenAIUpstreamOriginator / 浏览器兜底),确保出站 UA 与所选 TLS 指纹一致;规则未给值(空)则完全不动既有逻辑(向后兼容)。match 与 TLS 解析读同一 UA header + 同一缓存 router,结果一致。
+- 命令与结果(容器内):`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./internal/service/...` → **VET_OK**;`go test ./internal/service/ -run "OpenAI|TLSFingerprint|Gateway|Forward"` → **ok 37.9s**。
+- commit:`ae324f7a`
+- 遗留/风险:仅剩 G5(OAuth token 路径,需新建接口,见 Blocker #2 第 7 点)。UA/指纹一致性属【运行时·人工】抓包复核。
 
 ## 阶段性总结 / 续作指南(2026-07-01 无人值守批次)
 
