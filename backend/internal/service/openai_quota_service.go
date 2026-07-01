@@ -1,16 +1,21 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/model"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
 
 // Endpoints used by the OpenAI/ChatGPT/Codex quota query and reset feature.
@@ -23,6 +28,8 @@ const (
 	openaiQuotaSecFetchSite     = "none"
 	openaiQuotaSecFetchMode     = "no-cors"
 	openaiQuotaSecFetchDest     = "empty"
+	// openaiQuotaDefaultUserAgent：配额查询/重置走 Codex Desktop 后台接口的兜底 UA（与 TokenRouter 一致）。
+	openaiQuotaDefaultUserAgent = "Codex Desktop/0.0.0 (Linux; x86_64)"
 )
 
 // OpenAIRateLimitWindow describes a single rate-limit window returned by
@@ -92,13 +99,16 @@ type OpenAIQuotaResetResult struct {
 }
 
 // OpenAIQuotaService queries and consumes ChatGPT/Codex rate-limit reset credits
-// for OpenAI OAuth accounts. It reuses the privacy client factory so all calls
-// flow through the impersonated HTTP client (Cloudflare-friendly TLS fingerprint).
+// for OpenAI OAuth accounts. Upstream calls go through httpUpstream.DoWithTLS so
+// the account/router-selected TLS fingerprint (and matching Codex Desktop UA) is
+// applied — same as the main gateway path.
 type OpenAIQuotaService struct {
-	accountRepo          AccountRepository
-	proxyRepo            ProxyRepository
-	tokenProvider        *OpenAITokenProvider
-	privacyClientFactory PrivacyClientFactory
+	accountRepo         AccountRepository
+	proxyRepo           ProxyRepository
+	tokenProvider       *OpenAITokenProvider
+	httpUpstream        HTTPUpstream
+	tlsFPRouterReader   OpenAIOAuthTokenRouterReader
+	tlsFPProfileService *TLSFingerprintProfileService
 }
 
 // NewOpenAIQuotaService constructs a quota service. token provider is required —
@@ -108,13 +118,17 @@ func NewOpenAIQuotaService(
 	accountRepo AccountRepository,
 	proxyRepo ProxyRepository,
 	tokenProvider *OpenAITokenProvider,
-	privacyClientFactory PrivacyClientFactory,
+	httpUpstream HTTPUpstream,
+	tlsFPRouterReader OpenAIOAuthTokenRouterReader,
+	tlsFPProfileService *TLSFingerprintProfileService,
 ) *OpenAIQuotaService {
 	return &OpenAIQuotaService{
-		accountRepo:          accountRepo,
-		proxyRepo:            proxyRepo,
-		tokenProvider:        tokenProvider,
-		privacyClientFactory: privacyClientFactory,
+		accountRepo:         accountRepo,
+		proxyRepo:           proxyRepo,
+		tokenProvider:       tokenProvider,
+		httpUpstream:        httpUpstream,
+		tlsFPRouterReader:   tlsFPRouterReader,
+		tlsFPProfileService: tlsFPProfileService,
 	}
 }
 
@@ -122,35 +136,36 @@ func NewOpenAIQuotaService(
 // OAuth account. Returns infraerrors so the handler layer can map them to
 // stable error codes / HTTP statuses.
 func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
-	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
+	accessToken, chatGPTAccountID, proxyURL, fedRAMP, account, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := s.privacyClientFactory(proxyURL)
-	if err != nil {
-		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_CLIENT_ERROR", "failed to build upstream client: %v", err)
-	}
+	router := s.resolveRuntimeRouter(account)
 
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
 
-	var payload OpenAIQuotaUsage
-	resp, err := client.R().
-		SetContext(callCtx).
-		SetHeaders(buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)).
-		SetSuccessResult(&payload).
-		Get(chatGPTUsageURL)
+	req, err := http.NewRequestWithContext(callCtx, http.MethodGet, chatGPTUsageURL, nil)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_QUOTA_REQUEST_BUILD_FAILED", "failed to build request: %v", err)
+	}
+	applyQuotaHeaders(req, buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP), s.resolveQuotaUserAgent(router))
+
+	body, status, err := s.doQuotaRequest(req, proxyURL, account, s.resolveQuotaTLSProfile(account, router))
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_REQUEST_FAILED", "upstream request failed: %v", err)
 	}
-	if !resp.IsSuccessState() {
-		status := resp.StatusCode
-		body := truncate(resp.String(), 240)
-		slog.Warn("openai_quota_query_failed", "account_id", accountID, "status", status, "body", body)
-		return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
+	if status < 200 || status >= 300 {
+		snippet := truncate(string(body), 240)
+		slog.Warn("openai_quota_query_failed", "account_id", accountID, "status", status, "body", snippet)
+		return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_UPSTREAM_ERROR", "upstream returned %d: %s", status, snippet)
 	}
 
+	var payload OpenAIQuotaUsage
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_DECODE_FAILED", "failed to decode upstream response: %v", err)
+	}
 	payload.FetchedAt = time.Now().Unix()
 	return &payload, nil
 }
@@ -159,7 +174,7 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 // The redeem_request_id is auto-generated (uuid-like) — upstream uses it for
 // idempotency. Returns the consumed credit metadata so the UI can refresh.
 func (s *OpenAIQuotaService) ResetCredit(ctx context.Context, accountID int64) (*OpenAIQuotaResetResult, error) {
-	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
+	accessToken, chatGPTAccountID, proxyURL, fedRAMP, account, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -169,34 +184,37 @@ func (s *OpenAIQuotaService) ResetCredit(ctx context.Context, accountID int64) (
 		return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_QUOTA_REDEEM_ID_FAILED", "failed to generate redeem id: %v", err)
 	}
 
-	client, err := s.privacyClientFactory(proxyURL)
-	if err != nil {
-		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_CLIENT_ERROR", "failed to build upstream client: %v", err)
-	}
+	router := s.resolveRuntimeRouter(account)
 
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
 
+	reqBody, err := json.Marshal(map[string]string{"redeem_request_id": redeemRequestID})
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_QUOTA_REQUEST_BUILD_FAILED", "failed to build request body: %v", err)
+	}
+	req, err := http.NewRequestWithContext(callCtx, http.MethodPost, chatGPTRateLimitResetURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_QUOTA_REQUEST_BUILD_FAILED", "failed to build request: %v", err)
+	}
 	headers := buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)
 	headers["content-type"] = "application/json"
+	applyQuotaHeaders(req, headers, s.resolveQuotaUserAgent(router))
 
-	var payload OpenAIQuotaResetResult
-	resp, err := client.R().
-		SetContext(callCtx).
-		SetHeaders(headers).
-		SetBody(map[string]string{"redeem_request_id": redeemRequestID}).
-		SetSuccessResult(&payload).
-		Post(chatGPTRateLimitResetURL)
+	body, status, err := s.doQuotaRequest(req, proxyURL, account, s.resolveQuotaTLSProfile(account, router))
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_RESET_REQUEST_FAILED", "upstream request failed: %v", err)
 	}
-	if !resp.IsSuccessState() {
-		status := resp.StatusCode
-		body := truncate(resp.String(), 240)
-		slog.Warn("openai_quota_reset_failed", "account_id", accountID, "status", status, "body", body)
-		return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_RESET_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
+	if status < 200 || status >= 300 {
+		snippet := truncate(string(body), 240)
+		slog.Warn("openai_quota_reset_failed", "account_id", accountID, "status", status, "body", snippet)
+		return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_RESET_UPSTREAM_ERROR", "upstream returned %d: %s", status, snippet)
 	}
 
+	var payload OpenAIQuotaResetResult
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_DECODE_FAILED", "failed to decode upstream response: %v", err)
+	}
 	slog.Info("openai_quota_reset_success",
 		"account_id", accountID,
 		"code", payload.Code,
@@ -208,23 +226,23 @@ func (s *OpenAIQuotaService) ResetCredit(ctx context.Context, accountID int64) (
 // prepareUpstreamCall loads the account, validates it, obtains a fresh access
 // token via the shared TokenProvider, and resolves the chatgpt-account-id and
 // proxy URL. Centralized so QueryUsage / ResetCredit share validation.
-func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID int64) (accessToken, chatGPTAccountID, proxyURL string, fedRAMP bool, err error) {
-	if s == nil || s.accountRepo == nil || s.tokenProvider == nil || s.privacyClientFactory == nil {
-		return "", "", "", false, infraerrors.New(http.StatusInternalServerError, "OPENAI_QUOTA_NOT_CONFIGURED", "openai quota service is not configured")
+func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID int64) (accessToken, chatGPTAccountID, proxyURL string, fedRAMP bool, account *Account, err error) {
+	if s == nil || s.accountRepo == nil || s.tokenProvider == nil || s.httpUpstream == nil {
+		return "", "", "", false, nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_QUOTA_NOT_CONFIGURED", "openai quota service is not configured")
 	}
 
-	account, err := s.accountRepo.GetByID(ctx, accountID)
+	account, err = s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
-		return "", "", "", false, infraerrors.Newf(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found: %v", err)
+		return "", "", "", false, nil, infraerrors.Newf(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found: %v", err)
 	}
 	if account == nil {
-		return "", "", "", false, infraerrors.New(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found")
+		return "", "", "", false, nil, infraerrors.New(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found")
 	}
 	if account.Platform != PlatformOpenAI {
-		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_PLATFORM", "account is not an OpenAI account")
+		return "", "", "", false, nil, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_PLATFORM", "account is not an OpenAI account")
 	}
 	if account.Type != AccountTypeOAuth {
-		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_TYPE", "account is not an OAuth account")
+		return "", "", "", false, nil, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_TYPE", "account is not an OAuth account")
 	}
 
 	chatGPTAccountID = strings.TrimSpace(account.GetCredential("chatgpt_account_id"))
@@ -233,15 +251,15 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 		chatGPTAccountID = strings.TrimSpace(account.GetCredential("organization_id"))
 	}
 	if chatGPTAccountID == "" {
-		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_MISSING_ACCOUNT_ID", "chatgpt_account_id is missing; please re-authorize this account")
+		return "", "", "", false, nil, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_MISSING_ACCOUNT_ID", "chatgpt_account_id is missing; please re-authorize this account")
 	}
 
 	accessToken, err = s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
-		return "", "", "", false, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
+		return "", "", "", false, nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
 	}
 	if strings.TrimSpace(accessToken) == "" {
-		return "", "", "", false, infraerrors.New(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "access token is empty")
+		return "", "", "", false, nil, infraerrors.New(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "access token is empty")
 	}
 	fedRAMP = account.IsChatGPTAccountFedRAMP()
 
@@ -261,7 +279,73 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 		}
 	}
 
-	return accessToken, chatGPTAccountID, proxyURL, fedRAMP, nil
+	return accessToken, chatGPTAccountID, proxyURL, fedRAMP, account, nil
+}
+
+// resolveRuntimeRouter loads the enabled TLS Router bound to the account (0 → nil).
+func (s *OpenAIQuotaService) resolveRuntimeRouter(account *Account) *model.TLSFingerprintRouter {
+	if s == nil || account == nil || s.tlsFPRouterReader == nil {
+		return nil
+	}
+	router := s.tlsFPRouterReader.GetRuntimeRouter(account.GetTLSFingerprintRouterID())
+	if router == nil || !router.Enabled {
+		return nil
+	}
+	return router
+}
+
+// resolveQuotaTLSProfile picks the TLS fingerprint for the quota request. The
+// quota query/reset hits chatgpt.com's Codex Desktop backend, so it reuses the
+// router's Codex-invite-reset profile slot (matching TokenRouter) and falls back
+// to the account's own profile.
+func (s *OpenAIQuotaService) resolveQuotaTLSProfile(account *Account, router *model.TLSFingerprintRouter) *tlsfingerprint.Profile {
+	if s == nil || s.tlsFPProfileService == nil {
+		return nil
+	}
+	if router != nil && router.CodexInviteResetTLSFingerprintProfileID != nil {
+		if profile, ok := s.tlsFPProfileService.ResolveTokenTLSProfileByID(*router.CodexInviteResetTLSFingerprintProfileID); ok {
+			return profile
+		}
+	}
+	return s.tlsFPProfileService.ResolveTLSProfile(account)
+}
+
+// resolveQuotaUserAgent reuses the router's Codex-invite-reset UA (same Codex
+// Desktop backend), falling back to a Codex Desktop default.
+func (s *OpenAIQuotaService) resolveQuotaUserAgent(router *model.TLSFingerprintRouter) string {
+	if router != nil {
+		if ua := strings.TrimSpace(router.CodexInviteResetUserAgent); ua != "" {
+			return ua
+		}
+	}
+	return openaiQuotaDefaultUserAgent
+}
+
+// doQuotaRequest sends the request via httpUpstream.DoWithTLS (applying the
+// resolved TLS fingerprint) and returns the raw body + status code.
+func (s *OpenAIQuotaService) doQuotaRequest(req *http.Request, proxyURL string, account *Account, profile *tlsfingerprint.Profile) ([]byte, int, error) {
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, profile)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, err
+	}
+	return body, resp.StatusCode, nil
+}
+
+// applyQuotaHeaders sets the common Codex headers plus the User-Agent so it stays
+// consistent with the selected TLS fingerprint.
+func applyQuotaHeaders(req *http.Request, headers map[string]string, userAgent string) {
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	if ua := strings.TrimSpace(userAgent); ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
 }
 
 // buildCodexCommonHeaders sets the request headers expected by the chatgpt.com

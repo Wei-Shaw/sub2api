@@ -118,15 +118,18 @@ func ProvideOpenAITokenProvider(
 }
 
 // ProvideOpenAIQuotaService wires the OpenAI quota query/reset service.
-// It depends on the OpenAI token provider for refreshed access tokens and the
-// privacy client factory for the impersonated upstream HTTP client.
+// It depends on the OpenAI token provider for refreshed access tokens and on
+// httpUpstream + the TLS Router/profile services so quota calls carry the
+// account/router-selected TLS fingerprint (DoWithTLS).
 func ProvideOpenAIQuotaService(
 	accountRepo AccountRepository,
 	proxyRepo ProxyRepository,
 	tokenProvider *OpenAITokenProvider,
-	privacyClientFactory PrivacyClientFactory,
+	httpUpstream HTTPUpstream,
+	tlsRouterService *TLSFingerprintRouterService,
+	tlsProfileService *TLSFingerprintProfileService,
 ) *OpenAIQuotaService {
-	return NewOpenAIQuotaService(accountRepo, proxyRepo, tokenProvider, privacyClientFactory)
+	return NewOpenAIQuotaService(accountRepo, proxyRepo, tokenProvider, httpUpstream, tlsRouterService, tlsProfileService)
 }
 
 func ProvideGrokQuotaService(
