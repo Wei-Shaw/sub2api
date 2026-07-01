@@ -232,7 +232,7 @@ REDACTED
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyChat = service.CyberSessionBlockKey(apiKey.ID, c, body)
 	REDACTED
-		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyChat, channelMapping.ToUsageFields(reqModel, ""), service.HashUsageRequestPayload(body))
+		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyChat, clientRequestedUsageFields(c, channelMapping, reqModel, ""), service.HashUsageRequestPayload(body))
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
@@ -355,7 +355,7 @@ REDACTED
 				IPAddress:          clientIP,
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
-				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 				CyberBlocked:       cyberBlocked,
 		REDACTED); err != nil {
 				logger.L().With(

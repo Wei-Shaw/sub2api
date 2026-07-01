@@ -23,6 +23,21 @@ func contentModerationErrorCode(decision *service.ContentModerationDecision) str
 	return "content_policy_violation"
 REDACTED
 
+func clientRequestedModel(c *gin.Context, fallback string) string {
+	fallback = strings.TrimSpace(fallback)
+	if c == nil || c.Request == nil {
+		return fallback
+REDACTED
+	if model, ok := service.RequestedPublicModelFromContext(c.Request.Context()); ok {
+		return model
+REDACTED
+	return fallback
+REDACTED
+
+func clientRequestedUsageFields(c *gin.Context, mapping service.ChannelMappingResult, fallbackModel, upstreamModel string) service.ChannelUsageFields {
+	return mapping.ToUsageFields(clientRequestedModel(c, fallbackModel), upstreamModel)
+REDACTED
+
 func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
 	if svc == nil || c == nil || c.Request == nil {
 		return nil
@@ -71,9 +86,12 @@ func buildContentModerationInput(c *gin.Context, apiKey *service.APIKey, subject
 		UserID:    subject.UserID,
 		Endpoint:  GetInboundEndpoint(c),
 		Provider:  contentModerationProvider(apiKey),
-		Model:     strings.TrimSpace(model),
+		Model:     clientRequestedModel(c, model),
 		Protocol:  protocol,
 		Body:      body,
+REDACTED
+	if resolvedPlatform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context()); ok {
+		input.Provider = resolvedPlatform
 REDACTED
 	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok {
 		input.Provider = strings.TrimSpace(forcedPlatform)

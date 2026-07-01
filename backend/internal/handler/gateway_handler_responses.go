@@ -290,7 +290,7 @@ REDACTED
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
-				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 		REDACTED); err != nil {
 				reqLog.Error("gateway.responses.record_usage_failed",
 					zap.Int64("account_id", account.ID),

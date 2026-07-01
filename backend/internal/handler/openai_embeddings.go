@@ -257,7 +257,7 @@ REDACTED
 				IPAddress:          clientIP,
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
-				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.embeddings"),

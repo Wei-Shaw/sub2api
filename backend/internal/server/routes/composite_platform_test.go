@@ -1,8 +1,10 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -124,6 +126,67 @@ REDACTED)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"openrouter/gpt-5","messages":[]REDACTED`))
 	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+REDACTED
+
+func TestCompositeTargetPlatformMiddlewareUsesExplicitRouteForMultipartImages(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	resolver := service.NewCompositeRouteResolver(compositeRouteRepoStub{
+		routes: []service.CompositeModelRoute{
+			{
+				ID:             1,
+				GroupID:        1,
+				PublicModel:    "image-alias",
+				MatchType:      service.CompositeRouteMatchExact,
+				TargetPlatform: service.PlatformOpenAI,
+				UpstreamModel:  "gpt-image-1",
+				Endpoint:       service.CompositeRouteEndpointImages,
+				Priority:       100,
+				Enabled:        true,
+		REDACTED,
+	REDACTED,
+REDACTED)
+	router.Use(gin.HandlerFunc(servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+		groupID := int64(1)
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+			GroupID: &groupID,
+			Group:   &service.Group{ID: groupID, Platform: service.PlatformCompositeREDACTED,
+	REDACTED)
+		c.Next()
+REDACTED)))
+	router.Use(compositeTargetPlatformMiddleware(resolver))
+	router.POST("/v1/images/edits", func(c *gin.Context) {
+		platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, service.PlatformOpenAI, platform)
+
+		upstreamModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, "gpt-image-1", upstreamModel)
+
+		publicModel, ok := service.RequestedPublicModelFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, "image-alias", publicModel)
+
+		body, err := io.ReadAll(c.Request.Body)
+	REDACTED
+		require.Contains(t, string(body), "image-alias")
+		c.Status(http.StatusNoContent)
+REDACTED)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", "image-alias"))
+	require.NoError(t, writer.WriteField("prompt", "draw"))
+	require.NoError(t, writer.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
