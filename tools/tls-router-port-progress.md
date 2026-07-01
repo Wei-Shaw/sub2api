@@ -524,16 +524,16 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 
 ### B. 有意跳过(已记录,scope 决策,非遗漏 —— 除非明确要,否则勿动)
 - **profile 列表行「Copy as YAML」按钮** + `buildProfileYaml`/`handleCopyYaml`/`formatYaml*`(TR ProfilesModal:298-306, :998):K part3 有意跳过(采集面板内复制 YAML 仍在)。
-- **codex_invite_reset**:方案 §139 明确跳过 —— fork 无 `codex_invite_reset_service.go`;schema 有 2 预留列、前端 RoutersModal 有预留槽,但**后端无消费者**(能存不生效)。**勿为它新建服务/臆造调用**。
+- **codex_invite_reset** — ⏸️ **用户拍板暂不搬(2026-07-01)**:它是 TR 的独立业务(679 行 service + handler + 3 端点 status/invite/consume 打 chatgpt.com backend-api),**不是 TLS 路由器核心**;TLS 路由器只给它留了指纹槽,而"接槽"物理上长在该 service 上、装饰其自身请求,**无法与功能分离**(fork 无这些请求→槽无处可贴)。故二选一:搬整功能 or 保持现状。用户选**保持现状**——fork 无 `codex_invite_reset_service.go`;schema 2 预留列 + 前端 RoutersModal 预留槽仍在(能存不生效)。**注**:quota 改造(见 C 档)已复用这 2 列(codex_invite_reset UA/profile)作配额出站指纹,故这两列现在对 quota **有效**(对 invite-reset 仍不生效,因功能未搬)。**勿为它新建服务/臆造调用。**
 
 ### C. 架构差异(fork 既有,非 port 漏搬,勿在本 port 强改)
-- **`openai_quota_service.go`**:TR 走 `httpUpstream.DoWithTLS`(带指纹),fork 走 `privacyClientFactory`+resty(无指纹)。fork 既有隐私客户端架构不同 → 配额查询/重置出站不带指纹。改动大且触及 fork 独有架构,**留人工评估,勿臆改**。
+- **`openai_quota_service.go`** — ✅ **已完成(2026-07-01,用户拍板 faithful TR;commit `a175ab4c`)**:配额查询/重置出站从 `privacyClientFactory`(resty 通用伪装)改成 `httpUpstream.DoWithTLS(账号/router 解析的 profile)`+ Codex Desktop UA(复用 router 的 codex_invite_reset UA/profile 槽,回落账号 `ResolveTLSProfile`),与主网关路径一致。**注意(待人工)**:账号无 router 且未启用 TLS → profile=nil → DoWithTLS 回落 plain `Do`(丢原通用伪装),配额打 chatgpt.com 可能被 Cloudflare 拦(与 TR 及主网关同行为);建议给这类账号配 router codex 槽或账号 profile。
 - **`openai_embeddings.go` 裸 `Do`**:TR 也裸 `Do`,两边**一致**(非未对齐,勿改)。
 
 ### D. 琐碎(可顺手,零/低风险)
 - ✅ **已补(收尾批次 `8c3d8280`)**:账号表单 i18n `routerHint`(en/zh,照抄 TR)+ Create/Edit 模板 `<p class="input-hint">` 提示元素(K part2 只加了下拉未加提示,fork 无组件引用该键 → 连模板一并补,避免挂空键)。
 - ✅ **已补(收尾批次 `8c3d8280`)**:`src/api/admin/index.ts` 聚合再导出 3 个采集器类型(`TLSFingerprintCollectorStatus/CollectorSession/CaptureRecord`)。
-- ⬜ **未做(可选)**:测试——缺 `tls_fingerprint_profile_service_test.go`(TR 有);`resolveChatGPTOAuthTokenRequestOptions` 无直接单测。非功能项,留可选。
+- ✅ **已补(2026-07-01,commit `95e34cc9`)**:测试——`tls_fingerprint_profile_service_test.go`(照抄 TR,2 测:ResolveTLSProfile OpenAI OAuth/APIKey + gateway resolveOpenAITLSProfile router 命中/回退)+ `openai_oauth_token_options_test.go`(`resolveChatGPTOAuthTokenRequestOptions` 表驱动 7 例 + 2 stub)。容器 gofmt/vet/test 全绿。
 
 ---
 
@@ -580,3 +580,29 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 - **仍待人工验证(运行时,静态不可证)**:OAuth 换 token / 手动 RT 导入 / 重新授权的出站 **JA3 指纹 + 专用 UA**(经 exchange-code / refresh-token 端点,按所选/账号绑定 router 的 ChatGPTOAuthTokenUserAgent + ChatGPTOAuthTokenTLSFingerprintProfileID);前端点测(建号/编辑/重新授权下拉与 routerHint 显示);账号 DTO 回显 tls_fingerprint_router_id。
 - 未对齐清单剩余(有意不做):**A2**(评估暂缓,见上);**B 档**(Copy YAML / codex_invite_reset,有意跳过);**C 档**(openai_quota_service / embeddings 架构差异,勿改);**D 档测试**补充(可选)。
 - **结论**:「未对齐清单」中唯一有实际功能意义的 A1 已前后端补齐并静态全绿;D 琐碎项已补;A2 评估暂缓待人工;B/C 档有意保留。TLS 指纹路由器移植的**功能对齐至此完成**。
+
+---
+
+## 第二轮收尾(2026-07-01):用户要求"对齐 TR 核心功能,不因体量大而跳过" → A2 + quota + D + codex 决策
+
+> 用户纠正了"差异大就不做"的思路,要求逐项按"是不是 TLS 路由器核心功能"重判。据此:A2 做了(见上,`f8a81017`);quota、D 做了(下);codex_invite_reset 查清是独立功能、用户拍板暂不搬。
+
+### C① quota 出站带 TLS 指纹 — ✅ 完成 — commit `a175ab4c`
+- 前置实证(TR 参照):TR quota 用 `httpUpstream.DoWithTLS`,且**复用 router 的 codex_invite_reset UA/profile 槽**(注释"限流重置走 Codex Desktop 后台接口,复用邀请重置专用 UA")回落 `ResolveTLSProfile(account)`。fork model 已有这 2 列(Phase B),故可 faithful 复用而无需搬 codex 功能。fork 无 `openai_quota_service_test.go`(无测试调用方);`httpUpstream`/`TLSFingerprintRouterService`/`TLSFingerprintProfileService` wire 处均就绪;`WithHTTPUpstreamProfile(OpenAI)` 是 DoWithTLS 调用方统一模式。
+- 改动(`openai_quota_service.go` + `wire.go` + 重生成 `wire_gen.go`):struct/constructor 把 `privacyClientFactory` 换成 `httpUpstream`+`tlsFPRouterReader`+`tlsFPProfileService`;`prepareUpstreamCall` 多返回 `*Account`;`QueryUsage`/`ResetCredit` resty→`http.NewRequestWithContext`+`DoWithTLS`+`json.Unmarshal`(**保留 fork 单 POST reset 语义,不引 TR 的 pick-credit 流程**);新增 `resolveRuntimeRouter`/`resolveQuotaTLSProfile`(codex 槽→账号回退)/`resolveQuotaUserAgent`/`doQuotaRequest`(`WithHTTPUpstreamProfile`+DoWithTLS+读 body)/`applyQuotaHeaders`;`ProvideOpenAIQuotaService` 换参(concrete `*TLSFingerprintRouterService` 满足 `OpenAIOAuthTokenRouterReader` 接口,免 wire.Bind)。
+- 命令与结果(容器):gofmt 空;`go build ./...` BUILD_OK;`go vet` VET_OK;`go test`(service/handler/admin/dto/cmd)全绿;go.mod/go.sum **未污染**。
+- **待人工(运行时)**:配额出站 JA3 抓包;**尤其**账号无 router 且未启用 TLS 时 profile=nil → DoWithTLS 回落 plain `Do`(丢原 privacy client 通用伪装)→ chatgpt.com 可能被 Cloudflare 拦(与 TR 及主网关同行为)。建议这类账号配 router codex 槽或账号 profile。
+
+### B① codex_invite_reset — ⏸️ 用户拍板暂不搬(2026-07-01)
+- 查清:TR `codex_invite_reset_service.go`(679 行)+ handler(85 行)+ 3 端点(`/accounts/:id/codex/invite-reset/{status,invite,consume}`)打 chatgpt.com backend-api(`/referrals/invite/eligibility`、`/wham/rate-limit-reset-credits`、`/wham/referrals/invite`、`.../consume`)。是**独立 Codex 业务**,TLS 路由器只给它留指纹槽;"接槽"是长在该 service 上的 3 个 resolver 方法、装饰其自身请求 → 与功能不可分离(fork 无这些请求)。故要么搬整功能、要么保持现状。
+- 决策:用户选**保持现状**。fork 不新建该 service;router 2 预留列 + 前端预留槽保留(对 invite-reset 不生效,但现已被 quota 复用生效)。
+
+### D 测试 — ✅ 完成 — commit `95e34cc9`
+- `tls_fingerprint_profile_service_test.go`(照抄 TR,swap import path):ResolveTLSProfile(OpenAI OAuth 返内置默认 / API Key 返 nil)+ `OpenAIGatewayService.resolveOpenAITLSProfile`(router 命中优先 / 目标不可用回退账号固定模板)。
+- `openai_oauth_token_options_test.go`:`resolveChatGPTOAuthTokenRequestOptions` 表驱动 7 例(routerID<=0 / router 未找到 / 未启用 / 无UA无profile / 仅UA / 仅profile / UA+profile+account)+ 2 stub(router reader / profile resolver)。
+- 容器 gofmt/vet/test 全绿。
+
+### 第二轮收尾状态
+- **与 TR 未对齐清单现状**:A1 ✅ / A2 ✅ / C① quota ✅ / D 测试 ✅ / B② Copy-YAML 有意留 / **B① codex_invite_reset 用户拍板暂不搬** / C② embeddings 假差异(两边一致)。**功能性缺口已清零**(除用户明确不搬的 codex_invite_reset 独立功能)。
+- 工作树:干净。第二轮 commit:A2 `f8a81017` + 账本 `b75d620c` + quota `a175ab4c` + D 测试 `95e34cc9`(+ 本账本)。
+- **待人工验证(运行时,静态不可证)**:① A1 OAuth 换 token/RT 导入/重新授权出站 JA3+UA;② A2 批量设 TLS 后账号 extra 生效 + 前端点测;③ **quota 出站 JA3(尤其无 profile 回落 plain Do 的 Cloudflare 风险)**;④ 迁移 158 生产库;⑤ 各前端 UI 点测。
