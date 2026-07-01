@@ -376,15 +376,17 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 **最新状态(2026-07-01 批次收尾)——已完成并验证(静态全绿 + 已 commit)**:
 - Phase 0/A/B/**C(+ephemeral PG 幂等)**/D/E/F 全部 ✅。
 - **Phase G 主路径全部 ✅**:G1(getters)+G3(GatewayService 解析,`dedb31e6`)+**native-OpenAI TLS**(解 Blocker #2,`d9c213ec`)+**G4 UA/Originator**(`577d4e88`)。即 **OpenAI HTTP 三类路径(Anthropic 原生 / Anthropic→OpenAI 转换转发 / native OpenAI)全部路由感知 TLS + UA 改写**。
+- **Phase H ✅(静态)**(`1c9dfae5`,WS 集成:连接池按指纹隔离防串号;串号/JA3 留人工抓包)。
 - **Phase I ✅**(`dc6896ff`,采集器优雅关闭)。
 - **Phase J ✅**(全量 generate 无 drift + build/vet 绿)。
-- 每 commit 容器内 gofmt+build+vet+相关 test(及 ent/wire 处 generate)全绿;**新增单测**:tlsfingerprint(3)、router service(6)、collector(4),均 PASS;OpenAI/gateway/handler 既有测试全过。
+- 每 commit 容器内 gofmt+build+vet+相关 test(及 ent/wire 处 generate)全绿;**新增单测**:tlsfingerprint(3)、router service(6)、collector(4),均 PASS;OpenAI/gateway/handler/WS 既有测试全过。
+
+**后端全部完成**(G1-G4 HTTP 三路径 + H WS + 采集器 + I 优雅关闭 + 迁移/schema/repo/service/handler/wire)。
 
 **未完成(均已记录精确续作清单)**:
-- **G5**(OAuth token UA/profile,次要路径)— ⏸️ 推迟(需改 OpenAIOAuthClient HTTP 层,fork 与 TR 异构;见上「Phase G5」)。
-- **H**(WS 集成)— ⏸️ 记录待续(最高风险,连接池 key 防串号,须整体做 + 人工抓包;见上「Phase H」完整 TR 改动清单)。
-- **K**(前端)— ⏸️ 记录待续(大件 + 需前端工具链;见上「Phase K」文件清单;后端 API 已就绪可直接对接)。
+- **K**(前端)— ⏸️ 记录待续(大件 ~880 行弹窗 + API + i18n + 需前端工具链;见上「Phase K」文件清单;**后端 API 已全部就绪可直接对接**)。
+- **G5**(OAuth token UA/profile,次要路径)— ⏸️ 推迟(需改 OpenAIOAuthClient HTTP 层,fork 与 TR 异构;见上「Phase G5」)。非主路径,可后补。
 
-**待人工验证(运行时,方案 §5)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端;**HTTP 抓包 JA3(含 native OpenAI 路径 + UA/指纹一致)**;WS 抓包 + 不串号(H 做完后);未命中回落;采集器抓取;OAuth 换 token(G5 做完后)。
+**待人工验证(运行时,方案 §5)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端;**HTTP 抓包 JA3(含 native OpenAI 路径 + UA/指纹一致)**;**WS 抓包 + 不同指纹不串号**;未命中回落;采集器抓取;OAuth 换 token(G5 做完后)。
 
-**如何续作**:工作树干净,**16 个 commit 各自 build 绿**,可从任一处安全接续。优先级建议:H(WS,主路径,高价值高风险,专门批次)> K(前端,让管理员能 UI 配置)> G5(次要)。各自续作清单见对应 Phase 记录 / Blocker #2。
+**如何续作**:工作树干净,所有 commit 各自 build 绿,可从任一处安全接续。**后端已全部完成(HTTP + WS + 采集器)**。剩余优先级:K(前端,让管理员能 UI 配置,后端 API 已就绪)> G5(次要 OAuth token 路径)。续作清单见 Phase K / Phase G5 记录。
