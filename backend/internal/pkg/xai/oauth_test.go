@@ -213,4 +213,7 @@ func TestDefaultModelMappingIncludesGrokAliases(t *testing.T) {
 	require.Equal(t, "grok-4.20-0309-reasoning", mapping["grok-4.20-reasoning"])
 	require.Equal(t, "grok-4.20-0309-non-reasoning", mapping["grok-4.20-non-reasoning"])
 	require.Equal(t, "grok-4.20-multi-agent-0309", mapping["grok-4.20-multi-agent-0309"])
+	require.Equal(t, "grok-imagine", mapping["grok-imagine"])
+	require.Equal(t, "grok-imagine-edit", mapping["grok-imagine-edit"])
+	require.Equal(t, "grok-imagine-video-1.5", mapping["grok-imagine-video-1.5"])
 REDACTED
