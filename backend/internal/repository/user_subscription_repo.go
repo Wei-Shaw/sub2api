@@ -6,6 +6,9 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -194,6 +197,7 @@ REDACTED
 func (r *userSubscriptionRepository) List(ctx context.Context, params pagination.PaginationParams, userID, groupID *int64, status, platform, sortBy, sortOrder string) ([]service.UserSubscription, *pagination.PaginationResult, error) {
 	client := clientFromContext(ctx, r.client)
 	q := client.UserSubscription.Query()
+	includeSoftDeleted := status == "" || status == service.SubscriptionStatusRevoked
 	if userID != nil {
 		q = q.Where(usersubscription.UserIDEQ(*userID))
 REDACTED
@@ -201,7 +205,11 @@ REDACTED
 		q = q.Where(usersubscription.GroupIDEQ(*groupID))
 REDACTED
 	if platform != "" {
-		q = q.Where(usersubscription.HasGroupWith(group.PlatformEQ(platform)))
+		groupPredicates := []predicate.Group{group.PlatformEQ(platform)REDACTED
+		if includeSoftDeleted {
+			groupPredicates = append(groupPredicates, group.DeletedAtIsNil())
+	REDACTED
+		q = q.Where(usersubscription.HasGroupWith(groupPredicates...))
 REDACTED
 
 	// Status filtering with real-time expiration check
@@ -224,20 +232,29 @@ REDACTED
 				),
 			),
 		)
+	case service.SubscriptionStatusRevoked:
+		// Revoked is a DTO/API display state backed by user_subscriptions.deleted_at.
+		q = q.Where(usersubscription.DeletedAtNotNil())
 	case "":
-		// No filter
+		// No filter. Use SkipSoftDelete below so admin "all status" includes revoked history.
 	default:
-		// Other status (e.g., revoked)
+		// Other persisted status.
 		q = q.Where(usersubscription.StatusEQ(status))
 REDACTED
 
-	total, err := q.Clone().Count(ctx)
+	queryCtx := ctx
+	if includeSoftDeleted {
+		queryCtx = mixins.SkipSoftDelete(ctx)
+REDACTED
+
+	total, err := q.Clone().Count(queryCtx)
 	if err != nil {
 		return nil, nil, err
 REDACTED
 
-	// Apply sorting
-	q = q.WithUser().WithGroup().WithAssignedByUser()
+	if !includeSoftDeleted {
+		q = q.WithUser().WithGroup().WithAssignedByUser()
+REDACTED
 
 	// Determine sort field
 	var field string
@@ -260,12 +277,19 @@ REDACTED
 	subs, err := q.
 		Offset(params.Offset()).
 		Limit(params.Limit()).
-		All(ctx)
+		All(queryCtx)
 	if err != nil {
 		return nil, nil, err
 REDACTED
 
-	return userSubscriptionEntitiesToService(subs), paginationResultFromTotal(int64(total), params), nil
+	result := userSubscriptionEntitiesToService(subs)
+	if includeSoftDeleted {
+		if err := r.attachUserSubscriptionRelations(ctx, result); err != nil {
+			return nil, nil, err
+	REDACTED
+REDACTED
+
+	return result, paginationResultFromTotal(int64(total), params), nil
 REDACTED
 
 func (r *userSubscriptionRepository) ExistsByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
@@ -425,9 +449,83 @@ func (r *userSubscriptionRepository) DeleteByGroupID(ctx context.Context, groupI
 	return int64(n), err
 REDACTED
 
+func (r *userSubscriptionRepository) attachUserSubscriptionRelations(ctx context.Context, subs []service.UserSubscription) error {
+	if len(subs) == 0 {
+		return nil
+REDACTED
+
+	userIDs := make([]int64, 0, len(subs))
+	groupIDs := make([]int64, 0, len(subs))
+	assignedByIDs := make([]int64, 0, len(subs))
+	for i := range subs {
+		userIDs = append(userIDs, subs[i].UserID)
+		groupIDs = append(groupIDs, subs[i].GroupID)
+		if subs[i].AssignedBy != nil {
+			assignedByIDs = append(assignedByIDs, *subs[i].AssignedBy)
+	REDACTED
+REDACTED
+
+	client := clientFromContext(ctx, r.client)
+	users, err := client.User.Query().Where(user.IDIn(uniqueInt64s(userIDs)...)).All(ctx)
+	if err != nil {
+		return err
+REDACTED
+	userByID := make(map[int64]*service.User, len(users))
+	for _, u := range users {
+		userByID[u.ID] = userEntityToService(u)
+REDACTED
+
+	groups, err := client.Group.Query().Where(group.IDIn(uniqueInt64s(groupIDs)...)).All(ctx)
+	if err != nil {
+		return err
+REDACTED
+	groupByID := make(map[int64]*service.Group, len(groups))
+	for _, g := range groups {
+		groupByID[g.ID] = groupEntityToService(g)
+REDACTED
+
+	assignedByID := map[int64]*service.User{REDACTED
+	if len(assignedByIDs) > 0 {
+		assignedUsers, err := client.User.Query().Where(user.IDIn(uniqueInt64s(assignedByIDs)...)).All(ctx)
+		if err != nil {
+			return err
+	REDACTED
+		assignedByID = make(map[int64]*service.User, len(assignedUsers))
+		for _, u := range assignedUsers {
+			assignedByID[u.ID] = userEntityToService(u)
+	REDACTED
+REDACTED
+
+	for i := range subs {
+		subs[i].User = userByID[subs[i].UserID]
+		subs[i].Group = groupByID[subs[i].GroupID]
+		if subs[i].AssignedBy != nil {
+			subs[i].AssignedByUser = assignedByID[*subs[i].AssignedBy]
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func uniqueInt64s(values []int64) []int64 {
+	seen := make(map[int64]struct{REDACTED, len(values))
+	out := make([]int64, 0, len(values))
+	for _, v := range values {
+		if _, ok := seen[v]; ok {
+			continue
+	REDACTED
+		seen[v] = struct{REDACTED{REDACTED
+		out = append(out, v)
+REDACTED
+	return out
+REDACTED
+
 func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSubscription {
 	if m == nil {
 		return nil
+REDACTED
+	status := m.Status
+	if m.DeletedAt != nil {
+		status = service.SubscriptionStatusRevoked
 REDACTED
 	out := &service.UserSubscription{
 		ID:                 m.ID,
@@ -435,7 +533,7 @@ REDACTED
 		GroupID:            m.GroupID,
 		StartsAt:           m.StartsAt,
 		ExpiresAt:          m.ExpiresAt,
-		Status:             m.Status,
+		Status:             status,
 		DailyWindowStart:   m.DailyWindowStart,
 		WeeklyWindowStart:  m.WeeklyWindowStart,
 		MonthlyWindowStart: m.MonthlyWindowStart,
@@ -447,6 +545,7 @@ REDACTED
 		Notes:              derefString(m.Notes),
 		CreatedAt:          m.CreatedAt,
 		UpdatedAt:          m.UpdatedAt,
+		DeletedAt:          m.DeletedAt,
 REDACTED
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
