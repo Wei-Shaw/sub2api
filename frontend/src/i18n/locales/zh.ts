@@ -3802,7 +3802,8 @@ export default {
           defaultProfile: '内置默认',
           randomProfile: '随机',
           router: 'TLS 路由器',
-          noRouter: '不使用路由器'
+          noRouter: '不使用路由器',
+          routerHint: '启用后会先按请求 User-Agent 匹配 TLS 路由器；未命中、路由器不可用或目标模板不可用时回退到上方固定模板。'
         },
         sessionIdMasking: {
           label: '会话 ID 伪装',

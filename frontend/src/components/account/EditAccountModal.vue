@@ -2162,6 +2162,7 @@
               <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.noRouter') }}</option>
               <option v-for="r in tlsFingerprintRouters" :key="r.id" :value="r.id">{{ r.name }}</option>
             </select>
+            <p class="input-hint">{{ t('admin.accounts.quotaControl.tlsFingerprint.routerHint') }}</p>
           </div>
         </div>
 

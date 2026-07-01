@@ -3639,7 +3639,9 @@ export default {
           defaultProfile: 'Built-in Default',
           randomProfile: 'Random',
           router: 'TLS Router',
-          noRouter: 'No router'
+          noRouter: 'No router',
+          routerHint:
+            'When enabled, requests first match the TLS router by User-Agent. Misses, disabled routers, or unavailable target profiles fall back to the fixed profile above.'
         },
         sessionIdMasking: {
           label: 'Session ID Masking',
