@@ -224,6 +224,19 @@ type ResetSubscriptionQuotaRequest struct {
 	Monthly bool `json:"monthly"`
 }
 
+func parseOptionalInt64Query(c *gin.Context, name string) (*int64, bool) {
+	raw := c.Query(name)
+	if raw == "" {
+		return nil, true
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid "+name)
+		return nil, false
+	}
+	return &value, true
+}
+
 // ResetQuota resets daily, weekly, and/or monthly usage for a subscription.
 // POST /api/v1/admin/subscriptions/:id/reset-quota
 func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
@@ -247,6 +260,50 @@ func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
 		return
 	}
 	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
+}
+
+// ListResetAudits lists subscription daily reset audit logs.
+// GET /api/v1/admin/subscriptions/reset-audits
+func (h *SubscriptionHandler) ListResetAudits(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+
+	subscriptionID, ok := parseOptionalInt64Query(c, "subscription_id")
+	if !ok {
+		return
+	}
+	userID, ok := parseOptionalInt64Query(c, "user_id")
+	if !ok {
+		return
+	}
+	groupID, ok := parseOptionalInt64Query(c, "group_id")
+	if !ok {
+		return
+	}
+	operatorID, ok := parseOptionalInt64Query(c, "operator_id")
+	if !ok {
+		return
+	}
+
+	items, pag, err := h.subscriptionService.ListSubscriptionResetAudits(c.Request.Context(), service.SubscriptionResetAuditFilter{
+		Pagination: pagination.PaginationParams{
+			Page:     page,
+			PageSize: pageSize,
+		},
+		SubscriptionID: subscriptionID,
+		UserID:         userID,
+		GroupID:        groupID,
+		OperatorID:     operatorID,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]dto.SubscriptionResetAudit, 0, len(items))
+	for i := range items {
+		out = append(out, *dto.SubscriptionResetAuditFromService(&items[i]))
+	}
+	response.PaginatedWithResult(c, out, toResponsePagination(pag))
 }
 
 // Revoke handles revoking a subscription

@@ -3058,6 +3058,26 @@ export default {
       resetQuotaConfirm: "确定要重置 '{user}' 的每日、每周和每月用量配额吗？用量将归零并从今天开始重新计算。",
       quotaResetSuccess: '配额重置成功',
       failedToResetQuota: '重置配额失败',
+      resetAudit: {
+        open: '重置日志',
+        title: '订阅日额重置日志',
+        description: '查看用户主动重置日额的记录，包括扣除时长、重置前后用量和订阅到期变化。',
+        refresh: '刷新',
+        empty: '暂无重置记录',
+        failedToLoad: '加载重置日志失败',
+        groupId: '分组 #{id}',
+        hours: '{hours} 小时',
+        seconds: '{seconds} 秒',
+        columns: {
+          createdAt: '时间',
+          user: '用户',
+          subscription: '订阅',
+          operator: '操作人',
+          deducted: '扣除',
+          dailyUsage: '日用量',
+          expiration: '到期变化'
+        }
+      },
       noSubscriptionsYet: '暂无订阅',
       assignFirstSubscription: '分配一个订阅以开始使用。',
       subscriptionAssigned: '订阅分配成功',
@@ -5676,6 +5696,12 @@ export default {
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
         },
+        subscriptionDailyReset: {
+          title: '订阅日额重置',
+          description: '允许用户在订阅卡片中扣除 24 小时有效期，将该订阅的日额度用量清零。',
+          enabled: '启用订阅日额重置',
+          enabledHint: '关闭后用户端不显示重置按钮，接口也会拒绝重置请求。',
+        },
         riskControl: {
           title: '风控中心',
           description: '启用内容审计菜单和全端点请求审核入口。默认关闭。',
@@ -6984,7 +7010,19 @@ export default {
     resetIn: '{time} 后重置',
     quotaEndsIn: '额度将在 {time} 后结束',
     windowNotActive: '等待首次使用',
-    usageOf: '已用 {used} / {limit}'
+    usageOf: '已用 {used} / {limit}',
+    resetDaily: '重置日额',
+    resettingDaily: '重置中...',
+    resetDailyTitle: '重置日额',
+    resetDailyConfirm: "确定要重置 '{group}' 的日额度吗？",
+    resetDailyWarning: '重置会立即扣除 24 小时订阅有效期，并将本订阅的日用量清零。操作完成后不可撤销。',
+    resetDailyDeduction: '扣除时长',
+    resetDailyCurrentExpiration: '当前到期',
+    resetDailyAfterExpiration: '重置后到期',
+    resetDailySuccess: '日额度已重置',
+    resetDailyFailed: '重置日额失败',
+    resetDailyInsufficientTime: '剩余有效期不足 24 小时，无法重置',
+    resetDailyUnavailable: '当前订阅不能重置日额'
   },
 
   // Onboarding Tour

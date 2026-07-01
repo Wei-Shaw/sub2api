@@ -45,6 +45,7 @@ type SubscriptionService struct {
 	userSubRepo         UserSubscriptionRepository
 	billingCacheService *BillingCacheService
 	entClient           *dbent.Client
+	settingRepo         SettingRepository
 
 	// L1 缓存：加速中间件热路径的订阅查询
 	subCacheL1     *ristretto.Cache
@@ -66,6 +67,11 @@ func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscript
 	svc.initSubCache(cfg)
 	svc.initMaintenanceQueue(cfg)
 	return svc
+}
+
+// SetSettingRepository attaches the settings repository for feature toggles.
+func (s *SubscriptionService) SetSettingRepository(settingRepo SettingRepository) {
+	s.settingRepo = settingRepo
 }
 
 func (s *SubscriptionService) initMaintenanceQueue(cfg *config.Config) {

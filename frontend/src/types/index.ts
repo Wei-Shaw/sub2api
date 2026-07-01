@@ -235,6 +235,7 @@ export interface PublicSettings {
   available_channels_enabled: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean
+  subscription_daily_reset_enabled: boolean
   allow_user_view_error_requests?: boolean
 }
 
@@ -1603,6 +1604,23 @@ export interface UserSubscription {
   expires_at: string | null
   user?: User
   group?: Group
+}
+
+export interface SubscriptionResetAudit {
+  id: number
+  subscription_id: number
+  user_id: number
+  group_id: number
+  operator_id: number
+  operator_type: string
+  deducted_seconds: number
+  before_expires_at: string
+  after_expires_at: string
+  before_daily_usage_usd: number
+  after_daily_usage_usd: number
+  before_daily_window_start?: string | null
+  after_daily_window_start?: string | null
+  created_at: string
 }
 
 export interface SubscriptionProgress {

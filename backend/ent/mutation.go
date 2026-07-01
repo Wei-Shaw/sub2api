@@ -39,6 +39,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptionresetaudit"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -86,6 +87,7 @@ const (
 	TypeSecuritySecret                = "SecuritySecret"
 	TypeSetting                       = "Setting"
 	TypeSubscriptionPlan              = "SubscriptionPlan"
+	TypeSubscriptionResetAudit        = "SubscriptionResetAudit"
 	TypeTLSFingerprintProfile         = "TLSFingerprintProfile"
 	TypeUsageCleanupTask              = "UsageCleanupTask"
 	TypeUsageLog                      = "UsageLog"
@@ -32510,6 +32512,1255 @@ func (m *SubscriptionPlanMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *SubscriptionPlanMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown SubscriptionPlan edge %s", name)
+}
+
+// SubscriptionResetAuditMutation represents an operation that mutates the SubscriptionResetAudit nodes in the graph.
+type SubscriptionResetAuditMutation struct {
+	config
+	op                        Op
+	typ                       string
+	id                        *int64
+	subscription_id           *int64
+	addsubscription_id        *int64
+	user_id                   *int64
+	adduser_id                *int64
+	group_id                  *int64
+	addgroup_id               *int64
+	operator_id               *int64
+	addoperator_id            *int64
+	operator_type             *string
+	deducted_seconds          *int
+	adddeducted_seconds       *int
+	before_expires_at         *time.Time
+	after_expires_at          *time.Time
+	before_daily_usage_usd    *float64
+	addbefore_daily_usage_usd *float64
+	after_daily_usage_usd     *float64
+	addafter_daily_usage_usd  *float64
+	before_daily_window_start *time.Time
+	after_daily_window_start  *time.Time
+	created_at                *time.Time
+	clearedFields             map[string]struct{}
+	done                      bool
+	oldValue                  func(context.Context) (*SubscriptionResetAudit, error)
+	predicates                []predicate.SubscriptionResetAudit
+}
+
+var _ ent.Mutation = (*SubscriptionResetAuditMutation)(nil)
+
+// subscriptionresetauditOption allows management of the mutation configuration using functional options.
+type subscriptionresetauditOption func(*SubscriptionResetAuditMutation)
+
+// newSubscriptionResetAuditMutation creates new mutation for the SubscriptionResetAudit entity.
+func newSubscriptionResetAuditMutation(c config, op Op, opts ...subscriptionresetauditOption) *SubscriptionResetAuditMutation {
+	m := &SubscriptionResetAuditMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSubscriptionResetAudit,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSubscriptionResetAuditID sets the ID field of the mutation.
+func withSubscriptionResetAuditID(id int64) subscriptionresetauditOption {
+	return func(m *SubscriptionResetAuditMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SubscriptionResetAudit
+		)
+		m.oldValue = func(ctx context.Context) (*SubscriptionResetAudit, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SubscriptionResetAudit.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSubscriptionResetAudit sets the old SubscriptionResetAudit of the mutation.
+func withSubscriptionResetAudit(node *SubscriptionResetAudit) subscriptionresetauditOption {
+	return func(m *SubscriptionResetAuditMutation) {
+		m.oldValue = func(context.Context) (*SubscriptionResetAudit, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SubscriptionResetAuditMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SubscriptionResetAuditMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SubscriptionResetAuditMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SubscriptionResetAuditMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SubscriptionResetAudit.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSubscriptionID sets the "subscription_id" field.
+func (m *SubscriptionResetAuditMutation) SetSubscriptionID(i int64) {
+	m.subscription_id = &i
+	m.addsubscription_id = nil
+}
+
+// SubscriptionID returns the value of the "subscription_id" field in the mutation.
+func (m *SubscriptionResetAuditMutation) SubscriptionID() (r int64, exists bool) {
+	v := m.subscription_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubscriptionID returns the old "subscription_id" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldSubscriptionID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubscriptionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubscriptionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubscriptionID: %w", err)
+	}
+	return oldValue.SubscriptionID, nil
+}
+
+// AddSubscriptionID adds i to the "subscription_id" field.
+func (m *SubscriptionResetAuditMutation) AddSubscriptionID(i int64) {
+	if m.addsubscription_id != nil {
+		*m.addsubscription_id += i
+	} else {
+		m.addsubscription_id = &i
+	}
+}
+
+// AddedSubscriptionID returns the value that was added to the "subscription_id" field in this mutation.
+func (m *SubscriptionResetAuditMutation) AddedSubscriptionID() (r int64, exists bool) {
+	v := m.addsubscription_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSubscriptionID resets all changes to the "subscription_id" field.
+func (m *SubscriptionResetAuditMutation) ResetSubscriptionID() {
+	m.subscription_id = nil
+	m.addsubscription_id = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *SubscriptionResetAuditMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *SubscriptionResetAuditMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// AddUserID adds i to the "user_id" field.
+func (m *SubscriptionResetAuditMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+	} else {
+		m.adduser_id = &i
+	}
+}
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *SubscriptionResetAuditMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *SubscriptionResetAuditMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *SubscriptionResetAuditMutation) SetGroupID(i int64) {
+	m.group_id = &i
+	m.addgroup_id = nil
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *SubscriptionResetAuditMutation) GroupID() (r int64, exists bool) {
+	v := m.group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldGroupID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// AddGroupID adds i to the "group_id" field.
+func (m *SubscriptionResetAuditMutation) AddGroupID(i int64) {
+	if m.addgroup_id != nil {
+		*m.addgroup_id += i
+	} else {
+		m.addgroup_id = &i
+	}
+}
+
+// AddedGroupID returns the value that was added to the "group_id" field in this mutation.
+func (m *SubscriptionResetAuditMutation) AddedGroupID() (r int64, exists bool) {
+	v := m.addgroup_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *SubscriptionResetAuditMutation) ResetGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+}
+
+// SetOperatorID sets the "operator_id" field.
+func (m *SubscriptionResetAuditMutation) SetOperatorID(i int64) {
+	m.operator_id = &i
+	m.addoperator_id = nil
+}
+
+// OperatorID returns the value of the "operator_id" field in the mutation.
+func (m *SubscriptionResetAuditMutation) OperatorID() (r int64, exists bool) {
+	v := m.operator_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOperatorID returns the old "operator_id" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldOperatorID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOperatorID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOperatorID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOperatorID: %w", err)
+	}
+	return oldValue.OperatorID, nil
+}
+
+// AddOperatorID adds i to the "operator_id" field.
+func (m *SubscriptionResetAuditMutation) AddOperatorID(i int64) {
+	if m.addoperator_id != nil {
+		*m.addoperator_id += i
+	} else {
+		m.addoperator_id = &i
+	}
+}
+
+// AddedOperatorID returns the value that was added to the "operator_id" field in this mutation.
+func (m *SubscriptionResetAuditMutation) AddedOperatorID() (r int64, exists bool) {
+	v := m.addoperator_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOperatorID resets all changes to the "operator_id" field.
+func (m *SubscriptionResetAuditMutation) ResetOperatorID() {
+	m.operator_id = nil
+	m.addoperator_id = nil
+}
+
+// SetOperatorType sets the "operator_type" field.
+func (m *SubscriptionResetAuditMutation) SetOperatorType(s string) {
+	m.operator_type = &s
+}
+
+// OperatorType returns the value of the "operator_type" field in the mutation.
+func (m *SubscriptionResetAuditMutation) OperatorType() (r string, exists bool) {
+	v := m.operator_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOperatorType returns the old "operator_type" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldOperatorType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOperatorType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOperatorType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOperatorType: %w", err)
+	}
+	return oldValue.OperatorType, nil
+}
+
+// ResetOperatorType resets all changes to the "operator_type" field.
+func (m *SubscriptionResetAuditMutation) ResetOperatorType() {
+	m.operator_type = nil
+}
+
+// SetDeductedSeconds sets the "deducted_seconds" field.
+func (m *SubscriptionResetAuditMutation) SetDeductedSeconds(i int) {
+	m.deducted_seconds = &i
+	m.adddeducted_seconds = nil
+}
+
+// DeductedSeconds returns the value of the "deducted_seconds" field in the mutation.
+func (m *SubscriptionResetAuditMutation) DeductedSeconds() (r int, exists bool) {
+	v := m.deducted_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeductedSeconds returns the old "deducted_seconds" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldDeductedSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeductedSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeductedSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeductedSeconds: %w", err)
+	}
+	return oldValue.DeductedSeconds, nil
+}
+
+// AddDeductedSeconds adds i to the "deducted_seconds" field.
+func (m *SubscriptionResetAuditMutation) AddDeductedSeconds(i int) {
+	if m.adddeducted_seconds != nil {
+		*m.adddeducted_seconds += i
+	} else {
+		m.adddeducted_seconds = &i
+	}
+}
+
+// AddedDeductedSeconds returns the value that was added to the "deducted_seconds" field in this mutation.
+func (m *SubscriptionResetAuditMutation) AddedDeductedSeconds() (r int, exists bool) {
+	v := m.adddeducted_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDeductedSeconds resets all changes to the "deducted_seconds" field.
+func (m *SubscriptionResetAuditMutation) ResetDeductedSeconds() {
+	m.deducted_seconds = nil
+	m.adddeducted_seconds = nil
+}
+
+// SetBeforeExpiresAt sets the "before_expires_at" field.
+func (m *SubscriptionResetAuditMutation) SetBeforeExpiresAt(t time.Time) {
+	m.before_expires_at = &t
+}
+
+// BeforeExpiresAt returns the value of the "before_expires_at" field in the mutation.
+func (m *SubscriptionResetAuditMutation) BeforeExpiresAt() (r time.Time, exists bool) {
+	v := m.before_expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBeforeExpiresAt returns the old "before_expires_at" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldBeforeExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBeforeExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBeforeExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBeforeExpiresAt: %w", err)
+	}
+	return oldValue.BeforeExpiresAt, nil
+}
+
+// ResetBeforeExpiresAt resets all changes to the "before_expires_at" field.
+func (m *SubscriptionResetAuditMutation) ResetBeforeExpiresAt() {
+	m.before_expires_at = nil
+}
+
+// SetAfterExpiresAt sets the "after_expires_at" field.
+func (m *SubscriptionResetAuditMutation) SetAfterExpiresAt(t time.Time) {
+	m.after_expires_at = &t
+}
+
+// AfterExpiresAt returns the value of the "after_expires_at" field in the mutation.
+func (m *SubscriptionResetAuditMutation) AfterExpiresAt() (r time.Time, exists bool) {
+	v := m.after_expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAfterExpiresAt returns the old "after_expires_at" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldAfterExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAfterExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAfterExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAfterExpiresAt: %w", err)
+	}
+	return oldValue.AfterExpiresAt, nil
+}
+
+// ResetAfterExpiresAt resets all changes to the "after_expires_at" field.
+func (m *SubscriptionResetAuditMutation) ResetAfterExpiresAt() {
+	m.after_expires_at = nil
+}
+
+// SetBeforeDailyUsageUsd sets the "before_daily_usage_usd" field.
+func (m *SubscriptionResetAuditMutation) SetBeforeDailyUsageUsd(f float64) {
+	m.before_daily_usage_usd = &f
+	m.addbefore_daily_usage_usd = nil
+}
+
+// BeforeDailyUsageUsd returns the value of the "before_daily_usage_usd" field in the mutation.
+func (m *SubscriptionResetAuditMutation) BeforeDailyUsageUsd() (r float64, exists bool) {
+	v := m.before_daily_usage_usd
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBeforeDailyUsageUsd returns the old "before_daily_usage_usd" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldBeforeDailyUsageUsd(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBeforeDailyUsageUsd is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBeforeDailyUsageUsd requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBeforeDailyUsageUsd: %w", err)
+	}
+	return oldValue.BeforeDailyUsageUsd, nil
+}
+
+// AddBeforeDailyUsageUsd adds f to the "before_daily_usage_usd" field.
+func (m *SubscriptionResetAuditMutation) AddBeforeDailyUsageUsd(f float64) {
+	if m.addbefore_daily_usage_usd != nil {
+		*m.addbefore_daily_usage_usd += f
+	} else {
+		m.addbefore_daily_usage_usd = &f
+	}
+}
+
+// AddedBeforeDailyUsageUsd returns the value that was added to the "before_daily_usage_usd" field in this mutation.
+func (m *SubscriptionResetAuditMutation) AddedBeforeDailyUsageUsd() (r float64, exists bool) {
+	v := m.addbefore_daily_usage_usd
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBeforeDailyUsageUsd resets all changes to the "before_daily_usage_usd" field.
+func (m *SubscriptionResetAuditMutation) ResetBeforeDailyUsageUsd() {
+	m.before_daily_usage_usd = nil
+	m.addbefore_daily_usage_usd = nil
+}
+
+// SetAfterDailyUsageUsd sets the "after_daily_usage_usd" field.
+func (m *SubscriptionResetAuditMutation) SetAfterDailyUsageUsd(f float64) {
+	m.after_daily_usage_usd = &f
+	m.addafter_daily_usage_usd = nil
+}
+
+// AfterDailyUsageUsd returns the value of the "after_daily_usage_usd" field in the mutation.
+func (m *SubscriptionResetAuditMutation) AfterDailyUsageUsd() (r float64, exists bool) {
+	v := m.after_daily_usage_usd
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAfterDailyUsageUsd returns the old "after_daily_usage_usd" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldAfterDailyUsageUsd(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAfterDailyUsageUsd is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAfterDailyUsageUsd requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAfterDailyUsageUsd: %w", err)
+	}
+	return oldValue.AfterDailyUsageUsd, nil
+}
+
+// AddAfterDailyUsageUsd adds f to the "after_daily_usage_usd" field.
+func (m *SubscriptionResetAuditMutation) AddAfterDailyUsageUsd(f float64) {
+	if m.addafter_daily_usage_usd != nil {
+		*m.addafter_daily_usage_usd += f
+	} else {
+		m.addafter_daily_usage_usd = &f
+	}
+}
+
+// AddedAfterDailyUsageUsd returns the value that was added to the "after_daily_usage_usd" field in this mutation.
+func (m *SubscriptionResetAuditMutation) AddedAfterDailyUsageUsd() (r float64, exists bool) {
+	v := m.addafter_daily_usage_usd
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAfterDailyUsageUsd resets all changes to the "after_daily_usage_usd" field.
+func (m *SubscriptionResetAuditMutation) ResetAfterDailyUsageUsd() {
+	m.after_daily_usage_usd = nil
+	m.addafter_daily_usage_usd = nil
+}
+
+// SetBeforeDailyWindowStart sets the "before_daily_window_start" field.
+func (m *SubscriptionResetAuditMutation) SetBeforeDailyWindowStart(t time.Time) {
+	m.before_daily_window_start = &t
+}
+
+// BeforeDailyWindowStart returns the value of the "before_daily_window_start" field in the mutation.
+func (m *SubscriptionResetAuditMutation) BeforeDailyWindowStart() (r time.Time, exists bool) {
+	v := m.before_daily_window_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBeforeDailyWindowStart returns the old "before_daily_window_start" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldBeforeDailyWindowStart(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBeforeDailyWindowStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBeforeDailyWindowStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBeforeDailyWindowStart: %w", err)
+	}
+	return oldValue.BeforeDailyWindowStart, nil
+}
+
+// ClearBeforeDailyWindowStart clears the value of the "before_daily_window_start" field.
+func (m *SubscriptionResetAuditMutation) ClearBeforeDailyWindowStart() {
+	m.before_daily_window_start = nil
+	m.clearedFields[subscriptionresetaudit.FieldBeforeDailyWindowStart] = struct{}{}
+}
+
+// BeforeDailyWindowStartCleared returns if the "before_daily_window_start" field was cleared in this mutation.
+func (m *SubscriptionResetAuditMutation) BeforeDailyWindowStartCleared() bool {
+	_, ok := m.clearedFields[subscriptionresetaudit.FieldBeforeDailyWindowStart]
+	return ok
+}
+
+// ResetBeforeDailyWindowStart resets all changes to the "before_daily_window_start" field.
+func (m *SubscriptionResetAuditMutation) ResetBeforeDailyWindowStart() {
+	m.before_daily_window_start = nil
+	delete(m.clearedFields, subscriptionresetaudit.FieldBeforeDailyWindowStart)
+}
+
+// SetAfterDailyWindowStart sets the "after_daily_window_start" field.
+func (m *SubscriptionResetAuditMutation) SetAfterDailyWindowStart(t time.Time) {
+	m.after_daily_window_start = &t
+}
+
+// AfterDailyWindowStart returns the value of the "after_daily_window_start" field in the mutation.
+func (m *SubscriptionResetAuditMutation) AfterDailyWindowStart() (r time.Time, exists bool) {
+	v := m.after_daily_window_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAfterDailyWindowStart returns the old "after_daily_window_start" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldAfterDailyWindowStart(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAfterDailyWindowStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAfterDailyWindowStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAfterDailyWindowStart: %w", err)
+	}
+	return oldValue.AfterDailyWindowStart, nil
+}
+
+// ClearAfterDailyWindowStart clears the value of the "after_daily_window_start" field.
+func (m *SubscriptionResetAuditMutation) ClearAfterDailyWindowStart() {
+	m.after_daily_window_start = nil
+	m.clearedFields[subscriptionresetaudit.FieldAfterDailyWindowStart] = struct{}{}
+}
+
+// AfterDailyWindowStartCleared returns if the "after_daily_window_start" field was cleared in this mutation.
+func (m *SubscriptionResetAuditMutation) AfterDailyWindowStartCleared() bool {
+	_, ok := m.clearedFields[subscriptionresetaudit.FieldAfterDailyWindowStart]
+	return ok
+}
+
+// ResetAfterDailyWindowStart resets all changes to the "after_daily_window_start" field.
+func (m *SubscriptionResetAuditMutation) ResetAfterDailyWindowStart() {
+	m.after_daily_window_start = nil
+	delete(m.clearedFields, subscriptionresetaudit.FieldAfterDailyWindowStart)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SubscriptionResetAuditMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SubscriptionResetAuditMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SubscriptionResetAudit entity.
+// If the SubscriptionResetAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionResetAuditMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SubscriptionResetAuditMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the SubscriptionResetAuditMutation builder.
+func (m *SubscriptionResetAuditMutation) Where(ps ...predicate.SubscriptionResetAudit) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SubscriptionResetAuditMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SubscriptionResetAuditMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SubscriptionResetAudit, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SubscriptionResetAuditMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SubscriptionResetAuditMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SubscriptionResetAudit).
+func (m *SubscriptionResetAuditMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SubscriptionResetAuditMutation) Fields() []string {
+	fields := make([]string, 0, 13)
+	if m.subscription_id != nil {
+		fields = append(fields, subscriptionresetaudit.FieldSubscriptionID)
+	}
+	if m.user_id != nil {
+		fields = append(fields, subscriptionresetaudit.FieldUserID)
+	}
+	if m.group_id != nil {
+		fields = append(fields, subscriptionresetaudit.FieldGroupID)
+	}
+	if m.operator_id != nil {
+		fields = append(fields, subscriptionresetaudit.FieldOperatorID)
+	}
+	if m.operator_type != nil {
+		fields = append(fields, subscriptionresetaudit.FieldOperatorType)
+	}
+	if m.deducted_seconds != nil {
+		fields = append(fields, subscriptionresetaudit.FieldDeductedSeconds)
+	}
+	if m.before_expires_at != nil {
+		fields = append(fields, subscriptionresetaudit.FieldBeforeExpiresAt)
+	}
+	if m.after_expires_at != nil {
+		fields = append(fields, subscriptionresetaudit.FieldAfterExpiresAt)
+	}
+	if m.before_daily_usage_usd != nil {
+		fields = append(fields, subscriptionresetaudit.FieldBeforeDailyUsageUsd)
+	}
+	if m.after_daily_usage_usd != nil {
+		fields = append(fields, subscriptionresetaudit.FieldAfterDailyUsageUsd)
+	}
+	if m.before_daily_window_start != nil {
+		fields = append(fields, subscriptionresetaudit.FieldBeforeDailyWindowStart)
+	}
+	if m.after_daily_window_start != nil {
+		fields = append(fields, subscriptionresetaudit.FieldAfterDailyWindowStart)
+	}
+	if m.created_at != nil {
+		fields = append(fields, subscriptionresetaudit.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SubscriptionResetAuditMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case subscriptionresetaudit.FieldSubscriptionID:
+		return m.SubscriptionID()
+	case subscriptionresetaudit.FieldUserID:
+		return m.UserID()
+	case subscriptionresetaudit.FieldGroupID:
+		return m.GroupID()
+	case subscriptionresetaudit.FieldOperatorID:
+		return m.OperatorID()
+	case subscriptionresetaudit.FieldOperatorType:
+		return m.OperatorType()
+	case subscriptionresetaudit.FieldDeductedSeconds:
+		return m.DeductedSeconds()
+	case subscriptionresetaudit.FieldBeforeExpiresAt:
+		return m.BeforeExpiresAt()
+	case subscriptionresetaudit.FieldAfterExpiresAt:
+		return m.AfterExpiresAt()
+	case subscriptionresetaudit.FieldBeforeDailyUsageUsd:
+		return m.BeforeDailyUsageUsd()
+	case subscriptionresetaudit.FieldAfterDailyUsageUsd:
+		return m.AfterDailyUsageUsd()
+	case subscriptionresetaudit.FieldBeforeDailyWindowStart:
+		return m.BeforeDailyWindowStart()
+	case subscriptionresetaudit.FieldAfterDailyWindowStart:
+		return m.AfterDailyWindowStart()
+	case subscriptionresetaudit.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SubscriptionResetAuditMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case subscriptionresetaudit.FieldSubscriptionID:
+		return m.OldSubscriptionID(ctx)
+	case subscriptionresetaudit.FieldUserID:
+		return m.OldUserID(ctx)
+	case subscriptionresetaudit.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case subscriptionresetaudit.FieldOperatorID:
+		return m.OldOperatorID(ctx)
+	case subscriptionresetaudit.FieldOperatorType:
+		return m.OldOperatorType(ctx)
+	case subscriptionresetaudit.FieldDeductedSeconds:
+		return m.OldDeductedSeconds(ctx)
+	case subscriptionresetaudit.FieldBeforeExpiresAt:
+		return m.OldBeforeExpiresAt(ctx)
+	case subscriptionresetaudit.FieldAfterExpiresAt:
+		return m.OldAfterExpiresAt(ctx)
+	case subscriptionresetaudit.FieldBeforeDailyUsageUsd:
+		return m.OldBeforeDailyUsageUsd(ctx)
+	case subscriptionresetaudit.FieldAfterDailyUsageUsd:
+		return m.OldAfterDailyUsageUsd(ctx)
+	case subscriptionresetaudit.FieldBeforeDailyWindowStart:
+		return m.OldBeforeDailyWindowStart(ctx)
+	case subscriptionresetaudit.FieldAfterDailyWindowStart:
+		return m.OldAfterDailyWindowStart(ctx)
+	case subscriptionresetaudit.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SubscriptionResetAudit field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SubscriptionResetAuditMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case subscriptionresetaudit.FieldSubscriptionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubscriptionID(v)
+		return nil
+	case subscriptionresetaudit.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case subscriptionresetaudit.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case subscriptionresetaudit.FieldOperatorID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOperatorID(v)
+		return nil
+	case subscriptionresetaudit.FieldOperatorType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOperatorType(v)
+		return nil
+	case subscriptionresetaudit.FieldDeductedSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeductedSeconds(v)
+		return nil
+	case subscriptionresetaudit.FieldBeforeExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBeforeExpiresAt(v)
+		return nil
+	case subscriptionresetaudit.FieldAfterExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAfterExpiresAt(v)
+		return nil
+	case subscriptionresetaudit.FieldBeforeDailyUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBeforeDailyUsageUsd(v)
+		return nil
+	case subscriptionresetaudit.FieldAfterDailyUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAfterDailyUsageUsd(v)
+		return nil
+	case subscriptionresetaudit.FieldBeforeDailyWindowStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBeforeDailyWindowStart(v)
+		return nil
+	case subscriptionresetaudit.FieldAfterDailyWindowStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAfterDailyWindowStart(v)
+		return nil
+	case subscriptionresetaudit.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SubscriptionResetAudit field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SubscriptionResetAuditMutation) AddedFields() []string {
+	var fields []string
+	if m.addsubscription_id != nil {
+		fields = append(fields, subscriptionresetaudit.FieldSubscriptionID)
+	}
+	if m.adduser_id != nil {
+		fields = append(fields, subscriptionresetaudit.FieldUserID)
+	}
+	if m.addgroup_id != nil {
+		fields = append(fields, subscriptionresetaudit.FieldGroupID)
+	}
+	if m.addoperator_id != nil {
+		fields = append(fields, subscriptionresetaudit.FieldOperatorID)
+	}
+	if m.adddeducted_seconds != nil {
+		fields = append(fields, subscriptionresetaudit.FieldDeductedSeconds)
+	}
+	if m.addbefore_daily_usage_usd != nil {
+		fields = append(fields, subscriptionresetaudit.FieldBeforeDailyUsageUsd)
+	}
+	if m.addafter_daily_usage_usd != nil {
+		fields = append(fields, subscriptionresetaudit.FieldAfterDailyUsageUsd)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SubscriptionResetAuditMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case subscriptionresetaudit.FieldSubscriptionID:
+		return m.AddedSubscriptionID()
+	case subscriptionresetaudit.FieldUserID:
+		return m.AddedUserID()
+	case subscriptionresetaudit.FieldGroupID:
+		return m.AddedGroupID()
+	case subscriptionresetaudit.FieldOperatorID:
+		return m.AddedOperatorID()
+	case subscriptionresetaudit.FieldDeductedSeconds:
+		return m.AddedDeductedSeconds()
+	case subscriptionresetaudit.FieldBeforeDailyUsageUsd:
+		return m.AddedBeforeDailyUsageUsd()
+	case subscriptionresetaudit.FieldAfterDailyUsageUsd:
+		return m.AddedAfterDailyUsageUsd()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SubscriptionResetAuditMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case subscriptionresetaudit.FieldSubscriptionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSubscriptionID(v)
+		return nil
+	case subscriptionresetaudit.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserID(v)
+		return nil
+	case subscriptionresetaudit.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGroupID(v)
+		return nil
+	case subscriptionresetaudit.FieldOperatorID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOperatorID(v)
+		return nil
+	case subscriptionresetaudit.FieldDeductedSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDeductedSeconds(v)
+		return nil
+	case subscriptionresetaudit.FieldBeforeDailyUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBeforeDailyUsageUsd(v)
+		return nil
+	case subscriptionresetaudit.FieldAfterDailyUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAfterDailyUsageUsd(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SubscriptionResetAudit numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SubscriptionResetAuditMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(subscriptionresetaudit.FieldBeforeDailyWindowStart) {
+		fields = append(fields, subscriptionresetaudit.FieldBeforeDailyWindowStart)
+	}
+	if m.FieldCleared(subscriptionresetaudit.FieldAfterDailyWindowStart) {
+		fields = append(fields, subscriptionresetaudit.FieldAfterDailyWindowStart)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SubscriptionResetAuditMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SubscriptionResetAuditMutation) ClearField(name string) error {
+	switch name {
+	case subscriptionresetaudit.FieldBeforeDailyWindowStart:
+		m.ClearBeforeDailyWindowStart()
+		return nil
+	case subscriptionresetaudit.FieldAfterDailyWindowStart:
+		m.ClearAfterDailyWindowStart()
+		return nil
+	}
+	return fmt.Errorf("unknown SubscriptionResetAudit nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SubscriptionResetAuditMutation) ResetField(name string) error {
+	switch name {
+	case subscriptionresetaudit.FieldSubscriptionID:
+		m.ResetSubscriptionID()
+		return nil
+	case subscriptionresetaudit.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case subscriptionresetaudit.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case subscriptionresetaudit.FieldOperatorID:
+		m.ResetOperatorID()
+		return nil
+	case subscriptionresetaudit.FieldOperatorType:
+		m.ResetOperatorType()
+		return nil
+	case subscriptionresetaudit.FieldDeductedSeconds:
+		m.ResetDeductedSeconds()
+		return nil
+	case subscriptionresetaudit.FieldBeforeExpiresAt:
+		m.ResetBeforeExpiresAt()
+		return nil
+	case subscriptionresetaudit.FieldAfterExpiresAt:
+		m.ResetAfterExpiresAt()
+		return nil
+	case subscriptionresetaudit.FieldBeforeDailyUsageUsd:
+		m.ResetBeforeDailyUsageUsd()
+		return nil
+	case subscriptionresetaudit.FieldAfterDailyUsageUsd:
+		m.ResetAfterDailyUsageUsd()
+		return nil
+	case subscriptionresetaudit.FieldBeforeDailyWindowStart:
+		m.ResetBeforeDailyWindowStart()
+		return nil
+	case subscriptionresetaudit.FieldAfterDailyWindowStart:
+		m.ResetAfterDailyWindowStart()
+		return nil
+	case subscriptionresetaudit.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SubscriptionResetAudit field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SubscriptionResetAuditMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SubscriptionResetAuditMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SubscriptionResetAuditMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SubscriptionResetAuditMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SubscriptionResetAuditMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SubscriptionResetAuditMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SubscriptionResetAuditMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SubscriptionResetAudit unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SubscriptionResetAuditMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SubscriptionResetAudit edge %s", name)
 }
 
 // TLSFingerprintProfileMutation represents an operation that mutates the TLSFingerprintProfile nodes in the graph.

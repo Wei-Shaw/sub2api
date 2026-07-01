@@ -602,6 +602,23 @@ type AdminUserSubscription struct {
 	AssignedByUser *User `json:"assigned_by_user,omitempty"`
 }
 
+type SubscriptionResetAudit struct {
+	ID                     int64      `json:"id"`
+	SubscriptionID         int64      `json:"subscription_id"`
+	UserID                 int64      `json:"user_id"`
+	GroupID                int64      `json:"group_id"`
+	OperatorID             int64      `json:"operator_id"`
+	OperatorType           string     `json:"operator_type"`
+	DeductedSeconds        int        `json:"deducted_seconds"`
+	BeforeExpiresAt        time.Time  `json:"before_expires_at"`
+	AfterExpiresAt         time.Time  `json:"after_expires_at"`
+	BeforeDailyUsageUSD    float64    `json:"before_daily_usage_usd"`
+	AfterDailyUsageUSD     float64    `json:"after_daily_usage_usd"`
+	BeforeDailyWindowStart *time.Time `json:"before_daily_window_start,omitempty"`
+	AfterDailyWindowStart  *time.Time `json:"after_daily_window_start,omitempty"`
+	CreatedAt              time.Time  `json:"created_at"`
+}
+
 type BulkAssignResult struct {
 	SuccessCount  int                     `json:"success_count"`
 	CreatedCount  int                     `json:"created_count"`

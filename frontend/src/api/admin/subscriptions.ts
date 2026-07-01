@@ -10,7 +10,8 @@ import type {
   AssignSubscriptionRequest,
   BulkAssignSubscriptionRequest,
   ExtendSubscriptionRequest,
-  PaginatedResponse
+  PaginatedResponse,
+  SubscriptionResetAudit
 } from '@/types'
 
 /**
@@ -139,6 +140,36 @@ export async function resetQuota(
 }
 
 /**
+ * List user-triggered daily reset audit logs.
+ * @param page - Page number
+ * @param pageSize - Items per page
+ * @param filters - Optional ID filters
+ * @returns Paginated reset audit logs
+ */
+export async function listResetAudits(
+  page: number = 1,
+  pageSize: number = 20,
+  filters?: {
+    subscription_id?: number
+    user_id?: number
+    group_id?: number
+    operator_id?: number
+  }
+): Promise<PaginatedResponse<SubscriptionResetAudit>> {
+  const { data } = await apiClient.get<PaginatedResponse<SubscriptionResetAudit>>(
+    '/admin/subscriptions/reset-audits',
+    {
+      params: {
+        page,
+        page_size: pageSize,
+        ...filters
+      }
+    }
+  )
+  return data
+}
+
+/**
  * List subscriptions by group
  * @param groupId - Group ID
  * @param page - Page number
@@ -189,6 +220,7 @@ export const subscriptionsAPI = {
   extend,
   revoke,
   resetQuota,
+  listResetAudits,
   listByGroup,
   listByUser
 }

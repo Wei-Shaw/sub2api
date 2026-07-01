@@ -101,6 +101,14 @@
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
+            <button
+              @click="openResetAuditModal"
+              class="btn btn-secondary"
+              :title="t('admin.subscriptions.resetAudit.open')"
+            >
+              <Icon name="clock" size="md" class="md:mr-1.5" />
+              <span class="hidden md:inline">{{ t('admin.subscriptions.resetAudit.open') }}</span>
+            </button>
             <!-- Column Settings Dropdown -->
             <div class="relative" ref="columnDropdownRef">
               <button
@@ -655,6 +663,117 @@
       @confirm="confirmResetQuota"
       @cancel="showResetQuotaConfirm = false"
     />
+
+    <!-- User daily reset audit logs -->
+    <BaseDialog
+      :show="showResetAuditModal"
+      :title="t('admin.subscriptions.resetAudit.title')"
+      width="extra-wide"
+      @close="showResetAuditModal = false"
+    >
+      <div class="space-y-4">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <p class="max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+            {{ t('admin.subscriptions.resetAudit.description') }}
+          </p>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            :disabled="resetAuditLoading"
+            @click="loadResetAudits"
+          >
+            <Icon name="refresh" size="sm" :class="resetAuditLoading ? 'animate-spin' : ''" />
+            {{ t('admin.subscriptions.resetAudit.refresh') }}
+          </button>
+        </div>
+
+        <div v-if="resetAuditLoading" class="flex justify-center py-10">
+          <div class="h-7 w-7 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div>
+        </div>
+        <EmptyState
+          v-else-if="resetAuditLogs.length === 0"
+          :title="t('admin.subscriptions.resetAudit.empty')"
+        />
+        <div v-else class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-700">
+              <thead class="bg-gray-50 dark:bg-dark-800">
+                <tr>
+                  <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-400">
+                    {{ t('admin.subscriptions.resetAudit.columns.createdAt') }}
+                  </th>
+                  <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-400">
+                    {{ t('admin.subscriptions.resetAudit.columns.user') }}
+                  </th>
+                  <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-400">
+                    {{ t('admin.subscriptions.resetAudit.columns.subscription') }}
+                  </th>
+                  <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-400">
+                    {{ t('admin.subscriptions.resetAudit.columns.operator') }}
+                  </th>
+                  <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-400">
+                    {{ t('admin.subscriptions.resetAudit.columns.deducted') }}
+                  </th>
+                  <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-400">
+                    {{ t('admin.subscriptions.resetAudit.columns.dailyUsage') }}
+                  </th>
+                  <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-400">
+                    {{ t('admin.subscriptions.resetAudit.columns.expiration') }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 bg-white dark:divide-dark-700 dark:bg-dark-800">
+                <tr
+                  v-for="audit in resetAuditLogs"
+                  :key="audit.id"
+                  class="hover:bg-gray-50 dark:hover:bg-dark-700/60"
+                >
+                  <td class="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">
+                    {{ formatDateTime(audit.created_at) }}
+                  </td>
+                  <td class="whitespace-nowrap px-4 py-3 font-medium text-gray-900 dark:text-white">
+                    #{{ audit.user_id }}
+                  </td>
+                  <td class="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-300">
+                    <div class="font-medium text-gray-900 dark:text-white">#{{ audit.subscription_id }}</div>
+                    <div class="text-xs text-gray-500 dark:text-dark-400">
+                      {{ t('admin.subscriptions.resetAudit.groupId', { id: audit.group_id }) }}
+                    </div>
+                  </td>
+                  <td class="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-300">
+                    {{ formatAuditOperator(audit) }}
+                  </td>
+                  <td class="whitespace-nowrap px-4 py-3 text-amber-700 dark:text-amber-300">
+                    {{ formatDeductedDuration(audit.deducted_seconds) }}
+                  </td>
+                  <td class="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-300">
+                    <span class="font-medium">{{ formatCurrency(audit.before_daily_usage_usd) }}</span>
+                    <span class="mx-1 text-gray-400">→</span>
+                    <span class="font-medium text-emerald-600 dark:text-emerald-400">{{ formatCurrency(audit.after_daily_usage_usd) }}</span>
+                  </td>
+                  <td class="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-300">
+                    <div>{{ formatDateTime(audit.before_expires_at) }}</div>
+                    <div class="text-xs text-gray-500 dark:text-dark-400">
+                      → {{ formatDateTime(audit.after_expires_at) }}
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <Pagination
+          v-if="resetAuditPagination.total > 0"
+          :page="resetAuditPagination.page"
+          :total="resetAuditPagination.total"
+          :page-size="resetAuditPagination.page_size"
+          @update:page="handleResetAuditPageChange"
+          @update:pageSize="handleResetAuditPageSizeChange"
+        />
+      </div>
+    </BaseDialog>
+
     <!-- Subscription Guide Modal -->
     <teleport to="body">
       <transition name="modal">
@@ -742,10 +861,10 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { UserSubscription, Group, GroupPlatform, SubscriptionType } from '@/types'
+import type { UserSubscription, Group, GroupPlatform, SubscriptionResetAudit, SubscriptionType } from '@/types'
 import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@/components/common/types'
-import { formatDateOnly } from '@/utils/format'
+import { formatCurrency, formatDateOnly, formatDateTime } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -941,11 +1060,21 @@ const showAssignModal = ref(false)
 const showExtendModal = ref(false)
 const showRevokeDialog = ref(false)
 const showResetQuotaConfirm = ref(false)
+const showResetAuditModal = ref(false)
 const submitting = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
+const resetAuditLoading = ref(false)
+const resetAuditLogs = ref<SubscriptionResetAudit[]>([])
+
+const resetAuditPagination = reactive({
+  page: 1,
+  page_size: 20,
+  total: 0,
+  pages: 0
+})
 
 const assignForm = reactive({
   user_id: null as number | null,
@@ -1282,6 +1411,52 @@ const confirmResetQuota = async () => {
   } finally {
     resettingQuota.value = false
   }
+}
+
+const openResetAuditModal = () => {
+  showResetAuditModal.value = true
+  resetAuditPagination.page = 1
+  loadResetAudits()
+}
+
+const loadResetAudits = async () => {
+  resetAuditLoading.value = true
+  try {
+    const response = await adminAPI.subscriptions.listResetAudits(
+      resetAuditPagination.page,
+      resetAuditPagination.page_size
+    )
+    resetAuditLogs.value = response.items
+    resetAuditPagination.total = response.total
+    resetAuditPagination.pages = response.pages
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.resetAudit.failedToLoad'))
+    console.error('Error loading subscription reset audits:', error)
+  } finally {
+    resetAuditLoading.value = false
+  }
+}
+
+const handleResetAuditPageChange = (page: number) => {
+  resetAuditPagination.page = page
+  loadResetAudits()
+}
+
+const handleResetAuditPageSizeChange = (pageSize: number) => {
+  resetAuditPagination.page_size = pageSize
+  resetAuditPagination.page = 1
+  loadResetAudits()
+}
+
+const formatDeductedDuration = (seconds: number): string => {
+  const hours = Math.round(seconds / 3600)
+  return hours > 0
+    ? t('admin.subscriptions.resetAudit.hours', { hours })
+    : t('admin.subscriptions.resetAudit.seconds', { seconds })
+}
+
+const formatAuditOperator = (audit: SubscriptionResetAudit): string => {
+  return `${audit.operator_type} #${audit.operator_id}`
 }
 
 // Helper functions

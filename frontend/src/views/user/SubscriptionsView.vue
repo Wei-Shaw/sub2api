@@ -95,16 +95,40 @@
             </div>
 
             <!-- Daily Usage -->
-            <div v-if="subscription.group?.daily_limit_usd" class="space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('userSubscriptions.daily') }}
-                </span>
-                <span class="text-sm text-gray-500 dark:text-dark-400">
-                  ${{ (subscription.daily_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.daily_limit_usd.toFixed(2)
-                  }}
-                </span>
+            <div
+              v-if="subscription.group?.daily_limit_usd"
+              class="space-y-3 rounded-xl border border-gray-100 bg-gray-50/80 p-3 dark:border-dark-700 dark:bg-dark-900/30"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0 space-y-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                      {{ t('userSubscriptions.daily') }}
+                    </span>
+                    <span class="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-gray-500 shadow-sm ring-1 ring-gray-200 dark:bg-dark-800 dark:text-dark-300 dark:ring-dark-600">
+                      ${{ (subscription.daily_usage_usd || 0).toFixed(2) }} / ${{
+                        subscription.group.daily_limit_usd.toFixed(2)
+                      }}
+                    </span>
+                  </div>
+                  <p
+                    v-if="subscription.daily_window_start"
+                    class="text-xs text-gray-500 dark:text-dark-400"
+                  >
+                    {{ formatDailyUsageWindow(subscription) }}
+                  </p>
+                </div>
+                <button
+                  v-if="subscriptionDailyResetEnabled && subscription.status === 'active'"
+                  type="button"
+                  :disabled="!canResetDaily(subscription) || resettingDaily"
+                  :title="getResetDailyDisabledReason(subscription)"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20 dark:disabled:border-dark-600 dark:disabled:bg-dark-700 dark:disabled:text-dark-400"
+                  @click="handleResetDaily(subscription)"
+                >
+                  <Icon name="refresh" size="xs" :class="resettingDaily && resettingDailySubscription?.id === subscription.id ? 'animate-spin' : ''" />
+                  {{ t('userSubscriptions.resetDaily') }}
+                </button>
               </div>
               <div class="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
                 <div
@@ -123,12 +147,6 @@
                   }"
                 ></div>
               </div>
-              <p
-                v-if="subscription.daily_window_start"
-                class="text-xs text-gray-500 dark:text-dark-400"
-              >
-                {{ formatDailyUsageWindow(subscription) }}
-              </p>
             </div>
 
             <!-- Weekly Usage -->
@@ -238,17 +256,52 @@
         </div>
       </div>
     </div>
+
+    <ConfirmDialog
+      :show="showResetDailyConfirm"
+      :title="t('userSubscriptions.resetDailyTitle')"
+      :message="resettingDailySubscription ? t('userSubscriptions.resetDailyConfirm', { group: resettingDailySubscription.group?.name || `#${resettingDailySubscription.group_id}` }) : ''"
+      :confirm-text="resettingDaily ? t('userSubscriptions.resettingDaily') : t('userSubscriptions.resetDaily')"
+      :cancel-text="t('common.cancel')"
+      @confirm="confirmResetDaily"
+      @cancel="closeResetDailyConfirm"
+    >
+      <div v-if="resettingDailySubscription" class="space-y-3">
+        <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          {{ t('userSubscriptions.resetDailyWarning') }}
+        </div>
+        <dl class="grid grid-cols-1 gap-2 rounded-xl border border-gray-100 bg-gray-50 p-3 text-xs dark:border-dark-700 dark:bg-dark-900/30 sm:grid-cols-2">
+          <div>
+            <dt class="text-gray-500 dark:text-dark-400">{{ t('userSubscriptions.resetDailyDeduction') }}</dt>
+            <dd class="mt-0.5 font-semibold text-gray-900 dark:text-white">24h</dd>
+          </div>
+          <div>
+            <dt class="text-gray-500 dark:text-dark-400">{{ t('userSubscriptions.resetDailyCurrentExpiration') }}</dt>
+            <dd class="mt-0.5 font-semibold text-gray-900 dark:text-white">
+              {{ formatExpirationShort(resettingDailySubscription.expires_at) }}
+            </dd>
+          </div>
+          <div class="sm:col-span-2">
+            <dt class="text-gray-500 dark:text-dark-400">{{ t('userSubscriptions.resetDailyAfterExpiration') }}</dt>
+            <dd class="mt-0.5 font-semibold text-gray-900 dark:text-white">
+              {{ formatResetDailyAfterExpiration(resettingDailySubscription) }}
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </ConfirmDialog>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateOnly } from '@/utils/format'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
@@ -270,6 +323,14 @@ const appStore = useAppStore()
 
 const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
+const showResetDailyConfirm = ref(false)
+const resettingDaily = ref(false)
+const resettingDailySubscription = ref<UserSubscription | null>(null)
+
+const RESET_DAILY_DEDUCTION_MS = 24 * 60 * 60 * 1000
+const subscriptionDailyResetEnabled = computed(
+  () => appStore.cachedPublicSettings?.subscription_daily_reset_enabled !== false
+)
 
 async function loadSubscriptions() {
   try {
@@ -280,6 +341,73 @@ async function loadSubscriptions() {
     appStore.showError(t('userSubscriptions.failedToLoad'))
   } finally {
     loading.value = false
+  }
+}
+
+function getRemainingMs(subscription: UserSubscription): number | null {
+  if (!subscription.expires_at) return null
+  const expiresAt = new Date(subscription.expires_at).getTime()
+  if (!Number.isFinite(expiresAt)) return null
+  return expiresAt - Date.now()
+}
+
+function canResetDaily(subscription: UserSubscription): boolean {
+  const remainingMs = getRemainingMs(subscription)
+  return (
+    subscriptionDailyResetEnabled.value &&
+    subscription.status === 'active' &&
+    Boolean(subscription.group?.daily_limit_usd) &&
+    remainingMs !== null &&
+    remainingMs >= RESET_DAILY_DEDUCTION_MS
+  )
+}
+
+function getResetDailyDisabledReason(subscription: UserSubscription): string {
+  if (canResetDaily(subscription)) return t('userSubscriptions.resetDaily')
+  const remainingMs = getRemainingMs(subscription)
+  if (remainingMs !== null && remainingMs < RESET_DAILY_DEDUCTION_MS) {
+    return t('userSubscriptions.resetDailyInsufficientTime')
+  }
+  return t('userSubscriptions.resetDailyUnavailable')
+}
+
+function handleResetDaily(subscription: UserSubscription) {
+  if (!canResetDaily(subscription)) {
+    appStore.showError(getResetDailyDisabledReason(subscription))
+    return
+  }
+  resettingDailySubscription.value = subscription
+  showResetDailyConfirm.value = true
+}
+
+function closeResetDailyConfirm() {
+  if (resettingDaily.value) return
+  showResetDailyConfirm.value = false
+  resettingDailySubscription.value = null
+}
+
+async function confirmResetDaily() {
+  if (!resettingDailySubscription.value || resettingDaily.value) return
+  if (!canResetDaily(resettingDailySubscription.value)) {
+    appStore.showError(getResetDailyDisabledReason(resettingDailySubscription.value))
+    closeResetDailyConfirm()
+    return
+  }
+
+  resettingDaily.value = true
+  try {
+    const updated = await subscriptionsAPI.resetDailyQuota(resettingDailySubscription.value.id)
+    subscriptions.value = subscriptions.value.map((item) =>
+      item.id === updated.id ? updated : item
+    )
+    appStore.showSuccess(t('userSubscriptions.resetDailySuccess'))
+    showResetDailyConfirm.value = false
+    resettingDailySubscription.value = null
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('userSubscriptions.resetDailyFailed'))
+    console.error('Failed to reset daily quota:', error)
+  } finally {
+    resettingDaily.value = false
   }
 }
 
@@ -317,6 +445,17 @@ function formatExpirationDate(expiresAt: string): string {
   }
 
   return t('userSubscriptions.daysRemaining', { days }) + ` (${dateStr})`
+}
+
+function formatExpirationShort(expiresAt: string | null): string {
+  return expiresAt ? formatDateOnly(expiresAt) : t('userSubscriptions.noExpiration')
+}
+
+function formatResetDailyAfterExpiration(subscription: UserSubscription): string {
+  if (!subscription.expires_at) return t('userSubscriptions.noExpiration')
+  const expiresAt = new Date(subscription.expires_at)
+  if (!Number.isFinite(expiresAt.getTime())) return '-'
+  return formatDateOnly(new Date(expiresAt.getTime() - RESET_DAILY_DEDUCTION_MS))
 }
 
 function getExpirationClass(expiresAt: string): string {

@@ -758,6 +758,28 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 	}
 }
 
+func SubscriptionResetAuditFromService(a *service.SubscriptionResetAudit) *SubscriptionResetAudit {
+	if a == nil {
+		return nil
+	}
+	return &SubscriptionResetAudit{
+		ID:                     a.ID,
+		SubscriptionID:         a.SubscriptionID,
+		UserID:                 a.UserID,
+		GroupID:                a.GroupID,
+		OperatorID:             a.OperatorID,
+		OperatorType:           a.OperatorType,
+		DeductedSeconds:        a.DeductedSeconds,
+		BeforeExpiresAt:        a.BeforeExpiresAt,
+		AfterExpiresAt:         a.AfterExpiresAt,
+		BeforeDailyUsageUSD:    a.BeforeDailyUsageUSD,
+		AfterDailyUsageUSD:     a.AfterDailyUsageUSD,
+		BeforeDailyWindowStart: a.BeforeDailyWindowStart,
+		AfterDailyWindowStart:  a.AfterDailyWindowStart,
+		CreatedAt:              a.CreatedAt,
+	}
+}
+
 func BulkAssignResultFromService(r *service.BulkAssignResult) *BulkAssignResult {
 	if r == nil {
 		return nil

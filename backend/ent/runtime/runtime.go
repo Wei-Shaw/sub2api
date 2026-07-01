@@ -32,6 +32,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptionresetaudit"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -1547,6 +1548,30 @@ func init() {
 	subscriptionplan.DefaultUpdatedAt = subscriptionplanDescUpdatedAt.Default.(func() time.Time)
 	// subscriptionplan.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	subscriptionplan.UpdateDefaultUpdatedAt = subscriptionplanDescUpdatedAt.UpdateDefault.(func() time.Time)
+	subscriptionresetauditFields := schema.SubscriptionResetAudit{}.Fields()
+	_ = subscriptionresetauditFields
+	// subscriptionresetauditDescOperatorType is the schema descriptor for operator_type field.
+	subscriptionresetauditDescOperatorType := subscriptionresetauditFields[4].Descriptor()
+	// subscriptionresetaudit.DefaultOperatorType holds the default value on creation for the operator_type field.
+	subscriptionresetaudit.DefaultOperatorType = subscriptionresetauditDescOperatorType.Default.(string)
+	// subscriptionresetaudit.OperatorTypeValidator is a validator for the "operator_type" field. It is called by the builders before save.
+	subscriptionresetaudit.OperatorTypeValidator = subscriptionresetauditDescOperatorType.Validators[0].(func(string) error)
+	// subscriptionresetauditDescDeductedSeconds is the schema descriptor for deducted_seconds field.
+	subscriptionresetauditDescDeductedSeconds := subscriptionresetauditFields[5].Descriptor()
+	// subscriptionresetaudit.DefaultDeductedSeconds holds the default value on creation for the deducted_seconds field.
+	subscriptionresetaudit.DefaultDeductedSeconds = subscriptionresetauditDescDeductedSeconds.Default.(int)
+	// subscriptionresetauditDescBeforeDailyUsageUsd is the schema descriptor for before_daily_usage_usd field.
+	subscriptionresetauditDescBeforeDailyUsageUsd := subscriptionresetauditFields[8].Descriptor()
+	// subscriptionresetaudit.DefaultBeforeDailyUsageUsd holds the default value on creation for the before_daily_usage_usd field.
+	subscriptionresetaudit.DefaultBeforeDailyUsageUsd = subscriptionresetauditDescBeforeDailyUsageUsd.Default.(float64)
+	// subscriptionresetauditDescAfterDailyUsageUsd is the schema descriptor for after_daily_usage_usd field.
+	subscriptionresetauditDescAfterDailyUsageUsd := subscriptionresetauditFields[9].Descriptor()
+	// subscriptionresetaudit.DefaultAfterDailyUsageUsd holds the default value on creation for the after_daily_usage_usd field.
+	subscriptionresetaudit.DefaultAfterDailyUsageUsd = subscriptionresetauditDescAfterDailyUsageUsd.Default.(float64)
+	// subscriptionresetauditDescCreatedAt is the schema descriptor for created_at field.
+	subscriptionresetauditDescCreatedAt := subscriptionresetauditFields[12].Descriptor()
+	// subscriptionresetaudit.DefaultCreatedAt holds the default value on creation for the created_at field.
+	subscriptionresetaudit.DefaultCreatedAt = subscriptionresetauditDescCreatedAt.Default.(func() time.Time)
 	tlsfingerprintprofileMixin := schema.TLSFingerprintProfile{}.Mixin()
 	tlsfingerprintprofileMixinFields0 := tlsfingerprintprofileMixin[0].Fields()
 	_ = tlsfingerprintprofileMixinFields0

@@ -41,6 +41,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptionresetaudit"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -111,6 +112,8 @@ type Client struct {
 	Setting *SettingClient
 	// SubscriptionPlan is the client for interacting with the SubscriptionPlan builders.
 	SubscriptionPlan *SubscriptionPlanClient
+	// SubscriptionResetAudit is the client for interacting with the SubscriptionResetAudit builders.
+	SubscriptionResetAudit *SubscriptionResetAuditClient
 	// TLSFingerprintProfile is the client for interacting with the TLSFingerprintProfile builders.
 	TLSFingerprintProfile *TLSFingerprintProfileClient
 	// UsageCleanupTask is the client for interacting with the UsageCleanupTask builders.
@@ -166,6 +169,7 @@ func (c *Client) init() {
 	c.SecuritySecret = NewSecuritySecretClient(c.config)
 	c.Setting = NewSettingClient(c.config)
 	c.SubscriptionPlan = NewSubscriptionPlanClient(c.config)
+	c.SubscriptionResetAudit = NewSubscriptionResetAuditClient(c.config)
 	c.TLSFingerprintProfile = NewTLSFingerprintProfileClient(c.config)
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
 	c.UsageLog = NewUsageLogClient(c.config)
@@ -293,6 +297,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		SecuritySecret:                NewSecuritySecretClient(cfg),
 		Setting:                       NewSettingClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
+		SubscriptionResetAudit:        NewSubscriptionResetAuditClient(cfg),
 		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
 		UsageLog:                      NewUsageLogClient(cfg),
@@ -347,6 +352,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		SecuritySecret:                NewSecuritySecretClient(cfg),
 		Setting:                       NewSettingClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
+		SubscriptionResetAudit:        NewSubscriptionResetAuditClient(cfg),
 		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
 		UsageLog:                      NewUsageLogClient(cfg),
@@ -392,9 +398,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.SubscriptionPlan, c.SubscriptionResetAudit, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -411,9 +418,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.SubscriptionPlan, c.SubscriptionResetAudit, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -474,6 +482,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Setting.mutate(ctx, m)
 	case *SubscriptionPlanMutation:
 		return c.SubscriptionPlan.mutate(ctx, m)
+	case *SubscriptionResetAuditMutation:
+		return c.SubscriptionResetAudit.mutate(ctx, m)
 	case *TLSFingerprintProfileMutation:
 		return c.TLSFingerprintProfile.mutate(ctx, m)
 	case *UsageCleanupTaskMutation:
@@ -4586,6 +4596,139 @@ func (c *SubscriptionPlanClient) mutate(ctx context.Context, m *SubscriptionPlan
 	}
 }
 
+// SubscriptionResetAuditClient is a client for the SubscriptionResetAudit schema.
+type SubscriptionResetAuditClient struct {
+	config
+}
+
+// NewSubscriptionResetAuditClient returns a client for the SubscriptionResetAudit from the given config.
+func NewSubscriptionResetAuditClient(c config) *SubscriptionResetAuditClient {
+	return &SubscriptionResetAuditClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `subscriptionresetaudit.Hooks(f(g(h())))`.
+func (c *SubscriptionResetAuditClient) Use(hooks ...Hook) {
+	c.hooks.SubscriptionResetAudit = append(c.hooks.SubscriptionResetAudit, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `subscriptionresetaudit.Intercept(f(g(h())))`.
+func (c *SubscriptionResetAuditClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SubscriptionResetAudit = append(c.inters.SubscriptionResetAudit, interceptors...)
+}
+
+// Create returns a builder for creating a SubscriptionResetAudit entity.
+func (c *SubscriptionResetAuditClient) Create() *SubscriptionResetAuditCreate {
+	mutation := newSubscriptionResetAuditMutation(c.config, OpCreate)
+	return &SubscriptionResetAuditCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SubscriptionResetAudit entities.
+func (c *SubscriptionResetAuditClient) CreateBulk(builders ...*SubscriptionResetAuditCreate) *SubscriptionResetAuditCreateBulk {
+	return &SubscriptionResetAuditCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SubscriptionResetAuditClient) MapCreateBulk(slice any, setFunc func(*SubscriptionResetAuditCreate, int)) *SubscriptionResetAuditCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SubscriptionResetAuditCreateBulk{err: fmt.Errorf("calling to SubscriptionResetAuditClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SubscriptionResetAuditCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SubscriptionResetAuditCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SubscriptionResetAudit.
+func (c *SubscriptionResetAuditClient) Update() *SubscriptionResetAuditUpdate {
+	mutation := newSubscriptionResetAuditMutation(c.config, OpUpdate)
+	return &SubscriptionResetAuditUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SubscriptionResetAuditClient) UpdateOne(_m *SubscriptionResetAudit) *SubscriptionResetAuditUpdateOne {
+	mutation := newSubscriptionResetAuditMutation(c.config, OpUpdateOne, withSubscriptionResetAudit(_m))
+	return &SubscriptionResetAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SubscriptionResetAuditClient) UpdateOneID(id int64) *SubscriptionResetAuditUpdateOne {
+	mutation := newSubscriptionResetAuditMutation(c.config, OpUpdateOne, withSubscriptionResetAuditID(id))
+	return &SubscriptionResetAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SubscriptionResetAudit.
+func (c *SubscriptionResetAuditClient) Delete() *SubscriptionResetAuditDelete {
+	mutation := newSubscriptionResetAuditMutation(c.config, OpDelete)
+	return &SubscriptionResetAuditDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SubscriptionResetAuditClient) DeleteOne(_m *SubscriptionResetAudit) *SubscriptionResetAuditDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SubscriptionResetAuditClient) DeleteOneID(id int64) *SubscriptionResetAuditDeleteOne {
+	builder := c.Delete().Where(subscriptionresetaudit.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SubscriptionResetAuditDeleteOne{builder}
+}
+
+// Query returns a query builder for SubscriptionResetAudit.
+func (c *SubscriptionResetAuditClient) Query() *SubscriptionResetAuditQuery {
+	return &SubscriptionResetAuditQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSubscriptionResetAudit},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SubscriptionResetAudit entity by its id.
+func (c *SubscriptionResetAuditClient) Get(ctx context.Context, id int64) (*SubscriptionResetAudit, error) {
+	return c.Query().Where(subscriptionresetaudit.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SubscriptionResetAuditClient) GetX(ctx context.Context, id int64) *SubscriptionResetAudit {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SubscriptionResetAuditClient) Hooks() []Hook {
+	return c.hooks.SubscriptionResetAudit
+}
+
+// Interceptors returns the client interceptors.
+func (c *SubscriptionResetAuditClient) Interceptors() []Interceptor {
+	return c.inters.SubscriptionResetAudit
+}
+
+func (c *SubscriptionResetAuditClient) mutate(ctx context.Context, m *SubscriptionResetAuditMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SubscriptionResetAuditCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SubscriptionResetAuditUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SubscriptionResetAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SubscriptionResetAuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SubscriptionResetAudit mutation op: %q", m.Op())
+	}
+}
+
 // TLSFingerprintProfileClient is a client for the TLSFingerprintProfile schema.
 type TLSFingerprintProfileClient struct {
 	config
@@ -6215,9 +6358,9 @@ type (
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		SubscriptionResetAudit, TLSFingerprintProfile, UsageCleanupTask, UsageLog,
+		User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -6226,9 +6369,9 @@ type (
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		SubscriptionResetAudit, TLSFingerprintProfile, UsageCleanupTask, UsageLog,
+		User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

@@ -835,6 +835,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
+		SettingKeySubscriptionDailyResetEnabled,
 		SettingKeyAllowUserViewErrorRequests,
 	}
 
@@ -948,6 +949,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
+
+		SubscriptionDailyResetEnabled: !isFalseSettingValue(settings[SettingKeySubscriptionDailyResetEnabled]),
 
 		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
 	}, nil
@@ -1473,6 +1476,7 @@ type PublicSettingsInjectionPayload struct {
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
+	SubscriptionDailyResetEnabled        bool `json:"subscription_daily_reset_enabled"`
 	AllowUserViewErrorRequests           bool `json:"allow_user_view_error_requests"`
 }
 
@@ -1536,6 +1540,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
+		SubscriptionDailyResetEnabled:        settings.SubscriptionDailyResetEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
 	}, nil
 }
@@ -2179,6 +2184,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 风控中心功能开关
 	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
 
+	// 订阅日额重置功能开关
+	updates[SettingKeySubscriptionDailyResetEnabled] = strconv.FormatBool(settings.SubscriptionDailyResetEnabled)
+
 	// cyber 会话屏蔽开关 + TTL
 	updates[SettingKeyCyberSessionBlockEnabled] = strconv.FormatBool(settings.CyberSessionBlockEnabled)
 	if settings.CyberSessionBlockTTLSeconds > 0 {
@@ -2731,6 +2739,15 @@ func (s *SettingService) IsAffiliateEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsSubscriptionDailyResetEnabled 检查是否允许用户扣 24 小时重置订阅日额。
+func (s *SettingService) IsSubscriptionDailyResetEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySubscriptionDailyResetEnabled)
+	if err != nil {
+		return true // 默认开启，兼容升级前行为
+	}
+	return !isFalseSettingValue(value)
+}
+
 // GetAffiliateRebateRatePercent 读取并 clamp 全局返利比例。
 // 解析失败、缺失或越界都回退到 AffiliateRebateRateDefault — 该比例从不抛错，
 // 调用方只关心一个可用的数值。
@@ -3152,6 +3169,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
+
+		// 订阅日额重置按钮（默认开启，避免升级后隐藏已启用功能）
+		SettingKeySubscriptionDailyResetEnabled: "true",
 
 		// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
 		SettingKeyCyberSessionBlockEnabled:    "false",
@@ -3673,6 +3693,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// 风控中心功能（默认关闭，严格 true 才启用）
 	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"
+
+	// 订阅日额重置按钮（默认开启；仅显式 false/0/off/disabled 关闭）
+	result.SubscriptionDailyResetEnabled = !isFalseSettingValue(settings[SettingKeySubscriptionDailyResetEnabled])
 
 	// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
 	result.CyberSessionBlockEnabled = settings[SettingKeyCyberSessionBlockEnabled] == "true"

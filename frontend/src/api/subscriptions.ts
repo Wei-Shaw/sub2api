@@ -67,10 +67,21 @@ export async function getSubscriptionProgress(
   return response.data
 }
 
+/**
+ * Reset daily quota for a subscription and deduct 24 hours from its validity.
+ */
+export async function resetDailyQuota(subscriptionId: number): Promise<UserSubscription> {
+  const response = await apiClient.post<UserSubscription>(
+    `/subscriptions/${subscriptionId}/reset-daily`
+  )
+  return response.data
+}
+
 export default {
   getMySubscriptions,
   getActiveSubscriptions,
   getSubscriptionsProgress,
   getSubscriptionSummary,
-  getSubscriptionProgress
+  getSubscriptionProgress,
+  resetDailyQuota
 }

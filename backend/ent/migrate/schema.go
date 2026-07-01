@@ -1266,6 +1266,56 @@ var (
 			},
 		},
 	}
+	// SubscriptionResetAuditsColumns holds the columns for the "subscription_reset_audits" table.
+	SubscriptionResetAuditsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "subscription_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64},
+		{Name: "operator_id", Type: field.TypeInt64},
+		{Name: "operator_type", Type: field.TypeString, Size: 20, Default: "user"},
+		{Name: "deducted_seconds", Type: field.TypeInt, Default: 86400},
+		{Name: "before_expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "after_expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "before_daily_usage_usd", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "after_daily_usage_usd", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "before_daily_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "after_daily_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// SubscriptionResetAuditsTable holds the schema information for the "subscription_reset_audits" table.
+	SubscriptionResetAuditsTable = &schema.Table{
+		Name:       "subscription_reset_audits",
+		Columns:    SubscriptionResetAuditsColumns,
+		PrimaryKey: []*schema.Column{SubscriptionResetAuditsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "subscriptionresetaudit_subscription_id",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionResetAuditsColumns[1]},
+			},
+			{
+				Name:    "subscriptionresetaudit_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionResetAuditsColumns[2]},
+			},
+			{
+				Name:    "subscriptionresetaudit_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionResetAuditsColumns[3]},
+			},
+			{
+				Name:    "subscriptionresetaudit_operator_id",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionResetAuditsColumns[4]},
+			},
+			{
+				Name:    "subscriptionresetaudit_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionResetAuditsColumns[13]},
+			},
+		},
+	}
 	// TLSFingerprintProfilesColumns holds the columns for the "tls_fingerprint_profiles" table.
 	TLSFingerprintProfilesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1801,6 +1851,7 @@ var (
 		SecuritySecretsTable,
 		SettingsTable,
 		SubscriptionPlansTable,
+		SubscriptionResetAuditsTable,
 		TLSFingerprintProfilesTable,
 		UsageCleanupTasksTable,
 		UsageLogsTable,
@@ -1912,6 +1963,9 @@ func init() {
 	}
 	SubscriptionPlansTable.Annotation = &entsql.Annotation{
 		Table: "subscription_plans",
+	}
+	SubscriptionResetAuditsTable.Annotation = &entsql.Annotation{
+		Table: "subscription_reset_audits",
 	}
 	TLSFingerprintProfilesTable.Annotation = &entsql.Annotation{
 		Table: "tls_fingerprint_profiles",

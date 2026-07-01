@@ -99,6 +99,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		RiskControlEnabled: settings.RiskControlEnabled,
 
+		SubscriptionDailyResetEnabled: settings.SubscriptionDailyResetEnabled,
+
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
 	})
 }

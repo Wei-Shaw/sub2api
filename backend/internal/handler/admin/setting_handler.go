@@ -228,6 +228,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
+		SubscriptionDailyResetEnabled:          settings.SubscriptionDailyResetEnabled,
 		CyberSessionBlockEnabled:               settings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds:            settings.CyberSessionBlockTTLSeconds,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
@@ -665,6 +666,9 @@ type UpdateSettingsRequest struct {
 
 	// 风控中心功能开关
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
+
+	// 订阅日额重置功能开关
+	SubscriptionDailyResetEnabled *bool `json:"subscription_daily_reset_enabled"`
 
 	// cyber 会话屏蔽开关 + TTL
 	CyberSessionBlockEnabled    *bool `json:"cyber_session_block_enabled"`
@@ -1850,6 +1854,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.RiskControlEnabled
 		}(),
+		SubscriptionDailyResetEnabled: func() bool {
+			if req.SubscriptionDailyResetEnabled != nil {
+				return *req.SubscriptionDailyResetEnabled
+			}
+			return previousSettings.SubscriptionDailyResetEnabled
+		}(),
 		CyberSessionBlockEnabled: func() bool {
 			if req.CyberSessionBlockEnabled != nil {
 				return *req.CyberSessionBlockEnabled
@@ -2191,10 +2201,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
-		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
-		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
-		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
-		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
+		RiskControlEnabled:            updatedSettings.RiskControlEnabled,
+		SubscriptionDailyResetEnabled: updatedSettings.SubscriptionDailyResetEnabled,
+		CyberSessionBlockEnabled:      updatedSettings.CyberSessionBlockEnabled,
+		CyberSessionBlockTTLSeconds:   updatedSettings.CyberSessionBlockTTLSeconds,
+		AllowUserViewErrorRequests:    updatedSettings.AllowUserViewErrorRequests,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
@@ -2698,6 +2709,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")
+	}
+	if before.SubscriptionDailyResetEnabled != after.SubscriptionDailyResetEnabled {
+		changed = append(changed, "subscription_daily_reset_enabled")
 	}
 	if before.CyberSessionBlockEnabled != after.CyberSessionBlockEnabled {
 		changed = append(changed, "cyber_session_block_enabled")
