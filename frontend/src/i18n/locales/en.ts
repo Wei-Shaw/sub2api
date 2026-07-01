@@ -6688,7 +6688,20 @@ export default {
         stickyWeightedTitle: 'Sticky weighting',
         stickyWeightedDescription: 'When enabled, previous_response_id and session_hash affinity are scored by the advanced scheduler. When disabled, sticky accounts keep the legacy hard-hit behavior.',
         subscriptionPriorityTitle: 'Subscription priority',
-        subscriptionPriorityDescription: 'When enabled, the scheduler scores ChatGPT subscription accounts first and falls back to non-subscription accounts only if no subscription slot can be acquired.'
+        subscriptionPriorityDescription: 'When enabled, the scheduler scores ChatGPT subscription accounts first and falls back to non-subscription accounts only if no subscription slot can be acquired.',
+        weightsTitle: 'Scheduler weight overrides',
+        weightsDescription: 'Blank values use config/environment values; when config is not set, built-in defaults apply. Non-blank page settings take priority.',
+        defaultPlaceholder: 'config/default: {value}',
+        topKLabel: 'TopK',
+        priorityWeight: 'Priority',
+        loadWeight: 'Load',
+        queueWeight: 'Queue',
+        errorRateWeight: 'Error rate',
+        ttftWeight: 'TTFT',
+        resetWeight: 'Reset window',
+        quotaHeadroomWeight: 'Quota headroom',
+        previousResponseWeight: 'previous_response sticky',
+        sessionStickyWeight: 'session_hash sticky'
       },
       usageRecords: {
         title: 'Usage Records',
