@@ -661,6 +661,70 @@
         </div>
       </div>
 
+      <!-- TLS Fingerprint (Anthropic OAuth/SetupToken 或 OpenAI OAuth) -->
+      <div v-if="allTLSFingerprintCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label
+            id="bulk-edit-tls-fingerprint-label"
+            class="input-label mb-0"
+            for="bulk-edit-tls-fingerprint-enabled"
+          >
+            {{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}
+          </label>
+          <input
+            v-model="enableTLSFingerprint"
+            id="bulk-edit-tls-fingerprint-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-tls-fingerprint"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-tls-fingerprint"
+          :class="!enableTLSFingerprint && 'pointer-events-none opacity-50'"
+        >
+          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.quotaControl.tlsFingerprint.hint') }}
+          </p>
+          <!-- 固定指纹开关 -->
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}</span>
+            <button
+              type="button"
+              @click="tlsFingerprintEnabled = !tlsFingerprintEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                tlsFingerprintEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  tlsFingerprintEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <!-- Profile selector -->
+          <div v-if="tlsFingerprintEnabled" class="mb-3">
+            <select v-model="tlsFingerprintProfileId" class="input">
+              <option :value="0">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
+              <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
+              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+          </div>
+          <!-- Router selector (按入站 UA 选择指纹，独立于固定 profile) -->
+          <div>
+            <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.quotaControl.tlsFingerprint.router') }}</label>
+            <select v-model="tlsFingerprintRouterId" class="input">
+              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.noRouter') }}</option>
+              <option v-for="r in tlsFingerprintRouters" :key="r.id" :value="r.id">{{ r.name }}</option>
+            </select>
+            <p class="input-hint">{{ t('admin.accounts.quotaControl.tlsFingerprint.routerHint') }}</p>
+          </div>
+        </div>
+      </div>
+
       <!-- OpenAI OAuth WS mode -->
       <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1225,6 +1289,33 @@ const allAnthropicOAuthOrSetupToken = computed(() => {
   )
 })
 
+// TLS 指纹批量设置（镜像后端 SupportsTLSFingerprint：全部为 Anthropic OAuth/SetupToken 或 OpenAI OAuth）
+const allTLSFingerprintCapable = computed(() => allOpenAIOAuth.value || allAnthropicOAuthOrSetupToken.value)
+const enableTLSFingerprint = ref(false)
+const tlsFingerprintEnabled = ref(false)
+const tlsFingerprintProfileId = ref<number>(0)
+const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
+const tlsFingerprintRouterId = ref<number | null>(null)
+const tlsFingerprintRouters = ref<{ id: number; name: string }[]>([])
+
+const loadTLSFingerprintProfiles = async () => {
+  try {
+    const profiles = await adminAPI.tlsFingerprintProfiles.list()
+    tlsFingerprintProfiles.value = profiles.map((p) => ({ id: p.id, name: p.name }))
+  } catch {
+    tlsFingerprintProfiles.value = []
+  }
+}
+
+const loadTLSFingerprintRouters = async () => {
+  try {
+    const routers = await adminAPI.tlsFingerprintRouters.list()
+    tlsFingerprintRouters.value = routers.map((r) => ({ id: r.id, name: r.name }))
+  } catch {
+    tlsFingerprintRouters.value = []
+  }
+}
+
 const filteredPresets = computed(() => {
   if (targetSelectedPlatforms.value.length === 0) return []
 
@@ -1590,6 +1681,15 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     umqExtra.user_msg_queue_enabled = false  // 清理旧字段（JSONB merge）
   }
 
+  // TLS 指纹批量设置（写入 extra；后端 JSONB merge，用 0/false 显式重置）
+  if (enableTLSFingerprint.value) {
+    const extra = ensureExtra()
+    extra.enable_tls_fingerprint = tlsFingerprintEnabled.value
+    extra.tls_fingerprint_profile_id = tlsFingerprintEnabled.value ? tlsFingerprintProfileId.value : 0
+    // router 绑定独立于固定指纹开关（与单账号编辑一致）
+    extra.tls_fingerprint_router_id = tlsFingerprintRouterId.value ?? 0
+  }
+
   if (credentialsChanged) {
     updates.credentials = credentials
   }
@@ -1663,6 +1763,7 @@ const handleSubmit = async () => {
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
+    enableTLSFingerprint.value ||
     userMsgQueueMode.value !== null
 
   if (!hasAnyFieldEnabled) {
@@ -1766,6 +1867,7 @@ watch(
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false
+      enableTLSFingerprint.value = false
 
       // Reset all values
       baseUrl.value = ''
@@ -1794,12 +1896,18 @@ watch(
       bulkRpmStrategy.value = 'tiered'
       bulkRpmStickyBuffer.value = null
       userMsgQueueMode.value = null
+      tlsFingerprintEnabled.value = false
+      tlsFingerprintProfileId.value = 0
+      tlsFingerprintRouterId.value = null
 
       // Reset mixed channel warning state
       showMixedChannelWarning.value = false
       mixedChannelWarningMessage.value = ''
       pendingUpdatesForConfirm.value = null
       mixedChannelConfirmed.value = false
+    } else if (allTLSFingerprintCapable.value) {
+      void loadTLSFingerprintProfiles()
+      void loadTLSFingerprintRouters()
     }
   }
 )
