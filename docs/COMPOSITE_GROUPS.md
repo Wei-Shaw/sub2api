@@ -100,7 +100,7 @@ keys per provider.
    | `all/gpt-5` | `responses` | `openai` | `gpt-5` |
    | `all/claude-sonnet` | `messages` | `anthropic` | `claude-sonnet-4-6` |
    | `all/gemini-pro` | `gemini` | `gemini` | `gemini-2.5-pro` |
-   | `all/grok` | `responses` | `grok` | `grok-4` |
+   | `all/grok` | `responses` | `grok` | `grok-4.3` |
 
 5. Configure channel pricing and model mapping under the concrete platforms
    named in each route. Composite routing does not create pricing records.
