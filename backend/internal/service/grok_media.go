@@ -485,12 +485,12 @@ REDACTED
 REDACTED
 
 func grokMediaErrorType(statusCode int) string {
-	switch {
-	case statusCode == http.StatusBadRequest:
+	switch statusCode {
+	case http.StatusBadRequest:
 		return "invalid_request_error"
-	case statusCode == http.StatusNotFound:
+	case http.StatusNotFound:
 		return "not_found_error"
-	case statusCode == http.StatusTooManyRequests:
+	case http.StatusTooManyRequests:
 		return "rate_limit_error"
 	default:
 		return "upstream_error"
