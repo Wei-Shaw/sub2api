@@ -846,6 +846,7 @@ export interface Account {
     sticky_score_infinity?: boolean
     sticky_weighted_enabled: boolean
   } | null
+  scheduler_scores?: AccountSchedulerGroupScore[] | null
   priority: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
   status: 'active' | 'inactive' | 'error'
@@ -924,6 +925,16 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+}
+
+export interface AccountSchedulerGroupScore {
+  group_id?: number | null
+  group_name?: string
+  group_priority?: number | null
+  base_score: number
+  sticky_score?: number
+  sticky_score_infinity?: boolean
+  sticky_weighted_enabled: boolean
 }
 
 // Account Usage types

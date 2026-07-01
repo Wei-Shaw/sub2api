@@ -2555,6 +2555,16 @@ func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int,
 	return accounts, result.Total, nil
 }
 
+func (s *adminServiceImpl) ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+	}
+	if groupID != nil {
+		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
+	}
+	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
+}
+
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
 	return s.accountRepo.GetByID(ctx, id)
 }
