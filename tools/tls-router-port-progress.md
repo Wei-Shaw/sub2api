@@ -192,7 +192,9 @@
 
 <!-- 任何"不猜不编"触发的停机点记在此:是什么、卡在哪、需要什么决策 -->
 
-### Blocker #3 — ⚠️ 自查发现:native-OpenAI 主路径 7-8 处出站漏 `DoWithTLS`(前一批 G3/Blocker#2 盲区,待用户决策)(2026-07-01,K/G5 收尾后自查)
+### Blocker #3 — ✅ 已解决(用户拍板「修全部 8 处」,commit `073be243`)(2026-07-01)
+
+> **解决**:用户选「修全部 8 处」。已把 8 处 `Do`→`DoWithTLS(..., s.resolveOpenAITLSProfile(account, s.matchTLSFingerprintRouter(c, account)))`(与既有 :3247/:3537 逐字同款);排除 embeddings(TR 也裸 Do)/grok(非 OpenAI 账号)。容器内 gofmt 空 / `go build ./...` BUILD_OK / `go vet ./...` VET_OK(编译全部测试→所有 mock 已支持 DoWithTLS)/ `go test` service(OpenAI 网关全路径+TLS 36.8s)+ handler(全)全绿;diff 精确 8 文件各 +1/-1。**出站 JA3 属【运行时·人工】**。下方为原始诊断,保留供追溯。
 
 **性质**:文档与代码不符——前一批账本称"native-OpenAI TLS ✅ 完成(解 Blocker #2)",但实证发现前一批只改了 `openai_gateway_service.go` 的 2 处(Forward:3247 / forwardOpenAIPassthrough:3537),**遗漏了另外 7-8 个 live OpenAI 出站路径**,它们仍走裸 `s.httpUpstream.Do(...)`,既不发账号级 TLS 指纹、也不受 TLS Router 影响。这与方案 §0「完整覆盖 OpenAI」目标不符。
 
@@ -491,6 +493,6 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 
 **未完成:无。** 移植清单(方案 §8 A→K + G5)**全部完成**并静态验证。前次批次遗留的两个次要/便利项(K part3 采集器 UI、G5 OAuth token)本批次均已做绿并 commit(`a71b135b`、`162b8377`)。
 
-**待人工验证(运行时,方案 §5,静态不可证一律留人工)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端 UI(含采集器 start/建会话/抓取/存 profile/命令可用性);**HTTP 抓包 JA3(含 native OpenAI + UA/指纹一致)**;**WS 抓包 + 不同指纹不串号**;未命中回落;**OAuth 换 token 出站 JA3 + 专用 UA(G5)**。
+**待人工验证(运行时,方案 §5,静态不可证一律留人工)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端 UI(含采集器 start/建会话/抓取/存 profile/命令可用性);**HTTP 抓包 JA3(含 native OpenAI + UA/指纹一致)——特别是 Blocker#3 新补的 8 条出站路径(ForwardAsChatCompletions/ForwardAsAnthropic/images(APIKey+OAuth)/ws_http_bridge/raw_chat_completions/responses_chat_fallback/count_tokens)**;**WS 抓包 + 不同指纹不串号**;未命中回落;**OAuth 换 token 出站 JA3 + 专用 UA(G5)**。
 
 **如何续作/收尾**:工作树干净,所有 commit 各自 build/vet/typecheck 绿,可安全接续。**功能端到端完整**:router HTTP(三路径)+WS+OAuth 换 token(G5)+ 账号绑定 + CRUD UI + 采集器 UI + i18n。移植代码工作**已全部完成**;剩余只有【运行时·人工】灰度/抓包验证(见上),无代码续作项。
