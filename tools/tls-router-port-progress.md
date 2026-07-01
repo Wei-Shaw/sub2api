@@ -20,7 +20,7 @@
 | H | OpenAI WS 集成 | ✅ 完成(静态) | `ef966a8f` | gofmt✅ build✅ vet✅ ws-test✅ | 连接池每处取连接点都按 matchesTLSProfile 过滤;串号须人工抓包验证 |
 | I | cmd/server 优雅关闭 | ✅ 完成 | `0f2624f7` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | 采集器 Stop 入 provideCleanup;先于 H 做(独立+安全,H 已记录待续) |
 | J | 代码生成 + 编译 | ✅ 完成 | (无码改) | generate 无 drift✅ build✅ vet✅ | 全量 `go generate ./ent`+`./cmd/server` 后 git status 空=生成码与 schema/providers 完全一致 |
-| K | 前端 | 🟡 router UI done(typecheck✅) | `49547eb3` | pnpm typecheck✅(exit 0) | RoutersModal+API+AccountsView 入口+i18n 完成绿;余:账号绑定下拉 + ProfilesModal 采集器 UI |
+| K | 前端 | 🟡 router UI+账号绑定 done(typecheck✅) | `49547eb3`+`9bfac46d` | pnpm typecheck✅(exit 0) | RoutersModal+API+入口+i18n+账号绑定下拉完成绿;仅余 ProfilesModal 采集器 UI(次要,采集器已可经 API 用) |
 
 状态图例:⬜ 未开始 / 🟡 进行中 / ✅ 完成(静态绿+commit)/ ⛔ 受阻(见下方记录)
 
@@ -369,6 +369,17 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 - 命令与结果:`pnpm install` exit 0(未改 pnpm-lock);`pnpm typecheck` → **exit 0,无错误**(RoutersModal 对 fork 组件的 prop 用法全部匹配)。
 - commit:`49547eb3`
 - 遗留:①账号绑定下拉(EditAccountModal/CreateAccountModal 加 `tls_fingerprint_router_id`)②ProfilesModal 采集器 UI(fork 与 TR 该文件 diff 618 行,须手术式合并,非整档覆盖)——见下。
+
+### Phase K(part 2)— 账号 router 绑定下拉 — ✅ 完成(typecheck 绿)(2026-07-01)
+
+- 改动文件:
+  - `frontend/src/types/index.ts`:`Account` 加 `tls_fingerprint_router_id?: number | null`(供 populate 时类型安全)。
+  - `frontend/src/components/account/EditAccountModal.vue`:镜像 profile 绑定 —— 模板加 router `<select>`(不使用路由器 + 路由器列表,**不 gate 在 tlsFingerprintEnabled**,因 router 绑定独立);state `tlsFingerprintRouterId`/`tlsFingerprintRouters`;`loadTLSProfiles` 补加载 routers;reset/populate(`account.tls_fingerprint_router_id`);submit 在 TLS if/else **之后**独立写 `extra.tls_fingerprint_router_id`(有值写、无值删)。
+  - `frontend/src/components/account/CreateAccountModal.vue`:同上(create 无 populate;load 用 .then/.catch;submit 独立写 extra)。
+  - `frontend/src/i18n/locales/en.ts`、`zh.ts`:账号表单 `admin.accounts.quotaControl.tlsFingerprint` 加 `router`/`noRouter` 键。
+- 命令与结果:`pnpm typecheck` → **exit 0,无错误**。
+- commit:`9bfac46d`
+- 遗留:仅 ProfilesModal 采集器 UI(part 3)。
 
 ## 阶段性总结 / 续作指南(2026-07-01 无人值守批次)
 

@@ -3637,7 +3637,9 @@ export default {
           label: 'TLS Fingerprint Simulation',
           hint: 'Simulate Node.js/Claude Code client TLS fingerprint',
           defaultProfile: 'Built-in Default',
-          randomProfile: 'Random'
+          randomProfile: 'Random',
+          router: 'TLS Router',
+          noRouter: 'No router'
         },
         sessionIdMasking: {
           label: 'Session ID Masking',

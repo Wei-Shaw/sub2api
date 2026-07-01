@@ -2417,6 +2417,14 @@
               <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
             </select>
           </div>
+          <!-- Router selector (按入站 UA 选择指纹，独立于固定 profile) -->
+          <div class="mt-3">
+            <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.quotaControl.tlsFingerprint.router') }}</label>
+            <select v-model="tlsFingerprintRouterId" class="input">
+              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.noRouter') }}</option>
+              <option v-for="r in tlsFingerprintRouters" :key="r.id" :value="r.id">{{ r.name }}</option>
+            </select>
+          </div>
         </div>
 
         <!-- Session ID Masking -->
@@ -3650,6 +3658,8 @@ const umqModeOptions = computed(() => [
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
+const tlsFingerprintRouterId = ref<number | null>(null)
+const tlsFingerprintRouters = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
@@ -3823,6 +3833,9 @@ watch(
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
+      adminAPI.tlsFingerprintRouters.list()
+        .then(routers => { tlsFingerprintRouters.value = routers.map(r => ({ id: r.id, name: r.name })) })
+        .catch(() => { tlsFingerprintRouters.value = [] })
       // Modal opened - fill related models
       allowedModels.value = [...getModelsByPlatform(form.platform)]
       // Antigravity: 默认使用映射模式并填充默认映射
@@ -4355,6 +4368,7 @@ const resetForm = () => {
   userMsgQueueMode.value = ''
   tlsFingerprintEnabled.value = false
   tlsFingerprintProfileId.value = null
+  tlsFingerprintRouterId.value = null
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
@@ -5613,6 +5627,11 @@ const handleAnthropicExchange = async (authCode: string) => {
       if (tlsFingerprintProfileId.value) {
         extra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value
       }
+    }
+
+    // TLS router binding (independent of the TLS fingerprint toggle)
+    if (tlsFingerprintRouterId.value) {
+      extra.tls_fingerprint_router_id = tlsFingerprintRouterId.value
     }
 
     // Add session ID masking settings

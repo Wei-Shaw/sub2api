@@ -2155,6 +2155,14 @@
               <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
             </select>
           </div>
+          <!-- Router selector (按入站 UA 选择指纹，独立于固定 profile) -->
+          <div class="mt-3">
+            <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.quotaControl.tlsFingerprint.router') }}</label>
+            <select v-model="tlsFingerprintRouterId" class="input">
+              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.noRouter') }}</option>
+              <option v-for="r in tlsFingerprintRouters" :key="r.id" :value="r.id">{{ r.name }}</option>
+            </select>
+          </div>
         </div>
 
         <!-- Session ID Masking -->
@@ -2589,6 +2597,8 @@ const umqModeOptions = computed(() => [
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
+const tlsFingerprintRouterId = ref<number | null>(null)
+const tlsFingerprintRouters = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
@@ -3217,6 +3227,12 @@ async function loadTLSProfiles() {
   } catch {
     tlsFingerprintProfiles.value = []
   }
+  try {
+    const routers = await adminAPI.tlsFingerprintRouters.list()
+    tlsFingerprintRouters.value = routers.map(r => ({ id: r.id, name: r.name }))
+  } catch {
+    tlsFingerprintRouters.value = []
+  }
 }
 
 watch(
@@ -3474,6 +3490,7 @@ function loadQuotaControlSettings(account: Account) {
   userMsgQueueMode.value = ''
   tlsFingerprintEnabled.value = false
   tlsFingerprintProfileId.value = null
+  tlsFingerprintRouterId.value = null
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
@@ -3519,6 +3536,7 @@ function loadQuotaControlSettings(account: Account) {
     tlsFingerprintEnabled.value = true
   }
   tlsFingerprintProfileId.value = account.tls_fingerprint_profile_id ?? null
+  tlsFingerprintRouterId.value = account.tls_fingerprint_router_id ?? null
 
   // Load session ID masking setting
   if (account.session_id_masking_enabled === true) {
@@ -4052,6 +4070,13 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.enable_tls_fingerprint
         delete newExtra.tls_fingerprint_profile_id
+      }
+
+      // TLS router binding (independent of the TLS fingerprint toggle)
+      if (tlsFingerprintRouterId.value) {
+        newExtra.tls_fingerprint_router_id = tlsFingerprintRouterId.value
+      } else {
+        delete newExtra.tls_fingerprint_router_id
       }
 
       // Session ID masking setting

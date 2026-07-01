@@ -883,6 +883,8 @@ export interface Account {
   // TLS指纹伪装（仅 Anthropic OAuth/SetupToken 账号有效）
   enable_tls_fingerprint?: boolean | null
   tls_fingerprint_profile_id?: number | null
+  // TLS 指纹路由器绑定（按入站 UA 选择指纹;0/未设=不使用路由器）
+  tls_fingerprint_router_id?: number | null
 
   // 会话ID伪装（仅 Anthropic OAuth/SetupToken 账号有效）
   // 启用后将在15分钟内固定 metadata.user_id 中的 session ID
