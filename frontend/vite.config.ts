@@ -2,6 +2,10 @@ import { defineConfig, loadEnv, Plugin REDACTED from 'vite'
 import vue from '@vitejs/plugin-vue'
 import checker from 'vite-plugin-checker'
 import { resolve REDACTED from 'path'
+import { Buffer REDACTED from 'node:buffer'
+import { lookup REDACTED from 'node:dns/promises'
+import type { IncomingMessage, ServerResponse REDACTED from 'node:http'
+import { isIP REDACTED from 'node:net'
 
 /**
  * Vite 插件：开发模式下注入公开配置到 index.html
@@ -34,6 +38,203 @@ function injectPublicSettings(backendUrl: string): Plugin {
   REDACTED
 REDACTED
 
+const LLM_TESTER_MAX_BODY_BYTES = 12 * 1024 * 1024
+const LLM_TESTER_TIMEOUT_MS = 300000
+
+function llmTesterDevProxy(): Plugin {
+  return {
+    name: 'llm-tester-dev-proxy',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const pathname = new URL(req.url || '/', 'http://localhost').pathname
+        if (req.method !== 'POST' || !pathname.startsWith('/api/v1/llm-tester/')) {
+          next()
+          return
+        REDACTED
+
+        try {
+          const body = await readDevProxyJson(req)
+          const route = pathname.slice('/api/v1/llm-tester/'.length)
+          if (route === 'models') {
+            await forwardDevLLMTesterRequest(res, body, 'GET', 'models')
+            return
+          REDACTED
+          if (route === 'chat/completions') {
+            await forwardDevLLMTesterRequest(res, body, 'POST', 'chat/completions')
+            return
+          REDACTED
+          if (route === 'images/generations') {
+            await forwardDevLLMTesterRequest(res, body, 'POST', 'images/generations')
+            return
+          REDACTED
+          if (route === 'responses') {
+            await forwardDevLLMTesterRequest(res, body, 'POST', 'responses')
+            return
+          REDACTED
+          next()
+        REDACTED catch (error) {
+          writeDevProxyError(res, 502, devProxyErrorMessage(error))
+        REDACTED
+      REDACTED)
+    REDACTED
+  REDACTED
+REDACTED
+
+async function readDevProxyJson(req: IncomingMessage): Promise<Record<string, any>> {
+  const chunks: Buffer[] = []
+  let total = 0
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    total += buffer.length
+    if (total > LLM_TESTER_MAX_BODY_BYTES) {
+      throw new Error('request body is too large')
+    REDACTED
+    chunks.push(buffer)
+  REDACTED
+
+  try {
+    const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    return parsed && typeof parsed === 'object' ? parsed : {REDACTED
+  REDACTED catch {
+    throw new Error('invalid request body')
+  REDACTED
+REDACTED
+
+async function forwardDevLLMTesterRequest(
+  res: ServerResponse,
+  body: Record<string, any>,
+  method: 'GET' | 'POST',
+  resource: 'models' | 'chat/completions' | 'images/generations' | 'responses'
+) {
+  const baseUrl = String(body.base_url || '').trim()
+  const apiKey = String(body.api_key || '').trim()
+  if (!baseUrl) {
+    writeDevProxyError(res, 400, 'base_url is required')
+    return
+  REDACTED
+  if (!apiKey) {
+    writeDevProxyError(res, 400, 'api_key is required')
+    return
+  REDACTED
+  if (apiKey.length > 8192) {
+    writeDevProxyError(res, 400, 'api_key is too long')
+    return
+  REDACTED
+  if (method === 'POST' && !body.payload) {
+    writeDevProxyError(res, 400, 'payload is required')
+    return
+  REDACTED
+
+  const endpoint = await buildDevLLMTesterEndpoint(baseUrl, resource)
+  const upstream = await fetch(endpoint, {
+    method,
+    headers: {
+      Authorization: `Bearer ${apiKeyREDACTED`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'Sub2API-LLM-Tester/1.0',
+      'X-Title': 'Sub2API LLM Tester'
+    REDACTED,
+    body: method === 'POST' ? JSON.stringify(body.payload || {REDACTED) : undefined,
+    signal: AbortSignal.timeout(LLM_TESTER_TIMEOUT_MS)
+  REDACTED)
+  const payload = Buffer.from(await upstream.arrayBuffer())
+  if (payload.length > LLM_TESTER_MAX_BODY_BYTES) {
+    writeDevProxyError(res, 502, 'upstream response is too large')
+    return
+  REDACTED
+
+  res.statusCode = upstream.status
+  res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
+  res.end(payload)
+REDACTED
+
+async function buildDevLLMTesterEndpoint(baseUrl: string, resource: 'models' | 'chat/completions' | 'images/generations' | 'responses'): Promise<string> {
+  const url = new URL(baseUrl.replace(/\/+$/, ''))
+  if (url.protocol !== 'https:') {
+    throw new Error('base_url must use https')
+  REDACTED
+  if (url.username || url.password) {
+    throw new Error('base_url must not include user info')
+  REDACTED
+  await assertDevProxyPublicHost(url.hostname)
+  url.search = ''
+  url.hash = ''
+  if (!/\/v\d+$/i.test(url.pathname)) {
+    url.pathname = `${url.pathname.replace(/\/+$/, '')REDACTED/v1`
+  REDACTED
+  url.pathname = `${url.pathname.replace(/\/+$/, '')REDACTED/${resourceREDACTED`
+  return url.toString()
+REDACTED
+
+async function assertDevProxyPublicHost(hostname: string) {
+  const host = hostname.trim().toLowerCase()
+  if (isBlockedDevProxyHost(host)) {
+    throw new Error(`host is not allowed: ${hostnameREDACTED`)
+  REDACTED
+  if (isIP(host)) {
+    if (isBlockedDevProxyIP(host)) throw new Error(`host is not allowed: ${hostnameREDACTED`)
+    return
+  REDACTED
+  const addrs = await lookup(host, { all: true, verbatim: false REDACTED)
+  if (!addrs.length) {
+    throw new Error(`host did not resolve: ${hostnameREDACTED`)
+  REDACTED
+  for (const addr of addrs) {
+    if (isBlockedDevProxyIP(addr.address)) {
+      throw new Error(`resolved ip is not allowed: ${addr.addressREDACTED`)
+    REDACTED
+  REDACTED
+REDACTED
+
+function isBlockedDevProxyHost(host: string): boolean {
+  return (
+    !host ||
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === 'metadata' ||
+    host === 'metadata.google.internal' ||
+    host === 'metadata.goog' ||
+    host === 'instance-data' ||
+    host === 'instance-data.ec2.internal'
+  )
+REDACTED
+
+function isBlockedDevProxyIP(address: string): boolean {
+  if (address.includes(':')) {
+    const lower = address.toLowerCase()
+    return lower === '::' || lower === '::1' || lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('fe80')
+  REDACTED
+  const parts = address.split('.').map((part) => Number(part))
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return true
+  const [a, b] = parts
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  )
+REDACTED
+
+function writeDevProxyError(res: ServerResponse, status: number, message: string) {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify({ code: status, message REDACTED))
+REDACTED
+
+function devProxyErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : 'LLM tester proxy failed'
+  const cause = error instanceof Error ? (error as Error & { cause?: unknown REDACTED).cause : undefined
+  if (cause instanceof Error && cause.message && cause.message !== message) {
+    return `${messageREDACTED: ${cause.messageREDACTED`
+  REDACTED
+  return message || 'LLM tester proxy failed'
+REDACTED
+
 export default defineConfig(({ mode REDACTED) => {
   // 加载环境变量
   const env = loadEnv(mode, process.cwd(), '')
@@ -46,7 +247,8 @@ export default defineConfig(({ mode REDACTED) => {
       checker({
         vueTsc: true
       REDACTED),
-      injectPublicSettings(backendUrl)
+      injectPublicSettings(backendUrl),
+      llmTesterDevProxy()
     ],
   resolve: {
     alias: {

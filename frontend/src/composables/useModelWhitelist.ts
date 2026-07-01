@@ -141,7 +141,13 @@ const xaiModels = [
   'grok-latest',
   'grok-build',
   'grok-4.20-reasoning',
-  'grok-4.20-non-reasoning'
+  'grok-4.20-non-reasoning',
+  'grok-imagine',
+  'grok-imagine-image',
+  'grok-imagine-image-quality',
+  'grok-imagine-edit',
+  'grok-imagine-video',
+  'grok-imagine-video-1.5'
 ]
 
 // Cohere
@@ -286,7 +292,13 @@ const grokPresetMappings = [
   { label: 'Grok Latest', from: 'grok-latest', to: 'grok-4.3', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' REDACTED,
   { label: 'Build 0.1', from: 'grok-build', to: 'grok-build-0.1', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' REDACTED,
   { label: '4.20 Reasoning', from: 'grok-4.20-reasoning', to: 'grok-4.20-0309-reasoning', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' REDACTED,
-  { label: '4.20 Non Reasoning', from: 'grok-4.20-non-reasoning', to: 'grok-4.20-0309-non-reasoning', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' REDACTED
+  { label: '4.20 Non Reasoning', from: 'grok-4.20-non-reasoning', to: 'grok-4.20-0309-non-reasoning', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' REDACTED,
+  { label: 'Imagine', from: 'grok-imagine', to: 'grok-imagine', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-300' REDACTED,
+  { label: 'Image', from: 'grok-imagine-image', to: 'grok-imagine-image', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-300' REDACTED,
+  { label: 'Image Quality', from: 'grok-imagine-image-quality', to: 'grok-imagine-image-quality', color: 'bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 dark:bg-fuchsia-900/30 dark:text-fuchsia-300' REDACTED,
+  { label: 'Edit', from: 'grok-imagine-edit', to: 'grok-imagine-edit', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300' REDACTED,
+  { label: 'Video', from: 'grok-imagine-video', to: 'grok-imagine-video', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-300' REDACTED,
+  { label: 'Video 1.5', from: 'grok-imagine-video-1.5', to: 'grok-imagine-video-1.5', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300' REDACTED
 ]
 
 // Antigravity 预设映射（支持通配符）
