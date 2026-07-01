@@ -83,6 +83,22 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		// ── 3. 基础鉴权（始终执行） ─────────────────────────────────
 
+		if rules := cfg.APIRequestIPBlocklistRules(); rules != nil && (len(rules.IPs) > 0 || len(rules.CIDRs) > 0) {
+			clientIP := ip.GetTrustedClientIP(c)
+			if cfg.APIRequestIPBlockTrustForwardedIP() {
+				clientIP = ip.GetClientIP(c)
+			}
+			allowed, _ := ip.CheckIPRestrictionWithCompiledRules(clientIP, nil, rules)
+			if !allowed {
+				if cfg.APIRequestIPBlockAction() == "ban_user" {
+					_ = apiKeyService.DisableUserForIPBlock(c.Request.Context(), apiKey.UserID, clientIP)
+				}
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonIPRestriction)
+				AbortWithError(c, 403, "ACCESS_DENIED", "Access denied")
+				return
+			}
+		}
+
 		// disabled / 未知状态 → 无条件拦截（expired 和 quota_exhausted 留给计费阶段）
 		if !apiKey.IsActive() &&
 			apiKey.Status != service.StatusAPIKeyExpired &&

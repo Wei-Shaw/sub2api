@@ -61,6 +61,7 @@ export async function list(
     search?: string
     group_name?: string         // fuzzy filter by allowed group name
     api_key_group_id?: number   // filter users by the group their API keys are bound to
+    client_ip?: string           // filter users by observed usage IP/CIDR
     attributes?: Record<number, string>  // attributeId -> value
     include_subscriptions?: boolean
     sort_by?: string
@@ -79,6 +80,7 @@ export async function list(
     search: filters?.search,
     group_name: filters?.group_name,
     api_key_group_id: filters?.api_key_group_id,
+    client_ip: filters?.client_ip,
     include_subscriptions: filters?.include_subscriptions,
     sort_by: filters?.sort_by,
     sort_order: filters?.sort_order
@@ -376,6 +378,49 @@ export async function resetPlatformQuotaWindow(
   return data
 }
 
+export interface UserUsageIPStatsItem {
+  ip: string
+  count: number
+  last_seen_at?: string | null
+  blocked?: boolean
+  block_pattern?: string
+}
+
+export interface UserUsageIPTestResult {
+  ip: string
+  reachable: boolean
+  error?: string
+}
+
+export async function getUserUsageIPs(
+  userId: number,
+  limit: number = 5000
+): Promise<{ items: UserUsageIPStatsItem[] }> {
+  const { data } = await apiClient.get<{ items: UserUsageIPStatsItem[] }>(
+    `/admin/users/${userId}/usage-ips`,
+    { params: { limit } }
+  )
+  return data
+}
+
+export async function testUserUsageIPs(ips: string[]): Promise<{ items: UserUsageIPTestResult[] }> {
+  const { data } = await apiClient.post<{ items: UserUsageIPTestResult[] }>(
+    '/admin/users/usage-ips/test',
+    { ips }
+  )
+  return data
+}
+
+export async function blockUserUsageIPs(ips: string[]): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>('/admin/users/usage-ips/block', { ips })
+  return data
+}
+
+export async function unblockUserUsageIPs(ips: string[]): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>('/admin/users/usage-ips/unblock', { ips })
+  return data
+}
+
 export const usersAPI = {
   list,
   getById,
@@ -393,6 +438,10 @@ export const usersAPI = {
   getPlatformQuotas,
   updatePlatformQuotas,
   resetPlatformQuotaWindow,
+  getUserUsageIPs,
+  testUserUsageIPs,
+  blockUserUsageIPs,
+  unblockUserUsageIPs,
 }
 
 export default usersAPI

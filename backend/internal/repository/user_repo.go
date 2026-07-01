@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/netip"
 	"sort"
 	"strings"
 	"time"
@@ -462,6 +463,10 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		))
 	}
 
+	if filters.ClientIP != "" {
+		q = q.Where(userObservedIPPredicate(filters.ClientIP))
+	}
+
 	if filters.APIKeyGroupID > 0 {
 		// 按"API Key 实际绑定的分组"过滤：用户只要有任意一个未软删除的 API Key
 		// 绑定到该分组即命中（EXISTS 语义）。
@@ -860,6 +865,45 @@ func userEmailLookupPredicate(email string) predicate.User {
 				Arg(normalized)
 		}))
 	})
+}
+
+func userObservedIPPredicate(raw string) predicate.User {
+	pattern := normalizeUserObservedIPFilter(raw)
+	if pattern == "" {
+		return predicate.User(func(s *entsql.Selector) {})
+	}
+	return predicate.User(func(s *entsql.Selector) {
+		userID := s.C(dbuser.FieldID)
+		s.Where(entsql.P(func(b *entsql.Builder) {
+			b.WriteString("EXISTS (SELECT 1 FROM usage_logs ul WHERE ul.user_id = ").
+				Ident(userID).
+				WriteString(" AND ul.ip_address IS NOT NULL AND ").
+				Arg(pattern).
+				WriteString("::inet >>= ul.ip_address::inet)")
+		}))
+	})
+}
+
+func normalizeUserObservedIPFilter(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	if idx := strings.IndexByte(value, ','); idx >= 0 {
+		value = strings.TrimSpace(value[:idx])
+	}
+	value = strings.Trim(value, "[]")
+	if prefix, err := netip.ParsePrefix(value); err == nil {
+		return prefix.Masked().String()
+	}
+	addr, err := netip.ParseAddr(value)
+	if err != nil {
+		return ""
+	}
+	if addr.Is6() && !addr.Is4In6() {
+		return netip.PrefixFrom(addr, 64).Masked().String()
+	}
+	return addr.String()
 }
 
 func normalizeEmailLookupValue(email string) string {

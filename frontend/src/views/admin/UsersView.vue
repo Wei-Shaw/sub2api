@@ -72,6 +72,18 @@
               />
             </div>
 
+            <!-- Observed IP Filter (visible when enabled) -->
+            <div v-if="visibleFilters.has('clientIP')" class="relative w-full sm:w-44">
+              <input
+                v-model="filters.clientIP"
+                type="text"
+                placeholder="Observed IP / CIDR"
+                class="input w-full"
+                @keyup.enter="applyFilter"
+                @input="handleSearch"
+              />
+            </div>
+
             <!-- Dynamic Attribute Filters -->
             <template v-for="(value, attrId) in activeAttributeFilters" :key="attrId">
               <div
@@ -706,6 +718,15 @@
                 {{ t('admin.users.platformQuota.menuItem') }}
               </button>
 
+              <!-- Usage IP Audit -->
+              <button
+                @click="handleUsageIPs(user); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <Icon name="globe" size="sm" class="text-gray-400" :stroke-width="2" />
+                Usage IPs
+              </button>
+
               <!-- Balance History -->
               <button
                 @click="handleBalanceHistory(user); closeActionMenu()"
@@ -747,6 +768,61 @@
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
     <UserAttributesConfigModal :show="showAttributesModal" @close="handleAttributesModalClose" />
+
+    <div v-if="showUsageIPsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div class="max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-xl dark:bg-dark-800">
+        <div class="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Usage IP audit</h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ usageIPsUser?.email }}</p>
+          </div>
+          <button class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-700" @click="closeUsageIPsModal">
+            <Icon name="x" size="sm" />
+          </button>
+        </div>
+        <div class="max-h-[60vh] overflow-auto p-6">
+          <div v-if="usageIPsLoading" class="py-8 text-center text-sm text-gray-500">Loading...</div>
+          <div v-else-if="usageIPs.length === 0" class="py-8 text-center text-sm text-gray-500">No usage IPs found.</div>
+          <table v-else class="w-full text-left text-sm">
+            <thead class="text-xs uppercase text-gray-500 dark:text-gray-400">
+              <tr>
+                <th class="px-3 py-2">IP</th>
+                <th class="px-3 py-2">Requests</th>
+                <th class="px-3 py-2">Last seen</th>
+                <th class="px-3 py-2">Status</th>
+                <th class="px-3 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr v-for="item in usageIPs" :key="item.ip">
+                <td class="px-3 py-2 font-mono text-xs text-gray-800 dark:text-gray-200">{{ item.ip }}</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ item.count }}</td>
+                <td class="px-3 py-2 text-gray-500 dark:text-gray-400">{{ item.last_seen_at ? formatDateTime(item.last_seen_at) : '-' }}</td>
+                <td class="px-3 py-2">
+                  <span v-if="item.blocked" class="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                    Blocked {{ item.block_pattern ? `(${item.block_pattern})` : '' }}
+                  </span>
+                  <span v-else class="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900/30 dark:text-green-300">Allowed</span>
+                </td>
+                <td class="px-3 py-2">
+                  <div class="flex justify-end gap-1">
+                    <button class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-700" title="Test" @click="testUsageIP(item.ip)">
+                      <Icon name="play" size="sm" />
+                    </button>
+                    <button v-if="!item.blocked" class="rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" title="Block" @click="blockUsageIP(item.ip)">
+                      <Icon name="ban" size="sm" />
+                    </button>
+                    <button v-else class="rounded-lg p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20" title="Unblock" @click="unblockUsageIP(item.ip)">
+                      <Icon name="checkCircle" size="sm" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </AppLayout>
 </template>
 
@@ -762,7 +838,7 @@ const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
 import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
 import type { BatchUserUsageStats } from '@/api/admin/dashboard'
-import type { PlatformQuotaItem } from '@/api/admin/users'
+import type { PlatformQuotaItem, UserUsageIPStatsItem } from '@/api/admin/users'
 import type { Column } from '@/components/common/types'
 import type { SelectOption } from '@/components/common/Select.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -1087,7 +1163,8 @@ const filters = reactive({
   role: '',
   status: '',
   group: '',  // group name for fuzzy match, '' = all
-  apiKeyGroup: null as number | null  // group id bound to the user's API keys, null = all
+  apiKeyGroup: null as number | null,  // group id bound to the user's API keys, null = all
+  clientIP: ''
 })
 const activeAttributeFilters = reactive<Record<number, string>>({})
 
@@ -1117,7 +1194,8 @@ const builtInFilters = computed(() => [
   { key: 'role', name: t('admin.users.columns.role'), type: 'select' as const },
   { key: 'status', name: t('admin.users.columns.status'), type: 'select' as const },
   { key: 'group', name: t('admin.users.authorizedGroupFilter'), type: 'select' as const },
-  { key: 'apiKeyGroup', name: t('admin.users.apiKeyGroupFilter'), type: 'select' as const }
+  { key: 'apiKeyGroup', name: t('admin.users.apiKeyGroupFilter'), type: 'select' as const },
+  { key: 'clientIP', name: 'Observed IP', type: 'text' as const }
 ])
 
 // Load saved filters from localStorage
@@ -1137,6 +1215,7 @@ const loadSavedFilters = () => {
       if (parsed.status) filters.status = parsed.status
       if (parsed.group) filters.group = parsed.group
       if (typeof parsed.apiKeyGroup === 'number') filters.apiKeyGroup = parsed.apiKeyGroup
+      if (parsed.clientIP) filters.clientIP = parsed.clientIP
       if (parsed.attributes) {
         Object.assign(activeAttributeFilters, parsed.attributes)
       }
@@ -1157,6 +1236,7 @@ const saveFiltersToStorage = () => {
       status: filters.status,
       group: filters.group,
       apiKeyGroup: filters.apiKeyGroup,
+      clientIP: filters.clientIP,
       attributes: activeAttributeFilters
     }
     localStorage.setItem(FILTER_VALUES_KEY, JSON.stringify(values))
@@ -1542,6 +1622,7 @@ const loadUsers = async () => {
         search: searchQuery.value || undefined,
         group_name: filters.group || undefined,
         api_key_group_id: filters.apiKeyGroup ?? undefined,
+        client_ip: filters.clientIP || undefined,
         attributes: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
         // 始终请求 subscriptions：列隐藏时仍需用于 UserPlatformQuotaModal 的 active-subscription 警示 banner
         include_subscriptions: true,
@@ -1628,6 +1709,7 @@ const toggleBuiltInFilter = (key: string) => {
     if (key === 'status') filters.status = ''
     if (key === 'group') filters.group = ''
     if (key === 'apiKeyGroup') filters.apiKeyGroup = null
+    if (key === 'clientIP') filters.clientIP = ''
   } else {
     visibleFilters.add(key)
     if (key === 'group') loadAllGroups()
@@ -1684,6 +1766,66 @@ const handleToggleStatus = async (user: AdminUser) => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
     console.error('Error toggling user status:', error)
+  }
+}
+
+const usageIPsUser = ref<AdminUser | null>(null)
+const usageIPs = ref<UserUsageIPStatsItem[]>([])
+const usageIPsLoading = ref(false)
+const showUsageIPsModal = ref(false)
+
+const reloadUsageIPs = async () => {
+  if (!usageIPsUser.value) return
+  usageIPsLoading.value = true
+  try {
+    const response = await adminAPI.users.getUserUsageIPs(usageIPsUser.value.id)
+    usageIPs.value = response.items || []
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || 'Failed to load usage IPs')
+  } finally {
+    usageIPsLoading.value = false
+  }
+}
+
+const handleUsageIPs = async (user: AdminUser) => {
+  usageIPsUser.value = user
+  showUsageIPsModal.value = true
+  await reloadUsageIPs()
+}
+
+const closeUsageIPsModal = () => {
+  showUsageIPsModal.value = false
+  usageIPsUser.value = null
+  usageIPs.value = []
+}
+
+const testUsageIP = async (ip: string) => {
+  try {
+    const response = await adminAPI.users.testUserUsageIPs([ip])
+    const result = response.items?.[0]
+    appStore.showSuccess(result?.reachable ? `${ip} reachable` : `${ip} not reachable${result?.error ? `: ${result.error}` : ''}`)
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || 'Failed to test IP')
+  }
+}
+
+const blockUsageIP = async (ip: string) => {
+  try {
+    await adminAPI.users.blockUserUsageIPs([ip])
+    appStore.showSuccess('IP blocked')
+    await reloadUsageIPs()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || 'Failed to block IP')
+  }
+}
+
+const unblockUsageIP = async (ip: string) => {
+  try {
+    await adminAPI.users.unblockUserUsageIPs([ip])
+    appStore.showSuccess('IP unblocked')
+    await reloadUsageIPs()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || 'Failed to unblock IP')
   }
 }
 

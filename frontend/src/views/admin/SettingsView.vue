@@ -1583,6 +1583,43 @@
                 </div>
                 <Toggle v-model="form.api_key_acl_trust_forwarded_ip" />
               </div>
+
+              <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
+                <label class="font-medium text-gray-900 dark:text-white">API request IP blocklist</label>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  One IP or CIDR per line. Matches API key requests before account routing.
+                </p>
+                <textarea
+                  v-model="apiRequestIPBlocklistText"
+                  rows="5"
+                  class="input mt-3 font-mono text-xs"
+                  placeholder="203.0.113.10&#10;2001:db8::/64"
+                ></textarea>
+              </div>
+
+              <div class="grid gap-5 md:grid-cols-3">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">Block action</label>
+                  <select v-model="form.api_request_ip_block_action" class="input mt-2">
+                    <option value="block">Reject request only</option>
+                    <option value="ban_user">Disable matched user</option>
+                  </select>
+                </div>
+                <div class="flex items-center justify-between gap-4 rounded-lg border border-gray-100 p-3 dark:border-dark-700">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">Trust forwarded IP</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Use only behind trusted proxies.</p>
+                  </div>
+                  <Toggle v-model="form.api_request_ip_block_trust_forwarded_ip" />
+                </div>
+                <div class="flex items-center justify-between gap-4 rounded-lg border border-gray-100 p-3 dark:border-dark-700">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">Auto add IP on disable</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Append the triggering IP when a user is disabled.</p>
+                  </div>
+                  <Toggle v-model="form.api_request_ip_block_auto_extract_on_user_disable" />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -7379,6 +7416,12 @@ const testingSmtp = ref(false);
 const sendingTestEmail = ref(false);
 const smtpPasswordManuallyEdited = ref(false);
 const testEmailAddress = ref("");
+const apiRequestIPBlocklistText = computed({
+  get: () => (Array.isArray(form.api_request_ip_blocklist) ? form.api_request_ip_blocklist.join("\n") : ""),
+  set: (value: string) => {
+    form.api_request_ip_blocklist = parseLineList(value);
+  },
+});
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
@@ -7993,6 +8036,10 @@ const form = reactive<SettingsForm>({
   turnstile_secret_key: "",
   turnstile_secret_key_configured: false,
   api_key_acl_trust_forwarded_ip: false,
+  api_request_ip_blocklist: [] as string[],
+  api_request_ip_block_action: "block",
+  api_request_ip_block_trust_forwarded_ip: false,
+  api_request_ip_block_auto_extract_on_user_disable: false,
   // LinuxDo Connect OAuth 登录
   linuxdo_connect_enabled: false,
   linuxdo_connect_client_id: "",
@@ -8677,6 +8724,13 @@ function formatTablePageSizeOptions(options: number[]): string {
   return options.join(", ");
 }
 
+function parseLineList(raw: string): string[] {
+  return raw
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter((item, index, all) => item !== "" && all.indexOf(item) === index);
+}
+
 function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   const tokens = raw
     .split(",")
@@ -8827,6 +8881,12 @@ async function loadSettings() {
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
     form.backend_mode_enabled = settings.backend_mode_enabled;
+    form.api_request_ip_blocklist = Array.isArray(settings.api_request_ip_blocklist)
+      ? settings.api_request_ip_blocklist
+      : [];
+    form.api_request_ip_block_action = settings.api_request_ip_block_action === "ban_user" ? "ban_user" : "block";
+    form.api_request_ip_block_trust_forwarded_ip = settings.api_request_ip_block_trust_forwarded_ip === true;
+    form.api_request_ip_block_auto_extract_on_user_disable = settings.api_request_ip_block_auto_extract_on_user_disable === true;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
@@ -9199,6 +9259,10 @@ async function saveSettings() {
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,
       api_key_acl_trust_forwarded_ip: form.api_key_acl_trust_forwarded_ip,
+      api_request_ip_blocklist: parseLineList(apiRequestIPBlocklistText.value),
+      api_request_ip_block_action: form.api_request_ip_block_action,
+      api_request_ip_block_trust_forwarded_ip: form.api_request_ip_block_trust_forwarded_ip,
+      api_request_ip_block_auto_extract_on_user_disable: form.api_request_ip_block_auto_extract_on_user_disable,
       linuxdo_connect_enabled: form.linuxdo_connect_enabled,
       linuxdo_connect_client_id: form.linuxdo_connect_client_id,
       linuxdo_connect_client_secret:
@@ -9422,6 +9486,12 @@ async function saveSettings() {
     }
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
     form.default_platform_quotas = normalizePlatformQuotasMap(updated.default_platform_quotas);
+    form.api_request_ip_blocklist = Array.isArray(updated.api_request_ip_blocklist)
+      ? updated.api_request_ip_blocklist
+      : [];
+    form.api_request_ip_block_action = updated.api_request_ip_block_action === "ban_user" ? "ban_user" : "block";
+    form.api_request_ip_block_trust_forwarded_ip = updated.api_request_ip_block_trust_forwarded_ip === true;
+    form.api_request_ip_block_auto_extract_on_user_disable = updated.api_request_ip_block_auto_extract_on_user_disable === true;
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         updated.registration_email_suffix_whitelist,

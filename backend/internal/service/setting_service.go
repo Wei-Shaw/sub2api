@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"net/url"
 	"sort"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/imroc/req/v3"
 	"golang.org/x/sync/singleflight"
@@ -679,16 +681,36 @@ func (s *SettingService) LoadAPIKeyACLTrustForwardedIPSetting(ctx context.Contex
 	if s == nil || s.cfg == nil || s.settingRepo == nil {
 		return nil
 	}
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyAPIKeyACLTrustForwardedIP)
-	if err != nil {
-		if errors.Is(err, ErrSettingNotFound) {
-			s.cfg.SetTrustForwardedIPForAPIKeyACL(s.cfg.Security.TrustForwardedIPForAPIKeyACL)
-			return nil
-		}
-		return fmt.Errorf("get api key acl forwarded ip setting: %w", err)
+	keys := []string{
+		SettingKeyAPIKeyACLTrustForwardedIP,
+		SettingKeyAPIRequestIPBlocklist,
+		SettingKeyAPIRequestIPBlockAction,
+		SettingKeyAPIRequestIPBlockTrustForwardedIP,
 	}
-	enabled := value == "true"
-	s.cfg.SetTrustForwardedIPForAPIKeyACL(enabled)
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return fmt.Errorf("get api key ACL and request IP settings: %w", err)
+	}
+	if value, ok := settings[SettingKeyAPIKeyACLTrustForwardedIP]; ok {
+		s.cfg.SetTrustForwardedIPForAPIKeyACL(value == "true")
+	} else {
+		s.cfg.SetTrustForwardedIPForAPIKeyACL(s.cfg.Security.TrustForwardedIPForAPIKeyACL)
+	}
+	if value, ok := settings[SettingKeyAPIRequestIPBlocklist]; ok {
+		s.cfg.SetAPIRequestIPBlocklist(parseIPBlocklistSetting(value))
+	} else {
+		s.cfg.SetAPIRequestIPBlocklist(s.cfg.Security.APIRequestIPBlocklist)
+	}
+	if value, ok := settings[SettingKeyAPIRequestIPBlockAction]; ok {
+		s.cfg.SetAPIRequestIPBlockAction(value)
+	} else {
+		s.cfg.SetAPIRequestIPBlockAction(s.cfg.Security.APIRequestIPBlockAction)
+	}
+	if value, ok := settings[SettingKeyAPIRequestIPBlockTrustForwardedIP]; ok {
+		s.cfg.SetAPIRequestIPBlockTrustForwardedIP(value == "true")
+	} else {
+		s.cfg.SetAPIRequestIPBlockTrustForwardedIP(s.cfg.Security.APIRequestIPBlockTrustForwardedIP)
+	}
 	return nil
 }
 
@@ -1995,6 +2017,19 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		updates[SettingKeyTurnstileSecretKey] = settings.TurnstileSecretKey
 	}
 	updates[SettingKeyAPIKeyACLTrustForwardedIP] = strconv.FormatBool(settings.APIKeyACLTrustForwardedIP)
+	settings.APIRequestIPBlocklist = normalizeIPBlocklist(settings.APIRequestIPBlocklist)
+	if invalid := ip.ValidateIPPatterns(settings.APIRequestIPBlocklist); len(invalid) > 0 {
+		return nil, fmt.Errorf("invalid api request IP blocklist pattern: %s", invalid[0])
+	}
+	settings.APIRequestIPBlockAction = normalizeAPIRequestIPBlockAction(settings.APIRequestIPBlockAction)
+	apiRequestIPBlocklistJSON, err := json.Marshal(settings.APIRequestIPBlocklist)
+	if err != nil {
+		return nil, fmt.Errorf("marshal api request IP blocklist: %w", err)
+	}
+	updates[SettingKeyAPIRequestIPBlocklist] = string(apiRequestIPBlocklistJSON)
+	updates[SettingKeyAPIRequestIPBlockAction] = settings.APIRequestIPBlockAction
+	updates[SettingKeyAPIRequestIPBlockTrustForwardedIP] = strconv.FormatBool(settings.APIRequestIPBlockTrustForwardedIP)
+	updates[SettingKeyAPIRequestIPBlockAutoExtractOnUserDisable] = strconv.FormatBool(settings.APIRequestIPBlockAutoExtractOnUserDisable)
 
 	// LinuxDo Connect OAuth 登录
 	updates[SettingKeyLinuxDoConnectEnabled] = strconv.FormatBool(settings.LinuxDoConnectEnabled)
@@ -2386,6 +2421,9 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	}
 	if s.cfg != nil {
 		s.cfg.SetTrustForwardedIPForAPIKeyACL(settings.APIKeyACLTrustForwardedIP)
+		s.cfg.SetAPIRequestIPBlocklist(settings.APIRequestIPBlocklist)
+		s.cfg.SetAPIRequestIPBlockAction(settings.APIRequestIPBlockAction)
+		s.cfg.SetAPIRequestIPBlockTrustForwardedIP(settings.APIRequestIPBlockTrustForwardedIP)
 	}
 	// codex_cli_only 加固策略缓存：设置更新后强制下次重载（涉及 4 个键 + JSON 解析，直接置过期）。
 	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
@@ -2393,6 +2431,317 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
 	}
+}
+
+func normalizeAPIRequestIPBlockAction(action string) string {
+	switch strings.TrimSpace(action) {
+	case "ban_user":
+		return "ban_user"
+	default:
+		return "block"
+	}
+}
+
+func normalizeIPBlocklist(items []string) []string {
+	seen := make(map[string]struct{}, len(items))
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		normalized := normalizeAPIRequestIPBlockCandidate(item)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+	return out
+}
+
+func normalizeAPIRequestIPBlockCandidate(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	if strings.Contains(value, "/") {
+		parsedIP, network, err := net.ParseCIDR(value)
+		if err != nil || parsedIP == nil || network == nil {
+			return value
+		}
+		if parsedIP.To4() == nil {
+			ip16 := parsedIP.To16()
+			if ip16 == nil {
+				return network.String()
+			}
+			masked := make(net.IP, len(ip16))
+			copy(masked, ip16)
+			masked = masked.Mask(net.CIDRMask(64, 128))
+			if _, v6net, err := net.ParseCIDR(masked.String() + "/64"); err == nil && v6net != nil {
+				return v6net.String()
+			}
+		}
+		return network.String()
+	}
+	parsed := net.ParseIP(value)
+	if parsed == nil {
+		return value
+	}
+	if parsed.To4() == nil {
+		ip16 := parsed.To16()
+		if ip16 == nil {
+			return parsed.String()
+		}
+		masked := make(net.IP, len(ip16))
+		copy(masked, ip16)
+		masked = masked.Mask(net.CIDRMask(64, 128))
+		if _, v6net, err := net.ParseCIDR(masked.String() + "/64"); err == nil && v6net != nil {
+			return v6net.String()
+		}
+	}
+	return parsed.String()
+}
+
+func parseIPBlocklistSetting(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var items []string
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return normalizeIPBlocklist(strings.FieldsFunc(raw, func(r rune) bool { return r == '\n' || r == ',' }))
+	}
+	return normalizeIPBlocklist(items)
+}
+
+func (s *SettingService) IsAPIRequestIPBlockAutoExtractOnUserDisableEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAPIRequestIPBlockAutoExtractOnUserDisable)
+	return err == nil && value == "true"
+}
+
+func (s *SettingService) AddAPIRequestIPBlocklistIPs(ctx context.Context, ips []string) (int, error) {
+	if s == nil || s.settingRepo == nil {
+		return 0, nil
+	}
+	candidates := normalizeIPBlocklist(ips)
+	if len(candidates) == 0 {
+		return 0, nil
+	}
+	currentRaw, err := s.settingRepo.GetValue(ctx, SettingKeyAPIRequestIPBlocklist)
+	if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		return 0, err
+	}
+	current := normalizeIPBlocklist(parseIPBlocklistSetting(currentRaw))
+	seen := make(map[string]struct{}, len(current)+len(candidates))
+	merged := make([]string, 0, len(current)+len(candidates))
+	for _, item := range current {
+		seen[item] = struct{}{}
+		merged = append(merged, item)
+	}
+	added := 0
+	for _, item := range candidates {
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		merged = append(merged, item)
+		added++
+	}
+	if added == 0 {
+		return 0, nil
+	}
+	payload, err := json.Marshal(merged)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.settingRepo.SetMultiple(ctx, map[string]string{SettingKeyAPIRequestIPBlocklist: string(payload)}); err != nil {
+		return 0, err
+	}
+	if s.cfg != nil {
+		s.cfg.SetAPIRequestIPBlocklist(merged)
+	}
+	return added, nil
+}
+
+func (s *SettingService) AddAPIRequestIPBlocklistIPsForUser(ctx context.Context, _ int64, ips []string) (int, error) {
+	return s.AddAPIRequestIPBlocklistIPs(ctx, ips)
+}
+
+func normalizeUsageIPStatsKey(raw string) string {
+	value := strings.TrimSpace(raw)
+	parsed := net.ParseIP(value)
+	if parsed == nil {
+		return value
+	}
+	if parsed.To4() == nil {
+		key, _, ok := canonicalIPv6Slash64(parsed)
+		if ok {
+			return key
+		}
+	}
+	return parsed.String()
+}
+
+type usageIPProbeTarget struct {
+	Key     string
+	ProbeIP string
+}
+
+func normalizeUsageIPProbeTarget(value string) (usageIPProbeTarget, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return usageIPProbeTarget{}, false
+	}
+	if strings.Contains(value, "/") {
+		parsedIP, network, err := net.ParseCIDR(value)
+		if err != nil || parsedIP == nil || network == nil {
+			return usageIPProbeTarget{}, false
+		}
+		if parsedIP.To4() == nil {
+			key, probeIP, ok := canonicalIPv6Slash64(parsedIP)
+			if !ok {
+				return usageIPProbeTarget{}, false
+			}
+			return usageIPProbeTarget{Key: key, ProbeIP: probeIP}, true
+		}
+		return usageIPProbeTarget{Key: network.String(), ProbeIP: network.IP.String()}, true
+	}
+	parsed := net.ParseIP(value)
+	if parsed == nil {
+		return usageIPProbeTarget{}, false
+	}
+	ipText := parsed.String()
+	return usageIPProbeTarget{Key: ipText, ProbeIP: ipText}, true
+}
+
+func canonicalIPv6Slash64(parsed net.IP) (string, string, bool) {
+	if parsed == nil || parsed.To4() != nil {
+		return "", "", false
+	}
+	ip16 := parsed.To16()
+	if ip16 == nil {
+		return "", "", false
+	}
+	masked := make(net.IP, len(ip16))
+	copy(masked, ip16)
+	masked = masked.Mask(net.CIDRMask(64, 128))
+	_, network, err := net.ParseCIDR(masked.String() + "/64")
+	if err != nil || network == nil {
+		return "", "", false
+	}
+	return network.String(), network.IP.String(), true
+}
+
+func usageIPPatternInBlocklist(value string, blocklist []string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || len(blocklist) == 0 {
+		return false
+	}
+	if !strings.Contains(value, "/") {
+		return ip.MatchesAnyPattern(value, blocklist)
+	}
+	_, candidate, err := net.ParseCIDR(value)
+	if err != nil || candidate == nil {
+		return false
+	}
+	candidateOnes, _ := candidate.Mask.Size()
+	for _, raw := range blocklist {
+		rule := strings.TrimSpace(raw)
+		if rule == "" {
+			continue
+		}
+		if strings.Contains(rule, "/") {
+			_, ruleNet, err := net.ParseCIDR(rule)
+			if err != nil || ruleNet == nil {
+				continue
+			}
+			ruleOnes, _ := ruleNet.Mask.Size()
+			if ruleOnes <= candidateOnes && ruleNet.Contains(candidate.IP) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func apiRequestIPBlockEntryContainsCandidate(entry, candidate string) bool {
+	entry = normalizeAPIRequestIPBlockCandidate(entry)
+	candidate = normalizeAPIRequestIPBlockCandidate(candidate)
+	if entry == "" || candidate == "" {
+		return false
+	}
+	if entry == candidate {
+		return true
+	}
+	if !strings.Contains(entry, "/") {
+		return false
+	}
+	_, entryNet, err := net.ParseCIDR(entry)
+	if err != nil || entryNet == nil {
+		return false
+	}
+	if strings.Contains(candidate, "/") {
+		_, candidateNet, err := net.ParseCIDR(candidate)
+		if err != nil || candidateNet == nil {
+			return false
+		}
+		entryOnes, _ := entryNet.Mask.Size()
+		candidateOnes, _ := candidateNet.Mask.Size()
+		return entryOnes <= candidateOnes && entryNet.Contains(candidateNet.IP)
+	}
+	candidateIP := net.ParseIP(candidate)
+	return candidateIP != nil && entryNet.Contains(candidateIP)
+}
+
+func (s *SettingService) RemoveAPIRequestIPBlocklistIPs(ctx context.Context, ips []string) (int, error) {
+	if s == nil || s.settingRepo == nil {
+		return 0, nil
+	}
+	removeCandidates := normalizeIPBlocklist(ips)
+	if len(removeCandidates) == 0 {
+		return 0, nil
+	}
+	currentRaw, err := s.settingRepo.GetValue(ctx, SettingKeyAPIRequestIPBlocklist)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	current := normalizeIPBlocklist(parseIPBlocklistSetting(currentRaw))
+	remaining := make([]string, 0, len(current))
+	removed := 0
+	for _, item := range current {
+		matched := false
+		for _, candidate := range removeCandidates {
+			if apiRequestIPBlockEntryContainsCandidate(item, candidate) {
+				matched = true
+				break
+			}
+		}
+		if matched {
+			removed++
+			continue
+		}
+		remaining = append(remaining, item)
+	}
+	if removed == 0 {
+		return 0, nil
+	}
+	payload, err := json.Marshal(remaining)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.settingRepo.SetMultiple(ctx, map[string]string{SettingKeyAPIRequestIPBlocklist: string(payload)}); err != nil {
+		return 0, err
+	}
+	if s.cfg != nil {
+		s.cfg.SetAPIRequestIPBlocklist(remaining)
+	}
+	return removed, nil
 }
 
 func (s *SettingService) defaultRewriteMessageCacheControl() bool {
@@ -3042,6 +3391,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyLoginAgreementUpdatedAt:                   defaultLoginAgreementDate,
 		SettingKeyLoginAgreementDocuments:                   loginAgreementDocumentsJSON,
 		SettingKeyAPIKeyACLTrustForwardedIP:                 "false",
+		SettingKeyAPIRequestIPBlocklist:                     "[]",
+		SettingKeyAPIRequestIPBlockAction:                   "block",
+		SettingKeyAPIRequestIPBlockTrustForwardedIP:         "false",
+		SettingKeyAPIRequestIPBlockAutoExtractOnUserDisable: "false",
 		SettingKeySiteName:                                  "Sub2API",
 		SettingKeySiteLogo:                                  "",
 		SettingKeyPurchaseSubscriptionEnabled:               "false",
@@ -3222,42 +3575,55 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else if s != nil && s.cfg != nil {
 		apiKeyACLTrustForwardedIP = s.cfg.Security.TrustForwardedIPForAPIKeyACL
 	}
+	apiRequestIPBlocklist := parseIPBlocklistSetting(settings[SettingKeyAPIRequestIPBlocklist])
+	apiRequestIPBlockAction := normalizeAPIRequestIPBlockAction(settings[SettingKeyAPIRequestIPBlockAction])
+	apiRequestIPBlockTrustForwardedIP := false
+	if value, ok := settings[SettingKeyAPIRequestIPBlockTrustForwardedIP]; ok {
+		apiRequestIPBlockTrustForwardedIP = value == "true"
+	} else if s != nil && s.cfg != nil {
+		apiRequestIPBlockTrustForwardedIP = s.cfg.Security.APIRequestIPBlockTrustForwardedIP
+	}
+	apiRequestIPBlockAutoExtractOnUserDisable := settings[SettingKeyAPIRequestIPBlockAutoExtractOnUserDisable] == "true"
 	result := &SystemSettings{
-		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
-		EmailVerifyEnabled:               emailVerifyEnabled,
-		RegistrationEmailSuffixWhitelist: ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
-		PromoCodeEnabled:                 settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
-		PasswordResetEnabled:             emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
-		FrontendURL:                      settings[SettingKeyFrontendURL],
-		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
-		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
-		LoginAgreementEnabled:            settings[SettingKeyLoginAgreementEnabled] == "true",
-		LoginAgreementMode:               normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
-		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
-		LoginAgreementDocuments:          loginAgreementDocuments,
-		SMTPHost:                         settings[SettingKeySMTPHost],
-		SMTPUsername:                     settings[SettingKeySMTPUsername],
-		SMTPFrom:                         settings[SettingKeySMTPFrom],
-		SMTPFromName:                     settings[SettingKeySMTPFromName],
-		SMTPUseTLS:                       settings[SettingKeySMTPUseTLS] == "true",
-		SMTPPasswordConfigured:           settings[SettingKeySMTPPassword] != "",
-		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
-		TurnstileSecretKeyConfigured:     settings[SettingKeyTurnstileSecretKey] != "",
-		APIKeyACLTrustForwardedIP:        apiKeyACLTrustForwardedIP,
-		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
-		SiteLogo:                         settings[SettingKeySiteLogo],
-		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
-		ContactInfo:                      settings[SettingKeyContactInfo],
-		DocURL:                           settings[SettingKeyDocURL],
-		HomeContent:                      settings[SettingKeyHomeContent],
-		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
-		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
-		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
-		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
-		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
-		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
+		RegistrationEnabled:                       settings[SettingKeyRegistrationEnabled] == "true",
+		EmailVerifyEnabled:                        emailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist:          ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
+		PromoCodeEnabled:                          settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
+		PasswordResetEnabled:                      emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
+		FrontendURL:                               settings[SettingKeyFrontendURL],
+		InvitationCodeEnabled:                     settings[SettingKeyInvitationCodeEnabled] == "true",
+		TotpEnabled:                               settings[SettingKeyTotpEnabled] == "true",
+		LoginAgreementEnabled:                     settings[SettingKeyLoginAgreementEnabled] == "true",
+		LoginAgreementMode:                        normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
+		LoginAgreementUpdatedAt:                   loginAgreementUpdatedAt,
+		LoginAgreementDocuments:                   loginAgreementDocuments,
+		SMTPHost:                                  settings[SettingKeySMTPHost],
+		SMTPUsername:                              settings[SettingKeySMTPUsername],
+		SMTPFrom:                                  settings[SettingKeySMTPFrom],
+		SMTPFromName:                              settings[SettingKeySMTPFromName],
+		SMTPUseTLS:                                settings[SettingKeySMTPUseTLS] == "true",
+		SMTPPasswordConfigured:                    settings[SettingKeySMTPPassword] != "",
+		TurnstileEnabled:                          settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:                          settings[SettingKeyTurnstileSiteKey],
+		TurnstileSecretKeyConfigured:              settings[SettingKeyTurnstileSecretKey] != "",
+		APIKeyACLTrustForwardedIP:                 apiKeyACLTrustForwardedIP,
+		APIRequestIPBlocklist:                     apiRequestIPBlocklist,
+		APIRequestIPBlockAction:                   apiRequestIPBlockAction,
+		APIRequestIPBlockTrustForwardedIP:         apiRequestIPBlockTrustForwardedIP,
+		APIRequestIPBlockAutoExtractOnUserDisable: apiRequestIPBlockAutoExtractOnUserDisable,
+		SiteName:                                  s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteLogo:                                  settings[SettingKeySiteLogo],
+		SiteSubtitle:                              s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		APIBaseURL:                                settings[SettingKeyAPIBaseURL],
+		ContactInfo:                               settings[SettingKeyContactInfo],
+		DocURL:                                    settings[SettingKeyDocURL],
+		HomeContent:                               settings[SettingKeyHomeContent],
+		HideCcsImportButton:                       settings[SettingKeyHideCcsImportButton] == "true",
+		PurchaseSubscriptionEnabled:               settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
+		PurchaseSubscriptionURL:                   strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
+		CustomMenuItems:                           settings[SettingKeyCustomMenuItems],
+		CustomEndpoints:                           settings[SettingKeyCustomEndpoints],
+		BackendModeEnabled:                        settings[SettingKeyBackendModeEnabled] == "true",
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
 		settings[SettingKeyTableDefaultPageSize],

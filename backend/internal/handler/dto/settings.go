@@ -53,6 +53,10 @@ type SystemSettings struct {
 	TurnstileSiteKey             string `json:"turnstile_site_key"`
 	TurnstileSecretKeyConfigured bool   `json:"turnstile_secret_key_configured"`
 	APIKeyACLTrustForwardedIP    bool   `json:"api_key_acl_trust_forwarded_ip"`
+	APIRequestIPBlocklist                     []string `json:"api_request_ip_blocklist"`
+	APIRequestIPBlockAction                   string   `json:"api_request_ip_block_action"`
+	APIRequestIPBlockTrustForwardedIP         bool     `json:"api_request_ip_block_trust_forwarded_ip"`
+	APIRequestIPBlockAutoExtractOnUserDisable bool     `json:"api_request_ip_block_auto_extract_on_user_disable"`
 
 	LinuxDoConnectEnabled                bool   `json:"linuxdo_connect_enabled"`
 	LinuxDoConnectClientID               string `json:"linuxdo_connect_client_id"`

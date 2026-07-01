@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/spf13/viper"
 )
 
@@ -581,6 +582,12 @@ type SecurityConfig struct {
 	ProxyProbe                       ProxyProbeConfig     `mapstructure:"proxy_probe"`
 	TrustForwardedIPForAPIKeyACL     bool                 `mapstructure:"trust_forwarded_ip_for_api_key_acl"`
 	trustForwardedIPForAPIKeyACLLive *atomic.Bool         `mapstructure:"-"`
+	APIRequestIPBlocklist               []string             `mapstructure:"api_request_ip_blocklist"`
+	apiRequestIPBlocklistLive           atomic.Value          `mapstructure:"-"`
+	APIRequestIPBlockAction             string               `mapstructure:"api_request_ip_block_action"`
+	apiRequestIPBlockActionLive         atomic.Value          `mapstructure:"-"`
+	APIRequestIPBlockTrustForwardedIP   bool                 `mapstructure:"api_request_ip_block_trust_forwarded_ip"`
+	apiRequestIPBlockTrustForwardedLive *atomic.Bool         `mapstructure:"-"`
 }
 
 func (c *Config) TrustForwardedIPForAPIKeyACL() bool {
@@ -603,6 +610,81 @@ func (c *Config) SetTrustForwardedIPForAPIKeyACL(enabled bool) {
 		c.Security.trustForwardedIPForAPIKeyACLLive = &atomic.Bool{}
 	}
 	c.Security.trustForwardedIPForAPIKeyACLLive.Store(enabled)
+}
+
+func (c *Config) APIRequestIPBlocklistRules() *ip.CompiledIPRules {
+	if c == nil {
+		return nil
+	}
+	if v := c.Security.apiRequestIPBlocklistLive.Load(); v != nil {
+		if rules, ok := v.(*ip.CompiledIPRules); ok {
+			return rules
+		}
+	}
+	return ip.CompileIPRules(c.Security.APIRequestIPBlocklist)
+}
+
+func (c *Config) SetAPIRequestIPBlocklist(patterns []string) {
+	if c == nil {
+		return
+	}
+	cleaned := make([]string, 0, len(patterns))
+	for _, pattern := range patterns {
+		if trimmed := strings.TrimSpace(pattern); trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	c.Security.APIRequestIPBlocklist = cleaned
+	c.Security.apiRequestIPBlocklistLive.Store(ip.CompileIPRules(cleaned))
+}
+
+func (c *Config) APIRequestIPBlockAction() string {
+	if c == nil {
+		return "block"
+	}
+	if v := c.Security.apiRequestIPBlockActionLive.Load(); v != nil {
+		if action, ok := v.(string); ok && action != "" {
+			return action
+		}
+	}
+	if c.Security.APIRequestIPBlockAction != "" {
+		return c.Security.APIRequestIPBlockAction
+	}
+	return "block"
+}
+
+func (c *Config) SetAPIRequestIPBlockAction(action string) {
+	if c == nil {
+		return
+	}
+	action = strings.TrimSpace(action)
+	if action != "ban_user" {
+		action = "block"
+	}
+	c.Security.APIRequestIPBlockAction = action
+	c.Security.apiRequestIPBlockActionLive.Store(action)
+}
+
+func (c *Config) APIRequestIPBlockTrustForwardedIP() bool {
+	if c == nil {
+		return false
+	}
+	live := c.Security.apiRequestIPBlockTrustForwardedLive
+	if live == nil {
+		return c.Security.APIRequestIPBlockTrustForwardedIP
+	}
+	return live.Load()
+}
+
+func (c *Config) SetAPIRequestIPBlockTrustForwardedIP(enabled bool) {
+	if c == nil {
+		return
+	}
+	c.Security.APIRequestIPBlockTrustForwardedIP = enabled
+	if c.Security.apiRequestIPBlockTrustForwardedLive == nil {
+		c.Security.apiRequestIPBlockTrustForwardedLive = &atomic.Bool{}
+	}
+	c.Security.apiRequestIPBlockTrustForwardedLive.Store(enabled)
 }
 
 type URLAllowlistConfig struct {
@@ -1467,6 +1549,9 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
 	cfg.Security.CSP.Policy = strings.TrimSpace(cfg.Security.CSP.Policy)
 	cfg.SetTrustForwardedIPForAPIKeyACL(cfg.Security.TrustForwardedIPForAPIKeyACL)
+	cfg.SetAPIRequestIPBlocklist(cfg.Security.APIRequestIPBlocklist)
+	cfg.SetAPIRequestIPBlockAction(cfg.Security.APIRequestIPBlockAction)
+	cfg.SetAPIRequestIPBlockTrustForwardedIP(cfg.Security.APIRequestIPBlockTrustForwardedIP)
 	cfg.Log.Level = strings.ToLower(strings.TrimSpace(cfg.Log.Level))
 	cfg.Log.Format = strings.ToLower(strings.TrimSpace(cfg.Log.Format))
 	cfg.Log.ServiceName = strings.TrimSpace(cfg.Log.ServiceName)
@@ -1612,6 +1697,9 @@ func setDefaults() {
 	viper.SetDefault("security.csp.policy", DefaultCSPPolicy)
 	viper.SetDefault("security.proxy_probe.insecure_skip_verify", false)
 	viper.SetDefault("security.trust_forwarded_ip_for_api_key_acl", false)
+	viper.SetDefault("security.api_request_ip_blocklist", []string{})
+	viper.SetDefault("security.api_request_ip_block_action", "block")
+	viper.SetDefault("security.api_request_ip_block_trust_forwarded_ip", false)
 
 	// Security - disable direct fallback on proxy error
 	viper.SetDefault("security.proxy_fallback.allow_direct_on_error", false)

@@ -636,5 +636,21 @@ func (s *stubAdminService) RevertAccountProxyFallback(ctx context.Context, id in
 	return nil
 }
 
+func (s *stubAdminService) GetUserUsageIPStats(ctx context.Context, userID int64, limit int) ([]service.UserUsageIPStats, error) {
+	return []service.UserUsageIPStats{}, nil
+}
+
+func (s *stubAdminService) TestUserUsageIPs(ctx context.Context, ips []string) ([]service.UserUsageIPTestResult, error) {
+	return []service.UserUsageIPTestResult{}, nil
+}
+
+func (s *stubAdminService) BlockUserUsageIPs(ctx context.Context, ips []string) (int, error) {
+	return len(ips), nil
+}
+
+func (s *stubAdminService) UnblockUserUsageIPs(ctx context.Context, ips []string) (int, error) {
+	return len(ips), nil
+}
+
 // Ensure stub implements interface.
 var _ service.AdminService = (*stubAdminService)(nil)
