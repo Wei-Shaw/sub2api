@@ -16,7 +16,7 @@
 | D | repository(router repo + cache) | ✅ 完成 | `0e5c588d` | gofmt✅ build✅ vet✅ svc-test✅ | 含 router service(接口与 repo 互依,合并提交);6 子测全绿 |
 | E | service(router + collector)+ config | ✅ 完成 | `0e5c588d`+`3161a1df` | gofmt✅ build✅ vet✅ svc-test✅ | router svc 随 D;本提交:collector+config+profile 编辑+wire providers。变参 provider/wire.Bind 推迟到 G(依赖 gateway/OAuth) |
 | F | handler + 路由 + wire | ✅ 完成 | `8f57d2c6` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | wire 重生成成功;cmd/server wire_gen_test 通过 |
-| G | OpenAI HTTP 集成 | 🟡 G1+G3 done;G4/native 停(见 Blocker #2) | `21e18825`+`dedb31e6` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | G1+G3 覆盖 Anthropic+转换转发;**native OpenAI 路径走裸 Do 未覆盖=方案缺口**,记 Blocker #2 待人工 |
+| G | OpenAI HTTP 集成 | 🟡 G1+G3+native-TLS done;余 G4 UA/G5 | `21e18825`+`dedb31e6`+`727f3bb7` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | Blocker #2 已解(native OpenAI 补 DoWithTLS);余 G4 UA/Originator 改写 + G5 OAuth |
 | H | OpenAI WS 集成 | ⬜ 未开始 | — | — | 硬骨头;连接池 key 须含指纹 |
 | I | cmd/server 优雅关闭 | ⬜ 未开始 | — | — | |
 | J | 代码生成 + 编译 | ⬜ 未开始 | — | — | |
@@ -262,6 +262,18 @@
 **为何停**:① 这是「文档与代码不符」(契约明令记录+停);② native 集成在最热文件 `openai_gateway_service.go`,需加 2 个服务依赖 + 改 4 处热点 + 动约 5 个测试调用方,且出站指纹正确性本就属【运行时·人工】;③ 方案 G3 的前提(覆盖 OpenAI)不成立,人工应先知悉再决定 native 集成的取舍/范围。**不臆测、不硬凑热点路径**。
 
 **补充(2026-07-01,试做后回滚的实证)**:曾按上述清单在 `openai_gateway_service.go` 内完成源改(struct 2 字段 + 构造变参 + `matchTLSFingerprintRouter`/`resolveOpenAITLSProfile` 两 helper + 两处 `Do`→`DoWithTLS(..., resolveOpenAITLSProfile(account, matchTLSFingerprintRouter(c,account)))` @ Forward:3226/forwardOpenAIPassthrough:3516),**源改本身干净可行**。但 `NewOpenAIGatewayService` 加必填参 `tlsFPProfileService` 会波及 **5 个测试调用方**(`openai_gateway_handler_test.go`×2、`openai_images_failover_test.go`、`openai_ws_protocol_forward_test.go`、`openai_gateway_record_usage_test.go`,均需补一个 `nil` 实参),且 `Do`→`DoWithTLS` 后,**跑到 Forward/forwardOpenAIPassthrough 的测试其 `HTTPUpstream` mock 必须实现 `DoWithTLS`**——已确认 `openai_ws_protocol_forward_test.go` 的 mock `DoWithTLS` 委托给 `Do`(✅ 可过),但 handler / record_usage 测试的 mock 与断言(是否区分 Do/DoWithTLS 调用)**未逐一核实**。**无法在不逐测核实的前提下保证全绿 → 已 `git checkout` 回滚该文件(工作树干净,build 仍绿)**。续作者:先给这些 mock 补 `DoWithTLS`→`Do` 委托,再逐测跑 `go test ./internal/handler/... ./internal/service/ -run "OpenAIGateway|Forward|Images|RecordUsage"` 确认,方可提交。
+
+### Phase G(native-OpenAI TLS)— 解 Blocker #2 — ✅ 完成(2026-07-01)
+
+- 背景:Blocker #2 发现 native OpenAI 路径(`OpenAIGatewayService.Forward`/`forwardOpenAIPassthrough`)走裸 `Do` 无 TLS。本次照 TR 补齐,并把之前受阻的测试面一并做绿。
+- 改动文件:
+  - `internal/service/openai_gateway_service.go`:struct 加 `tlsFPProfileService`+`tlsFPRouterService` 两字段;`NewOpenAIGatewayService` 加必填参 `tlsFPProfileService` + 可变参 `tlsFPRouterServices ...`(复用 `ProvideTLSFingerprintRouterServices` slice provider);import `pkg/tlsfingerprint`;新增 `matchTLSFingerprintRouter`+`resolveOpenAITLSProfile`(照 TR:命中→ResolveRoutableTLSProfileByID,否则 ResolveTLSProfile;service/profileService 为 nil 时安全返回 nil);两处 `Do`→`DoWithTLS(..., resolveOpenAITLSProfile(account, matchTLSFingerprintRouter(c,account)))`(Forward + forwardOpenAIPassthrough)。
+  - 5 个测试调用方补 `nil`(tlsFPProfileService)实参:`openai_gateway_handler_test.go`×2、`openai_images_failover_test.go`、`openai_ws_protocol_forward_test.go`、`openai_gateway_record_usage_test.go`(perl 按行号插入,防 anchor 歧义)。
+  - 重生成 `cmd/server/wire_gen.go`(`NewOpenAIGatewayService(..., v...)`,tlsFPProfileService 由 NewTLSFingerprintProfileService 提供)。
+- **测试面核实(之前受阻点已解)**:改 `Do`→`DoWithTLS` 后,跑到 Forward/forwardOpenAIPassthrough 的测试其 mock 均正常——`openai_ws_protocol_forward` mock 的 DoWithTLS 委托给 Do;handler 测试 httpUpstream 传 nil 但未走到该 site;images 测试走 images 路径不受影响。**全部 OpenAI/handler 测试实跑通过**。
+- 命令与结果(容器内):`go generate ./cmd/server` OK(go.mod/go.sum **未污染**;wire_gen `v...`);`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./internal/service/... ./internal/handler/...` → **VET_OK**;`go test ./internal/service/ -run "OpenAI|TLSFingerprint|Gateway|Forward|RecordUsage"` → **ok 37s**;`go test ./internal/handler/ -run "OpenAI|Images|Gateway"` → **ok**。
+- commit:`727f3bb7`
+- 遗留/风险:native OpenAI 出站现按 router/账号解析 TLS profile(向后兼容:router_id=0/无 service → resolveOpenAITLSProfile 回落 ResolveTLSProfile,OpenAI APIKey 账号 IsTLSFingerprintEnabled=false → nil,行为同现状)。**G4 UA/Originator 改写未做**(下一步);出站指纹/JA3 属【运行时·人工】。
 
 ## 阶段性总结 / 续作指南(2026-07-01 无人值守批次)
 
