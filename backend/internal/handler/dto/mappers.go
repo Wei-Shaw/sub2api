@@ -270,6 +270,10 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		if profileID := a.GetTLSFingerprintProfileID(); profileID > 0 {
 			out.TLSFingerprintProfileID = &profileID
 		}
+		// TLS指纹路由器ID
+		if routerID := a.GetTLSFingerprintRouterID(); routerID > 0 {
+			out.TLSFingerprintRouterID = &routerID
+		}
 		// 会话ID伪装开关
 		if a.IsSessionIDMaskingEnabled() {
 			enabled := true

@@ -229,6 +229,11 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 	return s.refreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID, 0, nil)
 }
 
+// RefreshTokenWithClientIDAndRouter 使用指定 TLS 路由器配置刷新导入态 ChatGPT OAuth token。
+func (s *OpenAIOAuthService) RefreshTokenWithClientIDAndRouter(ctx context.Context, refreshToken string, proxyURL string, clientID string, routerID *int64) (*OpenAITokenInfo, error) {
+	return s.refreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID, valueFromInt64Ptr(routerID), nil)
+}
+
 // refreshTokenWithClientID 使用可选的 TLS 路由器配置刷新 ChatGPT OAuth token。
 func (s *OpenAIOAuthService) refreshTokenWithClientID(ctx context.Context, refreshToken string, proxyURL string, clientID string, routerID int64, account *Account) (*OpenAITokenInfo, error) {
 	if account != nil && routerID <= 0 {
