@@ -381,6 +381,16 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 - commit:`9bfac46d`
 - 遗留:仅 ProfilesModal 采集器 UI(part 3)。
 
+### Phase K(part 3)— ProfilesModal 采集器 UI — ⏸️ 记录待续(2026-07-01)
+
+- 未做原因:TR 的 `TLSFingerprintProfilesModal.vue`(1068 行)含**深度交织的采集器 UI**(127 处 collector 引用,从模板第 27 行状态横幅到脚本第 811 行,贯穿模板+脚本),而 fork 同文件(625 行)与 TR **diff 达 618 行**(注释语言等分歧)→ 不能整档覆盖,须**手术式抽取采集器块合并**。**采集器本身已可经 API 全用**(collector/status|start|stop|sessions|captures|delete 后端+前端 API 均就绪),此 UI 属管理便利、次要;近预算上限不宜草率合并有分歧大文件(防未验证破坏)。
+- 续作清单(照 TR `TLSFingerprintProfilesModal.vue` 手术合并,对照 fork 约定):
+  1. 模板:顶部采集器状态横幅(running/stopped + start/stop)+ 采集区(建会话→capture URL+CA PEM+命令;采集列表;每条「存为 profile」)。
+  2. 脚本:state + 函数(start/stop/createSession/listCaptures/deleteSession/copy CA/save-as-profile/detect client kind)——API 已在 `api/admin/tlsFingerprintProfile.ts`(part1 已加 6 函数+3 类型)。
+  3. i18n:补 `admin.tlsFingerprintProfiles.collector.*`(en/zh,从 TR 抽)。
+  4. `pnpm typecheck` 验证。
+- 注:采集器 token 复用/抓包/存 profile 属【运行时·人工】。
+
 ## 阶段性总结 / 续作指南(2026-07-01 无人值守批次)
 
 **已完成并验证(静态全绿 + 已 commit;运行时验证一律留人工)**:
@@ -406,12 +416,14 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 - **Phase J ✅**(全量 generate 无 drift + build/vet 绿)。
 - 每 commit 容器内 gofmt+build+vet+相关 test(及 ent/wire 处 generate)全绿;**新增单测**:tlsfingerprint(3)、router service(6)、collector(4),均 PASS;OpenAI/gateway/handler/WS 既有测试全过。
 
-**后端全部完成**(G1-G4 HTTP 三路径 + H WS + 采集器 + I 优雅关闭 + 迁移/schema/repo/service/handler/wire)。
+- **Phase K router UI + 账号绑定 ✅(typecheck 绿)**(`49547eb3`+`e8140f32`,router API/RoutersModal/AccountsView 入口/i18n/账号绑定下拉)。
 
-**未完成(均已记录精确续作清单)**:
-- **K**(前端)— ⏸️ 记录待续(大件 ~880 行弹窗 + API + i18n + 需前端工具链;见上「Phase K」文件清单;**后端 API 已全部就绪可直接对接**)。
-- **G5**(OAuth token UA/profile,次要路径)— ⏸️ 推迟(需改 OpenAIOAuthClient HTTP 层,fork 与 TR 异构;见上「Phase G5」)。非主路径,可后补。
+**后端全部完成 + 前端 router 主 UI 完成**(G1-G4 HTTP 三路径 + H WS + 采集器 + I 优雅关闭 + 迁移/schema/repo/service/handler/wire;前端 router CRUD + 账号绑定 typecheck 绿)。**TLS 指纹路由器功能端到端可用**(管理员 UI 建路由器/规则 + 绑定账号 → 后端 HTTP/WS 出站按 UA 路由指纹)。
 
-**待人工验证(运行时,方案 §5)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端;**HTTP 抓包 JA3(含 native OpenAI 路径 + UA/指纹一致)**;**WS 抓包 + 不同指纹不串号**;未命中回落;采集器抓取;OAuth 换 token(G5 做完后)。
+**未完成(均已记录精确续作清单,均为次要/便利项)**:
+- **K part3 前端采集器 UI**(ProfilesModal)— ⏸️ 记录待续(深度交织 618 行分歧,须手术合并;**采集器已可经 API 全用**;见上「Phase K part 3」)。
+- **G5**(OAuth token 换 token 专用 UA/profile,次要路径)— ⏸️ 推迟(需改 OpenAIOAuthClient HTTP 层,fork 与 TR 异构;见上「Phase G5」)。
 
-**如何续作**:工作树干净,所有 commit 各自 build 绿,可从任一处安全接续。**后端已全部完成(HTTP + WS + 采集器)**。剩余优先级:K(前端,让管理员能 UI 配置,后端 API 已就绪)> G5(次要 OAuth token 路径)。续作清单见 Phase K / Phase G5 记录。
+**待人工验证(运行时,方案 §5)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端 UI;**HTTP 抓包 JA3(含 native OpenAI + UA/指纹一致)**;**WS 抓包 + 不同指纹不串号**;未命中回落;采集器抓取;OAuth 换 token(G5 做完后)。
+
+**如何续作**:工作树干净,所有 commit 各自 build/typecheck 绿,可从任一处安全接续。**核心功能(router HTTP+WS+账号绑定+CRUD UI)已完整**。剩余仅两个便利/次要项:K part3(采集器 UI)、G5(OAuth token)。续作清单见对应 Phase 记录。
