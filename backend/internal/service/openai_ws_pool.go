@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -69,6 +70,10 @@ type openAIWSAcquireRequest struct {
 	ForceNewConn bool
 	// ForcePreferredConn: 强制本次只使用 PreferredConnID，禁止漂移到其它连接。
 	ForcePreferredConn bool
+	// TLSProfile / TLSProfileKey: 本次请求所需的 TLS 指纹模板与连接池隔离键。
+	// 连接池按 TLSProfileKey 隔离连接,确保不同指纹的连接不被复用(防串号)。
+	TLSProfile    *tlsfingerprint.Profile
+	TLSProfileKey string
 }
 
 type openAIWSConnLease struct {
@@ -225,6 +230,7 @@ type openAIWSConn struct {
 	ws openAIWSClientConn
 
 	handshakeHeaders http.Header
+	tlsProfileKey    string
 
 	leaseCh   chan struct{}
 	closedCh  chan struct{}
@@ -239,12 +245,13 @@ type openAIWSConn struct {
 	prewarmed     atomic.Bool
 }
 
-func newOpenAIWSConn(id string, _ int64, ws openAIWSClientConn, handshakeHeaders http.Header) *openAIWSConn {
+func newOpenAIWSConn(id string, _ int64, ws openAIWSClientConn, handshakeHeaders http.Header, profile *tlsfingerprint.Profile, profileKey string) *openAIWSConn {
 	now := time.Now()
 	conn := &openAIWSConn{
 		id:               id,
 		ws:               ws,
 		handshakeHeaders: cloneHeader(handshakeHeaders),
+		tlsProfileKey:    openAIWSTLSProfileKey(profile, profileKey),
 		leaseCh:          make(chan struct{}, 1),
 		closedCh:         make(chan struct{}),
 	}
@@ -252,6 +259,22 @@ func newOpenAIWSConn(id string, _ int64, ws openAIWSClientConn, handshakeHeaders
 	conn.createdAtNano.Store(now.UnixNano())
 	conn.lastUsedNano.Store(now.UnixNano())
 	return conn
+}
+
+// matchesTLSProfile 判断连接的 TLS 指纹是否与请求所需一致(连接池复用的隔离依据,防串号)。
+func (c *openAIWSConn) matchesTLSProfile(profile *tlsfingerprint.Profile, profileKey string) bool {
+	if c == nil {
+		return false
+	}
+	return c.tlsProfileKey == openAIWSTLSProfileKey(profile, profileKey)
+}
+
+// openAIWSTLSProfileKey 计算连接池 TLS 隔离键:优先用调用方给的稳定 scope key,否则回落 profile 的 CacheKey。
+func openAIWSTLSProfileKey(profile *tlsfingerprint.Profile, profileKey string) string {
+	if key := stringsTrim(profileKey); key != "" {
+		return key
+	}
+	return tlsfingerprint.CacheKey(profile)
 }
 
 func (c *openAIWSConn) tryAcquire() bool {
@@ -814,7 +837,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 				return nil, errOpenAIWSPreferredConnUnavailable
 			}
 			preferredConn, ok := ap.conns[preferredConnID]
-			if !ok || preferredConn == nil {
+			if !ok || preferredConn == nil || !preferredConn.matchesTLSProfile(req.TLSProfile, req.TLSProfileKey) {
 				p.recordConnPickDuration(time.Since(pickStartedAt))
 				ap.mu.Unlock()
 				closeOpenAIWSConns(evicted)
@@ -895,7 +918,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 		}
 
 		if preferredConnID != "" {
-			if conn, ok := ap.conns[preferredConnID]; ok && conn.tryAcquire() {
+			if conn, ok := ap.conns[preferredConnID]; ok && conn.matchesTLSProfile(req.TLSProfile, req.TLSProfileKey) && conn.tryAcquire() {
 				connPick := time.Since(pickStartedAt)
 				p.recordConnPickDuration(connPick)
 				ap.mu.Unlock()
@@ -917,7 +940,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 			}
 		}
 
-		best := p.pickLeastBusyConnLocked(ap, "")
+		best := p.pickLeastBusyConnLocked(ap, "", req.TLSProfile, req.TLSProfileKey)
 		if best != nil && best.tryAcquire() {
 			connPick := time.Since(pickStartedAt)
 			p.recordConnPickDuration(connPick)
@@ -940,6 +963,9 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 		}
 		for _, conn := range ap.conns {
 			if conn == nil || conn == best {
+				continue
+			}
+			if !conn.matchesTLSProfile(req.TLSProfile, req.TLSProfileKey) {
 				continue
 			}
 			if conn.tryAcquire() {
@@ -967,6 +993,15 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 
 	if req.ForceNewConn && len(ap.conns)+ap.creating >= effectiveMaxConns {
 		if idle := p.pickOldestIdleConnLocked(ap); idle != nil {
+			delete(ap.conns, idle.id)
+			evicted = append(evicted, idle)
+			p.metrics.scaleDownTotal.Add(1)
+		}
+	}
+
+	// 容量已满且无匹配指纹的连接可复用时,淘汰一个空闲的指纹不匹配连接,腾位给新指纹连接(防串号)。
+	if len(ap.conns)+ap.creating >= effectiveMaxConns {
+		if idle := p.pickOldestIdleMismatchedTLSConnLocked(ap, req.TLSProfile, req.TLSProfileKey); idle != nil {
 			delete(ap.conns, idle.id)
 			evicted = append(evicted, idle)
 			p.metrics.scaleDownTotal.Add(1)
@@ -1016,7 +1051,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 		return nil, errOpenAIWSConnQueueFull
 	}
 
-	target := p.pickLeastBusyConnLocked(ap, req.PreferredConnID)
+	target := p.pickLeastBusyConnLocked(ap, req.PreferredConnID, req.TLSProfile, req.TLSProfileKey)
 	connPick := time.Since(pickStartedAt)
 	p.recordConnPickDuration(connPick)
 	if target == nil {
@@ -1216,14 +1251,18 @@ func (p *openAIWSConnPool) cleanupAccountLocked(ap *openAIWSAccountPool, now tim
 	return evicted
 }
 
-func (p *openAIWSConnPool) pickLeastBusyConnLocked(ap *openAIWSAccountPool, preferredConnID string) *openAIWSConn {
+func (p *openAIWSConnPool) pickLeastBusyConnLocked(ap *openAIWSAccountPool, preferredConnID string, profile *tlsfingerprint.Profile, profileKey string) *openAIWSConn {
 	if ap == nil || len(ap.conns) == 0 {
 		return nil
 	}
 	preferredConnID = stringsTrim(preferredConnID)
 	if preferredConnID != "" {
 		if conn, ok := ap.conns[preferredConnID]; ok {
-			return conn
+			// 仅当指纹一致时复用 preferred 连接;否则拒绝(防串号),回落新建。
+			if conn.matchesTLSProfile(profile, profileKey) {
+				return conn
+			}
+			return nil
 		}
 	}
 	var best *openAIWSConn
@@ -1231,6 +1270,9 @@ func (p *openAIWSConnPool) pickLeastBusyConnLocked(ap *openAIWSAccountPool, pref
 	var bestLastUsed time.Time
 	for _, conn := range ap.conns {
 		if conn == nil {
+			continue
+		}
+		if !conn.matchesTLSProfile(profile, profileKey) {
 			continue
 		}
 		waiters := conn.waiters.Load()
@@ -1244,6 +1286,23 @@ func (p *openAIWSConnPool) pickLeastBusyConnLocked(ap *openAIWSAccountPool, pref
 		}
 	}
 	return best
+}
+
+// pickOldestIdleMismatchedTLSConnLocked 选出一个空闲且指纹不匹配的连接,供容量满时淘汰腾位给新指纹连接。
+func (p *openAIWSConnPool) pickOldestIdleMismatchedTLSConnLocked(ap *openAIWSAccountPool, profile *tlsfingerprint.Profile, profileKey string) *openAIWSConn {
+	if ap == nil || len(ap.conns) == 0 {
+		return nil
+	}
+	var oldest *openAIWSConn
+	for _, conn := range ap.conns {
+		if conn == nil || conn.isLeased() || conn.waiters.Load() > 0 || p.isConnPinnedLocked(ap, conn.id) || conn.matchesTLSProfile(profile, profileKey) {
+			continue
+		}
+		if oldest == nil || conn.lastUsedAt().Before(oldest.lastUsedAt()) {
+			oldest = conn
+		}
+	}
+	return oldest
 }
 
 func accountPoolLoadLocked(ap *openAIWSAccountPool) (inflight int, waiters int) {
@@ -1485,7 +1544,7 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	if p == nil || p.clientDialer == nil {
 		return nil, errors.New("openai ws client dialer is nil")
 	}
-	conn, status, handshakeHeaders, err := p.clientDialer.Dial(ctx, req.WSURL, req.Headers, req.ProxyURL)
+	conn, status, handshakeHeaders, err := p.clientDialer.Dial(ctx, req.WSURL, req.Headers, req.ProxyURL, req.TLSProfile)
 	if err != nil {
 		return nil, &openAIWSDialError{
 			StatusCode:      status,
@@ -1501,7 +1560,7 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 		}
 	}
 	id := p.nextConnID(req.Account.ID)
-	return newOpenAIWSConn(id, req.Account.ID, conn, handshakeHeaders), nil
+	return newOpenAIWSConn(id, req.Account.ID, conn, handshakeHeaders, req.TLSProfile, req.TLSProfileKey), nil
 }
 
 func (p *openAIWSConnPool) nextConnID(accountID int64) string {

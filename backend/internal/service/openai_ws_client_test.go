@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,13 +15,13 @@ func TestCoderOpenAIWSClientDialer_ProxyHTTPClientReuse(t *testing.T) {
 	impl, ok := dialer.(*coderOpenAIWSClientDialer)
 	require.True(t, ok)
 
-	c1, err := impl.proxyHTTPClient("http://127.0.0.1:8080")
+	c1, err := impl.proxyHTTPClient("http://127.0.0.1:8080", nil)
 	require.NoError(t, err)
-	c2, err := impl.proxyHTTPClient("http://127.0.0.1:8080")
+	c2, err := impl.proxyHTTPClient("http://127.0.0.1:8080", nil)
 	require.NoError(t, err)
 	require.Same(t, c1, c2, "同一代理地址应复用同一个 HTTP 客户端")
 
-	c3, err := impl.proxyHTTPClient("http://127.0.0.1:8081")
+	c3, err := impl.proxyHTTPClient("http://127.0.0.1:8081", nil)
 	require.NoError(t, err)
 	require.NotSame(t, c1, c3, "不同代理地址应分离客户端")
 }
@@ -30,7 +31,7 @@ func TestCoderOpenAIWSClientDialer_ProxyHTTPClientInvalidURL(t *testing.T) {
 	impl, ok := dialer.(*coderOpenAIWSClientDialer)
 	require.True(t, ok)
 
-	_, err := impl.proxyHTTPClient("://bad")
+	_, err := impl.proxyHTTPClient("://bad", nil)
 	require.Error(t, err)
 }
 
@@ -39,11 +40,11 @@ func TestCoderOpenAIWSClientDialer_TransportMetricsSnapshot(t *testing.T) {
 	impl, ok := dialer.(*coderOpenAIWSClientDialer)
 	require.True(t, ok)
 
-	_, err := impl.proxyHTTPClient("http://127.0.0.1:18080")
+	_, err := impl.proxyHTTPClient("http://127.0.0.1:18080", nil)
 	require.NoError(t, err)
-	_, err = impl.proxyHTTPClient("http://127.0.0.1:18080")
+	_, err = impl.proxyHTTPClient("http://127.0.0.1:18080", nil)
 	require.NoError(t, err)
-	_, err = impl.proxyHTTPClient("http://127.0.0.1:18081")
+	_, err = impl.proxyHTTPClient("http://127.0.0.1:18081", nil)
 	require.NoError(t, err)
 
 	snapshot := impl.SnapshotTransportMetrics()
@@ -59,7 +60,7 @@ func TestCoderOpenAIWSClientDialer_ProxyClientCacheCapacity(t *testing.T) {
 
 	total := openAIWSProxyClientCacheMaxEntries + 32
 	for i := 0; i < total; i++ {
-		_, err := impl.proxyHTTPClient(fmt.Sprintf("http://127.0.0.1:%d", 20000+i))
+		_, err := impl.proxyHTTPClient(fmt.Sprintf("http://127.0.0.1:%d", 20000+i), nil)
 		require.NoError(t, err)
 	}
 
@@ -76,21 +77,23 @@ func TestCoderOpenAIWSClientDialer_ProxyClientCacheIdleTTL(t *testing.T) {
 	require.True(t, ok)
 
 	oldProxy := "http://127.0.0.1:28080"
-	_, err := impl.proxyHTTPClient(oldProxy)
+	// 缓存键含 TLS 指纹段(无 profile → CacheKey(nil)),需按新键格式查表。
+	oldKey := oldProxy + "|tls:" + tlsfingerprint.CacheKey(nil)
+	_, err := impl.proxyHTTPClient(oldProxy, nil)
 	require.NoError(t, err)
 
 	impl.proxyMu.Lock()
-	oldEntry := impl.proxyClients[oldProxy]
+	oldEntry := impl.proxyClients[oldKey]
 	require.NotNil(t, oldEntry)
 	oldEntry.lastUsedUnixNano = time.Now().Add(-openAIWSProxyClientCacheIdleTTL - time.Minute).UnixNano()
 	impl.proxyMu.Unlock()
 
 	// 触发一次新的代理获取，驱动 TTL 清理。
-	_, err = impl.proxyHTTPClient("http://127.0.0.1:28081")
+	_, err = impl.proxyHTTPClient("http://127.0.0.1:28081", nil)
 	require.NoError(t, err)
 
 	impl.proxyMu.Lock()
-	_, exists := impl.proxyClients[oldProxy]
+	_, exists := impl.proxyClients[oldKey]
 	impl.proxyMu.Unlock()
 
 	require.False(t, exists, "超过空闲 TTL 的代理客户端应被回收")
@@ -101,7 +104,7 @@ func TestCoderOpenAIWSClientDialer_ProxyTransportTLSHandshakeTimeout(t *testing.
 	impl, ok := dialer.(*coderOpenAIWSClientDialer)
 	require.True(t, ok)
 
-	client, err := impl.proxyHTTPClient("http://127.0.0.1:38080")
+	client, err := impl.proxyHTTPClient("http://127.0.0.1:38080", nil)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 

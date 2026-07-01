@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -1144,7 +1145,7 @@ func TestOpenAIGatewayService_PrewarmReadHonorsParentContext(t *testing.T) {
 	}
 	conn := newOpenAIWSConn("prewarm_ctx_conn", account.ID, &openAIWSBlockingConn{
 		readDelay: 200 * time.Millisecond,
-	}, nil)
+	}, nil, nil, "")
 	lease := &openAIWSConnLease{
 		accountID: account.ID,
 		conn:      conn,
@@ -1554,6 +1555,7 @@ func (d *openAIWSCaptureDialer) Dial(
 	wsURL string,
 	headers http.Header,
 	proxyURL string,
+	_ *tlsfingerprint.Profile,
 ) (openAIWSClientConn, int, http.Header, error) {
 	_ = ctx
 	_ = wsURL

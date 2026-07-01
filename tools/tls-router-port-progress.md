@@ -17,7 +17,7 @@
 | E | service(router + collector)+ config | ✅ 完成 | `0e5c588d`+`3161a1df` | gofmt✅ build✅ vet✅ svc-test✅ | router svc 随 D;本提交:collector+config+profile 编辑+wire providers。变参 provider/wire.Bind 推迟到 G(依赖 gateway/OAuth) |
 | F | handler + 路由 + wire | ✅ 完成 | `8f57d2c6` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | wire 重生成成功;cmd/server wire_gen_test 通过 |
 | G | OpenAI HTTP 集成 | ✅ 主路径完成(G5 推迟) | `21e18825`+`dedb31e6`+`727f3bb7`+`ae324f7a` | gofmt✅ build✅ vet✅ test✅ | HTTP 全主路径路由感知 TLS + UA/Originator 完成;G5(OAuth token,次要路径)主动推迟(方案允许,见下) |
-| H | OpenAI WS 集成 | ⬜ 未开始 | — | — | 硬骨头;连接池 key 须含指纹 |
+| H | OpenAI WS 集成 | ✅ 完成(静态) | `ef966a8f` | gofmt✅ build✅ vet✅ ws-test✅ | 连接池每处取连接点都按 matchesTLSProfile 过滤;串号须人工抓包验证 |
 | I | cmd/server 优雅关闭 | ✅ 完成 | `0f2624f7` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | 采集器 Stop 入 provideCleanup;先于 H 做(独立+安全,H 已记录待续) |
 | J | 代码生成 + 编译 | ✅ 完成 | (无码改) | generate 无 drift✅ build✅ vet✅ | 全量 `go generate ./ent`+`./cmd/server` 后 git status 空=生成码与 schema/providers 完全一致 |
 | K | 前端 | ⏸️ 记录待续 | — | — | 大件(~880 行弹窗等)+ 需前端工具链;本批次未做,见续作清单 |
@@ -293,7 +293,23 @@
   2. 属**次要路径**(token 交换/刷新,非主 API 请求路径;主路径 G1-G4 已完成生效)。
 - 续作清单(不臆测的前提下):① 在 service 包定义两接口(`GetRuntimeRouter(int64) *model.TLSFingerprintRouter` / `ResolveTokenTLSProfileByID(int64)(*tlsfingerprint.Profile,bool)`——实现已在 router/profile service 上现成);② `OpenAIOAuthService` 加 2 字段 + `SetTokenTLSRouterDeps` setter(在 `ProvideOpenAIOAuthService` wrapper 里调 setter 注入,避免构造签名变更 + 免 wire.Bind);③ 加 `OpenAIOAuthTokenRequestOptions` + `resolveChatGPTOAuthTokenRequestOptions`;④ **核对 fork `OpenAIOAuthClient` 接口能否接 options 应用 UA/DoWithTLS**——这步是关键,若 fork 客户端无对应能力需先加(此处最易触发臆测,务必对照 fork 现状);⑤ 调用点(ExchangeCode/RefreshToken/RefreshAccountToken)传 options;⑥ build/vet/test。Codex invite-reset:fork **无** `codex_invite_reset_service.go`,按方案跳过。
 
-### Phase H — OpenAI WS 集成 — ⏸️ 记录待续(2026-07-01,最高风险,须整体做)
+### Phase H — OpenAI WS 集成 — ✅ 完成(静态)(2026-07-01)
+
+- 按下方 TR 清单整体实现,一次做完,build/vet/ws-test 全绿。**核心防串号:连接池每一处取连接点都加了 `matchesTLSProfile` 过滤**(见下),不同指纹连接不复用。
+- 改动文件(源):
+  - `openai_gateway_service.go`:新增 `resolveOpenAIWSTLSProfile(account, routerMatch...)`(resolveOpenAITLSProfile + HTTP1OnlyProfile + scope key:tls-router-{id}-{pid}/tls-router-random/tls-random/CacheKey)。
+  - `openai_ws_client.go`:`openAIWSClientDialer.Dial` 接口加 `profile` 参;`coderOpenAIWSClientDialer.Dial` 有 profile 时也建自定义 client;`proxyHTTPClient(proxy, profile)` 缓存键 `proxy+"|tls:"+CacheKey(profile)`;新增 `buildOpenAIWSHTTPTransport`(强制 HTTP/1.1 + 按无代理/SOCKS5/HTTP 设 DialTLSContext);import crypto/tls + tlsfingerprint。
+  - `openai_ws_pool.go`:`openAIWSAcquireRequest` 加 `TLSProfile`+`TLSProfileKey`;`openAIWSConn` 加 `tlsProfileKey`;`newOpenAIWSConn` 收 profile+key;新增 `matchesTLSProfile`+`openAIWSTLSProfileKey`+`pickOldestIdleMismatchedTLSConnLocked`;`pickLeastBusyConnLocked` 加 profile/key 参 + 过滤;**acquire 全部取连接点过滤**:forcePreferred(matchesTLSProfile 否则 unavailable)、preferred 复用(&& matchesTLSProfile)、pickLeastBusy(2 调用点传 profile/key)、fallback loop(!matchesTLSProfile→continue);容量满时新增淘汰指纹不匹配空闲连接;`dialConn` 传 profile 给 Dial + newOpenAIWSConn。clone 用结构体拷贝自动带新字段。
+  - `openai_ws_forwarder.go`:两处 acquire(forwardOpenAIWSV2 + 另一处)前 `resolveOpenAIWSTLSProfile(account, matchTLSFingerprintRouter(c,account))` 写入 req;`buildOpenAIWSHeaders` 末尾加 UA/Originator router 覆写(同 G4)。
+  - `openai_ws_v2_passthrough_adapter.go`:直连 passthrough dial 也传 wsTLSProfile。
+- 改动文件(测试适配):`Dial` 签名变更波及 6 个 dialer mock(加 `_ *tlsfingerprint.Profile` 参)+ `newOpenAIWSConn` ~45 处调用(加 `nil, ""`)+ `proxyHTTPClient` 14 处调用(加 `nil`)+ 3 个测试文件补 tlsfingerprint import;`ProxyClientCacheIdleTTL` 测试改用新缓存键 `proxy+"|tls:"+CacheKey(nil)` 查表。
+- 命令与结果(容器内):`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./...` → 无报错;`go test ./internal/service/ -run "OpenAIWS|WS|OpenAI|Forward|TLSFingerprint|FastPolicy|Dialer|Pool"` → **ok ~34s**;go.mod/go.sum 未污染。
+- commit:`ef966a8f`
+- 遗留/风险:**不同指纹连接不串号 / WS wss 握手 JA3 / 真实 Codex WS 流量 属【运行时·人工】抓包验证**(方案 §5/§6),静态不可证,**未宣称已验证**。向后兼容:router_id=0/无指纹 → resolveOpenAIWSTLSProfile 返回 (nil,"") → 连接池键回落 CacheKey(nil),行为同现状。
+
+<details><summary>(原「记录待续」清单,保留供追溯)</summary>
+
+### Phase H(原记录)— OpenAI WS 集成 — ⏸️ 曾记录待续,现已实现
 
 - **为何未做**:H 是全案最深最险的一步,其**核心正确性(不同指纹连接不串号)只能人工抓包/JA3 验证**(方案 §Phase H/§6 明示「务必抓包验证」「运行时留人工」);且**半成品有害**——若给 WS dialer 传了 profile 却没把连接池复用键纳入指纹,不同指纹会复用同一连接=串号,比不做更糟。故 H 必须**整体一次做完**,不宜在预算紧张时草率半做。**不臆测、不硬凑连接池核心逻辑**。
 - **TR 实证的完整改动清单(照抄参照,scope-guard:只移 TLS 符号,勿带 user-prompt-replacement/ingress-session/hook 签名)**:
@@ -304,8 +320,10 @@
 - **验证要求**:build+vet+`go test ./internal/service/ -run "OpenAIWS|WS|Forward"` 全绿(静态);**串号/指纹须人工抓包**,不得宣称已验证。
 - **续作提示**:fork 的连接池 picking 逻辑与 TR 可能不完全同构,逐点对照 fork 现有 `acquire`/`pickLeastBusyConnLocked`/account pool 结构再改;`matchesTLSProfile` 过滤**务必覆盖每一处取连接点**,漏一处即串号。建议整段单独一个批次、full budget 做。
 
+</details>
+
 ### Phase G(变参 provider 复用说明)
-G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 GatewayService 与 OpenAIGatewayService 两个变参构造共享(wire 各生成 `v...`),无重复 provider 冲突。H 若需要 router service 已就绪。
+G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 GatewayService 与 OpenAIGatewayService 两个变参构造共享(wire 各生成 `v...`),无重复 provider 冲突。H 已复用 router service。
 
 ### Phase I — cmd/server 采集器优雅关闭 — ✅ 完成(2026-07-01)
 

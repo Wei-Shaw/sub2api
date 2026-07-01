@@ -2586,6 +2586,27 @@ func (s *OpenAIGatewayService) resolveOpenAITLSProfile(account *Account, routerM
 	return s.tlsFPProfileService.ResolveTLSProfile(account)
 }
 
+// resolveOpenAIWSTLSProfile 解析 WS(Responses WebSocket)出站的 TLS Profile 及连接池隔离 scope key。
+// WS 是 HTTP/1.1 Upgrade,profile 剥离 h2 ALPN;scope key 用于连接池按指纹隔离,防止不同指纹连接串号。
+func (s *OpenAIGatewayService) resolveOpenAIWSTLSProfile(account *Account, routerMatch ...TLSFingerprintRouterMatchResult) (*tlsfingerprint.Profile, string) {
+	profile := s.resolveOpenAITLSProfile(account, routerMatch...)
+	if profile == nil {
+		return nil, ""
+	}
+	profile = tlsfingerprint.HTTP1OnlyProfile(profile)
+	if len(routerMatch) > 0 && routerMatch[0].Matched {
+		if routerMatch[0].TLSFingerprintProfileID == -1 {
+			return profile, "tls-router-random"
+		}
+		return profile, "tls-router-" + strconv.FormatInt(routerMatch[0].RouterID, 10) + "-" + strconv.FormatInt(routerMatch[0].TLSFingerprintProfileID, 10)
+	}
+	if account != nil && account.GetTLSFingerprintProfileID() == -1 {
+		// 随机模板用稳定配置键隔离,使多轮 continuation 复用同一连接。
+		return profile, "tls-random"
+	}
+	return profile, tlsfingerprint.CacheKey(profile)
+}
+
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 

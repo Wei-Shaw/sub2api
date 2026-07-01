@@ -1180,6 +1180,16 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		headers.Set("user-agent", codexCLIUserAgent)
 	}
 
+	// TLS 路由器命中且规则给了 UA/Originator 时以其覆盖(优先级最高,使出站 WS UA 与所选指纹一致)。
+	if m := s.matchTLSFingerprintRouter(c, account); m.Matched {
+		if m.UpstreamUserAgent != "" {
+			headers.Set("user-agent", m.UpstreamUserAgent)
+		}
+		if m.UpstreamOriginator != "" {
+			headers.Set("originator", m.UpstreamOriginator)
+		}
+	}
+
 	return headers, sessionResolution
 }
 
@@ -1903,12 +1913,16 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	acquireCtx, acquireCancel := context.WithTimeout(ctx, s.openAIWSAcquireTimeout())
 	defer acquireCancel()
 
+	wsTLSProfile, wsTLSProfileKey := s.resolveOpenAIWSTLSProfile(account, s.matchTLSFingerprintRouter(c, account))
+
 	lease, err := s.getOpenAIWSConnPool().Acquire(acquireCtx, openAIWSAcquireRequest{
 		Account:         account,
 		WSURL:           wsURL,
 		Headers:         wsHeaders,
 		PreferredConnID: preferredConnID,
 		ForceNewConn:    forceNewConn,
+		TLSProfile:      wsTLSProfile,
+		TLSProfileKey:   wsTLSProfileKey,
 		ProxyURL: func() string {
 			if account.ProxyID != nil && account.Proxy != nil {
 				return account.Proxy.URL()
@@ -2956,6 +2970,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	wsHeaders, _ := s.buildOpenAIWSHeaders(c, account, token, wsDecision, isCodexCLI, turnState, strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader)), firstPayload.promptCacheKey)
+	baseWSTLSProfile, baseWSTLSProfileKey := s.resolveOpenAIWSTLSProfile(account, s.matchTLSFingerprintRouter(c, account))
 	baseAcquireReq := openAIWSAcquireRequest{
 		Account: account,
 		WSURL:   wsURL,
@@ -2966,7 +2981,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			return ""
 		}(),
-		ForceNewConn: false,
+		ForceNewConn:  false,
+		TLSProfile:    baseWSTLSProfile,
+		TLSProfileKey: baseWSTLSProfileKey,
 	}
 	pool := s.getOpenAIWSConnPool()
 	if pool == nil {
