@@ -68,9 +68,14 @@
           ${{ (stats?.total_actual_cost || 0).toFixed(4) REDACTEDREDACTED
         </p>
         <p class="text-xs text-gray-400">
-          <span class="text-orange-500">{{ t('usage.accountCost') REDACTEDREDACTED ${{ (stats?.total_account_cost || 0).toFixed(4) REDACTEDREDACTED</span>
-          <span> · </span>
-          <span>{{ t('usage.standardCost') REDACTEDREDACTED ${{ (stats?.total_cost || 0).toFixed(4) REDACTEDREDACTED</span>
+          <template v-if="showAccountCost && totalAccountCost != null">
+            <span class="text-orange-500">{{ t('usage.accountCost') REDACTEDREDACTED ${{ totalAccountCost.toFixed(4) REDACTEDREDACTED</span>
+            <span> · </span>
+          </template>
+          <span>
+            {{ t('usage.standardCost') REDACTEDREDACTED
+            <span :class="{ 'line-through': strikeStandardCost REDACTED">${{ (stats?.total_cost || 0).toFixed(4) REDACTEDREDACTED</span>
+          </span>
         </p>
       </div>
     </div>
@@ -84,13 +89,29 @@
 </template>
 
 <script setup lang="ts">
+import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import type { AdminUsageStatsResponse REDACTED from '@/api/admin/usage'
+import type { UsageStatsResponse REDACTED from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 
-defineProps<{ stats: AdminUsageStatsResponse | null REDACTED>()
+const props = withDefaults(defineProps<{
+  stats: (AdminUsageStatsResponse | UsageStatsResponse) | null
+  showAccountCost?: boolean
+  strikeStandardCost?: boolean
+REDACTED>(), {
+  showAccountCost: true,
+  strikeStandardCost: false,
+REDACTED)
 
 const { t REDACTED = useI18n()
+
+const totalAccountCost = computed(() => {
+  const stats = props.stats as (AdminUsageStatsResponse & { total_account_cost?: number REDACTED) | null
+  return stats?.total_account_cost ?? null
+REDACTED)
+const showAccountCost = computed(() => props.showAccountCost)
+const strikeStandardCost = computed(() => props.strikeStandardCost)
 
 const formatDuration = (ms: number) =>
   ms < 1000 ? `${ms.toFixed(0)REDACTEDms` : `${(ms / 1000).toFixed(2)REDACTEDs`

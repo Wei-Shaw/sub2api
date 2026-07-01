@@ -95,6 +95,15 @@ REDACTED{
 			expectedModel:      "gpt-5.5",
 	REDACTED,
 		{
+			name: "preserves gpt-5.5-pro instead of group default",
+			account: &Account{
+		REDACTEDREDACTED,
+		REDACTED,
+			requestedModel:     "gpt-5.5-pro",
+			defaultMappedModel: "gpt-5.5",
+			expectedModel:      "gpt-5.5-pro",
+	REDACTED,
+		{
 			name: "preserves compact-spelled gpt5.5 instead of group default",
 			account: &Account{
 		REDACTEDREDACTED,
@@ -262,6 +271,12 @@ REDACTED{
 			want:    "gpt-5.4",
 	REDACTED,
 		{
+			name:    "oauth preserves GPT-5.5 Pro model",
+			account: &Account{Type: AccountTypeOAuthREDACTED,
+			model:   "openai/gpt-5.5-pro",
+			want:    "gpt-5.5-pro",
+	REDACTED,
+		{
 			name:    "oauth preserves codex auto review model",
 			account: &Account{Type: AccountTypeOAuthREDACTED,
 			model:   "codex-auto-review",
@@ -300,6 +315,20 @@ REDACTED
 	for i := range expected {
 		if candidates[i] != expected[i] {
 			t.Fatalf("usageBillingModelCandidates(codex-auto-review) = %#v, want %#v", candidates, expected)
+	REDACTED
+REDACTED
+REDACTED
+
+func TestUsageBillingModelCandidatesPreserveGPT55ProModel(t *testing.T) {
+	candidates := usageBillingModelCandidates("openai/gpt-5.5-pro")
+
+	expected := []string{"openai/gpt-5.5-pro", "gpt-5.5-pro"REDACTED
+	if len(candidates) != len(expected) {
+		t.Fatalf("usageBillingModelCandidates(openai/gpt-5.5-pro) = %#v, want %#v", candidates, expected)
+REDACTED
+	for i := range expected {
+		if candidates[i] != expected[i] {
+			t.Fatalf("usageBillingModelCandidates(openai/gpt-5.5-pro) = %#v, want %#v", candidates, expected)
 	REDACTED
 REDACTED
 REDACTED

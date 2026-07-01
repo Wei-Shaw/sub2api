@@ -306,6 +306,20 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestAppendUsageLogBillingModeWhereConditionWithAlias(t *testing.T) {
+	conditions, args := appendUsageLogBillingModeWhereConditionWithAlias(nil, nil, string(service.BillingModeImage), "ul")
+
+	require.Equal(t, []string{"(ul.billing_mode = $1 OR COALESCE(ul.image_count, 0) > 0)"REDACTED, conditions)
+	require.Equal(t, []any{string(service.BillingModeImage)REDACTED, args)
+REDACTED
+
+func TestAppendUsageLogBillingModeQueryFilter(t *testing.T) {
+	query, args := appendUsageLogBillingModeQueryFilter("SELECT * FROM usage_logs WHERE user_id = $1", []any{int64(42)REDACTED, string(service.BillingModeToken), "")
+
+	require.Equal(t, "SELECT * FROM usage_logs WHERE user_id = $1 AND (billing_mode = $2 OR ((billing_mode IS NULL OR billing_mode = '') AND COALESCE(image_count, 0) <= 0))", query)
+	require.Equal(t, []any{int64(42), string(service.BillingModeToken)REDACTED, args)
+REDACTED
+
 func anySliceToDriverValues(values []any) []driver.Value {
 	out := make([]driver.Value, 0, len(values))
 	for _, value := range values {
@@ -341,6 +355,26 @@ REDACTED
 	require.NoError(t, mock.ExpectationsWereMet())
 REDACTED
 
+func TestUsageLogRepositoryListWithFiltersRequestedModelSource(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: dbREDACTED
+
+	filters := usagestats.UsageLogFilters{
+		Model:             "gpt-5",
+		ModelFilterSource: usagestats.ModelSourceRequested,
+REDACTED
+
+	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$1 ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
+		WithArgs("gpt-5", 21, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id"REDACTED))
+
+	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20REDACTED, filters)
+REDACTED
+	require.Empty(t, logs)
+	require.NotNil(t, page)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
 func TestUsageLogRepositoryGetUsageTrendWithFiltersRequestTypePriority(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: dbREDACTED
@@ -355,6 +389,27 @@ func TestUsageLogRepositoryGetUsageTrendWithFiltersRequestTypePriority(t *testin
 		WillReturnRows(sqlmock.NewRows([]string{"date", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost"REDACTED))
 
 	trend, err := repo.GetUsageTrendWithFilters(context.Background(), start, end, "day", 0, 0, 0, 0, "", &requestType, &stream, nil)
+REDACTED
+	require.Empty(t, trend)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestUsageLogRepositoryGetUsageTrendWithUsageFiltersRequestedModelSource(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: dbREDACTED
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	filters := usagestats.UsageLogFilters{
+		Model:             "gpt-5",
+		ModelFilterSource: usagestats.ModelSourceRequested,
+REDACTED
+
+	mock.ExpectQuery("AND COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$3").
+		WithArgs(start, end, "gpt-5").
+		WillReturnRows(sqlmock.NewRows([]string{"date", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost"REDACTED))
+
+	trend, err := repo.GetUsageTrendWithUsageFilters(context.Background(), start, end, "day", filters)
 REDACTED
 	require.Empty(t, trend)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -376,6 +431,45 @@ func TestUsageLogRepositoryGetModelStatsWithFiltersRequestTypePriority(t *testin
 	stats, err := repo.GetModelStatsWithFilters(context.Background(), start, end, 0, 0, 0, 0, &requestType, &stream, nil)
 REDACTED
 	require.Empty(t, stats)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestUsageLogRepositoryGetStatsWithFiltersRequestedModelSource(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: dbREDACTED
+
+	filters := usagestats.UsageLogFilters{
+		Model:             "gpt-5",
+		ModelFilterSource: usagestats.ModelSourceRequested,
+REDACTED
+
+	mock.ExpectQuery("FROM usage_logs\\s+WHERE COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$1").
+		WithArgs("gpt-5").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"total_requests",
+			"total_input_tokens",
+			"total_output_tokens",
+			"total_cache_tokens",
+			"total_cache_creation_tokens",
+			"total_cache_read_tokens",
+			"total_cost",
+			"total_actual_cost",
+			"total_account_cost",
+			"avg_duration_ms",
+	REDACTED).AddRow(int64(1), int64(2), int64(3), int64(4), int64(1), int64(3), 1.2, 1.0, 1.2, 20.0))
+	mock.ExpectQuery("SELECT COALESCE\\(NULLIF\\(TRIM\\(inbound_endpoint\\), ''\\), 'unknown'\\) AS endpoint").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "gpt-5").
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"REDACTED))
+	mock.ExpectQuery("SELECT COALESCE\\(NULLIF\\(TRIM\\(upstream_endpoint\\), ''\\), 'unknown'\\) AS endpoint").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "gpt-5").
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"REDACTED))
+	mock.ExpectQuery("SELECT CONCAT\\(").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "gpt-5").
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"REDACTED))
+
+	stats, err := repo.GetStatsWithFilters(context.Background(), filters)
+REDACTED
+	require.Equal(t, int64(1), stats.TotalRequests)
 	require.NoError(t, mock.ExpectationsWereMet())
 REDACTED
 
@@ -452,6 +546,29 @@ REDACTED
 	require.NoError(t, mock.ExpectationsWereMet())
 REDACTED
 
+func TestUsageLogRepositoryGetModelStatsWithUsageFiltersAppliesRequestedModelFilter(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: dbREDACTED
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	filters := usagestats.UsageLogFilters{Model: "gpt-5"REDACTED
+
+	mock.ExpectQuery("AND COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$3").
+		WithArgs(start, end, "gpt-5").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"model", "requests", "input_tokens", "output_tokens",
+			"cache_creation_tokens", "cache_read_tokens", "total_tokens",
+			"cost", "actual_cost", "account_cost",
+	REDACTED).AddRow("gpt-5", int64(1), int64(10), int64(20), int64(0), int64(0), int64(30), 0.1, 0.08, 0.07))
+
+	results, err := repo.GetModelStatsWithUsageFiltersBySource(context.Background(), start, end, filters, usagestats.ModelSourceRequested)
+REDACTED
+	require.Len(t, results, 1)
+	require.Equal(t, "gpt-5", results[0].Model)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
 func TestUsageLogRepositoryGetGroupStatsAccountCostColumn(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: dbREDACTED
@@ -478,6 +595,28 @@ REDACTED
 	require.Equal(t, 7.2, results[0].AccountCost)
 	require.Equal(t, int64(2), results[1].GroupID)
 	require.Equal(t, 3.5, results[1].AccountCost)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestUsageLogRepositoryGetGroupStatsWithUsageFiltersAppliesRequestedModelFilter(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: dbREDACTED
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	filters := usagestats.UsageLogFilters{Model: "gpt-5"REDACTED
+
+	mock.ExpectQuery("AND COALESCE\\(NULLIF\\(TRIM\\(ul.requested_model\\), ''\\), ul.model\\) = \\$3").
+		WithArgs(start, end, "gpt-5").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"group_id", "group_name", "requests", "total_tokens",
+			"cost", "actual_cost", "account_cost",
+	REDACTED).AddRow(int64(1), "default", int64(1), int64(30), 0.1, 0.08, 0.07))
+
+	results, err := repo.GetGroupStatsWithUsageFilters(context.Background(), start, end, filters)
+REDACTED
+	require.Len(t, results, 1)
+	require.Equal(t, int64(1), results[0].GroupID)
 	require.NoError(t, mock.ExpectationsWereMet())
 REDACTED
 

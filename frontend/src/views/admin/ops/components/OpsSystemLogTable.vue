@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import { opsAPI, type OpsRuntimeLogConfig, type OpsSystemLog, type OpsSystemLogSinkHealth REDACTED from '@/api/admin/ops'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import { useAppStore REDACTED from '@/stores'
 
 const appStore = useAppStore()
+const { t REDACTED = useI18n()
 
 const props = withDefaults(defineProps<{
   platformFilter?: string
@@ -81,13 +83,13 @@ const timeRangeOptions = [
   { value: '30d', label: '30d' REDACTED
 ]
 
-const filterLevelOptions = [
-  { value: '', label: '全部' REDACTED,
+const filterLevelOptions = computed(() => [
+  { value: '', label: t('admin.ops.systemLogs.all') REDACTED,
   { value: 'debug', label: 'debug' REDACTED,
   { value: 'info', label: 'info' REDACTED,
   { value: 'warn', label: 'warn' REDACTED,
   { value: 'error', label: 'error' REDACTED
-]
+])
 
 const levelBadgeClass = (level: string) => {
   const v = String(level || '').toLowerCase()
@@ -203,7 +205,7 @@ const fetchLogs = async () => {
     total.value = res.total || 0
   REDACTED catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to fetch logs', err)
-    appStore.showError(err?.response?.data?.detail || '系统日志加载失败')
+    appStore.showError(err?.response?.data?.detail || t('admin.ops.systemLogs.loadFailed'))
   REDACTED finally {
     loading.value = false
   REDACTED
@@ -246,17 +248,17 @@ const saveRuntimeConfig = async () => {
     runtimeConfig.caller = saved.caller
     runtimeConfig.stacktrace_level = saved.stacktrace_level
     runtimeConfig.retention_days = saved.retention_days
-    appStore.showSuccess('日志运行时配置已生效')
+    appStore.showSuccess(t('admin.ops.systemLogs.runtimeConfigActive'))
   REDACTED catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to save runtime log config', err)
-    appStore.showError(err?.response?.data?.detail || '保存日志配置失败')
+    appStore.showError(err?.response?.data?.detail || t('admin.ops.systemLogs.runtimeConfigSaveFailed'))
   REDACTED finally {
     runtimeSaving.value = false
   REDACTED
 REDACTED
 
 const resetRuntimeConfig = async () => {
-  const ok = window.confirm('确认回滚为启动配置（env/yaml）并立即生效？')
+  const ok = window.confirm(t('admin.ops.systemLogs.resetRuntimeConfigConfirm'))
   if (!ok) return
 
   runtimeSaving.value = true
@@ -269,18 +271,18 @@ const resetRuntimeConfig = async () => {
     runtimeConfig.caller = saved.caller
     runtimeConfig.stacktrace_level = saved.stacktrace_level
     runtimeConfig.retention_days = saved.retention_days
-    appStore.showSuccess('已回滚到启动日志配置')
+    appStore.showSuccess(t('admin.ops.systemLogs.runtimeConfigReset'))
     await fetchHealth()
   REDACTED catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to reset runtime log config', err)
-    appStore.showError(err?.response?.data?.detail || '回滚日志配置失败')
+    appStore.showError(err?.response?.data?.detail || t('admin.ops.systemLogs.runtimeConfigResetFailed'))
   REDACTED finally {
     runtimeSaving.value = false
   REDACTED
 REDACTED
 
 const cleanupCurrentFilter = async () => {
-  const ok = window.confirm('确认按当前筛选条件清理系统日志？该操作不可撤销。')
+  const ok = window.confirm(t('admin.ops.systemLogs.cleanupConfirm'))
   if (!ok) return
   try {
     const payload = {
@@ -298,12 +300,12 @@ const cleanupCurrentFilter = async () => {
       q: filters.q.trim() || undefined
     REDACTED
     const res = await opsAPI.cleanupSystemLogs(payload)
-    appStore.showSuccess(`清理完成，删除 ${res.deleted || 0REDACTED 条日志`)
+    appStore.showSuccess(t('admin.ops.systemLogs.cleanupSuccess', { count: res.deleted || 0 REDACTED))
     page.value = 1
     await Promise.all([fetchLogs(), fetchHealth()])
   REDACTED catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to cleanup logs', err)
-    appStore.showError(err?.response?.data?.detail || '清理系统日志失败')
+    appStore.showError(err?.response?.data?.detail || t('admin.ops.systemLogs.cleanupFailed'))
   REDACTED
 REDACTED
 
@@ -368,41 +370,41 @@ REDACTED)
   <section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-900/60">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h3 class="text-sm font-bold text-gray-900 dark:text-white">系统日志</h3>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">默认按最新时间倒序，支持筛选搜索与按条件清理。</p>
+        <h3 class="text-sm font-bold text-gray-900 dark:text-white">{{ t('admin.ops.systemLogs.title') REDACTEDREDACTED</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.systemLogs.description') REDACTEDREDACTED</p>
       </div>
       <div class="flex flex-wrap items-center gap-2 text-xs">
-        <span class="rounded-md bg-gray-100 px-2 py-1 text-gray-700 dark:bg-dark-700 dark:text-gray-200">队列 {{ health.queue_depth REDACTEDREDACTED/{{ health.queue_capacity REDACTEDREDACTED</span>
-        <span class="rounded-md bg-gray-100 px-2 py-1 text-gray-700 dark:bg-dark-700 dark:text-gray-200">写入 {{ health.written_count REDACTEDREDACTED</span>
-        <span class="rounded-md bg-amber-100 px-2 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">丢弃 {{ health.dropped_count REDACTEDREDACTED</span>
-        <span class="rounded-md bg-red-100 px-2 py-1 text-red-700 dark:bg-red-900/30 dark:text-red-300">失败 {{ health.write_failed_count REDACTEDREDACTED</span>
+        <span class="rounded-md bg-gray-100 px-2 py-1 text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ t('admin.ops.systemLogs.queue') REDACTEDREDACTED {{ health.queue_depth REDACTEDREDACTED/{{ health.queue_capacity REDACTEDREDACTED</span>
+        <span class="rounded-md bg-gray-100 px-2 py-1 text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ t('admin.ops.systemLogs.written') REDACTEDREDACTED {{ health.written_count REDACTEDREDACTED</span>
+        <span class="rounded-md bg-amber-100 px-2 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{{ t('admin.ops.systemLogs.dropped') REDACTEDREDACTED {{ health.dropped_count REDACTEDREDACTED</span>
+        <span class="rounded-md bg-red-100 px-2 py-1 text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('admin.ops.systemLogs.failed') REDACTEDREDACTED {{ health.write_failed_count REDACTEDREDACTED</span>
       </div>
     </div>
 
     <div class="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/70">
       <div class="mb-2 flex items-center justify-between">
-        <div class="text-xs font-semibold text-gray-700 dark:text-gray-200">运行时日志配置（实时生效）</div>
-        <span v-if="runtimeLoading" class="text-xs text-gray-500">加载中...</span>
+        <div class="text-xs font-semibold text-gray-700 dark:text-gray-200">{{ t('admin.ops.systemLogs.runtimeConfig') REDACTEDREDACTED</div>
+        <span v-if="runtimeLoading" class="text-xs text-gray-500">{{ t('common.loading') REDACTEDREDACTED</span>
       </div>
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
         <label class="text-xs text-gray-600 dark:text-gray-300">
-          级别
+          {{ t('admin.ops.systemLogs.level') REDACTEDREDACTED
           <Select v-model="runtimeConfig.level" class="mt-1" :options="runtimeLevelOptions" />
         </label>
         <label class="text-xs text-gray-600 dark:text-gray-300">
-          堆栈阈值
+          {{ t('admin.ops.systemLogs.stacktraceThreshold') REDACTEDREDACTED
           <Select v-model="runtimeConfig.stacktrace_level" class="mt-1" :options="stacktraceLevelOptions" />
         </label>
         <label class="text-xs text-gray-600 dark:text-gray-300">
-          采样初始
+          {{ t('admin.ops.systemLogs.samplingInitial') REDACTEDREDACTED
           <input v-model.number="runtimeConfig.sampling_initial" type="number" min="1" class="input mt-1" />
         </label>
         <label class="text-xs text-gray-600 dark:text-gray-300">
-          采样后续
+          {{ t('admin.ops.systemLogs.samplingThereafter') REDACTEDREDACTED
           <input v-model.number="runtimeConfig.sampling_thereafter" type="number" min="1" class="input mt-1" />
         </label>
         <label class="text-xs text-gray-600 dark:text-gray-300">
-          保留天数
+          {{ t('admin.ops.systemLogs.retentionDays') REDACTEDREDACTED
           <input v-model.number="runtimeConfig.retention_days" type="number" min="1" max="3650" class="input mt-1" />
         </label>
         <div class="md:col-span-2 xl:col-span-6">
@@ -410,47 +412,47 @@ REDACTED)
             <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
               <label class="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                 <input v-model="runtimeConfig.caller" type="checkbox" />
-                caller
+                {{ t('admin.ops.systemLogs.caller') REDACTEDREDACTED
               </label>
               <label class="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                 <input v-model="runtimeConfig.enable_sampling" type="checkbox" />
-                sampling
+                {{ t('admin.ops.systemLogs.sampling') REDACTEDREDACTED
               </label>
             </div>
             <div class="flex flex-wrap items-center gap-2 lg:justify-end">
               <button type="button" class="btn btn-primary btn-sm" :disabled="runtimeSaving" @click="saveRuntimeConfig">
-                {{ runtimeSaving ? '保存中...' : '保存并生效' REDACTEDREDACTED
+                {{ runtimeSaving ? t('common.saving') : t('admin.ops.systemLogs.saveAndApply') REDACTEDREDACTED
               </button>
               <button type="button" class="btn btn-secondary btn-sm" :disabled="runtimeSaving" @click="resetRuntimeConfig">
-                回滚默认值
+                {{ t('admin.ops.systemLogs.resetDefaults') REDACTEDREDACTED
               </button>
             </div>
           </div>
         </div>
       </div>
-      <p v-if="health.last_error" class="mt-2 text-xs text-red-600 dark:text-red-400">最近写入错误：{{ health.last_error REDACTEDREDACTED</p>
+      <p v-if="health.last_error" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ t('admin.ops.systemLogs.latestWriteError') REDACTEDREDACTED {{ health.last_error REDACTEDREDACTED</p>
     </div>
 
     <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-5">
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        时间范围
+        {{ t('admin.ops.systemLogs.timeRange') REDACTEDREDACTED
         <Select v-model="filters.time_range" class="mt-1" :options="timeRangeOptions" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        开始时间（可选）
+        {{ t('admin.ops.systemLogs.startTime') REDACTEDREDACTED
         <input v-model="filters.start_time" type="datetime-local" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        结束时间（可选）
+        {{ t('admin.ops.systemLogs.endTime') REDACTEDREDACTED
         <input v-model="filters.end_time" type="datetime-local" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        级别
+        {{ t('admin.ops.systemLogs.level') REDACTEDREDACTED
         <Select v-model="filters.level" class="mt-1" :options="filterLevelOptions" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        组件
-        <input v-model="filters.component" type="text" class="input mt-1" placeholder="如 http.access" />
+        {{ t('admin.ops.systemLogs.component') REDACTEDREDACTED
+        <input v-model="filters.component" type="text" class="input mt-1" :placeholder="t('admin.ops.systemLogs.componentPlaceholder')" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         request_id
@@ -465,7 +467,7 @@ REDACTED)
         <input v-model="filters.user_id" type="text" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        KEY ID
+        {{ t('admin.ops.systemLogs.keyId') REDACTEDREDACTED
         <input v-model="filters.api_key_id" type="text" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
@@ -473,36 +475,36 @@ REDACTED)
         <input v-model="filters.account_id" type="text" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        平台
+        {{ t('admin.ops.systemLogs.platform') REDACTEDREDACTED
         <input v-model="filters.platform" type="text" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        模型
+        {{ t('admin.ops.systemLogs.model') REDACTEDREDACTED
         <input v-model="filters.model" type="text" class="input mt-1" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
-        关键词
-        <input v-model="filters.q" type="text" class="input mt-1" placeholder="消息/request_id" />
+        {{ t('admin.ops.systemLogs.keyword') REDACTEDREDACTED
+        <input v-model="filters.q" type="text" class="input mt-1" :placeholder="t('admin.ops.systemLogs.keywordPlaceholder')" />
       </label>
     </div>
 
     <div class="mb-3 flex flex-wrap gap-2">
-      <button type="button" class="btn btn-primary btn-sm" @click="applyFilters">查询</button>
-      <button type="button" class="btn btn-secondary btn-sm" @click="resetFilters">重置</button>
-      <button type="button" class="btn btn-danger btn-sm" @click="cleanupCurrentFilter">按当前筛选清理</button>
-      <button type="button" class="btn btn-secondary btn-sm" @click="fetchHealth">刷新健康指标</button>
+      <button type="button" class="btn btn-primary btn-sm" @click="applyFilters">{{ t('admin.ops.systemLogs.search') REDACTEDREDACTED</button>
+      <button type="button" class="btn btn-secondary btn-sm" @click="resetFilters">{{ t('common.reset') REDACTEDREDACTED</button>
+      <button type="button" class="btn btn-danger btn-sm" @click="cleanupCurrentFilter">{{ t('admin.ops.systemLogs.cleanCurrentFilters') REDACTEDREDACTED</button>
+      <button type="button" class="btn btn-secondary btn-sm" @click="fetchHealth">{{ t('admin.ops.systemLogs.refreshHealth') REDACTEDREDACTED</button>
     </div>
 
     <div class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
-      <div v-if="loading" class="px-4 py-8 text-center text-sm text-gray-500">加载中...</div>
-      <div v-else-if="!hasData" class="px-4 py-8 text-center text-sm text-gray-500">暂无系统日志</div>
+      <div v-if="loading" class="px-4 py-8 text-center text-sm text-gray-500">{{ t('common.loading') REDACTEDREDACTED</div>
+      <div v-else-if="!hasData" class="px-4 py-8 text-center text-sm text-gray-500">{{ t('admin.ops.systemLogs.empty') REDACTEDREDACTED</div>
       <div v-else class="overflow-auto">
         <table class="min-w-full table-fixed divide-y divide-gray-200 dark:divide-dark-700">
           <thead class="bg-gray-50 dark:bg-dark-900">
             <tr>
-              <th class="w-[170px] px-3 py-2 text-left text-[11px] font-semibold text-gray-500">时间</th>
-              <th class="w-[80px] px-3 py-2 text-left text-[11px] font-semibold text-gray-500">级别</th>
-              <th class="px-3 py-2 text-left text-[11px] font-semibold text-gray-500">日志详细信息</th>
+              <th class="w-[170px] px-3 py-2 text-left text-[11px] font-semibold text-gray-500">{{ t('admin.ops.systemLogs.time') REDACTEDREDACTED</th>
+              <th class="w-[80px] px-3 py-2 text-left text-[11px] font-semibold text-gray-500">{{ t('admin.ops.systemLogs.level') REDACTEDREDACTED</th>
+              <th class="px-3 py-2 text-left text-[11px] font-semibold text-gray-500">{{ t('admin.ops.systemLogs.logDetails') REDACTEDREDACTED</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-dark-800">

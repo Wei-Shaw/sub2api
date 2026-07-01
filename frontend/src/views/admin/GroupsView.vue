@@ -683,8 +683,12 @@
               class="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs dark:border-dark-600 dark:bg-dark-800"
             >
               <span class="text-gray-500 dark:text-gray-400">
-                已选 {{ createModelsListSelectedCount REDACTEDREDACTED /
-                {{ createModelsListState.items.length REDACTEDREDACTED
+                {{
+                  t("admin.groups.modelsList.selectedSummary", {
+                    selected: createModelsListSelectedCount,
+                    total: createModelsListState.items.length,
+                  REDACTED)
+                REDACTEDREDACTED
               </span>
               <div class="flex items-center gap-1.5">
                 <button
@@ -692,14 +696,14 @@
                   class="rounded px-2 py-1 font-medium text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
                   @click="selectAllModelsListItems(createModelsListState)"
                 >
-                  全选
+                  {{ t("admin.groups.modelsList.selectAll") REDACTEDREDACTED
                 </button>
                 <button
                   type="button"
                   class="rounded px-2 py-1 font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                   @click="invertModelsListSelection(createModelsListState)"
                 >
-                  反选
+                  {{ t("admin.groups.modelsList.invertSelection") REDACTEDREDACTED
                 </button>
               </div>
             </div>
@@ -1343,20 +1347,20 @@
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4 space-y-4"
         >
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-            账号过滤控制
+            {{ t("admin.groups.accountFilters.title") REDACTEDREDACTED
           </h4>
 
           <!-- require_oauth_only toggle -->
           <div class="flex items-center justify-between">
             <div>
               <label class="text-sm text-gray-600 dark:text-gray-400"
-                >仅允许 OAuth 账号</label
+                >{{ t("admin.groups.accountFilters.oauthOnly") REDACTEDREDACTED</label
               >
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {{
                   createForm.require_oauth_only
-                    ? "已启用 — 排除 API Key 类型账号"
-                    : "未启用"
+                    ? t("admin.groups.accountFilters.oauthOnlyEnabled")
+                    : t("admin.groups.accountFilters.disabled")
                 REDACTEDREDACTED
               </p>
             </div>
@@ -1387,13 +1391,13 @@
           <div class="flex items-center justify-between">
             <div>
               <label class="text-sm text-gray-600 dark:text-gray-400"
-                >仅允许隐私保护已设置的账号</label
+                >{{ t("admin.groups.accountFilters.privacySetOnly") REDACTEDREDACTED</label
               >
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {{
                   createForm.require_privacy_set
-                    ? "已启用 — Privacy 未设置的账号将被排除"
-                    : "未启用"
+                    ? t("admin.groups.accountFilters.privacySetOnlyEnabled")
+                    : t("admin.groups.accountFilters.disabled")
                 REDACTEDREDACTED
               </p>
             </div>
@@ -2017,8 +2021,12 @@
               class="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs dark:border-dark-600 dark:bg-dark-800"
             >
               <span class="text-gray-500 dark:text-gray-400">
-                已选 {{ editModelsListSelectedCount REDACTEDREDACTED /
-                {{ editModelsListState.items.length REDACTEDREDACTED
+                {{
+                  t("admin.groups.modelsList.selectedSummary", {
+                    selected: editModelsListSelectedCount,
+                    total: editModelsListState.items.length,
+                  REDACTED)
+                REDACTEDREDACTED
               </span>
               <div class="flex items-center gap-1.5">
                 <button
@@ -2026,14 +2034,14 @@
                   class="rounded px-2 py-1 font-medium text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
                   @click="selectAllModelsListItems(editModelsListState)"
                 >
-                  全选
+                  {{ t("admin.groups.modelsList.selectAll") REDACTEDREDACTED
                 </button>
                 <button
                   type="button"
                   class="rounded px-2 py-1 font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                   @click="invertModelsListSelection(editModelsListState)"
                 >
-                  反选
+                  {{ t("admin.groups.modelsList.invertSelection") REDACTEDREDACTED
                 </button>
               </div>
             </div>
@@ -2673,20 +2681,20 @@
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4 space-y-4"
         >
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-            账号过滤控制
+            {{ t("admin.groups.accountFilters.title") REDACTEDREDACTED
           </h4>
 
           <!-- require_oauth_only toggle -->
           <div class="flex items-center justify-between">
             <div>
               <label class="text-sm text-gray-600 dark:text-gray-400"
-                >仅允许 OAuth 账号</label
+                >{{ t("admin.groups.accountFilters.oauthOnly") REDACTEDREDACTED</label
               >
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {{
                   editForm.require_oauth_only
-                    ? "已启用 — 排除 API Key 类型账号"
-                    : "未启用"
+                    ? t("admin.groups.accountFilters.oauthOnlyEnabled")
+                    : t("admin.groups.accountFilters.disabled")
                 REDACTEDREDACTED
               </p>
             </div>
@@ -2717,13 +2725,13 @@
           <div class="flex items-center justify-between">
             <div>
               <label class="text-sm text-gray-600 dark:text-gray-400"
-                >仅允许隐私保护已设置的账号</label
+                >{{ t("admin.groups.accountFilters.privacySetOnly") REDACTEDREDACTED</label
               >
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {{
                   editForm.require_privacy_set
-                    ? "已启用 — Privacy 未设置的账号将被排除"
-                    : "未启用"
+                    ? t("admin.groups.accountFilters.privacySetOnlyEnabled")
+                    : t("admin.groups.accountFilters.disabled")
                 REDACTEDREDACTED
               </p>
             </div>
@@ -3333,7 +3341,7 @@ const copyAccountsGroupOptions = computed(() => {
   );
   return eligibleGroups.map((g) => ({
     value: g.id,
-    label: `${g.nameREDACTED (${g.account_count || 0REDACTED 个账号)`,
+    label: `${g.nameREDACTED (${t("admin.groups.accountsCount", { count: g.account_count || 0 REDACTED)REDACTED)`,
   REDACTED));
 REDACTED);
 
@@ -3348,7 +3356,7 @@ const copyAccountsGroupOptionsForEdit = computed(() => {
   );
   return eligibleGroups.map((g) => ({
     value: g.id,
-    label: `${g.nameREDACTED (${g.account_count || 0REDACTED 个账号)`,
+    label: `${g.nameREDACTED (${t("admin.groups.accountsCount", { count: g.account_count || 0 REDACTED)REDACTED)`,
   REDACTED));
 REDACTED);
 
