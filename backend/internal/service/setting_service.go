@@ -112,6 +112,7 @@ type cachedGatewayForwardingSettings struct {
 	claudeOAuthSystemPromptBlocks    string
 	anthropicCacheTTL1hInjection     bool
 	rewriteMessageCacheControl       bool
+	clientDatelineNormalization      bool
 	expiresAt                        int64 // unix nano
 REDACTED
 
@@ -2207,6 +2208,7 @@ REDACTED
 	updates[SettingKeyClaudeOAuthSystemPromptBlocks] = settings.ClaudeOAuthSystemPromptBlocks
 	updates[SettingKeyEnableAnthropicCacheTTL1hInjection] = strconv.FormatBool(settings.EnableAnthropicCacheTTL1hInjection)
 	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
+	updates[SettingKeyEnableClientDatelineNormalization] = strconv.FormatBool(settings.EnableClientDatelineNormalization)
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	// codex_cli_only 加固
@@ -2345,6 +2347,7 @@ REDACTED)
 		claudeOAuthSystemPromptBlocks:    settings.ClaudeOAuthSystemPromptBlocks,
 		anthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		rewriteMessageCacheControl:       settings.RewriteMessageCacheControl,
+		clientDatelineNormalization:      settings.EnableClientDatelineNormalization,
 		expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 REDACTED)
 	s.antigravityUAVersionSF.Forget("antigravity_user_agent_version")
@@ -2548,6 +2551,7 @@ REDACTED
 
 type gatewayForwardingSettingsResult struct {
 	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl bool
+	clientDatelineNormalization                                                           bool
 	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                string
 REDACTED
 
@@ -2563,6 +2567,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
 				cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 				rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
+				clientDatelineNormalization:      cached.clientDatelineNormalization,
 		REDACTED
 	REDACTED
 REDACTED
@@ -2578,6 +2583,7 @@ REDACTED
 					claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
 					cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 					rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
+					clientDatelineNormalization:      cached.clientDatelineNormalization,
 			REDACTED, nil
 		REDACTED
 	REDACTED
@@ -2592,6 +2598,7 @@ REDACTED
 			SettingKeyClaudeOAuthSystemPromptBlocks,
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
 			SettingKeyRewriteMessageCacheControl,
+			SettingKeyEnableClientDatelineNormalization,
 	REDACTED)
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
@@ -2602,9 +2609,10 @@ REDACTED
 				claudeOAuthSystemPromptInjection: true,
 				anthropicCacheTTL1hInjection:     false,
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
+				clientDatelineNormalization:      true,
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 		REDACTED)
-			return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl()REDACTED, nil
+			return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: trueREDACTED, nil
 	REDACTED
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -2623,6 +2631,10 @@ REDACTED
 		if v, ok := values[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
 			rewriteMessageCacheControl = v == "true"
 	REDACTED
+		clientDatelineNormalization := true
+		if v, ok := values[SettingKeyEnableClientDatelineNormalization]; ok && v != "" {
+			clientDatelineNormalization = v == "true"
+	REDACTED
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 			fingerprintUnification:           fp,
 			metadataPassthrough:              mp,
@@ -2632,6 +2644,7 @@ REDACTED
 			claudeOAuthSystemPromptBlocks:    systemPromptBlocks,
 			anthropicCacheTTL1hInjection:     cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
+			clientDatelineNormalization:      clientDatelineNormalization,
 			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 	REDACTED)
 		return gatewayForwardingSettingsResult{
@@ -2643,12 +2656,13 @@ REDACTED
 			claudeOAuthSystemPromptBlocks:    systemPromptBlocks,
 			cacheTTL1h:                       cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
+			clientDatelineNormalization:      clientDatelineNormalization,
 	REDACTED, nil
 REDACTED)
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 REDACTED
-	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: trueREDACTED
+	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: trueREDACTED
 REDACTED
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.
@@ -2667,6 +2681,12 @@ REDACTED
 // IsRewriteMessageCacheControlEnabled 检查是否启用 messages cache_control 改写。
 func (s *SettingService) IsRewriteMessageCacheControlEnabled(ctx context.Context) bool {
 	return s.getGatewayForwardingSettingsCached(ctx).rewriteMessageCacheControl
+REDACTED
+
+// IsClientDatelineNormalizationEnabled 检查是否启用 Anthropic OAuth/SetupToken 请求体
+// 的客户端 dateline 归一化。默认开启。
+func (s *SettingService) IsClientDatelineNormalizationEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).clientDatelineNormalization
 REDACTED
 
 // GetClaudeOAuthSystemPromptInjectionSettings returns the Claude OAuth mimic
@@ -3173,6 +3193,7 @@ REDACTED
 		SettingKeyAllowUngroupedKeyScheduling:        "false",
 		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
 		SettingKeyRewriteMessageCacheControl:         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
+		SettingKeyEnableClientDatelineNormalization:  "true",
 		SettingKeyAntigravityUserAgentVersion:        "",
 		SettingKeyOpenAICodexUserAgent:               "",
 		SettingPaymentVisibleMethodAlipaySource:      "",
@@ -3710,6 +3731,11 @@ REDACTED
 		result.RewriteMessageCacheControl = v == "true"
 REDACTED else {
 		result.RewriteMessageCacheControl = s.defaultRewriteMessageCacheControl()
+REDACTED
+	if v, ok := settings[SettingKeyEnableClientDatelineNormalization]; ok && v != "" {
+		result.EnableClientDatelineNormalization = v == "true"
+REDACTED else {
+		result.EnableClientDatelineNormalization = true
 REDACTED
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])

@@ -4368,6 +4368,31 @@
                 <Toggle v-model="form.rewrite_message_cache_control" />
               </div>
 
+              <!-- 客户端 dateline 归一化（仅 Anthropic OAuth/SetupToken） -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.clientDatelineNormalization",
+                      )
+                    REDACTEDREDACTED
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.clientDatelineNormalizationHint",
+                      )
+                    REDACTEDREDACTED
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.enable_client_dateline_normalization"
+                />
+              </div>
+
               <!-- Antigravity UA 版本 -->
               <div>
                 <label
@@ -8078,6 +8103,7 @@ const form = reactive<SettingsForm>({
   claude_oauth_system_prompt_blocks: defaultClaudeOAuthSystemPromptBlocks,
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
+  enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
   // codex_cli_only 加固
@@ -9282,6 +9308,8 @@ async function saveSettings() {
       enable_anthropic_cache_ttl_1h_injection:
         form.enable_anthropic_cache_ttl_1h_injection,
       rewrite_message_cache_control: form.rewrite_message_cache_control,
+      enable_client_dateline_normalization:
+        form.enable_client_dateline_normalization,
       antigravity_user_agent_version:
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:
