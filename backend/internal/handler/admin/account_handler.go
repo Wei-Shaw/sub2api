@@ -27,6 +27,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -1628,8 +1629,7 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 		return
 	}
 
-	source := c.DefaultQuery("source", "active")
-	force := c.Query("force") == "true"
+	source, force := accountUsageQueryOptions(c)
 
 	var usage *service.UsageInfo
 	if source == "passive" {
@@ -1643,6 +1643,14 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 	}
 
 	response.Success(c, usage)
+}
+
+func accountUsageQueryOptions(c *gin.Context) (string, bool) {
+	if role, ok := middleware.GetUserRoleFromContext(c); ok && role == service.RoleUsageViewer {
+		return "passive", false
+	}
+
+	return c.DefaultQuery("source", "active"), c.Query("force") == "true"
 }
 
 // ClearRateLimit handles clearing account rate limit status

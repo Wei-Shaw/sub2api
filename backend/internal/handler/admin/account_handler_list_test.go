@@ -111,6 +111,32 @@ func TestUsageViewerAccountListOmitsAdminOnlyFields(t *testing.T) {
 	require.Contains(t, raw, `"name":"scoped"`)
 }
 
+func TestAccountUsageQueryOptionsForUsageViewerForcesPassive(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/3/usage?source=active&force=true", nil)
+	ctx.Request = req
+	ctx.Set(string(middleware.ContextKeyUserRole), service.RoleUsageViewer)
+
+	source, force := accountUsageQueryOptions(ctx)
+
+	require.Equal(t, "passive", source)
+	require.False(t, force)
+}
+
+func TestAccountUsageQueryOptionsForAdminKeepsRequestedSource(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/3/usage?source=active&force=true", nil)
+	ctx.Request = req
+	ctx.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
+
+	source, force := accountUsageQueryOptions(ctx)
+
+	require.Equal(t, "active", source)
+	require.True(t, force)
+}
+
 func TestUsageViewerAccountDetailOmitsAdminOnlyFields(t *testing.T) {
 	router, adminSvc := setupUsageViewerAccountRouter()
 	notes := "detail notes"

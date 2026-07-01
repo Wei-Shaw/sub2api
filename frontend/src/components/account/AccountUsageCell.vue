@@ -596,8 +596,19 @@ import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 
 // Module-level cache shared across all AccountUsageCell instances
-const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
+const _usageCache = new Map<string, { data: AccountUsageInfo; ts: number }>()
 const USAGE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+type UsageRequestSource = 'passive' | 'active' | undefined
+
+const usageCacheKey = (accountID: number, source: UsageRequestSource) => {
+  return `${accountID}:${source ?? 'default'}`
+}
+
+const clearUsageCacheForAccount = (accountID: number) => {
+  _usageCache.delete(usageCacheKey(accountID, undefined))
+  _usageCache.delete(usageCacheKey(accountID, 'passive'))
+  _usageCache.delete(usageCacheKey(accountID, 'active'))
+}
 
 const props = withDefaults(
   defineProps<{
@@ -1180,10 +1191,11 @@ const defaultUsageSource = computed<'passive' | 'active' | undefined>(() => {
 
 const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?: boolean }) => {
   if (!shouldFetchUsage.value) return
+  const cacheKey = usageCacheKey(props.account.id, options?.source)
 
   // Check cache
   if (!options?.bypassCache) {
-    const cached = _usageCache.get(props.account.id)
+    const cached = _usageCache.get(cacheKey)
     if (cached && Date.now() - cached.ts < USAGE_CACHE_TTL) {
       usageInfo.value = cached.data
       loading.value = false
@@ -1199,7 +1211,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     const result = await enqueueUsageRequest(props.account, fetchFn)
     if (!unmounted.value) {
       usageInfo.value = result
-      _usageCache.set(props.account.id, { data: result, ts: Date.now() })
+      _usageCache.set(cacheKey, { data: result, ts: Date.now() })
     }
   } catch (e: any) {
     if (!unmounted.value) {
@@ -1272,7 +1284,9 @@ const loadActiveUsage = async () => {
   if (!props.showActiveQuery) return
   activeQueryLoading.value = true
   try {
-    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    const result = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    usageInfo.value = result
+    _usageCache.set(usageCacheKey(props.account.id, 'active'), { data: result, ts: Date.now() })
   } catch (e: any) {
     console.error('Failed to load active usage:', e)
   } finally {
@@ -1389,7 +1403,7 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
-  _usageCache.delete(props.account.id)
+  clearUsageCacheForAccount(props.account.id)
   requestUsageLoad(defaultUsageSource.value, true)
 })
 
@@ -1399,7 +1413,7 @@ watch(
     if (nextToken === prevToken) return
     if (!shouldFetchUsage.value) return
 
-    _usageCache.delete(props.account.id)
+    clearUsageCacheForAccount(props.account.id)
     loadUsage({ source: defaultUsageSource.value, bypassCache: true }).catch((e) => {
       console.error('Failed to refresh usage after manual refresh:', e)
     })

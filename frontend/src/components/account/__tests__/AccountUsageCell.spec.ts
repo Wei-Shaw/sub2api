@@ -401,6 +401,90 @@ describe('AccountUsageCell', () => {
     expect(getUsage).toHaveBeenLastCalledWith(2011, 'passive')
   })
 
+  it('OpenAI OAuth 在禁止主动查询时不会复用 active 缓存', async () => {
+    const account = makeAccount({
+      id: 2012,
+      platform: 'openai',
+      type: 'oauth',
+      extra: {
+        codex_usage_updated_at: '2099-03-07T10:00:00Z',
+        codex_5h_used_percent: 18,
+        codex_5h_reset_at: '2099-03-07T12:00:00Z'
+      }
+    })
+    const global = {
+      stubs: {
+        UsageProgressBar: {
+          props: ['label', 'utilization', 'windowStats'],
+          template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
+        },
+        AccountQuotaInfo: true,
+        OpenAIQuotaResetCell: true
+      }
+    }
+
+    getUsage
+      .mockResolvedValueOnce({
+        source: 'active',
+        five_hour: {
+          utilization: 11,
+          resets_at: '2099-03-07T12:00:00Z',
+          remaining_seconds: 3600,
+          window_stats: {
+            requests: 1,
+            tokens: 111,
+            cost: 0.01,
+            standard_cost: 0.01,
+            user_cost: 0.01
+          }
+        },
+        seven_day: null
+      })
+      .mockResolvedValueOnce({
+        source: 'passive',
+        five_hour: {
+          utilization: 22,
+          resets_at: '2099-03-07T12:00:00Z',
+          remaining_seconds: 3600,
+          window_stats: {
+            requests: 2,
+            tokens: 222,
+            cost: 0.02,
+            standard_cost: 0.02,
+            user_cost: 0.02
+          }
+        },
+        seven_day: null
+      })
+
+    const adminWrapper = mount(AccountUsageCell, {
+      props: {
+        account,
+        showActiveQuery: true
+      },
+      global
+    })
+
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(1)
+    expect(getUsage).toHaveBeenLastCalledWith(2012, undefined)
+    adminWrapper.unmount()
+
+    const usageOnlyWrapper = mount(AccountUsageCell, {
+      props: {
+        account,
+        showActiveQuery: false
+      },
+      global
+    })
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(getUsage).toHaveBeenLastCalledWith(2012, 'passive')
+    expect(usageOnlyWrapper.text()).toContain('5h|22|222')
+  })
+
   it('OpenAI OAuth 在无 codex 快照时会回退显示 usage 接口窗口', async () => {
 		getUsage.mockResolvedValue({
 	  five_hour: {
