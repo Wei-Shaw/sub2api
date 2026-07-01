@@ -192,6 +192,41 @@
 
 <!-- 任何"不猜不编"触发的停机点记在此:是什么、卡在哪、需要什么决策 -->
 
+### Blocker #3 — ⚠️ 自查发现:native-OpenAI 主路径 7-8 处出站漏 `DoWithTLS`(前一批 G3/Blocker#2 盲区,待用户决策)(2026-07-01,K/G5 收尾后自查)
+
+**性质**:文档与代码不符——前一批账本称"native-OpenAI TLS ✅ 完成(解 Blocker #2)",但实证发现前一批只改了 `openai_gateway_service.go` 的 2 处(Forward:3247 / forwardOpenAIPassthrough:3537),**遗漏了另外 7-8 个 live OpenAI 出站路径**,它们仍走裸 `s.httpUpstream.Do(...)`,既不发账号级 TLS 指纹、也不受 TLS Router 影响。这与方案 §0「完整覆盖 OpenAI」目标不符。
+
+**实证(TR 同名文件对照,TR 对应处均为 `DoWithTLS`)**:
+| fork 文件:行 | enclosing(均 `*OpenAIGatewayService` 方法,均有 `c *gin.Context`) | TR 同名文件 |
+|---|---|---|
+| `openai_gateway_chat_completions.go:264` | `ForwardAsChatCompletions` | DoWithTLS |
+| `openai_gateway_messages.go:297` | `ForwardAsAnthropic` | DoWithTLS |
+| `openai_images.go:608` | `forwardOpenAIImagesAPIKey` | DoWithTLS |
+| `openai_ws_http_bridge.go:215` | `proxyOpenAIWSHTTPBridgeTurn` | DoWithTLS |
+| `openai_gateway_chat_completions_raw.go:174` | `forwardAsRawChatCompletions` | DoWithTLS |
+| `openai_images_responses.go:1544` | `forwardOpenAIImagesOAuth` | DoWithTLS |
+| `openai_gateway_responses_chat_fallback.go:145` | `forwardResponsesViaRawChatCompletions` | DoWithTLS |
+| `openai_gateway_count_tokens.go:95` | `ForwardCountTokensAsAnthropic` | **TR 无此文件**(fork 特有,同语义账号出站) |
+
+- **非漏(已核实一致)**:`openai_embeddings.go:89` TR 也是裸 `Do`(TR 未给 embeddings 上 TLS)→ fork 保持一致,不改;`openai_gateway_grok.go:59` 是 Grok 非 OpenAI 账号。
+
+**可行性(已核实,同构不臆测)**:8 处 enclosing 全是 `*OpenAIGatewayService` 方法、全有 `c *gin.Context`;`matchTLSFingerprintRouter(c,account)`(openai_gateway_service.go:2564)+ `resolveOpenAITLSProfile(account, routerMatch...)`(:2577)前一批已加、就绪。修复=每处 `Do(upstreamReq, proxyURL, account.ID, account.Concurrency)` → `DoWithTLS(..., s.resolveOpenAITLSProfile(account, s.matchTLSFingerprintRouter(c, account)))`,与既有 :3247/:3537 逐字同款。**风险**:改 `Do`→`DoWithTLS` 后,跑到这些路径的测试其 `HTTPUpstream` mock 必须实现 `DoWithTLS`(前一批已给多数 OpenAI 测试 mock 加委托,但走到这 8 条路径的测试需逐一核实,同 Blocker #2 补充的教训)。
+
+**为何停而不擅改**:① 契约本次范围=K part3 + G5 两次要项,修此属**扩大到前一批 G3 工作**;② 契约「文档与代码不符 → 记录 + 停」;③ 改 8 处热点 + 测试适配是一个完整子批次,范围决策应人工拍板。**已记录,待用户决定是否修**(修则照 TR 同构改 8 处〔或仅 7 处有对照者〕+ 测试适配 + 容器内 build/vet/test 全绿 + commit)。
+
+### Blocker #4 — ⚠️ 自查发现:G5「最后一公里」——OAuth 换 token/refresh 请求本身不传 router(次要,待用户决策)(2026-07-01)
+
+- **现状**:G5 service 底座已就绪且**已存在账号的自动刷新(`RefreshAccountToken` → 读 `account.GetTLSFingerprintRouterID()`)已按账号 router 应用专用 UA/指纹**。缺的是「用授权码换 token / 手动 refresh 端点」那一次请求携带 router:TR 在 handler DTO(`OpenAIExchangeCodeRequest`/`OpenAIRefreshTokenRequest` 的 `tls_fingerprint_router_id` 字段)+ 前端(`useOpenAIOAuth.ts`/`accounts.ts` 的 payload + Create/Edit/ReAuth modal 调用点)整条链传入;fork 这条链未接(`ExchangeCode` 恒 nil、`RefreshToken` 走无 router 的旧方法、`RefreshTokenWithClientIDAndRouter` 未实现)。
+- **影响**:小。账号级绑定(K part2 经账号表单写 `extra.tls_fingerprint_router_id`)+ 自动刷新已覆盖主要场景;缺口仅在「首次建号换 token」「手动 refresh 端点」这两次一次性请求的握手指纹。
+- **待用户决策**:是否补(后端 handler DTO + service `RefreshTokenWithClientIDAndRouter` + 前端 useOpenAIOAuth/accounts.ts/3 modal 接线)。
+
+### 自查小项(非阻塞,记录供参考)
+- **有意跳过(已在 K part3 记录,非遗漏)**:profile 列表行「Copy as YAML」按钮 + `buildProfileYaml`/`handleCopyYaml`(TR ProfilesModal:298-306);采集器面板内复制 YAML 仍在。
+- **前端 `api/admin/index.ts`**:未再导出 3 个采集器类型(`TLSFingerprintCollectorStatus/Session/CaptureRecord`)。**零功能影响**(ProfilesModal 直接从模块导入),仅聚合导出不全;可顺手补。
+- **`BulkEditAccountModal.vue`**:fork 无任何 TLS 绑定(profile 也无)——与 fork **既有** profile 处理一致(fork 该文件本就不含 TLS),非本 port 回归;TR 有 router+profile 批量绑定。
+- **账号表单 i18n `routerHint`**:fork 缺该提示文案(有 `router`/`noRouter`,下拉可用)。
+- **测试**:fork 缺 `tls_fingerprint_profile_service_test.go`(TR 有);`resolveChatGPTOAuthTokenRequestOptions` 无直接单测。
+
 ### Blocker #1 — ✅ 已解决(方案 A,2026-07-01)— base 分支编译不过:`330c35c1` 合并误删 `rejectGrokUnsupportedEndpoint` 定义
 
 > **解决**:人工拍板方案 A,已在本分支 baseline-fix commit 修复,基线 `go build ./...`/`vet`/`routes test` 全绿。详见上方「Phase 0 (续)」。下方为原始诊断,保留供追溯。
