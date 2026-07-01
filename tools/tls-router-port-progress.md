@@ -20,7 +20,7 @@
 | H | OpenAI WS 集成 | ✅ 完成(静态) | `ef966a8f` | gofmt✅ build✅ vet✅ ws-test✅ | 连接池每处取连接点都按 matchesTLSProfile 过滤;串号须人工抓包验证 |
 | I | cmd/server 优雅关闭 | ✅ 完成 | `0f2624f7` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | 采集器 Stop 入 provideCleanup;先于 H 做(独立+安全,H 已记录待续) |
 | J | 代码生成 + 编译 | ✅ 完成 | (无码改) | generate 无 drift✅ build✅ vet✅ | 全量 `go generate ./ent`+`./cmd/server` 后 git status 空=生成码与 schema/providers 完全一致 |
-| K | 前端 | 🟡 router UI+账号绑定 done(typecheck✅) | `49547eb3`+`9bfac46d` | pnpm typecheck✅(exit 0) | RoutersModal+API+入口+i18n+账号绑定下拉完成绿;仅余 ProfilesModal 采集器 UI(次要,采集器已可经 API 用) |
+| K | 前端 | ✅ 完成(typecheck✅) | `49547eb3`+`9bfac46d`+`a71b135b` | pnpm typecheck✅(exit 0) | part1 RoutersModal+API+入口+i18n / part2 账号绑定下拉 / part3 ProfilesModal 采集器 UI 全部完成绿 |
 
 状态图例:⬜ 未开始 / 🟡 进行中 / ✅ 完成(静态绿+commit)/ ⛔ 受阻(见下方记录)
 
@@ -391,6 +391,19 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
   4. `pnpm typecheck` 验证。
 - 注:采集器 token 复用/抓包/存 profile 属【运行时·人工】。
 
+### Phase K(part 3)— ProfilesModal 采集器 UI — ✅ 完成(typecheck 绿)(2026-07-01)
+
+- 手术式合并(**非整档覆盖**),对照 fork 现有写法。前置实证:fork 同名文件(625 行)只有 profile CRUD、无采集器;TR(1068 行)采集器 UI 深度交织。采集器前端 API(`tlsFingerprintProfile.ts` 6 函数+3 类型)+ `adminAPI.tlsFingerprintProfiles` 聚合(index.ts:64)part1 已就绪;8 个采集器图标(beaker/play/x/copy/download/check/refresh/plus)在 `Icon.vue` 全部存在;`common.copy`/`common.refresh` 在 `common:` 块存在。
+- 改动文件:
+  - `frontend/src/components/admin/TLSFingerprintProfilesModal.vue`:
+    - **模板**:header 与 profiles table 之间插入采集器块(状态横幅 running/stopped + refresh/start/stop;监听/外部地址/证书信息;last_error;建会话→capture URL+过期时间;Claude/Codex 命令 + Codex 配置片段各带复制;复制/下载 CA;实时采集列表每条带 copy-YAML + Fill-Form)。HTML 注释 `<!-- 收集器 -->`→ 英文 `<!-- Collector -->`(对齐 fork 英文注释约定)。
+    - **脚本**:import 加 `computed`/`onUnmounted` + 3 采集器类型;加采集器 state(status/session/captures/4 loading flag/pollTimer);加 computed(isCollectorRunning/activeCAPEM/claudeCommand/codexCommand/codexConfigSnippet);watch 增开时 loadCollectorStatus、关时 stopCollectorPolling + onUnmounted 清理;加函数 loadCollectorStatus/toggleCollector/createCollectorSession/refreshCollectorCaptures/start+stopCollectorPolling/applyCapture/copyText/downloadCA/formatDateTime/formatClientKind;**抽出 `fillFormFromProfile`**(handleEdit 与 applyCapture 共用,handleEdit 改为调用它)。注释全用英文(fork 约定);CA 下载文件名 `tokenrouter-*`→`sub2api-*`(fork 品牌,tls.sub2api.org)。
+  - `frontend/src/i18n/locales/en.ts` / `zh.ts`:在 `admin.tlsFingerprintProfiles` 的 columns 与 form 之间插入 `collector.*`(37 键,verbatim 抄 TR)。
+- **范围守卫(faithful,不越界)**:**未**移植 TR 的 profile 行内「Copy as YAML」按钮及其 helper(buildProfileYaml/handleCopyYaml/formatYaml* 系列)——非采集器 UI、不在续作清单;**未**加 TR 的 `openCreateModal`(fork 现有 create 按钮 `showCreateModal=true` 流程正确,applyCapture 自行管理 state);**未**接线 `deleteCollectorSession` 按钮(**TR 的 ProfilesModal 本身也未调用它**——照抄即无此 UI,API 函数保留可用;不臆造 TR 没有的 UI);fork 现有 `parseYamlInput` 保持原样(TR 的 description/parseYamlScalar 增强非采集器范畴)。
+- 命令与结果:`pnpm typecheck`(vue-tsc --noEmit,node v22.22.3 / pnpm 10.30.3)→ **exit 0,无错误**。自检:无重复声明;组件引用的全部 `collector.*` i18n 键在 en/zh 均存在;git status 仅 3 文件。
+- commit:`a71b135b`
+- 遗留/风险:**采集器真实抓取 / token 复用 / JA3 / 存为 profile / 建会话拿 CA / 命令可用性 属【运行时·人工】**(静态不可证,未宣称已验证)。收集器默认 host=127.0.0.1 且不自动启动(Phase E 安全默认),需管理员经 UI 显式 start 才监听。
+
 ## 阶段性总结 / 续作指南(2026-07-01 无人值守批次)
 
 **已完成并验证(静态全绿 + 已 commit;运行时验证一律留人工)**:
@@ -416,14 +429,13 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 - **Phase J ✅**(全量 generate 无 drift + build/vet 绿)。
 - 每 commit 容器内 gofmt+build+vet+相关 test(及 ent/wire 处 generate)全绿;**新增单测**:tlsfingerprint(3)、router service(6)、collector(4),均 PASS;OpenAI/gateway/handler/WS 既有测试全过。
 
-- **Phase K router UI + 账号绑定 ✅(typecheck 绿)**(`49547eb3`+`e8140f32`,router API/RoutersModal/AccountsView 入口/i18n/账号绑定下拉)。
+- **Phase K 前端全部 ✅(typecheck 绿)**:part1 router API/RoutersModal/AccountsView 入口/i18n(`49547eb3`)+ part2 账号绑定下拉(`e8140f32`/`9bfac46d`)+ **part3 ProfilesModal 采集器 UI(`a71b135b`)**。
 
-**后端全部完成 + 前端 router 主 UI 完成**(G1-G4 HTTP 三路径 + H WS + 采集器 + I 优雅关闭 + 迁移/schema/repo/service/handler/wire;前端 router CRUD + 账号绑定 typecheck 绿)。**TLS 指纹路由器功能端到端可用**(管理员 UI 建路由器/规则 + 绑定账号 → 后端 HTTP/WS 出站按 UA 路由指纹)。
+**后端全部完成 + 前端全部完成**(G1-G4 HTTP 三路径 + H WS + 采集器 + I 优雅关闭 + 迁移/schema/repo/service/handler/wire;前端 router CRUD + 账号绑定 + **采集器 UI** typecheck 绿)。**TLS 指纹路由器 + 采集器功能端到端可用**(管理员 UI 建路由器/规则 + 绑定账号 → 后端 HTTP/WS 出站按 UA 路由指纹;管理员 UI 启动内置采集器抓真实 ClientHello → 存为 profile)。
 
-**未完成(均已记录精确续作清单,均为次要/便利项)**:
-- **K part3 前端采集器 UI**(ProfilesModal)— ⏸️ 记录待续(深度交织 618 行分歧,须手术合并;**采集器已可经 API 全用**;见上「Phase K part 3」)。
-- **G5**(OAuth token 换 token 专用 UA/profile,次要路径)— ⏸️ 推迟(需改 OpenAIOAuthClient HTTP 层,fork 与 TR 异构;见上「Phase G5」)。
+**未完成(唯一剩余,次要路径,已记录精确续作清单)**:
+- **G5**(OAuth token 换 token 专用 UA/profile,次要路径)— ⏸️ 推迟(需改 OpenAIOAuthClient HTTP 层,fork 与 TR 异构;见上「Phase G5」续作清单)。若不臆测无法改则回滚 G5 + 账本记原因 + 停(方案允许后补)。
 
-**待人工验证(运行时,方案 §5)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端 UI;**HTTP 抓包 JA3(含 native OpenAI + UA/指纹一致)**;**WS 抓包 + 不同指纹不串号**;未命中回落;采集器抓取;OAuth 换 token(G5 做完后)。
+**待人工验证(运行时,方案 §5)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端 UI(含采集器 start/建会话/抓取/存 profile/命令可用性);**HTTP 抓包 JA3(含 native OpenAI + UA/指纹一致)**;**WS 抓包 + 不同指纹不串号**;未命中回落;OAuth 换 token(G5 做完后)。
 
-**如何续作**:工作树干净,所有 commit 各自 build/typecheck 绿,可从任一处安全接续。**核心功能(router HTTP+WS+账号绑定+CRUD UI)已完整**。剩余仅两个便利/次要项:K part3(采集器 UI)、G5(OAuth token)。续作清单见对应 Phase 记录。
+**如何续作**:工作树干净,所有 commit 各自 build/typecheck 绿,可从任一处安全接续。**核心功能 + 采集器 UI(router HTTP+WS+账号绑定+CRUD UI+采集器 UI)已完整**。剩余仅 1 个次要/便利项:G5(OAuth token,需改 OAuth 客户端 HTTP 层,异构风险)。续作清单见「Phase G5」记录。
