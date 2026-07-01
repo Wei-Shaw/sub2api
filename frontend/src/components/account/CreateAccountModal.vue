@@ -5020,7 +5020,8 @@ const handleOpenAIExchange = async (authCode: string) => {
       authCode.trim(),
       oauthClient.sessionId.value,
       stateToUse,
-      form.proxy_id
+      form.proxy_id,
+      tlsFingerprintRouterId.value
     )
     if (!tokenInfo) return
 
@@ -5267,7 +5268,8 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         const tokenInfo = await oauthClient.validateRefreshToken(
           refreshTokens[i],
           form.proxy_id,
-          clientId
+          clientId,
+          tlsFingerprintRouterId.value
         )
         if (!tokenInfo) {
           failedCount++

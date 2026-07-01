@@ -347,7 +347,7 @@ export async function generateAuthUrl(
  */
 export async function exchangeCode(
   endpoint: string,
-  exchangeData: { session_id: string; code: string; state?: string; proxy_id?: number }
+  exchangeData: { session_id: string; code: string; state?: string; proxy_id?: number; tls_fingerprint_router_id?: number }
 ): Promise<Record<string, unknown>> {
   const { data } = await apiClient.post<Record<string, unknown>>(endpoint, exchangeData)
   return data
@@ -639,9 +639,15 @@ export async function refreshOpenAIToken(
   refreshToken: string,
   proxyId?: number | null,
   endpoint: string = '/admin/openai/refresh-token',
-  clientId?: string
+  clientId?: string,
+  tlsFingerprintRouterId?: number | null
 ): Promise<Record<string, unknown>> {
-  const payload: { refresh_token: string; proxy_id?: number; client_id?: string } = {
+  const payload: {
+    refresh_token: string
+    proxy_id?: number
+    client_id?: string
+    tls_fingerprint_router_id?: number
+  } = {
     refresh_token: refreshToken
   }
   if (proxyId) {
@@ -649,6 +655,9 @@ export async function refreshOpenAIToken(
   }
   if (clientId) {
     payload.client_id = clientId
+  }
+  if (tlsFingerprintRouterId) {
+    payload.tls_fingerprint_router_id = tlsFingerprintRouterId
   }
   const { data } = await apiClient.post<Record<string, unknown>>(endpoint, payload)
   return data

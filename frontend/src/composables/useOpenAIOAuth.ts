@@ -94,7 +94,8 @@ export function useOpenAIOAuth() {
     code: string,
     currentSessionId: string,
     state: string,
-    proxyId?: number | null
+    proxyId?: number | null,
+    tlsFingerprintRouterId?: number | null
   ): Promise<OpenAITokenInfo | null> => {
     if (!code.trim() || !currentSessionId || !state.trim()) {
       error.value = 'Missing auth code, session ID, or state'
@@ -105,13 +106,22 @@ export function useOpenAIOAuth() {
     error.value = ''
 
     try {
-      const payload: { session_id: string; code: string; state: string; proxy_id?: number } = {
+      const payload: {
+        session_id: string
+        code: string
+        state: string
+        proxy_id?: number
+        tls_fingerprint_router_id?: number
+      } = {
         session_id: currentSessionId,
         code: code.trim(),
         state: state.trim()
       }
       if (proxyId) {
         payload.proxy_id = proxyId
+      }
+      if (tlsFingerprintRouterId) {
+        payload.tls_fingerprint_router_id = tlsFingerprintRouterId
       }
 
       const tokenInfo = await adminAPI.accounts.exchangeCode(`${endpointPrefix}/exchange-code`, payload)
@@ -135,7 +145,8 @@ export function useOpenAIOAuth() {
   const validateRefreshToken = async (
     refreshToken: string,
     proxyId?: number | null,
-    clientId?: string
+    clientId?: string,
+    tlsFingerprintRouterId?: number | null
   ): Promise<OpenAITokenInfo | null> => {
     if (!refreshToken.trim()) {
       error.value = 'Missing refresh token'
@@ -151,7 +162,8 @@ export function useOpenAIOAuth() {
         refreshToken.trim(),
         proxyId,
         `${endpointPrefix}/refresh-token`,
-        clientId
+        clientId,
+        tlsFingerprintRouterId
       )
       return tokenInfo as OpenAITokenInfo
     } catch (err: any) {

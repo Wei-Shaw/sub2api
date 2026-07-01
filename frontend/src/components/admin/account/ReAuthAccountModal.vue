@@ -376,7 +376,8 @@ const handleExchangeCode = async () => {
       authCode.trim(),
       sessionId,
       stateToUse,
-      props.account.proxy_id
+      props.account.proxy_id,
+      props.account.tls_fingerprint_router_id
     )
     if (!tokenInfo) return
 
