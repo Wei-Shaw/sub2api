@@ -78,7 +78,11 @@ REDACTED
 		seen[model] = struct{REDACTED{REDACTED
 REDACTED
 	for _, acc := range accounts {
-		if acc.Platform != platform {
+		if platform == PlatformComposite {
+			if !isConcreteRequestPlatform(acc.Platform) {
+				continue
+		REDACTED
+	REDACTED else if acc.Platform != platform {
 			continue
 	REDACTED
 		for model := range acc.GetModelMapping() {
@@ -116,7 +120,7 @@ func defaultModelsListCandidateIDs(platform string) []string {
 	case PlatformGrok:
 		return xai.DefaultModelIDs()
 	case PlatformComposite:
-		return nil
+		return compositeDefaultModelsListCandidateIDs()
 	default:
 		ids := make([]string, 0, len(claude.DefaultModels))
 		for _, model := range claude.DefaultModels {
@@ -130,6 +134,21 @@ func defaultAllowImageGenerationForPlatform(platform string) bool {
 	// Grok image and video generation routes share the legacy image-generation gate.
 	// Older clients send the false zero value, so Grok groups must default enabled.
 	return platform == PlatformGrok
+REDACTED
+
+func compositeDefaultModelsListCandidateIDs() []string {
+	seen := make(map[string]struct{REDACTED)
+	ids := make([]string, 0)
+	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrokREDACTED {
+		for _, id := range defaultModelsListCandidateIDs(platform) {
+			if _, ok := seen[id]; ok {
+				continue
+		REDACTED
+			seen[id] = struct{REDACTED{REDACTED
+			ids = append(ids, id)
+	REDACTED
+REDACTED
+	return ids
 REDACTED
 
 func canCopyAccountsFromGroupPlatform(targetPlatform, sourcePlatform string) bool {

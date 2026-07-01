@@ -35,6 +35,15 @@ REDACTED
 	return false
 REDACTED
 
+func compositeTargetPlatformResolved(c *gin.Context, apiKey *service.APIKey, model string) bool {
+	if c == nil || c.Request == nil || apiKey == nil || apiKey.Group == nil || apiKey.Group.Platform != service.PlatformComposite {
+		return true
+REDACTED
+	ensureCompositeTargetPlatform(c, apiKey, model)
+	_, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+	return ok
+REDACTED
+
 func effectiveAPIKeyPlatform(c *gin.Context, apiKey *service.APIKey) string {
 	if c != nil && c.Request != nil {
 		if platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context()); ok {
