@@ -200,6 +200,10 @@ type openAIAccountSchedulerScorePoolLister interface {
 	ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]service.Account, error)
 }
 
+type accountSchedulerScoreFilterPoolLister interface {
+	ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, error)
+}
+
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
 		Account:            dto.AccountFromService(account),
@@ -294,13 +298,17 @@ func (h *AccountHandler) scoreOpenAIAccountSchedulerPool(ctx context.Context, ac
 func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 	ctx context.Context,
 	accounts []service.Account,
+	filterPool []service.Account,
 ) (map[int64]*AccountSchedulerScore, map[int64][]AccountSchedulerGroupScore) {
 	if len(accounts) == 0 {
 		return nil, nil
 	}
+	if len(filterPool) == 0 {
+		filterPool = accounts
+	}
 
 	baseScores := make(map[int64]*AccountSchedulerScore)
-	for accountID, score := range h.scoreOpenAIAccountSchedulerPool(ctx, accounts) {
+	for accountID, score := range h.scoreOpenAIAccountSchedulerPool(ctx, filterPool) {
 		copiedScore := score
 		baseScores[accountID] = &copiedScore
 	}
@@ -414,6 +422,27 @@ func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 	return baseScores, groupScoresByAccount
 }
 
+func (h *AccountHandler) listAccountSchedulerScoreFilterPool(
+	ctx context.Context,
+	platform, accountType, status, search string,
+	groupID int64,
+	privacyMode string,
+) []service.Account {
+	if h.adminService == nil || (platform != "" && platform != service.PlatformOpenAI) {
+		return nil
+	}
+	lister, ok := h.adminService.(accountSchedulerScoreFilterPoolLister)
+	if !ok {
+		return nil
+	}
+	accounts, err := lister.ListAccountsForSchedulerScoreFilter(ctx, platform, accountType, status, search, groupID, privacyMode)
+	if err != nil {
+		slog.Warn("openai_scheduler_filter_score_pool_failed", "error", err)
+		return nil
+	}
+	return accounts
+}
+
 // List handles listing all accounts with pagination
 // GET /api/v1/admin/accounts
 func (h *AccountHandler) List(c *gin.Context) {
@@ -466,7 +495,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
-	schedulerScores, schedulerGroupScores := h.buildOpenAIAccountSchedulerScores(c.Request.Context(), accounts)
+	schedulerFilterPool := h.listAccountSchedulerScoreFilterPool(c.Request.Context(), platform, accountType, status, search, groupID, privacyMode)
+	schedulerScores, schedulerGroupScores := h.buildOpenAIAccountSchedulerScores(c.Request.Context(), accounts, schedulerFilterPool)
 
 	// 始终获取并发数（Redis ZCARD，极低开销）
 	if h.concurrencyService != nil {
