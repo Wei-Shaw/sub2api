@@ -232,6 +232,8 @@ func (h *AccountHandler) respondAccountList(
 		}
 	}
 
+	h.enrichShadowParents(c.Request.Context(), result)
+
 	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
 	if etag != "" {
 		c.Header("ETag", etag)

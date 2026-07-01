@@ -392,6 +392,7 @@ describe('AccountUsageCell', () => {
 
     expect(getUsage).toHaveBeenCalledTimes(1)
     expect(getUsage).toHaveBeenLastCalledWith(2011, 'passive')
+    expect(wrapper.findComponent({ name: 'OpenAIQuotaResetCell' }).exists()).toBe(false)
 
     await wrapper.setProps({ manualRefreshToken: 1 })
     await flushPromises()

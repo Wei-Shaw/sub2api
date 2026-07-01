@@ -437,6 +437,42 @@ func BuildChatCompletionsURL(baseURL string) (string, error) {
 	return validatedBaseURL + "/chat/completions", nil
 }
 
+func BuildImagesGenerationsURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+	}
+	return validatedBaseURL + "/images/generations", nil
+}
+
+func BuildImagesEditsURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+	}
+	return validatedBaseURL + "/images/edits", nil
+}
+
+func BuildVideosGenerationsURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+	}
+	return validatedBaseURL + "/videos/generations", nil
+}
+
+func BuildVideoURL(baseURL, requestID string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+	}
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return "", fmt.Errorf("request id is required")
+	}
+	return validatedBaseURL + "/videos/" + url.PathEscape(requestID), nil
+}
+
 // TokenResponse represents xAI OAuth token responses.
 type TokenResponse struct {
 	AccessToken  string `json:"access_token"`
