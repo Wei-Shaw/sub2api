@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -142,6 +143,103 @@ REDACTED
 	_, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "access-token")
 REDACTED
 	require.Contains(t, err.Error(), "invalid base url")
+REDACTED
+
+func TestExtractGrokMediaModelSupportsJSONAndMultipart(t *testing.T) {
+	require.Equal(t, "grok-imagine", ExtractGrokMediaModel("application/json", []byte(`{"model":"grok-imagine"REDACTED`)))
+
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	require.NoError(t, writer.WriteField("prompt", "draw a cat"))
+	require.NoError(t, writer.WriteField("model", "grok-imagine-edit"))
+	require.NoError(t, writer.Close())
+
+	require.Equal(t, "grok-imagine-edit", ExtractGrokMediaModel(writer.FormDataContentType(), buf.Bytes()))
+REDACTED
+
+func TestForwardGrokMediaImagesGenerationPassthrough(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok-imagine","prompt":"draw a cat"REDACTED`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	account := &Account{
+		ID:          61,
+		Name:        "grok",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "api-key",
+			"base_url": "https://xai.test/v1",
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type":   []string{"application/json"REDACTED,
+			"Xai-Request-Id": []string{"xai-image-req"REDACTED,
+	REDACTED,
+		Body: io.NopCloser(strings.NewReader(`{"data":[]REDACTED`)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
+
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointImagesGenerations, "", body, "application/json")
+REDACTED
+	require.Equal(t, "https://xai.test/v1/images/generations", upstream.lastReq.URL.String())
+	require.Equal(t, http.MethodPost, upstream.lastReq.Method)
+	require.Equal(t, "Bearer api-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
+	require.JSONEq(t, string(body), string(upstream.lastBody))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.JSONEq(t, `{"data":[]REDACTED`, recorder.Body.String())
+	require.Equal(t, "xai-image-req", result.RequestID)
+	require.Equal(t, "grok-imagine", result.Model)
+REDACTED
+
+func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/request-123", nil)
+
+	account := &Account{
+		ID:          62,
+		Name:        "grok",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "api-key",
+			"base_url": "https://xai.test/v1",
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type":   []string{"application/json"REDACTED,
+			"Xai-Request-Id": []string{"xai-video-req"REDACTED,
+	REDACTED,
+		Body: io.NopCloser(strings.NewReader(`{"id":"request-123","status":"completed"REDACTED`)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
+
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideoStatus, "request-123", nil, "")
+REDACTED
+	require.Equal(t, "https://xai.test/v1/videos/request-123", upstream.lastReq.URL.String())
+	require.Equal(t, http.MethodGet, upstream.lastReq.Method)
+	require.Equal(t, "Bearer api-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("Content-Type"))
+	require.Empty(t, upstream.lastBody)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.JSONEq(t, `{"id":"request-123","status":"completed"REDACTED`, recorder.Body.String())
+	require.Equal(t, "xai-video-req", result.RequestID)
 REDACTED
 
 func TestForwardAsChatCompletionsForGrokUsesXAIChatCompletionsAndSnapshots(t *testing.T) {

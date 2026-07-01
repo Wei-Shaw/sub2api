@@ -116,6 +116,27 @@ REDACTED
 	require.Equal(t, DefaultCLIBaseURL+"/chat/completions", chatURL)
 REDACTED
 
+func TestBuildGrokMediaURLs(t *testing.T) {
+	imagesURL, err := BuildImagesGenerationsURL(DefaultBaseURL + "/")
+REDACTED
+	require.Equal(t, DefaultBaseURL+"/images/generations", imagesURL)
+
+	editsURL, err := BuildImagesEditsURL(DefaultBaseURL)
+REDACTED
+	require.Equal(t, DefaultBaseURL+"/images/edits", editsURL)
+
+	videosURL, err := BuildVideosGenerationsURL(DefaultBaseURL)
+REDACTED
+	require.Equal(t, DefaultBaseURL+"/videos/generations", videosURL)
+
+	videoURL, err := BuildVideoURL(DefaultBaseURL, "req 123")
+REDACTED
+	require.Equal(t, DefaultBaseURL+"/videos/req%20123", videoURL)
+
+	_, err = BuildVideoURL(DefaultBaseURL, " ")
+REDACTED
+REDACTED
+
 func TestValidateXAIURLsRejectArbitraryHostsByDefault(t *testing.T) {
 	_, err := ValidateOAuthEndpointURL("https://auth.example.test/oauth2/token")
 REDACTED
