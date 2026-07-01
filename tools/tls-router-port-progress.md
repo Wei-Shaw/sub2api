@@ -491,8 +491,46 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 
 **后端全部完成 + 前端全部完成**(G1-G4 HTTP 三路径 + H WS + 采集器 + I 优雅关闭 + 迁移/schema/repo/service/handler/wire;前端 router CRUD + 账号绑定 + **采集器 UI** typecheck 绿)。**TLS 指纹路由器 + 采集器功能端到端可用**(管理员 UI 建路由器/规则 + 绑定账号 → 后端 HTTP/WS 出站按 UA 路由指纹;管理员 UI 启动内置采集器抓真实 ClientHello → 存为 profile)。
 
-**未完成:无。** 移植清单(方案 §8 A→K + G5)**全部完成**并静态验证。前次批次遗留的两个次要/便利项(K part3 采集器 UI、G5 OAuth token)本批次均已做绿并 commit(`a71b135b`、`162b8377`)。
+**移植主线(方案 §8 A→K + G5)全部完成**并静态验证:前次批次遗留的 K part3 采集器 UI、G5 OAuth token 本批次均已做绿并 commit(`a71b135b`、`162b8377`),自查发现的 native-OpenAI 8 处漏 DoWithTLS 亦已补(`073be243`)。**但收尾自查(对照 TR 全量符号)另发现若干与 TokenRouter 的未对齐点,多为次要/有意跳过/架构差异——完整分级清单见文末「## 与 TokenRouter 未对齐清单(权威版)」**,其中唯一有实际功能意义的是 A1(OAuth 建号/手动导入/ReAuth 时带 router),待人工决定是否补齐。
 
 **待人工验证(运行时,方案 §5,静态不可证一律留人工)**:迁移 158 生产/测试库应用;router CRUD + 采集器 API + 前端 UI(含采集器 start/建会话/抓取/存 profile/命令可用性);**HTTP 抓包 JA3(含 native OpenAI + UA/指纹一致)——特别是 Blocker#3 新补的 8 条出站路径(ForwardAsChatCompletions/ForwardAsAnthropic/images(APIKey+OAuth)/ws_http_bridge/raw_chat_completions/responses_chat_fallback/count_tokens)**;**WS 抓包 + 不同指纹不串号**;未命中回落;**OAuth 换 token 出站 JA3 + 专用 UA(G5)**。
 
-**如何续作/收尾**:工作树干净,所有 commit 各自 build/vet/typecheck 绿,可安全接续。**功能端到端完整**:router HTTP(三路径)+WS+OAuth 换 token(G5)+ 账号绑定 + CRUD UI + 采集器 UI + i18n。移植代码工作**已全部完成**;剩余只有【运行时·人工】灰度/抓包验证(见上),无代码续作项。
+**如何续作/收尾**:工作树干净,所有 commit 各自 build/vet/typecheck 绿,可安全接续。**核心功能端到端完整**:router HTTP(三路径 + native 8 补漏)+WS+OAuth 换 token 自动刷新(G5)+ 账号绑定 + CRUD UI + 采集器 UI + i18n。**剩余代码续作项**:见文末「## 与 TokenRouter 未对齐清单(权威版)」—— 主要是 A1(OAuth 建号带 router,前后端一整条);其余为有意跳过/架构差异/琐碎。运行时验证一律留人工(见上)。
+
+---
+
+## 与 TokenRouter 未对齐清单(权威版,2026-07-01 收尾自查)
+
+> 依据:对照 TR 全量 TLS 符号 + 2 个审计子代理 + 逐点 git/grep 实证。**核心功能已全部对齐**(HTTP 三路径 + native 8 补漏 + WS + 采集器 + router CRUD + 账号绑定 + 已存账号 token 自动/按账号刷新带 router)。下列为剩余差异,按性质分档。**新会话补齐从 A1 开始。**
+
+### A. 真实功能差异(TR 有、fork 无)
+
+**A1 — OAuth「建号 / 手动 rt 导入 / 重新授权」时带 router(唯一有实际意义,建议补;= Blocker #4)**
+稳态刷新(后台定时 / 账号页刷新 / 按账号 :id / CRS 同步,均走 `RefreshAccountToken`)**已对齐**,只差这几处一次性请求。TR 参照 → fork 缺口:
+- **后端 handler** `internal/handler/admin/openai_oauth_handler.go`:
+  - `OpenAIExchangeCodeRequest` 加 `TLSFingerprintRouterID *int64 json:"tls_fingerprint_router_id"`(TR :76)→ 传入 `OpenAIExchangeCodeInput`(TR :94);fork 两处 ExchangeCode(:87/:246)现未传。
+  - `OpenAIRefreshTokenRequest` 加同字段(TR :110)→ 改调 `RefreshTokenWithClientIDAndRouter(..., req.TLSFingerprintRouterID)`(TR :163);fork :160 现调无 router 的 `RefreshTokenWithClientID`。
+  - `CreateAccountFromOAuth`:建号时把 router 传 ExchangeCode(TR :256)**并**写入 `account.Extra["tls_fingerprint_router_id"]`(TR :278-281);核对 fork 建号 handler 现状(fork 靠账号表单二次编辑写 Extra,建号链未写)。
+- **后端 service** `internal/service/openai_oauth_service.go`:加公开 `RefreshTokenWithClientIDAndRouter(ctx, refreshToken, proxyURL, clientID, routerID *int64)`(TR :233)→ 内部转 `refreshTokenWithClientID(..., valueFromInt64Ptr(routerID), nil)`(**fork 已有该私有方法 + valueFromInt64Ptr,G5 加的,直接复用**)。
+- **后端 DTO 回显** `internal/handler/dto/{types.go,mappers.go}`:`AccountResponse` 加 `TLSFingerprintRouterID *int64 json:"tls_fingerprint_router_id,omitempty"`(TR types.go:260)+ mappers 从 `a.GetTLSFingerprintRouterID()` 填充(TR mappers.go:343-344);fork 实测两文件均无。
+- **前端**:
+  - `src/composables/useOpenAIOAuth.ts`:`exchangeAuthCode(..., tlsFingerprintRouterId?)`(TR :159)写 payload(TR :184-185);`validateRefreshToken(..., tlsFingerprintRouterId?)`(TR :210)。
+  - `src/api/admin/accounts.ts`:`exchangeCode` payload 加 `tls_fingerprint_router_id?`(TR :426);`refreshOpenAIToken(..., tlsFingerprintRouterId?)`(TR :719, 写 :735-736)。
+  - `src/components/account/CreateAccountModal.vue`:加 `selectedOpenAITokenTLSRouterId()`(TR :5447,开关开启时取 router 下拉值)+ 建号时选 router 的 UI + 传给 `exchangeAuthCode`(TR :5602)/`validateRefreshToken`(TR :5848)。
+  - `src/components/account/ReAuthAccountModal.vue`(account 版 + `admin/account/` 版):`exchangeAuthCode(..., props.account.tls_fingerprint_router_id)`(TR :366 / :380)。
+  - `types/index.ts`:`Account` 已有 `tls_fingerprint_router_id`(K part2 加);账号表单 router 下拉已存在(K part2),复用。
+
+**A2 — `BulkEditAccountModal` 批量设 TLS profile/router**:TR 有(实测 37 处命中,`src/components/account/BulkEditAccountModal.vue`);fork **0 处**。⚠️ **注意**:fork 该文件**连原有的 profile 绑定也没有**(是 fork 与 TR 的既有差异,非本 port 回归)。补则需同时加 profile+router 两者,面较大;**非必要,低优先**。
+
+### B. 有意跳过(已记录,scope 决策,非遗漏 —— 除非明确要,否则勿动)
+- **profile 列表行「Copy as YAML」按钮** + `buildProfileYaml`/`handleCopyYaml`/`formatYaml*`(TR ProfilesModal:298-306, :998):K part3 有意跳过(采集面板内复制 YAML 仍在)。
+- **codex_invite_reset**:方案 §139 明确跳过 —— fork 无 `codex_invite_reset_service.go`;schema 有 2 预留列、前端 RoutersModal 有预留槽,但**后端无消费者**(能存不生效)。**勿为它新建服务/臆造调用**。
+
+### C. 架构差异(fork 既有,非 port 漏搬,勿在本 port 强改)
+- **`openai_quota_service.go`**:TR 走 `httpUpstream.DoWithTLS`(带指纹),fork 走 `privacyClientFactory`+resty(无指纹)。fork 既有隐私客户端架构不同 → 配额查询/重置出站不带指纹。改动大且触及 fork 独有架构,**留人工评估,勿臆改**。
+- **`openai_embeddings.go` 裸 `Do`**:TR 也裸 `Do`,两边**一致**(非未对齐,勿改)。
+
+### D. 琐碎(可顺手,零/低风险)
+- 账号表单 i18n `routerHint` 提示文案缺失(下拉本身可用)。
+- `src/api/admin/index.ts` 未再导出 3 个采集器类型(`TLSFingerprintCollectorStatus/Session/CaptureRecord`)——**零功能影响**(ProfilesModal 直接从模块导入),仅聚合导出不全。
+- 测试:缺 `tls_fingerprint_profile_service_test.go`(TR 有);`resolveChatGPTOAuthTokenRequestOptions` 无直接单测。
