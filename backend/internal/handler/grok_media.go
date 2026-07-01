@@ -14,7 +14,6 @@ import (
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
-	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -84,7 +83,8 @@ REDACTED
 REDACTED
 
 	contentType := c.GetHeader("Content-Type")
-	requestModel := service.ExtractGrokMediaModel(contentType, body)
+	requestInfo := service.ParseGrokMediaRequest(contentType, body)
+	requestModel := requestInfo.Model
 	if endpoint.IsGenerationRequest() && strings.TrimSpace(requestModel) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
@@ -103,7 +103,7 @@ REDACTED
 			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 			return
 	REDACTED
-		if moderationBody := grokMediaModerationBody(body); len(moderationBody) > 0 {
+		if moderationBody := requestInfo.ModerationBody(); len(moderationBody) > 0 {
 			decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, requestModel, moderationBody)
 			if decision != nil && decision.Blocked {
 				h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
@@ -149,6 +149,9 @@ REDACTED
 		sessionSeed = []byte(requestID)
 REDACTED
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, sessionSeed)
+	if endpoint == service.GrokMediaEndpointVideoStatus {
+		sessionHash = service.GrokMediaVideoRequestSessionHash(requestID)
+REDACTED
 	requestCtx := c.Request.Context()
 	failedAccountIDs := make(map[int64]struct{REDACTED)
 	sameAccountRetryCount := make(map[int64]int)
@@ -294,6 +297,15 @@ REDACTED
 	REDACTED
 
 		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
+		if endpoint == service.GrokMediaEndpointVideosGenerations && strings.TrimSpace(result.ResponseID) != "" {
+			if err := h.gatewayService.BindGrokMediaVideoRequestAccount(requestCtx, apiKey.GroupID, result.ResponseID, account.ID); err != nil {
+				reqLog.Warn("grok_media.bind_video_request_account_failed",
+					zap.Int64("account_id", account.ID),
+					zap.String("request_id", result.ResponseID),
+					zap.Error(err),
+				)
+		REDACTED
+	REDACTED
 		if shouldRecordGrokMediaUsage(endpoint, requestModel) {
 			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID)
 	REDACTED
@@ -303,13 +315,6 @@ REDACTED
 		)
 		return
 REDACTED
-REDACTED
-
-func grokMediaModerationBody(body []byte) []byte {
-	if gjson.ValidBytes(body) {
-		return body
-REDACTED
-	return nil
 REDACTED
 
 func shouldRecordGrokMediaUsage(endpoint service.GrokMediaEndpoint, requestModel string) bool {
