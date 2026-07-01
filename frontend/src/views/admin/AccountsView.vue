@@ -322,6 +322,19 @@
           <template #cell-priority="{ value }">
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
           </template>
+          <template #cell-scheduler_score="{ row }">
+            <div v-if="row.scheduler_score" class="flex min-w-[5.5rem] flex-col gap-0.5 font-mono text-xs leading-4">
+              <div class="flex items-center justify-between gap-2 text-gray-700 dark:text-gray-300">
+                <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">{{ t('admin.accounts.schedulerScore.baseShort') }}</span>
+                <span>{{ formatSchedulerScore(row.scheduler_score.base_score) }}</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 text-primary-700 dark:text-primary-300">
+                <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">{{ t('admin.accounts.schedulerScore.stickyShort') }}</span>
+                <span>{{ formatStickySchedulerScore(row.scheduler_score) }}</span>
+              </div>
+            </div>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
           <template #cell-last_used_at="{ value }">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatRelativeTime(value) }}</span>
           </template>
@@ -641,6 +654,18 @@ const autoRefreshIntervalLabel = (sec: number) => {
   if (sec === 15) return t('admin.accounts.refreshInterval15s')
   if (sec === 30) return t('admin.accounts.refreshInterval30s')
   return `${sec}s`
+}
+
+const formatSchedulerScore = (value: unknown): string => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '-'
+  return num.toFixed(2)
+}
+
+const formatStickySchedulerScore = (score: Account['scheduler_score']): string => {
+  if (!score) return '-'
+  if (score.sticky_score_infinity) return '+∞'
+  return formatSchedulerScore(score.sticky_score)
 }
 
 const loadSavedColumns = () => {
@@ -1166,6 +1191,7 @@ const allColumns = computed(() => {
     { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false },
     { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false },
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },
+    { key: 'scheduler_score', label: t('admin.accounts.columns.schedulerScore'), sortable: false },
     { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true },
     { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true },
     { key: 'created_at', label: t('admin.accounts.columns.createdAt'), sortable: true },
