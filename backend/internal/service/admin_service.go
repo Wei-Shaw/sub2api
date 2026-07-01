@@ -2567,6 +2567,19 @@ func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int,
 	return accounts, result.Total, nil
 }
 
+func (s *adminServiceImpl) ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+	}
+	lister, ok := s.accountRepo.(interface {
+		ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error)
+	})
+	if !ok {
+		return nil, nil
+	}
+	return lister.ListAllWithFilters(ctx, platform, accountType, status, search, groupID, privacyMode)
+}
+
 func (s *adminServiceImpl) ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error) {
 	if s == nil || s.accountRepo == nil {
 		return nil, nil

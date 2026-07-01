@@ -147,7 +147,7 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 	require.Greater(t, high.SchedulerScores[0].BaseScore, low.SchedulerScores[0].BaseScore)
 }
 
-func TestAccountHandlerListKeepsSchedulerScoreScopedToList(t *testing.T) {
+func TestAccountHandlerListKeepsSchedulerScoreScopedToFilter(t *testing.T) {
 	router, adminSvc := setupAccountListRouter()
 	now := time.Now().UTC()
 	groupID := int64(42)
@@ -184,6 +184,7 @@ func TestAccountHandlerListKeepsSchedulerScoreScopedToList(t *testing.T) {
 		UpdatedAt: now,
 	}
 	adminSvc.accounts = []service.Account{visibleAccount}
+	adminSvc.accountSchedulerScoreFilterAccounts = []service.Account{visibleAccount, hiddenGroupPeer}
 	adminSvc.openAISchedulerScorePoolAccounts = []service.Account{visibleAccount, hiddenGroupPeer}
 
 	rec := httptest.NewRecorder()
@@ -211,5 +212,56 @@ func TestAccountHandlerListKeepsSchedulerScoreScopedToList(t *testing.T) {
 	require.Equal(t, int64(201), item.ID)
 	require.Len(t, item.SchedulerScores, 1)
 	require.Equal(t, groupID, *item.SchedulerScores[0].GroupID)
-	require.Greater(t, item.SchedulerScore.BaseScore, item.SchedulerScores[0].BaseScore)
+	require.Equal(t, item.SchedulerScores[0].BaseScore, item.SchedulerScore.BaseScore)
+}
+
+func TestAccountHandlerListSchedulerScoreIgnoresPagination(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	now := time.Now().UTC()
+	visibleAccount := service.Account{
+		ID:          301,
+		Name:        "visible-low-priority",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeAPIKey,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Concurrency: 10,
+		Priority:    100000,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	hiddenFilterPeer := service.Account{
+		ID:          302,
+		Name:        "hidden-high-priority",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeAPIKey,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Concurrency: 10,
+		Priority:    1,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	adminSvc.accounts = []service.Account{visibleAccount}
+	adminSvc.accountSchedulerScoreFilterAccounts = []service.Account{visibleAccount, hiddenFilterPeer}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=1&platform=openai", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var payload struct {
+		Data struct {
+			Items []struct {
+				ID             int64 `json:"id"`
+				SchedulerScore struct {
+					BaseScore float64 `json:"base_score"`
+				} `json:"scheduler_score"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Len(t, payload.Data.Items, 1)
+	require.Equal(t, int64(301), payload.Data.Items[0].ID)
+	require.Less(t, payload.Data.Items[0].SchedulerScore.BaseScore, 3.75)
 }
