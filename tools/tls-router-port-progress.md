@@ -18,7 +18,7 @@
 | F | handler + 路由 + wire | ✅ 完成 | `8f57d2c6` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | wire 重生成成功;cmd/server wire_gen_test 通过 |
 | G | OpenAI HTTP 集成 | ✅ 主路径完成(G5 推迟) | `21e18825`+`dedb31e6`+`727f3bb7`+`ae324f7a` | gofmt✅ build✅ vet✅ test✅ | HTTP 全主路径路由感知 TLS + UA/Originator 完成;G5(OAuth token,次要路径)主动推迟(方案允许,见下) |
 | H | OpenAI WS 集成 | ⬜ 未开始 | — | — | 硬骨头;连接池 key 须含指纹 |
-| I | cmd/server 优雅关闭 | ⬜ 未开始 | — | — | |
+| I | cmd/server 优雅关闭 | ✅ 完成 | `0f2624f7` | gofmt✅ wire-gen✅ build✅ vet✅ test✅ | 采集器 Stop 入 provideCleanup;先于 H 做(独立+安全,H 已记录待续) |
 | J | 代码生成 + 编译 | ⬜ 未开始 | — | — | |
 | K | 前端 | ⬜ 未开始 | — | — | 工具链不可用则记待人工 |
 
@@ -306,6 +306,17 @@
 
 ### Phase G(变参 provider 复用说明)
 G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 GatewayService 与 OpenAIGatewayService 两个变参构造共享(wire 各生成 `v...`),无重复 provider 冲突。H 若需要 router service 已就绪。
+
+### Phase I — cmd/server 采集器优雅关闭 — ✅ 完成(2026-07-01)
+
+- 说明:先于 H 做——I 只依赖 collector service(E 已完成),与 H(WS)无依赖;H 已记录待续,故此处做独立且安全的 I,补全采集器生命周期(经 admin API 可 Start/Stop,I 补进程退出时优雅 Stop)。
+- 改动文件:
+  - `cmd/server/wire.go`:`provideCleanup` 加参 `tlsFingerprintCollector *service.TLSFingerprintCollectorService`(archiveService 之后);parallelSteps 加 `{"TLSFingerprintCollectorService", func() error { if tlsFingerprintCollector != nil { return tlsFingerprintCollector.Stop(ctx) }; return nil }}`(ArchiveService 步之后)。
+  - 重生成 `cmd/server/wire_gen.go`(provideCleanup 收到 collector;wire 由 NewTLSFingerprintCollectorService 提供)。
+  - `cmd/server/wire_gen_test.go`:手写的 provideCleanup 直调补 `nil // tlsFingerprintCollector` 实参(ArchiveService 之后)。
+- 命令与结果(容器内):`go generate ./cmd/server` OK(go.mod/go.sum **未污染**;wire_gen 含 3 处 TLSFingerprintCollectorService 引用);`gofmt -l` 空;`go build ./...` → **BUILD_OK**;`go vet ./cmd/server/...` → **VET_OK**;`go test ./cmd/server/...`(含 wire_gen_test)→ **ok**。
+- commit:`0f2624f7`
+- 遗留/风险:无。
 
 ## 阶段性总结 / 续作指南(2026-07-01 无人值守批次)
 

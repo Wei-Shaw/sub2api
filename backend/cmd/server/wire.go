@@ -90,6 +90,7 @@ func provideCleanup(
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	archiveService *service.ArchiveService,
+	tlsFingerprintCollector *service.TLSFingerprintCollectorService,
 	subscriptionService *service.SubscriptionService,
 	oauth *service.OAuthService,
 	openaiOAuth *service.OpenAIOAuthService,
@@ -211,6 +212,12 @@ func provideCleanup(
 			{"ArchiveService", func() error {
 				if archiveService != nil {
 					archiveService.Stop()
+				}
+				return nil
+			}},
+			{"TLSFingerprintCollectorService", func() error {
+				if tlsFingerprintCollector != nil {
+					return tlsFingerprintCollector.Stop(ctx)
 				}
 				return nil
 			}},

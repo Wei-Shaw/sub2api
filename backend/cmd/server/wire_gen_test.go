@@ -70,6 +70,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		billingCacheSvc,
 		&service.UsageRecordWorkerPool{},
 		&service.ArchiveService{},
+		nil, // tlsFingerprintCollector
 		&service.SubscriptionService{},
 		oauthSvc,
 		openAIOAuthSvc,
