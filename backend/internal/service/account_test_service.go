@@ -204,16 +204,16 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	// Route to platform-specific test method
+	if account.Platform == PlatformGrok {
+		return s.testGrokAccountConnection(c, account, modelID)
+	}
+
 	if account.IsOpenAICompatible() {
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
 	}
 
 	if account.IsGemini() {
 		return s.testGeminiAccountConnection(c, account, modelID, prompt)
-	}
-
-	if account.Platform == PlatformGrok {
-		return s.testGrokAccountConnection(c, account, modelID)
 	}
 
 	if account.Platform == PlatformAntigravity {

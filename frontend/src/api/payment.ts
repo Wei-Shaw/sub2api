@@ -17,12 +17,19 @@ import type {
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
+export type PublicOrderResult = Omit<PaymentOrder, 'user_id'> & {
+  user_id?: number
+  paid?: boolean
+}
+
 export type PublicOrderVerifyResult = Partial<PaymentOrder> & {
   out_trade_no: string
   status: string
   paid: boolean
   created_at: string
   expires_at: string
+  paid_at?: string
+  completed_at?: string
 }
 
 export const paymentAPI = {
@@ -83,7 +90,7 @@ export const paymentAPI = {
 
   /** Resolve an order from a signed resume token without auth */
   resolveOrderPublicByResumeToken(resumeToken: string) {
-    return apiClient.post<PublicOrderVerifyResult>('/payment/public/orders/resolve', { resume_token: resumeToken })
+    return apiClient.post<PublicOrderResult>('/payment/public/orders/resolve', { resume_token: resumeToken })
   },
 
   /** Request a refund for a completed order */

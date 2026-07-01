@@ -339,7 +339,8 @@ import { useAuthStore } from '@/stores/auth'
 import { usePaymentStore } from '@/stores/payment'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import { useAppStore } from '@/stores'
-import { paymentAPI, type PublicOrderVerifyResult } from '@/api/payment'
+import { paymentAPI } from '@/api/payment'
+import type { PublicOrderResult, PublicOrderVerifyResult } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
@@ -809,9 +810,10 @@ const localeCode = computed(() => {
 })
 
 function subscriptionPaymentAmountForCurrency(value: number, currency: string): number {
+  const normalizedCurrency = currency.trim().toUpperCase()
   const rate = subscriptionUsdToCnyRate.value
-  if (rate <= 0 || currency !== DEFAULT_PAYMENT_CURRENCY) return roundMoney(value, currency, checkout.value.currency_meta)
-  return roundMoney(value * rate, currency, checkout.value.currency_meta)
+  if (rate <= 0 || normalizedCurrency !== 'CNY') return roundMoney(value, normalizedCurrency, checkout.value.currency_meta)
+  return roundMoney(value * rate, normalizedCurrency, checkout.value.currency_meta)
 }
 
 function formatSubscriptionPaymentAmount(value: number): string {
@@ -855,7 +857,7 @@ function resolveSubscriptionPlanPaymentAmount(plan: SubscriptionPlan | null, bas
   if (basePrice == null && plan.currency_overrides && plan.currency_overrides[currency] > 0) {
     return roundMoney(plan.currency_overrides[currency], currency, checkout.value.currency_meta)
   }
-  if (currency === DEFAULT_PAYMENT_CURRENCY) return subscriptionPaymentAmountForCurrency(price, currency)
+  if (currency === 'CNY') return subscriptionPaymentAmountForCurrency(price, currency)
   if (currency === ledgerCurrency.value) return roundMoney(price, currency, checkout.value.currency_meta)
   return paymentAmountFromLedger(price, currency, ledgerCurrency.value, checkout.value.manual_fx_rates, checkout.value.currency_meta)
 }
@@ -1349,40 +1351,55 @@ function buildPaddleOrderFromCreateResult(
   }
 }
 
-function buildPaddleOrderFromPublicResult(result: PublicOrderVerifyResult): PaymentOrder {
-  const paymentCurrencyCode = result.payment_currency || result.currency || paymentCurrency.value || ledgerCurrency.value
-  const ledgerCurrencyCode = result.ledger_currency || ledgerCurrency.value
-  const amount = Number(result.amount || result.pay_amount || result.payment_amount || result.ledger_amount || 0)
+function mapPublicOrderToPaymentOrder(order: PublicOrderResult | PublicOrderVerifyResult): PaymentOrder {
+  const paymentCurrencyCode = order.payment_currency || order.currency || paymentCurrency.value || ledgerCurrency.value
+  const ledgerCurrencyCode = order.ledger_currency || ledgerCurrency.value
+  const amount = Number(order.amount || order.pay_amount || order.payment_amount || order.ledger_amount || 0)
+  const paymentAmount = Number(order.payment_amount || order.pay_amount || amount)
+  const ledgerAmount = Number(order.ledger_amount || order.amount || amount)
+
   return {
-    id: Number(result.id || 0),
-    user_id: Number(result.user_id || 0),
+    id: Number(order.id || 0),
+    user_id: Number(order.user_id || 0),
     amount,
-    pay_amount: Number(result.pay_amount || amount),
-    payment_amount: Number(result.payment_amount || result.pay_amount || amount),
-    ledger_amount: Number(result.ledger_amount || result.amount || amount),
+    pay_amount: Number(order.pay_amount || paymentAmount),
+    currency: order.currency || paymentCurrencyCode,
+    payment_amount: paymentAmount,
+    ledger_amount: ledgerAmount,
     payment_currency: paymentCurrencyCode,
     ledger_currency: ledgerCurrencyCode,
-    fee_rate: Number(result.fee_rate || 0),
-    payment_type: result.payment_type || 'paddle',
-    out_trade_no: result.out_trade_no || '',
-    status: (result.status || 'PENDING') as PaymentOrder['status'],
-    order_type: (result.order_type || 'balance') as OrderType,
-    created_at: result.created_at || new Date().toISOString(),
-    expires_at: result.expires_at || '',
-    refund_amount: Number(result.refund_amount || 0),
-    plan_id: result.plan_id,
+    fx_rate_payment_to_ledger: order.fx_rate_payment_to_ledger,
+    fx_source: order.fx_source,
+    fx_timestamp: order.fx_timestamp,
+    fee_rate: Number(order.fee_rate || 0),
+    payment_type: order.payment_type || 'paddle',
+    out_trade_no: order.out_trade_no || '',
+    status: (order.status || 'PENDING') as PaymentOrder['status'],
+    order_type: (order.order_type || 'balance') as OrderType,
+    created_at: order.created_at || new Date().toISOString(),
+    expires_at: order.expires_at || '',
+    paid_at: order.paid_at,
+    completed_at: order.completed_at,
+    refund_amount: Number(order.refund_amount || 0),
+    refund_reason: order.refund_reason,
+    refund_requested_at: order.refund_requested_at,
+    refund_requested_by: order.refund_requested_by,
+    refund_request_reason: order.refund_request_reason,
+    plan_id: order.plan_id,
+    provider_instance_id: order.provider_instance_id,
+    provider_snapshot: order.provider_snapshot,
+    device_code: order.device_code,
   }
 }
-
 async function resolvePaddleCheckoutOrder(resumeToken: string, outTradeNo: string): Promise<PaymentOrder | null> {
   try {
     if (resumeToken) {
       const result = await paymentAPI.resolveOrderPublicByResumeToken(resumeToken)
-      return buildPaddleOrderFromPublicResult(result.data)
+      return mapPublicOrderToPaymentOrder(result.data)
     }
     if (outTradeNo) {
       const result = await paymentAPI.verifyOrderPublic(outTradeNo)
-      return buildPaddleOrderFromPublicResult(result.data)
+      return mapPublicOrderToPaymentOrder(result.data)
     }
   } catch (_err: unknown) {
     return null

@@ -156,6 +156,19 @@ vi.mock('vue-i18n', async () => {
 
 const simpleStub = { template: '<div><slot /></div>' }
 const chartStub = { template: '<div />' }
+const dataTableStub = {
+  props: ['data'],
+  template: `
+    <div>
+      <div v-for="row in data" :key="row.request_id || row.id">
+        <slot name="cell-billing_mode" :row="row" />
+        <slot name="cell-tokens" :row="row" />
+        <slot name="cell-cost" :row="row" />
+      </div>
+      <slot v-if="data.length === 0" name="empty" />
+    </div>
+  `,
+}
 
 const usageLog = {
   id: 1,
@@ -200,7 +213,8 @@ function mountUsageView() {
         Select: true,
         DateRangePicker: true,
         Icon: true,
-        UsageTable: chartStub,
+        DataTable: dataTableStub,
+        EmptyState: true,
         ModelDistributionChart: chartStub,
         GroupDistributionChart: chartStub,
         EndpointDistributionChart: chartStub,
@@ -224,6 +238,18 @@ describe('user UsageView', () => {
     showWarning.mockReset()
     showSuccess.mockReset()
     showInfo.mockReset()
+
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 20,
+      left: 20,
+      right: 120,
+      bottom: 40,
+      width: 100,
+      height: 20,
+      toJSON: () => ({}),
+    } as DOMRect)
 
     query.mockResolvedValue({ items: [usageLog], total: 1, pages: 1 })
     getStats.mockResolvedValue({
@@ -308,6 +334,87 @@ describe('user UsageView', () => {
     expect(text).not.toContain('usage.cacheBreakdown')
     expect(text).not.toContain('usage.cacheCreationTokensLabel')
     expect(text).not.toContain('usage.cacheReadTokensLabel')
+  })
+
+
+  it('shows fast service tier and unit prices in user tooltip', async () => {
+    query.mockResolvedValue({
+      items: [
+        {
+          request_id: 'req-user-1',
+          actual_cost: 0.092883,
+          total_cost: 0.092883,
+          rate_multiplier: 1,
+          service_tier: 'priority',
+          input_cost: 0.020285,
+          output_cost: 0.00303,
+          cache_creation_cost: 0,
+          cache_read_cost: 0.069568,
+          input_tokens: 4057,
+          output_tokens: 101,
+          cache_creation_tokens: 0,
+          cache_read_tokens: 278272,
+          cache_creation_5m_tokens: 0,
+          cache_creation_1h_tokens: 0,
+          image_count: 0,
+          image_size: null,
+          first_token_ms: null,
+          duration_ms: 1,
+          created_at: '2026-03-08T00:00:00Z',
+        },
+      ],
+      total: 1,
+      pages: 1,
+    })
+    getStats.mockResolvedValue({
+      total_requests: 1,
+      total_input_tokens: 10,
+      total_output_tokens: 20,
+      total_cache_tokens: 0,
+      total_cache_creation_tokens: 0,
+      total_cache_read_tokens: 0,
+      total_tokens: 30,
+      total_cost: 0.1,
+      total_actual_cost: 0.08,
+      average_duration_ms: 12,
+      endpoints: [],
+      upstream_endpoints: [],
+      endpoint_paths: [],
+    })
+    getDashboardModels.mockResolvedValue({
+      models: [{ model: 'gpt-5.4', requests: 1, input_tokens: 10, output_tokens: 20, cache_creation_tokens: 0, cache_read_tokens: 0, total_tokens: 30, cost: 0.1, actual_cost: 0.08 }],
+      start_date: '2026-03-08',
+      end_date: '2026-03-08',
+    })
+    getDashboardSnapshotV2.mockResolvedValue({
+      generated_at: '2026-03-08T00:00:00Z',
+      start_date: '2026-03-08',
+      end_date: '2026-03-08',
+      granularity: 'hour',
+      trend: [],
+      groups: [],
+    })
+    list.mockResolvedValue({ items: [{ id: 1, name: 'demo-key' }] })
+    getAvailable.mockResolvedValue([{ id: 1, name: 'default' }])
+
+    const wrapper = mountUsageView()
+    await flushPromises()
+    await nextTick()
+
+    const tooltipTriggers = wrapper.findAll('.group.relative')
+    expect(tooltipTriggers.length).toBeGreaterThanOrEqual(2)
+    await tooltipTriggers[tooltipTriggers.length - 1].trigger('mouseenter')
+    await nextTick()
+
+    const text = wrapper.text().replace(/\s+/g, ' ')
+    expect(text).toContain('Service tier')
+    expect(text).toContain('Fast')
+    expect(text).toContain('Rate')
+    expect(text).toContain('1.00x')
+    expect(text).toContain('User billed')
+    expect(text).toContain('$0.092883')
+    expect(text).toContain('$5.0000 / 1M tokens')
+    expect(text).toContain('$30.0000 / 1M tokens')
   })
 
   it('exports csv with current filters and without admin-only fields', async () => {

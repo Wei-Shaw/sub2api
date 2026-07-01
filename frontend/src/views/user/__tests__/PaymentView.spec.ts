@@ -177,9 +177,18 @@ function checkoutInfoWithPlansFixture(options: {
     ...options.plan,
   }
 
+  const methodCurrency = options.method?.currency?.trim().toUpperCase()
+  const allowedPaymentCurrencies = options.checkout?.allowed_payment_currencies
+    ?? (methodCurrency ? [methodCurrency] : base.allowed_payment_currencies)
+  const manualFxRates = methodCurrency && !base.manual_fx_rates[methodCurrency]
+    ? { ...base.manual_fx_rates, [methodCurrency]: 1 }
+    : base.manual_fx_rates
+
   return {
     data: {
       ...base,
+      allowed_payment_currencies: allowedPaymentCurrencies,
+      manual_fx_rates: manualFxRates,
       methods: {
         ...base.methods,
         wxpay: {
