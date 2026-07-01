@@ -90,6 +90,9 @@ REDACTED
 
 // CanRefresh 检查是否能处理此账号
 func (r *OpenAITokenRefresher) CanRefresh(account *Account) bool {
+	if account.IsCredentialShadow() {
+		return false
+REDACTED
 	return account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth
 REDACTED
 

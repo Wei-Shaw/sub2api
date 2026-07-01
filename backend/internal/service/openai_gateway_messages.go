@@ -410,8 +410,9 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
-	if handleErr == nil && account.Type == AccountTypeOAuth {
+	// Extract and save Codex usage snapshot from response headers (for OAuth accounts).
+	// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
+	if handleErr == nil && account.Type == AccountTypeOAuth && !account.IsShadow() {
 		if account.Platform == PlatformGrok {
 			s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
 	REDACTED else if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {

@@ -45,7 +45,7 @@ REDACTED
 	if r.account == nil || r.account.ID != id {
 		r.account = &Account{ID: idREDACTED
 REDACTED
-	r.account.Credentials = cloneCredentials(credentials)
+	r.account.Credentials = shallowCopyMap(credentials)
 	return nil
 REDACTED
 
