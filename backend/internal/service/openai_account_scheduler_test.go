@@ -1976,6 +1976,59 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SubscriptionPriorityDis
 	}
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesAccountPriorityWithinGroupPool(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10123)
+	accounts := []Account{
+		{
+			ID:          21631,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    1,
+			AccountGroups: []AccountGroup{
+				{AccountID: 21631, GroupID: groupID, Priority: 100},
+			},
+			GroupIDs: []int64{groupID},
+		},
+		{
+			ID:          21632,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    100000,
+			AccountGroups: []AccountGroup{
+				{AccountID: 21632, GroupID: groupID, Priority: 1},
+			},
+			GroupIDs: []int64{groupID},
+		},
+	}
+	cfg := newSchedulerTestSubscriptionPriorityConfig()
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerGroupAwareOpenAIAccountRepo{schedulerTestOpenAIAccountRepo{accounts: accounts}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "session_group_priority", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(21631), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestDefaultOpenAIAccountScheduler_ShouldEscapeStickyAccount_ThresholdBoundary(t *testing.T) {
 	stats := newOpenAIAccountRuntimeStats()
 	accountID := int64(21501)

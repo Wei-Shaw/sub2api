@@ -846,6 +846,7 @@ export interface Account {
     sticky_score_infinity?: boolean
     sticky_weighted_enabled: boolean
   } | null
+  scheduler_scores?: AccountSchedulerGroupScore[] | null
   priority: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
   status: 'active' | 'inactive' | 'error'
@@ -934,6 +935,16 @@ export interface Account {
   parent_privacy_mode?: string
   parent_subscription_expires_at?: string
   parent_chatgpt_account_id?: string
+}
+
+export interface AccountSchedulerGroupScore {
+  group_id?: number | null
+  group_name?: string
+  group_priority?: number | null
+  base_score: number
+  sticky_score?: number
+  sticky_score_infinity?: boolean
+  sticky_weighted_enabled: boolean
 }
 
 // Account Usage types

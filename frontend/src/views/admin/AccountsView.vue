@@ -323,14 +323,24 @@
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
           </template>
           <template #cell-scheduler_score="{ row }">
-            <div v-if="row.scheduler_score" class="flex min-w-[5.5rem] flex-col gap-0.5 font-mono text-xs leading-4">
-              <div class="flex items-center justify-between gap-2 text-gray-700 dark:text-gray-300">
-                <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">{{ t('admin.accounts.schedulerScore.baseShort') }}</span>
-                <span>{{ formatSchedulerScore(row.scheduler_score.base_score) }}</span>
-              </div>
-              <div class="flex items-center justify-between gap-2 text-primary-700 dark:text-primary-300">
-                <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">{{ t('admin.accounts.schedulerScore.stickyShort') }}</span>
-                <span>{{ formatStickySchedulerScore(row.scheduler_score) }}</span>
+            <div v-if="getSchedulerScoreRows(row).length" class="flex min-w-[9rem] flex-col gap-1 font-mono text-xs leading-4">
+              <div
+                v-for="score in getSchedulerScoreRows(row)"
+                :key="score.group_id ?? 'ungrouped'"
+                class="rounded border border-gray-100 px-1.5 py-1 dark:border-dark-700"
+              >
+                <div class="mb-0.5 flex items-center justify-between gap-2 text-[10px] text-gray-500 dark:text-dark-400">
+                  <span class="max-w-[5.5rem] truncate">{{ formatSchedulerScoreGroup(score) }}</span>
+                  <span v-if="score.group_priority != null">#{{ score.group_priority }}</span>
+                </div>
+                <div class="flex items-center justify-between gap-2 text-gray-700 dark:text-gray-300">
+                  <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">{{ t('admin.accounts.schedulerScore.baseShort') }}</span>
+                  <span>{{ formatSchedulerScore(score.base_score) }}</span>
+                </div>
+                <div class="flex items-center justify-between gap-2 text-primary-700 dark:text-primary-300">
+                  <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">{{ t('admin.accounts.schedulerScore.stickyShort') }}</span>
+                  <span>{{ formatStickySchedulerScore(score) }}</span>
+                </div>
               </div>
             </div>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
@@ -454,7 +464,7 @@ import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfil
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
-import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
+import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -659,13 +669,26 @@ const autoRefreshIntervalLabel = (sec: number) => {
 const formatSchedulerScore = (value: unknown): string => {
   const num = Number(value)
   if (!Number.isFinite(num)) return '-'
-  return num.toFixed(2)
+  return num.toFixed(6).replace(/\.?0+$/, '')
 }
 
 const formatStickySchedulerScore = (score: Account['scheduler_score']): string => {
   if (!score) return '-'
   if (score.sticky_score_infinity) return '+∞'
   return formatSchedulerScore(score.sticky_score)
+}
+
+const getSchedulerScoreRows = (account: Account): AccountSchedulerGroupScore[] => {
+  if (Array.isArray(account.scheduler_scores) && account.scheduler_scores.length > 0) {
+    return account.scheduler_scores
+  }
+  return account.scheduler_score ? [account.scheduler_score] : []
+}
+
+const formatSchedulerScoreGroup = (score: AccountSchedulerGroupScore): string => {
+  if ('group_name' in score && score.group_name) return score.group_name
+  if ('group_id' in score && score.group_id != null) return `#${score.group_id}`
+  return String(t('admin.accounts.schedulerScore.ungrouped'))
 }
 
 const loadSavedColumns = () => {

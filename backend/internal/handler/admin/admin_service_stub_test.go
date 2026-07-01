@@ -332,6 +332,28 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 	return s.accounts, int64(len(s.accounts)), nil
 }
 
+func (s *stubAdminService) ListOpenAISchedulableAccountsForSchedulerScore(_ context.Context, groupID *int64) ([]service.Account, error) {
+	out := make([]service.Account, 0, len(s.accounts))
+	for _, account := range s.accounts {
+		if account.Platform != service.PlatformOpenAI || !account.IsSchedulable() {
+			continue
+		}
+		if groupID == nil {
+			if len(account.AccountGroups) == 0 && len(account.GroupIDs) == 0 {
+				out = append(out, account)
+			}
+			continue
+		}
+		for _, accountGroup := range account.AccountGroups {
+			if accountGroup.GroupID == *groupID {
+				out = append(out, account)
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
 func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.Account, error) {
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 	return &account, nil
