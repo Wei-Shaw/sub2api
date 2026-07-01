@@ -246,12 +246,65 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	return item
 }
 
+func (h *AccountHandler) scoreOpenAIAccountSchedulerPool(ctx context.Context, accounts []service.Account) map[int64]AccountSchedulerScore {
+	if len(accounts) == 0 {
+		return nil
+	}
+
+	openAIAccounts := make([]*service.Account, 0, len(accounts))
+	loadReq := make([]service.AccountWithConcurrency, 0, len(accounts))
+	for i := range accounts {
+		account := &accounts[i]
+		if account.Platform != service.PlatformOpenAI {
+			continue
+		}
+		openAIAccounts = append(openAIAccounts, account)
+		loadReq = append(loadReq, service.AccountWithConcurrency{
+			ID:             account.ID,
+			MaxConcurrency: account.EffectiveLoadFactor(),
+		})
+	}
+	if len(openAIAccounts) == 0 {
+		return nil
+	}
+
+	loadMap := map[int64]*service.AccountLoadInfo{}
+	if h.concurrencyService != nil {
+		if batchLoad, err := h.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); err == nil && batchLoad != nil {
+			loadMap = batchLoad
+		}
+	}
+
+	var scores map[int64]service.OpenAIAccountSchedulerScoreSnapshot
+	if h.rateLimitService != nil {
+		scores = h.rateLimitService.BuildOpenAIAccountSchedulerScoreSnapshot(ctx, openAIAccounts, loadMap)
+	} else {
+		scores = service.BuildOpenAIAccountSchedulerScoreSnapshot(openAIAccounts, loadMap)
+	}
+	result := make(map[int64]AccountSchedulerScore, len(scores))
+	for accountID, score := range scores {
+		result[accountID] = AccountSchedulerScore{
+			BaseScore:             score.BaseScore,
+			StickyScore:           score.StickyScore,
+			StickyScoreInfinity:   score.StickyScoreInfinity,
+			StickyWeightedEnabled: score.StickyWeightedEnabled,
+		}
+	}
+	return result
+}
+
 func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 	ctx context.Context,
 	accounts []service.Account,
 ) (map[int64]*AccountSchedulerScore, map[int64][]AccountSchedulerGroupScore) {
 	if len(accounts) == 0 {
 		return nil, nil
+	}
+
+	baseScores := make(map[int64]*AccountSchedulerScore)
+	for accountID, score := range h.scoreOpenAIAccountSchedulerPool(ctx, accounts) {
+		copiedScore := score
+		baseScores[accountID] = &copiedScore
 	}
 
 	pageOpenAIAccountIDs := make(map[int64]struct{})
@@ -279,69 +332,19 @@ func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 		}
 	}
 	if len(pageOpenAIAccountIDs) == 0 {
-		return nil, nil
+		return baseScores, nil
 	}
 
-	baseScores := make(map[int64]*AccountSchedulerScore)
 	groupScoresByAccount := make(map[int64][]AccountSchedulerGroupScore)
-	scorePool := func(groupID *int64, groupNameByID map[int64]string, groupPriorityByAccount map[int64]int, pool []service.Account) {
+	scoreGroupPool := func(groupID *int64, groupNameByID map[int64]string, groupPriorityByAccount map[int64]int, pool []service.Account) {
 		if len(pool) == 0 {
 			return
 		}
-
-		openAIAccounts := make([]*service.Account, 0, len(pool))
-		loadReq := make([]service.AccountWithConcurrency, 0, len(pool))
-		for i := range pool {
-			account := &pool[i]
-			if account.Platform != service.PlatformOpenAI {
-				continue
-			}
-			openAIAccounts = append(openAIAccounts, account)
-			loadReq = append(loadReq, service.AccountWithConcurrency{
-				ID:             account.ID,
-				MaxConcurrency: account.EffectiveLoadFactor(),
-			})
-		}
-		if len(openAIAccounts) == 0 {
-			return
-		}
-
-		loadMap := map[int64]*service.AccountLoadInfo{}
-		if h.concurrencyService != nil {
-			if batchLoad, err := h.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); err == nil && batchLoad != nil {
-				loadMap = batchLoad
-			}
-		}
-
-		var scores map[int64]service.OpenAIAccountSchedulerScoreSnapshot
-		if h.rateLimitService != nil {
-			scoreGroupID := int64(0)
-			if groupID != nil {
-				scoreGroupID = *groupID
-			}
-			scores = h.rateLimitService.BuildOpenAIAccountSchedulerScoreSnapshotForGroup(ctx, openAIAccounts, loadMap, scoreGroupID)
-		} else {
-			scoreGroupID := int64(0)
-			if groupID != nil {
-				scoreGroupID = *groupID
-			}
-			scores = service.BuildOpenAIAccountSchedulerScoreSnapshotForGroup(openAIAccounts, loadMap, scoreGroupID)
-		}
-		for accountID, score := range scores {
+		scores := h.scoreOpenAIAccountSchedulerPool(ctx, pool)
+		for accountID, schedulerScore := range scores {
 			if _, ok := pageOpenAIAccountIDs[accountID]; !ok {
 				continue
 			}
-			schedulerScore := AccountSchedulerScore{
-				BaseScore:             score.BaseScore,
-				StickyScore:           score.StickyScore,
-				StickyScoreInfinity:   score.StickyScoreInfinity,
-				StickyWeightedEnabled: score.StickyWeightedEnabled,
-			}
-			if _, ok := baseScores[accountID]; !ok {
-				copiedScore := schedulerScore
-				baseScores[accountID] = &copiedScore
-			}
-
 			groupScore := AccountSchedulerGroupScore{
 				GroupID:               groupID,
 				AccountSchedulerScore: schedulerScore,
@@ -384,7 +387,7 @@ func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 					}
 				}
 			}
-			scorePool(&gid, groupNameByID, groupPriorityByAccount, pool)
+			scoreGroupPool(&gid, groupNameByID, groupPriorityByAccount, pool)
 		}
 
 		if includeUngrouped {
@@ -392,14 +395,9 @@ func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 			if err != nil {
 				slog.Warn("openai_scheduler_ungrouped_score_pool_failed", "error", err)
 			} else {
-				scorePool(nil, nil, nil, pool)
+				scoreGroupPool(nil, nil, nil, pool)
 			}
 		}
-	}
-
-	// Fallback for tests or custom AdminService implementations that cannot list full pools.
-	if len(baseScores) == 0 {
-		scorePool(nil, nil, nil, accounts)
 	}
 
 	for accountID := range groupScoresByAccount {

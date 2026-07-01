@@ -10,27 +10,28 @@ import (
 )
 
 type stubAdminService struct {
-	users                []service.User
-	apiKeys              []service.APIKey
-	groups               []service.Group
-	accounts             []service.Account
-	proxies              []service.Proxy
-	proxyCounts          []service.ProxyWithAccountCount
-	redeems              []service.RedeemCode
-	boundAuthIdentity    *service.AdminBindAuthIdentityInput
-	boundAuthIdentityFor int64
-	createdAccounts      []*service.CreateAccountInput
-	createdProxies       []*service.CreateProxyInput
-	updatedProxyIDs      []int64
-	updatedProxies       []*service.UpdateProxyInput
-	testedProxyIDs       []int64
-	getUserErr           error
-	createAccountErr     error
-	createSparkShadowErr error
-	updateAccountErr     error
-	bulkUpdateAccountErr error
-	checkMixedErr        error
-	lastMixedCheck       struct {
+	users                            []service.User
+	apiKeys                          []service.APIKey
+	groups                           []service.Group
+	accounts                         []service.Account
+	openAISchedulerScorePoolAccounts []service.Account
+	proxies                          []service.Proxy
+	proxyCounts                      []service.ProxyWithAccountCount
+	redeems                          []service.RedeemCode
+	boundAuthIdentity                *service.AdminBindAuthIdentityInput
+	boundAuthIdentityFor             int64
+	createdAccounts                  []*service.CreateAccountInput
+	createdProxies                   []*service.CreateProxyInput
+	updatedProxyIDs                  []int64
+	updatedProxies                   []*service.UpdateProxyInput
+	testedProxyIDs                   []int64
+	getUserErr                       error
+	createAccountErr                 error
+	createSparkShadowErr             error
+	updateAccountErr                 error
+	bulkUpdateAccountErr             error
+	checkMixedErr                    error
+	lastMixedCheck                   struct {
 		accountID int64
 		platform  string
 		groupIDs  []int64
@@ -333,8 +334,12 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 }
 
 func (s *stubAdminService) ListOpenAISchedulableAccountsForSchedulerScore(_ context.Context, groupID *int64) ([]service.Account, error) {
-	out := make([]service.Account, 0, len(s.accounts))
-	for _, account := range s.accounts {
+	accounts := s.openAISchedulerScorePoolAccounts
+	if accounts == nil {
+		accounts = s.accounts
+	}
+	out := make([]service.Account, 0, len(accounts))
+	for _, account := range accounts {
 		if account.Platform != service.PlatformOpenAI || !account.IsSchedulable() {
 			continue
 		}
