@@ -6,16 +6,36 @@ import (
 	"log"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
+// OpenAIOAuthTokenRequestOptions defines optional TLS-fingerprint config for OpenAI OAuth token requests.
+type OpenAIOAuthTokenRequestOptions struct {
+	UserAgent          string
+	TLSProfile         *tlsfingerprint.Profile
+	AccountID          int64
+	AccountConcurrency int
+}
+
+// OpenAIOAuthTokenRouterReader reads the runtime TLS router config bound to an account.
+type OpenAIOAuthTokenRouterReader interface {
+	GetRuntimeRouter(routerID int64) *model.TLSFingerprintRouter
+}
+
+// OpenAIOAuthTokenProfileResolver resolves the dedicated TLS profile for ChatGPT OAuth token requests.
+type OpenAIOAuthTokenProfileResolver interface {
+	ResolveTokenTLSProfileByID(id int64) (*tlsfingerprint.Profile, bool)
+}
+
 // OpenAIOAuthClient interface for OpenAI OAuth operations
 type OpenAIOAuthClient interface {
-	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error)
-	RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*openai.TokenResponse, error)
-	RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error)
+	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string, options ...OpenAIOAuthTokenRequestOptions) (*openai.TokenResponse, error)
+	RefreshToken(ctx context.Context, refreshToken, proxyURL string, options ...OpenAIOAuthTokenRequestOptions) (*openai.TokenResponse, error)
+	RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string, options ...OpenAIOAuthTokenRequestOptions) (*openai.TokenResponse, error)
 }
 
 // GrokOAuthClient interface for xAI/Grok OAuth operations.

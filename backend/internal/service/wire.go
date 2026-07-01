@@ -50,9 +50,13 @@ func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
 	oauthClient OpenAIOAuthClient,
 	privacyClientFactory PrivacyClientFactory,
+	settingService *SettingService,
+	tlsFPRouterService *TLSFingerprintRouterService,
+	tlsFPProfileService *TLSFingerprintProfileService,
 ) *OpenAIOAuthService {
 	svc := NewOpenAIOAuthService(proxyRepo, oauthClient)
 	svc.SetPrivacyClientFactory(privacyClientFactory)
+	svc.SetTokenTLSRouterDeps(settingService, tlsFPRouterService, tlsFPProfileService)
 	return svc
 }
 

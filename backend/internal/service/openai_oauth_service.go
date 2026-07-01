@@ -18,6 +18,9 @@ type OpenAIOAuthService struct {
 	proxyRepo            ProxyRepository
 	oauthClient          OpenAIOAuthClient
 	privacyClientFactory PrivacyClientFactory // 用于调用 chatgpt.com/backend-api（ImpersonateChrome）
+	settingService       *SettingService
+	tlsFPRouterReader    OpenAIOAuthTokenRouterReader
+	tlsFPProfileResolver OpenAIOAuthTokenProfileResolver
 }
 
 // NewOpenAIOAuthService creates a new OpenAI OAuth service
@@ -33,6 +36,13 @@ func NewOpenAIOAuthService(proxyRepo ProxyRepository, oauthClient OpenAIOAuthCli
 // 用于调用 chatgpt.com/backend-api 获取账号信息（plan_type 等）。
 func (s *OpenAIOAuthService) SetPrivacyClientFactory(factory PrivacyClientFactory) {
 	s.privacyClientFactory = factory
+}
+
+// SetTokenTLSRouterDeps 注入 ChatGPT OAuth token 请求指纹配置所需的只读依赖。
+func (s *OpenAIOAuthService) SetTokenTLSRouterDeps(settingService *SettingService, routerReader OpenAIOAuthTokenRouterReader, profileResolver OpenAIOAuthTokenProfileResolver) {
+	s.settingService = settingService
+	s.tlsFPRouterReader = routerReader
+	s.tlsFPProfileResolver = profileResolver
 }
 
 // OpenAIAuthURLResult contains the authorization URL and session info
@@ -103,11 +113,12 @@ func (s *OpenAIOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64
 
 // OpenAIExchangeCodeInput represents the input for code exchange
 type OpenAIExchangeCodeInput struct {
-	SessionID   string
-	Code        string
-	State       string
-	RedirectURI string
-	ProxyID     *int64
+	SessionID              string
+	Code                   string
+	State                  string
+	RedirectURI            string
+	ProxyID                *int64
+	TLSFingerprintRouterID *int64
 }
 
 // OpenAITokenInfo represents the token information for OpenAI
@@ -166,7 +177,8 @@ func (s *OpenAIOAuthService) ExchangeCode(ctx context.Context, input *OpenAIExch
 	}
 
 	// Exchange code for token
-	tokenResp, err := s.oauthClient.ExchangeCode(ctx, input.Code, session.CodeVerifier, redirectURI, proxyURL, clientID)
+	tokenOptions := s.resolveChatGPTOAuthTokenRequestOptions(ctx, valueFromInt64Ptr(input.TLSFingerprintRouterID), nil)
+	tokenResp, err := s.oauthClient.ExchangeCode(ctx, input.Code, session.CodeVerifier, redirectURI, proxyURL, clientID, tokenOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +226,16 @@ func (s *OpenAIOAuthService) RefreshToken(ctx context.Context, refreshToken stri
 
 // RefreshTokenWithClientID refreshes an OpenAI OAuth token with optional client_id.
 func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refreshToken string, proxyURL string, clientID string) (*OpenAITokenInfo, error) {
-	tokenResp, err := s.oauthClient.RefreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID)
+	return s.refreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID, 0, nil)
+}
+
+// refreshTokenWithClientID 使用可选的 TLS 路由器配置刷新 ChatGPT OAuth token。
+func (s *OpenAIOAuthService) refreshTokenWithClientID(ctx context.Context, refreshToken string, proxyURL string, clientID string, routerID int64, account *Account) (*OpenAITokenInfo, error) {
+	if account != nil && routerID <= 0 {
+		routerID = account.GetTLSFingerprintRouterID()
+	}
+	tokenOptions := s.resolveChatGPTOAuthTokenRequestOptions(ctx, routerID, account)
+	tokenResp, err := s.oauthClient.RefreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID, tokenOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +273,49 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 	s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
 
 	return tokenInfo, nil
+}
+
+func (s *OpenAIOAuthService) resolveChatGPTOAuthTokenRequestOptions(ctx context.Context, routerID int64, account *Account) []OpenAIOAuthTokenRequestOptions {
+	if s == nil || routerID <= 0 || s.tlsFPRouterReader == nil {
+		return nil
+	}
+	router := s.tlsFPRouterReader.GetRuntimeRouter(routerID)
+	if router == nil || !router.Enabled {
+		return nil
+	}
+
+	tokenUA := strings.TrimSpace(router.ChatGPTOAuthTokenUserAgent)
+	tokenProfileID := router.ChatGPTOAuthTokenTLSFingerprintProfileID
+	if tokenUA == "" && tokenProfileID == nil {
+		return nil
+	}
+
+	option := OpenAIOAuthTokenRequestOptions{
+		UserAgent: tokenUA,
+	}
+	if option.UserAgent == "" && s.settingService != nil {
+		option.UserAgent = strings.TrimSpace(s.settingService.GetOpenAICodexUserAgent(ctx))
+	}
+	if account != nil {
+		option.AccountID = account.ID
+		option.AccountConcurrency = account.Concurrency
+	}
+	if tokenProfileID != nil && s.tlsFPProfileResolver != nil {
+		if profile, ok := s.tlsFPProfileResolver.ResolveTokenTLSProfileByID(*tokenProfileID); ok {
+			option.TLSProfile = profile
+		}
+	}
+	if option.UserAgent == "" && option.TLSProfile == nil {
+		return nil
+	}
+	return []OpenAIOAuthTokenRequestOptions{option}
+}
+
+func valueFromInt64Ptr(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 // enrichTokenInfo 通过 ChatGPT backend-api 补全 tokenInfo 并设置隐私（best-effort）。
@@ -354,7 +418,7 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 	}
 
 	clientID := account.GetCredential("client_id")
-	return s.RefreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID)
+	return s.refreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID, account.GetTLSFingerprintRouterID(), account)
 }
 
 // BuildAccountCredentials builds credentials map from token info

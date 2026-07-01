@@ -327,7 +327,7 @@ func (s *OpenAIOAuthServiceSuite) TestRefreshToken_NonSuccessStatus() {
 }
 
 func TestNewOpenAIOAuthClient_DefaultTokenURL(t *testing.T) {
-	client := NewOpenAIOAuthClient()
+	client := NewOpenAIOAuthClient(nil)
 	svc, ok := client.(*openaiOAuthService)
 	require.True(t, ok)
 	require.Equal(t, openai.TokenURL, svc.tokenURL)
