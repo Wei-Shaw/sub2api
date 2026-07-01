@@ -184,6 +184,55 @@ func (s *OpenAIOAuthServiceSuite) TestRefreshToken_UseProvidedClientID() {
 	require.Equal(s.T(), []string{customClientID}, seenClientIDs)
 }
 
+func (s *OpenAIOAuthServiceSuite) TestExchangeAPIKeyAccessToken_FormFields() {
+	const customClientID = "custom-token-exchange-client"
+	errCh := make(chan string, 1)
+	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			errCh <- "ParseForm failed"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if got := r.PostForm.Get("grant_type"); got != openai.TokenExchangeGrantType {
+			errCh <- "grant_type mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if got := r.PostForm.Get("requested_token"); got != openai.TokenExchangeRequestedToken {
+			errCh <- "requested_token mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if got := r.PostForm.Get("subject_token"); got != "subject-token" {
+			errCh <- "subject_token mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if got := r.PostForm.Get("subject_token_type"); got != openai.TokenExchangeSubjectTokenTypeIDTok {
+			errCh <- "subject_token_type mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if got := r.PostForm.Get("client_id"); got != customClientID {
+			errCh <- "client_id mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"api-key-at","token_type":"bearer","expires_in":3600}`)
+	}))
+
+	resp, err := s.svc.ExchangeAPIKeyAccessToken(s.ctx, "subject-token", "", customClientID)
+	require.NoError(s.T(), err, "ExchangeAPIKeyAccessToken")
+	select {
+	case msg := <-errCh:
+		require.Fail(s.T(), msg)
+	default:
+	}
+	require.Equal(s.T(), "api-key-at", resp.AccessToken)
+}
+
 func (s *OpenAIOAuthServiceSuite) TestNonSuccessStatus_IncludesBody() {
 	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

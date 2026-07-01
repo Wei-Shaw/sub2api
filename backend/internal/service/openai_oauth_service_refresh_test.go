@@ -32,6 +32,10 @@ func (s *openaiOAuthClientRefreshStub) RefreshTokenWithClientID(ctx context.Cont
 	return nil, errors.New("not implemented")
 }
 
+func (s *openaiOAuthClientRefreshStub) ExchangeAPIKeyAccessToken(ctx context.Context, subjectToken, proxyURL, clientID string) (*openai.TokenResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
 func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccessToken(t *testing.T) {
 	client := &openaiOAuthClientRefreshStub{}
 	svc := NewOpenAIOAuthService(nil, client)

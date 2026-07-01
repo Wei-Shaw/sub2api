@@ -538,7 +538,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if account.IsOAuth() {
 		isOAuth = true
 		// OAuth - use Bearer token with ChatGPT internal API
-		authToken = account.GetOpenAIAccessToken()
+		authToken = resolveOpenAIAPIKeyAccessTokenForGateway(account)
+		if authToken == "" {
+			authToken = account.GetOpenAIAccessToken()
+		}
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No access token available")
 		}
@@ -596,6 +599,8 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if isOAuth {
 		req.Host = "chatgpt.com"
 		req.Header.Set("accept", "text/event-stream")
+		req.Header.Set("originator", "codex_cli_rs")
+		req.Header.Set("User-Agent", codexCLIUserAgent)
 		setOpenAIChatGPTAccountHeaders(req.Header, account)
 	}
 
@@ -790,7 +795,10 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	switch {
 	case account.IsOAuth():
 		isOAuth = true
-		authToken = account.GetOpenAIAccessToken()
+		authToken = resolveOpenAIAPIKeyAccessTokenForGateway(account)
+		if authToken == "" {
+			authToken = account.GetOpenAIAccessToken()
+		}
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No access token available")
 		}
@@ -831,13 +839,14 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+authToken)
-	req.Header.Set("OpenAI-Beta", "responses=experimental")
 	req.Header.Set("Originator", "codex_cli_rs")
 	req.Header.Set("User-Agent", codexCLIUserAgent)
-	req.Header.Set("Version", codexCLIVersion)
 	probeSessionID := compactProbeSessionID(account.ID)
 	req.Header.Set("Session_ID", probeSessionID)
-	req.Header.Set("Conversation_ID", probeSessionID)
+	req.Header.Set("X-Codex-Window-ID", probeSessionID+":0")
+	if installID := resolveOpenAICodexInstallationID(nil, account); installID != "" {
+		req.Header.Set("X-Codex-Installation-ID", installID)
+	}
 
 	if isOAuth {
 		req.Host = "chatgpt.com"
@@ -1649,7 +1658,10 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 
 // testOpenAIImageOAuth tests OpenAI image generation using an OAuth account via Codex /responses API.
 func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
-	authToken := account.GetOpenAIAccessToken()
+	authToken := resolveOpenAIAPIKeyAccessTokenForGateway(account)
+	if authToken == "" {
+		authToken = account.GetOpenAIAccessToken()
+	}
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No access token available")
 	}
@@ -1685,8 +1697,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	req.Header.Set("Authorization", "Bearer "+authToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("originator", "opencode")
+	req.Header.Set("originator", "codex_cli_rs")
 	if customUA := strings.TrimSpace(account.GetOpenAIUserAgent()); customUA != "" {
 		req.Header.Set("User-Agent", customUA)
 	} else {

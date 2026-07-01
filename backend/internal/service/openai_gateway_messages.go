@@ -273,6 +273,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		if upstreamReq.Header.Get("conversation_id") != "" {
 			upstreamReq.Header.Set("conversation_id", isolatedSessionID)
 		}
+		applyOpenAICodexHeaderShape(upstreamReq, c, account, isOpenAIResponsesCompactPath(c))
 	}
 	if account.Type == AccountTypeOAuth && account.Platform != PlatformGrok {
 		// Anthropic Messages compatibility uses the ChatGPT Codex SSE endpoint.

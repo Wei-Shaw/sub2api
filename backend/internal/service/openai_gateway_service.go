@@ -46,8 +46,8 @@ const (
 	openaiStickySessionTTL          = time.Hour // 粘性会话TTL
 	// 与真实 Codex CLI 的 User-Agent 结构对齐：
 	// {originator}/{version} ({OS} {OS_version}; {arch}) {terminal}
-	// 旧值 "codex_cli_rs/0.125.0" 缺少 OS/架构/终端后缀，易被上游指纹识别为非官方客户端。
-	codexCLIUserAgent = "codex_cli_rs/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color"
+	// 旧值缺少 OS/架构/终端后缀，易被上游指纹识别为非官方客户端。
+	codexCLIUserAgent = openai.CodexCLIUserAgent
 	// codex_cli_only 拒绝时单个请求头日志长度上限（字符）
 	codexCLIOnlyHeaderValueMaxBytes = 256
 
@@ -61,7 +61,7 @@ const (
 	openAIWSRetryBackoffMaxDefault     = 2 * time.Second
 	openAIWSRetryJitterRatioDefault    = 0.2
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
-	codexCLIVersion                    = "0.125.0"
+	codexCLIVersion                    = openai.CodexCLIUserAgentVersion
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 	// 配额自动暂停时，超过该时长仍未刷新的 used% 快照视为陈旧，不再据此暂停账号。
@@ -72,29 +72,43 @@ const (
 
 // OpenAI allowed headers whitelist (for non-passthrough).
 var openaiAllowedHeaders = map[string]bool{
-	"accept-language":       true,
-	"content-type":          true,
-	"conversation_id":       true,
-	"user-agent":            true,
-	"originator":            true,
-	"session_id":            true,
-	"x-codex-turn-state":    true,
-	"x-codex-turn-metadata": true,
+	"accept-language":                       true,
+	"content-type":                          true,
+	"user-agent":                            true,
+	"originator":                            true,
+	"session_id":                            true,
+	"x-client-request-id":                   true,
+	"x-codex-beta-features":                 true,
+	"x-codex-inference-call-id":             true,
+	"x-codex-parent-thread-id":              true,
+	"x-codex-turn-state":                    true,
+	"x-codex-turn-metadata":                 true,
+	"x-codex-window-id":                     true,
+	"x-oai-attestation":                     true,
+	"x-openai-subagent":                     true,
+	"x-responsesapi-include-timing-metrics": true,
 }
 
 // OpenAI passthrough allowed headers whitelist.
 // 透传模式下仅放行这些低风险请求头，避免将非标准/环境噪声头传给上游触发风控。
 var openaiPassthroughAllowedHeaders = map[string]bool{
-	"accept":                true,
-	"accept-language":       true,
-	"content-type":          true,
-	"conversation_id":       true,
-	"openai-beta":           true,
-	"user-agent":            true,
-	"originator":            true,
-	"session_id":            true,
-	"x-codex-turn-state":    true,
-	"x-codex-turn-metadata": true,
+	"accept":                                true,
+	"accept-language":                       true,
+	"content-type":                          true,
+	"openai-beta":                           true,
+	"user-agent":                            true,
+	"originator":                            true,
+	"session_id":                            true,
+	"x-client-request-id":                   true,
+	"x-codex-beta-features":                 true,
+	"x-codex-inference-call-id":             true,
+	"x-codex-parent-thread-id":              true,
+	"x-codex-turn-state":                    true,
+	"x-codex-turn-metadata":                 true,
+	"x-codex-window-id":                     true,
+	"x-oai-attestation":                     true,
+	"x-openai-subagent":                     true,
+	"x-responsesapi-include-timing-metrics": true,
 }
 
 // codex_cli_only 拒绝时记录的请求头白名单（仅用于诊断日志，不参与上游透传）
@@ -1333,13 +1347,14 @@ func (s *OpenAIGatewayService) GenerateSessionHashWithFallback(c *gin.Context, b
 func resolveOpenAIUpstreamOriginator(c *gin.Context, isOfficialClient bool) string {
 	if c != nil {
 		if originator := strings.TrimSpace(c.GetHeader("originator")); originator != "" {
-			return originator
+			normalized := strings.ToLower(originator)
+			if isOfficialClient || openai.IsCodexOfficialClientOriginator(originator) || strings.Contains(normalized, "codex") {
+				return originator
+			}
 		}
 	}
-	if isOfficialClient {
-		return "codex_cli_rs"
-	}
-	return "opencode"
+	_ = isOfficialClient
+	return "codex_cli_rs"
 }
 
 // BindStickySession sets session -> account binding with standard TTL.
@@ -2455,7 +2470,7 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 		}
 		// 使用 TokenProvider 获取缓存的 token
 		if s.openAITokenProvider != nil {
-			accessToken, err := s.openAITokenProvider.GetAccessToken(ctx, account)
+			accessToken, err := s.openAITokenProvider.GetGatewayAccessToken(ctx, account)
 			if err != nil {
 				return "", "", err
 			}
@@ -2819,8 +2834,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if codexResult.Modified {
 			markDecodedModified()
 		}
-		// 带真实 device_id 时补齐 client_metadata 安装标识，与真实 Codex 对齐（compact 形态不同，跳过）。
-		if !isCompactRequest && applyCodexClientMetadata(decoded, account) {
+		// 补齐 client_metadata 安装标识：优先账号真实 device_id，其次客户端
+		// x-codex-installation-id；不伪造、不覆盖已有值。
+		if !isCompactRequest && applyCodexClientMetadataFromRequest(decoded, c, account) {
 			markDecodedModified()
 		}
 		if codexResult.NormalizedModel != "" {
@@ -3364,6 +3380,15 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		if normalized {
 			body = normalizedBody
 		}
+		if !isOpenAIResponsesCompactPath(c) {
+			withMetadata, metadataApplied, metadataErr := applyCodexClientMetadataToBodyJSON(body, c, account)
+			if metadataErr != nil {
+				return nil, fmt.Errorf("normalize passthrough body client_metadata: %w", metadataErr)
+			}
+			if metadataApplied {
+				body = withMetadata
+			}
+		}
 		reqStream = gjson.GetBytes(body, "stream").Bool()
 	}
 
@@ -3594,7 +3619,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	targetURL := openaiPlatformAPIURL
 	switch account.Type {
 	case AccountTypeOAuth:
-		targetURL = chatgptCodexURL
+		targetURL = s.openAIChatGPTCodexResponsesURL()
 	case AccountTypeAPIKey:
 		baseURL := account.GetOpenAIBaseURL()
 		if baseURL != "" {
@@ -3636,7 +3661,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// OAuth 透传到 ChatGPT internal API 时补齐必要头。
 	if account.Type == AccountTypeOAuth {
 		promptCacheKey := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
-		req.Host = "chatgpt.com"
+		if shouldSetOpenAIChatGPTHostHeader(req.URL) {
+			req.Host = "chatgpt.com"
+		}
 		setOpenAIChatGPTAccountHeaders(req.Header, account)
 		apiKeyID := getAPIKeyIDFromContext(c)
 		// 先保存客户端原始值，再做 compact 补充，避免后续统一隔离时读到已处理的值。
@@ -3653,12 +3680,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		} else if req.Header.Get("accept") == "" {
 			req.Header.Set("accept", "text/event-stream")
 		}
-		if req.Header.Get("OpenAI-Beta") == "" {
-			req.Header.Set("OpenAI-Beta", "responses=experimental")
-		}
-		if req.Header.Get("originator") == "" {
-			req.Header.Set("originator", "codex_cli_rs")
-		}
+		req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, true))
 		// 用隔离后的 session 标识符覆盖客户端透传值，防止跨用户会话碰撞。
 		if clientSessionID == "" {
 			clientSessionID = promptCacheKey
@@ -3672,6 +3694,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		if clientConversationID != "" {
 			req.Header.Set("conversation_id", isolateOpenAISessionID(apiKeyID, clientConversationID))
 		}
+		applyOpenAICodexHeaderShape(req, c, account, isOpenAIResponsesCompactPath(c))
 	}
 
 	// 透传模式也支持账户自定义 User-Agent 与 ForceCodexCLI 兜底。
@@ -4380,7 +4403,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	switch account.Type {
 	case AccountTypeOAuth:
 		// OAuth accounts use ChatGPT internal API
-		targetURL = chatgptCodexURL
+		targetURL = s.openAIChatGPTCodexResponsesURL()
 	case AccountTypeAPIKey:
 		// API Key accounts use Platform API or custom base URL
 		baseURL := account.GetOpenAIBaseURL()
@@ -4410,7 +4433,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// Set headers specific to OAuth accounts (ChatGPT internal API)
 	if account.Type == AccountTypeOAuth {
 		// Required: set Host for ChatGPT API (must use req.Host, not Header.Set)
-		req.Host = "chatgpt.com"
+		if shouldSetOpenAIChatGPTHostHeader(req.URL) {
+			req.Host = "chatgpt.com"
+		}
 		setOpenAIChatGPTAccountHeaders(req.Header, account)
 	}
 
@@ -4431,10 +4456,8 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		req.Header.Del("session_id")
 
 		if compatMessagesBridge {
-			req.Header.Del("OpenAI-Beta")
 			req.Header.Del("originator")
 		} else {
-			req.Header.Set("OpenAI-Beta", "responses=experimental")
 			req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 		}
 		apiKeyID := getAPIKeyIDFromContext(c)
@@ -4455,6 +4478,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 				req.Header.Set("conversation_id", isolated)
 			}
 		}
+		applyOpenAICodexHeaderShape(req, c, account, isOpenAIResponsesCompactPath(c))
 	}
 
 	// Apply custom User-Agent if configured

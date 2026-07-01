@@ -115,8 +115,10 @@ type OpenAITokenInfo struct {
 	AccessToken           string `json:"access_token"`
 	RefreshToken          string `json:"refresh_token"`
 	IDToken               string `json:"id_token,omitempty"`
+	APIKeyAccessToken     string `json:"api_key_access_token,omitempty"`
 	ExpiresIn             int64  `json:"expires_in"`
 	ExpiresAt             int64  `json:"expires_at"`
+	APIKeyAccessExpiresAt int64  `json:"api_key_access_token_expires_at,omitempty"`
 	ClientID              string `json:"client_id,omitempty"`
 	AuthMode              string `json:"auth_mode,omitempty"`
 	Email                 string `json:"email,omitempty"`
@@ -203,6 +205,7 @@ func (s *OpenAIOAuthService) ExchangeCode(ctx context.Context, input *OpenAIExch
 	}
 
 	s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+	s.enrichOpenAIAPIKeyAccessToken(ctx, tokenInfo, proxyURL)
 
 	return tokenInfo, nil
 }
@@ -250,6 +253,7 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 	}
 
 	s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+	s.enrichOpenAIAPIKeyAccessToken(ctx, tokenInfo, proxyURL)
 
 	return tokenInfo, nil
 }
@@ -288,6 +292,79 @@ func (s *OpenAIOAuthService) enrichTokenInfo(ctx context.Context, tokenInfo *Ope
 
 	// 尝试设置隐私（关闭训练数据共享），best-effort
 	tokenInfo.PrivacyMode = disableOpenAITraining(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL)
+}
+
+// enrichOpenAIAPIKeyAccessToken best-effort 兑换 ChatGPT/Codex backend bearer。
+// Codex-Manager 的请求链路优先使用 requested_token=openai-api-key 兑换出的
+// api_key_access_token 访问 /backend-api/codex；兑换失败时保持 OAuth access_token
+// 兜底，不阻断登录/刷新。
+func (s *OpenAIOAuthService) enrichOpenAIAPIKeyAccessToken(ctx context.Context, tokenInfo *OpenAITokenInfo, proxyURL string) {
+	if s == nil || s.oauthClient == nil || tokenInfo == nil {
+		return
+	}
+	if tokenInfo.AuthMode == OpenAIAuthModePersonalAccessToken {
+		return
+	}
+	if isOpenAIAPIKeyAccessTokenUsable(tokenInfo.APIKeyAccessToken, openAITokenInfoAPIKeyExpiresAt(tokenInfo)) {
+		return
+	}
+
+	clientID := strings.TrimSpace(tokenInfo.ClientID)
+	if clientID == "" {
+		clientID = openai.ClientID
+	}
+
+	for _, subject := range openAIAPIKeyExchangeSubjectTokens(tokenInfo) {
+		resp, err := s.oauthClient.ExchangeAPIKeyAccessToken(ctx, subject, proxyURL, clientID)
+		if err != nil {
+			slog.Warn("openai_api_key_access_token_exchange_failed", "error", err)
+			continue
+		}
+		token := strings.TrimSpace(resp.AccessToken)
+		if token == "" {
+			continue
+		}
+		tokenInfo.APIKeyAccessToken = token
+		switch {
+		case resp.ExpiresIn > 0:
+			tokenInfo.APIKeyAccessExpiresAt = time.Now().Unix() + int64(resp.ExpiresIn)
+		default:
+			tokenInfo.APIKeyAccessExpiresAt = decodeOpenAITokenExpiresAtUnix(token)
+		}
+		return
+	}
+}
+
+func openAITokenInfoAPIKeyExpiresAt(tokenInfo *OpenAITokenInfo) *time.Time {
+	if tokenInfo == nil || tokenInfo.APIKeyAccessExpiresAt <= 0 {
+		return nil
+	}
+	t := time.Unix(tokenInfo.APIKeyAccessExpiresAt, 0)
+	return &t
+}
+
+func openAIAPIKeyExchangeSubjectTokens(tokenInfo *OpenAITokenInfo) []string {
+	if tokenInfo == nil {
+		return nil
+	}
+	subjects := make([]string, 0, 2)
+	add := func(token string) {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			return
+		}
+		for _, existing := range subjects {
+			if existing == token {
+				return
+			}
+		}
+		subjects = append(subjects, token)
+	}
+	// 对齐 Codex-Manager：requested_token=openai-api-key 的 subject_token_type
+	// 是 id_token，因此优先使用 id_token，access_token 仅作旧数据/异常响应兜底。
+	add(tokenInfo.IDToken)
+	add(tokenInfo.AccessToken)
+	return subjects
 }
 
 func resolveChatGPTSubscriptionAccountID(tokenInfo *OpenAITokenInfo, orgID string) string {
@@ -335,6 +412,7 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 				AccessToken:           accessToken,
 				RefreshToken:          "",
 				IDToken:               account.GetCredential("id_token"),
+				APIKeyAccessToken:     account.GetCredential("api_key_access_token"),
 				ClientID:              account.GetCredential("client_id"),
 				Email:                 account.GetCredential("email"),
 				ChatGPTAccountID:      account.GetCredential("chatgpt_account_id"),
@@ -347,7 +425,11 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 				tokenInfo.ExpiresAt = expiresAt.Unix()
 				tokenInfo.ExpiresIn = int64(time.Until(*expiresAt).Seconds())
 			}
+			if apiKeyExpiresAt := account.GetOpenAIAPIKeyAccessTokenExpiresAt(); apiKeyExpiresAt != nil {
+				tokenInfo.APIKeyAccessExpiresAt = apiKeyExpiresAt.Unix()
+			}
 			s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+			s.enrichOpenAIAPIKeyAccessToken(ctx, tokenInfo, proxyURL)
 			return tokenInfo, nil
 		}
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_NO_REFRESH_TOKEN", "no refresh token available")
@@ -372,6 +454,12 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 
 	if tokenInfo.IDToken != "" {
 		creds["id_token"] = tokenInfo.IDToken
+	}
+	if tokenInfo.APIKeyAccessToken != "" {
+		creds["api_key_access_token"] = tokenInfo.APIKeyAccessToken
+		if tokenInfo.APIKeyAccessExpiresAt > 0 {
+			creds["api_key_access_token_expires_at"] = time.Unix(tokenInfo.APIKeyAccessExpiresAt, 0).Format(time.RFC3339)
+		}
 	}
 	if tokenInfo.Email != "" {
 		creds["email"] = tokenInfo.Email

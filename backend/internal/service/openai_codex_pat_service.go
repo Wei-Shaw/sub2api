@@ -19,6 +19,8 @@ var openAICodexPATWhoamiURL = openAICodexPATWhoamiURLDefault
 var openAIPersonalAccessTokenOAuthCredentialKeys = [...]string{
 	"refresh_token",
 	"id_token",
+	"api_key_access_token",
+	"api_key_access_token_expires_at",
 	"expires_at",
 	"expires_in",
 	"client_id",

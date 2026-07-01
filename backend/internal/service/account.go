@@ -1136,6 +1136,20 @@ func (a *Account) GetOpenAIRefreshToken() string {
 	return a.GetCredential("refresh_token")
 }
 
+func (a *Account) GetOpenAIAPIKeyAccessToken() string {
+	if !a.IsOpenAIOAuth() {
+		return ""
+	}
+	return a.GetCredential("api_key_access_token")
+}
+
+func (a *Account) GetOpenAIAPIKeyAccessTokenExpiresAt() *time.Time {
+	if !a.IsOpenAIOAuth() {
+		return nil
+	}
+	return a.GetCredentialAsTime("api_key_access_token_expires_at")
+}
+
 func (a *Account) GetGrokBaseURL() string {
 	if !a.IsGrok() {
 		return ""

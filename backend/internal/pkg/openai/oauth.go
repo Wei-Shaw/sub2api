@@ -22,13 +22,26 @@ const (
 	AuthorizeURL = "https://auth.openai.com/oauth/authorize"
 	TokenURL     = "https://auth.openai.com/oauth/token"
 
+	// Codex CLI wire identity. Keep OAuth token requests and ChatGPT upstream
+	// requests on the same first-party-looking version/UA shape.
+	CodexCLIUserAgentVersion = "0.130.0"
+	CodexCLIUserAgent        = "codex_cli_rs/0.130.0 (Ubuntu 22.4.0; x86_64) xterm-256color"
+	CodexTUIUserAgent        = "codex-tui/0.130.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.130.0)"
+
 	// Default redirect URI (can be customized)
 	DefaultRedirectURI = "http://localhost:1455/auth/callback"
 
 	// Scopes
-	DefaultScopes = "openid profile email offline_access"
+	DefaultScopes = "openid profile email offline_access api.connectors.read api.connectors.invoke"
 	// RefreshScopes - scope for token refresh (without offline_access, aligned with CRS project)
 	RefreshScopes = "openid profile email"
+
+	// Token exchange for ChatGPT/Codex backend bearer. Codex-Manager first
+	// converts the OAuth token pair into an openai-api-key access token and uses
+	// that token for backend-api/codex requests when available.
+	TokenExchangeGrantType             = "urn:ietf:params:oauth:grant-type:token-exchange"
+	TokenExchangeRequestedToken        = "openai-api-key"
+	TokenExchangeSubjectTokenTypeIDTok = "urn:ietf:params:oauth:token-type:id_token"
 
 	// Session TTL
 	SessionTTL = 30 * time.Minute
@@ -293,6 +306,22 @@ func BuildRefreshTokenRequest(refreshToken string) *RefreshTokenRequest {
 		ClientID:     ClientID,
 		Scope:        RefreshScopes,
 	}
+}
+
+// BuildAPIKeyTokenExchangeFormData builds the OAuth token-exchange form used to
+// obtain the ChatGPT/Codex backend bearer (`requested_token=openai-api-key`).
+func BuildAPIKeyTokenExchangeFormData(subjectToken, clientID string) url.Values {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		clientID = ClientID
+	}
+	params := url.Values{}
+	params.Set("grant_type", TokenExchangeGrantType)
+	params.Set("client_id", clientID)
+	params.Set("requested_token", TokenExchangeRequestedToken)
+	params.Set("subject_token", strings.TrimSpace(subjectToken))
+	params.Set("subject_token_type", TokenExchangeSubjectTokenTypeIDTok)
+	return params
 }
 
 // ToFormData converts TokenRequest to URL-encoded form data

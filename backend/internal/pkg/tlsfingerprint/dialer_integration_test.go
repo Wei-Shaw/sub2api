@@ -13,10 +13,21 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+func skipExternalTLSFingerprintTest(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("跳过网络测试（short 模式）")
+	}
+	if os.Getenv("TLSFINGERPRINT_NETWORK_TESTS") != "1" {
+		t.Skip("跳过外部 TLS 指纹测试（需要设置 TLSFINGERPRINT_NETWORK_TESTS=1）")
+	}
+}
 
 // skipIfExternalServiceUnavailable checks if the external service is available.
 // If not, it skips the test instead of failing.
@@ -28,10 +39,14 @@ func skipIfExternalServiceUnavailable(t *testing.T, err error) {
 		if strings.Contains(errStr, "certificate has expired") ||
 			strings.Contains(errStr, "certificate is not yet valid") ||
 			strings.Contains(errStr, "connection refused") ||
+			strings.Contains(errStr, "connection reset by peer") ||
 			strings.Contains(errStr, "no such host") ||
 			strings.Contains(errStr, "network is unreachable") ||
 			strings.Contains(errStr, "timeout") ||
-			strings.Contains(errStr, "deadline exceeded") {
+			strings.Contains(errStr, "deadline exceeded") ||
+			strings.Contains(errStr, "TLS handshake failed") ||
+			strings.Contains(errStr, "unexpected EOF") ||
+			strings.Contains(errStr, "EOF") {
 			t.Skipf("skipping test: external service unavailable: %v", err)
 		}
 		t.Fatalf("failed to get fingerprint: %v", err)
@@ -43,9 +58,7 @@ func skipIfExternalServiceUnavailable(t *testing.T, err error) {
 // Expected JA3 hash: 44f88fca027f27bab4bb08d4af15f23e (Node.js 24.x)
 // Expected JA4: t13d1714h1_5b57614c22b0_7baf387fc6ff
 func TestJA3Fingerprint(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	skipExternalTLSFingerprintTest(t)
 
 	profile := &Profile{
 		Name:         "Default Profile Test",
@@ -106,9 +119,7 @@ func TestJA3Fingerprint(t *testing.T) {
 // TestAllProfiles tests multiple TLS fingerprint profiles against tls.peet.ws.
 // Run with: go test -v -tags=integration -run TestAllProfiles ./internal/pkg/tlsfingerprint/...
 func TestAllProfiles(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	skipExternalTLSFingerprintTest(t)
 
 	// Define all profiles to test with their expected fingerprints
 	// These profiles are from config.yaml gateway.tls_fingerprint.profiles

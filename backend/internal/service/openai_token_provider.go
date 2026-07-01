@@ -270,6 +270,86 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	return accessToken, nil
 }
 
+// GetGatewayAccessToken returns the bearer token used for ChatGPT Codex
+// backend-api requests. When an api_key_access_token has been obtained via
+// OAuth token-exchange, prefer it over the generic OAuth access_token; this
+// mirrors Codex-Manager and the first-party Codex request path. The generic
+// GetAccessToken remains unchanged for quota/privacy APIs that still expect the
+// ordinary OAuth access_token.
+func (p *OpenAITokenProvider) GetGatewayAccessToken(ctx context.Context, account *Account) (string, error) {
+	if token := resolveOpenAIAPIKeyAccessTokenForGateway(account); token != "" {
+		return token, nil
+	}
+
+	accessToken, err := p.GetAccessToken(ctx, account)
+	if err != nil {
+		return "", err
+	}
+
+	latestAccount := account
+	if p != nil && p.accountRepo != nil && account != nil {
+		if fromDB, _ := p.accountRepo.GetByID(ctx, account.ID); fromDB != nil {
+			latestAccount = fromDB
+		}
+	}
+	if token := resolveOpenAIAPIKeyAccessTokenForGateway(latestAccount); token != "" {
+		return token, nil
+	}
+	if token := p.exchangeAndPersistGatewayAPIKeyAccessToken(ctx, latestAccount, accessToken); token != "" {
+		return token, nil
+	}
+
+	return accessToken, nil
+}
+
+func (p *OpenAITokenProvider) exchangeAndPersistGatewayAPIKeyAccessToken(ctx context.Context, account *Account, fallbackAccessToken string) string {
+	if p == nil || p.openAIOAuthService == nil || p.accountRepo == nil || account == nil {
+		return ""
+	}
+	if !account.IsOpenAIOAuth() || account.IsOpenAIPersonalAccessToken() {
+		return ""
+	}
+	accessToken := strings.TrimSpace(account.GetOpenAIAccessToken())
+	if accessToken == "" {
+		accessToken = strings.TrimSpace(fallbackAccessToken)
+	}
+	if accessToken == "" {
+		return ""
+	}
+
+	tokenInfo := &OpenAITokenInfo{
+		AccessToken:       accessToken,
+		RefreshToken:      account.GetOpenAIRefreshToken(),
+		IDToken:           account.GetOpenAIIDToken(),
+		APIKeyAccessToken: account.GetOpenAIAPIKeyAccessToken(),
+		ClientID:          account.GetCredential("client_id"),
+	}
+	if expiresAt := account.GetCredentialAsTime("expires_at"); expiresAt != nil {
+		tokenInfo.ExpiresAt = expiresAt.Unix()
+		tokenInfo.ExpiresIn = int64(time.Until(*expiresAt).Seconds())
+	}
+	if apiKeyExpiresAt := account.GetOpenAIAPIKeyAccessTokenExpiresAt(); apiKeyExpiresAt != nil {
+		tokenInfo.APIKeyAccessExpiresAt = apiKeyExpiresAt.Unix()
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	p.openAIOAuthService.enrichOpenAIAPIKeyAccessToken(ctx, tokenInfo, proxyURL)
+	if !isOpenAIAPIKeyAccessTokenUsable(tokenInfo.APIKeyAccessToken, openAITokenInfoAPIKeyExpiresAt(tokenInfo)) {
+		return ""
+	}
+
+	newCredentials := p.openAIOAuthService.BuildAccountCredentials(tokenInfo)
+	newCredentials = MergeCredentials(account.Credentials, newCredentials)
+	newCredentials["_token_version"] = time.Now().UnixMilli()
+	if err := persistAccountCredentials(ctx, p.accountRepo, account, newCredentials); err != nil {
+		slog.Warn("openai_gateway_api_key_access_token_persist_failed", "account_id", account.ID, "error", err)
+	}
+	return strings.TrimSpace(tokenInfo.APIKeyAccessToken)
+}
+
 // disableAccountMissingRefreshToken 在请求路径上发现 OpenAI OAuth 账号
 // 凭证已过期且 refresh_token 缺失时，将账号标记为 error 状态。
 // 这是一种永久性故障：仅靠后续请求或 TokenRefreshService 不会自愈

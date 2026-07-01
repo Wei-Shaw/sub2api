@@ -152,6 +152,11 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # OpenAI OAuth/Codex ChatGPT upstream base URL.
+  # OpenAI OAuth/Codex 的 ChatGPT 上游地址。留空直连 chatgpt.com；
+  # 可填本地 curl_cffi sidecar，例如 http://127.0.0.1:8787/backend-api/codex
+  # 以复用浏览器 TLS/HTTP 指纹。填 /backend-api/codex 或完整 /responses 均可。
+  openai_chatgpt_base_url: ""
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456

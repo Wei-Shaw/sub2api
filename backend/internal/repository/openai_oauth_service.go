@@ -48,7 +48,7 @@ func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifie
 
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", "codex-cli/0.91.0").
+		SetHeader("User-Agent", openai.CodexCLIUserAgent).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -96,7 +96,7 @@ func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refre
 
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", "codex-cli/0.91.0").
+		SetHeader("User-Agent", openai.CodexCLIUserAgent).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -112,6 +112,38 @@ func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refre
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_TOKEN_REFRESH_FAILED", "token refresh failed: status %d, body: %s", resp.StatusCode, resp.String())
 	}
 
+	return &tokenResp, nil
+}
+
+func (s *openaiOAuthService) ExchangeAPIKeyAccessToken(ctx context.Context, subjectToken, proxyURL, clientID string) (*openai.TokenResponse, error) {
+	if strings.TrimSpace(subjectToken) == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_TOKEN_EXCHANGE_SUBJECT_REQUIRED", "subject token is required")
+	}
+	client, err := createOpenAIReqClient(proxyURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
+	}
+
+	formData := openai.BuildAPIKeyTokenExchangeFormData(subjectToken, clientID)
+	var tokenResp openai.TokenResponse
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeader("User-Agent", openai.CodexCLIUserAgent).
+		SetFormDataFromValues(formData).
+		SetSuccessResult(&tokenResp).
+		Post(s.tokenURL)
+	if err != nil {
+		if shouldReturnOpenAINoProxyHint(ctx, proxyURL, err) {
+			return nil, newOpenAINoProxyHintError(err)
+		}
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_REQUEST_FAILED", "request failed: %v", err)
+	}
+	if !resp.IsSuccessState() {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_API_KEY_TOKEN_EXCHANGE_FAILED", "api key token exchange failed: status %d, body: %s", resp.StatusCode, resp.String())
+	}
+	if strings.TrimSpace(tokenResp.AccessToken) == "" {
+		return nil, infraerrors.New(http.StatusBadGateway, "OPENAI_OAUTH_API_KEY_TOKEN_EXCHANGE_EMPTY", "api key token exchange returned empty access_token")
+	}
 	return &tokenResp, nil
 }
 

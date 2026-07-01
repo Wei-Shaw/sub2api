@@ -181,6 +181,25 @@ func TestOpenAITokenProvider_CacheMiss_FromCredentials(t *testing.T) {
 	require.Equal(t, "credential-token", cache.tokens[cacheKey])
 }
 
+func TestOpenAITokenProvider_GetGatewayAccessToken_PrefersAPIKeyAccessToken(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	account := &Account{
+		ID:       301,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":                    "oauth-access-token",
+			"api_key_access_token":            "api-key-access-token",
+			"api_key_access_token_expires_at": expiresAt,
+		},
+	}
+	provider := NewOpenAITokenProvider(nil, nil, nil)
+
+	token, err := provider.GetGatewayAccessToken(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, "api-key-access-token", token)
+}
+
 func TestOpenAITokenProvider_TokenRefresh(t *testing.T) {
 	cache := newOpenAITokenCacheStub()
 	accountRepo := &openAIAccountRepoStub{}

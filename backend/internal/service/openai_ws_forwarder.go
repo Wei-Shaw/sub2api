@@ -1075,7 +1075,7 @@ func (s *OpenAIGatewayService) buildOpenAIResponsesWSURL(account *Account) (stri
 	var targetURL string
 	switch account.Type {
 	case AccountTypeOAuth:
-		targetURL = chatgptCodexURL
+		targetURL = s.openAIChatGPTCodexResponsesURL()
 	case AccountTypeAPIKey:
 		baseURL := account.GetOpenAIBaseURL()
 		if baseURL == "" {
@@ -1154,6 +1154,14 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if account != nil && account.Type == AccountTypeOAuth {
 		setOpenAIChatGPTAccountHeaders(headers, account)
 		headers.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
+		for _, name := range openAICodexManagedHeaders {
+			if value := getOpenAIIncomingHeader(c, name); value != "" && headers.Get(name) == "" {
+				headers.Set(name, value)
+			}
+		}
+		if windowID := resolveOpenAICodexWindowID(getOpenAIIncomingHeader(c, openAIHeaderCodexWindowID), headers.Get(openAIHeaderSessionID)); windowID != "" {
+			headers.Set(openAIHeaderCodexWindowID, windowID)
+		}
 	}
 
 	betaValue := openAIWSBetaV2Value

@@ -696,6 +696,10 @@ type GatewayConfig struct {
 	// OpenAIResponseHeaderTimeout: OpenAI/Codex 上游等待响应头的超时时间（秒），0表示无超时
 	// OpenAI/Codex 请求可能在上游排队较久；默认不使用通用响应头超时截断。
 	OpenAIResponseHeaderTimeout int `mapstructure:"openai_response_header_timeout"`
+	// OpenAIChatGPTBaseURL: OpenAI OAuth/Codex ChatGPT upstream base URL.
+	// 默认直连 https://chatgpt.com/backend-api/codex/responses；可指向本地 curl_cffi sidecar
+	// （例如 http://127.0.0.1:8787/backend-api/codex）来复用浏览器 TLS/HTTP 指纹。
+	OpenAIChatGPTBaseURL string `mapstructure:"openai_chatgpt_base_url"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
@@ -1827,6 +1831,7 @@ func setDefaults() {
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
+	viper.SetDefault("gateway.openai_chatgpt_base_url", "")
 	viper.SetDefault("gateway.log_upstream_error_body", true)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
@@ -2469,6 +2474,17 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIResponseHeaderTimeout < 0 {
 		return fmt.Errorf("gateway.openai_response_header_timeout must be non-negative")
+	}
+	if raw := strings.TrimSpace(c.Gateway.OpenAIChatGPTBaseURL); raw != "" {
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("gateway.openai_chatgpt_base_url must be a valid http(s) URL")
+		}
+		switch strings.ToLower(parsed.Scheme) {
+		case "https", "http":
+		default:
+			return fmt.Errorf("gateway.openai_chatgpt_base_url scheme must be http or https")
+		}
 	}
 	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
 		switch c.Gateway.ConnectionPoolIsolation {
