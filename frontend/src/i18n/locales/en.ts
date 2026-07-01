@@ -3183,6 +3183,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        grok: 'Grok',
       REDACTED,
       types: {
         oauth: 'OAuth',

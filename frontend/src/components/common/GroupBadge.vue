@@ -124,6 +124,12 @@ const labelClass = computed(() => {
   if (props.platform === 'gemini') {
     return `${baseREDACTED bg-blue-200/60 text-blue-800 dark:bg-blue-800/40 dark:text-blue-300`
   REDACTED
+  if (props.platform === 'antigravity') {
+    return `${baseREDACTED bg-purple-200/60 text-purple-800 dark:bg-purple-800/40 dark:text-purple-300`
+  REDACTED
+  if (props.platform === 'grok') {
+    return `${baseREDACTED bg-zinc-300/70 text-zinc-800 dark:bg-zinc-700/60 dark:text-zinc-200`
+  REDACTED
   return `${baseREDACTED bg-violet-200/60 text-violet-800 dark:bg-violet-800/40 dark:text-violet-300`
 REDACTED)
 
@@ -144,6 +150,16 @@ const badgeClass = computed(() => {
     return isSubscription.value
       ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
       : 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400'
+  REDACTED
+  if (props.platform === 'antigravity') {
+    return isSubscription.value
+      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+      : 'bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-900/20 dark:text-fuchsia-400'
+  REDACTED
+  if (props.platform === 'grok') {
+    return isSubscription.value
+      ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
+      : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200'
   REDACTED
   // Fallback: original colors
   return isSubscription.value
