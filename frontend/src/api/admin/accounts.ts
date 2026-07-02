@@ -734,8 +734,13 @@ export interface OpenAIAdditionalRateLimit {
   rate_limit?: OpenAIRateLimit | null
 REDACTED
 
+export interface OpenAIRateLimitResetCreditDetail {
+  expires_at?: string
+REDACTED
+
 export interface OpenAIRateLimitResetCredits {
   available_count: number
+  credits?: OpenAIRateLimitResetCreditDetail[]
 REDACTED
 
 export interface OpenAIQuotaUsage {
