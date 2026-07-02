@@ -17,6 +17,7 @@ services:
     restart: unless-stopped
     ports:
       - "${BIND_HOST:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
+      - "127.0.0.1:8443:8443"   # TLS 指纹采集器(仅本机可达)
     volumes:
       - ./data:/app/data:Z
     environment:
@@ -24,6 +25,8 @@ services:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=debug
+      # TLS 指纹采集器:监听全网卡(容器内),配合上面 8443 端口映射,使宿主客户端可连
+      - SERVER_TLS_FINGERPRINT_COLLECTOR_HOST=0.0.0.0
       - RUN_MODE=${RUN_MODE:-standard}
       - DATABASE_HOST=postgres
       - DATABASE_PORT=5432
