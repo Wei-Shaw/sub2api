@@ -4820,7 +4820,25 @@ func (s *GatewayService) resolveTLSProfileForRequest(c *gin.Context, account *Ac
 			return profile
 		}
 	}
-	return s.tlsFPProfileService.ResolveTLSProfile(account)
+	if profile := s.tlsFPProfileService.ResolveTLSProfile(account); profile != nil {
+		return profile
+	}
+	// 全局默认 Claude Code 指纹回落:Anthropic OAuth/SetupToken 账号出站会被伪装成 Claude Code
+	// (claude-cli UA + 整套头),若账号自身未解析出指纹则出站握手是 Go 的 JA3,与 UA 不自洽。
+	// 回落到管理员配置的全局默认 profile,使握手也变成真实 Claude Code。未配置(id<=0)→ 返回 nil,
+	// 行为完全同现状(向后兼容);账号自身固定/路由 profile 仍优先(上面已返回)。
+	if account.IsAnthropicOAuthOrSetupToken() && s.settingService != nil && s.tlsFPProfileService != nil {
+		reqCtx := context.Background()
+		if c != nil && c.Request != nil {
+			reqCtx = c.Request.Context()
+		}
+		if id := s.settingService.GetDefaultClaudeCodeTLSFingerprintProfileID(reqCtx); id > 0 {
+			if profile := s.tlsFPProfileService.GetProfileByID(id); profile != nil {
+				return profile
+			}
+		}
+	}
+	return nil
 }
 
 func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (*ForwardResult, error) {

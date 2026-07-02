@@ -452,6 +452,10 @@ const (
 	SettingKeyEnableAnthropicCacheTTL1hInjection = "enable_anthropic_cache_ttl_1h_injection"
 	// SettingKeyRewriteMessageCacheControl 是否改写 messages[*].content[*].cache_control（默认 false）
 	SettingKeyRewriteMessageCacheControl = "rewrite_message_cache_control"
+	// SettingKeyDefaultClaudeCodeTLSFingerprintProfileID 全局默认 Claude Code TLS 指纹模板 ID。
+	// >0 时,Anthropic OAuth/SetupToken 账号在自身未解析出指纹时回落到该 profile,使出站握手与 claude-cli UA 自洽;
+	// 0/未设 = 关闭(行为完全同现状,向后兼容)。
+	SettingKeyDefaultClaudeCodeTLSFingerprintProfileID = "default_claude_code_tls_fingerprint_profile_id"
 	// SettingKeyAntigravityUserAgentVersion Antigravity 上游 User-Agent 版本号（空值使用环境变量/默认值）
 	SettingKeyAntigravityUserAgentVersion = "antigravity_user_agent_version"
 	// SettingKeyOpenAICodexUserAgent OpenAI Codex 完整 User-Agent（空值使用内置默认）

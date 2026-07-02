@@ -561,6 +561,7 @@ export interface SystemSettings {
   claude_oauth_system_prompt_blocks: string;
   enable_anthropic_cache_ttl_1h_injection: boolean;
   rewrite_message_cache_control: boolean;
+  default_claude_code_tls_fingerprint_profile_id: number;
   antigravity_user_agent_version: string;
   openai_codex_user_agent: string;
   // codex_cli_only 加固
@@ -811,6 +812,7 @@ export interface UpdateSettingsRequest {
   claude_oauth_system_prompt_blocks?: string;
   enable_anthropic_cache_ttl_1h_injection?: boolean;
   rewrite_message_cache_control?: boolean;
+  default_claude_code_tls_fingerprint_profile_id?: number;
   antigravity_user_agent_version?: string;
   openai_codex_user_agent?: string;
   // codex_cli_only 加固

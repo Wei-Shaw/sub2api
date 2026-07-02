@@ -638,3 +638,22 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 - **改法(`openai_gateway_service.go`,+21/-7)**:① 加 `firstRouterMatchOrCompute(c,account,routerMatch...)`(传入则复用、否则即时匹配);② `buildUpstreamRequest`/`buildUpstreamRequestOpenAIPassthrough` 加变参 `routerMatch ...TLSFingerprintRouterMatchResult`,UA 改写块改用该 helper;③ `Forward`(**for 循环外**)/`forwardOpenAIPassthrough` 各 `tlsRouterMatch := s.matchTLSFingerprintRouter(...)` 一次,线程化给 build + DoWithTLS。**变参 + recompute-fallback** 保证其它调用方(chat_completions/messages/images_responses/ws_http_bridge/测试,不传 routerMatch)行为逐字不变——fork 这几处调用方比 TR 多,不能照抄 TR 的裸变参(否则丢 UA 改写)。
 - **验证(容器)**:gofmt clean;`go build ./...` BUILD_OK;`go vet ./internal/service/...` VET_OK;`go test ./internal/service/ ./cmd/server/...` **ok(service 46s,无 FAIL/panic)**。
 - **范围**:仅对齐两条 flagged 的 native 路径(Forward/passthrough);其余 Blocker#3 出站路径保留无害的 recompute-fallback(单次 inline 重算,非本 LOW 关注点)。
+
+## Anthropic 账号维度改造 — 全局默认 Claude Code 指纹(2026-07-02)
+
+> **动机**:Anthropic OAuth/SetupToken 账号出站被伪装成 Claude Code(`claude-cli/2.1.161` UA + 整套头,`gateway_service.go:4905 shouldMimicClaudeCode`),但账号未配 TLS 指纹时出站握手是代理自建连接的 **Go JA3** → **claude-cli UA ↔ Go 握手不自洽**(结构性:即便入站是真 Claude Code 也如此)。api.anthropic.com 暂不硬封,但对查订阅号转售是干净信号。**硬约束**:代码造不出正确 Claude Code 指纹(Node 系、随版本漂移),必须采集器抓;代码只能"让默认态不再静默脆弱"。方案已与用户逐轮讨论敲定(排除自动造指纹/去 mimic/fail-closed)。
+
+**设计**:新增全局设置 `default_claude_code_tls_fingerprint_profile_id`(opt-in,0/未设=关闭=完全同现状)。Anthropic OAuth/SetupToken 账号在**自身未解析出指纹**时回落到该 profile。级联:**router 规则 > 账号固定 profile > 全局默认 > nil**。管理员采一份真实 Claude Code 指纹存 profile、设为全局默认,即让所有此类账号(含存量,不需逐号开 enable)握手自洽。
+
+**改动(后端,net +106 行真实改动;setting_handler.go 745 行大头是 gofmt 对齐,`git diff -w` 仅 9 行)**:
+- `domain_constants.go`:加 `SettingKeyDefaultClaudeCodeTLSFingerprintProfileID`。
+- `setting_service.go`:热路径读取**搭车** `getGatewayForwardingSettingsCached`(Claude 转发设置同组、60s TTL、singleflight)——`cachedGatewayForwardingSettings` 加 `defaultClaudeCodeTLSProfileID int64` + GetMultiple 键 + 解析 + Store;**只改缓存结构体不动那 5 处 result 返回站点**(getter 直接读 cached 结构体,降风险);加 `GetDefaultClaudeCodeTLSFingerprintProfileID(ctx)`;`GetAllSettings` 解析 + `buildSystemSettingsUpdates` 写。
+- `settings_view.go` SystemSettings + `dto/settings.go` + `setting_handler.go`(响应构造 ×2、UpdateSettingsRequest `*int64`、merge nil-check)——照 `RewriteMessageCacheControl` 模板。
+- `gateway_service.go` `resolveTLSProfileForRequest`:末尾加回落钩子(`account.IsAnthropicOAuthOrSetupToken() && settingService!=nil` → `GetProfileByID(默认id)`);**只在自身 profile 解析为 nil 后触发,不夺权**。
+- 新增 `gateway_claude_tls_default_test.go`:4 例(未配→nil 向后兼容 / 配了→回落 / 账号自有 profile 优先 / 非 Anthropic 不回落),PASS。
+
+**改动(前端)**:`settings.ts` 类型 ×2;`SettingsView.vue` 表单默认 + 提交(`Number(x)||0` 清洗 `v-model.number` 空值,避免后端 `*int64` 反序列化报错)+ 网关转发区加 number 输入;i18n en/zh 各 3 键(label/placeholder/hint,hint 解释不自洽原理 + 到 Profiles 页查 ID)。
+
+**验证**:容器 gofmt clean、`go build ./...` BUILD_OK、`go vet` VET_OK、新测试 PASS、service(45.9s)/handler(22s)/handler-admin/cmd-server 全 ok;前端 `vue-tsc` exit 0、SettingsView spec(20)+ settings-api spec 全 pass。`git diff -w` 净 106 行。
+
+**待人工(运行时)**:采真实 Claude Code 指纹存 profile → 设全局默认 → 抓包确认这类账号出站 JA3 = 真 Claude Code(与 claude-cli UA 自洽)。**纯 Anthropic API-key 账号不受影响**(不 mimic、SupportsTLSFingerprint=false)。UI 下拉目前是 number 输入(填 profile ID),后续可做成 profile 下拉(nice-to-have)。

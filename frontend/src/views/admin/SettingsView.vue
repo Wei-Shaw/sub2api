@@ -4428,6 +4428,37 @@
                 </p>
               </div>
 
+              <!-- Default Claude Code TLS Fingerprint -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.defaultClaudeCodeTlsProfileId",
+                    )
+                  }}
+                </label>
+                <input
+                  v-model.number="form.default_claude_code_tls_fingerprint_profile_id"
+                  type="number"
+                  min="0"
+                  class="input w-full font-mono text-sm"
+                  :placeholder="
+                    t(
+                      'admin.settings.gatewayForwarding.defaultClaudeCodeTlsProfileIdPlaceholder',
+                    )
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.defaultClaudeCodeTlsProfileIdHint",
+                    )
+                  }}
+                </p>
+              </div>
+
             </div>
           </div>
 
@@ -8078,6 +8109,7 @@ const form = reactive<SettingsForm>({
   claude_oauth_system_prompt_blocks: defaultClaudeOAuthSystemPromptBlocks,
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
+  default_claude_code_tls_fingerprint_profile_id: 0,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
   // codex_cli_only 加固
@@ -9282,6 +9314,9 @@ async function saveSettings() {
       enable_anthropic_cache_ttl_1h_injection:
         form.enable_anthropic_cache_ttl_1h_injection,
       rewrite_message_cache_control: form.rewrite_message_cache_control,
+      // v-model.number 在输入清空时产出 ""；强制转数字（""/NaN → 0）避免后端 *int64 反序列化报错
+      default_claude_code_tls_fingerprint_profile_id:
+        Number(form.default_claude_code_tls_fingerprint_profile_id) || 0,
       antigravity_user_agent_version:
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:

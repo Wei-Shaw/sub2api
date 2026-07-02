@@ -6001,6 +6001,9 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: '用于规避 OpenAI 上游 Cloudflare 对浏览器 UA 的访问质询。仅在检测到客户端 User-Agent 为浏览器（Mozilla/...）时生效，其他客户端原样透传。留空使用内置默认值。',
+        defaultClaudeCodeTlsProfileId: '默认 Claude Code TLS 指纹',
+        defaultClaudeCodeTlsProfileIdPlaceholder: '0 = 关闭',
+        defaultClaudeCodeTlsProfileIdHint: 'Anthropic OAuth/SetupToken 账号出站会被伪装成 Claude Code（claude-cli UA）。当这类账号自身未配 TLS 指纹时，出站握手仍是 Go 的默认 JA3，与 UA 不自洽。填入一份采集来的真实 Claude Code 指纹模板 ID，即可让所有这类账号的握手自洽（0=关闭；账号自身绑定的 profile/router 仍优先）。模板 ID 可在“TLS 指纹模板”页查看。',
         codexHardeningTitle: 'Codex 设置',
         codexClientRestrictionTitle: 'Codex 客户端限制',
         codexHardeningDesc:

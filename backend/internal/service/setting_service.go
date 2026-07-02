@@ -112,6 +112,7 @@ type cachedGatewayForwardingSettings struct {
 	claudeOAuthSystemPromptBlocks    string
 	anthropicCacheTTL1hInjection     bool
 	rewriteMessageCacheControl       bool
+	defaultClaudeCodeTLSProfileID    int64
 	expiresAt                        int64 // unix nano
 }
 
@@ -2207,6 +2208,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyClaudeOAuthSystemPromptBlocks] = settings.ClaudeOAuthSystemPromptBlocks
 	updates[SettingKeyEnableAnthropicCacheTTL1hInjection] = strconv.FormatBool(settings.EnableAnthropicCacheTTL1hInjection)
 	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
+	updates[SettingKeyDefaultClaudeCodeTLSFingerprintProfileID] = strconv.FormatInt(settings.DefaultClaudeCodeTLSFingerprintProfileID, 10)
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	// codex_cli_only 加固
@@ -2592,6 +2594,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyClaudeOAuthSystemPromptBlocks,
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
 			SettingKeyRewriteMessageCacheControl,
+			SettingKeyDefaultClaudeCodeTLSFingerprintProfileID,
 		})
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
@@ -2623,6 +2626,12 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if v, ok := values[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
 			rewriteMessageCacheControl = v == "true"
 		}
+		defaultClaudeProfileID := int64(0)
+		if v, ok := values[SettingKeyDefaultClaudeCodeTLSFingerprintProfileID]; ok {
+			if n, perr := strconv.ParseInt(strings.TrimSpace(v), 10, 64); perr == nil {
+				defaultClaudeProfileID = n
+			}
+		}
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 			fingerprintUnification:           fp,
 			metadataPassthrough:              mp,
@@ -2632,6 +2641,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			claudeOAuthSystemPromptBlocks:    systemPromptBlocks,
 			anthropicCacheTTL1hInjection:     cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
+			defaultClaudeCodeTLSProfileID:    defaultClaudeProfileID,
 			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
 		return gatewayForwardingSettingsResult{
@@ -2649,6 +2659,20 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		return r
 	}
 	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true}
+}
+
+// GetDefaultClaudeCodeTLSFingerprintProfileID 返回全局默认 Claude Code TLS 指纹模板 ID(0=未配置)。
+// Anthropic OAuth/SetupToken 账号出站被伪装成 Claude Code,若账号自身未解析出指纹,用它回落,
+// 消除 claude-cli UA ↔ Go 握手的不自洽。复用网关转发设置的同组缓存(60s TTL),热路径零额外开销。
+func (s *SettingService) GetDefaultClaudeCodeTLSFingerprintProfileID(ctx context.Context) int64 {
+	if s == nil || s.settingRepo == nil {
+		return 0
+	}
+	_ = s.getGatewayForwardingSettingsCached(ctx) // 确保缓存已填充(与其它网关转发设置同组)
+	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
+		return cached.defaultClaudeCodeTLSProfileID
+	}
+	return 0
 }
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.
@@ -3710,6 +3734,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.RewriteMessageCacheControl = v == "true"
 	} else {
 		result.RewriteMessageCacheControl = s.defaultRewriteMessageCacheControl()
+	}
+	if v, ok := settings[SettingKeyDefaultClaudeCodeTLSFingerprintProfileID]; ok && v != "" {
+		if n, perr := strconv.ParseInt(strings.TrimSpace(v), 10, 64); perr == nil {
+			result.DefaultClaudeCodeTLSFingerprintProfileID = n
+		}
 	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])

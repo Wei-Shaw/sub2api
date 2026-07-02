@@ -5848,6 +5848,9 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: 'Used to bypass Cloudflare browser-UA challenges on the OpenAI upstream. Only applies when the client User-Agent is detected as a browser (Mozilla/...). Leave empty to use the built-in default.',
+        defaultClaudeCodeTlsProfileId: 'Default Claude Code TLS fingerprint',
+        defaultClaudeCodeTlsProfileIdPlaceholder: '0 = disabled',
+        defaultClaudeCodeTlsProfileIdHint: 'Anthropic OAuth/SetupToken accounts are disguised as Claude Code (claude-cli UA). When such an account has no TLS fingerprint of its own, the outbound handshake falls back to the Go default JA3, which is inconsistent with the UA. Enter the ID of a captured real Claude Code fingerprint profile to make the handshake consistent for all such accounts (0 = disabled; a per-account profile/router still takes precedence). Find profile IDs on the TLS Fingerprint Profiles page.',
         codexHardeningTitle: "Codex Settings",
         codexClientRestrictionTitle: "Codex client restriction",
         codexHardeningDesc:
