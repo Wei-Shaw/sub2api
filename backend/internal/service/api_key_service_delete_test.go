@@ -300,6 +300,40 @@ func TestApiKeyService_Delete_NotFound(t *testing.T) {
 	require.Empty(t, cache.deleteAuthKeys)
 REDACTED
 
+func TestAPIKeyService_List_FillsCurrentConcurrency(t *testing.T) {
+	repo := &apiKeyRepoStub{
+		allowListByUserID: true,
+		listByUserIDKeys: []APIKey{
+			{ID: 10, UserID: 7, Key: "sk-10", Name: "key-10"REDACTED,
+			{ID: 11, UserID: 7, Key: "sk-11", Name: "key-11"REDACTED,
+	REDACTED,
+REDACTED
+	concurrency := NewConcurrencyService(&stubConcurrencyCacheForTest{
+		apiKeyConcurrency: map[int64]int{10: 2, 11: 0REDACTED,
+REDACTED)
+	svc := &APIKeyService{apiKeyRepo: repo, concurrencyService: concurrencyREDACTED
+
+	keys, _, err := svc.List(context.Background(), 7, pagination.PaginationParams{Page: 1, PageSize: 20REDACTED, APIKeyListFilters{REDACTED)
+REDACTED
+	require.Len(t, keys, 2)
+	require.Equal(t, 2, keys[0].CurrentConcurrency)
+	require.Equal(t, 0, keys[1].CurrentConcurrency)
+REDACTED
+
+func TestAPIKeyService_GetByID_FillsCurrentConcurrency(t *testing.T) {
+	repo := &apiKeyRepoStub{
+		apiKey: &APIKey{ID: 10, UserID: 7, Key: "sk-10", Name: "key-10"REDACTED,
+REDACTED
+	concurrency := NewConcurrencyService(&stubConcurrencyCacheForTest{
+		apiKeyConcurrency: map[int64]int{10: 4REDACTED,
+REDACTED)
+	svc := &APIKeyService{apiKeyRepo: repo, concurrencyService: concurrencyREDACTED
+
+	key, err := svc.GetByID(context.Background(), 10)
+REDACTED
+	require.Equal(t, 4, key.CurrentConcurrency)
+REDACTED
+
 // TestApiKeyService_Delete_DeleteFails 测试删除操作失败时的错误处理。
 // 预期行为：
 //   - GetKeyAndOwnerID 返回正确的所有者 ID
