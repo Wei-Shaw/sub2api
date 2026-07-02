@@ -664,3 +664,31 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
   - `TestOpenAIGatewayService_RoutingByUA`:codex_cli_rs→codex-fp(+断言规则改写 UpstreamUserAgent/Originator)/ codex_vscode→vscode-fp / 浏览器 UA→未命中回落账号固定。
   - 用现成 `newTLSFingerprintRouterTestService` 桩 + `newUATestContext(ua)` 造带 UA 的 gin.Context。容器 gofmt/vet/test 全绿。
 - 档2(临时日志+本地 curl 不同 UA)、档3(tcpdump 抓真实上游 ClientHello + ja3 工具比对,因 InsecureSkipVerify 已禁用)留人工按需跑。
+
+## Merge feat/req-resp-archive → feat/tls-fingerprint-router(2026-07-02)
+
+> 把父分支 feat/req-resp-archive(自分叉点 330c35c1 领先 89 commit,含多轮 Merge main + spark shadow / dateline 归一化 / Grok 媒体生成 / 设置审计 / reset-credit 详情等)合并进本分支。merge-base=330c35c1,合并前 HEAD=fcf748c6。
+
+**冲突(11 文件)与解法:**
+- **设置链 4 件套**(setting_service.go / settings_view.go / dto/settings.go / setting_handler.go):两侧各加一个网关转发设置——ours `default_claude_code_tls_fingerprint_profile_id`(int64)vs theirs `enable_client_dateline_normalization`(bool),全部取并集(缓存结构体/GetMultiple/解析/Store/SystemSettings/DTO/handler 响应×2/UpdateSettingsRequest/merge 闭包,两字段共存)。
+- **openai_quota_service.go**:结构性冲突。ours=C① 出站全走 `httpUpstream.DoWithTLS`(移除 req.Client);theirs=shadow 守卫 + prepareUpstreamCall 内 shadow→parent 解析 + 新增 `queryResetCreditDetails`(req.Client 版)+ spark 窗口解析。解法:保留双方全部行为——ResetCredit 前置 shadow 守卫 + ours 6 值签名;修 auto-merge 编译错(shadow 解析错误分支 return 少 `nil`);**把 theirs 的 `queryResetCreditDetails` 移植到 doQuotaRequest/DoWithTLS 模式**(与 C① 既定决策一致:quota 出站一律带 router UA/指纹),imports 去 req/v3 留 tlsfingerprint。
+- **openai_ws_forwarder.go**:theirs 把 `buildOpenAIWSHeaders` 改为 ctx+error 3 值签名(为 shadow 的 chatgpt-account-id 解析可失败);ours 在函数尾加 TLS 路由器 UA/Originator 覆盖块。并集:覆盖块保留 + `return ..., nil`;bridge 调用点=theirs 的 err 检查 + ours 的 `resolveOpenAIWSTLSProfile` 行。
+- **gateway_service.go / openai_gateway_service.go**:仅 import 冲突(tlsfingerprint vs timezone),并集。
+- **前端 settings.ts / SettingsView.vue**:4 hunk 全为两个设置字段并集(类型×2、表单默认、提交 payload,ours 保留 `Number(x)||0` 清洗)。
+- **wire_gen.go**:未手解,容器内重生成。
+
+**生成码:** 容器 `go generate ./ent`(schema 无冲突:ours 独占 tls_fingerprint_router.go,theirs 改 account.go/group.go)+ cmd/server wire 重生成。ent/ 对 archive 的 diff 仅 TLS router 增量 + group.go 注释 drift 修正(archive 自己的生成码相对其 schema 陈旧)。go.sum 零变动;go.mod 唯一变化=tiktoken-go/tokenizer 从 indirect 改 direct(archive 的 count_tokens 直接 import,工具链修正标记,非污染)。迁移无重名冲突(三个 158_*.sql 文件名互异,runner 按文件名+checksum 追踪,历史上重号常态;我方 158_add_tls_fingerprint_routers 纯增量)。
+
+**超出机械合并的 4 个小决策(均为把一侧字段接入另一侧框架/模式,已在会话中向用户披露):**
+1. theirs 新增的 `diffSettings` 设置审计枚举补上我方 `default_claude_code_tls_fingerprint_profile_id` 条目(否则该键变更不进审计日志)。
+2. theirs 维护的 UpdateSettings 写穿缓存 Store 补上 `defaultClaudeCodeTLSProfileID`(顺带修了我方原有的「保存后 ≤60s 读 0」潜在小疏漏——我方 HEAD 的该 Store 本来就漏了此字段)。
+3. `queryResetCreditDetails` 移植到 DoWithTLS(上述)。
+4. theirs 的 `BulkEditAccountModal.spec.ts` 断言「3.1-Flash-Image透传」对齐为「passthrough」——archive 自己把 useModelWhitelist 预设 label 改成英文却漏改断言,该 spec 在 archive tip 上就挂(实证:三个相关文件与 archive tip 逐字一致)。非合并引入,按 archive 改动方向机械修复。
+
+**测试适配(theirs 新测试 × ours 新签名):** `openai_quota_spark_window_test.go` + `account_usage_service_spark_shadow_test.go` 的 `newQuotaRedirectingFactory`(PrivacyClientFactory/req.Client)替换为 `quotaRedirectingUpstream`(HTTPUpstream 桩,Do/DoWithTLS 重定向到 httptest.Server);5 处 `NewOpenAIQuotaService` 调用改 6 参;prepareUpstreamCall 解构 5→6 值。PrivacyClientFactory 类型仍在(OAuth 服务用),仅 quota 测试不再用。
+
+**专项核查:** `rejectGrokUnsupportedEndpoint` 全局零引用(e6ba7d0a 修法保留,Grok 走 main 路由,archiveCapture 完好,theirs 新增 Grok images/video 路由并入);i18n `tlsFingerprintRouters` 在 en/zh 均唯一且在 `admin` 下(e08787a9 归位未被覆盖);gateway_service.go 我方 TLS 符号 11 处 + theirs dateline 调用链(NormalizeDateline@4877 + settings getter)完整;手写 wire.go×4 = ours 版本(archive 未触及),cmd/server/wire.go 保留 TLS collector 清理钩子。
+
+**验证(全绿):** 容器 gofmt clean(顺带格式化 4 个 archive 预存不合格测试文件)、`go build ./...` BUILD_OK、`go vet ./...` VET_OK;`go test`:internal/service(51.6s)/openai_ws_v2/handler(22.2s)/handler-admin/dto/quotaview/repository/cmd-server 全 ok;定向 `-run 'RoutingByUA|ClaudeCodeDefaultFallback'` 3 例 PASS;spark/quota 适配测试 ok。前端 `pnpm typecheck` exit 0;vitest 810/810 全过。**未 push,待用户确认。**
+
+**待人工(不变):** 原有运行时验证清单(JA3 抓包、WS 不串号、采集器真机、迁移 158 应用于真实库)+ 本次合并后建议冒烟:管理端保存设置页(两个新字段共存)、spark shadow 账号 quota 查询、Grok 媒体端点。

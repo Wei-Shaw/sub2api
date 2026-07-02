@@ -9,48 +9,45 @@ import (
 )
 
 var codexModelMap = map[string]string{
-	"gpt-5.5":                    "gpt-5.5",
-	"codex-auto-review":          "codex-auto-review",
-	"gpt-5.4":                    "gpt-5.4",
-	"gpt-5.4-mini":               "gpt-5.4-mini",
-	"gpt-5.4-none":               "gpt-5.4",
-	"gpt-5.4-low":                "gpt-5.4",
-	"gpt-5.4-medium":             "gpt-5.4",
-	"gpt-5.4-high":               "gpt-5.4",
-	"gpt-5.4-xhigh":              "gpt-5.4",
-	"gpt-5.4-chat-latest":        "gpt-5.4",
-	"gpt-5.3":                    "gpt-5.3-codex",
-	"gpt-5.3-none":               "gpt-5.3-codex",
-	"gpt-5.3-low":                "gpt-5.3-codex",
-	"gpt-5.3-medium":             "gpt-5.3-codex",
-	"gpt-5.3-high":               "gpt-5.3-codex",
-	"gpt-5.3-xhigh":              "gpt-5.3-codex",
-	"gpt-5.3-codex":              "gpt-5.3-codex",
-	"gpt-5.3-codex-spark":        "gpt-5.3-codex-spark",
-	"gpt-5.3-codex-spark-low":    "gpt-5.3-codex-spark",
-	"gpt-5.3-codex-spark-medium": "gpt-5.3-codex-spark",
-	"gpt-5.3-codex-spark-high":   "gpt-5.3-codex-spark",
-	"gpt-5.3-codex-spark-xhigh":  "gpt-5.3-codex-spark",
-	"gpt-5.3-codex-low":          "gpt-5.3-codex",
-	"gpt-5.3-codex-medium":       "gpt-5.3-codex",
-	"gpt-5.3-codex-high":         "gpt-5.3-codex",
-	"gpt-5.3-codex-xhigh":        "gpt-5.3-codex",
-	"gpt-5.2":                    "gpt-5.2",
-	"gpt-5.2-none":               "gpt-5.2",
-	"gpt-5.2-low":                "gpt-5.2",
-	"gpt-5.2-medium":             "gpt-5.2",
-	"gpt-5.2-high":               "gpt-5.2",
-	"gpt-5.2-xhigh":              "gpt-5.2",
-	"gpt-5":                      "gpt-5.4",
-	"gpt-5-mini":                 "gpt-5.4",
-	"gpt-5-nano":                 "gpt-5.4",
-	"gpt-5.1":                    "gpt-5.4",
-	"gpt-5.1-codex":              "gpt-5.3-codex",
-	"gpt-5.1-codex-max":          "gpt-5.3-codex",
-	"gpt-5.1-codex-mini":         "gpt-5.3-codex",
-	"gpt-5.2-codex":              "gpt-5.2",
-	"codex-mini-latest":          "gpt-5.3-codex",
-	"gpt-5-codex":                "gpt-5.3-codex",
+	"gpt-5.5":              "gpt-5.5",
+	"gpt-5.5-pro":          "gpt-5.5-pro",
+	"codex-auto-review":    "codex-auto-review",
+	"gpt-5.4":              "gpt-5.4",
+	"gpt-5.4-mini":         "gpt-5.4-mini",
+	"gpt-5.4-none":         "gpt-5.4",
+	"gpt-5.4-low":          "gpt-5.4",
+	"gpt-5.4-medium":       "gpt-5.4",
+	"gpt-5.4-high":         "gpt-5.4",
+	"gpt-5.4-xhigh":        "gpt-5.4",
+	"gpt-5.4-chat-latest":  "gpt-5.4",
+	"gpt-5.3":              "gpt-5.3-codex",
+	"gpt-5.3-none":         "gpt-5.3-codex",
+	"gpt-5.3-low":          "gpt-5.3-codex",
+	"gpt-5.3-medium":       "gpt-5.3-codex",
+	"gpt-5.3-high":         "gpt-5.3-codex",
+	"gpt-5.3-xhigh":        "gpt-5.3-codex",
+	"gpt-5.3-codex":        "gpt-5.3-codex",
+	"gpt-5.3-codex-spark":  "gpt-5.3-codex-spark",
+	"gpt-5.3-codex-low":    "gpt-5.3-codex",
+	"gpt-5.3-codex-medium": "gpt-5.3-codex",
+	"gpt-5.3-codex-high":   "gpt-5.3-codex",
+	"gpt-5.3-codex-xhigh":  "gpt-5.3-codex",
+	"gpt-5.2":              "gpt-5.2",
+	"gpt-5.2-none":         "gpt-5.2",
+	"gpt-5.2-low":          "gpt-5.2",
+	"gpt-5.2-medium":       "gpt-5.2",
+	"gpt-5.2-high":         "gpt-5.2",
+	"gpt-5.2-xhigh":        "gpt-5.2",
+	"gpt-5":                "gpt-5.4",
+	"gpt-5-mini":           "gpt-5.4",
+	"gpt-5-nano":           "gpt-5.4",
+	"gpt-5.1":              "gpt-5.4",
+	"gpt-5.1-codex":        "gpt-5.3-codex",
+	"gpt-5.1-codex-max":    "gpt-5.3-codex",
+	"gpt-5.1-codex-mini":   "gpt-5.3-codex",
+	"gpt-5.2-codex":        "gpt-5.2",
+	"codex-mini-latest":    "gpt-5.3-codex",
+	"gpt-5-codex":          "gpt-5.3-codex",
 }
 
 var codexVersionModelPrefixes = []struct {
@@ -61,6 +58,7 @@ var codexVersionModelPrefixes = []struct {
 	{prefix: "gpt-5.3-codex", target: "gpt-5.3-codex"},
 	{prefix: "gpt-5.4-mini", target: "gpt-5.4-mini"},
 	{prefix: "gpt-5.4-nano", target: "gpt-5.4-nano"},
+	{prefix: "gpt-5.5-pro", target: "gpt-5.5-pro"},
 	{prefix: "gpt-5.5", target: "gpt-5.5"},
 	{prefix: "gpt-5.4", target: "gpt-5.4"},
 	{prefix: "gpt-5.2", target: "gpt-5.2"},
@@ -1157,11 +1155,41 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		}
 		typ, _ := m["type"].(string)
 
-		// chatgpt.com codex backend (OAuth path) does not persist reasoning
-		// items because applyCodexOAuthTransform forces store=false. Any rs_*
-		// reference replayed in input is guaranteed to 404 upstream
-		// ("Item with id 'rs_...' not found"). Drop reasoning items entirely.
+		// chatgpt.com codex (OAuth path) runs with store=false (forced by
+		// applyCodexOAuthTransform). Replaying a reasoning item with its rs_*
+		// id but no encrypted_content 404s upstream ("Item with id 'rs_...'
+		// not found") — the 404 is triggered by the id lookup, not by the
+		// reasoning item itself. So strip the id (always, independent of
+		// PreserveReferences) yet keep the item: under store=false
+		// encrypted_content is the official channel for carrying reasoning
+		// context across turns, and dropping the whole item silently degrades
+		// multi-turn agent reasoning. Preserve encrypted_content/content/
+		// summary and every other field verbatim. Upstream additionally
+		// requires a summary field — a missing one is rejected with 400
+		// "Missing required parameter 'input[N].summary'" — so backfill an
+		// empty array when it is absent. Contracts verified end-to-end against
+		// chatgpt.com codex (gpt-5.5); see issue #1957.
+		// compaction_summary items (cmp_*) are the other encrypted_content
+		// carrier. Verified against the live backend: they require
+		// encrypted_content (a missing one is rejected with 400), and with it
+		// present the cmp_* id does not 404 whether kept or stripped. Being
+		// neither reasoning nor tool calls, they flow through the generic path
+		// below (id stripped when !PreserveReferences, encrypted_content
+		// preserved either way), which is safe and needs no special-casing.
 		if typ == "reasoning" {
+			newItem := make(map[string]any, len(m))
+			for key, value := range m {
+				if key == "id" {
+					// rs_* id replayed under store=false 404s; strip it.
+					continue
+				}
+				newItem[key] = value
+			}
+			if summary, ok := newItem["summary"]; !ok || summary == nil {
+				// Upstream requires a summary field; an empty array satisfies it.
+				newItem["summary"] = []any{}
+			}
+			filtered = append(filtered, newItem)
 			continue
 		}
 

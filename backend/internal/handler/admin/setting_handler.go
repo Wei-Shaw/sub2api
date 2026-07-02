@@ -259,6 +259,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ClaudeOAuthSystemPromptBlocks:            settings.ClaudeOAuthSystemPromptBlocks,
 		EnableAnthropicCacheTTL1hInjection:       settings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:               settings.RewriteMessageCacheControl,
+		EnableClientDatelineNormalization:        settings.EnableClientDatelineNormalization,
 		DefaultClaudeCodeTLSFingerprintProfileID: settings.DefaultClaudeCodeTLSFingerprintProfileID,
 		AntigravityUserAgentVersion:              settings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                     settings.OpenAICodexUserAgent,
@@ -599,6 +600,7 @@ type UpdateSettingsRequest struct {
 	ClaudeOAuthSystemPromptBlocks            *string `json:"claude_oauth_system_prompt_blocks"`
 	EnableAnthropicCacheTTL1hInjection       *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
 	RewriteMessageCacheControl               *bool   `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization        *bool   `json:"enable_client_dateline_normalization"`
 	DefaultClaudeCodeTLSFingerprintProfileID *int64  `json:"default_claude_code_tls_fingerprint_profile_id"`
 	AntigravityUserAgentVersion              *string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent                     *string `json:"openai_codex_user_agent"`
@@ -1739,6 +1741,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.DefaultClaudeCodeTLSFingerprintProfileID
 		}(),
+		EnableClientDatelineNormalization: func() bool {
+			if req.EnableClientDatelineNormalization != nil {
+				return *req.EnableClientDatelineNormalization
+			}
+			return previousSettings.EnableClientDatelineNormalization
+		}(),
 		AntigravityUserAgentVersion: func() string {
 			if req.AntigravityUserAgentVersion != nil {
 				return *req.AntigravityUserAgentVersion
@@ -2151,6 +2159,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ClaudeOAuthSystemPromptBlocks:            updatedSettings.ClaudeOAuthSystemPromptBlocks,
 		EnableAnthropicCacheTTL1hInjection:       updatedSettings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:               updatedSettings.RewriteMessageCacheControl,
+		EnableClientDatelineNormalization:        updatedSettings.EnableClientDatelineNormalization,
 		DefaultClaudeCodeTLSFingerprintProfileID: updatedSettings.DefaultClaudeCodeTLSFingerprintProfileID,
 		AntigravityUserAgentVersion:              updatedSettings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                     updatedSettings.OpenAICodexUserAgent,
@@ -2652,6 +2661,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.RewriteMessageCacheControl != after.RewriteMessageCacheControl {
 		changed = append(changed, "rewrite_message_cache_control")
+	}
+	if before.EnableClientDatelineNormalization != after.EnableClientDatelineNormalization {
+		changed = append(changed, "enable_client_dateline_normalization")
+	}
+	if before.DefaultClaudeCodeTLSFingerprintProfileID != after.DefaultClaudeCodeTLSFingerprintProfileID {
+		changed = append(changed, "default_claude_code_tls_fingerprint_profile_id")
 	}
 	if before.AntigravityUserAgentVersion != after.AntigravityUserAgentVersion {
 		changed = append(changed, "antigravity_user_agent_version")
@@ -3809,7 +3824,7 @@ func slotOf(s *service.DefaultPlatformQuotaSetting, win string) *float64 {
 	return nil
 }
 
-// equalPlatformQuotaSettings reports whether two platform-quota maps are identical across all 12 slots.
+// equalPlatformQuotaSettings reports whether two platform-quota maps are identical across all allowed slots.
 func equalPlatformQuotaSettings(before, after map[string]*service.DefaultPlatformQuotaSetting) bool {
 	for _, platform := range service.AllowedQuotaPlatforms {
 		b := before[platform]
