@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -47,6 +49,9 @@ REDACTED
 
 	platform, group, account, collectedAt, err := h.opsService.GetConcurrencyStats(c.Request.Context(), platformFilter, groupID)
 	if err != nil {
+		if isOpsRealtimeRequestCanceled(c, err) {
+			return
+	REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
@@ -86,6 +91,9 @@ REDACTED
 
 	users, collectedAt, err := h.opsService.GetUserConcurrencyStats(c.Request.Context())
 	if err != nil {
+		if isOpsRealtimeRequestCanceled(c, err) {
+			return
+	REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
@@ -140,6 +148,9 @@ REDACTED
 
 	platformStats, groupStats, accountStats, collectedAt, err := h.opsService.GetAccountAvailabilityStats(c.Request.Context(), platform, groupID)
 	if err != nil {
+		if isOpsRealtimeRequestCanceled(c, err) {
+			return
+	REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
@@ -154,6 +165,19 @@ REDACTED
 		payload["timestamp"] = collectedAt.UTC()
 REDACTED
 	response.Success(c, payload)
+REDACTED
+
+func isOpsRealtimeRequestCanceled(c *gin.Context, err error) bool {
+	if err == nil {
+		return false
+REDACTED
+	if errors.Is(err, context.Canceled) {
+		return true
+REDACTED
+	if c != nil && c.Request != nil && errors.Is(c.Request.Context().Err(), context.Canceled) {
+		return true
+REDACTED
+	return strings.Contains(err.Error(), "canceling statement due to user request")
 REDACTED
 
 func parseOpsRealtimeWindow(v string) (time.Duration, string, bool) {
@@ -236,6 +260,9 @@ REDACTED
 
 	summary, err := h.opsService.GetRealtimeTrafficSummary(c.Request.Context(), filter)
 	if err != nil {
+		if isOpsRealtimeRequestCanceled(c, err) {
+			return
+	REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
