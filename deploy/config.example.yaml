@@ -242,11 +242,16 @@ gateway:
   # OpenAI 透传模式是否放行客户端超时头（如 x-stainless-timeout）
   # 默认 false：过滤超时头，降低上游提前断流风险。
   openai_passthrough_allow_timeout_headers: false
+  # Model used for OpenAI /responses/compact upstream requests (default: gpt-5.4).
+  # OpenAI /responses/compact 上游模型（默认 gpt-5.4）。
+  # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
+  # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
+  openai_compact_model: "gpt-5.4"
   # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
   openai_ws:
     # 新版 WS mode 路由（默认关闭）。关闭时保持当前 legacy 实现行为。
     mode_router_v2_enabled: false
-    # ingress 默认模式：off|ctx_pool|passthrough（仅 mode_router_v2_enabled=true 生效）
+    # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效）
     # 兼容旧值：shared/dedicated 会按 ctx_pool 处理。
     ingress_mode_default: ctx_pool
     # 全局总开关，默认 true；关闭时所有请求保持原有 HTTP/SSE 路由
