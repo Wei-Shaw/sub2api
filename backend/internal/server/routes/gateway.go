@@ -47,6 +47,48 @@ func RegisterGatewayRoutes(
 	isOpenAIGatewayPlatform := func(c *gin.Context) bool {
 		return getGroupPlatform(c) == service.PlatformOpenAI
 	}
+	imagesHandler := func(c *gin.Context) {
+		switch getGroupPlatform(c) {
+		case service.PlatformOpenAI:
+			h.OpenAIGateway.Images(c)
+		case service.PlatformGrok:
+			h.OpenAIGateway.GrokImages(c)
+		default:
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "Images API is not supported for this platform",
+				},
+			})
+		}
+	}
+	videoGenerationHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformGrok {
+			h.OpenAIGateway.GrokVideoGeneration(c)
+			return
+		}
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"type":    "not_found_error",
+				"message": "Videos API is not supported for this platform",
+			},
+		})
+	}
+	videoStatusHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformGrok {
+			h.OpenAIGateway.GrokVideoStatus(c)
+			return
+		}
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"type":    "not_found_error",
+				"message": "Videos API is not supported for this platform",
+			},
+		})
+	}
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
@@ -127,6 +169,8 @@ func RegisterGatewayRoutes(
 		})
 		gateway.POST("/images/generations", imagesRouteHandler(h))
 		gateway.POST("/images/edits", imagesRouteHandler(h))
+		gateway.POST("/videos/generations", videoGenerationHandler)
+		gateway.GET("/videos/:request_id", videoStatusHandler)
 	}
 
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
@@ -189,6 +233,8 @@ func RegisterGatewayRoutes(
 	})
 	r.POST("/images/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, imagesRouteHandler(h))
 	r.POST("/images/edits", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, imagesRouteHandler(h))
+	r.POST("/videos/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, videoGenerationHandler)
+	r.GET("/videos/:request_id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, videoStatusHandler)
 
 	// Antigravity 模型列表
 	r.GET("/antigravity/models", gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.Gateway.AntigravityModels)
