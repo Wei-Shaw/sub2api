@@ -155,6 +155,7 @@
           default-sort-key="created_at"
           default-sort-order="desc"
           @sort="handleSort"
+          @ipGeoBatchFailed="handleIpGeoBatchFailed"
         />
 
         <Pagination
@@ -514,6 +515,10 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   void loadLogs()
 }
 
+const handleIpGeoBatchFailed = () => {
+  appStore.showError(t('usage.ipGeo.batchFailed'))
+}
+
 const getRequestTypeExportText = (log: UsageLog): string => {
   const requestType = resolveUsageRequestType(log)
   if (requestType === 'cyber') return 'Cyber'
@@ -617,7 +622,7 @@ const exportToCSV = async () => {
 }
 
 const ALWAYS_VISIBLE = ['created_at']
-const DEFAULT_HIDDEN_COLUMNS = ['reasoning_effort', 'user_agent']
+const DEFAULT_HIDDEN_COLUMNS = ['user_agent']
 const HIDDEN_COLUMNS_KEY = 'user-usage-hidden-columns'
 
 const allColumns = computed<Column[]>(() => [

@@ -132,6 +132,11 @@ func (r *accountRepository) Create(ctx context.Context, account *service.Account
 		builder.SetSessionWindowStatus(account.SessionWindowStatus)
 	}
 
+	builder.SetQuotaDimension(dbaccount.QuotaDimension(account.QuotaDimensionOrDefault()))
+	if account.ParentAccountID != nil {
+		builder.SetParentAccountID(*account.ParentAccountID)
+	}
+
 	created, err := builder.Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
@@ -265,7 +270,11 @@ func (r *accountRepository) GetByCRSAccountID(ctx context.Context, crsAccountID 
 	}
 
 	// 使用 sqljson.ValueEQ 生成 JSON 路径过滤，避免手写 SQL 片段导致语法兼容问题。
+	// 排除 spark 影子账号(parent_account_id 非空):影子不持凭据,绝不能被 CRS 当作普通账号
+	// 更新而覆盖 type/credentials/proxy。即便影子 Extra 被误写入 crs_account_id 也不会命中
+	// (外审第7轮 P1)。
 	m, err := r.client.Account.Query().
+		Where(dbaccount.ParentAccountIDIsNil()).
 		Where(func(s *entsql.Selector) {
 			s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, crsAccountID, sqljson.Path("crs_account_id")))
 		}).
@@ -288,10 +297,13 @@ func (r *accountRepository) GetByCRSAccountID(ctx context.Context, crsAccountID 
 }
 
 func (r *accountRepository) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
+	// parent_account_id IS NULL 排除 spark 影子账号:影子不是 CRS 账号,绝不能进 CRS 同步映射
+	// (否则会被当普通账号更新而覆盖 type/credentials/proxy)(外审第7轮 P1)。
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT id, extra->>'crs_account_id'
 		FROM accounts
 		WHERE deleted_at IS NULL
+			AND parent_account_id IS NULL
 			AND extra->>'crs_account_id' IS NOT NULL
 			AND extra->>'crs_account_id' != ''
 	`)
@@ -395,6 +407,9 @@ func (r *accountRepository) Update(ctx context.Context, account *service.Account
 	if account.Notes == nil {
 		builder.ClearNotes()
 	}
+
+	builder.SetQuotaDimension(dbaccount.QuotaDimension(account.QuotaDimensionOrDefault()))
+	builder.SetNillableParentAccountID(account.ParentAccountID)
 
 	updated, err := builder.Save(ctx)
 	if err != nil {
@@ -560,7 +575,11 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}))
 	}
 
-	total, err := q.Count(ctx)
+	// Clone before Count so interceptor-appended predicates (SoftDeleteMixin's
+	// deleted_at IS NULL) don't accumulate on the shared builder and pollute the
+	// subsequent list query. Same pattern used in group_repo/promo_code_repo/user_repo
+	// (P1-03 audit fix, commit 2588fa6a).
+	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1930,6 +1949,8 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		SessionWindowStart:      m.SessionWindowStart,
 		SessionWindowEnd:        m.SessionWindowEnd,
 		SessionWindowStatus:     derefString(m.SessionWindowStatus),
+		ParentAccountID:         m.ParentAccountID,
+		QuotaDimension:          string(m.QuotaDimension),
 	}
 }
 
@@ -2221,4 +2242,22 @@ func (r *accountRepository) RevertProxyFallback(ctx context.Context, accountID i
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] revert fallback enqueue failed: account=%d err=%v", accountID, err)
 	}
 	return nil
+}
+
+// ListShadowsByParent 返回指定父账号的影子账号；当前实现仅查 quota_dimension='spark'（唯一预设）。
+// 同时过滤 parent_account_id 和 quota_dimension='spark'，防止未来其它 linked 维度被误伤。
+// ⚠️ 新增影子维度时：须更新此函数（或新增维度专用列举），并检查所有调用点（级联删除/一母一影校验/type 守卫），否则会静默漏掉新维度。
+// 软删除行由 SoftDeleteMixin 拦截器自动排除，无需手写 deleted_at IS NULL。
+func (r *accountRepository) ListShadowsByParent(ctx context.Context, parentID int64) ([]*service.Account, error) {
+	rows, err := r.client.Account.Query().
+		Where(dbaccount.ParentAccountIDEQ(parentID), dbaccount.QuotaDimensionEQ(dbaccount.QuotaDimensionSpark)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*service.Account, 0, len(rows))
+	for _, m := range rows {
+		out = append(out, accountEntityToService(m))
+	}
+	return out, nil
 }

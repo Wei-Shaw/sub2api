@@ -198,6 +198,40 @@ func TestAdminService_CreateGroup_NilImagePricing(t *testing.T) {
 	require.Nil(t, repo.created.ImagePrice4K)
 }
 
+func TestAdminService_CreateGroup_DefaultsGrokMediaGenerationEnabled(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:           "grok-media",
+		Description:    "Grok media group",
+		Platform:       PlatformGrok,
+		RateMultiplier: 1.0,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.True(t, repo.created.AllowImageGeneration)
+	require.True(t, group.AllowImageGeneration)
+}
+
+func TestAdminService_CreateGroup_PreservesNonGrokImageGenerationDisabled(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:           "anthropic-text",
+		Description:    "Anthropic text group",
+		Platform:       PlatformAnthropic,
+		RateMultiplier: 1.0,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.False(t, repo.created.AllowImageGeneration)
+	require.False(t, group.AllowImageGeneration)
+}
+
 // TestAdminService_UpdateGroup_WithImagePricing 测试更新分组时 ImagePrice 字段正确更新
 func TestAdminService_UpdateGroup_WithImagePricing(t *testing.T) {
 	existingGroup := &Group{
@@ -373,6 +407,34 @@ func TestAdminService_UpdateGroup_InvalidatesAuthCacheOnRPMLimitChange(t *testin
 	require.NotNil(t, group)
 	require.Equal(t, 60, repo.updated.RPMLimit)
 	require.Equal(t, []int64{1}, invalidator.groupIDs, "分组 RPMLimit 写入 auth snapshot，变更后必须失效 API Key 认证缓存")
+}
+
+func TestAdminService_UpdateGroup_ClearsPeakRateWhenChangingToStandard(t *testing.T) {
+	existingGroup := &Group{
+		ID:                 1,
+		Name:               "existing-group",
+		Platform:           PlatformOpenAI,
+		Status:             StatusActive,
+		SubscriptionType:   SubscriptionTypeSubscription,
+		PeakRateEnabled:    true,
+		PeakStart:          "14:00",
+		PeakEnd:            "18:00",
+		PeakRateMultiplier: 3,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		SubscriptionType: SubscriptionTypeStandard,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.Equal(t, SubscriptionTypeStandard, repo.updated.SubscriptionType)
+	require.False(t, repo.updated.PeakRateEnabled)
+	require.Equal(t, "", repo.updated.PeakStart)
+	require.Equal(t, "", repo.updated.PeakEnd)
+	require.Equal(t, 1.0, repo.updated.PeakRateMultiplier)
 }
 
 func TestAdminService_CreateGroup_NormalizesMessagesDispatchModelConfig(t *testing.T) {
