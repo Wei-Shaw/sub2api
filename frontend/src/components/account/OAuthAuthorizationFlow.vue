@@ -56,7 +56,7 @@
                 class="text-blue-600 focus:ring-blue-500"
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
-                t('admin.accounts.oauth.openai.mobileRefreshTokenAuth', '手动输入 Mobile RT')
+                t('admin.accounts.oauth.openai.mobileRefreshTokenAuth')
               }}</span>
             </label>
             <label v-if="showSessionTokenOption" class="flex cursor-pointer items-center gap-2">
@@ -78,7 +78,7 @@
                 class="text-blue-600 focus:ring-blue-500"
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
-                t('admin.accounts.oauth.openai.accessTokenAuth', '手动输入 AT')
+                t('admin.accounts.oauth.openai.accessTokenAuth')
               }}</span>
             </label>
             <label v-if="showCodexSessionImportOption" class="flex cursor-pointer items-center gap-2">
