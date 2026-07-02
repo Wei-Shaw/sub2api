@@ -393,6 +393,42 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 			},
 		},
 		{
+			name: "filter_by_extra_email_address",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "openai-alpha", Extra: map[string]any{"email_address": "owner.alpha@example.com"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "openai-beta", Extra: map[string]any{"email_address": "owner.beta@example.com"}})
+			},
+			search:    "alpha@example",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("openai-alpha", accounts[0].Name)
+			},
+		},
+		{
+			name: "filter_by_extra_email",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "openai-extra-email", Extra: map[string]any{"email": "extra.owner@example.com"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "openai-other-email", Extra: map[string]any{"email": "other.owner@example.com"}})
+			},
+			search:    "extra.owner",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("openai-extra-email", accounts[0].Name)
+			},
+		},
+		{
+			name: "filter_by_credentials_email",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "openai-credentials-email", Credentials: map[string]any{"email": "credentials.owner@example.com"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "openai-credentials-other", Credentials: map[string]any{"email": "other.credentials@example.com"}})
+			},
+			search:    "credentials.owner",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("openai-credentials-email", accounts[0].Name)
+			},
+		},
+		{
 			name: "filter_by_ungrouped",
 			setup: func(client *dbent.Client) {
 				group := mustCreateGroup(s.T(), client, &service.Group{Name: "g-ungrouped"})

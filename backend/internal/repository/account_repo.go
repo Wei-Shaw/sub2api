@@ -553,7 +553,10 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}
 	}
 	if search != "" {
-		q = q.Where(dbaccount.NameContainsFold(search))
+		q = q.Where(dbaccount.Or(
+			dbaccount.NameContainsFold(search),
+			accountEmailContainsFold(search),
+		))
 	}
 	if groupID == service.AccountListGroupUngrouped {
 		q = q.Where(dbaccount.Not(dbaccount.HasAccountGroups()))
@@ -601,6 +604,26 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		return nil, nil, err
 	}
 	return outAccounts, paginationResultFromTotal(int64(total), params), nil
+}
+
+func accountEmailContainsFold(search string) dbpredicate.Account {
+	pattern := "%" + strings.ToLower(search) + "%"
+	return dbpredicate.Account(func(s *entsql.Selector) {
+		s.Where(entsql.Or(
+			jsonTextContainsFold(dbaccount.FieldExtra, "email_address", pattern),
+			jsonTextContainsFold(dbaccount.FieldExtra, "email", pattern),
+			jsonTextContainsFold(dbaccount.FieldCredentials, "email", pattern),
+		))
+	})
+}
+
+func jsonTextContainsFold(column, key, pattern string) *entsql.Predicate {
+	return entsql.P(func(b *entsql.Builder) {
+		b.WriteString("LOWER(COALESCE(")
+		b.Join(sqljson.ValuePath(column, sqljson.Path(key), sqljson.Unquote(true)))
+		b.WriteString(", '')) LIKE ")
+		b.Arg(pattern)
+	})
 }
 
 func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
