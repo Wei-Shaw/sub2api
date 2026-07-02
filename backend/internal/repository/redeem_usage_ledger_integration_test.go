@@ -293,6 +293,9 @@ func (noopUserSubscriptionRepository) Create(context.Context, *service.UserSubsc
 func (noopUserSubscriptionRepository) GetByID(context.Context, int64) (*service.UserSubscription, error) {
 	panic("unexpected call")
 }
+func (noopUserSubscriptionRepository) GetByIDIncludeDeleted(context.Context, int64) (*service.UserSubscription, error) {
+	panic("unexpected call")
+}
 func (noopUserSubscriptionRepository) GetByUserIDAndGroupID(context.Context, int64, int64) (*service.UserSubscription, error) {
 	return nil, service.ErrSubscriptionNotFound
 }
@@ -303,6 +306,9 @@ func (noopUserSubscriptionRepository) Update(context.Context, *service.UserSubsc
 	return nil
 }
 func (noopUserSubscriptionRepository) Delete(context.Context, int64) error { return nil }
+func (noopUserSubscriptionRepository) Restore(context.Context, int64, string) (*service.UserSubscription, error) {
+	panic("unexpected call")
+}
 func (noopUserSubscriptionRepository) ListByUserID(context.Context, int64) ([]service.UserSubscription, error) {
 	return nil, nil
 }
@@ -316,6 +322,9 @@ func (noopUserSubscriptionRepository) List(context.Context, pagination.Paginatio
 	panic("unexpected call")
 }
 func (noopUserSubscriptionRepository) ExistsByUserIDAndGroupID(context.Context, int64, int64) (bool, error) {
+	return false, nil
+}
+func (noopUserSubscriptionRepository) ExistsActiveByUserIDAndGroupID(context.Context, int64, int64) (bool, error) {
 	return false, nil
 }
 func (noopUserSubscriptionRepository) ExtendExpiry(context.Context, int64, time.Time) error {

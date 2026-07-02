@@ -377,7 +377,7 @@ func (s *UserSubscriptionRepoSuite) TestList_IncludesRevokedWhenStatusEmpty() {
 	revoked := s.mustCreateSubscription(user3.ID, group3.ID, nil)
 	s.Require().NoError(s.repo.Delete(s.ctx, revoked.ID))
 
-	subs, pag, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, nil, nil, "", "", "", "")
+	subs, pag, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, nil, nil, nil, "", "", "", "", "")
 	s.Require().NoError(err)
 	s.Require().Len(subs, 3)
 	s.Require().Equal(int64(3), pag.Total)
@@ -406,7 +406,7 @@ func (s *UserSubscriptionRepoSuite) TestList_FilterByRevokedStatus() {
 	revoked := s.mustCreateSubscription(user2.ID, group2.ID, nil)
 	s.Require().NoError(s.repo.Delete(s.ctx, revoked.ID))
 
-	subs, pag, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, nil, nil, service.SubscriptionStatusRevoked, "", "", "")
+	subs, pag, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, nil, nil, nil, service.SubscriptionStatusRevoked, "", "", "", "")
 	s.Require().NoError(err)
 	s.Require().Len(subs, 1)
 	s.Require().Equal(int64(1), pag.Total)
