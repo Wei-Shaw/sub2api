@@ -322,6 +322,12 @@
           <template #cell-priority="{ value }">
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
           </template>
+          <template #header-scheduler_score="{ column }">
+            <div class="flex items-center">
+              <span>{{ column.label }}</span>
+              <HelpTooltip :content="t('admin.accounts.schedulerScore.hint')" width-class="w-80" />
+            </div>
+          </template>
           <template #cell-scheduler_score="{ row }">
             <div v-if="getSchedulerScoreRows(row).length" class="flex min-w-[7rem] flex-col gap-0.5 font-mono text-[11px] leading-4">
               <div
