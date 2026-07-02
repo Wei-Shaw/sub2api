@@ -1,5 +1,6 @@
 import { mount REDACTED from "@vue/test-utils";
 import { describe, expect, it REDACTED from "vitest";
+import { createPinia REDACTED from "pinia";
 import { createI18n REDACTED from "vue-i18n";
 import SubscriptionPlanCard from "../SubscriptionPlanCard.vue";
 
@@ -42,7 +43,7 @@ const mountPlanCard = (groupPlatform: string) =>
         is_active: true,
       REDACTED,
     REDACTED,
-    global: { plugins: [i18n] REDACTED,
+    global: { plugins: [i18n, createPinia()] REDACTED,
   REDACTED);
 
 describe("SubscriptionPlanCard", () => {

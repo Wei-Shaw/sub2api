@@ -178,6 +178,8 @@ import SupportedModelChip from './SupportedModelChip.vue'
 import type { UserAvailableChannel, UserAvailableGroup, UserChannelPlatformSection REDACTED from '@/api/channels'
 import type { GroupPlatform, SubscriptionType REDACTED from '@/types'
 import { platformBadgeClass REDACTED from '@/utils/platformColors'
+import { useAppStore REDACTED from '@/stores/app'
+import { hasPeakRate as groupHasPeakRate, formatPeakRateWindow, serverTimezoneLabel REDACTED from '@/utils/peak-rate'
 
 const props = defineProps<{
   columns: {
@@ -211,15 +213,17 @@ function publicGroups(section: UserChannelPlatformSection): UserAvailableGroup[]
   return section.groups.filter((g) => !g.is_exclusive)
 REDACTED
 
+const appStore = useAppStore()
+
 function hasPeakRate(group: UserAvailableGroup): boolean {
-  return Boolean(group.peak_rate_enabled && group.peak_start && group.peak_end)
+  return groupHasPeakRate(group)
 REDACTED
 
 function peakRateLabel(group: UserAvailableGroup): string {
-  return `${group.peak_startREDACTED-${group.peak_endREDACTED ${group.peak_rate_multiplierREDACTEDx`
+  return formatPeakRateWindow(group, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
 REDACTED
 
 function peakRateTitle(group: UserAvailableGroup): string {
-  return `高峰倍率：${group.peak_startREDACTED-${group.peak_endREDACTED ${group.peak_rate_multiplierREDACTEDx；token 计费的图片 token 同样适用，图片按次计费不受高峰影响`
+  return t('common.peakRateTooltip', { window: peakRateLabel(group) REDACTED) + t('common.peakRateImageNote')
 REDACTED
 </script>

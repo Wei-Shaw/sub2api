@@ -178,12 +178,32 @@ REDACTED
 REDACTED
 
 // parseMinutes 把 "HH:MM" 解析为当日分钟数（0..1439），格式非法返回 (0,false)。
+// 手工解析而非 time.Parse：本函数位于每请求的计费热路径（PeakMultiplierAt），
+// 避免对静态配置字符串重复走 layout 解析与 time.Time 分配。
+// 接受集与 time.Parse("15:04", s) 完全一致（存量数据按旧解析写入，不得收窄）：
+// 小时 1–2 位数字（0..23，允许不补零如 "1:30"），分钟固定 2 位数字（00..59）。
 func parseMinutes(hhmm string) (int, bool) {
-	t, err := time.Parse("15:04", hhmm)
-	if err != nil {
+	colon := strings.IndexByte(hhmm, ':')
+	if (colon != 1 && colon != 2) || len(hhmm)-colon-1 != 2 {
 		return 0, false
 REDACTED
-	return t.Hour()*60 + t.Minute(), true
+	h := 0
+	for i := 0; i < colon; i++ {
+		d := hhmm[i] - '0'
+		if d > 9 {
+			return 0, false
+	REDACTED
+		h = h*10 + int(d)
+REDACTED
+	m1, m2 := hhmm[colon+1]-'0', hhmm[colon+2]-'0'
+	if m1 > 9 || m2 > 9 {
+		return 0, false
+REDACTED
+	m := int(m1)*10 + int(m2)
+	if h > 23 || m > 59 {
+		return 0, false
+REDACTED
+	return h*60 + m, true
 REDACTED
 
 // PeakMultiplierAt 返回指定时刻 now 的高峰因子。
@@ -223,21 +243,47 @@ REDACTED
 	if start == "" || end == "" {
 		return errors.New("peak_rate_enabled 为 true 时 peak_start 与 peak_end 必填")
 REDACTED
-	st, err1 := time.Parse("15:04", start)
-	if err1 != nil {
+	st, okStart := parseMinutes(start)
+	if !okStart {
 		return fmt.Errorf("peak_start 格式应为 HH:MM，got %q", start)
 REDACTED
-	en, err2 := time.Parse("15:04", end)
-	if err2 != nil {
+	en, okEnd := parseMinutes(end)
+	if !okEnd {
 		return fmt.Errorf("peak_end 格式应为 HH:MM，got %q", end)
 REDACTED
-	if st.Hour()*60+st.Minute() >= en.Hour()*60+en.Minute() {
+	if st >= en {
 		return errors.New("peak_end 必须大于 peak_start（不支持跨天区间，如 22:00-02:00）")
 REDACTED
 	if multiplier < 0 {
 		return errors.New("peak_rate_multiplier 不能为负")
 REDACTED
 	return nil
+REDACTED
+
+// NormalizePeakRateConfig 归一化最终落库的高峰配置，CreateGroup 与 UpdateGroup 两条写路径共用（唯一收口）：
+//   - 非订阅类型分组不携带任何高峰配置，一律清空（enabled=false、窗口置空、倍率归 1.0）；
+//   - 订阅分组关闭高峰时保留已配置的合法窗口（便于临时停用后再启用），
+//     但清掉无法解析的脏字符串与负倍率，避免脏数据入库。
+//
+// 与 ValidatePeakRateConfig 的分工：enabled=true 时校验已保证各字段合法，本函数为无操作；
+// enabled=false 时校验放行，由本函数兜底清洗。调用顺序为先归一化、后校验，
+// 使"订阅转标准"这类更新能静默清空高峰配置而不是被校验拒绝。
+func NormalizePeakRateConfig(subscriptionType string, enabled bool, start, end string, multiplier float64) (bool, string, string, float64) {
+	if subscriptionType != SubscriptionTypeSubscription {
+		return false, "", "", 1.0
+REDACTED
+	if !enabled {
+		if _, ok := parseMinutes(start); !ok {
+			start = ""
+	REDACTED
+		if _, ok := parseMinutes(end); !ok {
+			end = ""
+	REDACTED
+		if multiplier < 0 {
+			multiplier = 1.0
+	REDACTED
+REDACTED
+	return enabled, start, end, multiplier
 REDACTED
 
 // computePeakAwareMultipliers 把"基础 token 倍率 base"（已含系统/分组/用户级倍率，但不含高峰）

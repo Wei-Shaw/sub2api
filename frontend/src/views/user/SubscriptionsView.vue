@@ -257,6 +257,7 @@ import type { UserSubscription REDACTED from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateOnly REDACTED from '@/utils/format'
+import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel REDACTED from '@/utils/peak-rate'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel REDACTED from '@/utils/platformColors'
 import { getRemainingDurationParts, isOneTimeDailyQuota, type RemainingDurationParts REDACTED from '@/utils/subscriptionQuota'
 
@@ -278,13 +279,11 @@ const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
 
 function subscriptionHasPeakRate(subscription: UserSubscription): boolean {
-  const group = subscription.group
-  return Boolean(group?.peak_rate_enabled && group.peak_start && group.peak_end)
+  return hasPeakRate(subscription.group)
 REDACTED
 
 function subscriptionPeakRateLabel(subscription: UserSubscription): string {
-  const group = subscription.group
-  return `${group?.peak_startREDACTED-${group?.peak_endREDACTED ×${group?.peak_rate_multiplier ?? 1REDACTED`
+  return formatPeakRateWindow(subscription.group, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
 REDACTED
 
 async function loadSubscriptions() {

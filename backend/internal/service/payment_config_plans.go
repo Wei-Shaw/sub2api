@@ -74,16 +74,6 @@ type PlanGroupInfo struct {
 	ModelScopes        []string `json:"supported_model_scopes"`
 REDACTED
 
-// GetGroupPlatformMap returns a map of group_id → platform for the given plans.
-func (s *PaymentConfigService) GetGroupPlatformMap(ctx context.Context, plans []*dbent.SubscriptionPlan) map[int64]string {
-	info := s.GetGroupInfoMap(ctx, plans)
-	m := make(map[int64]string, len(info))
-	for id, gi := range info {
-		m[id] = gi.Platform
-REDACTED
-	return m
-REDACTED
-
 // GetGroupInfoMap returns a map of group_id → PlanGroupInfo for the given plans.
 func (s *PaymentConfigService) GetGroupInfoMap(ctx context.Context, plans []*dbent.SubscriptionPlan) map[int64]PlanGroupInfo {
 	ids := make([]int64, 0, len(plans))

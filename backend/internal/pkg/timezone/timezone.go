@@ -81,6 +81,11 @@ REDACTED
 	return tzName
 REDACTED
 
+// UTCOffset returns the current UTC offset of the configured timezone, e.g. "+08:00".
+func UTCOffset() string {
+	return getUTCOffset(Location())
+REDACTED
+
 // StartOfDay returns the start of the given day (00:00:00) in the configured timezone.
 func StartOfDay(t time.Time) time.Time {
 	loc := Location()
