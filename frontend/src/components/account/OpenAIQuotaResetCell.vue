@@ -63,6 +63,17 @@
       </button>
     </div>
 
+    <div v-if="resetCreditExpirations.length" class="flex flex-wrap items-center gap-1">
+      <span
+        v-for="(expiresAt, index) in resetCreditExpirations"
+        :key="`${expiresAt}-${index}`"
+        class="inline-flex max-w-full items-center rounded bg-gray-100 px-1.5 py-0.5 text-[10px] leading-4 text-gray-600 tabular-nums dark:bg-gray-800 dark:text-gray-300"
+        :title="t('admin.accounts.openaiQuotaReset.expiresAtFull', { time: formatResetCreditExpiry(expiresAt, 'full') })"
+      >
+        {{ t('admin.accounts.openaiQuotaReset.expiresAt', { time: formatResetCreditExpiry(expiresAt, 'short') }) }}
+      </span>
+    </div>
+
     <!-- Error / success feedback -->
     <div
       v-if="error"
@@ -124,6 +135,11 @@ const showResetConfirm = ref(false)
 const isShadow = computed(() => props.account.parent_account_id != null)
 
 const availableResetCount = computed(() => data.value?.rate_limit_reset_credits?.available_count ?? 0)
+const resetCreditExpirations = computed(() =>
+  (data.value?.rate_limit_reset_credits?.credits ?? [])
+    .map((credit) => credit.expires_at?.trim() ?? '')
+    .filter((expiresAt) => expiresAt.length > 0)
+)
 const canReset = computed(() => availableResetCount.value > 0 && !isShadow.value)
 
 const resetButtonTitle = computed(() => {
@@ -144,6 +160,23 @@ const truncatedError = computed(() => {
   if (!error.value) return ''
   return error.value.length > 80 ? `${error.value.slice(0, 80)}…` : error.value
 })
+
+const formatResetCreditExpiry = (value: string, style: 'short' | 'full'): string => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  const options: Intl.DateTimeFormatOptions = {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }
+  if (style === 'full') {
+    options.year = 'numeric'
+  }
+
+  return new Intl.DateTimeFormat(undefined, options).format(date)
+}
 
 const extractErrorMessage = (e: unknown): string => {
   // The project's axios response interceptor (api/client.ts) flattens server

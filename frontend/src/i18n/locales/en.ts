@@ -4251,6 +4251,8 @@ export default {
         resetTooltipNeedQuery: 'Click Credits first to load the available count',
         resetTooltipNoCredits: 'No reset credits available',
         resetTooltipShadow: 'Spark shadow accounts cannot reset credits; reset on the parent account',
+        expiresAt: 'Expires {time}',
+        expiresAtFull: 'Reset credit expires at {time}',
         noCreditsAvailable: 'No reset credits available',
         resetSuccess: 'Reset {windows} window(s)',
         confirmTitle: 'Confirm Weekly Limit Reset',

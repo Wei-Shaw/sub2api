@@ -3488,6 +3488,8 @@ export default {
         resetTooltipNeedQuery: '先点击「次数」加载剩余重置次数',
         resetTooltipNoCredits: '没有可用的重置次数',
         resetTooltipShadow: 'Spark 影子账号不能重置次数;请在母账号上重置',
+        expiresAt: '到期 {time}',
+        expiresAtFull: '重置次数到期时间: {time}',
         noCreditsAvailable: '没有可用的重置次数',
         resetSuccess: '已重置 {windows} 个窗口',
         confirmTitle: '确认重置周限',
