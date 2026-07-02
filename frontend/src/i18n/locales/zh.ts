@@ -2185,6 +2185,7 @@ export default {
       editGroup: '编辑分组',
       deleteGroup: '删除分组',
       sortOrder: '排序',
+      columnSettings: '列设置',
       sortOrderHint: '拖拽分组调整显示顺序，排在前面的分组会优先显示',
       sortOrderUpdated: '排序已更新',
       failedToUpdateSortOrder: '更新排序失败',

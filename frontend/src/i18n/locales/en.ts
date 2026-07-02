@@ -2132,6 +2132,7 @@ export default {
       editGroup: 'Edit Group',
       deleteGroup: 'Delete Group',
       sortOrder: 'Sort',
+      columnSettings: 'Column Settings',
       sortOrderHint: 'Drag groups to adjust display order, groups at the top will be displayed first',
       sortOrderUpdated: 'Sort order updated',
       failedToUpdateSortOrder: 'Failed to update sort order',

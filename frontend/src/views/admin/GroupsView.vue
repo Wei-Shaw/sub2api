@@ -60,6 +60,38 @@
                 :class="loading ? 'animate-spin' : ''"
               />
             </button>
+            <div class="relative" ref="columnDropdownRef">
+              <button
+                @click="showColumnDropdown = !showColumnDropdown"
+                class="btn btn-secondary"
+                :title="t('admin.groups.columnSettings')"
+              >
+                <Icon name="grid" size="md" class="mr-2" />
+                <span class="hidden md:inline">{{
+                  t("admin.groups.columnSettings")
+                REDACTEDREDACTED</span>
+              </button>
+              <div
+                v-if="showColumnDropdown"
+                class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+              >
+                <button
+                  v-for="col in toggleableColumns"
+                  :key="col.key"
+                  @click="toggleColumn(col.key)"
+                  class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                >
+                  <span>{{ col.label REDACTEDREDACTED</span>
+                  <Icon
+                    v-if="isColumnVisible(col.key)"
+                    name="check"
+                    size="sm"
+                    class="text-primary-500"
+                    :stroke-width="2"
+                  />
+                </button>
+              </div>
+            </div>
             <button
               @click="openSortModal"
               class="btn btn-secondary"
@@ -3095,7 +3127,10 @@ const { t REDACTED = useI18n();
 const appStore = useAppStore();
 const onboardingStore = useOnboardingStore();
 
-const columns = computed<Column[]>(() => [
+const ALWAYS_VISIBLE_COLUMNS = new Set(["name", "actions"]);
+const HIDDEN_COLUMNS_KEY = "group-hidden-columns";
+
+const allColumns = computed<Column[]>(() => [
   { key: "name", label: t("admin.groups.columns.name"), sortable: true REDACTED,
   {
     key: "platform",
@@ -3131,6 +3166,77 @@ const columns = computed<Column[]>(() => [
   { key: "status", label: t("admin.groups.columns.status"), sortable: true REDACTED,
   { key: "actions", label: t("admin.groups.columns.actions"), sortable: false REDACTED,
 ]);
+
+const toggleableColumns = computed(() =>
+  allColumns.value.filter((col) => !ALWAYS_VISIBLE_COLUMNS.has(col.key)),
+);
+const hiddenColumns = reactive<Set<string>>(new Set());
+const showColumnDropdown = ref(false);
+const columnDropdownRef = ref<HTMLElement | null>(null);
+
+const getValidHiddenColumnKeys = () =>
+  new Set(toggleableColumns.value.map((col) => col.key));
+
+const loadSavedColumns = () => {
+  hiddenColumns.clear();
+  try {
+    const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY);
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed)) return;
+
+    const validKeys = getValidHiddenColumnKeys();
+    parsed
+      .filter((key): key is string => typeof key === "string" && validKeys.has(key))
+      .forEach((key) => hiddenColumns.add(key));
+  REDACTED catch (error) {
+    console.error("Failed to load group column settings:", error);
+  REDACTED
+REDACTED;
+
+const saveColumnsToStorage = () => {
+  try {
+    const validKeys = getValidHiddenColumnKeys();
+    const keys = [...hiddenColumns].filter((key) => validKeys.has(key));
+    localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify(keys));
+  REDACTED catch (error) {
+    console.error("Failed to save group column settings:", error);
+  REDACTED
+REDACTED;
+
+const isColumnVisible = (key: string) => !hiddenColumns.has(key);
+const hasVisibleUsageColumn = computed(() => isColumnVisible("usage"));
+const hasVisibleCapacityColumn = computed(() => isColumnVisible("capacity"));
+
+const toggleColumn = (key: string) => {
+  const validKeys = getValidHiddenColumnKeys();
+  if (!validKeys.has(key)) return;
+
+  const wasHidden = hiddenColumns.has(key);
+  if (wasHidden) {
+    hiddenColumns.delete(key);
+  REDACTED else {
+    hiddenColumns.add(key);
+  REDACTED
+  saveColumnsToStorage();
+
+  if (wasHidden && key === "usage") {
+    loadUsageSummary();
+  REDACTED
+  if (wasHidden && key === "capacity") {
+    loadCapacitySummary();
+  REDACTED
+REDACTED;
+
+const columns = computed<Column[]>(() =>
+  allColumns.value.filter(
+    (col) => ALWAYS_VISIBLE_COLUMNS.has(col.key) || !hiddenColumns.has(col.key),
+  ),
+);
+
+if (typeof window !== "undefined") {
+  loadSavedColumns();
+REDACTED
 
 // Filter options
 const statusOptions = computed(() => [
@@ -3808,8 +3914,14 @@ const loadGroups = async () => {
     groups.value = response.items;
     pagination.total = response.total;
     pagination.pages = response.pages;
-    loadUsageSummary();
-    loadCapacitySummary();
+    if (hasVisibleUsageColumn.value) {
+      loadUsageSummary();
+    REDACTED else {
+      usageLoading.value = false;
+    REDACTED
+    if (hasVisibleCapacityColumn.value) {
+      loadCapacitySummary();
+    REDACTED
   REDACTED catch (error: any) {
     if (
       signal.aborted ||
@@ -3834,6 +3946,10 @@ const formatCost = (cost: number): string => {
 REDACTED;
 
 const loadUsageSummary = async () => {
+  if (!hasVisibleUsageColumn.value) {
+    usageLoading.value = false;
+    return;
+  REDACTED
   usageLoading.value = true;
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -3854,6 +3970,9 @@ const loadUsageSummary = async () => {
 REDACTED;
 
 const loadCapacitySummary = async () => {
+  if (!hasVisibleCapacityColumn.value) {
+    return;
+  REDACTED
   try {
     const data = await adminAPI.groups.getCapacitySummary();
     const map = new Map<
@@ -4304,6 +4423,9 @@ const handleClickOutside = (event: MouseEvent) => {
     Object.keys(showAccountDropdown.value).forEach((key) => {
       showAccountDropdown.value[key] = false;
     REDACTED);
+  REDACTED
+  if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
+    showColumnDropdown.value = false;
   REDACTED
 REDACTED;
 
