@@ -841,12 +841,12 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 REDACTED
 
 	testCases := []struct {
-		name        string
-		accountType string
-		statusCode  int
-		body        string
+		name           string
+		accountType    string
+		statusCode     int
+		body           string
 		expectFailover bool
-		assertRepo  func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time)
+		assertRepo     func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time)
 REDACTED{
 		{
 			name:        "oauth_429_rate_limit",
@@ -864,10 +864,10 @@ REDACTED{
 		REDACTED,
 	REDACTED,
 		{
-			name:        "oauth_529_overload",
-			accountType: AccountTypeOAuth,
-			statusCode:  529,
-			body:        `{"error":{"message":"server overloaded","type":"server_error"REDACTEDREDACTED`,
+			name:           "oauth_529_overload",
+			accountType:    AccountTypeOAuth,
+			statusCode:     529,
+			body:           `{"error":{"message":"server overloaded","type":"server_error"REDACTEDREDACTED`,
 			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
@@ -876,10 +876,10 @@ REDACTED{
 		REDACTED,
 	REDACTED,
 		{
-			name:        "oauth_502_bad_gateway",
-			accountType: AccountTypeOAuth,
-			statusCode:  http.StatusBadGateway,
-			body:        `{"error":{"message":"bad gateway","type":"server_error"REDACTEDREDACTED`,
+			name:           "oauth_502_bad_gateway",
+			accountType:    AccountTypeOAuth,
+			statusCode:     http.StatusBadGateway,
+			body:           `{"error":{"message":"bad gateway","type":"server_error"REDACTEDREDACTED`,
 			expectFailover: false,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
@@ -887,10 +887,10 @@ REDACTED{
 		REDACTED,
 	REDACTED,
 		{
-			name:        "oauth_503_unavailable",
-			accountType: AccountTypeOAuth,
-			statusCode:  http.StatusServiceUnavailable,
-			body:        `{"error":{"message":"service unavailable","type":"server_error"REDACTEDREDACTED`,
+			name:           "oauth_503_unavailable",
+			accountType:    AccountTypeOAuth,
+			statusCode:     http.StatusServiceUnavailable,
+			body:           `{"error":{"message":"service unavailable","type":"server_error"REDACTEDREDACTED`,
 			expectFailover: false,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
@@ -898,10 +898,10 @@ REDACTED{
 		REDACTED,
 	REDACTED,
 		{
-			name:        "oauth_504_gateway_timeout",
-			accountType: AccountTypeOAuth,
-			statusCode:  http.StatusGatewayTimeout,
-			body:        `{"error":{"message":"gateway timeout","type":"server_error"REDACTEDREDACTED`,
+			name:           "oauth_504_gateway_timeout",
+			accountType:    AccountTypeOAuth,
+			statusCode:     http.StatusGatewayTimeout,
+			body:           `{"error":{"message":"gateway timeout","type":"server_error"REDACTEDREDACTED`,
 			expectFailover: false,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
@@ -924,10 +924,10 @@ REDACTED{
 		REDACTED,
 	REDACTED,
 		{
-			name:        "apikey_529_overload",
-			accountType: AccountTypeAPIKey,
-			statusCode:  529,
-			body:        `{"error":{"message":"server overloaded","type":"server_error"REDACTEDREDACTED`,
+			name:           "apikey_529_overload",
+			accountType:    AccountTypeAPIKey,
+			statusCode:     529,
+			body:           `{"error":{"message":"server overloaded","type":"server_error"REDACTEDREDACTED`,
 			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
@@ -1016,7 +1016,7 @@ REDACTED{
 			expectFailover: true,
 	REDACTED,
 		{
-			name:           "read_error",
+			name: "read_error",
 			resp: &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid-compact"REDACTEDREDACTED,
