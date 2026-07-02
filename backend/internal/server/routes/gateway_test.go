@@ -257,7 +257,7 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 
 		router.ServeHTTP(w, req)
 		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
-		require.Contains(t, w.Body.String(), "Videos API is not supported for this platform")
+		require.Contains(t, w.Body.String(), "Videos API is not supported for OpenAI groups")
 	}
 }
 
