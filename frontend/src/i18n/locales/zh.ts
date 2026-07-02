@@ -3079,6 +3079,7 @@ export default {
       assignSubscription: '分配订阅',
       adjustSubscription: '调整订阅',
       revokeSubscription: '撤销订阅',
+      restoreSubscription: '恢复订阅',
       allStatus: '全部状态',
       allGroups: '全部分组',
       allPlatforms: '全部平台',
@@ -3101,7 +3102,8 @@ export default {
       status: {
         active: '生效中',
         expired: '已过期',
-        revoked: '已撤销'
+        revoked: '已撤销',
+        suspended: '已暂停'
       REDACTED,
       columns: {
         user: '用户',
@@ -3130,6 +3132,7 @@ export default {
       adjust: '调整',
       adjusting: '调整中...',
       revoke: '撤销',
+      restore: '恢复',
       resetQuota: '重置配额',
       resetQuotaTitle: '重置用量配额',
       resetQuotaConfirm: "确定要重置 '{userREDACTED' 的每日、每周和每月用量配额吗？用量将归零并从今天开始重新计算。",
@@ -3140,16 +3143,19 @@ export default {
       subscriptionAssigned: '订阅分配成功',
       subscriptionAdjusted: '订阅调整成功',
       subscriptionRevoked: '订阅撤销成功',
+      subscriptionRestored: '订阅已恢复',
       failedToLoad: '加载订阅列表失败',
       failedToAssign: '分配订阅失败',
       failedToAdjust: '调整订阅失败',
       failedToRevoke: '撤销订阅失败',
+      failedToRestore: '恢复订阅失败',
       adjustWouldExpire: '调整后剩余天数必须大于0',
       adjustOutOfRange: '调整天数必须在 -36500 到 36500 之间',
       pleaseSelectUser: '请选择用户',
       pleaseSelectGroup: '请选择分组',
       validityDaysRequired: '请输入有效的天数（至少1天）',
-      revokeConfirm: "确定要撤销 '{userREDACTED' 的订阅吗？此操作无法撤销。",
+      revokeConfirm: "确定要撤销 '{userREDACTED' 的订阅吗？可稍后在已撤销列表中恢复。",
+      restoreConfirm: "确定要恢复 '{userREDACTED' 的订阅吗？如果原订阅已过期，恢复后将显示为已过期。",
       guide: {
         title: '订阅管理教程',
         subtitle: '订阅模式允许你按时间周期为用户分配使用额度，支持日/周/月配额限制。按照以下步骤即可完成配置。',
