@@ -214,6 +214,154 @@ REDACTED)
 		"prepareUpstreamCall should use parent's chatgpt_account_id after shadow resolve")
 REDACTED
 
+func TestParseOpenAIRateLimitResetCreditDetails_CompatibleContainers(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want []string
+REDACTED{
+		{
+			name: "credits",
+			body: `{"credits":[{"id":"secret-id","expires_at":"2026-07-03T04:05:06Z"REDACTED]REDACTED`,
+			want: []string{"2026-07-03T04:05:06Z"REDACTED,
+	REDACTED,
+		{
+			name: "rate limit reset credits",
+			body: `{"rate_limit_reset_credits":[{"expiresAt":"2026-07-04T04:05:06Z"REDACTED]REDACTED`,
+			want: []string{"2026-07-04T04:05:06Z"REDACTED,
+	REDACTED,
+		{
+			name: "items",
+			body: `{"items":[{"expires_at":"2026-07-05T04:05:06Z"REDACTED]REDACTED`,
+			want: []string{"2026-07-05T04:05:06Z"REDACTED,
+	REDACTED,
+		{
+			name: "data",
+			body: `{"data":[{"expires_at":"2026-07-06T04:05:06Z"REDACTED]REDACTED`,
+			want: []string{"2026-07-06T04:05:06Z"REDACTED,
+	REDACTED,
+		{
+			name: "array",
+			body: `[{"expires_at":"2026-07-07T04:05:06Z"REDACTED]`,
+			want: []string{"2026-07-07T04:05:06Z"REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseOpenAIRateLimitResetCreditDetails([]byte(tt.body))
+		REDACTED
+			require.Len(t, got, len(tt.want))
+			for i := range tt.want {
+				require.Equal(t, tt.want[i], got[i].ExpiresAt)
+		REDACTED
+			encoded, err := json.Marshal(got)
+		REDACTED
+			require.NotContains(t, string(encoded), "secret-id")
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestQueryUsageIncludesResetCreditExpirations_EndToEnd(t *testing.T) {
+	ctx := context.Background()
+	account := &Account{
+		ID:       100,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+REDACTED
+			"chatgpt_account_id": "org-parent123",
+	REDACTED,
+REDACTED
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{100: accountREDACTEDREDACTED
+	tokenCache := &stubQuotaTokenCache{tokens: map[string]string{
+		OpenAITokenCacheKey(account): "fake-token",
+REDACTEDREDACTED
+	tokenProvider := NewOpenAITokenProvider(repo, tokenCache, nil)
+
+	var capturedBeta string
+	var detailCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		switch r.URL.Path {
+		case "/backend-api/wham/usage":
+			_ = json.NewEncoder(w).Encode(OpenAIQuotaUsage{
+				RateLimitResetCredits: &OpenAIRateLimitResetCredits{AvailableCount: 2REDACTED,
+		REDACTED)
+		case "/backend-api/wham/rate-limit-reset-credits":
+			detailCalls++
+			capturedBeta = r.Header.Get("OpenAI-Beta")
+			require.Equal(t, "org-parent123", r.Header.Get("ChatGPT-Account-ID"))
+			_, _ = w.Write([]byte(`{"credits":[{"id":"secret-credit-id","expires_at":"2026-07-03T04:05:06Z"REDACTED,{"expiresAt":"2026-07-04T04:05:06Z"REDACTED]REDACTED`))
+		default:
+			http.NotFound(w, r)
+	REDACTED
+REDACTED))
+	defer srv.Close()
+
+	svc := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv))
+	usage, err := svc.QueryUsage(ctx, 100)
+REDACTED
+	require.NotNil(t, usage)
+	require.NotNil(t, usage.RateLimitResetCredits)
+	require.Equal(t, 2, usage.RateLimitResetCredits.AvailableCount)
+	require.Equal(t, 1, detailCalls)
+	require.Equal(t, openaiQuotaCodexBeta, capturedBeta)
+	require.Equal(t, []OpenAIRateLimitResetCreditDetail{
+		{ExpiresAt: "2026-07-03T04:05:06Z"REDACTED,
+		{ExpiresAt: "2026-07-04T04:05:06Z"REDACTED,
+REDACTED, usage.RateLimitResetCredits.Credits)
+
+	encoded, err := json.Marshal(usage)
+REDACTED
+	require.NotContains(t, string(encoded), "secret-credit-id")
+REDACTED
+
+func TestQueryUsageResetCreditDetails401NonFatal(t *testing.T) {
+	ctx := context.Background()
+	account := &Account{
+		ID:       100,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+REDACTED
+			"chatgpt_account_id": "org-parent123",
+	REDACTED,
+REDACTED
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{100: accountREDACTEDREDACTED
+	tokenCache := &stubQuotaTokenCache{tokens: map[string]string{
+		OpenAITokenCacheKey(account): "fake-token",
+REDACTEDREDACTED
+	tokenProvider := NewOpenAITokenProvider(repo, tokenCache, nil)
+
+	var detailCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		switch r.URL.Path {
+		case "/backend-api/wham/usage":
+			_ = json.NewEncoder(w).Encode(OpenAIQuotaUsage{
+				RateLimitResetCredits: &OpenAIRateLimitResetCredits{AvailableCount: 1REDACTED,
+		REDACTED)
+		case "/backend-api/wham/rate-limit-reset-credits":
+			detailCalls++
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized","id":"secret-error-id"REDACTED`))
+		default:
+			http.NotFound(w, r)
+	REDACTED
+REDACTED))
+	defer srv.Close()
+
+	svc := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv))
+	usage, err := svc.QueryUsage(ctx, 100)
+REDACTED
+	require.NotNil(t, usage)
+	require.NotNil(t, usage.RateLimitResetCredits)
+	require.Equal(t, 1, usage.RateLimitResetCredits.AvailableCount)
+	require.Equal(t, 1, detailCalls)
+	require.Empty(t, usage.RateLimitResetCredits.Credits)
+REDACTED
+
 // TestResetCreditGetByIDError_FailsClosed 验证守卫「失败关闭」语义：
 // 当守卫的 GetByID 发生瞬时错误时，ResetCredit 必须立即返回该错误，
 // 不得旁路进入 prepareUpstreamCall（否则影子账号会借 resolve 路径操作母账号）。
