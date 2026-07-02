@@ -201,7 +201,28 @@ REDACTED
 	require.True(t, strings.HasPrefix(gjson.GetBytes(moderationBody, "images.0.image_url").String(), "data:image/"))
 REDACTED
 
-func TestForwardGrokMediaImagesGenerationPassthrough(t *testing.T) {
+func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint GrokMediaEndpoint
+		model    string
+		want     string
+REDACTED{
+		{name: "image generation alias", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine", want: "grok-imagine-image-quality"REDACTED,
+		{name: "image edit alias", endpoint: GrokMediaEndpointImagesEdits, model: "grok-imagine", want: "grok-imagine-image-quality"REDACTED,
+		{name: "image quality passthrough", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine-image-quality", want: "grok-imagine-image-quality"REDACTED,
+		{name: "image fast passthrough", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine-image", want: "grok-imagine-image"REDACTED,
+		{name: "video passthrough", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video", want: "grok-imagine-video"REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, normalizeGrokMediaModelForEndpoint(tt.endpoint, tt.model))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestForwardGrokMediaImagesGenerationNormalizesImagineAlias(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	gin.SetMode(gin.TestMode)
 
@@ -238,12 +259,12 @@ REDACTED
 	require.Equal(t, http.MethodPost, upstream.lastReq.Method)
 	require.Equal(t, "Bearer api-key", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
-	require.JSONEq(t, string(body), string(upstream.lastBody))
+	require.JSONEq(t, `{"model":"grok-imagine-image-quality","prompt":"draw a cat"REDACTED`, string(upstream.lastBody))
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.JSONEq(t, `{"data":[]REDACTED`, recorder.Body.String())
 	require.Equal(t, "xai-image-req", result.RequestID)
-	require.Equal(t, "grok-imagine", result.Model)
-	require.Equal(t, "grok-imagine", result.BillingModel)
+	require.Equal(t, "grok-imagine-image-quality", result.Model)
+	require.Equal(t, "grok-imagine-image-quality", result.BillingModel)
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, ImageBillingSize2K, result.ImageSize)
 REDACTED
