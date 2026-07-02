@@ -1184,7 +1184,8 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	}
 
 	// TLS 路由器命中且规则给了 UA/Originator 时以其覆盖(优先级最高,使出站 WS UA 与所选指纹一致)。
-	if m := s.matchTLSFingerprintRouter(c, account); m.Matched {
+	// spark 影子无自绑时按母账号解析路由器,使 WS 出站 UA 与数据面/quota 同源。
+	if m := s.matchTLSFingerprintRouter(c, s.resolveTLSBindingAccount(ctx, account)); m.Matched {
 		if m.UpstreamUserAgent != "" {
 			headers.Set("user-agent", m.UpstreamUserAgent)
 		}
@@ -1919,7 +1920,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	acquireCtx, acquireCancel := context.WithTimeout(ctx, s.openAIWSAcquireTimeout())
 	defer acquireCancel()
 
-	wsTLSProfile, wsTLSProfileKey := s.resolveOpenAIWSTLSProfile(account, s.matchTLSFingerprintRouter(c, account))
+	// spark 影子无自绑时按母账号解析路由器/指纹(连接池仍按影子 account.ID 隔离,只对齐指纹)。
+	wsTLSBindingAccount := s.resolveTLSBindingAccount(ctx, account)
+	wsTLSProfile, wsTLSProfileKey := s.resolveOpenAIWSTLSProfile(wsTLSBindingAccount, s.matchTLSFingerprintRouter(c, wsTLSBindingAccount))
 
 	lease, err := s.getOpenAIWSConnPool().Acquire(acquireCtx, openAIWSAcquireRequest{
 		Account:         account,
@@ -2981,7 +2984,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if buildHdrErr != nil {
 		return fmt.Errorf("build ws headers: %w", buildHdrErr)
 	}
-	baseWSTLSProfile, baseWSTLSProfileKey := s.resolveOpenAIWSTLSProfile(account, s.matchTLSFingerprintRouter(c, account))
+	// spark 影子无自绑时按母账号解析路由器/指纹(连接池仍按影子 account.ID 隔离,只对齐指纹)。
+	baseWSTLSBindingAccount := s.resolveTLSBindingAccount(ctx, account)
+	baseWSTLSProfile, baseWSTLSProfileKey := s.resolveOpenAIWSTLSProfile(baseWSTLSBindingAccount, s.matchTLSFingerprintRouter(c, baseWSTLSBindingAccount))
 	baseAcquireReq := openAIWSAcquireRequest{
 		Account: account,
 		WSURL:   wsURL,

@@ -2631,6 +2631,30 @@ func (s *OpenAIGatewayService) matchTLSFingerprintRouter(c *gin.Context, account
 	return s.tlsFPRouterService.MatchUserAgent(account.GetTLSFingerprintRouterID(), userAgent)
 }
 
+// resolveTLSBindingAccount 返回用于解析 TLS 路由器/指纹的账号。
+//
+// spark 影子账号自身不持凭据(出站复用母账号 token)。若影子未显式自绑 TLS 路由器或固定
+// 指纹,则回落到母账号的 TLS 绑定,使数据面出站指纹与 quota 探测路径(已解析回母账号)一致,
+// 避免同一 token 在不同路径出现两种 JA3。影子显式自绑时(router_id>0 或自身启用固定指纹)尊重
+// 其覆盖,不夺权。非影子/无 repo/解析失败 → 原样返回账号(向后兼容)。连接池/并发预算仍按影子
+// (调用方保持传 account.ID/account.Concurrency),此处只影响指纹与 UA 的解析来源。
+func (s *OpenAIGatewayService) resolveTLSBindingAccount(ctx context.Context, account *Account) *Account {
+	if account == nil || !account.IsShadow() {
+		return account
+	}
+	if account.GetTLSFingerprintRouterID() > 0 || account.IsTLSFingerprintEnabled() {
+		return account
+	}
+	if s == nil || s.accountRepo == nil {
+		return account
+	}
+	parent, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+	if err != nil || parent == nil {
+		return account
+	}
+	return parent
+}
+
 // firstRouterMatchOrCompute 复用调用方线程化传入的路由器匹配结果(避免每请求重复匹配);
 // 未传入时即时匹配,供未线程化该结果的调用方(chat_completions/messages/images 等)保持原行为。
 func (s *OpenAIGatewayService) firstRouterMatchOrCompute(c *gin.Context, account *Account, routerMatch ...TLSFingerprintRouterMatchResult) TLSFingerprintRouterMatchResult {
@@ -3297,7 +3321,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	// 每请求只匹配一次路由器,线程化给 UA 改写与 TLS profile 解析(避免重复匹配 + 重试循环内重复计算)。
-	tlsRouterMatch := s.matchTLSFingerprintRouter(c, account)
+	// spark 影子无自绑时按母账号解析路由器/指纹,使数据面出站与 quota 探测同 JA3。
+	tlsBindingAccount := s.resolveTLSBindingAccount(ctx, account)
+	tlsRouterMatch := s.matchTLSFingerprintRouter(c, tlsBindingAccount)
 	httpInvalidEncryptedContentRetryTried := false
 	for {
 		// Build upstream request
@@ -3316,7 +3342,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 		// Send request
 		upstreamStart := time.Now()
-		resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, tlsRouterMatch))
+		resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(tlsBindingAccount, tlsRouterMatch))
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
@@ -3591,7 +3617,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	// 每请求只匹配一次路由器,线程化给 UA 改写与 TLS profile 解析(避免重复匹配)。
-	tlsRouterMatch := s.matchTLSFingerprintRouter(c, account)
+	// spark 影子无自绑时按母账号解析路由器/指纹,使数据面出站与 quota 探测同 JA3。
+	tlsBindingAccount := s.resolveTLSBindingAccount(ctx, account)
+	tlsRouterMatch := s.matchTLSFingerprintRouter(c, tlsBindingAccount)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token, tlsRouterMatch)
 	releaseUpstreamCtx()
@@ -3609,7 +3637,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, tlsRouterMatch))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(tlsBindingAccount, tlsRouterMatch))
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to

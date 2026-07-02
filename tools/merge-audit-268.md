@@ -1,0 +1,316 @@
+# Merge audit: 7032769a (feat/req-resp-archive → feat/tls-fingerprint-router)
+
+- Date: 2026-07-03. Coordinates: merge-base 330c35c1, ours(pre-merge tip) fcf748c6, theirs(archive tip) 8f348333, merge HEAD 7032769a.
+- Scope: 268 files = `git diff --name-only 330c35c1 8f348333`. Overlap set (both sides changed, high risk): 41 files.
+- Mechanical criterion for archive-only files: `git diff 8f348333 HEAD -- <f>` empty → merged content is byte-identical to archive tip → archive intent fully landed, and our side never touched the file → PASS.
+- Statuses: PASS / PASS(mech) / FIXED / ISSUE / pending.
+
+## A. Archive-only files identical to archive tip — 222 files, PASS(mech)
+
+Verified 2026-07-03 by bulk `git diff --quiet 8f348333 HEAD -- <f>` (all empty). Cross-interaction risk (archive code calling symbols we refactored) covered by section D spot-checks + green container build.
+
+- PASS(mech) .gitignore
+- PASS(mech) assets/partners/logos/anpin.jpg
+- PASS(mech) assets/partners/logos/proxy4free.png
+- PASS(mech) backend/cmd/server/VERSION
+- PASS(mech) backend/Dockerfile
+- PASS(mech) backend/ent/account_create.go
+- PASS(mech) backend/ent/account_query.go
+- PASS(mech) backend/ent/account_update.go
+- PASS(mech) backend/ent/account.go
+- PASS(mech) backend/ent/account/account.go
+- PASS(mech) backend/ent/account/where.go
+- PASS(mech) backend/ent/group_create.go
+- PASS(mech) backend/ent/group_update.go
+- PASS(mech) backend/ent/group/group.go
+- PASS(mech) backend/ent/group/where.go
+- PASS(mech) backend/ent/migrate/auth_identity_fk_ondelete_test.go
+- PASS(mech) backend/ent/schema/account.go
+- PASS(mech) backend/ent/schema/group.go
+- PASS(mech) backend/go.sum
+- PASS(mech) backend/internal/config/config_test.go
+- PASS(mech) backend/internal/domain/constants.go
+- PASS(mech) backend/internal/handler/admin/account_data_handler_test.go
+- PASS(mech) backend/internal/handler/admin/account_data.go
+- PASS(mech) backend/internal/handler/admin/account_handler_available_models_test.go
+- PASS(mech) backend/internal/handler/admin/account_handler_spark_shadow_test.go
+- PASS(mech) backend/internal/handler/admin/account_handler.go
+- PASS(mech) backend/internal/handler/admin/account_shadow_parent_test.go
+- PASS(mech) backend/internal/handler/admin/account_shadow_parent.go
+- PASS(mech) backend/internal/handler/admin/admin_service_stub_test.go
+- PASS(mech) backend/internal/handler/admin/group_handler.go
+- PASS(mech) backend/internal/handler/admin/openai_oauth_handler_spark_shadow_test.go
+- PASS(mech) backend/internal/handler/admin/subscription_handler.go
+- PASS(mech) backend/internal/handler/admin/user_handler.go
+- PASS(mech) backend/internal/handler/admin/user_platform_quota_admin_test.go
+- PASS(mech) backend/internal/handler/available_channel_handler_test.go
+- PASS(mech) backend/internal/handler/available_channel_handler.go
+- PASS(mech) backend/internal/handler/endpoint_test.go
+- PASS(mech) backend/internal/handler/endpoint.go
+- PASS(mech) backend/internal/handler/grok_media_test.go
+- PASS(mech) backend/internal/handler/grok_media.go
+- PASS(mech) backend/internal/handler/openai_gateway_handler.go
+- PASS(mech) backend/internal/handler/openai_images.go
+- PASS(mech) backend/internal/handler/payment_handler.go
+- PASS(mech) backend/internal/handler/setting_handler.go
+- PASS(mech) backend/internal/pkg/anthropicfp/dateline_test.go
+- PASS(mech) backend/internal/pkg/anthropicfp/dateline.go
+- PASS(mech) backend/internal/pkg/antigravity/claude_types.go
+- PASS(mech) backend/internal/pkg/antigravity/request_transformer.go
+- PASS(mech) backend/internal/pkg/claude/constants.go
+- PASS(mech) backend/internal/pkg/openai/constants.go
+- PASS(mech) backend/internal/pkg/timezone/timezone.go
+- PASS(mech) backend/internal/pkg/xai/models.go
+- PASS(mech) backend/internal/pkg/xai/oauth_test.go
+- PASS(mech) backend/internal/pkg/xai/oauth.go
+- PASS(mech) backend/internal/repository/account_repo_integration_test.go
+- PASS(mech) backend/internal/repository/account_repo_spark_shadow_test.go
+- PASS(mech) backend/internal/repository/account_repo.go
+- PASS(mech) backend/internal/repository/api_key_repo.go
+- PASS(mech) backend/internal/repository/billing_cache.go
+- PASS(mech) backend/internal/repository/claude_oauth_service_test.go
+- PASS(mech) backend/internal/repository/claude_oauth_service.go
+- PASS(mech) backend/internal/repository/fixtures_integration_test.go
+- PASS(mech) backend/internal/repository/group_repo.go
+- PASS(mech) backend/internal/repository/scheduler_cache_unit_test.go
+- PASS(mech) backend/internal/repository/scheduler_cache.go
+- PASS(mech) backend/internal/repository/usage_log_repo_request_type_test.go
+- PASS(mech) backend/internal/repository/usage_log_repo.go
+- PASS(mech) backend/internal/repository/user_subscription_repo_integration_test.go
+- PASS(mech) backend/internal/repository/user_subscription_repo.go
+- PASS(mech) backend/internal/server/api_contract_test.go
+- PASS(mech) backend/internal/server/middleware/api_key_auth_google_test.go
+- PASS(mech) backend/internal/server/middleware/api_key_auth_test.go
+- PASS(mech) backend/internal/server/routes/gateway_test.go
+- PASS(mech) backend/internal/service/account_anthropic_passthrough_test.go
+- PASS(mech) backend/internal/service/account_credential_shadow_skip_test.go
+- PASS(mech) backend/internal/service/account_credentials_persistence.go
+- PASS(mech) backend/internal/service/account_openai_passthrough_test.go
+- PASS(mech) backend/internal/service/account_service_delete_test.go
+- PASS(mech) backend/internal/service/account_service.go
+- PASS(mech) backend/internal/service/account_spark_shadow_test.go
+- PASS(mech) backend/internal/service/account_test_service_openai_test.go
+- PASS(mech) backend/internal/service/account_test_service.go
+- PASS(mech) backend/internal/service/account_usage_service_test.go
+- PASS(mech) backend/internal/service/account_usage_service.go
+- PASS(mech) backend/internal/service/admin_service_group_test.go
+- PASS(mech) backend/internal/service/admin_service_spark_shadow_test.go
+- PASS(mech) backend/internal/service/admin_service.go
+- PASS(mech) backend/internal/service/anthropic_apikey_auth.go
+- PASS(mech) backend/internal/service/api_key_auth_cache_impl.go
+- PASS(mech) backend/internal/service/api_key_auth_cache.go
+- PASS(mech) backend/internal/service/auth_service.go
+- PASS(mech) backend/internal/service/billing_cache_service.go
+- PASS(mech) backend/internal/service/billing_service_test.go
+- PASS(mech) backend/internal/service/billing_service_unified_test.go
+- PASS(mech) backend/internal/service/billing_service.go
+- PASS(mech) backend/internal/service/channel_available.go
+- PASS(mech) backend/internal/service/credential_shadow_test.go
+- PASS(mech) backend/internal/service/credential_shadow.go
+- PASS(mech) backend/internal/service/crs_sync_service.go
+- PASS(mech) backend/internal/service/crs_sync_spark_shadow_test.go
+- PASS(mech) backend/internal/service/gateway_anthropic_apikey_passthrough_test.go
+- PASS(mech) backend/internal/service/gateway_beta_test.go
+- PASS(mech) backend/internal/service/gateway_dateline_normalization_test.go
+- PASS(mech) backend/internal/service/gateway_multiplatform_test.go
+- PASS(mech) backend/internal/service/gateway_record_usage_test.go
+- PASS(mech) backend/internal/service/gateway_service_streaming_test.go
+- PASS(mech) backend/internal/service/gemini_multiplatform_test.go
+- PASS(mech) backend/internal/service/grok_media.go
+- PASS(mech) backend/internal/service/group_peak_rate_test.go
+- PASS(mech) backend/internal/service/group.go
+- PASS(mech) backend/internal/service/oauth_refresh_api_test.go
+- PASS(mech) backend/internal/service/openai_account_runtime_block_fastpath_test.go
+- PASS(mech) backend/internal/service/openai_account_runtime_block_fastpath.go
+- PASS(mech) backend/internal/service/openai_account_scheduler_spark_route_test.go
+- PASS(mech) backend/internal/service/openai_account_scheduler_test.go
+- PASS(mech) backend/internal/service/openai_account_scheduler.go
+- PASS(mech) backend/internal/service/openai_chatgpt_headers_test.go
+- PASS(mech) backend/internal/service/openai_chatgpt_headers.go
+- PASS(mech) backend/internal/service/openai_codex_transform_test.go
+- PASS(mech) backend/internal/service/openai_codex_transform.go
+- PASS(mech) backend/internal/service/openai_compat_prompt_cache_key_test.go
+- PASS(mech) backend/internal/service/openai_gateway_count_tokens_test.go
+- PASS(mech) backend/internal/service/openai_gateway_grok_test.go
+- PASS(mech) backend/internal/service/openai_gateway_service_shadow_token_test.go
+- PASS(mech) backend/internal/service/openai_image_generation_controls_test.go
+- PASS(mech) backend/internal/service/openai_model_alias.go
+- PASS(mech) backend/internal/service/openai_model_mapping_test.go
+- PASS(mech) backend/internal/service/openai_oauth_passthrough_test.go
+- PASS(mech) backend/internal/service/openai_privacy_service.go
+- PASS(mech) backend/internal/service/openai_spark_shadow_parent_health_test.go
+- PASS(mech) backend/internal/service/openai_subscription_test.go
+- PASS(mech) backend/internal/service/openai_ws_protocol_resolver_test.go
+- PASS(mech) backend/internal/service/openai_ws_protocol_resolver.go
+- PASS(mech) backend/internal/service/payment_config_plans.go
+- PASS(mech) backend/internal/service/ratelimit_service_401_test.go
+- PASS(mech) backend/internal/service/ratelimit_service_openai_test.go
+- PASS(mech) backend/internal/service/ratelimit_service.go
+- PASS(mech) backend/internal/service/ratelimit_session_window_test.go
+- PASS(mech) backend/internal/service/setting_service_platform_quota_test.go
+- PASS(mech) backend/internal/service/shadow_routing_test.go
+- PASS(mech) backend/internal/service/shadow_routing.go
+- PASS(mech) backend/internal/service/spark_shadow_integration_test.go
+- PASS(mech) backend/internal/service/subscription_assign_idempotency_test.go
+- PASS(mech) backend/internal/service/subscription_expiry_service_test.go
+- PASS(mech) backend/internal/service/subscription_revoke_cache_test.go
+- PASS(mech) backend/internal/service/subscription_service.go
+- PASS(mech) backend/internal/service/token_refresh_service_test.go
+- PASS(mech) backend/internal/service/token_refresher.go
+- PASS(mech) backend/internal/service/upstream_models_test.go
+- PASS(mech) backend/internal/service/upstream_models.go
+- PASS(mech) backend/internal/service/user_subscription_port.go
+- PASS(mech) backend/internal/service/user_subscription.go
+- PASS(mech) backend/Makefile
+- PASS(mech) backend/migrations/154_account_spark_shadow.sql
+- PASS(mech) backend/migrations/154a_account_spark_shadow_indexes_notx.sql
+- PASS(mech) backend/migrations/158_add_group_peak_rate_multiplier.sql
+- PASS(mech) backend/migrations/158_enable_grok_media_generation_groups.sql
+- PASS(mech) backend/migrations/auth_identity_payment_migrations_regression_test.go
+- PASS(mech) backend/scripts/resolve-version.sh
+- PASS(mech) deploy/.env.example
+- PASS(mech) deploy/config.example.yaml
+- PASS(mech) deploy/Dockerfile
+- PASS(mech) deploy/Makefile
+- PASS(mech) Dockerfile
+- PASS(mech) frontend/src/api/admin/subscriptions.ts
+- PASS(mech) frontend/src/api/channels.ts
+- PASS(mech) frontend/src/components/account/__tests__/EditAccountModal.spec.ts
+- PASS(mech) frontend/src/components/account/__tests__/OpenAIQuotaResetCell.spark_shadow.spec.ts
+- PASS(mech) frontend/src/components/account/AccountUsageCell.vue
+- PASS(mech) frontend/src/components/account/OAuthAuthorizationFlow.vue
+- PASS(mech) frontend/src/components/account/OpenAIQuotaResetCell.vue
+- PASS(mech) frontend/src/components/admin/account/__tests__/AccountActionMenu.spark_shadow.spec.ts
+- PASS(mech) frontend/src/components/admin/account/AccountActionMenu.vue
+- PASS(mech) frontend/src/components/admin/channel/__tests__/types.spec.ts
+- PASS(mech) frontend/src/components/admin/channel/IntervalRow.vue
+- PASS(mech) frontend/src/components/admin/channel/PricingEntryCard.vue
+- PASS(mech) frontend/src/components/admin/channel/types.ts
+- PASS(mech) frontend/src/components/admin/usage/__tests__/UsageTable.spec.ts
+- PASS(mech) frontend/src/components/admin/usage/UsageTable.vue
+- PASS(mech) frontend/src/components/admin/user/UserApiKeysModal.vue
+- PASS(mech) frontend/src/components/auth/DingTalkOAuthSection.vue
+- PASS(mech) frontend/src/components/auth/LoginAgreementPrompt.vue
+- PASS(mech) frontend/src/components/channels/AvailableChannelsTable.vue
+- PASS(mech) frontend/src/components/common/__tests__/IpGeoCell.spec.ts
+- PASS(mech) frontend/src/components/common/GroupBadge.vue
+- PASS(mech) frontend/src/components/common/GroupOptionItem.vue
+- PASS(mech) frontend/src/components/common/IpGeoCell.vue
+- PASS(mech) frontend/src/components/common/PlatformIcon.vue
+- PASS(mech) frontend/src/components/keys/UseKeyModal.vue
+- PASS(mech) frontend/src/components/payment/__tests__/SubscriptionPlanCard.spec.ts
+- PASS(mech) frontend/src/components/payment/SubscriptionPlanCard.vue
+- PASS(mech) frontend/src/composables/__tests__/useOpenAIOAuth.spec.ts
+- PASS(mech) frontend/src/composables/useModelWhitelist.ts
+- PASS(mech) frontend/src/i18n/__tests__/ipGeoLocales.spec.ts
+- PASS(mech) frontend/src/types/payment.ts
+- PASS(mech) frontend/src/utils/__tests__/ipGeoLookup.spec.ts
+- PASS(mech) frontend/src/utils/__tests__/openaiWsMode.spec.ts
+- PASS(mech) frontend/src/utils/ipGeoLookup.ts
+- PASS(mech) frontend/src/utils/openaiWsMode.ts
+- PASS(mech) frontend/src/utils/peak-rate.ts
+- PASS(mech) frontend/src/utils/platformColors.ts
+- PASS(mech) frontend/src/views/admin/__tests__/AccountsView.sparkShadow.spec.ts
+- PASS(mech) frontend/src/views/admin/__tests__/GroupsView.columnSettings.spec.ts
+- PASS(mech) frontend/src/views/admin/__tests__/SettingsView.spec.ts
+- PASS(mech) frontend/src/views/admin/ChannelsView.vue
+- PASS(mech) frontend/src/views/admin/GroupsView.vue
+- PASS(mech) frontend/src/views/admin/ops/components/OpsDashboardHeader.vue
+- PASS(mech) frontend/src/views/admin/ops/components/OpsSystemLogTable.vue
+- PASS(mech) frontend/src/views/admin/RiskControlView.vue
+- PASS(mech) frontend/src/views/admin/SubscriptionsView.vue
+- PASS(mech) frontend/src/views/admin/UsageView.vue
+- PASS(mech) frontend/src/views/auth/DingTalkCallbackView.vue
+- PASS(mech) frontend/src/views/auth/LoginView.vue
+- PASS(mech) frontend/src/views/auth/RegisterView.vue
+- PASS(mech) frontend/src/views/user/CustomPageView.vue
+- PASS(mech) frontend/src/views/user/KeysView.vue
+- PASS(mech) frontend/src/views/user/PaymentView.vue
+- PASS(mech) frontend/src/views/user/SubscriptionsView.vue
+- PASS(mech) frontend/src/views/user/UsageView.vue
+- PASS(mech) README_CN.md
+- PASS(mech) README_JA.md
+- PASS(mech) README.md
+
+## B. Archive-only files with intentional deviations — 5 files, reviewed
+
+- PASS backend/ent/group.go — comment-only regen; now matches ent/schema/group.go Comments (跨天 wording, lines 55/59). Archive tip had stale generated code; regen correct.
+- PASS backend/go.mod — tiktoken-go/tokenizer moved indirect→direct; correct because openai_gateway_count_tokens.go (non-test) imports it directly. No version change.
+- PASS backend/internal/service/account_usage_service_spark_shadow_test.go — only change: NewOpenAIQuotaService 4-arg req.Client factory → 6-arg HTTPUpstream stub (quotaRedirectingUpstream). Test semantics (redirect to httptest server) preserved.
+- PASS backend/internal/service/openai_quota_spark_window_test.go — quotaRedirectingUpstream implements Do/DoWithTLS (DoWithTLS delegates to Do); prepareUpstreamCall call site adapted to 6 return values; all archive assertions (shadow resolve, reset-credit details, 401-non-fatal) intact.
+- PASS frontend/src/components/account/__tests__/BulkEditAccountModal.spec.ts — assertion 「3.1-Flash-Image透传」→「passthrough」. Proven pre-broken at archive tip: 8f348333 useModelWhitelist.ts:314 label is already English 'passthrough' while spec still asserted Chinese. Fix correct; vitest 810/810 green.
+
+## C. Overlap files (both sides changed) — 41 files, three-way review COMPLETE (40 PASS + 1 flagged → Issues #1)
+
+- PASS backend/cmd/server/wire_gen.go — contains archive's openAIQuotaService→NewAccountUsageService wiring AND ours' TLS router/collector/handler providers; call sites match merged source signatures (ProvideOpenAIQuotaService = ours' 6-dep form).
+- PASS backend/ent/client.go — archive's Account QueryParent/QueryChildren + ours' TLSFingerprintRouterClient (65 refs) both present; consistent with schema union.
+- PASS backend/ent/migrate/schema.go — archive: quota_dimension/parent_account_id/self-FK/index + group peak_* cols; ours: TLSFingerprintRoutersTable registered; renumbering is regen-consistent.
+- PASS backend/ent/mutation.go — all archive +funcs verified (SetParentAccountID/SetQuotaDimension/SetParentID/AddChildIDs/SetPeak*); ours' TLSFingerprintRouterMutation present.
+- PASS backend/ent/runtime/runtime.go — archive group peak descriptors/defaults/validators + ours' tlsfingerprintrouter init block.
+- PASS(agent-settings) backend/internal/config/config.go — ours TLSFingerprintCollectorConfig (561–575, safe defaults 127.0.0.1/no-autostart) + archive OpenAICompactModel (default gpt-5.4) + http_bridge ingress mode incl. validation.
+- PASS(agent-routes) backend/internal/handler/admin/openai_oauth_handler.go — ours TLSFingerprintRouterID DTO fields + router-aware refresh; archive IsCredentialShadow() early-reject in RefreshAccountToken + CreateShadow handler. Good interaction: shadow guard fires BEFORE ours' router-aware refresh.
+- PASS(agent-settings) backend/internal/handler/admin/setting_handler.go — whitespace-insensitive cross-diff = exact union; diffSettings keys HEAD=150 = base 148 + exactly the 2 new keys, zero lost (set-compared across 4 revisions). Pre-existing unaudited keys (github/google oauth secrets, payment_*) predate merge-base.
+- PASS(agent-settings) backend/internal/handler/dto/mappers.go — ours router-ID echo (279–282) + archive Peak*/shadow/RevokedAt mappings (ParentEmail populated in account_shadow_parent.go by design).
+- PASS(agent-settings) backend/internal/handler/dto/settings.go — both new fields (:189/:190) + archive ServerTimezone/ServerUTCOffset.
+- PASS(agent-settings) backend/internal/handler/dto/types.go — ours TLSFingerprintRouterID (:220) + archive Peak*/ParentAccountID/QuotaDimension/RevokedAt coexist.
+- PASS(agent-routes) backend/internal/server/routes/admin.go — perfect union: archive shadow route POST /:id/shadow + subscription revoke/restore; ours TLS router CRUD + collector 6 routes; all handlers exist and wired.
+- PASS(agent-routes) backend/internal/server/routes/gateway.go — archive Grok media dispatch closures + 4 video routes; ours removed rejectGrokUnsupportedEndpoint call sites (symbol was undefined at BOTH parents — merged HEAD is first consistent state); residual vs archive tip = gofmt whitespace only.
+- PASS textually (exact union) backend/internal/service/account.go — but flagged cross-feature semantic gap, see Issues #1 (shadow × TLS router inheritance).
+- PASS(agent-routes) backend/internal/service/domain_constants.go — exact union: ours SettingKeyDefaultClaudeCodeTLSFingerprintProfileID + archive SubscriptionStatusRevoked/SettingKeyEnableClientDatelineNormalization/QuotaDimension consts.
+- PASS backend/internal/service/gateway_service.go — symbol counts match both diffs exactly: setAnthropicAPIKeyAuthHeader ×4, resetKeepaliveTimer ×9 (5+4 across two stream handlers), noop-delta keepalive complete, dateline block at Forward:5079 (after mimicry, before cache_control — archive's intended position), computePeakAwareMultipliers replaced resolveImageRateMultiplier (0 remaining). Ours: resolveTLSProfileForRequest ×7 (def+5 call sites), tlsFPRouterService field+variadic ctor, global default Claude Code fallback intact.
+- PASS backend/internal/service/openai_gateway_chat_completions.go — residual = only ours' DoWithTLS hunk; archive's !IsShadow() snapshot guard present (line 349).
+- PASS backend/internal/service/openai_gateway_count_tokens.go — archive's full count-tokens feature (tiktoken codecs, OAuth local fallback) byte-intact; ours' single Do→DoWithTLS survived (line 92); only one upstream call in file.
+- PASS backend/internal/service/openai_gateway_messages.go — ours' DoWithTLS (297) + archive's !IsShadow() guard & Grok quota-header branch (415) both present.
+- PASS backend/internal/service/openai_gateway_record_usage_test.go — ours' 1-line = nil tlsFPProfileService arg for 23-param NewOpenAIGatewayService (not gofmt); archive's ~86 test lines intact; arity verified.
+- PASS backend/internal/service/openai_gateway_service.go — archive: parentHealthyForShadow ×6 call sites (sticky/L2/fresh/recheck×2 + parentLookupL2 cache), GetAccessToken shadow resolve (2505), resolveAndSetOpenAIChatGPTAccountHeaders ×2 (3779/4565), isCompactRequest image-gen exemption (2869), IsShadow codex-snapshot guards (3422/3661), computePeakAwareMultipliers (6451). Ours: DoWithTLS ×2 with tlsRouterMatch threading (3300/3319, 3594/3612), UA/Originator override ×2, resolveOpenAIWSTLSProfile. Both sides' changes to the same two build functions coexist correctly.
+- PASS(agent-routes) backend/internal/service/openai_oauth_service.go — ours G5 token-TLS chain (SetTokenTLSRouterDeps/resolveChatGPTOAuthTokenRequestOptions/RefreshTokenWithClientIDAndRouter); archive enrichTokenInfo plan-type gating runs inside shared enrichment used by both refresh paths — correct.
+- PASS backend/internal/service/openai_quota_service.go — archive's 10 intents all landed: ErrSparkShadowResetNotSupported, shadow guard in ResetCredit (fail-closed; IsShadow() is nil-safe per account.go:2615), shadow→parent resolve in prepareUpstreamCall before chatgpt_account_id check, queryResetCreditDetails (ported req.Client→doQuotaRequest/DoWithTLS, best-effort semantics preserved), openai-beta header, parse helpers, buildCodexSparkWindowExtraUpdates. Ours' DoWithTLS refactor intact (6-param ctor, 6-value prepareUpstreamCall, router UA/profile resolution). Interaction: after shadow resolve, router/TLS/proxy/pool-key all use PARENT account — self-consistent.
+- PASS backend/internal/service/openai_ws_forwarder_ingress_session_test.go — ours' 2 lines = tlsfingerprint import + Dial fake param (interface adaptation, not gofmt); archive's ~146 ingress-session test lines fully present.
+- PASS backend/internal/service/openai_ws_forwarder.go — residual diff vs 8f348333 contains ONLY ours' hunks (18+/1-): router UA override at end of buildOpenAIWSHeaders (now 3-value archive signature with ctx + resolveAndSet + error), TLSProfile/TLSProfileKey in both acquire requests. Archive: HTTPBridge ingress mode + forceHTTPBridge, parentHealthyForShadow ×2 in selectAccountByPreviousResponseID, header-build error handling at 3 call sites — all present.
+- PASS backend/internal/service/openai_ws_v2_passthrough_adapter.go — archive's buildOpenAIWSHeaders(ctx,…)+error handling and ours' Dial(…, wsTLSProfile) adjacent and correct (348–365); dialer interface matches.
+- PASS(agent-settings) backend/internal/service/setting_service.go — clean union; merge patch verified: refreshCachedSettings Store (2340–2362) writes all 10 cached fields incl. defaultClaudeCodeTLSProfileID (2359) + clientDatelineNormalization (2358); no 60s stale-read gap for either key.
+- PASS(agent-settings) backend/internal/service/settings_view.go — both fields (dateline :200, TLS profile :202); archive BetaPolicy sonnet-5 default intact.
+- PASS(agent-fe: cross-diff exact union) frontend/src/api/admin/accounts.ts — ours' tls_fingerprint_router_id (exchangeCode + refreshOpenAIToken) + archive's OpenAIRateLimitResetCreditDetail/credits/createSparkShadow all present.
+- PASS(agent-fe: cross-diff exact union) frontend/src/api/admin/settings.ts — enable_client_dateline_normalization + default_claude_code_tls_fingerprint_profile_id coexist in SystemSettings and UpdateSettingsRequest.
+- PASS(agent-fe: cross-diff exact union) frontend/src/components/account/BulkEditAccountModal.vue — ours' 108-line bulk TLS profile/router editing intact; archive's OPENAI_WS_MODE_HTTP_BRIDGE option + setup-token capability checks intact.
+- PASS(agent-fe: cross-diff exact union) frontend/src/components/account/CreateAccountModal.vue — router dropdown + router-id writes in handleAnthropicExchange AND handleCookieAuth (pre-merge fix survived, ~5798); archive changes landed.
+- PASS(agent-fe: cross-diff exact union) frontend/src/components/account/EditAccountModal.vue — exact union both directions.
+- PASS(agent-fe: cross-diff exact union) frontend/src/components/account/ReAuthAccountModal.vue — ours' router-id to handleExchangeCode + archive's googleOneDesc i18n key.
+- PASS(agent-fe: cross-diff exact union) frontend/src/components/admin/account/ReAuthAccountModal.vue — ours' router-id passthrough + archive's Grok gradient + googleOneDesc.
+- PASS(agent-fe: cross-diff exact union) frontend/src/composables/useOpenAIOAuth.ts — ours' tlsFingerprintRouterId params + archive's subscription_expires_at propagation.
+- PASS(agent-fe: cross-diff exact union) frontend/src/i18n/locales/en.ts — union verified by AST key extraction; tlsFingerprintRouters 65 keys, collector 35, tlsFingerprint 7; dateline keys present; no new en/zh divergence (196→194, archive fixed 2 legacy gaps).
+- PASS(agent-fe: cross-diff exact union) frontend/src/i18n/locales/zh.ts — same structural parity as en.ts for all merge-touched blocks.
+- PASS(agent-fe: cross-diff exact union) frontend/src/types/index.ts — exact union both directions.
+- PASS(agent-fe: cross-diff exact union) frontend/src/views/admin/AccountsView.vue — TLSFingerprintRoutersModal import/menu/mount present; archive view changes intact.
+- PASS(agent-fe: cross-diff exact union) frontend/src/views/admin/SettingsView.vue — dateline Toggle (4392) + TLS profile-id number input (4468) + both fields in defaults and submit payload with Number(x)||0 cleanup.
+
+## D. Business-logic end-to-end checks — COMPLETE
+
+- PASS spark shadow end-to-end (personal): CreateShadow (admin_service.go:3226) inherits proxy/priority/concurrency/groups from parent, Credentials never hold tokens; scheduling gates via parentHealthyForShadow at all 8 selection sites (gateway 6 + ws 2); forwarding resolves creds shadow→parent (GetAccessToken:2505 + resolveAndSetOpenAIChatGPTAccountHeaders ×2 + WS headers); usage via QueryUsage bengalfox → buildCodexSparkWindowExtraUpdates → shadow's own codex_* extra (account_usage_service.go:542-557); staleness for shadows keyed on codex_usage_updated_at TTL not WSv2 (:615); ResetCredit 409 guard. TLS interaction → Issues #1.
+- PASS dateline normalization: gateway Forward block at 5079 (post-mimicry, Anthropic OAuth/SetupToken only) → anthropicfp.NormalizeDateline; settings pipeline complete (default true, InitializeDefaultSettings, cached struct field :117, write-through Store :2358, accessor IsClientDatelineNormalizationEnabled :2719 used at gateway_service.go:4866; DTO/view/diffSettings all present).
+- PASS Grok media (personal main-flow read): routes/gateway.go platform dispatch → GrokImages/VideoGeneration/VideoStatus handlers → ForwardGrokMedia (grok_media.go:270): platform check → GetAccessToken (shadow-resolve prefix is a no-op for Grok — shadows are OpenAI-only) → body prep/normalize → plain httpUpstream.Do (equivalent to DoWithTLS(nil): Grok fails SupportsTLSFingerprint, ResolveTLSProfile is always nil; byte-identical to archive tip) → xai quota-header snapshot → response passthrough + usage/billing. End-to-end coherent post-merge.
+- PASS settings audit: diffSettings enumerates 150 keys = merge-base 148 + the 2 new (dateline + TLS default profile); zero keys lost across base/ours/theirs/HEAD.
+- PASS reset-credit details: QueryUsage → available_count>0 → queryResetCreditDetails on doQuotaRequest/DoWithTLS (router UA/profile applied), best-effort warn-only failure semantics preserved; parse handles array/object×4 key shapes + camelCase expiresAt.
+- PASS spark window persistence: QueryUsage → buildCodexSparkWindowExtraUpdates (codex_bengalfox → Normalize → canonical codex_5h/7d keys + RFC3339 reset times + codex_usage_updated_at) → mergeAccountExtra + persistOpenAICodexProbeSnapshot on shadow row.
+- PASS archive feature main flow: the disk-archive feature itself is in the merge-base (branch was cut from feat/req-resp-archive); the 89 audited commits are post-cut work. Archive capture path in routes/gateway.go (archiveCapture) verified intact by routes agent.
+
+## Verification (post-audit, tree = 7032769a, clean)
+
+- Backend container (golang:1.26.4-alpine): GOFMT_OK, BUILD_OK, VET_OK; go test ./internal/service/... ./internal/handler/... ./internal/repository/... ./cmd/server/... → all ok (2026-07-03).
+- Frontend: pnpm typecheck exit 0; pnpm vitest run → 129 files / 810 tests all passed (2026-07-03).
+
+## Issues found
+
+### #1 (FIXED 2026-07-03, user chose "data-plane falls back to parent binding") — spark shadow × TLS router
+- Facts (personally verified): shadows are created with nil Extra (CreateShadow admin_service.go:3301-3313 copies ProxyID/Priority/Concurrency/groups but not Extra) → GetTLSFingerprintRouterID()=0, IsTLSFingerprintEnabled()=false. Data-plane paths (openai_gateway_service.go:3300/3594, chat_completions:264, messages:297, images:608, ws_forwarder:1922) match the router against the SCHEDULED account (the shadow), while credentials resolve shadow→parent separately. Quota path (merge-integrated) resolves parent BEFORE router resolution, so parent's router applies there.
+- Net effect: parent bound to a router → parent traffic + quota probes carry router fingerprint/UA, but shadow data-plane traffic goes out with same parent token and NO TLS fingerprint (Go JA3).
+- Not a dropped hunk: at merge-base the native OpenAI path had no TLS at all; the gap is new cross-feature semantics created by the union.
+- Mitigation available today: admin can set tls_fingerprint_router_id / enable_tls_fingerprint on the shadow account via Edit modal (shadow is a normal OpenAI OAuth row; frontend shows the dropdowns).
+- Options: (a) leave as-is + document; (b) CreateShadow copies parent's TLS extra keys at creation; (c) data-plane fallback: shadow with no own binding resolves parent's router/profile (hot-path parent lookup).
+
+
+### #1 resolution (commit: merge-audit fix)
+- Added `OpenAIGatewayService.resolveTLSBindingAccount(ctx, account)` (openai_gateway_service.go): shadow with no own TLS binding (router_id<=0 AND not IsTLSFingerprintEnabled) → resolves parent via resolveCredentialAccount; shadow with explicit own binding is respected; non-shadow / no repo / resolve-error → returns account unchanged (backward compatible).
+- Wired at all 8 data-plane resolution sites (profile + router match both fed the binding account; account.ID/Concurrency stay the shadow so connection pool & concurrency budget remain per-shadow — only the JA3/UA source aligns to parent): Forward (gateway_service.go), forwardOpenAIPassthrough, ForwardAsChatCompletions, ForwardAsAnthropic, forwardOpenAIImagesAPIKey, buildOpenAIWSHeaders UA, forwardOpenAIWSV2, ProxyResponsesWebSocketFromClient.
+- Now consistent with quota path (which already resolves parent before router). Test: openai_gateway_tls_binding_account_test.go (7 cases) PASS.
+- Verified in container: gofmt clean, go build ./... OK, go vet ./internal/service/... OK, full go test ./internal/service/... ./internal/handler/... ./cmd/server/... all ok (service 51.8s).

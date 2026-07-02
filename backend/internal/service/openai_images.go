@@ -604,8 +604,10 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	// spark 影子无自绑时按母账号解析路由器/指纹,使数据面出站与 quota 探测同 JA3。
+	tlsBindingAccount := s.resolveTLSBindingAccount(ctx, account)
 	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, s.matchTLSFingerprintRouter(c, account)))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(tlsBindingAccount, s.matchTLSFingerprintRouter(c, tlsBindingAccount)))
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())

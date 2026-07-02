@@ -261,7 +261,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	if account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, s.matchTLSFingerprintRouter(c, account)))
+	// spark 影子无自绑时按母账号解析路由器/指纹,使数据面出站与 quota 探测同 JA3。
+	tlsBindingAccount := s.resolveTLSBindingAccount(ctx, account)
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(tlsBindingAccount, s.matchTLSFingerprintRouter(c, tlsBindingAccount)))
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
