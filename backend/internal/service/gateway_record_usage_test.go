@@ -233,6 +233,59 @@ REDACTED
 	require.InDelta(t, 0.19, usageRepo.lastLog.ActualCost, 1e-12)
 REDACTED
 
+func TestGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputTokens(t *testing.T) {
+	groupID := int64(902)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{REDACTED)
+	svc.resolver = newOpenAITokenImageChannelPricingResolverForTest(t, groupID, "gemini-image")
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:  "gateway_peak_image_tokens",
+			Model:      "gemini-image",
+			ImageCount: 1,
+			Usage: ClaudeUsage{
+				InputTokens:       1000,
+				OutputTokens:      600,
+				ImageOutputTokens: 100,
+		REDACTED,
+			Duration: time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:      802,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:                 groupID,
+				RateMultiplier:     1.0,
+				SubscriptionType:   SubscriptionTypeSubscription,
+				PeakRateEnabled:    true,
+				PeakStart:          "00:00",
+				PeakEnd:            "23:59",
+				PeakRateMultiplier: 3.0,
+		REDACTED,
+	REDACTED,
+		User:    &User{ID: 602REDACTED,
+		Account: &Account{ID: 702REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
+	require.Equal(t, 3.0, usageRepo.lastLog.RateMultiplier)
+
+	textInput := 1000 * 3e-6
+	textOutput := 500 * 15e-6
+	imageOutput := 100 * 15e-6
+	expectedActual := (textInput + textOutput + imageOutput) * 3.0
+
+	require.InDelta(t, textInput+textOutput+imageOutput, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, imageOutput, usageRepo.lastLog.ImageOutputCost, 1e-12)
+	require.InDelta(t, expectedActual, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, expectedActual, userRepo.lastAmount, 1e-12)
+REDACTED
+
 func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)REDACTED
 	userRepo := &openAIRecordUsageUserRepoStub{REDACTED

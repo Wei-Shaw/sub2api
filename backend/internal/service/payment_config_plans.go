@@ -61,13 +61,17 @@ REDACTED
 
 // PlanGroupInfo holds the group details needed for subscription plan display.
 type PlanGroupInfo struct {
-	Platform        string   `json:"platform"`
-	Name            string   `json:"name"`
-	RateMultiplier  float64  `json:"rate_multiplier"`
-	DailyLimitUSD   *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD  *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD *float64 `json:"monthly_limit_usd"`
-	ModelScopes     []string `json:"supported_model_scopes"`
+	Platform           string   `json:"platform"`
+	Name               string   `json:"name"`
+	RateMultiplier     float64  `json:"rate_multiplier"`
+	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
+	PeakStart          string   `json:"peak_start"`
+	PeakEnd            string   `json:"peak_end"`
+	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
+	DailyLimitUSD      *float64 `json:"daily_limit_usd"`
+	WeeklyLimitUSD     *float64 `json:"weekly_limit_usd"`
+	MonthlyLimitUSD    *float64 `json:"monthly_limit_usd"`
+	ModelScopes        []string `json:"supported_model_scopes"`
 REDACTED
 
 // GetGroupPlatformMap returns a map of group_id → platform for the given plans.
@@ -100,13 +104,17 @@ REDACTED
 	m := make(map[int64]PlanGroupInfo, len(groups))
 	for _, g := range groups {
 		m[int64(g.ID)] = PlanGroupInfo{
-			Platform:        g.Platform,
-			Name:            g.Name,
-			RateMultiplier:  g.RateMultiplier,
-			DailyLimitUSD:   g.DailyLimitUsd,
-			WeeklyLimitUSD:  g.WeeklyLimitUsd,
-			MonthlyLimitUSD: g.MonthlyLimitUsd,
-			ModelScopes:     g.SupportedModelScopes,
+			Platform:           g.Platform,
+			Name:               g.Name,
+			RateMultiplier:     g.RateMultiplier,
+			PeakRateEnabled:    g.PeakRateEnabled,
+			PeakStart:          g.PeakStart,
+			PeakEnd:            g.PeakEnd,
+			PeakRateMultiplier: g.PeakRateMultiplier,
+			DailyLimitUSD:      g.DailyLimitUsd,
+			WeeklyLimitUSD:     g.WeeklyLimitUsd,
+			MonthlyLimitUSD:    g.MonthlyLimitUsd,
+			ModelScopes:        g.SupportedModelScopes,
 	REDACTED
 REDACTED
 	return m

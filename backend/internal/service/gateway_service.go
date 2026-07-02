@@ -31,6 +31,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -9473,7 +9474,9 @@ REDACTED
 		groupDefault := apiKey.Group.RateMultiplier
 		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
 REDACTED
-	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier)
+	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
+	// 不并入上面的 getUserGroupRateMultiplier，以免污染 user:group 倍率缓存。
+	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, timezone.Now())
 
 	// 确定计费模型
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
@@ -9676,12 +9679,9 @@ REDACTED
 	REDACTED)
 REDACTED else if opts.LongContextThreshold > 0 {
 		// 长上下文双倍计费（如 Gemini 200K 阈值）
-		cost, err = s.billingService.CalculateCostWithLongContext(
-			billingModel, tokens, multiplier,
-			opts.LongContextThreshold, opts.LongContextMultiplier,
-		)
+		cost, err = s.billingService.CalculateCostWithLongContext(billingModel, tokens, multiplier, opts.LongContextThreshold, opts.LongContextMultiplier)
 REDACTED else {
-		cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
+		cost, err = s.billingService.CalculateCostWithServiceTier(billingModel, tokens, multiplier, "")
 REDACTED
 	if err != nil {
 		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)

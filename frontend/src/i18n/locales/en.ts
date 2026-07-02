@@ -2279,6 +2279,13 @@ export default {
         finalPricePreview: 'Final per-image price preview',
         notConfigured: 'Not configured'
       REDACTED,
+      peakRate: {
+        enable: 'Enable peak rate multiplier',
+        peakStart: 'Peak start',
+        peakEnd: 'Peak end',
+        peakMultiplier: 'Peak multiplier',
+        multiplierHint: 'Applies to token billing multiplier; image tokens in token billing are also affected. 0 means peak token requests are billed at 0x.'
+      REDACTED,
       modelsList: {
         title: 'Custom /v1/models Model List',
         hint: 'Only changes the /v1/models response. Whitelist model calls and account routing are unchanged.',
@@ -7265,6 +7272,7 @@ export default {
     planFeatures: 'Features',
     planCard: {
       rate: 'Rate',
+      peakRate: 'Peak Rate',
       dailyLimit: 'Daily',
       weeklyLimit: 'Weekly',
       monthlyLimit: 'Monthly',

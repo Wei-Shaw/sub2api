@@ -2362,6 +2362,13 @@ export default {
         finalPricePreview: '最终单张价格预览',
         notConfigured: '未配置'
       REDACTED,
+      peakRate: {
+        enable: '启用高峰倍率',
+        peakStart: '高峰开始',
+        peakEnd: '高峰结束',
+        peakMultiplier: '高峰倍率',
+        multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费'
+      REDACTED,
       modelsList: {
         title: '自定义 /v1/models 模型列表',
         hint: '仅影响 /v1/models 展示结果，不影响白名单模型调用和账号调度。',
@@ -7445,6 +7452,7 @@ export default {
     planFeatures: '功能特性',
     planCard: {
       rate: '倍率',
+      peakRate: '高峰倍率',
       dailyLimit: '日限额',
       weeklyLimit: '周限额',
       monthlyLimit: '月限额',

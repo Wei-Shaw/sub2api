@@ -657,6 +657,10 @@ REDACTED
 		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
 		{Name: "description", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
+		{Name: "peak_rate_enabled", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "peak_start", Type: field.TypeString, Size: 5, Default: ""REDACTED,
+		{Name: "peak_end", Type: field.TypeString, Size: 5, Default: ""REDACTED,
+		{Name: "peak_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
 		{Name: "is_exclusive", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
 		{Name: "platform", Type: field.TypeString, Size: 50, Default: "anthropic"REDACTED,
@@ -696,22 +700,22 @@ REDACTED
 			{
 				Name:    "group_status",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[8]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[12]REDACTED,
 		REDACTED,
 			{
 				Name:    "group_platform",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[9]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[13]REDACTED,
 		REDACTED,
 			{
 				Name:    "group_subscription_type",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[10]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[14]REDACTED,
 		REDACTED,
 			{
 				Name:    "group_is_exclusive",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[7]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[11]REDACTED,
 		REDACTED,
 			{
 				Name:    "group_deleted_at",
@@ -721,7 +725,7 @@ REDACTED
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[28]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[32]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
