@@ -15,7 +15,7 @@ vi.mock('vue-i18n', async () => {
     ...actual,
     useI18n: () => ({
       t: (key: string, params?: Record<string, unknown>) =>
-        params?.time ? `${key}:${params.time}` : key,
+        params?.time ? `${key}:${params.time}` : params?.count ? `${key}:${params.count}` : key,
     }),
   }
 })
@@ -78,11 +78,12 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
     wrapper.unmount()
   })
 
-  it('查询后显示每张重置卡的到期时间', async () => {
+  it('查询后默认折叠为最早到期时间,点击 +N 展开完整列表', async () => {
     vi.mocked(queryOpenAIQuota).mockResolvedValue({
       rate_limit_reset_credits: {
-        available_count: 2,
+        available_count: 3,
         credits: [
+          { expires_at: '2026-07-05T04:05:06Z' },
           { expires_at: '2026-07-03T04:05:06Z' },
           { expires_at: 'not-a-date' },
         ],
@@ -98,8 +99,41 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
 
     expect(queryOpenAIQuota).toHaveBeenCalledWith(1)
     expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.expiresAt:')
+    expect(wrapper.text()).toContain('+2')
+    expect(wrapper.text()).not.toContain('not-a-date')
+
+    const toggle = wrapper.find('[data-testid="reset-credit-expiry-toggle"]')
+    expect(toggle.exists()).toBe(true)
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    await toggle.trigger('click')
+
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('[data-testid="reset-credit-expiry-details"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('not-a-date')
     expect(wrapper.text()).not.toContain('undefined')
+    wrapper.unmount()
+  })
+
+  it('只有一张重置卡时不显示展开按钮', async () => {
+    vi.mocked(queryOpenAIQuota).mockResolvedValue({
+      rate_limit_reset_credits: {
+        available_count: 1,
+        credits: [
+          { expires_at: '2026-07-03T04:05:06Z' },
+        ],
+      },
+      fetched_at: 1770000000,
+    })
+
+    const account = makeAccount({ parent_account_id: null })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+
+    await wrapper.findAll('button')[0].trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="reset-credit-expiry-toggle"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="reset-credit-expiry-details"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.expiresAt:')
     wrapper.unmount()
   })
 })
