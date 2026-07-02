@@ -55,6 +55,9 @@ type Account struct {
 	SessionWindowEnd    *time.Time
 	SessionWindowStatus string
 
+	ParentAccountID *int64 // non-nil → 影子账号（不持凭据，透传母账号凭据）
+	QuotaDimension  string // 用量维度："" / "global" / "spark"
+
 	Proxy         *Proxy
 	AccountGroups []AccountGroup
 	GroupIDs      []int64
@@ -149,6 +152,32 @@ func (a *Account) IsSchedulable() bool {
 		return false
 	}
 	if a.IsAPIKeyOrBedrock() && a.IsQuotaExceeded() {
+		return false
+	}
+	return true
+}
+
+// IsCredentialUsableForShadow 报告本账号(作为某 spark 影子的母账号)的凭据/传输是否可被影子透传使用。
+//
+// 检查「凭据/账号/传输可用性」:
+//   - 账号 active(非禁用/删除);
+//   - OAuth token 未过期(AutoPauseOnExpired+ExpiresAt);
+//   - 未处于 TempUnschedulableUntil 冷却期 —— 对 OpenAI 账号该字段由 401 鉴权失败 /
+//     token 刷新耗尽 / transport·proxy 故障写入(ratelimit/token_refresh/upstream_transport),
+//     都代表**共享凭据或传输通道坏死**;影子共享母 token+proxy,故母处于该冷却期时影子也不可用。
+//
+// **刻意排除** global 维度的限流/过载窗口(RateLimitResetAt / OverloadUntil)与母账号自身的
+// 手动 Schedulable 开关:spark 影子拥有独立 spark 配额窗口,母账号 global 429(走 RateLimitResetAt)
+// 不应连坐 spark(否则重新耦合影子架构本应解耦的两条 429 道)。nil receiver 返回 false。
+func (a *Account) IsCredentialUsableForShadow() bool {
+	if a == nil || !a.IsActive() {
+		return false
+	}
+	now := time.Now()
+	if a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt) {
+		return false
+	}
+	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
 		return false
 	}
 	return true
@@ -2540,4 +2569,18 @@ func parseExtraInt(value any) int {
 		}
 	}
 	return 0
+}
+
+// IsShadow 报告账号是否为影子账号（parent_account_id 非空；当前唯一预设是 spark 维度）。
+func (a *Account) IsShadow() bool { return a != nil && a.ParentAccountID != nil }
+
+// IsCredentialShadow 语义别名，供「凭据消费者跳过影子」处使用（管理/后台 OAuth 路径）。
+func (a *Account) IsCredentialShadow() bool { return a.IsShadow() }
+
+// QuotaDimensionOrDefault 返回账号的用量维度，未设置时回退 "global"。
+func (a *Account) QuotaDimensionOrDefault() string {
+	if a == nil || strings.TrimSpace(a.QuotaDimension) == "" {
+		return QuotaDimensionGlobal
+	}
+	return a.QuotaDimension
 }

@@ -249,8 +249,9 @@ func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
 	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
 }
 
-// Revoke handles revoking a subscription
-// DELETE /api/v1/admin/subscriptions/:id
+// Revoke handles revoking a subscription.
+// POST /api/v1/admin/subscriptions/:id/revoke
+// DELETE /api/v1/admin/subscriptions/:id is kept for backward compatibility.
 func (h *SubscriptionHandler) Revoke(c *gin.Context) {
 	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

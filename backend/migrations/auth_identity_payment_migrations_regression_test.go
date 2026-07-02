@@ -168,3 +168,37 @@ func TestMigration151AddsAccountAutoPauseExpiryPartialIndex(t *testing.T) {
 	require.Contains(t, sql, "auto_pause_on_expired = TRUE")
 	require.Contains(t, sql, "expires_at IS NOT NULL")
 }
+
+func TestMigration154AddsSparkShadowColumnsAndConstraintsWithoutHotIndexes(t *testing.T) {
+	content, err := FS.ReadFile("154_account_spark_shadow.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS parent_account_id BIGINT")
+	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS quota_dimension VARCHAR(20) NOT NULL DEFAULT 'global'")
+	require.Contains(t, sql, "chk_accounts_parent_dimension")
+	// 约束已放开为「影子 ⇒ 非 global 维度」（spark 不再写死进 parent 约束）
+	require.Contains(t, sql, "parent_account_id IS NOT NULL AND quota_dimension <> 'global'")
+	require.NotContains(t, sql, "parent_account_id IS NOT NULL AND quota_dimension = 'spark'")
+	require.Contains(t, sql, "chk_accounts_parent_not_self")
+	require.Contains(t, sql, "fk_accounts_parent_account_id")
+	require.Contains(t, sql, "FOREIGN KEY (parent_account_id) REFERENCES accounts(id)")
+	require.Contains(t, sql, "ON DELETE RESTRICT")
+	require.Contains(t, sql, "NOT VALID")
+	require.NotContains(t, sql, "CREATE INDEX")
+	require.NotContains(t, sql, "CREATE UNIQUE INDEX")
+	require.NotContains(t, sql, "CONCURRENTLY")
+}
+
+func TestMigration154aAddsSparkShadowIndexesConcurrently(t *testing.T) {
+	content, err := FS.ReadFile("154a_account_spark_shadow_indexes_notx.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_accounts_parent_account_id")
+	require.Contains(t, sql, "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS uq_accounts_spark_shadow_per_parent")
+	require.Contains(t, sql, "ON accounts (parent_account_id)")
+	require.Contains(t, sql, "WHERE parent_account_id IS NOT NULL")
+	require.Contains(t, sql, "quota_dimension = 'spark'")
+	require.Contains(t, sql, "deleted_at IS NULL")
+}

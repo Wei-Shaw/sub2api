@@ -136,6 +136,16 @@
 </td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://anpin.ai"><img src="assets/partners/logos/anpin.jpg" alt="anpin" width="150"></a></td>
+<td>感谢 <a href="https://anpin.ai">anpin.ai</a> 赞助本项目！anpin.ai 是一家致力于推动 AI 普惠的高端 AI 中转服务平台。我们以先进的技术架构和全球分布式部署，为用户提供直达国际顶尖大模型的高速通道。<br>
+自建一手号池：1-3S超快响应 支持同行分发<br>
+极致稳定：多线智能路由 + 冗余备份系统，确保服务全年无休、高可用运行；<br>
+模型真实性：不做任何内容干预与二次过滤，让您体验到最纯粹、最强大的原生模型能力。<br>
+充值1：1 企业级服务可开票，安品Ai不只是中转站，更是您连接前沿智能世界的安全、可靠、高效桥梁
+</td>
+</tr>
+
 </table>
 
 ## 项目概述
@@ -462,7 +472,8 @@ pnpm run build
 
 # 4. 编译后端（嵌入前端）
 cd ../backend
-go build -tags embed -o sub2api ./cmd/server
+VERSION="$(./scripts/resolve-version.sh)"
+go build -tags embed -ldflags="-X main.Version=${VERSION}" -o sub2api ./cmd/server
 
 # 5. 创建配置文件
 cp ../deploy/config.example.yaml ./config.yaml

@@ -326,6 +326,61 @@ func (s *UserSubscriptionRepoSuite) TestList_FilterByStatus() {
 	s.Require().Equal(service.SubscriptionStatusExpired, subs[0].Status)
 }
 
+func (s *UserSubscriptionRepoSuite) TestList_IncludesRevokedWhenStatusEmpty() {
+	user1 := s.mustCreateUser("allstatus1@test.com", service.RoleUser)
+	user2 := s.mustCreateUser("allstatus2@test.com", service.RoleUser)
+	user3 := s.mustCreateUser("allstatus3@test.com", service.RoleUser)
+	group1 := s.mustCreateGroup("g-allstatus-1")
+	group2 := s.mustCreateGroup("g-allstatus-2")
+	group3 := s.mustCreateGroup("g-allstatus-3")
+
+	s.mustCreateSubscription(user1.ID, group1.ID, nil)
+	s.mustCreateSubscription(user2.ID, group2.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetStatus(service.SubscriptionStatusExpired)
+		c.SetExpiresAt(time.Now().Add(-24 * time.Hour))
+	})
+	revoked := s.mustCreateSubscription(user3.ID, group3.ID, nil)
+	s.Require().NoError(s.repo.Delete(s.ctx, revoked.ID))
+
+	subs, pag, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, nil, nil, "", "", "", "")
+	s.Require().NoError(err)
+	s.Require().Len(subs, 3)
+	s.Require().Equal(int64(3), pag.Total)
+
+	var gotRevoked *service.UserSubscription
+	for i := range subs {
+		if subs[i].ID == revoked.ID {
+			gotRevoked = &subs[i]
+			break
+		}
+	}
+	s.Require().NotNil(gotRevoked, "all status should include soft-deleted subscription")
+	s.Require().Equal(service.SubscriptionStatusRevoked, gotRevoked.Status)
+	s.Require().NotNil(gotRevoked.DeletedAt)
+	s.Require().NotNil(gotRevoked.User)
+	s.Require().NotNil(gotRevoked.Group)
+}
+
+func (s *UserSubscriptionRepoSuite) TestList_FilterByRevokedStatus() {
+	user1 := s.mustCreateUser("revokedfilter1@test.com", service.RoleUser)
+	user2 := s.mustCreateUser("revokedfilter2@test.com", service.RoleUser)
+	group1 := s.mustCreateGroup("g-revoked-1")
+	group2 := s.mustCreateGroup("g-revoked-2")
+
+	active := s.mustCreateSubscription(user1.ID, group1.ID, nil)
+	revoked := s.mustCreateSubscription(user2.ID, group2.ID, nil)
+	s.Require().NoError(s.repo.Delete(s.ctx, revoked.ID))
+
+	subs, pag, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, nil, nil, service.SubscriptionStatusRevoked, "", "", "")
+	s.Require().NoError(err)
+	s.Require().Len(subs, 1)
+	s.Require().Equal(int64(1), pag.Total)
+	s.Require().Equal(revoked.ID, subs[0].ID)
+	s.Require().NotEqual(active.ID, subs[0].ID)
+	s.Require().Equal(service.SubscriptionStatusRevoked, subs[0].Status)
+	s.Require().NotNil(subs[0].DeletedAt)
+}
+
 // --- Usage tracking ---
 
 func (s *UserSubscriptionRepoSuite) TestIncrementUsage() {

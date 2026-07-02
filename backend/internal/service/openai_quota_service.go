@@ -13,6 +13,13 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
+// ErrSparkShadowResetNotSupported is returned when ResetCredit is called on a
+// spark shadow account. Shadow accounts do not hold credentials of their own;
+// the caller must reset the parent account directly. It is a structured
+// infraerrors value so the handler maps it to 409 Conflict (not a bare 500);
+// errors.Is still matches it by identity since ResetCredit returns this var.
+var ErrSparkShadowResetNotSupported = infraerrors.New(http.StatusConflict, "SPARK_SHADOW_RESET_NOT_SUPPORTED", "spark shadow account does not support credit reset; reset the parent account")
+
 // Endpoints used by the OpenAI/ChatGPT/Codex quota query and reset feature.
 const (
 	chatGPTUsageURL             = "https://chatgpt.com/backend-api/wham/usage"
@@ -159,6 +166,24 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 // The redeem_request_id is auto-generated (uuid-like) — upstream uses it for
 // idempotency. Returns the consumed credit metadata so the UI can refresh.
 func (s *OpenAIQuotaService) ResetCredit(ctx context.Context, accountID int64) (*OpenAIQuotaResetResult, error) {
+	// Shadow guard: resetting credits via a shadow account would silently
+	// operate on the parent's quota; that is surprising and unwanted. Callers
+	// must reset the parent account directly.
+	//
+	// Fail-closed: if the account cannot be loaded (transient DB error), we
+	// must NOT fall through to prepareUpstreamCall. That function resolves a
+	// shadow to its parent and would perform a parent-level reset — exactly
+	// what this guard must prevent. Return the load error instead.
+	if s.accountRepo != nil {
+		acc, loadErr := s.accountRepo.GetByID(ctx, accountID)
+		if loadErr != nil {
+			return nil, infraerrors.Newf(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found: %v", loadErr)
+		}
+		if acc.IsShadow() {
+			return nil, ErrSparkShadowResetNotSupported
+		}
+	}
+
 	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -225,6 +250,17 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 	}
 	if account.Type != AccountTypeOAuth {
 		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_TYPE", "account is not an OAuth account")
+	}
+
+	// Spark shadow accounts do not hold their own credentials; resolve to the
+	// parent account so that chatgpt_account_id / access_token / proxy all come
+	// from the parent. This must happen BEFORE the chatgpt_account_id check.
+	if account.IsShadow() {
+		resolved, rerr := resolveCredentialAccount(ctx, s.accountRepo, account)
+		if rerr != nil {
+			return "", "", "", false, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_SHADOW_RESOLVE_FAILED", "failed to resolve shadow account: %v", rerr)
+		}
+		account = resolved
 	}
 
 	chatGPTAccountID = strings.TrimSpace(account.GetCredential("chatgpt_account_id"))
@@ -296,6 +332,86 @@ func generateRedeemRequestID() (string, error) {
 	b[8] = (b[8] & 0x3f) | 0x80
 	hexStr := hex.EncodeToString(b)
 	return fmt.Sprintf("%s-%s-%s-%s-%s", hexStr[0:8], hexStr[8:12], hexStr[12:16], hexStr[16:20], hexStr[20:]), nil
+}
+
+// buildCodexSparkWindowExtraUpdates extracts Codex Spark usage windows from the
+// /wham/usage response body's additional_rate_limits, matching the entry with
+// MeteredFeature == "codex_bengalfox". It produces plain codex_* keys (NOT the
+// Method-Z "codex_spark_" prefix) so that a spark shadow account's extra map
+// is populated with the same key names used by the scheduling / frontend layers.
+// Returns nil when no codex_bengalfox entry is present or when the RateLimit
+// yields no window data.
+func buildCodexSparkWindowExtraUpdates(usage *OpenAIQuotaUsage, now time.Time) map[string]any {
+	if usage == nil {
+		return nil
+	}
+	var spark *OpenAIRateLimit
+	for i := range usage.AdditionalRateLimits {
+		a := usage.AdditionalRateLimits[i]
+		if a.MeteredFeature == "codex_bengalfox" {
+			spark = a.RateLimit
+			break
+		}
+	}
+	if spark == nil {
+		return nil
+	}
+
+	// Reuse OpenAICodexUsageSnapshot / Normalize to map primary/secondary windows
+	// to canonical 5h/7d buckets (same logic as probeOpenAICodexSnapshot).
+	snap := &OpenAICodexUsageSnapshot{}
+	if w := spark.PrimaryWindow; w != nil {
+		p := w.UsedPercent
+		snap.PrimaryUsedPercent = &p
+		ra := int(w.ResetAfterSeconds)
+		snap.PrimaryResetAfterSeconds = &ra
+		wm := int(w.LimitWindowSeconds / 60)
+		snap.PrimaryWindowMinutes = &wm
+	}
+	if w := spark.SecondaryWindow; w != nil {
+		p := w.UsedPercent
+		snap.SecondaryUsedPercent = &p
+		ra := int(w.ResetAfterSeconds)
+		snap.SecondaryResetAfterSeconds = &ra
+		wm := int(w.LimitWindowSeconds / 60)
+		snap.SecondaryWindowMinutes = &wm
+	}
+
+	normalized := snap.Normalize()
+	if normalized == nil {
+		return nil
+	}
+
+	updates := make(map[string]any)
+	if normalized.Used5hPercent != nil {
+		updates["codex_5h_used_percent"] = *normalized.Used5hPercent
+	}
+	if normalized.Reset5hSeconds != nil {
+		updates["codex_5h_reset_after_seconds"] = *normalized.Reset5hSeconds
+	}
+	if normalized.Window5hMinutes != nil {
+		updates["codex_5h_window_minutes"] = *normalized.Window5hMinutes
+	}
+	if normalized.Used7dPercent != nil {
+		updates["codex_7d_used_percent"] = *normalized.Used7dPercent
+	}
+	if normalized.Reset7dSeconds != nil {
+		updates["codex_7d_reset_after_seconds"] = *normalized.Reset7dSeconds
+	}
+	if normalized.Window7dMinutes != nil {
+		updates["codex_7d_window_minutes"] = *normalized.Window7dMinutes
+	}
+	if r := codexResetAtRFC3339(now, normalized.Reset5hSeconds); r != nil {
+		updates["codex_5h_reset_at"] = *r
+	}
+	if r := codexResetAtRFC3339(now, normalized.Reset7dSeconds); r != nil {
+		updates["codex_7d_reset_at"] = *r
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	updates["codex_usage_updated_at"] = now.Format(time.RFC3339)
+	return updates
 }
 
 // mapUpstreamStatus collapses upstream HTTP statuses into a stable set we
