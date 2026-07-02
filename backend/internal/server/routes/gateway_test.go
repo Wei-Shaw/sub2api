@@ -97,6 +97,10 @@ func TestGatewayRoutesFalImagesDispatch(t *testing.T) {
 		"/images/edits",
 	} {
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-image-2","prompt":"draw a cat"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
 		require.Equal(t, http.StatusInternalServerError, w.Code, "path=%s should reach fal Images handler", path)
 		require.Contains(t, w.Body.String(), "User context not found", "path=%s should be handled by fal facade", path)
 	}
