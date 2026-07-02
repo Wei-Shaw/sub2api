@@ -657,3 +657,10 @@ G3 建的 `ProvideTLSFingerprintRouterServices`([]*T slice provider)已被 Gatew
 **验证**:容器 gofmt clean、`go build ./...` BUILD_OK、`go vet` VET_OK、新测试 PASS、service(45.9s)/handler(22s)/handler-admin/cmd-server 全 ok;前端 `vue-tsc` exit 0、SettingsView spec(20)+ settings-api spec 全 pass。`git diff -w` 净 106 行。
 
 **待人工(运行时)**:采真实 Claude Code 指纹存 profile → 设全局默认 → 抓包确认这类账号出站 JA3 = 真 Claude Code(与 claude-cli UA 自洽)。**纯 Anthropic API-key 账号不受影响**(不 mimic、SupportsTLSFingerprint=false)。UI 下拉目前是 number 输入(填 profile ID),后续可做成 profile 下拉(nice-to-have)。
+
+### 本地测试·档1 路由逻辑测试 — ✅ 完成
+- 新增 `gateway_tls_routing_test.go`:按入站 UA 驱动真实 `MatchUserAgent`+规则匹配+profile 解析,断言「UA→选中 profile」。
+  - `TestGatewayService_AnthropicRoutingByUA`:claude→claude-fp / python→python-fp / 未命中→回落账号固定 profile(级联 router 规则>账号固定)。
+  - `TestOpenAIGatewayService_RoutingByUA`:codex_cli_rs→codex-fp(+断言规则改写 UpstreamUserAgent/Originator)/ codex_vscode→vscode-fp / 浏览器 UA→未命中回落账号固定。
+  - 用现成 `newTLSFingerprintRouterTestService` 桩 + `newUATestContext(ua)` 造带 UA 的 gin.Context。容器 gofmt/vet/test 全绿。
+- 档2(临时日志+本地 curl 不同 UA)、档3(tcpdump 抓真实上游 ClientHello + ja3 工具比对,因 InsecureSkipVerify 已禁用)留人工按需跑。
