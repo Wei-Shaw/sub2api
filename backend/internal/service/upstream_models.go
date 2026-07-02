@@ -154,6 +154,7 @@ REDACTED
 	baseURL := "https://api.anthropic.com"
 	authHeaderName := ""
 	authHeaderValue := ""
+	apiKeyAuthToken := ""
 	betaHeader := ""
 
 	if account.IsOAuth() {
@@ -180,8 +181,7 @@ REDACTED else if account.Type == AccountTypeAPIKey {
 		if strings.TrimSpace(baseURL) == "" {
 			baseURL = "https://api.anthropic.com"
 	REDACTED
-		authHeaderName = "x-api-key"
-		authHeaderValue = apiKey
+		apiKeyAuthToken = apiKey
 		betaHeader = claude.APIKeyBetaHeader
 REDACTED else {
 		return nil, newUpstreamModelSyncUnsupportedError(
@@ -203,7 +203,11 @@ REDACTED
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("anthropic-beta", betaHeader)
-	req.Header.Set(authHeaderName, authHeaderValue)
+	if authHeaderName != "" {
+		req.Header.Set(authHeaderName, authHeaderValue)
+REDACTED else {
+		setAnthropicAPIKeyAuthHeader(req.Header, account, apiKeyAuthToken)
+REDACTED
 	return req, nil
 REDACTED
 

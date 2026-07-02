@@ -5947,7 +5947,7 @@ REDACTED
 	req.Header.Del("x-api-key")
 	req.Header.Del("x-goog-api-key")
 	req.Header.Del("cookie")
-	setHeaderRaw(req.Header, "x-api-key", token)
+	setAnthropicAPIKeyAuthHeader(req.Header, account, token)
 
 	if getHeaderRaw(req.Header, "content-type") == "" {
 		setHeaderRaw(req.Header, "content-type", "application/json")
@@ -6900,7 +6900,7 @@ REDACTED
 	if tokenType == "oauth" {
 		setHeaderRaw(req.Header, "authorization", "Bearer "+token)
 REDACTED else {
-		setHeaderRaw(req.Header, "x-api-key", token)
+		setAnthropicAPIKeyAuthHeader(req.Header, account, token)
 REDACTED
 
 	// 白名单透传 headers
@@ -10429,7 +10429,7 @@ REDACTED
 	req.Header.Del("x-api-key")
 	req.Header.Del("x-goog-api-key")
 	req.Header.Del("cookie")
-	req.Header.Set("x-api-key", token)
+	setAnthropicAPIKeyAuthHeader(req.Header, account, token)
 
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
@@ -10521,7 +10521,7 @@ REDACTED
 	if tokenType == "oauth" {
 		setHeaderRaw(req.Header, "authorization", "Bearer "+token)
 REDACTED else {
-		setHeaderRaw(req.Header, "x-api-key", token)
+		setAnthropicAPIKeyAuthHeader(req.Header, account, token)
 REDACTED
 
 	// 白名单透传 headers（恢复真实 wire casing）

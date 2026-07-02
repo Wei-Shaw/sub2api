@@ -60,3 +60,59 @@ REDACTED)
 		require.False(t, openai.IsAnthropicAPIKeyPassthroughEnabled())
 REDACTED)
 REDACTED
+
+func TestAccount_GetAnthropicAPIKeyAuthScheme(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		want    string
+REDACTED{
+		{
+			name: "missing extra defaults to x-api-key",
+			account: &Account{
+				Platform: PlatformAnthropic,
+				Type:     AccountTypeAPIKey,
+		REDACTED,
+			want: AnthropicAPIKeyAuthSchemeXAPIKey,
+	REDACTED,
+		{
+			name: "explicit bearer",
+			account: &Account{
+				Platform: PlatformAnthropic,
+				Type:     AccountTypeAPIKey,
+				Extra: map[string]any{
+					"anthropic_apikey_auth_scheme": AnthropicAPIKeyAuthSchemeAuthorizationBearer,
+			REDACTED,
+		REDACTED,
+			want: AnthropicAPIKeyAuthSchemeAuthorizationBearer,
+	REDACTED,
+		{
+			name: "invalid value defaults to x-api-key",
+			account: &Account{
+				Platform: PlatformAnthropic,
+				Type:     AccountTypeAPIKey,
+				Extra: map[string]any{
+					"anthropic_apikey_auth_scheme": "bearer",
+			REDACTED,
+		REDACTED,
+			want: AnthropicAPIKeyAuthSchemeXAPIKey,
+	REDACTED,
+		{
+			name: "non Anthropic API key defaults to x-api-key",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Extra: map[string]any{
+					"anthropic_apikey_auth_scheme": AnthropicAPIKeyAuthSchemeAuthorizationBearer,
+			REDACTED,
+		REDACTED,
+			want: AnthropicAPIKeyAuthSchemeXAPIKey,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.account.GetAnthropicAPIKeyAuthScheme())
+	REDACTED)
+REDACTED
+REDACTED
