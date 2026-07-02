@@ -93,6 +93,23 @@ REDACTED
 	require.Equal(t, "anthropic-key", anthropicReq.Header.Get("x-api-key"))
 	require.Equal(t, "2023-06-01", anthropicReq.Header.Get("anthropic-version"))
 
+	anthropicBearerReq, err := svc.buildAnthropicUpstreamModelsRequest(ctx, &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+REDACTED
+			"api_key":  "ollama-key",
+			"base_url": "https://ollama.com",
+	REDACTED,
+		Extra: map[string]any{
+			"anthropic_apikey_auth_scheme": AnthropicAPIKeyAuthSchemeAuthorizationBearer,
+	REDACTED,
+REDACTED)
+REDACTED
+	require.Equal(t, "https://ollama.com/v1/models", anthropicBearerReq.URL.String())
+	require.Equal(t, "Bearer ollama-key", anthropicBearerReq.Header.Get("Authorization"))
+	require.Empty(t, anthropicBearerReq.Header.Get("x-api-key"))
+	require.Equal(t, "2023-06-01", anthropicBearerReq.Header.Get("anthropic-version"))
+
 	openAIReq, err := svc.buildOpenAIUpstreamModelsRequest(ctx, &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,
