@@ -257,6 +257,10 @@ func TestAccountHandlerListSchedulerScoreIgnoresPagination(t *testing.T) {
 				SchedulerScore struct {
 					BaseScore float64 `json:"base_score"`
 				} `json:"scheduler_score"`
+				SchedulerScores []struct {
+					GroupID   *int64  `json:"group_id"`
+					BaseScore float64 `json:"base_score"`
+				} `json:"scheduler_scores"`
 			} `json:"items"`
 		} `json:"data"`
 	}
@@ -264,4 +268,5 @@ func TestAccountHandlerListSchedulerScoreIgnoresPagination(t *testing.T) {
 	require.Len(t, payload.Data.Items, 1)
 	require.Equal(t, int64(301), payload.Data.Items[0].ID)
 	require.Less(t, payload.Data.Items[0].SchedulerScore.BaseScore, 3.75)
+	require.Empty(t, payload.Data.Items[0].SchedulerScores)
 }

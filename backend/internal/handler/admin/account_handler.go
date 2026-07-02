@@ -317,7 +317,6 @@ func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 
 	pageOpenAIAccountIDs := make(map[int64]struct{})
 	groupIDs := make(map[int64]struct{})
-	includeUngrouped := false
 	for i := range accounts {
 		account := &accounts[i]
 		if account.Platform != service.PlatformOpenAI {
@@ -325,7 +324,6 @@ func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 		}
 		pageOpenAIAccountIDs[account.ID] = struct{}{}
 		if len(account.AccountGroups) == 0 && len(account.GroupIDs) == 0 {
-			includeUngrouped = true
 			continue
 		}
 		for _, accountGroup := range account.AccountGroups {
@@ -398,26 +396,12 @@ func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 			scoreGroupPool(&gid, groupNameByID, groupPriorityByAccount, pool)
 		}
 
-		if includeUngrouped {
-			pool, err := lister.ListOpenAISchedulableAccountsForSchedulerScore(ctx, nil)
-			if err != nil {
-				slog.Warn("openai_scheduler_ungrouped_score_pool_failed", "error", err)
-			} else {
-				scoreGroupPool(nil, nil, nil, pool)
-			}
-		}
 	}
 
 	for accountID := range groupScoresByAccount {
 		sort.SliceStable(groupScoresByAccount[accountID], func(i, j int) bool {
 			left := groupScoresByAccount[accountID][i]
 			right := groupScoresByAccount[accountID][j]
-			if left.GroupID == nil {
-				return right.GroupID != nil
-			}
-			if right.GroupID == nil {
-				return false
-			}
 			return *left.GroupID < *right.GroupID
 		})
 	}
