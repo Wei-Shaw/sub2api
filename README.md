@@ -133,6 +133,16 @@ Please read the following carefully before using this project:
 </td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://anpin.ai"><img src="assets/partners/logos/anpin.jpg" alt="anpin" width="150"></a></td>
+<td>Thanks to <a href="https://anpin.ai">anpin.ai</a> for sponsoring this project! anpin.ai is a premium AI relay service platform dedicated to advancing AI accessibility. With an advanced technical architecture and globally distributed deployment, it provides users with a direct high-speed channel to the world's top-tier large language models.<br>
+Self-built primary account pool: 1-3s ultra-fast response, supports channel-partner distribution<br>
+Extreme stability: multi-line intelligent routing + redundant backup system, ensuring year-round high-availability operation;<br>
+Model authenticity: no content intervention or secondary filtering — experience the purest, most powerful native model capabilities.<br>
+1:1 top-up, enterprise-grade service with invoicing available. Anpin AI is not just a relay — it's your secure, reliable, and efficient bridge to the frontier world of intelligence.
+</td>
+</tr>
+
 </table>
 
 ## Overview
@@ -447,7 +457,8 @@ pnpm run build
 
 # 4. Build backend with embedded frontend
 cd ../backend
-go build -tags embed -o sub2api ./cmd/server
+VERSION="$(./scripts/resolve-version.sh)"
+go build -tags embed -ldflags="-X main.Version=${VERSION}" -o sub2api ./cmd/server
 
 # 5. Create configuration file
 cp ../deploy/config.example.yaml ./config.yaml

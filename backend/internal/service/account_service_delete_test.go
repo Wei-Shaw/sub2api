@@ -215,6 +215,10 @@ func (s *accountRepoStub) RevertProxyFallback(ctx context.Context, accountID int
 	panic("unexpected RevertProxyFallback call")
 }
 
+func (s *accountRepoStub) ListShadowsByParent(ctx context.Context, parentID int64) ([]*Account, error) {
+	return nil, nil
+}
+
 // TestAccountService_Delete_NotFound 测试删除不存在的账号时返回正确的错误。
 // 预期行为：
 //   - ExistsByID 返回 false（账号不存在）
