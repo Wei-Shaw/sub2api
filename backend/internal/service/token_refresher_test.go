@@ -260,3 +260,30 @@ func TestOpenAITokenRefresher_CanRefresh(t *testing.T) {
 		})
 	}
 }
+
+func TestKiroTokenRefresher_NeedsRefreshMissingExpiresAtWithRefreshToken(t *testing.T) {
+	refresher := NewKiroTokenRefresher(nil)
+	account := &Account{
+		Platform: PlatformKiro,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":  "access-token",
+			"refresh_token": "refresh-token",
+		},
+	}
+
+	require.True(t, refresher.NeedsRefresh(account, 30*time.Minute))
+}
+
+func TestKiroTokenRefresher_NeedsRefreshMissingExpiresAtWithoutRefreshToken(t *testing.T) {
+	refresher := NewKiroTokenRefresher(nil)
+	account := &Account{
+		Platform: PlatformKiro,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "access-token",
+		},
+	}
+
+	require.False(t, refresher.NeedsRefresh(account, 30*time.Minute))
+}

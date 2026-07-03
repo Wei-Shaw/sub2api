@@ -44,7 +44,7 @@ func TestAccountRepository_ListOAuthRefreshCandidates_SQLFilter(t *testing.T) {
 	require.Contains(t, normalized, "deleted_at IS NULL")
 	require.Contains(t, normalized, "status = 'active'")
 	require.Contains(t, normalized, "type = 'oauth'")
-	require.Contains(t, normalized, "platform IN ('anthropic', 'openai', 'gemini', 'antigravity')")
+	require.Contains(t, normalized, "platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro')")
 	require.Contains(t, normalized, "credentials ? 'refresh_token'")
 	require.Contains(t, normalized, "btrim(credentials->>'refresh_token') <> ''")
 	require.Contains(t, normalized, "temp_unschedulable_until > NOW()")

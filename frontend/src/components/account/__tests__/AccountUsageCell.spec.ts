@@ -25,6 +25,15 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
+vi.mock('@/i18n', () => ({
+  i18n: {
+    global: {
+      t: (key: string) => key
+    }
+  },
+  getLocale: () => 'en'
+}))
+
 function makeAccount(overrides: Partial<Account>): Account {
   return {
     id: 1,
@@ -47,6 +56,12 @@ function makeAccount(overrides: Partial<Account>): Account {
     overload_until: null,
     temp_unschedulable_until: null,
     temp_unschedulable_reason: null,
+    kiro_quota_state: null,
+    kiro_quota_reason: null,
+    kiro_quota_reset_at: null,
+    kiro_runtime_state: null,
+    kiro_runtime_reason: null,
+    kiro_runtime_reset_at: null,
     session_window_start: null,
     session_window_end: null,
     session_window_status: null,
@@ -528,6 +543,234 @@ describe('AccountUsageCell', () => {
   expect(getUsage).toHaveBeenCalledWith(2004)
   expect(wrapper.text()).toContain('5h|100|106540000')
   expect(wrapper.text()).toContain('7d|100|106540000')
+  })
+
+  it('Kiro OAuth 会用 passive source 拉取并展示 credits 额度', async () => {
+    const account = makeAccount({
+      id: 3001,
+      platform: 'kiro',
+      type: 'oauth',
+      extra: {},
+      credentials: {}
+    })
+
+    getUsage.mockResolvedValue({
+      source: 'passive',
+      kiro_subscription_name: 'KIRO PRO+',
+      kiro_overages_enabled: true,
+      kiro_credit: {
+        current_usage: 125,
+        usage_limit: 2000,
+        percentage_used: 6.25,
+      },
+      kiro_bonus: {
+        current_usage: 25,
+        usage_limit: 500,
+        percentage_used: 5,
+        days_remaining: 7,
+      },
+      kiro_overage: {
+        current_overages: 2,
+        overage_charges: 0.08,
+        currency_symbol: '$',
+        currency_code: 'USD',
+      },
+      kiro_reset_at: '2099-03-13T12:00:00Z',
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(3001, 'passive')
+    expect(wrapper.emitted('kiroUsageMeta')?.[0]).toEqual([
+      {
+        plan_type: 'KIRO PRO+',
+        kiro_overages_enabled: true
+      }
+    ])
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroCredits')
+    expect(wrapper.text()).toContain('125 / 2.0K')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroBonus')
+    expect(wrapper.text()).toContain('25 / 500')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroDaysLeft')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroReset')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroOverage 2 ($0.08)')
+  })
+
+  it('Kiro OAuth 会展示运行时冷却状态', async () => {
+    getUsage.mockResolvedValue({
+      source: 'passive',
+      kiro_runtime_state: 'cooldown',
+      kiro_runtime_reason: 'rate_limit_exceeded',
+      kiro_runtime_reset_at: '2099-03-13T12:00:00Z',
+      kiro_credit: {
+        current_usage: 10,
+        usage_limit: 100,
+        percentage_used: 10,
+      },
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3002,
+          platform: 'kiro',
+          type: 'oauth',
+          extra: {},
+          credentials: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.accounts.status.rateLimited')
+    expect(wrapper.text()).toContain('admin.accounts.status.rateLimitedUntil')
+  })
+
+  it('Kiro OAuth 会展示 overage active 与 exhausted 状态', async () => {
+    getUsage.mockResolvedValueOnce({
+      source: 'passive',
+      kiro_quota_state: 'overage_active',
+      kiro_quota_reason: 'overages_enabled',
+      kiro_quota_reset_at: '2099-03-13T12:00:00Z',
+      kiro_overages_enabled: true,
+      kiro_credit: {
+        current_usage: 2100,
+        usage_limit: 2000,
+        percentage_used: 100,
+      },
+      kiro_overage: {
+        current_overages: 3,
+        overage_charges: 0.12,
+        currency_symbol: '$',
+      },
+    })
+
+    const activeWrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3005,
+          platform: 'kiro',
+          type: 'oauth',
+          extra: {},
+          credentials: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(activeWrapper.text()).toContain('admin.accounts.status.overageActive')
+    expect(activeWrapper.text()).not.toContain('admin.accounts.status.overageActiveUntil')
+
+    getUsage.mockResolvedValueOnce({
+      source: 'passive',
+      kiro_quota_state: 'overage_exhausted',
+      kiro_quota_reason: 'usage API error: overage exhausted',
+      kiro_quota_reset_at: '2099-03-13T12:00:00Z',
+      error: 'usage API error: kiro usage request failed (status 429): {"message":"overage exhausted"}',
+    })
+
+    const exhaustedWrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3006,
+          platform: 'kiro',
+          type: 'oauth',
+          extra: {},
+          credentials: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(exhaustedWrapper.text()).toContain('admin.accounts.status.overageExhausted')
+    expect(exhaustedWrapper.text()).toContain('admin.accounts.status.overageExhaustedUntil')
+  })
+
+  it('Kiro OAuth 会展示 profile 异常和 usage forbidden 徽章', async () => {
+    getUsage.mockResolvedValueOnce({
+      source: 'passive',
+      error_code: 'forbidden',
+      error: 'usage API error: kiro usage request failed (status 400): {"message":"profileArn is required for this request."}',
+    })
+
+    const profileWrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3003,
+          platform: 'kiro',
+          type: 'oauth',
+          extra: {},
+          credentials: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(profileWrapper.text()).toContain('admin.accounts.usageError')
+
+    getUsage.mockResolvedValueOnce({
+      source: 'passive',
+      error_code: 'forbidden',
+      error: 'usage API error: kiro usage request failed (status 403): {"message":"User is not authorized to access this feature."}',
+    })
+
+    const forbiddenWrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3004,
+          platform: 'kiro',
+          type: 'oauth',
+          extra: {},
+          credentials: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(forbiddenWrapper.text()).toContain('admin.accounts.forbidden')
   })
 
   it('Key 账号会展示 today stats 徽章并带 A/U 提示', async () => {

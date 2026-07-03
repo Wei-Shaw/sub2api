@@ -282,6 +282,9 @@ func sanitizeOpsUpstreamErrors(entry *OpsInsertErrorLogInput) error {
 		out := *ev
 
 		out.Platform = strings.TrimSpace(out.Platform)
+		out.RequestedModel = truncateString(strings.TrimSpace(out.RequestedModel), 128)
+		out.MappedModel = truncateString(strings.TrimSpace(out.MappedModel), 128)
+		out.KiroModelID = truncateString(strings.TrimSpace(out.KiroModelID), 128)
 		out.UpstreamRequestID = truncateString(strings.TrimSpace(out.UpstreamRequestID), 128)
 		out.Kind = truncateString(strings.TrimSpace(out.Kind), 64)
 
@@ -336,6 +339,27 @@ func (s *OpsService) GetErrorLogs(ctx context.Context, filter *OpsErrorLogFilter
 	}
 
 	return result, nil
+}
+
+func (s *OpsService) DeleteErrorLogs(ctx context.Context, filter *OpsErrorLogFilter) (int64, error) {
+	if err := s.RequireMonitoringEnabled(ctx); err != nil {
+		return 0, err
+	}
+	if filter == nil || filter.StartTime == nil || filter.StartTime.IsZero() || filter.EndTime == nil || filter.EndTime.IsZero() {
+		return 0, infraerrors.BadRequest("INVALID_TIME_RANGE", "start_time and end_time are required")
+	}
+	if !filter.EndTime.After(*filter.StartTime) {
+		return 0, infraerrors.BadRequest("INVALID_TIME_RANGE", "end_time must be after start_time")
+	}
+	if s.opsRepo == nil {
+		return 0, nil
+	}
+	deleted, err := s.opsRepo.DeleteErrorLogs(ctx, filter)
+	if err != nil {
+		log.Printf("[Ops] DeleteErrorLogs failed: %v", err)
+		return 0, err
+	}
+	return deleted, nil
 }
 
 // ListUserErrorRequests 返回某个用户自己的错误请求（精简脱敏）。

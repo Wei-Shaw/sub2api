@@ -216,6 +216,32 @@ function buildVertexAccount() {
   } as any
 }
 
+function buildKiroOAuthAccount() {
+  return {
+    id: 3,
+    name: 'Kiro OAuth',
+    notes: '',
+    platform: 'kiro',
+    type: 'oauth',
+    credentials: {
+      model_mapping: {
+        'kiro-model': 'kiro-model'
+      }
+    },
+    extra: {
+      kiro_credit_unit_price_usd: 0.071
+    },
+    proxy_id: null,
+    concurrency: 1,
+    priority: 1,
+    rate_multiplier: 1,
+    status: 'active',
+    group_ids: [],
+    expires_at: null,
+    auto_pause_on_expired: false
+  } as any
+}
+
 function buildAntigravityAccount(projectId = 'configured-project') {
   return {
     id: 3,
@@ -583,15 +609,31 @@ describe('EditAccountModal', () => {
     checkMixedChannelRiskMock.mockReset()
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
     updateAccountMock.mockResolvedValue(account)
-
-    const wrapper = mountModal(account)
-
     await wrapper.get('[data-testid="edit-openai-ws-mode-select"]').setValue('http_bridge')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('http_bridge')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_enabled).toBe(true)
+  })
+
+  it('hydrates and submits Kiro OAuth credit unit price in extra', async () => {
+    const account = buildKiroOAuthAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const input = wrapper.get<HTMLInputElement>('[data-testid="kiro-credit-unit-price-usd"]')
+
+    expect(input.element.value).toBe('0.071')
+
+    await input.setValue('0.08')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.kiro_credit_unit_price_usd).toBe(0.08)
   })
 
   it('allows saving apikey account when backend redacted api_key but credentials_status reports it exists', async () => {

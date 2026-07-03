@@ -214,12 +214,13 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 
 // OpenAIUsage represents OpenAI API response usage
 type OpenAIUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	ImageInputTokens         int `json:"image_input_tokens,omitempty"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	InputTokens              int     `json:"input_tokens"`
+	ImageInputTokens         int     `json:"image_input_tokens,omitempty"`
+	OutputTokens             int     `json:"output_tokens"`
+	CacheCreationInputTokens int     `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int     `json:"cache_read_input_tokens,omitempty"`
+	ImageOutputTokens        int     `json:"image_output_tokens,omitempty"`
+	KiroCredits              float64 `json:"-"`
 }
 
 // OpenAIForwardResult represents the result of forwarding
@@ -5681,7 +5682,41 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		CacheCreationInputTokens: int(value.Get("cache_creation_input_tokens").Int()),
 		CacheReadInputTokens:     int(cacheReadTokens),
 		ImageOutputTokens:        int(imageOutputTokens),
+		KiroCredits:              kiroCreditsFromUsageGJSON(value),
 	}, true
+}
+
+func kiroCreditsFromUsageGJSON(value gjson.Result) float64 {
+	if !value.Exists() || !value.IsObject() {
+		return 0
+	}
+	for _, field := range []string{
+		"_sub2api_kiro_credits",
+		"kiro_credits",
+		"kiroCredits",
+		"credits",
+		"creditsUsed",
+		"creditUsage",
+		"consumedCredits",
+	} {
+		if v := value.Get(field); v.Exists() && v.Float() > 0 {
+			return v.Float()
+		}
+	}
+	return 0
+}
+
+func mergeOpenAIUsageKiroCreditsFromJSON(usage *OpenAIUsage, body []byte) {
+	if usage == nil || len(body) == 0 || !gjson.ValidBytes(body) {
+		return
+	}
+	if credits := kiroCreditsFromUsageGJSON(gjson.GetBytes(body, "usage")); credits > 0 {
+		usage.KiroCredits = credits
+		return
+	}
+	if credits := kiroCreditsFromUsageGJSON(gjson.GetBytes(body, "response.usage")); credits > 0 {
+		usage.KiroCredits = credits
+	}
 }
 
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
@@ -6564,6 +6599,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	usageLog.DurationMs = &durationMs
 	usageLog.FirstTokenMs = result.FirstTokenMs
 	usageLog.CreatedAt = time.Now()
+	if result.Usage.KiroCredits > 0 {
+		kiroCredits := result.Usage.KiroCredits
+		usageLog.KiroCredits = &kiroCredits
+	}
 	// 设置渠道信息
 	usageLog.ChannelID = optionalInt64Ptr(input.ChannelID)
 	usageLog.ModelMappingChain = optionalTrimmedStringPtr(input.ModelMappingChain)

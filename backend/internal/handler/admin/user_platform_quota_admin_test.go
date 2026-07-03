@@ -116,9 +116,9 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != len(service.AllowedQuotaPlatforms) {
 		t.Errorf("unexpected upsert call: %+v", repo.upsertCalls[0])
 	}
-	// 缓存失效：请求中 2 个 platform + 软删除的 4 个 platform（gemini, antigravity, grok, fal）= 6 次
+	// 缓存失效：请求中 2 个 platform + 软删除的 5 个 platform（gemini, antigravity, grok, fal, kiro）= 7 次
 	if len(cache.deleteCalls) != 6 {
-		t.Errorf("expected 6 cache delete calls, got %d: %+v", len(cache.deleteCalls), cache.deleteCalls)
+		t.Errorf("expected 7 cache delete calls, got %d: %+v", len(cache.deleteCalls), cache.deleteCalls)
 	}
 }
 
@@ -158,7 +158,7 @@ func TestUpdateUserPlatformQuotas_RejectsNegativeLimit(t *testing.T) {
 func TestUpdateUserPlatformQuotas_RejectsTooManyEntries(t *testing.T) {
 	h := buildTestHandler(&upsertCapturingQuotaRepo{}, &billingCacheStub{})
 	body := `{"quotas":[
-		{"platform":"anthropic"},{"platform":"openai"},{"platform":"gemini"},{"platform":"antigravity"},{"platform":"grok"},{"platform":"anthropic"}
+		{"platform":"anthropic"},{"platform":"openai"},{"platform":"gemini"},{"platform":"antigravity"},{"platform":"grok"},{"platform":"kiro"}, {"platform":"anthropic"},
 	]}`
 	c, w := putReq(t, body)
 	h.UpdateUserPlatformQuotas(c)

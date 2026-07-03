@@ -324,8 +324,8 @@
               </div>
             </div>
 
-            <!-- Web Search Emulation (Anthropic only, hidden when global disabled) -->
-            <div v-if="section.platform === 'anthropic' && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
+            <!-- Web Search Emulation (supported platforms only, hidden when global disabled) -->
+            <div v-if="supportsWebSearchEmulation(section.platform) && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
               <div class="flex items-center justify-between">
                 <div>
                   <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
@@ -760,7 +760,7 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'fal']
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'fal']
 
 // ── Helpers ──
 function formatDate(value: string): string {
@@ -800,6 +800,10 @@ function togglePlatform(platform: GroupPlatform) {
 
 function getGroupsForPlatform(platform: GroupPlatform): AdminGroup[] {
   return allGroups.value.filter(g => g.platform === platform)
+}
+
+function supportsWebSearchEmulation(platform: GroupPlatform): boolean {
+  return platform === 'anthropic' || platform === 'kiro'
 }
 
 // ── Group helpers ──
@@ -1119,7 +1123,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
   const wsEmulation: Record<string, boolean> = {}
   for (const section of form.platforms) {
     if (!section.enabled) continue
-    if (section.platform === 'anthropic') {
+    if (supportsWebSearchEmulation(section.platform)) {
       wsEmulation[section.platform] = !!section.web_search_emulation
     }
   }

@@ -48,6 +48,8 @@ services:
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
       - RUN_MODE=${RUN_MODE:-standard}
+      - SUB2API_KIRO_TIME_CONTEXT=${SUB2API_KIRO_TIME_CONTEXT:-}
+      - SUB2API_KIRO_CONVERSATION_ID_MODE=${SUB2API_KIRO_CONVERSATION_ID_MODE:-stable}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)

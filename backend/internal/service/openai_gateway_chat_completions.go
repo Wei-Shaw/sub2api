@@ -592,6 +592,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if event.Response != nil && event.Response.Usage != nil {
 				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
 			}
+			mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
 		}
 		if strings.TrimSpace(event.Type) == "response.failed" {
 			payloadBytes := []byte(payload)

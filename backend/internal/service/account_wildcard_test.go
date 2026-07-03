@@ -151,6 +151,20 @@ func TestAccountIsModelSupported(t *testing.T) {
 			requestedModel: "any-model",
 			expected:       true,
 		},
+		{
+			name:           "kiro no mapping falls back to default whitelist",
+			platform:       PlatformKiro,
+			credentials:    nil,
+			requestedModel: "claude-sonnet-4-6",
+			expected:       true,
+		},
+		{
+			name:           "kiro no mapping rejects model outside default whitelist",
+			platform:       PlatformKiro,
+			credentials:    nil,
+			requestedModel: "auto",
+			expected:       false,
+		},
 
 		// 精确匹配
 		{
@@ -243,6 +257,13 @@ func TestAccountGetMappedModel(t *testing.T) {
 			credentials:    nil,
 			requestedModel: "gemini-3.1-pro-preview-customtools",
 			expected:       "gemini-3.1-pro-preview-customtools",
+		},
+		{
+			name:           "kiro no mapping uses default upstream mapping",
+			platform:       PlatformKiro,
+			credentials:    nil,
+			requestedModel: "claude-sonnet-4-6",
+			expected:       "claude-sonnet-4.6",
 		},
 
 		// 精确匹配

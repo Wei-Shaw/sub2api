@@ -36,6 +36,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		antigravityOAuthSvc,
 		nil,
 		nil,
+		nil,
 		cfg,
 		nil,
 	)
@@ -74,6 +75,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		openAIOAuthSvc,
 		geminiOAuthSvc,
 		antigravityOAuthSvc,
+		nil, // kiroOAuth
 		nil, // grokOAuth
 		nil, // openAIGateway
 		nil, // scheduledTestRunner

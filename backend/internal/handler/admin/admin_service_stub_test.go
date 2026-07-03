@@ -629,6 +629,10 @@ func (s *stubAdminService) ForceAntigravityPrivacy(ctx context.Context, account 
 	return ""
 }
 
+func (s *stubAdminService) EnsureKiroProfileArn(ctx context.Context, account *service.Account) string {
+	return ""
+}
+
 func (s *stubAdminService) ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*service.ReplaceUserGroupResult, error) {
 	return &service.ReplaceUserGroupResult{MigratedKeys: 0}, nil
 }
