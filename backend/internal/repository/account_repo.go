@@ -1065,15 +1065,10 @@ REDACTED
 			COALESCE(a.session_window_status, '') AS session_window_status
 		FROM account_groups ag
 		JOIN accounts a ON a.id = ag.account_id
-		LEFT JOIN proxies p
-			ON p.id = a.proxy_id
-			AND p.deleted_at IS NULL
-			AND p.status = $2
 		WHERE ag.group_id = ANY($1)
 			AND a.deleted_at IS NULL
 			AND a.status = $2
 			AND a.schedulable = TRUE
-			AND (a.owner_user_id IS NULL OR p.id IS NOT NULL)
 			AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= $3)
 			AND (a.expires_at IS NULL OR a.expires_at > $3 OR a.auto_pause_on_expired = FALSE)
 			AND (a.overload_until IS NULL OR a.overload_until <= $3)
