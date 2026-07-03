@@ -1017,7 +1017,7 @@ export default {
       time: 'Time', model: 'Model', endpoint: 'Endpoint', status: 'Status',
       category: 'Category', platform: 'Platform', message: 'Message',
       keyName: 'Key Name', keyDeleted: 'Deleted', allKeys: 'All keys',
-      modelPlaceholder: 'Search model', allCategories: 'All categories',
+      modelPlaceholder: 'Search model', allCategories: 'All categories', allStatuses: 'All status codes',
       empty: 'No error requests', failedToLoad: 'Failed to load error requests',
       categories: {
         auth: 'Auth failed', rate_limit: 'Rate limited', quota: 'Balance/Subscription',
@@ -5088,6 +5088,7 @@ export default {
         accountId: 'Account ID',
         status: 'Status',
         message: 'Message',
+        ip: 'IP',
         latency: 'Request Duration',
         action: 'Action',
         noErrors: 'No errors in this window.',

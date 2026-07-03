@@ -1021,7 +1021,7 @@ export default {
       time: '时间', model: '模型', endpoint: '端点', status: '状态码',
       category: '分类', platform: '平台', message: '错误信息',
       keyName: 'Key 名称', keyDeleted: '已删除', allKeys: '全部 Key',
-      modelPlaceholder: '搜索模型', allCategories: '全部分类',
+      modelPlaceholder: '搜索模型', allCategories: '全部分类', allStatuses: '全部状态码',
       empty: '暂无错误请求', failedToLoad: '加载错误请求失败',
       categories: {
         auth: '认证失败', rate_limit: '限流', quota: '余额/订阅',
@@ -5246,6 +5246,7 @@ export default {
         accountId: '账号 ID',
         status: '状态码',
         message: '响应内容',
+        ip: 'IP',
         latency: '请求时长',
         action: '操作',
         noErrors: '该窗口内暂无错误。',
