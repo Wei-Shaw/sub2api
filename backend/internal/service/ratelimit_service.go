@@ -189,6 +189,13 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		if s.persistAnthropicExhaustedWindowLimit(ctx, account, headers) {
 			return false
 		}
+		// No general 5h/7d window is exhausted, but the request was still rejected
+		// → a model-scoped weekly limit (e.g. the Fable/Opus-tier window). Block only
+		// the requested model on this account instead of the whole account, so other
+		// models on the same account stay schedulable.
+		if len(requestedModel) > 0 && s.persistAnthropicModelScopedLimit(ctx, account, requestedModel[0], headers) {
+			return false
+		}
 	}
 
 	// 先尝试临时不可调度规则（401除外）
@@ -1143,6 +1150,64 @@ func isAnthropic5hRejected(headers http.Header) bool {
 	return strings.EqualFold(strings.TrimSpace(headers.Get("anthropic-ratelimit-unified-5h-status")), "rejected")
 }
 
+func isAnthropic7dRejected(headers http.Header) bool {
+	return strings.EqualFold(strings.TrimSpace(headers.Get("anthropic-ratelimit-unified-7d-status")), "rejected")
+}
+
+// isAnthropicScopedRejection reports whether a 429 was caused by a model-scoped
+// weekly window (e.g. the Fable/Opus-tier limit) rather than a general 5h/7d
+// window. The signal: the request was rejected overall
+// (anthropic-ratelimit-unified-status: rejected) while neither the 5h nor the 7d
+// general window is exhausted — so the rejection came from a scoped window such
+// as anthropic-ratelimit-unified-7d_oi-status: rejected.
+//
+// We key off the stable 5h/7d headers rather than the scoped window's own header
+// name (e.g. "7d_oi"), which looks internal and may change.
+func isAnthropicScopedRejection(headers http.Header) bool {
+	if !strings.EqualFold(strings.TrimSpace(headers.Get("anthropic-ratelimit-unified-status")), "rejected") {
+		return false
+	}
+	if isAnthropic5hRejected(headers) || isAnthropicWindowExceeded(headers, "5h") {
+		return false
+	}
+	if isAnthropic7dRejected(headers) || isAnthropicWindowExceeded(headers, "7d") {
+		return false
+	}
+	return true
+}
+
+// anthropicScopedResetAt determines when a model-scoped weekly limit resets,
+// using the representative unified reset header, falling back to retry-after.
+// Values beyond a sane ceiling (8 days) are clamped so a bogus header can't
+// freeze a model for an absurd duration.
+func anthropicScopedResetAt(headers http.Header, now time.Time) (time.Time, bool) {
+	const maxAge = 8 * 24 * time.Hour
+	if raw := strings.TrimSpace(headers.Get("anthropic-ratelimit-unified-reset")); raw != "" {
+		if ts, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			if ts > 1e11 {
+				ts = ts / 1000
+			}
+			resetAt := time.Unix(ts, 0)
+			if resetAt.After(now) {
+				if resetAt.After(now.Add(maxAge)) {
+					resetAt = now.Add(maxAge)
+				}
+				return resetAt, true
+			}
+		}
+	}
+	if raw := strings.TrimSpace(headers.Get("retry-after")); raw != "" {
+		if secs, err := strconv.ParseInt(raw, 10, 64); err == nil && secs > 0 {
+			resetAt := now.Add(time.Duration(secs) * time.Second)
+			if resetAt.After(now.Add(maxAge)) {
+				resetAt = now.Add(maxAge)
+			}
+			return resetAt, true
+		}
+	}
+	return time.Time{}, false
+}
+
 func parseAnthropicWindowReset(headers http.Header, window string, now time.Time) (time.Time, bool) {
 	raw := strings.TrimSpace(headers.Get("anthropic-ratelimit-unified-" + window + "-reset"))
 	if raw == "" {
@@ -1215,6 +1280,49 @@ func (s *RateLimitService) persistAnthropicExhaustedWindowLimit(ctx context.Cont
 		"window", limit.window,
 		"reset_at", limit.resetAt,
 		"reset_in", time.Until(limit.resetAt).Truncate(time.Second))
+	return true
+}
+
+// persistAnthropicModelScopedLimit handles an Anthropic 429 caused by a
+// model-scoped weekly window (e.g. the Fable/Opus-tier limit) while the general
+// 5h/7d windows still have headroom. It rate-limits ONLY the requested model on
+// this account (via Extra.model_rate_limits), leaving other models schedulable.
+//
+// It deliberately does NOT call notifyAccountSchedulingBlocked / SetRateLimited:
+// the runtime blocker and rate_limit_reset_at both pause the entire account,
+// which is exactly the over-blocking bug this path fixes. The scheduler already
+// excludes rate-limited models per request via IsSchedulableForModelWithContext.
+//
+// Returns true when it handled the 429 (so the caller stops further processing).
+func (s *RateLimitService) persistAnthropicModelScopedLimit(ctx context.Context, account *Account, requestedModel string, headers http.Header) bool {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return false
+	}
+	if !isAnthropicScopedRejection(headers) {
+		return false
+	}
+	// Store under the same key the scheduler recomputes in
+	// modelRateLimitKeysForRequest (GetMappedModel), so set and check agree.
+	modelKey := strings.TrimSpace(account.GetMappedModel(requestedModel))
+	if modelKey == "" {
+		return false
+	}
+	now := time.Now()
+	resetAt, ok := anthropicScopedResetAt(headers, now)
+	if !ok {
+		return false
+	}
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, resetAt, "anthropic_scoped_weekly_exhausted"); err != nil {
+		// Fall through to the account-wide path rather than dropping the 429.
+		slog.Warn("anthropic_model_scoped_rate_limit_set_failed",
+			"account_id", account.ID, "model", modelKey, "reset_at", resetAt, "error", err)
+		return false
+	}
+	slog.Info("anthropic_model_scoped_rate_limited",
+		"account_id", account.ID,
+		"model", modelKey,
+		"reset_at", resetAt,
+		"reset_in", time.Until(resetAt).Truncate(time.Second))
 	return true
 }
 
