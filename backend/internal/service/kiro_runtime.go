@@ -580,6 +580,12 @@ func kiroEndpointModeForRequest(account *Account, parsed *ParsedRequest) string 
 	return parsed.Group.EffectiveKiroEndpointMode()
 }
 
+// buildKiroPayloadForAccount 是测试专用的便捷入口：按账号 + parsed 自动选择 Q/KRS
+// 端点模式并推导 profileArn，随后委托给 buildKiroPayloadForAccountWithArn。生产
+// 路径已迁移到显式传入 profileArn 的版本，这里仅保留供 kiro_session_test.go /
+// account_test_service_kiro_test.go / kiro_http_helpers_test.go 使用。
+//
+//nolint:unused // 测试辅助函数，golangci-lint 静态分析只能看到 _test.go 引用
 func (s *GatewayService) buildKiroPayloadForAccount(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, modelID, token, requestModel string, headers http.Header) (*kiropkg.KiroBuildResult, error) {
 	var profileArn string
 	if kiroEndpointModeForRequest(account, parsed) == KiroEndpointModeKRS {

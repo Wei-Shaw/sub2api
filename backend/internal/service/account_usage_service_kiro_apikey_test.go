@@ -18,7 +18,7 @@ func TestAccountUsageService_GetUsage_KiroAPIKeySupported(t *testing.T) {
 		Type:     AccountTypeAPIKey,
 	}
 	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	usage, err := svc.GetUsage(context.Background(), account.ID)
 	require.NoError(t, err)
@@ -33,7 +33,7 @@ func TestAccountUsageService_GetPassiveUsage_KiroAPIKeySupported(t *testing.T) {
 		Type:     AccountTypeAPIKey,
 	}
 	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	usage, err := svc.GetPassiveUsage(context.Background(), account.ID)
 	require.NoError(t, err)

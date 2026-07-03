@@ -237,7 +237,10 @@ func TestAccountUsageService_AddWindowStatsKeepsKiroCredits(t *testing.T) {
 		t.Fatalf("KiroCredits = %v, want 0.17", usage.FiveHour.WindowStats.KiroCredits)
 	}
 	if cached, ok := svc.cache.windowStatsCache.Load(int64(123)); ok {
-		cache := cached.(*windowStatsCache)
+		cache, ok := cached.(*windowStatsCache)
+		if !ok {
+			t.Fatalf("cached value has unexpected type %T", cached)
+		}
 		if cache.stats.KiroCredits != 0.17 {
 			t.Fatalf("cached KiroCredits = %v, want 0.17", cache.stats.KiroCredits)
 		}

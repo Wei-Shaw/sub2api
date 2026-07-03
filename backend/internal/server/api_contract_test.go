@@ -371,6 +371,7 @@ func TestAPIContracts(t *testing.T) {
 						"kiro_auto_sticky_enabled": false,
 						"kiro_sticky_session_ttl_seconds": 0,
 						"kiro_cache_emulation_enabled": false,
+						"kiro_endpoint_mode": "q",
 						"kiro_cache_emulation_ratio": 0,
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"

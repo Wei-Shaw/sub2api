@@ -163,12 +163,32 @@ func kiroAPIRegion(account *Account) string {
 	return region
 }
 
+// applyKiroConditionalHeaders 根据账号凭据补充 Kiro 直连 AWS 的条件性 header：
+//   - API Key 账号：写入小写 `tokentype: API_KEY`（绕过 Go http.Header 的规范化，
+//     与 kiro.rs 上游对齐；`Header.Get("Tokentype")` 无法读到）。
+//   - auth_method == external_idp：写入规范化 `TokenType: EXTERNAL_IDP`
+//     （通过 Header.Set 让 Header.Get 可正常读取）。
+//   - provider == Internal：追加 `redirect-for-internal: true`，用于内部 IdP 场景。
+//   - 若凭据显式提供 profile_arn，则写入 `x-amzn-kiro-profile-arn`
+//     （KRS 场景下若缺省会走 fallback，因此这里只处理"账号显式声明"的情况）。
 func applyKiroConditionalHeaders(req *http.Request, account *Account) {
 	if req == nil || account == nil {
 		return
 	}
 	if account.Type == AccountTypeAPIKey {
-		req.Header["TokenType"] = []string{"API_KEY"}
+		// 关键：用小写 key 直接写 map，避免 Go 规范化成 "Tokentype"。
+		req.Header["tokentype"] = []string{"API_KEY"}
+	}
+	authMethod := strings.ToLower(strings.TrimSpace(account.GetCredential("auth_method")))
+	if authMethod == "external_idp" {
+		req.Header.Set("TokenType", "EXTERNAL_IDP")
+	}
+	provider := strings.TrimSpace(account.GetCredential("provider"))
+	if strings.EqualFold(provider, "Internal") {
+		req.Header.Set("redirect-for-internal", "true")
+	}
+	if profileArn := strings.TrimSpace(account.GetCredential("profile_arn")); profileArn != "" {
+		req.Header.Set("x-amzn-kiro-profile-arn", profileArn)
 	}
 }
 

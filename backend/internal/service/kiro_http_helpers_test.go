@@ -124,7 +124,7 @@ func TestApplyKiroConditionalHeadersAPIKeyTokenType(t *testing.T) {
 	require.NoError(t, err)
 	// API Key 账号必须带小写 tokentype: API_KEY(对齐 kiro.rs;直接读原始 map key,
 	// 因为头以小写 key 存储,Header.Get 会按规范化的 "Tokentype" 查找而读不到)
-	require.Equal(t, []string{"API_KEY"}, req.Header["TokenType"])
+	require.Equal(t, []string{"API_KEY"}, req.Header["tokentype"])
 	require.Equal(t, "Bearer ksk_test_key", req.Header.Get("Authorization"))
 	// 非 external_idp,不应带规范化的 EXTERNAL_IDP 头
 	require.Empty(t, req.Header["Tokentype"])

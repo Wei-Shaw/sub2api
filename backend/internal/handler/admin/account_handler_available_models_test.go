@@ -257,44 +257,6 @@ func TestAccountHandlerGetAvailableModels_OpenAISparkShadowReturnsMappingModels(
 	}, ids, "影子可用模型由 model_mapping 派生（非写死）")
 }
 
-func TestAccountHandlerSyncUpstreamModels_ConfigErrorReturnsBadRequest(t *testing.T) {
-	svc := &availableModelsAdminService{
-		stubAdminService: newStubAdminService(),
-		account: service.Account{
-			ID:       44,
-			Name:     "kiro-oauth",
-			Platform: service.PlatformKiro,
-			Type:     service.AccountTypeOAuth,
-			Status:   service.StatusActive,
-		},
-	}
-	router := setupAvailableModelsRouter(svc)
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/44/models", nil)
-	router.ServeHTTP(rec, req)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-
-	var resp struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.NotEmpty(t, resp.Data)
-
-	ids := make([]string, 0, len(resp.Data))
-	for _, model := range resp.Data {
-		ids = append(ids, model.ID)
-	}
-	require.True(t, slices.Contains(ids, "claude-opus-4-7"))
-	require.True(t, slices.Contains(ids, "claude-opus-4-6"))
-	require.True(t, slices.Contains(ids, "claude-sonnet-4-6"))
-	require.False(t, slices.Contains(ids, "kiro-claude-opus-4-7"))
-	require.False(t, slices.Contains(ids, "gpt-4o"))
-}
-
 func TestAccountHandlerGetAvailableModels_KiroOAuthUsesExplicitModelMapping(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),
@@ -376,6 +338,44 @@ func TestAccountHandlerGetAvailableModels_KiroAPIKeyUsesExplicitModelMapping(t *
 	}
 	require.True(t, slices.Contains(ids, "claude-sonnet-4-6"))
 	require.True(t, slices.Contains(ids, "custom-model"))
+}
+
+func TestAccountHandlerSyncUpstreamModels_KiroOAuthFallsBackToDefaults(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       44,
+			Name:     "kiro-oauth",
+			Platform: service.PlatformKiro,
+			Type:     service.AccountTypeOAuth,
+			Status:   service.StatusActive,
+		},
+	}
+	router := setupAvailableModelsRouter(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/44/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotEmpty(t, resp.Data)
+
+	ids := make([]string, 0, len(resp.Data))
+	for _, model := range resp.Data {
+		ids = append(ids, model.ID)
+	}
+	require.True(t, slices.Contains(ids, "claude-opus-4-7"))
+	require.True(t, slices.Contains(ids, "claude-opus-4-6"))
+	require.True(t, slices.Contains(ids, "claude-sonnet-4-6"))
+	require.False(t, slices.Contains(ids, "kiro-claude-opus-4-7"))
+	require.False(t, slices.Contains(ids, "gpt-4o"))
 }
 
 func TestAccountHandlerGetAvailableModels_KiroAPIKeyWithoutMappingFallsBackToDefaults(t *testing.T) {

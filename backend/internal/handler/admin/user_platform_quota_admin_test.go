@@ -101,6 +101,7 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 		{"platform":"openai","daily_limit_usd":80.0,"weekly_limit_usd":300.0,"monthly_limit_usd":null},
 		{"platform":"gemini","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"antigravity","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
+		{"platform":"kiro","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"grok","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"fal","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null}
 	]}`
@@ -117,7 +118,7 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 		t.Errorf("unexpected upsert call: %+v", repo.upsertCalls[0])
 	}
 	// 缓存失效：请求中 2 个 platform + 软删除的 5 个 platform（gemini, antigravity, grok, fal, kiro）= 7 次
-	if len(cache.deleteCalls) != 6 {
+	if len(cache.deleteCalls) != 7 {
 		t.Errorf("expected 7 cache delete calls, got %d: %+v", len(cache.deleteCalls), cache.deleteCalls)
 	}
 }

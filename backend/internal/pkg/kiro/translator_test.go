@@ -1941,7 +1941,9 @@ func TestStreamEventStreamAsAnthropicCapturesKiroCredits(t *testing.T) {
 	require.NotNil(t, delta)
 	usageMap, ok := delta["usage"].(map[string]any)
 	require.True(t, ok)
-	require.InDelta(t, 0.17, usageMap["_sub2api_kiro_credits"].(float64), 0.000001)
+	credits, ok := usageMap["_sub2api_kiro_credits"].(float64)
+	require.True(t, ok, "_sub2api_kiro_credits should be float64")
+	require.InDelta(t, 0.17, credits, 0.000001)
 }
 
 func TestStreamEventStreamAsAnthropicStreamingToolInputCountsOutputTokens(t *testing.T) {
