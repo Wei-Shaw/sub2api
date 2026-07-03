@@ -71,7 +71,13 @@
       :data-testid="`${testIdPrefix}-create-account-submit`"
       type="button"
       class="btn btn-primary w-full"
-      :disabled="isSubmitting || !email.trim() || password.length < 6 || (invitationCodeEnabled && !invitationCode.trim())"
+      :disabled="
+        isSubmitting ||
+        !email.trim() ||
+        password.length < 6 ||
+        (emailVerifyEnabled && verifyCode.trim().length !== 6) ||
+        (invitationCodeEnabled && !invitationCode.trim())
+      "
       @click="handleSubmit"
     >
       {{ isSubmitting ? t('common.processing') : t('auth.createAccount') }}
@@ -241,14 +247,18 @@ async function handleSendCode() {
 
 function handleSubmit() {
   const trimmedEmail = email.value.trim()
+  const trimmedCode = verifyCode.value.trim()
   if (!trimmedEmail || password.value.length < 6) {
+    return
+  }
+  if (emailVerifyEnabled.value && trimmedCode.length !== 6) {
     return
   }
 
   emit('submit', {
     email: trimmedEmail,
     password: password.value,
-    verifyCode: emailVerifyEnabled.value ? verifyCode.value.trim() : '',
+    verifyCode: emailVerifyEnabled.value ? trimmedCode : '',
     invitationCode: invitationCode.value.trim() || undefined
   })
 }
