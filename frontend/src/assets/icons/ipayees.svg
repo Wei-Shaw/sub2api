@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="bKash / Nagad">
+  <defs>
+    <linearGradient id="ipayeesG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E2136E"/>
+      <stop offset="1" stop-color="#EE6123"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="7" width="42" height="34" rx="7" fill="url(#ipayeesG)"/>
+  <rect x="3" y="7" width="42" height="34" rx="7" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1"/>
+  <path d="M25.9 15.5c3.4 0 5.8 1.7 6.4 4.6h-3.6c-.4-1-1.4-1.6-2.8-1.6-1.9 0-3.2 1.2-3.2 3s1.3 3 3.2 3c1.4 0 2.4-.6 2.8-1.6h3.6c-.6 2.9-3 4.6-6.4 4.6-3.9 0-6.7-2.7-6.7-6s2.8-6 6.7-6z" fill="#ffffff" opacity="0"/>
+  <text x="24" y="31" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" text-anchor="middle" fill="#ffffff">৳</text>
+</svg>

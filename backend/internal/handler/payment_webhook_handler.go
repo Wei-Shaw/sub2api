@@ -67,6 +67,12 @@ func (h *PaymentWebhookHandler) AirwallexWebhook(c *gin.Context) {
 	h.handleNotify(c, payment.TypeAirwallex)
 }
 
+// IPayeesNotify handles iPayees payment webhooks.
+// POST /api/v1/payment/webhook/ipayees
+func (h *PaymentWebhookHandler) IPayeesNotify(c *gin.Context) {
+	h.handleNotify(c, payment.TypeIPayees)
+}
+
 // handleNotify is the shared logic for all provider webhook handlers.
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
 	var rawBody string
@@ -163,6 +169,19 @@ func extractOutTradeNo(rawBody, providerKey string) string {
 		}
 		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
 			return strings.TrimSpace(payload.Data.Object.MerchantOrderID)
+		}
+	case payment.TypeIPayees:
+		var payload struct {
+			Metadata struct {
+				InvoiceID string `json:"invoiceid"`
+				OrderID   string `json:"order_id"`
+			} `json:"metadata"`
+		}
+		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
+			if id := strings.TrimSpace(payload.Metadata.InvoiceID); id != "" {
+				return id
+			}
+			return strings.TrimSpace(payload.Metadata.OrderID)
 		}
 	}
 	// For other providers (Stripe, Alipay direct, WxPay direct), the registry
