@@ -144,10 +144,6 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	logger.L().Debug("openai messages: model mapping applied", logFields...)
 
-	if account.Platform == PlatformXAI {
-		return s.forwardXAIResponsesAsAnthropic(ctx, c, account, responsesReq, originalModel, billingModel, upstreamModel, clientStream, startTime, promptCacheKey)
-	}
-
 	// 4. Marshal Responses request body, then apply OAuth codex transform
 	responsesBody, err := json.Marshal(responsesReq)
 	if err != nil {

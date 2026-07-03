@@ -233,20 +233,8 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
-func (a *Account) IsXAI() bool {
-	return a.Platform == PlatformXAI
-}
-
-func (a *Account) IsXAIOAuth() bool {
-	return a.IsXAI() && a.Type == AccountTypeOAuth
-}
-
-func (a *Account) IsXAIApiKey() bool {
-	return a.IsXAI() && a.Type == AccountTypeAPIKey
-}
-
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformXAI || a.Platform == PlatformGrok)
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1223,38 +1211,6 @@ func (a *Account) GetGrokRefreshToken() string {
 	return a.GetCredential("refresh_token")
 }
 
-func (a *Account) GetXAIBaseURL() string {
-	if !a.IsXAI() {
-		return ""
-	}
-	baseURL := a.GetCredential("base_url")
-	if baseURL != "" {
-		return baseURL
-	}
-	return xai.DefaultAPIBaseURL
-}
-
-func (a *Account) GetXAIAccessToken() string {
-	if !a.IsXAI() {
-		return ""
-	}
-	return a.GetCredential("access_token")
-}
-
-func (a *Account) GetXAIRefreshToken() string {
-	if !a.IsXAIOAuth() {
-		return ""
-	}
-	return a.GetCredential("refresh_token")
-}
-
-func (a *Account) GetXAIApiKey() string {
-	if !a.IsXAIApiKey() {
-		return ""
-	}
-	return a.GetCredential("api_key")
-}
-
 func (a *Account) GetCloudModelIDs() []string {
 	if a == nil || a.Extra == nil {
 		return nil
@@ -1442,9 +1398,6 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	if a.IsGrok() {
 		return capability == OpenAIEndpointCapabilityChatCompletions
 	}
-	if a.IsXAI() {
-		return capability == OpenAIEndpointCapabilityChatCompletions
-	}
 	switch capability {
 	case OpenAIEndpointCapabilityChatCompletions:
 	case OpenAIEndpointCapabilityEmbeddings:
@@ -1513,7 +1466,7 @@ func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapabilit
 	if capability == "" {
 		return true
 	}
-	if !a.IsOpenAI() && !a.IsXAI() {
+	if !a.IsOpenAI() {
 		return false
 	}
 	switch capability {

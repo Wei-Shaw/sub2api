@@ -194,7 +194,7 @@ const defaultClientTab = computed(() => {
   switch (props.platform) {
     case 'openai':
       return 'codex-ws'
-    case 'xai':
+    case 'grok':
       return 'grok'
     case 'gemini':
       return 'gemini'
@@ -286,7 +286,7 @@ const clientTabs = computed((): TabConfig[] => {
         { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon }
       ]
     }
-    case 'xai':
+    case 'grok':
       return [
         { id: 'grok', label: t('keys.useKeyModal.cliTabs.grokCli'), icon: TerminalIcon },
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
@@ -340,7 +340,7 @@ const platformDescription = computed(() => {
         return t('keys.useKeyModal.description')
       }
       return t('keys.useKeyModal.openai.description')
-    case 'xai':
+    case 'grok':
       return t('keys.useKeyModal.xai.description')
     case 'gemini':
       return t('keys.useKeyModal.gemini.description')
@@ -360,7 +360,7 @@ const platformNote = computed(() => {
       return activeTab.value === 'windows'
         ? t('keys.useKeyModal.openai.noteWindows')
         : t('keys.useKeyModal.openai.note')
-    case 'xai':
+    case 'grok':
       return activeTab.value === 'cmd' || activeTab.value === 'powershell'
         ? t('keys.useKeyModal.xai.noteWindows')
         : t('keys.useKeyModal.xai.note')
@@ -420,8 +420,8 @@ const currentFiles = computed((): FileConfig[] => {
         return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
       case 'openai':
         return [generateOpenCodeConfig('openai', apiBase, apiKey)]
-      case 'xai':
-        return [generateOpenCodeConfig('xai', apiBase, apiKey)]
+      case 'grok':
+        return [generateOpenCodeConfig('grok', apiBase, apiKey)]
       case 'gemini':
         return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
       case 'antigravity':
@@ -443,7 +443,7 @@ const currentFiles = computed((): FileConfig[] => {
         return generateOpenAIWsFiles(baseUrl, apiKey)
       }
       return generateOpenAIFiles(baseUrl, apiKey)
-    case 'xai':
+    case 'grok':
       return generateGrokCliFiles(baseUrl, apiKey)
     case 'gemini':
       return [generateGeminiCliContent(baseUrl, apiKey)]
@@ -830,8 +830,9 @@ Write-Host "Codex WebSocket config installed at $codexDir"
 }
 
 function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: string, pathLabel?: string): FileConfig {
+  const providerKey = platform === 'grok' ? 'xai' : platform
   const provider: Record<string, any> = {
-    [platform]: {
+    [providerKey]: {
       options: {
         baseURL: baseUrl,
         apiKey
@@ -1255,27 +1256,27 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
   }
 
   if (platform === 'gemini') {
-    provider[platform].npm = '@ai-sdk/google'
-    provider[platform].models = geminiModels
+    provider[providerKey].npm = '@ai-sdk/google'
+    provider[providerKey].models = geminiModels
   } else if (platform === 'anthropic') {
-    provider[platform].npm = '@ai-sdk/anthropic'
+    provider[providerKey].npm = '@ai-sdk/anthropic'
   } else if (platform === 'antigravity-claude') {
-    provider[platform].npm = '@ai-sdk/anthropic'
-    provider[platform].name = 'Antigravity (Claude)'
-    provider[platform].models = claudeModels
+    provider[providerKey].npm = '@ai-sdk/anthropic'
+    provider[providerKey].name = 'Antigravity (Claude)'
+    provider[providerKey].models = claudeModels
   } else if (platform === 'antigravity-gemini') {
-    provider[platform].npm = '@ai-sdk/google'
-    provider[platform].name = 'Antigravity (Gemini)'
-    provider[platform].models = antigravityGeminiModels
+    provider[providerKey].npm = '@ai-sdk/google'
+    provider[providerKey].name = 'Antigravity (Gemini)'
+    provider[providerKey].models = antigravityGeminiModels
   } else if (platform === 'openai') {
-    provider[platform].models = openaiModels
-  } else if (platform === 'xai') {
-    provider[platform].name = 'xAI (Grok)'
-    provider[platform].models = grokModels
+    provider[providerKey].models = openaiModels
+  } else if (platform === 'grok') {
+    provider[providerKey].name = 'xAI (Grok)'
+    provider[providerKey].models = grokModels
   }
 
   const agent =
-    platform === 'openai' || platform === 'xai'
+    platform === 'openai' || platform === 'grok'
       ? {
           build: {
             options: {

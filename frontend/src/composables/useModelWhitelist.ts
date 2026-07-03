@@ -130,8 +130,8 @@ const metaModels = [
   'codellama-70b-instruct', 'codellama-34b-instruct', 'codellama-13b-instruct'
 ]
 
-// xAI Grok
-const xaiModels = [
+// Grok
+const grokModels = [
   'grok-4.3',
   'grok-build-0.1',
   'grok-4.20-0309-reasoning',
@@ -223,7 +223,7 @@ const allModelsList: string[] = [
   ...deepseekModels,
   ...mistralModels,
   ...metaModels,
-  ...xaiModels,
+  ...grokModels,
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
@@ -388,8 +388,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'deepseek': return deepseekModels
     case 'mistral': return mistralModels
     case 'meta': return metaModels
-    case 'xai':
-    case 'grok': return xaiModels
+    case 'grok': return grokModels
     case 'cohere': return cohereModels
     case 'yi': return yiModels
     case 'moonshot': return moonshotModels
@@ -407,7 +406,7 @@ export function getModelsByPlatform(platform: string): string[] {
 export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
-  if (platform === 'grok' || platform === 'xai') return grokPresetMappings
+  if (platform === 'grok') return grokPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings

@@ -5,7 +5,10 @@ import (
 	"strings"
 )
 
-const CLIChatProxyBaseURL = "https://cli-chat-proxy.grok.com/v1"
+const (
+	DefaultAPIBaseURL   = "https://api.x.ai/v1"
+	CLIChatProxyBaseURL = "https://cli-chat-proxy.grok.com/v1"
+)
 
 func IsGrokCLIClient(userAgent string) bool {
 	ua := strings.ToLower(strings.TrimSpace(userAgent))

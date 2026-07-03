@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGroupRequestBindingAcceptsXAIPlatform(t *testing.T) {
+func TestGroupRequestBindingRejectsXAIPlatform(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	t.Run("create", func(t *testing.T) {
@@ -20,8 +20,7 @@ func TestGroupRequestBindingAcceptsXAIPlatform(t *testing.T) {
 		c.Request.Header.Set("Content-Type", "application/json")
 
 		var req CreateGroupRequest
-		require.NoError(t, c.ShouldBindJSON(&req))
-		require.Equal(t, "xai", req.Platform)
+		require.Error(t, c.ShouldBindJSON(&req))
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -31,7 +30,6 @@ func TestGroupRequestBindingAcceptsXAIPlatform(t *testing.T) {
 		c.Request.Header.Set("Content-Type", "application/json")
 
 		var req UpdateGroupRequest
-		require.NoError(t, c.ShouldBindJSON(&req))
-		require.Equal(t, "xai", req.Platform)
+		require.Error(t, c.ShouldBindJSON(&req))
 	})
 }

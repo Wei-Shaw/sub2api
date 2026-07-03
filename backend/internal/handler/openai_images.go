@@ -32,7 +32,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
-	if platform := service.PlatformFromAPIKey(apiKey); platform == service.PlatformOpenAI || platform == service.PlatformXAI {
+	if platform := service.PlatformFromAPIKey(apiKey); platform == service.PlatformOpenAI {
 		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.Platform, platform))
 	}
 

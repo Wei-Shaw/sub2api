@@ -58,9 +58,9 @@
       <div v-if="supportsMediaTest" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
-          :label="supportsXAIVideoTest ? t('admin.accounts.videoPromptLabel') : t('admin.accounts.imagePromptLabel')"
-          :placeholder="supportsXAIVideoTest ? t('admin.accounts.videoPromptPlaceholder') : t('admin.accounts.imagePromptPlaceholder')"
-          :hint="supportsXAIVideoTest ? t('admin.accounts.videoTestHint') : t('admin.accounts.imageTestHint')"
+          :label="supportsGrokVideoTest ? t('admin.accounts.videoPromptLabel') : t('admin.accounts.imagePromptLabel')"
+          :placeholder="supportsGrokVideoTest ? t('admin.accounts.videoPromptPlaceholder') : t('admin.accounts.imagePromptPlaceholder')"
+          :hint="supportsGrokVideoTest ? t('admin.accounts.videoTestHint') : t('admin.accounts.imageTestHint')"
           :disabled="status === 'connecting'"
           rows="3"
         />
@@ -214,7 +214,7 @@
         <span class="flex items-center gap-1">
           <Icon name="chat" size="sm" :stroke-width="2" />
           {{
-            supportsXAIVideoTest
+            supportsGrokVideoTest
               ? t('admin.accounts.videoTestMode')
               : supportsImageTest
               ? t('admin.accounts.imageTestMode')
@@ -334,7 +334,7 @@ const prioritizedGeminiModels = [
   'gemini-3-pro-preview',
   'gemini-2.0-flash'
 ]
-const prioritizedXAIModels = [
+const prioritizedGrokModels = [
   'grok-4.3',
   'grok-4.3-fast',
   'grok-4.20-0309-non-reasoning',
@@ -349,8 +349,8 @@ const prioritizedXAIModels = [
   'grok-imagine-video-1.5-preview'
 ]
 
-const isXAIImageModel = (modelID: string) => modelID.toLowerCase().startsWith('grok-imagine-image')
-const isXAIVideoModel = (modelID: string) => modelID.toLowerCase().startsWith('grok-imagine-video')
+const isGrokImageModel = (modelID: string) => modelID.toLowerCase().startsWith('grok-imagine-image')
+const isGrokVideoModel = (modelID: string) => modelID.toLowerCase().startsWith('grok-imagine-video')
 
 const supportsGeminiImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
@@ -365,21 +365,21 @@ const supportsOpenAIImageTest = computed(() => {
   return props.account?.platform === 'openai'
 })
 
-const supportsXAIImageTest = computed(() => {
+const supportsGrokImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
-  return props.account?.platform === 'xai' && isXAIImageModel(modelID)
+  return props.account?.platform === 'grok' && isGrokImageModel(modelID)
 })
 
-const supportsXAIVideoTest = computed(() => {
+const supportsGrokVideoTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
-  return props.account?.platform === 'xai' && isXAIVideoModel(modelID)
+  return props.account?.platform === 'grok' && isGrokVideoModel(modelID)
 })
 
 const supportsImageTest = computed(
-  () => supportsGeminiImageTest.value || supportsOpenAIImageTest.value || supportsXAIImageTest.value
+  () => supportsGeminiImageTest.value || supportsOpenAIImageTest.value || supportsGrokImageTest.value
 )
 
-const supportsMediaTest = computed(() => supportsImageTest.value || supportsXAIVideoTest.value)
+const supportsMediaTest = computed(() => supportsImageTest.value || supportsGrokVideoTest.value)
 
 const retiredOpenAIModelIDs = new Set(['gpt-5.3-codex', 'gpt-5.3-codex-spark'])
 
@@ -389,13 +389,13 @@ const getTestableModels = (models: ClaudeModel[]) => {
 }
 
 const sortTestModels = (models: ClaudeModel[]) => {
-  const priorityIDs = props.account?.platform === 'xai' ? prioritizedXAIModels : prioritizedGeminiModels
+  const priorityIDs = props.account?.platform === 'grok' ? prioritizedGrokModels : prioritizedGeminiModels
   const priorityMap = new Map(priorityIDs.map((id, index) => [id, index]))
 
   return [...models].sort((a, b) => {
-    if (props.account?.platform === 'xai') {
-      const aRank = isXAIVideoModel(a.id) ? 2 : isXAIImageModel(a.id) ? 1 : 0
-      const bRank = isXAIVideoModel(b.id) ? 2 : isXAIImageModel(b.id) ? 1 : 0
+    if (props.account?.platform === 'grok') {
+      const aRank = isGrokVideoModel(a.id) ? 2 : isGrokImageModel(a.id) ? 1 : 0
+      const bRank = isGrokVideoModel(b.id) ? 2 : isGrokImageModel(b.id) ? 1 : 0
       if (aRank !== bRank) return aRank - bRank
     }
 
@@ -442,7 +442,7 @@ const canSyncUpstreamModelsForTest = (account: Account): boolean => {
       return account.type === 'oauth' || account.type === 'setup-token' || account.type === 'apikey'
     case 'openai':
       return account.type === 'apikey'
-    case 'xai':
+    case 'grok':
       return account.type === 'oauth' || account.type === 'apikey'
     case 'gemini':
       return account.type === 'apikey' || (account.type === 'oauth' && !hasProjectID(account))
@@ -489,7 +489,7 @@ watch(selectedModelId, () => {
   const videoPrompt = t('admin.accounts.videoPromptDefault')
   if (supportsImageTest.value && (!currentPrompt || currentPrompt === videoPrompt)) {
     testPrompt.value = imagePrompt
-  } else if (supportsXAIVideoTest.value && (!currentPrompt || currentPrompt === imagePrompt)) {
+  } else if (supportsGrokVideoTest.value && (!currentPrompt || currentPrompt === imagePrompt)) {
     testPrompt.value = videoPrompt
   }
 })
@@ -501,7 +501,7 @@ const loadAvailableModels = async () => {
   selectedModelId.value = '' // Reset selection before loading
   try {
     const models = getTestableModels(await fetchAvailableModelsForTest(props.account))
-    const shouldSortModels = ['gemini', 'antigravity', 'xai'].includes(props.account.platform)
+    const shouldSortModels = ['gemini', 'antigravity', 'grok'].includes(props.account.platform)
     availableModels.value = shouldSortModels ? sortTestModels(models) : models
     // Default selection by platform
     if (availableModels.value.length > 0) {
@@ -652,7 +652,7 @@ const handleEvent = (event: {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
       }
       addLine(
-        supportsXAIVideoTest.value
+        supportsGrokVideoTest.value
           ? t('admin.accounts.sendingVideoRequest')
           : supportsImageTest.value
             ? t('admin.accounts.sendingImageRequest')

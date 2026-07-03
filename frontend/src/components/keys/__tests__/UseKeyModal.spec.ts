@@ -81,13 +81,13 @@ describe('UseKeyModal', () => {
     expect(configToml).toContain('[features]\nresponses_websockets_v2 = true\ngoals = true')
   })
 
-  it('renders Grok CLI proxy env vars for xAI platform', () => {
+  it('renders Grok CLI proxy env vars for Grok platform', () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'xai'
+        platform: 'grok'
       },
       global: {
         stubs: {
@@ -117,13 +117,13 @@ describe('UseKeyModal', () => {
     expect(configToml).toContain('api_backend = "responses"')
   })
 
-  it('renders Grok Build entry in xAI OpenCode config', async () => {
+  it('renders Grok Build entry in Grok OpenCode config', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'xai'
+        platform: 'grok'
       },
       global: {
         stubs: {

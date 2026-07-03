@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
@@ -459,13 +458,9 @@ func isOpenAIImageGenerationModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-image-")
 }
 
-func isXAIImageGenerationModel(model string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-image")
-}
-
 func validateOpenAIImagesModel(model string) error {
 	model = strings.TrimSpace(model)
-	if isOpenAIImageGenerationModel(model) || isXAIImageGenerationModel(model) {
+	if isOpenAIImageGenerationModel(model) {
 		return nil
 	}
 	if model == "" {
@@ -550,9 +545,6 @@ func (s *OpenAIGatewayService) ForwardImages(
 ) (*OpenAIForwardResult, error) {
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
-	}
-	if account.Platform == PlatformXAI {
-		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
 	}
 	switch account.Type {
 	case AccountTypeAPIKey:
@@ -664,26 +656,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		streamUsage, streamCount, streamSizes, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime)
 		if err != nil {
 			if streamCount > 0 {
-				providerMediaCost := (*CostBreakdown)(nil)
-				if account.Platform == PlatformXAI {
-					estimatedCost := buildXAIImageMediaCost(upstreamModel, streamCount, resolveXAIImageBillingResolution(parsed, body), countXAIImageInputsFromImagesRequest(parsed, body))
-					providerMediaCost = buildXAIMediaCostFromUsageOrEstimate(streamUsage, estimatedCost)
-				}
 				return &OpenAIForwardResult{
-					RequestID:            resp.Header.Get("x-request-id"),
-					Usage:                streamUsage,
-					Model:                requestModel,
-					UpstreamModel:        upstreamModel,
-					Stream:               parsed.Stream,
-					ResponseHeaders:      resp.Header.Clone(),
-					Duration:             time.Since(startTime),
-					FirstTokenMs:         ttft,
-					ImageCount:           streamCount,
-					ImageSize:            parsed.SizeTier,
-					ImageInputSize:       parsed.Size,
-					ImageOutputSizes:     streamSizes,
-					ProviderMediaCost:    providerMediaCost,
-					UseImageRateForMedia: providerMediaCost != nil,
+					RequestID:        resp.Header.Get("x-request-id"),
+					Usage:            streamUsage,
+					Model:            requestModel,
+					UpstreamModel:    upstreamModel,
+					Stream:           parsed.Stream,
+					ResponseHeaders:  resp.Header.Clone(),
+					Duration:         time.Since(startTime),
+					FirstTokenMs:     ttft,
+					ImageCount:       streamCount,
+					ImageSize:        parsed.SizeTier,
+					ImageInputSize:   parsed.Size,
+					ImageOutputSizes: streamSizes,
 				}, err
 			}
 			return nil, err
@@ -692,26 +677,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		imageCount = streamCount
 		imageOutputSizes := streamSizes
 		firstTokenMs = ttft
-		providerMediaCost := (*CostBreakdown)(nil)
-		if account.Platform == PlatformXAI {
-			estimatedCost := buildXAIImageMediaCost(upstreamModel, imageCount, resolveXAIImageBillingResolution(parsed, body), countXAIImageInputsFromImagesRequest(parsed, body))
-			providerMediaCost = buildXAIMediaCostFromUsageOrEstimate(usage, estimatedCost)
-		}
 		return &OpenAIForwardResult{
-			RequestID:            resp.Header.Get("x-request-id"),
-			Usage:                usage,
-			Model:                requestModel,
-			UpstreamModel:        upstreamModel,
-			Stream:               parsed.Stream,
-			ResponseHeaders:      resp.Header.Clone(),
-			Duration:             time.Since(startTime),
-			FirstTokenMs:         firstTokenMs,
-			ImageCount:           imageCount,
-			ImageSize:            parsed.SizeTier,
-			ImageInputSize:       parsed.Size,
-			ImageOutputSizes:     imageOutputSizes,
-			ProviderMediaCost:    providerMediaCost,
-			UseImageRateForMedia: providerMediaCost != nil,
+			RequestID:        resp.Header.Get("x-request-id"),
+			Usage:            usage,
+			Model:            requestModel,
+			UpstreamModel:    upstreamModel,
+			Stream:           parsed.Stream,
+			ResponseHeaders:  resp.Header.Clone(),
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ImageCount:       imageCount,
+			ImageSize:        parsed.SizeTier,
+			ImageInputSize:   parsed.Size,
+			ImageOutputSizes: imageOutputSizes,
 		}, nil
 	} else {
 		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
@@ -722,26 +700,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		if nonStreamCount > 0 {
 			imageCount = nonStreamCount
 		}
-		providerMediaCost := (*CostBreakdown)(nil)
-		if account.Platform == PlatformXAI {
-			estimatedCost := buildXAIImageMediaCost(upstreamModel, imageCount, resolveXAIImageBillingResolution(parsed, body), countXAIImageInputsFromImagesRequest(parsed, body))
-			providerMediaCost = buildXAIMediaCostFromUsageOrEstimate(usage, estimatedCost)
-		}
 		return &OpenAIForwardResult{
-			RequestID:            resp.Header.Get("x-request-id"),
-			Usage:                usage,
-			Model:                requestModel,
-			UpstreamModel:        upstreamModel,
-			Stream:               parsed.Stream,
-			ResponseHeaders:      resp.Header.Clone(),
-			Duration:             time.Since(startTime),
-			FirstTokenMs:         firstTokenMs,
-			ImageCount:           imageCount,
-			ImageSize:            parsed.SizeTier,
-			ImageInputSize:       parsed.Size,
-			ImageOutputSizes:     nonStreamSizes,
-			ProviderMediaCost:    providerMediaCost,
-			UseImageRateForMedia: providerMediaCost != nil,
+			RequestID:        resp.Header.Get("x-request-id"),
+			Usage:            usage,
+			Model:            requestModel,
+			UpstreamModel:    upstreamModel,
+			Stream:           parsed.Stream,
+			ResponseHeaders:  resp.Header.Clone(),
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ImageCount:       imageCount,
+			ImageSize:        parsed.SizeTier,
+			ImageInputSize:   parsed.Size,
+			ImageOutputSizes: nonStreamSizes,
 		}, nil
 	}
 }
@@ -759,16 +730,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 	if endpoint == openAIImagesEditsEndpoint {
 		targetURL = openAIImagesEditsURL
 	}
-	if account.Platform == PlatformXAI {
-		if endpoint == openAIImagesEditsEndpoint {
-			return nil, fmt.Errorf("xAI image edits are not supported")
-		}
-		validatedURL, err := s.validateUpstreamBaseURL(account.GetXAIBaseURL())
-		if err != nil {
-			return nil, err
-		}
-		targetURL = xai.BuildImagesGenerationsURL(validatedURL)
-	} else if baseURL := account.GetOpenAIBaseURL(); baseURL != "" {
+	if baseURL := account.GetOpenAIBaseURL(); baseURL != "" {
 		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 		if err != nil {
 			return nil, err

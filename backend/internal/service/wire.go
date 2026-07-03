@@ -51,20 +51,6 @@ func ProvideOpenAIOAuthService(
 	return svc
 }
 
-// ProvideXAITokenProvider wires xAI token refresh through the unified OAuth refresh API.
-func ProvideXAITokenProvider(
-	accountRepo AccountRepository,
-	tokenCache GeminiTokenCache,
-	xaiOAuthService *XAIOAuthService,
-	xaiTokenRefresher *XAITokenRefresher,
-	refreshAPI *OAuthRefreshAPI,
-) *XAITokenProvider {
-	provider := NewXAITokenProvider(accountRepo, tokenCache, xaiOAuthService)
-	provider.SetRefreshAPI(refreshAPI, xaiTokenRefresher)
-	provider.SetRefreshPolicy(OpenAIProviderRefreshPolicy())
-	return provider
-}
-
 // ProvideTokenRefreshService creates and starts TokenRefreshService
 func ProvideTokenRefreshService(
 	accountRepo AccountRepository,
@@ -576,7 +562,6 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
 	ProvideOpenAIOAuthService,
-	NewXAIOAuthService,
 	NewGrokOAuthService,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
@@ -587,8 +572,6 @@ var ProviderSet = wire.NewSet(
 	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
-	NewXAITokenRefresher,
-	ProvideXAITokenProvider,
 	ProvideGrokTokenProvider,
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,

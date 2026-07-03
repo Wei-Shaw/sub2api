@@ -2,13 +2,9 @@ package service
 
 import (
 	"context"
-	"math"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
-
-	xaipkg "github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 type accountUsageCodexProbeRepo struct {
@@ -207,101 +203,6 @@ func TestAccountUsageService_GetOpenAIUsage_DoesNotPromoteCodexExtraToRateLimit(
 	case got := <-repo.rateLimitCh:
 		t.Fatalf("不应将已耗尽的 codex extra 持久化为运行时限流状态: %v", got)
 	case <-time.After(200 * time.Millisecond):
-	}
-}
-
-func TestAccountUsageService_GetXAIUsageFetchesMonthlyBilling(t *testing.T) {
-	var gotAuth string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotAuth = r.Header.Get("Authorization")
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"config": {
-				"monthlyLimit": { "val": "15000" },
-				"used": { "val": "13255" },
-				"onDemandCap": { "val": "0" },
-				"billingPeriodStart": "2026-06-01T00:00:00Z",
-				"billingPeriodEnd": "2026-07-01T00:00:00Z"
-			}
-		}`))
-	}))
-	defer server.Close()
-
-	oldURL := xaipkg.BillingRESTEndpoint
-	xaipkg.BillingRESTEndpoint = server.URL
-	defer func() { xaipkg.BillingRESTEndpoint = oldURL }()
-
-	repo := stubOpenAIAccountRepo{
-		accounts: []Account{{
-			ID:       77,
-			Platform: PlatformXAI,
-			Type:     AccountTypeOAuth,
-			Credentials: map[string]any{
-				"access_token": "xai-token",
-			},
-		}},
-	}
-	svc := &AccountUsageService{
-		accountRepo: repo,
-		cache:       NewUsageCache(),
-	}
-
-	usage, err := svc.GetUsage(context.Background(), 77)
-	if err != nil {
-		t.Fatalf("GetUsage() error = %v", err)
-	}
-	if gotAuth != "Bearer xai-token" {
-		t.Fatalf("Authorization = %q, want Bearer xai-token", gotAuth)
-	}
-	if usage == nil || usage.XAIBilling == nil {
-		t.Fatalf("expected xAI billing usage, got %#v", usage)
-	}
-	if usage.XAIBilling.MonthlyLimitCents == nil || *usage.XAIBilling.MonthlyLimitCents != 15000 {
-		t.Fatalf("MonthlyLimitCents = %#v, want 15000", usage.XAIBilling.MonthlyLimitCents)
-	}
-	if usage.XAIBilling.UsedCents == nil || *usage.XAIBilling.UsedCents != 13255 {
-		t.Fatalf("UsedCents = %#v, want 13255", usage.XAIBilling.UsedCents)
-	}
-	wantUsedPercent := 13255.0 / 15000.0 * 100
-	if usage.XAIBilling.UsedPercent == nil || math.Abs(*usage.XAIBilling.UsedPercent-wantUsedPercent) > 0.001 {
-		t.Fatalf("UsedPercent = %#v, want %.3f", usage.XAIBilling.UsedPercent, wantUsedPercent)
-	}
-	if usage.XAIBilling.BillingPeriodEnd == nil || usage.XAIBilling.BillingPeriodEnd.Format(time.RFC3339) != "2026-07-01T00:00:00Z" {
-		t.Fatalf("BillingPeriodEnd = %#v, want 2026-07-01T00:00:00Z", usage.XAIBilling.BillingPeriodEnd)
-	}
-}
-
-func TestAccountUsageService_GetXAIUsageReturnsDegradedError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"error":"expired token"}`, http.StatusUnauthorized)
-	}))
-	defer server.Close()
-
-	oldURL := xaipkg.BillingRESTEndpoint
-	xaipkg.BillingRESTEndpoint = server.URL
-	defer func() { xaipkg.BillingRESTEndpoint = oldURL }()
-
-	repo := stubOpenAIAccountRepo{
-		accounts: []Account{{
-			ID:       78,
-			Platform: PlatformXAI,
-			Type:     AccountTypeOAuth,
-			Credentials: map[string]any{
-				"access_token": "expired-token",
-			},
-		}},
-	}
-	svc := &AccountUsageService{
-		accountRepo: repo,
-		cache:       NewUsageCache(),
-	}
-
-	usage, err := svc.GetUsage(context.Background(), 78)
-	if err != nil {
-		t.Fatalf("GetUsage() error = %v", err)
-	}
-	if usage == nil || usage.ErrorCode != "unauthenticated" || !usage.NeedsReauth {
-		t.Fatalf("expected degraded unauthenticated usage, got %#v", usage)
 	}
 }
 

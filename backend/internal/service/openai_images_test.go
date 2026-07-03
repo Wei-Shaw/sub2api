@@ -473,16 +473,6 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
 	})
 
-	t.Run("xAI 默认仅兼容 chat", func(t *testing.T) {
-		account := &Account{
-			Platform: PlatformXAI,
-			Type:     AccountTypeOAuth,
-		}
-
-		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
-		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
-	})
-
 	t.Run("显式列表支持同时声明 chat 和 embeddings", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,
@@ -987,63 +977,6 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseU
 	require.Equal(t, "Bearer test-api-key", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(upstream.lastBody, "model").String())
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
-}
-
-func TestOpenAIGatewayServiceForwardImages_XAIUsesImagesGenerationsURL(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"grok-imagine-image","prompt":"draw a cat","response_format":"b64_json"}`)
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = req
-
-	svc := &OpenAIGatewayService{
-		cfg: &config.Config{},
-		httpUpstream: &httpUpstreamRecorder{
-			resp: &http.Response{
-				StatusCode: http.StatusOK,
-				Header: http.Header{
-					"Content-Type": []string{"application/json"},
-					"X-Request-Id": []string{"req_xai_img"},
-				},
-				Body: io.NopCloser(strings.NewReader(`{"created":1710000007,"data":[{"b64_json":"aGVsbG8="}],"usage":{"cost_in_usd_ticks":300000000}}`)),
-			},
-		},
-	}
-	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
-	require.NoError(t, err)
-
-	account := &Account{
-		ID:       66,
-		Name:     "xai-apikey",
-		Platform: PlatformXAI,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"api_key":  "test-xai-key",
-			"base_url": "https://api.x.ai/v1",
-		},
-	}
-
-	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, "grok-imagine-image", result.Model)
-	require.Equal(t, "grok-imagine-image", result.UpstreamModel)
-	require.NotNil(t, result.ProviderMediaCost)
-	require.InDelta(t, 0.03, result.ProviderMediaCost.OutputCost, 1e-12)
-	require.True(t, result.UseImageRateForMedia)
-
-	upstream, ok := svc.httpUpstream.(*httpUpstreamRecorder)
-	require.True(t, ok)
-	require.NotNil(t, upstream.lastReq)
-	require.Equal(t, "https://api.x.ai/v1/images/generations", upstream.lastReq.URL.String())
-	require.Equal(t, "Bearer test-xai-key", upstream.lastReq.Header.Get("Authorization"))
-	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
-	require.Equal(t, "grok-imagine-image", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }

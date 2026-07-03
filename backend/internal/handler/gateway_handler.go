@@ -1025,14 +1025,6 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
-	if platform == service.PlatformXAI {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   xai.DefaultModels,
-		})
-		return
-	}
-
 	if platform == service.PlatformGemini {
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
@@ -1153,8 +1145,6 @@ func defaultModelIDsForPlatform(platform string) []string {
 	switch platform {
 	case service.PlatformOpenAI:
 		return openai.DefaultModelIDs()
-	case service.PlatformXAI:
-		return xai.DefaultModelIDs()
 	case service.PlatformGemini:
 		ids := make([]string, 0, len(geminicli.DefaultModels))
 		for _, model := range geminicli.DefaultModels {
