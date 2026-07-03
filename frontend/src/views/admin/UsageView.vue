@@ -118,6 +118,7 @@
           :default-sort-order="'desc'"
           @sort="handleSort"
           @userClick="handleUserClick"
+          @ipGeoBatchFailed="handleIpGeoBatchFailed"
         />
         <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
       </div>
@@ -485,6 +486,10 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   sortState.sort_order = order
   pagination.page = 1
   loadLogs()
+}
+
+const handleIpGeoBatchFailed = () => {
+  appStore.showError(t('usage.ipGeo.batchFailed'))
 }
 const cancelExport = () => exportAbortController?.abort()
 const openCleanupDialog = () => { cleanupDialogVisible.value = true }

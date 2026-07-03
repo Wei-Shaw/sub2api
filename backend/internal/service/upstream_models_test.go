@@ -93,6 +93,23 @@ func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
 	require.Equal(t, "anthropic-key", anthropicReq.Header.Get("x-api-key"))
 	require.Equal(t, "2023-06-01", anthropicReq.Header.Get("anthropic-version"))
 
+	anthropicBearerReq, err := svc.buildAnthropicUpstreamModelsRequest(ctx, &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "ollama-key",
+			"base_url": "https://ollama.com",
+		},
+		Extra: map[string]any{
+			"anthropic_apikey_auth_scheme": AnthropicAPIKeyAuthSchemeAuthorizationBearer,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "https://ollama.com/v1/models", anthropicBearerReq.URL.String())
+	require.Equal(t, "Bearer ollama-key", anthropicBearerReq.Header.Get("Authorization"))
+	require.Empty(t, anthropicBearerReq.Header.Get("x-api-key"))
+	require.Equal(t, "2023-06-01", anthropicBearerReq.Header.Get("anthropic-version"))
+
 	openAIReq, err := svc.buildOpenAIUpstreamModelsRequest(ctx, &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,

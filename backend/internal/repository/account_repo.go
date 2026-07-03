@@ -603,6 +603,41 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	return outAccounts, paginationResultFromTotal(int64(total), params), nil
 }
 
+func (r *accountRepository) ListOpsAccountsForStats(ctx context.Context, platformFilter string, groupIDFilter *int64) ([]service.Account, error) {
+	if r == nil || r.client == nil {
+		return []service.Account{}, nil
+	}
+
+	q := r.client.Account.Query()
+	if platformFilter = strings.TrimSpace(platformFilter); platformFilter != "" {
+		q = q.Where(dbaccount.PlatformEQ(platformFilter))
+	}
+	if groupIDFilter != nil && *groupIDFilter > 0 {
+		q = q.Where(dbaccount.HasAccountGroupsWith(dbaccountgroup.GroupIDEQ(*groupIDFilter)))
+	}
+
+	accounts, err := q.
+		Select(
+			dbaccount.FieldID,
+			dbaccount.FieldName,
+			dbaccount.FieldPlatform,
+			dbaccount.FieldConcurrency,
+			dbaccount.FieldLoadFactor,
+			dbaccount.FieldStatus,
+			dbaccount.FieldErrorMessage,
+			dbaccount.FieldSchedulable,
+			dbaccount.FieldRateLimitResetAt,
+			dbaccount.FieldOverloadUntil,
+			dbaccount.FieldTempUnschedulableUntil,
+		).
+		Order(dbent.Asc(dbaccount.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return r.accountsToService(ctx, accounts)
+}
+
 func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderAsc)

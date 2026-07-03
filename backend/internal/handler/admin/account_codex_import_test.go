@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 func TestParseCodexSessionImportEntriesSupportsRawTokenJSONAndArray(t *testing.T) {
@@ -300,6 +302,12 @@ func TestResolveCodexImportExpiryForNoRefreshTokenUsesEarlierRequestExpiry(t *te
 
 func TestCodexIdentityKeysPreferStrongIdentifiers(t *testing.T) {
 	keys := buildCodexIdentityKeys("acct-1", "user-1", "same@example.com", "token")
+	if len(keys) == 0 || keys[0] != "user:user-1" {
+		t.Fatalf("user key should have highest priority: %v", keys)
+	}
+	if keys[len(keys)-1] != "account:acct-1" {
+		t.Fatalf("shared account key should be the last fallback: %v", keys)
+	}
 	for _, key := range keys {
 		if strings.HasPrefix(key, "email:") {
 			t.Fatalf("strong identity should not include email fallback: %v", keys)
@@ -315,6 +323,174 @@ func TestCodexIdentityKeysPreferStrongIdentifiers(t *testing.T) {
 	}
 	if !hasEmail {
 		t.Fatalf("weak identity should include email fallback: %v", keys)
+	}
+}
+
+func TestCodexAccountIndexDoesNotMatchDifferentUsersInSameChatGPTAccount(t *testing.T) {
+	existing := service.Account{
+		ID: 10,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "team-1",
+			"chatgpt_user_id":    "user-1",
+			"access_token":       "token-1",
+		},
+	}
+	index := buildCodexAccountIndex([]service.Account{existing})
+
+	keys := buildCodexIdentityKeys("team-1", "user-2", "", "token-2")
+	if got, _ := index.Find(keys, "user-2"); got != nil {
+		t.Fatalf("Find matched account ID %d for a different chatgpt_user_id in the same team", got.ID)
+	}
+
+	keys = buildCodexIdentityKeys("team-1", "user-1", "", "token-2")
+	got, _ := index.Find(keys, "user-1")
+	if got == nil || got.ID != existing.ID {
+		t.Fatalf("Find by same chatgpt_user_id = %v, want account ID %d", got, existing.ID)
+	}
+}
+
+func TestCodexAccountIndexFallsBackToAccountKeyWhenUserIDMissing(t *testing.T) {
+	// 存量账号缺少 chatgpt_user_id：携带 user id 的重新导入应命中并更新（回填），
+	// 而不是创建重复账号。
+	legacy := service.Account{
+		ID: 20,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "team-1",
+			"access_token":       "token-old",
+		},
+	}
+	index := buildCodexAccountIndex([]service.Account{legacy})
+
+	keys := buildCodexIdentityKeys("team-1", "user-1", "", "token-new")
+	got, matchedKey := index.Find(keys, "user-1")
+	if got == nil || got.ID != legacy.ID {
+		t.Fatalf("Find legacy account without stored user id = %v, want account ID %d", got, legacy.ID)
+	}
+	if matchedKey != "account:team-1" {
+		t.Fatalf("matched key = %q, want account:team-1", matchedKey)
+	}
+
+	// 反向：导入条目无法解析出 user id 时，仍应通过 account 键命中已有账号。
+	full := service.Account{
+		ID: 21,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "team-2",
+			"chatgpt_user_id":    "user-9",
+			"access_token":       "token-old",
+		},
+	}
+	index = buildCodexAccountIndex([]service.Account{full})
+
+	keys = buildCodexIdentityKeys("team-2", "", "", "token-opaque")
+	got, _ = index.Find(keys, "")
+	if got == nil || got.ID != full.ID {
+		t.Fatalf("Find by account key without entry user id = %v, want account ID %d", got, full.ID)
+	}
+}
+
+func TestCodexAccountIndexKeepsAllCandidatesForSharedAccountKey(t *testing.T) {
+	legacy := service.Account{
+		ID: 30,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "team-1",
+			"access_token":       "token-legacy",
+		},
+	}
+	member := service.Account{
+		ID: 31,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "team-1",
+			"chatgpt_user_id":    "user-2",
+			"access_token":       "token-member",
+		},
+	}
+
+	// 无论索引构建顺序如何，携带新 user id 的条目都应跳过 user-2 的账号、
+	// 命中缺少 user id 的存量账号，而不是因单一候选被遮蔽而落空。
+	for _, accounts := range [][]service.Account{
+		{member, legacy},
+		{legacy, member},
+	} {
+		index := buildCodexAccountIndex(accounts)
+
+		keys := buildCodexIdentityKeys("team-1", "user-1", "", "token-new")
+		got, matchedKey := index.Find(keys, "user-1")
+		if got == nil || got.ID != legacy.ID {
+			t.Fatalf("Find with shared account key = %v, want legacy account ID %d", got, legacy.ID)
+		}
+		if matchedKey != "account:team-1" {
+			t.Fatalf("matched key = %q, want account:team-1", matchedKey)
+		}
+
+		keys = buildCodexIdentityKeys("team-1", "user-2", "", "token-new")
+		got, matchedKey = index.Find(keys, "user-2")
+		if got == nil || got.ID != member.ID {
+			t.Fatalf("Find by user key = %v, want member account ID %d", got, member.ID)
+		}
+		if matchedKey != "user:user-2" {
+			t.Fatalf("matched key = %q, want user:user-2", matchedKey)
+		}
+	}
+}
+
+func TestCodexAccountIndexUpsertReplacesSameAccount(t *testing.T) {
+	legacy := service.Account{
+		ID: 40,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "team-1",
+			"access_token":       "token-old",
+		},
+	}
+	index := buildCodexAccountIndex([]service.Account{legacy})
+
+	backfilled := service.Account{
+		ID: 40,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "team-1",
+			"chatgpt_user_id":    "user-1",
+			"access_token":       "token-new",
+		},
+	}
+	index.Add(backfilled)
+
+	// 回填后同一账号在 account 键下应被原位替换而非残留旧副本：
+	// 其他成员的条目不应再通过旧副本（无 user id）命中该账号。
+	keys := buildCodexIdentityKeys("team-1", "user-2", "", "token-other")
+	if got, _ := index.Find(keys, "user-2"); got != nil {
+		t.Fatalf("stale candidate matched after upsert: account ID %d", got.ID)
+	}
+
+	keys = buildCodexIdentityKeys("team-1", "user-1", "", "token-other")
+	got, _ := index.Find(keys, "user-1")
+	if got == nil || got.ID != backfilled.ID {
+		t.Fatalf("Find after upsert = %v, want account ID %d", got, backfilled.ID)
+	}
+	if uid := codexCredentialString(got.Credentials, "chatgpt_user_id"); uid != "user-1" {
+		t.Fatalf("upsert did not replace credentials, chatgpt_user_id = %q", uid)
+	}
+}
+
+func TestCodexIdentitySeenDistinguishesTeamMembers(t *testing.T) {
+	seen := map[string]codexSeenIdentity{}
+	member1 := buildCodexIdentityKeys("team-1", "user-1", "", "token-1")
+	markCodexIdentitySeen(seen, member1, 1, "user-1")
+
+	member2 := buildCodexIdentityKeys("team-1", "user-2", "", "token-2")
+	if index, ok := firstSeenCodexIdentity(seen, member2, "user-2"); ok {
+		t.Fatalf("different team member treated as duplicate of entry %d", index)
+	}
+
+	again := buildCodexIdentityKeys("team-1", "user-1", "", "token-3")
+	index, ok := firstSeenCodexIdentity(seen, again, "user-1")
+	if !ok || index != 1 {
+		t.Fatalf("same user re-entry dedup = (%d, %v), want (1, true)", index, ok)
+	}
+
+	// 无 user id 的条目与已见同 account 条目视为重复（保守跳过，与既有行为一致）。
+	opaque := buildCodexIdentityKeys("team-1", "", "", "token-4")
+	index, ok = firstSeenCodexIdentity(seen, opaque, "")
+	if !ok || index != 1 {
+		t.Fatalf("entry without user id dedup = (%d, %v), want (1, true)", index, ok)
 	}
 }
 

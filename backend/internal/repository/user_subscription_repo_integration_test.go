@@ -157,6 +157,41 @@ func (s *UserSubscriptionRepoSuite) TestDelete() {
 	s.Require().Error(err, "expected error after delete")
 }
 
+func (s *UserSubscriptionRepoSuite) TestGetByIDIncludeDeleted_PreservesPersistedStatus() {
+	user := s.mustCreateUser("include-deleted@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-include-deleted")
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetStatus(service.SubscriptionStatusActive)
+	})
+
+	s.Require().NoError(s.repo.Delete(s.ctx, sub.ID), "Delete")
+
+	got, err := s.repo.GetByIDIncludeDeleted(s.ctx, sub.ID)
+	s.Require().NoError(err, "GetByIDIncludeDeleted")
+	s.Require().Equal(service.SubscriptionStatusActive, got.Status)
+	s.Require().NotNil(got.DeletedAt)
+	s.Require().NotNil(got.User)
+	s.Require().NotNil(got.Group)
+}
+
+func (s *UserSubscriptionRepoSuite) TestRestore() {
+	user := s.mustCreateUser("restore@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-restore")
+	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
+
+	s.Require().NoError(s.repo.Delete(s.ctx, sub.ID), "Delete")
+
+	restored, err := s.repo.Restore(s.ctx, sub.ID, service.SubscriptionStatusExpired)
+	s.Require().NoError(err, "Restore")
+	s.Require().Equal(service.SubscriptionStatusExpired, restored.Status)
+	s.Require().Nil(restored.DeletedAt)
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err, "GetByID after restore")
+	s.Require().Nil(got.DeletedAt)
+	s.Require().Equal(service.SubscriptionStatusExpired, got.Status)
+}
+
 func (s *UserSubscriptionRepoSuite) TestDelete_Idempotent() {
 	s.Require().NoError(s.repo.Delete(s.ctx, 42424242), "Delete should be idempotent")
 }
@@ -585,6 +620,22 @@ func (s *UserSubscriptionRepoSuite) TestExistsByUserIDAndGroupID() {
 	notExists, err := s.repo.ExistsByUserIDAndGroupID(s.ctx, user.ID, 999999)
 	s.Require().NoError(err)
 	s.Require().False(notExists)
+}
+
+func (s *UserSubscriptionRepoSuite) TestExistsActiveByUserIDAndGroupID_IgnoresSoftDeletedRows() {
+	user := s.mustCreateUser("exists-active@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-exists-active")
+	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
+
+	exists, err := s.repo.ExistsActiveByUserIDAndGroupID(s.ctx, user.ID, group.ID)
+	s.Require().NoError(err, "ExistsActiveByUserIDAndGroupID")
+	s.Require().True(exists)
+
+	s.Require().NoError(s.repo.Delete(s.ctx, sub.ID), "Delete")
+
+	exists, err = s.repo.ExistsActiveByUserIDAndGroupID(s.ctx, user.ID, group.ID)
+	s.Require().NoError(err, "ExistsActiveByUserIDAndGroupID after delete")
+	s.Require().False(exists)
 }
 
 // --- CountByGroupID / CountActiveByGroupID ---
