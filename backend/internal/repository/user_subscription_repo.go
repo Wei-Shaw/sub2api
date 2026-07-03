@@ -75,6 +75,21 @@ func (r *userSubscriptionRepository) GetByID(ctx context.Context, id int64) (*se
 	return userSubscriptionEntityToService(m), nil
 }
 
+func (r *userSubscriptionRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	client := clientFromContext(ctx, r.client)
+	queryCtx := mixins.SkipSoftDelete(ctx)
+	m, err := client.UserSubscription.Query().
+		Where(usersubscription.IDEQ(id)).
+		WithUser().
+		WithGroup().
+		WithAssignedByUser().
+		Only(queryCtx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+	}
+	return userSubscriptionEntityToServicePreserveStatus(m), nil
+}
+
 func (r *userSubscriptionRepository) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	m, err := client.UserSubscription.Query().
@@ -139,6 +154,20 @@ func (r *userSubscriptionRepository) Delete(ctx context.Context, id int64) error
 	client := clientFromContext(ctx, r.client)
 	_, err := client.UserSubscription.Delete().Where(usersubscription.IDEQ(id)).Exec(ctx)
 	return err
+}
+
+func (r *userSubscriptionRepository) Restore(ctx context.Context, subscriptionID int64, restoredStatus string) (*service.UserSubscription, error) {
+	client := clientFromContext(ctx, r.client)
+	queryCtx := mixins.SkipSoftDelete(ctx)
+	_, err := client.UserSubscription.UpdateOneID(subscriptionID).
+		SetStatus(restoredStatus).
+		ClearDeletedAt().
+		SetUpdatedAt(time.Now()).
+		Save(queryCtx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrSubscriptionNotFound, service.ErrSubscriptionRestoreConflict)
+	}
+	return r.GetByID(ctx, subscriptionID)
 }
 
 func (r *userSubscriptionRepository) ListByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
@@ -297,6 +326,10 @@ func (r *userSubscriptionRepository) ExistsByUserIDAndGroupID(ctx context.Contex
 	return client.UserSubscription.Query().
 		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID)).
 		Exist(ctx)
+}
+
+func (r *userSubscriptionRepository) ExistsActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
+	return r.ExistsByUserIDAndGroupID(ctx, userID, groupID)
 }
 
 func (r *userSubscriptionRepository) ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error {
@@ -520,11 +553,19 @@ func uniqueInt64s(values []int64) []int64 {
 }
 
 func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSubscription {
+	return userSubscriptionEntityToServiceWithStatusMapping(m, true)
+}
+
+func userSubscriptionEntityToServicePreserveStatus(m *dbent.UserSubscription) *service.UserSubscription {
+	return userSubscriptionEntityToServiceWithStatusMapping(m, false)
+}
+
+func userSubscriptionEntityToServiceWithStatusMapping(m *dbent.UserSubscription, mapDeletedToRevoked bool) *service.UserSubscription {
 	if m == nil {
 		return nil
 	}
 	status := m.Status
-	if m.DeletedAt != nil {
+	if mapDeletedToRevoked && m.DeletedAt != nil {
 		status = service.SubscriptionStatusRevoked
 	}
 	out := &service.UserSubscription{

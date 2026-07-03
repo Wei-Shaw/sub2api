@@ -146,6 +146,25 @@ func TestBuildGrokResponsesRequestRejectsUnsafeAccountBaseURL(t *testing.T) {
 	require.Contains(t, err.Error(), "invalid base url")
 }
 
+func TestGrokMediaGenerationGateCoversImagesAndVideo(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint GrokMediaEndpoint
+		want     bool
+	}{
+		{name: "image generation", endpoint: GrokMediaEndpointImagesGenerations, want: true},
+		{name: "image edit", endpoint: GrokMediaEndpointImagesEdits, want: true},
+		{name: "video generation", endpoint: GrokMediaEndpointVideosGenerations, want: true},
+		{name: "video status", endpoint: GrokMediaEndpointVideoStatus, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.endpoint.IsGenerationRequest())
+		})
+	}
+}
+
 func TestExtractGrokMediaModelSupportsJSONAndMultipart(t *testing.T) {
 	require.Equal(t, "grok-imagine", ExtractGrokMediaModel("application/json", []byte(`{"model":"grok-imagine"}`)))
 
@@ -182,7 +201,28 @@ func TestParseGrokMediaRequestBuildsMultipartModerationBody(t *testing.T) {
 	require.True(t, strings.HasPrefix(gjson.GetBytes(moderationBody, "images.0.image_url").String(), "data:image/"))
 }
 
-func TestForwardGrokMediaImagesGenerationPassthrough(t *testing.T) {
+func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint GrokMediaEndpoint
+		model    string
+		want     string
+	}{
+		{name: "image generation alias", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine", want: "grok-imagine-image-quality"},
+		{name: "image edit alias", endpoint: GrokMediaEndpointImagesEdits, model: "grok-imagine", want: "grok-imagine-image-quality"},
+		{name: "image quality passthrough", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine-image-quality", want: "grok-imagine-image-quality"},
+		{name: "image fast passthrough", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine-image", want: "grok-imagine-image"},
+		{name: "video passthrough", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video", want: "grok-imagine-video"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, normalizeGrokMediaModelForEndpoint(tt.endpoint, tt.model))
+		})
+	}
+}
+
+func TestForwardGrokMediaImagesGenerationNormalizesImagineAlias(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	gin.SetMode(gin.TestMode)
 
@@ -219,12 +259,12 @@ func TestForwardGrokMediaImagesGenerationPassthrough(t *testing.T) {
 	require.Equal(t, http.MethodPost, upstream.lastReq.Method)
 	require.Equal(t, "Bearer api-key", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
-	require.JSONEq(t, string(body), string(upstream.lastBody))
+	require.JSONEq(t, `{"model":"grok-imagine-image-quality","prompt":"draw a cat"}`, string(upstream.lastBody))
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.JSONEq(t, `{"data":[]}`, recorder.Body.String())
 	require.Equal(t, "xai-image-req", result.RequestID)
-	require.Equal(t, "grok-imagine", result.Model)
-	require.Equal(t, "grok-imagine", result.BillingModel)
+	require.Equal(t, "grok-imagine-image-quality", result.Model)
+	require.Equal(t, "grok-imagine-image-quality", result.BillingModel)
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, ImageBillingSize2K, result.ImageSize)
 }
