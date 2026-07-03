@@ -3742,6 +3742,12 @@ export default {
         codexImageGenerationBridgeBadgeInherit: '渠道策略',
         codexImageGenerationBridgeBadgeEnabled: '账号开启',
         codexImageGenerationBridgeBadgeDisabled: '账号关闭',
+        codexImageToolPolicy: 'Codex 图片工具传递策略',
+        codexImageToolPolicyDesc: '仅作用于 Codex /responses 文本端点中客户端显式携带的 image_generation tool；不影响独立图片生成接口。',
+        codexImageToolPolicyAllow: '放行',
+        codexImageToolPolicyAllowDesc: '默认行为，保留客户端显式发送的 image_generation tool。',
+        codexImageToolPolicyStrip: '移除',
+        codexImageToolPolicyStripDesc: '转发前删除 image_generation tool 和指向它的 tool_choice。',
         compactMode: 'Compact 模式',
         compactModeDesc:
           '控制本账号在 /responses/compact 调度中的参与方式。Auto 跟随探测结果，Force On 强制允许，Force Off 强制排除。',

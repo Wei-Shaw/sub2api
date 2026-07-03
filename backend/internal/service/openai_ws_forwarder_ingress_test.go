@@ -169,6 +169,26 @@ REDACTED)
 REDACTED)
 REDACTED
 
+func TestStripOpenAIImageGenerationToolFromRawPayload(t *testing.T) {
+	payload := []byte(`{
+		"type":"response.create",
+		"model":"gpt-5.4",
+		"tools":[
+			{"type":"function","name":"shell"REDACTED,
+			{"type":"image_generation","output_format":"png"REDACTED
+		],
+		"tool_choice":{"type":"image_generation"REDACTED
+REDACTED`)
+
+	updated, changed, err := stripOpenAIImageGenerationToolFromRawPayload(payload)
+
+REDACTED
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(updated, `tools.#(type=="image_generation")`).Exists())
+	require.True(t, gjson.GetBytes(updated, `tools.#(type=="function")`).Exists())
+	require.False(t, gjson.GetBytes(updated, "tool_choice").Exists())
+REDACTED
+
 func TestAlignStoreDisabledPreviousResponseID(t *testing.T) {
 	t.Parallel()
 
