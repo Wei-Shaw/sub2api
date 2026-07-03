@@ -39,7 +39,7 @@ func (r *tokenRefreshAccountRepo) UpdateCredentials(ctx context.Context, id int6
 	if r.updateErr != nil {
 		return r.updateErr
 	}
-	cloned := cloneCredentials(credentials)
+	cloned := shallowCopyMap(credentials)
 	if r.accountsByID != nil {
 		if acc, ok := r.accountsByID[id]; ok && acc != nil {
 			acc.Credentials = cloned

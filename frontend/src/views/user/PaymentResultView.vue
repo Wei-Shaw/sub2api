@@ -35,7 +35,7 @@
         <!-- Order Info -->
         <div v-if="order" class="rounded-xl bg-white p-5 shadow-sm dark:bg-dark-800">
           <div class="space-y-3 text-sm">
-            <div class="flex justify-between">
+            <div v-if="hasOrderId(order)" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
               <span class="font-medium text-gray-900 dark:text-white">#{{ order.id }}</span>
             </div>
@@ -43,29 +43,29 @@
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderNo') }}</span>
               <span class="font-medium text-gray-900 dark:text-white">{{ order.out_trade_no }}</span>
             </div>
-            <div class="flex justify-between">
+            <div v-if="hasAmountFields(order)" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') }}</span>
               <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(baseAmount) }}</span>
             </div>
-            <div v-if="order.fee_rate > 0" class="flex justify-between">
+            <div v-if="hasAmountFields(order) && order.fee_rate > 0" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ order.fee_rate }}%)</span>
               <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(feeAmount) }}</span>
             </div>
-            <div class="flex justify-between">
+            <div v-if="hasAmountFields(order)" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
               <span class="font-bold text-primary-600 dark:text-primary-400">{{ formatGatewayAmount(order.pay_amount) }}</span>
             </div>
-            <div v-if="order.amount !== order.pay_amount" class="flex justify-between">
+            <div v-if="hasAmountFields(order) && order.amount !== order.pay_amount" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</span>
               <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' + order.amount.toFixed(2) : formatGatewayAmount(order.amount) }}</span>
             </div>
-            <div class="flex justify-between">
+            <div v-if="hasPaymentType(order)" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</span>
               <span class="font-medium text-gray-900 dark:text-white">{{ t(paymentMethodI18nKey(order.payment_type), normalizedOrderPaymentType(order.payment_type)) }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.status') }}</span>
-              <OrderStatusBadge :status="order.status" />
+              <OrderStatusBadge :status="displayOrderStatus(order.status)" />
             </div>
           </div>
         </div>
@@ -108,7 +108,8 @@ import {
 } from '@/components/payment/paymentFlow'
 import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
-import type { PaymentOrder } from '@/types/payment'
+import type { PublicOrderVerifyResult } from '@/api/payment'
+import type { OrderStatus, PaymentOrder } from '@/types/payment'
 import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import { normalizePaymentMethodForDisplay, paymentMethodI18nKey } from './paymentUx'
 
@@ -118,7 +119,9 @@ const route = useRoute()
 const router = useRouter()
 const paymentStore = usePaymentStore()
 
-const order = ref<PaymentOrder | null>(null)
+type ResolvedOrder = PaymentOrder | PublicOrderVerifyResult
+
+const order = ref<ResolvedOrder | null>(null)
 const loading = ref(true)
 const currency = ref('CNY')
 
@@ -140,7 +143,7 @@ const refreshAttempts = ref(0)
 
 /** 充值金额 = pay_amount / (1 + fee_rate/100)，fee_rate=0 时等于 pay_amount */
 const baseAmount = computed(() => {
-  if (!order.value) return 0
+  if (!hasAmountFields(order.value)) return 0
   const feeRate = Number(order.value.fee_rate) || 0
   if (feeRate <= 0) return order.value.pay_amount ?? 0
   return Math.round((order.value.pay_amount / (1 + feeRate / 100)) * 100) / 100
@@ -148,7 +151,7 @@ const baseAmount = computed(() => {
 
 /** 手续费 = pay_amount - baseAmount */
 const feeAmount = computed(() => {
-  if (!order.value) return 0
+  if (!hasAmountFields(order.value)) return 0
   const feeRate = Number(order.value.fee_rate) || 0
   if (feeRate <= 0) return 0
   return Math.round((order.value.pay_amount - baseAmount.value) * 100) / 100
@@ -182,22 +185,38 @@ const statusTitle = computed(() => {
 })
 
 function normalizedOrderPaymentType(paymentType: string): string {
-  return normalizePaymentMethodForDisplay(paymentType) || paymentType
+  return normalizePaymentMethodForDisplay(paymentType || '') || paymentType || ''
 }
 
 function formatGatewayAmount(value: number): string {
   return formatPaymentAmount(value, currency.value, localeCode.value)
 }
 
-function setResolvedOrder(nextOrder: PaymentOrder | null): void {
+function setResolvedOrder(nextOrder: ResolvedOrder | null): void {
   order.value = nextOrder
-  if (nextOrder?.currency) {
+  if (nextOrder && 'currency' in nextOrder && nextOrder.currency) {
     currency.value = normalizePaymentCurrency(nextOrder.currency)
   }
 }
 
+function hasOrderId(nextOrder: ResolvedOrder | null): nextOrder is PaymentOrder {
+  return !!nextOrder && 'id' in nextOrder && typeof nextOrder.id === 'number'
+}
+
+function hasAmountFields(nextOrder: ResolvedOrder | null): nextOrder is PaymentOrder {
+  return !!nextOrder && 'pay_amount' in nextOrder && typeof nextOrder.pay_amount === 'number' && 'amount' in nextOrder && typeof nextOrder.amount === 'number'
+}
+
+function hasPaymentType(nextOrder: ResolvedOrder | null): nextOrder is PaymentOrder {
+  return !!nextOrder && 'payment_type' in nextOrder && typeof nextOrder.payment_type === 'string' && nextOrder.payment_type.trim() !== ''
+}
+
 function normalizeOrderStatus(status: string | null | undefined): string {
   return String(status || '').trim().toUpperCase()
+}
+
+function displayOrderStatus(status: string): OrderStatus {
+  return normalizeOrderStatus(status) as OrderStatus
 }
 
 function isSuccessStatus(status: string | null | undefined): boolean {
@@ -256,7 +275,7 @@ function restoreRecoverySnapshot(context: {
   return restored
 }
 
-async function resolveOrderFromResumeToken(resumeToken: string): Promise<PaymentOrder | null> {
+async function resolveOrderFromResumeToken(resumeToken: string): Promise<ResolvedOrder | null> {
   try {
     const result = await paymentAPI.resolveOrderPublicByResumeToken(resumeToken)
     return result.data
@@ -265,7 +284,7 @@ async function resolveOrderFromResumeToken(resumeToken: string): Promise<Payment
   }
 }
 
-async function resolveOrderFromOutTradeNo(outTradeNo: string): Promise<PaymentOrder | null> {
+async function resolveOrderFromOutTradeNo(outTradeNo: string): Promise<ResolvedOrder | null> {
   try {
     const result = await paymentAPI.verifyOrder(outTradeNo)
     return result.data
@@ -298,7 +317,7 @@ function clearRecoverySnapshotForTerminalStatus(status: string | null | undefine
   }
 }
 
-function scheduleStatusRefresh(refreshOrder: (() => Promise<PaymentOrder | null>) | null): void {
+function scheduleStatusRefresh(refreshOrder: (() => Promise<ResolvedOrder | null>) | null): void {
   clearStatusRefreshTimer()
   if (!refreshOrder || !isPending.value || refreshAttempts.value >= STATUS_REFRESH_MAX_ATTEMPTS) {
     return
@@ -345,7 +364,7 @@ onMounted(async () => {
     if (resolvedOrder) {
       setResolvedOrder(resolvedOrder)
       if (!orderId) {
-        orderId = resolvedOrder.id
+        orderId = hasOrderId(resolvedOrder) ? resolvedOrder.id : 0
       }
     } else if (routeOrderId > 0) {
       resumeTokenLookupFailed = true
@@ -373,7 +392,7 @@ onMounted(async () => {
     if (legacyOrder) {
       setResolvedOrder(legacyOrder)
       if (!orderId) {
-        orderId = legacyOrder.id
+        orderId = hasOrderId(legacyOrder) ? legacyOrder.id : 0
       }
     }
   }
@@ -387,7 +406,7 @@ onMounted(async () => {
     }
   }
 
-  const refreshOrder = async (): Promise<PaymentOrder | null> => {
+  const refreshOrder = async (): Promise<ResolvedOrder | null> => {
     if (resumeToken) {
       const resolvedOrder = await resolveOrderFromResumeToken(resumeToken)
       if (resolvedOrder) {

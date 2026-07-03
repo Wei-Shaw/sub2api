@@ -16,7 +16,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -94,7 +93,6 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 	originalModel := chatReq.Model
 	clientStream := chatReq.Stream
-	includeUsage := chatReq.StreamOptions != nil && chatReq.StreamOptions.IncludeUsage
 
 	// 2. Resolve model mapping early so compat prompt_cache_key injection can
 	// derive a stable seed from the final upstream model family.
@@ -185,26 +183,6 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		)
 	}
 	logger.L().Debug("openai chat_completions: model mapping applied", logFields...)
-
-	if account.Platform == PlatformXAI {
-		if isResponsesShape {
-			userAgent := ""
-			if c != nil && c.Request != nil {
-				userAgent = c.Request.UserAgent()
-			}
-			var headers http.Header
-			if c != nil && c.Request != nil {
-				headers = c.Request.Header
-			}
-			grokCLI := xai.ShouldUseGrokCLINormalize(account.GetXAIBaseURL(), userAgent, upstreamModel, headers)
-			normalizedBody, err := xai.NormalizeResponsesBody(responsesBody, upstreamModel, true, promptCacheKey, grokCLI)
-			if err != nil {
-				return nil, fmt.Errorf("normalize xai responses-shape body: %w", err)
-			}
-			return s.forwardXAICompatStreaming(ctx, c, account, normalizedBody, originalModel, billingModel, upstreamModel, clientStream, includeUsage, startTime, promptCacheKey, true)
-		}
-		return s.forwardXAIResponsesAsChatCompletions(ctx, c, account, responsesReq, originalModel, billingModel, upstreamModel, clientStream, includeUsage, startTime, promptCacheKey)
-	}
 
 	if account.Type == AccountTypeOAuth {
 		var reqBody map[string]any
@@ -366,8 +344,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		}
 	}
 
-	// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
-	if handleErr == nil && account.Type == AccountTypeOAuth {
+	// Extract and save Codex usage snapshot from response headers (for OAuth accounts).
+	// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
+	if handleErr == nil && account.Type == AccountTypeOAuth && !account.IsShadow() {
 		if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
 			s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
 		}
@@ -472,7 +451,13 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", clientMsg)
 			return nil, fmt.Errorf("openai cyber_policy: %s", msg)
 		}
-		return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, openAICompatFailedResponseMessage(finalResponse))
+		message := openAICompatFailedResponseMessage(finalResponse)
+		if openAIStreamFailedEventShouldFailover(payload, message) {
+			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
+		}
+		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
+		writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", message)
+		return nil, fmt.Errorf("upstream response failed: %s", message)
 	}
 
 	// When the terminal event has an empty output array, reconstruct from
@@ -546,10 +531,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	pendingSSE := make([]string, 0, 4)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var streamFailoverErr *UpstreamFailoverError
-	var xaiCollector *xai.OutputItemCollector
-	if account != nil && account.Platform == PlatformXAI {
-		xaiCollector = &xai.OutputItemCollector{}
-	}
+	var streamNonFailoverErr error
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -586,11 +568,6 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 
 	processDataLine := func(payload string) bool {
-		if xaiCollector != nil {
-			if patched, patchedOK := xaiCollector.ProcessData([]byte(payload)); patchedOK {
-				payload = string(patched)
-			}
-		}
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
@@ -649,10 +626,34 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					clientDisconnected = true
 				}
 				return true
-			} else {
+			}
+			if openAIStreamFailedEventShouldFailover(payloadBytes, message) {
 				streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message)
 				return true
 			}
+			message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
+			errorPayload, _ := json.Marshal(gin.H{
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": message,
+				},
+			})
+			if c != nil && c.Writer != nil && !c.Writer.Written() {
+				writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", message)
+				clientOutputStarted = true
+			} else if c != nil && c.Writer != nil && !clientDisconnected {
+				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err != nil {
+					clientDisconnected = true
+					logger.L().Info("openai chat_completions stream: client disconnected while writing upstream error",
+						zap.String("request_id", requestID),
+					)
+				}
+			}
+			if !clientDisconnected {
+				c.Writer.Flush()
+			}
+			streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", message)
+			return true
 		}
 
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
@@ -709,6 +710,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				return nil, streamFailoverErr
 			}
 			return resultWithUsage(), streamFailoverErr
+		}
+		if streamNonFailoverErr != nil {
+			return resultWithUsage(), streamNonFailoverErr
 		}
 		if finalChunks := apicompat.FinalizeResponsesChatStream(state); len(finalChunks) > 0 && !clientDisconnected {
 			for _, chunk := range finalChunks {

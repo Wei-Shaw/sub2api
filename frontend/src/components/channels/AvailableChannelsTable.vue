@@ -85,16 +85,28 @@
                   <Icon name="shield" size="xs" class="h-3 w-3" />
                   {{ t('availableChannels.exclusive') }}
                 </span>
-                <GroupBadge
+                <div
                   v-for="g in exclusiveGroups(section)"
                   :key="`ex-${g.id}`"
-                  :name="g.name"
-                  :platform="g.platform as GroupPlatform"
-                  :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
-                  :rate-multiplier="g.rate_multiplier"
-                  :user-rate-multiplier="userGroupRates[g.id] ?? null"
-                  always-show-rate
-                />
+                  class="inline-flex flex-wrap items-center gap-1"
+                >
+                  <GroupBadge
+                    :name="g.name"
+                    :platform="g.platform as GroupPlatform"
+                    :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
+                    :rate-multiplier="g.rate_multiplier"
+                    :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                    always-show-rate
+                  />
+                  <span
+                    v-if="hasPeakRate(g)"
+                    class="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                    :title="peakRateTitle(g)"
+                  >
+                    <Icon name="clock" size="xs" class="h-3 w-3" />
+                    {{ peakRateLabel(g) }}
+                  </span>
+                </div>
               </div>
               <div
                 v-if="publicGroups(section).length > 0"
@@ -107,16 +119,28 @@
                   <Icon name="globe" size="xs" class="h-3 w-3" />
                   {{ t('availableChannels.public') }}
                 </span>
-                <GroupBadge
+                <div
                   v-for="g in publicGroups(section)"
                   :key="`pub-${g.id}`"
-                  :name="g.name"
-                  :platform="g.platform as GroupPlatform"
-                  :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
-                  :rate-multiplier="g.rate_multiplier"
-                  :user-rate-multiplier="userGroupRates[g.id] ?? null"
-                  always-show-rate
-                />
+                  class="inline-flex flex-wrap items-center gap-1"
+                >
+                  <GroupBadge
+                    :name="g.name"
+                    :platform="g.platform as GroupPlatform"
+                    :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
+                    :rate-multiplier="g.rate_multiplier"
+                    :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                    always-show-rate
+                  />
+                  <span
+                    v-if="hasPeakRate(g)"
+                    class="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                    :title="peakRateTitle(g)"
+                  >
+                    <Icon name="clock" size="xs" class="h-3 w-3" />
+                    {{ peakRateLabel(g) }}
+                  </span>
+                </div>
               </div>
               <span v-if="section.groups.length === 0" class="text-xs text-gray-400">-</span>
             </div>
@@ -154,6 +178,8 @@ import SupportedModelChip from './SupportedModelChip.vue'
 import type { UserAvailableChannel, UserAvailableGroup, UserChannelPlatformSection } from '@/api/channels'
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import { platformBadgeClass } from '@/utils/platformColors'
+import { useAppStore } from '@/stores/app'
+import { hasPeakRate as groupHasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 
 const props = defineProps<{
   columns: {
@@ -185,5 +211,19 @@ function exclusiveGroups(section: UserChannelPlatformSection): UserAvailableGrou
 
 function publicGroups(section: UserChannelPlatformSection): UserAvailableGroup[] {
   return section.groups.filter((g) => !g.is_exclusive)
+}
+
+const appStore = useAppStore()
+
+function hasPeakRate(group: UserAvailableGroup): boolean {
+  return groupHasPeakRate(group)
+}
+
+function peakRateLabel(group: UserAvailableGroup): string {
+  return formatPeakRateWindow(group, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
+}
+
+function peakRateTitle(group: UserAvailableGroup): string {
+  return t('common.peakRateTooltip', { window: peakRateLabel(group) }) + t('common.peakRateImageNote')
 }
 </script>

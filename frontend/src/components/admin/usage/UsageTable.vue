@@ -1,5 +1,21 @@
 <template>
   <div class="card overflow-hidden">
+    <div
+      v-if="showIpGeoToolbar"
+      class="flex items-center justify-end gap-2 border-b border-gray-200 px-4 py-2 dark:border-dark-700"
+    >
+      <span v-if="pendingIpCount > 0" class="text-xs text-gray-500 dark:text-gray-400">
+        {{ t('usage.ipGeo.pending', { count: pendingIpCount }) }}
+      </span>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-900/30"
+        :disabled="ipGeoBatchLoading || pendingIpCount === 0"
+        @click="handleBatchFetchIpGeo"
+      >
+        {{ ipGeoBatchLoading ? t('usage.ipGeo.batchFetching') : t('usage.ipGeo.batchFetch') }}
+      </button>
+    </div>
     <div class="overflow-auto">
       <DataTable
         :columns="columns"
@@ -74,7 +90,7 @@
               <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('usage.inbound') }}:</span>
               <span class="ml-1">{{ row.inbound_endpoint?.trim() || '-' }}</span>
             </div>
-            <div class="break-all text-gray-700 dark:text-gray-300">
+            <div v-if="showUpstreamEndpoint" class="break-all text-gray-700 dark:text-gray-300">
               <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('usage.upstream') }}:</span>
               <span class="ml-1">{{ row.upstream_endpoint?.trim() || '-' }}</span>
             </div>
@@ -169,7 +185,7 @@
                 </div>
               </div>
             </div>
-            <div v-if="row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-orange-500 dark:text-orange-400">
+            <div v-if="showAccountBilling && row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-orange-500 dark:text-orange-400">
               A ${{ accountBilled(row).toFixed(6) }}
             </div>
           </div>
@@ -194,7 +210,10 @@
         </template>
 
         <template #cell-ip_address="{ row }">
-          <span v-if="row.ip_address" class="text-sm font-mono text-gray-600 dark:text-gray-400">{{ row.ip_address }}</span>
+          <div v-if="row.ip_address">
+            <span class="text-sm font-mono text-gray-600 dark:text-gray-400">{{ row.ip_address }}</span>
+            <IpGeoCell :ip="row.ip_address" />
+          </div>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
@@ -386,20 +405,22 @@
             <span class="font-semibold text-green-400">${{ tooltipData?.actual_cost?.toFixed(6) || '0.000000' }}</span>
           </div>
           <!-- Account billing (separated from user billing) -->
-          <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
-            <span class="text-gray-400">{{ t('usage.accountMultiplier') }}</span>
-            <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.account_rate_multiplier ?? 1) }}x</span>
-          </div>
-          <div class="flex items-center justify-between gap-6">
-            <span class="text-gray-400">{{ t('usage.accountBilled') }}</span>
-            <span class="font-semibold text-green-400">
-              ${{ accountBilled({
-                total_cost: tooltipData?.total_cost,
-                account_stats_cost: tooltipData?.account_stats_cost,
-                account_rate_multiplier: tooltipData?.account_rate_multiplier,
-              }).toFixed(6) }}
-            </span>
-          </div>
+          <template v-if="showAccountBilling">
+            <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
+              <span class="text-gray-400">{{ t('usage.accountMultiplier') }}</span>
+              <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.account_rate_multiplier ?? 1) }}x</span>
+            </div>
+            <div class="flex items-center justify-between gap-6">
+              <span class="text-gray-400">{{ t('usage.accountBilled') }}</span>
+              <span class="font-semibold text-green-400">
+                ${{ accountBilled({
+                  total_cost: tooltipData?.total_cost,
+                  account_stats_cost: tooltipData?.account_stats_cost,
+                  account_rate_multiplier: tooltipData?.account_rate_multiplier,
+                }).toFixed(6) }}
+              </span>
+            </div>
+          </template>
         </div>
         <div class="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[6px] border-r-[6px] border-t-[6px] border-b-transparent border-r-gray-900 border-t-transparent dark:border-r-gray-800"></div>
       </div>
@@ -408,7 +429,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { formatDateTime, formatReasoningEffort } from '@/utils/format'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
@@ -444,7 +465,9 @@ function accountBilled(row: { total_cost?: number | null; account_stats_cost?: n
 
 import DataTable from '@/components/common/DataTable.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import IpGeoCell from '@/components/common/IpGeoCell.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { fetchBatch, getEntry } from '@/utils/ipGeoLookup'
 import type { AdminUsageLog } from '@/types'
 import type { Column } from '@/components/common/types'
 
@@ -455,19 +478,51 @@ interface Props {
   serverSideSort?: boolean
   defaultSortKey?: string
   defaultSortOrder?: 'asc' | 'desc'
+  showAccountBilling?: boolean
+  showUpstreamEndpoint?: boolean
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   loading: false,
   serverSideSort: false,
   defaultSortKey: '',
-  defaultSortOrder: 'asc'
+  defaultSortOrder: 'asc',
+  showAccountBilling: true,
+  showUpstreamEndpoint: true
 })
-defineEmits<{
+const emit = defineEmits<{
   userClick: [userID: number, email?: string]
   sort: [key: string, order: 'asc' | 'desc']
+  ipGeoBatchFailed: []
 }>()
 const { t } = useI18n()
+const showAccountBilling = props.showAccountBilling
+const showUpstreamEndpoint = props.showUpstreamEndpoint
+const ipGeoBatchLoading = ref(false)
+
+const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
+
+const currentPageIps = computed(() =>
+  Array.from(new Set(props.data.map((row) => row.ip_address).filter((ip): ip is string => Boolean(ip))))
+)
+
+const pendingIpCount = computed(() => {
+  if (!showIpGeoToolbar.value) return 0
+  return currentPageIps.value.filter((ip) => {
+    const status = getEntry(ip).status
+    return status === 'idle' || status === 'error'
+  }).length
+})
+
+const handleBatchFetchIpGeo = async () => {
+  ipGeoBatchLoading.value = true
+  try {
+    const ok = await fetchBatch(currentPageIps.value)
+    if (!ok) emit('ipGeoBatchFailed')
+  } finally {
+    ipGeoBatchLoading.value = false
+  }
+}
 
 // Tooltip state - cost
 const tooltipVisible = ref(false)

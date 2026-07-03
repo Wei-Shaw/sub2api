@@ -221,6 +221,8 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 		}
 	}
 
+	h.enrichShadowParents(ctx, []AccountWithConcurrency{item})
+
 	return item
 }
 
@@ -240,6 +242,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 	if len(search) > 100 {
 		search = search[:100]
 	}
+	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
+
 	var groupID int64
 	if groupIDStr := c.Query("group"); groupIDStr != "" {
 		if groupIDStr == accountListGroupUngroupedQueryValue {
@@ -378,6 +382,18 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 
 		result[i] = item
+	}
+
+	h.enrichShadowParents(c.Request.Context(), result)
+
+	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
+	if etag != "" {
+		c.Header("ETag", etag)
+		c.Header("Vary", "If-None-Match")
+		if ifNoneMatchMatched(c.GetHeader("If-None-Match"), etag) {
+			c.Status(http.StatusNotModified)
+			return
+		}
 	}
 
 	response.Paginated(c, result, total, page, pageSize)
@@ -821,6 +837,12 @@ func (h *AccountHandler) PreviewFromCRS(c *gin.Context) {
 func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *service.Account) (*service.Account, string, error) {
 	if !account.IsOAuth() {
 		return nil, "", infraerrors.BadRequest("NOT_OAUTH", "cannot refresh non-OAuth account")
+	}
+	// spark 影子凭据由母账号管理、自身恒空,刷新无意义且会先打上游;在调用上游前早拒
+	// (覆盖单账号与批量两入口;批量侧将其计为 failed 并附说明)(外审第6轮)。
+	if account.IsCredentialShadow() {
+		return nil, "", infraerrors.BadRequest("SPARK_SHADOW_NO_REFRESH",
+			"cannot refresh spark shadow account; its credentials are managed by the parent account")
 	}
 
 	var newCredentials map[string]any
@@ -1802,7 +1824,7 @@ func (h *AccountHandler) ResetQuota(c *gin.Context) {
 	}
 
 	if err := h.adminService.ResetAccountQuota(c.Request.Context(), accountID); err != nil {
-		response.InternalError(c, "Failed to reset account quota: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1956,133 +1978,6 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
-func normalizeAdminModelIDs(ids []string) []string {
-	seen := make(map[string]struct{}, len(ids))
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func modelIDsFromMapping(mapping map[string]string) []string {
-	ids := make([]string, 0, len(mapping))
-	for requestedModel := range mapping {
-		ids = append(ids, requestedModel)
-	}
-	return normalizeAdminModelIDs(ids)
-}
-
-func openAIModelsFromIDs(ids []string) []openai.Model {
-	normalized := normalizeAdminModelIDs(openai.FilterRetiredModelIDs(ids))
-	if len(normalized) == 0 {
-		return nil
-	}
-	defaultByID := make(map[string]openai.Model, len(openai.DefaultModels))
-	for _, model := range openai.DefaultModels {
-		defaultByID[model.ID] = model
-	}
-	models := make([]openai.Model, 0, len(normalized))
-	for _, id := range normalized {
-		if model, ok := defaultByID[id]; ok {
-			models = append(models, model)
-			continue
-		}
-		models = append(models, openai.Model{
-			ID:          id,
-			Object:      "model",
-			Type:        "model",
-			DisplayName: id,
-		})
-	}
-	return models
-}
-
-func claudeModelsFromIDs(ids []string) []claude.Model {
-	normalized := normalizeAdminModelIDs(ids)
-	if len(normalized) == 0 {
-		return nil
-	}
-	defaultByID := make(map[string]claude.Model, len(claude.DefaultModels))
-	for _, model := range claude.DefaultModels {
-		defaultByID[model.ID] = model
-	}
-	models := make([]claude.Model, 0, len(normalized))
-	for _, id := range normalized {
-		if model, ok := defaultByID[id]; ok {
-			models = append(models, model)
-			continue
-		}
-		models = append(models, claude.Model{
-			ID:          id,
-			Type:        "model",
-			DisplayName: id,
-			CreatedAt:   "",
-		})
-	}
-	return models
-}
-
-func geminiModelsFromIDs(ids []string) []geminicli.Model {
-	normalized := normalizeAdminModelIDs(ids)
-	if len(normalized) == 0 {
-		return nil
-	}
-	defaultByID := make(map[string]geminicli.Model, len(geminicli.DefaultModels))
-	for _, model := range geminicli.DefaultModels {
-		defaultByID[model.ID] = model
-	}
-	models := make([]geminicli.Model, 0, len(normalized))
-	for _, id := range normalized {
-		if model, ok := defaultByID[id]; ok {
-			models = append(models, model)
-			continue
-		}
-		models = append(models, geminicli.Model{
-			ID:          id,
-			Type:        "model",
-			DisplayName: id,
-			CreatedAt:   "",
-		})
-	}
-	return models
-}
-
-func antigravityModelsFromIDs(ids []string) []antigravity.ClaudeModel {
-	normalized := normalizeAdminModelIDs(ids)
-	if len(normalized) == 0 {
-		return nil
-	}
-	defaultModels := antigravity.DefaultModels()
-	defaultByID := make(map[string]antigravity.ClaudeModel, len(defaultModels))
-	for _, model := range defaultModels {
-		defaultByID[model.ID] = model
-	}
-	models := make([]antigravity.ClaudeModel, 0, len(normalized))
-	for _, id := range normalized {
-		if model, ok := defaultByID[id]; ok {
-			models = append(models, model)
-			continue
-		}
-		models = append(models, antigravity.ClaudeModel{
-			ID:          id,
-			Type:        "model",
-			DisplayName: id,
-			CreatedAt:   "",
-		})
-	}
-	return models
-}
-
 // GetAvailableModels handles getting available models for an account
 // GET /api/v1/admin/accounts/:id/models
 func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
@@ -2102,82 +1997,174 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	if account.IsOpenAI() {
 		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
 		if account.IsOpenAIPassthroughEnabled() {
-			response.Success(c, openAIModelsFromIDs(openai.DefaultModelIDs()))
+			response.Success(c, openai.DefaultModels)
 			return
 		}
 
 		mapping := account.GetModelMapping()
 		if len(mapping) == 0 {
-			if cloudModels := openAIModelsFromIDs(account.GetCloudModelIDs()); len(cloudModels) > 0 {
-				response.Success(c, cloudModels)
-				return
-			}
 			response.Success(c, openai.DefaultModels)
 			return
 		}
 
-		response.Success(c, openAIModelsFromIDs(modelIDsFromMapping(mapping)))
-		return
-	}
-
-	// Handle xAI accounts
-	if account.IsXAI() {
-		mapping := account.GetModelMapping()
-		if len(mapping) > 0 {
-			response.Success(c, xai.ModelsFromIDs(modelIDsFromMapping(mapping)))
-			return
+		// Return mapped models
+		var models []openai.Model
+		for requestedModel := range mapping {
+			var found bool
+			for _, dm := range openai.DefaultModels {
+				if dm.ID == requestedModel {
+					models = append(models, dm)
+					found = true
+					break
+				}
+			}
+			if !found {
+				models = append(models, openai.Model{
+					ID:          requestedModel,
+					Object:      "model",
+					Type:        "model",
+					DisplayName: requestedModel,
+				})
+			}
 		}
-
-		if cloudModels := xai.ModelsFromIDs(account.GetCloudModelIDs()); len(cloudModels) > 0 {
-			response.Success(c, cloudModels)
-			return
-		}
-
-		response.Success(c, xai.DefaultModels)
+		response.Success(c, models)
 		return
 	}
 
 	// Handle Gemini accounts
 	if account.IsGemini() {
+		// For OAuth accounts: return default Gemini models
+		if account.IsOAuth() {
+			response.Success(c, geminicli.DefaultModels)
+			return
+		}
+
+		// For API Key accounts: return models based on model_mapping
 		mapping := account.GetModelMapping()
-		if len(mapping) > 0 {
-			response.Success(c, geminiModelsFromIDs(modelIDsFromMapping(mapping)))
+		if len(mapping) == 0 {
+			response.Success(c, geminicli.DefaultModels)
 			return
 		}
 
-		if cloudModels := geminiModelsFromIDs(account.GetCloudModelIDs()); len(cloudModels) > 0 {
-			response.Success(c, cloudModels)
-			return
+		var models []geminicli.Model
+		for requestedModel := range mapping {
+			var found bool
+			for _, dm := range geminicli.DefaultModels {
+				if dm.ID == requestedModel {
+					models = append(models, dm)
+					found = true
+					break
+				}
+			}
+			if !found {
+				models = append(models, geminicli.Model{
+					ID:          requestedModel,
+					Type:        "model",
+					DisplayName: requestedModel,
+					CreatedAt:   "",
+				})
+			}
 		}
-
-		response.Success(c, geminicli.DefaultModels)
+		response.Success(c, models)
 		return
 	}
 
 	// Handle Antigravity accounts: return Claude + Gemini models
 	if account.Platform == service.PlatformAntigravity {
-		if cloudModels := antigravityModelsFromIDs(account.GetCloudModelIDs()); len(cloudModels) > 0 {
-			response.Success(c, cloudModels)
-			return
-		}
 		// 直接复用 antigravity.DefaultModels()，与 /v1/models 端点保持同步
 		response.Success(c, antigravity.DefaultModels())
 		return
 	}
 
+	// Handle Grok accounts
+	if account.Platform == service.PlatformGrok {
+		defaultModels := xai.DefaultModels()
+
+		hasExplicitMapping := false
+		switch rawMapping := account.Credentials["model_mapping"].(type) {
+		case map[string]any:
+			hasExplicitMapping = len(rawMapping) > 0
+		case map[string]string:
+			hasExplicitMapping = len(rawMapping) > 0
+		}
+		if !hasExplicitMapping {
+			response.Success(c, defaultModels)
+			return
+		}
+
+		mapping := account.GetModelMapping()
+		if len(mapping) == 0 {
+			response.Success(c, defaultModels)
+			return
+		}
+
+		defaultByID := make(map[string]xai.Model, len(defaultModels))
+		for _, model := range defaultModels {
+			defaultByID[model.ID] = model
+		}
+
+		requestedModels := make([]string, 0, len(mapping))
+		for requestedModel := range mapping {
+			requestedModels = append(requestedModels, requestedModel)
+		}
+		sort.Strings(requestedModels)
+
+		var models []xai.Model
+		for _, requestedModel := range requestedModels {
+			if defaultModel, found := defaultByID[requestedModel]; found {
+				models = append(models, defaultModel)
+				continue
+			}
+			models = append(models, xai.Model{
+				ID:          requestedModel,
+				Object:      "model",
+				OwnedBy:     "xai",
+				DisplayName: requestedModel,
+			})
+		}
+		response.Success(c, models)
+		return
+	}
+
 	// Handle Claude/Anthropic accounts
+	// For OAuth and Setup-Token accounts: return default models
+	if account.IsOAuth() {
+		response.Success(c, claude.DefaultModels)
+		return
+	}
+
+	// For API Key accounts: return models based on model_mapping
 	mapping := account.GetModelMapping()
-	if len(mapping) > 0 {
-		response.Success(c, claudeModelsFromIDs(modelIDsFromMapping(mapping)))
+	if len(mapping) == 0 {
+		// No mapping configured, return default models
+		response.Success(c, claude.DefaultModels)
 		return
 	}
 
-	if cloudModels := claudeModelsFromIDs(account.GetCloudModelIDs()); len(cloudModels) > 0 {
-		response.Success(c, cloudModels)
-		return
+	// Return mapped models (keys of the mapping are the available model IDs)
+	var models []claude.Model
+	for requestedModel := range mapping {
+		// Try to find display info from default models
+		var found bool
+		for _, dm := range claude.DefaultModels {
+			if dm.ID == requestedModel {
+				models = append(models, dm)
+				found = true
+				break
+			}
+		}
+		// If not found in defaults, create a basic entry
+		if !found {
+			models = append(models, claude.Model{
+				ID:          requestedModel,
+				Type:        "model",
+				DisplayName: requestedModel,
+				CreatedAt:   "",
+			})
+		}
 	}
 
-	response.Success(c, claude.DefaultModels)
+	response.Success(c, models)
 }
 
 // SyncUpstreamModels handles syncing live supported models from an account's upstream.
@@ -2216,15 +2203,6 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 
 		slog.Warn("sync_upstream_models_failed", "account_id", accountID)
 		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
-		return
-	}
-	if account.IsOpenAI() {
-		models = openai.FilterRetiredModelIDs(models)
-	}
-
-	extra := account.ExtraWithCloudModels(models, time.Now())
-	if _, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{Extra: extra}); err != nil {
-		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2276,9 +2254,6 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 		slog.Warn("sync_upstream_models_preview_failed", "platform", req.Platform)
 		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
 		return
-	}
-	if tempAccount.IsOpenAI() {
-		models = openai.FilterRetiredModelIDs(models)
 	}
 
 	response.Success(c, gin.H{"models": models})

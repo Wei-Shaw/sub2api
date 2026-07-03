@@ -11,6 +11,7 @@ type OpsSystemLog struct {
 	RequestID       string         `json:"request_id"`
 	ClientRequestID string         `json:"client_request_id"`
 	UserID          *int64         `json:"user_id"`
+	APIKeyID        *int64         `json:"api_key_id"`
 	AccountID       *int64         `json:"account_id"`
 	Platform        string         `json:"platform"`
 	Model           string         `json:"model"`

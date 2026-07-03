@@ -104,13 +104,6 @@ type antigravityUsageCache struct {
 	timestamp time.Time
 }
 
-// xaiBillingCache 缓存 Grok/xAI 月度账单数据（含负缓存）
-type xaiBillingCache struct {
-	summary   *XAIBillingSummary
-	err       error
-	timestamp time.Time
-}
-
 const (
 	apiCacheTTL             = 3 * time.Minute
 	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
@@ -126,10 +119,8 @@ type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
 	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
-	xaiBillingCache   sync.Map           // accountID -> *xaiBillingCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
-	xaiBillingFlight  singleflight.Group // 防止同一 xAI 账号的并发请求击穿缓存
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 }
 
@@ -186,16 +177,6 @@ type AICredit struct {
 	MinimumBalance float64 `json:"minimum_balance,omitempty"`
 }
 
-// XAIBillingSummary 表示 Grok/xAI 月度账单额度。
-type XAIBillingSummary struct {
-	MonthlyLimitCents  *float64   `json:"monthly_limit_cents,omitempty"`
-	UsedCents          *float64   `json:"used_cents,omitempty"`
-	OnDemandCapCents   *float64   `json:"on_demand_cap_cents,omitempty"`
-	BillingPeriodStart *time.Time `json:"billing_period_start,omitempty"`
-	BillingPeriodEnd   *time.Time `json:"billing_period_end,omitempty"`
-	UsedPercent        *float64   `json:"used_percent,omitempty"`
-}
-
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
 	Source             string         `json:"source,omitempty"`               // "passive" or "active"
@@ -233,9 +214,6 @@ type UsageInfo struct {
 
 	// Antigravity AI Credits 余额
 	AICredits []AICredit `json:"ai_credits,omitempty"`
-
-	// xAI/Grok 月度账单额度
-	XAIBilling *XAIBillingSummary `json:"xai_billing,omitempty"`
 
 	// Antigravity 废弃模型转发规则 (old_model_id -> new_model_id)
 	ModelForwardingRules map[string]string `json:"model_forwarding_rules,omitempty"`
@@ -298,7 +276,7 @@ type AccountUsageService struct {
 	geminiQuotaService      *GeminiQuotaService
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
 	grokQuotaFetcher        *GrokQuotaFetcher
-	xaiTokenProvider        *XAITokenProvider
+	openAIQuotaService      *OpenAIQuotaService
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
@@ -312,6 +290,7 @@ func NewAccountUsageService(
 	geminiQuotaService *GeminiQuotaService,
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
 	grokQuotaFetcher *GrokQuotaFetcher,
+	openAIQuotaService *OpenAIQuotaService,
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -323,6 +302,7 @@ func NewAccountUsageService(
 		geminiQuotaService:      geminiQuotaService,
 		antigravityQuotaFetcher: antigravityQuotaFetcher,
 		grokQuotaFetcher:        grokQuotaFetcher,
+		openAIQuotaService:      openAIQuotaService,
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
@@ -368,14 +348,6 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 
 	if account.Platform == PlatformGrok {
 		usage, err := s.getGrokUsage(ctx, account)
-		if err == nil {
-			s.tryClearRecoverableAccountError(ctx, account)
-		}
-		return usage, err
-	}
-
-	if account.Platform == PlatformXAI {
-		usage, err := s.getXAIUsage(ctx, account)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -564,24 +536,33 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		return usage, nil
 	}
 
-	if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
-		usage.FiveHour = progress
-	}
-	if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
-		usage.SevenDay = progress
-	}
+	applyExtraToUsage(usage, account.Extra, now)
 
 	if (force || shouldRefreshOpenAICodexSnapshot(account, usage, now)) && s.shouldProbeOpenAICodexSnapshot(account.ID, now, force) {
-		if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
-			mergeAccountExtra(account, updates)
-			if usage.UpdatedAt == nil {
-				usage.UpdatedAt = &now
+		if account.IsShadow() {
+			// Spark shadow accounts fetch usage from /wham/usage (bengalfox channel)
+			// via the shared OpenAIQuotaService, which resolves credentials from the
+			// parent account.  The result is written to the shadow row's own codex_*
+			// Extra keys and immediately reflected in the returned UsageInfo.
+			if s.openAIQuotaService != nil {
+				if quotaUsage, err := s.openAIQuotaService.QueryUsage(ctx, account.ID); err == nil {
+					if updates := buildCodexSparkWindowExtraUpdates(quotaUsage, now); len(updates) > 0 {
+						mergeAccountExtra(account, updates)
+						s.persistOpenAICodexProbeSnapshot(account.ID, updates)
+						if usage.UpdatedAt == nil {
+							usage.UpdatedAt = &now
+						}
+						applyExtraToUsage(usage, account.Extra, now)
+					}
+				}
 			}
-			if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
-				usage.FiveHour = progress
-			}
-			if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
-				usage.SevenDay = progress
+		} else {
+			if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
+				mergeAccountExtra(account, updates)
+				if usage.UpdatedAt == nil {
+					usage.UpdatedAt = &now
+				}
+				applyExtraToUsage(usage, account.Extra, now)
 			}
 		}
 	}
@@ -624,7 +605,14 @@ func shouldRefreshOpenAICodexSnapshot(account *Account, usage *UsageInfo, now ti
 }
 
 func isOpenAICodexSnapshotStale(account *Account, now time.Time) bool {
-	if account == nil || !account.IsOpenAIOAuth() || !account.IsOpenAIResponsesWebSocketV2Enabled() {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return false
+	}
+	// 普通账号的 codex 刷新走 probe(/responses 头),要求 WSv2;但 spark 影子走 QueryUsage
+	// (/wham/usage body 的 codex_bengalfox),与 WSv2 无关——不能用 WSv2 门控其 staleness,否则首刷后
+	// codex_5h/7d 已存在→staleness 恒 false→spark 窗口永久冻结(外审第9轮 P1)。影子改按
+	// codex_usage_updated_at TTL 判定;实际查询频率仍由 shouldProbeOpenAICodexSnapshot 的缓存 TTL 节流。
+	if !account.IsShadow() && !account.IsOpenAIResponsesWebSocketV2Enabled() {
 		return false
 	}
 	if account.Extra == nil {
@@ -759,6 +747,21 @@ func mergeAccountExtra(account *Account, updates map[string]any) {
 	}
 	for k, v := range updates {
 		account.Extra[k] = v
+	}
+}
+
+// applyExtraToUsage rebuilds the codex 5h/7d windows in usage from the
+// account's Extra map.  Called after mergeAccountExtra to make the in-memory
+// UsageInfo consistent with the just-persisted Extra values.
+func applyExtraToUsage(usage *UsageInfo, extra map[string]any, now time.Time) {
+	if usage == nil {
+		return
+	}
+	if progress := buildCodexUsageProgressFromExtra(extra, "5h", now); progress != nil {
+		usage.FiveHour = progress
+	}
+	if progress := buildCodexUsageProgressFromExtra(extra, "7d", now); progress != nil {
+		usage.SevenDay = progress
 	}
 }
 
@@ -913,124 +916,6 @@ func (s *AccountUsageService) getGrokUsage(ctx context.Context, account *Account
 
 	enrichUsageWithAccountError(usage, account)
 	return usage, nil
-}
-
-func (s *AccountUsageService) getXAIUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
-	now := time.Now()
-	usage := &UsageInfo{UpdatedAt: &now}
-	if account == nil {
-		return usage, nil
-	}
-
-	billing, err := s.fetchXAIBillingCached(ctx, account)
-	if err != nil {
-		usage.ErrorCode = xai.ClassifyBillingError(err)
-		usage.NeedsReauth = usage.ErrorCode == "unauthenticated"
-		usage.Error = fmt.Sprintf("xAI billing API error: %v", err)
-		return usage, nil
-	}
-	usage.XAIBilling = billing
-	return usage, nil
-}
-
-func (s *AccountUsageService) fetchXAIBillingCached(ctx context.Context, account *Account) (*XAIBillingSummary, error) {
-	if s == nil || s.cache == nil || account == nil {
-		return s.fetchXAIBilling(ctx, account)
-	}
-
-	accountID := account.ID
-	if cached, ok := s.cache.xaiBillingCache.Load(accountID); ok {
-		if cache, ok := cached.(*xaiBillingCache); ok {
-			age := time.Since(cache.timestamp)
-			if cache.err != nil && age < xaiBillingCacheTTL(cache) {
-				return nil, cache.err
-			}
-			if cache.summary != nil && age < xaiBillingCacheTTL(cache) {
-				return cache.summary, nil
-			}
-		}
-	}
-
-	result, flightErr, _ := s.cache.xaiBillingFlight.Do(fmt.Sprintf("xai-billing-%d", accountID), func() (any, error) {
-		summary, err := s.fetchXAIBilling(ctx, account)
-		s.cache.xaiBillingCache.Store(accountID, &xaiBillingCache{
-			summary:   summary,
-			err:       err,
-			timestamp: time.Now(),
-		})
-		if err != nil {
-			return nil, err
-		}
-		return summary, nil
-	})
-	if flightErr != nil {
-		return nil, flightErr
-	}
-	summary, _ := result.(*XAIBillingSummary)
-	return summary, nil
-}
-
-func xaiBillingCacheTTL(cache *xaiBillingCache) time.Duration {
-	if cache == nil {
-		return apiErrorCacheTTL
-	}
-	if cache.err != nil {
-		return apiErrorCacheTTL
-	}
-	return apiCacheTTL
-}
-
-func (s *AccountUsageService) fetchXAIBilling(ctx context.Context, account *Account) (*XAIBillingSummary, error) {
-	if account == nil || account.Platform != PlatformXAI || account.Type != AccountTypeOAuth {
-		return nil, fmt.Errorf("account is not an xAI OAuth account")
-	}
-	accessToken, err := s.resolveXAIBillingAccessToken(ctx, account)
-	if err != nil {
-		return nil, err
-	}
-
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-	summary, err := xai.FetchBillingSummary(ctx, accessToken, proxyURL)
-	if err != nil {
-		return nil, err
-	}
-	return convertXAIBillingSummary(summary), nil
-}
-
-func convertXAIBillingSummary(summary *xai.BillingSummary) *XAIBillingSummary {
-	if summary == nil {
-		return nil
-	}
-	return &XAIBillingSummary{
-		MonthlyLimitCents:  summary.MonthlyLimitCents,
-		UsedCents:          summary.UsedCents,
-		OnDemandCapCents:   summary.OnDemandCapCents,
-		BillingPeriodStart: summary.BillingPeriodStart,
-		BillingPeriodEnd:   summary.BillingPeriodEnd,
-		UsedPercent:        summary.UsedPercent,
-	}
-}
-
-func (s *AccountUsageService) resolveXAIBillingAccessToken(ctx context.Context, account *Account) (string, error) {
-	if s != nil && s.xaiTokenProvider != nil {
-		accessToken, err := s.xaiTokenProvider.GetAccessToken(ctx, account)
-		if err == nil && strings.TrimSpace(accessToken) != "" {
-			return strings.TrimSpace(accessToken), nil
-		}
-		if strings.TrimSpace(account.GetXAIAccessToken()) == "" {
-			return "", err
-		}
-		slog.Warn("xai_billing_token_provider_failed_use_stored_token", "account_id", account.ID, "error", err)
-	}
-
-	accessToken := strings.TrimSpace(account.GetXAIAccessToken())
-	if accessToken == "" {
-		return "", fmt.Errorf("no access token available")
-	}
-	return accessToken, nil
 }
 
 // recalcAntigravityRemainingSeconds 重新计算 Antigravity UsageInfo 中各窗口的 RemainingSeconds

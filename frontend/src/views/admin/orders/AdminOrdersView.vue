@@ -45,6 +45,10 @@
               <Icon name="refresh" size="sm" />
               {{ t('payment.admin.retryRefund') }}
             </button>
+            <button v-else-if="row.status === 'REFUND_PENDING'" :disabled="refundQueryingIds.has(row.id)" @click="handleQueryRefund(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-orange-600 hover:bg-orange-50 disabled:opacity-60 dark:text-orange-400 dark:hover:bg-orange-900/20">
+              <Icon name="refresh" size="sm" :class="refundQueryingIds.has(row.id) ? 'animate-spin' : ''" />
+              {{ t('payment.admin.queryRefundStatus') }}
+            </button>
             <button v-else-if="row.status === 'COMPLETED' || row.status === 'PARTIALLY_REFUNDED'" @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20">
               <Icon name="dollar" size="sm" />
               {{ t('payment.admin.refund') }}
@@ -149,6 +153,7 @@ const selectedOrder = ref<PaymentOrder | null>(null)
 const showDetailDialog = ref(false)
 const showRefundDialog = ref(false)
 const refundSubmitting = ref(false)
+const refundQueryingIds = ref(new Set<number>())
 const orderAuditLogs = ref<AuditLog[]>([])
 const creditedAmountSymbol = currencySymbol('USD')
 
@@ -190,6 +195,7 @@ const statusFilterOptions = computed(() => [
   { value: 'FAILED', label: t('payment.status.failed') },
   { value: 'REFUNDED', label: t('payment.status.refunded') },
   { value: 'REFUND_REQUESTED', label: t('payment.status.refund_requested') },
+  { value: 'REFUND_PENDING', label: t('payment.status.refund_pending') },
   { value: 'REFUND_FAILED', label: t('payment.status.refund_failed') },
 ])
 
@@ -231,14 +237,51 @@ async function handleRetryOrder(order: PaymentOrder) {
 
 function openRefundDialog(order: PaymentOrder) { selectedOrder.value = order; showRefundDialog.value = true }
 
+function isRefundPendingWarning(warning: string | undefined): boolean {
+  return /pending|处理中|待/.test(String(warning || '').toLowerCase())
+}
+
 async function handleRefund(data: { amount: number; reason: string; deduct_balance: boolean; force: boolean }) {
   if (!selectedOrder.value) return
   refundSubmitting.value = true
   try {
-    await adminPaymentAPI.refundOrder(selectedOrder.value.id, { amount: data.amount, reason: data.reason, deduct_balance: data.deduct_balance, force: data.force })
-    appStore.showSuccess(t('payment.admin.refundSuccess')); showRefundDialog.value = false; loadOrders()
+    const res = await adminPaymentAPI.refundOrder(selectedOrder.value.id, { amount: data.amount, reason: data.reason, deduct_balance: data.deduct_balance, force: data.force })
+    if (res.data.success) {
+      appStore.showSuccess(t('payment.admin.refundSuccess'))
+      showRefundDialog.value = false
+      loadOrders()
+      return
+    }
+    if (isRefundPendingWarning(res.data.warning)) {
+      appStore.showSuccess(t('payment.admin.refundPending'))
+      showRefundDialog.value = false
+      loadOrders()
+      return
+    }
+    appStore.showError(res.data.warning || t('common.error'))
   } catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
   finally { refundSubmitting.value = false }
+}
+
+async function handleQueryRefund(order: PaymentOrder) {
+  refundQueryingIds.value = new Set(refundQueryingIds.value).add(order.id)
+  try {
+    const res = await adminPaymentAPI.queryRefund(order.id)
+    if (res.data.success) {
+      appStore.showSuccess(t('payment.admin.refundSuccess'))
+    } else if (isRefundPendingWarning(res.data.warning)) {
+      appStore.showSuccess(t('payment.admin.refundPending'))
+    } else {
+      appStore.showError(res.data.warning || t('common.error'))
+    }
+    loadOrders()
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  } finally {
+    const next = new Set(refundQueryingIds.value)
+    next.delete(order.id)
+    refundQueryingIds.value = next
+  }
 }
 
 function formatDateTime(dateStr: string): string { return formatOrderDateTime(dateStr) }

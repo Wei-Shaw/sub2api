@@ -4,7 +4,7 @@
  * - Dashboard overview (raw path)
  */
 
-import { apiClient } from '../client'
+import { apiClient, buildGatewayUrl } from '../client'
 import type { PaginatedResponse, UsageRequestType } from '@/types'
 
 export type OpsQueryMode = 'auto' | 'raw' | 'preagg'
@@ -599,9 +599,10 @@ export function subscribeQPS(onMessage: (data: any) => void, options: SubscribeQ
 
     isConnecting = true
     setStatus(hasConnectedOnce ? 'reconnecting' : 'connecting')
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsBaseUrl = options.wsBaseUrl || import.meta.env.VITE_WS_BASE_URL || window.location.host
-    const wsURL = new URL(`${protocol}//${wsBaseUrl}/api/v1/admin/ops/ws/qps`)
+    const wsBaseUrl = options.wsBaseUrl || import.meta.env.VITE_WS_BASE_URL
+    const wsURL = wsBaseUrl
+      ? new URL(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${wsBaseUrl}/api/v1/admin/ops/ws/qps`)
+      : new URL(buildGatewayUrl('/api/v1/admin/ops/ws/qps').replace(/^http/, 'ws'))
 
     // Do NOT put admin JWT in the URL query string (it can leak via access logs, proxies, etc).
     // Browsers cannot set Authorization headers for WebSockets, so we pass the token via
@@ -839,6 +840,7 @@ export interface OpsSystemLog {
   request_id?: string
   client_request_id?: string
   user_id?: number | null
+  api_key_id?: number | null
   account_id?: number | null
   platform?: string
   model?: string
@@ -858,6 +860,7 @@ export interface OpsSystemLogQuery {
   request_id?: string
   client_request_id?: string
   user_id?: number | null
+  api_key_id?: number | null
   account_id?: number | null
   platform?: string
   model?: string
@@ -872,6 +875,7 @@ export interface OpsSystemLogCleanupRequest {
   request_id?: string
   client_request_id?: string
   user_id?: number | null
+  api_key_id?: number | null
   account_id?: number | null
   platform?: string
   model?: string

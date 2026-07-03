@@ -1,24 +1,17 @@
 package xai
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
@@ -53,14 +46,12 @@ var (
 // OAuthSession stores one PKCE OAuth flow.
 type OAuthSession struct {
 	State         string    `json:"state"`
-	Nonce         string    `json:"nonce,omitempty"`
 	CodeVerifier  string    `json:"code_verifier"`
 	CodeChallenge string    `json:"code_challenge"`
 	ClientID      string    `json:"client_id,omitempty"`
 	Scope         string    `json:"scope,omitempty"`
 	ProxyURL      string    `json:"proxy_url,omitempty"`
 	RedirectURI   string    `json:"redirect_uri"`
-	TokenEndpoint string    `json:"token_endpoint,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
@@ -389,106 +380,6 @@ func BuildAuthorizationURL(state, codeChallenge, redirectURI, nonce string) (str
 	return fmt.Sprintf("%s?%s", authorizeURL, params.Encode()), nil
 }
 
-type DiscoveryDocument struct {
-	Issuer                string `json:"issuer"`
-	AuthorizationEndpoint string `json:"authorization_endpoint"`
-	TokenEndpoint         string `json:"token_endpoint"`
-}
-
-type AuthorizeParams struct {
-	AuthorizationEndpoint string
-	State                 string
-	Nonce                 string
-	CodeChallenge         string
-	RedirectURI           string
-}
-
-func BuildAuthorizeURL(params AuthorizeParams) (string, error) {
-	endpoint := strings.TrimSpace(params.AuthorizationEndpoint)
-	if endpoint == "" {
-		endpoint = EffectiveAuthorizeURL()
-	}
-	authorizeURL, err := ValidateOAuthEndpointURL(endpoint)
-	if err != nil {
-		return "", err
-	}
-
-	redirectURI := EffectiveRedirectURI(params.RedirectURI)
-	values := url.Values{}
-	values.Set("response_type", "code")
-	values.Set("client_id", EffectiveClientID())
-	values.Set("redirect_uri", redirectURI)
-	values.Set("scope", EffectiveScope())
-	values.Set("code_challenge", params.CodeChallenge)
-	values.Set("code_challenge_method", "S256")
-	values.Set("state", params.State)
-	values.Set("nonce", params.Nonce)
-	values.Set("plan", "generic")
-	values.Set("referrer", "sub2api")
-	return authorizeURL + "?" + values.Encode(), nil
-}
-
-type Client struct {
-	httpClient *http.Client
-}
-
-const (
-	clientTimeout            = 30 * time.Second
-	proxyDialTimeout         = 5 * time.Second
-	proxyTLSHandshakeTimeout = 5 * time.Second
-)
-
-func NewClient(proxyURL string) (*Client, error) {
-	httpClient := &http.Client{Timeout: clientTimeout}
-	_, parsed, err := proxyurl.Parse(proxyURL)
-	if err != nil {
-		return nil, err
-	}
-	if parsed != nil {
-		transport := &http.Transport{
-			Proxy:                 http.ProxyURL(parsed),
-			DialContext:           (&net.Dialer{Timeout: proxyDialTimeout}).DialContext,
-			TLSHandshakeTimeout:   proxyTLSHandshakeTimeout,
-			ResponseHeaderTimeout: clientTimeout,
-		}
-		httpClient.Transport = transport
-	}
-	return &Client{httpClient: httpClient}, nil
-}
-
-func (c *Client) Discover(ctx context.Context) (*DiscoveryDocument, error) {
-	if c == nil || c.httpClient == nil {
-		return nil, fmt.Errorf("xai client is nil")
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, DiscoveryURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("xai discovery failed (HTTP %d): %s", resp.StatusCode, string(body))
-	}
-	var doc DiscoveryDocument
-	if err := json.Unmarshal(body, &doc); err != nil {
-		return nil, fmt.Errorf("parse xai discovery: %w", err)
-	}
-	if strings.TrimSpace(doc.Issuer) != OAuthIssuer {
-		return nil, fmt.Errorf("unexpected xai issuer: %s", doc.Issuer)
-	}
-	if _, err := ValidateOAuthEndpointURL(doc.AuthorizationEndpoint); err != nil {
-		return nil, err
-	}
-	if _, err := ValidateOAuthEndpointURL(doc.TokenEndpoint); err != nil {
-		return nil, err
-	}
-	return &doc, nil
-}
-
 // AuthorizationInput is a parsed manual OAuth callback input.
 type AuthorizationInput struct {
 	Code          string
@@ -546,64 +437,40 @@ func BuildChatCompletionsURL(baseURL string) (string, error) {
 	return validatedBaseURL + "/chat/completions", nil
 }
 
-func BuildModelsURL(baseURL string) string {
-	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if base == "" {
-		base = DefaultAPIBaseURL
+func BuildImagesGenerationsURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
 	}
-	if strings.HasSuffix(base, "/models") {
-		return base
-	}
-	base = trimAPIEndpointSuffix(base)
-	return base + "/models"
+	return validatedBaseURL + "/images/generations", nil
 }
 
-func BuildImagesGenerationsURL(baseURL string) string {
-	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if base == "" {
-		base = DefaultAPIBaseURL
+func BuildImagesEditsURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
 	}
-	if strings.HasSuffix(base, "/images/generations") {
-		return base
-	}
-	base = trimAPIEndpointSuffix(base)
-	return base + "/images/generations"
+	return validatedBaseURL + "/images/edits", nil
 }
 
-func BuildVideosGenerationsURL(baseURL string) string {
-	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if base == "" {
-		base = DefaultAPIBaseURL
+func BuildVideosGenerationsURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
 	}
-	if strings.HasSuffix(base, "/videos/generations") {
-		return base
-	}
-	base = trimAPIEndpointSuffix(base)
-	return base + "/videos/generations"
+	return validatedBaseURL + "/videos/generations", nil
 }
 
-func BuildVideoPollURL(baseURL, requestID string) string {
-	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if base == "" {
-		base = DefaultAPIBaseURL
+func BuildVideoURL(baseURL, requestID string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
 	}
-	base = trimAPIEndpointSuffix(base)
-	return base + "/videos/" + url.PathEscape(strings.TrimSpace(requestID))
-}
-
-func trimAPIEndpointSuffix(base string) string {
-	for _, suffix := range []string{
-		"/responses",
-		"/models",
-		"/chat/completions",
-		"/images/generations",
-		"/images/edits",
-		"/videos/generations",
-		"/videos/edits",
-	} {
-		base = strings.TrimSuffix(base, suffix)
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return "", fmt.Errorf("request id is required")
 	}
-	return base
+	return validatedBaseURL + "/videos/" + url.PathEscape(requestID), nil
 }
 
 // TokenResponse represents xAI OAuth token responses.
@@ -614,83 +481,4 @@ type TokenResponse struct {
 	TokenType    string `json:"token_type,omitempty"`
 	ExpiresIn    int64  `json:"expires_in,omitempty"`
 	Scope        string `json:"scope,omitempty"`
-}
-
-func (c *Client) ExchangeCodeForTokens(ctx context.Context, code, redirectURI, codeVerifier, tokenEndpoint string) (*TokenResponse, error) {
-	values := url.Values{}
-	values.Set("grant_type", "authorization_code")
-	values.Set("code", strings.TrimSpace(code))
-	values.Set("redirect_uri", strings.TrimSpace(redirectURI))
-	values.Set("client_id", EffectiveClientID())
-	values.Set("code_verifier", strings.TrimSpace(codeVerifier))
-	return c.postTokenForm(ctx, tokenEndpoint, values)
-}
-
-func (c *Client) RefreshTokens(ctx context.Context, refreshToken, tokenEndpoint string) (*TokenResponse, error) {
-	values := url.Values{}
-	values.Set("grant_type", "refresh_token")
-	values.Set("client_id", EffectiveClientID())
-	values.Set("refresh_token", strings.TrimSpace(refreshToken))
-	return c.postTokenForm(ctx, tokenEndpoint, values)
-}
-
-func (c *Client) postTokenForm(ctx context.Context, tokenEndpoint string, values url.Values) (*TokenResponse, error) {
-	if c == nil || c.httpClient == nil {
-		return nil, errors.New("xai client is nil")
-	}
-	endpoint, err := ValidateOAuthEndpointURL(tokenEndpoint)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(values.Encode()))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("xai token request failed: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("xai token request failed (HTTP %d): %s", resp.StatusCode, string(body))
-	}
-	var tokenResp TokenResponse
-	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return nil, fmt.Errorf("parse xai token response: %w", err)
-	}
-	if strings.TrimSpace(tokenResp.AccessToken) == "" {
-		return nil, errors.New("xai token response missing access_token")
-	}
-	return &tokenResp, nil
-}
-
-type Identity struct {
-	Email string
-	Sub   string
-}
-
-func ParseJWTIdentity(token string) Identity {
-	parts := strings.Split(token, ".")
-	if len(parts) < 2 {
-		return Identity{}
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return Identity{}
-	}
-	var claims struct {
-		Email string `json:"email"`
-		Sub   string `json:"sub"`
-	}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return Identity{}
-	}
-	return Identity{Email: strings.TrimSpace(claims.Email), Sub: strings.TrimSpace(claims.Sub)}
 }
