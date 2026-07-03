@@ -41,7 +41,13 @@ func (s *ClaudeUsageServiceSuite) TestFetchUsage_Success() {
 		_, _ = io.WriteString(w, `{
   "five_hour": {"utilization": 12.5, "resets_at": "2025-01-01T00:00:00Z"},
   "seven_day": {"utilization": 34.0, "resets_at": "2025-01-08T00:00:00Z"},
-  "seven_day_sonnet": {"utilization": 56.0, "resets_at": "2025-01-08T00:00:00Z"}
+  "seven_day_sonnet": {"utilization": 56.0, "resets_at": "2025-01-08T00:00:00Z"},
+  "seven_day_opus": null,
+  "limits": [
+    {"kind": "session", "group": "session", "percent": 12, "severity": "normal", "resets_at": "2025-01-01T00:00:00Z", "scope": null, "is_active": false},
+    {"kind": "weekly_all", "group": "weekly", "percent": 34, "severity": "normal", "resets_at": "2025-01-08T00:00:00Z", "scope": null, "is_active": false},
+    {"kind": "weekly_scoped", "group": "weekly", "percent": 100, "severity": "critical", "resets_at": "2025-01-08T00:00:00Z", "scope": {"model": {"id": null, "display_name": "Fable"}, "surface": null}, "is_active": true}
+  ]
 }`)
 	}))
 
@@ -55,6 +61,12 @@ func (s *ClaudeUsageServiceSuite) TestFetchUsage_Success() {
 	require.Equal(s.T(), 12.5, resp.FiveHour.Utilization, "FiveHour utilization mismatch")
 	require.Equal(s.T(), 34.0, resp.SevenDay.Utilization, "SevenDay utilization mismatch")
 	require.Equal(s.T(), 56.0, resp.SevenDaySonnet.Utilization, "SevenDaySonnet utilization mismatch")
+	require.Len(s.T(), resp.Limits, 3, "limits length mismatch")
+	require.Equal(s.T(), "weekly_scoped", resp.Limits[2].Kind, "scoped limit kind mismatch")
+	require.NotNil(s.T(), resp.Limits[2].Scope, "scoped limit scope should be present")
+	require.NotNil(s.T(), resp.Limits[2].Scope.Model, "scoped limit model should be present")
+	require.Equal(s.T(), "Fable", resp.Limits[2].Scope.Model.DisplayName, "scoped limit model display name mismatch")
+	require.Equal(s.T(), 100.0, resp.Limits[2].Percent, "scoped limit percent mismatch")
 
 	// Assertions on captured request data
 	require.Equal(s.T(), "Bearer at", captured.authorization, "Authorization header mismatch")

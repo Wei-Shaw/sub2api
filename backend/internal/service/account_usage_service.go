@@ -152,6 +152,16 @@ type UsageProgress struct {
 	LimitRequests    int64        `json:"limit_requests,omitempty"`
 }
 
+// ScopedUsageWindow 表示模型维度的 7 天窗口 (如 Fable 5)，
+// 来源于 Anthropic usage 响应 limits[] 中 kind=weekly_scoped 的条目。
+// Label 取 scope.model.display_name（例如 "Fable"），前端渲染为 "7d {Label}"。
+type ScopedUsageWindow struct {
+	Label            string     `json:"label"`
+	Utilization      float64    `json:"utilization"`
+	ResetsAt         *time.Time `json:"resets_at"`
+	RemainingSeconds int        `json:"remaining_seconds"`
+}
+
 // AntigravityModelQuota Antigravity 单个模型的配额信息
 type AntigravityModelQuota struct {
 	Utilization int    `json:"utilization"` // 使用率 0-100
@@ -183,7 +193,10 @@ type UsageInfo struct {
 	UpdatedAt          *time.Time     `json:"updated_at,omitempty"`           // 更新时间
 	FiveHour           *UsageProgress `json:"five_hour"`                      // 5小时窗口
 	SevenDay           *UsageProgress `json:"seven_day,omitempty"`            // 7天窗口
-	SevenDaySonnet     *UsageProgress `json:"seven_day_sonnet,omitempty"`     // 7天Sonnet窗口
+	SevenDaySonnet     *UsageProgress `json:"seven_day_sonnet,omitempty"`     // 7天Sonnet窗口 (旧字段, 上游已弃用)
+	// 模型维度的 7 天窗口 (如 Fable 5)。上游把这类限额挪到了 usage.limits[] 里的
+	// kind=weekly_scoped 条目, 每个带 scope.model.display_name 作为标签。可能有多个。
+	SevenDayScoped     []*ScopedUsageWindow `json:"seven_day_scoped,omitempty"`
 	GeminiSharedDaily  *UsageProgress `json:"gemini_shared_daily,omitempty"`  // Gemini shared pool RPD (Google One / Code Assist)
 	GeminiProDaily     *UsageProgress `json:"gemini_pro_daily,omitempty"`     // Gemini Pro 日配额
 	GeminiFlashDaily   *UsageProgress `json:"gemini_flash_daily,omitempty"`   // Gemini Flash 日配额
@@ -250,6 +263,26 @@ type ClaudeUsageResponse struct {
 		Utilization float64 `json:"utilization"`
 		ResetsAt    string  `json:"resets_at"`
 	} `json:"seven_day_sonnet"`
+	// limits[] 是上游较新的、权威的窗口列表。模型维度的周窗口（如 Fable 5）
+	// 只出现在这里的 kind=weekly_scoped 条目中，旧的顶层 seven_day_opus/sonnet 字段已恒为 null。
+	Limits []ClaudeUsageLimit `json:"limits"`
+}
+
+// ClaudeUsageLimit 是 Anthropic usage 响应 limits[] 中的单条限额。
+// kind: session / weekly_all / weekly_scoped ...；weekly_scoped 带 scope.model。
+type ClaudeUsageLimit struct {
+	Kind     string  `json:"kind"`
+	Group    string  `json:"group"`
+	Percent  float64 `json:"percent"`
+	ResetsAt string  `json:"resets_at"`
+	Severity string  `json:"severity"`
+	IsActive bool    `json:"is_active"`
+	Scope    *struct {
+		Model *struct {
+			ID          *string `json:"id"`
+			DisplayName string  `json:"display_name"`
+		} `json:"model"`
+	} `json:"scope"`
 }
 
 // ClaudeUsageFetchOptions 包含获取 Claude 用量数据所需的所有选项
@@ -1010,8 +1043,8 @@ func enrichUsageWithAccountError(info *UsageInfo, account *Account) {
 // 使用独立缓存（1 分钟），与 API 缓存分离
 func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Account, usage *UsageInfo) {
 	// 修复：即使 FiveHour 为 nil，也要尝试获取统计数据
-	// 因为 SevenDay/SevenDaySonnet 可能需要
-	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil {
+	// 因为 SevenDay/SevenDaySonnet/SevenDayScoped 可能需要
+	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil && len(usage.SevenDayScoped) == 0 {
 		return
 	}
 
@@ -1345,6 +1378,31 @@ func (s *AccountUsageService) buildUsageInfo(resp *ClaudeUsageResponse, updatedA
 				Utilization: resp.SevenDaySonnet.Utilization,
 			}
 		}
+	}
+
+	// 模型维度的 7 天窗口 (如 Fable 5) — 来自 limits[] 中 kind=weekly_scoped 的条目。
+	// 每个条目的 scope.model.display_name 作为标签，percent 即使用率。
+	for _, lim := range resp.Limits {
+		if lim.Kind != "weekly_scoped" || lim.Scope == nil || lim.Scope.Model == nil {
+			continue
+		}
+		label := strings.TrimSpace(lim.Scope.Model.DisplayName)
+		if label == "" {
+			label = "Scoped"
+		}
+		win := &ScopedUsageWindow{
+			Label:       label,
+			Utilization: lim.Percent,
+		}
+		if lim.ResetsAt != "" {
+			if scopedReset, err := parseTime(lim.ResetsAt); err == nil {
+				win.ResetsAt = &scopedReset
+				win.RemainingSeconds = int(time.Until(scopedReset).Seconds())
+			} else {
+				log.Printf("Failed to parse scoped limit resets_at (%s): %s, error: %v", label, lim.ResetsAt, err)
+			}
+		}
+		info.SevenDayScoped = append(info.SevenDayScoped, win)
 	}
 
 	return info

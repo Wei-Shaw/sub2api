@@ -68,6 +68,16 @@
           color="purple"
         />
 
+        <!-- Model-scoped 7d Windows (OAuth only, e.g. 7d Fable) -->
+        <UsageProgressBar
+          v-for="scoped in usageInfo.seven_day_scoped || []"
+          :key="scoped.label"
+          :label="`7d ${scoped.label}`"
+          :utilization="scoped.utilization"
+          :resets-at="scoped.resets_at"
+          color="amber"
+        />
+
         <!-- Passive sampling label + active query button -->
         <div class="flex items-center gap-1.5 mt-0.5">
           <span

@@ -965,6 +965,15 @@ export interface UsageProgress {
   limit_requests?: number
 }
 
+// Model-scoped weekly usage window (e.g. Fable 5), from the upstream
+// usage limits[] weekly_scoped entries. `label` is the model display name.
+export interface ScopedUsageWindow {
+  label: string
+  utilization: number
+  resets_at: string | null
+  remaining_seconds?: number
+}
+
 // Antigravity 单个模型的配额信息
 export interface AntigravityModelQuota {
   utilization: number // 使用率 0-100
@@ -984,6 +993,9 @@ export interface AccountUsageInfo {
   five_hour: UsageProgress | null
   seven_day: UsageProgress | null
   seven_day_sonnet: UsageProgress | null
+  // Model-scoped 7-day windows (e.g. Fable 5), from the upstream usage limits[]
+  // weekly_scoped entries. `label` is the model display name (e.g. "Fable").
+  seven_day_scoped?: ScopedUsageWindow[] | null
   gemini_shared_daily?: UsageProgress | null
   gemini_pro_daily?: UsageProgress | null
   gemini_flash_daily?: UsageProgress | null

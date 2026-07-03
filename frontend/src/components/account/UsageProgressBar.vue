@@ -29,7 +29,7 @@
     <div class="flex items-center gap-1">
       <!-- Label badge (fixed width for alignment) -->
       <span
-        :class="['w-[32px] shrink-0 rounded px-1 text-center text-[10px] font-medium', labelClass]"
+        :class="['min-w-[32px] shrink-0 whitespace-nowrap rounded px-1 text-center text-[10px] font-medium', labelClass]"
       >
         {{ label }}
       </span>
