@@ -103,6 +103,11 @@ export interface BatchSetRateRequest {
   clear?: boolean
 }
 
+export interface BindAffiliateInviterRequest {
+  inviter_user_id: number
+  invitee_user_id: number
+}
+
 export interface SimpleUser {
   id: number
   email: string
@@ -158,6 +163,16 @@ export async function batchSetRate(
 ): Promise<{ affected: number }> {
   const { data } = await apiClient.post<{ affected: number }>(
     '/admin/affiliates/users/batch-rate',
+    payload,
+  )
+  return data
+}
+
+export async function bindInviter(
+  payload: BindAffiliateInviterRequest,
+): Promise<BindAffiliateInviterRequest> {
+  const { data } = await apiClient.post<BindAffiliateInviterRequest>(
+    '/admin/affiliates/invites/bind',
     payload,
   )
   return data
@@ -221,6 +236,7 @@ export const affiliatesAPI = {
   updateUserSettings,
   clearUserSettings,
   batchSetRate,
+  bindInviter,
   listInviteRecords,
   listRebateRecords,
   listTransferRecords,

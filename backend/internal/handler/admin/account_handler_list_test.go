@@ -50,3 +50,16 @@ func TestAccountHandlerListIncludesCreatedAt(t *testing.T) {
 	_, offset := parsed.Zone()
 	require.Equal(t, 0, offset)
 }
+
+func TestAccountHandlerListIgnoresConditionalCacheHeaders(t *testing.T) {
+	router, _ := setupAccountListRouter()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=20", nil)
+	req.Header.Set("If-None-Match", `"stale-etag"`)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotEmpty(t, rec.Body.String())
+	require.NotContains(t, rec.Body.String(), "not modified")
+}

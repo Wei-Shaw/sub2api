@@ -10690,6 +10690,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 
 	// Collect unique models from all accounts
 	modelSet := make(map[string]struct{})
+	cloudModelSet := make(map[string]struct{})
 	hasAnyMapping := false
 
 	for _, acc := range accounts {
@@ -10699,11 +10700,27 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 			for model := range mapping {
 				modelSet[model] = struct{}{}
 			}
+			continue
+		}
+		for _, model := range acc.GetCloudModelIDs() {
+			cloudModelSet[model] = struct{}{}
 		}
 	}
 
-	// If no account has model_mapping, return nil (use default)
 	if !hasAnyMapping {
+		if len(cloudModelSet) > 0 {
+			models := make([]string, 0, len(cloudModelSet))
+			for model := range cloudModelSet {
+				models = append(models, model)
+			}
+			sort.Strings(models)
+			if s.modelsListCache != nil {
+				s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
+				modelsListCacheStoreTotal.Add(1)
+			}
+			return cloneStringSlice(models)
+		}
+
 		if s.modelsListCache != nil {
 			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
 			modelsListCacheStoreTotal.Add(1)

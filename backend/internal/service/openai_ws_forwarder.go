@@ -2434,6 +2434,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		ResponseHeaders:  lease.HandshakeHeaders(),
 		Duration:         time.Since(startTime),
 		FirstTokenMs:     firstTokenMs,
+		WSConnReused:     boolPtr(lease.Reused()),
+		WSConnPickMs:     intPtr(int(lease.ConnPickDuration().Milliseconds())),
+		WSPayloadBytes:   openAIWSInt64Ptr(int64(resolvePayloadBytes())),
+		WSEventCount:     intPtr(eventCount),
+		WSQueueWaitMs:    intPtr(int(lease.QueueWaitDuration().Milliseconds())),
 	}, nil
 }
 
@@ -3115,6 +3120,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return lease, nil
 	}
 
+	preflightFailCount := 0
 	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, imageBillingModel string, imageSizeTier string, imageInputSize string) (*OpenAIForwardResult, error) {
 		if lease == nil {
 			return nil, errors.New("upstream websocket lease is nil")
@@ -3347,17 +3353,23 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				imageCount := imageCounter.Count()
 				result := &OpenAIForwardResult{
-					RequestID:       responseID,
-					Usage:           usage,
-					Model:           originalModel,
-					UpstreamModel:   mappedModel,
-					ServiceTier:     extractOpenAIServiceTierFromBody(payload),
-					ReasoningEffort: ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, originalModel), payload, mappedModel),
-					Stream:          reqStream,
-					OpenAIWSMode:    true,
-					ResponseHeaders: lease.HandshakeHeaders(),
-					Duration:        time.Since(turnStart),
-					FirstTokenMs:    firstTokenMs,
+					RequestID:            responseID,
+					Usage:                usage,
+					Model:                originalModel,
+					UpstreamModel:        mappedModel,
+					ServiceTier:          extractOpenAIServiceTierFromBody(payload),
+					ReasoningEffort:      ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, originalModel), payload, mappedModel),
+					Stream:               reqStream,
+					OpenAIWSMode:         true,
+					ResponseHeaders:      lease.HandshakeHeaders(),
+					Duration:             time.Since(turnStart),
+					FirstTokenMs:         firstTokenMs,
+					WSConnReused:         boolPtr(lease.Reused()),
+					WSPreflightFailCount: intPtr(preflightFailCount),
+					WSConnPickMs:         intPtr(int(lease.ConnPickDuration().Milliseconds())),
+					WSPayloadBytes:       openAIWSInt64Ptr(int64(payloadBytes)),
+					WSEventCount:         intPtr(eventCount),
+					WSQueueWaitMs:        intPtr(int(lease.QueueWaitDuration().Milliseconds())),
 				}
 				if replayInput := replayCollector.Items(); len(replayInput) > 0 {
 					result.wsReplayInput = replayInput
@@ -3746,6 +3758,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		if shouldPreflightPing {
 			if pingErr := sessionLease.PingWithTimeout(openAIWSConnHealthCheckTO); pingErr != nil {
+				preflightFailCount++
+				s.recordOpenAIWSPreflightFailure(account.ID)
 				logOpenAIWSModeInfo(
 					"ingress_ws_upstream_preflight_ping_fail account_id=%d turn=%d conn_id=%s cause=%s",
 					account.ID,

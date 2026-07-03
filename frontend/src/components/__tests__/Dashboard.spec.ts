@@ -27,10 +27,6 @@ vi.mock('@/api/usage', () => ({
   },
 }))
 
-vi.mock('@/api/admin/system', () => ({
-  checkUpdates: vi.fn(),
-}))
-
 vi.mock('@/api/auth', () => ({
   getPublicSettings: vi.fn().mockResolvedValue({}),
 }))

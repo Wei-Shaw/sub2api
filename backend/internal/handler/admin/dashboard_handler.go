@@ -657,15 +657,20 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 			dim.AccountID = id
 		}
 	}
-	if v := c.Query("request_type"); v != "" {
-		if rt, err := strconv.ParseInt(v, 10, 16); err == nil {
-			rtVal := int16(rt)
-			dim.RequestType = &rtVal
+	if v := strings.TrimSpace(c.Query("request_type")); v != "" {
+		requestType, err := service.ParseUsageRequestType(v)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
 		}
-	}
-	if v := c.Query("stream"); v != "" {
+		rtVal := int16(requestType)
+		dim.RequestType = &rtVal
+	} else if v := c.Query("stream"); v != "" {
 		if s, err := strconv.ParseBool(v); err == nil {
 			dim.Stream = &s
+		} else {
+			response.BadRequest(c, "Invalid stream value, use true or false")
+			return
 		}
 	}
 	if v := c.Query("billing_type"); v != "" {

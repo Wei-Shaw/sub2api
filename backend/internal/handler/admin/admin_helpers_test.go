@@ -192,6 +192,30 @@ func TestParseOpsQueryMode(t *testing.T) {
 	require.Equal(t, service.OpsQueryMode(""), parseOpsQueryMode(nil))
 }
 
+func TestParseOpsRequestType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/?request_type=ws_v2", nil)
+	requestType, err := parseOpsRequestType(c)
+	require.NoError(t, err)
+	require.NotNil(t, requestType)
+	require.Equal(t, int16(service.RequestTypeWSV2), *requestType)
+
+	c2, _ := gin.CreateTestContext(w)
+	c2.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	requestType, err = parseOpsRequestType(c2)
+	require.NoError(t, err)
+	require.Nil(t, requestType)
+
+	c3, _ := gin.CreateTestContext(w)
+	c3.Request = httptest.NewRequest(http.MethodGet, "/?request_type=bad", nil)
+	requestType, err = parseOpsRequestType(c3)
+	require.Error(t, err)
+	require.Nil(t, requestType)
+}
+
 func TestOpsAlertRuleValidation(t *testing.T) {
 	raw := map[string]json.RawMessage{
 		"name":        json.RawMessage(`"High error rate"`),

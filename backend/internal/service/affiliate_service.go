@@ -16,6 +16,8 @@ var (
 	ErrAffiliateCodeInvalid     = infraerrors.BadRequest("AFFILIATE_CODE_INVALID", "invalid affiliate code")
 	ErrAffiliateCodeTaken       = infraerrors.Conflict("AFFILIATE_CODE_TAKEN", "affiliate code already in use")
 	ErrAffiliateAlreadyBound    = infraerrors.Conflict("AFFILIATE_ALREADY_BOUND", "affiliate inviter already bound")
+	ErrAffiliateInvalidRelation = infraerrors.BadRequest("AFFILIATE_INVALID_RELATION", "invalid affiliate relationship")
+	ErrAffiliateCycleDetected   = infraerrors.Conflict("AFFILIATE_CYCLE_DETECTED", "affiliate relationship would create a cycle")
 	ErrAffiliateQuotaEmpty      = infraerrors.BadRequest("AFFILIATE_QUOTA_EMPTY", "no affiliate quota available to transfer")
 )
 
@@ -98,6 +100,7 @@ type AffiliateRepository interface {
 	EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error)
 	GetAffiliateByCode(ctx context.Context, code string) (*AffiliateSummary, error)
 	BindInviter(ctx context.Context, userID, inviterID int64) (bool, error)
+	IsAffiliateDescendant(ctx context.Context, userID, candidateDescendantID int64) (bool, error)
 	AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error)
 	GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
 	ThawFrozenQuota(ctx context.Context, userID int64) (float64, error)
@@ -238,6 +241,33 @@ func (s *AffiliateService) EnsureUserAffiliate(ctx context.Context, userID int64
 	return s.repo.EnsureUserAffiliate(ctx, userID)
 }
 
+func (s *AffiliateService) GetAffiliateByCode(ctx context.Context, rawCode string) (*AffiliateSummary, error) {
+	code := strings.ToUpper(strings.TrimSpace(rawCode))
+	if code == "" {
+		return nil, ErrAffiliateCodeInvalid
+	}
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+	if !s.IsEnabled(ctx) {
+		return nil, ErrAffiliateCodeInvalid
+	}
+	if !isValidAffiliateCodeFormat(code) {
+		return nil, ErrAffiliateCodeInvalid
+	}
+	summary, err := s.repo.GetAffiliateByCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, ErrAffiliateProfileNotFound) {
+			return nil, ErrAffiliateCodeInvalid
+		}
+		return nil, err
+	}
+	if summary == nil || summary.UserID <= 0 {
+		return nil, ErrAffiliateCodeInvalid
+	}
+	return summary, nil
+}
+
 func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64) (*AffiliateDetail, error) {
 	// Lazy thaw: move any matured frozen quota to available before reading.
 	if s != nil && s.repo != nil {
@@ -290,18 +320,60 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 		return nil
 	}
 
-	inviterSummary, err := s.repo.GetAffiliateByCode(ctx, code)
+	inviterSummary, err := s.GetAffiliateByCode(ctx, code)
 	if err != nil {
-		if errors.Is(err, ErrAffiliateProfileNotFound) {
-			return ErrAffiliateCodeInvalid
-		}
 		return err
 	}
 	if inviterSummary == nil || inviterSummary.UserID <= 0 || inviterSummary.UserID == userID {
 		return ErrAffiliateCodeInvalid
 	}
+	if descendant, err := s.repo.IsAffiliateDescendant(ctx, userID, inviterSummary.UserID); err != nil {
+		return err
+	} else if descendant {
+		return ErrAffiliateCycleDetected
+	}
 
 	bound, err := s.repo.BindInviter(ctx, userID, inviterSummary.UserID)
+	if err != nil {
+		return err
+	}
+	if !bound {
+		return ErrAffiliateAlreadyBound
+	}
+	return nil
+}
+
+// AdminBindInviter manually binds an existing invitee to an existing inviter.
+// Existing bindings are not overwritten; admins must resolve those explicitly
+// outside this flow to preserve one-parent affiliate history.
+func (s *AffiliateService) AdminBindInviter(ctx context.Context, inviteeUserID, inviterUserID int64) error {
+	if inviteeUserID <= 0 || inviterUserID <= 0 {
+		return infraerrors.BadRequest("INVALID_USER", "invalid user")
+	}
+	if inviteeUserID == inviterUserID {
+		return ErrAffiliateInvalidRelation
+	}
+	if s == nil || s.repo == nil {
+		return infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+
+	inviteeSummary, err := s.repo.EnsureUserAffiliate(ctx, inviteeUserID)
+	if err != nil {
+		return err
+	}
+	if inviteeSummary.InviterID != nil {
+		return ErrAffiliateAlreadyBound
+	}
+	if _, err := s.repo.EnsureUserAffiliate(ctx, inviterUserID); err != nil {
+		return err
+	}
+	if descendant, err := s.repo.IsAffiliateDescendant(ctx, inviteeUserID, inviterUserID); err != nil {
+		return err
+	} else if descendant {
+		return ErrAffiliateCycleDetected
+	}
+
+	bound, err := s.repo.BindInviter(ctx, inviteeUserID, inviterUserID)
 	if err != nil {
 		return err
 	}

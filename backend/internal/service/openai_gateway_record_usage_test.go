@@ -251,6 +251,7 @@ func expectedOpenAICost(t *testing.T, svc *OpenAIGatewayService, model string, u
 		OutputTokens:        usage.OutputTokens,
 		CacheCreationTokens: usage.CacheCreationInputTokens,
 		CacheReadTokens:     usage.CacheReadInputTokens,
+		ServerSideToolUsage: usage.ServerSideToolUsage,
 	}, multiplier)
 	require.NoError(t, err)
 	return cost

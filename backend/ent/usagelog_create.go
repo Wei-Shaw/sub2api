@@ -421,6 +421,90 @@ func (_c *UsageLogCreate) SetNillableFirstTokenMs(v *int) *UsageLogCreate {
 	return _c
 }
 
+// SetWsConnReused sets the "ws_conn_reused" field.
+func (_c *UsageLogCreate) SetWsConnReused(v bool) *UsageLogCreate {
+	_c.mutation.SetWsConnReused(v)
+	return _c
+}
+
+// SetNillableWsConnReused sets the "ws_conn_reused" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableWsConnReused(v *bool) *UsageLogCreate {
+	if v != nil {
+		_c.SetWsConnReused(*v)
+	}
+	return _c
+}
+
+// SetWsPreflightFailCount sets the "ws_preflight_fail_count" field.
+func (_c *UsageLogCreate) SetWsPreflightFailCount(v int) *UsageLogCreate {
+	_c.mutation.SetWsPreflightFailCount(v)
+	return _c
+}
+
+// SetNillableWsPreflightFailCount sets the "ws_preflight_fail_count" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableWsPreflightFailCount(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetWsPreflightFailCount(*v)
+	}
+	return _c
+}
+
+// SetWsConnPickMs sets the "ws_conn_pick_ms" field.
+func (_c *UsageLogCreate) SetWsConnPickMs(v int) *UsageLogCreate {
+	_c.mutation.SetWsConnPickMs(v)
+	return _c
+}
+
+// SetNillableWsConnPickMs sets the "ws_conn_pick_ms" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableWsConnPickMs(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetWsConnPickMs(*v)
+	}
+	return _c
+}
+
+// SetWsPayloadBytes sets the "ws_payload_bytes" field.
+func (_c *UsageLogCreate) SetWsPayloadBytes(v int64) *UsageLogCreate {
+	_c.mutation.SetWsPayloadBytes(v)
+	return _c
+}
+
+// SetNillableWsPayloadBytes sets the "ws_payload_bytes" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableWsPayloadBytes(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetWsPayloadBytes(*v)
+	}
+	return _c
+}
+
+// SetWsEventCount sets the "ws_event_count" field.
+func (_c *UsageLogCreate) SetWsEventCount(v int) *UsageLogCreate {
+	_c.mutation.SetWsEventCount(v)
+	return _c
+}
+
+// SetNillableWsEventCount sets the "ws_event_count" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableWsEventCount(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetWsEventCount(*v)
+	}
+	return _c
+}
+
+// SetWsQueueWaitMs sets the "ws_queue_wait_ms" field.
+func (_c *UsageLogCreate) SetWsQueueWaitMs(v int) *UsageLogCreate {
+	_c.mutation.SetWsQueueWaitMs(v)
+	return _c
+}
+
+// SetNillableWsQueueWaitMs sets the "ws_queue_wait_ms" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableWsQueueWaitMs(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetWsQueueWaitMs(*v)
+	}
+	return _c
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (_c *UsageLogCreate) SetUserAgent(v string) *UsageLogCreate {
 	_c.mutation.SetUserAgent(v)
@@ -962,6 +1046,30 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FirstTokenMs(); ok {
 		_spec.SetField(usagelog.FieldFirstTokenMs, field.TypeInt, value)
 		_node.FirstTokenMs = &value
+	}
+	if value, ok := _c.mutation.WsConnReused(); ok {
+		_spec.SetField(usagelog.FieldWsConnReused, field.TypeBool, value)
+		_node.WsConnReused = &value
+	}
+	if value, ok := _c.mutation.WsPreflightFailCount(); ok {
+		_spec.SetField(usagelog.FieldWsPreflightFailCount, field.TypeInt, value)
+		_node.WsPreflightFailCount = &value
+	}
+	if value, ok := _c.mutation.WsConnPickMs(); ok {
+		_spec.SetField(usagelog.FieldWsConnPickMs, field.TypeInt, value)
+		_node.WsConnPickMs = &value
+	}
+	if value, ok := _c.mutation.WsPayloadBytes(); ok {
+		_spec.SetField(usagelog.FieldWsPayloadBytes, field.TypeInt64, value)
+		_node.WsPayloadBytes = &value
+	}
+	if value, ok := _c.mutation.WsEventCount(); ok {
+		_spec.SetField(usagelog.FieldWsEventCount, field.TypeInt, value)
+		_node.WsEventCount = &value
+	}
+	if value, ok := _c.mutation.WsQueueWaitMs(); ok {
+		_spec.SetField(usagelog.FieldWsQueueWaitMs, field.TypeInt, value)
+		_node.WsQueueWaitMs = &value
 	}
 	if value, ok := _c.mutation.UserAgent(); ok {
 		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)
@@ -1683,6 +1791,144 @@ func (u *UsageLogUpsert) AddFirstTokenMs(v int) *UsageLogUpsert {
 // ClearFirstTokenMs clears the value of the "first_token_ms" field.
 func (u *UsageLogUpsert) ClearFirstTokenMs() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldFirstTokenMs)
+	return u
+}
+
+// SetWsConnReused sets the "ws_conn_reused" field.
+func (u *UsageLogUpsert) SetWsConnReused(v bool) *UsageLogUpsert {
+	u.Set(usagelog.FieldWsConnReused, v)
+	return u
+}
+
+// UpdateWsConnReused sets the "ws_conn_reused" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateWsConnReused() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldWsConnReused)
+	return u
+}
+
+// ClearWsConnReused clears the value of the "ws_conn_reused" field.
+func (u *UsageLogUpsert) ClearWsConnReused() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldWsConnReused)
+	return u
+}
+
+// SetWsPreflightFailCount sets the "ws_preflight_fail_count" field.
+func (u *UsageLogUpsert) SetWsPreflightFailCount(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldWsPreflightFailCount, v)
+	return u
+}
+
+// UpdateWsPreflightFailCount sets the "ws_preflight_fail_count" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateWsPreflightFailCount() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldWsPreflightFailCount)
+	return u
+}
+
+// AddWsPreflightFailCount adds v to the "ws_preflight_fail_count" field.
+func (u *UsageLogUpsert) AddWsPreflightFailCount(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldWsPreflightFailCount, v)
+	return u
+}
+
+// ClearWsPreflightFailCount clears the value of the "ws_preflight_fail_count" field.
+func (u *UsageLogUpsert) ClearWsPreflightFailCount() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldWsPreflightFailCount)
+	return u
+}
+
+// SetWsConnPickMs sets the "ws_conn_pick_ms" field.
+func (u *UsageLogUpsert) SetWsConnPickMs(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldWsConnPickMs, v)
+	return u
+}
+
+// UpdateWsConnPickMs sets the "ws_conn_pick_ms" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateWsConnPickMs() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldWsConnPickMs)
+	return u
+}
+
+// AddWsConnPickMs adds v to the "ws_conn_pick_ms" field.
+func (u *UsageLogUpsert) AddWsConnPickMs(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldWsConnPickMs, v)
+	return u
+}
+
+// ClearWsConnPickMs clears the value of the "ws_conn_pick_ms" field.
+func (u *UsageLogUpsert) ClearWsConnPickMs() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldWsConnPickMs)
+	return u
+}
+
+// SetWsPayloadBytes sets the "ws_payload_bytes" field.
+func (u *UsageLogUpsert) SetWsPayloadBytes(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldWsPayloadBytes, v)
+	return u
+}
+
+// UpdateWsPayloadBytes sets the "ws_payload_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateWsPayloadBytes() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldWsPayloadBytes)
+	return u
+}
+
+// AddWsPayloadBytes adds v to the "ws_payload_bytes" field.
+func (u *UsageLogUpsert) AddWsPayloadBytes(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldWsPayloadBytes, v)
+	return u
+}
+
+// ClearWsPayloadBytes clears the value of the "ws_payload_bytes" field.
+func (u *UsageLogUpsert) ClearWsPayloadBytes() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldWsPayloadBytes)
+	return u
+}
+
+// SetWsEventCount sets the "ws_event_count" field.
+func (u *UsageLogUpsert) SetWsEventCount(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldWsEventCount, v)
+	return u
+}
+
+// UpdateWsEventCount sets the "ws_event_count" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateWsEventCount() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldWsEventCount)
+	return u
+}
+
+// AddWsEventCount adds v to the "ws_event_count" field.
+func (u *UsageLogUpsert) AddWsEventCount(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldWsEventCount, v)
+	return u
+}
+
+// ClearWsEventCount clears the value of the "ws_event_count" field.
+func (u *UsageLogUpsert) ClearWsEventCount() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldWsEventCount)
+	return u
+}
+
+// SetWsQueueWaitMs sets the "ws_queue_wait_ms" field.
+func (u *UsageLogUpsert) SetWsQueueWaitMs(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldWsQueueWaitMs, v)
+	return u
+}
+
+// UpdateWsQueueWaitMs sets the "ws_queue_wait_ms" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateWsQueueWaitMs() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldWsQueueWaitMs)
+	return u
+}
+
+// AddWsQueueWaitMs adds v to the "ws_queue_wait_ms" field.
+func (u *UsageLogUpsert) AddWsQueueWaitMs(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldWsQueueWaitMs, v)
+	return u
+}
+
+// ClearWsQueueWaitMs clears the value of the "ws_queue_wait_ms" field.
+func (u *UsageLogUpsert) ClearWsQueueWaitMs() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldWsQueueWaitMs)
 	return u
 }
 
@@ -2521,6 +2767,167 @@ func (u *UsageLogUpsertOne) UpdateFirstTokenMs() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearFirstTokenMs() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearFirstTokenMs()
+	})
+}
+
+// SetWsConnReused sets the "ws_conn_reused" field.
+func (u *UsageLogUpsertOne) SetWsConnReused(v bool) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsConnReused(v)
+	})
+}
+
+// UpdateWsConnReused sets the "ws_conn_reused" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateWsConnReused() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsConnReused()
+	})
+}
+
+// ClearWsConnReused clears the value of the "ws_conn_reused" field.
+func (u *UsageLogUpsertOne) ClearWsConnReused() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsConnReused()
+	})
+}
+
+// SetWsPreflightFailCount sets the "ws_preflight_fail_count" field.
+func (u *UsageLogUpsertOne) SetWsPreflightFailCount(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsPreflightFailCount(v)
+	})
+}
+
+// AddWsPreflightFailCount adds v to the "ws_preflight_fail_count" field.
+func (u *UsageLogUpsertOne) AddWsPreflightFailCount(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWsPreflightFailCount(v)
+	})
+}
+
+// UpdateWsPreflightFailCount sets the "ws_preflight_fail_count" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateWsPreflightFailCount() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsPreflightFailCount()
+	})
+}
+
+// ClearWsPreflightFailCount clears the value of the "ws_preflight_fail_count" field.
+func (u *UsageLogUpsertOne) ClearWsPreflightFailCount() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsPreflightFailCount()
+	})
+}
+
+// SetWsConnPickMs sets the "ws_conn_pick_ms" field.
+func (u *UsageLogUpsertOne) SetWsConnPickMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsConnPickMs(v)
+	})
+}
+
+// AddWsConnPickMs adds v to the "ws_conn_pick_ms" field.
+func (u *UsageLogUpsertOne) AddWsConnPickMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWsConnPickMs(v)
+	})
+}
+
+// UpdateWsConnPickMs sets the "ws_conn_pick_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateWsConnPickMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsConnPickMs()
+	})
+}
+
+// ClearWsConnPickMs clears the value of the "ws_conn_pick_ms" field.
+func (u *UsageLogUpsertOne) ClearWsConnPickMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsConnPickMs()
+	})
+}
+
+// SetWsPayloadBytes sets the "ws_payload_bytes" field.
+func (u *UsageLogUpsertOne) SetWsPayloadBytes(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsPayloadBytes(v)
+	})
+}
+
+// AddWsPayloadBytes adds v to the "ws_payload_bytes" field.
+func (u *UsageLogUpsertOne) AddWsPayloadBytes(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWsPayloadBytes(v)
+	})
+}
+
+// UpdateWsPayloadBytes sets the "ws_payload_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateWsPayloadBytes() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsPayloadBytes()
+	})
+}
+
+// ClearWsPayloadBytes clears the value of the "ws_payload_bytes" field.
+func (u *UsageLogUpsertOne) ClearWsPayloadBytes() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsPayloadBytes()
+	})
+}
+
+// SetWsEventCount sets the "ws_event_count" field.
+func (u *UsageLogUpsertOne) SetWsEventCount(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsEventCount(v)
+	})
+}
+
+// AddWsEventCount adds v to the "ws_event_count" field.
+func (u *UsageLogUpsertOne) AddWsEventCount(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWsEventCount(v)
+	})
+}
+
+// UpdateWsEventCount sets the "ws_event_count" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateWsEventCount() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsEventCount()
+	})
+}
+
+// ClearWsEventCount clears the value of the "ws_event_count" field.
+func (u *UsageLogUpsertOne) ClearWsEventCount() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsEventCount()
+	})
+}
+
+// SetWsQueueWaitMs sets the "ws_queue_wait_ms" field.
+func (u *UsageLogUpsertOne) SetWsQueueWaitMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsQueueWaitMs(v)
+	})
+}
+
+// AddWsQueueWaitMs adds v to the "ws_queue_wait_ms" field.
+func (u *UsageLogUpsertOne) AddWsQueueWaitMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWsQueueWaitMs(v)
+	})
+}
+
+// UpdateWsQueueWaitMs sets the "ws_queue_wait_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateWsQueueWaitMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsQueueWaitMs()
+	})
+}
+
+// ClearWsQueueWaitMs clears the value of the "ws_queue_wait_ms" field.
+func (u *UsageLogUpsertOne) ClearWsQueueWaitMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsQueueWaitMs()
 	})
 }
 
@@ -3551,6 +3958,167 @@ func (u *UsageLogUpsertBulk) UpdateFirstTokenMs() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearFirstTokenMs() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearFirstTokenMs()
+	})
+}
+
+// SetWsConnReused sets the "ws_conn_reused" field.
+func (u *UsageLogUpsertBulk) SetWsConnReused(v bool) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsConnReused(v)
+	})
+}
+
+// UpdateWsConnReused sets the "ws_conn_reused" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateWsConnReused() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsConnReused()
+	})
+}
+
+// ClearWsConnReused clears the value of the "ws_conn_reused" field.
+func (u *UsageLogUpsertBulk) ClearWsConnReused() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsConnReused()
+	})
+}
+
+// SetWsPreflightFailCount sets the "ws_preflight_fail_count" field.
+func (u *UsageLogUpsertBulk) SetWsPreflightFailCount(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsPreflightFailCount(v)
+	})
+}
+
+// AddWsPreflightFailCount adds v to the "ws_preflight_fail_count" field.
+func (u *UsageLogUpsertBulk) AddWsPreflightFailCount(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWsPreflightFailCount(v)
+	})
+}
+
+// UpdateWsPreflightFailCount sets the "ws_preflight_fail_count" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateWsPreflightFailCount() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsPreflightFailCount()
+	})
+}
+
+// ClearWsPreflightFailCount clears the value of the "ws_preflight_fail_count" field.
+func (u *UsageLogUpsertBulk) ClearWsPreflightFailCount() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsPreflightFailCount()
+	})
+}
+
+// SetWsConnPickMs sets the "ws_conn_pick_ms" field.
+func (u *UsageLogUpsertBulk) SetWsConnPickMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsConnPickMs(v)
+	})
+}
+
+// AddWsConnPickMs adds v to the "ws_conn_pick_ms" field.
+func (u *UsageLogUpsertBulk) AddWsConnPickMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWsConnPickMs(v)
+	})
+}
+
+// UpdateWsConnPickMs sets the "ws_conn_pick_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateWsConnPickMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsConnPickMs()
+	})
+}
+
+// ClearWsConnPickMs clears the value of the "ws_conn_pick_ms" field.
+func (u *UsageLogUpsertBulk) ClearWsConnPickMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsConnPickMs()
+	})
+}
+
+// SetWsPayloadBytes sets the "ws_payload_bytes" field.
+func (u *UsageLogUpsertBulk) SetWsPayloadBytes(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsPayloadBytes(v)
+	})
+}
+
+// AddWsPayloadBytes adds v to the "ws_payload_bytes" field.
+func (u *UsageLogUpsertBulk) AddWsPayloadBytes(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWsPayloadBytes(v)
+	})
+}
+
+// UpdateWsPayloadBytes sets the "ws_payload_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateWsPayloadBytes() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsPayloadBytes()
+	})
+}
+
+// ClearWsPayloadBytes clears the value of the "ws_payload_bytes" field.
+func (u *UsageLogUpsertBulk) ClearWsPayloadBytes() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsPayloadBytes()
+	})
+}
+
+// SetWsEventCount sets the "ws_event_count" field.
+func (u *UsageLogUpsertBulk) SetWsEventCount(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsEventCount(v)
+	})
+}
+
+// AddWsEventCount adds v to the "ws_event_count" field.
+func (u *UsageLogUpsertBulk) AddWsEventCount(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWsEventCount(v)
+	})
+}
+
+// UpdateWsEventCount sets the "ws_event_count" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateWsEventCount() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsEventCount()
+	})
+}
+
+// ClearWsEventCount clears the value of the "ws_event_count" field.
+func (u *UsageLogUpsertBulk) ClearWsEventCount() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsEventCount()
+	})
+}
+
+// SetWsQueueWaitMs sets the "ws_queue_wait_ms" field.
+func (u *UsageLogUpsertBulk) SetWsQueueWaitMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWsQueueWaitMs(v)
+	})
+}
+
+// AddWsQueueWaitMs adds v to the "ws_queue_wait_ms" field.
+func (u *UsageLogUpsertBulk) AddWsQueueWaitMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWsQueueWaitMs(v)
+	})
+}
+
+// UpdateWsQueueWaitMs sets the "ws_queue_wait_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateWsQueueWaitMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWsQueueWaitMs()
+	})
+}
+
+// ClearWsQueueWaitMs clears the value of the "ws_queue_wait_ms" field.
+func (u *UsageLogUpsertBulk) ClearWsQueueWaitMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWsQueueWaitMs()
 	})
 }
 

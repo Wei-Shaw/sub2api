@@ -107,9 +107,10 @@ type OpsErrorLogFilter struct {
 	StartTime *time.Time
 	EndTime   *time.Time
 
-	Platform  string
-	GroupID   *int64
-	AccountID *int64
+	Platform    string
+	GroupID     *int64
+	AccountID   *int64
+	RequestType *int16
 
 	StatusCodes      []int
 	StatusCodesOther bool

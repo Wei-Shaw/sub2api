@@ -5,9 +5,10 @@
  */
 
 import { apiClient, buildGatewayUrl } from '../client'
-import type { PaginatedResponse } from '@/types'
+import type { PaginatedResponse, UsageRequestType } from '@/types'
 
 export type OpsQueryMode = 'auto' | 'raw' | 'preagg'
+export type OpsRequestType = Exclude<UsageRequestType, 'unknown'>
 
 export interface OpsRequestOptions {
   signal?: AbortSignal
@@ -141,6 +142,7 @@ export interface OpsRequestDetailsParams {
 
   platform?: string
   group_id?: number | null
+  request_type?: OpsRequestType
 
   user_id?: number
   api_key_id?: number
@@ -437,7 +439,8 @@ export interface OpsRealtimeTrafficSummaryResponse {
 export async function getRealtimeTrafficSummary(
   window: string,
   platform?: string,
-  groupId?: number | null
+  groupId?: number | null,
+  requestType?: OpsRequestType
 ): Promise<OpsRealtimeTrafficSummaryResponse> {
   const params: Record<string, any> = { window }
   if (platform) {
@@ -445,6 +448,9 @@ export async function getRealtimeTrafficSummary(
   }
   if (typeof groupId === 'number' && groupId > 0) {
     params.group_id = groupId
+  }
+  if (requestType) {
+    params.request_type = requestType
   }
 
   const { data } = await apiClient.get<OpsRealtimeTrafficSummaryResponse>('/admin/ops/realtime-traffic', { params })
@@ -962,15 +968,18 @@ export interface OpsErrorDetail extends OpsErrorLog {
 
 export type OpsErrorLogsResponse = PaginatedResponse<OpsErrorLog>
 
-export async function getDashboardOverview(
-  params: {
+export interface OpsDashboardQueryParams {
   time_range?: '5m' | '30m' | '1h' | '6h' | '24h'
   start_time?: string
   end_time?: string
   platform?: string
   group_id?: number | null
+  request_type?: OpsRequestType
   mode?: OpsQueryMode
-  },
+}
+
+export async function getDashboardOverview(
+  params: OpsDashboardQueryParams,
   options: OpsRequestOptions = {}
 ): Promise<OpsDashboardOverview> {
   const { data } = await apiClient.get<OpsDashboardOverview>('/admin/ops/dashboard/overview', {
@@ -981,14 +990,7 @@ export async function getDashboardOverview(
 }
 
 export async function getDashboardSnapshotV2(
-  params: {
-  time_range?: '5m' | '30m' | '1h' | '6h' | '24h'
-  start_time?: string
-  end_time?: string
-  platform?: string
-  group_id?: number | null
-  mode?: OpsQueryMode
-  },
+  params: OpsDashboardQueryParams,
   options: OpsRequestOptions = {}
 ): Promise<OpsDashboardSnapshotV2Response> {
   const { data } = await apiClient.get<OpsDashboardSnapshotV2Response>('/admin/ops/dashboard/snapshot-v2', {
@@ -999,14 +1001,7 @@ export async function getDashboardSnapshotV2(
 }
 
 export async function getThroughputTrend(
-  params: {
-  time_range?: '5m' | '30m' | '1h' | '6h' | '24h'
-  start_time?: string
-  end_time?: string
-  platform?: string
-  group_id?: number | null
-  mode?: OpsQueryMode
-  },
+  params: OpsDashboardQueryParams,
   options: OpsRequestOptions = {}
 ): Promise<OpsThroughputTrendResponse> {
   const { data } = await apiClient.get<OpsThroughputTrendResponse>('/admin/ops/dashboard/throughput-trend', {
@@ -1017,14 +1012,7 @@ export async function getThroughputTrend(
 }
 
 export async function getLatencyHistogram(
-  params: {
-  time_range?: '5m' | '30m' | '1h' | '6h' | '24h'
-  start_time?: string
-  end_time?: string
-  platform?: string
-  group_id?: number | null
-  mode?: OpsQueryMode
-  },
+  params: OpsDashboardQueryParams,
   options: OpsRequestOptions = {}
 ): Promise<OpsLatencyHistogramResponse> {
   const { data } = await apiClient.get<OpsLatencyHistogramResponse>('/admin/ops/dashboard/latency-histogram', {
@@ -1035,14 +1023,7 @@ export async function getLatencyHistogram(
 }
 
 export async function getErrorTrend(
-  params: {
-  time_range?: '5m' | '30m' | '1h' | '6h' | '24h'
-  start_time?: string
-  end_time?: string
-  platform?: string
-  group_id?: number | null
-  mode?: OpsQueryMode
-  },
+  params: OpsDashboardQueryParams,
   options: OpsRequestOptions = {}
 ): Promise<OpsErrorTrendResponse> {
   const { data } = await apiClient.get<OpsErrorTrendResponse>('/admin/ops/dashboard/error-trend', {
@@ -1053,14 +1034,7 @@ export async function getErrorTrend(
 }
 
 export async function getErrorDistribution(
-  params: {
-  time_range?: '5m' | '30m' | '1h' | '6h' | '24h'
-  start_time?: string
-  end_time?: string
-  platform?: string
-  group_id?: number | null
-  mode?: OpsQueryMode
-  },
+  params: OpsDashboardQueryParams,
   options: OpsRequestOptions = {}
 ): Promise<OpsErrorDistributionResponse> {
   const { data } = await apiClient.get<OpsErrorDistributionResponse>('/admin/ops/dashboard/error-distribution', {
@@ -1096,6 +1070,7 @@ export type OpsErrorListQueryParams = {
   api_key_id?: number
   // 模型过滤：后端以 COALESCE(requested_model, model) 精确匹配（admin 路径）。
   model?: string
+  request_type?: OpsRequestType
 
   phase?: string
   error_owner?: string

@@ -970,6 +970,17 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 			args = append(args, source)
 			clauses = append(clauses, "LOWER(COALESCE(e.error_source,'')) = $"+itoa(len(args)))
 		}
+		if filter.RequestType != nil {
+			condition, conditionArgs := buildRequestTypeFilterConditionWithColumns(
+				len(args)+1,
+				*filter.RequestType,
+				"e.request_type",
+				"e.stream",
+				"",
+			)
+			clauses = append(clauses, condition)
+			args = append(args, conditionArgs...)
+		}
 	}
 	if resolvedFilter != nil {
 		args = append(args, *resolvedFilter)

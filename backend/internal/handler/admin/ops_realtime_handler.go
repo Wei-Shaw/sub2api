@@ -257,6 +257,12 @@ func (h *OpsHandler) GetRealtimeTrafficSummary(c *gin.Context) {
 		GroupID:   groupID,
 		QueryMode: service.OpsQueryModeRaw,
 	}
+	requestType, err := parseOpsRequestType(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	filter.RequestType = requestType
 
 	summary, err := h.opsService.GetRealtimeTrafficSummary(c.Request.Context(), filter)
 	if err != nil {

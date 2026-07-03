@@ -88,6 +88,11 @@ type signupGrantPlan struct {
 	PlatformQuotas map[string]*DefaultPlatformQuotaSetting
 }
 
+type registrationInvitationResolution struct {
+	redeemCode    *RedeemCode
+	affiliateCode string
+}
+
 // NewAuthService 创建认证服务实例
 func NewAuthService(
 	entClient *dbent.Client,
@@ -149,23 +154,9 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 
 	// 检查是否需要邀请码
-	var invitationRedeemCode *RedeemCode
-	if s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
-		if invitationCode == "" {
-			return "", nil, ErrInvitationCodeRequired
-		}
-		// 验证邀请码
-		redeemCode, err := s.redeemRepo.GetByCode(ctx, invitationCode)
-		if err != nil {
-			logger.LegacyPrintf("service.auth", "[Auth] Invalid invitation code: %s, error: %v", invitationCode, err)
-			return "", nil, ErrInvitationCodeInvalid
-		}
-		// 检查类型和状态
-		if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
-			logger.LegacyPrintf("service.auth", "[Auth] Invitation code invalid: type=%s, status=%s", redeemCode.Type, redeemCode.Status)
-			return "", nil, ErrInvitationCodeInvalid
-		}
-		invitationRedeemCode = redeemCode
+	invitationResolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, affiliateCode, ErrInvitationCodeRequired)
+	if err != nil {
+		return "", nil, err
 	}
 
 	// 检查是否需要邮件验证
@@ -236,7 +227,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		if _, err := s.affiliateService.EnsureUserAffiliate(ctx, user.ID); err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to initialize affiliate profile for user %d: %v", user.ID, err)
 		}
-		if code := strings.TrimSpace(affiliateCode); code != "" {
+		if code := strings.TrimSpace(invitationResolution.affiliateCode); code != "" {
 			if err := s.affiliateService.BindInviterByCode(ctx, user.ID, code); err != nil {
 				// 邀请返利码绑定失败不影响注册，只记录日志
 				logger.LegacyPrintf("service.auth", "[Auth] Failed to bind affiliate inviter for user %d: %v", user.ID, err)
@@ -245,8 +236,8 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 
 	// 标记邀请码为已使用（如果使用了邀请码）
-	if invitationRedeemCode != nil {
-		if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
+	if invitationResolution.redeemCode != nil {
+		if err := s.redeemRepo.Use(ctx, invitationResolution.redeemCode.ID, user.ID); err != nil {
 			// 邀请码标记失败不影响注册，只记录日志
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to mark invitation code as used for user %d: %v", user.ID, err)
 		}
@@ -271,6 +262,91 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 
 	return token, user, nil
+}
+
+func (s *AuthService) resolveRegistrationInvitation(ctx context.Context, invitationCode, affiliateCode string, missingErr error) (*registrationInvitationResolution, error) {
+	resolution := &registrationInvitationResolution{
+		affiliateCode: strings.TrimSpace(affiliateCode),
+	}
+	if s.settingService == nil || !s.settingService.IsInvitationCodeEnabled(ctx) {
+		return resolution, nil
+	}
+
+	code := strings.TrimSpace(invitationCode)
+	if code == "" {
+		if resolution.affiliateCode == "" {
+			return nil, missingErr
+		}
+		if !s.isRegistrationAffiliateCode(ctx, resolution.affiliateCode) {
+			return nil, ErrInvitationCodeInvalid
+		}
+		return resolution, nil
+	}
+
+	if redeemCode, ok := s.getUsableInvitationRedeemCode(ctx, code); ok {
+		resolution.redeemCode = redeemCode
+		return resolution, nil
+	}
+	if s.isRegistrationAffiliateCode(ctx, code) {
+		resolution.affiliateCode = code
+		return resolution, nil
+	}
+
+	logger.LegacyPrintf("service.auth", "[Auth] Invalid registration invitation code: %s", code)
+	return nil, ErrInvitationCodeInvalid
+}
+
+func (s *AuthService) getUsableInvitationRedeemCode(ctx context.Context, code string) (*RedeemCode, bool) {
+	if s == nil || s.redeemRepo == nil || strings.TrimSpace(code) == "" {
+		return nil, false
+	}
+	redeemCode, err := s.redeemRepo.GetByCode(ctx, strings.TrimSpace(code))
+	if err != nil {
+		if errors.Is(err, ErrRedeemCodeNotFound) {
+			return nil, false
+		}
+		logger.LegacyPrintf("service.auth", "[Auth] Invitation redeem code lookup failed: %s, error: %v", code, err)
+		return nil, false
+	}
+	if redeemCode == nil {
+		return nil, false
+	}
+	if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
+		logger.LegacyPrintf("service.auth", "[Auth] Invitation redeem code invalid: type=%s, status=%s", redeemCode.Type, redeemCode.Status)
+		return nil, false
+	}
+	return redeemCode, true
+}
+
+func (s *AuthService) isRegistrationAffiliateCode(ctx context.Context, code string) bool {
+	if s == nil || s.affiliateService == nil || strings.TrimSpace(code) == "" {
+		return false
+	}
+	_, err := s.affiliateService.GetAffiliateByCode(ctx, code)
+	return err == nil
+}
+
+func (s *AuthService) ValidateRegistrationInvitationCode(ctx context.Context, code string) (bool, string) {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return false, "INVITATION_CODE_NOT_FOUND"
+	}
+	if s != nil && s.redeemRepo != nil {
+		redeemCode, err := s.redeemRepo.GetByCode(ctx, code)
+		if err == nil && redeemCode != nil {
+			if redeemCode.Type != RedeemTypeInvitation {
+				return false, "INVITATION_CODE_INVALID"
+			}
+			if redeemCode.Status != StatusUnused || redeemCode.IsExpired() {
+				return false, "INVITATION_CODE_USED"
+			}
+			return true, ""
+		}
+	}
+	if s.isRegistrationAffiliateCode(ctx, code) {
+		return true, ""
+	}
+	return false, "INVITATION_CODE_NOT_FOUND"
 }
 
 // SendVerifyCodeResult 发送验证码返回结果
@@ -626,19 +702,9 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 			}
 
 			// 检查是否需要邀请码
-			var invitationRedeemCode *RedeemCode
-			if s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
-				if invitationCode == "" {
-					return nil, nil, ErrOAuthInvitationRequired
-				}
-				redeemCode, err := s.redeemRepo.GetByCode(ctx, invitationCode)
-				if err != nil {
-					return nil, nil, ErrInvitationCodeInvalid
-				}
-				if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
-					return nil, nil, ErrInvitationCodeInvalid
-				}
-				invitationRedeemCode = redeemCode
+			invitationResolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, affiliateCode, ErrOAuthInvitationRequired)
+			if err != nil {
+				return nil, nil, err
 			}
 
 			randomPassword, err := randomHexString(32)
@@ -674,7 +740,7 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				SignupSource: signupSource,
 			}
 
-			if s.entClient != nil && invitationRedeemCode != nil {
+			if s.entClient != nil && invitationResolution.redeemCode != nil {
 				tx, err := s.entClient.Tx(ctx)
 				if err != nil {
 					logger.LegacyPrintf("service.auth", "[Auth] Failed to begin transaction for oauth registration: %v", err)
@@ -695,7 +761,7 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 						return nil, nil, ErrServiceUnavailable
 					}
 				} else {
-					if err := s.redeemRepo.Use(txCtx, invitationRedeemCode.ID, newUser.ID); err != nil {
+					if err := s.redeemRepo.Use(txCtx, invitationResolution.redeemCode.ID, newUser.ID); err != nil {
 						return nil, nil, ErrInvitationCodeInvalid
 					}
 					if err := tx.Commit(); err != nil {
@@ -708,7 +774,7 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					// snapshot user × platform quota（fail-open）
 					_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
-					s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
+					s.bindOAuthAffiliate(ctx, user.ID, invitationResolution.affiliateCode)
 				}
 			} else {
 				if err := s.userRepo.Create(ctx, newUser); err != nil {
@@ -729,9 +795,9 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					// snapshot user × platform quota（fail-open）
 					_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
-					s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
-					if invitationRedeemCode != nil {
-						if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
+					s.bindOAuthAffiliate(ctx, user.ID, invitationResolution.affiliateCode)
+					if invitationResolution.redeemCode != nil {
+						if err := s.redeemRepo.Use(ctx, invitationResolution.redeemCode.ID, user.ID); err != nil {
 							return nil, nil, ErrInvitationCodeInvalid
 						}
 					}

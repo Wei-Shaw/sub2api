@@ -214,12 +214,14 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 
 // OpenAIUsage represents OpenAI API response usage
 type OpenAIUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	ImageInputTokens         int `json:"image_input_tokens,omitempty"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	InputTokens              int            `json:"input_tokens"`
+	ImageInputTokens         int            `json:"image_input_tokens,omitempty"`
+	OutputTokens             int            `json:"output_tokens"`
+	CacheCreationInputTokens int            `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int            `json:"cache_read_input_tokens,omitempty"`
+	ImageOutputTokens        int            `json:"image_output_tokens,omitempty"`
+	CostInUSDTicks           int64          `json:"cost_in_usd_ticks,omitempty"`
+	ServerSideToolUsage      map[string]int `json:"server_side_tool_usage,omitempty"`
 }
 
 // OpenAIForwardResult represents the result of forwarding
@@ -241,20 +243,28 @@ type OpenAIForwardResult struct {
 	ServiceTier *string
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
-	ReasoningEffort    *string
-	Stream             bool
-	OpenAIWSMode       bool
-	ResponseHeaders    http.Header
-	Duration           time.Duration
-	FirstTokenMs       *int
-	ClientDisconnect   bool
-	ImageCount         int
-	ImageSize          string
-	ImageInputSize     string
-	ImageOutputSize    string
-	ImageOutputSizes   []string
-	ImageSizeSource    string
-	ImageSizeBreakdown map[string]int
+	ReasoningEffort      *string
+	Stream               bool
+	OpenAIWSMode         bool
+	ResponseHeaders      http.Header
+	Duration             time.Duration
+	FirstTokenMs         *int
+	WSConnReused         *bool
+	WSPreflightFailCount *int
+	WSConnPickMs         *int
+	WSPayloadBytes       *int64
+	WSEventCount         *int
+	WSQueueWaitMs        *int
+	ClientDisconnect     bool
+	ImageCount           int
+	ImageSize            string
+	ImageInputSize       string
+	ImageOutputSize      string
+	ImageOutputSizes     []string
+	ImageSizeSource      string
+	ImageSizeBreakdown   map[string]int
+	ProviderMediaCost    *CostBreakdown
+	UseImageRateForMedia bool
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
@@ -370,6 +380,7 @@ type OpenAIGatewayService struct {
 	openaiScheduler               OpenAIAccountScheduler
 	openaiWSPassthroughDialer     openAIWSClientDialer
 	openaiAccountStats            *openAIAccountRuntimeStats
+	openaiWSAccountHealth         *openAIWSAccountHealthTracker
 
 	openaiWSFallbackUntil               sync.Map // key: int64(accountID), value: time.Time
 	openaiAccountRuntimeBlockUntil      sync.Map // key: int64(accountID), value: time.Time
@@ -441,6 +452,7 @@ func NewOpenAIGatewayService(
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
+		openaiWSAccountHealth: newOpenAIWSAccountHealthTracker(),
 	}
 	if rateLimitService != nil {
 		rateLimitService.SetAccountRuntimeBlocker(svc)
@@ -1287,19 +1299,18 @@ func (s *OpenAIGatewayService) GenerateExplicitSessionHash(c *gin.Context, body 
 	return currentHash
 }
 
-// GenerateSessionHash generates a sticky-session hash for OpenAI requests.
-//
-// Priority:
-//  1. Header: session_id
-//  2. Header: conversation_id
-//  3. Body:   prompt_cache_key (opencode)
-//  4. Body:   content-based fallback (model + system + tools + first user message)
-func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) string {
+func (s *OpenAIGatewayService) generateOpenAISessionHash(c *gin.Context, body []byte, allowPromptCacheKey bool) string {
 	if c == nil {
 		return ""
 	}
 
-	sessionID := explicitOpenAISessionID(c, body)
+	sessionID := strings.TrimSpace(c.GetHeader("session_id"))
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
+	}
+	if sessionID == "" && allowPromptCacheKey && len(body) > 0 {
+		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
+	}
 	if sessionID == "" && len(body) > 0 {
 		sessionID = deriveOpenAIContentSessionSeed(body)
 	}
@@ -1310,6 +1321,38 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 	currentHash, legacyHash := deriveOpenAISessionHashes(sessionID)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
 	return currentHash
+}
+
+// GenerateSessionHash generates a sticky-session hash for OpenAI requests.
+//
+// Priority:
+//  1. Header: session_id
+//  2. Header: conversation_id
+//  3. Body:   prompt_cache_key (opencode)
+//  4. Body:   content-based fallback (model + system + tools + first user message)
+func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) string {
+	return s.generateOpenAISessionHash(c, body, true)
+}
+
+func (s *OpenAIGatewayService) GenerateCodexSessionHash(c *gin.Context, body []byte) string {
+	return s.generateOpenAISessionHash(c, body, false)
+}
+
+func (s *OpenAIGatewayService) shouldUseCodexHighFidelityRelay(c *gin.Context) bool {
+	if s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+		return true
+	}
+	if c == nil {
+		return false
+	}
+	return openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
+}
+
+func (s *OpenAIGatewayService) GenerateSessionHashForOpenAIRequest(c *gin.Context, body []byte) string {
+	if s.shouldUseCodexHighFidelityRelay(c) {
+		return s.GenerateCodexSessionHash(c, body)
+	}
+	return s.GenerateSessionHash(c, body)
 }
 
 // GenerateSessionHashWithFallback 先按常规信号生成会话哈希；
@@ -1966,10 +2009,12 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool {
 	// 优先级更高（数值更小）
 	// Higher priority (lower value)
-	if candidate.Priority < current.Priority {
+	candidatePriority := s.accountSchedulingPriority(candidate)
+	currentPriority := s.accountSchedulingPriority(current)
+	if candidatePriority < currentPriority {
 		return true
 	}
-	if candidate.Priority > current.Priority {
+	if candidatePriority > currentPriority {
 		return false
 	}
 
@@ -1988,6 +2033,77 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool
 	default:
 		// 都使用过，选择最久未使用的
 		return candidate.LastUsedAt.Before(*current.LastUsedAt)
+	}
+}
+
+func (s *OpenAIGatewayService) accountSchedulingPriority(account *Account) int {
+	if account == nil {
+		return 0
+	}
+	return account.Priority + s.openAIWSAccountHealthPenalty(account.ID)
+}
+
+func (s *OpenAIGatewayService) openAIWSAccountHealthPenalty(accountID int64) int {
+	if s == nil || s.openaiWSAccountHealth == nil {
+		return 0
+	}
+	return s.openaiWSAccountHealth.PriorityPenalty(accountID)
+}
+
+func (s *OpenAIGatewayService) recordOpenAIWSPreflightFailure(accountID int64) int {
+	if s == nil || s.openaiWSAccountHealth == nil {
+		return 0
+	}
+	return s.openaiWSAccountHealth.RecordPreflightFailure(accountID)
+}
+
+func (s *OpenAIGatewayService) sortOpenAIAccountsBySchedulingPriorityAndLastUsed(accounts []*Account) {
+	sort.SliceStable(accounts, func(i, j int) bool {
+		return s.isBetterAccount(accounts[i], accounts[j])
+	})
+	s.shuffleWithinOpenAIAccountSortGroups(accounts)
+}
+
+func (s *OpenAIGatewayService) shuffleWithinOpenAIAccountSortGroups(accounts []*Account) {
+	if len(accounts) <= 1 {
+		return
+	}
+	i := 0
+	for i < len(accounts) {
+		j := i + 1
+		for j < len(accounts) &&
+			s.accountSchedulingPriority(accounts[i]) == s.accountSchedulingPriority(accounts[j]) &&
+			sameLastUsedAt(accounts[i].LastUsedAt, accounts[j].LastUsedAt) {
+			j++
+		}
+		if j-i > 1 {
+			rand.Shuffle(j-i, func(a, b int) {
+				accounts[i+a], accounts[i+b] = accounts[i+b], accounts[i+a]
+			})
+		}
+		i = j
+	}
+}
+
+func (s *OpenAIGatewayService) shuffleWithinOpenAIAccountLoadGroups(accounts []accountWithLoad) {
+	if len(accounts) <= 1 {
+		return
+	}
+	i := 0
+	for i < len(accounts) {
+		j := i + 1
+		for j < len(accounts) &&
+			s.accountSchedulingPriority(accounts[i].account) == s.accountSchedulingPriority(accounts[j].account) &&
+			accounts[i].loadInfo.LoadRate == accounts[j].loadInfo.LoadRate &&
+			sameLastUsedAt(accounts[i].account.LastUsedAt, accounts[j].account.LastUsedAt) {
+			j++
+		}
+		if j-i > 1 {
+			rand.Shuffle(j-i, func(a, b int) {
+				accounts[i+a], accounts[i+b] = accounts[i+b], accounts[i+a]
+			})
+		}
+		i = j
 	}
 }
 
@@ -2179,8 +2295,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 		sort.SliceStable(available, func(i, j int) bool {
 			a, b := available[i], available[j]
-			if a.account.Priority != b.account.Priority {
-				return a.account.Priority < b.account.Priority
+			aPriority := s.accountSchedulingPriority(a.account)
+			bPriority := s.accountSchedulingPriority(b.account)
+			if aPriority != bPriority {
+				return aPriority < bPriority
 			}
 			if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 				return a.loadInfo.LoadRate < b.loadInfo.LoadRate
@@ -2196,7 +2314,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
 			}
 		})
-		shuffleWithinSortGroups(available)
+		s.shuffleWithinOpenAIAccountLoadGroups(available)
 
 		selectionOrder := make([]accountWithLoad, 0, len(available))
 		if requireCompact {
@@ -2247,7 +2365,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
 		ordered := append([]*Account(nil), candidates...)
-		sortAccountsByPriorityAndLastUsed(ordered, false)
+		s.sortOpenAIAccountsBySchedulingPriorityAndLastUsed(ordered)
 		if requireCompact {
 			ordered = prioritizeOpenAICompactAccounts(ordered)
 		}
@@ -2292,7 +2410,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	// ============ Layer 3: Fallback wait ============
-	sortAccountsByPriorityAndLastUsed(candidates, false)
+	s.sortOpenAIAccountsBySchedulingPriorityAndLastUsed(candidates)
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)
 	}
@@ -2644,7 +2762,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
 	clientTransport := GetOpenAIClientTransport(c)
 	// 仅允许 WS 入站请求走 WS 上游，避免出现 HTTP -> WS 协议混用。
-	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, clientTransport)
+	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, clientTransport, false)
 	if c != nil {
 		c.Set("openai_ws_transport_decision", string(wsDecision.Transport))
 		c.Set("openai_ws_transport_reason", wsDecision.Reason)
@@ -5568,9 +5686,15 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 		return OpenAIUsage{}, false
 	}
 	if usage, ok := openAIUsageFromGJSON(gjson.GetBytes(body, "usage")); ok {
+		usage.ServerSideToolUsage = openAIToolUsageFromGJSON(gjson.GetBytes(body, "server_side_tool_usage"))
 		return usage, true
 	}
-	return openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage"))
+	usage, ok := openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage"))
+	if !ok {
+		return OpenAIUsage{}, false
+	}
+	usage.ServerSideToolUsage = openAIToolUsageFromGJSON(gjson.GetBytes(body, "response.server_side_tool_usage"))
+	return usage, true
 }
 
 func extractOpenAIResponseIDFromJSONBytes(body []byte) string {
@@ -5626,7 +5750,26 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		CacheCreationInputTokens: int(value.Get("cache_creation_input_tokens").Int()),
 		CacheReadInputTokens:     int(cacheReadTokens),
 		ImageOutputTokens:        int(imageOutputTokens),
+		CostInUSDTicks:           value.Get("cost_in_usd_ticks").Int(),
 	}, true
+}
+
+func openAIToolUsageFromGJSON(value gjson.Result) map[string]int {
+	if !value.Exists() || !value.IsObject() {
+		return nil
+	}
+	toolUsage := make(map[string]int)
+	value.ForEach(func(key, val gjson.Result) bool {
+		count := int(val.Int())
+		if count > 0 {
+			toolUsage[key.String()] = count
+		}
+		return true
+	})
+	if len(toolUsage) == 0 {
+		return nil
+	}
+	return toolUsage
 }
 
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
@@ -5691,7 +5834,26 @@ func isEventStreamResponse(header http.Header) bool {
 	return strings.Contains(contentType, "text/event-stream")
 }
 
-func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
+func resolveSSEToJSONModelArgs(args ...any) (string, string) {
+	models := make([]string, 0, 2)
+	for i := len(args) - 1; i >= 0 && len(models) < 2; i-- {
+		model, ok := args[i].(string)
+		if !ok {
+			continue
+		}
+		models = append(models, model)
+	}
+	if len(models) == 0 {
+		return "", ""
+	}
+	if len(models) == 1 {
+		return models[0], models[0]
+	}
+	return models[1], models[0]
+}
+
+func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Context, body []byte, modelArgs ...any) (*openaiNonStreamingResult, error) {
+	originalModel, mappedModel := resolveSSEToJSONModelArgs(modelArgs...)
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
 
@@ -6338,6 +6500,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
 		CacheReadTokens:     result.Usage.CacheReadInputTokens,
 		ImageOutputTokens:   result.Usage.ImageOutputTokens,
+		ServerSideToolUsage: result.Usage.ServerSideToolUsage,
 	}
 
 	// Get rate multiplier
@@ -6380,7 +6543,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 	}
-	cost, err = s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels, multiplier, imageMultiplier, tokens, serviceTier)
+	mediaMultiplier := multiplier
+	if result.UseImageRateForMedia {
+		mediaMultiplier = imageMultiplier
+	}
+	cost, err = s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels, multiplier, imageMultiplier, mediaMultiplier, tokens, serviceTier)
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
 			return err
@@ -6453,7 +6620,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.TotalCost = cost.TotalCost
 		usageLog.ActualCost = cost.ActualCost
 	}
-	if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
+	if (result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken))) || (result.ProviderMediaCost != nil && result.UseImageRateForMedia) {
 		usageLog.RateMultiplier = imageMultiplier
 	} else {
 		usageLog.RateMultiplier = multiplier
@@ -6467,6 +6634,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	usageLog.OpenAIWSMode = result.OpenAIWSMode
 	usageLog.DurationMs = &durationMs
 	usageLog.FirstTokenMs = result.FirstTokenMs
+	usageLog.WSConnReused = result.WSConnReused
+	usageLog.WSPreflightFailCount = result.WSPreflightFailCount
+	usageLog.WSConnPickMs = result.WSConnPickMs
+	usageLog.WSPayloadBytes = result.WSPayloadBytes
+	usageLog.WSEventCount = result.WSEventCount
+	usageLog.WSQueueWaitMs = result.WSQueueWaitMs
 	usageLog.CreatedAt = time.Now()
 	// 设置渠道信息
 	usageLog.ChannelID = optionalInt64Ptr(input.ChannelID)
@@ -6552,9 +6725,13 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	billingModels []string,
 	multiplier float64,
 	imageMultiplier float64,
+	mediaMultiplier float64,
 	tokens UsageTokens,
 	serviceTier string,
 ) (*CostBreakdown, error) {
+	if result != nil && result.ProviderMediaCost != nil {
+		return applyProviderMediaCostMultiplier(result.ProviderMediaCost, mediaMultiplier), nil
+	}
 	billingModel := firstUsageBillingModel(billingModels)
 	if result != nil && result.ImageCount > 0 {
 		// 渠道定价为 token 计费时走 token 路径，否则走图片计费

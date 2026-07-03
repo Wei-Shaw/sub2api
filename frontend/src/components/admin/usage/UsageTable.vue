@@ -78,6 +78,12 @@
           </span>
         </template>
 
+        <template #cell-service_tier="{ row }">
+          <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="getServiceTierBadgeClass(row.service_tier)">
+            {{ getUsageServiceTierLabel(row.service_tier, t) }}
+          </span>
+        </template>
+
         <template #cell-endpoint="{ row }">
           <div class="max-w-[320px] space-y-1 text-xs">
             <div class="break-all text-gray-700 dark:text-gray-300">
@@ -546,6 +552,13 @@ const getRequestTypeBadgeClass = (row: AdminUsageLog): string => {
   return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
 }
 
+
+const getServiceTierBadgeClass = (serviceTier: string | null | undefined): string => {
+  const tier = serviceTier?.trim().toLowerCase()
+  if (tier === 'fast' || tier === 'priority') return 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200'
+  if (tier === 'flex') return 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200'
+  return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+}
 
 
 const formatUserAgent = (ua: string): string => {

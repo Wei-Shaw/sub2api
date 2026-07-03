@@ -32,3 +32,18 @@ export const requestTypeToLegacyStream = (requestType?: UsageRequestType | null)
   }
   return true
 }
+
+type UsageRequestTypeFilterParams = {
+  request_type?: UsageRequestType | null
+  stream?: boolean | null
+}
+
+export const preferRequestTypeFilter = <T extends UsageRequestTypeFilterParams>(params: T): T => {
+  if (!params.request_type) {
+    return params
+  }
+  return {
+    ...params,
+    stream: undefined
+  } as T
+}

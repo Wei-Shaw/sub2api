@@ -158,7 +158,8 @@ import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'; import { adminAPI } from '@/api/admin'; import { adminUsageAPI } from '@/api/admin/usage'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
-import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
+import { preferRequestTypeFilter, resolveUsageRequestType } from '@/utils/usageRequestType'
+import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
@@ -311,17 +312,14 @@ const buildUsageListParams = (
   pageSize: number,
   exactTotal: boolean
 ): AdminUsageQueryParams => {
-  const requestType = filters.value.request_type
-  const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-  return {
+  return preferRequestTypeFilter({
     page,
     page_size: pageSize,
     exact_total: exactTotal,
     ...filters.value,
-    stream: legacyStream === null ? undefined : legacyStream,
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
-  }
+  })
 }
 
 const loadLogs = async () => {
@@ -338,13 +336,10 @@ const loadStats = async (force = false) => {
   const seq = ++statsReqSeq
   endpointStatsLoading.value = true
   try {
-    const requestType = filters.value.request_type
-    const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-    const s = await adminAPI.usage.getStats({
+    const s = await adminAPI.usage.getStats(preferRequestTypeFilter({
       ...filters.value,
-      stream: legacyStream === null ? undefined : legacyStream,
       ...(force ? { nocache: 1 } : {}),
-    })
+    }))
     if (seq !== statsReqSeq) return
     usageStats.value = s
     inboundEndpointStats.value = s.endpoints || []
@@ -377,8 +372,7 @@ const loadModelStats = async (source: ModelDistributionSource, force = false) =>
   modelStatsLoading.value = true
   try {
     const requestType = filters.value.request_type
-    const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-    const baseParams = {
+    const baseParams = preferRequestTypeFilter({
       start_date: filters.value.start_date || startDate.value,
       end_date: filters.value.end_date || endDate.value,
       user_id: filters.value.user_id,
@@ -387,9 +381,9 @@ const loadModelStats = async (source: ModelDistributionSource, force = false) =>
       account_id: filters.value.account_id,
       group_id: filters.value.group_id,
       request_type: requestType,
-      stream: legacyStream === null ? undefined : legacyStream,
+      stream: filters.value.stream,
       billing_type: filters.value.billing_type,
-    }
+    })
 
     const response = await adminAPI.dashboard.getModelStats({ ...baseParams, model_source: source })
 
@@ -425,8 +419,7 @@ const loadChartData = async () => {
   chartsLoading.value = true
   try {
     const requestType = filters.value.request_type
-    const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-    const snapshot = await adminAPI.dashboard.getSnapshotV2({
+    const snapshot = await adminAPI.dashboard.getSnapshotV2(preferRequestTypeFilter({
       start_date: filters.value.start_date || startDate.value,
       end_date: filters.value.end_date || endDate.value,
       granularity: granularity.value,
@@ -436,14 +429,14 @@ const loadChartData = async () => {
       account_id: filters.value.account_id,
       group_id: filters.value.group_id,
       request_type: requestType,
-      stream: legacyStream === null ? undefined : legacyStream,
+      stream: filters.value.stream,
       billing_type: filters.value.billing_type,
       include_stats: false,
       include_trend: true,
       include_model_stats: false,
       include_group_stats: true,
       include_users_trend: false
-    })
+    }))
     if (seq !== chartReqSeq) return
     trendData.value = snapshot.trend || []
     groupStats.value = snapshot.groups || []
@@ -510,7 +503,7 @@ const exportToExcel = async () => {
     const XLSX = await import('xlsx')
     const headers = [
       t('usage.time'), t('admin.usage.user'), t('usage.apiKeyFilter'),
-      t('admin.usage.account'), t('usage.model'), t('usage.upstreamModel'), t('usage.reasoningEffort'), t('admin.usage.group'),
+      t('admin.usage.account'), t('usage.model'), t('usage.upstreamModel'), t('usage.reasoningEffort'), t('usage.serviceTier'), t('admin.usage.group'),
       t('usage.inboundEndpoint'), t('usage.upstreamEndpoint'),
       t('usage.type'),
       t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
@@ -530,7 +523,7 @@ const exportToExcel = async () => {
       if (c.signal.aborted) break; if (p === 1) { total = res.total; exportProgress.total = total }
       const rows = (res.items || []).map((log: AdminUsageLog) => [
         log.created_at, log.user?.email || '', log.api_key?.name || '', log.account?.name || '', log.model,
-        log.upstream_model || '', formatReasoningEffort(log.reasoning_effort), log.group?.name || '',
+        log.upstream_model || '', formatReasoningEffort(log.reasoning_effort), getUsageServiceTierLabel(log.service_tier, t), log.group?.name || '',
         log.inbound_endpoint || '', log.upstream_endpoint || '', getRequestTypeLabel(log),
         log.input_tokens, log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens,
         log.input_cost?.toFixed(6) || '0.000000', log.output_cost?.toFixed(6) || '0.000000',
@@ -569,6 +562,7 @@ const allColumns = computed(() => [
   { key: 'account', label: t('admin.usage.account'), sortable: false },
   { key: 'model', label: t('usage.model'), sortable: true },
   { key: 'reasoning_effort', label: t('usage.reasoningEffort'), sortable: false },
+  { key: 'service_tier', label: t('usage.serviceTier'), sortable: false },
   { key: 'endpoint', label: t('usage.endpoint'), sortable: false },
   { key: 'group', label: t('admin.usage.group'), sortable: false },
   { key: 'stream', label: t('usage.type'), sortable: false },

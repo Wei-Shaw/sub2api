@@ -210,6 +210,36 @@ func FirstTokenMs(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldFirstTokenMs, v))
 }
 
+// WsConnReused applies equality check predicate on the "ws_conn_reused" field. It's identical to WsConnReusedEQ.
+func WsConnReused(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsConnReused, v))
+}
+
+// WsPreflightFailCount applies equality check predicate on the "ws_preflight_fail_count" field. It's identical to WsPreflightFailCountEQ.
+func WsPreflightFailCount(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsPreflightFailCount, v))
+}
+
+// WsConnPickMs applies equality check predicate on the "ws_conn_pick_ms" field. It's identical to WsConnPickMsEQ.
+func WsConnPickMs(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsConnPickMs, v))
+}
+
+// WsPayloadBytes applies equality check predicate on the "ws_payload_bytes" field. It's identical to WsPayloadBytesEQ.
+func WsPayloadBytes(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsPayloadBytes, v))
+}
+
+// WsEventCount applies equality check predicate on the "ws_event_count" field. It's identical to WsEventCountEQ.
+func WsEventCount(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsEventCount, v))
+}
+
+// WsQueueWaitMs applies equality check predicate on the "ws_queue_wait_ms" field. It's identical to WsQueueWaitMsEQ.
+func WsQueueWaitMs(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsQueueWaitMs, v))
+}
+
 // UserAgent applies equality check predicate on the "user_agent" field. It's identical to UserAgentEQ.
 func UserAgent(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUserAgent, v))
@@ -1648,6 +1678,276 @@ func FirstTokenMsIsNil() predicate.UsageLog {
 // FirstTokenMsNotNil applies the NotNil predicate on the "first_token_ms" field.
 func FirstTokenMsNotNil() predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotNull(FieldFirstTokenMs))
+}
+
+// WsConnReusedEQ applies the EQ predicate on the "ws_conn_reused" field.
+func WsConnReusedEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsConnReused, v))
+}
+
+// WsConnReusedNEQ applies the NEQ predicate on the "ws_conn_reused" field.
+func WsConnReusedNEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldWsConnReused, v))
+}
+
+// WsConnReusedIsNil applies the IsNil predicate on the "ws_conn_reused" field.
+func WsConnReusedIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldWsConnReused))
+}
+
+// WsConnReusedNotNil applies the NotNil predicate on the "ws_conn_reused" field.
+func WsConnReusedNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldWsConnReused))
+}
+
+// WsPreflightFailCountEQ applies the EQ predicate on the "ws_preflight_fail_count" field.
+func WsPreflightFailCountEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsPreflightFailCount, v))
+}
+
+// WsPreflightFailCountNEQ applies the NEQ predicate on the "ws_preflight_fail_count" field.
+func WsPreflightFailCountNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldWsPreflightFailCount, v))
+}
+
+// WsPreflightFailCountIn applies the In predicate on the "ws_preflight_fail_count" field.
+func WsPreflightFailCountIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldWsPreflightFailCount, vs...))
+}
+
+// WsPreflightFailCountNotIn applies the NotIn predicate on the "ws_preflight_fail_count" field.
+func WsPreflightFailCountNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldWsPreflightFailCount, vs...))
+}
+
+// WsPreflightFailCountGT applies the GT predicate on the "ws_preflight_fail_count" field.
+func WsPreflightFailCountGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldWsPreflightFailCount, v))
+}
+
+// WsPreflightFailCountGTE applies the GTE predicate on the "ws_preflight_fail_count" field.
+func WsPreflightFailCountGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldWsPreflightFailCount, v))
+}
+
+// WsPreflightFailCountLT applies the LT predicate on the "ws_preflight_fail_count" field.
+func WsPreflightFailCountLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldWsPreflightFailCount, v))
+}
+
+// WsPreflightFailCountLTE applies the LTE predicate on the "ws_preflight_fail_count" field.
+func WsPreflightFailCountLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldWsPreflightFailCount, v))
+}
+
+// WsPreflightFailCountIsNil applies the IsNil predicate on the "ws_preflight_fail_count" field.
+func WsPreflightFailCountIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldWsPreflightFailCount))
+}
+
+// WsPreflightFailCountNotNil applies the NotNil predicate on the "ws_preflight_fail_count" field.
+func WsPreflightFailCountNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldWsPreflightFailCount))
+}
+
+// WsConnPickMsEQ applies the EQ predicate on the "ws_conn_pick_ms" field.
+func WsConnPickMsEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsConnPickMs, v))
+}
+
+// WsConnPickMsNEQ applies the NEQ predicate on the "ws_conn_pick_ms" field.
+func WsConnPickMsNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldWsConnPickMs, v))
+}
+
+// WsConnPickMsIn applies the In predicate on the "ws_conn_pick_ms" field.
+func WsConnPickMsIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldWsConnPickMs, vs...))
+}
+
+// WsConnPickMsNotIn applies the NotIn predicate on the "ws_conn_pick_ms" field.
+func WsConnPickMsNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldWsConnPickMs, vs...))
+}
+
+// WsConnPickMsGT applies the GT predicate on the "ws_conn_pick_ms" field.
+func WsConnPickMsGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldWsConnPickMs, v))
+}
+
+// WsConnPickMsGTE applies the GTE predicate on the "ws_conn_pick_ms" field.
+func WsConnPickMsGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldWsConnPickMs, v))
+}
+
+// WsConnPickMsLT applies the LT predicate on the "ws_conn_pick_ms" field.
+func WsConnPickMsLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldWsConnPickMs, v))
+}
+
+// WsConnPickMsLTE applies the LTE predicate on the "ws_conn_pick_ms" field.
+func WsConnPickMsLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldWsConnPickMs, v))
+}
+
+// WsConnPickMsIsNil applies the IsNil predicate on the "ws_conn_pick_ms" field.
+func WsConnPickMsIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldWsConnPickMs))
+}
+
+// WsConnPickMsNotNil applies the NotNil predicate on the "ws_conn_pick_ms" field.
+func WsConnPickMsNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldWsConnPickMs))
+}
+
+// WsPayloadBytesEQ applies the EQ predicate on the "ws_payload_bytes" field.
+func WsPayloadBytesEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsPayloadBytes, v))
+}
+
+// WsPayloadBytesNEQ applies the NEQ predicate on the "ws_payload_bytes" field.
+func WsPayloadBytesNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldWsPayloadBytes, v))
+}
+
+// WsPayloadBytesIn applies the In predicate on the "ws_payload_bytes" field.
+func WsPayloadBytesIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldWsPayloadBytes, vs...))
+}
+
+// WsPayloadBytesNotIn applies the NotIn predicate on the "ws_payload_bytes" field.
+func WsPayloadBytesNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldWsPayloadBytes, vs...))
+}
+
+// WsPayloadBytesGT applies the GT predicate on the "ws_payload_bytes" field.
+func WsPayloadBytesGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldWsPayloadBytes, v))
+}
+
+// WsPayloadBytesGTE applies the GTE predicate on the "ws_payload_bytes" field.
+func WsPayloadBytesGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldWsPayloadBytes, v))
+}
+
+// WsPayloadBytesLT applies the LT predicate on the "ws_payload_bytes" field.
+func WsPayloadBytesLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldWsPayloadBytes, v))
+}
+
+// WsPayloadBytesLTE applies the LTE predicate on the "ws_payload_bytes" field.
+func WsPayloadBytesLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldWsPayloadBytes, v))
+}
+
+// WsPayloadBytesIsNil applies the IsNil predicate on the "ws_payload_bytes" field.
+func WsPayloadBytesIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldWsPayloadBytes))
+}
+
+// WsPayloadBytesNotNil applies the NotNil predicate on the "ws_payload_bytes" field.
+func WsPayloadBytesNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldWsPayloadBytes))
+}
+
+// WsEventCountEQ applies the EQ predicate on the "ws_event_count" field.
+func WsEventCountEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsEventCount, v))
+}
+
+// WsEventCountNEQ applies the NEQ predicate on the "ws_event_count" field.
+func WsEventCountNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldWsEventCount, v))
+}
+
+// WsEventCountIn applies the In predicate on the "ws_event_count" field.
+func WsEventCountIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldWsEventCount, vs...))
+}
+
+// WsEventCountNotIn applies the NotIn predicate on the "ws_event_count" field.
+func WsEventCountNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldWsEventCount, vs...))
+}
+
+// WsEventCountGT applies the GT predicate on the "ws_event_count" field.
+func WsEventCountGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldWsEventCount, v))
+}
+
+// WsEventCountGTE applies the GTE predicate on the "ws_event_count" field.
+func WsEventCountGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldWsEventCount, v))
+}
+
+// WsEventCountLT applies the LT predicate on the "ws_event_count" field.
+func WsEventCountLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldWsEventCount, v))
+}
+
+// WsEventCountLTE applies the LTE predicate on the "ws_event_count" field.
+func WsEventCountLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldWsEventCount, v))
+}
+
+// WsEventCountIsNil applies the IsNil predicate on the "ws_event_count" field.
+func WsEventCountIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldWsEventCount))
+}
+
+// WsEventCountNotNil applies the NotNil predicate on the "ws_event_count" field.
+func WsEventCountNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldWsEventCount))
+}
+
+// WsQueueWaitMsEQ applies the EQ predicate on the "ws_queue_wait_ms" field.
+func WsQueueWaitMsEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWsQueueWaitMs, v))
+}
+
+// WsQueueWaitMsNEQ applies the NEQ predicate on the "ws_queue_wait_ms" field.
+func WsQueueWaitMsNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldWsQueueWaitMs, v))
+}
+
+// WsQueueWaitMsIn applies the In predicate on the "ws_queue_wait_ms" field.
+func WsQueueWaitMsIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldWsQueueWaitMs, vs...))
+}
+
+// WsQueueWaitMsNotIn applies the NotIn predicate on the "ws_queue_wait_ms" field.
+func WsQueueWaitMsNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldWsQueueWaitMs, vs...))
+}
+
+// WsQueueWaitMsGT applies the GT predicate on the "ws_queue_wait_ms" field.
+func WsQueueWaitMsGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldWsQueueWaitMs, v))
+}
+
+// WsQueueWaitMsGTE applies the GTE predicate on the "ws_queue_wait_ms" field.
+func WsQueueWaitMsGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldWsQueueWaitMs, v))
+}
+
+// WsQueueWaitMsLT applies the LT predicate on the "ws_queue_wait_ms" field.
+func WsQueueWaitMsLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldWsQueueWaitMs, v))
+}
+
+// WsQueueWaitMsLTE applies the LTE predicate on the "ws_queue_wait_ms" field.
+func WsQueueWaitMsLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldWsQueueWaitMs, v))
+}
+
+// WsQueueWaitMsIsNil applies the IsNil predicate on the "ws_queue_wait_ms" field.
+func WsQueueWaitMsIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldWsQueueWaitMs))
+}
+
+// WsQueueWaitMsNotNil applies the NotNil predicate on the "ws_queue_wait_ms" field.
+func WsQueueWaitMsNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldWsQueueWaitMs))
 }
 
 // UserAgentEQ applies the EQ predicate on the "user_agent" field.

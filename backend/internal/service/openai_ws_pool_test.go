@@ -574,21 +574,38 @@ func TestOpenAIWSConnPool_EffectiveMaxConnsDisabledFallbackHardCap(t *testing.T)
 	require.Equal(t, 8, pool.effectiveMaxConnsByAccount(account), "关闭动态模式后应保持旧行为")
 }
 
-func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2UsesAccountConcurrency(t *testing.T) {
+func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2ReservesIdleCapacity(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
 	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 8
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 4
 	cfg.Gateway.OpenAIWS.DynamicMaxConnsByAccountConcurrencyEnabled = true
 	cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor = 0.3
 	cfg.Gateway.OpenAIWS.APIKeyMaxConnsFactor = 0.6
 
 	pool := newOpenAIWSConnPool(cfg)
 
+	low := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
+	require.Equal(t, 5, pool.effectiveMaxConnsByAccount(low), "v2 路径应为账号并发保留 idle 热连接余量")
+
 	high := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 20}
-	require.Equal(t, 20, pool.effectiveMaxConnsByAccount(high), "v2 路径应直接使用账号并发数作为池上限")
+	require.Equal(t, 8, pool.effectiveMaxConnsByAccount(high), "v2 路径仍应受全局硬上限约束")
 
 	nonPositive := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 0}
 	require.Equal(t, 0, pool.effectiveMaxConnsByAccount(nonPositive), "并发数<=0 时应不可调度")
+}
+
+func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2HonorsFactor(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 20
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 1
+	cfg.Gateway.OpenAIWS.APIKeyMaxConnsFactor = 1.5
+
+	pool := newOpenAIWSConnPool(cfg)
+
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 4}
+	require.Equal(t, 6, pool.effectiveMaxConnsByAccount(account), "v2 路径应继续尊重按账号类型配置的连接系数")
 }
 
 func TestOpenAIWSConnPool_AcquireRejectsWhenEffectiveMaxConnsIsZero(t *testing.T) {

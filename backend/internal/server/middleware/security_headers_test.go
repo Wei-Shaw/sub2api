@@ -322,6 +322,16 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Contains(t, enhanced, CloudflareInsightsDomain)
 	})
 
+	t.Run("adds_media_sources_for_generated_video_preview", func(t *testing.T) {
+		policy := "default-src 'self'; script-src 'self'"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Contains(t, enhanced, "media-src")
+		assert.Contains(t, enhanced, CSPMediaDataSource)
+		assert.Contains(t, enhanced, CSPMediaBlobSource)
+		assert.Contains(t, enhanced, CSPMediaHTTPSSource)
+	})
+
 	t.Run("preserves_existing_nonce", func(t *testing.T) {
 		policy := "script-src 'self' 'nonce-existing'"
 		enhanced := enhanceCSPPolicy(policy)

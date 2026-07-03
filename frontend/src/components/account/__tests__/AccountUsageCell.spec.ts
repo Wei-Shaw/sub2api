@@ -655,4 +655,5 @@ describe('AccountUsageCell', () => {
 		expect(wrapper.text()).toContain('A $0.00')
 		expect(wrapper.text()).toContain('U $0.00')
   })
+
 })

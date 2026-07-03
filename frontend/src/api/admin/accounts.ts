@@ -439,6 +439,34 @@ export interface BatchTodayStatsResponse {
   stats: Record<string, WindowStats>
 }
 
+export interface AccountRequestTypePerformanceStats {
+  request_type: 'stream' | 'ws_v2' | string
+  request_count: number
+  avg_duration_ms?: number | null
+  p90_duration_ms?: number | null
+  avg_first_token_ms?: number | null
+  p90_first_token_ms?: number | null
+  requests_with_first_token_ms: number
+  avg_ws_conn_pick_ms?: number | null
+  p90_ws_conn_pick_ms?: number | null
+  ws_preflight_fail_count?: number
+  ws_conn_reused_count?: number
+  ws_conn_reused_rate?: number | null
+  avg_ws_payload_bytes?: number | null
+  avg_ws_event_count?: number | null
+  avg_ws_queue_wait_ms?: number | null
+}
+
+export interface AccountPerformanceStats {
+  account_id: number
+  window_hours: number
+  stats: AccountRequestTypePerformanceStats[]
+}
+
+export interface BatchPerformanceStatsResponse {
+  stats: Record<string, AccountPerformanceStats>
+}
+
 /**
  * 批量获取多个账号的今日统计
  * @param accountIds - 账号 ID 列表
@@ -447,6 +475,20 @@ export interface BatchTodayStatsResponse {
 export async function getBatchTodayStats(accountIds: number[]): Promise<BatchTodayStatsResponse> {
   const { data } = await apiClient.post<BatchTodayStatsResponse>('/admin/accounts/today-stats/batch', {
     account_ids: accountIds
+  })
+  return data
+}
+
+/**
+ * 批量获取多个账号的请求耗时统计
+ * @param accountIds - 账号 ID 列表
+ * @param windowHours - 统计窗口小时数，默认 24 小时
+ * @returns 以账号 ID（字符串）为键的性能统计映射
+ */
+export async function getBatchPerformanceStats(accountIds: number[], windowHours: number = 24): Promise<BatchPerformanceStatsResponse> {
+  const { data } = await apiClient.post<BatchPerformanceStatsResponse>('/admin/accounts/performance-stats/batch', {
+    account_ids: accountIds,
+    window_hours: windowHours
   })
   return data
 }
@@ -817,6 +859,7 @@ export const accountsAPI = {
   getUsage,
   getTodayStats,
   getBatchTodayStats,
+  getBatchPerformanceStats,
   clearRateLimit,
   recoverState,
   resetAccountQuota,

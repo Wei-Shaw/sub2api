@@ -4,7 +4,13 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import {
+  buildModelMappingObject,
+  getModelsByPlatform,
+  replaceExactModelsWithUpstream,
+  replaceIdentityModelMappingsWithUpstream,
+  splitModelMappingObject
+} from '../useModelWhitelist'
 
 describe('useModelWhitelist', () => {
   it('openai 模型列表包含 GPT-5.4 官方快照', () => {
@@ -109,5 +115,40 @@ describe('useModelWhitelist', () => {
       allowedModels: ['gpt-5.4'],
       modelMappings: [{ from: 'gpt-latest', to: 'gpt-5.4' }]
     })
+  })
+
+  it('replaceExactModelsWithUpstream 会用上游精确模型覆盖旧白名单并保留通配符', () => {
+    const result = replaceExactModelsWithUpstream(
+      ['old-model', 'gpt-*', 'new-model', 'new-model', ' '],
+      ['new-model', 'newer-model', 'newer-model', ' ']
+    )
+
+    expect(result.models).toEqual(['new-model', 'newer-model', 'gpt-*'])
+    expect(result.addedCount).toBe(1)
+    expect(result.removedCount).toBe(1)
+    expect(result.preservedWildcardCount).toBe(1)
+    expect(result.changed).toBe(true)
+  })
+
+  it('replaceIdentityModelMappingsWithUpstream 会刷新身份映射并保留手写映射', () => {
+    const result = replaceIdentityModelMappingsWithUpstream(
+      [
+        { from: 'old-model', to: 'old-model' },
+        { from: 'custom-model', to: 'target-model' },
+        { from: 'new-model', to: 'custom-target' },
+        { from: 'new-model', to: 'custom-target' }
+      ],
+      ['new-model', 'newer-model']
+    )
+
+    expect(result.mappings).toEqual([
+      { from: 'newer-model', to: 'newer-model' },
+      { from: 'custom-model', to: 'target-model' },
+      { from: 'new-model', to: 'custom-target' }
+    ])
+    expect(result.addedCount).toBe(1)
+    expect(result.removedCount).toBe(1)
+    expect(result.preservedMappingCount).toBe(2)
+    expect(result.changed).toBe(true)
   })
 })

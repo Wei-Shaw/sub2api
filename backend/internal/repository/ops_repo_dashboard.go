@@ -28,10 +28,7 @@ func (r *opsRepository) GetDashboardOverview(ctx context.Context, filter *servic
 		return nil, fmt.Errorf("start_time/end_time required")
 	}
 
-	mode := filter.QueryMode
-	if !mode.IsValid() {
-		mode = service.OpsQueryModeRaw
-	}
+	mode := resolveOpsDashboardQueryMode(filter)
 
 	switch mode {
 	case service.OpsQueryModePreagg:
@@ -972,17 +969,34 @@ func isQueryTimeoutErr(err error) bool {
 	return errors.Is(err, context.DeadlineExceeded)
 }
 
+func resolveOpsDashboardQueryMode(filter *service.OpsDashboardFilter) service.OpsQueryMode {
+	if filter == nil {
+		return service.OpsQueryModeRaw
+	}
+	mode := filter.QueryMode
+	if !mode.IsValid() {
+		mode = service.OpsQueryModeRaw
+	}
+	if filter.RequestType != nil {
+		// 预聚合表当前不包含 request_type 维度，带该过滤时只能走原始日志。
+		return service.OpsQueryModeRaw
+	}
+	return mode
+}
+
 func buildUsageWhere(filter *service.OpsDashboardFilter, start, end time.Time, startIndex int) (join string, where string, args []any, nextIndex int) {
 	platform := ""
 	groupID := (*int64)(nil)
+	requestType := (*int16)(nil)
 	if filter != nil {
 		platform = strings.TrimSpace(strings.ToLower(filter.Platform))
 		groupID = filter.GroupID
+		requestType = filter.RequestType
 	}
 
 	idx := startIndex
-	clauses := make([]string, 0, 4)
-	args = make([]any, 0, 4)
+	clauses := make([]string, 0, 5)
+	args = make([]any, 0, 5)
 
 	args = append(args, start)
 	clauses = append(clauses, fmt.Sprintf("ul.created_at >= $%d", idx))
@@ -1004,6 +1018,18 @@ func buildUsageWhere(filter *service.OpsDashboardFilter, start, end time.Time, s
 		clauses = append(clauses, fmt.Sprintf("COALESCE(NULLIF(g.platform,''), a.platform) = $%d", idx))
 		idx++
 	}
+	if requestType != nil {
+		condition, conditionArgs := buildRequestTypeFilterConditionWithColumns(
+			idx,
+			*requestType,
+			"ul.request_type",
+			"ul.stream",
+			"ul.openai_ws_mode",
+		)
+		clauses = append(clauses, condition)
+		args = append(args, conditionArgs...)
+		idx += len(conditionArgs)
+	}
 
 	where = "WHERE " + strings.Join(clauses, " AND ")
 	return join, where, args, idx
@@ -1012,14 +1038,16 @@ func buildUsageWhere(filter *service.OpsDashboardFilter, start, end time.Time, s
 func buildErrorWhere(filter *service.OpsDashboardFilter, start, end time.Time, startIndex int) (where string, args []any, nextIndex int) {
 	platform := ""
 	groupID := (*int64)(nil)
+	requestType := (*int16)(nil)
 	if filter != nil {
 		platform = strings.TrimSpace(strings.ToLower(filter.Platform))
 		groupID = filter.GroupID
+		requestType = filter.RequestType
 	}
 
 	idx := startIndex
-	clauses := make([]string, 0, 5)
-	args = make([]any, 0, 5)
+	clauses := make([]string, 0, 6)
+	args = make([]any, 0, 6)
 
 	args = append(args, start)
 	clauses = append(clauses, fmt.Sprintf("created_at >= $%d", idx))
@@ -1039,6 +1067,18 @@ func buildErrorWhere(filter *service.OpsDashboardFilter, start, end time.Time, s
 		args = append(args, platform)
 		clauses = append(clauses, fmt.Sprintf("platform = $%d", idx))
 		idx++
+	}
+	if requestType != nil {
+		condition, conditionArgs := buildRequestTypeFilterConditionWithColumns(
+			idx,
+			*requestType,
+			"request_type",
+			"stream",
+			"",
+		)
+		clauses = append(clauses, condition)
+		args = append(args, conditionArgs...)
+		idx += len(conditionArgs)
 	}
 
 	where = "WHERE " + strings.Join(clauses, " AND ")

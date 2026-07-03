@@ -535,6 +535,15 @@ func (h *AuthHandler) ValidateInvitationCode(c *gin.Context) {
 		return
 	}
 
+	if h.authService != nil {
+		valid, errorCode := h.authService.ValidateRegistrationInvitationCode(c.Request.Context(), req.Code)
+		response.Success(c, ValidateInvitationCodeResponse{
+			Valid:     valid,
+			ErrorCode: errorCode,
+		})
+		return
+	}
+
 	// 验证邀请码
 	redeemCode, err := h.redeemService.GetByCode(c.Request.Context(), req.Code)
 	if err != nil {

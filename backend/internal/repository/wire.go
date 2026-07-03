@@ -25,12 +25,6 @@ func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config) service.Conc
 	return NewConcurrencyCache(rdb, cfg.Gateway.ConcurrencySlotTTLMinutes, waitTTLSeconds)
 }
 
-// ProvideGitHubReleaseClient 创建 GitHub Release 客户端
-// 从配置中读取代理设置，支持国内服务器通过代理访问 GitHub
-func ProvideGitHubReleaseClient(cfg *config.Config) service.GitHubReleaseClient {
-	return NewGitHubReleaseClient(cfg.Update.ProxyURL, cfg.Security.ProxyFallback.AllowDirectOnError)
-}
-
 // ProvidePricingRemoteClient 创建定价数据远程客户端
 // 从配置中读取代理设置，支持国内服务器通过代理访问 GitHub 上的定价数据
 func ProvidePricingRemoteClient(cfg *config.Config) service.PricingRemoteClient {
@@ -113,7 +107,6 @@ var ProviderSet = wire.NewSet(
 	NewEmailCache,
 	NewIdentityCache,
 	NewRedeemCache,
-	NewUpdateCache,
 	NewGeminiTokenCache,
 	NewLeaderLockCache,
 	ProvideSchedulerCache,
@@ -135,7 +128,6 @@ var ProviderSet = wire.NewSet(
 	// HTTP service ports (DI Strategy A: return interface directly)
 	NewTurnstileVerifier,
 	ProvidePricingRemoteClient,
-	ProvideGitHubReleaseClient,
 	NewProxyExitInfoProber,
 	NewClaudeUsageFetcher,
 	NewClaudeOAuthClient,

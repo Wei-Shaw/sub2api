@@ -87,6 +87,11 @@ const (
 	openAIAuthModeLegacyCredentialKey = "openai_auth_mode"
 )
 
+const (
+	AccountExtraCloudModelsKey            = "cloud_models"
+	AccountExtraCloudModelsRefreshedAtKey = "cloud_models_refreshed_at"
+)
+
 func isOpenAIPersonalAccessTokenAuthMode(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "personalaccesstoken", "personal_access_token":
@@ -412,7 +417,23 @@ func parseTempUnschedStrings(value any) []string {
 	case []any:
 		raw = make([]string, 0, len(v))
 		for _, item := range v {
-			if s, ok := item.(string); ok {
+			switch item := item.(type) {
+			case string:
+				raw = append(raw, item)
+			case map[string]any:
+				if s, ok := item["id"].(string); ok {
+					raw = append(raw, s)
+				}
+			case map[string]string:
+				if s := item["id"]; s != "" {
+					raw = append(raw, s)
+				}
+			}
+		}
+	case []map[string]any:
+		raw = make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item["id"].(string); ok {
 				raw = append(raw, s)
 			}
 		}
@@ -1188,6 +1209,110 @@ func (a *Account) GetGrokRefreshToken() string {
 		return ""
 	}
 	return a.GetCredential("refresh_token")
+}
+
+func (a *Account) GetCloudModelIDs() []string {
+	if a == nil || a.Extra == nil {
+		return nil
+	}
+	return normalizeAccountModelIDs(a.Extra[AccountExtraCloudModelsKey])
+}
+
+func (a *Account) ExtraWithCloudModels(modelIDs []string, refreshedAt time.Time) map[string]any {
+	extraSize := 2
+	if a != nil {
+		extraSize += len(a.Extra)
+	}
+	extra := make(map[string]any, extraSize)
+	if a != nil && a.Extra != nil {
+		for key, value := range a.Extra {
+			extra[key] = value
+		}
+	}
+	extra[AccountExtraCloudModelsKey] = mergeAccountCloudModelIDs(a.GetCloudModelIDs(), modelIDs)
+	extra[AccountExtraCloudModelsRefreshedAtKey] = refreshedAt.UTC().Format(time.RFC3339)
+	return extra
+}
+
+func mergeAccountCloudModelIDs(oldModelIDs []string, newModelIDs []string) []string {
+	newModelIDs = normalizeAccountModelIDs(newModelIDs)
+	if len(oldModelIDs) == 0 {
+		return newModelIDs
+	}
+
+	incoming := make(map[string]struct{}, len(newModelIDs))
+	for _, model := range newModelIDs {
+		incoming[model] = struct{}{}
+	}
+
+	seen := make(map[string]struct{}, len(newModelIDs))
+	models := make([]string, 0, len(newModelIDs))
+	for _, model := range oldModelIDs {
+		if _, ok := incoming[model]; !ok {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+	}
+	for _, model := range newModelIDs {
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+	}
+	return models
+}
+
+func normalizeAccountModelIDs(value any) []string {
+	var raw []string
+	switch v := value.(type) {
+	case []string:
+		raw = v
+	case []any:
+		raw = make([]string, 0, len(v))
+		for _, item := range v {
+			switch item := item.(type) {
+			case string:
+				raw = append(raw, item)
+			case map[string]any:
+				if s, ok := item["id"].(string); ok {
+					raw = append(raw, s)
+				}
+			case map[string]string:
+				if s := item["id"]; s != "" {
+					raw = append(raw, s)
+				}
+			}
+		}
+	case []map[string]any:
+		raw = make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item["id"].(string); ok {
+				raw = append(raw, s)
+			}
+		}
+	default:
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(raw))
+	models := make([]string, 0, len(raw))
+	for _, model := range raw {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+	}
+	return models
 }
 
 func (a *Account) GetOpenAIIDToken() string {

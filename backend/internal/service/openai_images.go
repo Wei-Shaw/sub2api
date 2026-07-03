@@ -730,8 +730,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 	if endpoint == openAIImagesEditsEndpoint {
 		targetURL = openAIImagesEditsURL
 	}
-	baseURL := account.GetOpenAIBaseURL()
-	if baseURL != "" {
+	if baseURL := account.GetOpenAIBaseURL(); baseURL != "" {
 		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 		if err != nil {
 			return nil, err

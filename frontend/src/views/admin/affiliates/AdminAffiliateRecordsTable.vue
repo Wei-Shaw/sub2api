@@ -12,6 +12,10 @@
           <button class="btn btn-secondary px-2 md:px-3" :disabled="loading" :title="t('common.refresh')" @click="loadRecords">
             <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
           </button>
+          <button v-if="props.type === 'invites'" class="btn btn-primary" type="button" @click="openBindDialog">
+            <Icon name="users" size="sm" />
+            <span>{{ t('admin.affiliates.bind.action') }}</span>
+          </button>
         </div>
       </template>
 
@@ -138,6 +142,52 @@
         </div>
       </div>
     </BaseDialog>
+
+    <BaseDialog
+      :show="bindDialog"
+      :title="t('admin.affiliates.bind.title')"
+      width="normal"
+      @close="closeBindDialog"
+    >
+      <form class="space-y-4" @submit.prevent="submitBind">
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.affiliates.bind.inviterUserId') }}
+          </label>
+          <input
+            v-model.number="bindForm.inviter_user_id"
+            type="number"
+            min="1"
+            step="1"
+            class="input"
+            :placeholder="t('admin.affiliates.bind.inviterPlaceholder')"
+          />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.affiliates.bind.inviteeUserId') }}
+          </label>
+          <input
+            v-model.number="bindForm.invitee_user_id"
+            type="number"
+            min="1"
+            step="1"
+            class="input"
+            :placeholder="t('admin.affiliates.bind.inviteePlaceholder')"
+          />
+        </div>
+        <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('admin.affiliates.bind.hint') }}</p>
+      </form>
+      <template #footer>
+        <button class="btn btn-secondary" type="button" :disabled="binding" @click="closeBindDialog">
+          {{ t('common.cancel') }}
+        </button>
+        <button class="btn btn-primary" type="button" :disabled="binding" @click="submitBind">
+          <Icon v-if="binding" name="refresh" size="sm" class="animate-spin" />
+          <span>{{ binding ? t('common.saving') : t('admin.affiliates.bind.submit') }}</span>
+        </button>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -174,6 +224,9 @@ const pagination = reactive({ page: 1, page_size: 20, total: 0 })
 const overviewDialog = ref(false)
 const overviewLoading = ref(false)
 const selectedOverview = ref<AffiliateUserOverview | null>(null)
+const bindDialog = ref(false)
+const binding = ref(false)
+const bindForm = reactive({ inviter_user_id: null as number | null, invitee_user_id: null as number | null })
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const columns = computed<Column[]>(() => {
@@ -328,6 +381,41 @@ async function openUserOverview(userId: number) {
     appStore.showError(extractI18nErrorMessage(error, t, 'admin.affiliates.errors', t('common.error')))
   } finally {
     overviewLoading.value = false
+  }
+}
+
+function openBindDialog() {
+  bindForm.inviter_user_id = null
+  bindForm.invitee_user_id = null
+  bindDialog.value = true
+}
+
+function closeBindDialog() {
+  if (binding.value) return
+  bindDialog.value = false
+}
+
+async function submitBind() {
+  const inviterUserId = Number(bindForm.inviter_user_id || 0)
+  const inviteeUserId = Number(bindForm.invitee_user_id || 0)
+  if (!Number.isInteger(inviterUserId) || !Number.isInteger(inviteeUserId) || inviterUserId <= 0 || inviteeUserId <= 0) {
+    appStore.showError(t('admin.affiliates.bind.invalidUserId'))
+    return
+  }
+  if (inviterUserId === inviteeUserId) {
+    appStore.showError(t('admin.affiliates.bind.sameUser'))
+    return
+  }
+  binding.value = true
+  try {
+    await affiliatesAPI.bindInviter({ inviter_user_id: inviterUserId, invitee_user_id: inviteeUserId })
+    appStore.showSuccess(t('admin.affiliates.bind.success'))
+    bindDialog.value = false
+    await reloadFromFirstPage()
+  } catch (error) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'admin.affiliates.errors', t('common.error')))
+  } finally {
+    binding.value = false
   }
 }
 

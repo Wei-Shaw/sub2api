@@ -29,7 +29,7 @@
         </p>
 
         <!-- Client Tabs -->
-        <div v-if="clientTabs.length" class="border-b border-gray-200 dark:border-dark-700">
+        <div v-if="clientTabs.length > 1" class="border-b border-gray-200 dark:border-dark-700">
           <nav class="-mb-px flex space-x-6" aria-label="Client">
             <button
               v-for="tab in clientTabs"
@@ -86,23 +86,35 @@
             </p>
             <div class="bg-gray-900 dark:bg-dark-900 rounded-xl overflow-hidden">
               <!-- Code Header -->
-              <div class="flex items-center justify-between px-4 py-2 bg-gray-800 dark:bg-dark-800 border-b border-gray-700 dark:border-dark-700">
+              <div class="flex items-center justify-between gap-3 px-4 py-2 bg-gray-800 dark:bg-dark-800 border-b border-gray-700 dark:border-dark-700">
                 <span class="text-xs text-gray-400 font-mono">{{ file.path }}</span>
-                <button
-                  @click="copyContent(file.content, index)"
-                  class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg transition-colors"
-                  :class="copiedIndex === index
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'"
-                >
-                  <svg v-if="copiedIndex === index" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
-                  </svg>
-                  {{ copiedIndex === index ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
-                </button>
+                <div class="flex items-center gap-2">
+                  <button
+                    v-if="file.downloadName"
+                    @click="downloadContent(file.content, file.downloadName)"
+                    class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-primary-600 hover:bg-primary-500 text-white transition-colors"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 10.5L12 15m0 0l4.5-4.5M12 15V3" />
+                    </svg>
+                    {{ t('keys.useKeyModal.download') }}
+                  </button>
+                  <button
+                    @click="copyContent(file.content, index)"
+                    class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg transition-colors"
+                    :class="copiedIndex === index
+                      ? 'bg-green-500/20 text-green-400'
+                      : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'"
+                  >
+                    <svg v-if="copiedIndex === index" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                    </svg>
+                    {{ copiedIndex === index ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
+                  </button>
+                </div>
               </div>
               <!-- Code Content -->
               <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto"><code v-if="file.highlighted" v-html="file.highlighted"></code><code v-else v-text="file.content"></code></pre>
@@ -164,6 +176,7 @@ interface FileConfig {
   content: string
   hint?: string  // Optional hint message for this file
   highlighted?: string
+  downloadName?: string
 }
 
 const props = defineProps<Props>()
@@ -180,7 +193,9 @@ const activeClientTab = ref<string>('claude')
 const defaultClientTab = computed(() => {
   switch (props.platform) {
     case 'openai':
-      return 'codex'
+      return 'codex-ws'
+    case 'grok':
+      return 'grok'
     case 'gemini':
       return 'gemini'
     case 'antigravity':
@@ -267,16 +282,15 @@ const clientTabs = computed((): TabConfig[] => {
   if (!props.platform) return []
   switch (props.platform) {
     case 'openai': {
-      const tabs: TabConfig[] = [
-        { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
-        { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon },
+      return [
+        { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon }
       ]
-      if (props.allowMessagesDispatch) {
-        tabs.push({ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon })
-      }
-      tabs.push({ id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon })
-      return tabs
     }
+    case 'grok':
+      return [
+        { id: 'grok', label: t('keys.useKeyModal.cliTabs.grokCli'), icon: TerminalIcon },
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
+      ]
     case 'gemini':
       return [
         { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
@@ -313,8 +327,8 @@ const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
 
 const currentTabs = computed(() => {
   if (!showShellTabs.value) return []
-  if (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws') {
-    return openaiTabs
+  if (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws' || activeClientTab.value === 'grok') {
+    return activeClientTab.value === 'grok' ? shellTabs : openaiTabs
   }
   return shellTabs
 })
@@ -326,6 +340,8 @@ const platformDescription = computed(() => {
         return t('keys.useKeyModal.description')
       }
       return t('keys.useKeyModal.openai.description')
+    case 'grok':
+      return t('keys.useKeyModal.xai.description')
     case 'gemini':
       return t('keys.useKeyModal.gemini.description')
     case 'antigravity':
@@ -344,6 +360,10 @@ const platformNote = computed(() => {
       return activeTab.value === 'windows'
         ? t('keys.useKeyModal.openai.noteWindows')
         : t('keys.useKeyModal.openai.note')
+    case 'grok':
+      return activeTab.value === 'cmd' || activeTab.value === 'powershell'
+        ? t('keys.useKeyModal.xai.noteWindows')
+        : t('keys.useKeyModal.xai.note')
     case 'gemini':
       return t('keys.useKeyModal.gemini.note')
     case 'antigravity':
@@ -400,6 +420,8 @@ const currentFiles = computed((): FileConfig[] => {
         return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
       case 'openai':
         return [generateOpenCodeConfig('openai', apiBase, apiKey)]
+      case 'grok':
+        return [generateOpenCodeConfig('grok', apiBase, apiKey)]
       case 'gemini':
         return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
       case 'antigravity':
@@ -421,6 +443,8 @@ const currentFiles = computed((): FileConfig[] => {
         return generateOpenAIWsFiles(baseUrl, apiKey)
       }
       return generateOpenAIFiles(baseUrl, apiKey)
+    case 'grok':
+      return generateGrokCliFiles(baseUrl, apiKey)
     case 'gemini':
       return [generateGeminiCliContent(baseUrl, apiKey)]
     case 'antigravity':
@@ -480,6 +504,79 @@ $env:CLAUDE_CODE_ATTRIBUTION_HEADER=0`
   return [
     { path, content },
     { path: vscodeSettingsPath, content: vscodeContent, hint: 'VSCode Claude Code' }
+  ]
+}
+
+function generateGrokCliFiles(baseUrl: string, apiKey: string): FileConfig[] {
+  const trimmed = baseUrl.replace(/\/+$/, '')
+  const proxyBase = trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`
+  const model = 'grok-build'
+  const modelComment = t('keys.useKeyModal.xai.modelComment')
+  const logoutHint = t('keys.useKeyModal.xai.logoutHint')
+  let path: string
+  let content: string
+  let highlighted: string
+
+  switch (activeTab.value) {
+    case 'unix':
+      path = 'Terminal'
+      content = `# ${logoutHint}
+export GROK_CLI_CHAT_PROXY_BASE_URL="${proxyBase}"
+export XAI_API_KEY="${apiKey}"`
+      highlighted = `${comment(`# ${logoutHint}`)}
+${keyword('export')} ${variable('GROK_CLI_CHAT_PROXY_BASE_URL')}${operator('=')}${string(`"${proxyBase}"`)}
+${keyword('export')} ${variable('XAI_API_KEY')}${operator('=')}${string(`"${apiKey}"`)}`
+      break
+    case 'cmd':
+      path = 'Command Prompt'
+      content = `REM ${logoutHint}
+set GROK_CLI_CHAT_PROXY_BASE_URL=${proxyBase}
+set XAI_API_KEY=${apiKey}`
+      highlighted = `${comment(`REM ${logoutHint}`)}
+${keyword('set')} ${variable('GROK_CLI_CHAT_PROXY_BASE_URL')}${operator('=')}${string(proxyBase)}
+${keyword('set')} ${variable('XAI_API_KEY')}${operator('=')}${string(apiKey)}`
+      break
+    case 'powershell':
+      path = 'PowerShell'
+      content = `# ${logoutHint}
+$env:GROK_CLI_CHAT_PROXY_BASE_URL="${proxyBase}"
+$env:XAI_API_KEY="${apiKey}"`
+      highlighted = `${comment(`# ${logoutHint}`)}
+${keyword('$env:')}${variable('GROK_CLI_CHAT_PROXY_BASE_URL')}${operator('=')}${string(`"${proxyBase}"`)}
+${keyword('$env:')}${variable('XAI_API_KEY')}${operator('=')}${string(`"${apiKey}"`)}`
+      break
+    default:
+      path = 'Terminal'
+      content = ''
+      highlighted = ''
+  }
+
+  const configDir = activeTab.value === 'unix' ? '~/.grok' : '%userprofile%\\.grok'
+  const configContent = `[models]
+default = "${model}"  # ${modelComment}
+
+[model.grok-build]
+base_url = "${proxyBase}"
+api_key = "${apiKey}"
+api_backend = "responses"
+
+[model.grok-composer-2.5-fast]
+base_url = "${proxyBase}"
+api_key = "${apiKey}"
+api_backend = "responses"`
+
+  return [
+    {
+      path,
+      content,
+      highlighted,
+      hint: t('keys.useKeyModal.xai.envHint')
+    },
+    {
+      path: `${configDir}/config.toml`,
+      content: configContent,
+      hint: t('keys.useKeyModal.xai.configTomlHint')
+    }
   ]
 }
 
@@ -571,6 +668,10 @@ goals = true`
 function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
+  const scriptPath = isWindows ? 'install-codex-ws.ps1' : 'install-codex-ws.sh'
+  const scriptContent = isWindows
+    ? generateOpenAIWsWindowsInstallScript(baseUrl, apiKey)
+    : generateOpenAIWsUnixInstallScript(baseUrl, apiKey)
 
   // config.toml content with WebSocket v2
   const configContent = `model_provider = "OpenAI"
@@ -587,6 +688,7 @@ base_url = "${baseUrl}"
 wire_api = "responses"
 supports_websockets = true
 requires_openai_auth = true
+experimental_bearer_token = "${apiKey}"
 
 [features]
 responses_websockets_v2 = true
@@ -599,6 +701,14 @@ goals = true`
 
   return [
     {
+      path: scriptPath,
+      content: scriptContent,
+      hint: isWindows
+        ? t('keys.useKeyModal.openai.installScriptHintWindows')
+        : t('keys.useKeyModal.openai.installScriptHintUnix'),
+      downloadName: scriptPath
+    },
+    {
       path: `${configDir}/config.toml`,
       content: configContent,
       hint: t('keys.useKeyModal.openai.configTomlHint')
@@ -610,12 +720,152 @@ goals = true`
   ]
 }
 
+function generateOpenAIWsUnixInstallScript(baseUrl: string, apiKey: string): string {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+
+CODEX_DIR="\${CODEX_HOME:-$HOME/.codex}"
+CONFIG_FILE="$CODEX_DIR/config.toml"
+AUTH_FILE="$CODEX_DIR/auth.json"
+BACKUP_SUFFIX="$(date +%Y%m%d%H%M%S)"
+
+mkdir -p "$CODEX_DIR"
+
+backup_file() {
+  local file="$1"
+  if [ -f "$file" ]; then
+    cp "$file" "$file.bak.$BACKUP_SUFFIX"
+  fi
+}
+
+backup_file "$CONFIG_FILE"
+backup_file "$AUTH_FILE"
+
+cat > "$CONFIG_FILE" <<'CODEX_CONFIG_TOML'
+model_provider = "OpenAI"
+model = "gpt-5.5"
+review_model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+disable_response_storage = true
+network_access = "enabled"
+windows_wsl_setup_acknowledged = true
+
+[model_providers.OpenAI]
+name = "OpenAI"
+base_url = "${baseUrl}"
+wire_api = "responses"
+supports_websockets = true
+requires_openai_auth = true
+experimental_bearer_token = "${apiKey}"
+
+[features]
+responses_websockets_v2 = true
+goals = true
+CODEX_CONFIG_TOML
+
+cat > "$AUTH_FILE" <<'CODEX_AUTH_JSON'
+{
+  "OPENAI_API_KEY": "${apiKey}"
+}
+CODEX_AUTH_JSON
+
+chmod 600 "$CONFIG_FILE" "$AUTH_FILE"
+
+echo "Codex WebSocket config installed at $CODEX_DIR"
+`
+}
+
+function generateOpenAIWsWindowsInstallScript(baseUrl: string, apiKey: string): string {
+  return `$ErrorActionPreference = "Stop"
+
+$codexDir = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE ".codex" }
+$configFile = Join-Path $codexDir "config.toml"
+$authFile = Join-Path $codexDir "auth.json"
+$backupSuffix = Get-Date -Format "yyyyMMddHHmmss"
+
+New-Item -ItemType Directory -Force -Path $codexDir | Out-Null
+
+function Backup-File($Path) {
+  if (Test-Path $Path) {
+    Copy-Item -Path $Path -Destination "$Path.bak.$backupSuffix" -Force
+  }
+}
+
+Backup-File $configFile
+Backup-File $authFile
+
+$configContent = @'
+model_provider = "OpenAI"
+model = "gpt-5.5"
+review_model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+disable_response_storage = true
+network_access = "enabled"
+windows_wsl_setup_acknowledged = true
+
+[model_providers.OpenAI]
+name = "OpenAI"
+base_url = "${baseUrl}"
+wire_api = "responses"
+supports_websockets = true
+requires_openai_auth = true
+experimental_bearer_token = "${apiKey}"
+
+[features]
+responses_websockets_v2 = true
+goals = true
+'@
+
+$authContent = @'
+{
+  "OPENAI_API_KEY": "${apiKey}"
+}
+'@
+
+Set-Content -Path $configFile -Value $configContent -Encoding utf8
+Set-Content -Path $authFile -Value $authContent -Encoding utf8
+
+Write-Host "Codex WebSocket config installed at $codexDir"
+`
+}
+
 function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: string, pathLabel?: string): FileConfig {
+  const providerKey = platform === 'grok' ? 'xai' : platform
   const provider: Record<string, any> = {
-    [platform]: {
+    [providerKey]: {
       options: {
         baseURL: baseUrl,
         apiKey
+      }
+    }
+  }
+  const grokModels = {
+    'grok-build': {
+      name: 'Grok Build',
+      limit: {
+        context: 512000,
+        output: 128000
+      }
+    },
+    'grok-composer-2.5-fast': {
+      name: 'Composer 2.5',
+      limit: {
+        context: 200000,
+        output: 128000
+      }
+    },
+    'grok-4.3': {
+      name: 'Grok 4.3',
+      limit: {
+        context: 256000,
+        output: 128000
+      }
+    },
+    'grok-4.3-fast': {
+      name: 'Grok 4.3 Fast',
+      limit: {
+        context: 256000,
+        output: 128000
       }
     }
   }
@@ -1006,24 +1256,27 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
   }
 
   if (platform === 'gemini') {
-    provider[platform].npm = '@ai-sdk/google'
-    provider[platform].models = geminiModels
+    provider[providerKey].npm = '@ai-sdk/google'
+    provider[providerKey].models = geminiModels
   } else if (platform === 'anthropic') {
-    provider[platform].npm = '@ai-sdk/anthropic'
+    provider[providerKey].npm = '@ai-sdk/anthropic'
   } else if (platform === 'antigravity-claude') {
-    provider[platform].npm = '@ai-sdk/anthropic'
-    provider[platform].name = 'Antigravity (Claude)'
-    provider[platform].models = claudeModels
+    provider[providerKey].npm = '@ai-sdk/anthropic'
+    provider[providerKey].name = 'Antigravity (Claude)'
+    provider[providerKey].models = claudeModels
   } else if (platform === 'antigravity-gemini') {
-    provider[platform].npm = '@ai-sdk/google'
-    provider[platform].name = 'Antigravity (Gemini)'
-    provider[platform].models = antigravityGeminiModels
+    provider[providerKey].npm = '@ai-sdk/google'
+    provider[providerKey].name = 'Antigravity (Gemini)'
+    provider[providerKey].models = antigravityGeminiModels
   } else if (platform === 'openai') {
-    provider[platform].models = openaiModels
+    provider[providerKey].models = openaiModels
+  } else if (platform === 'grok') {
+    provider[providerKey].name = 'xAI (Grok)'
+    provider[providerKey].models = grokModels
   }
 
   const agent =
-    platform === 'openai'
+    platform === 'openai' || platform === 'grok'
       ? {
           build: {
             options: {
@@ -1063,5 +1316,17 @@ const copyContent = async (content: string, index: number) => {
       copiedIndex.value = null
     }, 2000)
   }
+}
+
+const downloadContent = (content: string, filename: string) => {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }
 </script>
