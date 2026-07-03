@@ -106,7 +106,7 @@ type codexJWTOpenAIClaims struct {
 REDACTED
 
 type codexAccountIndex struct {
-	accountsByKey map[string]service.Account
+	accountsByKey map[string][]service.Account
 REDACTED
 
 func (h *AccountHandler) ImportCodexSession(c *gin.Context) {
@@ -178,7 +178,7 @@ REDACTED
 REDACTED
 	skipMixedChannelCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
-	seenIdentity := map[string]int{REDACTED
+	seenIdentity := map[string]codexSeenIdentity{REDACTED
 	for _, entry := range entries {
 		item, err := normalizeCodexImportEntry(entry)
 		if err != nil {
@@ -225,7 +225,7 @@ REDACTED
 		REDACTED)
 	REDACTED
 
-		if duplicateIndex, ok := firstSeenCodexIdentity(seenIdentity, item.IdentityKeys); ok {
+		if duplicateIndex, ok := firstSeenCodexIdentity(seenIdentity, item.IdentityKeys, item.UserID); ok {
 			message := fmt.Sprintf("与第 %d 条导入项重复，已跳过", duplicateIndex)
 			result.Skipped++
 			result.Items = append(result.Items, CodexSessionImportItem{
@@ -241,9 +241,18 @@ REDACTED
 		REDACTED)
 			continue
 	REDACTED
-		markCodexIdentitySeen(seenIdentity, item.IdentityKeys, entry.Index)
+		markCodexIdentitySeen(seenIdentity, item.IdentityKeys, entry.Index, item.UserID)
 
-		if existing := index.Find(item.IdentityKeys); existing != nil && updateExisting {
+		existing, matchedKey := index.Find(item.IdentityKeys, item.UserID)
+		if existing != nil && updateExisting {
+			if strings.HasPrefix(matchedKey, "account:") && item.UserID != "" &&
+				codexCredentialString(existing.Credentials, "chatgpt_user_id") == "" {
+				result.Warnings = append(result.Warnings, CodexSessionImportMessage{
+					Index:   entry.Index,
+					Name:    accountName,
+					Message: "已有账号未记录 chatgpt_user_id，已按共享的 chatgpt_account_id 匹配并回填，请确认两者属于同一用户",
+			REDACTED)
+		REDACTED
 			mergedCredentials := mergeCodexImportCredentials(existing.Credentials, credentials, item)
 			mergedExtra := mergeCodexImportMap(existing.Extra, extra)
 			updateInput := &service.UpdateAccountInput{
@@ -806,13 +815,13 @@ REDACTED
 	return out
 REDACTED
 
+// buildCodexIdentityKeys 按身份强度排序生成匹配键：chatgpt_account_id 在同一
+// ChatGPT 团队内是共享的，因此 account: 键排在最后，且命中时还需通过
+// codexIdentityConflicts 的跨用户校验才生效。
 func buildCodexIdentityKeys(accountID, userID, email, accessToken string) []string {
-	keys := make([]string, 0, 4)
+	keys := make([]string, 0, 3)
 	accountID = strings.TrimSpace(accountID)
 	userID = strings.TrimSpace(userID)
-	if accountID != "" {
-		keys = append(keys, "account:"+accountID)
-REDACTED
 	if userID != "" {
 		keys = append(keys, "user:"+userID)
 REDACTED
@@ -824,11 +833,14 @@ REDACTED
 	if accessToken = strings.TrimSpace(accessToken); accessToken != "" {
 		keys = append(keys, "access:"+codexTokenFingerprint(accessToken))
 REDACTED
+	if accountID != "" {
+		keys = append(keys, "account:"+accountID)
+REDACTED
 	return keys
 REDACTED
 
 func buildCodexAccountIndex(accounts []service.Account) *codexAccountIndex {
-	index := &codexAccountIndex{accountsByKey: map[string]service.Account{REDACTEDREDACTED
+	index := &codexAccountIndex{accountsByKey: map[string][]service.Account{REDACTEDREDACTED
 	for _, account := range accounts {
 		index.Add(account)
 REDACTED
@@ -840,7 +852,7 @@ func (i *codexAccountIndex) Add(account service.Account) {
 		return
 REDACTED
 	if i.accountsByKey == nil {
-		i.accountsByKey = map[string]service.Account{REDACTED
+		i.accountsByKey = map[string][]service.Account{REDACTED
 REDACTED
 	keys := buildCodexIdentityKeys(
 		codexCredentialString(account.Credentials, "chatgpt_account_id"),
@@ -849,34 +861,73 @@ REDACTED
 		codexCredentialString(account.Credentials, "access_token"),
 	)
 	for _, key := range keys {
-		i.accountsByKey[key] = account
+		i.accountsByKey[key] = upsertCodexAccount(i.accountsByKey[key], account)
 REDACTED
 REDACTED
 
-func (i *codexAccountIndex) Find(keys []string) *service.Account {
+// upsertCodexAccount 保留同一键下的全部候选账号（共享的 account: 键可对应
+// 团队内多个账号），同一账号重复 Add 时原位替换为最新状态。
+func upsertCodexAccount(accounts []service.Account, account service.Account) []service.Account {
+	for idx := range accounts {
+		if accounts[idx].ID == account.ID {
+			accounts[idx] = account
+			return accounts
+	REDACTED
+REDACTED
+	return append(accounts, account)
+REDACTED
+
+// Find 返回第一个通过跨用户校验的候选账号及其命中的匹配键。
+func (i *codexAccountIndex) Find(keys []string, userID string) (*service.Account, string) {
 	if i == nil {
-		return nil
+		return nil, ""
 REDACTED
 	for _, key := range keys {
-		if account, ok := i.accountsByKey[key]; ok {
-			return &account
+		for _, account := range i.accountsByKey[key] {
+			if codexIdentityConflicts(key, userID, codexCredentialString(account.Credentials, "chatgpt_user_id")) {
+				continue
+		REDACTED
+			return &account, key
 	REDACTED
 REDACTED
-	return nil
+	return nil, ""
 REDACTED
 
-func firstSeenCodexIdentity(seen map[string]int, keys []string) (int, bool) {
+// codexIdentityConflicts 判断 account: 键的命中是否把同一 ChatGPT 团队的两个
+// 不同成员误连到一起：双方都携带 user id 且不相等时视为冲突。任一侧缺少
+// user id 时保留匹配，使早期未记录 chatgpt_user_id 的存量账号仍能被更新
+// （并借助凭据合并回填 user id），而不是产生重复账号。
+func codexIdentityConflicts(key, userID, storedUserID string) bool {
+	if !strings.HasPrefix(key, "account:") {
+		return false
+REDACTED
+	userID = strings.TrimSpace(userID)
+	storedUserID = strings.TrimSpace(storedUserID)
+	return userID != "" && storedUserID != "" && userID != storedUserID
+REDACTED
+
+type codexSeenIdentity struct {
+	index  int
+	userID string
+REDACTED
+
+func firstSeenCodexIdentity(seen map[string]codexSeenIdentity, keys []string, userID string) (int, bool) {
 	for _, key := range keys {
-		if index, ok := seen[key]; ok {
-			return index, true
+		entry, ok := seen[key]
+		if !ok {
+			continue
 	REDACTED
+		if codexIdentityConflicts(key, userID, entry.userID) {
+			continue
+	REDACTED
+		return entry.index, true
 REDACTED
 	return 0, false
 REDACTED
 
-func markCodexIdentitySeen(seen map[string]int, keys []string, index int) {
+func markCodexIdentitySeen(seen map[string]codexSeenIdentity, keys []string, index int, userID string) {
 	for _, key := range keys {
-		seen[key] = index
+		seen[key] = codexSeenIdentity{index: index, userID: userIDREDACTED
 REDACTED
 REDACTED
 

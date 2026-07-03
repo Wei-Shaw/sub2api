@@ -609,7 +609,9 @@ REDACTED): Promise<AdminDataImportResult> {
 REDACTED
 
 export async function importCodexSession(payload: CodexSessionImportRequest): Promise<CodexSessionImportResult> {
-  const { data REDACTED = await apiClient.post<CodexSessionImportResult>('/admin/accounts/import/codex-session', payload)
+  const { data REDACTED = await apiClient.post<CodexSessionImportResult>('/admin/accounts/import/codex-session', payload, {
+    timeout: 120000 // 120s timeout for large session imports
+  REDACTED)
   return data
 REDACTED
 
