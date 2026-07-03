@@ -448,6 +448,10 @@ function syncAffiliateReferralCode(): string {
   return code
 }
 
+function getEffectiveAffiliateCode(): string {
+  return formData.aff_code.trim() || loadAffiliateReferralCode()
+}
+
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
@@ -789,7 +793,7 @@ function validateForm(): boolean {
 
   // Invitation code validation (required when enabled)
   if (invitationCodeEnabled.value) {
-    if (!formData.invitation_code.trim()) {
+    if (!formData.invitation_code.trim() && !getEffectiveAffiliateCode()) {
       errors.invitation_code = t('auth.invitationCodeRequired')
       isValid = false
     }
@@ -829,6 +833,8 @@ async function handleRegister(): Promise<void> {
     }
   }
 
+  const affCode = getEffectiveAffiliateCode()
+
   // Check invitation code validation status (if enabled and code provided)
   if (invitationCodeEnabled.value) {
     // If still validating, wait
@@ -856,7 +862,6 @@ async function handleRegister(): Promise<void> {
   isLoading.value = true
 
   try {
-    const affCode = formData.aff_code.trim() || loadAffiliateReferralCode()
     if (affCode) {
       formData.aff_code = affCode
     }

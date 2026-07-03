@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
@@ -76,6 +77,62 @@ type refreshTokenCacheStub struct{}
 type userPlatformQuotaRepoStub struct {
 	bulkInsertCalls [][]UserPlatformQuotaRecord
 	bulkInsertErr   error
+}
+
+type redeemUseCall struct {
+	id     int64
+	userID int64
+}
+
+type registerRedeemRepoStub struct {
+	byCode map[string]*RedeemCode
+	uses   []redeemUseCall
+}
+
+func (s *registerRedeemRepoStub) Create(context.Context, *RedeemCode) error {
+	panic("unexpected Create call")
+}
+func (s *registerRedeemRepoStub) CreateBatch(context.Context, []RedeemCode) error {
+	panic("unexpected CreateBatch call")
+}
+func (s *registerRedeemRepoStub) GetByID(context.Context, int64) (*RedeemCode, error) {
+	panic("unexpected GetByID call")
+}
+func (s *registerRedeemRepoStub) GetByCode(_ context.Context, code string) (*RedeemCode, error) {
+	if s != nil && s.byCode != nil {
+		if redeemCode, ok := s.byCode[code]; ok {
+			return redeemCode, nil
+		}
+	}
+	return nil, ErrRedeemCodeNotFound
+}
+func (s *registerRedeemRepoStub) Update(context.Context, *RedeemCode) error {
+	panic("unexpected Update call")
+}
+func (s *registerRedeemRepoStub) BatchUpdate(context.Context, []int64, RedeemCodeBatchUpdateFields) (int64, error) {
+	panic("unexpected BatchUpdate call")
+}
+func (s *registerRedeemRepoStub) Delete(context.Context, int64) error {
+	panic("unexpected Delete call")
+}
+func (s *registerRedeemRepoStub) Use(_ context.Context, id, userID int64) error {
+	s.uses = append(s.uses, redeemUseCall{id: id, userID: userID})
+	return nil
+}
+func (s *registerRedeemRepoStub) List(context.Context, pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+func (s *registerRedeemRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters call")
+}
+func (s *registerRedeemRepoStub) ListByUser(context.Context, int64, int) ([]RedeemCode, error) {
+	panic("unexpected ListByUser call")
+}
+func (s *registerRedeemRepoStub) ListByUserPaginated(context.Context, int64, pagination.PaginationParams, string) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected ListByUserPaginated call")
+}
+func (s *registerRedeemRepoStub) SumPositiveBalanceByUser(context.Context, int64) (float64, error) {
+	panic("unexpected SumPositiveBalanceByUser call")
 }
 
 func (s *userPlatformQuotaRepoStub) BulkInsertInitial(_ context.Context, records []UserPlatformQuotaRecord) error {
@@ -470,6 +527,82 @@ func TestAuthService_Register_Success(t *testing.T) {
 	require.Equal(t, 2, user.Concurrency)
 	require.Len(t, repo.created, 1)
 	require.True(t, user.CheckPassword("password"))
+}
+
+func TestAuthService_Register_InvitationEnabledAllowsAffiliateCodeFromLink(t *testing.T) {
+	repo := &userRepoStub{nextID: 101}
+	settings := map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}
+	service := newAuthService(repo, settings, nil, nil)
+	service.redeemRepo = &registerRedeemRepoStub{}
+
+	affiliateRepo := newAffiliateAdminBindRepo()
+	affiliateRepo.summaries[101] = &AffiliateSummary{UserID: 101, AffCode: "NEW101"}
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "invitee@test.com", "password", "", "", "", "AFF1")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, int64(101), user.ID)
+	require.Equal(t, int64(1), affiliateRepo.binds[101])
+}
+
+func TestAuthService_Register_InvitationFieldAffiliateCodeBindsInviter(t *testing.T) {
+	repo := &userRepoStub{nextID: 102}
+	settings := map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}
+	service := newAuthService(repo, settings, nil, nil)
+	service.redeemRepo = &registerRedeemRepoStub{}
+
+	affiliateRepo := newAffiliateAdminBindRepo()
+	affiliateRepo.summaries[102] = &AffiliateSummary{UserID: 102, AffCode: "NEW102"}
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "invitee2@test.com", "password", "", "", "aff2", "")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, int64(102), user.ID)
+	require.Equal(t, int64(2), affiliateRepo.binds[102])
+}
+
+func TestAuthService_Register_RedeemInvitationStillMarksUsed(t *testing.T) {
+	repo := &userRepoStub{nextID: 103}
+	settings := map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+	}
+	service := newAuthService(repo, settings, nil, nil)
+	redeemRepo := &registerRedeemRepoStub{
+		byCode: map[string]*RedeemCode{
+			"INVITE1": {ID: 77, Code: "INVITE1", Type: RedeemTypeInvitation, Status: StatusUnused},
+		},
+	}
+	service.redeemRepo = redeemRepo
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "invitee3@test.com", "password", "", "", "INVITE1", "")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, []redeemUseCall{{id: 77, userID: 103}}, redeemRepo.uses)
+}
+
+func TestAuthService_ValidateRegistrationInvitationCodeAcceptsAffiliateCode(t *testing.T) {
+	service := newAuthService(&userRepoStub{}, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}, nil, nil)
+	service.redeemRepo = &registerRedeemRepoStub{}
+	service.affiliateService = NewAffiliateService(newAffiliateAdminBindRepo(), service.settingService, nil, nil)
+
+	valid, errorCode := service.ValidateRegistrationInvitationCode(context.Background(), "aff3")
+	require.True(t, valid)
+	require.Empty(t, errorCode)
 }
 
 func TestAuthService_ValidateToken_ExpiredReturnsClaimsWithError(t *testing.T) {

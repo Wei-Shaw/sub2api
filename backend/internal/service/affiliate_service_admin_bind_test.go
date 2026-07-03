@@ -67,8 +67,13 @@ func (r *affiliateAdminBindRepo) EnsureUserAffiliate(_ context.Context, userID i
 	return nil, ErrAffiliateProfileNotFound
 }
 
-func (r *affiliateAdminBindRepo) GetAffiliateByCode(_ context.Context, _ string) (*AffiliateSummary, error) {
-	panic("unexpected GetAffiliateByCode call")
+func (r *affiliateAdminBindRepo) GetAffiliateByCode(_ context.Context, code string) (*AffiliateSummary, error) {
+	for _, summary := range r.summaries {
+		if summary != nil && summary.AffCode == code {
+			return summary, nil
+		}
+	}
+	return nil, ErrAffiliateProfileNotFound
 }
 
 func (r *affiliateAdminBindRepo) BindInviter(_ context.Context, userID, inviterID int64) (bool, error) {
