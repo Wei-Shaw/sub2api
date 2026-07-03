@@ -1137,7 +1137,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		subscriptionAccounts, regularAccounts := partitionOpenAIChatGPTSubscriptionAccounts(filtered)
 		if len(subscriptionAccounts) > 0 {
 			attempt := s.trySelectByLoadBalancePool(ctx, req, subscriptionAccounts, loadMap)
-			if attempt.err != nil && !(attempt.noCompactCandidates && len(regularAccounts) > 0) {
+			if attempt.err != nil && (!attempt.noCompactCandidates || len(regularAccounts) <= 0) {
 				return nil, attempt.candidateCount, attempt.topK, attempt.loadSkew, attempt.err
 			}
 			if attempt.result != nil {
