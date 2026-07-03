@@ -7000,6 +7000,7 @@ export default {
       createFirstProfile: '创建你的第一个 TLS 指纹模板',
 
       columns: {
+        id: 'ID',
         name: '名称',
         description: '描述',
         grease: 'GREASE',

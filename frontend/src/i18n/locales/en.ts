@@ -6847,6 +6847,7 @@ export default {
       createFirstProfile: 'Create your first TLS fingerprint profile',
 
       columns: {
+        id: 'ID',
         name: 'Name',
         description: 'Description',
         grease: 'GREASE',
