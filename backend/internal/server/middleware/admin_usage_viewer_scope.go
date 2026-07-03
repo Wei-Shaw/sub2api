@@ -12,8 +12,6 @@ var adminUsageViewerPathRules = []struct {
 	method string
 	path   *regexp.Regexp
 }{
-	{method: http.MethodGet, path: regexp.MustCompile(`^/api/v1/admin/compliance$`)},
-	{method: http.MethodPost, path: regexp.MustCompile(`^/api/v1/admin/compliance/accept$`)},
 	{method: http.MethodGet, path: regexp.MustCompile(`^/api/v1/admin/accounts$`)},
 	{method: http.MethodGet, path: regexp.MustCompile(`^/api/v1/admin/accounts/usage-viewer-summary$`)},
 	{method: http.MethodGet, path: regexp.MustCompile(`^/api/v1/admin/accounts/[0-9]+$`)},
