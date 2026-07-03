@@ -2618,6 +2618,29 @@ REDACTED
 	return accounts, result.Total, nil
 REDACTED
 
+func (s *adminServiceImpl) ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+REDACTED
+	lister, ok := s.accountRepo.(interface {
+		ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error)
+REDACTED)
+	if !ok {
+		return nil, nil
+REDACTED
+	return lister.ListAllWithFilters(ctx, platform, accountType, status, search, groupID, privacyMode)
+REDACTED
+
+func (s *adminServiceImpl) ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+REDACTED
+	if groupID != nil {
+		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
+REDACTED
+	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
+REDACTED
+
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
 	return s.accountRepo.GetByID(ctx, id)
 REDACTED

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -49,7 +50,7 @@ func TestBuildOpenAIAccountLoadPlan_ResetWeightPrefersSoonestReset(t *testing.T)
 REDACTED
 	sched := openAIResetTestScheduler(5.0)
 
-	plan := sched.buildOpenAIAccountLoadPlan(OpenAIAccountScheduleRequest{REDACTED, filtered, map[int64]*AccountLoadInfo{REDACTED)
+	plan := sched.buildOpenAIAccountLoadPlan(context.Background(), OpenAIAccountScheduleRequest{REDACTED, filtered, map[int64]*AccountLoadInfo{REDACTED)
 	scores := openAIPlanScores(plan)
 	require.Greater(t, scores[2], scores[1], "重置时间最早的账号（ID=2）得分更高")
 REDACTED
@@ -65,7 +66,7 @@ func TestBuildOpenAIAccountLoadPlan_ResetWeightZeroNoEffect(t *testing.T) {
 REDACTED
 	sched := openAIResetTestScheduler(0.0)
 
-	plan := sched.buildOpenAIAccountLoadPlan(OpenAIAccountScheduleRequest{REDACTED, filtered, map[int64]*AccountLoadInfo{REDACTED)
+	plan := sched.buildOpenAIAccountLoadPlan(context.Background(), OpenAIAccountScheduleRequest{REDACTED, filtered, map[int64]*AccountLoadInfo{REDACTED)
 	scores := openAIPlanScores(plan)
 	require.Equal(t, scores[1], scores[2], "Reset 权重为 0 时两账号得分相同")
 REDACTED
@@ -80,7 +81,7 @@ func TestBuildOpenAIAccountLoadPlan_ResetWeightIgnoresNilWindow(t *testing.T) {
 REDACTED
 	sched := openAIResetTestScheduler(5.0)
 
-	plan := sched.buildOpenAIAccountLoadPlan(OpenAIAccountScheduleRequest{REDACTED, filtered, map[int64]*AccountLoadInfo{REDACTED)
+	plan := sched.buildOpenAIAccountLoadPlan(context.Background(), OpenAIAccountScheduleRequest{REDACTED, filtered, map[int64]*AccountLoadInfo{REDACTED)
 	scores := openAIPlanScores(plan)
 	require.Greater(t, scores[2], scores[1], "拥有活跃窗口的账号得分高于无窗口账号")
 REDACTED
@@ -161,7 +162,7 @@ func TestBuildOpenAIAccountLoadPlan_QuotaHeadroomPrefersHigher7dRemaining(t *tes
 REDACTED
 	sched := openAIQuotaHeadroomTestScheduler(1.0)
 
-	plan := sched.buildOpenAIAccountLoadPlan(OpenAIAccountScheduleRequest{REDACTED, filtered, map[int64]*AccountLoadInfo{REDACTED)
+	plan := sched.buildOpenAIAccountLoadPlan(context.Background(), OpenAIAccountScheduleRequest{REDACTED, filtered, map[int64]*AccountLoadInfo{REDACTED)
 	scores := openAIPlanScores(plan)
 	require.Greater(t, scores[2], scores[1], "7d 剩余额度更高的账号得分应更高")
 REDACTED
@@ -190,7 +191,7 @@ func TestBuildOpenAIAccountLoadPlan_QuotaHeadroomZeroNoEffect(t *testing.T) {
 REDACTED
 	sched := openAIResetTestScheduler(0)
 
-	plan := sched.buildOpenAIAccountLoadPlan(OpenAIAccountScheduleRequest{REDACTED, filtered, map[int64]*AccountLoadInfo{REDACTED)
+	plan := sched.buildOpenAIAccountLoadPlan(context.Background(), OpenAIAccountScheduleRequest{REDACTED, filtered, map[int64]*AccountLoadInfo{REDACTED)
 	scores := openAIPlanScores(plan)
 	require.Equal(t, scores[1], scores[2], "quota_headroom 权重为 0 时不应影响打分")
 REDACTED
