@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -199,11 +200,39 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	return resp, nil
 }
 
+// tlsEgressLogOn 由环境变量 TLS_EGRESS_LOG=1|true 开启：每次出站请求以 Info 级打印
+// 出站 User-Agent 与实际解析到的 TLS 指纹模板名，用于确认「claude-cli UA + 真 Claude Code
+// 指纹」等出站身份是否自洽。默认关闭，关闭时零开销（仅一次 bool 判断）。
+// profile 为 nil 时打印 <none: go-default-ja3>，即未套指纹、走 Go 默认握手（与 UA 不自洽）。
+var tlsEgressLogOn = func() bool {
+	v := strings.TrimSpace(os.Getenv("TLS_EGRESS_LOG"))
+	return v == "1" || strings.EqualFold(v, "true")
+}()
+
 // DoWithTLS 执行带 TLS 指纹伪装的 HTTP 请求
 //
 // profile 为 nil 时不启用 TLS 指纹，行为与 Do 方法相同。
 // profile 非 nil 时使用指定的 Profile 进行 TLS 指纹伪装。
 func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	if tlsEgressLogOn {
+		ua, host := "", ""
+		if req != nil {
+			ua = req.Header.Get("User-Agent")
+			if req.URL != nil {
+				host = req.URL.Host
+			}
+		}
+		profileName := "<none: go-default-ja3>"
+		if profile != nil {
+			profileName = profile.Name
+		}
+		slog.Info("tls_egress",
+			"account_id", accountID,
+			"host", host,
+			"ua", ua,
+			"tls_profile", profileName,
+		)
+	}
 	if profile == nil {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 	}
