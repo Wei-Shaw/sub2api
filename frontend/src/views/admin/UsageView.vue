@@ -158,7 +158,7 @@ import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'; import { adminAPI } from '@/api/admin'; import { adminUsageAPI } from '@/api/admin/usage'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
-import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
+import { preferRequestTypeFilter, resolveUsageRequestType } from '@/utils/usageRequestType'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
@@ -312,17 +312,14 @@ const buildUsageListParams = (
   pageSize: number,
   exactTotal: boolean
 ): AdminUsageQueryParams => {
-  const requestType = filters.value.request_type
-  const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-  return {
+  return preferRequestTypeFilter({
     page,
     page_size: pageSize,
     exact_total: exactTotal,
     ...filters.value,
-    stream: legacyStream === null ? undefined : legacyStream,
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
-  }
+  })
 }
 
 const loadLogs = async () => {
@@ -339,13 +336,10 @@ const loadStats = async (force = false) => {
   const seq = ++statsReqSeq
   endpointStatsLoading.value = true
   try {
-    const requestType = filters.value.request_type
-    const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-    const s = await adminAPI.usage.getStats({
+    const s = await adminAPI.usage.getStats(preferRequestTypeFilter({
       ...filters.value,
-      stream: legacyStream === null ? undefined : legacyStream,
       ...(force ? { nocache: 1 } : {}),
-    })
+    }))
     if (seq !== statsReqSeq) return
     usageStats.value = s
     inboundEndpointStats.value = s.endpoints || []
@@ -378,8 +372,7 @@ const loadModelStats = async (source: ModelDistributionSource, force = false) =>
   modelStatsLoading.value = true
   try {
     const requestType = filters.value.request_type
-    const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-    const baseParams = {
+    const baseParams = preferRequestTypeFilter({
       start_date: filters.value.start_date || startDate.value,
       end_date: filters.value.end_date || endDate.value,
       user_id: filters.value.user_id,
@@ -388,9 +381,9 @@ const loadModelStats = async (source: ModelDistributionSource, force = false) =>
       account_id: filters.value.account_id,
       group_id: filters.value.group_id,
       request_type: requestType,
-      stream: legacyStream === null ? undefined : legacyStream,
+      stream: filters.value.stream,
       billing_type: filters.value.billing_type,
-    }
+    })
 
     const response = await adminAPI.dashboard.getModelStats({ ...baseParams, model_source: source })
 
@@ -426,8 +419,7 @@ const loadChartData = async () => {
   chartsLoading.value = true
   try {
     const requestType = filters.value.request_type
-    const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-    const snapshot = await adminAPI.dashboard.getSnapshotV2({
+    const snapshot = await adminAPI.dashboard.getSnapshotV2(preferRequestTypeFilter({
       start_date: filters.value.start_date || startDate.value,
       end_date: filters.value.end_date || endDate.value,
       granularity: granularity.value,
@@ -437,14 +429,14 @@ const loadChartData = async () => {
       account_id: filters.value.account_id,
       group_id: filters.value.group_id,
       request_type: requestType,
-      stream: legacyStream === null ? undefined : legacyStream,
+      stream: filters.value.stream,
       billing_type: filters.value.billing_type,
       include_stats: false,
       include_trend: true,
       include_model_stats: false,
       include_group_stats: true,
       include_users_trend: false
-    })
+    }))
     if (seq !== chartReqSeq) return
     trendData.value = snapshot.trend || []
     groupStats.value = snapshot.groups || []

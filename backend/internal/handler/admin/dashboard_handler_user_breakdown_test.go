@@ -142,6 +142,34 @@ func TestGetUserBreakdown_CustomLimit(t *testing.T) {
 	require.Equal(t, 100, repo.capturedLimit)
 }
 
+func TestGetUserBreakdown_RequestTypeTakesPriorityOverLegacyStream(t *testing.T) {
+	repo := &userBreakdownRepoCapture{}
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&request_type=ws_v2&stream=false", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, repo.capturedDim.RequestType)
+	require.Equal(t, int16(service.RequestTypeWSV2), *repo.capturedDim.RequestType)
+	require.Nil(t, repo.capturedDim.Stream)
+}
+
+func TestGetUserBreakdown_InvalidRequestType(t *testing.T) {
+	repo := &userBreakdownRepoCapture{}
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&request_type=nope", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Nil(t, repo.capturedDim.RequestType)
+}
+
 func TestGetUserBreakdown_LimitClamped(t *testing.T) {
 	repo := &userBreakdownRepoCapture{}
 	router := newUserBreakdownRouter(repo)
