@@ -249,6 +249,12 @@ type OpenAIForwardResult struct {
 	ResponseHeaders      http.Header
 	Duration             time.Duration
 	FirstTokenMs         *int
+	WSConnReused         *bool
+	WSPreflightFailCount *int
+	WSConnPickMs         *int
+	WSPayloadBytes       *int64
+	WSEventCount         *int
+	WSQueueWaitMs        *int
 	ClientDisconnect     bool
 	ImageCount           int
 	ImageSize            string
@@ -374,6 +380,7 @@ type OpenAIGatewayService struct {
 	openaiScheduler               OpenAIAccountScheduler
 	openaiWSPassthroughDialer     openAIWSClientDialer
 	openaiAccountStats            *openAIAccountRuntimeStats
+	openaiWSAccountHealth         *openAIWSAccountHealthTracker
 
 	openaiWSFallbackUntil               sync.Map // key: int64(accountID), value: time.Time
 	openaiAccountRuntimeBlockUntil      sync.Map // key: int64(accountID), value: time.Time
@@ -445,6 +452,7 @@ func NewOpenAIGatewayService(
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
+		openaiWSAccountHealth: newOpenAIWSAccountHealthTracker(),
 	}
 	if rateLimitService != nil {
 		rateLimitService.SetAccountRuntimeBlocker(svc)
@@ -2001,10 +2009,12 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool {
 	// 优先级更高（数值更小）
 	// Higher priority (lower value)
-	if candidate.Priority < current.Priority {
+	candidatePriority := s.accountSchedulingPriority(candidate)
+	currentPriority := s.accountSchedulingPriority(current)
+	if candidatePriority < currentPriority {
 		return true
 	}
-	if candidate.Priority > current.Priority {
+	if candidatePriority > currentPriority {
 		return false
 	}
 
@@ -2023,6 +2033,77 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool
 	default:
 		// 都使用过，选择最久未使用的
 		return candidate.LastUsedAt.Before(*current.LastUsedAt)
+	}
+}
+
+func (s *OpenAIGatewayService) accountSchedulingPriority(account *Account) int {
+	if account == nil {
+		return 0
+	}
+	return account.Priority + s.openAIWSAccountHealthPenalty(account.ID)
+}
+
+func (s *OpenAIGatewayService) openAIWSAccountHealthPenalty(accountID int64) int {
+	if s == nil || s.openaiWSAccountHealth == nil {
+		return 0
+	}
+	return s.openaiWSAccountHealth.PriorityPenalty(accountID)
+}
+
+func (s *OpenAIGatewayService) recordOpenAIWSPreflightFailure(accountID int64) int {
+	if s == nil || s.openaiWSAccountHealth == nil {
+		return 0
+	}
+	return s.openaiWSAccountHealth.RecordPreflightFailure(accountID)
+}
+
+func (s *OpenAIGatewayService) sortOpenAIAccountsBySchedulingPriorityAndLastUsed(accounts []*Account) {
+	sort.SliceStable(accounts, func(i, j int) bool {
+		return s.isBetterAccount(accounts[i], accounts[j])
+	})
+	s.shuffleWithinOpenAIAccountSortGroups(accounts)
+}
+
+func (s *OpenAIGatewayService) shuffleWithinOpenAIAccountSortGroups(accounts []*Account) {
+	if len(accounts) <= 1 {
+		return
+	}
+	i := 0
+	for i < len(accounts) {
+		j := i + 1
+		for j < len(accounts) &&
+			s.accountSchedulingPriority(accounts[i]) == s.accountSchedulingPriority(accounts[j]) &&
+			sameLastUsedAt(accounts[i].LastUsedAt, accounts[j].LastUsedAt) {
+			j++
+		}
+		if j-i > 1 {
+			rand.Shuffle(j-i, func(a, b int) {
+				accounts[i+a], accounts[i+b] = accounts[i+b], accounts[i+a]
+			})
+		}
+		i = j
+	}
+}
+
+func (s *OpenAIGatewayService) shuffleWithinOpenAIAccountLoadGroups(accounts []accountWithLoad) {
+	if len(accounts) <= 1 {
+		return
+	}
+	i := 0
+	for i < len(accounts) {
+		j := i + 1
+		for j < len(accounts) &&
+			s.accountSchedulingPriority(accounts[i].account) == s.accountSchedulingPriority(accounts[j].account) &&
+			accounts[i].loadInfo.LoadRate == accounts[j].loadInfo.LoadRate &&
+			sameLastUsedAt(accounts[i].account.LastUsedAt, accounts[j].account.LastUsedAt) {
+			j++
+		}
+		if j-i > 1 {
+			rand.Shuffle(j-i, func(a, b int) {
+				accounts[i+a], accounts[i+b] = accounts[i+b], accounts[i+a]
+			})
+		}
+		i = j
 	}
 }
 
@@ -2214,8 +2295,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 		sort.SliceStable(available, func(i, j int) bool {
 			a, b := available[i], available[j]
-			if a.account.Priority != b.account.Priority {
-				return a.account.Priority < b.account.Priority
+			aPriority := s.accountSchedulingPriority(a.account)
+			bPriority := s.accountSchedulingPriority(b.account)
+			if aPriority != bPriority {
+				return aPriority < bPriority
 			}
 			if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 				return a.loadInfo.LoadRate < b.loadInfo.LoadRate
@@ -2231,7 +2314,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
 			}
 		})
-		shuffleWithinSortGroups(available)
+		s.shuffleWithinOpenAIAccountLoadGroups(available)
 
 		selectionOrder := make([]accountWithLoad, 0, len(available))
 		if requireCompact {
@@ -2282,7 +2365,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
 		ordered := append([]*Account(nil), candidates...)
-		sortAccountsByPriorityAndLastUsed(ordered, false)
+		s.sortOpenAIAccountsBySchedulingPriorityAndLastUsed(ordered)
 		if requireCompact {
 			ordered = prioritizeOpenAICompactAccounts(ordered)
 		}
@@ -2327,7 +2410,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	// ============ Layer 3: Fallback wait ============
-	sortAccountsByPriorityAndLastUsed(candidates, false)
+	s.sortOpenAIAccountsBySchedulingPriorityAndLastUsed(candidates)
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)
 	}
@@ -2562,7 +2645,7 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 		}
 		return accessToken, "oauth", nil
 	case AccountTypeAPIKey:
-		if account.Platform == PlatformGrok || account.Platform == PlatformXAI {
+		if account.Platform == PlatformGrok {
 			apiKey := strings.TrimSpace(account.GetCredential("api_key"))
 			if apiKey == "" {
 				return "", "", errors.New("api_key not found in credentials")
@@ -6551,6 +6634,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	usageLog.OpenAIWSMode = result.OpenAIWSMode
 	usageLog.DurationMs = &durationMs
 	usageLog.FirstTokenMs = result.FirstTokenMs
+	usageLog.WSConnReused = result.WSConnReused
+	usageLog.WSPreflightFailCount = result.WSPreflightFailCount
+	usageLog.WSConnPickMs = result.WSConnPickMs
+	usageLog.WSPayloadBytes = result.WSPayloadBytes
+	usageLog.WSEventCount = result.WSEventCount
+	usageLog.WSQueueWaitMs = result.WSQueueWaitMs
 	usageLog.CreatedAt = time.Now()
 	// 设置渠道信息
 	usageLog.ChannelID = optionalInt64Ptr(input.ChannelID)

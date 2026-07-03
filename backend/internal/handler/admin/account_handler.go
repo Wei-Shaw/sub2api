@@ -1903,6 +1903,12 @@ type BatchTodayStatsRequest struct {
 	AccountIDs []int64 `json:"account_ids" binding:"required"`
 }
 
+// BatchPerformanceStatsRequest 批量账号性能统计请求体。
+type BatchPerformanceStatsRequest struct {
+	AccountIDs  []int64 `json:"account_ids" binding:"required"`
+	WindowHours int     `json:"window_hours"`
+}
+
 // GetBatchTodayStats 批量获取多个账号的今日统计。
 // POST /api/v1/admin/accounts/today-stats/batch
 func (h *AccountHandler) GetBatchTodayStats(c *gin.Context) {
@@ -1949,6 +1955,60 @@ func (h *AccountHandler) GetBatchTodayStats(c *gin.Context) {
 	response.Success(c, payload)
 }
 
+// GetBatchPerformanceStats 批量获取多个账号的请求耗时统计。
+// POST /api/v1/admin/accounts/performance-stats/batch
+func (h *AccountHandler) GetBatchPerformanceStats(c *gin.Context) {
+	var req BatchPerformanceStatsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	accountIDs := normalizeInt64IDList(req.AccountIDs)
+	if len(accountIDs) == 0 {
+		response.Success(c, gin.H{"stats": map[string]any{}})
+		return
+	}
+
+	windowHours := req.WindowHours
+	if windowHours <= 0 {
+		windowHours = 24
+	}
+	if windowHours > 168 {
+		windowHours = 168
+	}
+
+	cacheKey := buildAccountPerformanceStatsBatchCacheKey(accountIDs, windowHours)
+	if cached, ok := accountPerformanceStatsBatchCache.Get(cacheKey); ok {
+		if cached.ETag != "" {
+			c.Header("ETag", cached.ETag)
+			c.Header("Vary", "If-None-Match")
+			if ifNoneMatchMatched(c.GetHeader("If-None-Match"), cached.ETag) {
+				c.Status(http.StatusNotModified)
+				return
+			}
+		}
+		c.Header("X-Snapshot-Cache", "hit")
+		response.Success(c, cached.Payload)
+		return
+	}
+
+	stats, err := h.accountUsageService.GetPerformanceStatsBatch(c.Request.Context(), accountIDs, windowHours)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	payload := gin.H{"stats": stats}
+	cached := accountPerformanceStatsBatchCache.Set(cacheKey, payload)
+	if cached.ETag != "" {
+		c.Header("ETag", cached.ETag)
+		c.Header("Vary", "If-None-Match")
+	}
+	c.Header("X-Snapshot-Cache", "miss")
+	response.Success(c, payload)
+}
+
 // SetSchedulableRequest represents the request body for setting schedulable status
 type SetSchedulableRequest struct {
 	Schedulable bool `json:"schedulable"`
@@ -1976,6 +2036,54 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 	}
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+func modelIDsFromMapping(mapping map[string]string) []string {
+	ids := make([]string, 0, len(mapping))
+	for requestedModel := range mapping {
+		if strings.TrimSpace(requestedModel) == "" {
+			continue
+		}
+		ids = append(ids, requestedModel)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func openAIModelsFromIDs(ids []string) []openai.Model {
+	return openAIModelsFromIDsWithRetired(ids, false)
+}
+
+func openAIModelsFromIDsWithRetired(ids []string, includeRetired bool) []openai.Model {
+	seen := make(map[string]struct{}, len(ids))
+	defaultByID := make(map[string]openai.Model, len(openai.DefaultModels))
+	for _, model := range openai.DefaultModels {
+		defaultByID[model.ID] = model
+	}
+
+	models := make([]openai.Model, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || (!includeRetired && openai.IsRetiredModelID(id)) {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+
+		if model, ok := defaultByID[id]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, openai.Model{
+			ID:          id,
+			Object:      "model",
+			Type:        "model",
+			DisplayName: id,
+		})
+	}
+	return models
 }
 
 // GetAvailableModels handles getting available models for an account
@@ -2007,27 +2115,8 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 			return
 		}
 
-		// Return mapped models
-		var models []openai.Model
-		for requestedModel := range mapping {
-			var found bool
-			for _, dm := range openai.DefaultModels {
-				if dm.ID == requestedModel {
-					models = append(models, dm)
-					found = true
-					break
-				}
-			}
-			if !found {
-				models = append(models, openai.Model{
-					ID:          requestedModel,
-					Object:      "model",
-					Type:        "model",
-					DisplayName: requestedModel,
-				})
-			}
-		}
-		response.Success(c, models)
+		includeRetired := account.ParentAccountID != nil && account.QuotaDimension == service.QuotaDimensionSpark
+		response.Success(c, openAIModelsFromIDsWithRetired(modelIDsFromMapping(mapping), includeRetired))
 		return
 	}
 

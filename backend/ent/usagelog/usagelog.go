@@ -76,6 +76,18 @@ const (
 	FieldDurationMs = "duration_ms"
 	// FieldFirstTokenMs holds the string denoting the first_token_ms field in the database.
 	FieldFirstTokenMs = "first_token_ms"
+	// FieldWsConnReused holds the string denoting the ws_conn_reused field in the database.
+	FieldWsConnReused = "ws_conn_reused"
+	// FieldWsPreflightFailCount holds the string denoting the ws_preflight_fail_count field in the database.
+	FieldWsPreflightFailCount = "ws_preflight_fail_count"
+	// FieldWsConnPickMs holds the string denoting the ws_conn_pick_ms field in the database.
+	FieldWsConnPickMs = "ws_conn_pick_ms"
+	// FieldWsPayloadBytes holds the string denoting the ws_payload_bytes field in the database.
+	FieldWsPayloadBytes = "ws_payload_bytes"
+	// FieldWsEventCount holds the string denoting the ws_event_count field in the database.
+	FieldWsEventCount = "ws_event_count"
+	// FieldWsQueueWaitMs holds the string denoting the ws_queue_wait_ms field in the database.
+	FieldWsQueueWaitMs = "ws_queue_wait_ms"
 	// FieldUserAgent holds the string denoting the user_agent field in the database.
 	FieldUserAgent = "user_agent"
 	// FieldIPAddress holds the string denoting the ip_address field in the database.
@@ -179,6 +191,12 @@ var Columns = []string{
 	FieldStream,
 	FieldDurationMs,
 	FieldFirstTokenMs,
+	FieldWsConnReused,
+	FieldWsPreflightFailCount,
+	FieldWsConnPickMs,
+	FieldWsPayloadBytes,
+	FieldWsEventCount,
+	FieldWsQueueWaitMs,
 	FieldUserAgent,
 	FieldIPAddress,
 	FieldImageCount,
@@ -427,6 +445,36 @@ func ByDurationMs(opts ...sql.OrderTermOption) OrderOption {
 // ByFirstTokenMs orders the results by the first_token_ms field.
 func ByFirstTokenMs(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFirstTokenMs, opts...).ToFunc()
+}
+
+// ByWsConnReused orders the results by the ws_conn_reused field.
+func ByWsConnReused(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWsConnReused, opts...).ToFunc()
+}
+
+// ByWsPreflightFailCount orders the results by the ws_preflight_fail_count field.
+func ByWsPreflightFailCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWsPreflightFailCount, opts...).ToFunc()
+}
+
+// ByWsConnPickMs orders the results by the ws_conn_pick_ms field.
+func ByWsConnPickMs(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWsConnPickMs, opts...).ToFunc()
+}
+
+// ByWsPayloadBytes orders the results by the ws_payload_bytes field.
+func ByWsPayloadBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWsPayloadBytes, opts...).ToFunc()
+}
+
+// ByWsEventCount orders the results by the ws_event_count field.
+func ByWsEventCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWsEventCount, opts...).ToFunc()
+}
+
+// ByWsQueueWaitMs orders the results by the ws_queue_wait_ms field.
+func ByWsQueueWaitMs(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWsQueueWaitMs, opts...).ToFunc()
 }
 
 // ByUserAgent orders the results by the user_agent field.

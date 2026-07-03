@@ -614,6 +614,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		ResponseHeaders: cloneHeader(handshakeHeaders),
 		Duration:        relayResult.Duration,
 		FirstTokenMs:    relayResult.FirstTokenMs,
+		WSEventCount:    intPtr(int(relayResult.UpstreamToClientFrames)),
 	}
 
 	turnCount := int(completedTurns.Load())

@@ -211,7 +211,24 @@
             <input type="checkbox" :checked="isSelected(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </template>
           <template #cell-id="{ value }">
-            <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
+            <div class="flex min-w-[8rem] flex-col gap-1">
+              <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
+              <div
+                v-if="getPrimaryPerformanceStat(Number(value))"
+                class="space-y-0.5 text-[11px] leading-4 text-gray-500 dark:text-gray-400"
+                :title="getPerformanceTitle(Number(value))"
+              >
+                <div class="font-medium text-gray-600 dark:text-gray-300">
+                  {{ formatPerformanceLine(getPrimaryPerformanceStat(Number(value))!) }}
+                </div>
+              </div>
+              <span
+                v-else-if="performanceStatsLoading"
+                class="text-[11px] leading-4 text-gray-400 dark:text-dark-500"
+              >
+                ...
+              </span>
+            </div>
           </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
@@ -442,6 +459,7 @@ import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
+import type { AccountPerformanceStats, AccountRequestTypePerformanceStats } from '@/api/admin/accounts'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -580,6 +598,9 @@ const todayStatsByAccountId = ref<Record<string, WindowStats>>({})
 const todayStatsLoading = ref(false)
 const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
+const performanceStatsByAccountId = ref<Record<string, AccountPerformanceStats>>({})
+const performanceStatsLoading = ref(false)
+const performanceStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
 
@@ -633,6 +654,121 @@ const refreshTodayStatsBatch = async () => {
       todayStatsLoading.value = false
     }
   }
+}
+
+const refreshPerformanceStatsBatch = async () => {
+  if (hiddenColumns.has('id')) {
+    performanceStatsLoading.value = false
+    return
+  }
+
+  const accountIDs = accounts.value.map(account => account.id)
+  const reqSeq = ++performanceStatsReqSeq.value
+  if (accountIDs.length === 0) {
+    performanceStatsByAccountId.value = {}
+    performanceStatsLoading.value = false
+    return
+  }
+
+  performanceStatsLoading.value = true
+  try {
+    const result = await adminAPI.accounts.getBatchPerformanceStats(accountIDs, 24)
+    if (reqSeq !== performanceStatsReqSeq.value) return
+    performanceStatsByAccountId.value = result.stats ?? {}
+  } catch (error) {
+    if (reqSeq !== performanceStatsReqSeq.value) return
+    performanceStatsByAccountId.value = {}
+    console.error('Failed to load account performance stats:', error)
+  } finally {
+    if (reqSeq === performanceStatsReqSeq.value) {
+      performanceStatsLoading.value = false
+    }
+  }
+}
+
+const refreshAccountListStats = async () => {
+  await Promise.all([
+    refreshTodayStatsBatch(),
+    refreshPerformanceStatsBatch()
+  ])
+}
+
+const getPrimaryPerformanceStat = (accountID: number): AccountRequestTypePerformanceStats | null => {
+  const stats = performanceStatsByAccountId.value[String(accountID)]?.stats ?? []
+  return stats.find(stat => stat.request_type === 'ws_v2') ?? stats.find(stat => stat.request_type === 'stream') ?? null
+}
+
+const formatDurationSeconds = (ms?: number | null) => {
+  if (ms == null || !Number.isFinite(ms)) return '--'
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+const formatPayloadSize = (bytes?: number | null) => {
+  if (bytes == null || !Number.isFinite(bytes)) return '--'
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${Math.round(bytes)}B`
+}
+
+const formatPercent = (value?: number | null) => {
+  if (value == null || !Number.isFinite(value)) return '--'
+  return `${Math.round(value * 100)}%`
+}
+
+const requestTypeDisplayName = (requestType: string) => {
+  if (requestType === 'ws_v2') return 'ws_v2'
+  if (requestType === 'stream') return '流'
+  return requestType || '-'
+}
+
+const formatPerformanceLine = (stat: AccountRequestTypePerformanceStats) => {
+  const parts = [
+    `${requestTypeDisplayName(stat.request_type)} 平均 ${formatDurationSeconds(stat.avg_duration_ms)}`,
+    `P90 ${formatDurationSeconds(stat.p90_duration_ms)}`
+  ]
+  if (stat.avg_first_token_ms != null) {
+    parts.push(`首 ${formatDurationSeconds(stat.avg_first_token_ms)}`)
+  }
+  if (stat.avg_ws_conn_pick_ms != null) {
+    parts.push(`连 ${formatDurationSeconds(stat.avg_ws_conn_pick_ms)}`)
+  }
+  if ((stat.ws_preflight_fail_count ?? 0) > 0) {
+    parts.push(`预检失败 ${stat.ws_preflight_fail_count}`)
+  }
+  return parts.join(' · ')
+}
+
+const formatPerformanceDetailLine = (stat: AccountRequestTypePerformanceStats) => {
+  const parts = [
+    formatPerformanceLine(stat),
+    `${stat.request_count} 次`
+  ]
+  if (stat.avg_ws_queue_wait_ms != null) {
+    parts.push(`队列 ${formatDurationSeconds(stat.avg_ws_queue_wait_ms)}`)
+  }
+  if (stat.avg_ws_payload_bytes != null) {
+    parts.push(`体量 ${formatPayloadSize(stat.avg_ws_payload_bytes)}`)
+  }
+  if (stat.avg_ws_event_count != null) {
+    parts.push(`事件 ${stat.avg_ws_event_count.toFixed(1)}`)
+  }
+  if (stat.ws_conn_reused_rate != null) {
+    parts.push(`复用 ${formatPercent(stat.ws_conn_reused_rate)}`)
+  }
+  if (stat.p90_ws_conn_pick_ms != null) {
+    parts.push(`连P90 ${formatDurationSeconds(stat.p90_ws_conn_pick_ms)}`)
+  }
+  return parts.join(' · ')
+}
+
+const getPerformanceTitle = (accountID: number) => {
+  const accountStats = performanceStatsByAccountId.value[String(accountID)]
+  const stats = accountStats?.stats ?? []
+  if (stats.length === 0) return '最近 24 小时暂无性能数据'
+  const windowHours = accountStats?.window_hours ?? 24
+  return stats
+    .map(stat => `${windowHours}h ${formatPerformanceDetailLine(stat)}`)
+    .join('\n')
 }
 
 const autoRefreshIntervalLabel = (sec: number) => {
@@ -739,6 +875,11 @@ const toggleColumn = (key: string) => {
       console.error('Failed to load account today stats after showing column:', error)
     })
   }
+  if (key === 'id' && wasHidden) {
+    refreshPerformanceStatsBatch().catch((error) => {
+      console.error('Failed to load account performance stats after showing column:', error)
+    })
+  }
 }
 
 const isColumnVisible = (key: string) => !hiddenColumns.has(key)
@@ -817,7 +958,7 @@ const load = async () => {
     isFirstLoad.value = false
     delete requestParams.lite
   }
-  await refreshTodayStatsBatch()
+  await refreshAccountListStats()
 }
 
 const reload = async () => {
@@ -825,7 +966,7 @@ const reload = async () => {
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
   await baseReload()
-  await refreshTodayStatsBatch()
+  await refreshAccountListStats()
 }
 
 const debouncedReload = () => {
@@ -865,8 +1006,8 @@ const handleSort = (key: string, order: AccountSortOrder) => {
 watch(loading, (isLoading, wasLoading) => {
   if (wasLoading && !isLoading && pendingTodayStatsRefresh.value) {
     pendingTodayStatsRefresh.value = false
-    refreshTodayStatsBatch().catch((error) => {
-      console.error('Failed to refresh account today stats after table load:', error)
+    refreshAccountListStats().catch((error) => {
+      console.error('Failed to refresh account list stats after table load:', error)
     })
   }
 })
@@ -983,7 +1124,7 @@ const refreshAccountsIncrementally = async () => {
       hasPendingListSync.value = false
     }
 
-    await refreshTodayStatsBatch()
+    await refreshAccountListStats()
   } catch (error) {
     console.error('Auto refresh failed:', error)
   } finally {

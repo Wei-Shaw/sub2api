@@ -20,7 +20,7 @@ import (
 const (
 	openAIWSConnMaxAge             = 60 * time.Minute
 	openAIWSConnHealthCheckIdle    = 90 * time.Second
-	openAIWSConnHealthCheckTO      = 2 * time.Second
+	openAIWSConnHealthCheckTO      = time.Second
 	openAIWSConnPrewarmExtraDelay  = 2 * time.Second
 	openAIWSAcquireCleanupInterval = 3 * time.Second
 	openAIWSBackgroundPingInterval = 30 * time.Second
@@ -1571,7 +1571,21 @@ func (p *openAIWSConnPool) effectiveMaxConnsByAccount(account *Account) int {
 		if account.Concurrency <= 0 {
 			return 0
 		}
-		return account.Concurrency
+		factor := p.maxConnsFactorByAccount(account)
+		if factor <= 0 {
+			factor = 1.0
+		}
+		effective := int(math.Ceil(float64(account.Concurrency) * factor))
+		if effective < account.Concurrency {
+			effective = account.Concurrency
+		}
+		if reserved := account.Concurrency + p.minIdlePerAccount(); reserved > effective {
+			effective = reserved
+		}
+		if effective > hardCap {
+			effective = hardCap
+		}
+		return effective
 	}
 	if account == nil || !p.dynamicMaxConnsEnabled() {
 		return hardCap

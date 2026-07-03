@@ -658,6 +658,161 @@ func (_u *UsageLogUpdate) ClearFirstTokenMs() *UsageLogUpdate {
 	return _u
 }
 
+// SetWsConnReused sets the "ws_conn_reused" field.
+func (_u *UsageLogUpdate) SetWsConnReused(v bool) *UsageLogUpdate {
+	_u.mutation.SetWsConnReused(v)
+	return _u
+}
+
+// SetNillableWsConnReused sets the "ws_conn_reused" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableWsConnReused(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetWsConnReused(*v)
+	}
+	return _u
+}
+
+// ClearWsConnReused clears the value of the "ws_conn_reused" field.
+func (_u *UsageLogUpdate) ClearWsConnReused() *UsageLogUpdate {
+	_u.mutation.ClearWsConnReused()
+	return _u
+}
+
+// SetWsPreflightFailCount sets the "ws_preflight_fail_count" field.
+func (_u *UsageLogUpdate) SetWsPreflightFailCount(v int) *UsageLogUpdate {
+	_u.mutation.ResetWsPreflightFailCount()
+	_u.mutation.SetWsPreflightFailCount(v)
+	return _u
+}
+
+// SetNillableWsPreflightFailCount sets the "ws_preflight_fail_count" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableWsPreflightFailCount(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetWsPreflightFailCount(*v)
+	}
+	return _u
+}
+
+// AddWsPreflightFailCount adds value to the "ws_preflight_fail_count" field.
+func (_u *UsageLogUpdate) AddWsPreflightFailCount(v int) *UsageLogUpdate {
+	_u.mutation.AddWsPreflightFailCount(v)
+	return _u
+}
+
+// ClearWsPreflightFailCount clears the value of the "ws_preflight_fail_count" field.
+func (_u *UsageLogUpdate) ClearWsPreflightFailCount() *UsageLogUpdate {
+	_u.mutation.ClearWsPreflightFailCount()
+	return _u
+}
+
+// SetWsConnPickMs sets the "ws_conn_pick_ms" field.
+func (_u *UsageLogUpdate) SetWsConnPickMs(v int) *UsageLogUpdate {
+	_u.mutation.ResetWsConnPickMs()
+	_u.mutation.SetWsConnPickMs(v)
+	return _u
+}
+
+// SetNillableWsConnPickMs sets the "ws_conn_pick_ms" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableWsConnPickMs(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetWsConnPickMs(*v)
+	}
+	return _u
+}
+
+// AddWsConnPickMs adds value to the "ws_conn_pick_ms" field.
+func (_u *UsageLogUpdate) AddWsConnPickMs(v int) *UsageLogUpdate {
+	_u.mutation.AddWsConnPickMs(v)
+	return _u
+}
+
+// ClearWsConnPickMs clears the value of the "ws_conn_pick_ms" field.
+func (_u *UsageLogUpdate) ClearWsConnPickMs() *UsageLogUpdate {
+	_u.mutation.ClearWsConnPickMs()
+	return _u
+}
+
+// SetWsPayloadBytes sets the "ws_payload_bytes" field.
+func (_u *UsageLogUpdate) SetWsPayloadBytes(v int64) *UsageLogUpdate {
+	_u.mutation.ResetWsPayloadBytes()
+	_u.mutation.SetWsPayloadBytes(v)
+	return _u
+}
+
+// SetNillableWsPayloadBytes sets the "ws_payload_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableWsPayloadBytes(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetWsPayloadBytes(*v)
+	}
+	return _u
+}
+
+// AddWsPayloadBytes adds value to the "ws_payload_bytes" field.
+func (_u *UsageLogUpdate) AddWsPayloadBytes(v int64) *UsageLogUpdate {
+	_u.mutation.AddWsPayloadBytes(v)
+	return _u
+}
+
+// ClearWsPayloadBytes clears the value of the "ws_payload_bytes" field.
+func (_u *UsageLogUpdate) ClearWsPayloadBytes() *UsageLogUpdate {
+	_u.mutation.ClearWsPayloadBytes()
+	return _u
+}
+
+// SetWsEventCount sets the "ws_event_count" field.
+func (_u *UsageLogUpdate) SetWsEventCount(v int) *UsageLogUpdate {
+	_u.mutation.ResetWsEventCount()
+	_u.mutation.SetWsEventCount(v)
+	return _u
+}
+
+// SetNillableWsEventCount sets the "ws_event_count" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableWsEventCount(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetWsEventCount(*v)
+	}
+	return _u
+}
+
+// AddWsEventCount adds value to the "ws_event_count" field.
+func (_u *UsageLogUpdate) AddWsEventCount(v int) *UsageLogUpdate {
+	_u.mutation.AddWsEventCount(v)
+	return _u
+}
+
+// ClearWsEventCount clears the value of the "ws_event_count" field.
+func (_u *UsageLogUpdate) ClearWsEventCount() *UsageLogUpdate {
+	_u.mutation.ClearWsEventCount()
+	return _u
+}
+
+// SetWsQueueWaitMs sets the "ws_queue_wait_ms" field.
+func (_u *UsageLogUpdate) SetWsQueueWaitMs(v int) *UsageLogUpdate {
+	_u.mutation.ResetWsQueueWaitMs()
+	_u.mutation.SetWsQueueWaitMs(v)
+	return _u
+}
+
+// SetNillableWsQueueWaitMs sets the "ws_queue_wait_ms" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableWsQueueWaitMs(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetWsQueueWaitMs(*v)
+	}
+	return _u
+}
+
+// AddWsQueueWaitMs adds value to the "ws_queue_wait_ms" field.
+func (_u *UsageLogUpdate) AddWsQueueWaitMs(v int) *UsageLogUpdate {
+	_u.mutation.AddWsQueueWaitMs(v)
+	return _u
+}
+
+// ClearWsQueueWaitMs clears the value of the "ws_queue_wait_ms" field.
+func (_u *UsageLogUpdate) ClearWsQueueWaitMs() *UsageLogUpdate {
+	_u.mutation.ClearWsQueueWaitMs()
+	return _u
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (_u *UsageLogUpdate) SetUserAgent(v string) *UsageLogUpdate {
 	_u.mutation.SetUserAgent(v)
@@ -1161,6 +1316,57 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.FirstTokenMsCleared() {
 		_spec.ClearField(usagelog.FieldFirstTokenMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.WsConnReused(); ok {
+		_spec.SetField(usagelog.FieldWsConnReused, field.TypeBool, value)
+	}
+	if _u.mutation.WsConnReusedCleared() {
+		_spec.ClearField(usagelog.FieldWsConnReused, field.TypeBool)
+	}
+	if value, ok := _u.mutation.WsPreflightFailCount(); ok {
+		_spec.SetField(usagelog.FieldWsPreflightFailCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedWsPreflightFailCount(); ok {
+		_spec.AddField(usagelog.FieldWsPreflightFailCount, field.TypeInt, value)
+	}
+	if _u.mutation.WsPreflightFailCountCleared() {
+		_spec.ClearField(usagelog.FieldWsPreflightFailCount, field.TypeInt)
+	}
+	if value, ok := _u.mutation.WsConnPickMs(); ok {
+		_spec.SetField(usagelog.FieldWsConnPickMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedWsConnPickMs(); ok {
+		_spec.AddField(usagelog.FieldWsConnPickMs, field.TypeInt, value)
+	}
+	if _u.mutation.WsConnPickMsCleared() {
+		_spec.ClearField(usagelog.FieldWsConnPickMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.WsPayloadBytes(); ok {
+		_spec.SetField(usagelog.FieldWsPayloadBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedWsPayloadBytes(); ok {
+		_spec.AddField(usagelog.FieldWsPayloadBytes, field.TypeInt64, value)
+	}
+	if _u.mutation.WsPayloadBytesCleared() {
+		_spec.ClearField(usagelog.FieldWsPayloadBytes, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.WsEventCount(); ok {
+		_spec.SetField(usagelog.FieldWsEventCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedWsEventCount(); ok {
+		_spec.AddField(usagelog.FieldWsEventCount, field.TypeInt, value)
+	}
+	if _u.mutation.WsEventCountCleared() {
+		_spec.ClearField(usagelog.FieldWsEventCount, field.TypeInt)
+	}
+	if value, ok := _u.mutation.WsQueueWaitMs(); ok {
+		_spec.SetField(usagelog.FieldWsQueueWaitMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedWsQueueWaitMs(); ok {
+		_spec.AddField(usagelog.FieldWsQueueWaitMs, field.TypeInt, value)
+	}
+	if _u.mutation.WsQueueWaitMsCleared() {
+		_spec.ClearField(usagelog.FieldWsQueueWaitMs, field.TypeInt)
 	}
 	if value, ok := _u.mutation.UserAgent(); ok {
 		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)
@@ -2004,6 +2210,161 @@ func (_u *UsageLogUpdateOne) ClearFirstTokenMs() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetWsConnReused sets the "ws_conn_reused" field.
+func (_u *UsageLogUpdateOne) SetWsConnReused(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetWsConnReused(v)
+	return _u
+}
+
+// SetNillableWsConnReused sets the "ws_conn_reused" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableWsConnReused(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetWsConnReused(*v)
+	}
+	return _u
+}
+
+// ClearWsConnReused clears the value of the "ws_conn_reused" field.
+func (_u *UsageLogUpdateOne) ClearWsConnReused() *UsageLogUpdateOne {
+	_u.mutation.ClearWsConnReused()
+	return _u
+}
+
+// SetWsPreflightFailCount sets the "ws_preflight_fail_count" field.
+func (_u *UsageLogUpdateOne) SetWsPreflightFailCount(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetWsPreflightFailCount()
+	_u.mutation.SetWsPreflightFailCount(v)
+	return _u
+}
+
+// SetNillableWsPreflightFailCount sets the "ws_preflight_fail_count" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableWsPreflightFailCount(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetWsPreflightFailCount(*v)
+	}
+	return _u
+}
+
+// AddWsPreflightFailCount adds value to the "ws_preflight_fail_count" field.
+func (_u *UsageLogUpdateOne) AddWsPreflightFailCount(v int) *UsageLogUpdateOne {
+	_u.mutation.AddWsPreflightFailCount(v)
+	return _u
+}
+
+// ClearWsPreflightFailCount clears the value of the "ws_preflight_fail_count" field.
+func (_u *UsageLogUpdateOne) ClearWsPreflightFailCount() *UsageLogUpdateOne {
+	_u.mutation.ClearWsPreflightFailCount()
+	return _u
+}
+
+// SetWsConnPickMs sets the "ws_conn_pick_ms" field.
+func (_u *UsageLogUpdateOne) SetWsConnPickMs(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetWsConnPickMs()
+	_u.mutation.SetWsConnPickMs(v)
+	return _u
+}
+
+// SetNillableWsConnPickMs sets the "ws_conn_pick_ms" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableWsConnPickMs(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetWsConnPickMs(*v)
+	}
+	return _u
+}
+
+// AddWsConnPickMs adds value to the "ws_conn_pick_ms" field.
+func (_u *UsageLogUpdateOne) AddWsConnPickMs(v int) *UsageLogUpdateOne {
+	_u.mutation.AddWsConnPickMs(v)
+	return _u
+}
+
+// ClearWsConnPickMs clears the value of the "ws_conn_pick_ms" field.
+func (_u *UsageLogUpdateOne) ClearWsConnPickMs() *UsageLogUpdateOne {
+	_u.mutation.ClearWsConnPickMs()
+	return _u
+}
+
+// SetWsPayloadBytes sets the "ws_payload_bytes" field.
+func (_u *UsageLogUpdateOne) SetWsPayloadBytes(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetWsPayloadBytes()
+	_u.mutation.SetWsPayloadBytes(v)
+	return _u
+}
+
+// SetNillableWsPayloadBytes sets the "ws_payload_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableWsPayloadBytes(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetWsPayloadBytes(*v)
+	}
+	return _u
+}
+
+// AddWsPayloadBytes adds value to the "ws_payload_bytes" field.
+func (_u *UsageLogUpdateOne) AddWsPayloadBytes(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddWsPayloadBytes(v)
+	return _u
+}
+
+// ClearWsPayloadBytes clears the value of the "ws_payload_bytes" field.
+func (_u *UsageLogUpdateOne) ClearWsPayloadBytes() *UsageLogUpdateOne {
+	_u.mutation.ClearWsPayloadBytes()
+	return _u
+}
+
+// SetWsEventCount sets the "ws_event_count" field.
+func (_u *UsageLogUpdateOne) SetWsEventCount(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetWsEventCount()
+	_u.mutation.SetWsEventCount(v)
+	return _u
+}
+
+// SetNillableWsEventCount sets the "ws_event_count" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableWsEventCount(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetWsEventCount(*v)
+	}
+	return _u
+}
+
+// AddWsEventCount adds value to the "ws_event_count" field.
+func (_u *UsageLogUpdateOne) AddWsEventCount(v int) *UsageLogUpdateOne {
+	_u.mutation.AddWsEventCount(v)
+	return _u
+}
+
+// ClearWsEventCount clears the value of the "ws_event_count" field.
+func (_u *UsageLogUpdateOne) ClearWsEventCount() *UsageLogUpdateOne {
+	_u.mutation.ClearWsEventCount()
+	return _u
+}
+
+// SetWsQueueWaitMs sets the "ws_queue_wait_ms" field.
+func (_u *UsageLogUpdateOne) SetWsQueueWaitMs(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetWsQueueWaitMs()
+	_u.mutation.SetWsQueueWaitMs(v)
+	return _u
+}
+
+// SetNillableWsQueueWaitMs sets the "ws_queue_wait_ms" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableWsQueueWaitMs(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetWsQueueWaitMs(*v)
+	}
+	return _u
+}
+
+// AddWsQueueWaitMs adds value to the "ws_queue_wait_ms" field.
+func (_u *UsageLogUpdateOne) AddWsQueueWaitMs(v int) *UsageLogUpdateOne {
+	_u.mutation.AddWsQueueWaitMs(v)
+	return _u
+}
+
+// ClearWsQueueWaitMs clears the value of the "ws_queue_wait_ms" field.
+func (_u *UsageLogUpdateOne) ClearWsQueueWaitMs() *UsageLogUpdateOne {
+	_u.mutation.ClearWsQueueWaitMs()
+	return _u
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (_u *UsageLogUpdateOne) SetUserAgent(v string) *UsageLogUpdateOne {
 	_u.mutation.SetUserAgent(v)
@@ -2537,6 +2898,57 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.FirstTokenMsCleared() {
 		_spec.ClearField(usagelog.FieldFirstTokenMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.WsConnReused(); ok {
+		_spec.SetField(usagelog.FieldWsConnReused, field.TypeBool, value)
+	}
+	if _u.mutation.WsConnReusedCleared() {
+		_spec.ClearField(usagelog.FieldWsConnReused, field.TypeBool)
+	}
+	if value, ok := _u.mutation.WsPreflightFailCount(); ok {
+		_spec.SetField(usagelog.FieldWsPreflightFailCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedWsPreflightFailCount(); ok {
+		_spec.AddField(usagelog.FieldWsPreflightFailCount, field.TypeInt, value)
+	}
+	if _u.mutation.WsPreflightFailCountCleared() {
+		_spec.ClearField(usagelog.FieldWsPreflightFailCount, field.TypeInt)
+	}
+	if value, ok := _u.mutation.WsConnPickMs(); ok {
+		_spec.SetField(usagelog.FieldWsConnPickMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedWsConnPickMs(); ok {
+		_spec.AddField(usagelog.FieldWsConnPickMs, field.TypeInt, value)
+	}
+	if _u.mutation.WsConnPickMsCleared() {
+		_spec.ClearField(usagelog.FieldWsConnPickMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.WsPayloadBytes(); ok {
+		_spec.SetField(usagelog.FieldWsPayloadBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedWsPayloadBytes(); ok {
+		_spec.AddField(usagelog.FieldWsPayloadBytes, field.TypeInt64, value)
+	}
+	if _u.mutation.WsPayloadBytesCleared() {
+		_spec.ClearField(usagelog.FieldWsPayloadBytes, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.WsEventCount(); ok {
+		_spec.SetField(usagelog.FieldWsEventCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedWsEventCount(); ok {
+		_spec.AddField(usagelog.FieldWsEventCount, field.TypeInt, value)
+	}
+	if _u.mutation.WsEventCountCleared() {
+		_spec.ClearField(usagelog.FieldWsEventCount, field.TypeInt)
+	}
+	if value, ok := _u.mutation.WsQueueWaitMs(); ok {
+		_spec.SetField(usagelog.FieldWsQueueWaitMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedWsQueueWaitMs(); ok {
+		_spec.AddField(usagelog.FieldWsQueueWaitMs, field.TypeInt, value)
+	}
+	if _u.mutation.WsQueueWaitMsCleared() {
+		_spec.ClearField(usagelog.FieldWsQueueWaitMs, field.TypeInt)
 	}
 	if value, ok := _u.mutation.UserAgent(); ok {
 		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)

@@ -118,6 +118,24 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int("first_token_ms").
 			Optional().
 			Nillable(),
+		field.Bool("ws_conn_reused").
+			Optional().
+			Nillable(),
+		field.Int("ws_preflight_fail_count").
+			Optional().
+			Nillable(),
+		field.Int("ws_conn_pick_ms").
+			Optional().
+			Nillable(),
+		field.Int64("ws_payload_bytes").
+			Optional().
+			Nillable(),
+		field.Int("ws_event_count").
+			Optional().
+			Nillable(),
+		field.Int("ws_queue_wait_ms").
+			Optional().
+			Nillable(),
 		field.String("user_agent").
 			MaxLen(512).
 			Optional().

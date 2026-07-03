@@ -35537,6 +35537,17 @@ type UsageLogMutation struct {
 	addduration_ms              *int
 	first_token_ms              *int
 	addfirst_token_ms           *int
+	ws_conn_reused              *bool
+	ws_preflight_fail_count     *int
+	addws_preflight_fail_count  *int
+	ws_conn_pick_ms             *int
+	addws_conn_pick_ms          *int
+	ws_payload_bytes            *int64
+	addws_payload_bytes         *int64
+	ws_event_count              *int
+	addws_event_count           *int
+	ws_queue_wait_ms            *int
+	addws_queue_wait_ms         *int
 	user_agent                  *string
 	ip_address                  *string
 	image_count                 *int
@@ -37285,6 +37296,405 @@ func (m *UsageLogMutation) ResetFirstTokenMs() {
 	delete(m.clearedFields, usagelog.FieldFirstTokenMs)
 }
 
+// SetWsConnReused sets the "ws_conn_reused" field.
+func (m *UsageLogMutation) SetWsConnReused(b bool) {
+	m.ws_conn_reused = &b
+}
+
+// WsConnReused returns the value of the "ws_conn_reused" field in the mutation.
+func (m *UsageLogMutation) WsConnReused() (r bool, exists bool) {
+	v := m.ws_conn_reused
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWsConnReused returns the old "ws_conn_reused" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldWsConnReused(ctx context.Context) (v *bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWsConnReused is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWsConnReused requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWsConnReused: %w", err)
+	}
+	return oldValue.WsConnReused, nil
+}
+
+// ClearWsConnReused clears the value of the "ws_conn_reused" field.
+func (m *UsageLogMutation) ClearWsConnReused() {
+	m.ws_conn_reused = nil
+	m.clearedFields[usagelog.FieldWsConnReused] = struct{}{}
+}
+
+// WsConnReusedCleared returns if the "ws_conn_reused" field was cleared in this mutation.
+func (m *UsageLogMutation) WsConnReusedCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldWsConnReused]
+	return ok
+}
+
+// ResetWsConnReused resets all changes to the "ws_conn_reused" field.
+func (m *UsageLogMutation) ResetWsConnReused() {
+	m.ws_conn_reused = nil
+	delete(m.clearedFields, usagelog.FieldWsConnReused)
+}
+
+// SetWsPreflightFailCount sets the "ws_preflight_fail_count" field.
+func (m *UsageLogMutation) SetWsPreflightFailCount(i int) {
+	m.ws_preflight_fail_count = &i
+	m.addws_preflight_fail_count = nil
+}
+
+// WsPreflightFailCount returns the value of the "ws_preflight_fail_count" field in the mutation.
+func (m *UsageLogMutation) WsPreflightFailCount() (r int, exists bool) {
+	v := m.ws_preflight_fail_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWsPreflightFailCount returns the old "ws_preflight_fail_count" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldWsPreflightFailCount(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWsPreflightFailCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWsPreflightFailCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWsPreflightFailCount: %w", err)
+	}
+	return oldValue.WsPreflightFailCount, nil
+}
+
+// AddWsPreflightFailCount adds i to the "ws_preflight_fail_count" field.
+func (m *UsageLogMutation) AddWsPreflightFailCount(i int) {
+	if m.addws_preflight_fail_count != nil {
+		*m.addws_preflight_fail_count += i
+	} else {
+		m.addws_preflight_fail_count = &i
+	}
+}
+
+// AddedWsPreflightFailCount returns the value that was added to the "ws_preflight_fail_count" field in this mutation.
+func (m *UsageLogMutation) AddedWsPreflightFailCount() (r int, exists bool) {
+	v := m.addws_preflight_fail_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearWsPreflightFailCount clears the value of the "ws_preflight_fail_count" field.
+func (m *UsageLogMutation) ClearWsPreflightFailCount() {
+	m.ws_preflight_fail_count = nil
+	m.addws_preflight_fail_count = nil
+	m.clearedFields[usagelog.FieldWsPreflightFailCount] = struct{}{}
+}
+
+// WsPreflightFailCountCleared returns if the "ws_preflight_fail_count" field was cleared in this mutation.
+func (m *UsageLogMutation) WsPreflightFailCountCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldWsPreflightFailCount]
+	return ok
+}
+
+// ResetWsPreflightFailCount resets all changes to the "ws_preflight_fail_count" field.
+func (m *UsageLogMutation) ResetWsPreflightFailCount() {
+	m.ws_preflight_fail_count = nil
+	m.addws_preflight_fail_count = nil
+	delete(m.clearedFields, usagelog.FieldWsPreflightFailCount)
+}
+
+// SetWsConnPickMs sets the "ws_conn_pick_ms" field.
+func (m *UsageLogMutation) SetWsConnPickMs(i int) {
+	m.ws_conn_pick_ms = &i
+	m.addws_conn_pick_ms = nil
+}
+
+// WsConnPickMs returns the value of the "ws_conn_pick_ms" field in the mutation.
+func (m *UsageLogMutation) WsConnPickMs() (r int, exists bool) {
+	v := m.ws_conn_pick_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWsConnPickMs returns the old "ws_conn_pick_ms" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldWsConnPickMs(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWsConnPickMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWsConnPickMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWsConnPickMs: %w", err)
+	}
+	return oldValue.WsConnPickMs, nil
+}
+
+// AddWsConnPickMs adds i to the "ws_conn_pick_ms" field.
+func (m *UsageLogMutation) AddWsConnPickMs(i int) {
+	if m.addws_conn_pick_ms != nil {
+		*m.addws_conn_pick_ms += i
+	} else {
+		m.addws_conn_pick_ms = &i
+	}
+}
+
+// AddedWsConnPickMs returns the value that was added to the "ws_conn_pick_ms" field in this mutation.
+func (m *UsageLogMutation) AddedWsConnPickMs() (r int, exists bool) {
+	v := m.addws_conn_pick_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearWsConnPickMs clears the value of the "ws_conn_pick_ms" field.
+func (m *UsageLogMutation) ClearWsConnPickMs() {
+	m.ws_conn_pick_ms = nil
+	m.addws_conn_pick_ms = nil
+	m.clearedFields[usagelog.FieldWsConnPickMs] = struct{}{}
+}
+
+// WsConnPickMsCleared returns if the "ws_conn_pick_ms" field was cleared in this mutation.
+func (m *UsageLogMutation) WsConnPickMsCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldWsConnPickMs]
+	return ok
+}
+
+// ResetWsConnPickMs resets all changes to the "ws_conn_pick_ms" field.
+func (m *UsageLogMutation) ResetWsConnPickMs() {
+	m.ws_conn_pick_ms = nil
+	m.addws_conn_pick_ms = nil
+	delete(m.clearedFields, usagelog.FieldWsConnPickMs)
+}
+
+// SetWsPayloadBytes sets the "ws_payload_bytes" field.
+func (m *UsageLogMutation) SetWsPayloadBytes(i int64) {
+	m.ws_payload_bytes = &i
+	m.addws_payload_bytes = nil
+}
+
+// WsPayloadBytes returns the value of the "ws_payload_bytes" field in the mutation.
+func (m *UsageLogMutation) WsPayloadBytes() (r int64, exists bool) {
+	v := m.ws_payload_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWsPayloadBytes returns the old "ws_payload_bytes" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldWsPayloadBytes(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWsPayloadBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWsPayloadBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWsPayloadBytes: %w", err)
+	}
+	return oldValue.WsPayloadBytes, nil
+}
+
+// AddWsPayloadBytes adds i to the "ws_payload_bytes" field.
+func (m *UsageLogMutation) AddWsPayloadBytes(i int64) {
+	if m.addws_payload_bytes != nil {
+		*m.addws_payload_bytes += i
+	} else {
+		m.addws_payload_bytes = &i
+	}
+}
+
+// AddedWsPayloadBytes returns the value that was added to the "ws_payload_bytes" field in this mutation.
+func (m *UsageLogMutation) AddedWsPayloadBytes() (r int64, exists bool) {
+	v := m.addws_payload_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearWsPayloadBytes clears the value of the "ws_payload_bytes" field.
+func (m *UsageLogMutation) ClearWsPayloadBytes() {
+	m.ws_payload_bytes = nil
+	m.addws_payload_bytes = nil
+	m.clearedFields[usagelog.FieldWsPayloadBytes] = struct{}{}
+}
+
+// WsPayloadBytesCleared returns if the "ws_payload_bytes" field was cleared in this mutation.
+func (m *UsageLogMutation) WsPayloadBytesCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldWsPayloadBytes]
+	return ok
+}
+
+// ResetWsPayloadBytes resets all changes to the "ws_payload_bytes" field.
+func (m *UsageLogMutation) ResetWsPayloadBytes() {
+	m.ws_payload_bytes = nil
+	m.addws_payload_bytes = nil
+	delete(m.clearedFields, usagelog.FieldWsPayloadBytes)
+}
+
+// SetWsEventCount sets the "ws_event_count" field.
+func (m *UsageLogMutation) SetWsEventCount(i int) {
+	m.ws_event_count = &i
+	m.addws_event_count = nil
+}
+
+// WsEventCount returns the value of the "ws_event_count" field in the mutation.
+func (m *UsageLogMutation) WsEventCount() (r int, exists bool) {
+	v := m.ws_event_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWsEventCount returns the old "ws_event_count" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldWsEventCount(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWsEventCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWsEventCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWsEventCount: %w", err)
+	}
+	return oldValue.WsEventCount, nil
+}
+
+// AddWsEventCount adds i to the "ws_event_count" field.
+func (m *UsageLogMutation) AddWsEventCount(i int) {
+	if m.addws_event_count != nil {
+		*m.addws_event_count += i
+	} else {
+		m.addws_event_count = &i
+	}
+}
+
+// AddedWsEventCount returns the value that was added to the "ws_event_count" field in this mutation.
+func (m *UsageLogMutation) AddedWsEventCount() (r int, exists bool) {
+	v := m.addws_event_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearWsEventCount clears the value of the "ws_event_count" field.
+func (m *UsageLogMutation) ClearWsEventCount() {
+	m.ws_event_count = nil
+	m.addws_event_count = nil
+	m.clearedFields[usagelog.FieldWsEventCount] = struct{}{}
+}
+
+// WsEventCountCleared returns if the "ws_event_count" field was cleared in this mutation.
+func (m *UsageLogMutation) WsEventCountCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldWsEventCount]
+	return ok
+}
+
+// ResetWsEventCount resets all changes to the "ws_event_count" field.
+func (m *UsageLogMutation) ResetWsEventCount() {
+	m.ws_event_count = nil
+	m.addws_event_count = nil
+	delete(m.clearedFields, usagelog.FieldWsEventCount)
+}
+
+// SetWsQueueWaitMs sets the "ws_queue_wait_ms" field.
+func (m *UsageLogMutation) SetWsQueueWaitMs(i int) {
+	m.ws_queue_wait_ms = &i
+	m.addws_queue_wait_ms = nil
+}
+
+// WsQueueWaitMs returns the value of the "ws_queue_wait_ms" field in the mutation.
+func (m *UsageLogMutation) WsQueueWaitMs() (r int, exists bool) {
+	v := m.ws_queue_wait_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWsQueueWaitMs returns the old "ws_queue_wait_ms" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldWsQueueWaitMs(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWsQueueWaitMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWsQueueWaitMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWsQueueWaitMs: %w", err)
+	}
+	return oldValue.WsQueueWaitMs, nil
+}
+
+// AddWsQueueWaitMs adds i to the "ws_queue_wait_ms" field.
+func (m *UsageLogMutation) AddWsQueueWaitMs(i int) {
+	if m.addws_queue_wait_ms != nil {
+		*m.addws_queue_wait_ms += i
+	} else {
+		m.addws_queue_wait_ms = &i
+	}
+}
+
+// AddedWsQueueWaitMs returns the value that was added to the "ws_queue_wait_ms" field in this mutation.
+func (m *UsageLogMutation) AddedWsQueueWaitMs() (r int, exists bool) {
+	v := m.addws_queue_wait_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearWsQueueWaitMs clears the value of the "ws_queue_wait_ms" field.
+func (m *UsageLogMutation) ClearWsQueueWaitMs() {
+	m.ws_queue_wait_ms = nil
+	m.addws_queue_wait_ms = nil
+	m.clearedFields[usagelog.FieldWsQueueWaitMs] = struct{}{}
+}
+
+// WsQueueWaitMsCleared returns if the "ws_queue_wait_ms" field was cleared in this mutation.
+func (m *UsageLogMutation) WsQueueWaitMsCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldWsQueueWaitMs]
+	return ok
+}
+
+// ResetWsQueueWaitMs resets all changes to the "ws_queue_wait_ms" field.
+func (m *UsageLogMutation) ResetWsQueueWaitMs() {
+	m.ws_queue_wait_ms = nil
+	m.addws_queue_wait_ms = nil
+	delete(m.clearedFields, usagelog.FieldWsQueueWaitMs)
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (m *UsageLogMutation) SetUserAgent(s string) {
 	m.user_agent = &s
@@ -37925,7 +38335,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 41)
+	fields := make([]string, 0, 47)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -38018,6 +38428,24 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.first_token_ms != nil {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
+	}
+	if m.ws_conn_reused != nil {
+		fields = append(fields, usagelog.FieldWsConnReused)
+	}
+	if m.ws_preflight_fail_count != nil {
+		fields = append(fields, usagelog.FieldWsPreflightFailCount)
+	}
+	if m.ws_conn_pick_ms != nil {
+		fields = append(fields, usagelog.FieldWsConnPickMs)
+	}
+	if m.ws_payload_bytes != nil {
+		fields = append(fields, usagelog.FieldWsPayloadBytes)
+	}
+	if m.ws_event_count != nil {
+		fields = append(fields, usagelog.FieldWsEventCount)
+	}
+	if m.ws_queue_wait_ms != nil {
+		fields = append(fields, usagelog.FieldWsQueueWaitMs)
 	}
 	if m.user_agent != nil {
 		fields = append(fields, usagelog.FieldUserAgent)
@@ -38119,6 +38547,18 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.DurationMs()
 	case usagelog.FieldFirstTokenMs:
 		return m.FirstTokenMs()
+	case usagelog.FieldWsConnReused:
+		return m.WsConnReused()
+	case usagelog.FieldWsPreflightFailCount:
+		return m.WsPreflightFailCount()
+	case usagelog.FieldWsConnPickMs:
+		return m.WsConnPickMs()
+	case usagelog.FieldWsPayloadBytes:
+		return m.WsPayloadBytes()
+	case usagelog.FieldWsEventCount:
+		return m.WsEventCount()
+	case usagelog.FieldWsQueueWaitMs:
+		return m.WsQueueWaitMs()
 	case usagelog.FieldUserAgent:
 		return m.UserAgent()
 	case usagelog.FieldIPAddress:
@@ -38210,6 +38650,18 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldDurationMs(ctx)
 	case usagelog.FieldFirstTokenMs:
 		return m.OldFirstTokenMs(ctx)
+	case usagelog.FieldWsConnReused:
+		return m.OldWsConnReused(ctx)
+	case usagelog.FieldWsPreflightFailCount:
+		return m.OldWsPreflightFailCount(ctx)
+	case usagelog.FieldWsConnPickMs:
+		return m.OldWsConnPickMs(ctx)
+	case usagelog.FieldWsPayloadBytes:
+		return m.OldWsPayloadBytes(ctx)
+	case usagelog.FieldWsEventCount:
+		return m.OldWsEventCount(ctx)
+	case usagelog.FieldWsQueueWaitMs:
+		return m.OldWsQueueWaitMs(ctx)
 	case usagelog.FieldUserAgent:
 		return m.OldUserAgent(ctx)
 	case usagelog.FieldIPAddress:
@@ -38456,6 +38908,48 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFirstTokenMs(v)
 		return nil
+	case usagelog.FieldWsConnReused:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWsConnReused(v)
+		return nil
+	case usagelog.FieldWsPreflightFailCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWsPreflightFailCount(v)
+		return nil
+	case usagelog.FieldWsConnPickMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWsConnPickMs(v)
+		return nil
+	case usagelog.FieldWsPayloadBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWsPayloadBytes(v)
+		return nil
+	case usagelog.FieldWsEventCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWsEventCount(v)
+		return nil
+	case usagelog.FieldWsQueueWaitMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWsQueueWaitMs(v)
+		return nil
 	case usagelog.FieldUserAgent:
 		v, ok := value.(string)
 		if !ok {
@@ -38588,6 +39082,21 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addfirst_token_ms != nil {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
 	}
+	if m.addws_preflight_fail_count != nil {
+		fields = append(fields, usagelog.FieldWsPreflightFailCount)
+	}
+	if m.addws_conn_pick_ms != nil {
+		fields = append(fields, usagelog.FieldWsConnPickMs)
+	}
+	if m.addws_payload_bytes != nil {
+		fields = append(fields, usagelog.FieldWsPayloadBytes)
+	}
+	if m.addws_event_count != nil {
+		fields = append(fields, usagelog.FieldWsEventCount)
+	}
+	if m.addws_queue_wait_ms != nil {
+		fields = append(fields, usagelog.FieldWsQueueWaitMs)
+	}
 	if m.addimage_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
 	}
@@ -38635,6 +39144,16 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedDurationMs()
 	case usagelog.FieldFirstTokenMs:
 		return m.AddedFirstTokenMs()
+	case usagelog.FieldWsPreflightFailCount:
+		return m.AddedWsPreflightFailCount()
+	case usagelog.FieldWsConnPickMs:
+		return m.AddedWsConnPickMs()
+	case usagelog.FieldWsPayloadBytes:
+		return m.AddedWsPayloadBytes()
+	case usagelog.FieldWsEventCount:
+		return m.AddedWsEventCount()
+	case usagelog.FieldWsQueueWaitMs:
+		return m.AddedWsQueueWaitMs()
 	case usagelog.FieldImageCount:
 		return m.AddedImageCount()
 	}
@@ -38772,6 +39291,41 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddFirstTokenMs(v)
 		return nil
+	case usagelog.FieldWsPreflightFailCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWsPreflightFailCount(v)
+		return nil
+	case usagelog.FieldWsConnPickMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWsConnPickMs(v)
+		return nil
+	case usagelog.FieldWsPayloadBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWsPayloadBytes(v)
+		return nil
+	case usagelog.FieldWsEventCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWsEventCount(v)
+		return nil
+	case usagelog.FieldWsQueueWaitMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWsQueueWaitMs(v)
+		return nil
 	case usagelog.FieldImageCount:
 		v, ok := value.(int)
 		if !ok {
@@ -38819,6 +39373,24 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(usagelog.FieldFirstTokenMs) {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
+	}
+	if m.FieldCleared(usagelog.FieldWsConnReused) {
+		fields = append(fields, usagelog.FieldWsConnReused)
+	}
+	if m.FieldCleared(usagelog.FieldWsPreflightFailCount) {
+		fields = append(fields, usagelog.FieldWsPreflightFailCount)
+	}
+	if m.FieldCleared(usagelog.FieldWsConnPickMs) {
+		fields = append(fields, usagelog.FieldWsConnPickMs)
+	}
+	if m.FieldCleared(usagelog.FieldWsPayloadBytes) {
+		fields = append(fields, usagelog.FieldWsPayloadBytes)
+	}
+	if m.FieldCleared(usagelog.FieldWsEventCount) {
+		fields = append(fields, usagelog.FieldWsEventCount)
+	}
+	if m.FieldCleared(usagelog.FieldWsQueueWaitMs) {
+		fields = append(fields, usagelog.FieldWsQueueWaitMs)
 	}
 	if m.FieldCleared(usagelog.FieldUserAgent) {
 		fields = append(fields, usagelog.FieldUserAgent)
@@ -38887,6 +39459,24 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldFirstTokenMs:
 		m.ClearFirstTokenMs()
+		return nil
+	case usagelog.FieldWsConnReused:
+		m.ClearWsConnReused()
+		return nil
+	case usagelog.FieldWsPreflightFailCount:
+		m.ClearWsPreflightFailCount()
+		return nil
+	case usagelog.FieldWsConnPickMs:
+		m.ClearWsConnPickMs()
+		return nil
+	case usagelog.FieldWsPayloadBytes:
+		m.ClearWsPayloadBytes()
+		return nil
+	case usagelog.FieldWsEventCount:
+		m.ClearWsEventCount()
+		return nil
+	case usagelog.FieldWsQueueWaitMs:
+		m.ClearWsQueueWaitMs()
 		return nil
 	case usagelog.FieldUserAgent:
 		m.ClearUserAgent()
@@ -39009,6 +39599,24 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldFirstTokenMs:
 		m.ResetFirstTokenMs()
+		return nil
+	case usagelog.FieldWsConnReused:
+		m.ResetWsConnReused()
+		return nil
+	case usagelog.FieldWsPreflightFailCount:
+		m.ResetWsPreflightFailCount()
+		return nil
+	case usagelog.FieldWsConnPickMs:
+		m.ResetWsConnPickMs()
+		return nil
+	case usagelog.FieldWsPayloadBytes:
+		m.ResetWsPayloadBytes()
+		return nil
+	case usagelog.FieldWsEventCount:
+		m.ResetWsEventCount()
+		return nil
+	case usagelog.FieldWsQueueWaitMs:
+		m.ResetWsQueueWaitMs()
 		return nil
 	case usagelog.FieldUserAgent:
 		m.ResetUserAgent()

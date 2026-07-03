@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -84,6 +85,10 @@ type accountWindowStatsBatchReader interface {
 	GetAccountWindowStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error)
 }
 
+type accountPerformanceStatsBatchReader interface {
+	GetAccountPerformanceStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*AccountPerformanceStats, error)
+}
+
 // apiUsageCache 缓存从 Anthropic API 获取的使用率数据（utilization, resets_at）
 // 同时支持缓存错误响应（负缓存），防止 429 等错误导致的重试风暴
 type apiUsageCache struct {
@@ -140,6 +145,32 @@ type WindowStats struct {
 	Cost         float64 `json:"cost"`
 	StandardCost float64 `json:"standard_cost"`
 	UserCost     float64 `json:"user_cost"`
+}
+
+// AccountRequestTypePerformanceStats is a per-account latency summary grouped by request type.
+type AccountRequestTypePerformanceStats struct {
+	RequestType              string   `json:"request_type"`
+	RequestCount             int64    `json:"request_count"`
+	AvgDurationMs            *float64 `json:"avg_duration_ms,omitempty"`
+	P90DurationMs            *float64 `json:"p90_duration_ms,omitempty"`
+	AvgFirstTokenMs          *float64 `json:"avg_first_token_ms,omitempty"`
+	P90FirstTokenMs          *float64 `json:"p90_first_token_ms,omitempty"`
+	RequestsWithFirstTokenMs int64    `json:"requests_with_first_token_ms"`
+	AvgWSConnPickMs          *float64 `json:"avg_ws_conn_pick_ms,omitempty"`
+	P90WSConnPickMs          *float64 `json:"p90_ws_conn_pick_ms,omitempty"`
+	WSPreflightFailCount     int64    `json:"ws_preflight_fail_count"`
+	WSConnReusedCount        int64    `json:"ws_conn_reused_count"`
+	WSConnReusedRate         *float64 `json:"ws_conn_reused_rate,omitempty"`
+	AvgWSPayloadBytes        *float64 `json:"avg_ws_payload_bytes,omitempty"`
+	AvgWSEventCount          *float64 `json:"avg_ws_event_count,omitempty"`
+	AvgWSQueueWaitMs         *float64 `json:"avg_ws_queue_wait_ms,omitempty"`
+}
+
+// AccountPerformanceStats is the lightweight account-list latency snapshot.
+type AccountPerformanceStats struct {
+	AccountID   int64                                `json:"account_id"`
+	WindowHours int                                  `json:"window_hours"`
+	Stats       []AccountRequestTypePerformanceStats `json:"stats"`
 }
 
 // UsageProgress 使用量进度
@@ -1128,6 +1159,213 @@ func (s *AccountUsageService) GetTodayStatsBatch(ctx context.Context, accountIDs
 		}
 	}
 	return result, nil
+}
+
+// GetPerformanceStatsBatch 批量获取账号最近 windowHours 小时的请求耗时统计。
+func (s *AccountUsageService) GetPerformanceStatsBatch(ctx context.Context, accountIDs []int64, windowHours int) (map[int64]*AccountPerformanceStats, error) {
+	uniqueIDs := make([]int64, 0, len(accountIDs))
+	seen := make(map[int64]struct{}, len(accountIDs))
+	for _, accountID := range accountIDs {
+		if accountID <= 0 {
+			continue
+		}
+		if _, exists := seen[accountID]; exists {
+			continue
+		}
+		seen[accountID] = struct{}{}
+		uniqueIDs = append(uniqueIDs, accountID)
+	}
+
+	if windowHours <= 0 {
+		windowHours = 24
+	}
+	if windowHours > 168 {
+		windowHours = 168
+	}
+
+	result := make(map[int64]*AccountPerformanceStats, len(uniqueIDs))
+	for _, accountID := range uniqueIDs {
+		result[accountID] = &AccountPerformanceStats{
+			AccountID:   accountID,
+			WindowHours: windowHours,
+			Stats:       []AccountRequestTypePerformanceStats{},
+		}
+	}
+	if len(uniqueIDs) == 0 {
+		return result, nil
+	}
+
+	startTime := time.Now().Add(-time.Duration(windowHours) * time.Hour)
+	if batchReader, ok := s.usageLogRepo.(accountPerformanceStatsBatchReader); ok {
+		statsByAccount, err := batchReader.GetAccountPerformanceStatsBatch(ctx, uniqueIDs, startTime)
+		if err == nil {
+			for _, accountID := range uniqueIDs {
+				if stats := statsByAccount[accountID]; stats != nil {
+					stats.AccountID = accountID
+					stats.WindowHours = windowHours
+					result[accountID] = stats
+				}
+			}
+			return result, nil
+		}
+	}
+
+	var mu sync.Mutex
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(8)
+
+	for _, accountID := range uniqueIDs {
+		id := accountID
+		g.Go(func() error {
+			logs, _, err := s.usageLogRepo.ListByAccountAndTimeRange(gctx, id, startTime, time.Now())
+			if err != nil {
+				return nil
+			}
+			stats := buildAccountPerformanceStatsFromLogs(id, windowHours, logs)
+			mu.Lock()
+			result[id] = stats
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	_ = g.Wait()
+	return result, nil
+}
+
+func buildAccountPerformanceStatsFromLogs(accountID int64, windowHours int, logs []UsageLog) *AccountPerformanceStats {
+	type requestTypeBucket struct {
+		durations             []int
+		firstTokens           []int
+		wsConnPickMs          []int
+		wsPayloadBytes        []int64
+		wsEventCounts         []int
+		wsQueueWaitMs         []int
+		wsPreflightFailCount  int64
+		wsConnReusedCount     int64
+		wsConnReusedMetricCnt int64
+	}
+
+	buckets := map[RequestType]*requestTypeBucket{
+		RequestTypeStream: {},
+		RequestTypeWSV2:   {},
+	}
+	for _, usageLog := range logs {
+		requestType := usageLog.EffectiveRequestType()
+		if requestType != RequestTypeStream && requestType != RequestTypeWSV2 {
+			continue
+		}
+		if usageLog.DurationMs == nil {
+			continue
+		}
+		bucket := buckets[requestType]
+		bucket.durations = append(bucket.durations, *usageLog.DurationMs)
+		if usageLog.FirstTokenMs != nil {
+			bucket.firstTokens = append(bucket.firstTokens, *usageLog.FirstTokenMs)
+		}
+		if usageLog.WSConnPickMs != nil {
+			bucket.wsConnPickMs = append(bucket.wsConnPickMs, *usageLog.WSConnPickMs)
+		}
+		if usageLog.WSPayloadBytes != nil {
+			bucket.wsPayloadBytes = append(bucket.wsPayloadBytes, *usageLog.WSPayloadBytes)
+		}
+		if usageLog.WSEventCount != nil {
+			bucket.wsEventCounts = append(bucket.wsEventCounts, *usageLog.WSEventCount)
+		}
+		if usageLog.WSQueueWaitMs != nil {
+			bucket.wsQueueWaitMs = append(bucket.wsQueueWaitMs, *usageLog.WSQueueWaitMs)
+		}
+		if usageLog.WSPreflightFailCount != nil {
+			bucket.wsPreflightFailCount += int64(*usageLog.WSPreflightFailCount)
+		}
+		if usageLog.WSConnReused != nil {
+			bucket.wsConnReusedMetricCnt++
+			if *usageLog.WSConnReused {
+				bucket.wsConnReusedCount++
+			}
+		}
+	}
+
+	stats := make([]AccountRequestTypePerformanceStats, 0, len(buckets))
+	for _, requestType := range []RequestType{RequestTypeWSV2, RequestTypeStream} {
+		bucket := buckets[requestType]
+		if len(bucket.durations) == 0 {
+			continue
+		}
+		stat := AccountRequestTypePerformanceStats{
+			RequestType:              requestType.String(),
+			RequestCount:             int64(len(bucket.durations)),
+			AvgDurationMs:            float64PtrFromIntAverage(bucket.durations),
+			P90DurationMs:            float64PtrFromIntP90(bucket.durations),
+			AvgFirstTokenMs:          float64PtrFromIntAverage(bucket.firstTokens),
+			P90FirstTokenMs:          float64PtrFromIntP90(bucket.firstTokens),
+			RequestsWithFirstTokenMs: int64(len(bucket.firstTokens)),
+			AvgWSConnPickMs:          float64PtrFromIntAverage(bucket.wsConnPickMs),
+			P90WSConnPickMs:          float64PtrFromIntP90(bucket.wsConnPickMs),
+			WSPreflightFailCount:     bucket.wsPreflightFailCount,
+			WSConnReusedCount:        bucket.wsConnReusedCount,
+			WSConnReusedRate:         float64PtrFromRatio(bucket.wsConnReusedCount, bucket.wsConnReusedMetricCnt),
+			AvgWSPayloadBytes:        float64PtrFromInt64Average(bucket.wsPayloadBytes),
+			AvgWSEventCount:          float64PtrFromIntAverage(bucket.wsEventCounts),
+			AvgWSQueueWaitMs:         float64PtrFromIntAverage(bucket.wsQueueWaitMs),
+		}
+		stats = append(stats, stat)
+	}
+
+	return &AccountPerformanceStats{
+		AccountID:   accountID,
+		WindowHours: windowHours,
+		Stats:       stats,
+	}
+}
+
+func float64PtrFromIntAverage(values []int) *float64 {
+	if len(values) == 0 {
+		return nil
+	}
+	var total int64
+	for _, value := range values {
+		total += int64(value)
+	}
+	avg := float64(total) / float64(len(values))
+	return &avg
+}
+
+func float64PtrFromInt64Average(values []int64) *float64 {
+	if len(values) == 0 {
+		return nil
+	}
+	var total int64
+	for _, value := range values {
+		total += value
+	}
+	avg := float64(total) / float64(len(values))
+	return &avg
+}
+
+func float64PtrFromRatio(numerator, denominator int64) *float64 {
+	if denominator <= 0 {
+		return nil
+	}
+	ratio := float64(numerator) / float64(denominator)
+	return &ratio
+}
+
+func float64PtrFromIntP90(values []int) *float64 {
+	if len(values) == 0 {
+		return nil
+	}
+	sorted := append([]int(nil), values...)
+	sort.Ints(sorted)
+	index := int(float64(len(sorted))*0.9 + 0.5)
+	if index < 1 {
+		index = 1
+	}
+	if index > len(sorted) {
+		index = len(sorted)
+	}
+	p90 := float64(sorted[index-1])
+	return &p90
 }
 
 func windowStatsFromAccountStats(stats *usagestats.AccountStats) *WindowStats {

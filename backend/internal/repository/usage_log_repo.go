@@ -30,7 +30,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, ws_conn_reused, ws_preflight_fail_count, ws_conn_pick_ms, ws_payload_bytes, ws_event_count, ws_queue_wait_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
 
 // usageLogInsertArgTypes must stay in the same order as:
 //  1. prepareUsageLogInsert().args
@@ -71,6 +71,12 @@ var usageLogInsertArgTypes = [...]string{
 	"boolean",     // openai_ws_mode
 	"integer",     // duration_ms
 	"integer",     // first_token_ms
+	"boolean",     // ws_conn_reused
+	"integer",     // ws_preflight_fail_count
+	"integer",     // ws_conn_pick_ms
+	"bigint",      // ws_payload_bytes
+	"integer",     // ws_event_count
+	"integer",     // ws_queue_wait_ms
 	"text",        // user_agent
 	"text",        // ip_address
 	"integer",     // image_count
@@ -430,6 +436,12 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			ws_conn_reused,
+			ws_preflight_fail_count,
+			ws_conn_pick_ms,
+			ws_payload_bytes,
+			ws_event_count,
+			ws_queue_wait_ms,
 			user_agent,
 			ip_address,
 			image_count,
@@ -455,7 +467,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -872,6 +884,12 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			ws_conn_reused,
+			ws_preflight_fail_count,
+			ws_conn_pick_ms,
+			ws_payload_bytes,
+			ws_event_count,
+			ws_queue_wait_ms,
 			user_agent,
 			ip_address,
 			image_count,
@@ -893,7 +911,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(keys)*50)
+	args := make([]any, 0, len(keys)*len(usageLogInsertArgTypes))
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -953,6 +971,12 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				openai_ws_mode,
 				duration_ms,
 				first_token_ms,
+				ws_conn_reused,
+				ws_preflight_fail_count,
+				ws_conn_pick_ms,
+				ws_payload_bytes,
+				ws_event_count,
+				ws_queue_wait_ms,
 				user_agent,
 				ip_address,
 				image_count,
@@ -1005,6 +1029,12 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				openai_ws_mode,
 				duration_ms,
 				first_token_ms,
+				ws_conn_reused,
+				ws_preflight_fail_count,
+				ws_conn_pick_ms,
+				ws_payload_bytes,
+				ws_event_count,
+				ws_queue_wait_ms,
 				user_agent,
 				ip_address,
 				image_count,
@@ -1097,6 +1127,12 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			ws_conn_reused,
+			ws_preflight_fail_count,
+			ws_conn_pick_ms,
+			ws_payload_bytes,
+			ws_event_count,
+			ws_queue_wait_ms,
 			user_agent,
 			ip_address,
 			image_count,
@@ -1118,7 +1154,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*50)
+	args := make([]any, 0, len(preparedList)*len(usageLogInsertArgTypes))
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1175,6 +1211,12 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			ws_conn_reused,
+			ws_preflight_fail_count,
+			ws_conn_pick_ms,
+			ws_payload_bytes,
+			ws_event_count,
+			ws_queue_wait_ms,
 			user_agent,
 			ip_address,
 			image_count,
@@ -1227,6 +1269,12 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			ws_conn_reused,
+			ws_preflight_fail_count,
+			ws_conn_pick_ms,
+			ws_payload_bytes,
+			ws_event_count,
+			ws_queue_wait_ms,
 			user_agent,
 			ip_address,
 			image_count,
@@ -1287,6 +1335,12 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			ws_conn_reused,
+			ws_preflight_fail_count,
+			ws_conn_pick_ms,
+			ws_payload_bytes,
+			ws_event_count,
+			ws_queue_wait_ms,
 			user_agent,
 			ip_address,
 			image_count,
@@ -1312,7 +1366,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1336,6 +1390,12 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	subscriptionID := nullInt64(log.SubscriptionID)
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
+	wsConnReused := nullBool(log.WSConnReused)
+	wsPreflightFailCount := nullInt(log.WSPreflightFailCount)
+	wsConnPickMs := nullInt(log.WSConnPickMs)
+	wsPayloadBytes := nullInt64(log.WSPayloadBytes)
+	wsEventCount := nullInt(log.WSEventCount)
+	wsQueueWaitMs := nullInt(log.WSQueueWaitMs)
 	userAgent := nullString(log.UserAgent)
 	ipAddress := nullString(log.IPAddress)
 	imageSize := nullString(log.ImageSize)
@@ -1399,6 +1459,12 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.OpenAIWSMode,
 			duration,
 			firstToken,
+			wsConnReused,
+			wsPreflightFailCount,
+			wsConnPickMs,
+			wsPayloadBytes,
+			wsEventCount,
+			wsQueueWaitMs,
 			userAgent,
 			ipAddress,
 			log.ImageCount,
@@ -2221,6 +2287,134 @@ func (r *usageLogRepository) GetAccountWindowStatsBatch(ctx context.Context, acc
 		}
 	}
 	return result, nil
+}
+
+// GetAccountPerformanceStatsBatch 批量获取账号在窗口内的请求耗时统计。
+func (r *usageLogRepository) GetAccountPerformanceStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*service.AccountPerformanceStats, error) {
+	result := make(map[int64]*service.AccountPerformanceStats, len(accountIDs))
+	if len(accountIDs) == 0 {
+		return result, nil
+	}
+
+	query := `
+		SELECT
+			account_id,
+			request_type,
+			COUNT(*) AS request_count,
+			AVG(duration_ms)::float8 AS avg_duration_ms,
+			percentile_cont(0.9) WITHIN GROUP (ORDER BY duration_ms)::float8 AS p90_duration_ms,
+			AVG(first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL)::float8 AS avg_first_token_ms,
+			percentile_cont(0.9) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL)::float8 AS p90_first_token_ms,
+			COUNT(first_token_ms) AS requests_with_first_token_ms,
+			AVG(ws_conn_pick_ms) FILTER (WHERE ws_conn_pick_ms IS NOT NULL)::float8 AS avg_ws_conn_pick_ms,
+			percentile_cont(0.9) WITHIN GROUP (ORDER BY ws_conn_pick_ms) FILTER (WHERE ws_conn_pick_ms IS NOT NULL)::float8 AS p90_ws_conn_pick_ms,
+			COALESCE(SUM(ws_preflight_fail_count), 0)::bigint AS ws_preflight_fail_count,
+			COUNT(*) FILTER (WHERE ws_conn_reused IS TRUE)::bigint AS ws_conn_reused_count,
+			CASE
+				WHEN COUNT(ws_conn_reused) = 0 THEN NULL
+				ELSE (COUNT(*) FILTER (WHERE ws_conn_reused IS TRUE))::float8 / COUNT(ws_conn_reused)::float8
+			END AS ws_conn_reused_rate,
+			AVG(ws_payload_bytes) FILTER (WHERE ws_payload_bytes IS NOT NULL)::float8 AS avg_ws_payload_bytes,
+			AVG(ws_event_count) FILTER (WHERE ws_event_count IS NOT NULL)::float8 AS avg_ws_event_count,
+			AVG(ws_queue_wait_ms) FILTER (WHERE ws_queue_wait_ms IS NOT NULL)::float8 AS avg_ws_queue_wait_ms
+		FROM usage_logs
+		WHERE account_id = ANY($1)
+			AND created_at >= $2
+			AND duration_ms IS NOT NULL
+			AND request_type IN ($3, $4)
+		GROUP BY account_id, request_type
+	`
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(accountIDs), startTime, int16(service.RequestTypeStream), int16(service.RequestTypeWSV2))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var (
+			accountID                int64
+			requestType              int16
+			stat                     service.AccountRequestTypePerformanceStats
+			avgDuration              sql.NullFloat64
+			p90Duration              sql.NullFloat64
+			avgFirstToken            sql.NullFloat64
+			p90FirstToken            sql.NullFloat64
+			requestsWithFirstTokenMs int64
+			avgWSConnPickMs          sql.NullFloat64
+			p90WSConnPickMs          sql.NullFloat64
+			wsPreflightFailCount     int64
+			wsConnReusedCount        int64
+			wsConnReusedRate         sql.NullFloat64
+			avgWSPayloadBytes        sql.NullFloat64
+			avgWSEventCount          sql.NullFloat64
+			avgWSQueueWaitMs         sql.NullFloat64
+		)
+		if err := rows.Scan(
+			&accountID,
+			&requestType,
+			&stat.RequestCount,
+			&avgDuration,
+			&p90Duration,
+			&avgFirstToken,
+			&p90FirstToken,
+			&requestsWithFirstTokenMs,
+			&avgWSConnPickMs,
+			&p90WSConnPickMs,
+			&wsPreflightFailCount,
+			&wsConnReusedCount,
+			&wsConnReusedRate,
+			&avgWSPayloadBytes,
+			&avgWSEventCount,
+			&avgWSQueueWaitMs,
+		); err != nil {
+			return nil, err
+		}
+		stat.RequestType = service.RequestTypeFromInt16(requestType).String()
+		stat.AvgDurationMs = nullableUsageLogFloat64Ptr(avgDuration)
+		stat.P90DurationMs = nullableUsageLogFloat64Ptr(p90Duration)
+		stat.AvgFirstTokenMs = nullableUsageLogFloat64Ptr(avgFirstToken)
+		stat.P90FirstTokenMs = nullableUsageLogFloat64Ptr(p90FirstToken)
+		stat.RequestsWithFirstTokenMs = requestsWithFirstTokenMs
+		stat.AvgWSConnPickMs = nullableUsageLogFloat64Ptr(avgWSConnPickMs)
+		stat.P90WSConnPickMs = nullableUsageLogFloat64Ptr(p90WSConnPickMs)
+		stat.WSPreflightFailCount = wsPreflightFailCount
+		stat.WSConnReusedCount = wsConnReusedCount
+		stat.WSConnReusedRate = nullableUsageLogFloat64Ptr(wsConnReusedRate)
+		stat.AvgWSPayloadBytes = nullableUsageLogFloat64Ptr(avgWSPayloadBytes)
+		stat.AvgWSEventCount = nullableUsageLogFloat64Ptr(avgWSEventCount)
+		stat.AvgWSQueueWaitMs = nullableUsageLogFloat64Ptr(avgWSQueueWaitMs)
+
+		accountStats := result[accountID]
+		if accountStats == nil {
+			accountStats = &service.AccountPerformanceStats{
+				AccountID: accountID,
+				Stats:     []service.AccountRequestTypePerformanceStats{},
+			}
+			result[accountID] = accountStats
+		}
+		accountStats.Stats = append(accountStats.Stats, stat)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, accountID := range accountIDs {
+		if _, ok := result[accountID]; !ok {
+			result[accountID] = &service.AccountPerformanceStats{
+				AccountID: accountID,
+				Stats:     []service.AccountRequestTypePerformanceStats{},
+			}
+		}
+	}
+	return result, nil
+}
+
+func nullableUsageLogFloat64Ptr(value sql.NullFloat64) *float64 {
+	if !value.Valid {
+		return nil
+	}
+	v := value.Float64
+	return &v
 }
 
 // GetGeminiUsageTotalsBatch 批量聚合 Gemini 账号在窗口内的 Pro/Flash 请求与用量。
@@ -3396,14 +3590,7 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		query += fmt.Sprintf(" AND ul.account_id = $%d", len(args)+1)
 		args = append(args, dim.AccountID)
 	}
-	if dim.RequestType != nil {
-		query += fmt.Sprintf(" AND ul.request_type = $%d", len(args)+1)
-		args = append(args, *dim.RequestType)
-	}
-	if dim.Stream != nil {
-		query += fmt.Sprintf(" AND ul.stream = $%d", len(args)+1)
-		args = append(args, *dim.Stream)
-	}
+	query, args = appendRequestTypeOrStreamQueryFilter(query, args, dim.RequestType, dim.Stream)
 	if dim.BillingType != nil {
 		query += fmt.Sprintf(" AND ul.billing_type = $%d", len(args)+1)
 		args = append(args, *dim.BillingType)
@@ -4337,6 +4524,12 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		openaiWSMode          bool
 		durationMs            sql.NullInt64
 		firstTokenMs          sql.NullInt64
+		wsConnReused          sql.NullBool
+		wsPreflightFailCount  sql.NullInt64
+		wsConnPickMs          sql.NullInt64
+		wsPayloadBytes        sql.NullInt64
+		wsEventCount          sql.NullInt64
+		wsQueueWaitMs         sql.NullInt64
 		userAgent             sql.NullString
 		ipAddress             sql.NullString
 		imageCount            int
@@ -4391,6 +4584,12 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&openaiWSMode,
 		&durationMs,
 		&firstTokenMs,
+		&wsConnReused,
+		&wsPreflightFailCount,
+		&wsConnPickMs,
+		&wsPayloadBytes,
+		&wsEventCount,
+		&wsQueueWaitMs,
 		&userAgent,
 		&ipAddress,
 		&imageCount,
@@ -4467,6 +4666,30 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	if firstTokenMs.Valid {
 		value := int(firstTokenMs.Int64)
 		log.FirstTokenMs = &value
+	}
+	if wsConnReused.Valid {
+		value := wsConnReused.Bool
+		log.WSConnReused = &value
+	}
+	if wsPreflightFailCount.Valid {
+		value := int(wsPreflightFailCount.Int64)
+		log.WSPreflightFailCount = &value
+	}
+	if wsConnPickMs.Valid {
+		value := int(wsConnPickMs.Int64)
+		log.WSConnPickMs = &value
+	}
+	if wsPayloadBytes.Valid {
+		value := wsPayloadBytes.Int64
+		log.WSPayloadBytes = &value
+	}
+	if wsEventCount.Valid {
+		value := int(wsEventCount.Int64)
+		log.WSEventCount = &value
+	}
+	if wsQueueWaitMs.Valid {
+		value := int(wsQueueWaitMs.Int64)
+		log.WSQueueWaitMs = &value
 	}
 	if userAgent.Valid {
 		log.UserAgent = &userAgent.String
@@ -4689,6 +4912,13 @@ func nullInt(v *int) sql.NullInt64 {
 		return sql.NullInt64{}
 	}
 	return sql.NullInt64{Int64: int64(*v), Valid: true}
+}
+
+func nullBool(v *bool) sql.NullBool {
+	if v == nil {
+		return sql.NullBool{}
+	}
+	return sql.NullBool{Bool: *v, Valid: true}
 }
 
 func nullFloat64Ptr(v sql.NullFloat64) *float64 {
