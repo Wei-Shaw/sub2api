@@ -516,9 +516,8 @@ const currentError = computed(() => {
 const isKiroImportMode = computed(() => isKiro.value && kiroAccountType.value === 'import')
 
 const isManualInputMethod = computed(() => {
-  return isOpenAILike.value || isGemini.value || isKiro.value || isAntigravity.value || oauthFlowRef.value?.inputMethod === 'manual'
-  // OpenAI/Gemini/Antigravity always use manual input (no cookie auth option)
-  return isOpenAILike.value || isGemini.value || isAntigravity.value || isGrok.value || oauthFlowRef.value?.inputMethod === 'manual'
+  // OpenAI/Gemini/Kiro/Antigravity/Grok always use manual input (no cookie auth option)
+  return isOpenAILike.value || isGemini.value || isKiro.value || isAntigravity.value || isGrok.value || oauthFlowRef.value?.inputMethod === 'manual'
 })
 
 const canExchangeCode = computed(() => {
