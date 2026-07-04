@@ -58,6 +58,12 @@ describe('useModelWhitelist', () => {
     expect(models.indexOf('gemini-2.5-flash-image')).toBeLessThan(models.indexOf('gemini-2.5-flash-lite'))
   REDACTED)
 
+  it('antigravity 模型列表包含 Gemini 3.1 Pro 通用别名', () => {
+    const models = getModelsByPlatform('antigravity')
+
+    expect(models).toContain('gemini-3.1-pro')
+  REDACTED)
+
   it('whitelist 模式会忽略通配符条目', () => {
     const mapping = buildModelMappingObject('whitelist', ['claude-*', 'gemini-3.1-flash-image'], [])
     expect(mapping).toEqual({
