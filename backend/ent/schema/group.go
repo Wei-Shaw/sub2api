@@ -45,6 +45,22 @@ func (Group) Fields() []ent.Field {
 		field.Float("rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0),
+		// 高峰时段倍率（added by migration 158）
+		field.Bool("peak_rate_enabled").
+			Default(false).
+			Comment("是否启用高峰时段倍率"),
+		field.String("peak_start").
+			MaxLen(5).
+			Default("").
+			Comment("高峰开始时间 HH:MM（含），如 14:00；空表示未配置；不支持跨天"),
+		field.String("peak_end").
+			MaxLen(5).
+			Default("").
+			Comment("高峰结束时间 HH:MM（不含），必须大于 peak_start；不支持跨天，如 22:00-02:00"),
+		field.Float("peak_rate_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0).
+			Comment("高峰时段叠加倍率，仅在 peak_rate_enabled 且处于 [peak_start, peak_end) 时乘入文本倍率"),
 		field.Bool("is_exclusive").
 			Default(false),
 		field.String("status").
@@ -74,6 +90,16 @@ func (Group) Fields() []ent.Field {
 			Default(30),
 
 		// 图片生成计费配置（antigravity 和 gemini 平台使用）
+		field.Bool("allow_image_generation").
+			Default(false).
+			Comment("是否允许该分组使用图片生成能力"),
+		field.Bool("image_rate_independent").
+			Default(false).
+			Comment("图片生成是否使用独立倍率；false 表示共享分组有效倍率"),
+		field.Float("image_rate_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0).
+			Comment("图片生成独立倍率，仅 image_rate_independent=true 时生效"),
 		field.Float("image_price_1k").
 			Optional().
 			Nillable().
@@ -145,6 +171,10 @@ func (Group) Fields() []ent.Field {
 			Default(domain.OpenAIMessagesDispatchModelConfig{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("OpenAI Messages 调度模型配置：按 Claude 系列/精确模型映射到目标 GPT 模型"),
+		field.JSON("models_list_config", domain.GroupModelsListConfig{}).
+			Default(domain.GroupModelsListConfig{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("自定义 /v1/models 展示列表配置；仅影响模型列表响应，不影响调度"),
 
 		// 分组级每分钟请求数上限（0 = 不限制）。设置后优先于用户级兜底生效。
 		field.Int("rpm_limit").

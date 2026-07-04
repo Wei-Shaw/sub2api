@@ -70,6 +70,11 @@ func Name(v string) predicate.ChannelMonitorRequestTemplate {
 	return predicate.ChannelMonitorRequestTemplate(sql.FieldEQ(FieldName, v))
 }
 
+// APIMode applies equality check predicate on the "api_mode" field. It's identical to APIModeEQ.
+func APIMode(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldEQ(FieldAPIMode, v))
+}
+
 // Description applies equality check predicate on the "description" field. It's identical to DescriptionEQ.
 func Description(v string) predicate.ChannelMonitorRequestTemplate {
 	return predicate.ChannelMonitorRequestTemplate(sql.FieldEQ(FieldDescription, v))
@@ -243,6 +248,71 @@ func ProviderIn(vs ...Provider) predicate.ChannelMonitorRequestTemplate {
 // ProviderNotIn applies the NotIn predicate on the "provider" field.
 func ProviderNotIn(vs ...Provider) predicate.ChannelMonitorRequestTemplate {
 	return predicate.ChannelMonitorRequestTemplate(sql.FieldNotIn(FieldProvider, vs...))
+}
+
+// APIModeEQ applies the EQ predicate on the "api_mode" field.
+func APIModeEQ(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldEQ(FieldAPIMode, v))
+}
+
+// APIModeNEQ applies the NEQ predicate on the "api_mode" field.
+func APIModeNEQ(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldNEQ(FieldAPIMode, v))
+}
+
+// APIModeIn applies the In predicate on the "api_mode" field.
+func APIModeIn(vs ...string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldIn(FieldAPIMode, vs...))
+}
+
+// APIModeNotIn applies the NotIn predicate on the "api_mode" field.
+func APIModeNotIn(vs ...string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldNotIn(FieldAPIMode, vs...))
+}
+
+// APIModeGT applies the GT predicate on the "api_mode" field.
+func APIModeGT(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldGT(FieldAPIMode, v))
+}
+
+// APIModeGTE applies the GTE predicate on the "api_mode" field.
+func APIModeGTE(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldGTE(FieldAPIMode, v))
+}
+
+// APIModeLT applies the LT predicate on the "api_mode" field.
+func APIModeLT(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldLT(FieldAPIMode, v))
+}
+
+// APIModeLTE applies the LTE predicate on the "api_mode" field.
+func APIModeLTE(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldLTE(FieldAPIMode, v))
+}
+
+// APIModeContains applies the Contains predicate on the "api_mode" field.
+func APIModeContains(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldContains(FieldAPIMode, v))
+}
+
+// APIModeHasPrefix applies the HasPrefix predicate on the "api_mode" field.
+func APIModeHasPrefix(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldHasPrefix(FieldAPIMode, v))
+}
+
+// APIModeHasSuffix applies the HasSuffix predicate on the "api_mode" field.
+func APIModeHasSuffix(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldHasSuffix(FieldAPIMode, v))
+}
+
+// APIModeEqualFold applies the EqualFold predicate on the "api_mode" field.
+func APIModeEqualFold(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldEqualFold(FieldAPIMode, v))
+}
+
+// APIModeContainsFold applies the ContainsFold predicate on the "api_mode" field.
+func APIModeContainsFold(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldContainsFold(FieldAPIMode, v))
 }
 
 // DescriptionEQ applies the EQ predicate on the "description" field.

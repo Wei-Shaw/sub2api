@@ -80,6 +80,7 @@ type OpenAITokenProvider struct {
 	accountRepo        AccountRepository
 	tokenCache         OpenAITokenCache
 	openAIOAuthService *OpenAIOAuthService
+	runtimeBlocker     AccountRuntimeBlocker
 	metrics            *openAITokenRuntimeMetricsStore
 	refreshAPI         *OAuthRefreshAPI
 	executor           OAuthRefreshExecutor
@@ -109,6 +110,10 @@ func (p *OpenAITokenProvider) SetRefreshAPI(api *OAuthRefreshAPI, executor OAuth
 // SetRefreshPolicy injects caller-side refresh policy.
 func (p *OpenAITokenProvider) SetRefreshPolicy(policy ProviderRefreshPolicy) {
 	p.refreshPolicy = policy
+}
+
+func (p *OpenAITokenProvider) SetAccountRuntimeBlocker(blocker AccountRuntimeBlocker) {
+	p.runtimeBlocker = blocker
 }
 
 func (p *OpenAITokenProvider) SnapshotRuntimeMetrics() OpenAITokenRuntimeMetrics {
@@ -151,7 +156,17 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 
 	// 2) Refresh if needed (pre-expiry skew).
 	expiresAt := account.GetCredentialAsTime("expires_at")
-	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew
+	needsRefresh := !account.IsOpenAIPersonalAccessToken() && (expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew)
+	if needsRefresh && strings.TrimSpace(account.GetOpenAIRefreshToken()) == "" {
+		if expiresAt != nil && !time.Now().Before(*expiresAt) {
+			const reason = "openai access_token expired and refresh_token is missing"
+			// 永久故障：缺失 refresh_token 时账号无法自愈，必须立即从调度池剔除，
+			// 否则会被反复选中、每次都在 token 阶段直接返回错误，对用户呈现持续 502。
+			p.disableAccountMissingRefreshToken(account, reason)
+			return "", errors.New(reason)
+		}
+		needsRefresh = false
+	}
 	refreshFailed := false
 
 	if needsRefresh && p.refreshAPI != nil && p.executor != nil {
@@ -253,6 +268,42 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	}
 
 	return accessToken, nil
+}
+
+// disableAccountMissingRefreshToken 在请求路径上发现 OpenAI OAuth 账号
+// 凭证已过期且 refresh_token 缺失时，将账号标记为 error 状态。
+// 这是一种永久性故障：仅靠后续请求或 TokenRefreshService 不会自愈
+// （NeedsRefresh 也会因 refresh_token 为空直接跳过），
+// 必须主动剔除以避免账号被持续选中导致用户端反复 502。
+// 使用 background context 是因为请求 context 可能很快结束。
+func (p *OpenAITokenProvider) disableAccountMissingRefreshToken(account *Account, reason string) {
+	if p == nil || p.accountRepo == nil || account == nil {
+		return
+	}
+	if p.runtimeBlocker != nil {
+		p.runtimeBlocker.BlockAccountScheduling(account, time.Time{}, "missing_refresh_token")
+	}
+	bgCtx := context.Background()
+	if err := p.accountRepo.SetError(bgCtx, account.ID, reason); err != nil {
+		slog.Warn("openai_token_provider.set_error_failed",
+			"account_id", account.ID,
+			"error", err,
+		)
+		return
+	}
+	if p.tokenCache != nil {
+		cacheKey := OpenAITokenCacheKey(account)
+		if err := p.tokenCache.DeleteAccessToken(bgCtx, cacheKey); err != nil {
+			slog.Warn("openai_token_provider.cache_delete_failed",
+				"account_id", account.ID,
+				"error", err,
+			)
+		}
+	}
+	slog.Warn("openai_token_provider.account_disabled_missing_refresh_token",
+		"account_id", account.ID,
+		"reason", reason,
+	)
 }
 
 func (p *OpenAITokenProvider) waitForTokenAfterLockRace(ctx context.Context, cacheKey string) (string, error) {

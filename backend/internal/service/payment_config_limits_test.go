@@ -6,6 +6,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -197,6 +198,61 @@ func TestPcGroupByPaymentType(t *testing.T) {
 			t.Fatalf("stripe with empty types should still be in stripe group, got %v", groups)
 		}
 	})
+}
+
+func TestPcAggregateMethodCurrency(t *testing.T) {
+	t.Parallel()
+
+	svc := &PaymentConfigService{}
+	stripe := makeInstance(1, payment.TypeStripe, payment.TypeStripe, "")
+	stripe.Config = `{"currency":"hkd"}`
+	currency, ok := svc.pcAggregateMethodCurrency([]*dbent.PaymentProviderInstance{stripe})
+	require.True(t, ok)
+	require.Equal(t, "HKD", currency)
+
+	airwallex := makeInstance(2, payment.TypeAirwallex, payment.TypeAirwallex, "")
+	airwallex.Config = `{"currency":"usd"}`
+	currency, ok = svc.pcAggregateMethodCurrency([]*dbent.PaymentProviderInstance{stripe, airwallex})
+	require.False(t, ok)
+	require.Empty(t, currency)
+
+	easypay := makeInstance(3, payment.TypeEasyPay, payment.TypeAlipay, "")
+	currency, ok = svc.pcAggregateMethodCurrency([]*dbent.PaymentProviderInstance{easypay})
+	require.True(t, ok)
+	require.Equal(t, payment.DefaultPaymentCurrency, currency)
+}
+
+func TestGetAvailableMethodLimitsOmitsMixedCurrencyMethod(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeStripe).
+		SetName("Stripe HKD").
+		SetConfig(`{"currency":"HKD"}`).
+		SetSupportedTypes("card,link").
+		SetEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeStripe).
+		SetName("Stripe USD").
+		SetConfig(`{"currency":"USD"}`).
+		SetSupportedTypes("card,link").
+		SetEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentConfigService{entClient: client}
+	resp, err := svc.GetAvailableMethodLimits(ctx)
+	require.NoError(t, err)
+	require.NotContains(t, resp.Methods, payment.TypeStripe)
+
+	_, err = svc.ValidateMethodCurrencyConsistency(ctx, payment.TypeStripe)
+	require.Error(t, err)
+	appErr := infraerrors.FromError(err)
+	require.Equal(t, "PAYMENT_METHOD_CURRENCY_CONFLICT", appErr.Reason)
 }
 
 func TestPcComputeGlobalRange(t *testing.T) {

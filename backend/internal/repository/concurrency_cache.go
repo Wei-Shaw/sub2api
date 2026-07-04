@@ -44,6 +44,9 @@ var (
 	// ARGV[2] = TTL（秒）
 	// ARGV[3] = requestID
 	acquireScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local maxConcurrency = tonumber(ARGV[1])
 		local ttl = tonumber(ARGV[2])
@@ -81,6 +84,9 @@ var (
 	// KEYS[1] = 有序集合键
 	// ARGV[1] = TTL（秒）
 	getCountScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local ttl = tonumber(ARGV[1])
 
@@ -151,6 +157,9 @@ var (
 	// KEYS[1] = 有序集合键
 	// ARGV[1] = TTL（秒）
 	cleanupExpiredSlotsScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local ttl = tonumber(ARGV[1])
 		local timeResult = redis.call('TIME')
@@ -163,6 +172,29 @@ var (
 			redis.call('EXPIRE', key, ttl)
 		end
 		return 1
+	`)
+
+	// cleanupExpiredSlotKeysScript 批量清理实际存在的账号槽位键，避免后台任务从数据库加载全量账号。
+	// KEYS = 有序集合键列表，ARGV[1] = TTL（秒）。
+	cleanupExpiredSlotKeysScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
+		local ttl = tonumber(ARGV[1])
+		local timeResult = redis.call('TIME')
+		local now = tonumber(timeResult[1])
+		local expireBefore = now - ttl
+		local removed = 0
+		for i = 1, #KEYS do
+			local key = KEYS[i]
+			removed = removed + redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
+			if redis.call('ZCARD', key) == 0 then
+				redis.call('DEL', key)
+			else
+				redis.call('EXPIRE', key, ttl)
+			end
+		end
+		return removed
 	`)
 
 	// startupCleanupScript 清理非当前进程前缀的槽位成员。
@@ -494,6 +526,10 @@ func (c *concurrencyCache) CleanupExpiredAccountSlots(ctx context.Context, accou
 	return err
 }
 
+func (c *concurrencyCache) CleanupExpiredAccountSlotKeys(ctx context.Context) error {
+	return c.cleanupExpiredSlotKeysByPattern(ctx, accountSlotKeyPrefix+"*")
+}
+
 func (c *concurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error {
 	if activeRequestPrefix == "" {
 		return nil
@@ -515,6 +551,29 @@ func (c *concurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeR
 		}
 	}
 
+	return nil
+}
+
+// cleanupExpiredSlotKeysByPattern 扫描实际存在的账号槽位键并批量清理过期成员。
+func (c *concurrencyCache) cleanupExpiredSlotKeysByPattern(ctx context.Context, pattern string) error {
+	const scanCount = 200
+	var cursor uint64
+	for {
+		keys, nextCursor, err := c.rdb.Scan(ctx, cursor, pattern, scanCount).Result()
+		if err != nil {
+			return fmt.Errorf("scan %s: %w", pattern, err)
+		}
+		if len(keys) > 0 {
+			_, err := cleanupExpiredSlotKeysScript.Run(ctx, c.rdb, keys, c.slotTTLSeconds).Result()
+			if err != nil {
+				return fmt.Errorf("cleanup expired slots %s: %w", pattern, err)
+			}
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
 	return nil
 }
 

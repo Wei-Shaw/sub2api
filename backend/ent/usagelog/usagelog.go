@@ -84,6 +84,14 @@ const (
 	FieldImageCount = "image_count"
 	// FieldImageSize holds the string denoting the image_size field in the database.
 	FieldImageSize = "image_size"
+	// FieldImageInputSize holds the string denoting the image_input_size field in the database.
+	FieldImageInputSize = "image_input_size"
+	// FieldImageOutputSize holds the string denoting the image_output_size field in the database.
+	FieldImageOutputSize = "image_output_size"
+	// FieldImageSizeSource holds the string denoting the image_size_source field in the database.
+	FieldImageSizeSource = "image_size_source"
+	// FieldImageSizeBreakdown holds the string denoting the image_size_breakdown field in the database.
+	FieldImageSizeBreakdown = "image_size_breakdown"
 	// FieldCacheTTLOverridden holds the string denoting the cache_ttl_overridden field in the database.
 	FieldCacheTTLOverridden = "cache_ttl_overridden"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -175,6 +183,10 @@ var Columns = []string{
 	FieldIPAddress,
 	FieldImageCount,
 	FieldImageSize,
+	FieldImageInputSize,
+	FieldImageOutputSize,
+	FieldImageSizeSource,
+	FieldImageSizeBreakdown,
 	FieldCacheTTLOverridden,
 	FieldCreatedAt,
 }
@@ -242,6 +254,12 @@ var (
 	DefaultImageCount int
 	// ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
 	ImageSizeValidator func(string) error
+	// ImageInputSizeValidator is a validator for the "image_input_size" field. It is called by the builders before save.
+	ImageInputSizeValidator func(string) error
+	// ImageOutputSizeValidator is a validator for the "image_output_size" field. It is called by the builders before save.
+	ImageOutputSizeValidator func(string) error
+	// ImageSizeSourceValidator is a validator for the "image_size_source" field. It is called by the builders before save.
+	ImageSizeSourceValidator func(string) error
 	// DefaultCacheTTLOverridden holds the default value on creation for the "cache_ttl_overridden" field.
 	DefaultCacheTTLOverridden bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -429,6 +447,21 @@ func ByImageCount(opts ...sql.OrderTermOption) OrderOption {
 // ByImageSize orders the results by the image_size field.
 func ByImageSize(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImageSize, opts...).ToFunc()
+}
+
+// ByImageInputSize orders the results by the image_input_size field.
+func ByImageInputSize(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageInputSize, opts...).ToFunc()
+}
+
+// ByImageOutputSize orders the results by the image_output_size field.
+func ByImageOutputSize(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageOutputSize, opts...).ToFunc()
+}
+
+// ByImageSizeSource orders the results by the image_size_source field.
+func ByImageSizeSource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageSizeSource, opts...).ToFunc()
 }
 
 // ByCacheTTLOverridden orders the results by the cache_ttl_overridden field.

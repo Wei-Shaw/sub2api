@@ -11,13 +11,22 @@ func TestResolveOpenAIForwardModel(t *testing.T) {
 		expectedModel      string
 	}{
 		{
-			name: "falls back to group default when account has no mapping",
+			name: "uses messages dispatch default for claude model",
 			account: &Account{
 				Credentials: map[string]any{},
 			},
 			requestedModel:     "claude-opus-4-6",
 			defaultMappedModel: "gpt-4o-mini",
 			expectedModel:      "gpt-4o-mini",
+		},
+		{
+			name: "does not fall back to group default for invalid gpt model",
+			account: &Account{
+				Credentials: map[string]any{},
+			},
+			requestedModel:     "gpt6",
+			defaultMappedModel: "gpt-5.4",
+			expectedModel:      "gpt6",
 		},
 		{
 			name: "preserves explicit gpt-5.4 instead of group default",
@@ -86,6 +95,24 @@ func TestResolveOpenAIForwardModel(t *testing.T) {
 			expectedModel:      "gpt-5.5",
 		},
 		{
+			name: "preserves gpt-5.5-pro instead of group default",
+			account: &Account{
+				Credentials: map[string]any{},
+			},
+			requestedModel:     "gpt-5.5-pro",
+			defaultMappedModel: "gpt-5.5",
+			expectedModel:      "gpt-5.5-pro",
+		},
+		{
+			name: "preserves compact-spelled gpt5.5 instead of group default",
+			account: &Account{
+				Credentials: map[string]any{},
+			},
+			requestedModel:     "gpt5.5",
+			defaultMappedModel: "gpt-5.4",
+			expectedModel:      "gpt5.5",
+		},
+		{
 			name: "preserves openai namespaced gpt-5.5 instead of group default",
 			account: &Account{
 				Credentials: map[string]any{},
@@ -119,14 +146,14 @@ func TestResolveOpenAIForwardModel_PreventsClaudeModelFromFallingBackToGpt54(t *
 		Credentials: map[string]any{},
 	}
 
-	withoutDefault := normalizeCodexModel(resolveOpenAIForwardModel(account, "claude-opus-4-6", ""))
-	if withoutDefault != "gpt-5.4" {
-		t.Fatalf("normalizeCodexModel(...) = %q, want %q", withoutDefault, "gpt-5.4")
+	withoutDefault := resolveOpenAIForwardModel(account, "claude-opus-4-6", "")
+	if withoutDefault != "claude-opus-4-6" {
+		t.Fatalf("resolveOpenAIForwardModel(...) = %q, want %q", withoutDefault, "claude-opus-4-6")
 	}
 
-	withDefault := normalizeCodexModel(resolveOpenAIForwardModel(account, "claude-opus-4-6", "gpt-5.4"))
+	withDefault := resolveOpenAIForwardModel(account, "claude-opus-4-6", "gpt-5.4")
 	if withDefault != "gpt-5.4" {
-		t.Fatalf("normalizeCodexModel(...) = %q, want %q", withDefault, "gpt-5.4")
+		t.Fatalf("resolveOpenAIForwardModel(...) = %q, want %q", withDefault, "gpt-5.4")
 	}
 }
 
@@ -205,6 +232,10 @@ func TestNormalizeCodexModel(t *testing.T) {
 		"gpt-5.3-codex-spark-xhigh": "gpt-5.3-codex-spark",
 		"gpt-5.3":                   "gpt-5.3-codex",
 		"gpt-image-2":               "gpt-image-2",
+		"gpt-5.4-nano":              "gpt-5.4-nano",
+		"gpt-5.4-nano-high":         "gpt-5.4-nano",
+		"gpt6":                      "gpt6",
+		"claude-opus-4-6":           "claude-opus-4-6",
 	}
 
 	for input, expected := range cases {
@@ -222,10 +253,34 @@ func TestNormalizeOpenAIModelForUpstream(t *testing.T) {
 		want    string
 	}{
 		{
-			name:    "oauth keeps codex normalization behavior",
+			name:    "oauth preserves unknown non codex model",
 			account: &Account{Type: AccountTypeOAuth},
 			model:   "gemini-3-flash-preview",
+			want:    "gemini-3-flash-preview",
+		},
+		{
+			name:    "oauth preserves invalid gpt model",
+			account: &Account{Type: AccountTypeOAuth},
+			model:   "gpt6",
+			want:    "gpt6",
+		},
+		{
+			name:    "oauth normalizes known codex alias",
+			account: &Account{Type: AccountTypeOAuth},
+			model:   "gpt-5.4-high",
 			want:    "gpt-5.4",
+		},
+		{
+			name:    "oauth preserves GPT-5.5 Pro model",
+			account: &Account{Type: AccountTypeOAuth},
+			model:   "openai/gpt-5.5-pro",
+			want:    "gpt-5.5-pro",
+		},
+		{
+			name:    "oauth preserves codex auto review model",
+			account: &Account{Type: AccountTypeOAuth},
+			model:   "codex-auto-review",
+			want:    "codex-auto-review",
 		},
 		{
 			name:    "apikey preserves custom compatible model",
@@ -247,5 +302,33 @@ func TestNormalizeOpenAIModelForUpstream(t *testing.T) {
 				t.Fatalf("normalizeOpenAIModelForUpstream(...) = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestUsageBillingModelCandidatesPreserveCodexAutoReviewModel(t *testing.T) {
+	candidates := usageBillingModelCandidates("codex-auto-review")
+
+	expected := []string{"codex-auto-review"}
+	if len(candidates) != len(expected) {
+		t.Fatalf("usageBillingModelCandidates(codex-auto-review) = %#v, want %#v", candidates, expected)
+	}
+	for i := range expected {
+		if candidates[i] != expected[i] {
+			t.Fatalf("usageBillingModelCandidates(codex-auto-review) = %#v, want %#v", candidates, expected)
+		}
+	}
+}
+
+func TestUsageBillingModelCandidatesPreserveGPT55ProModel(t *testing.T) {
+	candidates := usageBillingModelCandidates("openai/gpt-5.5-pro")
+
+	expected := []string{"openai/gpt-5.5-pro", "gpt-5.5-pro"}
+	if len(candidates) != len(expected) {
+		t.Fatalf("usageBillingModelCandidates(openai/gpt-5.5-pro) = %#v, want %#v", candidates, expected)
+	}
+	for i := range expected {
+		if candidates[i] != expected[i] {
+			t.Fatalf("usageBillingModelCandidates(openai/gpt-5.5-pro) = %#v, want %#v", candidates, expected)
+		}
 	}
 }

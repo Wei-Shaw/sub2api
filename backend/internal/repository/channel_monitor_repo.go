@@ -37,6 +37,7 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 	builder := client.ChannelMonitor.Create().
 		SetName(m.Name).
 		SetProvider(channelmonitor.Provider(m.Provider)).
+		SetAPIMode(defaultAPIModeRepo(m.APIMode)).
 		SetEndpoint(m.Endpoint).
 		SetAPIKeyEncrypted(m.APIKey). // 调用方传入的已是密文
 		SetPrimaryModel(m.PrimaryModel).
@@ -44,6 +45,7 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 		SetGroupName(m.GroupName).
 		SetEnabled(m.Enabled).
 		SetIntervalSeconds(m.IntervalSeconds).
+		SetJitterSeconds(m.JitterSeconds).
 		SetCreatedBy(m.CreatedBy).
 		SetExtraHeaders(emptyHeadersIfNilRepo(m.ExtraHeaders)).
 		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode))
@@ -79,6 +81,7 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 	updater := client.ChannelMonitor.UpdateOneID(m.ID).
 		SetName(m.Name).
 		SetProvider(channelmonitor.Provider(m.Provider)).
+		SetAPIMode(defaultAPIModeRepo(m.APIMode)).
 		SetEndpoint(m.Endpoint).
 		SetAPIKeyEncrypted(m.APIKey).
 		SetPrimaryModel(m.PrimaryModel).
@@ -86,6 +89,7 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 		SetGroupName(m.GroupName).
 		SetEnabled(m.Enabled).
 		SetIntervalSeconds(m.IntervalSeconds).
+		SetJitterSeconds(m.JitterSeconds).
 		SetExtraHeaders(emptyHeadersIfNilRepo(m.ExtraHeaders)).
 		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode))
 	if m.TemplateID != nil {
@@ -708,6 +712,7 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 		ID:               row.ID,
 		Name:             row.Name,
 		Provider:         string(row.Provider),
+		APIMode:          defaultAPIModeRepo(row.APIMode),
 		Endpoint:         row.Endpoint,
 		APIKey:           row.APIKeyEncrypted, // 仍为密文，service 层负责解密
 		PrimaryModel:     row.PrimaryModel,
@@ -715,6 +720,7 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 		GroupName:        row.GroupName,
 		Enabled:          row.Enabled,
 		IntervalSeconds:  row.IntervalSeconds,
+		JitterSeconds:    row.JitterSeconds,
 		LastCheckedAt:    row.LastCheckedAt,
 		CreatedBy:        row.CreatedBy,
 		CreatedAt:        row.CreatedAt,
@@ -745,6 +751,13 @@ func defaultBodyModeRepo(mode string) string {
 		return "off"
 	}
 	return mode
+}
+
+func defaultAPIModeRepo(apiMode string) string {
+	if apiMode == "" {
+		return "chat_completions"
+	}
+	return apiMode
 }
 
 func emptySliceIfNil(in []string) []string {

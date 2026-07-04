@@ -58,7 +58,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9
 
@@ -115,7 +115,7 @@ jobs:
 
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.2'
+          go version | grep -q 'go1.26.4'
 
       # Docker setup for GoReleaser
       - name: Set up QEMU

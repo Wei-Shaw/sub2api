@@ -15,11 +15,23 @@ const (
 	MonitorBodyOverrideModeReplace = "replace"
 )
 
+// MonitorAPIMode 描述 OpenAI provider 的请求协议。
+//
+//   - chat_completions  OpenAI-compatible Chat Completions: /v1/chat/completions + messages
+//   - responses         OpenAI Responses API: /v1/responses + instructions/input
+//
+// 非 OpenAI provider 固定使用 chat_completions 作为占位默认值，避免为每个 provider 单独扩表。
+const (
+	MonitorAPIModeChatCompletions = "chat_completions"
+	MonitorAPIModeResponses       = "responses"
+)
+
 // ChannelMonitor 渠道监控配置（service 层模型，不直接暴露 ent 类型）。
 type ChannelMonitor struct {
 	ID              int64
 	Name            string
 	Provider        string
+	APIMode         string
 	Endpoint        string
 	APIKey          string // 解密后的明文 API Key（仅在 service 内部使用，handler 层不应直接序列化返回）
 	PrimaryModel    string
@@ -27,6 +39,7 @@ type ChannelMonitor struct {
 	GroupName       string
 	Enabled         bool
 	IntervalSeconds int
+	JitterSeconds   int // 每次调度 ± [0, jitter] 的随机偏移（秒），0 = 固定间隔
 	LastCheckedAt   *time.Time
 	CreatedBy       int64
 	CreatedAt       time.Time
@@ -56,6 +69,7 @@ type ChannelMonitorListParams struct {
 type ChannelMonitorCreateParams struct {
 	Name             string
 	Provider         string
+	APIMode          string
 	Endpoint         string
 	APIKey           string
 	PrimaryModel     string
@@ -63,6 +77,7 @@ type ChannelMonitorCreateParams struct {
 	GroupName        string
 	Enabled          bool
 	IntervalSeconds  int
+	JitterSeconds    int
 	CreatedBy        int64
 	TemplateID       *int64
 	ExtraHeaders     map[string]string
@@ -74,6 +89,7 @@ type ChannelMonitorCreateParams struct {
 type ChannelMonitorUpdateParams struct {
 	Name            *string
 	Provider        *string
+	APIMode         *string
 	Endpoint        *string
 	APIKey          *string // 空字符串表示不修改；非空字符串覆盖
 	PrimaryModel    *string
@@ -81,6 +97,7 @@ type ChannelMonitorUpdateParams struct {
 	GroupName       *string
 	Enabled         *bool
 	IntervalSeconds *int
+	JitterSeconds   *int
 	// 自定义快照字段：指针为 nil 表示不更新，非 nil 覆盖
 	// TemplateID *(*int64)：用 ** 表达三态：nil=不更新；&nil=清空；&&id=设为 id。
 	// 简化处理：用 ClearTemplate 显式标志 + TemplateID（普通指针）

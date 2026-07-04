@@ -66,6 +66,20 @@ func (_u *ChannelMonitorUpdate) SetNillableProvider(v *channelmonitor.Provider) 
 	return _u
 }
 
+// SetAPIMode sets the "api_mode" field.
+func (_u *ChannelMonitorUpdate) SetAPIMode(v string) *ChannelMonitorUpdate {
+	_u.mutation.SetAPIMode(v)
+	return _u
+}
+
+// SetNillableAPIMode sets the "api_mode" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableAPIMode(v *string) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetAPIMode(*v)
+	}
+	return _u
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (_u *ChannelMonitorUpdate) SetEndpoint(v string) *ChannelMonitorUpdate {
 	_u.mutation.SetEndpoint(v)
@@ -172,6 +186,27 @@ func (_u *ChannelMonitorUpdate) SetNillableIntervalSeconds(v *int) *ChannelMonit
 // AddIntervalSeconds adds value to the "interval_seconds" field.
 func (_u *ChannelMonitorUpdate) AddIntervalSeconds(v int) *ChannelMonitorUpdate {
 	_u.mutation.AddIntervalSeconds(v)
+	return _u
+}
+
+// SetJitterSeconds sets the "jitter_seconds" field.
+func (_u *ChannelMonitorUpdate) SetJitterSeconds(v int) *ChannelMonitorUpdate {
+	_u.mutation.ResetJitterSeconds()
+	_u.mutation.SetJitterSeconds(v)
+	return _u
+}
+
+// SetNillableJitterSeconds sets the "jitter_seconds" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableJitterSeconds(v *int) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetJitterSeconds(*v)
+	}
+	return _u
+}
+
+// AddJitterSeconds adds value to the "jitter_seconds" field.
+func (_u *ChannelMonitorUpdate) AddJitterSeconds(v int) *ChannelMonitorUpdate {
+	_u.mutation.AddJitterSeconds(v)
 	return _u
 }
 
@@ -418,6 +453,11 @@ func (_u *ChannelMonitorUpdate) check() error {
 			return &ValidationError{Name: "provider", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.provider": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.APIMode(); ok {
+		if err := channelmonitor.APIModeValidator(v); err != nil {
+			return &ValidationError{Name: "api_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.api_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Endpoint(); ok {
 		if err := channelmonitor.EndpointValidator(v); err != nil {
 			return &ValidationError{Name: "endpoint", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.endpoint": %w`, err)}
@@ -441,6 +481,11 @@ func (_u *ChannelMonitorUpdate) check() error {
 	if v, ok := _u.mutation.IntervalSeconds(); ok {
 		if err := channelmonitor.IntervalSecondsValidator(v); err != nil {
 			return &ValidationError{Name: "interval_seconds", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.interval_seconds": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.JitterSeconds(); ok {
+		if err := channelmonitor.JitterSecondsValidator(v); err != nil {
+			return &ValidationError{Name: "jitter_seconds", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.jitter_seconds": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.BodyOverrideMode(); ok {
@@ -471,6 +516,9 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.Provider(); ok {
 		_spec.SetField(channelmonitor.FieldProvider, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.APIMode(); ok {
+		_spec.SetField(channelmonitor.FieldAPIMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Endpoint(); ok {
 		_spec.SetField(channelmonitor.FieldEndpoint, field.TypeString, value)
@@ -503,6 +551,12 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.AddedIntervalSeconds(); ok {
 		_spec.AddField(channelmonitor.FieldIntervalSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.JitterSeconds(); ok {
+		_spec.SetField(channelmonitor.FieldJitterSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedJitterSeconds(); ok {
+		_spec.AddField(channelmonitor.FieldJitterSeconds, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.LastCheckedAt(); ok {
 		_spec.SetField(channelmonitor.FieldLastCheckedAt, field.TypeTime, value)
@@ -701,6 +755,20 @@ func (_u *ChannelMonitorUpdateOne) SetNillableProvider(v *channelmonitor.Provide
 	return _u
 }
 
+// SetAPIMode sets the "api_mode" field.
+func (_u *ChannelMonitorUpdateOne) SetAPIMode(v string) *ChannelMonitorUpdateOne {
+	_u.mutation.SetAPIMode(v)
+	return _u
+}
+
+// SetNillableAPIMode sets the "api_mode" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableAPIMode(v *string) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetAPIMode(*v)
+	}
+	return _u
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (_u *ChannelMonitorUpdateOne) SetEndpoint(v string) *ChannelMonitorUpdateOne {
 	_u.mutation.SetEndpoint(v)
@@ -807,6 +875,27 @@ func (_u *ChannelMonitorUpdateOne) SetNillableIntervalSeconds(v *int) *ChannelMo
 // AddIntervalSeconds adds value to the "interval_seconds" field.
 func (_u *ChannelMonitorUpdateOne) AddIntervalSeconds(v int) *ChannelMonitorUpdateOne {
 	_u.mutation.AddIntervalSeconds(v)
+	return _u
+}
+
+// SetJitterSeconds sets the "jitter_seconds" field.
+func (_u *ChannelMonitorUpdateOne) SetJitterSeconds(v int) *ChannelMonitorUpdateOne {
+	_u.mutation.ResetJitterSeconds()
+	_u.mutation.SetJitterSeconds(v)
+	return _u
+}
+
+// SetNillableJitterSeconds sets the "jitter_seconds" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableJitterSeconds(v *int) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetJitterSeconds(*v)
+	}
+	return _u
+}
+
+// AddJitterSeconds adds value to the "jitter_seconds" field.
+func (_u *ChannelMonitorUpdateOne) AddJitterSeconds(v int) *ChannelMonitorUpdateOne {
+	_u.mutation.AddJitterSeconds(v)
 	return _u
 }
 
@@ -1066,6 +1155,11 @@ func (_u *ChannelMonitorUpdateOne) check() error {
 			return &ValidationError{Name: "provider", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.provider": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.APIMode(); ok {
+		if err := channelmonitor.APIModeValidator(v); err != nil {
+			return &ValidationError{Name: "api_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.api_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Endpoint(); ok {
 		if err := channelmonitor.EndpointValidator(v); err != nil {
 			return &ValidationError{Name: "endpoint", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.endpoint": %w`, err)}
@@ -1089,6 +1183,11 @@ func (_u *ChannelMonitorUpdateOne) check() error {
 	if v, ok := _u.mutation.IntervalSeconds(); ok {
 		if err := channelmonitor.IntervalSecondsValidator(v); err != nil {
 			return &ValidationError{Name: "interval_seconds", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.interval_seconds": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.JitterSeconds(); ok {
+		if err := channelmonitor.JitterSecondsValidator(v); err != nil {
+			return &ValidationError{Name: "jitter_seconds", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.jitter_seconds": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.BodyOverrideMode(); ok {
@@ -1137,6 +1236,9 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 	if value, ok := _u.mutation.Provider(); ok {
 		_spec.SetField(channelmonitor.FieldProvider, field.TypeEnum, value)
 	}
+	if value, ok := _u.mutation.APIMode(); ok {
+		_spec.SetField(channelmonitor.FieldAPIMode, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.Endpoint(); ok {
 		_spec.SetField(channelmonitor.FieldEndpoint, field.TypeString, value)
 	}
@@ -1168,6 +1270,12 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 	}
 	if value, ok := _u.mutation.AddedIntervalSeconds(); ok {
 		_spec.AddField(channelmonitor.FieldIntervalSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.JitterSeconds(); ok {
+		_spec.SetField(channelmonitor.FieldJitterSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedJitterSeconds(); ok {
+		_spec.AddField(channelmonitor.FieldJitterSeconds, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.LastCheckedAt(); ok {
 		_spec.SetField(channelmonitor.FieldLastCheckedAt, field.TypeTime, value)

@@ -66,6 +66,30 @@ func TestCalculateProgress_DailyUsage(t *testing.T) {
 	assert.Equal(t, dailyStart, progress.Daily.WindowStart)
 }
 
+func TestCalculateProgress_DailyCardUsesExpiryAsDailyResetTime(t *testing.T) {
+	svc := newTestSubscriptionService()
+	startsAt := time.Now().Add(-12 * time.Hour)
+	dailyStart := time.Date(startsAt.Year(), startsAt.Month(), startsAt.Day(), 0, 0, 0, 0, startsAt.Location())
+	expiresAt := startsAt.Add(24 * time.Hour)
+
+	sub := &UserSubscription{
+		ID:               1,
+		StartsAt:         startsAt,
+		ExpiresAt:        expiresAt,
+		DailyUsageUSD:    3.0,
+		DailyWindowStart: ptrTime(dailyStart),
+	}
+	group := &Group{
+		Name:          "Daily",
+		DailyLimitUSD: ptrFloat64(10.0),
+	}
+
+	progress := svc.calculateProgress(sub, group)
+
+	require.NotNil(t, progress.Daily, "日卡有日限额和窗口时 Daily 不应为 nil")
+	assert.Equal(t, expiresAt, progress.Daily.ResetsAt, "日卡的一次性日额度结束时间应为订阅过期时间")
+}
+
 func TestCalculateProgress_WeeklyUsage(t *testing.T) {
 	svc := newTestSubscriptionService()
 	now := time.Now()

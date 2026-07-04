@@ -16,25 +16,8 @@ import (
 var ErrOpsDisabled = infraerrors.NotFound("OPS_DISABLED", "Ops monitoring is disabled")
 
 const (
-	opsMaxStoredRequestBodyBytes = 256 * 1024
-	opsMaxStoredErrorBodyBytes   = 20 * 1024
+	opsMaxStoredErrorBodyBytes = 20 * 1024
 )
-
-// PrepareOpsRequestBodyForQueue 在入队前对请求体执行脱敏与裁剪，返回可直接写入 OpsInsertErrorLogInput 的字段。
-// 该方法用于避免异步队列持有大块原始请求体，减少错误风暴下的内存放大风险。
-func PrepareOpsRequestBodyForQueue(raw []byte) (requestBodyJSON *string, truncated bool, requestBodyBytes *int) {
-	if len(raw) == 0 {
-		return nil, false, nil
-	}
-	sanitized, truncated, bytesLen := sanitizeAndTrimRequestBody(raw, opsMaxStoredRequestBodyBytes)
-	if sanitized != "" {
-		out := sanitized
-		requestBodyJSON = &out
-	}
-	n := bytesLen
-	requestBodyBytes = &n
-	return requestBodyJSON, truncated, requestBodyBytes
-}
 
 // OpsService provides ingestion and query APIs for the Ops monitoring module.
 type OpsService struct {
@@ -54,6 +37,39 @@ type OpsService struct {
 	geminiCompatService       *GeminiMessagesCompatService
 	antigravityGatewayService *AntigravityGatewayService
 	systemLogSink             *OpsSystemLogSink
+
+	// cleanupReloader 由 wire 在 OpsCleanupService 构造完成后通过 SetCleanupReloader 注入。
+	// 解耦避免 OpsService -> OpsCleanupService 的硬依赖（cleanup 也读 settings，会循环）。
+	cleanupReloader CleanupReloader
+
+	// quotaAutoPauseSink 由 wire 注入（通常是 SettingService.SetOpenAIQuotaAutoPauseSettings）。
+	// UpdateOpsAdvancedSettings 写入新配置后调用，把最新的 quota auto-pause 全局默认阈值
+	// 立即同步到调度热路径读取的内存缓存，避免下次请求才能感知新值。
+	quotaAutoPauseSink func(OpsOpenAIAccountQuotaAutoPauseSettings)
+}
+
+// CleanupReloader 由 OpsCleanupService 实现。
+// UpdateOpsAdvancedSettings 写入新配置后调用 Reload，让 schedule/enabled 改动立刻生效。
+type CleanupReloader interface {
+	Reload(ctx context.Context) error
+}
+
+// SetCleanupReloader 由 wire 注入 cleanup hook（构造期循环依赖的解耦点）。
+func (s *OpsService) SetCleanupReloader(r CleanupReloader) {
+	if s == nil {
+		return
+	}
+	s.cleanupReloader = r
+}
+
+// SetOpenAIQuotaAutoPauseSettingsSink 由 wire 注入，把最新的 quota auto-pause 全局默认
+// 阈值 push 到调度热路径读取的内存缓存。同 SetCleanupReloader 的解耦目的：避免 OpsService
+// 持有 *SettingService 引入循环依赖。
+func (s *OpsService) SetOpenAIQuotaAutoPauseSettingsSink(sink func(OpsOpenAIAccountQuotaAutoPauseSettings)) {
+	if s == nil {
+		return
+	}
+	s.quotaAutoPauseSink = sink
 }
 
 func NewOpsService(
@@ -120,8 +136,8 @@ func (s *OpsService) IsMonitoringEnabled(ctx context.Context) bool {
 	}
 }
 
-func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogInput, rawRequestBody []byte) error {
-	prepared, ok, err := s.prepareErrorLogInput(ctx, entry, rawRequestBody)
+func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogInput) error {
+	prepared, ok, err := s.prepareErrorLogInput(ctx, entry)
 	if err != nil {
 		log.Printf("[Ops] RecordError prepare failed: %v", err)
 		return err
@@ -144,7 +160,7 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 	}
 	prepared := make([]*OpsInsertErrorLogInput, 0, len(entries))
 	for _, entry := range entries {
-		item, ok, err := s.prepareErrorLogInput(ctx, entry, nil)
+		item, ok, err := s.prepareErrorLogInput(ctx, entry)
 		if err != nil {
 			log.Printf("[Ops] RecordErrorBatch prepare failed: %v", err)
 			continue
@@ -180,7 +196,7 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 	return nil
 }
 
-func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertErrorLogInput, rawRequestBody []byte) (*OpsInsertErrorLogInput, bool, error) {
+func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertErrorLogInput) (*OpsInsertErrorLogInput, bool, error) {
 	if entry == nil {
 		return nil, false, nil
 	}
@@ -204,11 +220,6 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 	}
 	if entry.ErrorType == "" {
 		entry.ErrorType = "api_error"
-	}
-
-	// Sanitize + trim request body (errors only).
-	if len(rawRequestBody) > 0 {
-		entry.RequestBodyJSON, entry.RequestBodyTruncated, entry.RequestBodyBytes = PrepareOpsRequestBodyForQueue(rawRequestBody)
 	}
 
 	// Sanitize + truncate error_body to avoid storing sensitive data.
@@ -297,25 +308,6 @@ func sanitizeOpsUpstreamErrors(entry *OpsInsertErrorLogInput) error {
 			out.Detail = ""
 		}
 
-		out.UpstreamRequestBody = strings.TrimSpace(out.UpstreamRequestBody)
-		if out.UpstreamRequestBody != "" {
-			// Reuse the same sanitization/trimming strategy as request body storage.
-			// Keep it small so it is safe to persist in ops_error_logs JSON.
-			sanitizedBody, truncated, _ := sanitizeAndTrimRequestBody([]byte(out.UpstreamRequestBody), 10*1024)
-			if sanitizedBody != "" {
-				out.UpstreamRequestBody = sanitizedBody
-				if truncated {
-					out.Kind = strings.TrimSpace(out.Kind)
-					if out.Kind == "" {
-						out.Kind = "upstream"
-					}
-					out.Kind = out.Kind + ":request_body_truncated"
-				}
-			} else {
-				out.UpstreamRequestBody = ""
-			}
-		}
-
 		// Drop fully-empty events (can happen if only status code was known).
 		if out.UpstreamStatusCode == 0 && out.Message == "" && out.Detail == "" {
 			continue
@@ -346,6 +338,52 @@ func (s *OpsService) GetErrorLogs(ctx context.Context, filter *OpsErrorLogFilter
 	return result, nil
 }
 
+// ListUserErrorRequests 返回某个用户自己的错误请求（精简脱敏）。
+// 强制：仅当前用户、View=all（含业务限流/余额类）、排除 count_tokens 噪声。
+func (s *OpsService) ListUserErrorRequests(ctx context.Context, userID int64, filter *OpsErrorLogFilter) (*UserErrorRequestList, error) {
+	if filter == nil {
+		filter = &OpsErrorLogFilter{}
+	}
+	f := *filter // 拷贝快照，避免原地篡改调用方的 filter（slice 字段只读，浅拷贝足够）
+	filter = &f
+	uid := userID
+	filter.UserID = &uid
+	// 用户侧放宽归属:纳入「删 key 后认证失败」(user_id=NULL,靠 deleted_key_owner 归因)的记录。
+	filter.MatchDeletedKeyOwner = true
+	// APIKeyID 透传：保留 handler 传入的值。安全由 buildOpsErrorLogsWhere 的
+	// "user_id = 自己 AND api_key_id = X" 双重约束保证——传入他人 key 只会得到空集，无泄露。
+	filter.View = "all"
+	filter.ExcludeCountTokens = true
+	filter.ModelFuzzy = true // 用户端模型过滤走 ILIKE 模糊；管理端不设此字段，保持精确
+	// 防御：用户端不接受这些 admin-only / 特殊维度
+	filter.UserQuery = ""
+	filter.Owner = ""
+	filter.Source = ""
+	// 清空 Phase 是防御:用户端一律改走 category→ErrorPhasesAny/ErrorTypesAny
+	//（纯 ANY 过滤,不影响 status>=400 子句）。守卫豁免现在还需要
+	// IncludeRecoveredUpstream(用户端永不设置),recovered upstream
+	//（error_phase='upstream' 但 status<400,最终成功返回）记录对用户不可见——符合预期。
+	filter.Phase = ""
+	filter.IncludeRecoveredUpstream = false
+
+	list, err := s.opsRepo.ListErrorLogs(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*UserErrorRequest, 0, len(list.Errors))
+	for _, e := range list.Errors {
+		if r := ToUserErrorRequest(e); r != nil {
+			items = append(items, r)
+		}
+	}
+	return &UserErrorRequestList{
+		Items:    items,
+		Total:    list.Total,
+		Page:     list.Page,
+		PageSize: list.PageSize,
+	}, nil
+}
+
 func (s *OpsService) GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorLogDetail, error) {
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return nil, err
@@ -363,27 +401,40 @@ func (s *OpsService) GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorLo
 	return detail, nil
 }
 
-func (s *OpsService) ListRetryAttemptsByErrorID(ctx context.Context, errorID int64, limit int) ([]*OpsRetryAttempt, error) {
-	if err := s.RequireMonitoringEnabled(ctx); err != nil {
-		return nil, err
-	}
+// GetUserErrorRequestDetail 返回某用户自己某条错误请求的脱敏详情(含 error_body)。
+// 安全:强制按用户归属校验;非本人记录一律返回 NotFound(不泄露存在性)。
+func (s *OpsService) GetUserErrorRequestDetail(ctx context.Context, userID, id int64) (*UserErrorRequestDetail, error) {
 	if s.opsRepo == nil {
-		return nil, infraerrors.ServiceUnavailable("OPS_REPO_UNAVAILABLE", "Ops repository not available")
+		return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
 	}
-	if errorID <= 0 {
+	if id <= 0 {
 		return nil, infraerrors.BadRequest("OPS_ERROR_INVALID_ID", "invalid error id")
 	}
-	items, err := s.opsRepo.ListRetryAttemptsByErrorID(ctx, errorID, limit)
+	detail, err := s.opsRepo.GetErrorLogByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return []*OpsRetryAttempt{}, nil
+			return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
 		}
-		return nil, infraerrors.InternalServer("OPS_RETRY_LIST_FAILED", "Failed to list retry attempts").WithCause(err)
+		return nil, infraerrors.InternalServer("OPS_ERROR_LOAD_FAILED", "Failed to load ops error log").WithCause(err)
 	}
-	return items, nil
+	// 归属:直接归属(user_id)或经「已删除 key 归因」(deleted_key_owner_user_id)二者之一即可。
+	ownedDirectly := detail.UserID != nil && *detail.UserID == userID
+	ownedViaDeletedKey := detail.DeletedKeyOwnerUserID != nil && *detail.DeletedKeyOwnerUserID == userID
+	if !ownedDirectly && !ownedViaDeletedKey {
+		return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
+	}
+	return ToUserErrorRequestDetail(detail), nil
 }
 
-func (s *OpsService) UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedRetryID *int64) error {
+// LookupDeletedKeyAudit 按明文 key 反查已删除 key 的原所有者;未命中或未启用返回 (nil, nil)。
+func (s *OpsService) LookupDeletedKeyAudit(ctx context.Context, key string) (*DeletedKeyAuditResult, error) {
+	if s.opsRepo == nil {
+		return nil, nil
+	}
+	return s.opsRepo.LookupDeletedKeyAudit(ctx, key)
+}
+
+func (s *OpsService) UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64) error {
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return err
 	}
@@ -400,10 +451,10 @@ func (s *OpsService) UpdateErrorResolution(ctx context.Context, errorID int64, r
 		}
 		return infraerrors.InternalServer("OPS_ERROR_LOAD_FAILED", "Failed to load ops error log").WithCause(err)
 	}
-	return s.opsRepo.UpdateErrorResolution(ctx, errorID, resolved, resolvedByUserID, resolvedRetryID, nil)
+	return s.opsRepo.UpdateErrorResolution(ctx, errorID, resolved, resolvedByUserID, nil)
 }
 
-func sanitizeAndTrimRequestBody(raw []byte, maxBytes int) (jsonString string, truncated bool, bytesLen int) {
+func sanitizeAndTrimJSONPayload(raw []byte, maxBytes int) (jsonString string, truncated bool, bytesLen int) {
 	bytesLen = len(raw)
 	if len(raw) == 0 {
 		return "", false, 0
@@ -411,7 +462,7 @@ func sanitizeAndTrimRequestBody(raw []byte, maxBytes int) (jsonString string, tr
 
 	var decoded any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
-		// If it's not valid JSON, don't store (retry would not be reliable anyway).
+		// If it is not valid JSON, fall back to the caller's non-JSON handling.
 		return "", false, bytesLen
 	}
 
@@ -447,7 +498,7 @@ func sanitizeAndTrimRequestBody(raw []byte, maxBytes int) (jsonString string, tr
 	// This avoids downstream code that expects certain top-level keys from crashing.
 	if root, ok := decoded.(map[string]any); ok {
 		placeholder := shallowCopyMap(root)
-		placeholder["request_body_truncated"] = true
+		placeholder["payload_truncated"] = true
 
 		// Replace potentially huge arrays/strings, but keep the keys present.
 		for _, k := range []string{"messages", "contents", "input", "prompt"} {
@@ -470,7 +521,7 @@ func sanitizeAndTrimRequestBody(raw []byte, maxBytes int) (jsonString string, tr
 	}
 
 	// Final fallback: minimal valid JSON.
-	encoded4, err4 := json.Marshal(map[string]any{"request_body_truncated": true})
+	encoded4, err4 := json.Marshal(map[string]any{"payload_truncated": true})
 	if err4 != nil {
 		return "", true, bytesLen
 	}
@@ -714,7 +765,7 @@ func sanitizeErrorBodyForStorage(raw string, maxBytes int) (sanitized string, tr
 	}
 
 	// Prefer JSON-safe sanitization when possible.
-	if out, trunc, _ := sanitizeAndTrimRequestBody([]byte(raw), maxBytes); out != "" {
+	if out, trunc, _ := sanitizeAndTrimJSONPayload([]byte(raw), maxBytes); out != "" {
 		return out, trunc
 	}
 
