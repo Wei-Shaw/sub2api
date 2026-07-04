@@ -167,6 +167,9 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.PayloadLogSampleRate != 0.2 {
 		t.Fatalf("Gateway.OpenAIWS.PayloadLogSampleRate = %v, want 0.2", cfg.Gateway.OpenAIWS.PayloadLogSampleRate)
 	}
+	if cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom != 0 {
+		t.Fatalf("Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = %v, want 0", cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom)
+	}
 	if !cfg.Gateway.OpenAIWS.StoreDisabledForceNewConn {
 		t.Fatalf("Gateway.OpenAIWS.StoreDisabledForceNewConn = false, want true")
 	}
@@ -179,6 +182,23 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.IngressModeDefault != "ctx_pool" {
 		t.Fatalf("Gateway.OpenAIWS.IngressModeDefault = %q, want %q", cfg.Gateway.OpenAIWS.IngressModeDefault, "ctx_pool")
 	}
+}
+
+func TestLoadDefaultOpenAICompactModel(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4", cfg.Gateway.OpenAICompactModel)
+}
+
+func TestLoadOpenAICompactModelFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_COMPACT_MODEL", "gpt-5.3-codex")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.3-codex", cfg.Gateway.OpenAICompactModel)
 }
 
 func TestLoadDefaultOpenAIHTTP2Enabled(t *testing.T) {
@@ -1675,7 +1695,7 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			wantErr: "gateway.openai_ws.store_disabled_conn_mode",
 		},
 		{
-			name:    "ingress_mode_default 必须为 off|ctx_pool|passthrough",
+			name:    "ingress_mode_default 必须为 off|ctx_pool|passthrough|http_bridge",
 			mutate:  func(c *Config) { c.Gateway.OpenAIWS.IngressModeDefault = "invalid" },
 			wantErr: "gateway.openai_ws.ingress_mode_default",
 		},
@@ -1718,6 +1738,11 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
 		},
 		{
+			name:    "scheduler_score_weights quota_headroom 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = -0.1 },
+			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
+		},
+		{
 			name: "scheduler_score_weights 不能全为 0",
 			mutate: func(c *Config) {
 				c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
@@ -1756,6 +1781,18 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			require.Contains(t, err.Error(), tc.wantErr)
 		})
 	}
+
+	t.Run("quota_headroom 可作为唯一有效调度权重", func(t *testing.T) {
+		cfg := buildValid(t)
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = 0.1
+
+		require.NoError(t, cfg.Validate())
+	})
 }
 
 func TestValidateConfig_AutoScaleDisabledIgnoreAutoScaleFields(t *testing.T) {

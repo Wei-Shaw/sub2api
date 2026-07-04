@@ -119,6 +119,8 @@ tests
 CLAUDE.md
 .claude
 scripts
+!backend/scripts/
+!backend/scripts/resolve-version.sh
 .code-review-state
 #openspec/
 code-reviews/
@@ -138,3 +140,6 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+.codex-build/
+backend/.codex-build/
+backups/

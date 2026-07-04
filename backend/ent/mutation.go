@@ -2310,12 +2310,18 @@ type AccountMutation struct {
 	session_window_start        *time.Time
 	session_window_end          *time.Time
 	session_window_status       *string
+	quota_dimension             *account.QuotaDimension
 	clearedFields               map[string]struct{}
 	groups                      map[int64]struct{}
 	removedgroups               map[int64]struct{}
 	clearedgroups               bool
 	proxy                       *int64
 	clearedproxy                bool
+	parent                      *int64
+	clearedparent               bool
+	children                    map[int64]struct{}
+	removedchildren             map[int64]struct{}
+	clearedchildren             bool
 	usage_logs                  map[int64]struct{}
 	removedusage_logs           map[int64]struct{}
 	clearedusage_logs           bool
@@ -3776,6 +3782,91 @@ func (m *AccountMutation) ResetSessionWindowStatus() {
 	delete(m.clearedFields, account.FieldSessionWindowStatus)
 }
 
+// SetParentAccountID sets the "parent_account_id" field.
+func (m *AccountMutation) SetParentAccountID(i int64) {
+	m.parent = &i
+}
+
+// ParentAccountID returns the value of the "parent_account_id" field in the mutation.
+func (m *AccountMutation) ParentAccountID() (r int64, exists bool) {
+	v := m.parent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldParentAccountID returns the old "parent_account_id" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldParentAccountID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldParentAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldParentAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldParentAccountID: %w", err)
+	}
+	return oldValue.ParentAccountID, nil
+}
+
+// ClearParentAccountID clears the value of the "parent_account_id" field.
+func (m *AccountMutation) ClearParentAccountID() {
+	m.parent = nil
+	m.clearedFields[account.FieldParentAccountID] = struct{}{}
+}
+
+// ParentAccountIDCleared returns if the "parent_account_id" field was cleared in this mutation.
+func (m *AccountMutation) ParentAccountIDCleared() bool {
+	_, ok := m.clearedFields[account.FieldParentAccountID]
+	return ok
+}
+
+// ResetParentAccountID resets all changes to the "parent_account_id" field.
+func (m *AccountMutation) ResetParentAccountID() {
+	m.parent = nil
+	delete(m.clearedFields, account.FieldParentAccountID)
+}
+
+// SetQuotaDimension sets the "quota_dimension" field.
+func (m *AccountMutation) SetQuotaDimension(ad account.QuotaDimension) {
+	m.quota_dimension = &ad
+}
+
+// QuotaDimension returns the value of the "quota_dimension" field in the mutation.
+func (m *AccountMutation) QuotaDimension() (r account.QuotaDimension, exists bool) {
+	v := m.quota_dimension
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQuotaDimension returns the old "quota_dimension" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldQuotaDimension(ctx context.Context) (v account.QuotaDimension, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQuotaDimension is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQuotaDimension requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQuotaDimension: %w", err)
+	}
+	return oldValue.QuotaDimension, nil
+}
+
+// ResetQuotaDimension resets all changes to the "quota_dimension" field.
+func (m *AccountMutation) ResetQuotaDimension() {
+	m.quota_dimension = nil
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by ids.
 func (m *AccountMutation) AddGroupIDs(ids ...int64) {
 	if m.groups == nil {
@@ -3855,6 +3946,100 @@ func (m *AccountMutation) ProxyIDs() (ids []int64) {
 func (m *AccountMutation) ResetProxy() {
 	m.proxy = nil
 	m.clearedproxy = false
+}
+
+// SetParentID sets the "parent" edge to the Account entity by id.
+func (m *AccountMutation) SetParentID(id int64) {
+	m.parent = &id
+}
+
+// ClearParent clears the "parent" edge to the Account entity.
+func (m *AccountMutation) ClearParent() {
+	m.clearedparent = true
+	m.clearedFields[account.FieldParentAccountID] = struct{}{}
+}
+
+// ParentCleared reports if the "parent" edge to the Account entity was cleared.
+func (m *AccountMutation) ParentCleared() bool {
+	return m.ParentAccountIDCleared() || m.clearedparent
+}
+
+// ParentID returns the "parent" edge ID in the mutation.
+func (m *AccountMutation) ParentID() (id int64, exists bool) {
+	if m.parent != nil {
+		return *m.parent, true
+	}
+	return
+}
+
+// ParentIDs returns the "parent" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ParentID instead. It exists only for internal usage by the builders.
+func (m *AccountMutation) ParentIDs() (ids []int64) {
+	if id := m.parent; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetParent resets all changes to the "parent" edge.
+func (m *AccountMutation) ResetParent() {
+	m.parent = nil
+	m.clearedparent = false
+}
+
+// AddChildIDs adds the "children" edge to the Account entity by ids.
+func (m *AccountMutation) AddChildIDs(ids ...int64) {
+	if m.children == nil {
+		m.children = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.children[ids[i]] = struct{}{}
+	}
+}
+
+// ClearChildren clears the "children" edge to the Account entity.
+func (m *AccountMutation) ClearChildren() {
+	m.clearedchildren = true
+}
+
+// ChildrenCleared reports if the "children" edge to the Account entity was cleared.
+func (m *AccountMutation) ChildrenCleared() bool {
+	return m.clearedchildren
+}
+
+// RemoveChildIDs removes the "children" edge to the Account entity by IDs.
+func (m *AccountMutation) RemoveChildIDs(ids ...int64) {
+	if m.removedchildren == nil {
+		m.removedchildren = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.children, ids[i])
+		m.removedchildren[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedChildren returns the removed IDs of the "children" edge to the Account entity.
+func (m *AccountMutation) RemovedChildrenIDs() (ids []int64) {
+	for id := range m.removedchildren {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ChildrenIDs returns the "children" edge IDs in the mutation.
+func (m *AccountMutation) ChildrenIDs() (ids []int64) {
+	for id := range m.children {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetChildren resets all changes to the "children" edge.
+func (m *AccountMutation) ResetChildren() {
+	m.children = nil
+	m.clearedchildren = false
+	m.removedchildren = nil
 }
 
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by ids.
@@ -3945,7 +4130,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 29)
+	fields := make([]string, 0, 31)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -4033,6 +4218,12 @@ func (m *AccountMutation) Fields() []string {
 	if m.session_window_status != nil {
 		fields = append(fields, account.FieldSessionWindowStatus)
 	}
+	if m.parent != nil {
+		fields = append(fields, account.FieldParentAccountID)
+	}
+	if m.quota_dimension != nil {
+		fields = append(fields, account.FieldQuotaDimension)
+	}
 	return fields
 }
 
@@ -4099,6 +4290,10 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.SessionWindowEnd()
 	case account.FieldSessionWindowStatus:
 		return m.SessionWindowStatus()
+	case account.FieldParentAccountID:
+		return m.ParentAccountID()
+	case account.FieldQuotaDimension:
+		return m.QuotaDimension()
 	}
 	return nil, false
 }
@@ -4166,6 +4361,10 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldSessionWindowEnd(ctx)
 	case account.FieldSessionWindowStatus:
 		return m.OldSessionWindowStatus(ctx)
+	case account.FieldParentAccountID:
+		return m.OldParentAccountID(ctx)
+	case account.FieldQuotaDimension:
+		return m.OldQuotaDimension(ctx)
 	}
 	return nil, fmt.Errorf("unknown Account field %s", name)
 }
@@ -4378,6 +4577,20 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSessionWindowStatus(v)
 		return nil
+	case account.FieldParentAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetParentAccountID(v)
+		return nil
+	case account.FieldQuotaDimension:
+		v, ok := value.(account.QuotaDimension)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQuotaDimension(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)
 }
@@ -4519,6 +4732,9 @@ func (m *AccountMutation) ClearedFields() []string {
 	if m.FieldCleared(account.FieldSessionWindowStatus) {
 		fields = append(fields, account.FieldSessionWindowStatus)
 	}
+	if m.FieldCleared(account.FieldParentAccountID) {
+		fields = append(fields, account.FieldParentAccountID)
+	}
 	return fields
 }
 
@@ -4580,6 +4796,9 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldSessionWindowStatus:
 		m.ClearSessionWindowStatus()
+		return nil
+	case account.FieldParentAccountID:
+		m.ClearParentAccountID()
 		return nil
 	}
 	return fmt.Errorf("unknown Account nullable field %s", name)
@@ -4676,18 +4895,30 @@ func (m *AccountMutation) ResetField(name string) error {
 	case account.FieldSessionWindowStatus:
 		m.ResetSessionWindowStatus()
 		return nil
+	case account.FieldParentAccountID:
+		m.ResetParentAccountID()
+		return nil
+	case account.FieldQuotaDimension:
+		m.ResetQuotaDimension()
+		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)
 }
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *AccountMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 5)
 	if m.groups != nil {
 		edges = append(edges, account.EdgeGroups)
 	}
 	if m.proxy != nil {
 		edges = append(edges, account.EdgeProxy)
+	}
+	if m.parent != nil {
+		edges = append(edges, account.EdgeParent)
+	}
+	if m.children != nil {
+		edges = append(edges, account.EdgeChildren)
 	}
 	if m.usage_logs != nil {
 		edges = append(edges, account.EdgeUsageLogs)
@@ -4709,6 +4940,16 @@ func (m *AccountMutation) AddedIDs(name string) []ent.Value {
 		if id := m.proxy; id != nil {
 			return []ent.Value{*id}
 		}
+	case account.EdgeParent:
+		if id := m.parent; id != nil {
+			return []ent.Value{*id}
+		}
+	case account.EdgeChildren:
+		ids := make([]ent.Value, 0, len(m.children))
+		for id := range m.children {
+			ids = append(ids, id)
+		}
+		return ids
 	case account.EdgeUsageLogs:
 		ids := make([]ent.Value, 0, len(m.usage_logs))
 		for id := range m.usage_logs {
@@ -4721,9 +4962,12 @@ func (m *AccountMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *AccountMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 5)
 	if m.removedgroups != nil {
 		edges = append(edges, account.EdgeGroups)
+	}
+	if m.removedchildren != nil {
+		edges = append(edges, account.EdgeChildren)
 	}
 	if m.removedusage_logs != nil {
 		edges = append(edges, account.EdgeUsageLogs)
@@ -4741,6 +4985,12 @@ func (m *AccountMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case account.EdgeChildren:
+		ids := make([]ent.Value, 0, len(m.removedchildren))
+		for id := range m.removedchildren {
+			ids = append(ids, id)
+		}
+		return ids
 	case account.EdgeUsageLogs:
 		ids := make([]ent.Value, 0, len(m.removedusage_logs))
 		for id := range m.removedusage_logs {
@@ -4753,12 +5003,18 @@ func (m *AccountMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *AccountMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 5)
 	if m.clearedgroups {
 		edges = append(edges, account.EdgeGroups)
 	}
 	if m.clearedproxy {
 		edges = append(edges, account.EdgeProxy)
+	}
+	if m.clearedparent {
+		edges = append(edges, account.EdgeParent)
+	}
+	if m.clearedchildren {
+		edges = append(edges, account.EdgeChildren)
 	}
 	if m.clearedusage_logs {
 		edges = append(edges, account.EdgeUsageLogs)
@@ -4774,6 +5030,10 @@ func (m *AccountMutation) EdgeCleared(name string) bool {
 		return m.clearedgroups
 	case account.EdgeProxy:
 		return m.clearedproxy
+	case account.EdgeParent:
+		return m.clearedparent
+	case account.EdgeChildren:
+		return m.clearedchildren
 	case account.EdgeUsageLogs:
 		return m.clearedusage_logs
 	}
@@ -4786,6 +5046,9 @@ func (m *AccountMutation) ClearEdge(name string) error {
 	switch name {
 	case account.EdgeProxy:
 		m.ClearProxy()
+		return nil
+	case account.EdgeParent:
+		m.ClearParent()
 		return nil
 	}
 	return fmt.Errorf("unknown Account unique edge %s", name)
@@ -4800,6 +5063,12 @@ func (m *AccountMutation) ResetEdge(name string) error {
 		return nil
 	case account.EdgeProxy:
 		m.ResetProxy()
+		return nil
+	case account.EdgeParent:
+		m.ResetParent()
+		return nil
+	case account.EdgeChildren:
+		m.ResetChildren()
 		return nil
 	case account.EdgeUsageLogs:
 		m.ResetUsageLogs()
@@ -15056,6 +15325,11 @@ type GroupMutation struct {
 	description                             *string
 	rate_multiplier                         *float64
 	addrate_multiplier                      *float64
+	peak_rate_enabled                       *bool
+	peak_start                              *string
+	peak_end                                *string
+	peak_rate_multiplier                    *float64
+	addpeak_rate_multiplier                 *float64
 	is_exclusive                            *bool
 	status                                  *string
 	platform                                *string
@@ -15480,6 +15754,170 @@ func (m *GroupMutation) AddedRateMultiplier() (r float64, exists bool) {
 func (m *GroupMutation) ResetRateMultiplier() {
 	m.rate_multiplier = nil
 	m.addrate_multiplier = nil
+}
+
+// SetPeakRateEnabled sets the "peak_rate_enabled" field.
+func (m *GroupMutation) SetPeakRateEnabled(b bool) {
+	m.peak_rate_enabled = &b
+}
+
+// PeakRateEnabled returns the value of the "peak_rate_enabled" field in the mutation.
+func (m *GroupMutation) PeakRateEnabled() (r bool, exists bool) {
+	v := m.peak_rate_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeakRateEnabled returns the old "peak_rate_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldPeakRateEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeakRateEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeakRateEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeakRateEnabled: %w", err)
+	}
+	return oldValue.PeakRateEnabled, nil
+}
+
+// ResetPeakRateEnabled resets all changes to the "peak_rate_enabled" field.
+func (m *GroupMutation) ResetPeakRateEnabled() {
+	m.peak_rate_enabled = nil
+}
+
+// SetPeakStart sets the "peak_start" field.
+func (m *GroupMutation) SetPeakStart(s string) {
+	m.peak_start = &s
+}
+
+// PeakStart returns the value of the "peak_start" field in the mutation.
+func (m *GroupMutation) PeakStart() (r string, exists bool) {
+	v := m.peak_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeakStart returns the old "peak_start" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldPeakStart(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeakStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeakStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeakStart: %w", err)
+	}
+	return oldValue.PeakStart, nil
+}
+
+// ResetPeakStart resets all changes to the "peak_start" field.
+func (m *GroupMutation) ResetPeakStart() {
+	m.peak_start = nil
+}
+
+// SetPeakEnd sets the "peak_end" field.
+func (m *GroupMutation) SetPeakEnd(s string) {
+	m.peak_end = &s
+}
+
+// PeakEnd returns the value of the "peak_end" field in the mutation.
+func (m *GroupMutation) PeakEnd() (r string, exists bool) {
+	v := m.peak_end
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeakEnd returns the old "peak_end" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldPeakEnd(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeakEnd is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeakEnd requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeakEnd: %w", err)
+	}
+	return oldValue.PeakEnd, nil
+}
+
+// ResetPeakEnd resets all changes to the "peak_end" field.
+func (m *GroupMutation) ResetPeakEnd() {
+	m.peak_end = nil
+}
+
+// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
+func (m *GroupMutation) SetPeakRateMultiplier(f float64) {
+	m.peak_rate_multiplier = &f
+	m.addpeak_rate_multiplier = nil
+}
+
+// PeakRateMultiplier returns the value of the "peak_rate_multiplier" field in the mutation.
+func (m *GroupMutation) PeakRateMultiplier() (r float64, exists bool) {
+	v := m.peak_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeakRateMultiplier returns the old "peak_rate_multiplier" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldPeakRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeakRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeakRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeakRateMultiplier: %w", err)
+	}
+	return oldValue.PeakRateMultiplier, nil
+}
+
+// AddPeakRateMultiplier adds f to the "peak_rate_multiplier" field.
+func (m *GroupMutation) AddPeakRateMultiplier(f float64) {
+	if m.addpeak_rate_multiplier != nil {
+		*m.addpeak_rate_multiplier += f
+	} else {
+		m.addpeak_rate_multiplier = &f
+	}
+}
+
+// AddedPeakRateMultiplier returns the value that was added to the "peak_rate_multiplier" field in this mutation.
+func (m *GroupMutation) AddedPeakRateMultiplier() (r float64, exists bool) {
+	v := m.addpeak_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPeakRateMultiplier resets all changes to the "peak_rate_multiplier" field.
+func (m *GroupMutation) ResetPeakRateMultiplier() {
+	m.peak_rate_multiplier = nil
+	m.addpeak_rate_multiplier = nil
 }
 
 // SetIsExclusive sets the "is_exclusive" field.
@@ -17264,7 +17702,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 35)
+	fields := make([]string, 0, 39)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -17282,6 +17720,18 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, group.FieldRateMultiplier)
+	}
+	if m.peak_rate_enabled != nil {
+		fields = append(fields, group.FieldPeakRateEnabled)
+	}
+	if m.peak_start != nil {
+		fields = append(fields, group.FieldPeakStart)
+	}
+	if m.peak_end != nil {
+		fields = append(fields, group.FieldPeakEnd)
+	}
+	if m.peak_rate_multiplier != nil {
+		fields = append(fields, group.FieldPeakRateMultiplier)
 	}
 	if m.is_exclusive != nil {
 		fields = append(fields, group.FieldIsExclusive)
@@ -17390,6 +17840,14 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.Description()
 	case group.FieldRateMultiplier:
 		return m.RateMultiplier()
+	case group.FieldPeakRateEnabled:
+		return m.PeakRateEnabled()
+	case group.FieldPeakStart:
+		return m.PeakStart()
+	case group.FieldPeakEnd:
+		return m.PeakEnd()
+	case group.FieldPeakRateMultiplier:
+		return m.PeakRateMultiplier()
 	case group.FieldIsExclusive:
 		return m.IsExclusive()
 	case group.FieldStatus:
@@ -17469,6 +17927,14 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDescription(ctx)
 	case group.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
+	case group.FieldPeakRateEnabled:
+		return m.OldPeakRateEnabled(ctx)
+	case group.FieldPeakStart:
+		return m.OldPeakStart(ctx)
+	case group.FieldPeakEnd:
+		return m.OldPeakEnd(ctx)
+	case group.FieldPeakRateMultiplier:
+		return m.OldPeakRateMultiplier(ctx)
 	case group.FieldIsExclusive:
 		return m.OldIsExclusive(ctx)
 	case group.FieldStatus:
@@ -17577,6 +18043,34 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRateMultiplier(v)
+		return nil
+	case group.FieldPeakRateEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeakRateEnabled(v)
+		return nil
+	case group.FieldPeakStart:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeakStart(v)
+		return nil
+	case group.FieldPeakEnd:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeakEnd(v)
+		return nil
+	case group.FieldPeakRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeakRateMultiplier(v)
 		return nil
 	case group.FieldIsExclusive:
 		v, ok := value.(bool)
@@ -17792,6 +18286,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, group.FieldRateMultiplier)
 	}
+	if m.addpeak_rate_multiplier != nil {
+		fields = append(fields, group.FieldPeakRateMultiplier)
+	}
 	if m.adddaily_limit_usd != nil {
 		fields = append(fields, group.FieldDailyLimitUsd)
 	}
@@ -17838,6 +18335,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case group.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case group.FieldPeakRateMultiplier:
+		return m.AddedPeakRateMultiplier()
 	case group.FieldDailyLimitUsd:
 		return m.AddedDailyLimitUsd()
 	case group.FieldWeeklyLimitUsd:
@@ -17877,6 +18376,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRateMultiplier(v)
+		return nil
+	case group.FieldPeakRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPeakRateMultiplier(v)
 		return nil
 	case group.FieldDailyLimitUsd:
 		v, ok := value.(float64)
@@ -18075,6 +18581,18 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRateMultiplier:
 		m.ResetRateMultiplier()
+		return nil
+	case group.FieldPeakRateEnabled:
+		m.ResetPeakRateEnabled()
+		return nil
+	case group.FieldPeakStart:
+		m.ResetPeakStart()
+		return nil
+	case group.FieldPeakEnd:
+		m.ResetPeakEnd()
+		return nil
+	case group.FieldPeakRateMultiplier:
+		m.ResetPeakRateMultiplier()
 		return nil
 	case group.FieldIsExclusive:
 		m.ResetIsExclusive()

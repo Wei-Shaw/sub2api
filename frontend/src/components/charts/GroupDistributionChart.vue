@@ -45,7 +45,7 @@
               <th class="pb-2 text-right">{{ t('admin.dashboard.requests') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.tokens') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.actual') }}</th>
-              <th class="pb-2 text-right">{{ t('admin.dashboard.accountCost') }}</th>
+              <th v-if="showAccountCost" class="pb-2 text-right">{{ t('admin.dashboard.accountCost') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.standard') }}</th>
             </tr>
           </thead>
@@ -53,17 +53,17 @@
             <template v-for="group in displayGroupStats" :key="group.group_id">
               <tr
                 class="border-t border-gray-100 transition-colors dark:border-gray-700"
-                :class="group.group_id > 0 ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/40' : ''"
-                @click="group.group_id > 0 && toggleBreakdown('group', group.group_id)"
+                :class="enableBreakdown && group.group_id > 0 ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/40' : ''"
+                @click="enableBreakdown && group.group_id > 0 && toggleBreakdown('group', group.group_id)"
               >
                 <td
                   class="max-w-[100px] truncate py-1.5 font-medium"
-                  :class="group.group_id > 0 ? 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300' : 'text-gray-900 dark:text-white'"
+                  :class="enableBreakdown && group.group_id > 0 ? 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300' : 'text-gray-900 dark:text-white'"
                   :title="group.group_name || String(group.group_id)"
                 >
                   <span class="inline-flex items-center gap-1">
-                    <svg v-if="group.group_id > 0 && expandedKey === `group-${group.group_id}`" class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                    <svg v-else-if="group.group_id > 0" class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    <svg v-if="enableBreakdown && group.group_id > 0 && expandedKey === `group-${group.group_id}`" class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    <svg v-else-if="enableBreakdown && group.group_id > 0" class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                     {{ group.group_name || t('admin.dashboard.noGroup') }}
                   </span>
                 </td>
@@ -76,7 +76,7 @@
                 <td class="py-1.5 text-right text-green-600 dark:text-green-400">
                   ${{ formatCost(group.actual_cost) }}
                 </td>
-                <td class="py-1.5 text-right text-orange-500 dark:text-orange-400">
+                <td v-if="showAccountCost" class="py-1.5 text-right text-orange-500 dark:text-orange-400">
                   ${{ formatCost(group.account_cost) }}
                 </td>
                 <td class="py-1.5 text-right text-gray-400 dark:text-gray-500">
@@ -85,10 +85,11 @@
               </tr>
               <!-- User breakdown sub-rows -->
               <tr v-if="expandedKey === `group-${group.group_id}`">
-                <td colspan="6" class="p-0">
+                <td :colspan="distributionColspan" class="p-0">
                   <UserBreakdownSubTable
                     :items="breakdownItems"
                     :loading="breakdownLoading"
+                    :show-account-cost="showAccountCost"
                   />
                 </td>
               </tr>
@@ -127,6 +128,8 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   metric?: DistributionMetric
   showMetricToggle?: boolean
+  enableBreakdown?: boolean
+  showAccountCost?: boolean
   startDate?: string
   endDate?: string
   filters?: Record<string, any>
@@ -134,6 +137,8 @@ const props = withDefaults(defineProps<{
   loading: false,
   metric: 'tokens',
   showMetricToggle: false,
+  enableBreakdown: true,
+  showAccountCost: true,
 })
 
 const emit = defineEmits<{
@@ -143,6 +148,8 @@ const emit = defineEmits<{
 const expandedKey = ref<string | null>(null)
 const breakdownItems = ref<UserBreakdownItem[]>([])
 const breakdownLoading = ref(false)
+const showAccountCost = computed(() => props.showAccountCost)
+const distributionColspan = computed(() => showAccountCost.value ? 6 : 5)
 
 const toggleBreakdown = async (type: string, id: number | string) => {
   const key = `${type}-${id}`

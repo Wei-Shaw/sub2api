@@ -348,7 +348,7 @@
       </div>
       <div v-else-if="usageInfo" class="space-y-1">
         <div v-if="grokEntitlementLabel" class="mb-0.5">
-          <span class="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+          <span class="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
             {{ grokEntitlementLabel }}
           </span>
         </div>

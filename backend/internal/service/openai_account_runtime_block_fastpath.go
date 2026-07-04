@@ -39,6 +39,10 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
 
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIContextWindowError("", responseBody) {
+		return false
+	}
+
 	if isOpenAIImageRateLimitError(statusCode, responseBody) {
 		if s != nil && s.rateLimitService != nil {
 			_ = s.rateLimitService.HandleOpenAIImageRateLimit(stateCtx, account, statusCode, headers, responseBody)
@@ -64,6 +68,11 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 
 func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
 	if s == nil || !isOpenAIOAuthAccount(account) {
+		return
+	}
+	// Spark 影子：不按 /responses 429 的 global x-codex-* 信号做内存运行时熔断(同 handle429,外审第8轮 P1)。
+	// 同时避免把 spark 的 429 计入全局 429 storm 计数(recordOpenAIOAuth429),否则会误伤母账号 failover 决策。
+	if account.IsShadow() {
 		return
 	}
 	s.recordOpenAIOAuth429()

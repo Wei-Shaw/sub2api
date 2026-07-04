@@ -190,6 +190,11 @@ func SessionWindowStatus(v string) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldSessionWindowStatus, v))
 }
 
+// ParentAccountID applies equality check predicate on the "parent_account_id" field. It's identical to ParentAccountIDEQ.
+func ParentAccountID(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldParentAccountID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldCreatedAt, v))
@@ -1550,6 +1555,56 @@ func SessionWindowStatusContainsFold(v string) predicate.Account {
 	return predicate.Account(sql.FieldContainsFold(FieldSessionWindowStatus, v))
 }
 
+// ParentAccountIDEQ applies the EQ predicate on the "parent_account_id" field.
+func ParentAccountIDEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldParentAccountID, v))
+}
+
+// ParentAccountIDNEQ applies the NEQ predicate on the "parent_account_id" field.
+func ParentAccountIDNEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldParentAccountID, v))
+}
+
+// ParentAccountIDIn applies the In predicate on the "parent_account_id" field.
+func ParentAccountIDIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldParentAccountID, vs...))
+}
+
+// ParentAccountIDNotIn applies the NotIn predicate on the "parent_account_id" field.
+func ParentAccountIDNotIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldParentAccountID, vs...))
+}
+
+// ParentAccountIDIsNil applies the IsNil predicate on the "parent_account_id" field.
+func ParentAccountIDIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldParentAccountID))
+}
+
+// ParentAccountIDNotNil applies the NotNil predicate on the "parent_account_id" field.
+func ParentAccountIDNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldParentAccountID))
+}
+
+// QuotaDimensionEQ applies the EQ predicate on the "quota_dimension" field.
+func QuotaDimensionEQ(v QuotaDimension) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldQuotaDimension, v))
+}
+
+// QuotaDimensionNEQ applies the NEQ predicate on the "quota_dimension" field.
+func QuotaDimensionNEQ(v QuotaDimension) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldQuotaDimension, v))
+}
+
+// QuotaDimensionIn applies the In predicate on the "quota_dimension" field.
+func QuotaDimensionIn(vs ...QuotaDimension) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldQuotaDimension, vs...))
+}
+
+// QuotaDimensionNotIn applies the NotIn predicate on the "quota_dimension" field.
+func QuotaDimensionNotIn(vs ...QuotaDimension) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldQuotaDimension, vs...))
+}
+
 // HasGroups applies the HasEdge predicate on the "groups" edge.
 func HasGroups() predicate.Account {
 	return predicate.Account(func(s *sql.Selector) {
@@ -1588,6 +1643,52 @@ func HasProxy() predicate.Account {
 func HasProxyWith(preds ...predicate.Proxy) predicate.Account {
 	return predicate.Account(func(s *sql.Selector) {
 		step := newProxyStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasParent applies the HasEdge predicate on the "parent" edge.
+func HasParent() predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, ParentTable, ParentColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasParentWith applies the HasEdge predicate on the "parent" edge with a given conditions (other predicates).
+func HasParentWith(preds ...predicate.Account) predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := newParentStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasChildren applies the HasEdge predicate on the "children" edge.
+func HasChildren() predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ChildrenTable, ChildrenColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasChildrenWith applies the HasEdge predicate on the "children" edge with a given conditions (other predicates).
+func HasChildrenWith(preds ...predicate.Account) predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := newChildrenStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

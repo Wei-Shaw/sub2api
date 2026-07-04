@@ -1659,12 +1659,17 @@ func resolvedTokenVersion(user *User) int64 {
 	return user.TokenVersion ^ fingerprint
 }
 
-// snapshotPlatformQuotaDefaults 把 plan.PlatformQuotas（4 platform × 3 window）以
+// snapshotPlatformQuotaDefaults 把 plan.PlatformQuotas（platform × 3 window）以
 // BulkInsertInitial 形式写入 user_platform_quotas 表。失败 fail-open（仅 warn log）。
 func (s *AuthService) snapshotPlatformQuotaDefaults(ctx context.Context, userID int64, plan *signupGrantPlan) error {
 	if s.userPlatformQuotaRepo == nil || plan == nil || len(plan.PlatformQuotas) == 0 {
 		return nil
 	}
+	// 平台配额快照是 best-effort（fail-open）：必须脱离调用方事务执行。
+	// 否则某平台违反 user_platform_quotas 的 CHECK 约束（如尚未进约束的新平台）会让
+	// 整个调用方事务被 Postgres 标记 aborted，把"无关紧要的默认配额快照"放大成
+	// "整笔注册失败"（OAuth pending 路径曾因此 500 → 清 cookie → 404）。
+	ctx = dbent.WithoutTx(ctx)
 	records := make([]UserPlatformQuotaRecord, 0, len(plan.PlatformQuotas))
 	for platform, q := range plan.PlatformQuotas {
 		rec := UserPlatformQuotaRecord{

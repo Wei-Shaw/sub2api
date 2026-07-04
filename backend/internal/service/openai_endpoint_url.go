@@ -18,6 +18,10 @@ func buildOpenAIEndpointURL(base string, endpoint string) string {
 	return normalized + endpoint
 }
 
+func buildOpenAIResponsesInputTokensURL(base string) string {
+	return buildOpenAIEndpointURL(base, "/v1/responses/input_tokens")
+}
+
 func openAIBaseURLHasVersionSuffix(raw string) bool {
 	pathValue := openAIBaseURLPath(raw)
 	if pathValue == "" {

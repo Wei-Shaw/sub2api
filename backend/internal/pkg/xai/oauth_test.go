@@ -116,6 +116,27 @@ func TestValidateXAIURLsAllowOfficialOAuthAndGatewayHosts(t *testing.T) {
 	require.Equal(t, DefaultCLIBaseURL+"/chat/completions", chatURL)
 }
 
+func TestBuildGrokMediaURLs(t *testing.T) {
+	imagesURL, err := BuildImagesGenerationsURL(DefaultBaseURL + "/")
+	require.NoError(t, err)
+	require.Equal(t, DefaultBaseURL+"/images/generations", imagesURL)
+
+	editsURL, err := BuildImagesEditsURL(DefaultBaseURL)
+	require.NoError(t, err)
+	require.Equal(t, DefaultBaseURL+"/images/edits", editsURL)
+
+	videosURL, err := BuildVideosGenerationsURL(DefaultBaseURL)
+	require.NoError(t, err)
+	require.Equal(t, DefaultBaseURL+"/videos/generations", videosURL)
+
+	videoURL, err := BuildVideoURL(DefaultBaseURL, "req 123")
+	require.NoError(t, err)
+	require.Equal(t, DefaultBaseURL+"/videos/req%20123", videoURL)
+
+	_, err = BuildVideoURL(DefaultBaseURL, " ")
+	require.Error(t, err)
+}
+
 func TestValidateXAIURLsRejectArbitraryHostsByDefault(t *testing.T) {
 	_, err := ValidateOAuthEndpointURL("https://auth.example.test/oauth2/token")
 	require.Error(t, err)
@@ -192,4 +213,10 @@ func TestDefaultModelMappingIncludesGrokAliases(t *testing.T) {
 	require.Equal(t, "grok-4.20-0309-reasoning", mapping["grok-4.20-reasoning"])
 	require.Equal(t, "grok-4.20-0309-non-reasoning", mapping["grok-4.20-non-reasoning"])
 	require.Equal(t, "grok-4.20-multi-agent-0309", mapping["grok-4.20-multi-agent-0309"])
+	require.Equal(t, "grok-imagine", mapping["grok-imagine"])
+	require.Equal(t, "grok-imagine-image", mapping["grok-imagine-image"])
+	require.Equal(t, "grok-imagine-image-quality", mapping["grok-imagine-image-quality"])
+	require.Equal(t, "grok-imagine-edit", mapping["grok-imagine-edit"])
+	require.Equal(t, "grok-imagine-video", mapping["grok-imagine-video"])
+	require.Equal(t, "grok-imagine-video-1.5", mapping["grok-imagine-video-1.5"])
 }
