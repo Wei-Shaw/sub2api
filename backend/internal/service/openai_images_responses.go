@@ -1119,6 +1119,14 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 			}
 			return OpenAIUsage{}, 0, nil, nil, upstreamErr
 		}
+		// 软失败兜底：上游既无图、又无任何可识别的 error/failed/incomplete 事件
+		// （实测：上游偶发把请求路由到 gpt-5.x-mini，返回 response.completed 但 output 为空、
+		// image_gen 工具未执行）。这是上游的概率性失败——同账号有时成功有时失败。
+		// 处理：① 记录上游诊断摘要到 ops（last_event/status/model/body 片段）便于排查；
+		// ② 返回 UpstreamFailoverError 触发重试。因实测为「同账号概率性失败」，优先
+		//    RetryableOnSameAccount 同账号快速重试（默认 3 次，大概率某次正常出图），
+		//    用尽后由 handler 自然换账号 failover（switchCount 上限保护），既提高成功率
+		//    又不无谓消耗其他账号配额。
 		// 软失败兜底：上游无图。先区分两种情形（实测真因，见下）：
 		//
 		// (A) 内容审核拒绝：模型未出图，但输出了文字拒绝（response.completed 里带

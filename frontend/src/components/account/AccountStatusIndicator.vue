@@ -12,6 +12,11 @@
       <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ overloadCountdown }}</span>
     </div>
 
+    <div v-else-if="kiroQuotaBadgeLabel" class="flex flex-col items-center gap-1">
+      <span :class="['badge text-xs', kiroQuotaBadgeClass]">{{ kiroQuotaBadgeLabel }}</span>
+      <span v-if="kiroQuotaHint" class="text-[11px] text-gray-400 dark:text-gray-500">{{ kiroQuotaHint }}</span>
+    </div>
+
     <!-- Main Status Badge (shown when not rate limited/overloaded) -->
     <template v-else>
       <button
@@ -69,7 +74,7 @@
       <div
         class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 whitespace-normal rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
       >
-        {{ t('admin.accounts.status.rateLimitedUntil', { time: formatDateTime(account.rate_limit_reset_at) }) }}
+        {{ t('admin.accounts.status.rateLimitedUntil', { time: formatDateTime(activeKiroRuntimeResetAt || account.rate_limit_reset_at) }) }}
         <div
           class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
         ></div>
@@ -172,9 +177,35 @@ const emit = defineEmits<{
 }>()
 
 // Computed: is rate limited (429)
+const activeKiroRuntimeResetAt = computed(() => {
+  if (props.account.platform !== 'kiro') return null
+  if (props.account.kiro_runtime_state !== 'cooldown') return null
+  if (!props.account.kiro_runtime_reset_at) return null
+  const resetAt = new Date(props.account.kiro_runtime_reset_at)
+  if (Number.isNaN(resetAt.getTime()) || resetAt <= new Date()) return null
+  return props.account.kiro_runtime_reset_at
+})
+
 const isRateLimited = computed(() => {
+  if (activeKiroRuntimeResetAt.value) return true
   if (!props.account.rate_limit_reset_at) return false
   return new Date(props.account.rate_limit_reset_at) > new Date()
+})
+
+const isKiroRuntimeSuspended = computed(() => {
+  if (props.account.platform !== 'kiro') return false
+  if (props.account.kiro_runtime_state !== 'suspended') return false
+  if (!props.account.kiro_runtime_reset_at) return true
+  const resetAt = new Date(props.account.kiro_runtime_reset_at)
+  return Number.isNaN(resetAt.getTime()) || resetAt > new Date()
+})
+
+const activeKiroQuotaResetAt = computed(() => {
+  if (props.account.platform !== 'kiro') return null
+  if (!props.account.kiro_quota_reset_at) return null
+  const resetAt = new Date(props.account.kiro_quota_reset_at)
+  if (Number.isNaN(resetAt.getTime()) || resetAt <= new Date()) return null
+  return props.account.kiro_quota_reset_at
 })
 
 type AccountModelStatusItem = {
@@ -286,7 +317,7 @@ const isTempUnschedulable = computed(() => {
 
 // Computed: has error status
 const hasError = computed(() => {
-  return props.account.status === 'error'
+  return props.account.status === 'error' || isKiroRuntimeSuspended.value
 })
 
 const isQuotaExceeded = computed(() => {
@@ -301,7 +332,7 @@ const isQuotaExceeded = computed(() => {
 
 // Computed: countdown text for rate limit (429)
 const rateLimitCountdown = computed(() => {
-  return formatCountdown(props.account.rate_limit_reset_at)
+  return formatCountdown(activeKiroRuntimeResetAt.value || props.account.rate_limit_reset_at)
 })
 
 const rateLimitResumeText = computed(() => {
@@ -314,8 +345,45 @@ const overloadCountdown = computed(() => {
   return formatCountdownWithSuffix(props.account.overload_until)
 })
 
+const kiroQuotaBadgeLabel = computed(() => {
+  if (props.account.platform !== 'kiro') return ''
+  switch (props.account.kiro_quota_state) {
+    case 'credits_exhausted':
+      return t('admin.accounts.status.creditsExhausted')
+    case 'overage_exhausted':
+      return t('admin.accounts.status.overageExhausted')
+    default:
+      return ''
+  }
+})
+
+const kiroQuotaBadgeClass = computed(() => {
+  switch (props.account.kiro_quota_state) {
+    case 'credits_exhausted':
+    case 'overage_exhausted':
+      return 'badge-danger'
+    default:
+      return 'badge-gray'
+  }
+})
+
+const kiroQuotaHint = computed(() => {
+  if (!activeKiroQuotaResetAt.value) return ''
+  switch (props.account.kiro_quota_state) {
+    case 'credits_exhausted':
+      return t('admin.accounts.status.creditsExhaustedUntil', { time: formatDateTime(activeKiroQuotaResetAt.value) })
+    case 'overage_exhausted':
+      return t('admin.accounts.status.overageExhaustedUntil', { time: formatDateTime(activeKiroQuotaResetAt.value) })
+    default:
+      return ''
+  }
+})
+
 // Computed: status badge class
 const statusClass = computed(() => {
+  if (isKiroRuntimeSuspended.value) {
+    return 'badge-danger'
+  }
   if (hasError.value) {
     return 'badge-danger'
   }
@@ -336,6 +404,9 @@ const statusClass = computed(() => {
 
 // Computed: status text
 const statusText = computed(() => {
+  if (isKiroRuntimeSuspended.value) {
+    return t('admin.accounts.forbidden')
+  }
   if (hasError.value) {
     return t('admin.accounts.status.error')
   }

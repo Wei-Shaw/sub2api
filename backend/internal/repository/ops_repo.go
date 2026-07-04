@@ -378,6 +378,26 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 	}, nil
 }
 
+func (r *opsRepository) DeleteErrorLogs(ctx context.Context, filter *service.OpsErrorLogFilter) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, fmt.Errorf("nil ops repository")
+	}
+	if filter == nil || filter.StartTime == nil || filter.StartTime.IsZero() || filter.EndTime == nil || filter.EndTime.IsZero() {
+		return 0, fmt.Errorf("ops error log cleanup requires start_time and end_time")
+	}
+
+	where, args := buildOpsErrorLogsWhere(filter)
+	result, err := r.db.ExecContext(ctx, "DELETE FROM ops_error_logs e "+where, args...)
+	if err != nil {
+		return 0, err
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return deleted, nil
+}
+
 func (r *opsRepository) GetErrorLogByID(ctx context.Context, id int64) (*service.OpsErrorLogDetail, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")

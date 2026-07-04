@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -67,6 +68,7 @@ type AccountTestService struct {
 	accountRepo               AccountRepository
 	geminiTokenProvider       *GeminiTokenProvider
 	claudeTokenProvider       *ClaudeTokenProvider
+	kiroTokenProvider         *KiroTokenProvider
 	grokTokenProvider         *GrokTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
 	httpUpstream              HTTPUpstream
@@ -79,6 +81,7 @@ func NewAccountTestService(
 	accountRepo AccountRepository,
 	geminiTokenProvider *GeminiTokenProvider,
 	claudeTokenProvider *ClaudeTokenProvider,
+	kiroTokenProvider *KiroTokenProvider,
 	grokTokenProvider *GrokTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
 	httpUpstream HTTPUpstream,
@@ -89,6 +92,7 @@ func NewAccountTestService(
 		accountRepo:               accountRepo,
 		geminiTokenProvider:       geminiTokenProvider,
 		claudeTokenProvider:       claudeTokenProvider,
+		kiroTokenProvider:         kiroTokenProvider,
 		grokTokenProvider:         grokTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
 		httpUpstream:              httpUpstream,
@@ -198,6 +202,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	if account.Platform == PlatformAntigravity {
 		return s.routeAntigravityTest(c, account, modelID, prompt)
+	}
+
+	if isKiroDirectModeAccount(account) {
+		return s.testKiroAccountConnection(c, account, modelID)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
@@ -389,6 +397,163 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	}
 
 	return s.processClaudeStream(c, resp.Body)
+}
+
+func (s *AccountTestService) testKiroAccountConnection(c *gin.Context, account *Account, modelID string) error {
+	ctx := c.Request.Context()
+
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = "claude-sonnet-4-6"
+	}
+	if mappedModel := account.GetMappedModel(testModelID); strings.TrimSpace(mappedModel) != "" {
+		testModelID = mappedModel
+	}
+
+	if !isKiroDirectModeAccount(account) {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported Kiro account type: %s", account.Type))
+	}
+
+	// API Key 账号:api_key 即长期 Bearer Token,无需 token provider 刷新。
+	// OAuth 账号:经 kiroTokenProvider 获取(必要时刷新)access_token。
+	var accessToken string
+	if account.Type == AccountTypeAPIKey {
+		accessToken = firstKiroCredential(account, "kiro_api_key", "kiroApiKey", "api_key")
+		if accessToken == "" {
+			return s.sendErrorAndEnd(c, "No API key available")
+		}
+	} else {
+		if s.kiroTokenProvider == nil {
+			return s.sendErrorAndEnd(c, "Kiro token provider not configured")
+		}
+		token, err := s.kiroTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to get Kiro access token: %s", err.Error()))
+		}
+		accessToken = token
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	payload, err := createTestPayload(testModelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create test payload")
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	resp, err := s.executeKiroTestUpstream(ctx, account, payloadBytes, testModelID, accessToken)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		defer func() { _ = resp.Body.Close() }()
+		body, _ := io.ReadAll(resp.Body)
+		return s.sendErrorAndEnd(c, formatKiroTestError(resp.StatusCode, body, testModelID, account))
+	}
+
+	pr, pw := io.Pipe()
+	go func() {
+		defer func() { _ = resp.Body.Close() }()
+		_, streamErr := kiropkg.StreamEventStreamAsAnthropicWithContext(ctx, resp.Body, pw, testModelID, estimateKiroInputTokens(payloadBytes), kiropkg.KiroRequestContext{})
+		if streamErr != nil {
+			_ = pw.CloseWithError(streamErr)
+			return
+		}
+		_ = pw.Close()
+	}()
+
+	return s.processClaudeStream(c, pr)
+}
+
+func formatKiroTestError(statusCode int, body []byte, requestedModel string, account *Account) string {
+	return fmt.Sprintf("API returned %d: %s", statusCode, string(body))
+}
+
+func (s *AccountTestService) executeKiroTestUpstream(ctx context.Context, account *Account, anthropicBody []byte, mappedModel, token string) (*http.Response, error) {
+	modelID := kiropkg.MapModel(mappedModel)
+	currentToken := token
+	// 测试连接走 Q endpoint，Q endpoint 不需要 profileArn（凭据中的占位符 ARN 会导致 403）
+	profileArn := ""
+	preparedBody := prepareKiroPayloadBodyForRequestModel(anthropicBody, mappedModel)
+	buildResult, err := kiropkg.BuildKiroPayloadWithContext(preparedBody, modelID, profileArn, "AI_EDITOR", nil)
+	if err != nil {
+		return nil, err
+	}
+	payload := buildResult.Payload
+
+	// 账号连通性测试默认走 AWS Q endpoint（group 级 q/krs 选择作用于真实流量）。
+	endpoints := buildKiroEndpoints(account, KiroEndpointModeQ)
+	proxyURL := kiroProxyURL(account)
+	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
+	accountKey := buildKiroAccountKey(account)
+	maxRetries := 2
+	for idx, endpoint := range endpoints {
+		for attempt := 0; attempt <= maxRetries; attempt++ {
+			req, err := newKiroJSONRequest(ctx, endpoint.URL, payload, currentToken, accountKey, buildKiroMachineID(account), endpoint.AmzTarget, account)
+			if err != nil {
+				return nil, err
+			}
+
+			resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
+			if err != nil {
+				return nil, err
+			}
+
+			if resp.StatusCode == http.StatusTooManyRequests || (resp.StatusCode >= 500 && resp.StatusCode < 600) {
+				if idx+1 < len(endpoints) {
+					_ = resp.Body.Close()
+					break
+				}
+				return resp, nil
+			}
+
+			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+				respBody, readErr := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
+				if readErr != nil {
+					return nil, readErr
+				}
+
+				if s.kiroTokenProvider != nil && (resp.StatusCode == http.StatusUnauthorized || isKiroTokenErrorBody(respBody)) && attempt < maxRetries {
+					refreshedToken, refreshErr := s.kiroTokenProvider.ForceRefreshAccessToken(ctx, account)
+					if refreshErr == nil && strings.TrimSpace(refreshedToken) != "" {
+						currentToken = refreshedToken
+						accountKey = buildKiroAccountKey(account)
+						buildResult, err = kiropkg.BuildKiroPayloadWithContext(preparedBody, modelID, profileArn, "AI_EDITOR", nil)
+						if err != nil {
+							return nil, err
+						}
+						payload = buildResult.Payload
+						continue
+					}
+				}
+
+				resetHTTPResponseBody(resp, respBody)
+				return resp, nil
+			}
+
+			if resp.StatusCode == http.StatusBadRequest {
+				respBody, readErr := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
+				if readErr != nil {
+					return nil, readErr
+				}
+				resetHTTPResponseBody(resp, respBody)
+				return resp, nil
+			}
+
+			return resp, nil
+		}
+	}
+
+	return nil, fmt.Errorf("kiro upstream endpoints exhausted")
 }
 
 // testBedrockAccountConnection tests a Bedrock (SigV4 or API Key) account using non-streaming invoke

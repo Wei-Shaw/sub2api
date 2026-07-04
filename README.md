@@ -24,6 +24,52 @@ Please read the following carefully before using this project:
 - **⚖️ Compliant Use**: Use this project only in compliance with the laws and regulations of your country or region. Any unlawful use is strictly prohibited.
 - **📖 Disclaimer**: This project is provided for technical learning and research purposes only. The authors assume no liability for account bans, service interruptions, data loss, or any other direct or indirect damages resulting from the use of this project.
 
+## Community
+
+- **Telegram**: [Join the group](https://t.me/+Pv3T6ncordwxOTZl)
+- **WeChat**: scan the QR code below
+
+<img src="https://github.com/user-attachments/assets/bbf5eb3b-aa72-4494-b9a3-0fc50e03f96c" alt="WeChat group QR code" width="280">
+
+## Overview
+
+Sub2API is an AI API gateway platform designed to distribute and manage API quotas from AI product subscriptions. Users can access upstream AI services through platform-generated API Keys, while the platform handles authentication, billing, load balancing, and request forwarding.
+
+## Kiro Support Fork
+
+The official upstream project currently has limited maintenance focus on the Kiro channel, so this repository is maintained as a long-term Kiro-support fork that keeps stable merges from the official branch.
+
+Additional Kiro-focused features in this fork:
+
+- Kiro channel support, including OAuth / AWS Builder ID / token import and API-key-compatible upstream access.
+- Anthropic Prompt Cache usage emulation for Kiro traffic.
+- Per-group Kiro cache emulation controls, including an adjustable emulation ratio.
+
+## Kiro Screenshots
+
+<p align="center">
+  <img src="assets/screenshots/kiro-add-account.png" alt="Add Kiro account" width="58%">
+  <img src="assets/screenshots/kiro-cache-emulation.png" alt="Kiro cache emulation group settings" width="35%">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/kiro-account-management.png" alt="Kiro account management" width="100%">
+</p>
+
+## Features
+
+- **Multi-Account Management** - Support multiple upstream account types (OAuth, API Key)
+- **API Key Distribution** - Generate and manage API Keys for users
+- **Precise Billing** - Token-level usage tracking and cost calculation
+- **Smart Scheduling** - Intelligent account selection with sticky sessions
+- **Concurrency Control** - Per-user and per-account concurrency limits
+- **Rate Limiting** - Configurable request and token rate limits
+- **Kiro Channel Support** - Long-term Kiro support fork with stable upstream merges
+- **Kiro Cache Emulation** - Simulate Anthropic Prompt Cache usage for Kiro groups with adjustable per-group emulation ratio
+- **Built-in Payment System** - Supports EasyPay, Alipay, WeChat Pay, and Stripe for user self-service top-up, no separate payment service needed ([Configuration Guide](docs/PAYMENT.md))
+- **Admin Dashboard** - Web interface for monitoring and management
+- **External System Integration** - Embed external systems (e.g. ticketing) via iframe to extend the admin dashboard
+
 ## ❤️ Sponsors
 
 > [Want to appear here?](mailto:support@pincc.ai)
@@ -107,6 +153,8 @@ Please read the following carefully before using this project:
 </tr>
 
 <tr>
+<td width="180"><a href="https://sub.666api.ai"><img src="assets/partners/logos/666api.jpg" alt="666api" width="150"></a></td>
+<td>Thanks to 666api for sponsoring this project! <a href="https://sub.666api.ai">sub.666api.ai</a> is an all-in-one platform offering: ⚡ API Relay — Pay-as-you-go access to global models sourced 100% from official providers, up to 75% off official pricing Exclusive: Zhipu GLM 50% off · DeepSeek V4-pro 50% off · Seedance2.0 8% off (whitelisted) · HappyHorse Overseas 30% off (whitelisted) 🔑 GPT Subscription Accounts — same-origin IP included · Global Residential IP 💰 Invoices supported
 <td width="180"><a href="https://666api.work/sub2api"><img src="assets/partners/logos/666api.jpg" alt="666api" width="150"></a></td>
 <td>Thanks to 666api for sponsoring this project! <a href="https://666api.work/sub2api">666api</a> is an all-in-one platform offering:<br>
 ⚡ API Relay — Pay-as-you-go access to global models sourced 100% from official providers, up to 75% off official pricing<br>

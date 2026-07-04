@@ -85,7 +85,7 @@ func NewGroupHandler(adminService service.AdminService, dashboardService *servic
 type CreateGroupRequest struct {
 	Name             string             `json:"name" binding:"required"`
 	Description      string             `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok fal"`
+	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity kiro grok fal"`
 	RateMultiplier   float64            `json:"rate_multiplier"`
 	IsExclusive      bool               `json:"is_exclusive"`
 	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -129,6 +129,12 @@ type CreateGroupRequest struct {
 	ModelsListConfig            service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）
 	RPMLimit int `json:"rpm_limit"`
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled   bool     `json:"kiro_cache_emulation_enabled"`
+	KiroAutoStickyEnabled       *bool    `json:"kiro_auto_sticky_enabled"`
+	KiroStickySessionTTLSeconds *int     `json:"kiro_sticky_session_ttl_seconds"`
+	KiroCacheEmulationRatio     *float64 `json:"kiro_cache_emulation_ratio"`
+	KiroEndpointMode            *string  `json:"kiro_endpoint_mode"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -137,7 +143,7 @@ type CreateGroupRequest struct {
 type UpdateGroupRequest struct {
 	Name             string             `json:"name"`
 	Description      *string            `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok fal"`
+	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity kiro grok fal"`
 	RateMultiplier   *float64           `json:"rate_multiplier"`
 	IsExclusive      *bool              `json:"is_exclusive"`
 	Status           string             `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -179,6 +185,12 @@ type UpdateGroupRequest struct {
 	ModelsListConfig            *service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
 	RPMLimit *int `json:"rpm_limit"`
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled   *bool    `json:"kiro_cache_emulation_enabled"`
+	KiroAutoStickyEnabled       *bool    `json:"kiro_auto_sticky_enabled"`
+	KiroStickySessionTTLSeconds *int     `json:"kiro_sticky_session_ttl_seconds"`
+	KiroCacheEmulationRatio     *float64 `json:"kiro_cache_emulation_ratio"`
+	KiroEndpointMode            *string  `json:"kiro_endpoint_mode"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -342,6 +354,11 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
+		KiroCacheEmulationEnabled:       req.KiroCacheEmulationEnabled,
+		KiroAutoStickyEnabled:           req.KiroAutoStickyEnabled,
+		KiroStickySessionTTLSeconds:     req.KiroStickySessionTTLSeconds,
+		KiroCacheEmulationRatio:         req.KiroCacheEmulationRatio,
+		KiroEndpointMode:                req.KiroEndpointMode,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -406,6 +423,11 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
+		KiroCacheEmulationEnabled:       req.KiroCacheEmulationEnabled,
+		KiroAutoStickyEnabled:           req.KiroAutoStickyEnabled,
+		KiroStickySessionTTLSeconds:     req.KiroStickySessionTTLSeconds,
+		KiroCacheEmulationRatio:         req.KiroCacheEmulationRatio,
+		KiroEndpointMode:                req.KiroEndpointMode,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {

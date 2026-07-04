@@ -17,6 +17,7 @@ import subscriptionsAPI from './subscriptions'
 import usageAPI from './usage'
 import geminiAPI from './gemini'
 import antigravityAPI from './antigravity'
+import kiroAPI from './kiro'
 import grokAPI from './grok'
 import userAttributesAPI from './userAttributes'
 import opsAPI from './ops'
@@ -53,6 +54,7 @@ export const adminAPI = {
   usage: usageAPI,
   gemini: geminiAPI,
   antigravity: antigravityAPI,
+  kiro: kiroAPI,
   grok: grokAPI,
   userAttributes: userAttributesAPI,
   ops: opsAPI,
@@ -87,6 +89,7 @@ export {
   usageAPI,
   geminiAPI,
   antigravityAPI,
+  kiroAPI,
   grokAPI,
   userAttributesAPI,
   opsAPI,
