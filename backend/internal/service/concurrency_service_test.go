@@ -95,6 +95,10 @@ func (c *stubConcurrencyCacheForTest) CleanupExpiredAccountSlots(_ context.Conte
 	return c.cleanupErr
 }
 
+func (c *stubConcurrencyCacheForTest) CleanupExpiredAccountSlotKeys(_ context.Context) error {
+	return c.cleanupErr
+}
+
 func (c *stubConcurrencyCacheForTest) CleanupStaleProcessSlots(_ context.Context, _ string) error {
 	return c.cleanupErr
 }

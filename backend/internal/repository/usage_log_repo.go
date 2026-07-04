@@ -372,12 +372,13 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.
 		}
 	}
 
+	// 队列满时阻塞等待而非立即丢弃：批处理器持续排空队列，短暂等待即可入队。
+	// 立即丢弃会造成“已扣费但无 usage_log”的永久数据缺口（issue #3656）；
+	// 阻塞上限由调用方 ctx 期限约束，超时后由上层同步兜底。
 	select {
 	case r.bestEffortBatchCh <- req:
 	case <-ctx.Done():
 		return service.MarkUsageLogCreateDropped(ctx.Err())
-	default:
-		return service.MarkUsageLogCreateDropped(errors.New("usage log best-effort queue full"))
 	}
 
 	select {
@@ -493,12 +494,12 @@ func (r *usageLogRepository) createBatched(ctx context.Context, log *service.Usa
 		resultCh: make(chan usageLogCreateResult, 1),
 	}
 
+	// 队列满时阻塞等待而非立即报错：本路径是 best-effort 丢弃后的最后兜底，
+	// 立即失败会让日志永久丢失；阻塞上限由调用方 ctx 期限约束。
 	select {
 	case r.createBatchCh <- req:
 	case <-ctx.Done():
 		return false, service.MarkUsageLogCreateNotPersisted(ctx.Err())
-	default:
-		return false, service.MarkUsageLogCreateNotPersisted(errors.New("usage log create batch queue full"))
 	}
 
 	select {
@@ -520,22 +521,28 @@ func (r *usageLogRepository) createBatched(ctx context.Context, log *service.Usa
 }
 
 func (r *usageLogRepository) ensureCreateBatcher() {
-	if r == nil || r.db == nil || r.createBatchCh != nil {
+	if r == nil || r.db == nil {
 		return
 	}
+	// nil 检查必须在 Once 内部：在外层做无同步快路径读会与 Once 内的写构成数据竞争。
 	r.createBatchOnce.Do(func() {
-		r.createBatchCh = make(chan usageLogCreateRequest, usageLogCreateBatchQueueCap)
-		go r.runCreateBatcher(r.db)
+		if r.createBatchCh == nil {
+			r.createBatchCh = make(chan usageLogCreateRequest, usageLogCreateBatchQueueCap)
+			go r.runCreateBatcher(r.db)
+		}
 	})
 }
 
 func (r *usageLogRepository) ensureBestEffortBatcher() {
-	if r == nil || r.db == nil || r.bestEffortBatchCh != nil {
+	if r == nil || r.db == nil {
 		return
 	}
+	// 同 ensureCreateBatcher：nil 检查放在 Once 内部以避免数据竞争。
 	r.bestEffortBatchOnce.Do(func() {
-		r.bestEffortBatchCh = make(chan usageLogBestEffortRequest, usageLogBestEffortBatchQueueCap)
-		go r.runBestEffortBatcher(r.db)
+		if r.bestEffortBatchCh == nil {
+			r.bestEffortBatchCh = make(chan usageLogBestEffortRequest, usageLogBestEffortBatchQueueCap)
+			go r.runBestEffortBatcher(r.db)
+		}
 	})
 }
 

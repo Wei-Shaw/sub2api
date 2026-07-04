@@ -64,7 +64,7 @@
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
       </div>
-      <UsageFilters v-model="filters" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
+      <UsageFilters v-model="filters" :mode="activeTab === 'errors' ? 'errors' : 'usage'" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
         <template #after-reset>
           <div class="relative" ref="columnDropdownRef">
             <button
@@ -82,14 +82,14 @@
               class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
             >
               <button
-                v-for="col in toggleableColumns"
+                v-for="col in currentToggleableColumns"
                 :key="col.key"
-                @click="toggleColumn(col.key)"
+                @click="toggleCurrentColumn(col.key)"
                 class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
                 <span>{{ col.label }}</span>
                 <Icon
-                  v-if="isColumnVisible(col.key)"
+                  v-if="isCurrentColumnVisible(col.key)"
                   name="check"
                   size="sm"
                   class="text-primary-500"
@@ -126,9 +126,14 @@
         <OpsErrorLogTable
           :rows="errRows" :total="errTotal" :loading="errLoading"
           :page="errPage" :page-size="errPageSize"
+          :visible-column-keys="errVisibleColumnKeys"
+          user-clickable
+          @userClick="handleUserClick"
           @openErrorDetail="openError"
+          @sort="onErrSort"
           @update:page="onErrPage"
-          @update:pageSize="onErrPageSize" />
+          @update:pageSize="onErrPageSize"
+          @ipGeoBatchFailed="handleIpGeoBatchFailed" />
         <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
       </div>
     </div>
@@ -609,6 +614,74 @@ const toggleColumn = (key: string) => {
   }
 }
 
+// ---- 错误请求 tab 列设置(与用量明细同机制,独立存储) ----
+const ERR_ALWAYS_VISIBLE = ['user', 'status', 'created_at', 'actions']
+const ERR_DEFAULT_HIDDEN_COLUMNS = ['user_agent']
+const ERR_HIDDEN_COLUMNS_KEY = 'usage-error-hidden-columns'
+
+// key 集合须与 OpsErrorLogTable 内部 allColumns 一致
+const errAllColumns = computed(() => [
+  { key: 'user', label: t('admin.ops.errorLog.user') },
+  { key: 'api_key', label: t('admin.ops.errorLog.apiKey') },
+  { key: 'account', label: t('admin.ops.errorLog.account') },
+  { key: 'platform', label: t('admin.ops.errorLog.platform') },
+  { key: 'model', label: t('admin.ops.errorLog.model') },
+  { key: 'endpoint', label: t('admin.ops.errorLog.endpoint') },
+  { key: 'group', label: t('admin.ops.errorLog.group') },
+  { key: 'type', label: t('admin.ops.errorLog.type') },
+  { key: 'category', label: t('usage.errors.category') },
+  { key: 'status', label: t('admin.ops.errorLog.status') },
+  { key: 'message', label: t('admin.ops.errorLog.message') },
+  { key: 'created_at', label: t('admin.ops.errorLog.time') },
+  { key: 'user_agent', label: t('usage.userAgent') },
+  { key: 'client_ip', label: t('admin.ops.errorLog.ip') },
+  { key: 'actions', label: t('admin.ops.errorLog.action') },
+])
+
+const errHiddenColumns = reactive<Set<string>>(new Set())
+
+const errToggleableColumns = computed(() =>
+  errAllColumns.value.filter(col => !ERR_ALWAYS_VISIBLE.includes(col.key))
+)
+
+const errVisibleColumnKeys = computed(() =>
+  errAllColumns.value
+    .filter(col => ERR_ALWAYS_VISIBLE.includes(col.key) || !errHiddenColumns.has(col.key))
+    .map(col => col.key)
+)
+
+const toggleErrColumn = (key: string) => {
+  if (errHiddenColumns.has(key)) {
+    errHiddenColumns.delete(key)
+  } else {
+    errHiddenColumns.add(key)
+  }
+  try {
+    localStorage.setItem(ERR_HIDDEN_COLUMNS_KEY, JSON.stringify([...errHiddenColumns]))
+  } catch (e) {
+    console.error('Failed to save error columns:', e)
+  }
+}
+
+const loadSavedErrColumns = () => {
+  try {
+    const saved = localStorage.getItem(ERR_HIDDEN_COLUMNS_KEY)
+    const keys = saved ? (JSON.parse(saved) as string[]) : ERR_DEFAULT_HIDDEN_COLUMNS
+    keys.forEach((key) => errHiddenColumns.add(key))
+  } catch {
+    ERR_DEFAULT_HIDDEN_COLUMNS.forEach((key) => errHiddenColumns.add(key))
+  }
+}
+
+// 列设置下拉按当前 tab 分发
+const currentToggleableColumns = computed(() =>
+  activeTab.value === 'errors' ? errToggleableColumns.value : toggleableColumns.value
+)
+const isCurrentColumnVisible = (key: string) =>
+  activeTab.value === 'errors' ? !errHiddenColumns.has(key) : isColumnVisible(key)
+const toggleCurrentColumn = (key: string) =>
+  activeTab.value === 'errors' ? toggleErrColumn(key) : toggleColumn(key)
+
 const loadSavedColumns = () => {
   try {
     const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY)
@@ -635,6 +708,8 @@ const errLoading = ref(false)
 const errPage = ref(1)
 const errPageSize = ref(20)
 const errTotal = ref(0)
+const errSortBy = ref('created_at')
+const errSortOrder = ref<'asc' | 'desc'>('desc')
 const showErrorModal = ref(false)
 const selectedErrorId = ref<number | null>(null)
 
@@ -656,6 +731,11 @@ const loadAdminErrors = async () => {
       account_id: filters.value.account_id ?? undefined,
       group_id: filters.value.group_id ?? undefined,
       model: filters.value.model || undefined,
+      phase: filters.value.error_phase || undefined,
+      category: filters.value.error_category || undefined,
+      status_codes: filters.value.status_code != null ? String(filters.value.status_code) : undefined,
+      sort_by: errSortBy.value,
+      sort_order: errSortOrder.value,
     })
     errRows.value = resp.items
     errTotal.value = resp.total
@@ -667,6 +747,12 @@ const loadAdminErrors = async () => {
   }
 }
 
+const onErrSort = (sortBy: string, sortOrder: 'asc' | 'desc') => {
+  errSortBy.value = sortBy
+  errSortOrder.value = sortOrder
+  errPage.value = 1
+  loadAdminErrors()
+}
 const onErrPage = (p: number) => { errPage.value = p; loadAdminErrors() }
 const onErrPageSize = (s: number) => { errPageSize.value = s; errPage.value = 1; loadAdminErrors() }
 const openError = (id: number) => { selectedErrorId.value = id; showErrorModal.value = true }
@@ -690,6 +776,7 @@ onMounted(() => {
     void loadChartData()
   }, 120)
   loadSavedColumns()
+  loadSavedErrColumns()
   document.addEventListener('click', handleColumnClickOutside)
 })
 onUnmounted(() => { abortController?.abort(); exportAbortController?.abort(); document.removeEventListener('click', handleColumnClickOutside) })

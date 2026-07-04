@@ -446,6 +446,7 @@ func isNonRetryableRefreshError(err error) bool {
 	nonRetryable := []string{
 		"invalid_grant",             // refresh_token 已失效
 		"invalid_refresh_token",     // refresh_token 无效, team 账号工作区被删除会出现
+		"token_expired",             // OpenAI refresh_token 已过期，需要重新授权
 		"app_session_terminated",    // refresh_token team 账号工作区被删除
 		"refresh_token_reused",      // OpenAI refresh_token 已被使用，必须重新授权
 		"refresh_token_invalidated", // OpenAI session ended; refresh token invalidated
