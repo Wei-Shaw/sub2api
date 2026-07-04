@@ -23,6 +23,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -210,7 +211,7 @@ func tlsEgressLogEnabled() bool {
 	v := strings.TrimSpace(os.Getenv("TLS_EGRESS_LOG"))
 	on := v == "1" || strings.EqualFold(v, "true")
 	tlsEgressLogInitOnce.Do(func() {
-		slog.Info("tls_egress_init", "enabled", on, "raw_env", v)
+		logger.LegacyPrintf("repository.tls_egress", "tls_egress_init enabled=%v raw_env=%q", on, v)
 	})
 	return on
 }
@@ -236,14 +237,9 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 			alpn = strings.Join(profile.ALPNProtocols, ",")
 			grease = profile.EnableGREASE
 		}
-		slog.Info("tls_egress",
-			"account_id", accountID,
-			"host", host,
-			"ua", ua,
-			"tls_profile", profileName,
-			"alpn", alpn,
-			"grease", grease,
-		)
+		logger.LegacyPrintf("repository.tls_egress",
+			"tls_egress account=%d host=%s ua=%q tls_profile=%s alpn=%s grease=%v",
+			accountID, host, ua, profileName, alpn, grease)
 	}
 	if profile == nil {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)

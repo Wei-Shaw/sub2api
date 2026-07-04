@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
@@ -30,7 +30,7 @@ func tlsEgressWSLogEnabled() bool {
 	v := strings.TrimSpace(os.Getenv("TLS_EGRESS_LOG"))
 	on := v == "1" || strings.EqualFold(v, "true")
 	tlsEgressWSLogInitOnce.Do(func() {
-		slog.Info("tls_egress_ws_init", "enabled", on, "raw_env", v)
+		logger.LegacyPrintf("service.tls_egress", "tls_egress_ws_init enabled=%v raw_env=%q", on, v)
 	})
 	return on
 }
@@ -111,7 +111,9 @@ func (d *coderOpenAIWSClientDialer) Dial(
 			grease = profile.EnableGREASE
 		}
 		// 注:WS 出站会被 HTTP1OnlyProfile 强制成 http/1.1,alpn 字段展示的是 profile 原始值。
-		slog.Info("tls_egress_ws", "url", targetURL, "ua", ua, "tls_profile", profileName, "alpn", alpn, "grease", grease)
+		logger.LegacyPrintf("service.tls_egress",
+			"tls_egress_ws url=%s ua=%q tls_profile=%s alpn=%s grease=%v",
+			targetURL, ua, profileName, alpn, grease)
 	}
 
 	opts := &coderws.DialOptions{
