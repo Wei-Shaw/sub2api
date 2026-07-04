@@ -1,6 +1,9 @@
 package service
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type OpsSystemLog struct {
 	ID              int64          `json:"id"`
@@ -65,17 +68,22 @@ type OpsErrorLog struct {
 	RequestedModel   string `json:"requested_model"`
 	UpstreamModel    string `json:"upstream_model"`
 	RequestType      *int16 `json:"request_type"`
+	UserAgent        string `json:"user_agent"`
 
 	// 关联 api_key 名称（LEFT JOIN api_keys 取得；软删只覆盖 key 列，name 保留，故已删 key 仍有原名）。
 	APIKeyName    string `json:"api_key_name,omitempty"`
 	APIKeyDeleted bool   `json:"api_key_deleted,omitempty"`
+
+	// 已删除 KEY 所有者（INVALID_API_KEY 且该 key 曾存在时的归因快照）。
+	// 认证失败行 user_id 为空，列表用户列以此回退显示所有者。
+	DeletedKeyOwnerUserID *int64 `json:"deleted_key_owner_user_id,omitempty"`
+	DeletedKeyOwnerEmail  string `json:"deleted_key_owner_email,omitempty"`
 }
 
 type OpsErrorLogDetail struct {
 	OpsErrorLog
 
 	ErrorBody string `json:"error_body"`
-	UserAgent string `json:"user_agent"`
 
 	// Upstream context (optional)
 	UpstreamStatusCode   *int   `json:"upstream_status_code,omitempty"`
@@ -93,11 +101,10 @@ type OpsErrorLogDetail struct {
 	// vNext metric semantics
 	IsBusinessLimited bool `json:"is_business_limited"`
 
-	// Deleted key owner info (populated when INVALID_API_KEY and key was previously deleted)
-	AttemptedKeyPrefix    string `json:"attempted_key_prefix,omitempty"`
-	DeletedKeyOwnerUserID *int64 `json:"deleted_key_owner_user_id,omitempty"`
-	DeletedKeyOwnerEmail  string `json:"deleted_key_owner_email,omitempty"`
-	DeletedKeyName        string `json:"deleted_key_name,omitempty"`
+	// Deleted key owner info (populated when INVALID_API_KEY and key was previously deleted).
+	// OwnerUserID/OwnerEmail 已上移到 OpsErrorLog（列表用户列回退需要）。
+	AttemptedKeyPrefix string `json:"attempted_key_prefix,omitempty"`
+	DeletedKeyName     string `json:"deleted_key_name,omitempty"`
 
 	// Bound (non-deleted) key prefix, snapshotted at error time; mutually exclusive with AttemptedKeyPrefix.
 	APIKeyPrefix string `json:"api_key_prefix,omitempty"`
@@ -142,8 +149,14 @@ type OpsErrorLogFilter struct {
 	// ExcludeCountTokens drops count_tokens probe errors (is_count_tokens=true).
 	ExcludeCountTokens bool
 
+	// IncludeRecoveredUpstream 显式豁免 status>=400 守卫（仅在 Phase=="upstream" 时生效）：
+	// ops 专用上游错误列表需要看到 status<400 的 recovered upstream 行。
+	// 请求错误语义的端点不设此开关，phase=upstream 过滤照常生效且守卫保留。
+	IncludeRecoveredUpstream bool
+
 	// ErrorPhasesAny / ErrorTypesAny add plain ANY() filters WITHOUT touching the
-	// special-cased single `Phase` field (only Phase=="upstream" bypasses the status>=400 clause).
+	// special-cased single `Phase` field (only Phase=="upstream" with
+	// IncludeRecoveredUpstream bypasses the status>=400 clause).
 	// NOTE: these ANY filters do NOT bypass status>=400; records with error_phase='upstream'
 	// but status_code<400 (recovered upstream errors) remain excluded.
 	// Used to map user-facing coarse categories to backend conditions.
@@ -158,6 +171,19 @@ type OpsErrorLogFilter struct {
 
 	Page     int
 	PageSize int
+
+	// SortBy/SortOrder: server-side sorting aligned with the usage-log list.
+	// Repo whitelists columns (created_at/model/status_code); anything else
+	// falls back to created_at. SortOrder is "asc"/"desc" (default desc).
+	SortBy    string
+	SortOrder string
+}
+
+// SetSort normalizes raw sort_by/sort_order query values into the filter.
+// Shared by the admin and user-facing error list handlers.
+func (f *OpsErrorLogFilter) SetSort(sortBy, sortOrder string) {
+	f.SortBy = strings.TrimSpace(sortBy)
+	f.SortOrder = strings.TrimSpace(sortOrder)
 }
 
 type OpsErrorLogList struct {

@@ -68,6 +68,15 @@
           color="purple"
         />
 
+        <!-- 7d Fable Window (7d_oi) -->
+        <UsageProgressBar
+          v-if="usageInfo.seven_day_fable"
+          label="7d F"
+          :utilization="usageInfo.seven_day_fable.utilization"
+          :resets-at="usageInfo.seven_day_fable.resets_at"
+          color="amber"
+        />
+
         <!-- Passive sampling label + active query button -->
         <div class="flex items-center gap-1.5 mt-0.5">
           <span

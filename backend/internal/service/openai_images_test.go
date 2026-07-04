@@ -2496,6 +2496,23 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsStreamingTransformsEvents(t
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 
+	sourceUpload := newOpenAIImagesUploadFromBytes([]byte("source-image"), "image/png", "source.png")
+	maskUpload := newOpenAIImagesUploadFromBytes([]byte("mask-image"), "image/png", "mask.png")
+	originalDownloader := openAIImagesJSONEditImageDownloader
+	openAIImagesJSONEditImageDownloader = func(ctx context.Context, rawURL string, index int, mask bool) (OpenAIImagesUpload, error) {
+		switch rawURL {
+		case "https://example.com/source.png":
+			require.False(t, mask)
+			return sourceUpload, nil
+		case "https://example.com/mask.png":
+			require.True(t, mask)
+			return maskUpload, nil
+		default:
+			return OpenAIImagesUpload{}, fmt.Errorf("unexpected image url: %s", rawURL)
+		}
+	}
+	t.Cleanup(func() { openAIImagesJSONEditImageDownloader = originalDownloader })
+
 	upstream := &httpUpstreamRecorder{
 		resp: &http.Response{
 			StatusCode: http.StatusOK,
@@ -2527,8 +2544,8 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsStreamingTransformsEvents(t
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, "edit", gjson.GetBytes(upstream.lastBody, "tools.0.action").String())
-	require.Equal(t, "https://example.com/source.png", gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String())
-	require.Equal(t, "https://example.com/mask.png", gjson.GetBytes(upstream.lastBody, "tools.0.input_image_mask.image_url").String())
+	require.Equal(t, sourceUpload.ModerationDataURL(), gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String())
+	require.Equal(t, maskUpload.ModerationDataURL(), gjson.GetBytes(upstream.lastBody, "tools.0.input_image_mask.image_url").String())
 	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
 	partial, ok := findOpenAIImageTestSSEEvent(events, "image_edit.partial_image")
 	require.True(t, ok)

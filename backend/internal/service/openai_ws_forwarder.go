@@ -2448,11 +2448,15 @@ func stripCodexSparkImageGenerationToolFromRawPayload(payload []byte, model stri
 	if !isCodexSparkModel(model) || !openAIRequestBodyHasImageGenerationTool(payload) {
 		return payload, false, nil
 	}
+	return stripOpenAIImageGenerationToolFromRawPayload(payload)
+}
+
+func stripOpenAIImageGenerationToolFromRawPayload(payload []byte) ([]byte, bool, error) {
 	payloadMap := make(map[string]any)
 	if err := json.Unmarshal(payload, &payloadMap); err != nil {
 		return payload, false, err
 	}
-	if !stripCodexSparkImageGenerationTools(payloadMap) {
+	if !stripOpenAIImageGenerationTools(payloadMap) {
 		return payload, false, nil
 	}
 	rebuilt, err := json.Marshal(payloadMap)
@@ -2671,7 +2675,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		apiKey := getAPIKeyFromContext(c)
 		imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
-		codexBridgeEnabled := isCodexCLI && imageGenerationAllowed && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+		codexImageGenerationExplicitToolPolicy := codexImageGenerationExplicitToolPolicyAllow
+		if isCodexCLI {
+			codexImageGenerationExplicitToolPolicy = account.CodexImageGenerationExplicitToolPolicy()
+		}
+		codexBridgeEnabled := isCodexCLI && imageGenerationAllowed && codexImageGenerationExplicitToolPolicy != codexImageGenerationExplicitToolPolicyStrip && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
 		if codexBridgeEnabled {
 			payloadMap := make(map[string]any)
 			if err := json.Unmarshal(normalized, &payloadMap); err != nil {
@@ -2708,6 +2716,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", setErr)
 			}
 			normalized = next
+		}
+		if isCodexCLI && codexImageGenerationExplicitToolPolicy == codexImageGenerationExplicitToolPolicyStrip {
+			if stripped, changed, stripErr := stripOpenAIImageGenerationToolFromRawPayload(normalized); stripErr != nil {
+				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", stripErr)
+			} else if changed {
+				normalized = stripped
+				logOpenAIWSModeInfo("ingress_ws_codex_image_tool_stripped_by_policy account_id=%d", account.ID)
+			}
 		}
 		if stripped, changed, stripErr := stripCodexSparkImageGenerationToolFromRawPayload(normalized, upstreamModel); stripErr != nil {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", stripErr)

@@ -742,6 +742,9 @@ func shouldForwardOpenAIImagesAPIKeyAsResponses(account *Account, parsed *OpenAI
 	if parsed == nil {
 		return false
 	}
+	if parsed.Multipart {
+		return false
+	}
 	if !isCustomOpenAIImagesBaseURL(account) {
 		return false
 	}
