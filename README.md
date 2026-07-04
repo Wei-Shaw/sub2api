@@ -26,7 +26,7 @@ Please read the following carefully before using this project:
 
 ## ❤️ Sponsors
 
-> [Want to appear here?](mailto:support@pincc.ai)
+> [Want to appear here?](mailto:support@sub2api.org)
 
 <table>
 
@@ -140,7 +140,7 @@ Model authenticity: no content intervention or secondary filtering — experienc
 
 <tr>
 <td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
-<td>Proxy4Free is a data proxy service provider for developers and AI applications, offering residential proxies, static residential proxies, ISP proxies, and datacenter proxies for scenarios such as Web Scraping, Browser Automation, and AI Agents. With global IP resources, stable connections, and flexible switching, it helps developers improve data collection success rates and reduce the risk of IP bans. Register via <a href="https://www.proxy4free.com/?keyword=4yjqecpc">this link</a> to get started and easily build more stable and efficient automation workflows.
+<td>Thanks to Proxy4Free for sponsoring this project! Proxy4Free is a data proxy service provider for developers and AI applications, offering residential proxies, static residential proxies, ISP proxies, and datacenter proxies for scenarios such as Web Scraping, Browser Automation, and AI Agents. With global IP resources, stable connections, and flexible switching, it helps developers improve data collection success rates and reduce the risk of IP bans. Register via <a href="https://www.proxy4free.com/?keyword=4yjqecpc">this link</a> to get started and easily build more stable and efficient automation workflows.
 </td>
 </tr>
 

@@ -26,7 +26,7 @@
 
 ## ❤️ スポンサー
 
-> [こちらに掲載しませんか？](mailto:support@pincc.ai)
+> [こちらに掲載しませんか？](mailto:support@sub2api.org)
 
 <table>
 
@@ -138,7 +138,7 @@
 
 <tr>
 <td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
-<td>Proxy4Free は開発者と AI アプリケーション向けのデータプロキシサービスプロバイダーで、住宅プロキシ、静的住宅プロキシ、ISP プロキシ、データセンタープロキシなど多様なプロキシソリューションを提供しており、Web Scraping、Browser Automation、AI Agent などのシナリオに適しています。グローバル IP リソース、安定した接続、柔軟な切り替えをサポートし、開発者のデータ収集成功率の向上と IP ブロックリスクの低減を支援します。<a href="https://www.proxy4free.com/?keyword=4yjqecpc">こちらのリンクから登録</a>して、より安定した効率的な自動化ワークフローを簡単に構築しましょう。
+<td>Proxy4Free のご支援に感謝します！Proxy4Free は開発者と AI アプリケーション向けのデータプロキシサービスプロバイダーで、住宅プロキシ、静的住宅プロキシ、ISP プロキシ、データセンタープロキシなど多様なプロキシソリューションを提供しており、Web Scraping、Browser Automation、AI Agent などのシナリオに適しています。グローバル IP リソース、安定した接続、柔軟な切り替えをサポートし、開発者のデータ収集成功率の向上と IP ブロックリスクの低減を支援します。<a href="https://www.proxy4free.com/?keyword=4yjqecpc">こちらのリンクから登録</a>して、より安定した効率的な自動化ワークフローを簡単に構築しましょう。
 </td>
 </tr>
 
