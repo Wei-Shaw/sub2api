@@ -20,14 +20,20 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-// tlsEgressWSLogOn 由环境变量 TLS_EGRESS_LOG=1|true 开启（与 repository.DoWithTLS 的同名开关一致）。
+var tlsEgressWSLogInitOnce sync.Once
+
+// tlsEgressWSLogEnabled 由环境变量 TLS_EGRESS_LOG=1|true 开启（与 repository.DoWithTLS 同名开关一致）。
 // Codex Responses 走 WebSocket 出站、用自己的 DialTLSContext 拨号器、不经过 DoWithTLS，
-// 故这里为 WS 建连单独补一条握手指纹 + 出站 UA 日志，用于确认 codex UA ↔ codex-cli-real 是否自洽。
-// 默认关闭；开启时按「每次新建 WS 连接」打印一条（连接复用不重复打印）。
-var tlsEgressWSLogOn = func() bool {
+// 故这里为 WS 建连单独补一条握手指纹 + 出站 UA 日志。每次请求读 env（避免 init 期读取疑难），
+// 首次调用打印一条 tls_egress_ws_init 诊断。开启时按「每次新建 WS 连接」打印（连接复用不重复）。
+func tlsEgressWSLogEnabled() bool {
 	v := strings.TrimSpace(os.Getenv("TLS_EGRESS_LOG"))
-	return v == "1" || strings.EqualFold(v, "true")
-}()
+	on := v == "1" || strings.EqualFold(v, "true")
+	tlsEgressWSLogInitOnce.Do(func() {
+		slog.Info("tls_egress_ws_init", "enabled", on, "raw_env", v)
+	})
+	return on
+}
 
 const openAIWSMessageReadLimitBytes int64 = 16 * 1024 * 1024
 const (
@@ -91,7 +97,7 @@ func (d *coderOpenAIWSClientDialer) Dial(
 		return nil, 0, nil, errors.New("ws url is empty")
 	}
 
-	if tlsEgressWSLogOn {
+	if tlsEgressWSLogEnabled() {
 		ua := ""
 		if headers != nil {
 			ua = headers.Get("User-Agent")

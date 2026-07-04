@@ -200,21 +200,27 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	return resp, nil
 }
 
-// tlsEgressLogOn 由环境变量 TLS_EGRESS_LOG=1|true 开启：每次出站请求以 Info 级打印
-// 出站 User-Agent 与实际解析到的 TLS 指纹模板名，用于确认「claude-cli UA + 真 Claude Code
-// 指纹」等出站身份是否自洽。默认关闭，关闭时零开销（仅一次 bool 判断）。
-// profile 为 nil 时打印 <none: go-default-ja3>，即未套指纹、走 Go 默认握手（与 UA 不自洽）。
-var tlsEgressLogOn = func() bool {
+var tlsEgressLogInitOnce sync.Once
+
+// tlsEgressLogEnabled 每次请求时读取环境变量 TLS_EGRESS_LOG（=1|true 开启），
+// 避免任何"包初始化期读取 env"的疑难场景；并在首次调用时无条件打印一条
+// tls_egress_init（含解析结果与原始 env 值），用于诊断进程是否真的读到该环境变量。
+// 开启后每次出站请求以 Info 级打印出站 UA + 实际解析到的 TLS 指纹模板 + alpn/grease。
+func tlsEgressLogEnabled() bool {
 	v := strings.TrimSpace(os.Getenv("TLS_EGRESS_LOG"))
-	return v == "1" || strings.EqualFold(v, "true")
-}()
+	on := v == "1" || strings.EqualFold(v, "true")
+	tlsEgressLogInitOnce.Do(func() {
+		slog.Info("tls_egress_init", "enabled", on, "raw_env", v)
+	})
+	return on
+}
 
 // DoWithTLS 执行带 TLS 指纹伪装的 HTTP 请求
 //
 // profile 为 nil 时不启用 TLS 指纹，行为与 Do 方法相同。
 // profile 非 nil 时使用指定的 Profile 进行 TLS 指纹伪装。
 func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
-	if tlsEgressLogOn {
+	if tlsEgressLogEnabled() {
 		ua, host := "", ""
 		if req != nil {
 			ua = req.Header.Get("User-Agent")
