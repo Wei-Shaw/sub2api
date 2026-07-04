@@ -5,8 +5,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +19,15 @@ import (
 	coderws "github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
+
+// tlsEgressWSLogOn 由环境变量 TLS_EGRESS_LOG=1|true 开启（与 repository.DoWithTLS 的同名开关一致）。
+// Codex Responses 走 WebSocket 出站、用自己的 DialTLSContext 拨号器、不经过 DoWithTLS，
+// 故这里为 WS 建连单独补一条握手指纹 + 出站 UA 日志，用于确认 codex UA ↔ codex-cli-real 是否自洽。
+// 默认关闭；开启时按「每次新建 WS 连接」打印一条（连接复用不重复打印）。
+var tlsEgressWSLogOn = func() bool {
+	v := strings.TrimSpace(os.Getenv("TLS_EGRESS_LOG"))
+	return v == "1" || strings.EqualFold(v, "true")
+}()
 
 const openAIWSMessageReadLimitBytes int64 = 16 * 1024 * 1024
 const (
@@ -78,6 +89,23 @@ func (d *coderOpenAIWSClientDialer) Dial(
 	targetURL := strings.TrimSpace(wsURL)
 	if targetURL == "" {
 		return nil, 0, nil, errors.New("ws url is empty")
+	}
+
+	if tlsEgressWSLogOn {
+		ua := ""
+		if headers != nil {
+			ua = headers.Get("User-Agent")
+		}
+		profileName := "<none: go-default-ja3>"
+		alpn := ""
+		grease := false
+		if profile != nil {
+			profileName = profile.Name
+			alpn = strings.Join(profile.ALPNProtocols, ",")
+			grease = profile.EnableGREASE
+		}
+		// 注:WS 出站会被 HTTP1OnlyProfile 强制成 http/1.1,alpn 字段展示的是 profile 原始值。
+		slog.Info("tls_egress_ws", "url", targetURL, "ua", ua, "tls_profile", profileName, "alpn", alpn, "grease", grease)
 	}
 
 	opts := &coderws.DialOptions{

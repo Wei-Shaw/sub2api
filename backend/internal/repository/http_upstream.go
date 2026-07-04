@@ -223,14 +223,20 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 			}
 		}
 		profileName := "<none: go-default-ja3>"
+		alpn := ""
+		grease := false
 		if profile != nil {
 			profileName = profile.Name
+			alpn = strings.Join(profile.ALPNProtocols, ",")
+			grease = profile.EnableGREASE
 		}
 		slog.Info("tls_egress",
 			"account_id", accountID,
 			"host", host,
 			"ua", ua,
 			"tls_profile", profileName,
+			"alpn", alpn,
+			"grease", grease,
 		)
 	}
 	if profile == nil {
