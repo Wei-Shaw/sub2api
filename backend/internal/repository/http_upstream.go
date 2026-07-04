@@ -140,6 +140,10 @@ type httpUpstreamService struct {
 // 返回:
 //   - service.HTTPUpstream 接口实现
 func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
+	// 启动时无条件打印一次 TLS_EGRESS_LOG 的解析结果，用于诊断进程是否真的读到该 env（不依赖任何请求）。
+	rawEnv := strings.TrimSpace(os.Getenv("TLS_EGRESS_LOG"))
+	logger.LegacyPrintf("repository.tls_egress", "tls_egress_boot enabled=%v raw_env=%q",
+		rawEnv == "1" || strings.EqualFold(rawEnv, "true"), rawEnv)
 	return &httpUpstreamService{
 		cfg:     cfg,
 		clients: make(map[string]*upstreamClientEntry),
