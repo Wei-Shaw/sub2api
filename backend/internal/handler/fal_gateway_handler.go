@@ -88,31 +88,59 @@ func (h *FalGatewayHandler) Images(c *gin.Context) {
 		zap.Int64("user_id", subject.UserID),
 		zap.Int64("api_key_id", apiKey.ID),
 	)
+	imageStatusRequestID := ""
+	imageStatusCompleted := false
+	imageStatusFailMessage := "image generation failed"
+	failImageStatus := func(message string) {
+		if strings.TrimSpace(message) != "" {
+			imageStatusFailMessage = strings.TrimSpace(message)
+		}
+	}
+	if c.Request != nil && c.Request.URL != nil && !strings.Contains(c.Request.URL.Path, "/edits") {
+		imageStatusRequestID = clientProvidedImageStatusRequestID(c)
+		if imageStatusRequestID != "" && h.imagesService != nil {
+			ctx := service.WithResponsesImageStatusRequestID(c.Request.Context(), imageStatusRequestID)
+			c.Request = c.Request.WithContext(ctx)
+			h.imagesService.BeginResponsesImageStatus(ctx, imageStatusRequestID)
+			defer func() {
+				if !imageStatusCompleted {
+					h.imagesService.FailResponsesImageStatus(context.Background(), imageStatusRequestID, imageStatusFailMessage)
+				}
+			}()
+		}
+	}
 
 	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		failImageStatus(service.ImageGenerationPermissionMessage())
 		h.jsonError(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
 
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil || len(body) == 0 {
+		failImageStatus("Failed to read request body")
 		h.jsonError(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
 		return
 	}
 
 	parsed, err := h.imagesService.ParseOpenAIImagesRequest(c, body)
 	if err != nil {
+		failImageStatus(err.Error())
 		h.jsonError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
 
 	account, err := h.selectFalAccount(c, apiKey, parsed.Model, falAPIForOpenAIImages(parsed))
 	if err != nil || account == nil {
+		failImageStatus("no available fal account")
 		h.jsonError(c, http.StatusServiceUnavailable, "api_error", "no available fal account")
 		return
 	}
 	input := buildFalInputFromOpenAI(parsed)
-	h.runPseudoSync(c, reqLog, apiKey, subject, service.AsyncMediaFacadeOpenAI, parsed.Model, account, input, func(task *service.AsyncMediaTask) {
+	if imageStatusRequestID != "" && h.imagesService != nil {
+		h.imagesService.MarkResponsesImageStatusRunning(c.Request.Context(), imageStatusRequestID)
+	}
+	imageStatusCompleted = h.runPseudoSync(c, reqLog, apiKey, subject, service.AsyncMediaFacadeOpenAI, parsed.Model, account, input, func(task *service.AsyncMediaTask) {
 		h.writeOpenAIImagesResponse(c, reqLog, parsed, task)
 	})
 }
@@ -149,9 +177,9 @@ func (h *FalGatewayHandler) ServeOpenAIImagesWithAccount(
 	subject middleware2.AuthSubject,
 	parsed *service.OpenAIImagesRequest,
 	account *service.Account,
-) {
+) bool {
 	input := buildFalInputFromOpenAI(parsed)
-	h.runPseudoSync(c, reqLog, apiKey, subject, service.AsyncMediaFacadeOpenAI, parsed.Model, account, input, func(task *service.AsyncMediaTask) {
+	return h.runPseudoSync(c, reqLog, apiKey, subject, service.AsyncMediaFacadeOpenAI, parsed.Model, account, input, func(task *service.AsyncMediaTask) {
 		h.writeOpenAIImagesResponse(c, reqLog, parsed, task)
 	})
 }
@@ -179,6 +207,17 @@ func (h *FalGatewayHandler) writeOpenAIImagesResponse(c *gin.Context, reqLog *za
 
 	urls := task.ResultURLs()
 	reqLog.Info("fal.images.write_response", zap.Int("image_count", len(urls)), zap.Strings("image_urls", urls))
+	if h.imagesService != nil {
+		result := &service.OpenAIForwardResult{
+			ImageOutputURLs: urls,
+		}
+		if task != nil {
+			result.ImageOutputURLs = task.ImageURLs
+			result.ImageOutputCosURLs = task.CosURLs
+		}
+		h.imagesService.MarkResponsesImageStatusUpstreamDone(c.Request.Context(), result)
+		h.imagesService.SucceedResponsesImageStatus(c.Request.Context(), result)
+	}
 
 	for i, u := range urls {
 		item := fal.OpenAIImageData{RevisedPrompt: revisedPrompt}
@@ -236,7 +275,7 @@ func (h *FalGatewayHandler) runPseudoSync(
 	account *service.Account,
 	input fal.ImageGenInput,
 	onSuccess func(task *service.AsyncMediaTask),
-) {
+) bool {
 	submitInput := h.buildSubmitInput(c, apiKey, subject, facade, requestedModel, account, input)
 
 	task, err := h.asyncMedia.SubmitAsync(c.Request.Context(), submitInput)
@@ -246,10 +285,10 @@ func (h *FalGatewayHandler) runPseudoSync(
 			// 模型未配置定价：拒绝提交，避免被「免费刷图」。
 			h.jsonError(c, http.StatusServiceUnavailable, "pricing_unavailable",
 				"Image model pricing is not configured for this group/channel; please contact the administrator")
-			return
+			return false
 		}
 		h.jsonError(c, http.StatusBadGateway, "api_error", "Failed to submit image task: "+err.Error())
-		return
+		return false
 	}
 
 	waitCtx, cancel := context.WithTimeout(c.Request.Context(), h.pseudoSyncTimeout())
@@ -267,11 +306,11 @@ func (h *FalGatewayHandler) runPseudoSync(
 					"request_id": derefStringPtr(task.UpstreamRequestID),
 				},
 			})
-			return
+			return false
 		}
 		reqLog.Warn("fal.images.wait_failed", zap.Int64("task_id", task.ID), zap.Error(err))
 		h.jsonError(c, http.StatusBadGateway, "api_error", "Image generation failed")
-		return
+		return false
 	}
 
 	if finalTask == nil || finalTask.Status != service.AsyncMediaStatusSucceeded {
@@ -280,10 +319,11 @@ func (h *FalGatewayHandler) runPseudoSync(
 			reason = *finalTask.ErrorReason
 		}
 		h.jsonError(c, http.StatusBadGateway, "api_error", reason)
-		return
+		return false
 	}
 
 	onSuccess(finalTask)
+	return true
 }
 
 // buildSubmitInput 组装异步任务提交入参（账号由调用方预选）。
@@ -548,7 +588,7 @@ func falInternalRequestID(c *gin.Context) string {
 	if v, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string); strings.TrimSpace(v) != "" {
 		return strings.TrimSpace(v)
 	}
-	if v := strings.TrimSpace(c.GetHeader("X-Client-Request-ID")); v != "" {
+	if v := strings.TrimSpace(c.GetHeader("x-client-request-id")); v != "" {
 		return v
 	}
 	return uuid.New().String()

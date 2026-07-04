@@ -12,6 +12,7 @@ type openAIImageOutputCounter struct {
 	seen         map[string]struct{}
 	seenSizes    map[string]string
 	seenBase64   map[string]string
+	seenURLs     map[string]string
 	seenOrder    []string
 	dataSizes    []string
 	count        int
@@ -23,6 +24,7 @@ func newOpenAIImageOutputCounter() *openAIImageOutputCounter {
 		seen:       make(map[string]struct{}),
 		seenSizes:  make(map[string]string),
 		seenBase64: make(map[string]string),
+		seenURLs:   make(map[string]string),
 	}
 }
 
@@ -87,6 +89,22 @@ func (c *openAIImageOutputCounter) Base64Payloads() []string {
 	out := make([]string, len(c.seenOrder))
 	for i, key := range c.seenOrder {
 		out[i] = c.seenBase64[key]
+	}
+	return out
+}
+
+func (c *openAIImageOutputCounter) URLs() []string {
+	if c == nil || len(c.seenOrder) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(c.seenOrder))
+	for _, key := range c.seenOrder {
+		if u := strings.TrimSpace(c.seenURLs[key]); u != "" {
+			out = append(out, u)
+		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
@@ -217,6 +235,9 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 		if b64Payload != "" && c.seenBase64[key] == "" {
 			c.seenBase64[key] = b64Payload
 		}
+		if urlPayload != "" && c.seenURLs[key] == "" {
+			c.seenURLs[key] = urlPayload
+		}
 		return
 	}
 	c.seen[key] = struct{}{}
@@ -226,6 +247,9 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 	}
 	if b64Payload != "" {
 		c.seenBase64[key] = b64Payload
+	}
+	if urlPayload != "" {
+		c.seenURLs[key] = urlPayload
 	}
 	c.count++
 }
@@ -257,6 +281,12 @@ func collectOpenAIResponseImageOutputBase64sFromJSONBytes(body []byte) []string 
 	return counter.Base64Payloads()
 }
 
+func collectOpenAIResponseImageOutputURLsFromJSONBytes(body []byte) []string {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse(body)
+	return counter.URLs()
+}
+
 func countOpenAIImageOutputsFromSSEBody(body string) int {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
@@ -273,4 +303,10 @@ func collectOpenAIImageOutputBase64sFromSSEBody(body string) []string {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
 	return counter.Base64Payloads()
+}
+
+func collectOpenAIImageOutputURLsFromSSEBody(body string) []string {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddSSEBody(body)
+	return counter.URLs()
 }

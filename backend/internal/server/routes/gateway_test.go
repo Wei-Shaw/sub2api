@@ -1,10 +1,12 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -13,6 +15,27 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type routeResponsesImageStatusStore struct {
+	items map[string]*service.ResponsesImageStatus
+}
+
+func (s *routeResponsesImageStatusStore) GetResponsesImageStatus(_ context.Context, requestID string) (*service.ResponsesImageStatus, error) {
+	if s != nil {
+		if status := s.items[requestID]; status != nil {
+			return status, nil
+		}
+	}
+	return nil, service.ErrResponsesImageStatusNotFound
+}
+
+func (s *routeResponsesImageStatusStore) SetResponsesImageStatus(_ context.Context, status *service.ResponsesImageStatus, _ time.Duration) error {
+	if s.items == nil {
+		s.items = make(map[string]*service.ResponsesImageStatus)
+	}
+	s.items[status.RequestID] = status
+	return nil
+}
 
 func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
@@ -82,6 +105,132 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI images handler", path)
 	}
+}
+
+func newImagesStatusRouteTestRouter(auth gin.HandlerFunc, store service.ResponsesImageStatusStore) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	openAIService := service.NewOpenAIGatewayService(
+		nil, nil, nil, nil, nil, nil, nil, store, &config.Config{},
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	openAIHandler := handler.NewOpenAIGatewayHandler(openAIService, nil, nil, nil, nil, nil, nil, nil, &config.Config{})
+	RegisterGatewayRoutes(
+		router,
+		&handler.Handlers{
+			Gateway:       &handler.GatewayHandler{},
+			OpenAIGateway: openAIHandler,
+			FalGateway:    &handler.FalGatewayHandler{},
+		},
+		servermiddleware.APIKeyAuthMiddleware(auth),
+		nil,
+		nil,
+		nil,
+		nil,
+		&config.Config{},
+	)
+	return router
+}
+
+func TestGatewayRoutesImagesStatusQuery(t *testing.T) {
+	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
+	store := &routeResponsesImageStatusStore{items: map[string]*service.ResponsesImageStatus{
+		"img-1": {
+			RequestID: "img-1",
+			Status:    service.ResponsesImageStatusSucceeded,
+			Progress:  100,
+			COSURLs:   []string{"https://cos.example/img-1.png"},
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}}
+	auth := func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{ID: 99})
+		c.Next()
+	}
+	router := newImagesStatusRouteTestRouter(auth, store)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/images/status/?request_id=img-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"data":[`)
+	require.Contains(t, w.Body.String(), `"request_id":"img-1"`)
+	require.Contains(t, w.Body.String(), `"cos_urls":["https://cos.example/img-1.png"]`)
+}
+
+func TestGatewayRoutesImagesStatusBatchQuery(t *testing.T) {
+	store := &routeResponsesImageStatusStore{items: map[string]*service.ResponsesImageStatus{
+		"img-1": {
+			RequestID: "img-1",
+			Status:    service.ResponsesImageStatusSucceeded,
+			Progress:  100,
+		},
+		"img-2": {
+			RequestID: "img-2",
+			Status:    service.ResponsesImageStatusRunning,
+			Progress:  25,
+		},
+	}}
+	auth := func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{ID: 99})
+		c.Next()
+	}
+	router := newImagesStatusRouteTestRouter(auth, store)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/images/status/?request_ids=img-1,missing&request_id=img-2", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"request_id":"img-1"`)
+	require.Contains(t, w.Body.String(), `"request_id":"img-2"`)
+	require.Contains(t, w.Body.String(), `"not_found":["missing"]`)
+}
+
+func TestGatewayRoutesImagesStatusMissingExpiredAndInvalidAuth(t *testing.T) {
+	authOK := func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{ID: 1})
+		c.Next()
+	}
+	router := newImagesStatusRouteTestRouter(authOK, &routeResponsesImageStatusStore{})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/images/status/?request_id=expired", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	authReject := func(c *gin.Context) {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid"})
+	}
+	router = newImagesStatusRouteTestRouter(authReject, &routeResponsesImageStatusStore{})
+	req = httptest.NewRequest(http.MethodGet, "/v1/images/status/?request_id=img-1", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestGatewayRoutesImagesStatusDoesNotRequireGroupOrOwnerMatch(t *testing.T) {
+	store := &routeResponsesImageStatusStore{items: map[string]*service.ResponsesImageStatus{
+		"shared": {
+			RequestID: "shared",
+			Status:    service.ResponsesImageStatusRunning,
+			Progress:  25,
+		},
+	}}
+	auth := func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{ID: 200})
+		c.Next()
+	}
+	router := newImagesStatusRouteTestRouter(auth, store)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/images/status/?request_id=shared", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"request_id":"shared"`)
 }
 
 // TestGatewayRoutesFalImagesDispatch 验证 fal 平台分组的 images 请求被分流到 fal 伪同步门面。

@@ -96,7 +96,23 @@ func RegisterGatewayRoutes(
 			},
 		})
 	}
+	imagesStatusHandler := func(c *gin.Context) {
+		if h.OpenAIGateway == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": gin.H{
+					"type":    "api_error",
+					"message": "Images status service is not available",
+				},
+			})
+			return
+		}
+		h.OpenAIGateway.ImagesStatus(c)
+	}
+
 	// API网关（Claude API兼容）
+	r.GET("/v1/images/status/", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), imagesStatusHandler)
+	r.GET("/v1/images/status", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), imagesStatusHandler)
+
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
 	gateway.Use(clientRequestID)

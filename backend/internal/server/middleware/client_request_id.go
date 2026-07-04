@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const clientRequestIDHeader = "X-Client-Request-ID"
+const clientRequestIDHeader = "x-client-request-id"
 
 // ClientRequestID ensures every request has a unique client_request_id in request.Context().
 //

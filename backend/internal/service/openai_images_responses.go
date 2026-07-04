@@ -1753,6 +1753,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 					ImageOutputSizes:  imageOutputSizes,
 					ImageOutputBase64: imageOutputBase64s,
 				}
+				s.MarkResponsesImageStatusUpstreamDone(ctx, res)
 				s.scheduleOpenAIImageCosUpload(ctx, res)
 				return res, err
 			}
@@ -1800,6 +1801,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		ImageOutputSizes:  imageOutputSizes,
 		ImageOutputBase64: imageOutputBase64s,
 	}
+	s.MarkResponsesImageStatusUpstreamDone(ctx, res)
 	s.scheduleOpenAIImageCosUpload(ctx, res)
 	return res, nil
 }

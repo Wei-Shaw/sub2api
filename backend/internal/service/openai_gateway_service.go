@@ -109,7 +109,7 @@ var codexCLIOnlyDebugHeaderWhitelist = []string{
 	"Session_ID",
 	"Conversation_ID",
 	"X-Request-ID",
-	"X-Client-Request-ID",
+	"x-client-request-id",
 	"X-Forwarded-For",
 	"X-Real-IP",
 }
@@ -257,14 +257,17 @@ type OpenAIForwardResult struct {
 	// ImageOutputBase64 与 ImageOutputSizes 同序、同长度（counter 收尾时统一回填）；
 	// URL 模式或未携带 b64 的 slot 占位空字符串。仅供 §5 回包图片分辨率自检消费。
 	ImageOutputBase64 []string
+	// ImageOutputURLs stores upstream URL-mode image outputs for short-lived status lookup.
+	ImageOutputURLs []string
 	// ImageOutputCosURLs 与 ImageOutputSizes 同序、同长度；当 COS 转存失败或未启用时，
 	// 对应槽位为空字符串。仅由 §image-cos-upload 异步上传协程回填，写 usage_log 前需 join。
 	ImageOutputCosURLs []string
 	// imageCosUploadDone 当存在异步 COS 上传任务时，该 channel 将在所有上传协程结束后被关闭；
 	// 为 nil 表示无异步任务，无需等待。RecordUsage 写库前会等待该信号（带超时）。
-	imageCosUploadDone <-chan struct{}
-	ImageSizeSource    string
-	ImageSizeBreakdown map[string]int
+	imageCosUploadDone   <-chan struct{}
+	ImageSizeSource      string
+	ImageSizeBreakdown   map[string]int
+	ImageStatusRequestID string
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
@@ -349,31 +352,32 @@ var ErrNoAvailableCompactAccounts = errors.New("no available OpenAI accounts sup
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
-	accountRepo           AccountRepository
-	usageLogRepo          UsageLogRepository
-	usageBillingRepo      UsageBillingRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	cache                 GatewayCache
-	cfg                   *config.Config
-	codexDetector         CodexClientRestrictionDetector
-	schedulerSnapshot     *SchedulerSnapshotService
-	concurrencyService    *ConcurrencyService
-	billingService        *BillingService
-	rateLimitService      *RateLimitService
-	billingCacheService   *BillingCacheService
-	userGroupRateResolver *userGroupRateResolver
-	httpUpstream          HTTPUpstream
-	deferredService       *DeferredService
-	openAITokenProvider   *OpenAITokenProvider
-	grokTokenProvider     *GrokTokenProvider
-	toolCorrector         *CodexToolCorrector
-	openaiWSResolver      OpenAIWSProtocolResolver
-	resolver              *ModelPricingResolver
-	channelService        *ChannelService
-	balanceNotifyService  *BalanceNotifyService
-	settingService        *SettingService
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	accountRepo               AccountRepository
+	usageLogRepo              UsageLogRepository
+	usageBillingRepo          UsageBillingRepository
+	userRepo                  UserRepository
+	userSubRepo               UserSubscriptionRepository
+	cache                     GatewayCache
+	responsesImageStatusStore ResponsesImageStatusStore
+	cfg                       *config.Config
+	codexDetector             CodexClientRestrictionDetector
+	schedulerSnapshot         *SchedulerSnapshotService
+	concurrencyService        *ConcurrencyService
+	billingService            *BillingService
+	rateLimitService          *RateLimitService
+	billingCacheService       *BillingCacheService
+	userGroupRateResolver     *userGroupRateResolver
+	httpUpstream              HTTPUpstream
+	deferredService           *DeferredService
+	openAITokenProvider       *OpenAITokenProvider
+	grokTokenProvider         *GrokTokenProvider
+	toolCorrector             *CodexToolCorrector
+	openaiWSResolver          OpenAIWSProtocolResolver
+	resolver                  *ModelPricingResolver
+	channelService            *ChannelService
+	balanceNotifyService      *BalanceNotifyService
+	settingService            *SettingService
+	userPlatformQuotaRepo     UserPlatformQuotaRepository
 	// cosService 为 nil 表示未启用图片转存（OpenAI 出图响应直接返回 b64_json，不写 cos url 到 usage_log）。
 	cosService *COSImageTransferService
 
@@ -407,6 +411,7 @@ func NewOpenAIGatewayService(
 	userSubRepo UserSubscriptionRepository,
 	userGroupRateRepo UserGroupRateRepository,
 	cache GatewayCache,
+	responsesImageStatusStore ResponsesImageStatusStore,
 	cfg *config.Config,
 	schedulerSnapshot *SchedulerSnapshotService,
 	concurrencyService *ConcurrencyService,
@@ -425,19 +430,20 @@ func NewOpenAIGatewayService(
 	cosService *COSImageTransferService,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
-		accountRepo:         accountRepo,
-		usageLogRepo:        usageLogRepo,
-		usageBillingRepo:    usageBillingRepo,
-		userRepo:            userRepo,
-		userSubRepo:         userSubRepo,
-		cache:               cache,
-		cfg:                 cfg,
-		codexDetector:       NewOpenAICodexClientRestrictionDetector(cfg),
-		schedulerSnapshot:   schedulerSnapshot,
-		concurrencyService:  concurrencyService,
-		billingService:      billingService,
-		rateLimitService:    rateLimitService,
-		billingCacheService: billingCacheService,
+		accountRepo:               accountRepo,
+		usageLogRepo:              usageLogRepo,
+		usageBillingRepo:          usageBillingRepo,
+		userRepo:                  userRepo,
+		userSubRepo:               userSubRepo,
+		cache:                     cache,
+		responsesImageStatusStore: responsesImageStatusStore,
+		cfg:                       cfg,
+		codexDetector:             NewOpenAICodexClientRestrictionDetector(cfg),
+		schedulerSnapshot:         schedulerSnapshot,
+		concurrencyService:        concurrencyService,
+		billingService:            billingService,
+		rateLimitService:          rateLimitService,
+		billingCacheService:       billingCacheService,
 		userGroupRateResolver: newUserGroupRateResolver(
 			userGroupRateRepo,
 			nil,
@@ -3367,6 +3373,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		imageCount := 0
 		var imageOutputSizes []string
 		var imageOutputBase64s []string
+		var imageOutputURLs []string
 		imageGroup := apiKeyGroup(apiKey)
 		if reqStream {
 			var streamResult *openaiStreamingResult
@@ -3384,6 +3391,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
 			imageOutputBase64s = streamResult.imageOutputBase64s
+			imageOutputURLs = streamResult.imageOutputURLs
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel, imageGroup, imageInputSize)
 			if err != nil {
@@ -3394,6 +3402,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
 			imageOutputBase64s = nonStreamResult.imageOutputBase64s
+			imageOutputURLs = nonStreamResult.imageOutputURLs
 		}
 		s.bindHTTPResponseAccount(ctx, c, account, responseID)
 
@@ -3428,7 +3437,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			forwardResult.ImageInputSize = imageInputSize
 			forwardResult.ImageOutputSizes = imageOutputSizes
 			forwardResult.ImageOutputBase64 = imageOutputBase64s
+			forwardResult.ImageOutputURLs = imageOutputURLs
 			forwardResult.BillingModel = imageBillingModel
+		}
+		if forwardResult.ImageCount > 0 {
+			s.MarkResponsesImageStatusUpstreamDone(ctx, forwardResult)
 		}
 		s.scheduleOpenAIImageCosUpload(ctx, forwardResult)
 		return forwardResult, nil
@@ -3621,6 +3634,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	imageCount := 0
 	var imageOutputSizes []string
 	var imageOutputBase64s []string
+	var imageOutputURLs []string
 	if reqStream {
 		var result *openaiStreamingResultPassthrough
 		if s.shouldBufferOpenAIImagesForUpscale(ctx, imageGroup, imageInputSize) {
@@ -3637,6 +3651,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 		imageOutputBase64s = result.imageOutputBase64s
+		imageOutputURLs = result.imageOutputURLs
 	} else {
 		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel, imageGroup, imageInputSize)
 		if err != nil {
@@ -3647,6 +3662,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 		imageOutputBase64s = result.imageOutputBase64s
+		imageOutputURLs = result.imageOutputURLs
 	}
 	s.bindHTTPResponseAccount(ctx, c, account, responseID)
 
@@ -3680,7 +3696,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		forwardResult.ImageInputSize = imageInputSize
 		forwardResult.ImageOutputSizes = imageOutputSizes
 		forwardResult.ImageOutputBase64 = imageOutputBase64s
+		forwardResult.ImageOutputURLs = imageOutputURLs
 		forwardResult.BillingModel = imageBillingModel
+	}
+	if forwardResult.ImageCount > 0 {
+		s.MarkResponsesImageStatusUpstreamDone(ctx, forwardResult)
 	}
 	s.scheduleOpenAIImageCosUpload(ctx, forwardResult)
 	return forwardResult, nil
@@ -4000,6 +4020,7 @@ type openaiStreamingResultPassthrough struct {
 	imageCount         int
 	imageOutputSizes   []string
 	imageOutputBase64s []string
+	imageOutputURLs    []string
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -4009,6 +4030,7 @@ type openaiNonStreamingResultPassthrough struct {
 	imageCount         int
 	imageOutputSizes   []string
 	imageOutputBase64s []string
+	imageOutputURLs    []string
 }
 
 func (s *OpenAIGatewayService) prepareOpenAIResponsesImageBody(
@@ -4017,7 +4039,7 @@ func (s *OpenAIGatewayService) prepareOpenAIResponsesImageBody(
 	requestedSize string,
 	body []byte,
 	isSSE bool,
-) ([]byte, int, []string, []string) {
+) ([]byte, int, []string, []string, []string) {
 	counter := newOpenAIImageOutputCounter()
 	if isSSE {
 		counter.AddSSEBody(string(body))
@@ -4025,8 +4047,9 @@ func (s *OpenAIGatewayService) prepareOpenAIResponsesImageBody(
 		counter.AddJSONResponse(body)
 	}
 	b64s := counter.Base64Payloads()
+	urls := counter.URLs()
 	if len(b64s) == 0 {
-		return body, counter.Count(), counter.Sizes(), nil
+		return body, counter.Count(), counter.Sizes(), nil, urls
 	}
 	sizes := counter.SizesPerSlot()
 	newB64s, newSizes, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, b64s, sizes)
@@ -4035,7 +4058,7 @@ func (s *OpenAIGatewayService) prepareOpenAIResponsesImageBody(
 		b64s = newB64s
 		sizes = newSizes
 	}
-	return body, counter.Count(), sizes, b64s
+	return body, counter.Count(), sizes, b64s, urls
 }
 
 func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
@@ -4236,6 +4259,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			imageCount:         imageCounter.Count(),
 			imageOutputSizes:   imageCounter.SizesPerSlot(),
 			imageOutputBase64s: imageCounter.Base64Payloads(),
+			imageOutputURLs:    imageCounter.URLs(),
 		}
 	}
 
@@ -4393,7 +4417,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughBufferedForImag
 	if err != nil {
 		return nil, err
 	}
-	out, _, _, _ := s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, raw, true)
+	out, _, _, _, _ := s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, raw, true)
 	resp.Body = io.NopCloser(bytes.NewReader(out))
 	return s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, originalModel, mappedModel)
 }
@@ -4448,8 +4472,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	imageCount := countOpenAIResponseImageOutputsFromJSONBytes(body)
 	imageOutputSizes := collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
 	imageOutputBase64s := collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
+	imageOutputURLs := collectOpenAIResponseImageOutputURLsFromJSONBytes(body)
 	if imageCount > 0 {
-		body, imageCount, imageOutputSizes, imageOutputBase64s = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, false)
+		body, imageCount, imageOutputSizes, imageOutputBase64s, imageOutputURLs = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, false)
 	}
 
 	c.Data(resp.StatusCode, contentType, body)
@@ -4460,6 +4485,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		imageCount:         imageCount,
 		imageOutputSizes:   imageOutputSizes,
 		imageOutputBase64s: imageOutputBase64s,
+		imageOutputURLs:    imageOutputURLs,
 	}, nil
 }
 
@@ -4528,19 +4554,22 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(
 	imageCount := 0
 	var imageOutputSizes []string
 	var imageOutputBase64s []string
+	var imageOutputURLs []string
 	if ok {
 		imageCount = countOpenAIResponseImageOutputsFromJSONBytes(body)
 		imageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
 		imageOutputBase64s = collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
+		imageOutputURLs = collectOpenAIResponseImageOutputURLsFromJSONBytes(body)
 		if imageCount > 0 {
-			body, imageCount, imageOutputSizes, imageOutputBase64s = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, false)
+			body, imageCount, imageOutputSizes, imageOutputBase64s, imageOutputURLs = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, false)
 		}
 	} else {
 		imageCount = countOpenAIImageOutputsFromSSEBody(bodyText)
 		imageOutputSizes = collectOpenAIImageOutputSizesFromSSEBody(bodyText)
 		imageOutputBase64s = collectOpenAIImageOutputBase64sFromSSEBody(bodyText)
+		imageOutputURLs = collectOpenAIImageOutputURLsFromSSEBody(bodyText)
 		if imageCount > 0 {
-			body, imageCount, imageOutputSizes, imageOutputBase64s = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, true)
+			body, imageCount, imageOutputSizes, imageOutputBase64s, imageOutputURLs = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, true)
 		}
 	}
 	c.Data(resp.StatusCode, contentType, body)
@@ -4552,6 +4581,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(
 		imageCount:         imageCount,
 		imageOutputSizes:   imageOutputSizes,
 		imageOutputBase64s: imageOutputBase64s,
+		imageOutputURLs:    imageOutputURLs,
 	}, nil
 }
 
@@ -5070,6 +5100,7 @@ type openaiStreamingResult struct {
 	imageCount         int
 	imageOutputSizes   []string
 	imageOutputBase64s []string
+	imageOutputURLs    []string
 }
 
 type openaiNonStreamingResult struct {
@@ -5079,6 +5110,7 @@ type openaiNonStreamingResult struct {
 	imageCount         int
 	imageOutputSizes   []string
 	imageOutputBase64s []string
+	imageOutputURLs    []string
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponseBufferedForImageUpscale(
@@ -5096,7 +5128,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseBufferedForImageUpscale(
 	if err != nil {
 		return nil, err
 	}
-	out, _, _, _ := s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, raw, true)
+	out, _, _, _, _ := s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, raw, true)
 	resp.Body = io.NopCloser(bytes.NewReader(out))
 	return s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, mappedModel)
 }
@@ -5222,6 +5254,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			imageCount:         imageCounter.Count(),
 			imageOutputSizes:   imageCounter.SizesPerSlot(),
 			imageOutputBase64s: imageCounter.Base64Payloads(),
+			imageOutputURLs:    imageCounter.URLs(),
 		}
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
@@ -5903,8 +5936,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	imageCount := countOpenAIResponseImageOutputsFromJSONBytes(body)
 	imageOutputSizes := collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
 	imageOutputBase64s := collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
+	imageOutputURLs := collectOpenAIResponseImageOutputURLsFromJSONBytes(body)
 	if imageCount > 0 {
-		body, imageCount, imageOutputSizes, imageOutputBase64s = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, false)
+		body, imageCount, imageOutputSizes, imageOutputBase64s, imageOutputURLs = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, false)
 	}
 
 	c.Data(resp.StatusCode, contentType, body)
@@ -5916,6 +5950,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		imageCount:         imageCount,
 		imageOutputSizes:   imageOutputSizes,
 		imageOutputBase64s: imageOutputBase64s,
+		imageOutputURLs:    imageOutputURLs,
 	}, nil
 }
 
@@ -5977,19 +6012,22 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 	imageCount := 0
 	var imageOutputSizes []string
 	var imageOutputBase64s []string
+	var imageOutputURLs []string
 	if ok {
 		imageCount = countOpenAIResponseImageOutputsFromJSONBytes(body)
 		imageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
 		imageOutputBase64s = collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
+		imageOutputURLs = collectOpenAIResponseImageOutputURLsFromJSONBytes(body)
 		if imageCount > 0 {
-			body, imageCount, imageOutputSizes, imageOutputBase64s = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, false)
+			body, imageCount, imageOutputSizes, imageOutputBase64s, imageOutputURLs = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, false)
 		}
 	} else {
 		imageCount = countOpenAIImageOutputsFromSSEBody(bodyText)
 		imageOutputSizes = collectOpenAIImageOutputSizesFromSSEBody(bodyText)
 		imageOutputBase64s = collectOpenAIImageOutputBase64sFromSSEBody(bodyText)
+		imageOutputURLs = collectOpenAIImageOutputURLsFromSSEBody(bodyText)
 		if imageCount > 0 {
-			body, imageCount, imageOutputSizes, imageOutputBase64s = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, true)
+			body, imageCount, imageOutputSizes, imageOutputBase64s, imageOutputURLs = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, true)
 		}
 	}
 	c.Data(resp.StatusCode, contentType, body)
@@ -6001,6 +6039,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 		imageCount:         imageCount,
 		imageOutputSizes:   imageOutputSizes,
 		imageOutputBase64s: imageOutputBase64s,
+		imageOutputURLs:    imageOutputURLs,
 	}, nil
 }
 

@@ -34,15 +34,21 @@ const openAIImageCosUploadTimeout = 10 * time.Second
 //   - base64 切片为空时直接返回
 //   - 单张图片解码或上传失败不影响其他图片，对应 slot 保留为空字符串
 func (s *OpenAIGatewayService) scheduleOpenAIImageCosUpload(ctx context.Context, result *OpenAIForwardResult) {
-	if result == nil || s == nil || s.cosService == nil {
+	if result == nil || s == nil {
 		return
 	}
 	base64s := result.ImageOutputBase64
 	if len(base64s) == 0 {
+		s.SucceedResponsesImageStatus(ctx, result)
+		return
+	}
+	if s.cosService == nil {
+		s.SucceedResponsesImageStatus(ctx, result)
 		return
 	}
 	// 仅在配置启用时才发起上传。这里不阻塞客户端响应：IsEnabled 内部走 setting 读，已有缓存。
 	if !s.cosService.IsEnabled(ctx) {
+		s.SucceedResponsesImageStatus(ctx, result)
 		return
 	}
 
@@ -52,6 +58,7 @@ func (s *OpenAIGatewayService) scheduleOpenAIImageCosUpload(ctx context.Context,
 	// 预分配 cos urls 切片（与 base64 同序、同长度）。失败 slot 保持空串。
 	cosURLs := make([]string, len(base64s))
 	result.ImageOutputCosURLs = cosURLs
+	s.MarkResponsesImageStatusCOSUploading(ctx, result)
 
 	done := make(chan struct{})
 	result.imageCosUploadDone = done
@@ -114,6 +121,7 @@ func (s *OpenAIGatewayService) scheduleOpenAIImageCosUpload(ctx context.Context,
 			zap.String("request_id", requestID),
 			zap.Int("total", len(cosURLs)),
 			zap.Int("success", successCount))
+		s.SucceedResponsesImageStatus(uploadCtx, result)
 	}()
 }
 

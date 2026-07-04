@@ -765,6 +765,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 					ImageOutputSizes:  streamSizes,
 					ImageOutputBase64: streamBase64s,
 				}
+				s.MarkResponsesImageStatusUpstreamDone(ctx, res)
 				s.scheduleOpenAIImageCosUpload(ctx, res)
 				return res, err
 			}
@@ -790,6 +791,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes:  imageOutputSizes,
 			ImageOutputBase64: imageOutputBase64s,
 		}
+		s.MarkResponsesImageStatusUpstreamDone(ctx, res)
 		s.scheduleOpenAIImageCosUpload(ctx, res)
 		return res, nil
 	} else {
@@ -816,6 +818,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes:  nonStreamSizes,
 			ImageOutputBase64: nonStreamBase64s,
 		}
+		s.MarkResponsesImageStatusUpstreamDone(ctx, res)
 		s.scheduleOpenAIImageCosUpload(ctx, res)
 		return res, nil
 	}
