@@ -342,11 +342,12 @@ func TestOpenAIGatewayServiceHandleResponsesImageOutputs_NonStreaming(t *testing
 		}`)),
 	}
 
-	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, &Account{ID: 1, Type: AccountTypeAPIKey}, "gpt-5.4", "gpt-5.4")
+	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, &Account{ID: 1, Type: AccountTypeAPIKey}, "gpt-5.4", "gpt-5.4", nil, "")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.imageCount)
+	require.Equal(t, []string{"final-image"}, result.imageOutputBase64s)
 	require.NotNil(t, result.usage)
 	require.Equal(t, 7, result.usage.InputTokens)
 	require.Equal(t, 3, result.usage.OutputTokens)
@@ -372,6 +373,7 @@ func TestOpenAIGatewayServiceHandleResponsesImageOutputs_Streaming(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.imageCount)
+	require.Equal(t, []string{"final-image"}, result.imageOutputBase64s)
 	require.NotNil(t, result.usage)
 	require.Equal(t, 11, result.usage.InputTokens)
 	require.Equal(t, 5, result.usage.OutputTokens)

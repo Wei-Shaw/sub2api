@@ -270,6 +270,7 @@ func TestOpenAIGatewayService_Forward_ImageToolBillingDoesNotForceFullDecode(t *
 	require.Equal(t, "1e1000000", gjson.GetBytes(upstream.lastBody, "input.0.content.0.nonce").Raw)
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, "1K", result.ImageSize)
+	require.Equal(t, []string{"final-image"}, result.ImageOutputBase64)
 	require.Equal(t, "gpt-image-2", result.BillingModel)
 }
 

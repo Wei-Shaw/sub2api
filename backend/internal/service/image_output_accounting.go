@@ -251,6 +251,12 @@ func collectOpenAIResponseImageOutputSizesFromJSONBytes(body []byte) []string {
 	return counter.Sizes()
 }
 
+func collectOpenAIResponseImageOutputBase64sFromJSONBytes(body []byte) []string {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse(body)
+	return counter.Base64Payloads()
+}
+
 func countOpenAIImageOutputsFromSSEBody(body string) int {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
@@ -261,4 +267,10 @@ func collectOpenAIImageOutputSizesFromSSEBody(body string) []string {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
 	return counter.Sizes()
+}
+
+func collectOpenAIImageOutputBase64sFromSSEBody(body string) []string {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddSSEBody(body)
+	return counter.Base64Payloads()
 }

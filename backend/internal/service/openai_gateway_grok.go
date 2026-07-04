@@ -105,7 +105,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		firstTokenMs = streamResult.firstTokenMs
 		responseID = strings.TrimSpace(streamResult.responseID)
 	} else {
-		nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
+		nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel, nil, "")
 		if err != nil {
 			return nil, err
 		}
