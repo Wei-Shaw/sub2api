@@ -100,6 +100,13 @@ func (s *GatewayService) ForwardAsChatCompletions(
 
 	if shouldMimicClaudeCode {
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
+	} else {
+		// CC 协议不携带 cache_control，对非 OAuth 账号（API Key）也注入缓存断点，
+		// 使上游 Anthropic prompt caching 生效。与 OAuth 路径
+		// (applyClaudeCodeOAuthMimicryToBody) 中的 D/E/F 阶段对齐。
+		anthropicBody = stripMessageCacheControl(anthropicBody)
+		anthropicBody = addMessageCacheBreakpoints(anthropicBody)
+		anthropicBody = applyToolsLastCacheBreakpoint(anthropicBody)
 	}
 
 	// 7. Enforce cache_control block limit
