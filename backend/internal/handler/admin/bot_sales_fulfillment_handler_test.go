@@ -210,6 +210,7 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 		"entitlement_kind":   service.BotSalesEntitlementBalance,
 		"balancePackageCode": pkg.Code,
 		"quantity":           1,
+		"device_code":        strings.ToLower(deviceCode),
 		"buyer": map[string]any{
 			"external_user_id": "channel:telegram:user:http-device-owner",
 			"provider":         "telegram",
@@ -232,10 +233,10 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 	var currentBuyerTopupData map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &currentBuyerTopupData))
 	require.Equal(t, service.BotSalesFulfillmentOperationTopup, currentBuyerTopupData["operation"])
-	require.NotContains(t, currentBuyerTopupData, "device_code")
+	require.Equal(t, deviceCode, currentBuyerTopupData["device_code"])
 	currentTopupDelivery, ok := currentBuyerTopupData["delivery"].(map[string]any)
 	require.True(t, ok)
-	require.NotContains(t, currentTopupDelivery, "device_code")
+	require.Equal(t, deviceCode, currentTopupDelivery["device_code"])
 	currentTopupAPIKey, ok := currentTopupDelivery["api_key"].(map[string]any)
 	require.True(t, ok)
 	require.EqualValues(t, issuedAPIKeyID, currentTopupAPIKey["id"])

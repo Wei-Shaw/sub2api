@@ -218,7 +218,7 @@ func (s *BotSalesFulfillmentService) Fulfill(ctx context.Context, req BotSalesTo
 		return nil, infraerrors.BadRequest("BOT_SALES_BUYER_REQUIRED", "buyer.external_user_id is required")
 	}
 
-	buyer, err := s.findOrCreateBuyer(ctx, req.Buyer)
+	buyer, err := s.findOrCreateBotSalesFulfillmentBuyer(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -559,7 +559,7 @@ func (s *BotSalesFulfillmentService) fulfillBalance(ctx context.Context, buyer *
 		return err
 	}
 	resp.paymentReplayed = paymentReplayed
-	if operation == BotSalesFulfillmentOperationNew && !paymentReplayed {
+	if operation == BotSalesFulfillmentOperationNew && req.DeliveryPolicy.IssueDeviceCode {
 		issuedDeviceCode, err := s.ensureBotSalesDeviceCode(ctx, targetBuyer, req)
 		if err != nil {
 			return err
@@ -1138,6 +1138,38 @@ func (s *BotSalesFulfillmentService) issueBotSalesDeviceCode(ctx context.Context
 		return code, nil
 	}
 	return "", infraerrors.ServiceUnavailable("BOT_SALES_DEVICE_CODE_COLLISION", "could not issue a unique device code")
+}
+
+func (s *BotSalesFulfillmentService) findOrCreateBotSalesFulfillmentBuyer(ctx context.Context, req BotSalesTokenFulfillmentRequest) (*User, error) {
+	if botSalesShouldCreateDedicatedBalanceAccount(req) {
+		buyer := req.Buyer
+		buyer.Email = botSalesDedicatedBalanceAccountEmail(req)
+		return s.findOrCreateBuyer(ctx, buyer)
+	}
+	return s.findOrCreateBuyer(ctx, req.Buyer)
+}
+
+func botSalesShouldCreateDedicatedBalanceAccount(req BotSalesTokenFulfillmentRequest) bool {
+	if req.EntitlementKind != BotSalesEntitlementBalance {
+		return false
+	}
+	if !req.DeliveryPolicy.IssueDeviceCode {
+		return false
+	}
+	operation := strings.TrimSpace(req.Operation)
+	if operation == "" {
+		operation = BotSalesFulfillmentOperationNew
+	}
+	return strings.EqualFold(operation, BotSalesFulfillmentOperationNew)
+}
+
+func botSalesDedicatedBalanceAccountEmail(req BotSalesTokenFulfillmentRequest) string {
+	seed := strings.Join([]string{
+		strings.TrimSpace(req.ExternalOrderID),
+		strings.TrimSpace(req.ExternalOrderItemID),
+	}, ":")
+	sum := sha256.Sum256([]byte("bot-sales:balance-account:" + seed))
+	return "account-" + hex.EncodeToString(sum[:])[:32] + "@bot-sales.local"
 }
 
 func (s *BotSalesFulfillmentService) findOrCreateBuyer(ctx context.Context, buyer BotSalesFulfillmentBuyer) (*User, error) {

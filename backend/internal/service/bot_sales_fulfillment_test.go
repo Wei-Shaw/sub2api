@@ -167,6 +167,139 @@ func TestBotSalesFulfillmentAttachesPlatformGuideMetadataFromRegistry(t *testing
 	require.NotContains(t, resp.Delivery.CopyBlocks[0].ContentTemplate, "OPENAI_API_KEY")
 }
 
+func TestBotSalesFulfillmentBalanceNewWithoutDeviceCodePolicyUsesCanonicalBuyer(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	group := createBotSalesGroup(t, client, "bot-balance-new-current", service.SubscriptionTypeNone)
+	pkg := client.BalancePackage.Create().
+		SetCode("standard_new_current").
+		SetLabel("Standard new current").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(group.ID).
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	buyer := service.BotSalesFulfillmentBuyer{
+		ExternalUserID: "channel:telegram:user:999111223",
+		Provider:       "telegram",
+		ProviderUserID: "999111223",
+		TelegramID:     "999111223",
+	}
+
+	firstResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-new-current-a",
+		Operation:          service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-new-current-a",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer:              buyer,
+		DeliveryPolicy:     service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways},
+	})
+	require.NoError(t, err)
+
+	secondResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-new-current-b",
+		Operation:          service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-new-current-b",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer:              buyer,
+		DeliveryPolicy:     service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, firstResp.Buyer.UserID, secondResp.Buyer.UserID)
+	require.Empty(t, firstResp.Delivery.DeviceCode)
+	require.Empty(t, secondResp.Delivery.DeviceCode)
+	require.Equal(t, float64(40), client.User.GetX(ctx, firstResp.Buyer.UserID).Balance)
+	require.Equal(t, 1, client.User.Query().CountX(ctx))
+	require.Equal(t, 0, client.UserDevice.Query().CountX(ctx))
+	require.Equal(t, "999111223", client.User.GetX(ctx, firstResp.Buyer.UserID).BalanceNotifyTelegramChatID)
+}
+
+func TestBotSalesFulfillmentBalanceNewCreatesSeparateAccountPerPurchase(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	group := createBotSalesGroup(t, client, "bot-balance-new-account", service.SubscriptionTypeNone)
+	pkg := client.BalancePackage.Create().
+		SetCode("standard_new_account").
+		SetLabel("Standard new account").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(group.ID).
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	buyer := service.BotSalesFulfillmentBuyer{
+		ExternalUserID: "channel:telegram:user:new-account-owner",
+		Provider:       "telegram",
+		ProviderUserID: "999111222",
+		TelegramID:     "999111222",
+	}
+
+	firstResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-new-account-a",
+		Operation:          service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-new-account-a",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer:              buyer,
+		DeliveryPolicy:     service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways, IssueDeviceCode: true},
+	})
+	require.NoError(t, err)
+
+	secondResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-new-account-b",
+		Operation:          service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-new-account-b",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer:              buyer,
+		DeliveryPolicy:     service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways, IssueDeviceCode: true},
+	})
+	require.NoError(t, err)
+
+	replayedFirstResp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-new-account-a",
+		Operation:          service.BotSalesFulfillmentOperationNew,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-new-account-a",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer:              buyer,
+		DeliveryPolicy:     service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyAlways, IssueDeviceCode: true},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, firstResp.Buyer.UserID, replayedFirstResp.Buyer.UserID)
+	require.Equal(t, firstResp.Delivery.DeviceCode, replayedFirstResp.Delivery.DeviceCode)
+	require.NotEqual(t, firstResp.Buyer.UserID, secondResp.Buyer.UserID)
+	require.NotEmpty(t, firstResp.Delivery.DeviceCode)
+	require.NotEmpty(t, secondResp.Delivery.DeviceCode)
+	require.NotEqual(t, firstResp.Delivery.DeviceCode, secondResp.Delivery.DeviceCode)
+	require.Equal(t, pkg.AmountLedger, client.User.GetX(ctx, firstResp.Buyer.UserID).Balance)
+	require.Equal(t, pkg.AmountLedger, client.User.GetX(ctx, secondResp.Buyer.UserID).Balance)
+	require.Equal(t, 2, client.User.Query().CountX(ctx))
+	require.Equal(t, 2, client.UserDevice.Query().CountX(ctx))
+	require.Equal(t, 2, client.APIKey.Query().CountX(ctx))
+	require.Equal(t, "999111222", client.User.GetX(ctx, firstResp.Buyer.UserID).BalanceNotifyTelegramChatID)
+	require.Equal(t, "999111222", client.User.GetX(ctx, secondResp.Buyer.UserID).BalanceNotifyTelegramChatID)
+}
+
 func TestBotSalesFulfillmentBalanceNewIssuesDeviceCodeAndTopupCreditsExistingDeviceUser(t *testing.T) {
 	ctx := context.Background()
 	client, db := newBotSalesFulfillmentEntClient(t)
@@ -274,6 +407,7 @@ func TestBotSalesFulfillmentIfMissingReusesExistingAPIKeyForTopup(t *testing.T) 
 		ExternalPaymentID:  "bs-pay-reuse-key-topup",
 		PaymentAmount:      100000,
 		PaymentCurrency:    "VND",
+		DeviceCode:         newResp.Delivery.DeviceCode,
 		Buyer: service.BotSalesFulfillmentBuyer{
 			ExternalUserID: "channel:telegram:user:reuse-key-owner",
 			Provider:       "telegram",
@@ -345,6 +479,7 @@ func TestBotSalesFulfillmentIfMissingRebindsSingleReusableAPIKeyToTopupGroup(t *
 		ExternalPaymentID:  "bs-pay-rebind-key-topup",
 		PaymentAmount:      100000,
 		PaymentCurrency:    "VND",
+		DeviceCode:         firstResp.Delivery.DeviceCode,
 		Buyer: service.BotSalesFulfillmentBuyer{
 			ExternalUserID: "channel:telegram:user:rebind-key-owner",
 			Provider:       "telegram",
@@ -419,6 +554,7 @@ func TestBotSalesFulfillmentIfMissingRebindsExistingAPIKeyWhenTargetPlatformDiff
 		ExternalPaymentID:  "bs-pay-cross-platform-key-topup",
 		PaymentAmount:      100000,
 		PaymentCurrency:    "VND",
+		DeviceCode:         firstResp.Delivery.DeviceCode,
 		Buyer: service.BotSalesFulfillmentBuyer{
 			ExternalUserID: "channel:telegram:user:cross-platform-key-owner",
 			Provider:       "telegram",
@@ -817,7 +953,7 @@ func TestBotSalesFulfillmentSubscriptionIfMissingRebindsExistingAPIKeyWhenCapabi
 	require.Equal(t, newGroup.ID, *storedKey.GroupID)
 }
 
-func TestBotSalesFulfillmentBalanceTopupWithoutDeviceCodeCreditsCanonicalBuyerAcrossProviders(t *testing.T) {
+func TestBotSalesFulfillmentBalanceTopupWithDeviceCodeCreditsNewAccountAcrossProviders(t *testing.T) {
 	ctx := context.Background()
 	client, db := newBotSalesFulfillmentEntClient(t)
 	group := createBotSalesGroup(t, client, "bot-balance-topup-buyer", service.SubscriptionTypeNone)
@@ -874,6 +1010,7 @@ func TestBotSalesFulfillmentBalanceTopupWithoutDeviceCodeCreditsCanonicalBuyerAc
 				ExternalPaymentID:  "pay-" + tc.name + "-topup",
 				PaymentAmount:      100000,
 				PaymentCurrency:    "VND",
+				DeviceCode:         newResp.Delivery.DeviceCode,
 				Buyer: service.BotSalesFulfillmentBuyer{
 					ExternalUserID: tc.externalUserID,
 					Provider:       tc.provider,
@@ -886,7 +1023,7 @@ func TestBotSalesFulfillmentBalanceTopupWithoutDeviceCodeCreditsCanonicalBuyerAc
 			require.Equal(t, service.BotSalesFulfillmentOperationTopup, topupResp.Operation)
 			require.Equal(t, newResp.Buyer.UserID, topupResp.Buyer.UserID)
 			require.Equal(t, tc.externalUserID, topupResp.Buyer.ExternalUserID)
-			require.Empty(t, topupResp.Delivery.DeviceCode)
+			require.Equal(t, newResp.Delivery.DeviceCode, topupResp.Delivery.DeviceCode)
 			require.Equal(t, float64(40), client.User.GetX(ctx, newResp.Buyer.UserID).Balance)
 		})
 	}
