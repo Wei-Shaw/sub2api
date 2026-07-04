@@ -77,6 +77,11 @@ services:
       - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24REDACTED
 
       # =======================================================================
+      # Setup Configuration
+      # =======================================================================
+      - SETUP_MIGRATION_TIMEOUT_SECONDS=${SETUP_MIGRATION_TIMEOUT_SECONDS:-0REDACTED
+
+      # =======================================================================
       # Timezone Configuration
       # =======================================================================
       - TZ=${TZ:-Asia/ShanghaiREDACTED
