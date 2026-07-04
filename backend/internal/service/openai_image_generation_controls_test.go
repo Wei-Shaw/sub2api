@@ -152,6 +152,45 @@ REDACTED
 	require.NotContains(t, instructions, "image_generation")
 REDACTED
 
+func TestOpenAIGatewayServiceForward_AccountPolicyStripsExplicitImageTool(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_stripped_image","model":"gpt-5.4","usage":{"input_tokens":2,"output_tokens":1REDACTEDREDACTED`)),
+	REDACTED,
+REDACTED
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.98.0")
+	account := newOpenAIImageGenerationControlTestAccount()
+	account.Extra = map[string]any{
+		featureKeyCodexImageGenerationExplicitToolPolicy: codexImageGenerationExplicitToolPolicyStrip,
+REDACTED
+	body := []byte(`{
+		"model":"gpt-5.4",
+		"input":"draw",
+		"stream":false,
+		"tools":[
+			{"type":"function","name":"shell","parameters":{"type":"object"REDACTEDREDACTED,
+			{"type":"image_generation","format":"jpeg"REDACTED
+		],
+		"tool_choice":{"type":"image_generation"REDACTED
+REDACTED`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+REDACTED
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	require.False(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="image_generation")`).Exists())
+	require.True(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="function")`).Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "tool_choice").Exists())
+	instructions := gjson.GetBytes(upstream.lastBody, "instructions").String()
+	require.NotContains(t, instructions, "image_generation")
+REDACTED
+
 func TestOpenAIGatewayServiceForward_ChannelBridgeOverrideEnablesCodexInjection(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
