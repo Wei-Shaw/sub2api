@@ -1804,7 +1804,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationAggregateServer
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
-	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RetryableOnSameAccount)
 	require.Len(t, upstream.requests, 4)
 	require.Equal(t, "https://image-upstream.example/v1/images/generations", upstream.requests[0].URL.String())
 	require.Equal(t, "https://image-upstream.example/v1/responses", upstream.requests[1].URL.String())

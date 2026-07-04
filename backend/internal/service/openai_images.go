@@ -714,12 +714,6 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKeyCompatibleAggregate(
 }
 
 func finalizeOpenAIImagesCompatibleAggregateError(err error) error {
-	var failoverErr *UpstreamFailoverError
-	if errors.As(err, &failoverErr) && failoverErr != nil && failoverErr.RetryableOnSameAccount {
-		copyErr := *failoverErr
-		copyErr.RetryableOnSameAccount = false
-		return &copyErr
-	}
 	return err
 }
 
