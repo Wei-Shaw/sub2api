@@ -453,6 +453,7 @@ REDACTED, sel, outTradeNo, payAmountStr, subject)
 	REDACTED
 		return nil, classifyCreatePaymentError(req, sel.ProviderKey, err)
 REDACTED
+	sanitizeCreatePaymentResponseDetails(pr)
 	_, err = s.entClient.PaymentOrder.UpdateOneID(order.ID).
 		SetNillablePaymentTradeNo(psNilIfEmpty(pr.TradeNo)).
 		SetNillablePayURL(psNilIfEmpty(pr.PayURL)).
@@ -478,6 +479,22 @@ REDACTED
 	resp := buildCreateOrderResponse(order, req, payAmount, sel, pr, resultType)
 	resp.ResumeToken = resumeToken
 	return resp, nil
+REDACTED
+
+func sanitizeCreatePaymentResponseDetails(pr *payment.CreatePaymentResponse) {
+	if pr == nil {
+		return
+REDACTED
+	pr.TradeNo = removePostgresTextNUL(pr.TradeNo)
+	pr.PayURL = removePostgresTextNUL(pr.PayURL)
+	pr.QRCode = removePostgresTextNUL(pr.QRCode)
+REDACTED
+
+func removePostgresTextNUL(value string) string {
+	if !strings.ContainsRune(value, 0) {
+		return value
+REDACTED
+	return strings.ReplaceAll(value, "\x00", "")
 REDACTED
 
 func buildProviderCreatePaymentRequest(req CreateOrderRequest, sel *payment.InstanceSelection, orderID, amount, subject string) payment.CreatePaymentRequest {
