@@ -1,0 +1,31 @@
+# Python cache and local tooling
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local secrets and runtime configuration
+.env
+.env.*
+!.env.example
+sub2api_key_manager.env
+
+# PyInstaller outputs
+build/
+dist/
+*.spec
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
