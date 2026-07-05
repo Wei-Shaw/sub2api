@@ -584,7 +584,8 @@ function handleSave() {
   // Validate required config fields — all non-optional fields must be filled.
   // In edit mode, sensitive fields may be left blank to preserve the stored
   // value (backend merges blanks by preserving the existing secret).
-  for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
+  const fieldDefs = PROVIDER_CONFIG_FIELDS[form.provider_key] || []
+  for (const f of fieldDefs) {
     if (f.optional) continue
     if (props.editing && f.sensitive) continue
     const val = (config[f.key] || '').trim()
@@ -600,15 +601,18 @@ function handleSave() {
       .filter(field => field.clearable)
       .map(field => field.key),
   )
+  const sensitiveKeys = new Set(fieldDefs.filter(f => f.sensitive).map(f => f.key))
   const filteredConfig: Record<string, string> = {}
-  for (const [k, v] of Object.entries(config)) {
-    if (!v || !v.trim()) {
+  for (const [k, v] of Object.entries(config) as [string, string][]) {
+    const val = v.trim()
+    if (!val) {
+      if (sensitiveKeys.has(k)) continue
       if (clearableConfigKeys.has(k)) {
         filteredConfig[k] = ''
       }
       continue
     }
-    filteredConfig[k] = v
+    filteredConfig[k] = val
   }
 
   // Inject computed callback URLs (each URL = independent base + fixed path)

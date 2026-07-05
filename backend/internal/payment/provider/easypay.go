@@ -125,7 +125,7 @@ func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRe
 func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	notifyURL, returnURL := e.resolveURLs(req)
 	params := map[string]string{
-		"pid": e.config["pid"], "type": req.PaymentType,
+		"pid": e.config["pid"], "type": e.resolveType(req.PaymentType),
 		"out_trade_no": req.OrderID, "notify_url": notifyURL,
 		"return_url": returnURL, "name": req.Subject,
 		"money": req.Amount,
@@ -151,7 +151,7 @@ func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*paym
 func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	notifyURL, returnURL := e.resolveURLs(req)
 	params := map[string]string{
-		"pid": e.config["pid"], "type": req.PaymentType,
+		"pid": e.config["pid"], "type": e.resolveType(req.PaymentType),
 		"out_trade_no": req.OrderID, "notify_url": notifyURL,
 		"return_url": returnURL, "name": req.Subject,
 		"money": req.Amount, "clientip": req.ClientIP,
@@ -433,17 +433,23 @@ func summarizeEasyPayResponse(body []byte) string {
 	return summary
 }
 
-func (e *EasyPay) resolveCID(paymentType string) string {
-	if strings.HasPrefix(paymentType, "alipay") {
-		if v := e.config["cidAlipay"]; v != "" {
-			return v
-		}
-		return e.config["cid"]
+func (e *EasyPay) resolveByChannel(paymentType, alipayKey, wxpayKey, fallback string) string {
+	key := wxpayKey
+	if strings.HasPrefix(paymentType, string(payment.TypeAlipay)) {
+		key = alipayKey
 	}
-	if v := e.config["cidWxpay"]; v != "" {
+	if v := e.config[key]; v != "" {
 		return v
 	}
-	return e.config["cid"]
+	return fallback
+}
+
+func (e *EasyPay) resolveCID(paymentType string) string {
+	return e.resolveByChannel(paymentType, "cidAlipay", "cidWxpay", e.config["cid"])
+}
+
+func (e *EasyPay) resolveType(paymentType string) string {
+	return e.resolveByChannel(paymentType, "typeAlipay", "typeWxpay", paymentType)
 }
 
 func (e *EasyPay) post(ctx context.Context, endpoint string, params map[string]string) ([]byte, error) {

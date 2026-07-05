@@ -117,6 +117,8 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'apiBase', label: '', sensitive: false },
     { key: 'cidAlipay', label: '', sensitive: false, optional: true },
     { key: 'cidWxpay', label: '', sensitive: false, optional: true },
+    { key: 'typeAlipay', label: '', sensitive: false, optional: true },
+    { key: 'typeWxpay', label: '', sensitive: false, optional: true },
   ],
   alipay: [
     { key: 'appId', label: 'App ID', sensitive: false },
