@@ -68,6 +68,34 @@ func TestResponsesImageStatusCacheSetGetTTLAndOverwrite(t *testing.T) {
 	require.Equal(t, []string{"https://cos.example/image.png"}, got.COSURLs)
 }
 
+func TestResponsesImageStatusCacheBatchGet(t *testing.T) {
+	cache, _ := newResponsesImageStatusTestCache(t)
+	ctx := context.Background()
+	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
+
+	require.NoError(t, cache.SetResponsesImageStatus(ctx, &service.ResponsesImageStatus{
+		RequestID: "img-1",
+		Status:    service.ResponsesImageStatusSucceeded,
+		Progress:  100,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, service.ResponsesImageStatusTTL))
+	require.NoError(t, cache.SetResponsesImageStatus(ctx, &service.ResponsesImageStatus{
+		RequestID: "img-2",
+		Status:    service.ResponsesImageStatusRunning,
+		Progress:  25,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, service.ResponsesImageStatusTTL))
+
+	got, err := cache.GetResponsesImageStatuses(ctx, []string{"img-1", "missing", "img-2", "img-1"})
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, service.ResponsesImageStatusSucceeded, got["img-1"].Status)
+	require.Equal(t, service.ResponsesImageStatusRunning, got["img-2"].Status)
+	require.Nil(t, got["missing"])
+}
+
 func TestResponsesImageStatusCacheMissingAndInvalidJSON(t *testing.T) {
 	cache, mr := newResponsesImageStatusTestCache(t)
 	ctx := context.Background()

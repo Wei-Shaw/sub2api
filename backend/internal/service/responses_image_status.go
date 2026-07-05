@@ -5,6 +5,9 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const ResponsesImageStatusTTL = 7 * 24 * time.Hour
@@ -30,6 +33,7 @@ type ResponsesImageStatus struct {
 	Progress  int                        `json:"progress"`
 	URLs      []string                   `json:"urls,omitempty"`
 	COSURLs   []string                   `json:"cos_urls,omitempty"`
+	Texts     []string                   `json:"texts,omitempty"`
 	Error     *ResponsesImageStatusError `json:"error,omitempty"`
 	CreatedAt time.Time                  `json:"created_at"`
 	UpdatedAt time.Time                  `json:"updated_at"`
@@ -37,6 +41,7 @@ type ResponsesImageStatus struct {
 
 type ResponsesImageStatusStore interface {
 	GetResponsesImageStatus(ctx context.Context, requestID string) (*ResponsesImageStatus, error)
+	GetResponsesImageStatuses(ctx context.Context, requestIDs []string) (map[string]*ResponsesImageStatus, error)
 	SetResponsesImageStatus(ctx context.Context, status *ResponsesImageStatus, ttl time.Duration) error
 }
 
@@ -80,14 +85,17 @@ func (s *OpenAIGatewayService) MarkResponsesImageStatusUpstreamDone(ctx context.
 		return
 	}
 	urls := cloneNonEmptyStrings(nil)
+	texts := cloneNonEmptyStrings(nil)
 	if result != nil {
 		urls = cloneNonEmptyStrings(result.ImageOutputURLs)
+		texts = cloneNonEmptyStrings(result.ImageOutputTexts)
 		result.ImageStatusRequestID = requestID
 	}
 	s.patchResponsesImageStatusBestEffort(ctx, requestID, func(status *ResponsesImageStatus) {
 		status.Status = ResponsesImageStatusUpstreamDone
 		status.Progress = max(status.Progress, 70)
 		status.URLs = urls
+		status.Texts = texts
 		status.Error = nil
 	})
 }
@@ -102,6 +110,7 @@ func (s *OpenAIGatewayService) MarkResponsesImageStatusCOSUploading(ctx context.
 		status.Progress = max(status.Progress, 85)
 		if result != nil {
 			status.URLs = cloneNonEmptyStrings(result.ImageOutputURLs)
+			status.Texts = cloneNonEmptyStrings(result.ImageOutputTexts)
 		}
 		status.Error = nil
 	})
@@ -112,16 +121,18 @@ func (s *OpenAIGatewayService) SucceedResponsesImageStatus(ctx context.Context, 
 	if requestID == "" {
 		return
 	}
-	var urls, cosURLs []string
+	var urls, cosURLs, texts []string
 	if result != nil {
 		urls = cloneNonEmptyStrings(result.ImageOutputURLs)
 		cosURLs = cloneNonEmptyStrings(result.ImageOutputCosURLs)
+		texts = cloneNonEmptyStrings(result.ImageOutputTexts)
 	}
 	s.patchResponsesImageStatusBestEffort(ctx, requestID, func(status *ResponsesImageStatus) {
 		status.Status = ResponsesImageStatusSucceeded
 		status.Progress = 100
 		status.URLs = urls
 		status.COSURLs = cosURLs
+		status.Texts = texts
 		status.Error = nil
 	})
 }
@@ -153,6 +164,23 @@ func (s *OpenAIGatewayService) GetResponsesImageStatus(ctx context.Context, requ
 	return s.responsesImageStatusStore.GetResponsesImageStatus(ctx, requestID)
 }
 
+func (s *OpenAIGatewayService) GetResponsesImageStatuses(ctx context.Context, requestIDs []string) (map[string]*ResponsesImageStatus, error) {
+	if s == nil || s.responsesImageStatusStore == nil {
+		return nil, ErrResponsesImageStatusNotFound
+	}
+	normalized := make([]string, 0, len(requestIDs))
+	for _, requestID := range requestIDs {
+		requestID = strings.TrimSpace(requestID)
+		if requestID != "" {
+			normalized = append(normalized, requestID)
+		}
+	}
+	if len(normalized) == 0 {
+		return nil, ErrResponsesImageStatusNotFound
+	}
+	return s.responsesImageStatusStore.GetResponsesImageStatuses(ctx, normalized)
+}
+
 func (s *OpenAIGatewayService) setResponsesImageStatusBestEffort(ctx context.Context, status *ResponsesImageStatus) {
 	if s == nil || s.responsesImageStatusStore == nil || status == nil {
 		return
@@ -172,7 +200,16 @@ func (s *OpenAIGatewayService) setResponsesImageStatusBestEffort(ctx context.Con
 	if status.Progress > 100 {
 		status.Progress = 100
 	}
-	_ = s.responsesImageStatusStore.SetResponsesImageStatus(ctx, status, ResponsesImageStatusTTL)
+	storeCtx := responsesImageStatusStoreContext(ctx)
+	if err := s.responsesImageStatusStore.SetResponsesImageStatus(storeCtx, status, ResponsesImageStatusTTL); err != nil {
+		logger.L().Warn("responses.image_status.set_failed",
+			zap.String("component", "service.openai_gateway"),
+			zap.String("request_id", status.RequestID),
+			zap.String("status", status.Status),
+			zap.Int("progress", status.Progress),
+			zap.Error(err),
+		)
+	}
 }
 
 func (s *OpenAIGatewayService) patchResponsesImageStatusBestEffort(ctx context.Context, requestID string, patch func(*ResponsesImageStatus)) {
@@ -183,8 +220,16 @@ func (s *OpenAIGatewayService) patchResponsesImageStatusBestEffort(ctx context.C
 	if requestID == "" {
 		return
 	}
-	status, err := s.responsesImageStatusStore.GetResponsesImageStatus(ctx, requestID)
+	storeCtx := responsesImageStatusStoreContext(ctx)
+	status, err := s.responsesImageStatusStore.GetResponsesImageStatus(storeCtx, requestID)
 	if err != nil || status == nil {
+		if err != nil && !errors.Is(err, ErrResponsesImageStatusNotFound) {
+			logger.L().Warn("responses.image_status.get_failed",
+				zap.String("component", "service.openai_gateway"),
+				zap.String("request_id", requestID),
+				zap.Error(err),
+			)
+		}
 		status = &ResponsesImageStatus{RequestID: requestID}
 	}
 	if status.RequestID == "" {
@@ -194,6 +239,13 @@ func (s *OpenAIGatewayService) patchResponsesImageStatusBestEffort(ctx context.C
 		patch(status)
 	}
 	s.setResponsesImageStatusBestEffort(ctx, status)
+}
+
+func responsesImageStatusStoreContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return context.WithoutCancel(ctx)
 }
 
 func responsesImageStatusRequestIDFromResult(ctx context.Context, result *OpenAIForwardResult) string {

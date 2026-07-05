@@ -3,6 +3,7 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -309,4 +310,215 @@ func collectOpenAIImageOutputURLsFromSSEBody(body string) []string {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
 	return counter.URLs()
+}
+
+type openAIResponseTextOutputCollector struct {
+	finalTexts    []string
+	fallbackOrder []string
+	fallbackTexts map[string]string
+	deltaOrder    []string
+	deltaTexts    map[string]string
+}
+
+func newOpenAIResponseTextOutputCollector() *openAIResponseTextOutputCollector {
+	return &openAIResponseTextOutputCollector{
+		fallbackTexts: make(map[string]string),
+		deltaTexts:    make(map[string]string),
+	}
+}
+
+func (c *openAIResponseTextOutputCollector) Texts() []string {
+	if c == nil {
+		return nil
+	}
+	if len(c.finalTexts) > 0 {
+		return cloneNonEmptyStrings(c.finalTexts)
+	}
+	if len(c.fallbackOrder) > 0 {
+		texts := make([]string, 0, len(c.fallbackOrder))
+		for _, key := range c.fallbackOrder {
+			texts = append(texts, c.fallbackTexts[key])
+		}
+		return cloneNonEmptyStrings(texts)
+	}
+	if len(c.deltaOrder) == 0 {
+		return nil
+	}
+	texts := make([]string, 0, len(c.deltaOrder))
+	for _, key := range c.deltaOrder {
+		texts = append(texts, c.deltaTexts[key])
+	}
+	return cloneNonEmptyStrings(texts)
+}
+
+func (c *openAIResponseTextOutputCollector) AddJSONResponse(body []byte) {
+	if c == nil || len(body) == 0 || !gjson.ValidBytes(body) {
+		return
+	}
+	root := gjson.ParseBytes(body)
+	texts := collectOpenAIResponseTextsFromRoot(root)
+	if len(texts) > 0 {
+		c.finalTexts = texts
+	}
+}
+
+func (c *openAIResponseTextOutputCollector) AddSSEData(data []byte) {
+	if c == nil || len(data) == 0 || strings.TrimSpace(string(data)) == "[DONE]" || !gjson.ValidBytes(data) {
+		return
+	}
+	root := gjson.ParseBytes(data)
+	eventType := strings.TrimSpace(root.Get("type").String())
+	switch eventType {
+	case "response.completed", "response.done":
+		if texts := collectOpenAIResponseTextsFromRoot(root.Get("response")); len(texts) > 0 {
+			c.finalTexts = texts
+		}
+	case "response.output_item.done":
+		c.addOutputItemTexts(root.Get("item"), openAIResponseTextOutputItemPrefix(root.Get("item"), "item"))
+	case "response.output_text.done":
+		key := openAIResponseTextEventKey(root)
+		c.setFallbackText(key, root.Get("text").String())
+	case "response.output_text.delta":
+		key := openAIResponseTextEventKey(root)
+		c.appendDeltaText(key, root.Get("delta").String())
+	}
+}
+
+func (c *openAIResponseTextOutputCollector) AddSSEBody(body string) {
+	if c == nil || strings.TrimSpace(body) == "" {
+		return
+	}
+	forEachOpenAISSEDataPayload(body, c.AddSSEData)
+}
+
+func (c *openAIResponseTextOutputCollector) addOutputArrayTexts(output gjson.Result, prefix string) {
+	if c == nil || !output.IsArray() {
+		return
+	}
+	output.ForEach(func(index, item gjson.Result) bool {
+		c.addOutputItemTexts(item, openAIResponseTextOutputItemPrefix(item, prefix+"."+index.String()))
+		return true
+	})
+}
+
+func (c *openAIResponseTextOutputCollector) addOutputItemTexts(item gjson.Result, prefix string) {
+	if c == nil || !item.Exists() || !item.IsObject() {
+		return
+	}
+	itemType := strings.TrimSpace(item.Get("type").String())
+	switch itemType {
+	case "message", "":
+		content := item.Get("content")
+		if !content.IsArray() {
+			return
+		}
+		content.ForEach(func(index, part gjson.Result) bool {
+			partType := strings.TrimSpace(part.Get("type").String())
+			if partType == "" || partType == "output_text" || partType == "text" {
+				c.setFallbackText(prefix+"."+index.String(), part.Get("text").String())
+			}
+			return true
+		})
+	case "output_text", "text":
+		c.setFallbackText(prefix, item.Get("text").String())
+	}
+}
+
+func (c *openAIResponseTextOutputCollector) setFallbackText(key, text string) {
+	if c == nil {
+		return
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		key = hashOpenAIImageOutputResult(text)
+	}
+	if key == "" {
+		return
+	}
+	if _, exists := c.fallbackTexts[key]; !exists {
+		c.fallbackOrder = append(c.fallbackOrder, key)
+	}
+	c.fallbackTexts[key] = text
+}
+
+func (c *openAIResponseTextOutputCollector) appendDeltaText(key, delta string) {
+	if c == nil {
+		return
+	}
+	if delta == "" {
+		return
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		key = strconv.Itoa(len(c.deltaOrder))
+	}
+	if _, exists := c.deltaTexts[key]; !exists {
+		c.deltaOrder = append(c.deltaOrder, key)
+	}
+	c.deltaTexts[key] += delta
+}
+
+func openAIResponseTextEventKey(root gjson.Result) string {
+	itemID := strings.TrimSpace(root.Get("item_id").String())
+	contentIndex := strings.TrimSpace(root.Get("content_index").String())
+	if itemID != "" {
+		if contentIndex != "" {
+			return itemID + "." + contentIndex
+		}
+		return itemID
+	}
+	key := strings.Join([]string{
+		strings.TrimSpace(root.Get("output_index").String()),
+		contentIndex,
+	}, ".")
+	key = strings.Trim(key, ".")
+	return strings.TrimSpace(key)
+}
+
+func openAIResponseTextOutputItemPrefix(item gjson.Result, fallback string) string {
+	if item.Exists() {
+		if itemID := strings.TrimSpace(item.Get("id").String()); itemID != "" {
+			return itemID
+		}
+		if itemID := strings.TrimSpace(item.Get("call_id").String()); itemID != "" {
+			return itemID
+		}
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func collectOpenAIResponseTextsFromRoot(root gjson.Result) []string {
+	if !root.Exists() || !root.IsObject() {
+		return nil
+	}
+	collector := newOpenAIResponseTextOutputCollector()
+	collector.addOutputArrayTexts(root.Get("output"), "output")
+	collector.addOutputArrayTexts(root.Get("response.output"), "response.output")
+	texts := collector.Texts()
+	if len(texts) > 0 {
+		return texts
+	}
+	if text := strings.TrimSpace(root.Get("output_text").String()); text != "" {
+		return []string{text}
+	}
+	if text := strings.TrimSpace(root.Get("response.output_text").String()); text != "" {
+		return []string{text}
+	}
+	return nil
+}
+
+func collectOpenAIResponseOutputTextsFromJSONBytes(body []byte) []string {
+	collector := newOpenAIResponseTextOutputCollector()
+	collector.AddJSONResponse(body)
+	return collector.Texts()
+}
+
+func collectOpenAIResponseOutputTextsFromSSEBody(body string) []string {
+	collector := newOpenAIResponseTextOutputCollector()
+	collector.AddSSEBody(body)
+	return collector.Texts()
 }

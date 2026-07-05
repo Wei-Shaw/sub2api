@@ -268,7 +268,9 @@ func TestOpenAIGatewayService_BindHTTPResponseAccount(t *testing.T) {
 
 	svc := &OpenAIGatewayService{}
 	account := &Account{ID: 37001, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
-	svc.bindHTTPResponseAccount(context.Background(), c, account, "resp_http_001")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	svc.bindHTTPResponseAccount(ctx, c, account, "resp_http_001")
 
 	got, err := svc.getOpenAIWSStateStore().GetResponseAccount(context.Background(), groupID, "resp_http_001")
 	require.NoError(t, err)

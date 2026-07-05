@@ -247,7 +247,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 	imageIntent := service.IsImageGenerationIntent("/v1/responses", reqModel, body)
 	imageStatusRequestID := ""
-	imageStatusForwarded := false
+	imageForwardedSuccess := false
 	imageStatusFailMessage := "image generation failed"
 	failImageStatus := func(message string) {
 		if strings.TrimSpace(message) != "" {
@@ -261,7 +261,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			c.Request = c.Request.WithContext(ctx)
 			h.gatewayService.BeginResponsesImageStatus(ctx, imageStatusRequestID)
 			defer func() {
-				if !imageStatusForwarded {
+				if !imageForwardedSuccess {
 					h.gatewayService.FailResponsesImageStatus(context.Background(), imageStatusRequestID, imageStatusFailMessage)
 				}
 			}()
@@ -564,8 +564,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
-			if result.ImageCount > 0 {
-				imageStatusForwarded = true
+
+			// 只要是出图请求, 正常回包而且有结果了, 都算成功, 成功路径的redis状态会在函数的处理过程中处理
+			if imageIntent {
+				imageForwardedSuccess = true
 			}
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
@@ -623,10 +625,16 @@ func clientProvidedImageStatusRequestID(c *gin.Context) string {
 	return strings.TrimSpace(c.GetHeader("x-client-request-id"))
 }
 
+const maxImageStatusBatchRequestIDs = 100
+
 func (h *OpenAIGatewayHandler) ImagesStatus(c *gin.Context) {
 	requestIDs := parseImageStatusRequestIDs(c)
 	if len(requestIDs) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "request_ids is required")
+		return
+	}
+	if len(requestIDs) > maxImageStatusBatchRequestIDs {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "request_ids supports at most 100 ids")
 		return
 	}
 	if h == nil || h.gatewayService == nil {
@@ -635,17 +643,19 @@ func (h *OpenAIGatewayHandler) ImagesStatus(c *gin.Context) {
 	}
 	statuses := make([]*service.ResponsesImageStatus, 0, len(requestIDs))
 	notFound := make([]string, 0)
+	statusMap, err := h.gatewayService.GetResponsesImageStatuses(c.Request.Context(), requestIDs)
+	if err != nil && !errors.Is(err, service.ErrResponsesImageStatusNotFound) {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to query image status")
+		return
+	}
 	for _, requestID := range requestIDs {
-		status, err := h.gatewayService.GetResponsesImageStatus(c.Request.Context(), requestID)
-		if errors.Is(err, service.ErrResponsesImageStatusNotFound) {
-			notFound = append(notFound, requestID)
-			continue
+		if statusMap != nil {
+			if status := statusMap[requestID]; status != nil {
+				statuses = append(statuses, status)
+				continue
+			}
 		}
-		if err != nil {
-			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to query image status")
-			return
-		}
-		statuses = append(statuses, status)
+		notFound = append(notFound, requestID)
 	}
 	if len(requestIDs) == 1 && len(notFound) == 1 {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Image status not found")

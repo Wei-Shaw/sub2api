@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,16 +18,34 @@ import (
 )
 
 type routeResponsesImageStatusStore struct {
-	items map[string]*service.ResponsesImageStatus
+	items      map[string]*service.ResponsesImageStatus
+	gets       int
+	batchGets  int
+	batchSizes []int
 }
 
 func (s *routeResponsesImageStatusStore) GetResponsesImageStatus(_ context.Context, requestID string) (*service.ResponsesImageStatus, error) {
+	s.gets++
 	if s != nil {
 		if status := s.items[requestID]; status != nil {
 			return status, nil
 		}
 	}
 	return nil, service.ErrResponsesImageStatusNotFound
+}
+
+func (s *routeResponsesImageStatusStore) GetResponsesImageStatuses(_ context.Context, requestIDs []string) (map[string]*service.ResponsesImageStatus, error) {
+	s.batchGets++
+	s.batchSizes = append(s.batchSizes, len(requestIDs))
+	out := make(map[string]*service.ResponsesImageStatus, len(requestIDs))
+	if s != nil {
+		for _, requestID := range requestIDs {
+			if status := s.items[requestID]; status != nil {
+				out[requestID] = status
+			}
+		}
+	}
+	return out, nil
 }
 
 func (s *routeResponsesImageStatusStore) SetResponsesImageStatus(_ context.Context, status *service.ResponsesImageStatus, _ time.Duration) error {
@@ -187,6 +206,31 @@ func TestGatewayRoutesImagesStatusBatchQuery(t *testing.T) {
 	require.Contains(t, w.Body.String(), `"request_id":"img-1"`)
 	require.Contains(t, w.Body.String(), `"request_id":"img-2"`)
 	require.Contains(t, w.Body.String(), `"not_found":["missing"]`)
+	require.Equal(t, 0, store.gets)
+	require.Equal(t, 1, store.batchGets)
+	require.Equal(t, []int{3}, store.batchSizes)
+}
+
+func TestGatewayRoutesImagesStatusBatchLimit(t *testing.T) {
+	auth := func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{ID: 99})
+		c.Next()
+	}
+	store := &routeResponsesImageStatusStore{}
+	router := newImagesStatusRouteTestRouter(auth, store)
+
+	ids := make([]string, 0, 101)
+	for i := 0; i < 101; i++ {
+		ids = append(ids, "img-"+strconv.Itoa(i))
+	}
+	req := httptest.NewRequest(http.MethodGet, "/v1/images/status/?request_ids="+strings.Join(ids, ","), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "at most 100")
+	require.Equal(t, 0, store.gets)
+	require.Equal(t, 0, store.batchGets)
 }
 
 func TestGatewayRoutesImagesStatusMissingExpiredAndInvalidAuth(t *testing.T) {

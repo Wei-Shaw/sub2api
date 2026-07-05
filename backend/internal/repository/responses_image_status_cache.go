@@ -30,21 +30,67 @@ func (c *responsesImageStatusCache) GetResponsesImageStatus(ctx context.Context,
 	if requestID == "" {
 		return nil, service.ErrResponsesImageStatusNotFound
 	}
-	payload, err := c.rdb.Get(ctx, ResponsesImageStatusKey(requestID)).Bytes()
+	statuses, err := c.GetResponsesImageStatuses(ctx, []string{requestID})
+	if err != nil {
+		return nil, err
+	}
+	if status := statuses[requestID]; status != nil {
+		return status, nil
+	}
+	return nil, service.ErrResponsesImageStatusNotFound
+}
+
+func (c *responsesImageStatusCache) GetResponsesImageStatuses(ctx context.Context, requestIDs []string) (map[string]*service.ResponsesImageStatus, error) {
+	normalized := make([]string, 0, len(requestIDs))
+	keys := make([]string, 0, len(requestIDs))
+	seen := make(map[string]struct{}, len(requestIDs))
+	for _, requestID := range requestIDs {
+		requestID = strings.TrimSpace(requestID)
+		if requestID == "" {
+			continue
+		}
+		if _, ok := seen[requestID]; ok {
+			continue
+		}
+		seen[requestID] = struct{}{}
+		normalized = append(normalized, requestID)
+		keys = append(keys, ResponsesImageStatusKey(requestID))
+	}
+	if len(keys) == 0 {
+		return nil, service.ErrResponsesImageStatusNotFound
+	}
+	values, err := c.rdb.MGet(ctx, keys...).Result()
 	if errors.Is(err, redis.Nil) {
 		return nil, service.ErrResponsesImageStatusNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	var status service.ResponsesImageStatus
-	if err := json.Unmarshal(payload, &status); err != nil {
-		return nil, err
+	statuses := make(map[string]*service.ResponsesImageStatus, len(values))
+	for i, value := range values {
+		if value == nil {
+			continue
+		}
+		var payload []byte
+		switch v := value.(type) {
+		case string:
+			payload = []byte(v)
+		case []byte:
+			payload = v
+		default:
+			continue
+		}
+		var status service.ResponsesImageStatus
+		if err := json.Unmarshal(payload, &status); err != nil {
+			return nil, err
+		}
+		requestID := normalized[i]
+		if strings.TrimSpace(status.RequestID) == "" {
+			status.RequestID = requestID
+		}
+		statuses[requestID] = &status
 	}
-	if strings.TrimSpace(status.RequestID) == "" {
-		status.RequestID = requestID
-	}
-	return &status, nil
+	return statuses, nil
 }
 
 func (c *responsesImageStatusCache) SetResponsesImageStatus(ctx context.Context, status *service.ResponsesImageStatus, ttl time.Duration) error {

@@ -82,18 +82,16 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			imageStatusFailMessage = strings.TrimSpace(message)
 		}
 	}
-	if !parsed.IsEdits() {
-		imageStatusRequestID = clientProvidedImageStatusRequestID(c)
-		if imageStatusRequestID != "" && h.gatewayService != nil {
-			ctx := service.WithResponsesImageStatusRequestID(c.Request.Context(), imageStatusRequestID)
-			c.Request = c.Request.WithContext(ctx)
-			h.gatewayService.BeginResponsesImageStatus(ctx, imageStatusRequestID)
-			defer func() {
-				if !imageStatusForwarded {
-					h.gatewayService.FailResponsesImageStatus(context.Background(), imageStatusRequestID, imageStatusFailMessage)
-				}
-			}()
-		}
+	imageStatusRequestID = clientProvidedImageStatusRequestID(c)
+	if imageStatusRequestID != "" && h.gatewayService != nil {
+		ctx := service.WithResponsesImageStatusRequestID(c.Request.Context(), imageStatusRequestID)
+		c.Request = c.Request.WithContext(ctx)
+		h.gatewayService.BeginResponsesImageStatus(ctx, imageStatusRequestID)
+		defer func() {
+			if !imageStatusForwarded {
+				h.gatewayService.FailResponsesImageStatus(context.Background(), imageStatusRequestID, imageStatusFailMessage)
+			}
+		}()
 	}
 
 	reqLog = reqLog.With(
@@ -386,6 +384,17 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
+			if result != nil && result.ClientDisconnect {
+				failImageStatus("client disconnected")
+				reqLog.Warn("openai.images.forward_failed",
+					zap.Int64("account_id", account.ID),
+					zap.Bool("client_disconnect", true),
+					zap.Bool("fallback_error_response_written", false),
+					zap.Bool("upstream_error_response_already_written", false),
+					zap.Error(err),
+				)
+				return
+			}
 			if result != nil && result.ImageCount > 0 {
 				imageStatusForwarded = imageStatusRequestID != ""
 				reqLog.Warn("openai.images.forward_partial_error_with_image_result",

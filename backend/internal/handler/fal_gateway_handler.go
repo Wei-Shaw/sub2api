@@ -96,18 +96,16 @@ func (h *FalGatewayHandler) Images(c *gin.Context) {
 			imageStatusFailMessage = strings.TrimSpace(message)
 		}
 	}
-	if c.Request != nil && c.Request.URL != nil && !strings.Contains(c.Request.URL.Path, "/edits") {
-		imageStatusRequestID = clientProvidedImageStatusRequestID(c)
-		if imageStatusRequestID != "" && h.imagesService != nil {
-			ctx := service.WithResponsesImageStatusRequestID(c.Request.Context(), imageStatusRequestID)
-			c.Request = c.Request.WithContext(ctx)
-			h.imagesService.BeginResponsesImageStatus(ctx, imageStatusRequestID)
-			defer func() {
-				if !imageStatusCompleted {
-					h.imagesService.FailResponsesImageStatus(context.Background(), imageStatusRequestID, imageStatusFailMessage)
-				}
-			}()
-		}
+	imageStatusRequestID = clientProvidedImageStatusRequestID(c)
+	if imageStatusRequestID != "" && h.imagesService != nil {
+		ctx := service.WithResponsesImageStatusRequestID(c.Request.Context(), imageStatusRequestID)
+		c.Request = c.Request.WithContext(ctx)
+		h.imagesService.BeginResponsesImageStatus(ctx, imageStatusRequestID)
+		defer func() {
+			if !imageStatusCompleted {
+				h.imagesService.FailResponsesImageStatus(context.Background(), imageStatusRequestID, imageStatusFailMessage)
+			}
+		}()
 	}
 
 	if !service.GroupAllowsImageGeneration(apiKey.Group) {

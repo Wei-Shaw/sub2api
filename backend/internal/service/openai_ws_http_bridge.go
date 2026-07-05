@@ -233,6 +233,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	responseID := ""
 	usage := OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	textCollector := newOpenAIResponseTextOutputCollector()
 	var firstTokenMs *int
 	reqStream := openAIWSPayloadBoolFromRaw(body, "stream", true)
 	eventCount := 0
@@ -279,6 +280,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			result.ImageSize = imageSizeTier
 			result.ImageInputSize = imageInputSize
 			result.ImageOutputSizes = imageCounter.Sizes()
+			result.ImageOutputBase64 = imageCounter.Base64Payloads()
+			result.ImageOutputURLs = imageCounter.URLs()
+			result.ImageOutputTexts = textCollector.Texts()
 			result.BillingModel = imageBillingModel
 		}
 		return result
@@ -331,6 +335,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			parseOpenAIWSResponseUsageFromCompletedEvent(upstreamMessage, &usage)
 		}
 		imageCounter.AddSSEData(upstreamMessage)
+		textCollector.AddSSEData(upstreamMessage)
 
 		if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && strings.Contains(trimmedData, mappedModel) {
 			upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, mappedModel, originalModel)

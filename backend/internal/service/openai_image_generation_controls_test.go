@@ -79,6 +79,39 @@ func TestOpenAIGatewayServiceForward_DisabledGroupAllowsTextOnlyResponses(t *tes
 	require.NotNil(t, upstream.lastReq)
 }
 
+func TestOpenAIGatewayServiceForward_ImageIntentDetachedContextContinuesAfterClientCancel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{
+				"id":"resp_image_detached",
+				"model":"gpt-5.4",
+				"output":[{"id":"ig_1","type":"image_generation_call","result":"aGVsbG8="}],
+				"usage":{"input_tokens":3,"output_tokens":2,"output_tokens_details":{"image_tokens":1}}
+			}`)),
+		},
+	}
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	c, recorder := newOpenAIImageGenerationControlTestContext(true, "unit-test-agent/1.0")
+	parent, cancel := context.WithCancel(c.Request.Context())
+	cancel()
+	c.Request = c.Request.WithContext(parent)
+	account := newOpenAIImageGenerationControlTestAccount()
+
+	result, err := svc.Forward(c.Request.Context(), c, account, []byte(`{"model":"gpt-5.4","input":"draw","stream":false,"tools":[{"type":"image_generation"}]}`))
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, []string{"aGVsbG8="}, result.ImageOutputBase64)
+	require.NotNil(t, upstream.lastReq)
+	require.NoError(t, upstream.lastReq.Context().Err())
+}
+
 func TestOpenAIGatewayServiceForward_CodexImageInjectionRespectsGroupCapability(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -337,7 +370,10 @@ func TestOpenAIGatewayServiceHandleResponsesImageOutputs_NonStreaming(t *testing
 		Body: io.NopCloser(strings.NewReader(`{
 			"id":"resp_image_json",
 			"model":"gpt-5.4",
-			"output":[{"id":"ig_json_1","type":"image_generation_call","result":"final-image"}],
+			"output":[
+				{"id":"ig_json_1","type":"image_generation_call","result":"final-image"},
+				{"id":"msg_json_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"done with image"}]}
+			],
 			"usage":{"input_tokens":7,"output_tokens":3,"output_tokens_details":{"image_tokens":2}}
 		}`)),
 	}
@@ -348,6 +384,7 @@ func TestOpenAIGatewayServiceHandleResponsesImageOutputs_NonStreaming(t *testing
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.imageCount)
 	require.Equal(t, []string{"final-image"}, result.imageOutputBase64s)
+	require.Equal(t, []string{"done with image"}, result.imageOutputTexts)
 	require.NotNil(t, result.usage)
 	require.Equal(t, 7, result.usage.InputTokens)
 	require.Equal(t, 3, result.usage.OutputTokens)
@@ -364,7 +401,8 @@ func TestOpenAIGatewayServiceHandleResponsesImageOutputs_Streaming(t *testing.T)
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 		Body: io.NopCloser(strings.NewReader(
 			"data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"ig_stream_1\",\"type\":\"image_generation_call\",\"result\":\"final-image\"}}\n\n" +
-				"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_image_stream\",\"model\":\"gpt-5.5\",\"output\":[{\"id\":\"ig_stream_1\",\"type\":\"image_generation_call\",\"result\":\"final-image\"}],\"usage\":{\"input_tokens\":11,\"output_tokens\":5,\"output_tokens_details\":{\"image_tokens\":4}}}}\n\n",
+				"data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_stream_1\",\"output_index\":1,\"content_index\":0,\"delta\":\"stream text\"}\n\n" +
+				"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_image_stream\",\"model\":\"gpt-5.5\",\"output\":[{\"id\":\"ig_stream_1\",\"type\":\"image_generation_call\",\"result\":\"final-image\"},{\"id\":\"msg_stream_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"stream text\"}]}],\"usage\":{\"input_tokens\":11,\"output_tokens\":5,\"output_tokens_details\":{\"image_tokens\":4}}}}\n\n",
 		)),
 	}
 
@@ -374,6 +412,7 @@ func TestOpenAIGatewayServiceHandleResponsesImageOutputs_Streaming(t *testing.T)
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.imageCount)
 	require.Equal(t, []string{"final-image"}, result.imageOutputBase64s)
+	require.Equal(t, []string{"stream text"}, result.imageOutputTexts)
 	require.NotNil(t, result.usage)
 	require.Equal(t, 11, result.usage.InputTokens)
 	require.Equal(t, 5, result.usage.OutputTokens)
