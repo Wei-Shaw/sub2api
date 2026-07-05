@@ -607,18 +607,21 @@ func hasOpenAIImageGenerationTool(reqBody map[string]any) bool {
 	return false
 }
 
-// stripCodexSparkImageGenerationTools removes image_generation tool entries from
-// reqBody["tools"]. gpt-5.3-codex-spark rejects that tool upstream with HTTP 400
-// (invalid_request_error, param=tools), and Codex CLI advertises it by default, so
-// it must be dropped for spark. When the tools list becomes empty the key is removed.
-// Returns true when the body was modified.
-func stripCodexSparkImageGenerationTools(reqBody map[string]any) bool {
+func stripOpenAIImageGenerationTools(reqBody map[string]any) bool {
 	rawTools, ok := reqBody["tools"]
 	if !ok || rawTools == nil {
+		if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+			delete(reqBody, "tool_choice")
+			return true
+		}
 		return false
 	}
 	tools, ok := rawTools.([]any)
 	if !ok {
+		if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+			delete(reqBody, "tool_choice")
+			return true
+		}
 		return false
 	}
 	filtered := make([]any, 0, len(tools))
@@ -631,15 +634,29 @@ func stripCodexSparkImageGenerationTools(reqBody map[string]any) bool {
 		}
 		filtered = append(filtered, rawTool)
 	}
-	if !removed {
+	if !removed && !openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
 		return false
 	}
-	if len(filtered) == 0 {
-		delete(reqBody, "tools")
-	} else {
-		reqBody["tools"] = filtered
+	if removed {
+		if len(filtered) == 0 {
+			delete(reqBody, "tools")
+		} else {
+			reqBody["tools"] = filtered
+		}
+	}
+	if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+		delete(reqBody, "tool_choice")
 	}
 	return true
+}
+
+// stripCodexSparkImageGenerationTools removes image_generation tool entries from
+// reqBody["tools"]. gpt-5.3-codex-spark rejects that tool upstream with HTTP 400
+// (invalid_request_error, param=tools), and Codex CLI advertises it by default, so
+// it must be dropped for spark. When the tools list becomes empty the key is removed.
+// Returns true when the body was modified.
+func stripCodexSparkImageGenerationTools(reqBody map[string]any) bool {
+	return stripOpenAIImageGenerationTools(reqBody)
 }
 
 func hasOpenAIInputImage(reqBody map[string]any) bool {

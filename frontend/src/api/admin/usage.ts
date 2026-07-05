@@ -86,6 +86,10 @@ export interface AdminUsageQueryParams extends UsageQueryParams {
   billing_mode?: string
   sort_by?: string
   sort_order?: 'asc' | 'desc'
+  // 错误请求 tab 专属筛选(仅传给错误列表接口;共用同一 filters 对象)
+  error_phase?: string | null
+  error_category?: string | null
+  status_code?: number | null
 }
 
 // ==================== API Functions ====================

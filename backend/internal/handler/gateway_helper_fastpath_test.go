@@ -89,6 +89,10 @@ func (m *concurrencyCacheMock) CleanupExpiredAccountSlots(ctx context.Context, a
 	return nil
 }
 
+func (m *concurrencyCacheMock) CleanupExpiredAccountSlotKeys(ctx context.Context) error {
+	return nil
+}
+
 func (m *concurrencyCacheMock) CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error {
 	return nil
 }
