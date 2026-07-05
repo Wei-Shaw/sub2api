@@ -491,7 +491,7 @@ func ProvideOpsService(
 	antigravityGatewayService *AntigravityGatewayService,
 	systemLogSink *OpsSystemLogSink,
 	settingService *SettingService,
-	redisClient *redis.Client,
+	runtimeLogBroadcaster RuntimeLogBroadcaster,
 ) *OpsService {
 	svc := NewOpsService(
 		opsRepo,
@@ -514,9 +514,9 @@ func ProvideOpsService(
 	}
 	// 注入并启动运行时日志配置的跨实例广播（多副本部署时保证 UpdateRuntimeLogConfig /
 	// ResetRuntimeLogConfig 的变更能在所有节点上同时应用到内存中的 zap logger）。
-	// 未配置 Redis 时 broadcaster 为 nil，Setter 与订阅都会自动降级为 no-op。
-	if broadcaster := NewOpsRuntimeLogBroadcaster(redisClient); broadcaster != nil {
-		svc.SetRuntimeLogBroadcaster(broadcaster)
+	// 未配置 Redis 时 broadcaster 由上层传入 nil，Setter 与订阅都会自动降级为 no-op。
+	if runtimeLogBroadcaster != nil {
+		svc.SetRuntimeLogBroadcaster(runtimeLogBroadcaster)
 		svc.StartRuntimeLogSubscriber(context.Background())
 	}
 	return svc

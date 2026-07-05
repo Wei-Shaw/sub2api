@@ -26,10 +26,8 @@ type routeResponsesImageStatusStore struct {
 
 func (s *routeResponsesImageStatusStore) GetResponsesImageStatus(_ context.Context, requestID string) (*service.ResponsesImageStatus, error) {
 	s.gets++
-	if s != nil {
-		if status := s.items[requestID]; status != nil {
-			return status, nil
-		}
+	if status := s.items[requestID]; status != nil {
+		return status, nil
 	}
 	return nil, service.ErrResponsesImageStatusNotFound
 }
@@ -38,11 +36,9 @@ func (s *routeResponsesImageStatusStore) GetResponsesImageStatuses(_ context.Con
 	s.batchGets++
 	s.batchSizes = append(s.batchSizes, len(requestIDs))
 	out := make(map[string]*service.ResponsesImageStatus, len(requestIDs))
-	if s != nil {
-		for _, requestID := range requestIDs {
-			if status := s.items[requestID]; status != nil {
-				out[requestID] = status
-			}
+	for _, requestID := range requestIDs {
+		if status := s.items[requestID]; status != nil {
+			out[requestID] = status
 		}
 	}
 	return out, nil

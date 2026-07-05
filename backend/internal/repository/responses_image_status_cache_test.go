@@ -19,7 +19,9 @@ func newResponsesImageStatusTestCache(t *testing.T) (*responsesImageStatusCache,
 	t.Cleanup(func() {
 		_ = rdb.Close()
 	})
-	return NewResponsesImageStatusStore(rdb).(*responsesImageStatusCache), mr
+	store, ok := NewResponsesImageStatusStore(rdb).(*responsesImageStatusCache)
+	require.True(t, ok, "NewResponsesImageStatusStore should return *responsesImageStatusCache")
+	return store, mr
 }
 
 func TestResponsesImageStatusKey(t *testing.T) {
@@ -103,7 +105,7 @@ func TestResponsesImageStatusCacheMissingAndInvalidJSON(t *testing.T) {
 	_, err := cache.GetResponsesImageStatus(ctx, "missing")
 	require.ErrorIs(t, err, service.ErrResponsesImageStatusNotFound)
 
-	mr.Set(ResponsesImageStatusKey("bad"), "{")
+	require.NoError(t, mr.Set(ResponsesImageStatusKey("bad"), "{"))
 	_, err = cache.GetResponsesImageStatus(ctx, "bad")
 	require.Error(t, err)
 	require.False(t, errors.Is(err, service.ErrResponsesImageStatusNotFound))

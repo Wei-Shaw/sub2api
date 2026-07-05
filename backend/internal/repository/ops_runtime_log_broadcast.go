@@ -1,10 +1,11 @@
-package service
+package repository
 
 import (
 	"context"
 	"errors"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -20,7 +21,7 @@ type opsRuntimeLogBroadcaster struct {
 
 // NewOpsRuntimeLogBroadcaster 构造一个基于 Redis Pub/Sub 的广播器。
 // 传入的 rdb 为 nil 时返回 nil，让 wire 层自然降级为「不广播」。
-func NewOpsRuntimeLogBroadcaster(rdb *redis.Client) RuntimeLogBroadcaster {
+func NewOpsRuntimeLogBroadcaster(rdb *redis.Client) service.RuntimeLogBroadcaster {
 	if rdb == nil {
 		return nil
 	}
