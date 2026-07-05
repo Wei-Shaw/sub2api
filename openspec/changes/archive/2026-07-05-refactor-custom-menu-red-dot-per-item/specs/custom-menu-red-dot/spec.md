@@ -1,10 +1,4 @@
-# Custom Menu Red Dot
-
-## Purpose
-
-Provide a lightweight per-item reminder mechanism that surfaces a red dot on individual custom menu items in `AppSidebar` whenever an admin marks that item for reminder. The dot invites users to explore the item's page, and dismisses per-user, per-item via a version-scoped localStorage key so it never re-appears until the admin ships a new display-field version. This capability spans an admin per-item toggle, a deterministic version hash over display fields only, a public settings surface, sidebar rendering, and per-item dismissal triggers.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Admin Configures Per-Item Red Dot Reminders
 

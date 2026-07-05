@@ -1684,28 +1684,6 @@
                 </div>
                 <Toggle v-model="form.custom_menu_embed_auth_params" />
               </div>
-
-              <!-- Red-dot Promotion Toggle -->
-              <div class="flex items-start justify-between gap-4">
-                <div class="min-w-0 flex-1">
-                  <label class="font-medium text-gray-900 dark:text-white">{{
-                    t("admin.settings.customMenuSecurity.redDotEnabled")
-                  }}</label>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.customMenuSecurity.redDotEnabledHint") }}
-                  </p>
-                  <p
-                    v-if="form.custom_menu_version"
-                    class="mt-2 text-xs text-gray-500 dark:text-gray-400"
-                  >
-                    {{ t("admin.settings.customMenuSecurity.redDotCurrentVersion") }}
-                    <code
-                      class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200"
-                    >{{ form.custom_menu_version }}</code>
-                  </p>
-                </div>
-                <Toggle v-model="form.custom_menu_red_dot_enabled" />
-              </div>
             </div>
           </div>
 
@@ -5547,6 +5525,17 @@
               </p>
             </div>
             <div class="space-y-4 p-6">
+              <!-- Version 展示：作为 admin 参考，帮助排查用户端是否收到最新配置 -->
+              <p
+                v-if="form.custom_menu_version"
+                class="text-xs text-gray-500 dark:text-gray-400"
+              >
+                {{ t("admin.settings.customMenuSecurity.redDotCurrentVersion") }}
+                <code
+                  class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200"
+                >{{ form.custom_menu_version }}</code>
+              </p>
+
               <!-- Existing menu items -->
               <div
                 v-for="(item, index) in form.custom_menu_items"
@@ -5706,6 +5695,28 @@
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       {{ t("admin.settings.customMenu.docUrlHelp") }}
                     </p>
+                  </div>
+
+                  <!-- Show Red Dot (per-item) -->
+                  <div class="sm:col-span-2">
+                    <div
+                      class="flex items-start justify-between gap-4 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-600 dark:bg-dark-700/40"
+                    >
+                      <div class="min-w-0 flex-1">
+                        <label
+                          class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.customMenu.showRedDot") }}
+                        </label>
+                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.customMenu.showRedDotHelp") }}
+                        </p>
+                      </div>
+                      <Toggle
+                        :model-value="item.show_red_dot === true"
+                        @update:model-value="(v: boolean) => (item.show_red_dot = v)"
+                      />
+                    </div>
                   </div>
 
                   <!-- SVG Icon (full width) -->
@@ -8686,6 +8697,7 @@ const form = reactive<SettingsForm>({
     visibility: "user" | "admin";
     sort_order: number;
     doc_url?: string;
+    show_red_dot: boolean;
   }>,
   home_product_menu_items: [] as Array<{
     id: string;
@@ -8729,8 +8741,6 @@ const form = reactive<SettingsForm>({
   api_key_acl_trust_forwarded_ip: false,
   // 自定义菜单安全设置：是否在自定义菜单URL中嵌入认证参数
   custom_menu_embed_auth_params: true,
-  // 自定义菜单红点：admin 显式开关，off 时前端不显示；on 且 version 变化时用户会重新看到红点。
-  custom_menu_red_dot_enabled: false,
   // 后端派生的自定义菜单 version hash（只读，仅用于 UI 展示）
   custom_menu_version: "",
   // LinuxDo Connect OAuth 登录
@@ -9352,6 +9362,7 @@ function addMenuItem() {
     visibility: "user",
     sort_order: form.custom_menu_items.length,
     doc_url: "",
+    show_red_dot: false,
   });
 }
 
@@ -9386,6 +9397,7 @@ function normalizeMenuItems(
           item.action === "same_tab" || item.action === "new_tab"
             ? item.action
             : "iframe",
+        show_red_dot: item.show_red_dot === true,
       }))
     : [];
 }
@@ -10012,7 +10024,6 @@ async function saveSettings() {
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: normalizeMenuItems(form.custom_menu_items),
       custom_menu_embed_auth_params: form.custom_menu_embed_auth_params,
-      custom_menu_red_dot_enabled: form.custom_menu_red_dot_enabled,
       home_product_menu_items: normalizeHomeProductMenuItems(form.home_product_menu_items),
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,

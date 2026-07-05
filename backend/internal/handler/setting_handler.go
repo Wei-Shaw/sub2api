@@ -77,7 +77,6 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		TablePageSizeOptions:             settings.TablePageSizeOptions,
 		CustomMenuItems:                  dto.ParseUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomMenuEmbedAuthParams:        settings.CustomMenuEmbedAuthParams,
-		CustomMenuRedDotEnabled:          settings.CustomMenuRedDotEnabled,
 		CustomMenuVersion:                settings.CustomMenuVersion,
 		CustomEndpoints:                  dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DingTalkOAuthEnabled:             settings.DingTalkOAuthEnabled,

@@ -291,7 +291,11 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useRechargePromoDot } from '@/composables/useRechargePromoDot'
-import { useCustomMenuRedDot } from '@/composables/useCustomMenuRedDot'
+import {
+  useCustomMenuRedDotRegistry,
+  isCustomMenuDotVisibleFor,
+  dismissCustomMenuDotFor,
+} from '@/composables/useCustomMenuRedDot'
 import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
 import type { CustomMenuItem } from '@/types'
 
@@ -783,17 +787,21 @@ const purchasePromoDot = useRechargePromoDot({
 })
 const flagPurchasePromoDot = () => purchasePromoDot.shouldShow.value
 
-// 自定义菜单红点：admin 显式开关 + version 变化时亮起，用户点击任一自定义菜单项
-// 或直接访问 /custom/:id 后 dismiss（后一部分在 CustomPageView.vue 里处理）。
-// 注意：这里不依赖 flagPurchasePromoDot 那种“逐项”红点，而是所有自定义菜单项
-// 共享同一个 shouldShow——任一处 dismiss 即可清除全部红点。
-const customMenuDot = useCustomMenuRedDot({
-  userId: computed(() => authStore.user?.id ?? null),
-  enabled: computed(() => appStore.cachedPublicSettings?.custom_menu_red_dot_enabled === true),
-  version: computed(() => appStore.cachedPublicSettings?.custom_menu_version || undefined),
-})
-const flagCustomMenuDot = () => customMenuDot.shouldShow.value
-
+// 自定义菜单红点（每项独立）：item.show_red_dot 为真 + version 非空 + 未 dismiss 时亮起。
+// registry 只在顶层挂一次生命周期（注册全局 storage listener），具体项的可见性
+// 通过纯函数 isCustomMenuDotVisibleFor 按 itemId 查询，避免 v-for N 项重复注册 hook。
+const customMenuDotRegistry = useCustomMenuRedDotRegistry()
+function flagCustomMenuDotForItem(item: CustomMenuItem): () => boolean {
+  return () => {
+    void customMenuDotRegistry.tick.value // 依赖标记，dismiss 时自增
+    return isCustomMenuDotVisibleFor(
+      authStore.user?.id ?? null,
+      item.id,
+      appStore.cachedPublicSettings?.custom_menu_version || undefined,
+      item.show_red_dot === true,
+    )
+  }
+}
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
@@ -937,7 +945,7 @@ function customMenuToNavItem(item: CustomMenuItem): NavItem {
     iconSvg: item.icon_svg,
     externalUrl: externalUrl || undefined,
     externalTarget: externalUrl && action === 'new_tab' ? '_blank' : '_self',
-    showDot: flagCustomMenuDot,
+    showDot: flagCustomMenuDotForItem(item),
     docUrl: /^https?:\/\//i.test(docUrl) ? docUrl : undefined,
   }
 }
@@ -995,10 +1003,15 @@ function handleMenuItemClick(itemPath: string) {
     }, 150)
   }
 
-  // 自定义菜单红点 dismiss：任意一个 /custom/:id 入口被点击都会清除整个周期。
+  // 自定义菜单红点 dismiss：仅清除被点击的那一项。
   // CustomPageView 挂载时也会再 dismiss 一次（URL 直达场景），写入同一个 key，无副作用。
   if (itemPath.startsWith('/custom/')) {
-    customMenuDot.dismiss()
+    const clickedId = itemPath.slice('/custom/'.length)
+    dismissCustomMenuDotFor(
+      authStore.user?.id ?? null,
+      clickedId,
+      appStore.cachedPublicSettings?.custom_menu_version || undefined,
+    )
   }
 
   // Map paths to tour selectors

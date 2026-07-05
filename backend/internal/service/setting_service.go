@@ -803,7 +803,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyTablePageSizeOptions,
 		SettingKeyCustomMenuItems,
 		SettingKeyCustomMenuEmbedAuthParams,
-		SettingKeyCustomMenuRedDotEnabled,
 		SettingKeyCustomMenuVersionCache,
 		SettingKeyCustomEndpoints,
 		SettingKeyLinuxDoConnectEnabled,
@@ -936,7 +935,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		TablePageSizeOptions:             tablePageSizeOptions,
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
 		CustomMenuEmbedAuthParams:        settings[SettingKeyCustomMenuEmbedAuthParams] == "true",
-		CustomMenuRedDotEnabled:          settings[SettingKeyCustomMenuRedDotEnabled] == "true",
 		CustomMenuVersion:                settings[SettingKeyCustomMenuVersionCache],
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
 		LinuxDoOAuthEnabled:              linuxDoEnabled,
@@ -1628,7 +1626,6 @@ type PublicSettingsInjectionPayload struct {
 	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
 	CustomMenuItems                  json.RawMessage          `json:"custom_menu_items"`
 	CustomMenuEmbedAuthParams        bool                     `json:"custom_menu_embed_auth_params"`
-	CustomMenuRedDotEnabled          bool                     `json:"custom_menu_red_dot_enabled"`
 	CustomMenuVersion                string                   `json:"custom_menu_version"`
 	CustomEndpoints                  json.RawMessage          `json:"custom_endpoints"`
 	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
@@ -1704,7 +1701,6 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		TablePageSizeOptions:             settings.TablePageSizeOptions,
 		CustomMenuItems:                  filterUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomMenuEmbedAuthParams:        settings.CustomMenuEmbedAuthParams,
-		CustomMenuRedDotEnabled:          settings.CustomMenuRedDotEnabled,
 		CustomMenuVersion:                settings.CustomMenuVersion,
 		CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
@@ -2340,8 +2336,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyTablePageSizeOptions] = string(tablePageSizeOptionsJSON)
 	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
 	updates[SettingKeyCustomMenuEmbedAuthParams] = strconv.FormatBool(settings.CustomMenuEmbedAuthParams)
-	updates[SettingKeyCustomMenuRedDotEnabled] = strconv.FormatBool(settings.CustomMenuRedDotEnabled)
-	updates[SettingKeyCustomMenuVersionCache] = ComputeCustomMenuVersion(settings.CustomMenuItems, settings.CustomMenuRedDotEnabled)
+	updates[SettingKeyCustomMenuVersionCache] = ComputeCustomMenuVersion(settings.CustomMenuItems)
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
 
 	// 默认配置
@@ -3278,8 +3273,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyTablePageSizeOptions:                      "[10,20,50,100]",
 		SettingKeyCustomMenuItems:                           "[]",
 		SettingKeyCustomMenuEmbedAuthParams:                 "true",
-		SettingKeyCustomMenuRedDotEnabled:                   "false",
-		SettingKeyCustomMenuVersionCache:                    ComputeCustomMenuVersion("[]", false),
+		SettingKeyCustomMenuVersionCache:                    ComputeCustomMenuVersion("[]"),
 		SettingKeyHomeProductMenuItems:                      "[]",
 		SettingKeyCustomEndpoints:                           "[]",
 		SettingKeyWeChatConnectEnabled:                      "false",
@@ -3498,7 +3492,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PurchaseSubscriptionURL:           strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		CustomMenuItems:                   settings[SettingKeyCustomMenuItems],
 		CustomMenuEmbedAuthParams:         settings[SettingKeyCustomMenuEmbedAuthParams] == "true",
-		CustomMenuRedDotEnabled:           settings[SettingKeyCustomMenuRedDotEnabled] == "true",
 		CustomMenuVersion:                 settings[SettingKeyCustomMenuVersionCache],
 		CustomEndpoints:                   settings[SettingKeyCustomEndpoints],
 		BackendModeEnabled:                settings[SettingKeyBackendModeEnabled] == "true",

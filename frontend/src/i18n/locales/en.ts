@@ -6146,9 +6146,6 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         embedAuthParams: 'Embed authentication parameters in custom menu URLs',
         embedAuthParamsHint:
           'When enabled, user ID and token will be automatically added to custom menu URLs. Disable this for security reasons if custom menu URLs point to external services.',
-        redDotEnabled: 'Show red-dot promotion on custom menu items',
-        redDotEnabledHint:
-          'When you flip this from off to on, or change any custom menu item (label / icon / URL / order), a new version is minted and users who dismissed the previous one will see the red dot again. The red dot goes away as soon as the user clicks any custom menu item (or lands on its page directly). Saving without any real change does not disturb users.',
         redDotCurrentVersion: 'Current version:'
       },
       linuxdo: {
@@ -6538,6 +6535,9 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         docUrl: 'Usage Guide URL (optional)',
         docUrlPlaceholder: 'https://example.com/docs/help',
         docUrlHelp: 'When set, a question-mark icon appears next to this menu item. Clicking it opens this URL in a new tab.',
+        showRedDot: 'Show red-dot reminder on this item',
+        showRedDotHelp:
+          'When on, users see a red dot next to this menu item until they click it (or open its page directly). If you edit any display field of the item (label / URL / icon / order), the reminder resurfaces for users who dismissed it. Turning this switch on/off alone does NOT reset dismiss state.',
         iconSvg: 'SVG Icon',
         iconSvgPlaceholder: '<svg>...</svg>',
         iconPreview: 'Icon Preview',

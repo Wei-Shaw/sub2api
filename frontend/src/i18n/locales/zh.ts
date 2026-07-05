@@ -6300,9 +6300,6 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         embedAuthParams: '在自定义菜单 URL 中嵌入认证参数',
         embedAuthParamsHint:
           '启用后，用户 ID 和 token 会自动添加到自定义菜单 URL 中。如果自定义菜单指向外部服务，出于安全考虑请禁用此选项。',
-        redDotEnabled: '展示自定义菜单红点提醒',
-        redDotEnabledHint:
-          '开关从关闭切到开启、或自定义菜单内容发生变化（标签 / 图标 / URL / 顺序等）时，会产生新的版本，已看过上一版的用户会重新看到红点；用户点击任一自定义菜单项（或直接进入对应页面）后红点消失。无实际变化的“保存”不会刷新。',
         redDotCurrentVersion: '当前版本：'
       },
       linuxdo: {
@@ -6688,6 +6685,9 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         docUrl: '使用指南文档链接（可选）',
         docUrlPlaceholder: 'https://example.com/docs/help',
         docUrlHelp: '设置后，此菜单项右侧会出现一个问号图标，点击将在新标签页打开该链接。',
+        showRedDot: '在该菜单项上展示红点提醒',
+        showRedDotHelp:
+          '开启后，用户在该菜单项旁看到红点，直到点击该菜单项（或直接进入对应页面）后消失。修改该项的展示字段（标签 / URL / 图标 / 顺序等）会让红点对已消除的用户再次亮起；仅切换本开关不会重置用户的已读状态。',
         iconSvg: 'SVG 图标',
         iconSvgPlaceholder: '<svg>...</svg>',
         iconPreview: '图标预览',

@@ -284,7 +284,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TablePageSizeOptions:                   settings.TablePageSizeOptions,
 		CustomMenuItems:                        dto.ParseCustomMenuItems(settings.CustomMenuItems),
 		CustomMenuEmbedAuthParams:              settings.CustomMenuEmbedAuthParams,
-		CustomMenuRedDotEnabled:                settings.CustomMenuRedDotEnabled,
 		CustomMenuVersion:                      settings.CustomMenuVersion,
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
@@ -583,7 +582,6 @@ type UpdateSettingsRequest struct {
 	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
 	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 	CustomMenuEmbedAuthParams   *bool                 `json:"custom_menu_embed_auth_params"`
-	CustomMenuRedDotEnabled     *bool                 `json:"custom_menu_red_dot_enabled"`
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
 	// 默认配置
@@ -1420,12 +1418,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	customMenuJSON := previousSettings.CustomMenuItems
 	customMenuEmbedAuthParams := previousSettings.CustomMenuEmbedAuthParams
-	customMenuRedDotEnabled := previousSettings.CustomMenuRedDotEnabled
 	if req.CustomMenuEmbedAuthParams != nil {
 		customMenuEmbedAuthParams = *req.CustomMenuEmbedAuthParams
-	}
-	if req.CustomMenuRedDotEnabled != nil {
-		customMenuRedDotEnabled = *req.CustomMenuRedDotEnabled
 	}
 	if req.CustomMenuItems != nil {
 		items := *req.CustomMenuItems
@@ -1862,7 +1856,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TablePageSizeOptions:                   req.TablePageSizeOptions,
 		CustomMenuItems:                        customMenuJSON,
 		CustomMenuEmbedAuthParams:              customMenuEmbedAuthParams,
-		CustomMenuRedDotEnabled:                customMenuRedDotEnabled,
 		CustomEndpoints:                        customEndpointsJSON,
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
@@ -2356,7 +2349,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TablePageSizeOptions:                   updatedSettings.TablePageSizeOptions,
 		CustomMenuItems:                        dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		CustomMenuEmbedAuthParams:              updatedSettings.CustomMenuEmbedAuthParams,
-		CustomMenuRedDotEnabled:                updatedSettings.CustomMenuRedDotEnabled,
 		CustomMenuVersion:                      updatedSettings.CustomMenuVersion,
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
@@ -2874,9 +2866,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.CustomMenuEmbedAuthParams != after.CustomMenuEmbedAuthParams {
 		changed = append(changed, "custom_menu_embed_auth_params")
-	}
-	if before.CustomMenuRedDotEnabled != after.CustomMenuRedDotEnabled {
-		changed = append(changed, "custom_menu_red_dot_enabled")
 	}
 	if before.HomeProductMenuItems != after.HomeProductMenuItems {
 		changed = append(changed, "home_product_menu_items")

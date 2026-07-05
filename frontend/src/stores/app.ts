@@ -344,7 +344,6 @@ export const useAppStore = defineStore('app', () => {
         table_page_size_options: [10, 20, 50, 100],
         custom_menu_items: [],
         custom_menu_embed_auth_params: true,
-        custom_menu_red_dot_enabled: false,
         custom_menu_version: '',
         custom_endpoints: [],
         linuxdo_oauth_enabled: false,

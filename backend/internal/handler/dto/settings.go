@@ -21,6 +21,10 @@ type CustomMenuItem struct {
 	// DocURL 可选的"使用指南"文档链接。非空时前端在菜单标签旁渲染问号图标，
 	// 点击在新标签打开该链接。空串表示不展示。仅接受绝对 http(s) URL。
 	DocURL string `json:"doc_url,omitempty"`
+	// ShowRedDot 表示该菜单项是否需要显示未读红点提醒。true 时前端在标签旁渲染红点，
+	// 用户首次点击后按 (userId, itemId, custom_menu_version) 粒度做 dismiss 持久化；
+	// no-op 保存不会改变 custom_menu_version，因此不打扰已看过的用户。默认 false。
+	ShowRedDot bool `json:"show_red_dot,omitempty"`
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.
@@ -167,7 +171,6 @@ type SystemSettings struct {
 	TablePageSizeOptions        []int            `json:"table_page_size_options"`
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomMenuEmbedAuthParams   bool             `json:"custom_menu_embed_auth_params"`
-	CustomMenuRedDotEnabled     bool             `json:"custom_menu_red_dot_enabled"`
 	CustomMenuVersion           string           `json:"custom_menu_version"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
@@ -344,7 +347,6 @@ type PublicSettings struct {
 	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
 	CustomMenuItems                  []CustomMenuItem         `json:"custom_menu_items"`
 	CustomMenuEmbedAuthParams        bool                     `json:"custom_menu_embed_auth_params"`
-	CustomMenuRedDotEnabled          bool                     `json:"custom_menu_red_dot_enabled"`
 	CustomMenuVersion                string                   `json:"custom_menu_version"`
 	CustomEndpoints                  []CustomEndpoint         `json:"custom_endpoints"`
 	DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`

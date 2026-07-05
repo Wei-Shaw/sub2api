@@ -189,6 +189,12 @@ export interface CustomMenuItem {
    * 点击在新标签页打开此链接。空串或未设置表示不展示问号图标。
    */
   doc_url?: string
+  /**
+   * 是否在该菜单项上展示未读红点提醒。默认 false（不展示）。
+   * 开启后，用户首次看到该菜单项（点击 sidebar / drawer / 直接进入对应页面）
+   * 即会在本地 dismiss；已 dismiss 的项在 custom_menu_version 不变的前提下不会重新亮起来。
+   */
+  show_red_dot?: boolean
 }
 
 export interface CustomEndpoint {
@@ -236,7 +242,6 @@ export interface PublicSettings {
   table_page_size_options: number[]
   custom_menu_items: CustomMenuItem[]
   custom_menu_embed_auth_params: boolean
-  custom_menu_red_dot_enabled: boolean
   custom_menu_version: string
   custom_endpoints: CustomEndpoint[]
   linuxdo_oauth_enabled: boolean
