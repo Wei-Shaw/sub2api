@@ -2823,7 +2823,7 @@
                         <input
                           v-model="form.dingtalk_connect_sync_display_name_attr_name"
                           type="text"
-                          :placeholder="t('admin.settings.dingtalk.syncDisplayNameDefaultName')"
+                          :placeholder="t('admin.settings.dingtalk.displayNamePlaceholder')"
                           class="input text-sm flex-1 max-w-xs"
                         />
                       </div>
@@ -2869,7 +2869,7 @@
                         <input
                           v-model="form.dingtalk_connect_sync_corp_email_attr_name"
                           type="text"
-                          :placeholder="t('admin.settings.dingtalk.syncCorpEmailDefaultName')"
+                          :placeholder="t('admin.settings.dingtalk.corpEmailPlaceholder')"
                           class="input text-sm flex-1 max-w-xs"
                         />
                       </div>
@@ -2915,7 +2915,7 @@
                         <input
                           v-model="form.dingtalk_connect_sync_dept_attr_name"
                           type="text"
-                          :placeholder="t('admin.settings.dingtalk.syncDeptDefaultName')"
+                          :placeholder="t('admin.settings.dingtalk.deptPlaceholder')"
                           class="input text-sm flex-1 max-w-xs"
                         />
                       </div>
@@ -9703,9 +9703,9 @@ const form = reactive<SettingsForm>({
   dingtalk_connect_sync_corp_email_attr_key: "dingtalk_email",
   dingtalk_connect_sync_display_name_attr_key: "dingtalk_name",
   dingtalk_connect_sync_dept_attr_key: "dingtalk_department",
-  dingtalk_connect_sync_corp_email_attr_name: "DingTalk Corporate Email",
-  dingtalk_connect_sync_display_name_attr_name: "DingTalk Name",
-  dingtalk_connect_sync_dept_attr_name: "DingTalk Department",
+  dingtalk_connect_sync_corp_email_attr_name: t("admin.settings.dingtalk.corpEmailPlaceholder"),
+  dingtalk_connect_sync_display_name_attr_name: t("admin.settings.dingtalk.displayNamePlaceholder"),
+  dingtalk_connect_sync_dept_attr_name: t("admin.settings.dingtalk.deptPlaceholder"),
   wechat_connect_enabled: false,
   wechat_connect_app_id: "",
   wechat_connect_app_secret: "",
@@ -10658,8 +10658,8 @@ const authSourceDefaultsMeta = computed(() => [
   },
   {
     source: "dingtalk" as AuthSourceType,
-    title: t("admin.settings.authSourceDefaults.sources.dingtalk.title"),
-    description: t("admin.settings.authSourceDefaults.sources.dingtalk.description"),
+    title: t("auth.dingtalkProviderName"),
+    description: t("admin.settings.dingtalk.authSourceDescription"),
   },
 ]);
 

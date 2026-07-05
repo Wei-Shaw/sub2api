@@ -121,6 +121,7 @@ export default {
         antigravity: 'Antigravity',
         kiro: 'Kiro',
         grok: 'Grok',
+        composite: 'Composite',
         deepseek: 'DeepSeek',
         glm: 'GLM',
         zai: 'Z.ai',

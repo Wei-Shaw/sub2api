@@ -21,6 +21,29 @@ export function cloneLocalePatch<T extends LocalePatch>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
+function assignDottedLocalePatch(target: LocalePatch, keyPath: string, value: unknown): void {
+  const parts = keyPath.split('.').filter(Boolean)
+  let cursor = target
+  for (const part of parts.slice(0, -1)) {
+    const current = cursor[part]
+    if (!isLocalePatch(current)) {
+      cursor[part] = {}
+    }
+    cursor = cursor[part] as LocalePatch
+  }
+  const leaf = parts[parts.length - 1]
+  if (leaf) {
+    cursor[leaf] = value
+  }
+}
+
+function mergeDottedLocalePatch<T extends LocalePatch>(base: T, patch: Record<string, unknown>): T {
+  for (const [key, value] of Object.entries(patch)) {
+    assignDottedLocalePatch(base, key, value)
+  }
+  return base
+}
+
 const emailTemplateMeta = {
   en: {
     messageKinds: { optional: 'Optional', transactional: 'Transactional' },
@@ -1672,6 +1695,385 @@ const postRebaseLocaleCoveragePatches = {
   }
 } as const satisfies Record<string, LocalePatch>
 
+const adminPlatformLocaleCoveragePatches = {
+  en: {
+    admin: {
+      accounts: { platforms: { opencode: 'OpenCode' } },
+      groups: { platforms: { opencode: 'OpenCode' } }
+    }
+  },
+  zh: {
+    admin: {
+      accounts: { platforms: { opencode: 'OpenCode' } },
+      groups: { platforms: { opencode: 'OpenCode' } }
+    }
+  },
+  vi: {
+    admin: {
+      accounts: { platforms: { opencode: 'OpenCode' } },
+      groups: { platforms: { opencode: 'OpenCode' } }
+    }
+  },
+  ko: {
+    admin: {
+      accounts: { platforms: { opencode: 'OpenCode' } },
+      groups: { platforms: { opencode: 'OpenCode' } }
+    }
+  }
+} as const satisfies Record<string, LocalePatch>
+
+const dingtalkSettingsLocaleCoveragePatches = {
+  "en": {
+    "admin.settings.dingtalk.title": "DingTalk Connect Login",
+    "admin.settings.dingtalk.description": "Configure DingTalk OAuth for Sub2API end-user login",
+    "admin.settings.dingtalk.enable": "Enable DingTalk Login",
+    "admin.settings.dingtalk.enableHint": "Show DingTalk login on the login/register pages",
+    "admin.settings.dingtalk.clientId": "Client ID",
+    "admin.settings.dingtalk.clientIdPlaceholder": "DingTalk OAuth client id",
+    "admin.settings.dingtalk.clientIdHint": "Get this from the DingTalk developer console",
+    "admin.settings.dingtalk.clientSecret": "Client Secret",
+    "admin.settings.dingtalk.clientSecretPlaceholder": "********",
+    "admin.settings.dingtalk.clientSecretHint": "Used by backend to exchange tokens (keep it secret)",
+    "admin.settings.dingtalk.clientSecretConfiguredPlaceholder": "********",
+    "admin.settings.dingtalk.clientSecretConfiguredHint": "Secret configured. Leave empty to keep the current value.",
+    "admin.settings.dingtalk.redirectUrl": "Redirect URL",
+    "admin.settings.dingtalk.redirectUrlPlaceholder": "https://your-domain.com/api/v1/auth/oauth/dingtalk/callback",
+    "admin.settings.dingtalk.redirectUrlHint": "Must match the callback URL configured in DingTalk",
+    "admin.settings.dingtalk.corpPolicy.label": "Organization restriction policy",
+    "admin.settings.dingtalk.corpPolicy.hint": "Choose whether DingTalk sign-ins must come from the configured organization.",
+    "admin.settings.dingtalk.corpPolicy.none": "No organization restriction",
+    "admin.settings.dingtalk.corpPolicy.internalOnly": "Configured organization only",
+    "admin.settings.dingtalk.bypassRegistration": "Bypass registration gate",
+    "admin.settings.dingtalk.bypassRegistrationHint": "Allow verified internal DingTalk users to create an account even when public registration is disabled.",
+    "admin.settings.dingtalk.syncDisplayName": "Sync display name",
+    "admin.settings.dingtalk.syncDisplayNameHint": "Write the DingTalk display name to a user custom attribute during login/bind.",
+    "admin.settings.dingtalk.syncDisplayNameTarget": "Attribute key",
+    "admin.settings.dingtalk.syncDisplayNameTargetHint": "Attribute key used to store the DingTalk display name.",
+    "admin.settings.dingtalk.syncAttrDisplayName": "Display label",
+    "admin.settings.dingtalk.displayNamePlaceholder": "DingTalk Name",
+    "admin.settings.dingtalk.syncCorpEmail": "Sync corporate email",
+    "admin.settings.dingtalk.syncCorpEmailHint": "Write the DingTalk corporate email to a user custom attribute when available.",
+    "admin.settings.dingtalk.syncCorpEmailPermissionHint": "Requires the corresponding DingTalk organization permission.",
+    "admin.settings.dingtalk.syncCorpEmailTarget": "Attribute key",
+    "admin.settings.dingtalk.syncCorpEmailTargetHint": "Attribute key used to store the DingTalk corporate email.",
+    "admin.settings.dingtalk.corpEmailPlaceholder": "DingTalk Corporate Email",
+    "admin.settings.dingtalk.syncDept": "Sync department",
+    "admin.settings.dingtalk.syncDeptHint": "Write the DingTalk department to a user custom attribute when available.",
+    "admin.settings.dingtalk.syncDeptPermissionHint": "Requires the corresponding DingTalk organization permission.",
+    "admin.settings.dingtalk.syncDeptTarget": "Attribute key",
+    "admin.settings.dingtalk.syncDeptTargetHint": "Attribute key used to store the DingTalk department.",
+    "admin.settings.dingtalk.deptPlaceholder": "DingTalk Department",
+    "admin.settings.dingtalk.authSourceDescription": "Applied on first signup or first bind through DingTalk."
+  },
+  "zh": {
+    "admin.settings.dingtalk.title": "钉钉 Connect 登录",
+    "admin.settings.dingtalk.description": "配置钉钉 OAuth，用于 Sub2API 用户登录",
+    "admin.settings.dingtalk.enable": "启用钉钉登录",
+    "admin.settings.dingtalk.enableHint": "在登录/注册页面显示钉钉登录入口",
+    "admin.settings.dingtalk.clientId": "Client ID",
+    "admin.settings.dingtalk.clientIdPlaceholder": "钉钉 OAuth Client ID",
+    "admin.settings.dingtalk.clientIdHint": "从钉钉开发者后台获取",
+    "admin.settings.dingtalk.clientSecret": "Client Secret",
+    "admin.settings.dingtalk.clientSecretPlaceholder": "********",
+    "admin.settings.dingtalk.clientSecretHint": "用于后端交换 token（请保密）",
+    "admin.settings.dingtalk.clientSecretConfiguredPlaceholder": "********",
+    "admin.settings.dingtalk.clientSecretConfiguredHint": "密钥已配置，留空以保留当前值。",
+    "admin.settings.dingtalk.redirectUrl": "回调地址（Redirect URL）",
+    "admin.settings.dingtalk.redirectUrlPlaceholder": "https://your-domain.com/api/v1/auth/oauth/dingtalk/callback",
+    "admin.settings.dingtalk.redirectUrlHint": "必须与钉钉后台配置的回调地址一致",
+    "admin.settings.dingtalk.corpPolicy.label": "企业限制策略",
+    "admin.settings.dingtalk.corpPolicy.hint": "选择是否要求钉钉登录来自已配置的企业。",
+    "admin.settings.dingtalk.corpPolicy.none": "不限制企业",
+    "admin.settings.dingtalk.corpPolicy.internalOnly": "仅允许已配置企业",
+    "admin.settings.dingtalk.bypassRegistration": "绕过注册开关",
+    "admin.settings.dingtalk.bypassRegistrationHint": "允许已验证的企业内部钉钉用户在关闭公开注册时创建账号。",
+    "admin.settings.dingtalk.syncDisplayName": "同步姓名",
+    "admin.settings.dingtalk.syncDisplayNameHint": "登录/绑定时将钉钉姓名写入用户自定义属性。",
+    "admin.settings.dingtalk.syncDisplayNameTarget": "属性 Key",
+    "admin.settings.dingtalk.syncDisplayNameTargetHint": "用于保存钉钉姓名的属性 Key。",
+    "admin.settings.dingtalk.syncAttrDisplayName": "显示名称",
+    "admin.settings.dingtalk.displayNamePlaceholder": "钉钉姓名",
+    "admin.settings.dingtalk.syncCorpEmail": "同步企业邮箱",
+    "admin.settings.dingtalk.syncCorpEmailHint": "可用时将钉钉企业邮箱写入用户自定义属性。",
+    "admin.settings.dingtalk.syncCorpEmailPermissionHint": "需要对应的钉钉企业通讯录权限。",
+    "admin.settings.dingtalk.syncCorpEmailTarget": "属性 Key",
+    "admin.settings.dingtalk.syncCorpEmailTargetHint": "用于保存钉钉企业邮箱的属性 Key。",
+    "admin.settings.dingtalk.corpEmailPlaceholder": "钉钉企业邮箱",
+    "admin.settings.dingtalk.syncDept": "同步部门",
+    "admin.settings.dingtalk.syncDeptHint": "可用时将钉钉部门写入用户自定义属性。",
+    "admin.settings.dingtalk.syncDeptPermissionHint": "需要对应的钉钉企业通讯录权限。",
+    "admin.settings.dingtalk.syncDeptTarget": "属性 Key",
+    "admin.settings.dingtalk.syncDeptTargetHint": "用于保存钉钉部门的属性 Key。",
+    "admin.settings.dingtalk.deptPlaceholder": "钉钉部门",
+    "admin.settings.dingtalk.authSourceDescription": "通过钉钉首次注册或首次绑定时应用。"
+  },
+  "vi": {
+    "admin.settings.dingtalk.title": "Đăng nhập DingTalk Connect",
+    "admin.settings.dingtalk.description": "Cấu hình OAuth DingTalk để người dùng Sub2API đăng nhập",
+    "admin.settings.dingtalk.enable": "Bật đăng nhập DingTalk",
+    "admin.settings.dingtalk.enableHint": "Hiển thị lối vào DingTalk trên trang đăng nhập/đăng ký",
+    "admin.settings.dingtalk.clientId": "Client ID",
+    "admin.settings.dingtalk.clientIdPlaceholder": "DingTalk OAuth client id",
+    "admin.settings.dingtalk.clientIdHint": "Lấy từ DingTalk developer console",
+    "admin.settings.dingtalk.clientSecret": "Client Secret",
+    "admin.settings.dingtalk.clientSecretPlaceholder": "********",
+    "admin.settings.dingtalk.clientSecretHint": "Dùng để backend trao đổi token (hãy giữ bí mật)",
+    "admin.settings.dingtalk.clientSecretConfiguredPlaceholder": "********",
+    "admin.settings.dingtalk.clientSecretConfiguredHint": "Secret đã được cấu hình, để trống để giữ nguyên giá trị hiện tại.",
+    "admin.settings.dingtalk.redirectUrl": "Redirect URL",
+    "admin.settings.dingtalk.redirectUrlPlaceholder": "https://your-domain.com/api/v1/auth/oauth/dingtalk/callback",
+    "admin.settings.dingtalk.redirectUrlHint": "Phải khớp callback URL đã cấu hình trong DingTalk",
+    "admin.settings.dingtalk.corpPolicy.label": "Chính sách giới hạn tổ chức",
+    "admin.settings.dingtalk.corpPolicy.hint": "Chọn có yêu cầu đăng nhập DingTalk từ tổ chức đã cấu hình hay không.",
+    "admin.settings.dingtalk.corpPolicy.none": "Không giới hạn tổ chức",
+    "admin.settings.dingtalk.corpPolicy.internalOnly": "Chỉ tổ chức đã cấu hình",
+    "admin.settings.dingtalk.bypassRegistration": "Bỏ qua cổng đăng ký",
+    "admin.settings.dingtalk.bypassRegistrationHint": "Cho phép người dùng DingTalk nội bộ đã xác minh tạo tài khoản dù đăng ký công khai đang tắt.",
+    "admin.settings.dingtalk.syncDisplayName": "Đồng bộ tên hiển thị",
+    "admin.settings.dingtalk.syncDisplayNameHint": "Ghi tên hiển thị DingTalk vào thuộc tính tùy chỉnh của người dùng khi đăng nhập/liên kết.",
+    "admin.settings.dingtalk.syncDisplayNameTarget": "Khóa thuộc tính",
+    "admin.settings.dingtalk.syncDisplayNameTargetHint": "Khóa thuộc tính dùng để lưu tên hiển thị DingTalk.",
+    "admin.settings.dingtalk.syncAttrDisplayName": "Nhãn hiển thị",
+    "admin.settings.dingtalk.displayNamePlaceholder": "Tên DingTalk",
+    "admin.settings.dingtalk.syncCorpEmail": "Đồng bộ email công ty",
+    "admin.settings.dingtalk.syncCorpEmailHint": "Ghi email công ty DingTalk vào thuộc tính tùy chỉnh khi có.",
+    "admin.settings.dingtalk.syncCorpEmailPermissionHint": "Yêu cầu quyền tổ chức DingTalk tương ứng.",
+    "admin.settings.dingtalk.syncCorpEmailTarget": "Khóa thuộc tính",
+    "admin.settings.dingtalk.syncCorpEmailTargetHint": "Khóa thuộc tính dùng để lưu email công ty DingTalk.",
+    "admin.settings.dingtalk.corpEmailPlaceholder": "Email công ty DingTalk",
+    "admin.settings.dingtalk.syncDept": "Đồng bộ phòng ban",
+    "admin.settings.dingtalk.syncDeptHint": "Ghi phòng ban DingTalk vào thuộc tính tùy chỉnh khi có.",
+    "admin.settings.dingtalk.syncDeptPermissionHint": "Yêu cầu quyền tổ chức DingTalk tương ứng.",
+    "admin.settings.dingtalk.syncDeptTarget": "Khóa thuộc tính",
+    "admin.settings.dingtalk.syncDeptTargetHint": "Khóa thuộc tính dùng để lưu phòng ban DingTalk.",
+    "admin.settings.dingtalk.deptPlaceholder": "Phòng ban DingTalk",
+    "admin.settings.dingtalk.authSourceDescription": "Áp dụng khi đăng ký lần đầu hoặc liên kết lần đầu qua DingTalk."
+  },
+  "ko": {
+    "admin.settings.dingtalk.title": "DingTalk Connect 로그인",
+    "admin.settings.dingtalk.description": "Sub2API 사용자 로그인을 위한 DingTalk OAuth 설정",
+    "admin.settings.dingtalk.enable": "DingTalk 로그인 사용",
+    "admin.settings.dingtalk.enableHint": "로그인/가입 페이지에 DingTalk 로그인 입구를 표시합니다",
+    "admin.settings.dingtalk.clientId": "Client ID",
+    "admin.settings.dingtalk.clientIdPlaceholder": "DingTalk OAuth client id",
+    "admin.settings.dingtalk.clientIdHint": "DingTalk developer console에서 가져옵니다",
+    "admin.settings.dingtalk.clientSecret": "Client Secret",
+    "admin.settings.dingtalk.clientSecretPlaceholder": "********",
+    "admin.settings.dingtalk.clientSecretHint": "백엔드에서 token 교환에 사용됩니다(비밀 유지)",
+    "admin.settings.dingtalk.clientSecretConfiguredPlaceholder": "********",
+    "admin.settings.dingtalk.clientSecretConfiguredHint": "Secret이 이미 설정되어 있습니다. 비워 두면 현재 값을 유지합니다.",
+    "admin.settings.dingtalk.redirectUrl": "Redirect URL",
+    "admin.settings.dingtalk.redirectUrlPlaceholder": "https://your-domain.com/api/v1/auth/oauth/dingtalk/callback",
+    "admin.settings.dingtalk.redirectUrlHint": "DingTalk에 설정한 callback URL과 일치해야 합니다",
+    "admin.settings.dingtalk.corpPolicy.label": "조직 제한 정책",
+    "admin.settings.dingtalk.corpPolicy.hint": "DingTalk 로그인이 설정된 조직에서 와야 하는지 선택합니다.",
+    "admin.settings.dingtalk.corpPolicy.none": "조직 제한 없음",
+    "admin.settings.dingtalk.corpPolicy.internalOnly": "설정된 조직만 허용",
+    "admin.settings.dingtalk.bypassRegistration": "가입 게이트 우회",
+    "admin.settings.dingtalk.bypassRegistrationHint": "공개 가입이 꺼져 있어도 검증된 내부 DingTalk 사용자가 계정을 만들 수 있게 합니다.",
+    "admin.settings.dingtalk.syncDisplayName": "표시 이름 동기화",
+    "admin.settings.dingtalk.syncDisplayNameHint": "로그인/연결 시 DingTalk 표시 이름을 사용자 custom attribute에 기록합니다.",
+    "admin.settings.dingtalk.syncDisplayNameTarget": "Attribute key",
+    "admin.settings.dingtalk.syncDisplayNameTargetHint": "DingTalk 표시 이름을 저장할 attribute key입니다.",
+    "admin.settings.dingtalk.syncAttrDisplayName": "표시 라벨",
+    "admin.settings.dingtalk.displayNamePlaceholder": "DingTalk 이름",
+    "admin.settings.dingtalk.syncCorpEmail": "회사 이메일 동기화",
+    "admin.settings.dingtalk.syncCorpEmailHint": "가능한 경우 DingTalk 회사 이메일을 사용자 custom attribute에 기록합니다.",
+    "admin.settings.dingtalk.syncCorpEmailPermissionHint": "해당 DingTalk 조직 권한이 필요합니다.",
+    "admin.settings.dingtalk.syncCorpEmailTarget": "Attribute key",
+    "admin.settings.dingtalk.syncCorpEmailTargetHint": "DingTalk 회사 이메일을 저장할 attribute key입니다.",
+    "admin.settings.dingtalk.corpEmailPlaceholder": "DingTalk 회사 이메일",
+    "admin.settings.dingtalk.syncDept": "부서 동기화",
+    "admin.settings.dingtalk.syncDeptHint": "가능한 경우 DingTalk 부서를 사용자 custom attribute에 기록합니다.",
+    "admin.settings.dingtalk.syncDeptPermissionHint": "해당 DingTalk 조직 권한이 필요합니다.",
+    "admin.settings.dingtalk.syncDeptTarget": "Attribute key",
+    "admin.settings.dingtalk.syncDeptTargetHint": "DingTalk 부서를 저장할 attribute key입니다.",
+    "admin.settings.dingtalk.deptPlaceholder": "DingTalk 부서",
+    "admin.settings.dingtalk.authSourceDescription": "DingTalk로 최초 가입하거나 최초 연결할 때 적용됩니다."
+  }
+} as const satisfies Record<'en' | 'zh' | 'vi' | 'ko', Record<string, string>>
+
+const zhBaselineDottedLocaleCoveragePatches = {
+  "vi": {
+    "common.peakRateTooltip": "Hệ số giờ cao điểm: {window}",
+    "common.peakRateImageNote": "; token ảnh tính theo token cũng bị ảnh hưởng, tính phí theo từng ảnh không bị ảnh hưởng",
+    "legal.loginAgreementPrompt.checkboxPrefix": "Tôi đã đọc và đồng ý ",
+    "legal.loginAgreementPrompt.documentSeparator": ", ",
+    "legal.loginAgreementPrompt.noticeTitle": "Chấp nhận điều khoản mới nhất trước khi tiếp tục.",
+    "legal.loginAgreementPrompt.noticeDescription": "Đăng nhập bằng tài khoản/mật khẩu và đăng nhập nhanh sẽ bị tắt cho tới khi bạn chấp nhận.",
+    "legal.loginAgreementPrompt.viewTerms": "Xem điều khoản",
+    "legal.loginAgreementPrompt.dialogTitle": "Thông báo cập nhật điều khoản",
+    "legal.loginAgreementPrompt.dialogDescription": "Điều khoản dịch vụ đã được cập nhật vào {date}. Vui lòng đọc và chấp nhận các điều khoản sau trước khi tiếp tục.",
+    "legal.loginAgreementPrompt.recently": "gần đây",
+    "legal.loginAgreementPrompt.relatedDocuments": "Tài liệu liên quan",
+    "legal.loginAgreementPrompt.reject": "Từ chối",
+    "legal.loginAgreementPrompt.accept": "Chấp nhận và tiếp tục",
+    "legal.loginAgreementPrompt.loginRejectedWarning": "Đăng nhập bằng tài khoản/mật khẩu và đăng nhập nhanh bị tắt cho tới khi bạn chấp nhận điều khoản mới nhất.",
+    "legal.loginAgreementPrompt.loginRequiredWarning": "Vui lòng đọc và chấp nhận điều khoản mới nhất trước khi đăng nhập.",
+    "legal.loginAgreementPrompt.registerRejectedWarning": "Đăng ký và đăng nhập nhanh bị tắt cho tới khi bạn chấp nhận điều khoản mới nhất.",
+    "legal.loginAgreementPrompt.registerRequiredWarning": "Vui lòng đọc và chấp nhận điều khoản mới nhất trước khi đăng ký.",
+    "keys.columnSettings": "Cài đặt cột",
+    "keys.columnAlwaysVisible": "Cột này luôn hiển thị",
+    "usage.ipGeo.fetch": "Lấy khu vực",
+    "usage.ipGeo.fetching": "Đang lấy...",
+    "usage.ipGeo.failed": "Thất bại",
+    "usage.ipGeo.private": "Địa chỉ nội bộ",
+    "usage.ipGeo.refreshTitle": "Làm mới thông tin khu vực",
+    "usage.ipGeo.batchFetch": "Lấy khu vực hàng loạt",
+    "usage.ipGeo.batchFetching": "Đang lấy...",
+    "usage.ipGeo.pending": "{count} IP đang chờ",
+    "usage.ipGeo.batchFailed": "Lấy khu vực IP hàng loạt thất bại",
+    "usage.ipGeo.detailOrg": "Nhà mạng",
+    "usage.ipGeo.detailTimezone": "Múi giờ",
+    "usage.ipGeo.detailAccuracy": "Độ chính xác",
+    "usage.ipGeo.detailCoordinates": "Tọa độ",
+    "admin.groups.columnSettings": "Cài đặt cột",
+    "admin.groups.rateLabel": "hệ số",
+    "admin.groups.accountFilters.title": "Điều khiển lọc tài khoản",
+    "admin.groups.accountFilters.oauthOnly": "Chỉ cho phép tài khoản OAuth",
+    "admin.groups.accountFilters.oauthOnlyEnabled": "Đã bật — tài khoản API Key sẽ bị loại trừ",
+    "admin.groups.accountFilters.privacySetOnly": "Chỉ cho phép tài khoản đã đặt bảo vệ quyền riêng tư",
+    "admin.groups.accountFilters.privacySetOnlyEnabled": "Đã bật — tài khoản chưa đặt Privacy sẽ bị loại trừ",
+    "admin.groups.accountFilters.disabled": "Đã tắt",
+    "admin.groups.peakRate.enable": "Bật hệ số giờ cao điểm",
+    "admin.groups.peakRate.peakStart": "Bắt đầu giờ cao điểm",
+    "admin.groups.peakRate.peakEnd": "Kết thúc giờ cao điểm",
+    "admin.groups.peakRate.peakMultiplier": "Hệ số giờ cao điểm",
+    "admin.groups.peakRate.multiplierHint": "Áp dụng cho hệ số tính phí token; token ảnh tính theo token cũng bị ảnh hưởng. 0 nghĩa là request token giờ cao điểm tính phí 0x.",
+    "admin.groups.modelsList.selectedSummary": "Đã chọn {selected} / {total}",
+    "admin.groups.modelsList.selectAll": "Chọn tất cả",
+    "admin.channels.form.cacheWritePriceShort": "Ghi cache",
+    "admin.channels.form.cacheReadPriceShort": "Đọc cache",
+    "admin.channels.form.minTokens": "Tối thiểu",
+    "admin.channels.form.maxTokens": "Tối đa",
+    "admin.channels.form.inclusive": "(bao gồm)",
+    "admin.riskControl.matchedKeyword": "Từ khóa khớp",
+    "admin.subscriptions.restoreSubscription": "Khôi phục đăng ký",
+    "admin.subscriptions.status.suspended": "Đã tạm dừng",
+    "admin.subscriptions.restore": "Khôi phục",
+    "admin.subscriptions.subscriptionRestored": "Đã khôi phục đăng ký thành công",
+    "admin.subscriptions.failedToRestore": "Khôi phục đăng ký thất bại",
+    "admin.subscriptions.restoreConfirm": "Khôi phục đăng ký cho '{user}'? Nếu đăng ký gốc đã hết hạn, sau khi khôi phục vẫn sẽ hiển thị là đã hết hạn.",
+    "admin.accounts.dataExportedSkippedShadows": "Đã xuất dữ liệu. Đã bỏ qua {count} tài khoản spark shadow: cấu hình điều phối của chúng không nằm trong backup; hãy tạo lại và tinh chỉnh lại sau khi restore.",
+    "admin.accounts.openaiQuotaReset.resetTooltipShadow": "Tài khoản Spark shadow không thể reset lượt; hãy reset trên tài khoản cha",
+    "admin.accounts.openaiQuotaReset.expiresAt": "Hết hạn {time}",
+    "admin.accounts.openaiQuotaReset.expiresAtFull": "Lượt reset hết hạn lúc {time}",
+    "admin.accounts.openaiQuotaReset.expandExpirations": "Mở rộng {count} thời điểm hết hạn lượt reset còn lại",
+    "admin.accounts.openaiQuotaReset.collapseExpirations": "Thu gọn thời điểm hết hạn lượt reset",
+    "admin.accounts.openaiQuotaReset.expirationDetails": "Chi tiết hết hạn lượt reset",
+    "admin.accounts.createSparkShadow": "Tạo Spark Shadow",
+    "admin.accounts.createSparkShadowConfirm": "Tạo tài khoản spark shadow liên kết với \"{name}\"? Tài khoản này dùng chung thông tin xác thực của tài khoản cha và chỉ phục vụ model spark.",
+    "admin.accounts.createSparkShadowSuccess": "Đã tạo tài khoản Spark shadow",
+    "admin.accounts.createSparkShadowFailed": "Tạo tài khoản Spark shadow thất bại",
+    "admin.accounts.openai.wsModeHttpBridge": "HTTP Bridge (http_bridge)",
+    "admin.accounts.anthropic.apiKeyAuthScheme": "Cơ chế xác thực upstream",
+    "admin.accounts.anthropic.apiKeyAuthSchemeDesc": "Chọn header xác thực API key khi chuyển tiếp tới upstream tương thích Anthropic. Ollama Cloud dùng Authorization: Bearer.",
+    "admin.accounts.anthropic.apiKeyAuthSchemeXApiKey": "x-api-key",
+    "admin.accounts.anthropic.apiKeyAuthSchemeBearer": "Authorization: Bearer",
+    "admin.accounts.gemini.oauthType.badges.individuals": "Khuyến nghị cho người dùng cá nhân",
+    "admin.accounts.gemini.oauthType.badges.enterprise": "Người dùng doanh nghiệp",
+    "admin.accounts.gemini.setupGuide.links.countryChange": "Đổi liên kết quốc gia",
+    "admin.ops.systemLogs.caller": "bên gọi",
+    "admin.ops.systemLogs.sampling": "lấy mẫu",
+    "admin.ops.systemLogs.keyId": "KEY ID",
+    "admin.settings.gatewayForwarding.clientDatelineNormalization": "Chuẩn hóa dateline của client",
+    "admin.settings.gatewayForwarding.clientDatelineNormalizationHint": "Mặc định bật. Chuẩn hóa câu \"Today's date is …\" trong request Anthropic OAuth/Setup Token về dấu nháy ASCII và định dạng ngày gạch nối chuẩn, xóa bit fingerprint ẩn mà một số client chèn khi phát hiện base URL không chính thức. Chỉ áp dụng cho system prompt và block <system-reminder>; tài khoản API-Key không bị ảnh hưởng.",
+    "payment.status.refund_pending": "Đang chờ hoàn tiền",
+    "payment.planCard.peakRate": "Hệ số giờ cao điểm",
+    "payment.admin.refundPending": "Hoàn tiền đang chờ gateway xác nhận",
+    "payment.admin.queryRefundStatus": "Truy vấn trạng thái hoàn tiền"
+  },
+  "ko": {
+    "common.peakRateTooltip": "피크 요율: {window}",
+    "common.peakRateImageNote": "; 토큰으로 과금되는 이미지 토큰도 영향을 받으며, 이미지 건별 과금은 영향을 받지 않습니다",
+    "legal.loginAgreementPrompt.checkboxPrefix": "다음을 읽고 동의합니다 ",
+    "legal.loginAgreementPrompt.documentSeparator": ", ",
+    "legal.loginAgreementPrompt.noticeTitle": "계속하기 전에 최신 약관에 동의하세요.",
+    "legal.loginAgreementPrompt.noticeDescription": "동의하기 전까지 계정/비밀번호 로그인과 빠른 로그인이 비활성화됩니다.",
+    "legal.loginAgreementPrompt.viewTerms": "약관 보기",
+    "legal.loginAgreementPrompt.dialogTitle": "약관 업데이트 알림",
+    "legal.loginAgreementPrompt.dialogDescription": "서비스 약관이 {date}에 업데이트되었습니다. 계속하기 전에 아래 약관을 읽고 동의해 주세요.",
+    "legal.loginAgreementPrompt.recently": "최근",
+    "legal.loginAgreementPrompt.relatedDocuments": "관련 문서",
+    "legal.loginAgreementPrompt.reject": "거부",
+    "legal.loginAgreementPrompt.accept": "동의하고 계속",
+    "legal.loginAgreementPrompt.loginRejectedWarning": "최신 약관에 동의하기 전까지 계정/비밀번호 로그인과 빠른 로그인을 사용할 수 없습니다.",
+    "legal.loginAgreementPrompt.loginRequiredWarning": "로그인하기 전에 최신 약관을 읽고 동의해 주세요.",
+    "legal.loginAgreementPrompt.registerRejectedWarning": "최신 약관에 동의하기 전까지 가입과 빠른 로그인을 사용할 수 없습니다.",
+    "legal.loginAgreementPrompt.registerRequiredWarning": "가입하기 전에 최신 약관을 읽고 동의해 주세요.",
+    "keys.columnSettings": "열 설정",
+    "keys.columnAlwaysVisible": "이 열은 항상 표시됩니다",
+    "usage.ipGeo.fetch": "지역 가져오기",
+    "usage.ipGeo.fetching": "가져오는 중...",
+    "usage.ipGeo.failed": "실패",
+    "usage.ipGeo.private": "사설 주소",
+    "usage.ipGeo.refreshTitle": "지역 정보 새로고침",
+    "usage.ipGeo.batchFetch": "지역 일괄 가져오기",
+    "usage.ipGeo.batchFetching": "가져오는 중...",
+    "usage.ipGeo.pending": "{count}개 IP 대기 중",
+    "usage.ipGeo.batchFailed": "IP 지역 일괄 조회 실패",
+    "usage.ipGeo.detailOrg": "ISP",
+    "usage.ipGeo.detailTimezone": "시간대",
+    "usage.ipGeo.detailAccuracy": "정확도",
+    "usage.ipGeo.detailCoordinates": "좌표",
+    "admin.groups.columnSettings": "열 설정",
+    "admin.groups.rateLabel": "요율",
+    "admin.groups.accountFilters.title": "계정 필터 제어",
+    "admin.groups.accountFilters.oauthOnly": "OAuth 계정만 허용",
+    "admin.groups.accountFilters.oauthOnlyEnabled": "활성화됨 — API Key 계정은 제외됩니다",
+    "admin.groups.accountFilters.privacySetOnly": "개인정보 보호가 설정된 계정만 허용",
+    "admin.groups.accountFilters.privacySetOnlyEnabled": "활성화됨 — Privacy가 설정되지 않은 계정은 제외됩니다",
+    "admin.groups.accountFilters.disabled": "비활성",
+    "admin.groups.peakRate.enable": "피크 요율 배수 사용",
+    "admin.groups.peakRate.peakStart": "피크 시작",
+    "admin.groups.peakRate.peakEnd": "피크 종료",
+    "admin.groups.peakRate.peakMultiplier": "피크 배수",
+    "admin.groups.peakRate.multiplierHint": "토큰 과금 배수에 적용됩니다. 토큰으로 과금되는 이미지 토큰도 영향을 받습니다. 0이면 피크 시간 토큰 요청은 0x로 과금됩니다.",
+    "admin.groups.modelsList.selectedSummary": "{selected} / {total} 선택됨",
+    "admin.groups.modelsList.selectAll": "전체 선택",
+    "admin.channels.form.cacheWritePriceShort": "캐시 쓰기",
+    "admin.channels.form.cacheReadPriceShort": "캐시 읽기",
+    "admin.channels.form.minTokens": "최소",
+    "admin.channels.form.maxTokens": "최대",
+    "admin.channels.form.inclusive": "(포함)",
+    "admin.riskControl.matchedKeyword": "일치한 키워드",
+    "admin.subscriptions.restoreSubscription": "구독 복원",
+    "admin.subscriptions.status.suspended": "일시 중지됨",
+    "admin.subscriptions.restore": "복원",
+    "admin.subscriptions.subscriptionRestored": "구독이 성공적으로 복원되었습니다",
+    "admin.subscriptions.failedToRestore": "구독 복원 실패",
+    "admin.subscriptions.restoreConfirm": "'{user}'의 구독을 복원할까요? 원래 구독이 만료된 경우 복원 후에도 만료로 표시됩니다.",
+    "admin.accounts.dataExportedSkippedShadows": "데이터를 내보냈습니다. {count}개의 spark shadow 계정을 건너뛰었습니다. 해당 스케줄링 설정은 백업에 포함되지 않으므로 복원 후 다시 생성하고 조정하세요.",
+    "admin.accounts.openaiQuotaReset.resetTooltipShadow": "Spark shadow 계정은 reset credits를 재설정할 수 없습니다. 부모 계정에서 재설정하세요",
+    "admin.accounts.openaiQuotaReset.expiresAt": "{time} 만료",
+    "admin.accounts.openaiQuotaReset.expiresAtFull": "Reset credit 만료 시간: {time}",
+    "admin.accounts.openaiQuotaReset.expandExpirations": "나머지 {count}개 reset credit 만료 시간 펼치기",
+    "admin.accounts.openaiQuotaReset.collapseExpirations": "Reset credit 만료 시간 접기",
+    "admin.accounts.openaiQuotaReset.expirationDetails": "Reset credit 만료 상세",
+    "admin.accounts.createSparkShadow": "Spark Shadow 생성",
+    "admin.accounts.createSparkShadowConfirm": "\"{name}\"에 연결된 spark shadow 계정을 만들까요? 부모 계정의 자격 증명을 공유하며 spark 모델만 제공합니다.",
+    "admin.accounts.createSparkShadowSuccess": "Spark shadow 계정이 생성되었습니다",
+    "admin.accounts.createSparkShadowFailed": "Spark shadow 계정 생성 실패",
+    "admin.accounts.openai.wsModeHttpBridge": "HTTP Bridge (http_bridge)",
+    "admin.accounts.anthropic.apiKeyAuthScheme": "업스트림 인증 방식",
+    "admin.accounts.anthropic.apiKeyAuthSchemeDesc": "Anthropic-compatible 업스트림으로 전달할 때 사용할 API Key 인증 헤더를 선택하세요. Ollama Cloud는 Authorization: Bearer를 사용합니다.",
+    "admin.accounts.anthropic.apiKeyAuthSchemeXApiKey": "x-api-key",
+    "admin.accounts.anthropic.apiKeyAuthSchemeBearer": "Authorization: Bearer",
+    "admin.accounts.gemini.oauthType.badges.individuals": "개인 사용자 권장",
+    "admin.accounts.gemini.oauthType.badges.enterprise": "기업 사용자",
+    "admin.accounts.gemini.setupGuide.links.countryChange": "국가 연결 변경",
+    "admin.ops.systemLogs.caller": "호출자",
+    "admin.ops.systemLogs.sampling": "샘플링",
+    "admin.ops.systemLogs.keyId": "KEY ID",
+    "admin.settings.gatewayForwarding.clientDatelineNormalization": "클라이언트 Dateline 정규화",
+    "admin.settings.gatewayForwarding.clientDatelineNormalizationHint": "기본값은 켜짐입니다. Anthropic OAuth/Setup Token 요청의 \"Today's date is …\" 문장을 표준 ASCII apostrophe와 하이픈 날짜 형식으로 되돌려, 비공식 base URL을 감지한 일부 클라이언트가 삽입하는 스테가노그래피 fingerprint bit를 제거합니다. system prompt 및 <system-reminder> 블록에만 적용되며 API-Key 계정은 영향을 받지 않습니다.",
+    "payment.status.refund_pending": "환불 대기 중",
+    "payment.planCard.peakRate": "피크 요율",
+    "payment.admin.refundPending": "게이트웨이 확인 대기 중인 환불",
+    "payment.admin.queryRefundStatus": "환불 상태 조회"
+  }
+} as const satisfies Record<'vi' | 'ko', Record<string, string>>
+
 export const adminLocalePatches = mergeLocalePatch(
   mergeLocalePatch(
     adminLocalePatchBase as unknown as Record<string, LocalePatch>,
@@ -1679,15 +2081,21 @@ export const adminLocalePatches = mergeLocalePatch(
   ),
   adminLocaleCoveragePatches
 )
-
 mergeLocalePatch(adminLocalePatches.vi, zhBaselineLocaleCoveragePatches.vi)
 mergeLocalePatch(adminLocalePatches.ko, zhBaselineLocaleCoveragePatches.ko)
 
 for (const locale of ['en', 'zh', 'vi', 'ko'] as const) {
   mergeLocalePatch(adminLocalePatches[locale], staticI18nCoveragePatches[locale])
   mergeLocalePatch(adminLocalePatches[locale], postRebaseLocaleCoveragePatches[locale])
+  mergeLocalePatch(adminLocalePatches[locale], adminPlatformLocaleCoveragePatches[locale])
 }
 
 for (const locale of ['en', 'zh', 'vi', 'ko'] as const) {
   mergeLocalePatch(adminLocalePatches[locale], staticI18nCoverageHotfixPatches[locale])
 }
+
+for (const locale of ['en', 'zh', 'vi', 'ko'] as const) {
+  mergeDottedLocalePatch(adminLocalePatches[locale], dingtalkSettingsLocaleCoveragePatches[locale])
+}
+mergeDottedLocalePatch(adminLocalePatches.vi, zhBaselineDottedLocaleCoveragePatches.vi)
+mergeDottedLocalePatch(adminLocalePatches.ko, zhBaselineDottedLocaleCoveragePatches.ko)
