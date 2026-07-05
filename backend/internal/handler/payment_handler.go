@@ -224,6 +224,18 @@ func (h *PaymentHandler) GetLimits(c *gin.Context) {
 	response.Success(c, resp)
 }
 
+// GetUSDTRate returns the current CNY-per-USDT rate, cached for 60s and sourced
+// from CoinGecko. Used by the recharge UI to show users the implied USDT amount.
+// GET /api/v1/payment/usdt/rate
+func (h *PaymentHandler) GetUSDTRate(c *gin.Context) {
+	entry, err := defaultUSDTRateCache.Get(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, entry)
+}
+
 // CreateOrderRequest is the request body for creating a payment order.
 type CreateOrderRequest struct {
 	Amount            float64 `json:"amount"`

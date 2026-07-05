@@ -33,6 +33,16 @@
         </span>
       </button>
     </div>
+    <div v-if="hasUsdt && usdtRate && usdtRate > 0" class="mt-2 space-y-0.5">
+      <p class="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+        {{
+          usdtImpliedAmount && usdtImpliedAmount > 0
+            ? t('payment.usdtRateLine', { cny: usdtRate.toFixed(2), usdt: (usdtImpliedAmount / usdtRate).toFixed(2) })
+            : t('payment.usdtRateLineNoAmount', { cny: usdtRate.toFixed(2) })
+        }}
+      </p>
+      <p class="text-[10px] text-gray-500 dark:text-dark-400">{{ t('payment.usdtRateNote') }}</p>
+    </div>
   </div>
 </template>
 
@@ -44,6 +54,7 @@ import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
 import stripeIcon from '@/assets/icons/stripe.svg'
 import airwallexIcon from '@/assets/icons/airwallex.svg'
+import usdtIcon from '@/assets/icons/usdt.svg'
 
 export interface PaymentMethodOption {
   type: string
@@ -54,6 +65,8 @@ export interface PaymentMethodOption {
 const props = defineProps<{
   methods: PaymentMethodOption[]
   selected: string
+  usdtRate?: number | null
+  usdtImpliedAmount?: number
 }>()
 
 const emit = defineEmits<{
@@ -67,6 +80,7 @@ const METHOD_ICONS: Record<string, string> = {
   wxpay: wxpayIcon,
   stripe: stripeIcon,
   airwallex: airwallexIcon,
+  usdt: usdtIcon,
 }
 
 const sortedMethods = computed(() => {
@@ -78,10 +92,13 @@ const sortedMethods = computed(() => {
   })
 })
 
+const hasUsdt = computed(() => props.methods.some(m => m.type === 'usdt' && m.available))
+
 function methodIcon(type: string): string {
   if (type.includes('alipay')) return METHOD_ICONS.alipay
   if (type.includes('wxpay')) return METHOD_ICONS.wxpay
   if (type === 'airwallex') return METHOD_ICONS.airwallex
+  if (type === 'usdt') return METHOD_ICONS.usdt
   return METHOD_ICONS[type] || alipayIcon
 }
 
@@ -90,6 +107,7 @@ function methodSelectedClass(type: string): string {
   if (type.includes('wxpay')) return 'border-[#09BB07] bg-green-50 text-gray-900 shadow-sm dark:bg-green-950 dark:text-gray-100'
   if (type === 'stripe') return 'border-[#676BE5] bg-indigo-50 text-gray-900 shadow-sm dark:bg-indigo-950 dark:text-gray-100'
   if (type === 'airwallex') return 'border-[#FF6B3D] bg-orange-50 text-gray-900 shadow-sm dark:border-[#FF8E3C] dark:bg-orange-950 dark:text-gray-100'
+  if (type === 'usdt') return 'border-[#26A17B] bg-emerald-50 text-gray-900 shadow-sm dark:border-[#26A17B] dark:bg-emerald-950 dark:text-gray-100'
   return 'border-primary-500 bg-primary-50 text-gray-900 shadow-sm dark:bg-primary-950 dark:text-gray-100'
 }
 </script>

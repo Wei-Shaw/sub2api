@@ -12,7 +12,8 @@ import type {
   CheckoutInfoResponse,
   CreateOrderRequest,
   CreateOrderResult,
-  PaymentOrder
+  PaymentOrder,
+  UsdtRateResponse
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
@@ -48,6 +49,11 @@ export const paymentAPI = {
   /** Get payment method limits and fee rates */
   getLimits() {
     return apiClient.get<MethodLimitsResponse>('/payment/limits')
+  },
+
+  /** Get current CNY-per-USDT exchange rate (cached 60s server-side) */
+  getUsdtRate() {
+    return apiClient.get<UsdtRateResponse>('/payment/usdt/rate')
   },
 
   /** Create a new payment order */

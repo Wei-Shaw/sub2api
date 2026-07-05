@@ -19,7 +19,7 @@ export type OrderStatus =
   | 'REFUNDED'
   | 'REFUND_FAILED'
 
-export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'easypay' | 'airwallex'
+export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'easypay' | 'airwallex' | 'usdt'
 
 export type OrderType = 'balance' | 'subscription'
 
@@ -222,4 +222,10 @@ export interface DashboardStats {
   daily_series: { date: string; amount: number; count: number }[]
   payment_methods: { type: string; amount: number; count: number }[]
   top_users: { user_id: number; email: string; amount: number }[]
+}
+
+export interface UsdtRateResponse {
+  cny_per_usdt: number
+  updated_at: string
+  source: string
 }
