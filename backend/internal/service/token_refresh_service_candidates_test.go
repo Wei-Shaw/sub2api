@@ -35,8 +35,9 @@ func (r *tokenRefreshCandidateRepo) ListOAuthRefreshCandidates(context.Context) 
 		inRetryCooldown := account.TempUnschedulableUntil != nil &&
 			account.TempUnschedulableUntil.After(now) &&
 			strings.HasPrefix(account.TempUnschedulableReason, "token refresh retry exhausted:")
+		refreshableType := account.Type == AccountTypeOAuth || account.Type == AccountTypeSetupToken
 		if account.Status != StatusActive ||
-			account.Type != AccountTypeOAuth ||
+			!refreshableType ||
 			!isOAuthRefreshPlatform(account.Platform) ||
 			strings.TrimSpace(refreshToken) == "" ||
 			inRetryCooldown {
@@ -128,6 +129,20 @@ func TestTokenRefreshService_ProcessRefreshUsesOAuthRefreshCandidates(t *testing
 				Status:      StatusActive,
 				Credentials: map[string]any{"refresh_token": "refresh-token"},
 			},
+			{
+				ID:          6,
+				Platform:    PlatformAnthropic,
+				Type:        AccountTypeSetupToken,
+				Status:      StatusActive,
+				Credentials: map[string]any{"refresh_token": "refresh-token"},
+			},
+			{
+				ID:          7,
+				Platform:    PlatformAnthropic,
+				Type:        AccountTypeSetupToken,
+				Status:      StatusActive,
+				Credentials: map[string]any{},
+			},
 		},
 	}
 	svc := &TokenRefreshService{
@@ -140,7 +155,8 @@ func TestTokenRefreshService_ProcessRefreshUsesOAuthRefreshCandidates(t *testing
 	svc.processRefresh()
 
 	require.Zero(t, repo.listActiveCalls, "TokenRefreshService should not use the broad active-account query")
-	require.Equal(t, []int64{1}, repo.updatedCredentialIDs)
+	require.Equal(t, []int64{1, 6}, repo.updatedCredentialIDs,
+		"oauth candidate (1) unchanged; anthropic setup-token with refresh_token (6) is now a candidate; setup-token without refresh_token (7) stays excluded")
 }
 
 func TestTokenRefreshService_RefreshFailureDoesNotCallPrivacy(t *testing.T) {
