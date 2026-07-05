@@ -283,6 +283,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TableDefaultPageSize:                   settings.TableDefaultPageSize,
 		TablePageSizeOptions:                   settings.TablePageSizeOptions,
 		CustomMenuItems:                        dto.ParseCustomMenuItems(settings.CustomMenuItems),
+		CustomMenuEmbedAuthParams:              settings.CustomMenuEmbedAuthParams,
+		CustomMenuVersion:                      settings.CustomMenuVersion,
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
@@ -579,6 +581,7 @@ type UpdateSettingsRequest struct {
 	TableDefaultPageSize        int                   `json:"table_default_page_size"`
 	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
 	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
+	CustomMenuEmbedAuthParams   *bool                 `json:"custom_menu_embed_auth_params"`
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
 	// 默认配置
@@ -1414,6 +1417,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	)
 
 	customMenuJSON := previousSettings.CustomMenuItems
+	customMenuEmbedAuthParams := previousSettings.CustomMenuEmbedAuthParams
+	if req.CustomMenuEmbedAuthParams != nil {
+		customMenuEmbedAuthParams = *req.CustomMenuEmbedAuthParams
+	}
 	if req.CustomMenuItems != nil {
 		items := *req.CustomMenuItems
 		if len(items) > maxCustomMenuItems {
@@ -1468,6 +1475,19 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
 				return
 			}
+			// doc_url 可选：非空必须是绝对 http(s) URL 且长度受限。空串保存为空。
+			docURLTrimmed := strings.TrimSpace(item.DocURL)
+			if docURLTrimmed != "" {
+				if len(docURLTrimmed) > maxMenuItemURLLen {
+					response.BadRequest(c, "Custom menu item doc URL is too long (max 2048 characters)")
+					return
+				}
+				if err := config.ValidateAbsoluteHTTPURL(docURLTrimmed); err != nil {
+					response.BadRequest(c, "Custom menu item doc URL must be an absolute http(s) URL")
+					return
+				}
+			}
+			items[i].DocURL = docURLTrimmed
 			// Auto-generate ID if missing
 			if strings.TrimSpace(item.ID) == "" {
 				id, err := generateMenuItemID()
@@ -1835,6 +1855,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TableDefaultPageSize:                   req.TableDefaultPageSize,
 		TablePageSizeOptions:                   req.TablePageSizeOptions,
 		CustomMenuItems:                        customMenuJSON,
+		CustomMenuEmbedAuthParams:              customMenuEmbedAuthParams,
 		CustomEndpoints:                        customEndpointsJSON,
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
@@ -2327,6 +2348,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TableDefaultPageSize:                   updatedSettings.TableDefaultPageSize,
 		TablePageSizeOptions:                   updatedSettings.TablePageSizeOptions,
 		CustomMenuItems:                        dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
+		CustomMenuEmbedAuthParams:              updatedSettings.CustomMenuEmbedAuthParams,
+		CustomMenuVersion:                      updatedSettings.CustomMenuVersion,
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
@@ -2840,6 +2863,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.CustomMenuItems != after.CustomMenuItems {
 		changed = append(changed, "custom_menu_items")
+	}
+	if before.CustomMenuEmbedAuthParams != after.CustomMenuEmbedAuthParams {
+		changed = append(changed, "custom_menu_embed_auth_params")
 	}
 	if before.HomeProductMenuItems != after.HomeProductMenuItems {
 		changed = append(changed, "home_product_menu_items")

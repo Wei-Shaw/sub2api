@@ -491,6 +491,7 @@ func ProvideOpsService(
 	antigravityGatewayService *AntigravityGatewayService,
 	systemLogSink *OpsSystemLogSink,
 	settingService *SettingService,
+	runtimeLogBroadcaster RuntimeLogBroadcaster,
 ) *OpsService {
 	svc := NewOpsService(
 		opsRepo,
@@ -510,6 +511,13 @@ func ProvideOpsService(
 		// Optional warm-up so the first scheduled request after process start observes
 		// a populated cache rather than zero defaults. Best-effort, sync-bounded.
 		settingService.WarmOpenAIQuotaAutoPauseSettings(context.Background())
+	}
+	// 注入并启动运行时日志配置的跨实例广播（多副本部署时保证 UpdateRuntimeLogConfig /
+	// ResetRuntimeLogConfig 的变更能在所有节点上同时应用到内存中的 zap logger）。
+	// 未配置 Redis 时 broadcaster 由上层传入 nil，Setter 与订阅都会自动降级为 no-op。
+	if runtimeLogBroadcaster != nil {
+		svc.SetRuntimeLogBroadcaster(runtimeLogBroadcaster)
+		svc.StartRuntimeLogSubscriber(context.Background())
 	}
 	return svc
 }

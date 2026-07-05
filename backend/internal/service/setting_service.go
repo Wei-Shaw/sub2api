@@ -802,6 +802,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyTableDefaultPageSize,
 		SettingKeyTablePageSizeOptions,
 		SettingKeyCustomMenuItems,
+		SettingKeyCustomMenuEmbedAuthParams,
+		SettingKeyCustomMenuVersionCache,
 		SettingKeyCustomEndpoints,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyDingTalkConnectEnabled,
@@ -932,6 +934,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		TableDefaultPageSize:             tableDefaultPageSize,
 		TablePageSizeOptions:             tablePageSizeOptions,
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
+		CustomMenuEmbedAuthParams:        settings[SettingKeyCustomMenuEmbedAuthParams] == "true",
+		CustomMenuVersion:                settings[SettingKeyCustomMenuVersionCache],
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
 		LinuxDoOAuthEnabled:              linuxDoEnabled,
 		DingTalkOAuthEnabled:             dingTalkEnabled,
@@ -1621,6 +1625,8 @@ type PublicSettingsInjectionPayload struct {
 	TableDefaultPageSize             int                      `json:"table_default_page_size"`
 	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
 	CustomMenuItems                  json.RawMessage          `json:"custom_menu_items"`
+	CustomMenuEmbedAuthParams        bool                     `json:"custom_menu_embed_auth_params"`
+	CustomMenuVersion                string                   `json:"custom_menu_version"`
 	CustomEndpoints                  json.RawMessage          `json:"custom_endpoints"`
 	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
 	DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
@@ -1694,6 +1700,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		TableDefaultPageSize:             settings.TableDefaultPageSize,
 		TablePageSizeOptions:             settings.TablePageSizeOptions,
 		CustomMenuItems:                  filterUserVisibleMenuItems(settings.CustomMenuItems),
+		CustomMenuEmbedAuthParams:        settings.CustomMenuEmbedAuthParams,
+		CustomMenuVersion:                settings.CustomMenuVersion,
 		CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 		DingTalkOAuthEnabled:             settings.DingTalkOAuthEnabled,
@@ -2327,6 +2335,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	updates[SettingKeyTablePageSizeOptions] = string(tablePageSizeOptionsJSON)
 	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
+	updates[SettingKeyCustomMenuEmbedAuthParams] = strconv.FormatBool(settings.CustomMenuEmbedAuthParams)
+	updates[SettingKeyCustomMenuVersionCache] = ComputeCustomMenuVersion(settings.CustomMenuItems)
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
 
 	// 默认配置
@@ -3262,6 +3272,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyTableDefaultPageSize:                      "20",
 		SettingKeyTablePageSizeOptions:                      "[10,20,50,100]",
 		SettingKeyCustomMenuItems:                           "[]",
+		SettingKeyCustomMenuEmbedAuthParams:                 "true",
+		SettingKeyCustomMenuVersionCache:                    ComputeCustomMenuVersion("[]"),
 		SettingKeyHomeProductMenuItems:                      "[]",
 		SettingKeyCustomEndpoints:                           "[]",
 		SettingKeyWeChatConnectEnabled:                      "false",
@@ -3479,6 +3491,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PurchaseSubscriptionEnabled:       settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:           strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		CustomMenuItems:                   settings[SettingKeyCustomMenuItems],
+		CustomMenuEmbedAuthParams:         settings[SettingKeyCustomMenuEmbedAuthParams] == "true",
+		CustomMenuVersion:                 settings[SettingKeyCustomMenuVersionCache],
 		CustomEndpoints:                   settings[SettingKeyCustomEndpoints],
 		BackendModeEnabled:                settings[SettingKeyBackendModeEnabled] == "true",
 	}

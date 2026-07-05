@@ -87,43 +87,46 @@ func upscaleTargetLongEdge(tier string) int {
 }
 
 // maybeUpscaleOpenAIImages 在「分组开关开 + 目标档位≥2K + 系统配置就绪」时，对低于目标档位的
-// b64 图调用 fal SeedVR upscale 放大到目标档位。返回（可能被替换的）b64 与 sizes 切片及是否有改动。
+// b64 图调用 fal SeedVR upscale 放大到目标档位。
+// 返回（可能被替换的）b64、sizes、fal fallback URLs 切片及是否有改动。
 //
 // sizes 与 b64s 同序、同长度；放大成功的 slot 会把 size 更新为放大后真实尺寸，使后续计费按目标档位结算。
+// fallback URLs 与 b64s 同序；仅放大成功的 slot 填入 fal 返回的图片 URL，供 status.urls 在 COS 不可用时兜底。
 //
 // 安全保证：分组未开 / 目标档位不达标 / 未配置 / 解码失败 / 放大失败 / 超时 —— 一律保留原图与原 size，
 // 不报错（由调用方按原图返回与计费，自洽满足兜底语义）。
 func (s *OpenAIGatewayService) maybeUpscaleOpenAIImages(
 	ctx context.Context, group *Group, requestedSize string, b64s, sizes []string,
-) (outB64 []string, outSizes []string, changed bool) {
+) (outB64 []string, outSizes []string, fallbackURLs []string, changed bool) {
 	outB64 = b64s
 	outSizes = sizes
 	if s == nil || s.settingService == nil || group == nil || len(b64s) == 0 {
-		return outB64, outSizes, false
+		return outB64, outSizes, nil, false
 	}
 	if !group.ImageUpscaleOnRspEnabled() {
-		return outB64, outSizes, false
+		return outB64, outSizes, nil, false
 	}
 	targetTier, ok := ClassifyImageBillingTier(requestedSize)
 
 	// OpenAI的反代阉割了2K以及以上的生图, 故仅当显式请求了 ≥2K 才触发放大；否则按原图档位计费。
 	if !ok || imageTierRank(targetTier) < imageTierRank(ImageBillingSize2K) {
-		return outB64, outSizes, false
+		return outB64, outSizes, nil, false
 	}
 	cfg := s.settingService.GetFalUpscaleSettings(ctx)
 	if !cfg.Configured() {
-		return outB64, outSizes, false
+		return outB64, outSizes, nil, false
 	}
 	client, err := fal.NewClient(fal.Config{APIKey: cfg.Token})
 	if err != nil {
 		logger.L().Warn("openai.images.upscale.client_init_failed", zap.Error(err))
-		return outB64, outSizes, false
+		return outB64, outSizes, nil, false
 	}
 
 	resultB64 := make([]string, len(b64s))
 	copy(resultB64, b64s)
 	resultSizes := make([]string, len(b64s))
 	copy(resultSizes, sizes)
+	resultURLs := make([]string, len(b64s))
 
 	var wg sync.WaitGroup
 	var changedMu sync.Mutex
@@ -160,7 +163,7 @@ func (s *OpenAIGatewayService) maybeUpscaleOpenAIImages(
 				zap.Int("factor", factor),
 			)
 
-			newB64, uerr := s.runSeedVRUpscale(ctx, client, cfg, b64, factor)
+			newB64, falURL, uerr := s.runSeedVRUpscale(ctx, client, cfg, b64, factor)
 			if uerr != nil {
 				logger.L().Error("openai.images.upscale.failed",
 					zap.Int("index", i),
@@ -172,6 +175,7 @@ func (s *OpenAIGatewayService) maybeUpscaleOpenAIImages(
 				return // 兜底原图
 			}
 			resultB64[i] = newB64
+			resultURLs[i] = falURL
 			// 用放大后真实尺寸更新 size，使计费按目标档位结算（成功按目标、失败保留原图档位）。
 			if newSize, e := decodeImageSizeFromBase64(newB64); e == nil {
 				resultSizes[i] = newSize
@@ -188,13 +192,16 @@ func (s *OpenAIGatewayService) maybeUpscaleOpenAIImages(
 		}(i, b64, sizeStr, realTier, factor)
 	}
 	wg.Wait()
-	return resultB64, resultSizes, changed
+	if !changed {
+		resultURLs = nil
+	}
+	return resultB64, resultSizes, resultURLs, changed
 }
 
-// runSeedVRUpscale 对单张 b64 图调用 fal SeedVR upscale（queue 轮询 + 结果下载），返回放大后的 b64。
+// runSeedVRUpscale 对单张 b64 图调用 fal SeedVR upscale（queue 轮询 + 结果下载），返回放大后的 b64 与 fal 图片 URL。
 func (s *OpenAIGatewayService) runSeedVRUpscale(
 	ctx context.Context, client *fal.Client, cfg *FalUpscaleSettings, b64 string, factor int,
-) (string, error) {
+) (string, string, error) {
 	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = time.Duration(defaultFalUpscaleTimeoutSeconds) * time.Second
@@ -210,7 +217,7 @@ func (s *OpenAIGatewayService) runSeedVRUpscale(
 		OutputFormat:  "png",
 	})
 	if err != nil {
-		return "", fmt.Errorf("submit: %w", err)
+		return "", "", fmt.Errorf("submit: %w", err)
 	}
 
 	statusURL := strings.TrimSpace(sub.StatusURL)
@@ -228,7 +235,7 @@ func (s *OpenAIGatewayService) runSeedVRUpscale(
 	for {
 		st, serr := client.Status(upCtx, statusURL)
 		if serr != nil {
-			return "", fmt.Errorf("status: %w", serr)
+			return "", "", fmt.Errorf("status: %w", serr)
 		}
 		if st.Status == fal.StatusCompleted {
 			if u := strings.TrimSpace(st.ResponseURL); u != "" {
@@ -238,18 +245,18 @@ func (s *OpenAIGatewayService) runSeedVRUpscale(
 		}
 		select {
 		case <-upCtx.Done():
-			return "", fmt.Errorf("upscale timeout: %w", upCtx.Err())
+			return "", "", fmt.Errorf("upscale timeout: %w", upCtx.Err())
 		case <-ticker.C:
 		}
 	}
 
 	res, rerr := client.UpscaleResult(upCtx, responseURL)
 	if rerr != nil {
-		return "", fmt.Errorf("result: %w", rerr)
+		return "", "", fmt.Errorf("result: %w", rerr)
 	}
 	imgURL := strings.TrimSpace(res.Image.URL)
 	if imgURL == "" {
-		return "", fmt.Errorf("upscale result has empty image url")
+		return "", "", fmt.Errorf("upscale result has empty image url")
 	}
 
 	slog.Debug("openai.images.upscale.download", "url", imgURL)
@@ -257,9 +264,35 @@ func (s *OpenAIGatewayService) runSeedVRUpscale(
 	slog.Debug("openai.images.upscale.download done", "file bytes", len(bytesOut), "error", derr)
 
 	if derr != nil {
-		return "", fmt.Errorf("download: %w", derr)
+		return "", "", fmt.Errorf("download: %w", derr)
 	}
-	return base64.StdEncoding.EncodeToString(bytesOut), nil
+	return base64.StdEncoding.EncodeToString(bytesOut), imgURL, nil
+}
+
+func mergeOpenAIImageOutputURLs(primary, fallback []string) []string {
+	out := make([]string, 0, len(primary)+len(fallback))
+	seen := make(map[string]struct{}, len(primary)+len(fallback))
+	appendURL := func(raw string) {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return
+		}
+		if _, ok := seen[raw]; ok {
+			return
+		}
+		seen[raw] = struct{}{}
+		out = append(out, raw)
+	}
+	for _, u := range primary {
+		appendURL(u)
+	}
+	for _, u := range fallback {
+		appendURL(u)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // upscaleHTTPClient 返回用于下载 fal 结果图的 HTTP 客户端（复用网关的 http client，缺省 default）。

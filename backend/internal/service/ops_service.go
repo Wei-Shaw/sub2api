@@ -46,6 +46,23 @@ type OpsService struct {
 	// UpdateOpsAdvancedSettings 写入新配置后调用，把最新的 quota auto-pause 全局默认阈值
 	// 立即同步到调度热路径读取的内存缓存，避免下次请求才能感知新值。
 	quotaAutoPauseSink func(OpsOpenAIAccountQuotaAutoPauseSettings)
+
+	// runtimeLogBroadcaster 用于把「运行时日志配置变更」广播到集群其他实例，
+	// 解决多副本部署时点击保存只对处理请求的那台节点生效、其它节点内存中的
+	// zap logger 仍是旧等级的问题。可选依赖，wire 层通过 SetRuntimeLogBroadcaster
+	// 注入；未配置 Redis 或单机部署时保持 nil，广播降级为空操作。
+	runtimeLogBroadcaster RuntimeLogBroadcaster
+}
+
+// RuntimeLogBroadcaster 抽象「跨实例广播运行时日志配置变更」的能力。
+// 生产环境由 Redis Pub/Sub 实现（见 opsRuntimeLogBroadcaster）；
+// 单元测试可传 nil 或轻量 fake，避免依赖外部服务。
+type RuntimeLogBroadcaster interface {
+	// Publish 通知所有订阅者：DB 里的运行时日志配置已更新。
+	Publish(ctx context.Context) error
+	// Subscribe 启动后台 goroutine 监听广播，收到通知时调用 handler。
+	// 实现方需自行处理连接断开重连等；handler 由调用方保证并发安全。
+	Subscribe(ctx context.Context, handler func())
 }
 
 // CleanupReloader 由 OpsCleanupService 实现。
@@ -70,6 +87,36 @@ func (s *OpsService) SetOpenAIQuotaAutoPauseSettingsSink(sink func(OpsOpenAIAcco
 		return
 	}
 	s.quotaAutoPauseSink = sink
+}
+
+// SetRuntimeLogBroadcaster 由 wire 注入运行时日志变更的跨实例广播器。
+// 传入 nil 表示未启用广播（例如单机部署或未配置 Redis），
+// 此时 UpdateRuntimeLogConfig / ResetRuntimeLogConfig 只作用于当前进程。
+func (s *OpsService) SetRuntimeLogBroadcaster(b RuntimeLogBroadcaster) {
+	if s == nil {
+		return
+	}
+	s.runtimeLogBroadcaster = b
+}
+
+// StartRuntimeLogSubscriber 启动运行时日志配置变更订阅，收到广播时从 DB 重新读取并应用。
+// 应在 wire 完成 SetRuntimeLogBroadcaster 注入后调用。ctx 通常传应用生命周期 context。
+func (s *OpsService) StartRuntimeLogSubscriber(ctx context.Context) {
+	if s == nil || s.runtimeLogBroadcaster == nil {
+		return
+	}
+	s.runtimeLogBroadcaster.Subscribe(ctx, func() {
+		// 收到广播时不区分是 update 还是 reset：直接从 DB 重新读取并应用。
+		// GetRuntimeLogConfig 已经处理「key 缺失回退默认」的情形，所以 reset
+		// （删除 key）后其它节点也会正确地退回到 baseline。
+		reloadCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		cfg, err := s.GetRuntimeLogConfig(reloadCtx)
+		if err != nil {
+			return
+		}
+		_ = applyOpsRuntimeLogConfig(cfg)
+	})
 }
 
 func NewOpsService(

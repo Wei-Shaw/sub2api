@@ -245,6 +245,28 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+	imageIntent := service.IsImageGenerationIntent("/v1/responses", reqModel, body)
+	imageStatusRequestID := ""
+	imageForwardedSuccess := false
+	imageStatusFailMessage := "image generation failed"
+	failImageStatus := func(message string) {
+		if strings.TrimSpace(message) != "" {
+			imageStatusFailMessage = strings.TrimSpace(message)
+		}
+	}
+	if imageIntent {
+		imageStatusRequestID = clientProvidedImageStatusRequestID(c)
+		if imageStatusRequestID != "" && h.gatewayService != nil {
+			ctx := service.WithResponsesImageStatusRequestID(c.Request.Context(), imageStatusRequestID)
+			c.Request = c.Request.WithContext(ctx)
+			h.gatewayService.BeginResponsesImageStatus(ctx, imageStatusRequestID)
+			defer func() {
+				if !imageForwardedSuccess {
+					h.gatewayService.FailResponsesImageStatus(context.Background(), imageStatusRequestID, imageStatusFailMessage)
+				}
+			}()
+		}
+	}
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
 	if previousResponseID != "" {
 		previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
@@ -257,12 +279,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			reqLog.Warn("openai.request_validation_failed",
 				zap.String("reason", "previous_response_id_looks_like_message_id"),
 			)
+			failImageStatus("previous_response_id must be a response.id (resp_*), not a message id")
 			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id must be a response.id (resp_*), not a message id")
 			return
 		}
 		reqLog.Warn("openai.request_validation_failed",
 			zap.String("reason", "previous_response_id_requires_wsv2"),
 		)
+		failImageStatus("previous_response_id is only supported on Responses WebSocket v2")
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id is only supported on Responses WebSocket v2")
 		return
 	}
@@ -271,12 +295,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && decision.Blocked {
+		failImageStatus(decision.Message)
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
 
-	imageIntent := service.IsImageGenerationIntent("/v1/responses", reqModel, body)
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
+		failImageStatus(service.ImageGenerationPermissionMessage())
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
@@ -285,6 +310,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		var imageAcquired bool
 		imageReleaseFunc, imageAcquired = h.acquireImageGenerationSlot(c, streamStarted)
 		if !imageAcquired {
+			failImageStatus("image generation concurrency limit exceeded")
 			return
 		}
 		if imageReleaseFunc != nil {
@@ -298,6 +324,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
 	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
+		failImageStatus("invalid function_call_output request")
 		return
 	}
 
@@ -329,6 +356,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
 		}
+		failImageStatus(message)
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
@@ -336,6 +364,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// Generate session hash (header first; fallback to prompt_cache_key)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
 	if h.rejectIfCyberSessionBlocked(c, apiKey, sessionHashBody, reqModel, cyberBlockFormatResponses) {
+		failImageStatus("request blocked by cyber policy")
 		return
 	}
 	requireCompact := isOpenAIRemoteCompactPath(c)
@@ -369,6 +398,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if len(failedAccountIDs) == 0 {
 				if errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+					failImageStatus("No available OpenAI accounts support /responses/compact")
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available OpenAI accounts support /responses/compact", streamStarted)
 					return
 				}
@@ -376,12 +406,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
+				failImageStatus(cls.Message)
 				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 				return
 			}
 			if lastFailoverErr != nil {
+				failImageStatus("All available accounts exhausted")
 				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 			} else {
+				failImageStatus("All available accounts exhausted")
 				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
 			}
 			return
@@ -391,6 +424,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
 			}
+			failImageStatus(cls.Message)
 			h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 			return
 		}
@@ -420,6 +454,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 		writerSizeBeforeForward := c.Writer.Size()
+		if imageStatusRequestID != "" {
+			h.gatewayService.MarkResponsesImageStatusRunning(c.Request.Context(), imageStatusRequestID)
+		}
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -454,6 +491,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					if c.Writer.Size() != writerSizeBeforeForward {
+						failImageStatus("upstream failover exhausted after stream started")
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
 					}
@@ -481,11 +519,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
+						failImageStatus("All available accounts exhausted")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount) {
+						failImageStatus("All available accounts exhausted")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -503,6 +543,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				if !upstreamErrorAlreadyCommunicated {
 					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
 				}
+				failImageStatus(err.Error())
 				fields := []zap.Field{
 					zap.Int64("account_id", account.ID),
 					zap.Bool("fallback_error_response_written", wroteFallback),
@@ -523,6 +564,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
+
+			// 只要是出图请求, 正常回包而且有结果了, 都算成功, 成功路径的redis状态会在函数的处理过程中处理
+			if imageIntent {
+				imageForwardedSuccess = true
+			}
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
 		}
@@ -570,6 +616,83 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		)
 		return
 	}
+}
+
+func clientProvidedImageStatusRequestID(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	return strings.TrimSpace(c.GetHeader("x-client-request-id"))
+}
+
+const maxImageStatusBatchRequestIDs = 100
+
+func (h *OpenAIGatewayHandler) ImagesStatus(c *gin.Context) {
+	requestIDs := parseImageStatusRequestIDs(c)
+	if len(requestIDs) == 0 {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "request_ids is required")
+		return
+	}
+	if len(requestIDs) > maxImageStatusBatchRequestIDs {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "request_ids supports at most 100 ids")
+		return
+	}
+	if h == nil || h.gatewayService == nil {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Images status service is not available")
+		return
+	}
+	statuses := make([]*service.ResponsesImageStatus, 0, len(requestIDs))
+	notFound := make([]string, 0)
+	statusMap, err := h.gatewayService.GetResponsesImageStatuses(c.Request.Context(), requestIDs)
+	if err != nil && !errors.Is(err, service.ErrResponsesImageStatusNotFound) {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to query image status")
+		return
+	}
+	for _, requestID := range requestIDs {
+		if statusMap != nil {
+			if status := statusMap[requestID]; status != nil {
+				statuses = append(statuses, status)
+				continue
+			}
+		}
+		notFound = append(notFound, requestID)
+	}
+	if len(requestIDs) == 1 && len(notFound) == 1 {
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Image status not found")
+		return
+	}
+	resp := gin.H{"data": statuses}
+	if len(notFound) > 0 {
+		resp["not_found"] = notFound
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func parseImageStatusRequestIDs(c *gin.Context) []string {
+	if c == nil || c.Request == nil {
+		return nil
+	}
+	values := make([]string, 0)
+	query := c.Request.URL.Query()
+	for _, key := range []string{"request_id", "request_ids", "id", "ids"} {
+		values = append(values, query[key]...)
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if _, ok := seen[part]; ok {
+				continue
+			}
+			seen[part] = struct{}{}
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func isOpenAIRemoteCompactPath(c *gin.Context) bool {

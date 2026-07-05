@@ -48,6 +48,9 @@
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
         </a>
 
+        <!-- Other Products Menu (mirrors home page entry) -->
+        <HomeProductsMenu hide-label />
+
         <!-- Language Switcher -->
         <LocaleSwitcher />
 
@@ -229,6 +232,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
+import HomeProductsMenu from '@/components/common/HomeProductsMenu.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'

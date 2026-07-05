@@ -113,7 +113,27 @@
             >
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-              <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+<span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <HelpTooltip
+                v-if="item.docUrl && !sidebarCollapsed"
+                :content="t('nav.customMenu.docTooltip')"
+                width-class="w-max max-w-xs"
+              >
+                <template #trigger>
+                  <a
+                    :href="item.docUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400"
+                    :aria-label="t('nav.customMenu.docTooltip')"
+                    @click.stop
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.25" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                    </svg>
+                  </a>
+                </template>
+              </HelpTooltip>
               <span
                 v-if="item.showDot && item.showDot()"
                 class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
@@ -144,7 +164,27 @@
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+<span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <HelpTooltip
+                v-if="item.docUrl && !sidebarCollapsed"
+                :content="t('nav.customMenu.docTooltip')"
+                width-class="w-max max-w-xs"
+              >
+                <template #trigger>
+                  <a
+                    :href="item.docUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400"
+                    :aria-label="t('nav.customMenu.docTooltip')"
+                    @click.stop
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.25" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                    </svg>
+                  </a>
+                </template>
+              </HelpTooltip>
             <span
               v-if="item.showDot && item.showDot()"
               class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
@@ -170,7 +210,27 @@
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+<span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <HelpTooltip
+                v-if="item.docUrl && !sidebarCollapsed"
+                :content="t('nav.customMenu.docTooltip')"
+                width-class="w-max max-w-xs"
+              >
+                <template #trigger>
+                  <a
+                    :href="item.docUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400"
+                    :aria-label="t('nav.customMenu.docTooltip')"
+                    @click.stop
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.25" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                    </svg>
+                  </a>
+                </template>
+              </HelpTooltip>
             <span
               v-if="item.showDot && item.showDot()"
               class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
@@ -227,9 +287,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore, usePaymentStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useRechargePromoDot } from '@/composables/useRechargePromoDot'
+import {
+  useCustomMenuRedDotRegistry,
+  isCustomMenuDotVisibleFor,
+  dismissCustomMenuDotFor,
+} from '@/composables/useCustomMenuRedDot'
 import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
 import type { CustomMenuItem } from '@/types'
 
@@ -259,6 +325,11 @@ interface NavItem {
    * 与 `featureFlag` 一样依赖 reactive 来源，状态变化即重渲染。
    */
   showDot?: () => boolean
+  /**
+   * 可选的"使用指南"文档链接。当非空且 sidebar 未折叠时，label 右侧渲染问号图标，
+   * 点击（阻止导航冒泡）在新标签页打开该链接。当前只由自定义菜单填充。
+   */
+  docUrl?: string
 }
 
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
@@ -716,6 +787,21 @@ const purchasePromoDot = useRechargePromoDot({
 })
 const flagPurchasePromoDot = () => purchasePromoDot.shouldShow.value
 
+// 自定义菜单红点（每项独立）：item.show_red_dot 为真 + version 非空 + 未 dismiss 时亮起。
+// registry 只在顶层挂一次生命周期（注册全局 storage listener），具体项的可见性
+// 通过纯函数 isCustomMenuDotVisibleFor 按 itemId 查询，避免 v-for N 项重复注册 hook。
+const customMenuDotRegistry = useCustomMenuRedDotRegistry()
+function flagCustomMenuDotForItem(item: CustomMenuItem): () => boolean {
+  return () => {
+    void customMenuDotRegistry.tick.value // 依赖标记，dismiss 时自增
+    return isCustomMenuDotVisibleFor(
+      authStore.user?.id ?? null,
+      item.id,
+      appStore.cachedPublicSettings?.custom_menu_version || undefined,
+      item.show_red_dot === true,
+    )
+  }
+}
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
@@ -851,6 +937,7 @@ function customMenuToNavItem(item: CustomMenuItem): NavItem {
   const action = item.action || 'iframe'
   const path = `/custom/${item.id}`
   const externalUrl = buildCustomMenuAnchorUrl(item.url, path, action)
+  const docUrl = typeof item.doc_url === 'string' ? item.doc_url.trim() : ''
   return {
     path,
     label: item.label,
@@ -858,6 +945,8 @@ function customMenuToNavItem(item: CustomMenuItem): NavItem {
     iconSvg: item.icon_svg,
     externalUrl: externalUrl || undefined,
     externalTarget: externalUrl && action === 'new_tab' ? '_blank' : '_self',
+    showDot: flagCustomMenuDotForItem(item),
+    docUrl: /^https?:\/\//i.test(docUrl) ? docUrl : undefined,
   }
 }
 
@@ -868,13 +957,20 @@ function buildCustomMenuAnchorUrl(rawUrl: string, path: string, action: string):
   }
   const trimmed = rawUrl.trim()
   if (!/^https?:\/\//i.test(trimmed)) return ''
-  return buildEmbeddedUrl(
-    trimmed,
-    authStore.user?.id,
-    authStore.token,
-    detectTheme(),
-    locale.value,
-  )
+  
+  // 根据设置决定是否在URL中嵌入认证参数
+  if (appStore.cachedPublicSettings?.custom_menu_embed_auth_params) {
+    return buildEmbeddedUrl(
+      trimmed,
+      authStore.user?.id,
+      authStore.token,
+      detectTheme(),
+      locale.value,
+    )
+  } else {
+    // 不添加认证参数，直接返回原始URL
+    return trimmed
+  }
 }
 
 function toggleSidebar() {
@@ -905,6 +1001,17 @@ function handleMenuItemClick(itemPath: string) {
     setTimeout(() => {
       appStore.setMobileOpen(false)
     }, 150)
+  }
+
+  // 自定义菜单红点 dismiss：仅清除被点击的那一项。
+  // CustomPageView 挂载时也会再 dismiss 一次（URL 直达场景），写入同一个 key，无副作用。
+  if (itemPath.startsWith('/custom/')) {
+    const clickedId = itemPath.slice('/custom/'.length)
+    dismissCustomMenuDotFor(
+      authStore.user?.id ?? null,
+      clickedId,
+      appStore.cachedPublicSettings?.custom_menu_version || undefined,
+    )
   }
 
   // Map paths to tour selectors

@@ -1659,6 +1659,34 @@
             </div>
           </div>
 
+          <!-- Custom Menu Security Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.customMenuSecurity.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.customMenuSecurity.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <!-- Embed Authentication Parameters -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.customMenuSecurity.embedAuthParams")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.customMenuSecurity.embedAuthParamsHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.custom_menu_embed_auth_params" />
+              </div>
+            </div>
+          </div>
+
           <!-- Captcha Settings -->
           <div class="card">
             <div
@@ -5497,6 +5525,17 @@
               </p>
             </div>
             <div class="space-y-4 p-6">
+              <!-- Version 展示：作为 admin 参考，帮助排查用户端是否收到最新配置 -->
+              <p
+                v-if="form.custom_menu_version"
+                class="text-xs text-gray-500 dark:text-gray-400"
+              >
+                {{ t("admin.settings.customMenuSecurity.redDotCurrentVersion") }}
+                <code
+                  class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200"
+                >{{ form.custom_menu_version }}</code>
+              </p>
+
               <!-- Existing menu items -->
               <div
                 v-for="(item, index) in form.custom_menu_items"
@@ -5638,6 +5677,48 @@
                     />
                   </div>
 
+                  <!-- Doc URL (full width, optional) -->
+                  <div class="sm:col-span-2">
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.customMenu.docUrl") }}
+                    </label>
+                    <input
+                      v-model="item.doc_url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.customMenu.docUrlPlaceholder')
+                      "
+                    />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.customMenu.docUrlHelp") }}
+                    </p>
+                  </div>
+
+                  <!-- Show Red Dot (per-item) -->
+                  <div class="sm:col-span-2">
+                    <div
+                      class="flex items-start justify-between gap-4 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-600 dark:bg-dark-700/40"
+                    >
+                      <div class="min-w-0 flex-1">
+                        <label
+                          class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.customMenu.showRedDot") }}
+                        </label>
+                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.customMenu.showRedDotHelp") }}
+                        </p>
+                      </div>
+                      <Toggle
+                        :model-value="item.show_red_dot === true"
+                        @update:model-value="(v: boolean) => (item.show_red_dot = v)"
+                      />
+                    </div>
+                  </div>
+
                   <!-- SVG Icon (full width) -->
                   <div class="sm:col-span-2">
                     <label
@@ -5653,6 +5734,35 @@
                       :remove-label="t('admin.settings.customMenu.removeSvg')"
                       @update:model-value="(v: string) => (item.icon_svg = v)"
                     />
+                    <div class="mt-3">
+                      <p class="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+                        {{ t("admin.settings.customMenu.iconPresets") }}
+                      </p>
+                      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+                        <button
+                          v-for="preset in menuIconPresets"
+                          :key="preset.key"
+                          type="button"
+                          data-test="custom-menu-icon-preset"
+                          :data-preset="preset.key"
+                          :aria-pressed="item.icon_svg === preset.svg"
+                          :title="preset.label"
+                          :class="[
+                            'flex h-10 min-w-0 items-center gap-2 rounded-lg border px-2 text-left text-xs font-medium transition-colors',
+                            item.icon_svg === preset.svg
+                              ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-500/10 dark:text-primary-300'
+                              : 'border-gray-200 bg-white text-gray-600 hover:border-primary-300 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300',
+                          ]"
+                          @click="applyCustomMenuIconPreset(item, preset.svg)"
+                        >
+                          <span
+                            class="flex h-5 w-5 shrink-0 items-center justify-center [&>svg]:h-5 [&>svg]:w-5"
+                            v-html="preset.svg"
+                          ></span>
+                          <span class="min-w-0 truncate">{{ preset.label }}</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -5794,9 +5904,9 @@
                       <p class="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
                         {{ t("admin.settings.homeProducts.iconPresets") }}
                       </p>
-                      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
                         <button
-                          v-for="preset in homeProductIconPresets"
+                          v-for="preset in menuIconPresets"
                           :key="preset.key"
                           type="button"
                           data-test="home-product-icon-preset"
@@ -7754,7 +7864,7 @@ const captchaProviderOptions = computed(() => [
   { value: "tencent_captcha", label: t("admin.settings.captcha.tencentProviderLabel") },
 ]);
 
-const homeProductIconPresetPaths = {
+const menuIconPresetPaths = {
   api: "M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z",
   chat: "M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z",
   price: "M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
@@ -7763,54 +7873,70 @@ const homeProductIconPresetPaths = {
   launch: "M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14",
   cloud: "M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z",
   sparkles: "M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z",
+  palette: "M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.996 15.996 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.125 1.125 0 00-1.597-1.597l-5.814 3.876a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42",
+  pencil: "M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10",
+  chatTool: "M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25zM17.25 4.5l.75-.75a1.5 1.5 0 112.121 2.121l-.75.75",
+  home: "M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25",
+  user: "M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z",
+  users: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0zm6 3a2 2 0 11-4 0zm-14 0a2 2 0 11-4 0z",
+  key: "M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z",
+  shield: "M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z",
+  chart: "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z",
+  database: "M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75",
+  bell: "M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0",
+  mail: "M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75",
+  calendar: "M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5",
+  gift: "M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V21m0-16.125A2.625 2.625 0 1114.625 7.5H12m-8.625 3.75h18",
+  creditCard: "M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z",
+  terminal: "M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z",
+  globe: "M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582",
+  cube: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+  lightbulb: "M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18",
+  monitor: "M7.5 14.25v2.25m0 0v2.25m0-2.25h9m-9 0H5.25A2.25 2.25 0 013 14.25v-7.5A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v7.5a2.25 2.25 0 01-2.25 2.25H16.5m0 0v2.25m0-2.25H7.5",
 } as const;
 
-function createHomeProductPresetSvg(path: string): string {
+function createMenuPresetSvg(path: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="${path}"/></svg>`;
 }
 
-const homeProductIconPresets = computed(() => [
-  {
-    key: "api",
-    label: t("admin.settings.homeProducts.iconPresetApi"),
-    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.api),
-  },
-  {
-    key: "chat",
-    label: t("admin.settings.homeProducts.iconPresetChat"),
-    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.chat),
-  },
-  {
-    key: "price",
-    label: t("admin.settings.homeProducts.iconPresetPrice"),
-    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.price),
-  },
-  {
-    key: "docs",
-    label: t("admin.settings.homeProducts.iconPresetDocs"),
-    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.docs),
-  },
-  {
-    key: "tools",
-    label: t("admin.settings.homeProducts.iconPresetTools"),
-    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.tools),
-  },
-  {
-    key: "launch",
-    label: t("admin.settings.homeProducts.iconPresetLaunch"),
-    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.launch),
-  },
-  {
-    key: "cloud",
-    label: t("admin.settings.homeProducts.iconPresetCloud"),
-    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.cloud),
-  },
-  {
-    key: "sparkles",
-    label: t("admin.settings.homeProducts.iconPresetSparkles"),
-    svg: createHomeProductPresetSvg(homeProductIconPresetPaths.sparkles),
-  },
-]);
+const menuIconPresetKeys = [
+  "api",
+  "chat",
+  "price",
+  "docs",
+  "tools",
+  "launch",
+  "cloud",
+  "sparkles",
+  "palette",
+  "pencil",
+  "chatTool",
+  "home",
+  "user",
+  "users",
+  "key",
+  "shield",
+  "chart",
+  "database",
+  "bell",
+  "mail",
+  "calendar",
+  "gift",
+  "creditCard",
+  "terminal",
+  "globe",
+  "cube",
+  "lightbulb",
+  "monitor",
+] as const;
+
+const menuIconPresets = computed(() =>
+  menuIconPresetKeys.map((key) => ({
+    key,
+    label: t(`admin.settings.iconPresets.${key}`),
+    svg: createMenuPresetSvg(menuIconPresetPaths[key]),
+  })),
+);
 
 const captchaEnabled = computed({
   get: () => form.captcha_config.enabled === "true",
@@ -8570,6 +8696,8 @@ const form = reactive<SettingsForm>({
     action: "iframe" | "same_tab" | "new_tab";
     visibility: "user" | "admin";
     sort_order: number;
+    doc_url?: string;
+    show_red_dot: boolean;
   }>,
   home_product_menu_items: [] as Array<{
     id: string;
@@ -8611,6 +8739,10 @@ const form = reactive<SettingsForm>({
     secret_key: "",
   },
   api_key_acl_trust_forwarded_ip: false,
+  // 自定义菜单安全设置：是否在自定义菜单URL中嵌入认证参数
+  custom_menu_embed_auth_params: true,
+  // 后端派生的自定义菜单 version hash（只读，仅用于 UI 展示）
+  custom_menu_version: "",
   // LinuxDo Connect OAuth 登录
   linuxdo_connect_enabled: false,
   linuxdo_connect_client_id: "",
@@ -9229,6 +9361,8 @@ function addMenuItem() {
     action: "iframe",
     visibility: "user",
     sort_order: form.custom_menu_items.length,
+    doc_url: "",
+    show_red_dot: false,
   });
 }
 
@@ -9263,8 +9397,16 @@ function normalizeMenuItems(
           item.action === "same_tab" || item.action === "new_tab"
             ? item.action
             : "iframe",
+        show_red_dot: item.show_red_dot === true,
       }))
     : [];
+}
+
+function applyCustomMenuIconPreset(
+  item: (typeof form.custom_menu_items)[number],
+  svg: string,
+) {
+  item.icon_svg = svg;
 }
 
 function addHomeProductMenuItem() {
@@ -9881,6 +10023,7 @@ async function saveSettings() {
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: normalizeMenuItems(form.custom_menu_items),
+      custom_menu_embed_auth_params: form.custom_menu_embed_auth_params,
       home_product_menu_items: normalizeHomeProductMenuItems(form.home_product_menu_items),
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,

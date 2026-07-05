@@ -68,9 +68,12 @@ function updatePosition() {
   const el = triggerRef.value
   if (!el) return
   const rect = el.getBoundingClientRect()
+  // tooltip 使用 position: fixed（Teleport 到 body 后以视口为参照），
+  // getBoundingClientRect 已经返回视口相对坐标，因此不要再叠加 scrollX/scrollY，
+  // 否则页面滚动时 tooltip 会与页面一起“漂移”而非跟随触发元素。
   tooltipStyle.value = {
-    top: `${rect.top + window.scrollY}px`,
-    left: `${rect.left + rect.width / 2 + window.scrollX}px`,
+    top: `${rect.top}px`,
+    left: `${rect.left + rect.width / 2}px`,
   }
 }
 

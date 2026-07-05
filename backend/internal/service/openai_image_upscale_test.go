@@ -39,3 +39,19 @@ func TestRewriteOpenAIImageBase64InBody(t *testing.T) {
 		t.Fatalf("no-op rewrite changed body: %s", out2)
 	}
 }
+
+func TestMergeOpenAIImageOutputURLsKeepsFallback(t *testing.T) {
+	got := mergeOpenAIImageOutputURLs(
+		[]string{"https://upstream.example/a.png", " ", "https://upstream.example/a.png"},
+		[]string{"https://fal.example/upscaled.png", "https://upstream.example/a.png"},
+	)
+	want := []string{"https://upstream.example/a.png", "https://fal.example/upscaled.png"}
+	if len(got) != len(want) {
+		t.Fatalf("len=%d want %d: %#v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d]=%q want %q: %#v", i, got[i], want[i], got)
+		}
+	}
+}

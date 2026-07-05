@@ -11,7 +11,7 @@
       type="button"
       :aria-expanded="isOpen"
       aria-haspopup="menu"
-      @click.stop="openDropdown"
+      @click.stop="toggleDropdown"
       :disabled="switching"
       class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
       :title="currentLocale?.name"
@@ -83,6 +83,13 @@ let closeTimer: number | null = null
 const currentLocaleCode = computed(() => locale.value)
 const currentLocale = computed(() => availableLocales.find((l) => l.code === locale.value))
 
+function supportsHover(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return true
+  }
+  return window.matchMedia('(hover: hover) and (pointer: fine)').matches
+}
+
 function clearCloseTimer() {
   if (closeTimer) {
     window.clearTimeout(closeTimer)
@@ -95,12 +102,25 @@ function closeDropdown() {
   isOpen.value = false
 }
 
-async function openDropdown() {
+async function openDropdown(event?: Event) {
   if (switching.value) return
+  // Skip synthetic mouseenter fired right before click on touch devices.
+  if (event && event.type === 'mouseenter' && !supportsHover()) {
+    return
+  }
   clearCloseTimer()
   isOpen.value = true
   await nextTick()
   updateDropdownPosition()
+}
+
+function toggleDropdown() {
+  if (switching.value) return
+  if (isOpen.value) {
+    closeDropdown()
+  } else {
+    openDropdown()
+  }
 }
 
 function scheduleCloseDropdown() {

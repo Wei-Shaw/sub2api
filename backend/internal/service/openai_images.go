@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -619,6 +620,10 @@ func (s *OpenAIGatewayService) ForwardImages(
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
+	forwardCtx, releaseForwardCtx := detachUpstreamContext(ctx)
+	defer releaseForwardCtx()
+	ctx = forwardCtx
+
 	// DEBUG: 确认是否进入 ForwardImages 入口（图片生成请求转发起点）
 	logger.LegacyPrintf(
 		"service.openai_gateway",
@@ -674,7 +679,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err != nil {
 		return nil, err
 	}
-	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, parsed.Stream)
+	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
 
 	token, _, err := s.GetAccessToken(upstreamCtx, account)
@@ -696,6 +701,15 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return &OpenAIForwardResult{
+				Model:            requestModel,
+				UpstreamModel:    upstreamModel,
+				Stream:           parsed.Stream,
+				Duration:         time.Since(startTime),
+				ClientDisconnect: true,
+			}, err
+		}
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
 		setOpsUpstreamError(c, 0, safeErr, "")
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -747,7 +761,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	}
 	requestedUpscaleSize := requestedUpscaleTargetSize(parsed)
 	if parsed.Stream && isEventStreamResponse(resp.Header) {
-		streamUsage, streamCount, streamSizes, streamBase64s, ttft, err := s.handleOpenAIImagesStreamingResponse(ctx, resp, c, startTime, upscaleGroup, requestedUpscaleSize)
+		streamUsage, streamCount, streamSizes, streamBase64s, streamURLs, ttft, err := s.handleOpenAIImagesStreamingResponse(upstreamCtx, resp, c, startTime, upscaleGroup, requestedUpscaleSize)
 		if err != nil {
 			if streamCount > 0 {
 				res := &OpenAIForwardResult{
@@ -764,8 +778,10 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 					ImageInputSize:    parsed.Size,
 					ImageOutputSizes:  streamSizes,
 					ImageOutputBase64: streamBase64s,
+					ImageOutputURLs:   streamURLs,
 				}
-				s.scheduleOpenAIImageCosUpload(ctx, res)
+				s.MarkResponsesImageStatusUpstreamDone(upstreamCtx, res)
+				s.scheduleOpenAIImageCosUpload(upstreamCtx, res)
 				return res, err
 			}
 			return nil, err
@@ -774,6 +790,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		imageCount = streamCount
 		imageOutputSizes := streamSizes
 		imageOutputBase64s := streamBase64s
+		imageOutputURLs := streamURLs
 		firstTokenMs = ttft
 		res := &OpenAIForwardResult{
 			RequestID:         resp.Header.Get("x-request-id"),
@@ -789,11 +806,13 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageInputSize:    parsed.Size,
 			ImageOutputSizes:  imageOutputSizes,
 			ImageOutputBase64: imageOutputBase64s,
+			ImageOutputURLs:   imageOutputURLs,
 		}
-		s.scheduleOpenAIImageCosUpload(ctx, res)
+		s.MarkResponsesImageStatusUpstreamDone(upstreamCtx, res)
+		s.scheduleOpenAIImageCosUpload(upstreamCtx, res)
 		return res, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, nonStreamBase64s, err := s.handleOpenAIImagesNonStreamingResponse(ctx, resp, c, upscaleGroup, requestedUpscaleSize)
+		nonStreamUsage, nonStreamCount, nonStreamSizes, nonStreamBase64s, nonStreamURLs, err := s.handleOpenAIImagesNonStreamingResponse(upstreamCtx, resp, c, upscaleGroup, requestedUpscaleSize)
 		if err != nil {
 			return nil, err
 		}
@@ -815,8 +834,10 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageInputSize:    parsed.Size,
 			ImageOutputSizes:  nonStreamSizes,
 			ImageOutputBase64: nonStreamBase64s,
+			ImageOutputURLs:   nonStreamURLs,
 		}
-		s.scheduleOpenAIImageCosUpload(ctx, res)
+		s.MarkResponsesImageStatusUpstreamDone(upstreamCtx, res)
+		s.scheduleOpenAIImageCosUpload(upstreamCtx, res)
 		return res, nil
 	}
 }
@@ -957,10 +978,10 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 	return dst
 }
 
-func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, group *Group, requestedSize string) (OpenAIUsage, int, []string, []string, error) {
+func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, group *Group, requestedSize string) (OpenAIUsage, int, []string, []string, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		return OpenAIUsage{}, 0, nil, nil, err
+		return OpenAIUsage{}, 0, nil, nil, nil, err
 	}
 	// DEBUG: 打印上游返回的图片响应（status + 关键 header + body 预览）
 	logOpenAIImagesUpstreamResponse(resp, body)
@@ -969,11 +990,13 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(ctx contex
 	counter := newOpenAIImageOutputCounter()
 	counter.AddJSONResponse(body)
 	b64s := counter.Base64Payloads()
+	urls := counter.URLs()
 	sizes := counter.SizesPerSlot()
 
 	// 写客户端响应之前同步 upscale：放大成功则改写 body 内的 b64，使客户端与 COS 都拿放大图，
 	// 并据放大后尺寸计费（成功按目标档位、失败保留原图档位）。
-	newB64s, newSizes, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, b64s, sizes)
+	newB64s, newSizes, fallbackURLs, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, b64s, sizes)
+	urls = mergeOpenAIImageOutputURLs(urls, fallbackURLs)
 	if changed {
 		body = rewriteOpenAIImageBase64InBody(body, b64s, newB64s)
 		b64s = newB64s
@@ -989,7 +1012,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(ctx contex
 	}
 	c.Data(resp.StatusCode, contentType, body)
 
-	return usage, counter.Count(), sizes, b64s, nil
+	return usage, counter.Count(), sizes, b64s, urls, nil
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
@@ -999,7 +1022,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	startTime time.Time,
 	group *Group,
 	requestedSize string,
-) (OpenAIUsage, int, []string, []string, *int, error) {
+) (OpenAIUsage, int, []string, []string, []string, *int, error) {
 	// 当本请求命中 upscale 条件时，流式退化为「缓冲整段 → 放大 → 一次性吐出」，
 	// 以保证客户端拿到放大后的图；不命中时维持下方原有的逐块实时流式（零行为变化）。
 	if s.shouldBufferOpenAIImagesForUpscale(ctx, group, requestedSize) {
@@ -1023,7 +1046,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
-		return OpenAIUsage{}, 0, nil, nil, nil, fmt.Errorf("streaming is not supported by response writer")
+		return OpenAIUsage{}, 0, nil, nil, nil, nil, fmt.Errorf("streaming is not supported by response writer")
 	}
 
 	usage := OpenAIUsage{}
@@ -1108,12 +1131,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 			}
 			if err != nil {
 				flushSSEEvent()
-				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, err
+				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), imageCounter.URLs(), firstTokenMs, err
 			}
 		}
 		flushSSEEvent()
 		finalizeFallbackBody()
-		return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, nil
+		return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), imageCounter.URLs(), firstTokenMs, nil
 	}
 
 	type readEvent struct {
@@ -1180,11 +1203,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 			if !ok {
 				flushSSEEvent()
 				finalizeFallbackBody()
-				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, nil
+				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), imageCounter.URLs(), firstTokenMs, nil
 			}
 			if ev.err != nil {
 				flushSSEEvent()
-				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, ev.err
+				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), imageCounter.URLs(), firstTokenMs, ev.err
 			}
 			processLine(ev.line)
 		case <-intervalCh:
@@ -1193,11 +1216,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 				continue
 			}
 			if clientDisconnected {
-				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, fmt.Errorf("image stream incomplete after timeout")
+				return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), imageCounter.URLs(), firstTokenMs, fmt.Errorf("image stream incomplete after timeout")
 			}
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream data interval timeout: interval=%s", streamInterval)
 			_ = s.writeOpenAIImagesStreamEvent(c, flusher, "error", buildOpenAIImagesStreamErrorBody(fmt.Sprintf("upstream image stream idle for %s", streamInterval)))
-			return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), firstTokenMs, fmt.Errorf("image stream data interval timeout")
+			return usage, imageCounter.Count(), imageCounter.SizesPerSlot(), imageCounter.Base64Payloads(), imageCounter.URLs(), firstTokenMs, fmt.Errorf("image stream data interval timeout")
 		case <-keepaliveCh:
 			if clientDisconnected || time.Since(lastDownstreamWriteAt) < keepaliveInterval {
 				continue
@@ -1222,10 +1245,10 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingUpscale(
 	group *Group,
 	requestedSize string,
 	startTime time.Time,
-) (OpenAIUsage, int, []string, []string, *int, error) {
+) (OpenAIUsage, int, []string, []string, []string, *int, error) {
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, resolveUpstreamResponseReadLimit(s.cfg)))
 	if err != nil {
-		return OpenAIUsage{}, 0, nil, nil, nil, err
+		return OpenAIUsage{}, 0, nil, nil, nil, nil, err
 	}
 
 	usage := OpenAIUsage{}
@@ -1241,8 +1264,10 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingUpscale(
 	}
 
 	b64s := counter.Base64Payloads()
+	urls := counter.URLs()
 	sizes := counter.SizesPerSlot()
-	newB64s, newSizes, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, b64s, sizes)
+	newB64s, newSizes, fallbackURLs, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, b64s, sizes)
+	urls = mergeOpenAIImageOutputURLs(urls, fallbackURLs)
 	out := raw
 	if changed {
 		out = rewriteOpenAIImageBase64InBody(raw, b64s, newB64s)
@@ -1264,7 +1289,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingUpscale(
 			f.Flush()
 		}
 	}
-	return usage, counter.Count(), sizes, b64s, firstTokenMs, nil
+	return usage, counter.Count(), sizes, b64s, urls, firstTokenMs, nil
 }
 
 func (s *OpenAIGatewayService) openAIImageStreamDataInterval() time.Duration {

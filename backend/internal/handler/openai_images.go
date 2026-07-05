@@ -74,6 +74,25 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		return
 	}
 	requestModel := parsed.Model
+	imageStatusRequestID := ""
+	imageStatusForwarded := false
+	imageStatusFailMessage := "image generation failed"
+	failImageStatus := func(message string) {
+		if strings.TrimSpace(message) != "" {
+			imageStatusFailMessage = strings.TrimSpace(message)
+		}
+	}
+	imageStatusRequestID = clientProvidedImageStatusRequestID(c)
+	if imageStatusRequestID != "" && h.gatewayService != nil {
+		ctx := service.WithResponsesImageStatusRequestID(c.Request.Context(), imageStatusRequestID)
+		c.Request = c.Request.WithContext(ctx)
+		h.gatewayService.BeginResponsesImageStatus(ctx, imageStatusRequestID)
+		defer func() {
+			if !imageStatusForwarded {
+				h.gatewayService.FailResponsesImageStatus(context.Background(), imageStatusRequestID, imageStatusFailMessage)
+			}
+		}()
+	}
 
 	reqLog = reqLog.With(
 		zap.String("model", requestModel),
@@ -83,15 +102,18 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	)
 
 	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		failImageStatus(service.ImageGenerationPermissionMessage())
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, requestModel, parsed.ModerationBody()); decision != nil && decision.Blocked {
+		failImageStatus(decision.Message)
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
 	imageReleaseFunc, acquired := h.acquireImageGenerationSlot(c, streamStarted)
 	if !acquired {
+		failImageStatus("image generation concurrency limit exceeded")
 		return
 	}
 	if imageReleaseFunc != nil {
@@ -118,6 +140,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, parsed.Stream, &streamStarted, reqLog)
 	if !acquired {
+		failImageStatus("image generation concurrency limit exceeded")
 		return
 	}
 	if userReleaseFunc != nil {
@@ -130,6 +153,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
 		}
+		failImageStatus(message)
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
@@ -182,12 +206,15 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					if !cls.ModelNotFound {
 						message = "No available compatible accounts"
 					}
+					failImageStatus(message)
 					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
 					return
 				}
 				if lastFailoverErr != nil {
+					failImageStatus("All available accounts exhausted")
 					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
+					failImageStatus("All available accounts exhausted")
 					h.handleFailoverExhaustedSimple(c, 502, streamStarted)
 				}
 				return
@@ -198,7 +225,11 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			if account.Platform == service.PlatformFal {
 				setOpsSelectedAccount(c, account.ID, account.Platform)
 				reqLog.Debug("openai.images.fal_account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
-				h.falImageFallback.ServeOpenAIImagesWithAccount(c, reqLog, apiKey, subject, parsed, account)
+				if imageStatusRequestID != "" {
+					h.gatewayService.MarkResponsesImageStatusRunning(c.Request.Context(), imageStatusRequestID)
+				}
+				falSucceeded := h.falImageFallback.ServeOpenAIImagesWithAccount(c, reqLog, apiKey, subject, parsed, account)
+				imageStatusForwarded = imageStatusRequestID != "" && falSucceeded
 				reqLog.Debug("openai.images.served_by_fal", zap.Int64("account_id", account.ID), zap.Int("switch_count", switchCount))
 				return
 			}
@@ -209,6 +240,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				reqLog.Warn("openai.images.account_slot_prepare_failed", zap.Int64("account_id", account.ID), zap.Error(prepErr))
 				failedAccountIDs[account.ID] = struct{}{}
 				if switchCount >= maxAccountSwitches {
+					failImageStatus("No available compatible accounts")
 					h.handleFailoverExhaustedSimple(c, http.StatusServiceUnavailable, streamStarted)
 					return
 				}
@@ -240,12 +272,15 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					if !cls.ModelNotFound {
 						message = "No available compatible accounts"
 					}
+					failImageStatus(message)
 					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
 					return
 				}
 				if lastFailoverErr != nil {
+					failImageStatus("All available accounts exhausted")
 					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
+					failImageStatus("All available accounts exhausted")
 					h.handleFailoverExhaustedSimple(c, 502, streamStarted)
 				}
 				return
@@ -259,6 +294,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				if !cls.ModelNotFound {
 					message = "No available compatible accounts"
 				}
+				failImageStatus(message)
 				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
 				return
 			}
@@ -282,12 +318,16 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
 		if !acquired {
+			failImageStatus("image generation concurrency limit exceeded")
 			return
 		}
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 		writerSizeBeforeForward := c.Writer.Size()
+		if imageStatusRequestID != "" {
+			h.gatewayService.MarkResponsesImageStatusRunning(c.Request.Context(), imageStatusRequestID)
+		}
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -344,7 +384,19 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
+			if result != nil && result.ClientDisconnect {
+				failImageStatus("client disconnected")
+				reqLog.Warn("openai.images.forward_failed",
+					zap.Int64("account_id", account.ID),
+					zap.Bool("client_disconnect", true),
+					zap.Bool("fallback_error_response_written", false),
+					zap.Bool("upstream_error_response_already_written", false),
+					zap.Error(err),
+				)
+				return
+			}
 			if result != nil && result.ImageCount > 0 {
+				imageStatusForwarded = imageStatusRequestID != ""
 				reqLog.Warn("openai.images.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
 					zap.Int("image_count", result.ImageCount),
@@ -366,6 +418,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 						zap.String("error_code", imageUpstreamErr.Code),
 						zap.Error(err),
 					)
+					failImageStatus(err.Error())
 					return
 				}
 				var failoverErr *service.UpstreamFailoverError
@@ -376,6 +429,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 							zap.Int64("account_id", account.ID),
 							zap.Int("upstream_status", failoverErr.StatusCode),
 						)
+						failImageStatus("upstream failover exhausted after stream started")
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
 					}
@@ -401,11 +455,13 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
+						failImageStatus("All available accounts exhausted")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount) {
+						failImageStatus("All available accounts exhausted")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -423,6 +479,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				if !upstreamErrorAlreadyCommunicated {
 					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
 				}
+				failImageStatus(err.Error())
 				fields := []zap.Field{
 					zap.Int64("account_id", account.ID),
 					zap.Bool("fallback_error_response_written", wroteFallback),
@@ -443,6 +500,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
+			if result.ImageCount > 0 {
+				imageStatusForwarded = imageStatusRequestID != ""
+			}
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
 		}
