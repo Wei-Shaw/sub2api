@@ -202,6 +202,81 @@ func TestHandleUpstreamError_AnthropicAccountWindowStillWinsOver7dOi(t *testing.
 	require.Equal(t, anthropicFableRateLimitKey, repo.lastModelRateLimitScope)
 }
 
+func TestHandleUpstreamError_Anthropic7dOiHitWeak5hRejectedDoesNotEscalateAccount(t *testing.T) {
+	// 7d_oi 命中 + 5h-status=rejected 但 5h-utilization<1、7d allowed：
+	// 5h-status=rejected 本身可能只是 7d_oi 拒绝的伴生噪音，不足以把账号升级为账号级限流；
+	// 只应写模型级（Fable）限流。
+	now := time.Now()
+	reset5h := now.Add(2 * time.Hour).Truncate(time.Second)
+	resetOI := now.Add(80 * time.Hour).Truncate(time.Second)
+	headers := fable429Headers(reset5h, resetOI)
+	headers.Set("anthropic-ratelimit-unified-5h-status", "rejected")
+	headers.Set("anthropic-ratelimit-unified-5h-utilization", "0.5")
+
+	repo := &anthropicWindowLimitRepo{}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	account := &Account{ID: 42, Type: AccountTypeOAuth, Platform: PlatformAnthropic}
+
+	shouldDisable := svc.HandleUpstreamError(context.Background(), account, http.StatusTooManyRequests, headers, nil, "claude-fable-5")
+
+	require.False(t, shouldDisable)
+	require.Zero(t, repo.rateLimitCalls, "bare 5h-status=rejected without utilization>=1.0/surpassed-threshold must not escalate to account-level rate limit")
+	require.Zero(t, repo.tempUnschedCalls)
+	require.Equal(t, 1, repo.modelRateLimitCalls, "7d_oi hit with resolvable reset should still mark the Fable model limited")
+	require.Equal(t, anthropicFableRateLimitKey, repo.lastModelRateLimitScope)
+}
+
+func TestHandleUpstreamError_Anthropic7dOiHitMissingResetNeverFallsThroughToLegacy(t *testing.T) {
+	// 7d_oi 命中但 7d_oi-reset 和 aggregate reset 缺失/不可解析，5h/7d 主窗口未超限但 reset 存在：
+	// 不能调用 SetRateLimited，不能触发 temp-unsched（也不落到旧 handle429），
+	// 模型级限流因 reset 缺失可以不写。
+	now := time.Now()
+	reset5h := now.Add(2 * time.Hour).Truncate(time.Second)
+	reset7d := now.Add(80 * time.Hour).Truncate(time.Second)
+
+	headers := http.Header{}
+	headers.Set("anthropic-ratelimit-unified-5h-reset", strconv.FormatInt(reset5h.Unix(), 10))
+	headers.Set("anthropic-ratelimit-unified-5h-status", "allowed")
+	headers.Set("anthropic-ratelimit-unified-5h-utilization", "0.4")
+	headers.Set("anthropic-ratelimit-unified-7d-reset", strconv.FormatInt(reset7d.Unix(), 10))
+	headers.Set("anthropic-ratelimit-unified-7d-status", "allowed")
+	headers.Set("anthropic-ratelimit-unified-7d-utilization", "0.3")
+	// 7d_oi 命中但没有可解析的 7d_oi-reset，也没有聚合 anthropic-ratelimit-unified-reset。
+	headers.Set("anthropic-ratelimit-unified-7d_oi-status", "rejected")
+	headers.Set("anthropic-ratelimit-unified-7d_oi-utilization", "1.0")
+
+	repo := &anthropicWindowLimitRepo{}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	account := &Account{
+		ID:       42,
+		Type:     AccountTypeOAuth,
+		Platform: PlatformAnthropic,
+		Credentials: map[string]any{
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{
+				map[string]any{
+					"error_code":       float64(http.StatusTooManyRequests),
+					"keywords":         []any{"rate limit"},
+					"duration_minutes": float64(10),
+				},
+			},
+		},
+	}
+
+	shouldDisable := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusTooManyRequests,
+		headers,
+		[]byte(`{"type":"error","error":{"type":"rate_limit_error","message":"rate limit"}}`),
+		"claude-fable-5",
+	)
+
+	require.False(t, shouldDisable)
+	require.Zero(t, repo.rateLimitCalls, "7d_oi hit without a resolvable reset must not fall through to account-level rate limit")
+	require.Zero(t, repo.tempUnschedCalls, "7d_oi hit without a resolvable reset must not fall through to legacy temp-unsched rules")
+}
+
 func TestHandleUpstreamError_Anthropic429Without7dOiKeepsLegacyBehavior(t *testing.T) {
 	// 无 7d_oi 头、5h/7d 均未超限的 429：保持旧行为（按较早 reset 标记账号限流）。
 	now := time.Now()

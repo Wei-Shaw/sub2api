@@ -187,11 +187,18 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	// cooldown to a local temporary pause.
 	if statusCode == http.StatusTooManyRequests && account.Platform == PlatformAnthropic {
 		// 7d_oi 是 Fable 模型专属的 7d 窗口：只标记模型级限流，账号对其他模型仍可调度。
+		// fableHit 独立于 reset 是否可解析：即使因 7d_oi-reset / aggregate reset 缺失导致
+		// 模型级限流无法写入，只要 7d_oi 命中就绝不能 fall through 到旧 handle429 把
+		// 账号级 rate_limit_reset_at 写进去。
+		fableHit := isAnthropicFableWindowHit(headers)
 		fableLimited := s.persistAnthropicFableWindowLimit(ctx, account, headers)
-		if s.persistAnthropicExhaustedWindowLimit(ctx, account, headers) {
+		// fableHit 为真时，5h/7d 主窗口需要更强证据（surpassed-threshold=true 或
+		// utilization>=1.0，或 7d 明确 exceeded）才能把账号升级为账号级限流；
+		// 仅凭 5h-status=rejected 不足以升级（该信号本身可能只是 7d_oi 拒绝的伴生噪音）。
+		if s.persistAnthropicExhaustedWindowLimit(ctx, account, headers, fableHit) {
 			return false
 		}
-		if fableLimited {
+		if fableLimited || fableHit {
 			return false
 		}
 	}
@@ -1120,11 +1127,20 @@ type anthropicWindowLimit struct {
 	reason  string
 }
 
-func selectAnthropicExhaustedWindow(headers http.Header, now time.Time) *anthropicWindowLimit {
+// selectAnthropicExhaustedWindow determines whether the 5h/7d primary windows
+// are exhausted. When strict is true (the 429 was also a 7d_oi/Fable hit), a
+// bare 5h-status=rejected is NOT treated as exhaustion on its own because it can
+// be mere collateral noise from the 7d_oi rejection. Strict mode requires the
+// stronger surpassed-threshold=true or utilization>=1.0 signal for 5h (7d
+// already only relies on that stronger signal, so it is unaffected by strict).
+func selectAnthropicExhaustedWindow(headers http.Header, now time.Time, strict bool) *anthropicWindowLimit {
 	reset5h, ok5hReset := parseAnthropicWindowReset(headers, "5h", now)
 	reset7d, ok7dReset := parseAnthropicWindowReset(headers, "7d", now)
 
-	exceeded5h := isAnthropic5hRejected(headers) || isAnthropicWindowExceeded(headers, "5h")
+	exceeded5h := isAnthropicWindowExceeded(headers, "5h")
+	if !strict {
+		exceeded5h = exceeded5h || isAnthropic5hRejected(headers)
+	}
 	exceeded7d := isAnthropicWindowExceeded(headers, "7d")
 
 	if exceeded7d && ok7dReset {
@@ -1194,12 +1210,12 @@ func shouldPersistAnthropicWindowLimit(account *Account, limit *anthropicWindowL
 	return limit.resetAt.After(*account.RateLimitResetAt)
 }
 
-func (s *RateLimitService) persistAnthropicExhaustedWindowLimit(ctx context.Context, account *Account, headers http.Header) bool {
+func (s *RateLimitService) persistAnthropicExhaustedWindowLimit(ctx context.Context, account *Account, headers http.Header, strict bool) bool {
 	if s == nil || s.accountRepo == nil || account == nil {
 		return false
 	}
 	now := time.Now()
-	limit := selectAnthropicExhaustedWindow(headers, now)
+	limit := selectAnthropicExhaustedWindow(headers, now, strict)
 	if limit == nil {
 		return false
 	}
@@ -1242,7 +1258,7 @@ const anthropicFableWindowReason = "anthropic_7d_oi_window_exhausted"
 // anthropic-ratelimit-unified-reset is used (it mirrors the binding claim's
 // reset when 7d_oi is the representative claim).
 func selectAnthropicFableWindowLimit(headers http.Header, now time.Time) *anthropicWindowLimit {
-	if !isAnthropicWindowRejected(headers, "7d_oi") && !isAnthropicWindowExceeded(headers, "7d_oi") {
+	if !isAnthropicFableWindowHit(headers) {
 		return nil
 	}
 	resetAt, ok := parseAnthropicWindowReset(headers, "7d_oi", now)
@@ -1264,6 +1280,16 @@ func selectAnthropicFableWindowLimit(headers http.Header, now time.Time) *anthro
 // per-window variant (7d scale).
 func parseAnthropicAggregateReset(headers http.Header, now time.Time) (time.Time, bool) {
 	return parseAnthropicResetTimestamp(headers.Get("anthropic-ratelimit-unified-reset"), now, 8*24*time.Hour)
+}
+
+// isAnthropicFableWindowHit reports whether the 7d_oi (Fable-only) window claim
+// was rejected or exceeded in the 429 response headers, independent of whether
+// a reset timestamp usable for persisting a model-level limit is present. This
+// is used to gate account-level escalation and to prevent falling through to
+// the legacy handle429 path even when the model-level limit itself could not
+// be persisted (missing/unparseable 7d_oi-reset and aggregate reset headers).
+func isAnthropicFableWindowHit(headers http.Header) bool {
+	return isAnthropicWindowRejected(headers, "7d_oi") || isAnthropicWindowExceeded(headers, "7d_oi")
 }
 
 // persistAnthropicFableWindowLimit marks the Fable model family as rate limited
