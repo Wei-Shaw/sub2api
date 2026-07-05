@@ -24,7 +24,7 @@
             ? 'border-primary-400 bg-primary-50/70 dark:border-primary-500 dark:bg-primary-900/20'
             : 'border-gray-300 bg-gray-50 dark:border-dark-600 dark:bg-dark-800'"
           @dragenter.prevent="handleDragEnter"
-          @dragover.prevent="handleDragOver"
+          @dragover.prevent
           @dragleave.prevent="handleDragLeave"
           @drop.prevent="handleDrop"
         >
@@ -101,7 +101,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { adminAPI REDACTED from '@/api/admin'
 import { useAppStore REDACTED from '@/stores/app'
-import type { AdminDataImportResult REDACTED from '@/types'
+import type { AdminDataImportResult, AdminDataPayload REDACTED from '@/types'
 
 interface Props {
   show: boolean
@@ -120,8 +120,9 @@ const appStore = useAppStore()
 
 const importing = ref(false)
 const files = ref<File[]>([])
-const dragActive = ref(false)
 const dragDepth = ref(0)
+const dragActive = computed(() => dragDepth.value > 0)
+const hasCreatedData = ref(false)
 const result = ref<AdminDataImportResult | null>(null)
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -139,8 +140,8 @@ watch(
   (open) => {
     if (open) {
       files.value = []
-      dragActive.value = false
       dragDepth.value = 0
+      hasCreatedData.value = false
       result.value = null
       if (fileInput.value) {
         fileInput.value.value = ''
@@ -156,10 +157,15 @@ REDACTED
 const handleFileChange = (event: Event) => {
   const target = event.target as HTMLInputElement
   setSelectedFiles(target.files)
+  target.value = ''
 REDACTED
 
 const handleClose = () => {
   if (importing.value) return
+  if (hasCreatedData.value) {
+    hasCreatedData.value = false
+    emit('imported')
+  REDACTED
   emit('close')
 REDACTED
 
@@ -170,11 +176,16 @@ REDACTED
 
 const setSelectedFiles = (sourceFiles: FileList | File[] | null | undefined) => {
   if (importing.value) return
-  const picked = Array.from(sourceFiles || []).filter(isJsonFile)
+  const incoming = Array.from(sourceFiles || [])
+  const picked = incoming.filter(isJsonFile)
   if (!picked.length) {
-    files.value = []
     appStore.showError(t('admin.accounts.dataImportSelectFile'))
     return
+  REDACTED
+  if (picked.length < incoming.length) {
+    appStore.showWarning(
+      t('admin.accounts.dataImportIgnoredFiles', { count: incoming.length - picked.length REDACTED)
+    )
   REDACTED
   files.value = picked
   result.value = null
@@ -183,26 +194,15 @@ REDACTED
 const handleDragEnter = () => {
   if (importing.value) return
   dragDepth.value += 1
-  dragActive.value = true
-REDACTED
-
-const handleDragOver = () => {
-  if (importing.value) return
-  dragActive.value = true
 REDACTED
 
 const handleDragLeave = () => {
-  if (importing.value) return
   dragDepth.value = Math.max(0, dragDepth.value - 1)
-  if (dragDepth.value === 0) {
-    dragActive.value = false
-  REDACTED
 REDACTED
 
 const handleDrop = (event: DragEvent) => {
-  if (importing.value) return
   dragDepth.value = 0
-  dragActive.value = false
+  if (importing.value) return
   setSelectedFiles(event.dataTransfer?.files)
 REDACTED
 
@@ -224,17 +224,43 @@ const readFileAsText = async (sourceFile: File): Promise<string> => {
   REDACTED)
 REDACTED
 
-const mergeDataPayloads = (payloads: any[]) => {
-  if (payloads.length === 1) return payloads[0]
+const SUPPORTED_DATA_TYPES = ['sub2api-data', 'sub2api-bundle']
+const SUPPORTED_DATA_VERSION = 1
+
+// 与后端 validateDataHeader 对齐:合并前逐文件校验,避免坏文件混入合并 payload 后
+// 报错无法定位来源,或绕过后端本会对单文件做的 type/version 检查。
+const isValidDataPayload = (payload: unknown): payload is AdminDataPayload => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false
+  const candidate = payload as Record<string, unknown>
+  if (
+    candidate.type !== undefined &&
+    candidate.type !== '' &&
+    !SUPPORTED_DATA_TYPES.includes(candidate.type as string)
+  ) {
+    return false
+  REDACTED
+  if (
+    candidate.version !== undefined &&
+    candidate.version !== 0 &&
+    candidate.version !== SUPPORTED_DATA_VERSION
+  ) {
+    return false
+  REDACTED
+  return Array.isArray(candidate.proxies) && Array.isArray(candidate.accounts)
+REDACTED
+
+const mergeDataPayloads = (payloads: AdminDataPayload[]): AdminDataPayload => {
+  const [firstPayload] = payloads
+  if (payloads.length === 1 && firstPayload) return firstPayload
 
   return {
-    type: payloads.find((item) => typeof item?.type === 'string')?.type,
-    version: payloads.find((item) => typeof item?.version === 'number')?.version,
+    type: payloads.find((item) => typeof item.type === 'string')?.type,
+    version: payloads.find((item) => typeof item.version === 'number')?.version,
     exported_at: new Date().toISOString(),
-    proxies: payloads.flatMap((item) => Array.isArray(item?.proxies) ? item.proxies : []),
-    accounts: payloads.flatMap((item) => Array.isArray(item?.accounts) ? item.accounts : []),
+    proxies: payloads.flatMap((item) => item.proxies),
+    accounts: payloads.flatMap((item) => item.accounts),
     skipped_shadows: payloads.reduce((sum, item) => {
-      const count = Number(item?.skipped_shadows || 0)
+      const count = Number(item.skipped_shadows || 0)
       return Number.isFinite(count) ? sum + count : sum
     REDACTED, 0)
   REDACTED
@@ -248,10 +274,22 @@ const handleImport = async () => {
 
   importing.value = true
   try {
-    const dataPayloads = []
+    const dataPayloads: AdminDataPayload[] = []
     for (const sourceFile of files.value) {
-      const text = await readFileAsText(sourceFile)
-      dataPayloads.push(JSON.parse(text))
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(await readFileAsText(sourceFile))
+      REDACTED catch {
+        appStore.showError(
+          t('admin.accounts.dataImportParseFailedFile', { name: sourceFile.name REDACTED)
+        )
+        return
+      REDACTED
+      if (!isValidDataPayload(parsed)) {
+        appStore.showError(t('admin.accounts.dataImportInvalidFile', { name: sourceFile.name REDACTED))
+        return
+      REDACTED
+      dataPayloads.push(parsed)
     REDACTED
     const dataPayload = mergeDataPayloads(dataPayloads)
 
@@ -270,17 +308,17 @@ const handleImport = async () => {
       proxy_failed: res.proxy_failed,
     REDACTED
     if (res.account_failed > 0 || res.proxy_failed > 0) {
+      // 部分成功也创建了数据;弹窗关闭时通过 imported 通知父组件刷新列表
+      if (res.account_created > 0 || res.proxy_created > 0) {
+        hasCreatedData.value = true
+      REDACTED
       appStore.showError(t('admin.accounts.dataImportCompletedWithErrors', msgParams))
     REDACTED else {
       appStore.showSuccess(t('admin.accounts.dataImportSuccess', msgParams))
       emit('imported')
     REDACTED
   REDACTED catch (error: any) {
-    if (error instanceof SyntaxError) {
-      appStore.showError(t('admin.accounts.dataImportParseFailed'))
-    REDACTED else {
-      appStore.showError(error?.message || t('admin.accounts.dataImportFailed'))
-    REDACTED
+    appStore.showError(error?.message || t('admin.accounts.dataImportFailed'))
   REDACTED finally {
     importing.value = false
   REDACTED
