@@ -162,6 +162,9 @@ type SystemSettings struct {
 	TableDefaultPageSize        int
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
+	CustomMenuEmbedAuthParams   bool   // 自定义菜单是否嵌入认证参数（token / userid）
+	CustomMenuRedDotEnabled     bool   // 自定义菜单红点提醒是否启用（管理员显式开关）
+	CustomMenuVersion           string // 自定义菜单派生版本 hash（缓存值，前端红点周期锚点）
 	CustomEndpoints             string // JSON array of custom endpoints
 
 	DefaultConcurrency           int
@@ -300,6 +303,9 @@ type PublicSettings struct {
 	TableDefaultPageSize        int
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
+	CustomMenuEmbedAuthParams   bool   // 自定义菜单是否嵌入认证参数（token / userid）
+	CustomMenuRedDotEnabled     bool   // 自定义菜单红点提醒是否启用（管理员显式开关）
+	CustomMenuVersion           string // 自定义菜单派生版本 hash（缓存值，前端红点周期锚点）
 	CustomEndpoints             string // JSON array of custom endpoints
 
 	LinuxDoOAuthEnabled      bool

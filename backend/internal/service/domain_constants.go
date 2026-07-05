@@ -266,6 +266,9 @@ const (
 	SettingKeyTableDefaultPageSize        = "table_default_page_size"       // 表格默认每页条数
 	SettingKeyTablePageSizeOptions        = "table_page_size_options"       // 表格可选每页条数（JSON 数组）
 	SettingKeyCustomMenuItems             = "custom_menu_items"             // 自定义菜单项（JSON 数组）
+	SettingKeyCustomMenuEmbedAuthParams   = "custom_menu_embed_auth_params" // 自定义菜单是否嵌入认证参数
+	SettingKeyCustomMenuRedDotEnabled     = "custom_menu_red_dot_enabled"   // 自定义菜单红点提醒开关
+	SettingKeyCustomMenuVersionCache      = "custom_menu_version_cache"     // 自定义菜单派生版本缓存（后端计算）
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
 
 	// 默认配置

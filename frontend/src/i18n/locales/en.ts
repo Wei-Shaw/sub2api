@@ -321,6 +321,8 @@ export default {
     loading: 'Loading...',
     submitting: 'Submitting...',
     justNow: 'just now',
+    scrollLeft: 'Scroll left',
+    scrollRight: 'Scroll right',
     peakRateTooltip: 'Peak rate: {window}',
     peakRateImageNote: '; image tokens billed as tokens are also affected, per-image billing is unaffected',
     save: 'Save',
@@ -467,6 +469,9 @@ export default {
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     usage: 'Usage',
+    customMenu: {
+      docTooltip: 'Click to view the usage guide',
+    },
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
@@ -6135,6 +6140,17 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         trustForwardedIpHint:
           'Disabled by default. Enable only when the origin is reachable only through Cloudflare or Nginx reverse proxy. When enabled, API Key IP allowlists and denylists use CF-Connecting-IP, X-Real-IP, or X-Forwarded-For, matching the request IP shown in usage records.'
       },
+      customMenuSecurity: {
+        title: 'Custom Menu Security',
+        description: 'Control security settings for custom menu items',
+        embedAuthParams: 'Embed authentication parameters in custom menu URLs',
+        embedAuthParamsHint:
+          'When enabled, user ID and token will be automatically added to custom menu URLs. Disable this for security reasons if custom menu URLs point to external services.',
+        redDotEnabled: 'Show red-dot promotion on custom menu items',
+        redDotEnabledHint:
+          'When you flip this from off to on, or change any custom menu item (label / icon / URL / order), a new version is minted and users who dismissed the previous one will see the red dot again. The red dot goes away as soon as the user clicks any custom menu item (or lands on its page directly). Saving without any real change does not disturb users.',
+        redDotCurrentVersion: 'Current version:'
+      },
       linuxdo: {
         title: 'LinuxDo Connect Login',
         description: 'Configure LinuxDo Connect OAuth for Sub2API end-user login',
@@ -6519,6 +6535,9 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         namePlaceholder: 'e.g. Help Center',
         url: 'Page URL',
         urlPlaceholder: 'https://example.com/page',
+        docUrl: 'Usage Guide URL (optional)',
+        docUrlPlaceholder: 'https://example.com/docs/help',
+        docUrlHelp: 'When set, a question-mark icon appears next to this menu item. Clicking it opens this URL in a new tab.',
         iconSvg: 'SVG Icon',
         iconSvgPlaceholder: '<svg>...</svg>',
         iconPreview: 'Icon Preview',

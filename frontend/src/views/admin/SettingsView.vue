@@ -1659,6 +1659,56 @@
             </div>
           </div>
 
+          <!-- Custom Menu Security Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.customMenuSecurity.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.customMenuSecurity.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <!-- Embed Authentication Parameters -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.customMenuSecurity.embedAuthParams")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.customMenuSecurity.embedAuthParamsHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.custom_menu_embed_auth_params" />
+              </div>
+
+              <!-- Red-dot Promotion Toggle -->
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.customMenuSecurity.redDotEnabled")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.customMenuSecurity.redDotEnabledHint") }}
+                  </p>
+                  <p
+                    v-if="form.custom_menu_version"
+                    class="mt-2 text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.customMenuSecurity.redDotCurrentVersion") }}
+                    <code
+                      class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200"
+                    >{{ form.custom_menu_version }}</code>
+                  </p>
+                </div>
+                <Toggle v-model="form.custom_menu_red_dot_enabled" />
+              </div>
+            </div>
+          </div>
+
           <!-- Captcha Settings -->
           <div class="card">
             <div
@@ -5638,6 +5688,26 @@
                     />
                   </div>
 
+                  <!-- Doc URL (full width, optional) -->
+                  <div class="sm:col-span-2">
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.customMenu.docUrl") }}
+                    </label>
+                    <input
+                      v-model="item.doc_url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.customMenu.docUrlPlaceholder')
+                      "
+                    />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.customMenu.docUrlHelp") }}
+                    </p>
+                  </div>
+
                   <!-- SVG Icon (full width) -->
                   <div class="sm:col-span-2">
                     <label
@@ -8615,6 +8685,7 @@ const form = reactive<SettingsForm>({
     action: "iframe" | "same_tab" | "new_tab";
     visibility: "user" | "admin";
     sort_order: number;
+    doc_url?: string;
   }>,
   home_product_menu_items: [] as Array<{
     id: string;
@@ -8656,6 +8727,12 @@ const form = reactive<SettingsForm>({
     secret_key: "",
   },
   api_key_acl_trust_forwarded_ip: false,
+  // 自定义菜单安全设置：是否在自定义菜单URL中嵌入认证参数
+  custom_menu_embed_auth_params: true,
+  // 自定义菜单红点：admin 显式开关，off 时前端不显示；on 且 version 变化时用户会重新看到红点。
+  custom_menu_red_dot_enabled: false,
+  // 后端派生的自定义菜单 version hash（只读，仅用于 UI 展示）
+  custom_menu_version: "",
   // LinuxDo Connect OAuth 登录
   linuxdo_connect_enabled: false,
   linuxdo_connect_client_id: "",
@@ -9274,6 +9351,7 @@ function addMenuItem() {
     action: "iframe",
     visibility: "user",
     sort_order: form.custom_menu_items.length,
+    doc_url: "",
   });
 }
 
@@ -9933,6 +10011,8 @@ async function saveSettings() {
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: normalizeMenuItems(form.custom_menu_items),
+      custom_menu_embed_auth_params: form.custom_menu_embed_auth_params,
+      custom_menu_red_dot_enabled: form.custom_menu_red_dot_enabled,
       home_product_menu_items: normalizeHomeProductMenuItems(form.home_product_menu_items),
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,

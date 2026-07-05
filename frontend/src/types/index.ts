@@ -184,6 +184,11 @@ export interface CustomMenuItem {
   action?: CustomMenuAction
   visibility: 'user' | 'admin'
   sort_order: number
+  /**
+   * 可选的"使用指南"文档链接。非空时侧边栏在菜单标签右侧渲染一个问号图标，
+   * 点击在新标签页打开此链接。空串或未设置表示不展示问号图标。
+   */
+  doc_url?: string
 }
 
 export interface CustomEndpoint {
@@ -230,6 +235,9 @@ export interface PublicSettings {
   table_default_page_size: number
   table_page_size_options: number[]
   custom_menu_items: CustomMenuItem[]
+  custom_menu_embed_auth_params: boolean
+  custom_menu_red_dot_enabled: boolean
+  custom_menu_version: string
   custom_endpoints: CustomEndpoint[]
   linuxdo_oauth_enabled: boolean
   dingtalk_oauth_enabled?: boolean

@@ -317,6 +317,8 @@ export default {
     loading: '加载中...',
     submitting: '提交中...',
     justNow: '刚刚',
+    scrollLeft: '向左滚动',
+    scrollRight: '向右滚动',
     peakRateTooltip: '高峰倍率：{window}',
     peakRateImageNote: '；token 计费的图片 token 同样适用，图片按次计费不受高峰影响',
     save: '保存',
@@ -463,6 +465,9 @@ export default {
     announcements: '公告',
     apiKeys: 'API 密钥',
     usage: '使用记录',
+    customMenu: {
+      docTooltip: '点击查看操作指南文档',
+    },
     redeem: '兑换',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
@@ -6289,6 +6294,17 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         trustForwardedIpHint:
           '默认关闭。仅在源站只允许 Cloudflare 或 Nginx 反代访问时开启；开启后 API Key IP 白/黑名单会使用 CF-Connecting-IP、X-Real-IP 或 X-Forwarded-For，与使用记录中的请求 IP 保持一致。'
       },
+      customMenuSecurity: {
+        title: '自定义菜单安全设置',
+        description: '控制自定义菜单项的安全设置',
+        embedAuthParams: '在自定义菜单 URL 中嵌入认证参数',
+        embedAuthParamsHint:
+          '启用后，用户 ID 和 token 会自动添加到自定义菜单 URL 中。如果自定义菜单指向外部服务，出于安全考虑请禁用此选项。',
+        redDotEnabled: '展示自定义菜单红点提醒',
+        redDotEnabledHint:
+          '开关从关闭切到开启、或自定义菜单内容发生变化（标签 / 图标 / URL / 顺序等）时，会产生新的版本，已看过上一版的用户会重新看到红点；用户点击任一自定义菜单项（或直接进入对应页面）后红点消失。无实际变化的“保存”不会刷新。',
+        redDotCurrentVersion: '当前版本：'
+      },
       linuxdo: {
         title: 'LinuxDo Connect 登录',
         description: '配置 LinuxDo Connect OAuth，用于 Sub2API 用户登录',
@@ -6669,6 +6685,9 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         namePlaceholder: '如：帮助中心',
         url: '页面 URL',
         urlPlaceholder: 'https://example.com/page',
+        docUrl: '使用指南文档链接（可选）',
+        docUrlPlaceholder: 'https://example.com/docs/help',
+        docUrlHelp: '设置后，此菜单项右侧会出现一个问号图标，点击将在新标签页打开该链接。',
         iconSvg: 'SVG 图标',
         iconSvgPlaceholder: '<svg>...</svg>',
         iconPreview: '图标预览',

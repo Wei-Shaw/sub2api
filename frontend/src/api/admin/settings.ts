@@ -439,6 +439,10 @@ export interface SystemSettings {
   table_page_size_options: number[];
   backend_mode_enabled: boolean;
   custom_menu_items: CustomMenuItem[];
+  custom_menu_embed_auth_params: boolean;
+  custom_menu_red_dot_enabled: boolean;
+  /** 后端派生的自定义菜单版本 hash（只读） */
+  custom_menu_version: string;
   custom_endpoints: CustomEndpoint[];
   // SMTP settings
   smtp_host: string;
@@ -724,6 +728,8 @@ export interface UpdateSettingsRequest {
   table_page_size_options?: number[];
   backend_mode_enabled?: boolean;
   custom_menu_items?: CustomMenuItem[];
+  custom_menu_embed_auth_params?: boolean;
+  custom_menu_red_dot_enabled?: boolean;
   custom_endpoints?: CustomEndpoint[];
   smtp_host?: string;
   smtp_port?: number;

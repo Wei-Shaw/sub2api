@@ -47,9 +47,27 @@
         </div>
 
         <!-- Nav Actions -->
-        <div class="flex items-center gap-3">
-          <!-- Scrollable menu items -->
-          <div class="nav-actions flex items-center gap-3 overflow-x-auto">
+        <div class="flex min-w-0 flex-1 items-center justify-end gap-2">
+          <!-- Scrollable menu area with left/right arrows -->
+          <div class="relative flex min-w-0 max-w-full items-center">
+            <!-- Left scroll arrow -->
+            <button
+              v-show="canScrollLeft"
+              type="button"
+              class="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/90 p-1 text-gray-600 shadow-sm ring-1 ring-gray-200 backdrop-blur transition hover:bg-white hover:text-gray-900 dark:bg-dark-800/90 dark:text-dark-200 dark:ring-dark-600 dark:hover:bg-dark-800 dark:hover:text-white"
+              :aria-label="t('common.scrollLeft')"
+              @click="scrollNav(-1)"
+            >
+              <Icon name="chevronLeft" size="sm" />
+            </button>
+
+            <!-- Scrollable menu items -->
+            <div
+              ref="navScrollRef"
+              class="nav-actions flex min-w-0 items-center gap-3 overflow-x-auto scroll-smooth"
+              :class="{ 'px-6': canScrollLeft || canScrollRight }"
+              @scroll.passive="updateScrollIndicators"
+            >
             <!-- Pricing Plaza link (anonymous-friendly) -->
             <router-link
               to="/plaza/models"
@@ -74,7 +92,7 @@
                 :aria-expanded="homeProductsOpen"
                 aria-haspopup="menu"
                 class="flex items-center gap-1.5 whitespace-nowrap text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-dark-300 dark:hover:text-white"
-                @click.stop="openHomeProductsMenuFromEvent"
+                @click.stop="toggleHomeProductsMenuFromEvent"
               >
                 <Icon name="grid" size="sm" />
                 {{ t('home.products') }}
@@ -111,9 +129,21 @@
               <Icon v-if="isDark" name="sun" size="md" />
               <Icon v-else name="moon" size="md" />
             </button>
+            </div>
+
+            <!-- Right scroll arrow -->
+            <button
+              v-show="canScrollRight"
+              type="button"
+              class="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/90 p-1 text-gray-600 shadow-sm ring-1 ring-gray-200 backdrop-blur transition hover:bg-white hover:text-gray-900 dark:bg-dark-800/90 dark:text-dark-200 dark:ring-dark-600 dark:hover:bg-dark-800 dark:hover:text-white"
+              :aria-label="t('common.scrollRight')"
+              @click="scrollNav(1)"
+            >
+              <Icon name="chevronRight" size="sm" />
+            </button>
           </div>
 
-          <!-- Login / Dashboard Button (fixed, not scrollable) -->
+          <!-- Login / Dashboard Button (fixed, always visible) -->
           <router-link
             v-if="isAuthenticated"
             :to="dashboardPath"
@@ -204,7 +234,7 @@
                 :aria-expanded="homeProductsOpen"
                 aria-haspopup="menu"
                 class="btn btn-secondary px-6 py-3 text-base"
-                @click.stop="openHomeProductsMenuFromEvent"
+                @click.stop="toggleHomeProductsMenuFromEvent"
               >
                 {{ t('home.products') }}
                 <Icon
@@ -553,6 +583,13 @@ const isHomeProductsHeroOpen = computed(
 )
 let homeProductsCloseTimer: number | null = null
 
+function supportsHomeProductsHover(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return true
+  }
+  return window.matchMedia('(hover: hover) and (pointer: fine)').matches
+}
+
 function clearHomeProductsCloseTimer() {
   if (homeProductsCloseTimer) {
     window.clearTimeout(homeProductsCloseTimer)
@@ -596,7 +633,26 @@ async function openHomeProductsMenu(
 }
 
 async function openHomeProductsMenuFromEvent(event: Event) {
+  // Skip synthetic mouseenter fired right before click on touch devices,
+  // which would immediately re-toggle the menu and swallow the first tap.
+  if (event.type === 'mouseenter' && !supportsHomeProductsHover()) {
+    return
+  }
   await openHomeProductsMenu(resolveHomeProductsTrigger(event))
+}
+
+async function toggleHomeProductsMenuFromEvent(event: Event) {
+  const trigger = resolveHomeProductsTrigger(event)
+  // If already open from the same trigger, close it (click-to-collapse).
+  if (
+    homeProductsOpen.value &&
+    trigger.trigger &&
+    homeProductsActiveTrigger.value === trigger.trigger
+  ) {
+    closeHomeProductsMenu()
+    return
+  }
+  await openHomeProductsMenu(trigger)
 }
 
 function scheduleCloseHomeProductsMenu() {
@@ -684,12 +740,58 @@ function initTheme() {
   }
 }
 
+// Nav horizontal scroll indicators (for narrow viewports)
+const navScrollRef = ref<HTMLElement | null>(null)
+const canScrollLeft = ref(false)
+const canScrollRight = ref(false)
+let navResizeObserver: ResizeObserver | null = null
+
+function updateScrollIndicators() {
+  const el = navScrollRef.value
+  if (!el) {
+    canScrollLeft.value = false
+    canScrollRight.value = false
+    return
+  }
+  const maxScroll = el.scrollWidth - el.clientWidth
+  canScrollLeft.value = el.scrollLeft > 1
+  canScrollRight.value = el.scrollLeft < maxScroll - 1
+}
+
+function scrollNav(direction: 1 | -1) {
+  const el = navScrollRef.value
+  if (!el) return
+  const step = Math.max(120, Math.floor(el.clientWidth * 0.6))
+  el.scrollBy({ left: direction * step, behavior: 'smooth' })
+}
+
+function attachNavScrollObserver() {
+  const el = navScrollRef.value
+  if (!el || typeof ResizeObserver === 'undefined') return
+  navResizeObserver = new ResizeObserver(() => updateScrollIndicators())
+  navResizeObserver.observe(el)
+  // Also observe children changes affecting scrollWidth
+  Array.from(el.children).forEach((child) => {
+    if (child instanceof HTMLElement) navResizeObserver!.observe(child)
+  })
+}
+
+function detachNavScrollObserver() {
+  if (navResizeObserver) {
+    navResizeObserver.disconnect()
+    navResizeObserver = null
+  }
+}
+
 onMounted(() => {
   initTheme()
   document.addEventListener('click', handleHomeProductsDocumentClick)
   document.addEventListener('keydown', handleHomeProductsKeydown)
   window.addEventListener('resize', handleHomeProductsViewportChange)
   window.addEventListener('scroll', handleHomeProductsViewportChange, true)
+  window.addEventListener('resize', updateScrollIndicators)
+  attachNavScrollObserver()
+  nextTick(updateScrollIndicators)
 
   // Check auth state
   authStore.checkAuth()
@@ -706,6 +808,8 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleHomeProductsKeydown)
   window.removeEventListener('resize', handleHomeProductsViewportChange)
   window.removeEventListener('scroll', handleHomeProductsViewportChange, true)
+  window.removeEventListener('resize', updateScrollIndicators)
+  detachNavScrollObserver()
 })
 </script>
 

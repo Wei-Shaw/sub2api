@@ -18,6 +18,9 @@ type CustomMenuItem struct {
 	Action     string `json:"action,omitempty"` // "iframe", "same_tab", or "new_tab"
 	Visibility string `json:"visibility"`       // "user" or "admin"
 	SortOrder  int    `json:"sort_order"`
+	// DocURL 可选的"使用指南"文档链接。非空时前端在菜单标签旁渲染问号图标，
+	// 点击在新标签打开该链接。空串表示不展示。仅接受绝对 http(s) URL。
+	DocURL string `json:"doc_url,omitempty"`
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.
@@ -163,6 +166,9 @@ type SystemSettings struct {
 	TableDefaultPageSize        int              `json:"table_default_page_size"`
 	TablePageSizeOptions        []int            `json:"table_page_size_options"`
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
+	CustomMenuEmbedAuthParams   bool             `json:"custom_menu_embed_auth_params"`
+	CustomMenuRedDotEnabled     bool             `json:"custom_menu_red_dot_enabled"`
+	CustomMenuVersion           string           `json:"custom_menu_version"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
 	DefaultConcurrency           int                          `json:"default_concurrency"`
@@ -337,6 +343,9 @@ type PublicSettings struct {
 	TableDefaultPageSize             int                      `json:"table_default_page_size"`
 	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
 	CustomMenuItems                  []CustomMenuItem         `json:"custom_menu_items"`
+	CustomMenuEmbedAuthParams        bool                     `json:"custom_menu_embed_auth_params"`
+	CustomMenuRedDotEnabled          bool                     `json:"custom_menu_red_dot_enabled"`
+	CustomMenuVersion                string                   `json:"custom_menu_version"`
 	CustomEndpoints                  []CustomEndpoint         `json:"custom_endpoints"`
 	DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
 	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
