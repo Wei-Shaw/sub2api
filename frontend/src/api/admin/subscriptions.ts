@@ -10,7 +10,16 @@ import type {
   AssignSubscriptionRequest,
   BulkAssignSubscriptionRequest,
   ExtendSubscriptionRequest,
-  PaginatedResponse
+  PaginatedResponse,
+  BenefitPackage,
+  BenefitPlan,
+  CreateBenefitPackageRequest,
+  UpdateBenefitPackageRequest,
+  CreateBenefitPlanRequest,
+  UpdateBenefitPlanRequest,
+  UserBenefitPlanAssignment,
+  BenefitPlanMember,
+  BenefitPlanUserBulkResult
 } from '@/types'
 
 /**
@@ -190,6 +199,142 @@ export async function listByUser(
   return data
 }
 
+/**
+ * List benefit packages
+ */
+export async function listBenefitPackages(): Promise<BenefitPackage[]> {
+  const { data } = await apiClient.get<BenefitPackage[]>('/admin/subscriptions/benefit-packages')
+  return data
+}
+
+/**
+ * Create benefit package
+ */
+export async function createBenefitPackage(
+  request: CreateBenefitPackageRequest
+): Promise<BenefitPackage> {
+  const { data } = await apiClient.post<BenefitPackage>('/admin/subscriptions/benefit-packages', request)
+  return data
+}
+
+/**
+ * Update benefit package
+ */
+export async function updateBenefitPackage(
+  id: number,
+  request: UpdateBenefitPackageRequest
+): Promise<BenefitPackage> {
+  const { data } = await apiClient.put<BenefitPackage>(`/admin/subscriptions/benefit-packages/${id}`, request)
+  return data
+}
+
+/**
+ * Delete benefit package
+ */
+export async function deleteBenefitPackage(id: number): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(`/admin/subscriptions/benefit-packages/${id}`)
+  return data
+}
+
+/**
+ * List benefit plans
+ */
+export async function listBenefitPlans(): Promise<BenefitPlan[]> {
+  const { data } = await apiClient.get<BenefitPlan[]>('/admin/subscriptions/benefit-plans')
+  return data
+}
+
+/**
+ * Create benefit plan
+ */
+export async function createBenefitPlan(request: CreateBenefitPlanRequest): Promise<BenefitPlan> {
+  const { data } = await apiClient.post<BenefitPlan>('/admin/subscriptions/benefit-plans', request)
+  return data
+}
+
+/**
+ * Update benefit plan
+ */
+export async function updateBenefitPlan(
+  id: number,
+  request: UpdateBenefitPlanRequest
+): Promise<BenefitPlan> {
+  const { data } = await apiClient.put<BenefitPlan>(`/admin/subscriptions/benefit-plans/${id}`, request)
+  return data
+}
+
+/**
+ * Delete benefit plan
+ */
+export async function deleteBenefitPlan(id: number): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(`/admin/subscriptions/benefit-plans/${id}`)
+  return data
+}
+
+/**
+ * List benefit plan members
+ */
+export async function listBenefitPlanMembers(planId: number): Promise<BenefitPlanMember[]> {
+  const { data } = await apiClient.get<BenefitPlanMember[]>(
+    `/admin/subscriptions/benefit-plans/${planId}/users`
+  )
+  return data
+}
+
+/**
+ * Bulk assign users into a benefit plan
+ */
+export async function bulkAssignBenefitPlanUsers(
+  planId: number,
+  userIds: number[]
+): Promise<BenefitPlanUserBulkResult> {
+  const { data } = await apiClient.post<BenefitPlanUserBulkResult>(
+    `/admin/subscriptions/benefit-plans/${planId}/users/bulk-assign`,
+    { user_ids: userIds }
+  )
+  return data
+}
+
+/**
+ * Bulk remove users from a benefit plan
+ */
+export async function bulkRemoveBenefitPlanUsers(
+  planId: number,
+  userIds: number[]
+): Promise<BenefitPlanUserBulkResult> {
+  const { data } = await apiClient.post<BenefitPlanUserBulkResult>(
+    `/admin/subscriptions/benefit-plans/${planId}/users/bulk-remove`,
+    { user_ids: userIds }
+  )
+  return data
+}
+
+/**
+ * Get user's current benefit plan assignment
+ */
+export async function getUserBenefitPlan(
+  userId: number
+): Promise<UserBenefitPlanAssignment | null> {
+  const { data } = await apiClient.get<UserBenefitPlanAssignment | null>(
+    `/admin/users/${userId}/benefit-plan`
+  )
+  return data
+}
+
+/**
+ * Assign/clear user's benefit plan assignment
+ */
+export async function assignUserBenefitPlan(
+  userId: number,
+  planId: number | null
+): Promise<UserBenefitPlanAssignment | null> {
+  const { data } = await apiClient.put<UserBenefitPlanAssignment | null>(
+    `/admin/users/${userId}/benefit-plan`,
+    { plan_id: planId }
+  )
+  return data
+}
+
 export const subscriptionsAPI = {
   list,
   getById,
@@ -201,7 +346,20 @@ export const subscriptionsAPI = {
   restore,
   resetQuota,
   listByGroup,
-  listByUser
+  listByUser,
+  listBenefitPackages,
+  createBenefitPackage,
+  updateBenefitPackage,
+  deleteBenefitPackage,
+  listBenefitPlans,
+  createBenefitPlan,
+  updateBenefitPlan,
+  deleteBenefitPlan,
+  listBenefitPlanMembers,
+  bulkAssignBenefitPlanUsers,
+  bulkRemoveBenefitPlanUsers,
+  getUserBenefitPlan,
+  assignUserBenefitPlan
 }
 
 export default subscriptionsAPI

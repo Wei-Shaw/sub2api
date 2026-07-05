@@ -1676,6 +1676,84 @@ export interface ExtendSubscriptionRequest {
   days: number
 }
 
+export interface BenefitPackage {
+  id: number
+  name: string
+  description: string
+  group_id: number
+  group_name: string
+  lease_days: number
+  created_at: string
+  updated_at: string
+}
+
+export interface BenefitPlanPackage {
+  package_id: number
+  sort_order: number
+  name: string
+  group_id: number
+  group_name: string
+  lease_days: number
+}
+
+export interface BenefitPlan {
+  id: number
+  name: string
+  description: string
+  packages: BenefitPlanPackage[]
+  assigned_user_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateBenefitPackageRequest {
+  name: string
+  description?: string
+  group_id: number
+  lease_days: number
+}
+
+export interface UpdateBenefitPackageRequest extends CreateBenefitPackageRequest {}
+
+export interface CreateBenefitPlanRequest {
+  name: string
+  description?: string
+  package_ids: number[]
+}
+
+export interface UpdateBenefitPlanRequest extends CreateBenefitPlanRequest {}
+
+export interface UserBenefitPlanAssignment {
+  user_id: number
+  plan_id: number
+  plan_name: string
+  version: number
+  assigned_by: number | null
+  assigned_at: string
+  updated_at: string
+}
+
+export interface BenefitPlanMember {
+  user_id: number
+  email: string
+  role: string
+  status: string
+  version: number
+  assigned_at: string
+  updated_at: string
+}
+
+export interface BenefitPlanUserBulkResult {
+  success_count: number
+  failed_count: number
+  assigned_count: number
+  removed_count: number
+  unchanged_count: number
+  skipped_count: number
+  errors: string[]
+  statuses?: Record<string, string>
+}
+
 // ==================== Query Parameters ====================
 
 export interface UserErrorRequest {

@@ -555,10 +555,24 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	subscriptions := admin.Group("/subscriptions")
 	{
 		subscriptions.GET("", h.Admin.Subscription.List)
-		subscriptions.GET("/:id", h.Admin.Subscription.GetByID)
-		subscriptions.GET("/:id/progress", h.Admin.Subscription.GetProgress)
+
+		// 权益包与权益方案（MVP）
+		subscriptions.GET("/benefit-packages", h.Admin.Subscription.ListBenefitPackages)
+		subscriptions.POST("/benefit-packages", h.Admin.Subscription.CreateBenefitPackage)
+		subscriptions.PUT("/benefit-packages/:id", h.Admin.Subscription.UpdateBenefitPackage)
+		subscriptions.DELETE("/benefit-packages/:id", h.Admin.Subscription.DeleteBenefitPackage)
+		subscriptions.GET("/benefit-plans", h.Admin.Subscription.ListBenefitPlans)
+		subscriptions.POST("/benefit-plans", h.Admin.Subscription.CreateBenefitPlan)
+		subscriptions.GET("/benefit-plans/:id/users", h.Admin.Subscription.ListBenefitPlanMembers)
+		subscriptions.POST("/benefit-plans/:id/users/bulk-assign", h.Admin.Subscription.BulkAssignBenefitPlanUsers)
+		subscriptions.POST("/benefit-plans/:id/users/bulk-remove", h.Admin.Subscription.BulkRemoveBenefitPlanUsers)
+		subscriptions.PUT("/benefit-plans/:id", h.Admin.Subscription.UpdateBenefitPlan)
+		subscriptions.DELETE("/benefit-plans/:id", h.Admin.Subscription.DeleteBenefitPlan)
+
 		subscriptions.POST("/assign", h.Admin.Subscription.Assign)
 		subscriptions.POST("/bulk-assign", h.Admin.Subscription.BulkAssign)
+		subscriptions.GET("/:id", h.Admin.Subscription.GetByID)
+		subscriptions.GET("/:id/progress", h.Admin.Subscription.GetProgress)
 		subscriptions.POST("/:id/extend", h.Admin.Subscription.Extend)
 		subscriptions.POST("/:id/reset-quota", h.Admin.Subscription.ResetQuota)
 		subscriptions.POST("/:id/revoke", h.Admin.Subscription.Revoke)
@@ -571,6 +585,10 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 	// 用户下的订阅列表
 	admin.GET("/users/:id/subscriptions", h.Admin.Subscription.ListByUser)
+
+	// 用户权益方案归属（支持一对多；兼容旧接口）
+	admin.GET("/users/:id/benefit-plan", h.Admin.Subscription.GetUserBenefitPlan)
+	admin.PUT("/users/:id/benefit-plan", h.Admin.Subscription.AssignUserBenefitPlan)
 }
 
 func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {

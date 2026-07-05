@@ -439,6 +439,447 @@
       </template>
     </TablePageLayout>
 
+    <!-- Benefit Packages / Plans -->
+    <div class="mt-6 space-y-6">
+      <div class="grid gap-6 xl:grid-cols-2">
+        <section class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-dark-800">
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.subscriptions.benefitPackages.title') }}
+            </h3>
+            <button class="btn btn-primary btn-sm" @click="openCreateBenefitPackageModal">
+              <Icon name="plus" size="sm" class="mr-1" />
+              {{ t('admin.subscriptions.benefitPackages.create') }}
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+              <thead class="bg-gray-50 dark:bg-dark-700">
+                <tr>
+                  <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                    {{ t('admin.subscriptions.benefitPackages.columns.name') }}
+                  </th>
+                  <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                    {{ t('admin.subscriptions.benefitPackages.columns.group') }}
+                  </th>
+                  <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                    {{ t('admin.subscriptions.benefitPackages.columns.days') }}
+                  </th>
+                  <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                    {{ t('admin.subscriptions.benefitPackages.columns.description') }}
+                  </th>
+                  <th class="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                    {{ t('admin.subscriptions.columns.actions') }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                <tr v-if="benefitPackagesLoading">
+                  <td colspan="5" class="px-3 py-6 text-center text-gray-500 dark:text-gray-400">
+                    {{ t('common.loading') }}
+                  </td>
+                </tr>
+                <tr v-else-if="benefitPackages.length === 0">
+                  <td colspan="5" class="px-3 py-6 text-center text-gray-500 dark:text-gray-400">
+                    {{ t('admin.subscriptions.benefitPackages.empty') }}
+                  </td>
+                </tr>
+                <tr v-for="item in benefitPackages" :key="item.id">
+                  <td class="px-3 py-2 font-medium text-gray-900 dark:text-white">{{ item.name }}</td>
+                  <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ item.group_name }}</td>
+                  <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ item.lease_days }}</td>
+                  <td class="max-w-xs truncate px-3 py-2 text-gray-500 dark:text-gray-400">
+                    {{ item.description || '-' }}
+                  </td>
+                  <td class="px-3 py-2 text-right">
+                    <div class="flex items-center justify-end gap-2">
+                      <button
+                        class="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                        @click="openEditBenefitPackageModal(item)"
+                      >
+                        {{ t('common.edit') }}
+                      </button>
+                      <button
+                        class="text-xs text-red-600 hover:text-red-700 dark:text-red-400"
+                        @click="handleDeleteBenefitPackage(item)"
+                      >
+                        {{ t('common.delete') }}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-dark-800">
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.subscriptions.benefitPlans.title') }}
+            </h3>
+            <button class="btn btn-primary btn-sm" @click="openCreateBenefitPlanModal">
+              <Icon name="plus" size="sm" class="mr-1" />
+              {{ t('admin.subscriptions.benefitPlans.create') }}
+            </button>
+          </div>
+
+          <div v-if="benefitPlansLoading" class="rounded-lg border border-gray-200 px-4 py-6 text-center text-gray-500 dark:border-gray-700 dark:text-gray-400">
+            {{ t('common.loading') }}
+          </div>
+          <div v-else-if="benefitPlans.length === 0" class="rounded-lg border border-gray-200 px-4 py-6 text-center text-gray-500 dark:border-gray-700 dark:text-gray-400">
+            {{ t('admin.subscriptions.benefitPlans.empty') }}
+          </div>
+          <div v-else class="space-y-3">
+            <article
+              v-for="plan in benefitPlans"
+              :key="plan.id"
+              class="rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+            >
+              <div class="mb-2 flex items-start justify-between gap-3">
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">{{ plan.name }}</h4>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.subscriptions.benefitPlans.assignedUsers', { count: plan.assigned_user_count }) }}
+                  </p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                    @click="openBenefitPlanMembersModal(plan)"
+                  >
+                    {{ t('admin.subscriptions.benefitPlans.manageMembers') }}
+                  </button>
+                  <button
+                    class="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                    @click="openEditBenefitPlanModal(plan)"
+                  >
+                    {{ t('common.edit') }}
+                  </button>
+                  <button
+                    class="text-xs text-red-600 hover:text-red-700 dark:text-red-400"
+                    @click="handleDeleteBenefitPlan(plan)"
+                  >
+                    {{ t('common.delete') }}
+                  </button>
+                </div>
+              </div>
+              <p v-if="plan.description" class="mb-2 text-xs text-gray-600 dark:text-gray-300">
+                {{ plan.description }}
+              </p>
+              <div class="flex flex-wrap gap-1.5">
+                <span
+                  v-for="pkg in plan.packages"
+                  :key="`${plan.id}-${pkg.package_id}`"
+                  class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200"
+                >
+                  {{ pkg.name }} · {{ pkg.lease_days }}d
+                </span>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Benefit Package Modal -->
+    <BaseDialog
+      :show="showBenefitPackageModal"
+      :title="editingBenefitPackage ? t('admin.subscriptions.benefitPackages.edit') : t('admin.subscriptions.benefitPackages.create')"
+      width="normal"
+      @close="closeBenefitPackageModal"
+    >
+      <form id="benefit-package-form" class="space-y-4" @submit.prevent="handleSaveBenefitPackage">
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.benefitPackages.columns.name') }}</label>
+          <input v-model.trim="benefitPackageForm.name" class="input" maxlength="100" required />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.benefitPackages.columns.group') }}</label>
+          <Select
+            v-model="benefitPackageForm.group_id"
+            :options="subscriptionGroupOptions"
+            :placeholder="t('admin.subscriptions.selectGroup')"
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.benefitPackages.columns.days') }}</label>
+          <input v-model.number="benefitPackageForm.lease_days" class="input" type="number" min="1" max="36500" required />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.benefitPackages.columns.description') }}</label>
+          <textarea
+            v-model.trim="benefitPackageForm.description"
+            class="input min-h-[84px] resize-y"
+            maxlength="2000"
+          />
+        </div>
+      </form>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeBenefitPackageModal">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="submit" form="benefit-package-form" class="btn btn-primary" :disabled="benefitSaving">
+            {{ benefitSaving ? t('common.loading') : t('common.save') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <!-- Benefit Plan Modal -->
+    <BaseDialog
+      :show="showBenefitPlanModal"
+      :title="editingBenefitPlan ? t('admin.subscriptions.benefitPlans.edit') : t('admin.subscriptions.benefitPlans.create')"
+      width="normal"
+      @close="closeBenefitPlanModal"
+    >
+      <form id="benefit-plan-form" class="space-y-4" @submit.prevent="handleSaveBenefitPlan">
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.benefitPlans.columns.name') }}</label>
+          <input v-model.trim="benefitPlanForm.name" class="input" maxlength="100" required />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.benefitPlans.columns.description') }}</label>
+          <textarea
+            v-model.trim="benefitPlanForm.description"
+            class="input min-h-[84px] resize-y"
+            maxlength="2000"
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.benefitPlans.columns.packages') }}</label>
+          <div class="max-h-56 space-y-2 overflow-auto rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+            <label
+              v-for="item in benefitPackages"
+              :key="item.id"
+              class="flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-dark-700"
+            >
+              <div>
+                <div class="text-sm font-medium text-gray-900 dark:text-white">{{ item.name }}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ item.group_name }} · {{ item.lease_days }}d
+                </div>
+              </div>
+              <input
+                v-model="benefitPlanForm.package_ids"
+                :value="item.id"
+                type="checkbox"
+                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </label>
+            <p v-if="benefitPackages.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.subscriptions.benefitPlans.noPackagesToSelect') }}
+            </p>
+          </div>
+        </div>
+      </form>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeBenefitPlanModal">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="submit" form="benefit-plan-form" class="btn btn-primary" :disabled="benefitSaving">
+            {{ benefitSaving ? t('common.loading') : t('common.save') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <!-- Benefit Plan Members Modal -->
+    <BaseDialog
+      :show="showBenefitPlanMembersModal"
+      :title="benefitPlanMembersModalTitle"
+      width="wide"
+      @close="closeBenefitPlanMembersModal"
+    >
+      <div class="space-y-5">
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900/70 dark:bg-emerald-950/30">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p class="text-sm font-medium text-emerald-900 dark:text-emerald-200">
+                {{ t('admin.subscriptions.benefitPlanMembers.subtitle') }}
+              </p>
+              <p class="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                {{ t('admin.subscriptions.benefitPlanMembers.moveNotice') }}
+              </p>
+            </div>
+            <span class="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-medium text-emerald-700 shadow-sm dark:bg-emerald-900/50 dark:text-emerald-200">
+              {{ t('admin.subscriptions.benefitPlanMembers.membersCount', { count: benefitPlanMembers.length }) }}
+            </span>
+          </div>
+        </div>
+
+        <div class="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <section class="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.subscriptions.benefitPlanMembers.currentMembers') }}
+                </h4>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.subscriptions.benefitPlanMembers.selectedToRemove', { count: selectedBenefitPlanMemberIds.length }) }}
+                </p>
+              </div>
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                :disabled="benefitPlanMembersSubmitting || selectedBenefitPlanMemberIds.length === 0"
+                @click="handleBulkRemoveBenefitPlanUsers"
+              >
+                {{ t('admin.subscriptions.benefitPlanMembers.removeSelected') }}
+              </button>
+            </div>
+
+            <div class="max-h-[420px] space-y-2 overflow-auto pr-1">
+              <div
+                v-if="benefitPlanMembersLoading"
+                class="rounded-lg border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400"
+              >
+                {{ t('common.loading') }}
+              </div>
+              <div
+                v-else-if="benefitPlanMembers.length === 0"
+                class="rounded-lg border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400"
+              >
+                {{ t('admin.subscriptions.benefitPlanMembers.noMembers') }}
+              </div>
+              <label
+                v-for="member in benefitPlanMembers"
+                :key="member.user_id"
+                class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 px-3 py-3 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:hover:bg-dark-700"
+              >
+                <input
+                  :checked="selectedBenefitPlanMemberIds.includes(member.user_id)"
+                  type="checkbox"
+                  class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  @change="toggleBenefitPlanMemberSelection(member.user_id)"
+                />
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ member.email }}</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">#{{ member.user_id }}</span>
+                    <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600 dark:bg-dark-600 dark:text-gray-300">
+                      {{ member.role }}
+                    </span>
+                    <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600 dark:bg-dark-600 dark:text-gray-300">
+                      {{ member.status }}
+                    </span>
+                  </div>
+                  <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.subscriptions.benefitPlanMembers.assignedAt') }}:
+                    {{ formatDateOnly(member.assigned_at) }}
+                  </div>
+                </div>
+              </label>
+            </div>
+          </section>
+
+          <section class="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.subscriptions.benefitPlanMembers.addUsers') }}
+                </h4>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.subscriptions.benefitPlanMembers.selectedToAdd', { count: selectedBenefitPlanAddUsers.length }) }}
+                </p>
+              </div>
+              <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                :disabled="benefitPlanMembersSubmitting || selectedBenefitPlanAddUsers.length === 0"
+                @click="handleBulkAssignBenefitPlanUsers"
+              >
+                {{ t('admin.subscriptions.benefitPlanMembers.addSelected') }}
+              </button>
+            </div>
+
+            <div class="relative" data-benefit-plan-member-search>
+              <Icon
+                name="search"
+                size="md"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                v-model="benefitPlanMemberSearchKeyword"
+                type="text"
+                class="input pl-10"
+                :placeholder="t('admin.users.searchUsers')"
+                @input="debounceSearchBenefitPlanUsers"
+                @focus="showBenefitPlanMemberSearchDropdown = true"
+              />
+
+              <div
+                v-if="showBenefitPlanMemberSearchDropdown && (benefitPlanMemberSearchResults.length > 0 || benefitPlanMemberSearchKeyword)"
+                class="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div
+                  v-if="benefitPlanMemberSearchLoading"
+                  class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
+                >
+                  {{ t('common.loading') }}
+                </div>
+                <div
+                  v-else-if="benefitPlanMemberSearchResults.length === 0 && benefitPlanMemberSearchKeyword"
+                  class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
+                >
+                  {{ t('common.noOptionsFound') }}
+                </div>
+                <label
+                  v-for="user in benefitPlanMemberSearchResults"
+                  :key="user.id"
+                  class="flex cursor-pointer items-start gap-3 px-4 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
+                  :class="{ 'cursor-not-allowed opacity-60': benefitPlanMemberIdSet.has(user.id) }"
+                >
+                  <input
+                    :checked="selectedBenefitPlanAddUserIdSet.has(user.id)"
+                    :disabled="benefitPlanMemberIdSet.has(user.id)"
+                    type="checkbox"
+                    class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    @change="toggleBenefitPlanAddSelection(user)"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ user.email }}</span>
+                      <span class="text-xs text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
+                      <span
+                        v-if="benefitPlanMemberIdSet.has(user.id)"
+                        class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-200"
+                      >
+                        {{ t('admin.subscriptions.benefitPlanMembers.alreadyMember') }}
+                      </span>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div class="rounded-lg bg-gray-50 px-3 py-3 text-xs text-gray-500 dark:bg-dark-700 dark:text-gray-400">
+              {{ t('admin.subscriptions.benefitPlanMembers.moveNotice') }}
+            </div>
+
+            <div
+              v-if="selectedBenefitPlanAddUsers.length > 0"
+              class="flex max-h-[240px] flex-wrap gap-2 overflow-auto rounded-lg border border-dashed border-gray-200 p-3 dark:border-gray-700"
+            >
+              <button
+                v-for="user in selectedBenefitPlanAddUsers"
+                :key="`selected-add-${user.id}`"
+                type="button"
+                class="inline-flex items-center gap-1 rounded-full bg-primary-50 px-3 py-1 text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
+                @click="toggleBenefitPlanAddSelection(user)"
+              >
+                <span class="max-w-[180px] truncate">{{ user.email }}</span>
+                <Icon name="x" size="xs" :stroke-width="2" />
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </BaseDialog>
+
     <!-- Assign Subscription Modal -->
     <BaseDialog
       :show="showAssignModal"
@@ -761,7 +1202,15 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { UserSubscription, Group, GroupPlatform, SubscriptionType } from '@/types'
+import type {
+  UserSubscription,
+  Group,
+  GroupPlatform,
+  SubscriptionType,
+  BenefitPackage,
+  BenefitPlan,
+  BenefitPlanMember
+} from '@/types'
 import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@/components/common/types'
 import { formatDateOnly } from '@/utils/format'
@@ -936,6 +1385,44 @@ const showUserDropdown = ref(false)
 const selectedUser = ref<SimpleUser | null>(null)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
+// Benefit package / plan state
+const benefitPackages = ref<BenefitPackage[]>([])
+const benefitPlans = ref<BenefitPlan[]>([])
+const benefitPackagesLoading = ref(false)
+const benefitPlansLoading = ref(false)
+const benefitSaving = ref(false)
+
+const showBenefitPackageModal = ref(false)
+const editingBenefitPackage = ref<BenefitPackage | null>(null)
+const benefitPackageForm = reactive({
+  name: '',
+  description: '',
+  group_id: null as number | null,
+  lease_days: 30
+})
+
+const showBenefitPlanModal = ref(false)
+const editingBenefitPlan = ref<BenefitPlan | null>(null)
+const benefitPlanForm = reactive({
+  name: '',
+  description: '',
+  package_ids: [] as number[]
+})
+
+// Benefit plan member management state
+const showBenefitPlanMembersModal = ref(false)
+const activeBenefitPlanForMembers = ref<BenefitPlan | null>(null)
+const benefitPlanMembers = ref<BenefitPlanMember[]>([])
+const benefitPlanMembersLoading = ref(false)
+const benefitPlanMembersSubmitting = ref(false)
+const selectedBenefitPlanMemberIds = ref<number[]>([])
+const benefitPlanMemberSearchKeyword = ref('')
+const benefitPlanMemberSearchResults = ref<SimpleUser[]>([])
+const benefitPlanMemberSearchLoading = ref(false)
+const showBenefitPlanMemberSearchDropdown = ref(false)
+const selectedBenefitPlanAddUsers = ref<SimpleUser[]>([])
+let benefitPlanMemberSearchTimeout: ReturnType<typeof setTimeout> | null = null
+
 const filters = reactive({
   status: 'active',
   group_id: '',
@@ -1006,6 +1493,20 @@ const subscriptionGroupOptions = computed(() =>
     }))
 )
 
+const benefitPlanMembersModalTitle = computed(() =>
+  activeBenefitPlanForMembers.value
+    ? `${activeBenefitPlanForMembers.value.name} · ${t('admin.subscriptions.benefitPlanMembers.title')}`
+    : t('admin.subscriptions.benefitPlanMembers.title')
+)
+
+const benefitPlanMemberIdSet = computed(() =>
+  new Set(benefitPlanMembers.value.map((member) => member.user_id))
+)
+
+const selectedBenefitPlanAddUserIdSet = computed(() =>
+  new Set(selectedBenefitPlanAddUsers.value.map((user) => user.id))
+)
+
 const applyFilters = () => {
   pagination.page = 1
   loadSubscriptions()
@@ -1059,6 +1560,347 @@ const loadGroups = async () => {
     groups.value = await adminAPI.groups.getAll()
   } catch (error) {
     console.error('Error loading groups:', error)
+  }
+}
+
+const loadBenefitPackages = async () => {
+  benefitPackagesLoading.value = true
+  try {
+    benefitPackages.value = await adminAPI.subscriptions.listBenefitPackages()
+  } catch (error: any) {
+    appStore.showError(error?.response?.data?.detail || t('admin.subscriptions.benefitPackages.failedToLoad'))
+    console.error('Error loading benefit packages:', error)
+  } finally {
+    benefitPackagesLoading.value = false
+  }
+}
+
+const loadBenefitPlans = async () => {
+  benefitPlansLoading.value = true
+  try {
+    benefitPlans.value = await adminAPI.subscriptions.listBenefitPlans()
+    if (activeBenefitPlanForMembers.value) {
+      const refreshedPlan = benefitPlans.value.find((plan) => plan.id === activeBenefitPlanForMembers.value?.id)
+      if (refreshedPlan) {
+        activeBenefitPlanForMembers.value = refreshedPlan
+      } else {
+        closeBenefitPlanMembersModal()
+      }
+    }
+  } catch (error: any) {
+    appStore.showError(error?.response?.data?.detail || t('admin.subscriptions.benefitPlans.failedToLoad'))
+    console.error('Error loading benefit plans:', error)
+  } finally {
+    benefitPlansLoading.value = false
+  }
+}
+
+const loadBenefitData = async () => {
+  await Promise.all([loadBenefitPackages(), loadBenefitPlans()])
+}
+
+const resetBenefitPackageForm = () => {
+  benefitPackageForm.name = ''
+  benefitPackageForm.description = ''
+  benefitPackageForm.group_id = null
+  benefitPackageForm.lease_days = 30
+}
+
+const openCreateBenefitPackageModal = () => {
+  editingBenefitPackage.value = null
+  resetBenefitPackageForm()
+  showBenefitPackageModal.value = true
+}
+
+const openEditBenefitPackageModal = (item: BenefitPackage) => {
+  editingBenefitPackage.value = item
+  benefitPackageForm.name = item.name
+  benefitPackageForm.description = item.description || ''
+  benefitPackageForm.group_id = item.group_id
+  benefitPackageForm.lease_days = item.lease_days
+  showBenefitPackageModal.value = true
+}
+
+const closeBenefitPackageModal = () => {
+  showBenefitPackageModal.value = false
+  editingBenefitPackage.value = null
+  resetBenefitPackageForm()
+}
+
+const handleSaveBenefitPackage = async () => {
+  if (!benefitPackageForm.name.trim()) {
+    appStore.showError(t('admin.subscriptions.benefitPackages.nameRequired'))
+    return
+  }
+  if (!benefitPackageForm.group_id) {
+    appStore.showError(t('admin.subscriptions.pleaseSelectGroup'))
+    return
+  }
+  if (!benefitPackageForm.lease_days || benefitPackageForm.lease_days < 1) {
+    appStore.showError(t('admin.subscriptions.benefitPackages.daysRequired'))
+    return
+  }
+
+  benefitSaving.value = true
+  try {
+    const payload = {
+      name: benefitPackageForm.name.trim(),
+      description: benefitPackageForm.description.trim(),
+      group_id: benefitPackageForm.group_id,
+      lease_days: benefitPackageForm.lease_days
+    }
+    if (editingBenefitPackage.value) {
+      await adminAPI.subscriptions.updateBenefitPackage(editingBenefitPackage.value.id, payload)
+      appStore.showSuccess(t('admin.subscriptions.benefitPackages.updated'))
+    } else {
+      await adminAPI.subscriptions.createBenefitPackage(payload)
+      appStore.showSuccess(t('admin.subscriptions.benefitPackages.created'))
+    }
+    closeBenefitPackageModal()
+    await Promise.all([loadBenefitPackages(), loadBenefitPlans()])
+  } catch (error: any) {
+    appStore.showError(error?.response?.data?.detail || t('admin.subscriptions.benefitPackages.saveFailed'))
+    console.error('Error saving benefit package:', error)
+  } finally {
+    benefitSaving.value = false
+  }
+}
+
+const handleDeleteBenefitPackage = async (item: BenefitPackage) => {
+  if (!window.confirm(t('admin.subscriptions.benefitPackages.deleteConfirm', { name: item.name }))) {
+    return
+  }
+  try {
+    await adminAPI.subscriptions.deleteBenefitPackage(item.id)
+    appStore.showSuccess(t('admin.subscriptions.benefitPackages.deleted'))
+    await Promise.all([loadBenefitPackages(), loadBenefitPlans()])
+  } catch (error: any) {
+    appStore.showError(error?.response?.data?.detail || t('admin.subscriptions.benefitPackages.deleteFailed'))
+    console.error('Error deleting benefit package:', error)
+  }
+}
+
+const resetBenefitPlanForm = () => {
+  benefitPlanForm.name = ''
+  benefitPlanForm.description = ''
+  benefitPlanForm.package_ids = []
+}
+
+const openCreateBenefitPlanModal = () => {
+  editingBenefitPlan.value = null
+  resetBenefitPlanForm()
+  showBenefitPlanModal.value = true
+}
+
+const openEditBenefitPlanModal = (item: BenefitPlan) => {
+  editingBenefitPlan.value = item
+  benefitPlanForm.name = item.name
+  benefitPlanForm.description = item.description || ''
+  benefitPlanForm.package_ids = item.packages.map((pkg) => pkg.package_id)
+  showBenefitPlanModal.value = true
+}
+
+const closeBenefitPlanModal = () => {
+  showBenefitPlanModal.value = false
+  editingBenefitPlan.value = null
+  resetBenefitPlanForm()
+}
+
+const handleSaveBenefitPlan = async () => {
+  if (!benefitPlanForm.name.trim()) {
+    appStore.showError(t('admin.subscriptions.benefitPlans.nameRequired'))
+    return
+  }
+  if (benefitPlanForm.package_ids.length === 0) {
+    appStore.showError(t('admin.subscriptions.benefitPlans.packagesRequired'))
+    return
+  }
+
+  benefitSaving.value = true
+  try {
+    const payload = {
+      name: benefitPlanForm.name.trim(),
+      description: benefitPlanForm.description.trim(),
+      package_ids: [...benefitPlanForm.package_ids]
+    }
+    if (editingBenefitPlan.value) {
+      await adminAPI.subscriptions.updateBenefitPlan(editingBenefitPlan.value.id, payload)
+      appStore.showSuccess(t('admin.subscriptions.benefitPlans.updated'))
+    } else {
+      await adminAPI.subscriptions.createBenefitPlan(payload)
+      appStore.showSuccess(t('admin.subscriptions.benefitPlans.created'))
+    }
+    closeBenefitPlanModal()
+    await loadBenefitPlans()
+  } catch (error: any) {
+    appStore.showError(error?.response?.data?.detail || t('admin.subscriptions.benefitPlans.saveFailed'))
+    console.error('Error saving benefit plan:', error)
+  } finally {
+    benefitSaving.value = false
+  }
+}
+
+const handleDeleteBenefitPlan = async (item: BenefitPlan) => {
+  if (!window.confirm(t('admin.subscriptions.benefitPlans.deleteConfirm', { name: item.name }))) {
+    return
+  }
+  try {
+    await adminAPI.subscriptions.deleteBenefitPlan(item.id)
+    appStore.showSuccess(t('admin.subscriptions.benefitPlans.deleted'))
+    await loadBenefitPlans()
+    if (activeBenefitPlanForMembers.value?.id === item.id) {
+      closeBenefitPlanMembersModal()
+    }
+  } catch (error: any) {
+    appStore.showError(error?.response?.data?.detail || t('admin.subscriptions.benefitPlans.deleteFailed'))
+    console.error('Error deleting benefit plan:', error)
+  }
+}
+
+const resetBenefitPlanMemberSelection = () => {
+  selectedBenefitPlanMemberIds.value = []
+  selectedBenefitPlanAddUsers.value = []
+  benefitPlanMemberSearchKeyword.value = ''
+  benefitPlanMemberSearchResults.value = []
+  showBenefitPlanMemberSearchDropdown.value = false
+}
+
+const closeBenefitPlanMembersModal = () => {
+  showBenefitPlanMembersModal.value = false
+  activeBenefitPlanForMembers.value = null
+  benefitPlanMembers.value = []
+  benefitPlanMembersLoading.value = false
+  benefitPlanMembersSubmitting.value = false
+  resetBenefitPlanMemberSelection()
+}
+
+const loadBenefitPlanMembers = async (planID: number) => {
+  benefitPlanMembersLoading.value = true
+  try {
+    benefitPlanMembers.value = await adminAPI.subscriptions.listBenefitPlanMembers(planID)
+    const memberIDs = new Set(benefitPlanMembers.value.map((member) => member.user_id))
+    selectedBenefitPlanMemberIds.value = selectedBenefitPlanMemberIds.value.filter((userID) => memberIDs.has(userID))
+    selectedBenefitPlanAddUsers.value = selectedBenefitPlanAddUsers.value.filter((user) => !memberIDs.has(user.id))
+  } catch (error: any) {
+    appStore.showError(error?.response?.data?.detail || t('admin.subscriptions.benefitPlanMembers.loadFailed'))
+    console.error('Failed to load benefit plan members:', error)
+  } finally {
+    benefitPlanMembersLoading.value = false
+  }
+}
+
+const openBenefitPlanMembersModal = (plan: BenefitPlan) => {
+  activeBenefitPlanForMembers.value = plan
+  showBenefitPlanMembersModal.value = true
+  benefitPlanMembers.value = []
+  resetBenefitPlanMemberSelection()
+  void loadBenefitPlanMembers(plan.id)
+}
+
+const debounceSearchBenefitPlanUsers = () => {
+  if (benefitPlanMemberSearchTimeout) {
+    clearTimeout(benefitPlanMemberSearchTimeout)
+  }
+  benefitPlanMemberSearchTimeout = setTimeout(searchBenefitPlanUsers, 300)
+}
+
+const searchBenefitPlanUsers = async () => {
+  const keyword = benefitPlanMemberSearchKeyword.value.trim()
+  if (!keyword) {
+    benefitPlanMemberSearchResults.value = []
+    return
+  }
+  benefitPlanMemberSearchLoading.value = true
+  try {
+    benefitPlanMemberSearchResults.value = await adminAPI.usage.searchUsers(keyword)
+  } catch (error) {
+    console.error('Failed to search users for benefit plan members:', error)
+    benefitPlanMemberSearchResults.value = []
+  } finally {
+    benefitPlanMemberSearchLoading.value = false
+  }
+}
+
+const toggleBenefitPlanMemberSelection = (userID: number) => {
+  if (selectedBenefitPlanMemberIds.value.includes(userID)) {
+    selectedBenefitPlanMemberIds.value = selectedBenefitPlanMemberIds.value.filter((id) => id !== userID)
+    return
+  }
+  selectedBenefitPlanMemberIds.value = [...selectedBenefitPlanMemberIds.value, userID]
+}
+
+const toggleBenefitPlanAddSelection = (user: SimpleUser) => {
+  if (benefitPlanMemberIdSet.value.has(user.id)) {
+    return
+  }
+  if (selectedBenefitPlanAddUserIdSet.value.has(user.id)) {
+    selectedBenefitPlanAddUsers.value = selectedBenefitPlanAddUsers.value.filter((item) => item.id !== user.id)
+    return
+  }
+  selectedBenefitPlanAddUsers.value = [...selectedBenefitPlanAddUsers.value, user]
+}
+
+const handleBulkAssignBenefitPlanUsers = async () => {
+  const plan = activeBenefitPlanForMembers.value
+  const userIDs = selectedBenefitPlanAddUsers.value.map((user) => user.id)
+  if (!plan) {
+    return
+  }
+  if (userIDs.length === 0) {
+    appStore.showError(t('admin.subscriptions.benefitPlanMembers.selectAtLeastOneUser'))
+    return
+  }
+  benefitPlanMembersSubmitting.value = true
+  try {
+    const result = await adminAPI.subscriptions.bulkAssignBenefitPlanUsers(plan.id, userIDs)
+    if (result.failed_count > 0 && result.success_count === 0) {
+      appStore.showError(result.errors[0] || t('admin.subscriptions.benefitPlanMembers.addFailed'))
+    } else {
+      appStore.showSuccess(t('admin.subscriptions.benefitPlanMembers.added'))
+      if (result.failed_count > 0 && result.errors.length > 0) {
+        appStore.showError(result.errors[0])
+      }
+    }
+    resetBenefitPlanMemberSelection()
+    await Promise.all([loadBenefitPlanMembers(plan.id), loadBenefitPlans(), loadSubscriptions()])
+  } catch (error: any) {
+    appStore.showError(error?.response?.data?.detail || t('admin.subscriptions.benefitPlanMembers.addFailed'))
+    console.error('Failed to bulk assign benefit plan users:', error)
+  } finally {
+    benefitPlanMembersSubmitting.value = false
+  }
+}
+
+const handleBulkRemoveBenefitPlanUsers = async () => {
+  const plan = activeBenefitPlanForMembers.value
+  if (!plan) {
+    return
+  }
+  if (selectedBenefitPlanMemberIds.value.length === 0) {
+    appStore.showError(t('admin.subscriptions.benefitPlanMembers.selectAtLeastOneUser'))
+    return
+  }
+  benefitPlanMembersSubmitting.value = true
+  try {
+    const result = await adminAPI.subscriptions.bulkRemoveBenefitPlanUsers(
+      plan.id,
+      selectedBenefitPlanMemberIds.value
+    )
+    if (result.failed_count > 0 && result.success_count === 0) {
+      appStore.showError(result.errors[0] || t('admin.subscriptions.benefitPlanMembers.removeFailed'))
+    } else {
+      appStore.showSuccess(t('admin.subscriptions.benefitPlanMembers.removed'))
+      if (result.failed_count > 0 && result.errors.length > 0) {
+        appStore.showError(result.errors[0])
+      }
+    }
+    selectedBenefitPlanMemberIds.value = []
+    await Promise.all([loadBenefitPlanMembers(plan.id), loadBenefitPlans(), loadSubscriptions()])
+  } catch (error: any) {
+    appStore.showError(error?.response?.data?.detail || t('admin.subscriptions.benefitPlanMembers.removeFailed'))
+    console.error('Failed to bulk remove benefit plan users:', error)
+  } finally {
+    benefitPlanMembersSubmitting.value = false
   }
 }
 
@@ -1419,6 +2261,7 @@ const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as HTMLElement
   if (!target.closest('[data-assign-user-search]')) showUserDropdown.value = false
   if (!target.closest('[data-filter-user-search]')) showFilterUserDropdown.value = false
+  if (!target.closest('[data-benefit-plan-member-search]')) showBenefitPlanMemberSearchDropdown.value = false
   if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
     showColumnDropdown.value = false
   }
@@ -1429,6 +2272,7 @@ onMounted(() => {
   loadSavedColumns()
   loadSubscriptions()
   loadGroups()
+  loadBenefitData()
   document.addEventListener('click', handleClickOutside)
 })
 
@@ -1439,6 +2283,9 @@ onUnmounted(() => {
   }
   if (userSearchTimeout) {
     clearTimeout(userSearchTimeout)
+  }
+  if (benefitPlanMemberSearchTimeout) {
+    clearTimeout(benefitPlanMemberSearchTimeout)
   }
 })
 </script>

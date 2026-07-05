@@ -3185,6 +3185,84 @@ export default {
           revokeDesc: '立即终止该用户的订阅，不可恢复'
         },
         tip: '提示：订阅分组下拉列表中只会显示计费类型为「订阅」且状态为「正常」的分组。如果没有可选项，请先到分组管理中创建。'
+      },
+      benefitPackages: {
+        title: '权益包',
+        create: '新增权益包',
+        edit: '编辑权益包',
+        columns: {
+          name: '名称',
+          group: '订阅分组',
+          days: '天数',
+          description: '描述'
+        },
+        empty: '暂无权益包',
+        failedToLoad: '加载权益包失败',
+        nameRequired: '请输入权益包名称',
+        daysRequired: '请输入有效天数（至少 1 天）',
+        created: '权益包创建成功',
+        updated: '权益包更新成功',
+        saveFailed: '保存权益包失败',
+        deleteConfirm: "确定要删除权益包「{name}」吗？",
+        deleted: '权益包删除成功',
+        deleteFailed: '删除权益包失败'
+      },
+      benefitPlans: {
+        title: '权益方案',
+        create: '新增权益方案',
+        edit: '编辑权益方案',
+        manageMembers: '成员管理',
+        columns: {
+          name: '名称',
+          description: '描述',
+          packages: '权益包'
+        },
+        empty: '暂无权益方案',
+        assignedUsers: '已分配用户：{count}',
+        noPackagesToSelect: '暂无可选权益包，请先创建权益包。',
+        failedToLoad: '加载权益方案失败',
+        nameRequired: '请输入权益方案名称',
+        packagesRequired: '请至少选择一个权益包',
+        created: '权益方案创建成功',
+        updated: '权益方案更新成功',
+        saveFailed: '保存权益方案失败',
+        deleteConfirm: "确定要删除权益方案「{name}」吗？",
+        deleted: '权益方案删除成功',
+        deleteFailed: '删除权益方案失败'
+      },
+      benefitPlanMembers: {
+        title: '方案成员管理',
+        subtitle: '将用户批量移入当前方案，或从当前方案批量移出。',
+        currentMembers: '当前成员',
+        addUsers: '批量添加用户',
+        selectedToAdd: '待移入：{count}',
+        selectedToRemove: '待移出：{count}',
+        moveNotice: '如果用户原本属于其他方案，会被直接移动到当前方案。',
+        noMembers: '当前方案暂无成员',
+        loadFailed: '加载方案成员失败',
+        addFailed: '批量添加成员失败',
+        removeFailed: '批量移出成员失败',
+        added: '方案成员已更新',
+        removed: '已从方案移出选中成员',
+        selectAtLeastOneUser: '请至少选择一个用户',
+        alreadyMember: '当前方案内',
+        assignedAt: '加入时间',
+        membersCount: '成员数：{count}',
+        addSelected: '移入选中',
+        removeSelected: '移出选中'
+      },
+      benefitAssignments: {
+        title: '用户权益方案分配',
+        noneOption: '不分配方案（清空）',
+        currentPlan: '当前方案',
+        noPlan: '当前未分配权益方案',
+        apply: '保存',
+        clear: '清空',
+        selectUserFirst: '请先选择用户',
+        loadFailed: '加载用户权益方案失败',
+        saved: '用户权益方案已更新',
+        cleared: '用户权益方案已清空',
+        saveFailed: '保存用户权益方案失败'
       }
     },
 

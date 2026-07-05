@@ -3110,6 +3110,84 @@ export default {
           revokeDesc: 'Immediately terminate the subscription (irreversible)'
         },
         tip: 'Tip: Only groups with billing type "Subscription" and status "Active" appear in the group dropdown. If no options are available, create one in Group Management first.'
+      },
+      benefitPackages: {
+        title: 'Benefit Packages',
+        create: 'Create Package',
+        edit: 'Edit Package',
+        columns: {
+          name: 'Name',
+          group: 'Subscription Group',
+          days: 'Days',
+          description: 'Description'
+        },
+        empty: 'No benefit packages yet',
+        failedToLoad: 'Failed to load benefit packages',
+        nameRequired: 'Please enter a package name',
+        daysRequired: 'Please enter valid days (at least 1)',
+        created: 'Benefit package created',
+        updated: 'Benefit package updated',
+        saveFailed: 'Failed to save benefit package',
+        deleteConfirm: "Delete benefit package '{name}'?",
+        deleted: 'Benefit package deleted',
+        deleteFailed: 'Failed to delete benefit package'
+      },
+      benefitPlans: {
+        title: 'Benefit Plans',
+        create: 'Create Plan',
+        edit: 'Edit Plan',
+        manageMembers: 'Manage Members',
+        columns: {
+          name: 'Name',
+          description: 'Description',
+          packages: 'Benefit Packages'
+        },
+        empty: 'No benefit plans yet',
+        assignedUsers: 'Assigned users: {count}',
+        noPackagesToSelect: 'No benefit packages available. Create a package first.',
+        failedToLoad: 'Failed to load benefit plans',
+        nameRequired: 'Please enter a plan name',
+        packagesRequired: 'Please select at least one benefit package',
+        created: 'Benefit plan created',
+        updated: 'Benefit plan updated',
+        saveFailed: 'Failed to save benefit plan',
+        deleteConfirm: "Delete benefit plan '{name}'?",
+        deleted: 'Benefit plan deleted',
+        deleteFailed: 'Failed to delete benefit plan'
+      },
+      benefitPlanMembers: {
+        title: 'Plan Members',
+        subtitle: 'Batch move users into this plan, or remove selected members from it.',
+        currentMembers: 'Current Members',
+        addUsers: 'Add Users',
+        selectedToAdd: 'Ready to add: {count}',
+        selectedToRemove: 'Ready to remove: {count}',
+        moveNotice: 'If a user already belongs to another plan, the assignment will be replaced.',
+        noMembers: 'No members in this plan yet',
+        loadFailed: 'Failed to load plan members',
+        addFailed: 'Failed to add selected users',
+        removeFailed: 'Failed to remove selected members',
+        added: 'Plan members updated',
+        removed: 'Selected members removed from the plan',
+        selectAtLeastOneUser: 'Select at least one user',
+        alreadyMember: 'Already in this plan',
+        assignedAt: 'Assigned At',
+        membersCount: 'Members: {count}',
+        addSelected: 'Add Selected',
+        removeSelected: 'Remove Selected'
+      },
+      benefitAssignments: {
+        title: 'User Benefit Plan Assignment',
+        noneOption: 'No plan (clear)',
+        currentPlan: 'Current plan',
+        noPlan: 'No benefit plan assigned',
+        apply: 'Save',
+        clear: 'Clear',
+        selectUserFirst: 'Please select a user first',
+        loadFailed: 'Failed to load user benefit plan assignment',
+        saved: 'User benefit plan assignment updated',
+        cleared: 'User benefit plan assignment cleared',
+        saveFailed: 'Failed to save user benefit plan assignment'
       }
     },
 
