@@ -19,13 +19,23 @@
       <div>
         <label class="input-label">{{ t('admin.accounts.dataImportFile') REDACTEDREDACTED</label>
         <div
-          class="flex items-center justify-between gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 dark:border-dark-600 dark:bg-dark-800"
+          class="flex items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3 transition-colors"
+          :class="dragActive
+            ? 'border-primary-400 bg-primary-50/70 dark:border-primary-500 dark:bg-primary-900/20'
+            : 'border-gray-300 bg-gray-50 dark:border-dark-600 dark:bg-dark-800'"
+          @dragenter.prevent="handleDragEnter"
+          @dragover.prevent="handleDragOver"
+          @dragleave.prevent="handleDragLeave"
+          @drop.prevent="handleDrop"
         >
           <div class="min-w-0">
-            <div class="truncate text-sm text-gray-700 dark:text-dark-200">
-              {{ fileName || t('admin.accounts.dataImportSelectFile') REDACTEDREDACTED
+            <div class="truncate text-sm text-gray-700 dark:text-dark-200" :title="fileListTitle">
+              {{ selectedFilesLabel || t('admin.accounts.dataImportSelectFile') REDACTEDREDACTED
             </div>
-            <div class="text-xs text-gray-500 dark:text-dark-400">JSON (.json)</div>
+            <div class="text-xs text-gray-500 dark:text-dark-400">
+              JSON (.json)
+              <span v-if="files.length > 1"> · {{ fileListTitle REDACTEDREDACTED</span>
+            </div>
           </div>
           <button type="button" class="btn btn-secondary shrink-0" @click="openFilePicker">
             {{ t('common.chooseFile') REDACTEDREDACTED
@@ -36,6 +46,7 @@
           type="file"
           class="hidden"
           accept="application/json,.json"
+          multiple
           @change="handleFileChange"
         />
       </div>
@@ -108,11 +119,18 @@ const { t REDACTED = useI18n()
 const appStore = useAppStore()
 
 const importing = ref(false)
-const file = ref<File | null>(null)
+const files = ref<File[]>([])
+const dragActive = ref(false)
+const dragDepth = ref(0)
 const result = ref<AdminDataImportResult | null>(null)
 
 const fileInput = ref<HTMLInputElement | null>(null)
-const fileName = computed(() => file.value?.name || '')
+const selectedFilesLabel = computed(() => {
+  if (files.value.length === 0) return ''
+  if (files.value.length === 1) return files.value[0]?.name || ''
+  return t('admin.accounts.selectedCount', { count: files.value.length REDACTED)
+REDACTED)
+const fileListTitle = computed(() => files.value.map((item) => item.name).join(', '))
 
 const errorItems = computed(() => result.value?.errors || [])
 
@@ -120,7 +138,9 @@ watch(
   () => props.show,
   (open) => {
     if (open) {
-      file.value = null
+      files.value = []
+      dragActive.value = false
+      dragDepth.value = 0
       result.value = null
       if (fileInput.value) {
         fileInput.value.value = ''
@@ -135,12 +155,55 @@ REDACTED
 
 const handleFileChange = (event: Event) => {
   const target = event.target as HTMLInputElement
-  file.value = target.files?.[0] || null
+  setSelectedFiles(target.files)
 REDACTED
 
 const handleClose = () => {
   if (importing.value) return
   emit('close')
+REDACTED
+
+const isJsonFile = (sourceFile: File) => {
+  const name = sourceFile.name.toLowerCase()
+  return name.endsWith('.json') || sourceFile.type === 'application/json'
+REDACTED
+
+const setSelectedFiles = (sourceFiles: FileList | File[] | null | undefined) => {
+  if (importing.value) return
+  const picked = Array.from(sourceFiles || []).filter(isJsonFile)
+  if (!picked.length) {
+    files.value = []
+    appStore.showError(t('admin.accounts.dataImportSelectFile'))
+    return
+  REDACTED
+  files.value = picked
+  result.value = null
+REDACTED
+
+const handleDragEnter = () => {
+  if (importing.value) return
+  dragDepth.value += 1
+  dragActive.value = true
+REDACTED
+
+const handleDragOver = () => {
+  if (importing.value) return
+  dragActive.value = true
+REDACTED
+
+const handleDragLeave = () => {
+  if (importing.value) return
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
+  if (dragDepth.value === 0) {
+    dragActive.value = false
+  REDACTED
+REDACTED
+
+const handleDrop = (event: DragEvent) => {
+  if (importing.value) return
+  dragDepth.value = 0
+  dragActive.value = false
+  setSelectedFiles(event.dataTransfer?.files)
 REDACTED
 
 const readFileAsText = async (sourceFile: File): Promise<string> => {
@@ -161,16 +224,36 @@ const readFileAsText = async (sourceFile: File): Promise<string> => {
   REDACTED)
 REDACTED
 
+const mergeDataPayloads = (payloads: any[]) => {
+  if (payloads.length === 1) return payloads[0]
+
+  return {
+    type: payloads.find((item) => typeof item?.type === 'string')?.type,
+    version: payloads.find((item) => typeof item?.version === 'number')?.version,
+    exported_at: new Date().toISOString(),
+    proxies: payloads.flatMap((item) => Array.isArray(item?.proxies) ? item.proxies : []),
+    accounts: payloads.flatMap((item) => Array.isArray(item?.accounts) ? item.accounts : []),
+    skipped_shadows: payloads.reduce((sum, item) => {
+      const count = Number(item?.skipped_shadows || 0)
+      return Number.isFinite(count) ? sum + count : sum
+    REDACTED, 0)
+  REDACTED
+REDACTED
+
 const handleImport = async () => {
-  if (!file.value) {
+  if (files.value.length === 0) {
     appStore.showError(t('admin.accounts.dataImportSelectFile'))
     return
   REDACTED
 
   importing.value = true
   try {
-    const text = await readFileAsText(file.value)
-    const dataPayload = JSON.parse(text)
+    const dataPayloads = []
+    for (const sourceFile of files.value) {
+      const text = await readFileAsText(sourceFile)
+      dataPayloads.push(JSON.parse(text))
+    REDACTED
+    const dataPayload = mergeDataPayloads(dataPayloads)
 
     const res = await adminAPI.accounts.importData({
       data: dataPayload,
