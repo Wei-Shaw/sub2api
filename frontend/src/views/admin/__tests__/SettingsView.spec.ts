@@ -163,6 +163,11 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
+    "admin.settings.customMenu.iconPresets": "预设图标",
+    "admin.settings.iconPresets.api": "API",
+    "admin.settings.iconPresets.chat": "聊天",
+    "admin.settings.iconPresets.docs": "文档",
+    "admin.settings.iconPresets.terminal": "终端",
     "admin.settings.platformQuota.platform": "平台",
     "admin.settings.platformQuota.daily": "日限额 (USD)",
     "admin.settings.platformQuota.weekly": "周限额 (USD)",
@@ -745,6 +750,46 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(iconSvg).toContain("<svg");
     expect(iconSvg).toContain("stroke=\"currentColor\"");
     expect(iconSvg).toContain("M5.25 14.25h13.5");
+  });
+
+  it("supports selecting a preset icon for custom menu items", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      custom_menu_items: [
+        {
+          id: "help-center",
+          label: "Help Center",
+          icon_svg: "",
+          url: "https://example.com/help",
+          action: "iframe",
+          visibility: "user",
+          sort_order: 0,
+        },
+      ],
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const terminalPreset = wrapper
+      .findAll('[data-test="custom-menu-icon-preset"]')
+      .find((node) => node.attributes("data-preset") === "terminal");
+
+    expect(terminalPreset).toBeDefined();
+    await terminalPreset!.trigger("click");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    const payload = updateSettings.mock.calls[0]?.[0] as {
+      custom_menu_items?: Array<{ icon_svg?: string }>;
+    };
+    const iconSvg = payload.custom_menu_items?.[0]?.icon_svg || "";
+
+    expect(iconSvg).toContain("<svg");
+    expect(iconSvg).toContain("stroke=\"currentColor\"");
+    expect(iconSvg).toContain("M6.75 7.5l3 2.25");
   });
 
   it("updates provider enablement immediately and reloads providers", async () => {
