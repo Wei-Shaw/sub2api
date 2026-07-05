@@ -75,7 +75,7 @@
         <!-- Code Blocks (Stacked for multi-file platforms) -->
         <div class="space-y-4">
           <div
-            v-for="(file, index) in currentFiles"
+            v-for="(file, index) in resolvedFiles"
             :key="index"
             class="relative"
           >
@@ -140,6 +140,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import type { GroupPlatform } from '@/types'
+import { renderTemplate } from './useKeyTemplateDefaults'
 
 interface Props {
   show: boolean
@@ -147,6 +148,7 @@ interface Props {
   baseUrl: string
   platform: GroupPlatform | null
   allowMessagesDispatch?: boolean
+  customTemplates?: Record<string, string>
 }
 
 interface Emits {
@@ -162,8 +164,9 @@ interface TabConfig {
 interface FileConfig {
   path: string
   content: string
-  hint?: string  // Optional hint message for this file
+  hint?: string
   highlighted?: string
+  templateKey?: string
 }
 
 const props = defineProps<Props>()
@@ -433,6 +436,22 @@ const currentFiles = computed((): FileConfig[] => {
   }
 })
 
+const resolvedFiles = computed((): FileConfig[] => {
+  const files = currentFiles.value
+  if (!props.customTemplates) return files
+  const baseUrl = props.baseUrl || window.location.origin
+  const apiKey = props.apiKey
+  return files.map(file => {
+    if (file.templateKey && props.customTemplates![file.templateKey]) {
+      return {
+        ...file,
+        content: renderTemplate(props.customTemplates![file.templateKey], baseUrl, apiKey)
+      }
+    }
+    return file
+  })
+})
+
 function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
   let path: string
   let content: string
@@ -478,8 +497,8 @@ $env:CLAUDE_CODE_ATTRIBUTION_HEADER=0`
 }`
 
   return [
-    { path, content },
-    { path: vscodeSettingsPath, content: vscodeContent, hint: 'VSCode Claude Code' }
+    { path, content, templateKey: `claude/${activeTab.value}/terminal` },
+    { path: vscodeSettingsPath, content: vscodeContent, hint: 'VSCode Claude Code', templateKey: `claude/${activeTab.value}/settings_json` }
   ]
 }
 
@@ -525,7 +544,7 @@ ${keyword('$env:')}${variable('GEMINI_MODEL')}${operator('=')}${string(`"${model
       highlighted = ''
   }
 
-  return { path, content, highlighted }
+  return { path, content, highlighted, templateKey: `gemini/${activeTab.value}/terminal` }
 }
 
 function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
@@ -559,11 +578,13 @@ goals = true`
     {
       path: `${configDir}/config.toml`,
       content: configContent,
-      hint: t('keys.useKeyModal.openai.configTomlHint')
+      hint: t('keys.useKeyModal.openai.configTomlHint'),
+      templateKey: `codex/${activeTab.value}/config_toml`
     },
     {
       path: `${configDir}/auth.json`,
-      content: authContent
+      content: authContent,
+      templateKey: `codex/${activeTab.value}/auth_json`
     }
   ]
 }
@@ -601,11 +622,13 @@ goals = true`
     {
       path: `${configDir}/config.toml`,
       content: configContent,
-      hint: t('keys.useKeyModal.openai.configTomlHint')
+      hint: t('keys.useKeyModal.openai.configTomlHint'),
+      templateKey: `codex_ws/${activeTab.value}/config_toml`
     },
     {
       path: `${configDir}/auth.json`,
-      content: authContent
+      content: authContent,
+      templateKey: `codex_ws/${activeTab.value}/auth_json`
     }
   ]
 }
@@ -1048,10 +1071,18 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     2
   )
 
+  const platformMap: Record<string, string> = {
+    'anthropic': 'anthropic',
+    'openai': 'openai',
+    'gemini': 'gemini',
+    'antigravity-claude': 'antigravity_claude',
+    'antigravity-gemini': 'antigravity_gemini',
+  }
   return {
     path: pathLabel ?? 'opencode.json',
     content,
-    hint: t('keys.useKeyModal.opencode.hint')
+    hint: t('keys.useKeyModal.opencode.hint'),
+    templateKey: `opencode/${platformMap[platform] || platform}/opencode_json`
   }
 }
 

@@ -7255,6 +7255,16 @@ import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
+import {
+  CLIENT_OPTIONS,
+  SYSTEM_OPTIONS,
+  FILE_OPTIONS,
+  getTemplateKey,
+  getDefaultTemplate,
+  parseCustomTemplates,
+  serializeCustomTemplates,
+  getTemplateLabel,
+} from "@/components/keys/useKeyTemplateDefaults";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import { useClipboard } from "@/composables/useClipboard";
@@ -7382,6 +7392,74 @@ const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
+
+// Use Key Custom Templates 编辑器状态
+const useKeyTemplateClient = ref("claude");
+const useKeyTemplateSystem = ref("unix");
+const useKeyTemplateFile = ref("terminal");
+const useKeyTemplateDraft = ref("");
+const useKeyTemplateSavedKeys = computed(() => {
+  const templates = parseCustomTemplates(form.use_key_custom_template);
+  return Object.keys(templates);
+});
+
+const useKeyTemplateSystems = computed(() =>
+  SYSTEM_OPTIONS[useKeyTemplateClient.value] || []
+);
+const useKeyTemplateFiles = computed(() =>
+  FILE_OPTIONS[useKeyTemplateClient.value]?.[useKeyTemplateSystem.value] || []
+);
+const useKeyTemplateCurrentKey = computed(() =>
+  getTemplateKey(useKeyTemplateClient.value, useKeyTemplateSystem.value, useKeyTemplateFile.value)
+);
+const useKeyTemplateDefault = computed(() =>
+  getDefaultTemplate(useKeyTemplateCurrentKey.value) || ""
+);
+
+watch(useKeyTemplateClient, () => {
+  const systems = SYSTEM_OPTIONS[useKeyTemplateClient.value];
+  if (systems && systems.length > 0) {
+    useKeyTemplateSystem.value = systems[0].id;
+  }
+});
+
+watch(useKeyTemplateSystem, () => {
+  const files = FILE_OPTIONS[useKeyTemplateClient.value]?.[useKeyTemplateSystem.value];
+  if (files && files.length > 0) {
+    useKeyTemplateFile.value = files[0].id;
+  }
+});
+
+watch(useKeyTemplateCurrentKey, () => {
+  const templates = parseCustomTemplates(form.use_key_custom_template);
+  useKeyTemplateDraft.value = templates[useKeyTemplateCurrentKey.value] || "";
+});
+
+function saveUseKeyTemplate() {
+  const templates = parseCustomTemplates(form.use_key_custom_template);
+  const key = useKeyTemplateCurrentKey.value;
+  const draft = useKeyTemplateDraft.value.trim();
+  if (draft) {
+    templates[key] = draft;
+  } else {
+    delete templates[key];
+  }
+  form.use_key_custom_template = serializeCustomTemplates(templates);
+  appStore.showSuccess(t("admin.settings.useKeyTemplate.saved"));
+}
+
+function resetUseKeyTemplate() {
+  useKeyTemplateDraft.value = useKeyTemplateDefault.value;
+}
+
+function deleteUseKeyTemplate(key: string) {
+  const templates = parseCustomTemplates(form.use_key_custom_template);
+  delete templates[key];
+  form.use_key_custom_template = serializeCustomTemplates(templates);
+  if (key === useKeyTemplateCurrentKey.value) {
+    useKeyTemplateDraft.value = "";
+  }
+}
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true);
@@ -7937,6 +8015,7 @@ const form = reactive<SettingsForm>({
   contact_info: "",
   doc_url: "",
   home_content: "",
+  use_key_custom_template: "",
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
   payment_enabled: false,
@@ -9187,6 +9266,7 @@ async function saveSettings() {
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
+      use_key_custom_template: form.use_key_custom_template,
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
