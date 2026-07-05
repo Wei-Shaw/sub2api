@@ -216,6 +216,7 @@ REDACTED
 
 // ResponsesText configures text output options in the Responses API.
 type ResponsesText struct {
+	Format    json.RawMessage `json:"format,omitempty"`
 	Verbosity string `json:"verbosity,omitempty"` // "low" | "medium" | "high"
 REDACTED
 
@@ -438,6 +439,7 @@ type ChatCompletionsRequest struct {
 	ReasoningEffort     string             `json:"reasoning_effort,omitempty"` // "low" | "medium" | "high" | "xhigh"
 	ServiceTier         string             `json:"service_tier,omitempty"`
 	Stop                json.RawMessage    `json:"stop,omitempty"` // string or []string
+	ResponseFormat      json.RawMessage    `json:"response_format,omitempty"`
 
 	// Legacy function calling (deprecated but still supported)
 	Functions    []ChatFunction  `json:"functions,omitempty"`

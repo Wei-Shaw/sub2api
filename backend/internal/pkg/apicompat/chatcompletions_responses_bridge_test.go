@@ -73,6 +73,60 @@ REDACTED
 	assert.JSONEq(t, `"Hello"`, string(out.Messages[2].Content))
 REDACTED
 
+func TestResponsesToChatCompletionsRequest_TextFormatJsonObject(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-4o",
+		Input: json.RawMessage(`[
+			{"role":"user","content":"Return JSON"REDACTED
+		]`),
+		Text: &ResponsesText{
+			Format: json.RawMessage(`{"type":"json_object"REDACTED`),
+	REDACTED,
+REDACTED
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+REDACTED
+	assert.JSONEq(t, `{"type":"json_object"REDACTED`, string(out.ResponseFormat))
+REDACTED
+
+func TestResponsesToChatCompletionsRequest_TextFormatJsonSchema(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-4o",
+		Input: json.RawMessage(`[
+			{"role":"user","content":"Return structured JSON"REDACTED
+		]`),
+		Text: &ResponsesText{
+			Format: json.RawMessage(`{
+				"type":"json_schema",
+				"name":"answer",
+				"schema":{
+					"type":"object",
+					"properties":{"ok":{"type":"boolean"REDACTEDREDACTED,
+					"required":["ok"],
+					"additionalProperties":false
+			REDACTED,
+				"strict":true
+		REDACTED`),
+	REDACTED,
+REDACTED
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+REDACTED
+	assert.JSONEq(t, `{
+		"type":"json_schema",
+		"json_schema":{
+			"name":"answer",
+			"schema":{
+				"type":"object",
+				"properties":{"ok":{"type":"boolean"REDACTEDREDACTED,
+				"required":["ok"],
+				"additionalProperties":false
+		REDACTED,
+			"strict":true
+	REDACTED
+REDACTED`, string(out.ResponseFormat))
+REDACTED
+
 func chatMessageRoles(messages []ChatMessage) []string {
 	roles := make([]string, 0, len(messages))
 	for _, message := range messages {

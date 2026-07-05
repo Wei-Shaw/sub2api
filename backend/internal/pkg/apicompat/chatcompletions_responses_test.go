@@ -242,6 +242,62 @@ REDACTED
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 REDACTED
 
+func TestChatCompletionsToResponses_ResponseFormatJsonObject(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:          "gpt-4o",
+		Messages:       []ChatMessage{{Role: "user", Content: json.RawMessage(`"Return JSON"`)REDACTEDREDACTED,
+		ResponseFormat: json.RawMessage(`{"type":"json_object"REDACTED`),
+REDACTED
+
+	resp, err := ChatCompletionsToResponses(req)
+REDACTED
+	require.NotNil(t, resp.Text)
+	assert.JSONEq(t, `{"type":"json_object"REDACTED`, string(resp.Text.Format))
+
+	payload, err := json.Marshal(resp)
+REDACTED
+	var serialized struct {
+		Text ResponsesText `json:"text"`
+REDACTED
+	require.NoError(t, json.Unmarshal(payload, &serialized))
+	assert.JSONEq(t, `{"type":"json_object"REDACTED`, string(serialized.Text.Format))
+REDACTED
+
+func TestChatCompletionsToResponses_ResponseFormatJsonSchema(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:    "gpt-4o",
+		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Return structured JSON"`)REDACTEDREDACTED,
+		ResponseFormat: json.RawMessage(`{
+			"type":"json_schema",
+			"json_schema":{
+				"name":"answer",
+				"schema":{
+					"type":"object",
+					"properties":{"ok":{"type":"boolean"REDACTEDREDACTED,
+					"required":["ok"],
+					"additionalProperties":false
+			REDACTED,
+				"strict":true
+		REDACTED
+	REDACTED`),
+REDACTED
+
+	resp, err := ChatCompletionsToResponses(req)
+REDACTED
+	require.NotNil(t, resp.Text)
+	assert.JSONEq(t, `{
+		"type":"json_schema",
+		"name":"answer",
+		"schema":{
+			"type":"object",
+			"properties":{"ok":{"type":"boolean"REDACTEDREDACTED,
+			"required":["ok"],
+			"additionalProperties":false
+	REDACTED,
+		"strict":true
+REDACTED`, string(resp.Text.Format))
+REDACTED
+
 func TestChatCompletionsToResponses_ImageURL(t *testing.T) {
 	content := `[{"type":"text","text":"Describe this"REDACTED,{"type":"image_url","image_url":{"url":"data:image/png;base64,abc123"REDACTEDREDACTED]`
 	req := &ChatCompletionsRequest{
