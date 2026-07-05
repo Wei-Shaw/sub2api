@@ -165,6 +165,7 @@ func (s *OpsService) UpdateRuntimeLogConfig(ctx context.Context, req *OpsRuntime
 	}
 
 	s.auditRuntimeLogConfigChange(operatorID, oldCfg, &next, "updated")
+	s.notifyRuntimeLogConfigChanged(ctx)
 
 	return &next, nil
 }
@@ -209,6 +210,7 @@ func (s *OpsService) ResetRuntimeLogConfig(ctx context.Context, operatorID int64
 	resetCfg.UpdatedByUserID = operatorID
 
 	s.auditRuntimeLogConfigChange(operatorID, oldCfg, resetCfg, "reset")
+	s.notifyRuntimeLogConfigChanged(ctx)
 	return resetCfg, nil
 }
 
@@ -264,4 +266,22 @@ func (s *OpsService) auditRuntimeLogConfigFailure(operatorID int64, oldCfg *OpsR
 		zap.String("old", string(oldRaw)),
 		zap.String("new", string(newRaw)),
 	).Warn("runtime log config change failed")
+}
+
+// notifyRuntimeLogConfigChanged 通过已注入的 broadcaster 通知集群其他实例。
+// 单机部署或未配置广播时静默 no-op；广播失败仅记 warn，不影响本节点已生效的变更。
+func (s *OpsService) notifyRuntimeLogConfigChanged(ctx context.Context) {
+	if s == nil || s.runtimeLogBroadcaster == nil {
+		return
+	}
+	// 用独立超时避免因 Redis 抖动阻塞管理端请求。
+	pubCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = ctx // 保留形参以便后续需要时透传 request-scoped 元数据
+	if err := s.runtimeLogBroadcaster.Publish(pubCtx); err != nil {
+		logger.With(
+			zap.String("component", "ops.runtime_log_broadcast"),
+			zap.Error(err),
+		).Warn("failed to broadcast runtime log config change")
+	}
 }
