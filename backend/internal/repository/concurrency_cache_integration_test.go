@@ -435,6 +435,39 @@ func (s *ConcurrencyCacheSuite) TestCleanupExpiredAccountSlots_NoExpired() {
 	require.Equal(s.T(), 2, cur)
 }
 
+func (s *ConcurrencyCacheSuite) TestCleanupExpiredAccountSlotKeys() {
+	now := time.Now().Unix()
+	expiredTime := now - int64(testSlotTTL.Seconds()) - 10
+	accountKeyWithFresh := fmt.Sprintf("%s%d", accountSlotKeyPrefix, 301)
+	accountKeyExpiredOnly := fmt.Sprintf("%s%d", accountSlotKeyPrefix, 302)
+	userKey := fmt.Sprintf("%s%d", userSlotKeyPrefix, 303)
+
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, accountKeyWithFresh,
+		redis.Z{Score: float64(expiredTime), Member: "expired"},
+		redis.Z{Score: float64(now), Member: "fresh"},
+	).Err())
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, accountKeyExpiredOnly,
+		redis.Z{Score: float64(expiredTime), Member: "expired-only"},
+	).Err())
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, userKey,
+		redis.Z{Score: float64(expiredTime), Member: "user-expired"},
+	).Err())
+
+	require.NoError(s.T(), s.cache.CleanupExpiredAccountSlotKeys(s.ctx))
+
+	accountMembers, err := s.rdb.ZRange(s.ctx, accountKeyWithFresh, 0, -1).Result()
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), []string{"fresh"}, accountMembers)
+
+	exists, err := s.rdb.Exists(s.ctx, accountKeyExpiredOnly).Result()
+	require.NoError(s.T(), err)
+	require.EqualValues(s.T(), 0, exists)
+
+	userMembers, err := s.rdb.ZRange(s.ctx, userKey, 0, -1).Result()
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), []string{"user-expired"}, userMembers)
+}
+
 func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots_RemovesOldPrefixesAndWaitCounters() {
 	accountID := int64(901)
 	userID := int64(902)
