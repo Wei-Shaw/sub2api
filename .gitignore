@@ -93,6 +93,10 @@ temp/
 dist/
 build/
 release/
+!release/
+release/*
+!release/markers/
+!release/markers/*.txt
 
 # 后端嵌入的前端构建产物
 # Keep a placeholder file so `//go:embed all:dist` always has a match in CI/lint,
@@ -119,6 +123,12 @@ tests
 CLAUDE.md
 .claude
 scripts
+!scripts/
+scripts/*
+!scripts/marker-matrix.sh
+!scripts/verify-release-manifest.sh
+!scripts/deploy-by-digest.sh
+!scripts/deploy-production-image.sh
 !backend/scripts/
 !backend/scripts/resolve-version.sh
 .code-review-state
