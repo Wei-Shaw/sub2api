@@ -2,8 +2,10 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -74,6 +76,7 @@ type DataAccount struct {
 
 type DataImportRequest struct {
 	Data                 DataPayload `json:"data"`
+	GroupIDs             []int64     `json:"group_ids"`
 	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
 }
 
@@ -91,6 +94,11 @@ type DataImportError struct {
 	Name     string `json:"name,omitempty"`
 	ProxyKey string `json:"proxy_key,omitempty"`
 	Message  string `json:"message"`
+}
+
+type dataImportPlatformMismatchExample struct {
+	Name     string `json:"name"`
+	Platform string `json:"platform"`
 }
 
 func buildProxyKey(protocol, host string, port int, username, password string) string {
@@ -250,6 +258,10 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 	dataPayload := req.Data
 	result := DataImportResult{}
+
+	if err := h.validateImportTargetGroupPlatforms(ctx, req); err != nil {
+		return result, err
+	}
 
 	existingProxies, err := h.listAllProxies(ctx)
 	if err != nil {
@@ -440,7 +452,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Concurrency:          item.Concurrency,
 			Priority:             item.Priority,
 			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
+			GroupIDs:             req.GroupIDs,
 			ExpiresAt:            item.ExpiresAt,
 			AutoPauseOnExpired:   item.AutoPauseOnExpired,
 			SkipDefaultGroupBind: skipDefaultGroupBind,
@@ -481,6 +493,83 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	}
 
 	return result, nil
+}
+
+func (h *AccountHandler) validateImportTargetGroupPlatforms(ctx context.Context, req DataImportRequest) error {
+	if len(req.GroupIDs) == 0 {
+		return nil
+	}
+
+	groups := make([]*service.Group, 0, len(req.GroupIDs))
+	seen := make(map[int64]struct{}, len(req.GroupIDs))
+	for _, groupID := range req.GroupIDs {
+		if groupID <= 0 {
+			return infraerrors.BadRequest("IMPORT_TARGET_GROUP_INVALID", fmt.Sprintf("导入目标分组 %d 不存在", groupID))
+		}
+		if _, ok := seen[groupID]; ok {
+			continue
+		}
+		seen[groupID] = struct{}{}
+
+		group, err := h.adminService.GetGroup(ctx, groupID)
+		if err != nil {
+			return infraerrors.BadRequest("IMPORT_TARGET_GROUP_INVALID", fmt.Sprintf("导入目标分组 %d 不存在", groupID))
+		}
+		if group == nil {
+			return infraerrors.BadRequest("IMPORT_TARGET_GROUP_INVALID", fmt.Sprintf("导入目标分组 %d 不存在", groupID))
+		}
+		groups = append(groups, group)
+	}
+
+	expectedPlatform := strings.TrimSpace(groups[0].Platform)
+	platforms := map[string]struct{}{expectedPlatform: {}}
+	for _, group := range groups[1:] {
+		platforms[strings.TrimSpace(group.Platform)] = struct{}{}
+	}
+	if len(platforms) > 1 {
+		selectedPlatforms := make([]string, 0, len(platforms))
+		for platform := range platforms {
+			selectedPlatforms = append(selectedPlatforms, platform)
+		}
+		sort.Strings(selectedPlatforms)
+		return infraerrors.BadRequest(
+			"IMPORT_TARGET_GROUP_PLATFORM_MISMATCH",
+			fmt.Sprintf("导入目标分组必须属于同一平台 %s: %d 个分组不匹配", expectedPlatform, len(groups)-1),
+		).WithMetadata(map[string]string{
+			"expected_platform":  expectedPlatform,
+			"mismatch_count":     strconv.Itoa(len(groups) - 1),
+			"selected_platforms": strings.Join(selectedPlatforms, ","),
+		})
+	}
+
+	var examples []dataImportPlatformMismatchExample
+	mismatchCount := 0
+	for _, account := range req.Data.Accounts {
+		accountPlatform := strings.TrimSpace(account.Platform)
+		if accountPlatform == expectedPlatform {
+			continue
+		}
+		mismatchCount++
+		if len(examples) < 5 {
+			examples = append(examples, dataImportPlatformMismatchExample{
+				Name:     account.Name,
+				Platform: accountPlatform,
+			})
+		}
+	}
+	if mismatchCount == 0 {
+		return nil
+	}
+
+	examplesJSON, _ := json.Marshal(examples)
+	return infraerrors.BadRequest(
+		"IMPORT_ACCOUNT_PLATFORM_MISMATCH",
+		fmt.Sprintf("导入的上游账号必须匹配导入目标分组平台 %s: %d 个上游账号不匹配", expectedPlatform, mismatchCount),
+	).WithMetadata(map[string]string{
+		"expected_platform": expectedPlatform,
+		"mismatch_count":    strconv.Itoa(mismatchCount),
+		"mismatch_examples": string(examplesJSON),
+	})
 }
 
 func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, error) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -15,6 +16,13 @@ import (
 type dataResponse struct {
 	Code int         `json:"code"`
 	Data dataPayload `json:"data"`
+}
+
+type dataErrorResponse struct {
+	Code     int               `json:"code"`
+	Message  string            `json:"message"`
+	Reason   string            `json:"reason"`
+	Metadata map[string]string `json:"metadata"`
 }
 
 type dataPayload struct {
@@ -315,4 +323,331 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdProxies, 0)
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+}
+
+func TestImportDataBindsCreatedAccountsToRequestGroupIDs(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 11, Name: "openai-a", Platform: service.PlatformOpenAI, Status: service.StatusActive},
+		{ID: 12, Name: "openai-b", Platform: service.PlatformOpenAI, Status: service.StatusActive},
+	}
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":        "acc-1",
+					"platform":    service.PlatformOpenAI,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "x"},
+					"concurrency": 3,
+					"priority":    50,
+				},
+				{
+					"name":        "acc-2",
+					"platform":    service.PlatformOpenAI,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "y"},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+		"group_ids": []int64{11, 12},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, adminSvc.createdAccounts, 2)
+	require.Equal(t, []int64{11, 12}, adminSvc.createdAccounts[0].GroupIDs)
+	require.Equal(t, []int64{11, 12}, adminSvc.createdAccounts[1].GroupIDs)
+	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+	require.True(t, adminSvc.createdAccounts[1].SkipDefaultGroupBind)
+}
+
+func TestImportDataWithoutGroupIDsKeepsCreatedAccountsUngrouped(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":        "acc",
+					"platform":    service.PlatformOpenAI,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "x"},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, adminSvc.createdAccounts, 1)
+	require.Empty(t, adminSvc.createdAccounts[0].GroupIDs)
+	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+}
+
+func TestImportDataWithEmptyGroupIDsKeepsCreatedAccountsUngrouped(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":        "acc",
+					"platform":    service.PlatformOpenAI,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "x"},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+		"group_ids": []int64{},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, adminSvc.createdAccounts, 1)
+	require.Empty(t, adminSvc.createdAccounts[0].GroupIDs)
+	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+}
+
+func TestImportDataAllowsDisabledImportTargetGroup(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 22, Name: "disabled", Platform: service.PlatformOpenAI, Status: service.StatusDisabled},
+	}
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":        "acc",
+					"platform":    service.PlatformOpenAI,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "x"},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+		"group_ids": []int64{22},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, adminSvc.createdAccounts, 1)
+	require.Equal(t, []int64{22}, adminSvc.createdAccounts[0].GroupIDs)
+}
+
+func TestImportDataRejectsTargetGroupsAcrossPlatformsBeforeWriting(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 11, Name: "openai", Platform: service.PlatformOpenAI, Status: service.StatusActive},
+		{ID: 12, Name: "anthropic", Platform: service.PlatformAnthropic, Status: service.StatusActive},
+	}
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{
+				{
+					"proxy_key": "http|127.0.0.1|8080||",
+					"name":      "proxy",
+					"protocol":  "http",
+					"host":      "127.0.0.1",
+					"port":      8080,
+					"status":    "active",
+				},
+			},
+			"accounts": []map[string]any{
+				{
+					"name":        "acc",
+					"platform":    service.PlatformOpenAI,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "x"},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+		"group_ids": []int64{11, 12},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	require.Len(t, adminSvc.createdProxies, 0)
+	require.Len(t, adminSvc.createdAccounts, 0)
+
+	var resp dataErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "IMPORT_TARGET_GROUP_PLATFORM_MISMATCH", resp.Reason)
+	require.Contains(t, resp.Message, "导入目标分组")
+	require.Equal(t, service.PlatformOpenAI, resp.Metadata["expected_platform"])
+	require.Equal(t, "1", resp.Metadata["mismatch_count"])
+	require.Equal(t, "anthropic,openai", resp.Metadata["selected_platforms"])
+}
+
+func TestImportDataRejectsAccountPlatformMismatchBeforeWriting(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 11, Name: "openai", Platform: service.PlatformOpenAI, Status: service.StatusActive},
+	}
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{
+				{
+					"proxy_key": "http|127.0.0.1|8080||",
+					"name":      "proxy",
+					"protocol":  "http",
+					"host":      "127.0.0.1",
+					"port":      8080,
+					"status":    "active",
+				},
+			},
+			"accounts": []map[string]any{
+				{
+					"name":        "acc-openai",
+					"platform":    service.PlatformOpenAI,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "x"},
+					"concurrency": 3,
+					"priority":    50,
+				},
+				{
+					"name":        "acc-anthropic",
+					"platform":    service.PlatformAnthropic,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "y"},
+					"concurrency": 3,
+					"priority":    50,
+				},
+				{
+					"name":        "acc-gemini",
+					"platform":    service.PlatformGemini,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "z"},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+		"group_ids": []int64{11},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	require.Len(t, adminSvc.createdProxies, 0)
+	require.Len(t, adminSvc.createdAccounts, 0)
+
+	var resp dataErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "IMPORT_ACCOUNT_PLATFORM_MISMATCH", resp.Reason)
+	require.Contains(t, resp.Message, "上游账号")
+	require.Equal(t, service.PlatformOpenAI, resp.Metadata["expected_platform"])
+	require.Equal(t, "2", resp.Metadata["mismatch_count"])
+	require.Contains(t, resp.Metadata["mismatch_examples"], "acc-anthropic")
+	require.Contains(t, resp.Metadata["mismatch_examples"], service.PlatformAnthropic)
+	require.Contains(t, resp.Metadata["mismatch_examples"], "acc-gemini")
+	require.Contains(t, resp.Metadata["mismatch_examples"], service.PlatformGemini)
+}
+
+func TestImportDataCapsAccountPlatformMismatchExamples(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 11, Name: "openai", Platform: service.PlatformOpenAI, Status: service.StatusActive},
+	}
+
+	accounts := make([]map[string]any, 0, 7)
+	for i := 1; i <= 7; i++ {
+		accounts = append(accounts, map[string]any{
+			"name":        "acc-mismatch-" + strconv.Itoa(i),
+			"platform":    service.PlatformAnthropic,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{"token": "x"},
+			"concurrency": 3,
+			"priority":    50,
+		})
+	}
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":     dataType,
+			"version":  dataVersion,
+			"proxies":  []map[string]any{},
+			"accounts": accounts,
+		},
+		"group_ids": []int64{11},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var resp dataErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "7", resp.Metadata["mismatch_count"])
+
+	var examples []struct {
+		Name     string `json:"name"`
+		Platform string `json:"platform"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(resp.Metadata["mismatch_examples"]), &examples))
+	require.Len(t, examples, 5)
+	require.Equal(t, "acc-mismatch-1", examples[0].Name)
+	require.Equal(t, service.PlatformAnthropic, examples[0].Platform)
+	require.Equal(t, "acc-mismatch-5", examples[4].Name)
 }

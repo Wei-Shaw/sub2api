@@ -40,6 +40,49 @@
         />
       </div>
 
+      <div>
+        <label class="input-label">
+          {{ t('admin.accounts.dataImportTargetGroups') }}
+          <span class="font-normal text-gray-400">
+            {{ t('common.selectedCount', { count: selectedGroupIds.length }) }}
+          </span>
+        </label>
+        <div
+          class="grid max-h-40 grid-cols-1 gap-1 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-800 sm:grid-cols-2"
+        >
+          <label
+            v-for="group in importTargetGroups"
+            :key="group.id"
+            class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-white dark:hover:bg-dark-700"
+          >
+            <input
+              v-model="selectedGroupIds"
+              type="checkbox"
+              :value="group.id"
+              class="h-3.5 w-3.5 shrink-0 rounded border-gray-300 text-primary-500 focus:ring-primary-500 dark:border-dark-500"
+            />
+            <span class="min-w-0 flex-1 truncate text-gray-700 dark:text-dark-200">
+              {{ group.name }}
+            </span>
+            <span class="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500 dark:bg-dark-700 dark:text-dark-300">
+              {{ group.platform }}
+            </span>
+            <span
+              v-if="group.status === 'inactive'"
+              class="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+            >
+              {{ t('admin.accounts.dataImportGroupInactive') }}
+            </span>
+          </label>
+          <div
+            v-if="importTargetGroups.length === 0"
+            class="py-2 text-center text-sm text-gray-500 dark:text-gray-400 sm:col-span-2"
+          >
+            {{ t('common.noGroupsAvailable') }}
+          </div>
+        </div>
+      </div>
+
       <div
         v-if="result"
         class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-700"
@@ -90,7 +133,7 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import type { AdminDataImportResult } from '@/types'
+import type { AdminDataImportResult, AdminGroup } from '@/types'
 
 interface Props {
   show: boolean
@@ -110,11 +153,16 @@ const appStore = useAppStore()
 const importing = ref(false)
 const file = ref<File | null>(null)
 const result = ref<AdminDataImportResult | null>(null)
+const importTargetGroups = ref<AdminGroup[]>([])
+const selectedGroupIds = ref<number[]>([])
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const fileName = computed(() => file.value?.name || '')
 
 const errorItems = computed(() => result.value?.errors || [])
+const selectedImportTargetGroups = computed(() =>
+  importTargetGroups.value.filter((group) => selectedGroupIds.value.includes(group.id))
+)
 
 watch(
   () => props.show,
@@ -122,11 +170,14 @@ watch(
     if (open) {
       file.value = null
       result.value = null
+      selectedGroupIds.value = []
+      void loadImportTargetGroups()
       if (fileInput.value) {
         fileInput.value.value = ''
       }
     }
-  }
+  },
+  { immediate: true }
 )
 
 const openFilePicker = () => {
@@ -136,6 +187,26 @@ const openFilePicker = () => {
 const handleFileChange = (event: Event) => {
   const target = event.target as HTMLInputElement
   file.value = target.files?.[0] || null
+}
+
+async function loadImportTargetGroups() {
+  try {
+    const pageSize = 1000
+    let page = 1
+    let totalPages = 1
+    const groups: AdminGroup[] = []
+
+    do {
+      const response = await adminAPI.groups.list(page, pageSize, undefined)
+      groups.push(...response.items)
+      totalPages = response.pages || page
+      page += 1
+    } while (page <= totalPages)
+
+    importTargetGroups.value = groups
+  } catch {
+    importTargetGroups.value = []
+  }
 }
 
 const handleClose = () => {
@@ -171,11 +242,44 @@ const handleImport = async () => {
   try {
     const text = await readFileAsText(file.value)
     const dataPayload = JSON.parse(text)
+    const selectedPlatforms = new Set(selectedImportTargetGroups.value.map((group) => group.platform))
 
-    const res = await adminAPI.accounts.importData({
+    if (selectedPlatforms.size > 1) {
+      appStore.showError(t('admin.accounts.dataImportTargetGroupMixedPlatforms'))
+      return
+    }
+
+    const expectedPlatform = Array.from(selectedPlatforms)[0]
+    if (expectedPlatform) {
+      const importedAccounts = Array.isArray(dataPayload?.accounts) ? dataPayload.accounts : []
+      const mismatchedAccounts = importedAccounts.filter(
+        (account: { platform?: string }) => account.platform !== expectedPlatform
+      )
+
+      if (mismatchedAccounts.length > 0) {
+        const examples = mismatchedAccounts
+          .slice(0, 5)
+          .map((account: { name?: string; platform?: string }) => `${account.name || '-'} (${account.platform || '-'})`)
+          .join(', ')
+
+        appStore.showError(
+          t('admin.accounts.dataImportAccountPlatformMismatch', {
+            expected_platform: expectedPlatform,
+            mismatch_count: mismatchedAccounts.length,
+            examples
+          })
+        )
+        return
+      }
+    }
+
+    const importPayload = {
       data: dataPayload,
-      skip_default_group_bind: true
-    })
+      skip_default_group_bind: true,
+      ...(selectedGroupIds.value.length > 0 ? { group_ids: selectedGroupIds.value } : {})
+    }
+
+    const res = await adminAPI.accounts.importData(importPayload)
 
     result.value = res
 
