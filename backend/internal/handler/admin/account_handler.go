@@ -196,14 +196,6 @@ REDACTED
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
 
-type openAIAccountSchedulerScorePoolLister interface {
-	ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]service.Account, error)
-REDACTED
-
-type accountSchedulerScoreFilterPoolLister interface {
-	ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, error)
-REDACTED
-
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
 		Account:            dto.AccountFromService(account),
@@ -250,33 +242,27 @@ REDACTED
 	return item
 REDACTED
 
-func (h *AccountHandler) scoreOpenAIAccountSchedulerPool(ctx context.Context, accounts []service.Account) map[int64]AccountSchedulerScore {
+// scoreOpenAIAccountSchedulerPool 对池内 OpenAI 账号计算调度分数快照。
+// loadMap 为共享的账号负载数据（含池内全部账号即可，多余条目无害）；传 nil 时自行批查。
+func (h *AccountHandler) scoreOpenAIAccountSchedulerPool(ctx context.Context, accounts []service.Account, loadMap map[int64]*service.AccountLoadInfo) map[int64]AccountSchedulerScore {
 	if len(accounts) == 0 {
 		return nil
 REDACTED
 
 	openAIAccounts := make([]*service.Account, 0, len(accounts))
-	loadReq := make([]service.AccountWithConcurrency, 0, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
 		if account.Platform != service.PlatformOpenAI {
 			continue
 	REDACTED
 		openAIAccounts = append(openAIAccounts, account)
-		loadReq = append(loadReq, service.AccountWithConcurrency{
-			ID:             account.ID,
-			MaxConcurrency: account.EffectiveLoadFactor(),
-	REDACTED)
 REDACTED
 	if len(openAIAccounts) == 0 {
 		return nil
 REDACTED
 
-	loadMap := map[int64]*service.AccountLoadInfo{REDACTED
-	if h.concurrencyService != nil {
-		if batchLoad, err := h.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); err == nil && batchLoad != nil {
-			loadMap = batchLoad
-	REDACTED
+	if loadMap == nil {
+		loadMap = h.fetchOpenAIAccountLoadMap(ctx, openAIAccounts)
 REDACTED
 
 	var scores map[int64]service.OpenAIAccountSchedulerScoreSnapshot
@@ -297,6 +283,36 @@ REDACTED
 	return result
 REDACTED
 
+// fetchOpenAIAccountLoadMap 一次性批查给定 OpenAI 账号的负载数据；
+// 失败时记录日志并返回空表（分数按零负载计算，属可接受降级）。
+func (h *AccountHandler) fetchOpenAIAccountLoadMap(ctx context.Context, openAIAccounts []*service.Account) map[int64]*service.AccountLoadInfo {
+	loadMap := map[int64]*service.AccountLoadInfo{REDACTED
+	if h.concurrencyService == nil || len(openAIAccounts) == 0 {
+		return loadMap
+REDACTED
+	seen := make(map[int64]struct{REDACTED, len(openAIAccounts))
+	loadReq := make([]service.AccountWithConcurrency, 0, len(openAIAccounts))
+	for _, account := range openAIAccounts {
+		if account == nil {
+			continue
+	REDACTED
+		if _, ok := seen[account.ID]; ok {
+			continue
+	REDACTED
+		seen[account.ID] = struct{REDACTED{REDACTED
+		loadReq = append(loadReq, service.AccountWithConcurrency{
+			ID:             account.ID,
+			MaxConcurrency: account.EffectiveLoadFactor(),
+	REDACTED)
+REDACTED
+	if batchLoad, err := h.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); err != nil {
+		slog.Warn("openai_scheduler_score_load_batch_failed", "error", err)
+REDACTED else if batchLoad != nil {
+		loadMap = batchLoad
+REDACTED
+	return loadMap
+REDACTED
+
 func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 	ctx context.Context,
 	accounts []service.Account,
@@ -307,12 +323,6 @@ func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 REDACTED
 	if len(filterPool) == 0 {
 		filterPool = accounts
-REDACTED
-
-	baseScores := make(map[int64]*AccountSchedulerScore)
-	for accountID, score := range h.scoreOpenAIAccountSchedulerPool(ctx, filterPool) {
-		copiedScore := score
-		baseScores[accountID] = &copiedScore
 REDACTED
 
 	pageOpenAIAccountIDs := make(map[int64]struct{REDACTED)
@@ -338,7 +348,48 @@ REDACTED
 	REDACTED
 REDACTED
 	if len(pageOpenAIAccountIDs) == 0 {
-		return baseScores, nil
+		return nil, nil
+REDACTED
+
+	// 先取各分组池，再对"过滤池 ∪ 分组池"的账号并集做一次负载批查，
+	// 避免每个池各查一次 Redis 的 N+1。
+	groupIDList := make([]int64, 0, len(groupIDs))
+	for groupID := range groupIDs {
+		groupIDList = append(groupIDList, groupID)
+REDACTED
+	sort.Slice(groupIDList, func(i, j int) bool { return groupIDList[i] < groupIDList[j] REDACTED)
+
+	groupPools := make(map[int64][]service.Account, len(groupIDList))
+	if h.adminService != nil {
+		for _, groupID := range groupIDList {
+			gid := groupID
+			pool, err := h.adminService.ListOpenAISchedulableAccountsForSchedulerScore(ctx, &gid)
+			if err != nil {
+				slog.Warn("openai_scheduler_group_score_pool_failed", "group_id", gid, "error", err)
+				continue
+		REDACTED
+			groupPools[gid] = pool
+	REDACTED
+REDACTED
+
+	loadUnion := make([]*service.Account, 0, len(filterPool))
+	collectOpenAIAccounts := func(pool []service.Account) {
+		for i := range pool {
+			if pool[i].Platform == service.PlatformOpenAI {
+				loadUnion = append(loadUnion, &pool[i])
+		REDACTED
+	REDACTED
+REDACTED
+	collectOpenAIAccounts(filterPool)
+	for _, pool := range groupPools {
+		collectOpenAIAccounts(pool)
+REDACTED
+	loadMap := h.fetchOpenAIAccountLoadMap(ctx, loadUnion)
+
+	baseScores := make(map[int64]*AccountSchedulerScore)
+	for accountID, score := range h.scoreOpenAIAccountSchedulerPool(ctx, filterPool, loadMap) {
+		copiedScore := score
+		baseScores[accountID] = &copiedScore
 REDACTED
 
 	groupScoresByAccount := make(map[int64][]AccountSchedulerGroupScore)
@@ -346,7 +397,7 @@ REDACTED
 		if len(pool) == 0 {
 			return
 	REDACTED
-		scores := h.scoreOpenAIAccountSchedulerPool(ctx, pool)
+		scores := h.scoreOpenAIAccountSchedulerPool(ctx, pool, loadMap)
 		for accountID, schedulerScore := range scores {
 			if _, ok := pageOpenAIAccountIDs[accountID]; !ok {
 				continue
@@ -365,37 +416,27 @@ REDACTED
 	REDACTED
 REDACTED
 
-	if lister, ok := h.adminService.(openAIAccountSchedulerScorePoolLister); ok {
-		groupIDList := make([]int64, 0, len(groupIDs))
-		for groupID := range groupIDs {
-			groupIDList = append(groupIDList, groupID)
+	for _, groupID := range groupIDList {
+		gid := groupID
+		pool, ok := groupPools[gid]
+		if !ok {
+			continue
 	REDACTED
-		sort.Slice(groupIDList, func(i, j int) bool { return groupIDList[i] < groupIDList[j] REDACTED)
-
-		for _, groupID := range groupIDList {
-			gid := groupID
-			pool, err := lister.ListOpenAISchedulableAccountsForSchedulerScore(ctx, &gid)
-			if err != nil {
-				slog.Warn("openai_scheduler_group_score_pool_failed", "group_id", gid, "error", err)
-				continue
-		REDACTED
-			groupNameByID := make(map[int64]string)
-			groupPriorityByAccount := make(map[int64]int)
-			for i := range pool {
-				account := &pool[i]
-				for _, accountGroup := range account.AccountGroups {
-					if accountGroup.GroupID != gid {
-						continue
-				REDACTED
-					groupPriorityByAccount[account.ID] = accountGroup.Priority
-					if accountGroup.Group != nil {
-						groupNameByID[gid] = accountGroup.Group.Name
-				REDACTED
+		groupNameByID := make(map[int64]string)
+		groupPriorityByAccount := make(map[int64]int)
+		for i := range pool {
+			account := &pool[i]
+			for _, accountGroup := range account.AccountGroups {
+				if accountGroup.GroupID != gid {
+					continue
+			REDACTED
+				groupPriorityByAccount[account.ID] = accountGroup.Priority
+				if accountGroup.Group != nil {
+					groupNameByID[gid] = accountGroup.Group.Name
 			REDACTED
 		REDACTED
-			scoreGroupPool(&gid, groupNameByID, groupPriorityByAccount, pool)
 	REDACTED
-
+		scoreGroupPool(&gid, groupNameByID, groupPriorityByAccount, pool)
 REDACTED
 
 	for accountID := range groupScoresByAccount {
@@ -417,11 +458,9 @@ func (h *AccountHandler) listAccountSchedulerScoreFilterPool(
 	if h.adminService == nil || (platform != "" && platform != service.PlatformOpenAI) {
 		return nil
 REDACTED
-	lister, ok := h.adminService.(accountSchedulerScoreFilterPoolLister)
-	if !ok {
-		return nil
-REDACTED
-	accounts, err := lister.ListAccountsForSchedulerScoreFilter(ctx, platform, accountType, status, search, groupID, privacyMode)
+	// 池只用于 OpenAI 分数计算（非 OpenAI 账号会在打分时被丢弃），
+	// 无论列表页平台过滤为何，查询一律限定 openai，避免无过滤时全表扫描。
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(ctx, service.PlatformOpenAI, accountType, status, search, groupID, privacyMode)
 	if err != nil {
 		slog.Warn("openai_scheduler_filter_score_pool_failed", "error", err)
 		return nil
@@ -481,8 +520,20 @@ REDACTED
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
-	schedulerFilterPool := h.listAccountSchedulerScoreFilterPool(c.Request.Context(), platform, accountType, status, search, groupID, privacyMode)
-	schedulerScores, schedulerGroupScores := h.buildOpenAIAccountSchedulerScores(c.Request.Context(), accounts, schedulerFilterPool)
+	// 仅当前页存在 OpenAI 账号时才计算调度分数，避免为空结果付出池查询开销。
+	var schedulerScores map[int64]*AccountSchedulerScore
+	var schedulerGroupScores map[int64][]AccountSchedulerGroupScore
+	pageHasOpenAIAccounts := false
+	for i := range accounts {
+		if accounts[i].Platform == service.PlatformOpenAI {
+			pageHasOpenAIAccounts = true
+			break
+	REDACTED
+REDACTED
+	if pageHasOpenAIAccounts {
+		schedulerFilterPool := h.listAccountSchedulerScoreFilterPool(c.Request.Context(), platform, accountType, status, search, groupID, privacyMode)
+		schedulerScores, schedulerGroupScores = h.buildOpenAIAccountSchedulerScores(c.Request.Context(), accounts, schedulerFilterPool)
+REDACTED
 
 	// 始终获取并发数（Redis ZCARD，极低开销）
 	if h.concurrencyService != nil {

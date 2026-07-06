@@ -39,6 +39,12 @@ type EasyPay struct {
 	httpClient *http.Client
 REDACTED
 
+type easyPayCustomMethod struct {
+	Type         string `json:"type"`
+	UpstreamType string `json:"upstreamType"`
+	DisplayName  string `json:"displayName"`
+REDACTED
+
 // NewEasyPay creates a new EasyPay provider.
 // config keys: pid, pkey, apiBase, notifyUrl, returnUrl, cid, cidAlipay, cidWxpay
 func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
@@ -95,7 +101,13 @@ REDACTED
 func (e *EasyPay) Name() string        { return "EasyPay" REDACTED
 func (e *EasyPay) ProviderKey() string { return payment.TypeEasyPay REDACTED
 func (e *EasyPay) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeAlipay, payment.TypeWxpayREDACTED
+	types := []payment.PaymentType{payment.TypeAlipay, payment.TypeWxpayREDACTED
+	for _, method := range e.customMethods() {
+		if method.Type != "" {
+			types = append(types, method.Type)
+	REDACTED
+REDACTED
+	return types
 REDACTED
 
 func (e *EasyPay) MerchantIdentityMetadata() map[string]string {
@@ -124,13 +136,14 @@ REDACTED
 // TradeNo is empty; it arrives via the notify callback after payment.
 func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	notifyURL, returnURL := e.resolveURLs(req)
+	paymentType := e.upstreamPaymentType(req.PaymentType)
 	params := map[string]string{
-		"pid": e.config["pid"], "type": req.PaymentType,
+		"pid": e.config["pid"], "type": paymentType,
 		"out_trade_no": req.OrderID, "notify_url": notifyURL,
 		"return_url": returnURL, "name": req.Subject,
 		"money": req.Amount,
 REDACTED
-	if cid := e.resolveCID(req.PaymentType); cid != "" {
+	if cid := e.resolveCID(paymentType); cid != "" {
 		params["cid"] = cid
 REDACTED
 	if req.IsMobile {
@@ -150,13 +163,14 @@ REDACTED
 // createAPIPayment calls mapi.php to get payurl/qrcode (existing behavior).
 func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	notifyURL, returnURL := e.resolveURLs(req)
+	paymentType := e.upstreamPaymentType(req.PaymentType)
 	params := map[string]string{
-		"pid": e.config["pid"], "type": req.PaymentType,
+		"pid": e.config["pid"], "type": paymentType,
 		"out_trade_no": req.OrderID, "notify_url": notifyURL,
 		"return_url": returnURL, "name": req.Subject,
 		"money": req.Amount, "clientip": req.ClientIP,
 REDACTED
-	if cid := e.resolveCID(req.PaymentType); cid != "" {
+	if cid := e.resolveCID(paymentType); cid != "" {
 		params["cid"] = cid
 REDACTED
 	if req.IsMobile {
@@ -202,6 +216,41 @@ REDACTED
 		returnURL = e.config["returnUrl"]
 REDACTED
 	return notifyURL, returnURL
+REDACTED
+
+func (e *EasyPay) customMethods() []easyPayCustomMethod {
+	if e == nil {
+		return nil
+REDACTED
+	raw := strings.TrimSpace(e.config["customMethods"])
+	if raw == "" {
+		return nil
+REDACTED
+	var methods []easyPayCustomMethod
+	if err := json.Unmarshal([]byte(raw), &methods); err != nil {
+		return nil
+REDACTED
+	result := make([]easyPayCustomMethod, 0, len(methods))
+	for _, method := range methods {
+		method.Type = strings.TrimSpace(method.Type)
+		method.UpstreamType = strings.TrimSpace(method.UpstreamType)
+		method.DisplayName = strings.TrimSpace(method.DisplayName)
+		if method.Type == "" || method.UpstreamType == "" {
+			continue
+	REDACTED
+		result = append(result, method)
+REDACTED
+	return result
+REDACTED
+
+func (e *EasyPay) upstreamPaymentType(paymentType string) string {
+	paymentType = strings.TrimSpace(paymentType)
+	for _, method := range e.customMethods() {
+		if paymentType == method.Type {
+			return method.UpstreamType
+	REDACTED
+REDACTED
+	return paymentType
 REDACTED
 
 func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {

@@ -3783,6 +3783,9 @@ REDACTED
 		req.Header.Set("content-type", "application/json")
 REDACTED
 
+	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
+	account.ApplyHeaderOverrides(req.Header)
+
 	return req, nil
 REDACTED
 
@@ -4567,6 +4570,9 @@ REDACTED
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
 REDACTED
+
+	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
+	account.ApplyHeaderOverrides(req.Header)
 
 	return req, nil
 REDACTED
