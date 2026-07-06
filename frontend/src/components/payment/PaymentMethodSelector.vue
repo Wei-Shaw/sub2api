@@ -82,8 +82,8 @@ const sortedMethods = computed(() => {
 REDACTED)
 
 function methodIcon(type: string): string {
-  if (type.includes('alipay')) return METHOD_ICONS.alipay
-  if (type.includes('wxpay')) return METHOD_ICONS.wxpay
+  if (isAlipayMethod(type)) return METHOD_ICONS.alipay
+  if (isWxpayMethod(type)) return METHOD_ICONS.wxpay
   if (type === 'airwallex') return METHOD_ICONS.airwallex
   return METHOD_ICONS[type] || paymentIcon
 REDACTED
@@ -93,10 +93,18 @@ function methodLabel(method: PaymentMethodOption): string {
 REDACTED
 
 function methodSelectedClass(type: string): string {
-  if (type.includes('alipay')) return 'border-[#02A9F1] bg-blue-50 text-gray-900 shadow-sm dark:bg-blue-950 dark:text-gray-100'
-  if (type.includes('wxpay')) return 'border-[#09BB07] bg-green-50 text-gray-900 shadow-sm dark:bg-green-950 dark:text-gray-100'
+  if (isAlipayMethod(type)) return 'border-[#02A9F1] bg-blue-50 text-gray-900 shadow-sm dark:bg-blue-950 dark:text-gray-100'
+  if (isWxpayMethod(type)) return 'border-[#09BB07] bg-green-50 text-gray-900 shadow-sm dark:bg-green-950 dark:text-gray-100'
   if (type === 'stripe') return 'border-[#676BE5] bg-indigo-50 text-gray-900 shadow-sm dark:bg-indigo-950 dark:text-gray-100'
   if (type === 'airwallex') return 'border-[#FF6B3D] bg-orange-50 text-gray-900 shadow-sm dark:border-[#FF8E3C] dark:bg-orange-950 dark:text-gray-100'
   return 'border-primary-500 bg-primary-50 text-gray-900 shadow-sm dark:bg-primary-950 dark:text-gray-100'
+REDACTED
+
+function isAlipayMethod(type: string): boolean {
+  return type === 'alipay' || type === 'alipay_direct'
+REDACTED
+
+function isWxpayMethod(type: string): boolean {
+  return type === 'wxpay' || type === 'wxpay_direct'
 REDACTED
 </script>

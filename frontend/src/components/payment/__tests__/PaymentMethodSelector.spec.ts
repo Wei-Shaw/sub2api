@@ -21,4 +21,17 @@ describe('PaymentMethodSelector', () => {
     expect(wrapper.text()).not.toContain('ldc')
     expect(wrapper.text()).not.toContain('payment.methods.ldc')
   REDACTED)
+
+  it('uses the generic selected style for custom methods that contain built-in names', () => {
+    const wrapper = mount(PaymentMethodSelector, {
+      props: {
+        selected: 'card_alipay',
+        methods: [{ type: 'card_alipay', display_name: 'Card Pay', fee_rate: 0, available: true REDACTED],
+      REDACTED,
+    REDACTED)
+
+    const button = wrapper.get('button')
+    expect(button.classes()).toContain('border-primary-500')
+    expect(button.classes()).not.toContain('border-[#02A9F1]')
+  REDACTED)
 REDACTED)
