@@ -72,7 +72,9 @@ REDACTED)
 		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
 			groupID: {
 				ID:                           groupID,
+				Platform:                     PlatformGemini,
 				RateMultiplier:               2.0,
+				AllowImageGeneration:         true,
 				AllowBatchImageGeneration:    true,
 				ImageRateIndependent:         false,
 				BatchImageDiscountMultiplier: 0.8,
@@ -104,7 +106,9 @@ REDACTED)
 		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
 			groupID: {
 				ID:                           groupID,
+				Platform:                     PlatformGemini,
 				RateMultiplier:               1.0,
+				AllowImageGeneration:         true,
 				AllowBatchImageGeneration:    true,
 				ImagePrice1K:                 &imagePrice,
 				BatchImageDiscountMultiplier: 0.5,
@@ -140,6 +144,7 @@ REDACTED)
 		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
 			groupID: {
 				ID:                           groupID,
+				Platform:                     PlatformGemini,
 				RateMultiplier:               1,
 				AllowBatchImageGeneration:    false,
 				BatchImageDiscountMultiplier: 0.5,
@@ -472,7 +477,9 @@ REDACTED)
 		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
 			groupID: {
 				ID:                           groupID,
+				Platform:                     PlatformGemini,
 				RateMultiplier:               1,
+				AllowImageGeneration:         true,
 				AllowBatchImageGeneration:    true,
 				BatchImageDiscountMultiplier: 0.5,
 				BatchImageHoldMultiplier:     0.6,

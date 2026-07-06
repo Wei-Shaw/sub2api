@@ -7,7 +7,7 @@ Supported providers:
 - `gemini_api`
 - `vertex`
 
-API users do not see Gemini file names, Vertex job names, GCS paths, signed URLs, API keys, or service account material. Downloads are proxied through Sub2API.
+API users do not see Gemini file names, Vertex job names, GCS paths, signed URLs, API keys, or service account material. Downloads are proxied through Sub2API in this MVP.
 
 ## API Routes
 
@@ -198,6 +198,7 @@ For the managed Vertex/GCS batch bucket, disable Cloud Storage soft delete or co
 `gemini_api`:
 
 - Uses Gemini Batch API with JSONL file mode.
+- Supports Gemini `apikey` upstream accounts with a configured API key.
 - Result file refs are internal.
 - API keys are never returned.
 - The provider can be selected and submitted through Sub2API when an administrator configures a Gemini API-key upstream account. In the 2026-07-07 PR validation, this path was verified as selectable/callable, but successful image generation was not continued because the test API key had no prepayment.
@@ -205,10 +206,13 @@ For the managed Vertex/GCS batch bucket, disable Cloud Storage soft delete or co
 `vertex`:
 
 - Uses Vertex `BatchPredictionJob` with managed GCS JSONL.
+- Supports Gemini `service_account` upstream accounts with valid service account JSON.
 - GCS bucket and prefix are server-managed.
 - Vertex job name and GCS paths are internal.
 - Batch image output should be treated as `1K`/default only in MVP.
 - Do not promise `2K` or `4K`.
+
+Other Gemini account/login types are not selected by the current batch image providers unless they expose equivalent API-key or service-account credentials through the same provider flow. They were not covered by the 2026-07-07 PR validation.
 
 ## Official Google Enablement
 
@@ -221,7 +225,7 @@ Recommended production path:
 - Use a service account or Application Default Credentials for the Sub2API runtime.
 - Create one fixed Cloud Storage bucket for batch image input and output, then grant the runtime and Vertex service agent the minimum required bucket permissions.
 - Configure Sub2API with the project id, location, managed bucket, provider account, model whitelist, and pricing.
-- Enable `BATCH_IMAGE_ENABLED` globally and `allow_batch_image_generation` only on the intended Gemini group.
+- Enable `BATCH_IMAGE_ENABLED` globally, enable image generation on the intended Gemini group, then enable `allow_batch_image_generation` for that group. Non-Gemini groups are not eligible for batch image generation, and the admin UI only shows the batch image group switch after image generation is enabled on a Gemini group.
 
 API-key path:
 
@@ -311,6 +315,10 @@ Feature flags default to disabled.
 - Configure download concurrency.
 - Confirm billing pricing.
 - Run smoke tests before enabling.
+
+## Future Optimization
+
+- Optional object-storage download offload: persist completed image outputs to an operator-configured object store such as GCS, S3, or R2, then issue short-lived signed download links to users. This would avoid routing large image/ZIP downloads through the Sub2API server, which is useful for small-bandwidth deployments. Keep it opt-in because it needs extra storage credentials, lifecycle cleanup, signed-URL expiry policy, access auditing, and compatibility with output deletion.
 
 ## Security Checklist
 

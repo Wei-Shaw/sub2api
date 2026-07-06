@@ -60,7 +60,7 @@ Covered by automated tests and smoke:
 The batch image feature has two independent gates:
 
 - Global runtime gate: `BATCH_IMAGE_ENABLED` controls whether `/v1/images/batches*` is available at all. If disabled, the backend returns `404 BATCH_IMAGE_DISABLED` regardless of group settings. This value is loaded at application startup, so changing the server environment requires restarting/redeploying the app container.
-- Group/API-key gate: `groups.allow_batch_image_generation` controls whether a user's API key may use the feature. If the global gate is enabled but the API key's group is not allowed, the backend returns `403 BATCH_IMAGE_GROUP_DISABLED`.
+- Group/API-key gate: only Gemini groups with image generation enabled can enable `groups.allow_batch_image_generation`, which controls whether a user's API key may use the feature. If the global gate is enabled but the API key's group is not allowed, the backend returns `403 BATCH_IMAGE_GROUP_DISABLED`.
 
 Frontend visibility follows the same group/API-key gate for user-facing entry points:
 

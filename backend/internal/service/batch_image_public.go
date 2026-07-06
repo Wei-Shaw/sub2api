@@ -872,6 +872,9 @@ REDACTED
 	if !group.AllowBatchImageGeneration {
 		return ErrBatchImageGroupDisabled
 REDACTED
+	if group.Platform != PlatformGemini {
+		return ErrBatchImageGroupDisabled
+REDACTED
 	return nil
 REDACTED
 

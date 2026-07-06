@@ -889,25 +889,17 @@
               </div>
             </div>
           </div>
-          <div class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700">
+          <div v-if="createForm.platform === 'gemini' && createForm.allow_image_generation" class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700">
             <label
               class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"
-              :class="!createForm.allow_image_generation ? 'cursor-not-allowed opacity-50' : ''"
             >
               <input
                 v-model="createForm.allow_batch_image_generation"
                 type="checkbox"
-                :disabled="!createForm.allow_image_generation"
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               {{ t("admin.groups.imagePricing.allowBatchImageGeneration") REDACTEDREDACTED
             </label>
-            <p
-              v-if="!createForm.allow_image_generation"
-              class="mt-2 text-xs text-gray-500 dark:text-gray-400"
-            >
-              {{ t("admin.groups.imagePricing.batchDisabledHint") REDACTEDREDACTED
-            </p>
             <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
               {{ t("admin.groups.imagePricing.batchSectionHint") REDACTEDREDACTED
             </p>
@@ -943,6 +935,12 @@
               </div>
             </div>
           </div>
+          <p
+            v-else-if="createForm.platform !== 'gemini'"
+            class="mt-4 border-t border-dashed border-gray-200 pt-4 text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400"
+          >
+            {{ t("admin.groups.imagePricing.batchGeminiOnlyHint") REDACTEDREDACTED
+          </p>
         </div>
 
         <!-- 高峰时段倍率配置（仅订阅类型分组） -->
@@ -2282,25 +2280,17 @@
               </div>
             </div>
           </div>
-          <div class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700">
+          <div v-if="editForm.platform === 'gemini' && editForm.allow_image_generation" class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700">
             <label
               class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"
-              :class="!editForm.allow_image_generation ? 'cursor-not-allowed opacity-50' : ''"
             >
               <input
                 v-model="editForm.allow_batch_image_generation"
                 type="checkbox"
-                :disabled="!editForm.allow_image_generation"
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               {{ t("admin.groups.imagePricing.allowBatchImageGeneration") REDACTEDREDACTED
             </label>
-            <p
-              v-if="!editForm.allow_image_generation"
-              class="mt-2 text-xs text-gray-500 dark:text-gray-400"
-            >
-              {{ t("admin.groups.imagePricing.batchDisabledHint") REDACTEDREDACTED
-            </p>
             <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
               {{ t("admin.groups.imagePricing.batchSectionHint") REDACTEDREDACTED
             </p>
@@ -2336,6 +2326,12 @@
               </div>
             </div>
           </div>
+          <p
+            v-else-if="editForm.platform !== 'gemini'"
+            class="mt-4 border-t border-dashed border-gray-200 pt-4 text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400"
+          >
+            {{ t("admin.groups.imagePricing.batchGeminiOnlyHint") REDACTEDREDACTED
+          </p>
         </div>
 
         <!-- 高峰时段倍率配置（仅订阅类型分组） -->
@@ -4036,6 +4032,7 @@ const editForm = reactive({
 REDACTED);
 
 type ImagePricingFormState = {
+  platform: GroupPlatform;
   allow_image_generation: boolean;
   allow_batch_image_generation: boolean;
   rate_multiplier: number;
@@ -4103,10 +4100,10 @@ const editImageFinalPricePreview = computed(() =>
 const resetDisabledBatchImagePricing = (
   form: Pick<
     ImagePricingFormState,
-    "allow_image_generation" | "allow_batch_image_generation" | "batch_image_discount_multiplier" | "batch_image_hold_multiplier"
+    "platform" | "allow_image_generation" | "allow_batch_image_generation" | "batch_image_discount_multiplier" | "batch_image_hold_multiplier"
   >,
 ) => {
-  if (!form.allow_image_generation) {
+  if (form.platform !== "gemini" || !form.allow_image_generation) {
     form.allow_batch_image_generation = false;
   REDACTED
   if (!form.allow_batch_image_generation) {
@@ -4683,6 +4680,7 @@ watch(
       createForm.require_oauth_only = false;
       createForm.require_privacy_set = false;
     REDACTED
+    resetDisabledBatchImagePricing(createForm);
     resetModelsListState(createModelsListState);
     loadModelsListCandidates("create", 0, newVal);
   REDACTED,
@@ -4715,6 +4713,7 @@ watch(
       editForm.require_oauth_only = false;
       editForm.require_privacy_set = false;
     REDACTED
+    resetDisabledBatchImagePricing(editForm);
     if (editingGroup.value) {
       resetModelsListState(editModelsListState, editForm.platform === editingGroup.value.platform ? editingGroup.value.models_list_config : undefined);
       loadModelsListCandidates("edit", editingGroup.value.id, newVal);

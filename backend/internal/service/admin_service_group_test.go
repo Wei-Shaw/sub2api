@@ -252,6 +252,26 @@ REDACTED
 	require.False(t, group.AllowBatchImageGeneration)
 REDACTED
 
+func TestAdminService_CreateGroup_DisablesBatchImageForNonGeminiPlatform(t *testing.T) {
+	repo := &groupRepoStubForAdmin{REDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                      "openai-image",
+		Description:               "OpenAI image group",
+		Platform:                  PlatformOpenAI,
+		RateMultiplier:            1.0,
+		AllowImageGeneration:      true,
+		AllowBatchImageGeneration: true,
+REDACTED)
+REDACTED
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.True(t, repo.created.AllowImageGeneration)
+	require.False(t, repo.created.AllowBatchImageGeneration)
+	require.False(t, group.AllowBatchImageGeneration)
+REDACTED
+
 // TestAdminService_UpdateGroup_WithImagePricing 测试更新分组时 ImagePrice 字段正确更新
 func TestAdminService_UpdateGroup_WithImagePricing(t *testing.T) {
 	existingGroup := &Group{
@@ -366,6 +386,29 @@ REDACTED
 	require.NotNil(t, group)
 	require.NotNil(t, repo.updated)
 	require.False(t, repo.updated.AllowImageGeneration)
+	require.False(t, repo.updated.AllowBatchImageGeneration)
+	require.False(t, group.AllowBatchImageGeneration)
+REDACTED
+
+func TestAdminService_UpdateGroup_DisablesBatchImageWhenPlatformChangesFromGemini(t *testing.T) {
+	existingGroup := &Group{
+		ID:                        1,
+		Name:                      "existing-gemini",
+		Platform:                  PlatformGemini,
+		Status:                    StatusActive,
+		AllowImageGeneration:      true,
+		AllowBatchImageGeneration: true,
+REDACTED
+	repo := &groupRepoStubForAdmin{getByID: existingGroupREDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		Platform: PlatformOpenAI,
+REDACTED)
+REDACTED
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.Equal(t, PlatformOpenAI, repo.updated.Platform)
 	require.False(t, repo.updated.AllowBatchImageGeneration)
 	require.False(t, group.AllowBatchImageGeneration)
 REDACTED

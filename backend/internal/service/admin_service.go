@@ -1912,7 +1912,7 @@ REDACTED
 REDACTED
 
 	allowImageGeneration := input.AllowImageGeneration || defaultAllowImageGenerationForPlatform(platform)
-	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration
+	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration && platform == PlatformGemini
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -2150,7 +2150,7 @@ REDACTED
 	if input.AllowBatchImageGeneration != nil {
 		group.AllowBatchImageGeneration = *input.AllowBatchImageGeneration
 REDACTED
-	if !group.AllowImageGeneration {
+	if !group.AllowImageGeneration || group.Platform != PlatformGemini {
 		group.AllowBatchImageGeneration = false
 REDACTED
 	if input.ImageRateIndependent != nil {

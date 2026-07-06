@@ -8,11 +8,12 @@ Main capabilities:
 
 - Public async batch image API under `/v1/images/batches*`.
 - Provider support for Vertex-managed Gemini batch jobs and Gemini API batch jobs.
+- Upstream account support is limited to Gemini `service_account` accounts for the Vertex provider and Gemini `apikey` accounts for the Gemini API provider.
 - Redis-backed worker queue, delayed requeue, stale active recovery, and per-job locks.
 - PostgreSQL job/item state, provider refs kept internal, and proxied item/ZIP downloads.
 - Balance hold, capture, release, partial-failure settlement, and idempotent billing request ids.
 - Frontend user batch image guide and gated navigation entry.
-- Feature gates through global `BATCH_IMAGE_ENABLED` and group-level `allow_batch_image_generation`.
+- Feature gates through global `BATCH_IMAGE_ENABLED`, Gemini-only group eligibility, image-generation enablement, and group-level `allow_batch_image_generation`.
 
 The feature is intentionally not GA by default. It should be enabled first through feature flag and group opt-in only.
 
@@ -44,12 +45,14 @@ Online validation recorded on 2026-07-07:
 
 - No high-concurrency online stress test was run because it would create unnecessary provider cost and production pressure.
 - Gemini API-key upstream success still needs one paid/prepaid low-cost image test when such a key is available.
+- Other Gemini login/account types were not tested and are not selected by the current providers unless they can expose equivalent service-account or API-key credentials through the same provider flow.
 - A future integration test can exercise simultaneous cancel vs settlement under load, although Redis per-job locks, PostgreSQL row locks, and billing idempotency are already present.
+- Optional object-storage download offload could be added later: store completed outputs in GCS/S3/R2 and issue short-lived signed links so large image/ZIP downloads do not consume Sub2API server bandwidth. This should remain opt-in because it adds storage credentials, lifecycle cleanup, signed-link expiry, and access-audit requirements.
 
 ## Rollout Recommendation
 
 Merge/review behind flags only:
 
 - Keep `BATCH_IMAGE_ENABLED=false` by default.
-- Enable only for selected Gemini groups through `allow_batch_image_generation=true`.
+- Enable only for selected Gemini groups after `allow_image_generation=true`, then set `allow_batch_image_generation=true`; non-Gemini groups are intentionally not eligible for this switch.
 - Start with one controlled group and monitor job state, provider errors, hold/capture/release events, and download volume before broader enablement.
