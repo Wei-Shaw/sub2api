@@ -4325,87 +4325,8 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 	if s == nil {
 		return nil, nil
 REDACTED
-	responseID := strings.TrimSpace(previousResponseID)
-	if responseID == "" {
-		return nil, nil
-REDACTED
-	store := s.getOpenAIWSStateStore()
-	if store == nil {
-		return nil, nil
-REDACTED
-
-	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
-	if err != nil || accountID <= 0 {
-		return nil, nil
-REDACTED
-	if excludedIDs != nil {
-		if _, excluded := excludedIDs[accountID]; excluded {
-			return nil, nil
-	REDACTED
-REDACTED
-
-	account, err := s.getSchedulableAccount(ctx, accountID)
-	if err != nil || account == nil {
-		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil
-REDACTED
-	// 非 WSv2 场景（如 force_http/全局关闭）不应使用 previous_response_id 粘连，
-	// 以保持“回滚到 HTTP”后的历史行为一致性。
-	if s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
-		return nil, nil
-REDACTED
-	if shouldClearStickySession(account, requestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
-		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil
-REDACTED
-	if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
-		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil
-REDACTED
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
-		return nil, nil
-REDACTED
-	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
-		return nil, nil
-REDACTED
-	// Quota auto-pause must also gate the previous_response_id sticky path; otherwise an
-	// account over its 5h/7d threshold keeps serving the same response chain even though
-	// normal scheduling skips it. Pause is transient, so fall through to normal scheduling
-	// without deleting the binding (the window may reset before the next turn).
-	if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
-		return nil, nil
-REDACTED
-	if s.schedulerSnapshot != nil && s.accountRepo != nil {
-		latest, latestErr := s.accountRepo.GetByID(ctx, account.ID)
-		if latestErr != nil || latest == nil {
-			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-			return nil, nil
-	REDACTED
-		if shouldClearStickySession(latest, requestedModel) || !latest.IsOpenAI() || !latest.IsSchedulable() {
-			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-			return nil, nil
-	REDACTED
-		if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {
-			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-			return nil, nil
-	REDACTED
-		if requestedModel != "" && !latest.IsModelSupported(requestedModel) {
-			return nil, nil
-	REDACTED
-		if !latest.SupportsOpenAIEndpointCapability(requiredCapability) {
-			return nil, nil
-	REDACTED
-		if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, latest); paused {
-			return nil, nil
-	REDACTED
-		if s.isOpenAIAccountRuntimeBlocked(latest) {
-			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-			return nil, nil
-	REDACTED
-		account = latest
-REDACTED
-	if requireCompact && openAICompactSupportTier(account) == 0 {
-		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+	accountID, account, responseID, store := s.resolveAccountByPreviousResponseIDForCapability(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
+	if accountID <= 0 || account == nil || store == nil {
 		return nil, nil
 REDACTED
 
@@ -4437,6 +4358,117 @@ REDACTED
 	REDACTED, nil
 REDACTED
 	return nil, nil
+REDACTED
+
+func (s *OpenAIGatewayService) ResolveAccountIDByPreviousResponseIDForScheduler(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	requestedModel string,
+	excludedIDs map[int64]struct{REDACTED,
+	requiredCapability OpenAIEndpointCapability,
+	requireCompact bool,
+) int64 {
+	accountID, _, _, _ := s.resolveAccountByPreviousResponseIDForCapability(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
+	return accountID
+REDACTED
+
+func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	requestedModel string,
+	excludedIDs map[int64]struct{REDACTED,
+	requiredCapability OpenAIEndpointCapability,
+	requireCompact bool,
+) (int64, *Account, string, OpenAIWSStateStore) {
+	if s == nil {
+		return 0, nil, "", nil
+REDACTED
+	responseID := strings.TrimSpace(previousResponseID)
+	if responseID == "" {
+		return 0, nil, "", nil
+REDACTED
+	store := s.getOpenAIWSStateStore()
+	if store == nil {
+		return 0, nil, "", nil
+REDACTED
+
+	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
+	if err != nil || accountID <= 0 {
+		return 0, nil, "", nil
+REDACTED
+	if excludedIDs != nil {
+		if _, excluded := excludedIDs[accountID]; excluded {
+			return 0, nil, "", nil
+	REDACTED
+REDACTED
+
+	account, err := s.getSchedulableAccount(ctx, accountID)
+	if err != nil || account == nil {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
+REDACTED
+	// 非 WSv2 场景（如 force_http/全局关闭）不应使用 previous_response_id 粘连，
+	// 以保持“回滚到 HTTP”后的历史行为一致性。
+	if s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
+		return 0, nil, "", nil
+REDACTED
+	if shouldClearStickySession(account, requestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
+REDACTED
+	if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
+REDACTED
+	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+		return 0, nil, "", nil
+REDACTED
+	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
+		return 0, nil, "", nil
+REDACTED
+	// Quota auto-pause must also gate the previous_response_id sticky path; otherwise an
+	// account over its 5h/7d threshold keeps serving the same response chain even though
+	// normal scheduling skips it. Pause is transient, so fall through to normal scheduling
+	// without deleting the binding (the window may reset before the next turn).
+	if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
+		return 0, nil, "", nil
+REDACTED
+	if s.schedulerSnapshot != nil && s.accountRepo != nil {
+		latest, latestErr := s.accountRepo.GetByID(ctx, account.ID)
+		if latestErr != nil || latest == nil {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return 0, nil, "", nil
+	REDACTED
+		if shouldClearStickySession(latest, requestedModel) || !latest.IsOpenAI() || !latest.IsSchedulable() {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return 0, nil, "", nil
+	REDACTED
+		if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return 0, nil, "", nil
+	REDACTED
+		if requestedModel != "" && !latest.IsModelSupported(requestedModel) {
+			return 0, nil, "", nil
+	REDACTED
+		if !latest.SupportsOpenAIEndpointCapability(requiredCapability) {
+			return 0, nil, "", nil
+	REDACTED
+		if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, latest); paused {
+			return 0, nil, "", nil
+	REDACTED
+		if s.isOpenAIAccountRuntimeBlocked(latest) {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return 0, nil, "", nil
+	REDACTED
+		account = latest
+REDACTED
+	if requireCompact && openAICompactSupportTier(account) == 0 {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
+REDACTED
+	return accountID, account, responseID, store
 REDACTED
 
 func classifyOpenAIWSAcquireError(err error) string {

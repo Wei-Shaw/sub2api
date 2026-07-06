@@ -217,12 +217,13 @@ REDACTED
 	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
 	body := map[string]any{
-		"promo_code_enabled":                    true,
-		"payment_visible_method_alipay_source":  "easypay",
-		"payment_visible_method_wxpay_source":   "wxpay",
-		"payment_visible_method_alipay_enabled": true,
-		"payment_visible_method_wxpay_enabled":  false,
-		"openai_advanced_scheduler_enabled":     true,
+		"promo_code_enabled":                                      true,
+		"payment_visible_method_alipay_source":                    "easypay",
+		"payment_visible_method_wxpay_source":                     "wxpay",
+		"payment_visible_method_alipay_enabled":                   true,
+		"payment_visible_method_wxpay_enabled":                    false,
+		"openai_advanced_scheduler_enabled":                       true,
+		"openai_advanced_scheduler_subscription_priority_enabled": true,
 REDACTED
 	rawBody, err := json.Marshal(body)
 REDACTED
@@ -240,6 +241,7 @@ REDACTED
 	require.Equal(t, "true", repo.values[service.SettingPaymentVisibleMethodAlipayEnabled])
 	require.Equal(t, "false", repo.values[service.SettingPaymentVisibleMethodWxpayEnabled])
 	require.Equal(t, "true", repo.values["openai_advanced_scheduler_enabled"])
+	require.Equal(t, "true", repo.values[service.SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled])
 
 	var resp response.Response
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
@@ -250,6 +252,7 @@ REDACTED
 	require.Equal(t, true, data["payment_visible_method_alipay_enabled"])
 	require.Equal(t, false, data["payment_visible_method_wxpay_enabled"])
 	require.Equal(t, true, data["openai_advanced_scheduler_enabled"])
+	require.Equal(t, true, data["openai_advanced_scheduler_subscription_priority_enabled"])
 REDACTED
 
 func TestSettingHandler_UpdateSettings_PreservesLegacyBlankPaymentVisibleMethodSource(t *testing.T) {

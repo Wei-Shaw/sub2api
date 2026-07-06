@@ -3296,6 +3296,7 @@ export default {
         priority: '优先级',
         billingRateMultiplier: '账号倍率',
         weight: '权重',
+        schedulerScore: '调度权值',
         status: '状态',
         schedulable: '调度',
         todayStats: '今日统计',
@@ -3306,6 +3307,12 @@ export default {
         createdAt: '创建时间',
         expiresAt: '过期时间',
         actions: '操作'
+      REDACTED,
+      schedulerScore: {
+        baseShort: '普通',
+        stickyShort: '粘性',
+        ungrouped: '未分组',
+        hint: '显示格式为“分组名 / 基础分 / 粘性加分”。基础分按当前筛选条件限定的候选账号计算，包含优先级、负载、排队、错误率、首包延迟、重置窗口、额度余量等因子；粘性加分只在开启粘性加权时用于 previous_response_id 或 session_hash。分数越大越优先。'
       REDACTED,
       usageWindowsHint: '“5h / 7d”是上游账号（如 OpenAI ChatGPT、Claude）官方的滚动用量窗口限制，由上游对账号设定，并非 sub2api 配置，也与你映射的模型无关。窗口滚动到期后用量会自动重置，无法在 sub2api 端解除该限制。',
       allPrivacyModes: '全部Privacy状态',
@@ -6878,7 +6885,24 @@ export default {
       REDACTED,
       openaiExperimentalScheduler: {
         title: 'OpenAI 实验调度策略',
-        description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。'
+        description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。',
+        stickyWeightedTitle: '粘性加权',
+        stickyWeightedDescription: '开启后 previous_response_id 和 session_hash 粘性进入高级调度打分；关闭时仍按旧逻辑硬命中粘性账号。',
+        subscriptionPriorityTitle: '订阅优先',
+        subscriptionPriorityDescription: '开启后先在 ChatGPT 订阅账号池中按权值选取；订阅池拿不到席位时再回退到非订阅账号池。',
+        weightsTitle: '调度权值覆盖',
+        weightsDescription: '留空时使用配置/环境变量值；配置未设置时使用内置默认值。页面非空设置优先。',
+        defaultPlaceholder: '配置/默认：{valueREDACTED',
+        topKLabel: 'TopK',
+        priorityWeight: '优先级',
+        loadWeight: '负载',
+        queueWeight: '排队',
+        errorRateWeight: '错误率',
+        ttftWeight: '首包延迟',
+        resetWeight: '重置窗口',
+        quotaHeadroomWeight: '额度余量',
+        previousResponseWeight: 'previous_response 粘性',
+        sessionStickyWeight: 'session_hash 粘性'
       REDACTED,
       usageRecords: {
         title: '使用记录',
