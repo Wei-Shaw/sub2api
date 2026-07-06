@@ -602,7 +602,11 @@ REDACTED
 		req.Header.Set("accept", "text/event-stream")
 		req.Header.Set("OpenAI-Beta", "responses=experimental")
 		req.Header.Set("Originator", "codex_cli_rs")
-		req.Header.Set("User-Agent", codexCLIUserAgent)
+		if customUA := strings.TrimSpace(credentialAccount.GetOpenAIUserAgent()); customUA != "" {
+			req.Header.Set("User-Agent", customUA)
+	REDACTED else {
+			req.Header.Set("User-Agent", codexCLIUserAgent)
+	REDACTED
 		setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
 REDACTED
 
