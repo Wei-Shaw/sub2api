@@ -494,7 +494,7 @@ REDACTED
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {REDACTED, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, subscription_usd_to_cny_rate: 0, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
 REDACTED)
 
 const tabs = computed(() => {
@@ -510,6 +510,11 @@ const validAmount = computed(() => amount.value ?? 0)
 const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
   return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
+REDACTED)
+// 订阅 CNY 换算汇率（1 USD = X CNY）。0 = 未配置，订阅保持 price 直付（与后端 opt-in 条件严格镜像）。
+const subscriptionUsdToCnyRate = computed(() => {
+  const rate = checkout.value.subscription_usd_to_cny_rate
+  return Number.isFinite(rate) && rate > 0 ? rate : 0
 REDACTED)
 const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
 
@@ -580,8 +585,9 @@ function ceilPaymentAmount(value: number, currency: string): number {
 REDACTED
 
 function subscriptionPaymentAmountForCurrency(value: number, currency: string): number {
-  if (currency !== DEFAULT_PAYMENT_CURRENCY) return roundPaymentAmount(value, currency)
-  return roundPaymentAmount(value / balanceRechargeMultiplier.value, currency)
+  const rate = subscriptionUsdToCnyRate.value
+  if (rate <= 0 || currency !== DEFAULT_PAYMENT_CURRENCY) return roundPaymentAmount(value, currency)
+  return roundPaymentAmount(value * rate, currency)
 REDACTED
 
 function formatSelectedPaymentAmount(value: number): string {

@@ -161,39 +161,66 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestCalculateCreateOrderPayAmountForSubscriptionConvertsCNYPrice(t *testing.T) {
+func TestCalculateCreateOrderPayAmountForSubscriptionConvertsCNYPriceWhenRateConfigured(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "CNY", payment.OrderTypeSubscription, 0.14)
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "CNY", payment.OrderTypeSubscription, 7.15)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 REDACTED
-	if amountStr != "71.36" || amount != 71.36 {
-		t.Fatalf("subscription CNY pay amount = (%q, %v), want (71.36, 71.36)", amountStr, amount)
+	if amountStr != "71.43" || amount != 71.43 {
+		t.Fatalf("subscription CNY pay amount = (%q, %v), want (71.43, 71.43)", amountStr, amount)
 REDACTED
 REDACTED
 
 func TestCalculateCreateOrderPayAmountForSubscriptionAppliesFeeAfterCNYConversion(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 2.5, "CNY", payment.OrderTypeSubscription, 0.14)
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 2.5, "CNY", payment.OrderTypeSubscription, 7.15)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 REDACTED
-	if amountStr != "73.15" || amount != 73.15 {
-		t.Fatalf("subscription CNY pay amount with fee = (%q, %v), want (73.15, 73.15)", amountStr, amount)
+	if amountStr != "73.22" || amount != 73.22 {
+		t.Fatalf("subscription CNY pay amount with fee = (%q, %v), want (73.22, 73.22)", amountStr, amount)
 REDACTED
 REDACTED
 
 func TestCalculateCreateOrderPayAmountForSubscriptionKeepsNonCNYPrice(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "USD", payment.OrderTypeSubscription, 0.14)
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "USD", payment.OrderTypeSubscription, 7.15)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 REDACTED
 	if amountStr != "9.99" || amount != 9.99 {
 		t.Fatalf("subscription USD pay amount = (%q, %v), want (9.99, 9.99)", amountStr, amount)
+REDACTED
+REDACTED
+
+// 换算是 opt-in：未配置汇率（rate=0）时，CNY 订阅保持 price 直付的存量行为。
+// 该测试锁住存量部署升级后行为不变的兼容承诺。
+func TestCalculateCreateOrderPayAmountForSubscriptionKeepsDirectPriceWhenRateDisabled(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "CNY", payment.OrderTypeSubscription, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if amountStr != "9.99" || amount != 9.99 {
+		t.Fatalf("subscription CNY pay amount without rate = (%q, %v), want (9.99, 9.99)", amountStr, amount)
+REDACTED
+REDACTED
+
+// 汇率只作用于订阅订单，余额充值订单不受影响。
+func TestCalculateCreateOrderPayAmountForBalanceIgnoresSubscriptionRate(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(50, 0, "CNY", payment.OrderTypeBalance, 7.15)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if amountStr != "50.00" || amount != 50 {
+		t.Fatalf("balance CNY pay amount = (%q, %v), want (50.00, 50)", amountStr, amount)
 REDACTED
 REDACTED
 

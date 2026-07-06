@@ -6183,6 +6183,10 @@ export default {
         balanceRechargeMultiplier: 'Balance Recharge Multiplier',
         balanceRechargeMultiplierHint: 'How many USD balance the user receives for each 1 CNY paid',
         balanceRechargePreview: 'Preview: 1 CNY = {usdREDACTED USD',
+        subscriptionUsdToCnyRate: 'Subscription USD to CNY Rate',
+        subscriptionUsdToCnyRateHint:
+          'CNY charged per 1 USD of plan price on CNY channels (e.g. 7.15). 0 or empty = disabled, plan price is charged as-is. When enabled, all plan prices must be set in USD',
+        subscriptionUsdToCnyRateDisabled: 'Disabled (price charged as-is)',
         rechargeFeeRate: 'Recharge Fee Rate',
         rechargeFeeRateHint: 'Percentage of service fee charged on top of recharge amount, 0 means no fee',
         rechargeFeePreview: 'Preview: Recharge 100, fee {feeREDACTED',
