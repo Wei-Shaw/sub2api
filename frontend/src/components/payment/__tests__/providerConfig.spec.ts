@@ -2,6 +2,8 @@ import { describe, expect, it REDACTED from 'vitest'
 import {
   PAYMENT_CURRENCY_OPTIONS,
   PROVIDER_CONFIG_FIELDS,
+  isBuiltInAlipayMethod,
+  isBuiltInWxpayMethod,
   parseEasyPayCustomMethods,
   serializeEasyPayCustomMethods,
 REDACTED from '@/components/payment/providerConfig'
@@ -77,5 +79,17 @@ describe('EasyPay custom methods config', () => {
   it('returns an empty string for invalid or empty custom methods', () => {
     expect(parseEasyPayCustomMethods('not-json')).toEqual([])
     expect(serializeEasyPayCustomMethods([{ type: '', upstreamType: 'epay', displayName: 'LDC' REDACTED])).toBe('')
+  REDACTED)
+REDACTED)
+
+describe('built-in payment method helpers', () => {
+  it('only treats exact built-in aliases as Alipay or WeChat Pay', () => {
+    expect(isBuiltInAlipayMethod('alipay')).toBe(true)
+    expect(isBuiltInAlipayMethod('alipay_direct')).toBe(true)
+    expect(isBuiltInAlipayMethod('card_alipay')).toBe(false)
+
+    expect(isBuiltInWxpayMethod('wxpay')).toBe(true)
+    expect(isBuiltInWxpayMethod('wxpay_direct')).toBe(true)
+    expect(isBuiltInWxpayMethod('card_wxpay')).toBe(false)
   REDACTED)
 REDACTED)
