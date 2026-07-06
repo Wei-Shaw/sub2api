@@ -108,8 +108,8 @@ security:
     # Allow localhost/private IPs for upstream/pricing/CRS (use only in trusted networks)
     # 允许本地/私有 IP 地址用于上游/定价/CRS（仅在可信网络中使用）
     allow_private_hosts: true
-    # Allow http:// URLs when allowlist is disabled (default: false, require https)
-    # 白名单禁用时是否允许 http:// URL（默认: false，要求 https）
+    # Allow http:// URLs when allowlist is disabled (default: true; set to false to require https)
+    # 白名单禁用时是否允许 http:// URL（默认: true，设为 false 则仅允许 https）
     allow_insecure_http: true
   response_headers:
     # Enable configurable response header filtering (default: true)

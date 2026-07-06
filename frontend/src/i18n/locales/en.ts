@@ -1027,7 +1027,7 @@ export default {
       time: 'Time', model: 'Model', endpoint: 'Endpoint', status: 'Status',
       category: 'Category', platform: 'Platform', message: 'Message',
       keyName: 'Key Name', keyDeleted: 'Deleted', allKeys: 'All keys',
-      modelPlaceholder: 'Search model', allCategories: 'All categories',
+      modelPlaceholder: 'Search model', allCategories: 'All categories', allStatuses: 'All status codes',
       empty: 'No error requests', failedToLoad: 'Failed to load error requests',
       categories: {
         auth: 'Auth failed', rate_limit: 'Rate limited', quota: 'Balance/Subscription',
@@ -3127,7 +3127,7 @@ export default {
           resetQuota: 'Reset Quota',
           resetQuotaDesc: 'Reset daily/weekly/monthly usage to zero',
           revoke: 'Revoke',
-          revokeDesc: 'Immediately terminate the subscription (irreversible)'
+          revokeDesc: 'Immediately terminate the subscription (restorable from the revoked list)'
         REDACTED,
         tip: 'Tip: Only groups with billing type "Subscription" and status "Active" appear in the group dropdown. If no options are available, create one in Group Management first.'
       REDACTED
@@ -3285,6 +3285,7 @@ export default {
         priority: 'Priority',
         billingRateMultiplier: 'Billing Rate',
         weight: 'Weight',
+        schedulerScore: 'Scheduler Score',
         status: 'Status',
         schedulable: 'Schedulable',
         todayStats: 'Today Stats',
@@ -3295,6 +3296,12 @@ export default {
         createdAt: 'Created',
         expiresAt: 'Expires At',
         actions: 'Actions'
+      REDACTED,
+      schedulerScore: {
+        baseShort: 'Base',
+        stickyShort: 'Sticky',
+        ungrouped: 'Ungrouped',
+        hint: 'Displayed as "group / base score / sticky bonus". The base score is computed within the current filtered candidate set and includes priority, load, queue depth, error rate, first-token latency, reset window, quota headroom, and related factors. The sticky bonus applies only when sticky weighting is enabled for previous_response_id or session_hash. Higher scores are preferred.'
       REDACTED,
       usageWindowsHint: '"5h / 7d" are the upstream account\'s official rolling usage windows (e.g. OpenAI ChatGPT, Claude). They are imposed by the upstream provider on the account itself — not configured by sub2api, and unrelated to the models you map. Usage resets automatically once each window rolls over, and the limit cannot be lifted from within sub2api.',
       allPrivacyModes: 'All Privacy States',
@@ -3577,18 +3584,21 @@ export default {
         codexCLIOnlyAppServer: 'Allow Codex app-server clients',
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
-        codexImageGenerationBridge: 'Codex image-generation bridge',
-        codexImageGenerationBridgeDesc:
-          'Account policy takes precedence over channel and global settings. Only controls whether Codex requests through the /responses text endpoint receive the image_generation tool; standalone image-generation endpoints are unaffected.',
-        codexImageGenerationBridgeInherit: 'Follow channel',
-        codexImageGenerationBridgeInheritDesc: 'Do not write an account override; use the channel or global policy.',
-        codexImageGenerationBridgeEnabled: 'Force on',
-        codexImageGenerationBridgeEnabledDesc: 'Allow image tool injection for Codex /responses requests.',
-        codexImageGenerationBridgeDisabled: 'Force off',
-        codexImageGenerationBridgeDisabledDesc: 'Block image tool injection for Codex /responses requests.',
-        codexImageGenerationBridgeBadgeInherit: 'Channel policy',
-        codexImageGenerationBridgeBadgeEnabled: 'Account on',
-        codexImageGenerationBridgeBadgeDisabled: 'Account off',
+        codexImageTool: 'Codex image tool',
+        codexImageToolDesc:
+          'One policy for the image_generation tool on Codex /responses text requests: whether it is auto-injected, and whether client-provided tools pass through. Account policy takes precedence over channel and global settings; standalone image-generation endpoints are unaffected.',
+        codexImageToolInherit: 'Follow channel',
+        codexImageToolInheritDesc: 'No account override; injection follows the channel or global policy, and client-provided image tools pass through.',
+        codexImageToolEnabled: 'Force inject',
+        codexImageToolEnabledDesc: 'Always inject the image tool for Codex /responses requests.',
+        codexImageToolDisabled: 'No injection',
+        codexImageToolDisabledDesc: 'Never auto-inject; client-provided image tools still pass through.',
+        codexImageToolBlock: 'Block all',
+        codexImageToolBlockDesc: 'No injection, and client-provided image tools plus matching tool_choice are removed.',
+        codexImageToolBadgeInherit: 'Channel policy',
+        codexImageToolBadgeEnabled: 'Force inject',
+        codexImageToolBadgeDisabled: 'No injection',
+        codexImageToolBadgeBlock: 'Blocked',
         compactMode: 'Compact mode',
         compactModeDesc:
           'Controls how this account participates in /responses/compact routing. Auto follows probe results, Force On always allows, Force Off always excludes.',
@@ -5108,6 +5118,7 @@ export default {
         accountId: 'Account ID',
         status: 'Status',
         message: 'Message',
+        ip: 'IP',
         latency: 'Request Duration',
         action: 'Action',
         noErrors: 'No errors in this window.',
@@ -6740,7 +6751,24 @@ export default {
       REDACTED,
       openaiExperimentalScheduler: {
         title: 'OpenAI experimental scheduler policy',
-        description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability."
+        description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability.",
+        stickyWeightedTitle: 'Sticky weighting',
+        stickyWeightedDescription: 'When enabled, previous_response_id and session_hash affinity are scored by the advanced scheduler. When disabled, sticky accounts keep the legacy hard-hit behavior.',
+        subscriptionPriorityTitle: 'Subscription priority',
+        subscriptionPriorityDescription: 'When enabled, the scheduler scores ChatGPT subscription accounts first and falls back to non-subscription accounts only if no subscription slot can be acquired.',
+        weightsTitle: 'Scheduler weight overrides',
+        weightsDescription: 'Blank values use config/environment values; when config is not set, built-in defaults apply. Non-blank page settings take priority.',
+        defaultPlaceholder: 'config/default: {valueREDACTED',
+        topKLabel: 'TopK',
+        priorityWeight: 'Priority',
+        loadWeight: 'Load',
+        queueWeight: 'Queue',
+        errorRateWeight: 'Error rate',
+        ttftWeight: 'TTFT',
+        resetWeight: 'Reset window',
+        quotaHeadroomWeight: 'Quota headroom',
+        previousResponseWeight: 'previous_response sticky',
+        sessionStickyWeight: 'session_hash sticky'
       REDACTED,
       usageRecords: {
         title: 'Usage Records',

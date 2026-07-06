@@ -472,6 +472,49 @@ REDACTED
 	return outGroups, nil
 REDACTED
 
+func (r *groupRepository) ListActiveIDs(ctx context.Context) ([]int64, error) {
+	if r.sql != nil {
+		rows, err := r.sql.QueryContext(ctx, `
+			SELECT id
+			FROM groups
+			WHERE status = $1
+			  AND deleted_at IS NULL
+			ORDER BY sort_order ASC, id ASC
+		`, service.StatusActive)
+		if err != nil {
+			return nil, err
+	REDACTED
+		defer func() { _ = rows.Close() REDACTED()
+
+		ids := make([]int64, 0)
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				return nil, err
+		REDACTED
+			ids = append(ids, id)
+	REDACTED
+		if err := rows.Err(); err != nil {
+			return nil, err
+	REDACTED
+		return ids, nil
+REDACTED
+
+	groups, err := r.client.Group.Query().
+		Where(group.StatusEQ(service.StatusActive)).
+		Select(group.FieldID).
+		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+	ids := make([]int64, 0, len(groups))
+	for i := range groups {
+		ids = append(ids, groups[i].ID)
+REDACTED
+	return ids, nil
+REDACTED
+
 func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform string) ([]service.Group, error) {
 	groups, err := r.client.Group.Query().
 		Where(group.StatusEQ(service.StatusActive), group.PlatformEQ(platform)).
