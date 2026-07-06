@@ -43,8 +43,7 @@ CREATE TABLE IF NOT EXISTS users (
     email           VARCHAR(255) NOT NULL UNIQUE,
     password_hash   VARCHAR(255) NOT NULL,
     role            VARCHAR(20) NOT NULL DEFAULT 'user',  -- admin/user
-    balance         DECIMAL(20, 8) NOT NULL DEFAULT 0,    -- 可用余额（可为负数）
-    frozen_balance  DECIMAL(20, 8) NOT NULL DEFAULT 0,    -- 冻结余额
+    balance         DECIMAL(20, 8) NOT NULL DEFAULT 0,    -- 余额（可为负数）
     concurrency     INT NOT NULL DEFAULT 5,               -- 并发数限制
     status          VARCHAR(20) NOT NULL DEFAULT 'active', -- active/disabled
     allowed_groups  BIGINT[] DEFAULT NULL,                -- 允许绑定的分组ID列表
