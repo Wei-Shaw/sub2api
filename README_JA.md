@@ -23,10 +23,11 @@
 - **🚨 利用規約のリスク**：本プロジェクトの使用は、Anthropic をはじめとする上流プロバイダーの利用規約に違反する可能性があります。ご利用前に各プロバイダーのユーザー規約を必ずご確認ください。使用により生じるすべてのリスクはユーザーご自身が負うものとします。
 - **⚖️ 法令遵守**：お住まいの国または地域の法令を遵守した上で本プロジェクトをご利用ください。いかなる違法な目的での使用も固く禁じます。
 - **📖 免責事項**：本プロジェクトは技術的な学習および研究の目的でのみ提供されます。本プロジェクトの使用により生じたアカウントの停止、サービスの中断、データの損失、その他一切の直接的または間接的な損害について、作者は一切の責任を負いません。
+- **🚫 商用利用の非許諾**：本プロジェクトの開発者は、いかなる個人または組織に対しても、本プロジェクトを利用したいかなる形態の商業運営も一切許諾していません。本プロジェクトの名義で、または本プロジェクトに基づいて行われる商業行為はすべて本プロジェクトおよびその開発者とは無関係であり、それにより生じる一切の紛争、損失、法的責任は行為者自身が負うものとします。
 
 ## ❤️ スポンサー
 
-> [こちらに掲載しませんか？](mailto:support@pincc.ai)
+> [こちらに掲載しませんか？](mailto:support@sub2api.org)
 
 <table>
 
@@ -43,11 +44,6 @@
 <tr>
 <td width="180"><a href="https://aigocode.com/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
 <td>AIGoCode のご支援に感謝します！AIGoCode は Claude Code、Codex、最新の Gemini モデルを統合したオールインワンプラットフォームで、安定的かつ効率的でコストパフォーマンスに優れた AI コーディングサービスを提供します。柔軟なサブスクリプションプラン、アカウント停止リスクゼロ、VPN 不要の直接アクセス、超高速レスポンスが特長です。AIGoCode は sub2api ユーザー向けに特別特典を用意しています：<a href="https://aigocode.com/invite/SUB2API">こちらのリンク</a>から登録すると、初回チャージ時に 10% のボーナスクレジットを追加プレゼント！</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://code.silkapi.com/register?aff=SUB2API"><img src="assets/partners/logos/silkapi.png" alt="silkapi" width="150"></a></td>
-<td>SilkAPI のご支援に感謝します！<a href="https://code.silkapi.com/register?aff=SUB2API">SilkAPI</a> は Sub2API をベースに構築された中継サービスで、高速かつ安定した Codex API 中継の提供に特化しています。</td>
 </tr>
 
 <tr>
@@ -97,8 +93,8 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://apikl.com"><img src="assets/partners/logos/apikl.png" alt="apikl" width="150"></a></td>
-<td>Apikl のご支援に感謝します！Sub2API をベースに構築された本プラットフォームは、開発者向けに Codex / Claude シリーズモデルの中継サービスを提供しています。長期安定性、高速直結、高いコストパフォーマンスを重視し、従量課金の残高ベース課金、エンタープライズグレードの正規請求書、1対1の専属サポートを提供します。<a href="https://apikl.com">今すぐ登録</a>でチャージ 1:1 ボーナス — 残高が倍に！
+<td width="180"><a href="https://apikl.ai"><img src="assets/partners/logos/apikl.png" alt="apikl" width="150"></a></td>
+<td>Apikl のご支援に感謝します！Sub2API をベースに構築された本プラットフォームは、開発者向けに Codex / Claude シリーズモデルの中継サービスを提供しています。長期安定性、高速直結、高いコストパフォーマンスを重視し、従量課金の残高ベース課金、エンタープライズグレードの正規請求書、1対1の専属サポートを提供します。<a href="https://apikl.ai">今すぐ登録</a>でチャージ 1:1 ボーナス — 残高が倍に！
 </td>
 </tr>
 
@@ -128,6 +124,22 @@
 <tr>
 <td width="180"><a href="https://www.miyaip.com/?invitecode=sub2api"><img src="assets/partners/logos/miyaip.png" alt="miyaip" width="150"></a></td>
 <td>MiyaIP のご支援に感謝します！<a href="https://www.miyaip.com/?invitecode=sub2api">MiyaIP</a> はグローバル住宅プロキシネットワークサービスに特化したプラットフォームで、企業開発者、越境ビジネスチーム、AI アプリケーションユーザーに高品質で純粋な海外住宅 IP リソースを提供することに注力しています。AI プラットフォーム、海外 SaaS、その他のオンラインサービスに安定した独立した海外ネットワーク環境を提供し、複数地域でのアクセステストやプロジェクト環境の分離をサポートします。海外 AI サービスへのアクセスが必要な開発・テストシナリオに最適です。例：AI モデルプラットフォームアクセス、AI 開発テスト、AI SaaS サービス利用、AI API デバッグ、複数地域のネットワーク環境検証など。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://anpin.ai"><img src="assets/partners/logos/anpin.jpg" alt="anpin" width="150"></a></td>
+<td><a href="https://anpin.ai">anpin.ai</a> のご支援に感謝します！anpin.ai は AI の普及推進に取り組むハイエンド AI 中継サービスプラットフォームです。先進的な技術アーキテクチャとグローバル分散デプロイメントにより、国際トップクラスの大規模モデルへの高速直通ルートを提供します。<br>
+自社構築の一次アカウントプール：1-3秒の超高速応答、同業者への配布に対応<br>
+極めて高い安定性：マルチライン・インテリジェントルーティング + 冗長バックアップシステムにより、年中無休の高可用性運用を確保；<br>
+モデルの真正性：一切のコンテンツ介入や二次フィルタリングを行わず、最も純粋で強力なネイティブモデル能力を体験できます。<br>
+チャージ 1:1、エンタープライズグレードサービスは請求書発行可能。安品 AI は単なる中継所ではなく、最先端のインテリジェント世界へと繋がる安全・信頼性・高効率の橋渡し役です。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
+<td>Proxy4Free のご支援に感謝します！Proxy4Free は開発者と AI アプリケーション向けのデータプロキシサービスプロバイダーで、住宅プロキシ、静的住宅プロキシ、ISP プロキシ、データセンタープロキシなど多様なプロキシソリューションを提供しており、Web Scraping、Browser Automation、AI Agent などのシナリオに適しています。グローバル IP リソース、安定した接続、柔軟な切り替えをサポートし、開発者のデータ収集成功率の向上と IP ブロックリスクの低減を支援します。<a href="https://www.proxy4free.com/?keyword=4yjqecpc">こちらのリンクから登録</a>して、より安定した効率的な自動化ワークフローを簡単に構築しましょう。
 </td>
 </tr>
 
@@ -445,7 +457,8 @@ pnpm run build
 
 # 4. フロントエンドを組み込んだバックエンドをビルド
 cd ../backend
-go build -tags embed -o sub2api ./cmd/server
+VERSION="$(./scripts/resolve-version.sh)"
+go build -tags embed -ldflags="-X main.Version=${VERSION}" -o sub2api ./cmd/server
 
 # 5. 設定ファイルを作成
 cp ../deploy/config.example.yaml ./config.yaml
@@ -508,20 +521,20 @@ default:
 
 **⚠️ セキュリティ警告: HTTP URL 設定**
 
-`security.url_allowlist.enabled=false` の場合、システムはデフォルトで最小限の URL バリデーションを行い、**HTTP URL を拒否**して HTTPS のみを許可します。HTTP URL を許可するには（開発環境や内部テスト用など）、以下を明示的に設定する必要があります:
+`security.url_allowlist.enabled=false` の場合、システムは最小限の URL バリデーションのみを行い、**デフォルトで HTTP URL を許可**します（開発フレンドリーモード。Docker Compose デプロイのデフォルトも同じです）。本番環境では、以下のように明示的に HTTPS のみに制限することを推奨します:
 
 ```yaml
 security:
   url_allowlist:
     enabled: false                # 許可リストチェックを無効化
-    allow_insecure_http: true     # HTTP URL を許可（⚠️ セキュリティリスクあり）
+    allow_insecure_http: false    # HTTPS のみ許可（本番環境推奨）
 ```
 
 **または環境変数で設定:**
 
 ```bash
 SECURITY_URL_ALLOWLIST_ENABLED=false
-SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=true
+SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
 ```
 
 **HTTP を許可するリスク:**
@@ -535,7 +548,7 @@ SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=true
 - ✅ HTTPS 取得前のアカウント接続テスト
 - ❌ 本番環境（HTTPS のみを使用）
 
-**この設定なしで表示されるエラー例:**
+**`allow_insecure_http: false` 設定時に HTTP URL で表示されるエラー例:**
 ```
 Invalid base URL: invalid url scheme: http
 ```
@@ -628,12 +641,6 @@ Antigravity アカウントはオプションの**ハイブリッドスケジュ
 
 > **⚠️ 警告**: Anthropic Claude と Antigravity Claude は**同じ会話コンテキスト内で混在させることはできません**。グループを使用して適切に分離してください。
 
-### 既知の問題
-
-Claude Code では、Plan Mode を自動的に終了できません。（通常、ネイティブの Claude API を使用する場合、計画が完了すると Claude Code はユーザーに計画を承認または拒否するオプションをポップアップ表示します。）
-
-**回避策**: `Shift + Tab` を押して手動で Plan Mode を終了し、計画を承認または拒否するためのレスポンスを入力してください。
-
 ---
 
 ## プロジェクト構成
@@ -663,16 +670,6 @@ sub2api/
     ├── config.example.yaml   # バイナリデプロイ用フル設定ファイル
     └── install.sh            # ワンクリックインストールスクリプト
 ```
-
-## 免責事項
-
-> **本プロジェクトをご利用の前に、以下をよくお読みください:**
->
-> :rotating_light: **利用規約違反のリスク**: 本プロジェクトの使用は Anthropic の利用規約に違反する可能性があります。使用前に Anthropic のユーザー契約をよくお読みください。本プロジェクトの使用に起因するすべてのリスクは、ユーザー自身が負うものとします。
->
-> :book: **免責事項**: 本プロジェクトは技術的な学習および研究目的のみで提供されています。作者は、本プロジェクトの使用によるアカウント停止、サービス中断、その他の損失について一切の責任を負いません。
-
----
 
 ## スター履歴
 

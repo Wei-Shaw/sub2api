@@ -21,6 +21,12 @@ export interface TypeOption {
   [key: string]: unknown
 }
 
+export interface EasyPayCustomMethod {
+  type: string
+  upstreamType: string
+  displayName: string
+}
+
 /** Callback URL paths for a provider. */
 export interface CallbackPaths {
   notifyUrl?: string
@@ -43,6 +49,14 @@ export const EASYPAY_PAYMENT_MODES = ['qrcode', 'popup'] as const
 
 /** Fixed display order for user-facing payment methods */
 export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct', 'stripe', 'airwallex'] as const
+
+export function isBuiltInAlipayMethod(type: string): boolean {
+  return type === 'alipay' || type === 'alipay_direct'
+}
+
+export function isBuiltInWxpayMethod(type: string): boolean {
+  return type === 'wxpay' || type === 'wxpay_direct'
+}
 
 /** Payment mode constants */
 export const PAYMENT_MODE_QRCODE = 'qrcode'
@@ -169,6 +183,34 @@ export function getAvailableTypes(
 ): TypeOption[] {
   const types = PROVIDER_SUPPORTED_TYPES[providerKey] || []
   return types.map(t => resolveTypeLabel(t, providerKey, allTypes, redirectLabel))
+}
+
+export function parseEasyPayCustomMethods(raw: string | undefined): EasyPayCustomMethod[] {
+  if (!raw || !raw.trim()) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map(item => ({
+        type: String(item?.type || '').trim(),
+        upstreamType: String(item?.upstreamType || '').trim(),
+        displayName: String(item?.displayName || '').trim(),
+      }))
+      .filter(item => item.type && item.upstreamType)
+  } catch {
+    return []
+  }
+}
+
+export function serializeEasyPayCustomMethods(methods: EasyPayCustomMethod[]): string {
+  const clean = methods
+    .map(method => ({
+      type: method.type.trim(),
+      upstreamType: method.upstreamType.trim(),
+      displayName: method.displayName.trim(),
+    }))
+    .filter(method => method.type && method.upstreamType)
+  return clean.length ? JSON.stringify(clean) : ''
 }
 
 /** Extract base URL from a full callback URL by removing the known path suffix. */

@@ -1109,6 +1109,7 @@ func (s *OpenAIGatewayService) buildOpenAIResponsesWSURL(account *Account) (stri
 }
 
 func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
+	ctx context.Context,
 	c *gin.Context,
 	account *Account,
 	token string,
@@ -1117,7 +1118,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	turnState string,
 	turnMetadata string,
 	promptCacheKey string,
-) (http.Header, openAIWSSessionHeaderResolution) {
+) (http.Header, openAIWSSessionHeaderResolution, error) {
 	headers := make(http.Header)
 	headers.Set("authorization", "Bearer "+token)
 
@@ -1152,7 +1153,9 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	}
 
 	if account != nil && account.Type == AccountTypeOAuth {
-		setOpenAIChatGPTAccountHeaders(headers, account)
+		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, headers, account); err != nil {
+			return nil, sessionResolution, fmt.Errorf("resolve chatgpt account headers: %w", err)
+		}
 		headers.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 	}
 
@@ -1180,7 +1183,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		headers.Set("user-agent", codexCLIUserAgent)
 	}
 
-	return headers, sessionResolution
+	return headers, sessionResolution, nil
 }
 
 func (s *OpenAIGatewayService) buildOpenAIWSCreatePayload(reqBody map[string]any, account *Account) map[string]any {
@@ -1867,7 +1870,10 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	storeDisabledConnMode := s.openAIWSStoreDisabledConnMode()
 	forceNewConnByPolicy := shouldForceNewConnOnStoreDisabled(storeDisabledConnMode, lastFailureReason)
 	forceNewConn := forceNewConnByPolicy && storeDisabled && previousResponseID == "" && sessionHash != "" && preferredConnID == ""
-	wsHeaders, sessionResolution := s.buildOpenAIWSHeaders(c, account, token, decision, isCodexCLI, turnState, turnMetadata, promptCacheKey)
+	wsHeaders, sessionResolution, buildHdrErr := s.buildOpenAIWSHeaders(ctx, c, account, token, decision, isCodexCLI, turnState, turnMetadata, promptCacheKey)
+	if buildHdrErr != nil {
+		return nil, fmt.Errorf("build ws headers: %w", buildHdrErr)
+	}
 	logOpenAIWSModeDebug(
 		"acquire_start account_id=%d account_type=%s transport=%s preferred_conn_id=%s has_previous_response_id=%v session_hash=%s has_turn_state=%v turn_state_len=%d has_turn_metadata=%v turn_metadata_len=%d store_disabled=%v store_disabled_conn_mode=%s retry_last_reason=%s force_new_conn=%v header_user_agent=%s header_openai_beta=%s header_originator=%s header_accept_language=%s header_session_id=%s header_conversation_id=%s session_id_source=%s conversation_id_source=%s has_prompt_cache_key=%v has_chatgpt_account_id=%v has_authorization=%v has_session_id=%v has_conversation_id=%v proxy_enabled=%v",
 		account.ID,
@@ -2442,11 +2448,15 @@ func stripCodexSparkImageGenerationToolFromRawPayload(payload []byte, model stri
 	if !isCodexSparkModel(model) || !openAIRequestBodyHasImageGenerationTool(payload) {
 		return payload, false, nil
 	}
+	return stripOpenAIImageGenerationToolFromRawPayload(payload)
+}
+
+func stripOpenAIImageGenerationToolFromRawPayload(payload []byte) ([]byte, bool, error) {
 	payloadMap := make(map[string]any)
 	if err := json.Unmarshal(payload, &payloadMap); err != nil {
 		return payload, false, err
 	}
-	if !stripCodexSparkImageGenerationTools(payloadMap) {
+	if !stripOpenAIImageGenerationTools(payloadMap) {
 		return payload, false, nil
 	}
 	rebuilt, err := json.Marshal(payloadMap)
@@ -2518,12 +2528,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				hooks,
 				wsDecision,
 			)
+		case OpenAIWSIngressModeHTTPBridge:
+			forceHTTPBridge = true
 		case OpenAIWSIngressModeCtxPool, OpenAIWSIngressModeShared, OpenAIWSIngressModeDedicated:
 			// continue
 		default:
 			return NewOpenAIWSClientCloseError(
 				coderws.StatusPolicyViolation,
-				"websocket mode only supports ctx_pool/passthrough",
+				"websocket mode only supports ctx_pool/passthrough/http_bridge",
 				nil,
 			)
 		}
@@ -2663,7 +2675,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		apiKey := getAPIKeyFromContext(c)
 		imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
-		codexBridgeEnabled := isCodexCLI && imageGenerationAllowed && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+		codexImageGenerationExplicitToolPolicy := codexImageGenerationExplicitToolPolicyAllow
+		if isCodexCLI {
+			codexImageGenerationExplicitToolPolicy = account.CodexImageGenerationExplicitToolPolicy()
+		}
+		codexBridgeEnabled := isCodexCLI && imageGenerationAllowed && codexImageGenerationExplicitToolPolicy != codexImageGenerationExplicitToolPolicyStrip && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
 		if codexBridgeEnabled {
 			payloadMap := make(map[string]any)
 			if err := json.Unmarshal(normalized, &payloadMap); err != nil {
@@ -2700,6 +2716,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", setErr)
 			}
 			normalized = next
+		}
+		if isCodexCLI && codexImageGenerationExplicitToolPolicy == codexImageGenerationExplicitToolPolicyStrip {
+			if stripped, changed, stripErr := stripOpenAIImageGenerationToolFromRawPayload(normalized); stripErr != nil {
+				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", stripErr)
+			} else if changed {
+				normalized = stripped
+				logOpenAIWSModeInfo("ingress_ws_codex_image_tool_stripped_by_policy account_id=%d", account.ID)
+			}
 		}
 		if stripped, changed, stripErr := stripCodexSparkImageGenerationToolFromRawPayload(normalized, upstreamModel); stripErr != nil {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", stripErr)
@@ -2834,7 +2858,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 	refreshIngressRouteState(firstPayload)
 
-	if s.shouldBridgeOpenAIWSHTTP(account, firstPayload.payloadBytes, firstPayload.previousResponseID) {
+	if forceHTTPBridge || s.shouldBridgeOpenAIWSHTTP(account, firstPayload.payloadBytes, firstPayload.previousResponseID) {
 		logOpenAIWSModeInfo(
 			"ingress_ws_http_bridge_start account_id=%d account_type=%s payload_bytes=%d threshold_bytes=%d has_session_hash=%v store_disabled=%v",
 			account.ID,
@@ -2955,7 +2979,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 	}
 
-	wsHeaders, _ := s.buildOpenAIWSHeaders(c, account, token, wsDecision, isCodexCLI, turnState, strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader)), firstPayload.promptCacheKey)
+	wsHeaders, _, buildHdrErr := s.buildOpenAIWSHeaders(ctx, c, account, token, wsDecision, isCodexCLI, turnState, strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader)), firstPayload.promptCacheKey)
+	if buildHdrErr != nil {
+		return fmt.Errorf("build ws headers: %w", buildHdrErr)
+	}
 	baseAcquireReq := openAIWSAcquireRequest{
 		Account: account,
 		WSURL:   wsURL,
@@ -3944,8 +3971,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if nextPayload.promptCacheKey != "" {
 			// ingress 会话在整个客户端 WS 生命周期内复用同一上游连接；
 			// prompt_cache_key 对握手头的更新仅在未来需要重新建连时生效。
-			updatedHeaders, _ := s.buildOpenAIWSHeaders(c, account, token, wsDecision, isCodexCLI, turnState, strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader)), nextPayload.promptCacheKey)
-			baseAcquireReq.Headers = updatedHeaders
+			updatedHeaders, _, updHdrErr := s.buildOpenAIWSHeaders(ctx, c, account, token, wsDecision, isCodexCLI, turnState, strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader)), nextPayload.promptCacheKey)
+			if updHdrErr != nil {
+				logOpenAIWSModeInfo("ingress_ws_update_headers_failed account_id=%d err=%v", account.ID, updHdrErr)
+			} else {
+				baseAcquireReq.Headers = updatedHeaders
+			}
 		}
 		if nextPayload.previousResponseID != "" {
 			expectedPrev := strings.TrimSpace(lastTurnResponseID)
@@ -4294,79 +4325,8 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 	if s == nil {
 		return nil, nil
 	}
-	responseID := strings.TrimSpace(previousResponseID)
-	if responseID == "" {
-		return nil, nil
-	}
-	store := s.getOpenAIWSStateStore()
-	if store == nil {
-		return nil, nil
-	}
-
-	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
-	if err != nil || accountID <= 0 {
-		return nil, nil
-	}
-	if excludedIDs != nil {
-		if _, excluded := excludedIDs[accountID]; excluded {
-			return nil, nil
-		}
-	}
-
-	account, err := s.getSchedulableAccount(ctx, accountID)
-	if err != nil || account == nil {
-		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil
-	}
-	// 非 WSv2 场景（如 force_http/全局关闭）不应使用 previous_response_id 粘连，
-	// 以保持“回滚到 HTTP”后的历史行为一致性。
-	if s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
-		return nil, nil
-	}
-	if shouldClearStickySession(account, requestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
-		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil
-	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
-		return nil, nil
-	}
-	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
-		return nil, nil
-	}
-	// Quota auto-pause must also gate the previous_response_id sticky path; otherwise an
-	// account over its 5h/7d threshold keeps serving the same response chain even though
-	// normal scheduling skips it. Pause is transient, so fall through to normal scheduling
-	// without deleting the binding (the window may reset before the next turn).
-	if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
-		return nil, nil
-	}
-	if s.schedulerSnapshot != nil && s.accountRepo != nil {
-		latest, latestErr := s.accountRepo.GetByID(ctx, account.ID)
-		if latestErr != nil || latest == nil {
-			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-			return nil, nil
-		}
-		if shouldClearStickySession(latest, requestedModel) || !latest.IsOpenAI() || !latest.IsSchedulable() {
-			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-			return nil, nil
-		}
-		if requestedModel != "" && !latest.IsModelSupported(requestedModel) {
-			return nil, nil
-		}
-		if !latest.SupportsOpenAIEndpointCapability(requiredCapability) {
-			return nil, nil
-		}
-		if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, latest); paused {
-			return nil, nil
-		}
-		if s.isOpenAIAccountRuntimeBlocked(latest) {
-			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-			return nil, nil
-		}
-		account = latest
-	}
-	if requireCompact && openAICompactSupportTier(account) == 0 {
-		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+	accountID, account, responseID, store := s.resolveAccountByPreviousResponseIDForCapability(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
+	if accountID <= 0 || account == nil || store == nil {
 		return nil, nil
 	}
 
@@ -4398,6 +4358,117 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 		}, nil
 	}
 	return nil, nil
+}
+
+func (s *OpenAIGatewayService) ResolveAccountIDByPreviousResponseIDForScheduler(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredCapability OpenAIEndpointCapability,
+	requireCompact bool,
+) int64 {
+	accountID, _, _, _ := s.resolveAccountByPreviousResponseIDForCapability(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
+	return accountID
+}
+
+func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredCapability OpenAIEndpointCapability,
+	requireCompact bool,
+) (int64, *Account, string, OpenAIWSStateStore) {
+	if s == nil {
+		return 0, nil, "", nil
+	}
+	responseID := strings.TrimSpace(previousResponseID)
+	if responseID == "" {
+		return 0, nil, "", nil
+	}
+	store := s.getOpenAIWSStateStore()
+	if store == nil {
+		return 0, nil, "", nil
+	}
+
+	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
+	if err != nil || accountID <= 0 {
+		return 0, nil, "", nil
+	}
+	if excludedIDs != nil {
+		if _, excluded := excludedIDs[accountID]; excluded {
+			return 0, nil, "", nil
+		}
+	}
+
+	account, err := s.getSchedulableAccount(ctx, accountID)
+	if err != nil || account == nil {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
+	}
+	// 非 WSv2 场景（如 force_http/全局关闭）不应使用 previous_response_id 粘连，
+	// 以保持“回滚到 HTTP”后的历史行为一致性。
+	if s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
+		return 0, nil, "", nil
+	}
+	if shouldClearStickySession(account, requestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
+	}
+	if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
+	}
+	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+		return 0, nil, "", nil
+	}
+	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
+		return 0, nil, "", nil
+	}
+	// Quota auto-pause must also gate the previous_response_id sticky path; otherwise an
+	// account over its 5h/7d threshold keeps serving the same response chain even though
+	// normal scheduling skips it. Pause is transient, so fall through to normal scheduling
+	// without deleting the binding (the window may reset before the next turn).
+	if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
+		return 0, nil, "", nil
+	}
+	if s.schedulerSnapshot != nil && s.accountRepo != nil {
+		latest, latestErr := s.accountRepo.GetByID(ctx, account.ID)
+		if latestErr != nil || latest == nil {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return 0, nil, "", nil
+		}
+		if shouldClearStickySession(latest, requestedModel) || !latest.IsOpenAI() || !latest.IsSchedulable() {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return 0, nil, "", nil
+		}
+		if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return 0, nil, "", nil
+		}
+		if requestedModel != "" && !latest.IsModelSupported(requestedModel) {
+			return 0, nil, "", nil
+		}
+		if !latest.SupportsOpenAIEndpointCapability(requiredCapability) {
+			return 0, nil, "", nil
+		}
+		if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, latest); paused {
+			return 0, nil, "", nil
+		}
+		if s.isOpenAIAccountRuntimeBlocked(latest) {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return 0, nil, "", nil
+		}
+		account = latest
+	}
+	if requireCompact && openAICompactSupportTier(account) == 0 {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
+	}
+	return accountID, account, responseID, store
 }
 
 func classifyOpenAIWSAcquireError(err error) string {

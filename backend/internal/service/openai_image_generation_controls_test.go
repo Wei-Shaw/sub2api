@@ -152,6 +152,45 @@ func TestOpenAIGatewayServiceForward_ExplicitImageToolWorksWithBridgeDisabled(t 
 	require.NotContains(t, instructions, "image_generation")
 }
 
+func TestOpenAIGatewayServiceForward_AccountPolicyStripsExplicitImageTool(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_stripped_image","model":"gpt-5.4","usage":{"input_tokens":2,"output_tokens":1}}`)),
+		},
+	}
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.98.0")
+	account := newOpenAIImageGenerationControlTestAccount()
+	account.Extra = map[string]any{
+		featureKeyCodexImageGenerationExplicitToolPolicy: codexImageGenerationExplicitToolPolicyStrip,
+	}
+	body := []byte(`{
+		"model":"gpt-5.4",
+		"input":"draw",
+		"stream":false,
+		"tools":[
+			{"type":"function","name":"shell","parameters":{"type":"object"}},
+			{"type":"image_generation","format":"jpeg"}
+		],
+		"tool_choice":{"type":"image_generation"}
+	}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	require.False(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="image_generation")`).Exists())
+	require.True(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="function")`).Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "tool_choice").Exists())
+	instructions := gjson.GetBytes(upstream.lastBody, "instructions").String()
+	require.NotContains(t, instructions, "image_generation")
+}
+
 func TestOpenAIGatewayServiceForward_ChannelBridgeOverrideEnablesCodexInjection(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -206,6 +245,35 @@ func TestOpenAIGatewayServiceForward_CodexBridgePreservesExistingToolChoice(t *t
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, "image_generation", gjson.GetBytes(upstream.lastBody, "tool_choice.type").String())
+}
+
+func TestOpenAIGatewayServiceForward_CodexBridgeSkipsCompactRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_codex_compact","model":"gpt-5.4","usage":{"input_tokens":1,"output_tokens":1}}`)),
+		},
+	}
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	svc.cfg.Gateway.CodexImageGenerationBridgeEnabled = true
+	c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.98.0")
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses/compact", nil)
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0")
+	account := newOpenAIImageGenerationControlTestAccount()
+
+	// /responses/compact 上游不接受 tool_choice，bridge 注入必须整体豁免 compact 请求。
+	result, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.4","input":"summarize the conversation","stream":false}`))
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "tool_choice").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="image_generation")`).Exists())
+	instructions := gjson.GetBytes(upstream.lastBody, "instructions").String()
+	require.NotContains(t, instructions, "image_generation")
 }
 
 func TestOpenAIGatewayService_CodexImageGenerationBridgeOverridePrecedence(t *testing.T) {

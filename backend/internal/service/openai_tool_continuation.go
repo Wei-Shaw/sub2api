@@ -215,6 +215,84 @@ func ValidateFunctionCallOutputContextBytes(body []byte) FunctionCallOutputValid
 	return result
 }
 
+// ToolCallOutputContextCoverage 描述 input 中工具输出与可重建上下文的覆盖关系，
+// 用于判断剥离 previous_response_id 后上游能否仅凭 input 重建工具续链。
+type ToolCallOutputContextCoverage struct {
+	HasFunctionCallOutput bool
+	// ContextCoversAllCallIDs 表示每个工具输出的 call_id 都能在 input 内找到
+	// 同 call_id 的工具调用上下文项或同 id 的 item_reference，且不存在缺失 call_id 的输出。
+	// 任一输出无法由 input 自身重建时为 false，此时剥离 previous_response_id 会导致
+	// 上游以 "No tool call found for function call output" 拒绝请求。
+	ContextCoversAllCallIDs bool
+}
+
+// AnalyzeToolCallOutputContextCoverageBytes 全量扫描 input，按 call_id 精确匹配工具输出
+// 与可重建上下文。不能复用 ValidateFunctionCallOutputContextBytes 的 HasToolCallContext：
+// 该标志只代表"存在某一个上下文项"，部分覆盖的续链仍会被上游拒绝。
+func AnalyzeToolCallOutputContextCoverageBytes(body []byte) ToolCallOutputContextCoverage {
+	coverage := ToolCallOutputContextCoverage{}
+	if len(body) == 0 {
+		return coverage
+	}
+	input := parseRawJSONView(body).Get("input")
+	if !input.IsArray() {
+		return coverage
+	}
+
+	missingCallID := false
+	var outputCallIDs map[string]struct{}
+	var contextIDs map[string]struct{}
+	input.ForEach(func(_, item gjson.Result) bool {
+		if !item.IsObject() {
+			return true
+		}
+		itemType := item.Get("type").String()
+		switch {
+		case isCodexToolCallOutputItemType(itemType):
+			coverage.HasFunctionCallOutput = true
+			callID := strings.TrimSpace(item.Get("call_id").String())
+			if callID == "" {
+				missingCallID = true
+				return true
+			}
+			if outputCallIDs == nil {
+				outputCallIDs = make(map[string]struct{})
+			}
+			outputCallIDs[callID] = struct{}{}
+		case isCodexToolCallContextItemType(itemType):
+			callID := strings.TrimSpace(item.Get("call_id").String())
+			if callID == "" {
+				return true
+			}
+			if contextIDs == nil {
+				contextIDs = make(map[string]struct{})
+			}
+			contextIDs[callID] = struct{}{}
+		case itemType == "item_reference":
+			idValue := strings.TrimSpace(item.Get("id").String())
+			if idValue == "" {
+				return true
+			}
+			if contextIDs == nil {
+				contextIDs = make(map[string]struct{})
+			}
+			contextIDs[idValue] = struct{}{}
+		}
+		return true
+	})
+
+	if !coverage.HasFunctionCallOutput || missingCallID {
+		return coverage
+	}
+	for callID := range outputCallIDs {
+		if _, ok := contextIDs[callID]; !ok {
+			return coverage
+		}
+	}
+	coverage.ContextCoversAllCallIDs = true
+	return coverage
+}
+
 // ValidateFunctionCallOutputContext 为 handler 提供低开销校验结果：
 // 1) 无工具输出直接返回
 // 2) 若已存在工具调用上下文则提前返回
