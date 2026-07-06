@@ -3674,6 +3674,22 @@ export default {
       interceptWarmupRequests: 'Intercept Warmup Requests',
       interceptWarmupRequestsDesc:
         'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
+      headerOverride: {
+        title: 'Header Override',
+        hint: 'Override same-named request headers on forwarding (case-insensitive)',
+        info: 'Applies to outbound requests of this account only: configured headers override client/gateway-generated headers of the same name before forwarding. Auth headers (authorization, x-api-key) and connection-control headers cannot be overridden.',
+        namePlaceholder: 'Header name (e.g. user-agent)',
+        valuePlaceholder: 'Override value (leave empty to skip)',
+        addRow: 'Add Header',
+        fillTemplate: 'Fill Template',
+        emptyValueHint: 'Rows with an empty value are placeholders and do not override anything.',
+        bulkDisableHint: 'Saving will disable header override and clear existing configuration on the selected accounts.',
+        invalidName: 'Invalid header name (only letters, digits and !#$%&\'*+-.^_`|~ are allowed)',
+        blockedName: 'This header cannot be overridden (auth and connection-control headers are managed by the system)',
+        duplicateName: 'Duplicate header name (matching is case-insensitive)',
+        invalidValue: 'Invalid header value (control characters are not allowed; max length 8192)',
+        tooManyEntries: 'Too many header override entries (max 64)'
+      REDACTED,
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
 	  autoPause5hThreshold: '5h Usage Threshold (%)',

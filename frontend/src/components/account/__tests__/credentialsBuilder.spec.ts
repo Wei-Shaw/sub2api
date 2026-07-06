@@ -1,8 +1,16 @@
 import { describe, it, expect REDACTED from 'vitest'
 import {
   ANTIGRAVITY_PROJECT_ID_CREDENTIAL_KEY,
+  HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
+  HEADER_OVERRIDES_CREDENTIAL_KEY,
   applyAntigravityProjectID,
-  applyInterceptWarmup
+  applyHeaderOverride,
+  applyInterceptWarmup,
+  buildHeaderOverridesObject,
+  getHeaderOverrideTemplate,
+  isHeaderOverridePlatform,
+  splitHeaderOverridesObject,
+  validateHeaderOverrideRows
 REDACTED from '../credentialsBuilder'
 
 describe('applyInterceptWarmup', () => {
@@ -80,5 +88,187 @@ describe('applyAntigravityProjectID', () => {
     expect(creds.project_id).toBe('onboard-project')
     expect(creds.model_mapping).toEqual({ 'gemini-*': 'gemini-2.5-flash' REDACTED)
     expect(creds[ANTIGRAVITY_PROJECT_ID_CREDENTIAL_KEY]).toBe('configured-project')
+  REDACTED)
+REDACTED)
+
+describe('isHeaderOverridePlatform', () => {
+  it('only anthropic and openai are supported', () => {
+    expect(isHeaderOverridePlatform('anthropic')).toBe(true)
+    expect(isHeaderOverridePlatform('openai')).toBe(true)
+    expect(isHeaderOverridePlatform('gemini')).toBe(false)
+    expect(isHeaderOverridePlatform('grok')).toBe(false)
+    expect(isHeaderOverridePlatform('antigravity')).toBe(false)
+    expect(isHeaderOverridePlatform('')).toBe(false)
+  REDACTED)
+REDACTED)
+
+describe('validateHeaderOverrideRows', () => {
+  it('accepts valid rows and empty placeholder rows', () => {
+    expect(
+      validateHeaderOverrideRows([
+        { name: 'user-agent', value: 'my-agent/1.0' REDACTED,
+        { name: 'x-app', value: '' REDACTED,
+        { name: '', value: '' REDACTED
+      ])
+    ).toBeNull()
+  REDACTED)
+
+  it('rejects empty name with non-empty value', () => {
+    expect(validateHeaderOverrideRows([{ name: '', value: 'v' REDACTED])).toBe('invalidName')
+  REDACTED)
+
+  it('rejects invalid header names', () => {
+    expect(validateHeaderOverrideRows([{ name: 'bad name', value: '' REDACTED])).toBe('invalidName')
+    expect(validateHeaderOverrideRows([{ name: 'bad:name', value: '' REDACTED])).toBe('invalidName')
+    expect(validateHeaderOverrideRows([{ name: '名称', value: '' REDACTED])).toBe('invalidName')
+  REDACTED)
+
+  it('rejects blocked header names case-insensitively', () => {
+    expect(validateHeaderOverrideRows([{ name: 'Authorization', value: '' REDACTED])).toBe('blockedName')
+    expect(validateHeaderOverrideRows([{ name: 'X-Api-Key', value: '' REDACTED])).toBe('blockedName')
+    expect(validateHeaderOverrideRows([{ name: 'host', value: '' REDACTED])).toBe('blockedName')
+    expect(validateHeaderOverrideRows([{ name: 'Content-Length', value: '' REDACTED])).toBe('blockedName')
+  REDACTED)
+
+  it('rejects duplicate names case-insensitively', () => {
+    expect(
+      validateHeaderOverrideRows([
+        { name: 'User-Agent', value: 'a' REDACTED,
+        { name: 'user-agent', value: 'b' REDACTED
+      ])
+    ).toBe('duplicateName')
+  REDACTED)
+REDACTED)
+
+describe('buildHeaderOverridesObject / splitHeaderOverridesObject', () => {
+  it('lowercases names, trims values and drops empty-name rows', () => {
+    expect(
+      buildHeaderOverridesObject([
+        { name: ' User-Agent ', value: ' my-agent ' REDACTED,
+        { name: 'X-App', value: '' REDACTED,
+        { name: '', value: 'ignored' REDACTED
+      ])
+    ).toEqual({ 'user-agent': 'my-agent', 'x-app': '' REDACTED)
+  REDACTED)
+
+  it('splits an object into sorted rows and ignores non-string values', () => {
+    expect(
+      splitHeaderOverridesObject({ 'x-app': 'cli', 'user-agent': 'ua', bogus: 42 REDACTED)
+    ).toEqual([
+      { name: 'user-agent', value: 'ua' REDACTED,
+      { name: 'x-app', value: 'cli' REDACTED
+    ])
+    expect(splitHeaderOverridesObject(null)).toEqual([])
+    expect(splitHeaderOverridesObject(['a'])).toEqual([])
+    expect(splitHeaderOverridesObject('str')).toEqual([])
+  REDACTED)
+
+  it('roundtrips through build and split', () => {
+    const rows = [
+      { name: 'user-agent', value: 'ua' REDACTED,
+      { name: 'x-app', value: 'cli' REDACTED
+    ]
+    expect(splitHeaderOverridesObject(buildHeaderOverridesObject(rows))).toEqual(rows)
+  REDACTED)
+REDACTED)
+
+describe('getHeaderOverrideTemplate', () => {
+  it('returns Claude Code CLI headers with empty values for anthropic', () => {
+    const rows = getHeaderOverrideTemplate('anthropic')
+    expect(rows.every((r) => r.value === '')).toBe(true)
+    const names = rows.map((r) => r.name)
+    expect(names).toContain('user-agent')
+    expect(names).toContain('x-app')
+    expect(names).toContain('anthropic-beta')
+    expect(names).toContain('x-stainless-lang')
+    expect(validateHeaderOverrideRows(rows)).toBeNull()
+  REDACTED)
+
+  it('returns Codex CLI headers with empty values for openai', () => {
+    const rows = getHeaderOverrideTemplate('openai')
+    expect(rows.every((r) => r.value === '')).toBe(true)
+    const names = rows.map((r) => r.name)
+    expect(names).toContain('user-agent')
+    expect(names).toContain('originator')
+    expect(names).toContain('openai-beta')
+    expect(validateHeaderOverrideRows(rows)).toBeNull()
+  REDACTED)
+REDACTED)
+
+describe('applyHeaderOverride', () => {
+  it('create + enabled: writes enabled flag and overrides object', () => {
+    const creds: Record<string, unknown> = { api_key: 'sk' REDACTED
+    applyHeaderOverride(creds, true, [{ name: 'User-Agent', value: 'ua' REDACTED], 'create')
+    expect(creds[HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY]).toBe(true)
+    expect(creds[HEADER_OVERRIDES_CREDENTIAL_KEY]).toEqual({ 'user-agent': 'ua' REDACTED)
+  REDACTED)
+
+  it('create + disabled: does not add fields', () => {
+    const creds: Record<string, unknown> = { api_key: 'sk' REDACTED
+    applyHeaderOverride(creds, false, [{ name: 'user-agent', value: 'ua' REDACTED], 'create')
+    expect(HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY in creds).toBe(false)
+    expect(HEADER_OVERRIDES_CREDENTIAL_KEY in creds).toBe(false)
+  REDACTED)
+
+  it('edit + disabled: deletes existing fields', () => {
+    const creds: Record<string, unknown> = {
+      api_key: 'sk',
+      [HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY]: true,
+      [HEADER_OVERRIDES_CREDENTIAL_KEY]: { 'user-agent': 'ua' REDACTED
+    REDACTED
+    applyHeaderOverride(creds, false, [], 'edit')
+    expect(HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY in creds).toBe(false)
+    expect(HEADER_OVERRIDES_CREDENTIAL_KEY in creds).toBe(false)
+    expect(creds.api_key).toBe('sk')
+  REDACTED)
+
+  it('edit + enabled: replaces overrides object wholesale', () => {
+    const creds: Record<string, unknown> = {
+      [HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY]: true,
+      [HEADER_OVERRIDES_CREDENTIAL_KEY]: { 'x-old': 'old' REDACTED
+    REDACTED
+    applyHeaderOverride(creds, true, [{ name: 'x-new', value: 'new' REDACTED], 'edit')
+    expect(creds[HEADER_OVERRIDES_CREDENTIAL_KEY]).toEqual({ 'x-new': 'new' REDACTED)
+  REDACTED)
+REDACTED)
+
+describe('validateHeaderOverrideRows value/entry limits', () => {
+  it('rejects websocket handshake headers', () => {
+    expect(validateHeaderOverrideRows([{ name: 'Sec-WebSocket-Key', value: '' REDACTED])).toBe(
+      'blockedName'
+    )
+  REDACTED)
+
+  it('rejects control characters in values', () => {
+    expect(validateHeaderOverrideRows([{ name: 'x-app', value: 'a\x0bb' REDACTED])).toBe('invalidValue')
+  REDACTED)
+
+  it('rejects oversized values', () => {
+    expect(validateHeaderOverrideRows([{ name: 'x-app', value: 'a'.repeat(8193) REDACTED])).toBe(
+      'invalidValue'
+    )
+  REDACTED)
+
+  it('rejects too many entries', () => {
+    const rows = Array.from({ length: 65 REDACTED, (_, i) => ({ name: `x-h-${iREDACTED`, value: 'v' REDACTED))
+    expect(validateHeaderOverrideRows(rows)).toBe('tooManyEntries')
+  REDACTED)
+REDACTED)
+
+describe('validateHeaderOverrideRows session isolation headers', () => {
+  it('rejects per-request session headers', () => {
+    expect(validateHeaderOverrideRows([{ name: 'session_id', value: '' REDACTED])).toBe('blockedName')
+    expect(validateHeaderOverrideRows([{ name: 'Conversation_ID', value: '' REDACTED])).toBe('blockedName')
+    expect(validateHeaderOverrideRows([{ name: 'x-codex-turn-state', value: '' REDACTED])).toBe(
+      'blockedName'
+    )
+  REDACTED)
+
+  it('allows tab inside value', () => {
+    expect(validateHeaderOverrideRows([{ name: 'x-app', value: 'a\tb' REDACTED])).toBeNull()
+  REDACTED)
+
+  it('rejects oversized names', () => {
+    expect(validateHeaderOverrideRows([{ name: 'x'.repeat(201), value: 'v' REDACTED])).toBe('invalidName')
   REDACTED)
 REDACTED)
