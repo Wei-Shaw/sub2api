@@ -213,7 +213,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			REDACTED
 		REDACTED else {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
-				if apiKey.User.Balance <= 0 {
+				if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
 			REDACTED
@@ -287,6 +287,16 @@ REDACTED
 REDACTED
 	ctx := context.WithValue(c.Request.Context(), ctxkey.Group, group)
 	c.Request = c.Request.WithContext(ctx)
+REDACTED
+
+func apiKeyBalanceBelowAuthThreshold(balance float64, cfg *config.Config) bool {
+	if balance <= 0 {
+		return true
+REDACTED
+	if cfg == nil || cfg.Billing.MinimumBalanceReserve <= 0 {
+		return false
+REDACTED
+	return balance < cfg.Billing.MinimumBalanceReserve
 REDACTED
 
 func abortIfAPIKeyGroupUnavailable(c *gin.Context, apiKey *service.APIKey) bool {

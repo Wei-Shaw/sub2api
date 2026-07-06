@@ -11317,6 +11317,7 @@ type BatchImageJobMutation struct {
 	addaccount_id       *int64
 	provider            *string
 	model               *string
+	task_name           *string
 	status              *string
 	provider_job_name   *string
 	provider_input_ref  *string
@@ -11349,6 +11350,8 @@ type BatchImageJobMutation struct {
 	output_expires_at   *time.Time
 	input_deleted_at    *time.Time
 	output_deleted_at   *time.Time
+	downloaded_at       *time.Time
+	user_deleted_at     *time.Time
 	last_error_code     *string
 	last_error_message  *string
 	created_at          *time.Time
@@ -11763,6 +11766,42 @@ REDACTED
 // ResetModel resets all changes to the "model" field.
 func (m *BatchImageJobMutation) ResetModel() {
 	m.model = nil
+REDACTED
+
+// SetTaskName sets the "task_name" field.
+func (m *BatchImageJobMutation) SetTaskName(s string) {
+	m.task_name = &s
+REDACTED
+
+// TaskName returns the value of the "task_name" field in the mutation.
+func (m *BatchImageJobMutation) TaskName() (r string, exists bool) {
+	v := m.task_name
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTaskName returns the old "task_name" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldTaskName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskName is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskName requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskName: %w", err)
+REDACTED
+	return oldValue.TaskName, nil
+REDACTED
+
+// ResetTaskName resets all changes to the "task_name" field.
+func (m *BatchImageJobMutation) ResetTaskName() {
+	m.task_name = nil
 REDACTED
 
 // SetStatus sets the "status" field.
@@ -12957,6 +12996,104 @@ func (m *BatchImageJobMutation) ResetOutputDeletedAt() {
 	delete(m.clearedFields, batchimagejob.FieldOutputDeletedAt)
 REDACTED
 
+// SetDownloadedAt sets the "downloaded_at" field.
+func (m *BatchImageJobMutation) SetDownloadedAt(t time.Time) {
+	m.downloaded_at = &t
+REDACTED
+
+// DownloadedAt returns the value of the "downloaded_at" field in the mutation.
+func (m *BatchImageJobMutation) DownloadedAt() (r time.Time, exists bool) {
+	v := m.downloaded_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldDownloadedAt returns the old "downloaded_at" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldDownloadedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDownloadedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDownloadedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDownloadedAt: %w", err)
+REDACTED
+	return oldValue.DownloadedAt, nil
+REDACTED
+
+// ClearDownloadedAt clears the value of the "downloaded_at" field.
+func (m *BatchImageJobMutation) ClearDownloadedAt() {
+	m.downloaded_at = nil
+	m.clearedFields[batchimagejob.FieldDownloadedAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// DownloadedAtCleared returns if the "downloaded_at" field was cleared in this mutation.
+func (m *BatchImageJobMutation) DownloadedAtCleared() bool {
+	_, ok := m.clearedFields[batchimagejob.FieldDownloadedAt]
+	return ok
+REDACTED
+
+// ResetDownloadedAt resets all changes to the "downloaded_at" field.
+func (m *BatchImageJobMutation) ResetDownloadedAt() {
+	m.downloaded_at = nil
+	delete(m.clearedFields, batchimagejob.FieldDownloadedAt)
+REDACTED
+
+// SetUserDeletedAt sets the "user_deleted_at" field.
+func (m *BatchImageJobMutation) SetUserDeletedAt(t time.Time) {
+	m.user_deleted_at = &t
+REDACTED
+
+// UserDeletedAt returns the value of the "user_deleted_at" field in the mutation.
+func (m *BatchImageJobMutation) UserDeletedAt() (r time.Time, exists bool) {
+	v := m.user_deleted_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUserDeletedAt returns the old "user_deleted_at" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldUserDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserDeletedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserDeletedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserDeletedAt: %w", err)
+REDACTED
+	return oldValue.UserDeletedAt, nil
+REDACTED
+
+// ClearUserDeletedAt clears the value of the "user_deleted_at" field.
+func (m *BatchImageJobMutation) ClearUserDeletedAt() {
+	m.user_deleted_at = nil
+	m.clearedFields[batchimagejob.FieldUserDeletedAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// UserDeletedAtCleared returns if the "user_deleted_at" field was cleared in this mutation.
+func (m *BatchImageJobMutation) UserDeletedAtCleared() bool {
+	_, ok := m.clearedFields[batchimagejob.FieldUserDeletedAt]
+	return ok
+REDACTED
+
+// ResetUserDeletedAt resets all changes to the "user_deleted_at" field.
+func (m *BatchImageJobMutation) ResetUserDeletedAt() {
+	m.user_deleted_at = nil
+	delete(m.clearedFields, batchimagejob.FieldUserDeletedAt)
+REDACTED
+
 // SetLastErrorCode sets the "last_error_code" field.
 func (m *BatchImageJobMutation) SetLastErrorCode(s string) {
 	m.last_error_code = &s
@@ -13357,7 +13494,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *BatchImageJobMutation) Fields() []string {
-	fields := make([]string, 0, 37)
+	fields := make([]string, 0, 40)
 	if m.batch_id != nil {
 		fields = append(fields, batchimagejob.FieldBatchID)
 REDACTED
@@ -13375,6 +13512,9 @@ REDACTED
 REDACTED
 	if m.model != nil {
 		fields = append(fields, batchimagejob.FieldModel)
+REDACTED
+	if m.task_name != nil {
+		fields = append(fields, batchimagejob.FieldTaskName)
 REDACTED
 	if m.status != nil {
 		fields = append(fields, batchimagejob.FieldStatus)
@@ -13445,6 +13585,12 @@ REDACTED
 	if m.output_deleted_at != nil {
 		fields = append(fields, batchimagejob.FieldOutputDeletedAt)
 REDACTED
+	if m.downloaded_at != nil {
+		fields = append(fields, batchimagejob.FieldDownloadedAt)
+REDACTED
+	if m.user_deleted_at != nil {
+		fields = append(fields, batchimagejob.FieldUserDeletedAt)
+REDACTED
 	if m.last_error_code != nil {
 		fields = append(fields, batchimagejob.FieldLastErrorCode)
 REDACTED
@@ -13489,6 +13635,8 @@ func (m *BatchImageJobMutation) Field(name string) (ent.Value, bool) {
 		return m.Provider()
 	case batchimagejob.FieldModel:
 		return m.Model()
+	case batchimagejob.FieldTaskName:
+		return m.TaskName()
 	case batchimagejob.FieldStatus:
 		return m.Status()
 	case batchimagejob.FieldProviderJobName:
@@ -13535,6 +13683,10 @@ func (m *BatchImageJobMutation) Field(name string) (ent.Value, bool) {
 		return m.InputDeletedAt()
 	case batchimagejob.FieldOutputDeletedAt:
 		return m.OutputDeletedAt()
+	case batchimagejob.FieldDownloadedAt:
+		return m.DownloadedAt()
+	case batchimagejob.FieldUserDeletedAt:
+		return m.UserDeletedAt()
 	case batchimagejob.FieldLastErrorCode:
 		return m.LastErrorCode()
 	case batchimagejob.FieldLastErrorMessage:
@@ -13572,6 +13724,8 @@ func (m *BatchImageJobMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldProvider(ctx)
 	case batchimagejob.FieldModel:
 		return m.OldModel(ctx)
+	case batchimagejob.FieldTaskName:
+		return m.OldTaskName(ctx)
 	case batchimagejob.FieldStatus:
 		return m.OldStatus(ctx)
 	case batchimagejob.FieldProviderJobName:
@@ -13618,6 +13772,10 @@ func (m *BatchImageJobMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldInputDeletedAt(ctx)
 	case batchimagejob.FieldOutputDeletedAt:
 		return m.OldOutputDeletedAt(ctx)
+	case batchimagejob.FieldDownloadedAt:
+		return m.OldDownloadedAt(ctx)
+	case batchimagejob.FieldUserDeletedAt:
+		return m.OldUserDeletedAt(ctx)
 	case batchimagejob.FieldLastErrorCode:
 		return m.OldLastErrorCode(ctx)
 	case batchimagejob.FieldLastErrorMessage:
@@ -13684,6 +13842,13 @@ func (m *BatchImageJobMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetModel(v)
+		return nil
+	case batchimagejob.FieldTaskName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTaskName(v)
 		return nil
 	case batchimagejob.FieldStatus:
 		v, ok := value.(string)
@@ -13845,6 +14010,20 @@ func (m *BatchImageJobMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetOutputDeletedAt(v)
+		return nil
+	case batchimagejob.FieldDownloadedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetDownloadedAt(v)
+		return nil
+	case batchimagejob.FieldUserDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUserDeletedAt(v)
 		return nil
 	case batchimagejob.FieldLastErrorCode:
 		v, ok := value.(string)
@@ -14127,6 +14306,12 @@ REDACTED
 	if m.FieldCleared(batchimagejob.FieldOutputDeletedAt) {
 		fields = append(fields, batchimagejob.FieldOutputDeletedAt)
 REDACTED
+	if m.FieldCleared(batchimagejob.FieldDownloadedAt) {
+		fields = append(fields, batchimagejob.FieldDownloadedAt)
+REDACTED
+	if m.FieldCleared(batchimagejob.FieldUserDeletedAt) {
+		fields = append(fields, batchimagejob.FieldUserDeletedAt)
+REDACTED
 	if m.FieldCleared(batchimagejob.FieldLastErrorCode) {
 		fields = append(fields, batchimagejob.FieldLastErrorCode)
 REDACTED
@@ -14207,6 +14392,12 @@ func (m *BatchImageJobMutation) ClearField(name string) error {
 	case batchimagejob.FieldOutputDeletedAt:
 		m.ClearOutputDeletedAt()
 		return nil
+	case batchimagejob.FieldDownloadedAt:
+		m.ClearDownloadedAt()
+		return nil
+	case batchimagejob.FieldUserDeletedAt:
+		m.ClearUserDeletedAt()
+		return nil
 	case batchimagejob.FieldLastErrorCode:
 		m.ClearLastErrorCode()
 		return nil
@@ -14250,6 +14441,9 @@ func (m *BatchImageJobMutation) ResetField(name string) error {
 		return nil
 	case batchimagejob.FieldModel:
 		m.ResetModel()
+		return nil
+	case batchimagejob.FieldTaskName:
+		m.ResetTaskName()
 		return nil
 	case batchimagejob.FieldStatus:
 		m.ResetStatus()
@@ -14319,6 +14513,12 @@ func (m *BatchImageJobMutation) ResetField(name string) error {
 		return nil
 	case batchimagejob.FieldOutputDeletedAt:
 		m.ResetOutputDeletedAt()
+		return nil
+	case batchimagejob.FieldDownloadedAt:
+		m.ResetDownloadedAt()
+		return nil
+	case batchimagejob.FieldUserDeletedAt:
+		m.ResetUserDeletedAt()
 		return nil
 	case batchimagejob.FieldLastErrorCode:
 		m.ResetLastErrorCode()
@@ -20619,6 +20819,7 @@ type GroupMutation struct {
 	default_validity_days                   *int
 	adddefault_validity_days                *int
 	allow_image_generation                  *bool
+	allow_batch_image_generation            *bool
 	image_rate_independent                  *bool
 	image_rate_multiplier                   *float64
 	addimage_rate_multiplier                *float64
@@ -20628,6 +20829,10 @@ type GroupMutation struct {
 	addimage_price_2k                       *float64
 	image_price_4k                          *float64
 	addimage_price_4k                       *float64
+	batch_image_discount_multiplier         *float64
+	addbatch_image_discount_multiplier      *float64
+	batch_image_hold_multiplier             *float64
+	addbatch_image_hold_multiplier          *float64
 	claude_code_only                        *bool
 	fallback_group_id                       *int64
 	addfallback_group_id                    *int64
@@ -21642,6 +21847,42 @@ func (m *GroupMutation) ResetAllowImageGeneration() {
 	m.allow_image_generation = nil
 REDACTED
 
+// SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
+func (m *GroupMutation) SetAllowBatchImageGeneration(b bool) {
+	m.allow_batch_image_generation = &b
+REDACTED
+
+// AllowBatchImageGeneration returns the value of the "allow_batch_image_generation" field in the mutation.
+func (m *GroupMutation) AllowBatchImageGeneration() (r bool, exists bool) {
+	v := m.allow_batch_image_generation
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAllowBatchImageGeneration returns the old "allow_batch_image_generation" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAllowBatchImageGeneration(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowBatchImageGeneration is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowBatchImageGeneration requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowBatchImageGeneration: %w", err)
+REDACTED
+	return oldValue.AllowBatchImageGeneration, nil
+REDACTED
+
+// ResetAllowBatchImageGeneration resets all changes to the "allow_batch_image_generation" field.
+func (m *GroupMutation) ResetAllowBatchImageGeneration() {
+	m.allow_batch_image_generation = nil
+REDACTED
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (m *GroupMutation) SetImageRateIndependent(b bool) {
 	m.image_rate_independent = &b
@@ -21942,6 +22183,118 @@ func (m *GroupMutation) ResetImagePrice4k() {
 	m.image_price_4k = nil
 	m.addimage_price_4k = nil
 	delete(m.clearedFields, group.FieldImagePrice4k)
+REDACTED
+
+// SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
+func (m *GroupMutation) SetBatchImageDiscountMultiplier(f float64) {
+	m.batch_image_discount_multiplier = &f
+	m.addbatch_image_discount_multiplier = nil
+REDACTED
+
+// BatchImageDiscountMultiplier returns the value of the "batch_image_discount_multiplier" field in the mutation.
+func (m *GroupMutation) BatchImageDiscountMultiplier() (r float64, exists bool) {
+	v := m.batch_image_discount_multiplier
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldBatchImageDiscountMultiplier returns the old "batch_image_discount_multiplier" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldBatchImageDiscountMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBatchImageDiscountMultiplier is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBatchImageDiscountMultiplier requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBatchImageDiscountMultiplier: %w", err)
+REDACTED
+	return oldValue.BatchImageDiscountMultiplier, nil
+REDACTED
+
+// AddBatchImageDiscountMultiplier adds f to the "batch_image_discount_multiplier" field.
+func (m *GroupMutation) AddBatchImageDiscountMultiplier(f float64) {
+	if m.addbatch_image_discount_multiplier != nil {
+		*m.addbatch_image_discount_multiplier += f
+REDACTED else {
+		m.addbatch_image_discount_multiplier = &f
+REDACTED
+REDACTED
+
+// AddedBatchImageDiscountMultiplier returns the value that was added to the "batch_image_discount_multiplier" field in this mutation.
+func (m *GroupMutation) AddedBatchImageDiscountMultiplier() (r float64, exists bool) {
+	v := m.addbatch_image_discount_multiplier
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetBatchImageDiscountMultiplier resets all changes to the "batch_image_discount_multiplier" field.
+func (m *GroupMutation) ResetBatchImageDiscountMultiplier() {
+	m.batch_image_discount_multiplier = nil
+	m.addbatch_image_discount_multiplier = nil
+REDACTED
+
+// SetBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field.
+func (m *GroupMutation) SetBatchImageHoldMultiplier(f float64) {
+	m.batch_image_hold_multiplier = &f
+	m.addbatch_image_hold_multiplier = nil
+REDACTED
+
+// BatchImageHoldMultiplier returns the value of the "batch_image_hold_multiplier" field in the mutation.
+func (m *GroupMutation) BatchImageHoldMultiplier() (r float64, exists bool) {
+	v := m.batch_image_hold_multiplier
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldBatchImageHoldMultiplier returns the old "batch_image_hold_multiplier" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldBatchImageHoldMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBatchImageHoldMultiplier is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBatchImageHoldMultiplier requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBatchImageHoldMultiplier: %w", err)
+REDACTED
+	return oldValue.BatchImageHoldMultiplier, nil
+REDACTED
+
+// AddBatchImageHoldMultiplier adds f to the "batch_image_hold_multiplier" field.
+func (m *GroupMutation) AddBatchImageHoldMultiplier(f float64) {
+	if m.addbatch_image_hold_multiplier != nil {
+		*m.addbatch_image_hold_multiplier += f
+REDACTED else {
+		m.addbatch_image_hold_multiplier = &f
+REDACTED
+REDACTED
+
+// AddedBatchImageHoldMultiplier returns the value that was added to the "batch_image_hold_multiplier" field in this mutation.
+func (m *GroupMutation) AddedBatchImageHoldMultiplier() (r float64, exists bool) {
+	v := m.addbatch_image_hold_multiplier
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetBatchImageHoldMultiplier resets all changes to the "batch_image_hold_multiplier" field.
+func (m *GroupMutation) ResetBatchImageHoldMultiplier() {
+	m.batch_image_hold_multiplier = nil
+	m.addbatch_image_hold_multiplier = nil
 REDACTED
 
 // SetClaudeCodeOnly sets the "claude_code_only" field.
@@ -22978,7 +23331,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 39)
+	fields := make([]string, 0, 42)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 REDACTED
@@ -23036,6 +23389,9 @@ REDACTED
 	if m.allow_image_generation != nil {
 		fields = append(fields, group.FieldAllowImageGeneration)
 REDACTED
+	if m.allow_batch_image_generation != nil {
+		fields = append(fields, group.FieldAllowBatchImageGeneration)
+REDACTED
 	if m.image_rate_independent != nil {
 		fields = append(fields, group.FieldImageRateIndependent)
 REDACTED
@@ -23050,6 +23406,12 @@ REDACTED
 REDACTED
 	if m.image_price_4k != nil {
 		fields = append(fields, group.FieldImagePrice4k)
+REDACTED
+	if m.batch_image_discount_multiplier != nil {
+		fields = append(fields, group.FieldBatchImageDiscountMultiplier)
+REDACTED
+	if m.batch_image_hold_multiplier != nil {
+		fields = append(fields, group.FieldBatchImageHoldMultiplier)
 REDACTED
 	if m.claude_code_only != nil {
 		fields = append(fields, group.FieldClaudeCodeOnly)
@@ -23142,6 +23504,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.DefaultValidityDays()
 	case group.FieldAllowImageGeneration:
 		return m.AllowImageGeneration()
+	case group.FieldAllowBatchImageGeneration:
+		return m.AllowBatchImageGeneration()
 	case group.FieldImageRateIndependent:
 		return m.ImageRateIndependent()
 	case group.FieldImageRateMultiplier:
@@ -23152,6 +23516,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ImagePrice2k()
 	case group.FieldImagePrice4k:
 		return m.ImagePrice4k()
+	case group.FieldBatchImageDiscountMultiplier:
+		return m.BatchImageDiscountMultiplier()
+	case group.FieldBatchImageHoldMultiplier:
+		return m.BatchImageHoldMultiplier()
 	case group.FieldClaudeCodeOnly:
 		return m.ClaudeCodeOnly()
 	case group.FieldFallbackGroupID:
@@ -23229,6 +23597,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDefaultValidityDays(ctx)
 	case group.FieldAllowImageGeneration:
 		return m.OldAllowImageGeneration(ctx)
+	case group.FieldAllowBatchImageGeneration:
+		return m.OldAllowBatchImageGeneration(ctx)
 	case group.FieldImageRateIndependent:
 		return m.OldImageRateIndependent(ctx)
 	case group.FieldImageRateMultiplier:
@@ -23239,6 +23609,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldImagePrice2k(ctx)
 	case group.FieldImagePrice4k:
 		return m.OldImagePrice4k(ctx)
+	case group.FieldBatchImageDiscountMultiplier:
+		return m.OldBatchImageDiscountMultiplier(ctx)
+	case group.FieldBatchImageHoldMultiplier:
+		return m.OldBatchImageHoldMultiplier(ctx)
 	case group.FieldClaudeCodeOnly:
 		return m.OldClaudeCodeOnly(ctx)
 	case group.FieldFallbackGroupID:
@@ -23411,6 +23785,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 	REDACTED
 		m.SetAllowImageGeneration(v)
 		return nil
+	case group.FieldAllowBatchImageGeneration:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAllowBatchImageGeneration(v)
+		return nil
 	case group.FieldImageRateIndependent:
 		v, ok := value.(bool)
 		if !ok {
@@ -23445,6 +23826,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetImagePrice4k(v)
+		return nil
+	case group.FieldBatchImageDiscountMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetBatchImageDiscountMultiplier(v)
+		return nil
+	case group.FieldBatchImageHoldMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetBatchImageHoldMultiplier(v)
 		return nil
 	case group.FieldClaudeCodeOnly:
 		v, ok := value.(bool)
@@ -23589,6 +23984,12 @@ REDACTED
 	if m.addimage_price_4k != nil {
 		fields = append(fields, group.FieldImagePrice4k)
 REDACTED
+	if m.addbatch_image_discount_multiplier != nil {
+		fields = append(fields, group.FieldBatchImageDiscountMultiplier)
+REDACTED
+	if m.addbatch_image_hold_multiplier != nil {
+		fields = append(fields, group.FieldBatchImageHoldMultiplier)
+REDACTED
 	if m.addfallback_group_id != nil {
 		fields = append(fields, group.FieldFallbackGroupID)
 REDACTED
@@ -23629,6 +24030,10 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedImagePrice2k()
 	case group.FieldImagePrice4k:
 		return m.AddedImagePrice4k()
+	case group.FieldBatchImageDiscountMultiplier:
+		return m.AddedBatchImageDiscountMultiplier()
+	case group.FieldBatchImageHoldMultiplier:
+		return m.AddedBatchImageHoldMultiplier()
 	case group.FieldFallbackGroupID:
 		return m.AddedFallbackGroupID()
 	case group.FieldFallbackGroupIDOnInvalidRequest:
@@ -23715,6 +24120,20 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.AddImagePrice4k(v)
+		return nil
+	case group.FieldBatchImageDiscountMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddBatchImageDiscountMultiplier(v)
+		return nil
+	case group.FieldBatchImageHoldMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddBatchImageHoldMultiplier(v)
 		return nil
 	case group.FieldFallbackGroupID:
 		v, ok := value.(int64)
@@ -23897,6 +24316,9 @@ func (m *GroupMutation) ResetField(name string) error {
 	case group.FieldAllowImageGeneration:
 		m.ResetAllowImageGeneration()
 		return nil
+	case group.FieldAllowBatchImageGeneration:
+		m.ResetAllowBatchImageGeneration()
+		return nil
 	case group.FieldImageRateIndependent:
 		m.ResetImageRateIndependent()
 		return nil
@@ -23911,6 +24333,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldImagePrice4k:
 		m.ResetImagePrice4k()
+		return nil
+	case group.FieldBatchImageDiscountMultiplier:
+		m.ResetBatchImageDiscountMultiplier()
+		return nil
+	case group.FieldBatchImageHoldMultiplier:
+		m.ResetBatchImageHoldMultiplier()
 		return nil
 	case group.FieldClaudeCodeOnly:
 		m.ResetClaudeCodeOnly()
@@ -44480,6 +44908,8 @@ type UserMutation struct {
 	role                          *string
 	balance                       *float64
 	addbalance                    *float64
+	frozen_balance                *float64
+	addfrozen_balance             *float64
 	concurrency                   *int
 	addconcurrency                *int
 	status                        *string
@@ -44926,6 +45356,62 @@ REDACTED
 func (m *UserMutation) ResetBalance() {
 	m.balance = nil
 	m.addbalance = nil
+REDACTED
+
+// SetFrozenBalance sets the "frozen_balance" field.
+func (m *UserMutation) SetFrozenBalance(f float64) {
+	m.frozen_balance = &f
+	m.addfrozen_balance = nil
+REDACTED
+
+// FrozenBalance returns the value of the "frozen_balance" field in the mutation.
+func (m *UserMutation) FrozenBalance() (r float64, exists bool) {
+	v := m.frozen_balance
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldFrozenBalance returns the old "frozen_balance" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldFrozenBalance(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFrozenBalance is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFrozenBalance requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFrozenBalance: %w", err)
+REDACTED
+	return oldValue.FrozenBalance, nil
+REDACTED
+
+// AddFrozenBalance adds f to the "frozen_balance" field.
+func (m *UserMutation) AddFrozenBalance(f float64) {
+	if m.addfrozen_balance != nil {
+		*m.addfrozen_balance += f
+REDACTED else {
+		m.addfrozen_balance = &f
+REDACTED
+REDACTED
+
+// AddedFrozenBalance returns the value that was added to the "frozen_balance" field in this mutation.
+func (m *UserMutation) AddedFrozenBalance() (r float64, exists bool) {
+	v := m.addfrozen_balance
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetFrozenBalance resets all changes to the "frozen_balance" field.
+func (m *UserMutation) ResetFrozenBalance() {
+	m.frozen_balance = nil
+	m.addfrozen_balance = nil
 REDACTED
 
 // SetConcurrency sets the "concurrency" field.
@@ -46386,7 +46872,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 REDACTED
@@ -46407,6 +46893,9 @@ REDACTED
 REDACTED
 	if m.balance != nil {
 		fields = append(fields, user.FieldBalance)
+REDACTED
+	if m.frozen_balance != nil {
+		fields = append(fields, user.FieldFrozenBalance)
 REDACTED
 	if m.concurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
@@ -46478,6 +46967,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Role()
 	case user.FieldBalance:
 		return m.Balance()
+	case user.FieldFrozenBalance:
+		return m.FrozenBalance()
 	case user.FieldConcurrency:
 		return m.Concurrency()
 	case user.FieldStatus:
@@ -46533,6 +47024,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldRole(ctx)
 	case user.FieldBalance:
 		return m.OldBalance(ctx)
+	case user.FieldFrozenBalance:
+		return m.OldFrozenBalance(ctx)
 	case user.FieldConcurrency:
 		return m.OldConcurrency(ctx)
 	case user.FieldStatus:
@@ -46622,6 +47115,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetBalance(v)
+		return nil
+	case user.FieldFrozenBalance:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetFrozenBalance(v)
 		return nil
 	case user.FieldConcurrency:
 		v, ok := value.(int)
@@ -46746,6 +47246,9 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addbalance != nil {
 		fields = append(fields, user.FieldBalance)
 REDACTED
+	if m.addfrozen_balance != nil {
+		fields = append(fields, user.FieldFrozenBalance)
+REDACTED
 	if m.addconcurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
 REDACTED
@@ -46768,6 +47271,8 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case user.FieldBalance:
 		return m.AddedBalance()
+	case user.FieldFrozenBalance:
+		return m.AddedFrozenBalance()
 	case user.FieldConcurrency:
 		return m.AddedConcurrency()
 	case user.FieldBalanceNotifyThreshold:
@@ -46791,6 +47296,13 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.AddBalance(v)
+		return nil
+	case user.FieldFrozenBalance:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddFrozenBalance(v)
 		return nil
 	case user.FieldConcurrency:
 		v, ok := value.(int)
@@ -46906,6 +47418,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldBalance:
 		m.ResetBalance()
+		return nil
+	case user.FieldFrozenBalance:
+		m.ResetFrozenBalance()
 		return nil
 	case user.FieldConcurrency:
 		m.ResetConcurrency()

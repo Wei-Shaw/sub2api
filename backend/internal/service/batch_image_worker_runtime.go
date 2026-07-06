@@ -8,8 +8,9 @@ import (
 )
 
 type BatchImageWorkerRuntime struct {
-	worker *BatchImageWorker
-	cfg    *config.Config
+	worker          *BatchImageWorker
+	billingRecovery *BatchImageBillingRecoveryService
+	cfg             *config.Config
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
@@ -25,23 +26,36 @@ func ProvideBatchImageWorkerRuntime(
 	accountRepo AccountRepository,
 	queue BatchImageQueue,
 	billingRepo UsageBillingRepository,
+	usageLogRepo UsageLogRepository,
 	pricing *BatchImageModelPricingResolver,
+	authCache APIKeyAuthCacheInvalidator,
 	cfg *config.Config,
 ) *BatchImageWorkerRuntime {
 	processor := &BatchImagePipelineProcessor{
 		ProviderProcessor: &BatchImageProviderProcessor{
 			Repo:             repo,
-			ProviderRegistry: NewDefaultBatchImageProviderRegistry(),
+			ProviderRegistry: NewBatchImageProviderRegistryFromConfig(cfg),
 			AccountResolver:  &BatchImageAccountRepositoryResolver{Repo: accountRepoREDACTED,
+			BillingRepo:      billingRepo,
+			AuthCache:        authCache,
 	REDACTED,
 		SettlementService: &BatchImageSettlementService{
-			Repo:        repo,
-			BillingRepo: billingRepo,
-			Pricing:     pricing,
-			Config:      cfg,
+			Repo:         repo,
+			BillingRepo:  billingRepo,
+			UsageLogRepo: usageLogRepo,
+			Pricing:      pricing,
+			AuthCache:    authCache,
+			Config:       cfg,
 	REDACTED,
 REDACTED
 	runtime := NewBatchImageWorkerRuntime(NewBatchImageWorker(queue, processor, NewBatchImageWorkerOptionsFromConfig(cfg)), cfg)
+	runtime.billingRecovery = &BatchImageBillingRecoveryService{
+		Repo:       repo,
+		Billing:    billingRepo,
+		AuthCache:  authCache,
+		StaleAfter: NewBatchImageWorkerOptionsFromConfig(cfg).StaleActiveAfter,
+		Limit:      NewBatchImageWorkerOptionsFromConfig(cfg).RecoverLimit,
+REDACTED
 	runtime.Start()
 	return runtime
 REDACTED
@@ -62,7 +76,7 @@ REDACTED
 	r.done = done
 
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
 		r.worker.Run(ctx)
@@ -76,9 +90,27 @@ REDACTED()
 		r.worker.RunStaleActiveRecovery(ctx)
 REDACTED()
 	go func() {
+		defer wg.Done()
+		r.runBillingRecovery(ctx)
+REDACTED()
+	go func() {
 		wg.Wait()
 		close(done)
 REDACTED()
+REDACTED
+
+func (r *BatchImageWorkerRuntime) runBillingRecovery(ctx context.Context) {
+	if r == nil || r.worker == nil || r.billingRecovery == nil {
+		return
+REDACTED
+	interval := r.worker.opts.RecoveryInterval
+	for {
+		if err := ctx.Err(); err != nil {
+			return
+	REDACTED
+		_, _ = r.billingRecovery.ReleaseStaleUnsubmittedOnce(ctx)
+		sleepOrDone(ctx, interval)
+REDACTED
 REDACTED
 
 func (r *BatchImageWorkerRuntime) Stop() {

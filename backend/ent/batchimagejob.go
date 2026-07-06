@@ -29,6 +29,8 @@ type BatchImageJob struct {
 	Provider string `json:"provider,omitempty"`
 	// Model holds the value of the "model" field.
 	Model string `json:"model,omitempty"`
+	// TaskName holds the value of the "task_name" field.
+	TaskName string `json:"task_name,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// ProviderJobName holds the value of the "provider_job_name" field.
@@ -75,6 +77,10 @@ type BatchImageJob struct {
 	InputDeletedAt *time.Time `json:"input_deleted_at,omitempty"`
 	// OutputDeletedAt holds the value of the "output_deleted_at" field.
 	OutputDeletedAt *time.Time `json:"output_deleted_at,omitempty"`
+	// DownloadedAt holds the value of the "downloaded_at" field.
+	DownloadedAt *time.Time `json:"downloaded_at,omitempty"`
+	// UserDeletedAt holds the value of the "user_deleted_at" field.
+	UserDeletedAt *time.Time `json:"user_deleted_at,omitempty"`
 	// LastErrorCode holds the value of the "last_error_code" field.
 	LastErrorCode *string `json:"last_error_code,omitempty"`
 	// LastErrorMessage holds the value of the "last_error_message" field.
@@ -103,9 +109,9 @@ func (*BatchImageJob) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case batchimagejob.FieldID, batchimagejob.FieldUserID, batchimagejob.FieldAPIKeyID, batchimagejob.FieldAccountID, batchimagejob.FieldItemCount, batchimagejob.FieldSuccessCount, batchimagejob.FieldFailCount, batchimagejob.FieldCancelledCount, batchimagejob.FieldRetryCount, batchimagejob.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case batchimagejob.FieldBatchID, batchimagejob.FieldProvider, batchimagejob.FieldModel, batchimagejob.FieldStatus, batchimagejob.FieldProviderJobName, batchimagejob.FieldProviderInputRef, batchimagejob.FieldProviderOutputRef, batchimagejob.FieldGcsInputURI, batchimagejob.FieldGcsOutputURI, batchimagejob.FieldCurrency, batchimagejob.FieldHoldID, batchimagejob.FieldIdempotencyKey, batchimagejob.FieldRequestHash, batchimagejob.FieldManifestHash, batchimagejob.FieldLastErrorCode, batchimagejob.FieldLastErrorMessage:
+		case batchimagejob.FieldBatchID, batchimagejob.FieldProvider, batchimagejob.FieldModel, batchimagejob.FieldTaskName, batchimagejob.FieldStatus, batchimagejob.FieldProviderJobName, batchimagejob.FieldProviderInputRef, batchimagejob.FieldProviderOutputRef, batchimagejob.FieldGcsInputURI, batchimagejob.FieldGcsOutputURI, batchimagejob.FieldCurrency, batchimagejob.FieldHoldID, batchimagejob.FieldIdempotencyKey, batchimagejob.FieldRequestHash, batchimagejob.FieldManifestHash, batchimagejob.FieldLastErrorCode, batchimagejob.FieldLastErrorMessage:
 			values[i] = new(sql.NullString)
-		case batchimagejob.FieldOutputExpiresAt, batchimagejob.FieldInputDeletedAt, batchimagejob.FieldOutputDeletedAt, batchimagejob.FieldCreatedAt, batchimagejob.FieldUpdatedAt, batchimagejob.FieldSubmittedAt, batchimagejob.FieldStartedAt, batchimagejob.FieldFinishedAt, batchimagejob.FieldSettledAt:
+		case batchimagejob.FieldOutputExpiresAt, batchimagejob.FieldInputDeletedAt, batchimagejob.FieldOutputDeletedAt, batchimagejob.FieldDownloadedAt, batchimagejob.FieldUserDeletedAt, batchimagejob.FieldCreatedAt, batchimagejob.FieldUpdatedAt, batchimagejob.FieldSubmittedAt, batchimagejob.FieldStartedAt, batchimagejob.FieldFinishedAt, batchimagejob.FieldSettledAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -165,6 +171,12 @@ REDACTED
 				return fmt.Errorf("unexpected type %T for field model", values[i])
 		REDACTED else if value.Valid {
 				_m.Model = value.String
+		REDACTED
+		case batchimagejob.FieldTaskName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field task_name", values[i])
+		REDACTED else if value.Valid {
+				_m.TaskName = value.String
 		REDACTED
 		case batchimagejob.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -318,6 +330,20 @@ REDACTED
 				_m.OutputDeletedAt = new(time.Time)
 				*_m.OutputDeletedAt = value.Time
 		REDACTED
+		case batchimagejob.FieldDownloadedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field downloaded_at", values[i])
+		REDACTED else if value.Valid {
+				_m.DownloadedAt = new(time.Time)
+				*_m.DownloadedAt = value.Time
+		REDACTED
+		case batchimagejob.FieldUserDeletedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field user_deleted_at", values[i])
+		REDACTED else if value.Valid {
+				_m.UserDeletedAt = new(time.Time)
+				*_m.UserDeletedAt = value.Time
+		REDACTED
 		case batchimagejob.FieldLastErrorCode:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field last_error_code", values[i])
@@ -430,6 +456,9 @@ REDACTED
 	builder.WriteString("model=")
 	builder.WriteString(_m.Model)
 	builder.WriteString(", ")
+	builder.WriteString("task_name=")
+	builder.WriteString(_m.TaskName)
+	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
 	builder.WriteString(", ")
@@ -524,6 +553,16 @@ REDACTED
 	builder.WriteString(", ")
 	if v := _m.OutputDeletedAt; v != nil {
 		builder.WriteString("output_deleted_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+REDACTED
+	builder.WriteString(", ")
+	if v := _m.DownloadedAt; v != nil {
+		builder.WriteString("downloaded_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+REDACTED
+	builder.WriteString(", ")
+	if v := _m.UserDeletedAt; v != nil {
+		builder.WriteString("user_deleted_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 REDACTED
 	builder.WriteString(", ")

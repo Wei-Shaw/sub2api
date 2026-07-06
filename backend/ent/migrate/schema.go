@@ -523,6 +523,7 @@ REDACTED
 		{Name: "account_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 		{Name: "provider", Type: field.TypeString, Size: 32REDACTED,
 		{Name: "model", Type: field.TypeString, Size: 128REDACTED,
+		{Name: "task_name", Type: field.TypeString, Size: 255, Default: ""REDACTED,
 		{Name: "status", Type: field.TypeString, Size: 32, Default: "created"REDACTED,
 		{Name: "provider_job_name", Type: field.TypeString, Nullable: true, Size: 512REDACTED,
 		{Name: "provider_input_ref", Type: field.TypeString, Nullable: true, Size: 1024REDACTED,
@@ -546,6 +547,8 @@ REDACTED
 		{Name: "output_expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "input_deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "output_deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "downloaded_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "user_deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "last_error_code", Type: field.TypeString, Nullable: true, Size: 128REDACTED,
 		{Name: "last_error_message", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
@@ -569,22 +572,22 @@ REDACTED
 			{
 				Name:    "batchimagejob_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[2], BatchImageJobsColumns[32]REDACTED,
+				Columns: []*schema.Column{BatchImageJobsColumns[2], BatchImageJobsColumns[35]REDACTED,
 		REDACTED,
 			{
 				Name:    "batchimagejob_status",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[7]REDACTED,
+				Columns: []*schema.Column{BatchImageJobsColumns[8]REDACTED,
 		REDACTED,
 			{
 				Name:    "batchimagejob_provider_status",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[5], BatchImageJobsColumns[7]REDACTED,
+				Columns: []*schema.Column{BatchImageJobsColumns[5], BatchImageJobsColumns[8]REDACTED,
 		REDACTED,
 			{
 				Name:    "batchimagejob_idempotency_key",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[22]REDACTED,
+				Columns: []*schema.Column{BatchImageJobsColumns[23]REDACTED,
 				Annotation: &entsql.IndexAnnotation{
 					Where: "idempotency_key IS NOT NULL AND idempotency_key <> ''",
 			REDACTED,
@@ -592,7 +595,7 @@ REDACTED
 			{
 				Name:    "batchimagejob_manifest_hash",
 				Unique:  true,
-				Columns: []*schema.Column{BatchImageJobsColumns[24]REDACTED,
+				Columns: []*schema.Column{BatchImageJobsColumns[25]REDACTED,
 				Annotation: &entsql.IndexAnnotation{
 					Where: "manifest_hash IS NOT NULL AND manifest_hash <> ''",
 			REDACTED,
@@ -600,7 +603,17 @@ REDACTED
 			{
 				Name:    "batchimagejob_output_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[27]REDACTED,
+				Columns: []*schema.Column{BatchImageJobsColumns[28]REDACTED,
+		REDACTED,
+			{
+				Name:    "batchimagejob_downloaded_at",
+				Unique:  false,
+				Columns: []*schema.Column{BatchImageJobsColumns[31]REDACTED,
+		REDACTED,
+			{
+				Name:    "batchimagejob_user_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{BatchImageJobsColumns[32]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -839,11 +852,14 @@ REDACTED
 		{Name: "monthly_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "default_validity_days", Type: field.TypeInt, Default: 30REDACTED,
 		{Name: "allow_image_generation", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "allow_batch_image_generation", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "image_rate_independent", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "image_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
 		{Name: "image_price_1k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "image_price_2k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "image_price_4k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "batch_image_discount_multiplier", Type: field.TypeFloat64, Default: 0.5, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
+		{Name: "batch_image_hold_multiplier", Type: field.TypeFloat64, Default: 0.6, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
 		{Name: "claude_code_only", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "fallback_group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 		{Name: "fallback_group_id_on_invalid_request", Type: field.TypeInt64, Nullable: trueREDACTED,
@@ -894,7 +910,7 @@ REDACTED
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[32]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[35]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -1669,6 +1685,7 @@ REDACTED
 		{Name: "password_hash", Type: field.TypeString, Size: 255REDACTED,
 		{Name: "role", Type: field.TypeString, Size: 20, Default: "user"REDACTED,
 		{Name: "balance", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "frozen_balance", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "concurrency", Type: field.TypeInt, Default: 5REDACTED,
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
 		{Name: "username", Type: field.TypeString, Size: 100, Default: ""REDACTED,
@@ -1695,7 +1712,7 @@ REDACTED
 			{
 				Name:    "user_status",
 				Unique:  false,
-				Columns: []*schema.Column{UsersColumns[9]REDACTED,
+				Columns: []*schema.Column{UsersColumns[10]REDACTED,
 		REDACTED,
 			{
 				Name:    "user_deleted_at",

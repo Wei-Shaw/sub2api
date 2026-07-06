@@ -29,6 +29,7 @@ const (
 )
 
 const (
+	BatchImageItemStatusPending   = "pending"
 	BatchImageItemStatusSuccess   = "success"
 	BatchImageItemStatusFailed    = "failed"
 	BatchImageItemStatusCancelled = "cancelled"
@@ -58,8 +59,12 @@ var (
 	ErrBatchImageSettlementMissingAPIKeyID  = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_SETTLEMENT_MISSING_API_KEY_ID", "batch image settlement api key id is missing")
 	ErrBatchImageSettlementMissingAccountID = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_SETTLEMENT_MISSING_ACCOUNT_ID", "batch image settlement account id is missing")
 	ErrBatchImageSettlementInvalidCounts    = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_SETTLEMENT_INVALID_COUNTS", "batch image settlement counts are invalid")
+	ErrBatchImageSettlementCostExceedsHold  = infraerrors.New(http.StatusConflict, "BATCH_IMAGE_SETTLEMENT_COST_EXCEEDS_HOLD", "batch image settlement cost exceeds held balance")
+	ErrBatchImageBillingHoldFailed          = infraerrors.New(http.StatusBadGateway, "BATCH_IMAGE_BILLING_HOLD_FAILED", "batch image balance hold failed")
+	ErrBatchImageInsufficientBalance        = infraerrors.New(http.StatusPaymentRequired, "BATCH_IMAGE_INSUFFICIENT_BALANCE", "insufficient balance for batch image hold")
 
 	ErrBatchImageDisabled                   = infraerrors.New(http.StatusNotFound, "BATCH_IMAGE_DISABLED", "batch image API is disabled")
+	ErrBatchImageGroupDisabled              = infraerrors.New(http.StatusForbidden, "BATCH_IMAGE_GROUP_DISABLED", "batch image API is disabled for this group")
 	ErrBatchImageInvalidModel               = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_INVALID_MODEL", "batch image model is required")
 	ErrBatchImageNoAccountAvailable         = infraerrors.New(http.StatusBadGateway, "BATCH_IMAGE_NO_ACCOUNT_AVAILABLE", "no compatible batch image account is available")
 	ErrBatchImageInvalidItems               = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_INVALID_ITEMS", "batch image items are invalid")
@@ -69,6 +74,7 @@ var (
 	ErrBatchImageQueueFailed                = infraerrors.New(http.StatusBadGateway, "BATCH_IMAGE_QUEUE_FAILED", "batch image queue failed")
 	ErrBatchImageIdempotencyConflict        = infraerrors.New(http.StatusConflict, "BATCH_IMAGE_IDEMPOTENCY_CONFLICT", "idempotency key reused with different batch image request")
 	ErrBatchImageCancelFailed               = infraerrors.New(http.StatusBadGateway, "BATCH_IMAGE_CANCEL_FAILED", "batch image cancel failed")
+	ErrBatchImageVertexGCSBucketMissing     = infraerrors.New(http.StatusBadGateway, "BATCH_IMAGE_VERTEX_GCS_BUCKET_MISSING", "Vertex managed GCS bucket is not configured")
 
 	ErrBatchImageNotReady                 = infraerrors.New(http.StatusConflict, "BATCH_IMAGE_NOT_READY", "batch image job is not completed")
 	ErrBatchImageOutputDeleted            = infraerrors.New(http.StatusGone, "BATCH_IMAGE_OUTPUT_DELETED", "batch image output has been deleted")
@@ -80,6 +86,7 @@ var (
 	ErrBatchImageItemImageIndexOutOfRange = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_ITEM_IMAGE_INDEX_OUT_OF_RANGE", "batch image item image index is out of range")
 	ErrBatchImageZipTooManyItems          = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_ZIP_TOO_MANY_ITEMS", "batch image ZIP contains too many items; use single item downloads")
 	ErrBatchImageOutputDeleteNotReady     = infraerrors.New(http.StatusConflict, "BATCH_IMAGE_OUTPUT_DELETE_NOT_READY", "batch image output can only be deleted after completion")
+	ErrBatchImageRecordDeleteNotReady     = infraerrors.New(http.StatusConflict, "BATCH_IMAGE_RECORD_DELETE_NOT_READY", "batch image record can only be deleted after the job finishes")
 	ErrBatchImageCleanupFailed            = infraerrors.New(http.StatusBadGateway, "BATCH_IMAGE_CLEANUP_FAILED", "batch image cleanup failed")
 	ErrBatchImageCleanupUnsafePath        = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_CLEANUP_UNSAFE_PATH", "batch image cleanup path is unsafe")
 	ErrBatchImageProviderCleanupFailed    = infraerrors.New(http.StatusBadGateway, "BATCH_IMAGE_PROVIDER_CLEANUP_FAILED", "batch image provider cleanup failed")
@@ -93,6 +100,8 @@ type BatchImageJob struct {
 	AccountID         *int64
 	Provider          string
 	Model             string
+	TaskName          string
+	ParentBatchID     *string
 	Status            string
 	ProviderJobName   *string
 	ProviderInputRef  *string
@@ -105,11 +114,19 @@ type BatchImageJob struct {
 	FailCount      int
 	CancelledCount int
 
-	EstimatedCost float64
-	HoldAmount    *float64
-	ActualCost    *float64
-	Currency      string
-	HoldID        *string
+	EstimatedCost           float64
+	HoldAmount              *float64
+	ActualCost              *float64
+	BaseUnitPrice           float64
+	GroupRateMultiplier     float64
+	AccountRateMultiplier   float64
+	BatchDiscountMultiplier float64
+	HoldMultiplier          float64
+	BillableUnitPrice       float64
+	HoldUnitPrice           float64
+	PricingSnapshotVersion  int
+	Currency                string
+	HoldID                  *string
 
 	IdempotencyKey *string
 	RequestHash    *string
@@ -121,6 +138,8 @@ type BatchImageJob struct {
 	OutputExpiresAt *time.Time
 	InputDeletedAt  *time.Time
 	OutputDeletedAt *time.Time
+	DownloadedAt    *time.Time
+	UserDeletedAt   *time.Time
 
 	LastErrorCode    *string
 	LastErrorMessage *string
@@ -140,6 +159,8 @@ type CreateBatchImageJobParams struct {
 	AccountID         *int64
 	Provider          string
 	Model             string
+	TaskName          string
+	ParentBatchID     *string
 	Status            string
 	ProviderJobName   *string
 	ProviderInputRef  *string
@@ -152,11 +173,19 @@ type CreateBatchImageJobParams struct {
 	FailCount      int
 	CancelledCount int
 
-	EstimatedCost float64
-	HoldAmount    *float64
-	ActualCost    *float64
-	Currency      string
-	HoldID        *string
+	EstimatedCost           float64
+	HoldAmount              *float64
+	ActualCost              *float64
+	BaseUnitPrice           float64
+	GroupRateMultiplier     float64
+	AccountRateMultiplier   float64
+	BatchDiscountMultiplier float64
+	HoldMultiplier          float64
+	BillableUnitPrice       float64
+	HoldUnitPrice           float64
+	PricingSnapshotVersion  int
+	Currency                string
+	HoldID                  *string
 
 	IdempotencyKey *string
 	RequestHash    *string
@@ -213,6 +242,17 @@ type BatchImageItemFilter struct {
 	Offset int
 REDACTED
 
+type BatchImageJobFilter struct {
+	Status         string
+	TaskNameLike   string
+	Downloaded     *bool
+	CreatedAfter   *time.Time
+	CreatedBefore  *time.Time
+	ExcludeDeleted bool
+	Limit          int
+	Offset         int
+REDACTED
+
 type BatchImageCounts struct {
 	SuccessCount int
 	FailCount    int
@@ -260,6 +300,7 @@ type BatchImageRepository interface {
 	GetBatchImageJobByIdempotencyKey(ctx context.Context, userID, apiKeyID int64, key string) (*BatchImageJob, error)
 	GetBatchImageJobByBatchIDForOwner(ctx context.Context, userID, apiKeyID int64, batchID string) (*BatchImageJob, error)
 	GetBatchImageJobByID(ctx context.Context, id int64) (*BatchImageJob, error)
+	ListBatchImageJobsForOwner(ctx context.Context, userID, apiKeyID int64, filter BatchImageJobFilter) ([]*BatchImageJob, error)
 	TransitionBatchImageJobStatus(ctx context.Context, batchID, toStatus string, opts BatchImageTransitionOptions) error
 	UpdateBatchImageJobProviderOutputRef(ctx context.Context, batchID, providerOutputRef string) error
 	UpdateBatchImageJobProviderSubmit(ctx context.Context, params UpdateBatchImageJobProviderSubmitParams) error
@@ -276,8 +317,11 @@ type BatchImageRepository interface {
 	ListBatchImageItemsForDownload(ctx context.Context, batchID string, status string, limit int) ([]*BatchImageItem, error)
 	ListBatchImageJobsDueForInputCleanup(ctx context.Context, cutoff time.Time, limit int) ([]*BatchImageJob, error)
 	ListBatchImageJobsDueForOutputCleanup(ctx context.Context, now time.Time, limit int) ([]*BatchImageJob, error)
+	ListStaleUnsubmittedBatchImageJobs(ctx context.Context, cutoff time.Time, limit int) ([]*BatchImageJob, error)
 	MarkBatchImageInputDeleted(ctx context.Context, batchID string, deletedAt time.Time) error
 	MarkBatchImageOutputDeleted(ctx context.Context, batchID string, deletedAt time.Time) error
+	MarkBatchImageDownloaded(ctx context.Context, batchID string, downloadedAt time.Time) error
+	MarkBatchImageJobUserDeleted(ctx context.Context, userID, apiKeyID int64, batchID string, deletedAt time.Time) error
 	SetBatchImageOutputExpiresAt(ctx context.Context, batchID string, expiresAt time.Time) error
 	RecordBatchImageCleanupFailure(ctx context.Context, batchID, code, message string) error
 	AppendBatchImageEvent(ctx context.Context, batchID, eventType string, payload any) error

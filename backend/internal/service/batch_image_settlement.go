@@ -16,6 +16,7 @@ import (
 const (
 	batchImageSettlementRequestPrefix = "batch_image_settlement:"
 	batchImageSettlementRetryDelay    = time.Minute
+	batchImageCostEpsilon             = 0.00000001
 )
 
 type BatchImagePricingResolver interface {
@@ -51,10 +52,12 @@ REDACTED
 REDACTED
 
 type BatchImageSettlementService struct {
-	Repo        BatchImageRepository
-	BillingRepo UsageBillingRepository
-	Pricing     BatchImagePricingResolver
-	Config      *config.Config
+	Repo         BatchImageRepository
+	BillingRepo  UsageBillingRepository
+	UsageLogRepo UsageLogRepository
+	Pricing      BatchImagePricingResolver
+	AuthCache    APIKeyAuthCacheInvalidator
+	Config       *config.Config
 REDACTED
 
 type BatchImageSettlementResult struct {
@@ -82,7 +85,7 @@ REDACTED
 		SuccessCount: job.SuccessCount,
 		FailCount:    job.FailCount,
 		ManifestHash: manifestHash,
-		RequestID:    BatchImageSettlementRequestID(job.BatchID),
+		RequestID:    BatchImageCaptureRequestID(job.BatchID),
 REDACTED
 	if job.ActualCost != nil {
 		result.ActualCost = *job.ActualCost
@@ -94,7 +97,7 @@ REDACTED
 	if job.Status != BatchImageJobStatusSettling {
 		return nil, ErrBatchImageSettlementInvalidStatus
 REDACTED
-	if job.SuccessCount < 0 || job.FailCount < 0 || job.ItemCount < 0 {
+	if job.SuccessCount < 0 || job.FailCount < 0 || job.ItemCount < 0 || job.SuccessCount+job.FailCount > job.ItemCount {
 		return nil, ErrBatchImageSettlementInvalidCounts
 REDACTED
 	if strings.TrimSpace(batchImageDerefString(job.ManifestHash)) != "" && batchImageDerefString(job.ManifestHash) != manifestHash {
@@ -107,7 +110,7 @@ REDACTED
 		return nil, ErrBatchImageSettlementMissingAccountID
 REDACTED
 
-	unitPrice, err := s.Pricing.BatchImageUnitPrice(ctx, job)
+	unitPrice, err := s.settlementUnitPrice(ctx, job)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -116,24 +119,22 @@ REDACTED
 REDACTED
 	actualCost := float64(job.SuccessCount) * unitPrice
 	result.ActualCost = actualCost
-
-	cmd := &UsageBillingCommand{
-		RequestID:          result.RequestID,
-		APIKeyID:           *job.APIKeyID,
-		RequestPayloadHash: manifestHash,
-		UserID:             job.UserID,
-		AccountID:          *job.AccountID,
-		Model:              job.Model,
-		BillingType:        BillingTypeBalance,
-		ImageCount:         job.SuccessCount,
-		MediaType:          "image",
-		BalanceCost:        actualCost,
+	holdAmount := job.EstimatedCost
+	if job.HoldAmount != nil {
+		holdAmount = *job.HoldAmount
 REDACTED
-	if _, err := s.BillingRepo.Apply(ctx, cmd); err != nil {
+	if actualCost-holdAmount > batchImageCostEpsilon {
+		msg := fmt.Sprintf("actual cost %.10f exceeds held amount %.10f", actualCost, holdAmount)
+		_ = s.Repo.SetBatchImageJobSettlementFailed(ctx, job.BatchID, "SETTLEMENT_COST_EXCEEDS_HOLD", msg)
+		return nil, ErrBatchImageSettlementCostExceedsHold
+REDACTED
+
+	if err := captureBatchImageBalanceHold(ctx, s.BillingRepo, job, actualCost, manifestHash); err != nil {
 		msg := truncateBatchImageMessage(err.Error(), batchImageMaxErrorMessageLength)
 		_ = s.Repo.SetBatchImageJobSettlementFailed(ctx, job.BatchID, "SETTLEMENT_BILLING_FAILED", msg)
-		return nil, ErrBatchImageSettlementBillingFailed.WithCause(err)
+		return nil, err
 REDACTED
+	s.invalidateAuthCache(ctx, job.UserID)
 
 	now := time.Now()
 	outputExpiresAt := now.Add(s.outputRetentionAfterTerminal())
@@ -154,8 +155,62 @@ REDACTED
 REDACTED); err != nil {
 		return nil, err
 REDACTED
+	s.recordUsageLog(ctx, job, actualCost, result.RequestID, now)
 
 	return result, nil
+REDACTED
+
+func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *BatchImageJob, actualCost float64, requestID string, createdAt time.Time) {
+	if s == nil || s.UsageLogRepo == nil || job == nil || job.APIKeyID == nil || job.AccountID == nil {
+		return
+REDACTED
+	billingMode := string(BillingModeImage)
+	accountRateMultiplier := job.AccountRateMultiplier
+	inboundEndpoint := "/v1/images/batches"
+	upstreamEndpoint := "vertex:batchPredictionJobs"
+	imageSize := "1K"
+	usageLog := &UsageLog{
+		UserID:                job.UserID,
+		APIKeyID:              *job.APIKeyID,
+		AccountID:             *job.AccountID,
+		RequestID:             strings.TrimSpace(requestID),
+		Model:                 job.Model,
+		RequestedModel:        job.Model,
+		InboundEndpoint:       &inboundEndpoint,
+		UpstreamEndpoint:      &upstreamEndpoint,
+		ImageCount:            job.SuccessCount,
+		ImageOutputCost:       actualCost,
+		TotalCost:             actualCost,
+		ActualCost:            actualCost,
+		RateMultiplier:        job.GroupRateMultiplier * job.BatchDiscountMultiplier,
+		AccountRateMultiplier: &accountRateMultiplier,
+		BillingType:           BillingTypeBalance,
+		RequestType:           RequestTypeSync,
+		BillingMode:           &billingMode,
+		ImageSize:             &imageSize,
+		CreatedAt:             createdAt,
+REDACTED
+	writeUsageLogBestEffort(ctx, s.UsageLogRepo, usageLog, "service.batch_image_settlement")
+REDACTED
+
+func (s *BatchImageSettlementService) invalidateAuthCache(ctx context.Context, userID int64) {
+	if s != nil && s.AuthCache != nil && userID > 0 {
+		s.AuthCache.InvalidateAuthCacheByUserID(ctx, userID)
+REDACTED
+REDACTED
+
+func (s *BatchImageSettlementService) settlementUnitPrice(ctx context.Context, job *BatchImageJob) (float64, error) {
+	if job != nil && job.PricingSnapshotVersion >= 1 {
+		if job.BillableUnitPrice < 0 {
+			return 0, ErrBatchImageSettlementPricingMissing
+	REDACTED
+		return job.BillableUnitPrice, nil
+REDACTED
+	unitPrice, err := s.Pricing.BatchImageUnitPrice(ctx, job)
+	if err != nil {
+		return 0, err
+REDACTED
+	return unitPrice, nil
 REDACTED
 
 func (s *BatchImageSettlementService) outputRetentionAfterTerminal() time.Duration {

@@ -25,6 +25,8 @@ const (
 	FieldProvider = "provider"
 	// FieldModel holds the string denoting the model field in the database.
 	FieldModel = "model"
+	// FieldTaskName holds the string denoting the task_name field in the database.
+	FieldTaskName = "task_name"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldProviderJobName holds the string denoting the provider_job_name field in the database.
@@ -71,6 +73,10 @@ const (
 	FieldInputDeletedAt = "input_deleted_at"
 	// FieldOutputDeletedAt holds the string denoting the output_deleted_at field in the database.
 	FieldOutputDeletedAt = "output_deleted_at"
+	// FieldDownloadedAt holds the string denoting the downloaded_at field in the database.
+	FieldDownloadedAt = "downloaded_at"
+	// FieldUserDeletedAt holds the string denoting the user_deleted_at field in the database.
+	FieldUserDeletedAt = "user_deleted_at"
 	// FieldLastErrorCode holds the string denoting the last_error_code field in the database.
 	FieldLastErrorCode = "last_error_code"
 	// FieldLastErrorMessage holds the string denoting the last_error_message field in the database.
@@ -100,6 +106,7 @@ var Columns = []string{
 	FieldAccountID,
 	FieldProvider,
 	FieldModel,
+	FieldTaskName,
 	FieldStatus,
 	FieldProviderJobName,
 	FieldProviderInputRef,
@@ -123,6 +130,8 @@ var Columns = []string{
 	FieldOutputExpiresAt,
 	FieldInputDeletedAt,
 	FieldOutputDeletedAt,
+	FieldDownloadedAt,
+	FieldUserDeletedAt,
 	FieldLastErrorCode,
 	FieldLastErrorMessage,
 	FieldCreatedAt,
@@ -150,6 +159,10 @@ var (
 	ProviderValidator func(string) error
 	// ModelValidator is a validator for the "model" field. It is called by the builders before save.
 	ModelValidator func(string) error
+	// DefaultTaskName holds the default value on creation for the "task_name" field.
+	DefaultTaskName string
+	// TaskNameValidator is a validator for the "task_name" field. It is called by the builders before save.
+	TaskNameValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -234,6 +247,11 @@ REDACTED
 // ByModel orders the results by the model field.
 func ByModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldModel, opts...).ToFunc()
+REDACTED
+
+// ByTaskName orders the results by the task_name field.
+func ByTaskName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTaskName, opts...).ToFunc()
 REDACTED
 
 // ByStatus orders the results by the status field.
@@ -349,6 +367,16 @@ REDACTED
 // ByOutputDeletedAt orders the results by the output_deleted_at field.
 func ByOutputDeletedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOutputDeletedAt, opts...).ToFunc()
+REDACTED
+
+// ByDownloadedAt orders the results by the downloaded_at field.
+func ByDownloadedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDownloadedAt, opts...).ToFunc()
+REDACTED
+
+// ByUserDeletedAt orders the results by the user_deleted_at field.
+func ByUserDeletedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUserDeletedAt, opts...).ToFunc()
 REDACTED
 
 // ByLastErrorCode orders the results by the last_error_code field.

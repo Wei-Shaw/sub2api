@@ -232,6 +232,26 @@ REDACTED
 	require.False(t, group.AllowImageGeneration)
 REDACTED
 
+func TestAdminService_CreateGroup_DisablesBatchImageWhenImageGenerationDisabled(t *testing.T) {
+	repo := &groupRepoStubForAdmin{REDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                      "gemini-no-image",
+		Description:               "Gemini group without image generation",
+		Platform:                  PlatformGemini,
+		RateMultiplier:            1.0,
+		AllowImageGeneration:      false,
+		AllowBatchImageGeneration: true,
+REDACTED)
+REDACTED
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.False(t, repo.created.AllowImageGeneration)
+	require.False(t, repo.created.AllowBatchImageGeneration)
+	require.False(t, group.AllowBatchImageGeneration)
+REDACTED
+
 // TestAdminService_UpdateGroup_WithImagePricing 测试更新分组时 ImagePrice 字段正确更新
 func TestAdminService_UpdateGroup_WithImagePricing(t *testing.T) {
 	existingGroup := &Group{
@@ -326,6 +346,30 @@ REDACTED
 	require.InDelta(t, 0.5, repo.updated.ImageRateMultiplier, 1e-12)
 REDACTED
 
+func TestAdminService_UpdateGroup_DisablesBatchImageWhenImageGenerationDisabled(t *testing.T) {
+	existingGroup := &Group{
+		ID:                        1,
+		Name:                      "existing-gemini",
+		Platform:                  PlatformGemini,
+		Status:                    StatusActive,
+		AllowImageGeneration:      true,
+		AllowBatchImageGeneration: true,
+REDACTED
+	repo := &groupRepoStubForAdmin{getByID: existingGroupREDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+	disabled := false
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		AllowImageGeneration: &disabled,
+REDACTED)
+REDACTED
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.False(t, repo.updated.AllowImageGeneration)
+	require.False(t, repo.updated.AllowBatchImageGeneration)
+	require.False(t, group.AllowBatchImageGeneration)
+REDACTED
+
 func TestAdminService_UpdateGroup_ClearsDescriptionWhenEmptyString(t *testing.T) {
 	existingGroup := &Group{
 		ID:          1,
@@ -382,6 +426,58 @@ REDACTED
 REDACTED)
 REDACTED
 	require.Nil(t, repo.updated)
+REDACTED
+
+func TestAdminService_CreateGroup_BatchImagePricingSettings(t *testing.T) {
+	repo := &groupRepoStubForAdmin{REDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+	discount := 0.8
+	hold := 0.6
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                         "batch-image-pricing",
+		Platform:                     PlatformGemini,
+		RateMultiplier:               1,
+		BatchImageDiscountMultiplier: &discount,
+		BatchImageHoldMultiplier:     &hold,
+REDACTED)
+REDACTED
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.InDelta(t, 0.8, repo.created.BatchImageDiscountMultiplier, 1e-12)
+	require.InDelta(t, 0.6, repo.created.BatchImageHoldMultiplier, 1e-12)
+REDACTED
+
+func TestAdminService_GroupBatchImagePricingValidation(t *testing.T) {
+	tests := []struct {
+		name  string
+		input *CreateGroupInput
+REDACTED{
+		{
+			name: "negative_discount",
+			input: func() *CreateGroupInput {
+				v := -0.1
+				return &CreateGroupInput{Name: "bad-discount", RateMultiplier: 1, BatchImageDiscountMultiplier: &vREDACTED
+		REDACTED(),
+	REDACTED,
+		{
+			name: "negative_hold",
+			input: func() *CreateGroupInput {
+				v := -0.1
+				return &CreateGroupInput{Name: "bad-hold", RateMultiplier: 1, BatchImageHoldMultiplier: &vREDACTED
+		REDACTED(),
+	REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{REDACTED
+			svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+			_, err := svc.CreateGroup(context.Background(), tt.input)
+		REDACTED
+			require.Nil(t, repo.created)
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestAdminService_UpdateGroup_InvalidatesAuthCacheOnRPMLimitChange(t *testing.T) {

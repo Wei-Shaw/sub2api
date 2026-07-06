@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -156,6 +158,10 @@ REDACTED()
 
 	result, err := w.processor.Process(ctx, reserved.BatchID)
 	if err != nil {
+		logger.L().Warn("batch_image.worker_process_failed",
+			zap.String("batch_id", reserved.BatchID),
+			zap.Error(err),
+		)
 		return w.queue.RequeueAfter(ctx, reserved.BatchID, w.opts.ErrorRetryDelay)
 REDACTED
 	if result.Terminal {

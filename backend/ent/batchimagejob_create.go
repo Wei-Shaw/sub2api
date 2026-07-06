@@ -74,6 +74,20 @@ func (_c *BatchImageJobCreate) SetModel(v string) *BatchImageJobCreate {
 	return _c
 REDACTED
 
+// SetTaskName sets the "task_name" field.
+func (_c *BatchImageJobCreate) SetTaskName(v string) *BatchImageJobCreate {
+	_c.mutation.SetTaskName(v)
+	return _c
+REDACTED
+
+// SetNillableTaskName sets the "task_name" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillableTaskName(v *string) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetTaskName(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetStatus sets the "status" field.
 func (_c *BatchImageJobCreate) SetStatus(v string) *BatchImageJobCreate {
 	_c.mutation.SetStatus(v)
@@ -388,6 +402,34 @@ REDACTED
 	return _c
 REDACTED
 
+// SetDownloadedAt sets the "downloaded_at" field.
+func (_c *BatchImageJobCreate) SetDownloadedAt(v time.Time) *BatchImageJobCreate {
+	_c.mutation.SetDownloadedAt(v)
+	return _c
+REDACTED
+
+// SetNillableDownloadedAt sets the "downloaded_at" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillableDownloadedAt(v *time.Time) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetDownloadedAt(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetUserDeletedAt sets the "user_deleted_at" field.
+func (_c *BatchImageJobCreate) SetUserDeletedAt(v time.Time) *BatchImageJobCreate {
+	_c.mutation.SetUserDeletedAt(v)
+	return _c
+REDACTED
+
+// SetNillableUserDeletedAt sets the "user_deleted_at" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillableUserDeletedAt(v *time.Time) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetUserDeletedAt(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetLastErrorCode sets the "last_error_code" field.
 func (_c *BatchImageJobCreate) SetLastErrorCode(v string) *BatchImageJobCreate {
 	_c.mutation.SetLastErrorCode(v)
@@ -535,6 +577,10 @@ REDACTED
 
 // defaults sets the default values of the builder before save.
 func (_c *BatchImageJobCreate) defaults() {
+	if _, ok := _c.mutation.TaskName(); !ok {
+		v := batchimagejob.DefaultTaskName
+		_c.mutation.SetTaskName(v)
+REDACTED
 	if _, ok := _c.mutation.Status(); !ok {
 		v := batchimagejob.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -604,6 +650,14 @@ REDACTED
 	if v, ok := _c.mutation.Model(); ok {
 		if err := batchimagejob.ModelValidator(v); err != nil {
 			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.model": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if _, ok := _c.mutation.TaskName(); !ok {
+		return &ValidationError{Name: "task_name", err: errors.New(`ent: missing required field "BatchImageJob.task_name"`)REDACTED
+REDACTED
+	if v, ok := _c.mutation.TaskName(); ok {
+		if err := batchimagejob.TaskNameValidator(v); err != nil {
+			return &ValidationError{Name: "task_name", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.task_name": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if _, ok := _c.mutation.Status(); !ok {
@@ -750,6 +804,10 @@ REDACTED
 		_spec.SetField(batchimagejob.FieldModel, field.TypeString, value)
 		_node.Model = value
 REDACTED
+	if value, ok := _c.mutation.TaskName(); ok {
+		_spec.SetField(batchimagejob.FieldTaskName, field.TypeString, value)
+		_node.TaskName = value
+REDACTED
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(batchimagejob.FieldStatus, field.TypeString, value)
 		_node.Status = value
@@ -841,6 +899,14 @@ REDACTED
 	if value, ok := _c.mutation.OutputDeletedAt(); ok {
 		_spec.SetField(batchimagejob.FieldOutputDeletedAt, field.TypeTime, value)
 		_node.OutputDeletedAt = &value
+REDACTED
+	if value, ok := _c.mutation.DownloadedAt(); ok {
+		_spec.SetField(batchimagejob.FieldDownloadedAt, field.TypeTime, value)
+		_node.DownloadedAt = &value
+REDACTED
+	if value, ok := _c.mutation.UserDeletedAt(); ok {
+		_spec.SetField(batchimagejob.FieldUserDeletedAt, field.TypeTime, value)
+		_node.UserDeletedAt = &value
 REDACTED
 	if value, ok := _c.mutation.LastErrorCode(); ok {
 		_spec.SetField(batchimagejob.FieldLastErrorCode, field.TypeString, value)
@@ -1013,6 +1079,18 @@ REDACTED
 // UpdateModel sets the "model" field to the value that was provided on create.
 func (u *BatchImageJobUpsert) UpdateModel() *BatchImageJobUpsert {
 	u.SetExcluded(batchimagejob.FieldModel)
+	return u
+REDACTED
+
+// SetTaskName sets the "task_name" field.
+func (u *BatchImageJobUpsert) SetTaskName(v string) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldTaskName, v)
+	return u
+REDACTED
+
+// UpdateTaskName sets the "task_name" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdateTaskName() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldTaskName)
 	return u
 REDACTED
 
@@ -1430,6 +1508,42 @@ func (u *BatchImageJobUpsert) ClearOutputDeletedAt() *BatchImageJobUpsert {
 	return u
 REDACTED
 
+// SetDownloadedAt sets the "downloaded_at" field.
+func (u *BatchImageJobUpsert) SetDownloadedAt(v time.Time) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldDownloadedAt, v)
+	return u
+REDACTED
+
+// UpdateDownloadedAt sets the "downloaded_at" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdateDownloadedAt() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldDownloadedAt)
+	return u
+REDACTED
+
+// ClearDownloadedAt clears the value of the "downloaded_at" field.
+func (u *BatchImageJobUpsert) ClearDownloadedAt() *BatchImageJobUpsert {
+	u.SetNull(batchimagejob.FieldDownloadedAt)
+	return u
+REDACTED
+
+// SetUserDeletedAt sets the "user_deleted_at" field.
+func (u *BatchImageJobUpsert) SetUserDeletedAt(v time.Time) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldUserDeletedAt, v)
+	return u
+REDACTED
+
+// UpdateUserDeletedAt sets the "user_deleted_at" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdateUserDeletedAt() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldUserDeletedAt)
+	return u
+REDACTED
+
+// ClearUserDeletedAt clears the value of the "user_deleted_at" field.
+func (u *BatchImageJobUpsert) ClearUserDeletedAt() *BatchImageJobUpsert {
+	u.SetNull(batchimagejob.FieldUserDeletedAt)
+	return u
+REDACTED
+
 // SetLastErrorCode sets the "last_error_code" field.
 func (u *BatchImageJobUpsert) SetLastErrorCode(v string) *BatchImageJobUpsert {
 	u.Set(batchimagejob.FieldLastErrorCode, v)
@@ -1700,6 +1814,20 @@ REDACTED
 func (u *BatchImageJobUpsertOne) UpdateModel() *BatchImageJobUpsertOne {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.UpdateModel()
+REDACTED)
+REDACTED
+
+// SetTaskName sets the "task_name" field.
+func (u *BatchImageJobUpsertOne) SetTaskName(v string) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetTaskName(v)
+REDACTED)
+REDACTED
+
+// UpdateTaskName sets the "task_name" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdateTaskName() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateTaskName()
 REDACTED)
 REDACTED
 
@@ -2186,6 +2314,48 @@ func (u *BatchImageJobUpsertOne) ClearOutputDeletedAt() *BatchImageJobUpsertOne 
 REDACTED)
 REDACTED
 
+// SetDownloadedAt sets the "downloaded_at" field.
+func (u *BatchImageJobUpsertOne) SetDownloadedAt(v time.Time) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetDownloadedAt(v)
+REDACTED)
+REDACTED
+
+// UpdateDownloadedAt sets the "downloaded_at" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdateDownloadedAt() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateDownloadedAt()
+REDACTED)
+REDACTED
+
+// ClearDownloadedAt clears the value of the "downloaded_at" field.
+func (u *BatchImageJobUpsertOne) ClearDownloadedAt() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearDownloadedAt()
+REDACTED)
+REDACTED
+
+// SetUserDeletedAt sets the "user_deleted_at" field.
+func (u *BatchImageJobUpsertOne) SetUserDeletedAt(v time.Time) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetUserDeletedAt(v)
+REDACTED)
+REDACTED
+
+// UpdateUserDeletedAt sets the "user_deleted_at" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdateUserDeletedAt() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateUserDeletedAt()
+REDACTED)
+REDACTED
+
+// ClearUserDeletedAt clears the value of the "user_deleted_at" field.
+func (u *BatchImageJobUpsertOne) ClearUserDeletedAt() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearUserDeletedAt()
+REDACTED)
+REDACTED
+
 // SetLastErrorCode sets the "last_error_code" field.
 func (u *BatchImageJobUpsertOne) SetLastErrorCode(v string) *BatchImageJobUpsertOne {
 	return u.Update(func(s *BatchImageJobUpsert) {
@@ -2642,6 +2812,20 @@ REDACTED
 func (u *BatchImageJobUpsertBulk) UpdateModel() *BatchImageJobUpsertBulk {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.UpdateModel()
+REDACTED)
+REDACTED
+
+// SetTaskName sets the "task_name" field.
+func (u *BatchImageJobUpsertBulk) SetTaskName(v string) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetTaskName(v)
+REDACTED)
+REDACTED
+
+// UpdateTaskName sets the "task_name" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdateTaskName() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateTaskName()
 REDACTED)
 REDACTED
 
@@ -3125,6 +3309,48 @@ REDACTED
 func (u *BatchImageJobUpsertBulk) ClearOutputDeletedAt() *BatchImageJobUpsertBulk {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.ClearOutputDeletedAt()
+REDACTED)
+REDACTED
+
+// SetDownloadedAt sets the "downloaded_at" field.
+func (u *BatchImageJobUpsertBulk) SetDownloadedAt(v time.Time) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetDownloadedAt(v)
+REDACTED)
+REDACTED
+
+// UpdateDownloadedAt sets the "downloaded_at" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdateDownloadedAt() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateDownloadedAt()
+REDACTED)
+REDACTED
+
+// ClearDownloadedAt clears the value of the "downloaded_at" field.
+func (u *BatchImageJobUpsertBulk) ClearDownloadedAt() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearDownloadedAt()
+REDACTED)
+REDACTED
+
+// SetUserDeletedAt sets the "user_deleted_at" field.
+func (u *BatchImageJobUpsertBulk) SetUserDeletedAt(v time.Time) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetUserDeletedAt(v)
+REDACTED)
+REDACTED
+
+// UpdateUserDeletedAt sets the "user_deleted_at" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdateUserDeletedAt() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateUserDeletedAt()
+REDACTED)
+REDACTED
+
+// ClearUserDeletedAt clears the value of the "user_deleted_at" field.
+func (u *BatchImageJobUpsertBulk) ClearUserDeletedAt() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearUserDeletedAt()
 REDACTED)
 REDACTED
 

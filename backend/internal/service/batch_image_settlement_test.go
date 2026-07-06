@@ -25,24 +25,22 @@ func TestBatchImageSettlementService_SettlesAndChargesSuccessfulImagesOnly(t *te
 	result, err := svc.Settle(context.Background(), job.BatchID)
 REDACTED
 	require.Equal(t, 0.75, result.ActualCost)
-	require.Equal(t, "batch_image_settlement:"+job.BatchID, result.RequestID)
+	require.Equal(t, BatchImageCaptureRequestID(job.BatchID), result.RequestID)
 	require.False(t, result.AlreadySettled)
 	require.Equal(t, BatchImageJobStatusCompleted, repo.jobs[job.BatchID].Status)
 	require.NotNil(t, repo.jobs[job.BatchID].ActualCost)
 	require.Equal(t, 0.75, *repo.jobs[job.BatchID].ActualCost)
 	require.NotEmpty(t, batchImageDerefString(repo.jobs[job.BatchID].ManifestHash))
 	require.NotNil(t, repo.jobs[job.BatchID].SettledAt)
-	require.Len(t, billing.commands, 1)
-	require.Equal(t, int64(321), billing.commands[0].APIKeyID)
-	require.Equal(t, job.UserID, billing.commands[0].UserID)
-	require.Equal(t, int64(654), billing.commands[0].AccountID)
-	require.Equal(t, job.Model, billing.commands[0].Model)
-	require.Equal(t, 3, billing.commands[0].ImageCount)
-	require.Equal(t, 0.75, billing.commands[0].BalanceCost)
-	require.Equal(t, "image", billing.commands[0].MediaType)
-	require.NotContains(t, fmt.Sprintf("%+v", billing.commands[0]), batchImageTestData)
-	require.NotContains(t, fmt.Sprintf("%+v", billing.commands[0]), "gs://")
-	require.NotContains(t, fmt.Sprintf("%+v", billing.commands[0]), "prompt")
+	require.Len(t, billing.captures, 1)
+	require.Equal(t, int64(321), billing.captures[0].APIKeyID)
+	require.Equal(t, job.UserID, billing.captures[0].UserID)
+	require.Equal(t, job.BatchID, billing.captures[0].BatchID)
+	require.Equal(t, 0.75, billing.captures[0].ActualAmount)
+	require.Equal(t, 1.25, billing.captures[0].HoldAmount)
+	require.NotContains(t, fmt.Sprintf("%+v", billing.captures[0]), batchImageTestData)
+	require.NotContains(t, fmt.Sprintf("%+v", billing.captures[0]), "gs://")
+	require.NotContains(t, fmt.Sprintf("%+v", billing.captures[0]), "prompt")
 REDACTED
 
 func TestBatchImageSettlementService_ZeroSuccessCanComplete(t *testing.T) {
@@ -59,8 +57,8 @@ func TestBatchImageSettlementService_ZeroSuccessCanComplete(t *testing.T) {
 REDACTED
 	require.Equal(t, 0.0, result.ActualCost)
 	require.Equal(t, BatchImageJobStatusCompleted, repo.jobs[job.BatchID].Status)
-	require.Len(t, billing.commands, 1)
-	require.Equal(t, 0.0, billing.commands[0].BalanceCost)
+	require.Len(t, billing.captures, 1)
+	require.Equal(t, 0.0, billing.captures[0].ActualAmount)
 REDACTED
 
 func TestBatchImageSettlementService_CompletedJobReturnsAlreadySettledWithoutBilling(t *testing.T) {
@@ -77,21 +75,21 @@ func TestBatchImageSettlementService_CompletedJobReturnsAlreadySettledWithoutBil
 REDACTED
 	require.True(t, result.AlreadySettled)
 	require.Equal(t, 0.5, result.ActualCost)
-	require.Empty(t, billing.commands)
+	require.Empty(t, billing.captures)
 REDACTED
 
 func TestBatchImageSettlementService_IdempotentAfterBillingCrash(t *testing.T) {
 	repo := newFakeBatchImageRepository()
 	job := testSettlingBatchImageJob("imgbatch_crash")
 	repo.jobs[job.BatchID] = job
-	billing := &fakeBatchImageBillingRepo{alreadyApplied: map[string]bool{BatchImageSettlementRequestID(job.BatchID): trueREDACTEDREDACTED
+	billing := &fakeBatchImageBillingRepo{alreadyApplied: map[string]bool{BatchImageCaptureRequestID(job.BatchID): trueREDACTEDREDACTED
 	svc := &BatchImageSettlementService{Repo: repo, BillingRepo: billing, Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.25REDACTEDREDACTED
 
 	result, err := svc.Settle(context.Background(), job.BatchID)
 REDACTED
 	require.Equal(t, 0.5, result.ActualCost)
 	require.Equal(t, BatchImageJobStatusCompleted, repo.jobs[job.BatchID].Status)
-	require.Len(t, billing.commands, 1)
+	require.Len(t, billing.captures, 1)
 REDACTED
 
 func TestBatchImageSettlementService_ValidationErrors(t *testing.T) {
@@ -104,6 +102,7 @@ REDACTED{
 		{name: "invalid_status", mutate: func(j *BatchImageJob) { j.Status = BatchImageJobStatusRunning REDACTED, want: ErrBatchImageSettlementInvalidStatusREDACTED,
 		{name: "negative_success_count", mutate: func(j *BatchImageJob) { j.SuccessCount = -1 REDACTED, want: ErrBatchImageSettlementInvalidCountsREDACTED,
 		{name: "negative_fail_count", mutate: func(j *BatchImageJob) { j.FailCount = -1 REDACTED, want: ErrBatchImageSettlementInvalidCountsREDACTED,
+		{name: "counts_exceed_item_count", mutate: func(j *BatchImageJob) { j.SuccessCount = 2; j.FailCount = 2; j.ItemCount = 3 REDACTED, want: ErrBatchImageSettlementInvalidCountsREDACTED,
 		{name: "missing_api_key", mutate: func(j *BatchImageJob) { j.APIKeyID = nil REDACTED, want: ErrBatchImageSettlementMissingAPIKeyIDREDACTED,
 		{name: "missing_account", mutate: func(j *BatchImageJob) { j.AccountID = nil REDACTED, want: ErrBatchImageSettlementMissingAccountIDREDACTED,
 		{name: "pricing_missing", pricing: &fakeBatchImagePricingResolver{err: ErrBatchImageSettlementPricingMissingREDACTED, want: ErrBatchImageSettlementPricingMissingREDACTED,
@@ -127,10 +126,59 @@ REDACTED
 
 			_, err := svc.Settle(context.Background(), job.BatchID)
 			require.ErrorIs(t, err, tt.want)
-			require.Empty(t, billing.commands)
+			require.Empty(t, billing.captures)
 			require.NotEqual(t, BatchImageJobStatusCompleted, repo.jobs[job.BatchID].Status)
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestBatchImageSettlementService_CostExceedingHoldDoesNotCharge(t *testing.T) {
+	repo := newFakeBatchImageRepository()
+	job := testSettlingBatchImageJob("imgbatch_cost_over_hold")
+	job.SuccessCount = 2
+	job.FailCount = 0
+	job.ItemCount = 2
+	holdAmount := 0.5
+	job.HoldAmount = &holdAmount
+	job.EstimatedCost = holdAmount
+	repo.jobs[job.BatchID] = job
+	billing := &fakeBatchImageBillingRepo{REDACTED
+	svc := &BatchImageSettlementService{Repo: repo, BillingRepo: billing, Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.50REDACTEDREDACTED
+
+	_, err := svc.Settle(context.Background(), job.BatchID)
+	require.ErrorIs(t, err, ErrBatchImageSettlementCostExceedsHold)
+	require.Empty(t, billing.captures)
+	require.Equal(t, BatchImageJobStatusSettling, repo.jobs[job.BatchID].Status)
+	require.Equal(t, "SETTLEMENT_COST_EXCEEDS_HOLD", batchImageDerefString(repo.jobs[job.BatchID].LastErrorCode))
+REDACTED
+
+func TestBatchImageSettlementService_UsesSubmittedPricingSnapshot(t *testing.T) {
+	repo := newFakeBatchImageRepository()
+	job := testSettlingBatchImageJob("imgbatch_snapshot")
+	job.SuccessCount = 2
+	job.FailCount = 0
+	job.ItemCount = 2
+	job.PricingSnapshotVersion = 1
+	job.BaseUnitPrice = 0.25
+	job.GroupRateMultiplier = 1
+	job.AccountRateMultiplier = 1
+	job.BatchDiscountMultiplier = 1
+	job.HoldMultiplier = 1.1
+	job.BillableUnitPrice = 0.25
+	job.HoldUnitPrice = 0.275
+	holdAmount := 0.55
+	job.HoldAmount = &holdAmount
+	job.EstimatedCost = 0.5
+	repo.jobs[job.BatchID] = job
+	billing := &fakeBatchImageBillingRepo{REDACTED
+	svc := &BatchImageSettlementService{Repo: repo, BillingRepo: billing, Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.50REDACTEDREDACTED
+
+	result, err := svc.Settle(context.Background(), job.BatchID)
+REDACTED
+	require.InDelta(t, 0.5, result.ActualCost, 1e-12)
+	require.Len(t, billing.captures, 1)
+	require.InDelta(t, 0.5, billing.captures[0].ActualAmount, 1e-12)
+	require.InDelta(t, 0.55, billing.captures[0].HoldAmount, 1e-12)
 REDACTED
 
 func TestBatchImageSettlementService_BillingFailureLeavesSettlingAndRecordsError(t *testing.T) {
@@ -145,7 +193,7 @@ func TestBatchImageSettlementService_BillingFailureLeavesSettlingAndRecordsError
 	require.Equal(t, BatchImageJobStatusSettling, repo.jobs[job.BatchID].Status)
 	require.Equal(t, "SETTLEMENT_BILLING_FAILED", batchImageDerefString(repo.jobs[job.BatchID].LastErrorCode))
 	require.Contains(t, batchImageDerefString(repo.jobs[job.BatchID].LastErrorMessage), "temporary billing timeout")
-	require.NotNil(t, billing.commands[0])
+	require.NotNil(t, billing.captures[0])
 REDACTED
 
 func TestBatchImagePipelineProcessor_SettlesQueuedSettlingJob(t *testing.T) {
@@ -163,7 +211,7 @@ REDACTED
 REDACTED
 	require.True(t, result.Terminal)
 	require.Equal(t, BatchImageJobStatusCompleted, repo.jobs[job.BatchID].Status)
-	require.Len(t, billing.commands, 1)
+	require.Len(t, billing.captures, 1)
 REDACTED
 
 func TestBatchImagePipelineProcessor_RequeuesTransientSettlementFailure(t *testing.T) {
@@ -214,10 +262,10 @@ REDACTED
 	_, err = svc.Settle(context.Background(), second.BatchID)
 REDACTED
 
-	require.Len(t, billing.commands, 2)
-	require.Equal(t, "batch_image_settlement:"+first.BatchID, billing.commands[0].RequestID)
-	require.Equal(t, "batch_image_settlement:"+second.BatchID, billing.commands[1].RequestID)
-	require.NotEqual(t, billing.commands[0].RequestID, billing.commands[1].RequestID)
+	require.Len(t, billing.captures, 2)
+	require.Equal(t, BatchImageCaptureRequestID(first.BatchID), billing.captures[0].RequestID)
+	require.Equal(t, BatchImageCaptureRequestID(second.BatchID), billing.captures[1].RequestID)
+	require.NotEqual(t, billing.captures[0].RequestID, billing.captures[1].RequestID)
 	require.Len(t, billing.seen, 2)
 REDACTED
 
@@ -226,6 +274,8 @@ func testSettlingBatchImageJob(batchID string) *BatchImageJob {
 	accountID := int64(654)
 	providerJobName := "providers/job"
 	outputRef := "files/output"
+	holdAmount := 1.25
+	holdID := BatchImageHoldRequestID(batchID)
 	return &BatchImageJob{
 		BatchID:           batchID,
 		UserID:            123,
@@ -239,26 +289,39 @@ func testSettlingBatchImageJob(batchID string) *BatchImageJob {
 		ItemCount:         3,
 		SuccessCount:      2,
 		FailCount:         1,
+		EstimatedCost:     holdAmount,
+		HoldAmount:        &holdAmount,
+		HoldID:            &holdID,
 REDACTED
 REDACTED
 
 type fakeBatchImagePricingResolver struct {
-	unitPrice float64
-	err       error
+	unitPrice     float64
+	missingModels map[string]bool
+	err           error
 REDACTED
 
-func (r *fakeBatchImagePricingResolver) BatchImageUnitPrice(context.Context, *BatchImageJob) (float64, error) {
+func (r *fakeBatchImagePricingResolver) BatchImageUnitPrice(_ context.Context, job *BatchImageJob) (float64, error) {
 	if r.err != nil {
 		return 0, r.err
+REDACTED
+	if job != nil && r.missingModels[job.Model] {
+		return 0, ErrBatchImageSettlementPricingMissing
 REDACTED
 	return r.unitPrice, nil
 REDACTED
 
 type fakeBatchImageBillingRepo struct {
 	commands       []*UsageBillingCommand
+	reserves       []*BatchImageBalanceHoldCommand
+	captures       []*BatchImageBalanceHoldCommand
+	releases       []*BatchImageBalanceHoldCommand
 	seen           map[string]struct{REDACTED
 	alreadyApplied map[string]bool
 	err            error
+	reserveErr     error
+	captureErr     error
+	releaseErr     error
 REDACTED
 
 func (r *fakeBatchImageBillingRepo) Apply(_ context.Context, cmd *UsageBillingCommand) (*UsageBillingApplyResult, error) {
@@ -279,6 +342,50 @@ REDACTED
 REDACTED
 	r.commands = append(r.commands, cmd)
 	return &UsageBillingApplyResult{Applied: trueREDACTED, nil
+REDACTED
+
+func (r *fakeBatchImageBillingRepo) ReserveBatchImageBalance(_ context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error) {
+	if r.reserveErr != nil {
+		r.reserves = append(r.reserves, cmd)
+		return nil, r.reserveErr
+REDACTED
+	return r.applyHold(cmd, &r.reserves)
+REDACTED
+
+func (r *fakeBatchImageBillingRepo) CaptureBatchImageBalance(_ context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error) {
+	if r.captureErr != nil {
+		r.captures = append(r.captures, cmd)
+		return nil, r.captureErr
+REDACTED
+	return r.applyHold(cmd, &r.captures)
+REDACTED
+
+func (r *fakeBatchImageBillingRepo) ReleaseBatchImageBalance(_ context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error) {
+	if r.releaseErr != nil {
+		r.releases = append(r.releases, cmd)
+		return nil, r.releaseErr
+REDACTED
+	return r.applyHold(cmd, &r.releases)
+REDACTED
+
+func (r *fakeBatchImageBillingRepo) applyHold(cmd *BatchImageBalanceHoldCommand, calls *[]*BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error) {
+	if r.seen == nil {
+		r.seen = make(map[string]struct{REDACTED)
+REDACTED
+	if r.err != nil {
+		*calls = append(*calls, cmd)
+		return nil, r.err
+REDACTED
+	if cmd != nil {
+		cmd.Normalize()
+		if _, ok := r.seen[cmd.RequestID]; ok || r.alreadyApplied[cmd.RequestID] {
+			*calls = append(*calls, cmd)
+			return &BatchImageBalanceHoldResult{Applied: falseREDACTED, nil
+	REDACTED
+		r.seen[cmd.RequestID] = struct{REDACTED{REDACTED
+REDACTED
+	*calls = append(*calls, cmd)
+	return &BatchImageBalanceHoldResult{Applied: trueREDACTED, nil
 REDACTED
 
 var _ UsageBillingRepository = (*fakeBatchImageBillingRepo)(nil)

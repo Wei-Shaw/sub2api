@@ -13,6 +13,8 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -48,6 +50,8 @@ type BatchImageProviderProcessor struct {
 	ProviderRegistry *BatchImageProviderRegistry
 	AccountResolver  BatchImageAccountResolver
 	Indexer          *BatchImageResultIndexer
+	BillingRepo      UsageBillingRepository
+	AuthCache        APIKeyAuthCacheInvalidator
 	DefaultRequeue   time.Duration
 REDACTED
 
@@ -61,6 +65,9 @@ REDACTED
 		return BatchImageProcessResult{REDACTED, err
 REDACTED
 	if isBatchImageProcessorDoneStatus(job.Status) {
+		if err := p.releaseTerminalHold(ctx, job); err != nil {
+			return BatchImageProcessResult{REDACTED, err
+	REDACTED
 		return BatchImageProcessResult{Terminal: trueREDACTED, nil
 REDACTED
 
@@ -88,6 +95,12 @@ REDACTED
 
 	status, err := provider.Get(ctx, job, account)
 	if err != nil {
+		logger.L().Warn("batch_image.provider_status_check_failed",
+			zap.String("batch_id", job.BatchID),
+			zap.String("provider", job.Provider),
+			zap.String("provider_job_name", batchImageDerefString(job.ProviderJobName)),
+			zap.Error(err),
+		)
 		return BatchImageProcessResult{RequeueAfter: batchImageProviderErrorRequeueREDACTED, nil
 REDACTED
 	if status == nil {
@@ -139,12 +152,20 @@ REDACTED
 	REDACTED); err != nil {
 			return BatchImageProcessResult{REDACTED, err
 	REDACTED
+		job.Status = BatchImageJobStatusFailed
+		if err := p.releaseTerminalHold(ctx, job); err != nil {
+			return BatchImageProcessResult{REDACTED, err
+	REDACTED
 		return BatchImageProcessResult{Terminal: trueREDACTED, nil
 	case BatchProviderStateCancelled:
 		if err := p.Repo.TransitionBatchImageJobStatus(ctx, job.BatchID, BatchImageJobStatusCancelled, BatchImageTransitionOptions{
 			EventType:    "job_failed",
 			EventPayload: map[string]any{"provider_state": status.RawState, "error_code": "PROVIDER_BATCH_CANCELLED"REDACTED,
 	REDACTED); err != nil {
+			return BatchImageProcessResult{REDACTED, err
+	REDACTED
+		job.Status = BatchImageJobStatusCancelled
+		if err := p.releaseTerminalHold(ctx, job); err != nil {
 			return BatchImageProcessResult{REDACTED, err
 	REDACTED
 		return BatchImageProcessResult{Terminal: trueREDACTED, nil
@@ -181,6 +202,10 @@ REDACTED
 		if transitionErr != nil {
 			return BatchImageProcessResult{REDACTED, transitionErr
 	REDACTED
+		job.Status = BatchImageJobStatusFailed
+		if err := p.releaseTerminalHold(ctx, job); err != nil {
+			return BatchImageProcessResult{REDACTED, err
+	REDACTED
 		return BatchImageProcessResult{Terminal: trueREDACTED, nil
 REDACTED
 
@@ -194,7 +219,23 @@ REDACTED
 REDACTED); err != nil {
 		return BatchImageProcessResult{REDACTED, err
 REDACTED
-	return BatchImageProcessResult{Terminal: trueREDACTED, nil
+	return BatchImageProcessResult{RequeueAfter: time.MillisecondREDACTED, nil
+REDACTED
+
+func (p *BatchImageProviderProcessor) releaseTerminalHold(ctx context.Context, job *BatchImageJob) error {
+	if p == nil || job == nil {
+		return nil
+REDACTED
+	if job.Status != BatchImageJobStatusFailed && job.Status != BatchImageJobStatusCancelled {
+		return nil
+REDACTED
+	if err := releaseBatchImageBalanceHold(ctx, p.BillingRepo, job, batchImageDerefString(job.RequestHash)); err != nil {
+		return err
+REDACTED
+	if p.AuthCache != nil && job.UserID > 0 {
+		p.AuthCache.InvalidateAuthCacheByUserID(ctx, job.UserID)
+REDACTED
+	return nil
 REDACTED
 
 func (p *BatchImageProviderProcessor) persistProviderOutputRef(ctx context.Context, job *BatchImageJob, ref string) error {

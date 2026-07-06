@@ -216,6 +216,53 @@
           </div>
         </div>
 
+        <!-- Quick Actions -->
+        <div class="card p-4">
+          <div class="mb-3 flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.dashboard.quickActions') REDACTEDREDACTED
+            </h2>
+          </div>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <button
+              type="button"
+              class="group flex items-center gap-3 rounded-lg bg-gray-50 p-3 text-left transition-colors hover:bg-sky-50 dark:bg-dark-800/50 dark:hover:bg-sky-900/20"
+              @click="router.push('/batch-image')"
+            >
+              <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400">
+                <Icon name="sparkles" size="md" :stroke-width="2" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.dashboard.batchImage') REDACTEDREDACTED
+                </span>
+                <span class="block text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.dashboard.batchImageDesc') REDACTEDREDACTED
+                </span>
+              </span>
+              <Icon name="chevronRight" size="sm" class="text-gray-400 group-hover:text-sky-500" />
+            </button>
+            <button
+              type="button"
+              class="group flex items-center gap-3 rounded-lg bg-gray-50 p-3 text-left transition-colors hover:bg-emerald-50 dark:bg-dark-800/50 dark:hover:bg-emerald-900/20"
+              @click="router.push('/admin/groups')"
+            >
+              <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+                <Icon name="grid" size="md" :stroke-width="2" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.dashboard.groupPricing') REDACTEDREDACTED
+                </span>
+                <span class="block text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.dashboard.groupPricingDesc') REDACTEDREDACTED
+                </span>
+              </span>
+              <Icon name="chevronRight" size="sm" class="text-gray-400 group-hover:text-emerald-500" />
+            </button>
+          </div>
+        </div>
+
         <!-- Charts Section -->
         <div class="space-y-6">
           <!-- Date Range Filter -->

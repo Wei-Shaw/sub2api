@@ -13,9 +13,9 @@ import (
 
 // BatchImageJob holds the schema definition for asynchronous image batch jobs.
 //
-// 删除策略：硬删除
-// 这张表是批量生图任务的账务和状态源，不使用软删除；输出清理通过
-// output_deleted 状态和删除时间字段表达。
+// 删除策略：账务源保留
+// 这张表是批量生图任务的账务和状态源；用户侧删除仅通过 user_deleted_at
+// 从列表隐藏，输出清理通过 output_deleted 状态和删除时间字段表达。
 type BatchImageJob struct {
 	ent.Schema
 REDACTED
@@ -34,6 +34,7 @@ func (BatchImageJob) Fields() []ent.Field {
 		field.Int64("account_id").Optional().Nillable(),
 		field.String("provider").MaxLen(32),
 		field.String("model").MaxLen(128),
+		field.String("task_name").MaxLen(255).Default(""),
 		field.String("status").MaxLen(32).Default("created"),
 		field.String("provider_job_name").Optional().Nillable().MaxLen(512),
 		field.String("provider_input_ref").Optional().Nillable().MaxLen(1024),
@@ -57,6 +58,8 @@ func (BatchImageJob) Fields() []ent.Field {
 		field.Time("output_expires_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
 		field.Time("input_deleted_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
 		field.Time("output_deleted_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
+		field.Time("downloaded_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
+		field.Time("user_deleted_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
 		field.String("last_error_code").Optional().Nillable().MaxLen(128),
 		field.String("last_error_message").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "text"REDACTED),
 		field.Time("created_at").Immutable().Default(time.Now).SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
@@ -77,5 +80,7 @@ func (BatchImageJob) Indexes() []ent.Index {
 		index.Fields("idempotency_key").Annotations(entsql.IndexWhere("idempotency_key IS NOT NULL AND idempotency_key <> ''")),
 		index.Fields("manifest_hash").Unique().Annotations(entsql.IndexWhere("manifest_hash IS NOT NULL AND manifest_hash <> ''")),
 		index.Fields("output_expires_at"),
+		index.Fields("downloaded_at"),
+		index.Fields("user_deleted_at"),
 REDACTED
 REDACTED

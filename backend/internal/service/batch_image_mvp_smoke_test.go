@@ -10,6 +10,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -50,6 +51,7 @@ REDACTEDREDACTED
 		Queue:            queue,
 		ProviderRegistry: registry,
 		Pricing:          pricing,
+		BillingRepo:      billing,
 		Config:           cfg,
 REDACTED
 	processor := &BatchImagePipelineProcessor{
@@ -57,6 +59,7 @@ REDACTED
 			Repo:             repo,
 			ProviderRegistry: registry,
 			AccountResolver:  &fakeBatchImageAccountResolver{account: &accountRepo.accounts[0]REDACTED,
+			BillingRepo:      billing,
 	REDACTED,
 		SettlementService: &BatchImageSettlementService{
 			Repo:        repo,
@@ -87,6 +90,9 @@ REDACTED
 	require.Equal(t, 2, submitted.ItemCount)
 	require.Equal(t, []string{submitted.IDREDACTED, queue.enqueued)
 	require.Len(t, provider.submits, 1)
+	require.Len(t, billing.reserves, 1)
+	require.Equal(t, BatchImageHoldRequestID(submitted.ID), billing.reserves[0].RequestID)
+	require.InDelta(t, 0.3, billing.reserves[0].HoldAmount, 1e-12)
 	requireBatchImagePublicJSONHasNoInternals(t, mustMarshalBatchImageSmokeJSON(t, submitted))
 
 	firstProcess, err := processor.Process(ctx, submitted.ID)
@@ -96,7 +102,8 @@ REDACTED
 
 	indexProcess, err := processor.Process(ctx, submitted.ID)
 REDACTED
-	require.True(t, indexProcess.Terminal)
+	require.False(t, indexProcess.Terminal)
+	require.Equal(t, time.Millisecond, indexProcess.RequeueAfter)
 	require.Equal(t, BatchImageJobStatusSettling, repo.jobs[submitted.ID].Status)
 	require.Equal(t, BatchImageCounts{SuccessCount: 1, FailCount: 1REDACTED, repo.counts[submitted.ID])
 
@@ -108,15 +115,15 @@ REDACTED
 	require.NotNil(t, job.OutputExpiresAt)
 	require.Equal(t, 1, job.SuccessCount)
 	require.Equal(t, 1, job.FailCount)
-	require.Len(t, billing.commands, 1)
-	require.Equal(t, BatchImageSettlementRequestID(submitted.ID), billing.commands[0].RequestID)
-	require.Equal(t, 1, billing.commands[0].ImageCount)
-	require.Equal(t, 0.25, billing.commands[0].BalanceCost)
+	require.Len(t, billing.captures, 1)
+	require.Equal(t, BatchImageCaptureRequestID(submitted.ID), billing.captures[0].RequestID)
+	require.InDelta(t, 0.3, billing.captures[0].HoldAmount, 1e-12)
+	require.InDelta(t, 0.125, billing.captures[0].ActualAmount, 1e-12)
 
 	secondSettlement, err := processor.SettlementService.Settle(ctx, submitted.ID)
 REDACTED
 	require.True(t, secondSettlement.AlreadySettled)
-	require.Len(t, billing.commands, 1)
+	require.Len(t, billing.captures, 1)
 
 	status, err := publicSvc.Get(ctx, owner, submitted.ID)
 REDACTED

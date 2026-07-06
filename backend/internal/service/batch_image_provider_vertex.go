@@ -626,7 +626,7 @@ REDACTED
 			return vertexProviderError("VERTEX_INVALID_RESPONSE", "Vertex API request failed", nil)
 	REDACTED
 REDACTED
-	return vertexProviderError("VERTEX_INVALID_RESPONSE", "Vertex API request failed", nil)
+	return vertexProviderError("VERTEX_INVALID_RESPONSE", "Vertex API request failed", err)
 REDACTED
 
 type vertexCombinedJSONLReadCloser struct {

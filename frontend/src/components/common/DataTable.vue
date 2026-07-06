@@ -92,7 +92,7 @@
               :sort-key="sortKey"
               :sort-order="sortOrder"
             >
-              <div class="flex items-center space-x-1">
+              <div :class="['flex items-center space-x-1', getHeaderContentAlignmentClass(column)]">
                 <span>{{ column.label REDACTEDREDACTED</span>
                 <span
                   v-if="column.sortable"
@@ -251,6 +251,11 @@ REDACTED
 
 // 检查操作列是否需要展开
 const checkActionsColumnWidth = () => {
+  if (!props.expandableActions) {
+    actionsColumnNeedsExpanding.value = false
+    actionsExpanded.value = false
+    return
+  REDACTED
   if (!tableWrapperRef.value) return
 
   // 查找第一行的操作列单元格
@@ -476,6 +481,13 @@ REDACTED
 const getColumnAriaSort = (key: string) => {
   if (sortKey.value !== key) return 'none'
   return sortOrder.value === 'asc' ? 'ascending' : 'descending'
+REDACTED
+
+const getHeaderContentAlignmentClass = (column: Column) => {
+  const className = column.class || ''
+  if (className.includes('text-center')) return 'justify-center'
+  if (className.includes('text-right')) return 'justify-end'
+  return 'justify-start'
 REDACTED
 
 const isNullishOrEmpty = (value: any) => value === null || value === undefined || value === ''

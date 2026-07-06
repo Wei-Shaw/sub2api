@@ -34,10 +34,17 @@ REDACTED)
 		require.Equal(t, "queued", got.Status)
 		require.Equal(t, BatchImageProviderGeminiAPI, got.Provider)
 		require.Equal(t, 2, got.ItemCount)
-		require.Equal(t, 0.5, got.EstimatedCost)
+		require.Equal(t, 0.25, got.EstimatedCost)
 		require.Len(t, repo.jobs, 1)
 		require.Len(t, gemini.submits, 1)
 		require.Equal(t, []string{got.IDREDACTED, queue.enqueued)
+		billing := svc.BillingRepo.(*fakeBatchImageBillingRepo)
+		require.Len(t, billing.reserves, 1)
+		require.Equal(t, BatchImageHoldRequestID(got.ID), billing.reserves[0].RequestID)
+		require.InDelta(t, 0.3, billing.reserves[0].HoldAmount, 1e-12)
+		require.Empty(t, billing.releases)
+		authCache := svc.AuthCache.(*fakeBatchImageAuthCacheInvalidator)
+		require.Equal(t, []int64{11REDACTED, authCache.userIDs)
 
 		job := repo.jobs[got.ID]
 		require.Equal(t, BatchImageJobStatusSubmitted, job.Status)
@@ -46,6 +53,116 @@ REDACTED)
 		require.Equal(t, "files/gemini_api/output", batchImageDerefString(job.ProviderOutputRef))
 		require.NotNil(t, job.AccountID)
 		require.Equal(t, int64(202), *job.AccountID)
+		require.Equal(t, 1, job.PricingSnapshotVersion)
+		require.InDelta(t, 0.25, job.BaseUnitPrice, 1e-12)
+		require.InDelta(t, 1.0, job.GroupRateMultiplier, 1e-12)
+		require.InDelta(t, 1.0, job.AccountRateMultiplier, 1e-12)
+		require.InDelta(t, 0.5, job.BatchDiscountMultiplier, 1e-12)
+		require.InDelta(t, 0.6, job.HoldMultiplier, 1e-12)
+		require.InDelta(t, 0.125, job.BillableUnitPrice, 1e-12)
+		require.InDelta(t, 0.15, job.HoldUnitPrice, 1e-12)
+REDACTED)
+
+	t.Run("combines user group image rate account rate discount and hold margin", func(t *testing.T) {
+		svc, repo, _, _, _ := newTestBatchImagePublicService(true)
+		groupID := int64(7)
+		accountMultiplier := 1.25
+		accountRepo := svc.AccountRepo.(*publicBatchImageAccountRepo)
+		accountRepo.accounts[1].RateMultiplier = &accountMultiplier
+		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
+			groupID: {
+				ID:                           groupID,
+				RateMultiplier:               2.0,
+				AllowBatchImageGeneration:    true,
+				ImageRateIndependent:         false,
+				BatchImageDiscountMultiplier: 0.8,
+				BatchImageHoldMultiplier:     0.6,
+		REDACTED,
+	REDACTEDREDACTED
+		userRate := 0.5
+		svc.UserGroupRateRepo = &publicBatchImageUserGroupRateRepo{rates: map[int64]*float64{groupID: &userRateREDACTEDREDACTED
+
+		got, err := svc.Submit(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupIDREDACTED, validBatchImageSubmitRequest(), "")
+	REDACTED
+		require.InDelta(t, 0.25, got.EstimatedCost, 1e-12)
+
+		job := repo.jobs[got.ID]
+		require.InDelta(t, 0.25, job.BaseUnitPrice, 1e-12)
+		require.InDelta(t, 0.5, job.GroupRateMultiplier, 1e-12)
+		require.InDelta(t, 1.25, job.AccountRateMultiplier, 1e-12)
+		require.InDelta(t, 0.8, job.BatchDiscountMultiplier, 1e-12)
+		require.InDelta(t, 0.6, job.HoldMultiplier, 1e-12)
+		require.InDelta(t, 0.125, job.BillableUnitPrice, 1e-12)
+		require.InDelta(t, 0.09375, job.HoldUnitPrice, 1e-12)
+		require.InDelta(t, 0.1875, *job.HoldAmount, 1e-12)
+REDACTED)
+
+	t.Run("uses configured group 1k image price for batch image base price", func(t *testing.T) {
+		svc, repo, _, _, _ := newTestBatchImagePublicService(true)
+		groupID := int64(7)
+		imagePrice := 0.134
+		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
+			groupID: {
+				ID:                           groupID,
+				RateMultiplier:               1.0,
+				AllowBatchImageGeneration:    true,
+				ImagePrice1K:                 &imagePrice,
+				BatchImageDiscountMultiplier: 0.5,
+				BatchImageHoldMultiplier:     0.6,
+		REDACTED,
+	REDACTEDREDACTED
+
+		got, err := svc.Submit(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupIDREDACTED, validBatchImageSubmitRequest(), "")
+	REDACTED
+		require.InDelta(t, 0.134, got.EstimatedCost, 1e-12)
+
+		job := repo.jobs[got.ID]
+		require.InDelta(t, 0.134, job.BaseUnitPrice, 1e-12)
+		require.InDelta(t, 0.067, job.BillableUnitPrice, 1e-12)
+		require.InDelta(t, 0.0804, job.HoldUnitPrice, 1e-12)
+		require.InDelta(t, 0.1608, *job.HoldAmount, 1e-12)
+REDACTED)
+
+	t.Run("pricing missing rejects before provider submit", func(t *testing.T) {
+		svc, repo, queue, gemini, _ := newTestBatchImagePublicService(true)
+		svc.Pricing = &fakeBatchImagePricingResolver{err: ErrBatchImageSettlementPricingMissingREDACTED
+
+		_, err := svc.Submit(ctx, testBatchImageOwner(), validBatchImageSubmitRequest(), "")
+		require.ErrorIs(t, err, ErrBatchImageSettlementPricingMissing)
+		require.Empty(t, repo.jobs)
+		require.Empty(t, queue.enqueued)
+		require.Empty(t, gemini.submits)
+REDACTED)
+
+	t.Run("group batch image disabled rejects before provider submit", func(t *testing.T) {
+		svc, repo, queue, gemini, _ := newTestBatchImagePublicService(true)
+		groupID := int64(7)
+		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
+			groupID: {
+				ID:                           groupID,
+				RateMultiplier:               1,
+				AllowBatchImageGeneration:    false,
+				BatchImageDiscountMultiplier: 0.5,
+				BatchImageHoldMultiplier:     0.6,
+		REDACTED,
+	REDACTEDREDACTED
+
+		_, err := svc.Submit(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupIDREDACTED, validBatchImageSubmitRequest(), "")
+		require.ErrorIs(t, err, ErrBatchImageGroupDisabled)
+		require.Empty(t, repo.jobs)
+		require.Empty(t, queue.enqueued)
+		require.Empty(t, gemini.submits)
+REDACTED)
+
+	t.Run("group pricing load failure rejects before provider submit", func(t *testing.T) {
+		svc, repo, queue, gemini, _ := newTestBatchImagePublicService(true)
+		groupID := int64(404)
+
+		_, err := svc.Submit(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupIDREDACTED, validBatchImageSubmitRequest(), "")
+		require.ErrorIs(t, err, ErrBatchImageSettlementPricingMissing)
+		require.Empty(t, repo.jobs)
+		require.Empty(t, queue.enqueued)
+		require.Empty(t, gemini.submits)
 REDACTED)
 
 	t.Run("generates custom ids deterministically", func(t *testing.T) {
@@ -108,27 +225,72 @@ REDACTED)
 		require.Len(t, vertex.submits, 1)
 REDACTED)
 
+	t.Run("insufficient balance rejects before provider submit", func(t *testing.T) {
+		svc, repo, queue, gemini, _ := newTestBatchImagePublicService(true)
+		billing := &fakeBatchImageBillingRepo{err: ErrBatchImageInsufficientBalanceREDACTED
+		svc.BillingRepo = billing
+
+		_, err := svc.Submit(ctx, testBatchImageOwner(), validBatchImageSubmitRequest(), "")
+		require.ErrorIs(t, err, ErrBatchImageInsufficientBalance)
+		require.Empty(t, queue.enqueued)
+		require.Empty(t, gemini.submits)
+		require.Len(t, billing.reserves, 1)
+		require.Empty(t, billing.releases)
+		require.Len(t, repo.jobs, 1)
+		for _, job := range repo.jobs {
+			require.Equal(t, BatchImageJobStatusFailed, job.Status)
+			require.Equal(t, "INSUFFICIENT_BALANCE", batchImageDerefString(job.LastErrorCode))
+			require.NotNil(t, job.UserDeletedAt)
+	REDACTED
+REDACTED)
+
 	t.Run("provider failure marks failed and does not enqueue", func(t *testing.T) {
 		svc, repo, queue, gemini, _ := newTestBatchImagePublicService(true)
 		gemini.submitErr = errors.New("projects/secret-provider-job failed")
+		billing := svc.BillingRepo.(*fakeBatchImageBillingRepo)
 
 		_, err := svc.Submit(ctx, testBatchImageOwner(), validBatchImageSubmitRequest(), "")
 		require.ErrorIs(t, err, ErrBatchImageProviderSubmitFailed)
 		require.Empty(t, queue.enqueued)
+		require.Len(t, billing.reserves, 1)
+		require.Len(t, billing.releases, 1)
+		require.Equal(t, BatchImageReleaseRequestID(billing.reserves[0].BatchID), billing.releases[0].RequestID)
 		require.Len(t, repo.jobs, 1)
 		for _, job := range repo.jobs {
 			require.Equal(t, BatchImageJobStatusFailed, job.Status)
 			require.Equal(t, "PROVIDER_SUBMIT_FAILED", batchImageDerefString(job.LastErrorCode))
 			require.Equal(t, "upstream provider operation failed", batchImageDerefString(job.LastErrorMessage))
+			require.NotNil(t, job.UserDeletedAt)
+	REDACTED
+REDACTED)
+
+	t.Run("provider failure with release failure enqueues billing retry", func(t *testing.T) {
+		svc, repo, queue, gemini, _ := newTestBatchImagePublicService(true)
+		gemini.submitErr = errors.New("projects/secret-provider-job failed")
+		billing := svc.BillingRepo.(*fakeBatchImageBillingRepo)
+		billing.releaseErr = errors.New("billing database timeout")
+
+		_, err := svc.Submit(ctx, testBatchImageOwner(), validBatchImageSubmitRequest(), "")
+		require.ErrorIs(t, err, ErrBatchImageBillingHoldFailed)
+		require.Len(t, billing.reserves, 1)
+		require.Len(t, billing.releases, 1)
+		require.Len(t, repo.jobs, 1)
+		for _, job := range repo.jobs {
+			require.Equal(t, BatchImageJobStatusFailed, job.Status)
+			require.Equal(t, "BILLING_RELEASE_FAILED", batchImageDerefString(job.LastErrorCode))
+			require.Equal(t, []string{job.BatchIDREDACTED, queue.enqueued)
 	REDACTED
 REDACTED)
 
 	t.Run("queue failure is recorded after provider submit", func(t *testing.T) {
 		svc, repo, queue, _, _ := newTestBatchImagePublicService(true)
 		queue.err = errors.New("redis unavailable")
+		billing := svc.BillingRepo.(*fakeBatchImageBillingRepo)
 
 		_, err := svc.Submit(ctx, testBatchImageOwner(), validBatchImageSubmitRequest(), "")
 		require.ErrorIs(t, err, ErrBatchImageQueueFailed)
+		require.Len(t, billing.reserves, 1)
+		require.Empty(t, billing.releases)
 		require.Len(t, repo.jobs, 1)
 		for _, job := range repo.jobs {
 			require.Equal(t, BatchImageJobStatusSubmitted, job.Status)
@@ -172,6 +334,136 @@ REDACTED)
 		body, err := json.Marshal(got)
 	REDACTED
 		requireBatchImagePublicJSONHasNoInternals(t, string(body))
+REDACTED)
+REDACTED
+
+func TestBatchImagePublicService_List(t *testing.T) {
+	ctx := context.Background()
+	svc, repo, _, _, _ := newTestBatchImagePublicService(true)
+	visibleKeyID := int64(22)
+	otherKeyID := int64(23)
+
+	repo.jobs["visible-1"] = &BatchImageJob{
+		BatchID:   "visible-1",
+		UserID:    11,
+		APIKeyID:  &visibleKeyID,
+		Status:    BatchImageJobStatusCompleted,
+		Provider:  BatchImageProviderVertex,
+		Model:     "gemini-3.1-flash-lite-image",
+		ItemCount: 1,
+		CreatedAt: time.Now(),
+REDACTED
+	repo.jobs["hidden-other-key"] = &BatchImageJob{
+		BatchID:   "hidden-other-key",
+		UserID:    11,
+		APIKeyID:  &otherKeyID,
+		Status:    BatchImageJobStatusCompleted,
+		Provider:  BatchImageProviderVertex,
+		Model:     "gemini-3.1-flash-lite-image",
+		ItemCount: 1,
+		CreatedAt: time.Now(),
+REDACTED
+
+	got, err := svc.List(ctx, BatchImageOwner{UserID: 11, APIKeyID: visibleKeyIDREDACTED, BatchImageJobsQuery{Limit: 20REDACTED)
+REDACTED
+	require.Equal(t, "list", got.Object)
+	require.Len(t, got.Data, 1)
+	require.Equal(t, "visible-1", got.Data[0].ID)
+	require.False(t, got.HasMore)
+REDACTED
+
+func TestBatchImagePublicService_ListModels(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("requires explicit account model mapping", func(t *testing.T) {
+		svc, _, _, _, _ := newTestBatchImagePublicService(true)
+
+		got, err := svc.ListModels(ctx, testBatchImageOwner())
+	REDACTED
+		require.Equal(t, "list", got.Object)
+		require.Empty(t, got.Data)
+REDACTED)
+
+	t.Run("returns priced models from selected account group", func(t *testing.T) {
+		svc, _, _, _, _ := newTestBatchImagePublicService(true)
+		groupID := int64(7)
+		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
+			groupID: {
+				ID:                           groupID,
+				RateMultiplier:               1,
+				AllowBatchImageGeneration:    true,
+				BatchImageDiscountMultiplier: 0.5,
+				BatchImageHoldMultiplier:     0.6,
+		REDACTED,
+	REDACTEDREDACTED
+		accountRepo := svc.AccountRepo.(*publicBatchImageAccountRepo)
+		accountRepo.accounts = []Account{testBatchImageMappedAccount(303, AccountTypeAPIKey, map[string]any{
+			"gemini-2.5-flash-image": "gemini-2.5-flash-image",
+	REDACTED)REDACTED
+
+		got, err := svc.ListModels(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupIDREDACTED)
+	REDACTED
+		require.Equal(t, []BatchImagePublicModel{{
+			ID:       "gemini-2.5-flash-image",
+			Object:   "image.batch.model",
+			Provider: BatchImageProviderGeminiAPI,
+	REDACTED, {
+			ID:       "gemini-2.5-flash-image",
+			Object:   "image.batch.model",
+			Provider: BatchImageProviderVertex,
+REDACTED got.Data)
+REDACTED)
+
+	t.Run("expands wildcard mappings against batch image candidates", func(t *testing.T) {
+		svc, _, _, _, _ := newTestBatchImagePublicService(true)
+		accountRepo := svc.AccountRepo.(*publicBatchImageAccountRepo)
+		accountRepo.accounts = []Account{testBatchImageMappedAccount(303, AccountTypeAPIKey, map[string]any{
+			"gemini-3.1-*": "gemini-3.1-flash-lite-image",
+	REDACTED)REDACTED
+
+		got, err := svc.ListModels(ctx, testBatchImageOwner())
+	REDACTED
+		require.NotEmpty(t, got.Data)
+		ids := make([]string, 0, len(got.Data))
+		for _, model := range got.Data {
+			ids = append(ids, model.ID)
+	REDACTED
+		require.Contains(t, ids, "gemini-3.1-flash-image")
+		require.Contains(t, ids, "gemini-3.1-flash-lite-image")
+		require.NotContains(t, ids, "gemini-2.5-flash-image")
+REDACTED)
+
+	t.Run("filters models without batch image pricing", func(t *testing.T) {
+		svc, _, _, _, _ := newTestBatchImagePublicService(true)
+		svc.Pricing = &fakeBatchImagePricingResolver{
+			unitPrice:     0.25,
+			missingModels: map[string]bool{"gemini-3.1-flash-lite-image": trueREDACTED,
+	REDACTED
+		accountRepo := svc.AccountRepo.(*publicBatchImageAccountRepo)
+		accountRepo.accounts = []Account{testBatchImageMappedAccount(303, AccountTypeAPIKey, map[string]any{
+			"gemini-2.5-flash-image":      "gemini-2.5-flash-image",
+			"gemini-3.1-flash-lite-image": "gemini-3.1-flash-lite-image",
+	REDACTED)REDACTED
+
+		got, err := svc.ListModels(ctx, testBatchImageOwner())
+	REDACTED
+		ids := make([]string, 0, len(got.Data))
+		for _, model := range got.Data {
+			ids = append(ids, model.ID)
+	REDACTED
+		require.Contains(t, ids, "gemini-2.5-flash-image")
+		require.NotContains(t, ids, "gemini-3.1-flash-lite-image")
+REDACTED)
+
+	t.Run("rejects when group disables batch image", func(t *testing.T) {
+		svc, _, _, _, _ := newTestBatchImagePublicService(true)
+		groupID := int64(7)
+		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
+			groupID: {ID: groupID, AllowBatchImageGeneration: falseREDACTED,
+	REDACTEDREDACTED
+
+		_, err := svc.ListModels(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupIDREDACTED)
+		require.ErrorIs(t, err, ErrBatchImageGroupDisabled)
 REDACTED)
 REDACTED
 
@@ -251,10 +543,12 @@ REDACTED)
 		require.ErrorIs(t, err, ErrBatchImageJobNotFound)
 REDACTED)
 
-	t.Run("cancel active job calls provider and marks cancelled", func(t *testing.T) {
-		svc, repo, _, gemini, _ := newTestBatchImagePublicService(true)
+	t.Run("cancel active job calls provider and waits for confirmed terminal state", func(t *testing.T) {
+		svc, repo, queue, gemini, _ := newTestBatchImagePublicService(true)
 		apiKeyID := int64(22)
 		accountID := int64(101)
+		holdAmount := 0.5
+		holdID := BatchImageHoldRequestID("imgbatch_cancel")
 		repo.jobs["imgbatch_cancel"] = &BatchImageJob{
 			BatchID:         "imgbatch_cancel",
 			UserID:          11,
@@ -264,15 +558,21 @@ REDACTED)
 			Model:           "gemini-2.5-flash-image",
 			Status:          BatchImageJobStatusSubmitted,
 			ProviderJobName: batchImageStringPtr("providers/internal/job"),
+			EstimatedCost:   holdAmount,
+			HoldAmount:      &holdAmount,
+			HoldID:          &holdID,
 			CreatedAt:       time.Now(),
 	REDACTED
 
 		got, err := svc.Cancel(ctx, testBatchImageOwner(), "imgbatch_cancel")
 	REDACTED
-		require.Equal(t, "cancelled", got.Status)
+		require.Equal(t, "queued", got.Status)
 		require.Equal(t, 1, gemini.cancelCount)
-		require.Equal(t, BatchImageJobStatusCancelled, repo.jobs["imgbatch_cancel"].Status)
-		require.Contains(t, repo.events["imgbatch_cancel"], "job_cancelled")
+		billing := svc.BillingRepo.(*fakeBatchImageBillingRepo)
+		require.Empty(t, billing.releases)
+		require.Equal(t, []string{"imgbatch_cancel"REDACTED, queue.enqueued)
+		require.Equal(t, BatchImageJobStatusSubmitted, repo.jobs["imgbatch_cancel"].Status)
+		require.Contains(t, repo.events["imgbatch_cancel"], "job_cancel_requested")
 REDACTED)
 
 	t.Run("cancel terminal job is idempotent", func(t *testing.T) {
@@ -331,7 +631,9 @@ func newTestBatchImagePublicService(enabled bool) (*BatchImagePublicService, *fa
 			gemini,
 			vertex,
 		),
-		Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.25REDACTED,
+		Pricing:     &fakeBatchImagePricingResolver{unitPrice: 0.25REDACTED,
+		BillingRepo: &fakeBatchImageBillingRepo{REDACTED,
+		AuthCache:   &fakeBatchImageAuthCacheInvalidator{REDACTED,
 		Config: &config.Config{BatchImage: config.BatchImageConfig{
 			Enabled:                 enabled,
 			MaxItemsPerJobDefault:   2,
@@ -345,6 +647,24 @@ REDACTED
 
 func testBatchImageOwner() BatchImageOwner {
 	return BatchImageOwner{UserID: 11, APIKeyID: 22REDACTED
+REDACTED
+
+type fakeBatchImageAuthCacheInvalidator struct {
+	keys     []string
+	userIDs  []int64
+	groupIDs []int64
+REDACTED
+
+func (f *fakeBatchImageAuthCacheInvalidator) InvalidateAuthCacheByKey(_ context.Context, key string) {
+	f.keys = append(f.keys, key)
+REDACTED
+
+func (f *fakeBatchImageAuthCacheInvalidator) InvalidateAuthCacheByUserID(_ context.Context, userID int64) {
+	f.userIDs = append(f.userIDs, userID)
+REDACTED
+
+func (f *fakeBatchImageAuthCacheInvalidator) InvalidateAuthCacheByGroupID(_ context.Context, groupID int64) {
+	f.groupIDs = append(f.groupIDs, groupID)
 REDACTED
 
 func validBatchImageSubmitRequest() BatchImageSubmitRequest {
@@ -374,6 +694,12 @@ func testBatchImageAccount(id int64, accountType string) Account {
 		Concurrency:   1,
 		RateLimitedAt: nil,
 REDACTED
+REDACTED
+
+func testBatchImageMappedAccount(id int64, accountType string, mapping map[string]any) Account {
+	account := testBatchImageAccount(id, accountType)
+	account.Credentials["model_mapping"] = mapping
+	return account
 REDACTED
 
 func requireBatchImagePublicJSONHasNoInternals(t *testing.T, body string) {
@@ -517,3 +843,30 @@ REDACTED
 var _ BatchImageAccountSelectionRepository = (*publicBatchImageAccountRepo)(nil)
 var _ BatchImageQueue = (*publicBatchImageQueue)(nil)
 var _ BatchImageProvider = (*publicBatchImageProvider)(nil)
+
+type publicBatchImageGroupRepo struct {
+	groups map[int64]*Group
+REDACTED
+
+func (r *publicBatchImageGroupRepo) GetByIDLite(_ context.Context, id int64) (*Group, error) {
+	if r != nil && r.groups != nil {
+		if group, ok := r.groups[id]; ok {
+			return group, nil
+	REDACTED
+REDACTED
+	return nil, ErrGroupNotFound
+REDACTED
+
+type publicBatchImageUserGroupRateRepo struct {
+	rates map[int64]*float64
+REDACTED
+
+func (r *publicBatchImageUserGroupRateRepo) GetByUserAndGroup(_ context.Context, _ int64, groupID int64) (*float64, error) {
+	if r != nil && r.rates != nil {
+		return r.rates[groupID], nil
+REDACTED
+	return nil, nil
+REDACTED
+
+var _ BatchImageGroupPricingRepository = (*publicBatchImageGroupRepo)(nil)
+var _ BatchImageUserGroupRateRepository = (*publicBatchImageUserGroupRateRepo)(nil)

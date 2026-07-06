@@ -32,7 +32,7 @@ REDACTED
 func NewBatchImageCleanupService(repo BatchImageRepository, accountRepo AccountRepository, cfg *config.Config) *BatchImageCleanupService {
 	return &BatchImageCleanupService{
 		Repo:             repo,
-		ProviderRegistry: NewDefaultBatchImageProviderRegistry(),
+		ProviderRegistry: NewBatchImageProviderRegistryFromConfig(cfg),
 		AccountResolver:  &BatchImageAccountRepositoryResolver{Repo: accountRepoREDACTED,
 		Config:           cfg,
 REDACTED
