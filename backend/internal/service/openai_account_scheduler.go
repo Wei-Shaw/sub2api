@@ -1037,6 +1037,14 @@ REDACTED
 		if account == nil || !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 			continue
 	REDACTED
+		// 粘性绑定只证明绑定时账号在分组内；账号被移出分组后绑定仍会在 TTL 内存活，
+		// 必须与 selectBySessionHash 一样重验分组归属，否则会把分组流量泄漏到组外账号。
+		if !openAIStickyAccountMatchesGroup(account, req.GroupID) {
+			if accountID == req.StickyAccountID && strings.TrimSpace(req.SessionHash) != "" {
+				_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, req.SessionHash)
+		REDACTED
+			continue
+	REDACTED
 		if req.RequireCompact && openAICompactSupportTier(account) == 0 {
 			continue
 	REDACTED
@@ -1145,13 +1153,29 @@ REDACTED
 		REDACTED
 			if len(regularAccounts) > 0 {
 				regularAttempt := s.trySelectByLoadBalancePool(ctx, req, regularAccounts, loadMap)
-				if regularAttempt.err != nil {
+				if regularAttempt.err != nil && !regularAttempt.noCompactCandidates {
 					return nil, regularAttempt.candidateCount, regularAttempt.topK, regularAttempt.loadSkew, regularAttempt.err
 			REDACTED
 				if regularAttempt.result != nil {
 					return regularAttempt.result, regularAttempt.candidateCount, regularAttempt.topK, regularAttempt.loadSkew, nil
 			REDACTED
-				return s.finishLoadBalanceSelectionFallback(ctx, req, regularAttempt)
+				var result *AccountSelectionResult
+				candidateCount, topK, loadSkew := regularAttempt.candidateCount, regularAttempt.topK, regularAttempt.loadSkew
+				fallbackErr := regularAttempt.err
+				if regularAttempt.err == nil {
+					result, candidateCount, topK, loadSkew, fallbackErr = s.finishLoadBalanceSelectionFallback(ctx, req, regularAttempt)
+					if fallbackErr == nil && result != nil {
+						return result, candidateCount, topK, loadSkew, nil
+				REDACTED
+			REDACTED
+				// 常规池既无法获取也无法排队（含仅剩不支持 compact 的候选）时，
+				// 回退到订阅池的等待计划：busy-but-waitable 的订阅账号不应因常规池存在
+				// 而被丢弃，否则开启订阅优先反而让本可排队成功的请求硬失败。
+				subResult, subCandidateCount, subTopK, subLoadSkew, subErr := s.finishLoadBalanceSelectionFallback(ctx, req, attempt)
+				if subErr == nil && subResult != nil {
+					return subResult, subCandidateCount, subTopK, subLoadSkew, nil
+			REDACTED
+				return result, candidateCount, topK, loadSkew, fallbackErr
 		REDACTED
 			return s.finishLoadBalanceSelectionFallback(ctx, req, attempt)
 	REDACTED
@@ -1464,15 +1488,20 @@ REDACTED
 				lbTopKOverride = parsePositiveIntOverride(values[SettingKeyOpenAIAdvancedSchedulerLBTopK])
 				weightOverrides = parseOpenAIAdvancedSchedulerWeightOverrides(values)
 		REDACTED else {
-				if value, err := repo.GetValue(dbCtx, openAIAdvancedSchedulerSettingKey); err == nil {
-					enabled = strings.EqualFold(strings.TrimSpace(value), "true")
+				// 批量读取失败时逐键降级，覆盖全部键（含 TopK/权重），避免只加载布尔开关
+				// 而静默丢弃管理员配置的覆盖值；降级状态会被缓存一个 TTL，必须留痕。
+				slog.Warn("openai_advanced_scheduler_settings_batch_load_failed", "error", err)
+				fallbackValues := make(map[string]string)
+				for _, key := range openAIAdvancedSchedulerRuntimeSettingKeys() {
+					if value, valueErr := repo.GetValue(dbCtx, key); valueErr == nil {
+						fallbackValues[key] = value
+				REDACTED
 			REDACTED
-				if value, err := repo.GetValue(dbCtx, SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled); err == nil {
-					stickyWeightedEnabled = strings.EqualFold(strings.TrimSpace(value), "true")
-			REDACTED
-				if value, err := repo.GetValue(dbCtx, SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled); err == nil {
-					subscriptionPriorityEnabled = strings.EqualFold(strings.TrimSpace(value), "true")
-			REDACTED
+				enabled = strings.EqualFold(strings.TrimSpace(fallbackValues[openAIAdvancedSchedulerSettingKey]), "true")
+				stickyWeightedEnabled = strings.EqualFold(strings.TrimSpace(fallbackValues[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled]), "true")
+				subscriptionPriorityEnabled = strings.EqualFold(strings.TrimSpace(fallbackValues[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled]), "true")
+				lbTopKOverride = parsePositiveIntOverride(fallbackValues[SettingKeyOpenAIAdvancedSchedulerLBTopK])
+				weightOverrides = parseOpenAIAdvancedSchedulerWeightOverrides(fallbackValues)
 		REDACTED
 	REDACTED
 
@@ -1618,6 +1647,9 @@ func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, "", "", requireCompact, PlatformOpenAI, false)
 REDACTED
 
+// SelectAccountWithSchedulerForCapability 按能力要求调度账号。
+// previousResponseCanMove 表示首包 input 可自行重建工具续链，previous_response_id 允许跨账号迁移
+// （粘性加权模式下改为加权偏好而非硬粘连）。
 func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapability(
 	ctx context.Context,
 	groupID *int64,
@@ -1628,15 +1660,12 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapability(
 	requiredTransport OpenAIUpstreamTransport,
 	requiredCapability OpenAIEndpointCapability,
 	requireCompact bool,
+	previousResponseCanMove bool,
 	platformOverride ...string,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	platform := PlatformOpenAI
-	previousResponseCanMove := false
 	if len(platformOverride) > 0 {
 		platform = platformOverride[0]
-REDACTED
-	if len(platformOverride) > 1 {
-		previousResponseCanMove = strings.EqualFold(platformOverride[1], "previous_response_can_move")
 REDACTED
 	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove)
 REDACTED
@@ -1853,6 +1882,11 @@ REDACTED
 func (s *OpenAIGatewayService) openAIWSLBTopKForRequest(ctx context.Context) int {
 	base := s.openAIWSLBTopK()
 	settings := s.openAIAdvancedSchedulerRuntimeSettings(ctx)
+	// DB 覆盖值与 stickyWeighted/subscriptionPriority 一样受总开关门控：
+	// 关闭高级调度器后所有调用方（含管理页分数快照）都应回到配置/默认行为。
+	if !settings.enabled {
+		return base
+REDACTED
 	if settings.lbTopKOverride > 0 {
 		return settings.lbTopKOverride
 REDACTED
@@ -1920,6 +1954,10 @@ REDACTED
 func (s *OpenAIGatewayService) openAIWSSchedulerWeightsForRequest(ctx context.Context) GatewayOpenAIWSSchedulerScoreWeightsView {
 	weights := s.openAIWSSchedulerWeights()
 	settings := s.openAIAdvancedSchedulerRuntimeSettings(ctx)
+	// 同 openAIWSLBTopKForRequest：总开关关闭时不应用 DB 覆盖值。
+	if !settings.enabled {
+		return weights
+REDACTED
 	return applyOpenAIAdvancedSchedulerWeightOverrides(weights, settings.weightOverrides)
 REDACTED
 

@@ -174,6 +174,7 @@ REDACTED
 			service.OpenAIUpstreamTransportHTTPSSE,
 			"",
 			false,
+			false,
 			service.PlatformGrok,
 		)
 		if err != nil {

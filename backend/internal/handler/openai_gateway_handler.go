@@ -350,6 +350,7 @@ REDACTED
 			service.OpenAIUpstreamTransportAny,
 			service.OpenAIEndpointCapabilityChatCompletions,
 			requireCompact,
+			false,
 			requestPlatform,
 		)
 		if err != nil {
@@ -782,6 +783,7 @@ REDACTED
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
 			service.OpenAIEndpointCapabilityChatCompletions,
+			false,
 			false,
 			requestPlatform,
 		)
@@ -1266,8 +1268,8 @@ REDACTED
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "previous_response_id must be a response.id (resp_*), not a message id")
 		return
 REDACTED
-	firstMessageToolContext := service.ValidateFunctionCallOutputContextBytes(firstMessage)
-	previousResponseCanMove := !firstMessageToolContext.HasFunctionCallOutput || firstMessageToolContext.HasToolCallContext
+	firstMessageToolCoverage := service.AnalyzeToolCallOutputContextCoverageBytes(firstMessage)
+	previousResponseCanMove := !firstMessageToolCoverage.HasFunctionCallOutput || firstMessageToolCoverage.ContextCoversAllCallIDs
 	reqLog = reqLog.With(
 		zap.Bool("ws_ingress", true),
 		zap.String("model", reqModel),
@@ -1383,13 +1385,8 @@ REDACTED
 			requiredTransport,
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false,
+			previousResponseCanMove,
 			requestPlatform,
-			func() string {
-				if previousResponseCanMove {
-					return "previous_response_can_move"
-			REDACTED
-				return ""
-		REDACTED(),
 		)
 		if err != nil {
 			reqLog.Warn("openai.websocket_account_select_failed",
