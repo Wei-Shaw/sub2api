@@ -174,7 +174,9 @@ type CheckMixedChannelRequest struct {
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
 	*dto.Account
-	CurrentConcurrency int `json:"current_concurrency"`
+	CurrentConcurrency int                          `json:"current_concurrency"`
+	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
+	SchedulerScores    []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
@@ -188,6 +190,20 @@ type UsageViewerAccountWithConcurrency struct {
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
 	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
+}
+
+type AccountSchedulerScore struct {
+	BaseScore             float64 `json:"base_score"`
+	StickyScore           float64 `json:"sticky_score"`
+	StickyScoreInfinity   bool    `json:"sticky_score_infinity"`
+	StickyWeightedEnabled bool    `json:"sticky_weighted_enabled"`
+}
+
+type AccountSchedulerGroupScore struct {
+	GroupID       *int64 `json:"group_id"`
+	GroupName     string `json:"group_name,omitempty"`
+	GroupPriority *int   `json:"group_priority,omitempty"`
+	AccountSchedulerScore
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"

@@ -125,7 +125,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	h.respondAccountList(c, accounts, total, page, pageSize, platform, accountType, status, search, lite)
+	h.respondAccountList(c, accounts, total, page, pageSize, platform, accountType, status, search, groupID, privacyMode, lite)
 }
 
 type usageViewerAccountListParams struct {
@@ -196,6 +196,8 @@ func (h *AccountHandler) respondAccountList(
 	accountType string,
 	status string,
 	search string,
+	groupID int64,
+	privacyMode string,
 	lite bool,
 ) {
 	accountIDs := make([]int64, len(accounts))
@@ -203,6 +205,16 @@ func (h *AccountHandler) respondAccountList(
 		accountIDs[i] = acc.ID
 	}
 
+	schedulerScores, schedulerGroupScores := h.openAIAccountSchedulerScoresForList(
+		c.Request.Context(),
+		accounts,
+		platform,
+		accountType,
+		status,
+		search,
+		groupID,
+		privacyMode,
+	)
 	concurrencyCounts := map[int64]int{}
 	if h.concurrencyService != nil {
 		if cc, err := h.concurrencyService.GetAccountConcurrencyBatch(c.Request.Context(), accountIDs); err == nil && cc != nil {
@@ -220,6 +232,8 @@ func (h *AccountHandler) respondAccountList(
 		result[i] = AccountWithConcurrency{
 			Account:            dto.AccountFromService(acc),
 			CurrentConcurrency: concurrencyCounts[acc.ID],
+			SchedulerScore:     schedulerScores[acc.ID],
+			SchedulerScores:    schedulerGroupScores[acc.ID],
 		}
 		if cost, ok := windowCosts[acc.ID]; ok {
 			result[i].CurrentWindowCost = &cost
