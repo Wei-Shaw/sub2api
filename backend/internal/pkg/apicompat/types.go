@@ -217,7 +217,7 @@ REDACTED
 // ResponsesText configures text output options in the Responses API.
 type ResponsesText struct {
 	Format    json.RawMessage `json:"format,omitempty"`
-	Verbosity string `json:"verbosity,omitempty"` // "low" | "medium" | "high"
+	Verbosity string          `json:"verbosity,omitempty"` // "low" | "medium" | "high"
 REDACTED
 
 // ResponsesInputItem is one item in the Responses API input array.
