@@ -161,27 +161,39 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestCalculateCreateOrderPayAmountForSubscriptionKeepsDirectPrice(t *testing.T) {
+func TestCalculateCreateOrderPayAmountForSubscriptionConvertsCNYPrice(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmount(5, 0, "CNY")
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "CNY", payment.OrderTypeSubscription, 0.14)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 REDACTED
-	if amountStr != "5.00" || amount != 5 {
-		t.Fatalf("subscription CNY pay amount = (%q, %v), want (5.00, 5)", amountStr, amount)
+	if amountStr != "71.36" || amount != 71.36 {
+		t.Fatalf("subscription CNY pay amount = (%q, %v), want (71.36, 71.36)", amountStr, amount)
 REDACTED
 REDACTED
 
-func TestCalculateCreateOrderPayAmountForSubscriptionAppliesFeeToDirectPrice(t *testing.T) {
+func TestCalculateCreateOrderPayAmountForSubscriptionAppliesFeeAfterCNYConversion(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmount(5, 2.5, "CNY")
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 2.5, "CNY", payment.OrderTypeSubscription, 0.14)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 REDACTED
-	if amountStr != "5.13" || amount != 5.13 {
-		t.Fatalf("subscription CNY pay amount with fee = (%q, %v), want (5.13, 5.13)", amountStr, amount)
+	if amountStr != "73.15" || amount != 73.15 {
+		t.Fatalf("subscription CNY pay amount with fee = (%q, %v), want (73.15, 73.15)", amountStr, amount)
+REDACTED
+REDACTED
+
+func TestCalculateCreateOrderPayAmountForSubscriptionKeepsNonCNYPrice(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "USD", payment.OrderTypeSubscription, 0.14)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if amountStr != "9.99" || amount != 9.99 {
+		t.Fatalf("subscription USD pay amount = (%q, %v), want (9.99, 9.99)", amountStr, amount)
 REDACTED
 REDACTED
 

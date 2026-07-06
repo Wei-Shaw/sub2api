@@ -283,7 +283,7 @@ import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, pl
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { formatPaymentAmount, normalizePaymentCurrency REDACTED from '@/components/payment/currency'
+import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency REDACTED from '@/components/payment/currency'
 import type { PaymentMethodOption REDACTED from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError REDACTED from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery REDACTED from './paymentWechatResume'
@@ -579,12 +579,17 @@ function ceilPaymentAmount(value: number, currency: string): number {
   return Math.ceil(value * factor) / factor
 REDACTED
 
+function subscriptionPaymentAmountForCurrency(value: number, currency: string): number {
+  if (currency !== DEFAULT_PAYMENT_CURRENCY) return roundPaymentAmount(value, currency)
+  return roundPaymentAmount(value / balanceRechargeMultiplier.value, currency)
+REDACTED
+
 function formatSelectedPaymentAmount(value: number): string {
   return formatPaymentAmount(value, selectedCurrency.value, localeCode.value)
 REDACTED
 
 function formatSelectedSubscriptionPaymentAmount(value: number): string {
-  return formatSelectedPaymentAmount(roundPaymentAmount(value, selectedCurrency.value))
+  return formatSelectedPaymentAmount(subscriptionPaymentAmountForCurrency(value, selectedCurrency.value))
 REDACTED
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
@@ -633,7 +638,7 @@ const canSubmit = computed(() =>
 
 const subPaymentAmount = computed(() => {
   const price = selectedPlan.value?.price ?? 0
-  return roundPaymentAmount(price, selectedCurrency.value)
+  return subscriptionPaymentAmountForCurrency(price, selectedCurrency.value)
 REDACTED)
 
 const subFeeAmount = computed(() => {
@@ -647,7 +652,7 @@ const subTotalAmount = computed(() => {
 REDACTED)
 
 function subscriptionTotalAmountForCurrency(value: number, currency: string): number {
-  const paymentAmount = roundPaymentAmount(value, currency)
+  const paymentAmount = subscriptionPaymentAmountForCurrency(value, currency)
   if (feeRate.value <= 0 || paymentAmount <= 0) return paymentAmount
   const fee = ceilPaymentAmount((paymentAmount * feeRate.value) / 100, currency)
   return roundPaymentAmount(paymentAmount + fee, currency)
