@@ -745,6 +745,7 @@ export default {
     deleteConfirmMessage: "Are you sure you want to delete '{name}'? This action cannot be undone.",
     apiKey: 'API Key',
     group: 'Group',
+    currentConcurrency: 'Current Concurrency',
     noGroup: 'No group',
     searchGroup: 'Search groups...',
     noGroupFound: 'No groups found',
@@ -3118,7 +3119,7 @@ export default {
           resetQuota: 'Reset Quota',
           resetQuotaDesc: 'Reset daily/weekly/monthly usage to zero',
           revoke: 'Revoke',
-          revokeDesc: 'Immediately terminate the subscription (irreversible)'
+          revokeDesc: 'Immediately terminate the subscription (restorable from the revoked list)'
         },
         tip: 'Tip: Only groups with billing type "Subscription" and status "Active" appear in the group dropdown. If no options are available, create one in Group Management first.'
       }
@@ -3276,6 +3277,7 @@ export default {
         priority: 'Priority',
         billingRateMultiplier: 'Billing Rate',
         weight: 'Weight',
+        schedulerScore: 'Scheduler Score',
         status: 'Status',
         schedulable: 'Schedulable',
         todayStats: 'Today Stats',
@@ -3286,6 +3288,12 @@ export default {
         createdAt: 'Created',
         expiresAt: 'Expires At',
         actions: 'Actions'
+      },
+      schedulerScore: {
+        baseShort: 'Base',
+        stickyShort: 'Sticky',
+        ungrouped: 'Ungrouped',
+        hint: 'Displayed as "group / base score / sticky bonus". The base score is computed within the current filtered candidate set and includes priority, load, queue depth, error rate, first-token latency, reset window, quota headroom, and related factors. The sticky bonus applies only when sticky weighting is enabled for previous_response_id or session_hash. Higher scores are preferred.'
       },
       usageWindowsHint: '"5h / 7d" are the upstream account\'s official rolling usage windows (e.g. OpenAI ChatGPT, Claude). They are imposed by the upstream provider on the account itself — not configured by sub2api, and unrelated to the models you map. Usage resets automatically once each window rolls over, and the limit cannot be lifted from within sub2api.',
       allPrivacyModes: 'All Privacy States',
@@ -6187,6 +6195,10 @@ export default {
         balanceRechargeMultiplier: 'Balance Recharge Multiplier',
         balanceRechargeMultiplierHint: 'How many USD balance the user receives for each 1 CNY paid',
         balanceRechargePreview: 'Preview: 1 CNY = {usd} USD',
+        subscriptionUsdToCnyRate: 'Subscription USD to CNY Rate',
+        subscriptionUsdToCnyRateHint:
+          'CNY charged per 1 USD of plan price on CNY channels (e.g. 7.15). 0 or empty = disabled, plan price is charged as-is. When enabled, all plan prices must be set in USD',
+        subscriptionUsdToCnyRateDisabled: 'Disabled (price charged as-is)',
         rechargeFeeRate: 'Recharge Fee Rate',
         rechargeFeeRateHint: 'Percentage of service fee charged on top of recharge amount, 0 means no fee',
         rechargeFeePreview: 'Preview: Recharge 100, fee {fee}',
@@ -6232,6 +6244,12 @@ export default {
         validationNameRequired: 'Provider name is required',
         validationTypesRequired: 'Please select at least one supported payment type',
         validationFieldRequired: '{field} is required',
+        validationEasyPayCustomMethodRequired: 'Each custom EasyPay method requires both a payment type and an upstream type',
+        validationEasyPayCustomMethodTypeInvalid: 'Custom EasyPay payment types may only contain lowercase letters, digits, underscores, and hyphens',
+        validationEasyPayCustomMethodUpstreamTypeInvalid: 'EasyPay upstream types may only contain lowercase letters, digits, underscores, and hyphens',
+        validationEasyPayCustomMethodReserved: 'Custom EasyPay payment types cannot use built-in alipay or wxpay',
+        validationEasyPayCustomMethodPrefixReserved: 'Custom EasyPay payment types cannot start with alipay or wxpay',
+        validationEasyPayCustomMethodDuplicate: 'Custom EasyPay payment types must be unique',
         field_apiBase: 'API Base URL',
         field_notifyUrl: 'Notify URL',
         field_returnUrl: 'Return URL',
@@ -6261,6 +6279,12 @@ export default {
         field_cid: 'Channel ID',
         field_cidAlipay: 'Alipay Channel ID',
         field_cidWxpay: 'WeChat Channel ID',
+        easypayCustomMethods: 'Custom EasyPay methods',
+        easypayCustomMethodsHint: 'Add provider-specific methods supported by this EasyPay endpoint. The payment type is stored on Sub2API orders; the upstream type is sent as EasyPay type.',
+        addCustomMethod: 'Add method',
+        customMethodType: 'Payment type',
+        customMethodUpstreamType: 'Upstream type',
+        customMethodDisplayName: 'Display name',
         stripeWebhookHint: 'Configure the following URL as a Webhook endpoint in Stripe Dashboard:',
         stripeWebhookApiVersionHint: 'Set this Webhook endpoint API version to match the integrated Stripe SDK. Recommended: {version}. A mismatch can cause webhook parsing errors.',
         airwallexWebhookHint: 'Configure the following URL as a Webhook endpoint in Airwallex. Select at least Payment Intent -> Succeeded (payment_intent.succeeded), preferably also Payment Intent -> Cancelled (payment_intent.cancelled). Use the account default or latest stable API version.',
@@ -6735,7 +6759,24 @@ export default {
       },
       openaiExperimentalScheduler: {
         title: 'OpenAI experimental scheduler policy',
-        description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability."
+        description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability.",
+        stickyWeightedTitle: 'Sticky weighting',
+        stickyWeightedDescription: 'When enabled, previous_response_id and session_hash affinity are scored by the advanced scheduler. When disabled, sticky accounts keep the legacy hard-hit behavior.',
+        subscriptionPriorityTitle: 'Subscription priority',
+        subscriptionPriorityDescription: 'When enabled, the scheduler scores ChatGPT subscription accounts first and falls back to non-subscription accounts only if no subscription slot can be acquired.',
+        weightsTitle: 'Scheduler weight overrides',
+        weightsDescription: 'Blank values use config/environment values; when config is not set, built-in defaults apply. Non-blank page settings take priority.',
+        defaultPlaceholder: 'config/default: {value}',
+        topKLabel: 'TopK',
+        priorityWeight: 'Priority',
+        loadWeight: 'Load',
+        queueWeight: 'Queue',
+        errorRateWeight: 'Error rate',
+        ttftWeight: 'TTFT',
+        resetWeight: 'Reset window',
+        quotaHeadroomWeight: 'Quota headroom',
+        previousResponseWeight: 'previous_response sticky',
+        sessionStickyWeight: 'session_hash sticky'
       },
       usageRecords: {
         title: 'Usage Records',
