@@ -1816,9 +1816,10 @@ func TestGrokVideoMediaBillingUsesImageRateMultiplier(t *testing.T) {
 			ResponseID:   "video-request-123",
 			Model:        "grok-imagine-video-1.5",
 			BillingModel: "grok-imagine-video-1.5",
-			ImageCount:   1,
-			ImageSize:    ImageBillingSize2K,
-			Duration:     time.Second,
+			// The usage schema has no separate video count; video generation is billed as one media unit.
+			ImageCount: 1,
+			ImageSize:  ImageBillingSize2K,
+			Duration:   time.Second,
 	REDACTED,
 		APIKey: &APIKey{
 			ID:      10126,
