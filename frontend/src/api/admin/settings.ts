@@ -446,6 +446,15 @@ export interface SystemSettings {
   smtp_from_email: string;
   smtp_from_name: string;
   smtp_use_tls: boolean;
+  email_provider: "smtp" | "resend" | "cloudflare";
+  resend_api_key_configured: boolean;
+  resend_from_email: string;
+  resend_from_name: string;
+  resend_api_base_url: string;
+  cloudflare_api_token_configured: boolean;
+  cloudflare_account_id: string;
+  cloudflare_from_email: string;
+  cloudflare_from_name: string;
   // Cloudflare Turnstile settings
   turnstile_enabled: boolean;
   turnstile_site_key: string;
@@ -718,6 +727,15 @@ export interface UpdateSettingsRequest {
   smtp_from_email?: string;
   smtp_from_name?: string;
   smtp_use_tls?: boolean;
+  email_provider?: "smtp" | "resend" | "cloudflare";
+  resend_api_key?: string;
+  resend_from_email?: string;
+  resend_from_name?: string;
+  resend_api_base_url?: string;
+  cloudflare_api_token?: string;
+  cloudflare_account_id?: string;
+  cloudflare_from_email?: string;
+  cloudflare_from_name?: string;
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;
@@ -941,6 +959,15 @@ export interface SendTestEmailRequest {
   smtp_from_email: string;
   smtp_from_name: string;
   smtp_use_tls: boolean;
+  email_provider?: "smtp" | "resend" | "cloudflare";
+  resend_api_key?: string;
+  resend_from_email?: string;
+  resend_from_name?: string;
+  resend_api_base_url?: string;
+  cloudflare_api_token?: string;
+  cloudflare_account_id?: string;
+  cloudflare_from_email?: string;
+  cloudflare_from_name?: string;
 }
 
 /**

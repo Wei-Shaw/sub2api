@@ -6497,6 +6497,16 @@ export default {
         enabled: '启用订阅到期提醒',
         enabledHint: '开启后，系统会在订阅到期前 7 天、3 天、1 天各发送一次提醒。'
       },
+      emailProvider: {
+        title: '邮件发送方式',
+        description: '选择系统邮件的发送通道。',
+        smtp: 'SMTP',
+        smtpDescription: '使用现有 SMTP 服务器发送邮件。',
+        resend: 'Resend',
+        resendDescription: '通过 Resend HTTP API 发送邮件。',
+        cloudflare: 'Cloudflare',
+        cloudflareDescription: '通过 Cloudflare Email Sending 发送邮件。'
+      },
       smtp: {
         title: 'SMTP 设置',
         description: '配置用于发送验证码的邮件服务',
@@ -6519,6 +6529,37 @@ export default {
         fromNamePlaceholder: 'Sub2API',
         useTls: '使用 TLS',
         useTlsHint: '为 SMTP 连接启用 TLS 加密'
+      },
+      resend: {
+        title: 'Resend Email API',
+        description: '配置 Resend，在不使用 SMTP 的情况下发送邮件。',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: '请输入 Resend API Key',
+        apiKeyHint: '请在 Resend 后台创建 API Key，并妥善保管。',
+        apiKeyConfiguredPlaceholder: '********',
+        apiKeyConfiguredHint: 'API Key 已配置，留空以保留当前值。',
+        apiBaseUrl: 'API Base URL',
+        apiBaseUrlPlaceholder: 'https://api.resend.com',
+        apiBaseUrlHint: '默认使用 Resend 官方地址，除非你使用了代理。',
+        fromEmail: '发件人邮箱',
+        fromEmailPlaceholder: "noreply{'@'}example.com",
+        fromName: '发件人名称',
+        fromNamePlaceholder: 'Sub2API'
+      },
+      cloudflareEmail: {
+        title: 'Cloudflare Email Sending',
+        description: '配置 Cloudflare Email Sending 发送系统邮件。',
+        apiToken: 'API Token',
+        apiTokenPlaceholder: '请输入 Cloudflare API Token',
+        apiTokenHint: '需要具备 Cloudflare Email Sending 发送权限。',
+        apiTokenConfiguredPlaceholder: '********',
+        apiTokenConfiguredHint: 'API Token 已配置，留空以保留当前值。',
+        accountId: 'Account ID',
+        accountIdPlaceholder: '请输入 Cloudflare Account ID',
+        fromEmail: '发件人邮箱',
+        fromEmailPlaceholder: "noreply{'@'}example.com",
+        fromName: '发件人名称',
+        fromNamePlaceholder: 'Sub2API'
       },
       testEmail: {
         title: '发送测试邮件',

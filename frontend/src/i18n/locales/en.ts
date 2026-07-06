@@ -6342,6 +6342,16 @@ export default {
         enabled: 'Enable Subscription Expiry Reminder',
         enabledHint: 'When enabled, the system sends reminders 7, 3, and 1 day before expiry.'
       },
+      emailProvider: {
+        title: 'Email Provider',
+        description: 'Choose how system emails are delivered.',
+        smtp: 'SMTP',
+        smtpDescription: 'Use an SMTP server.',
+        resend: 'Resend',
+        resendDescription: 'Send email through the Resend HTTP API.',
+        cloudflare: 'Cloudflare',
+        cloudflareDescription: 'Send email through Cloudflare Email Sending.'
+      },
       smtp: {
         title: 'SMTP Settings',
         description: 'Configure email sending for verification codes',
@@ -6364,6 +6374,37 @@ export default {
         fromNamePlaceholder: 'Sub2API',
         useTls: 'Use TLS',
         useTlsHint: 'Enable TLS encryption for SMTP connection'
+      },
+      resend: {
+        title: 'Resend Email API',
+        description: 'Configure Resend for email delivery without SMTP.',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'Enter Resend API key',
+        apiKeyHint: 'Create an API key in Resend and keep it secret.',
+        apiKeyConfiguredPlaceholder: '********',
+        apiKeyConfiguredHint: 'API key configured. Leave empty to keep the current value.',
+        apiBaseUrl: 'API Base URL',
+        apiBaseUrlPlaceholder: 'https://api.resend.com',
+        apiBaseUrlHint: 'Use the default official endpoint unless you proxy Resend.',
+        fromEmail: 'From Email',
+        fromEmailPlaceholder: "noreply{'@'}example.com",
+        fromName: 'From Name',
+        fromNamePlaceholder: 'Sub2API'
+      },
+      cloudflareEmail: {
+        title: 'Cloudflare Email Sending',
+        description: 'Configure Cloudflare Email Sending for system email delivery.',
+        apiToken: 'API Token',
+        apiTokenPlaceholder: 'Enter Cloudflare API token',
+        apiTokenHint: 'Use a token with Cloudflare Email Sending permission.',
+        apiTokenConfiguredPlaceholder: '********',
+        apiTokenConfiguredHint: 'API token configured. Leave empty to keep the current value.',
+        accountId: 'Account ID',
+        accountIdPlaceholder: 'Enter Cloudflare account ID',
+        fromEmail: 'From Email',
+        fromEmailPlaceholder: "noreply{'@'}example.com",
+        fromName: 'From Name',
+        fromNamePlaceholder: 'Sub2API'
       },
       testEmail: {
         title: 'Send Test Email',

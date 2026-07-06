@@ -41,13 +41,22 @@ type SystemSettings struct {
 	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
 	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
 
-	SMTPHost               string `json:"smtp_host"`
-	SMTPPort               int    `json:"smtp_port"`
-	SMTPUsername           string `json:"smtp_username"`
-	SMTPPasswordConfigured bool   `json:"smtp_password_configured"`
-	SMTPFrom               string `json:"smtp_from_email"`
-	SMTPFromName           string `json:"smtp_from_name"`
-	SMTPUseTLS             bool   `json:"smtp_use_tls"`
+	SMTPHost                     string `json:"smtp_host"`
+	SMTPPort                     int    `json:"smtp_port"`
+	SMTPUsername                 string `json:"smtp_username"`
+	SMTPPasswordConfigured       bool   `json:"smtp_password_configured"`
+	SMTPFrom                     string `json:"smtp_from_email"`
+	SMTPFromName                 string `json:"smtp_from_name"`
+	SMTPUseTLS                   bool   `json:"smtp_use_tls"`
+	EmailProvider                string `json:"email_provider"`
+	ResendAPIKeyConfigured       bool   `json:"resend_api_key_configured"`
+	ResendFromEmail              string `json:"resend_from_email"`
+	ResendFromName               string `json:"resend_from_name"`
+	ResendAPIBaseURL             string `json:"resend_api_base_url"`
+	CloudflareAPITokenConfigured bool   `json:"cloudflare_api_token_configured"`
+	CloudflareAccountID          string `json:"cloudflare_account_id"`
+	CloudflareFromEmail          string `json:"cloudflare_from_email"`
+	CloudflareFromName           string `json:"cloudflare_from_name"`
 
 	TurnstileEnabled             bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey             string `json:"turnstile_site_key"`
