@@ -387,14 +387,7 @@ REDACTED
 REDACTED
 
 func buildOpenAIModelsURL(base string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(normalized, "/v1/models") {
-		return normalized
-REDACTED
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + "/models"
-REDACTED
-	return normalized + "/v1/models"
+	return buildOpenAIEndpointURL(base, "/v1/models")
 REDACTED
 
 func buildGeminiModelsURL(base string) string {
