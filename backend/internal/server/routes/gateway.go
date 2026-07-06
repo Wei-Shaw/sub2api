@@ -1,7 +1,10 @@
 package routes
 
 import (
+	"bytes"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -9,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 // RegisterGatewayRoutes 注册 API 网关路由（Claude/OpenAI/Gemini 兼容）
@@ -31,35 +35,68 @@ func RegisterGatewayRoutes(
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
 	requireGroupGoogle := middleware.RequireGroupAssignment(settingService, middleware.GoogleErrorWriter)
 
-	isOpenAIResponsesCompatibleGatewayPlatform := func(c *gin.Context) bool {
-		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI, service.PlatformGrok:
-			return true
-		default:
-			return false
+	dispatchMessages := func(c *gin.Context) {
+		platform := routePlatformForMessagesEndpoint(c)
+		middleware.SetRoutePlatformIntent(c, platform)
+		if isOpenAICompatibleRoutePlatform(platform) {
+			h.OpenAIGateway.Messages(c)
+			return
+		}
+		h.Gateway.Messages(c)
+	}
+	dispatchOpenAICompatible := func(openAIHandler gin.HandlerFunc, anthropicHandler gin.HandlerFunc) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			platform := routePlatformForOpenAICompatibleEndpoint(c)
+			middleware.SetRoutePlatformIntent(c, platform)
+			if isOpenAICompatibleRoutePlatform(platform) {
+				openAIHandler(c)
+				return
+			}
+			anthropicHandler(c)
 		}
 	}
-	isOpenAIGatewayPlatform := func(c *gin.Context) bool {
-		return getGroupPlatform(c) == service.PlatformOpenAI
-	}
-	imagesHandler := func(c *gin.Context) {
-		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI:
-			h.OpenAIGateway.Images(c)
-		case service.PlatformGrok:
-			h.OpenAIGateway.GrokImages(c)
-		default:
+	countTokensHandler := func(c *gin.Context) {
+		platform := routePlatformForCountTokensEndpoint(c)
+		middleware.SetRoutePlatformIntent(c, platform)
+		if platform == service.PlatformOpenAI {
+			h.OpenAIGateway.CountTokens(c)
+			return
+		}
+		if platform == service.PlatformGrok {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{
+				"type": "error",
 				"error": gin.H{
 					"type":    "not_found_error",
-					"message": "Images API is not supported for this platform",
+					"message": "Token counting is not supported for this platform",
 				},
 			})
+			return
 		}
+		h.Gateway.CountTokens(c)
+	}
+	imagesHandler := func(c *gin.Context) {
+		platform := routePlatformForOpenAIMediaEndpoint(c)
+		middleware.SetRoutePlatformIntent(c, platform)
+		if platform == service.PlatformGrok {
+			h.OpenAIGateway.GrokImages(c)
+			return
+		}
+		if platform == service.PlatformOpenAI {
+			h.OpenAIGateway.Images(c)
+			return
+		}
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"type":    "not_found_error",
+				"message": "Images API is not supported for this platform",
+			},
+		})
 	}
 	videoGenerationHandler := func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformGrok {
+		if hasAPIKeyPlatform(c, service.PlatformGrok) {
+			middleware.SetRoutePlatformIntent(c, service.PlatformGrok)
 			h.OpenAIGateway.GrokVideoGeneration(c)
 			return
 		}
@@ -72,7 +109,8 @@ func RegisterGatewayRoutes(
 		})
 	}
 	videoStatusHandler := func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformGrok {
+		if hasAPIKeyPlatform(c, service.PlatformGrok) {
+			middleware.SetRoutePlatformIntent(c, service.PlatformGrok)
 			h.OpenAIGateway.GrokVideoStatus(c)
 			return
 		}
@@ -94,63 +132,23 @@ func RegisterGatewayRoutes(
 	gateway.Use(requireGroupAnthropic)
 	{
 		// /v1/messages: auto-route based on group platform
-		gateway.POST("/messages", func(c *gin.Context) {
-			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-				h.OpenAIGateway.Messages(c)
-				return
-			}
-			h.Gateway.Messages(c)
-		})
+		gateway.POST("/messages", dispatchMessages)
 		// /v1/messages/count_tokens: OpenAI uses Anthropic-compat bridge; other
 		// OpenAI-compatible platforms keep the prior unsupported response.
-		gateway.POST("/messages/count_tokens", func(c *gin.Context) {
-			if isOpenAIGatewayPlatform(c) {
-				h.OpenAIGateway.CountTokens(c)
-				return
-			}
-			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-				c.JSON(http.StatusNotFound, gin.H{
-					"type": "error",
-					"error": gin.H{
-						"type":    "not_found_error",
-						"message": "Token counting is not supported for this platform",
-					},
-				})
-				return
-			}
-			h.Gateway.CountTokens(c)
-		})
+		gateway.POST("/messages/count_tokens", countTokensHandler)
 		gateway.GET("/models", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
 		// OpenAI Responses API: auto-route based on group platform
-		gateway.POST("/responses", func(c *gin.Context) {
-			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-				h.OpenAIGateway.Responses(c)
-				return
-			}
-			h.Gateway.Responses(c)
-		})
-		gateway.POST("/responses/*subpath", func(c *gin.Context) {
-			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-				h.OpenAIGateway.Responses(c)
-				return
-			}
-			h.Gateway.Responses(c)
-		})
+		gateway.POST("/responses", dispatchOpenAICompatible(h.OpenAIGateway.Responses, h.Gateway.Responses))
+		gateway.POST("/responses/*subpath", dispatchOpenAICompatible(h.OpenAIGateway.Responses, h.Gateway.Responses))
 		gateway.GET("/responses", func(c *gin.Context) {
+			middleware.SetRoutePlatformIntent(c, routePlatformForOpenAICompatibleEndpoint(c))
 			h.OpenAIGateway.ResponsesWebSocket(c)
 		})
 		// OpenAI Chat Completions API: auto-route based on group platform
-		gateway.POST("/chat/completions", func(c *gin.Context) {
-			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-				h.OpenAIGateway.ChatCompletions(c)
-				return
-			}
-			h.Gateway.ChatCompletions(c)
-		})
+		gateway.POST("/chat/completions", dispatchOpenAICompatible(h.OpenAIGateway.ChatCompletions, h.Gateway.ChatCompletions))
 		gateway.POST("/embeddings", func(c *gin.Context) {
-			if getGroupPlatform(c) != service.PlatformOpenAI {
+			if !hasAPIKeyPlatform(c, service.PlatformOpenAI) {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 				c.JSON(http.StatusNotFound, gin.H{
 					"error": gin.H{
@@ -184,16 +182,11 @@ func RegisterGatewayRoutes(
 	}
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
-	responsesHandler := func(c *gin.Context) {
-		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-			h.OpenAIGateway.Responses(c)
-			return
-		}
-		h.Gateway.Responses(c)
-	}
+	responsesHandler := dispatchOpenAICompatible(h.OpenAIGateway.Responses, h.Gateway.Responses)
 	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesHandler)
 	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesHandler)
 	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		middleware.SetRoutePlatformIntent(c, routePlatformForOpenAICompatibleEndpoint(c))
 		h.OpenAIGateway.ResponsesWebSocket(c)
 	})
 	codexDirect := r.Group("/backend-api/codex")
@@ -202,19 +195,14 @@ func RegisterGatewayRoutes(
 		codexDirect.POST("/responses", responsesHandler)
 		codexDirect.POST("/responses/*subpath", responsesHandler)
 		codexDirect.GET("/responses", func(c *gin.Context) {
+			middleware.SetRoutePlatformIntent(c, routePlatformForOpenAICompatibleEndpoint(c))
 			h.OpenAIGateway.ResponsesWebSocket(c)
 		})
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
-	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
-		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-			h.OpenAIGateway.ChatCompletions(c)
-			return
-		}
-		h.Gateway.ChatCompletions(c)
-	})
+	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, dispatchOpenAICompatible(h.OpenAIGateway.ChatCompletions, h.Gateway.ChatCompletions))
 	r.POST("/embeddings", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
-		if getGroupPlatform(c) != service.PlatformOpenAI {
+		if !hasAPIKeyPlatform(c, service.PlatformOpenAI) {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": gin.H{
@@ -273,4 +261,143 @@ func getGroupPlatform(c *gin.Context) string {
 		return ""
 	}
 	return apiKey.Group.Platform
+}
+
+func hasAPIKeyPlatform(c *gin.Context, platform string) bool {
+	apiKey, ok := middleware.GetAPIKeyFromContext(c)
+	if !ok {
+		return false
+	}
+	return service.APIKeyHasCandidateGroup(apiKey, platform)
+}
+
+func routePlatformForMessagesEndpoint(c *gin.Context) string {
+	model := normalizedRequestModel(c)
+	if requestModelLooksGrok(model) && hasAPIKeyPlatform(c, service.PlatformGrok) {
+		return service.PlatformGrok
+	}
+	if requestModelLooksOpenAI(model) && hasAPIKeyPlatform(c, service.PlatformOpenAI) {
+		return service.PlatformOpenAI
+	}
+	if hasAPIKeyPlatform(c, service.PlatformAnthropic) {
+		return service.PlatformAnthropic
+	}
+	if hasAPIKeyPlatform(c, service.PlatformOpenAI) {
+		return service.PlatformOpenAI
+	}
+	if hasAPIKeyPlatform(c, service.PlatformGrok) {
+		return service.PlatformGrok
+	}
+	return getGroupPlatform(c)
+}
+
+func routePlatformForOpenAICompatibleEndpoint(c *gin.Context) string {
+	model := normalizedRequestModel(c)
+	if requestModelLooksAnthropic(model) && hasAPIKeyPlatform(c, service.PlatformAnthropic) {
+		return service.PlatformAnthropic
+	}
+	if requestModelLooksGrok(model) && hasAPIKeyPlatform(c, service.PlatformGrok) {
+		return service.PlatformGrok
+	}
+	if requestModelLooksOpenAI(model) && hasAPIKeyPlatform(c, service.PlatformOpenAI) {
+		return service.PlatformOpenAI
+	}
+	if hasAPIKeyPlatform(c, service.PlatformOpenAI) {
+		return service.PlatformOpenAI
+	}
+	if hasAPIKeyPlatform(c, service.PlatformGrok) {
+		return service.PlatformGrok
+	}
+	if hasAPIKeyPlatform(c, service.PlatformAnthropic) {
+		return service.PlatformAnthropic
+	}
+	return getGroupPlatform(c)
+}
+
+func routePlatformForCountTokensEndpoint(c *gin.Context) string {
+	model := normalizedRequestModel(c)
+	if requestModelLooksAnthropic(model) && hasAPIKeyPlatform(c, service.PlatformAnthropic) {
+		return service.PlatformAnthropic
+	}
+	if requestModelLooksOpenAI(model) && hasAPIKeyPlatform(c, service.PlatformOpenAI) {
+		return service.PlatformOpenAI
+	}
+	if requestModelLooksGrok(model) && hasAPIKeyPlatform(c, service.PlatformGrok) {
+		return service.PlatformGrok
+	}
+	if hasAPIKeyPlatform(c, service.PlatformOpenAI) {
+		return service.PlatformOpenAI
+	}
+	if hasAPIKeyPlatform(c, service.PlatformAnthropic) {
+		return service.PlatformAnthropic
+	}
+	if hasAPIKeyPlatform(c, service.PlatformGrok) {
+		return service.PlatformGrok
+	}
+	return getGroupPlatform(c)
+}
+
+func routePlatformForOpenAIMediaEndpoint(c *gin.Context) string {
+	model := normalizedRequestModel(c)
+	if requestModelLooksGrok(model) && hasAPIKeyPlatform(c, service.PlatformGrok) {
+		return service.PlatformGrok
+	}
+	if hasAPIKeyPlatform(c, service.PlatformOpenAI) {
+		return service.PlatformOpenAI
+	}
+	if hasAPIKeyPlatform(c, service.PlatformGrok) {
+		return service.PlatformGrok
+	}
+	return getGroupPlatform(c)
+}
+
+func isOpenAICompatibleRoutePlatform(platform string) bool {
+	return platform == service.PlatformOpenAI || platform == service.PlatformGrok
+}
+
+func requestModelLooksOpenAICompatible(c *gin.Context) bool {
+	model := normalizedRequestModel(c)
+	return requestModelLooksOpenAI(model) || requestModelLooksGrok(model)
+}
+
+func normalizedRequestModel(c *gin.Context) string {
+	return strings.ToLower(strings.TrimSpace(peekJSONRequestModel(c)))
+}
+
+func requestModelLooksOpenAI(model string) bool {
+	return strings.HasPrefix(model, "gpt-") ||
+		strings.HasPrefix(model, "chatgpt-") ||
+		strings.HasPrefix(model, "codex") ||
+		strings.HasPrefix(model, "o1") ||
+		strings.HasPrefix(model, "o3") ||
+		strings.HasPrefix(model, "o4") ||
+		strings.HasPrefix(model, "openai/")
+}
+
+func requestModelLooksGrok(model string) bool {
+	return strings.HasPrefix(model, "grok") ||
+		strings.HasPrefix(model, "xai/")
+}
+
+func requestModelLooksAnthropic(model string) bool {
+	return strings.HasPrefix(model, "claude") ||
+		strings.HasPrefix(model, "anthropic/claude") ||
+		strings.HasPrefix(model, "sonnet") ||
+		strings.HasPrefix(model, "opus") ||
+		strings.HasPrefix(model, "haiku")
+}
+
+func peekJSONRequestModel(c *gin.Context) string {
+	if c == nil || c.Request == nil || c.Request.Body == nil {
+		return ""
+	}
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return ""
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return ""
+	}
+	return gjson.GetBytes(body, "model").String()
 }

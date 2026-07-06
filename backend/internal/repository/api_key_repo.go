@@ -10,7 +10,9 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/apikeygroup"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -39,7 +41,21 @@ func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 }
 
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
-	builder := r.client.APIKey.Create().
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+	client := r.client
+	txCtx := ctx
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		client = tx.Client()
+		txCtx = dbent.NewTxContext(ctx, tx)
+	} else if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		client = existingTx.Client()
+	}
+
+	builder := client.APIKey.Create().
 		SetUserID(key.UserID).
 		SetKey(key.Key).
 		SetName(key.Name).
@@ -60,21 +76,88 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		builder.SetIPBlacklist(key.IPBlacklist)
 	}
 
-	created, err := builder.Save(ctx)
-	if err == nil {
-		key.ID = created.ID
-		key.LastUsedAt = created.LastUsedAt
-		key.CreatedAt = created.CreatedAt
-		key.UpdatedAt = created.UpdatedAt
+	created, err := builder.Save(txCtx)
+	if err != nil {
+		return translatePersistenceError(err, nil, service.ErrAPIKeyExists)
 	}
-	return translatePersistenceError(err, nil, service.ErrAPIKeyExists)
+	key.ID = created.ID
+	key.LastUsedAt = created.LastUsedAt
+	key.CreatedAt = created.CreatedAt
+	key.UpdatedAt = created.UpdatedAt
+	if key.GroupIDs != nil {
+		if err := r.replaceGroupBindings(txCtx, created.ID, key.GroupIDs); err != nil {
+			return err
+		}
+	} else if key.GroupID != nil {
+		key.GroupIDs = []int64{*key.GroupID}
+		if err := r.replaceGroupBindings(txCtx, created.ID, key.GroupIDs); err != nil {
+			return err
+		}
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *apiKeyRepository) withLoadedGroups(q *dbent.APIKeyQuery) *dbent.APIKeyQuery {
+	return q.WithGroup().WithGroups(func(gq *dbent.GroupQuery) {
+		gq.Order(dbent.Asc(group.FieldID))
+	})
+}
+
+func (r *apiKeyRepository) withAuthLoadedGroups(q *dbent.APIKeyQuery) *dbent.APIKeyQuery {
+	return q.WithGroup(func(gq *dbent.GroupQuery) {
+		selectAuthGroupFields(gq)
+	}).WithGroups(func(gq *dbent.GroupQuery) {
+		selectAuthGroupFields(gq)
+		gq.Order(dbent.Asc(group.FieldID))
+	})
+}
+
+func selectAuthGroupFields(q *dbent.GroupQuery) {
+	q.Select(
+		group.FieldID,
+		group.FieldName,
+		group.FieldPlatform,
+		group.FieldIsExclusive,
+		group.FieldStatus,
+		group.FieldSubscriptionType,
+		group.FieldRateMultiplier,
+		group.FieldDailyLimitUsd,
+		group.FieldWeeklyLimitUsd,
+		group.FieldMonthlyLimitUsd,
+		group.FieldAllowImageGeneration,
+		group.FieldImageRateIndependent,
+		group.FieldImageRateMultiplier,
+		group.FieldImagePrice1k,
+		group.FieldImagePrice2k,
+		group.FieldImagePrice4k,
+		group.FieldClaudeCodeOnly,
+		group.FieldFallbackGroupID,
+		group.FieldFallbackGroupIDOnInvalidRequest,
+		group.FieldModelRoutingEnabled,
+		group.FieldModelRouting,
+		group.FieldMcpXMLInject,
+		group.FieldSupportedModelScopes,
+		group.FieldAllowMessagesDispatch,
+		group.FieldDefaultMappedModel,
+		group.FieldMessagesDispatchModelConfig,
+		group.FieldModelsListConfig,
+		group.FieldRpmLimit,
+		group.FieldPeakRateEnabled,
+		group.FieldPeakStart,
+		group.FieldPeakEnd,
+		group.FieldPeakRateMultiplier,
+	)
 }
 
 func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIKey, error) {
-	m, err := r.activeQuery().
+	m, err := r.withLoadedGroups(r.activeQuery().
 		Where(apikey.IDEQ(id)).
-		WithUser().
-		WithGroup().
+		WithUser()).
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
@@ -105,14 +188,13 @@ func (r *apiKeyRepository) GetKeyAndOwnerID(ctx context.Context, id int64) (stri
 }
 
 func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
-	m, err := r.activeQuery().
+	m, err := r.withLoadedGroups(r.activeQuery().
 		Where(apikey.KeyEQ(key)).
 		WithUser(func(q *dbent.UserQuery) {
 			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
 				gq.Select(group.FieldID)
 			})
-		}).
-		WithGroup().
+		})).
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
@@ -124,7 +206,7 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 }
 
 func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
-	m, err := r.activeQuery().
+	q := r.activeQuery().
 		Where(apikey.KeyEQ(key)).
 		Select(
 			apikey.FieldID,
@@ -163,44 +245,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
 				gq.Select(group.FieldID)
 			})
-		}).
-		WithGroup(func(q *dbent.GroupQuery) {
-			q.Select(
-				group.FieldID,
-				group.FieldName,
-				group.FieldPlatform,
-				group.FieldIsExclusive,
-				group.FieldStatus,
-				group.FieldSubscriptionType,
-				group.FieldRateMultiplier,
-				group.FieldDailyLimitUsd,
-				group.FieldWeeklyLimitUsd,
-				group.FieldMonthlyLimitUsd,
-				group.FieldAllowImageGeneration,
-				group.FieldImageRateIndependent,
-				group.FieldImageRateMultiplier,
-				group.FieldImagePrice1k,
-				group.FieldImagePrice2k,
-				group.FieldImagePrice4k,
-				group.FieldClaudeCodeOnly,
-				group.FieldFallbackGroupID,
-				group.FieldFallbackGroupIDOnInvalidRequest,
-				group.FieldModelRoutingEnabled,
-				group.FieldModelRouting,
-				group.FieldMcpXMLInject,
-				group.FieldSupportedModelScopes,
-				group.FieldAllowMessagesDispatch,
-				group.FieldDefaultMappedModel,
-				group.FieldMessagesDispatchModelConfig,
-				group.FieldModelsListConfig,
-				group.FieldRpmLimit,
-				group.FieldPeakRateEnabled,
-				group.FieldPeakStart,
-				group.FieldPeakEnd,
-				group.FieldPeakRateMultiplier,
-			)
-		}).
-		Only(ctx)
+		})
+	m, err := r.withAuthLoadedGroups(q).Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
 			return nil, service.ErrAPIKeyNotFound
@@ -216,7 +262,20 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 	// 则会更新已删除的记录。
 	// 这里选择 Update().Where()，确保只有未软删除记录能被更新。
 	// 同时显式设置 updated_at，避免二次查询带来的并发可见性问题。
-	client := clientFromContext(ctx, r.client)
+	tx, txErr := r.client.Tx(ctx)
+	if txErr != nil && !errors.Is(txErr, dbent.ErrTxStarted) {
+		return txErr
+	}
+	client := r.client
+	txCtx := ctx
+	if txErr == nil {
+		defer func() { _ = tx.Rollback() }()
+		client = tx.Client()
+		txCtx = dbent.NewTxContext(ctx, tx)
+	} else if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		client = existingTx.Client()
+	}
+
 	now := time.Now()
 	builder := client.APIKey.Update().
 		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
@@ -273,13 +332,27 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		builder.ClearIPBlacklist()
 	}
 
-	affected, err := builder.Save(ctx)
+	affected, err := builder.Save(txCtx)
 	if err != nil {
 		return err
 	}
 	if affected == 0 {
 		// 更新影响行数为 0，说明记录不存在或已被软删除。
 		return service.ErrAPIKeyNotFound
+	}
+	if key.GroupIDs != nil {
+		if err := r.replaceGroupBindings(txCtx, key.ID, key.GroupIDs); err != nil {
+			return err
+		}
+	} else if key.GroupID != nil {
+		if err := r.ensureGroupBinding(txCtx, key.ID, *key.GroupID); err != nil {
+			return err
+		}
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
 	}
 
 	// 使用同一时间戳回填，避免并发删除导致二次查询失败。
@@ -402,9 +475,9 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 	}
 	if filters.GroupID != nil {
 		if *filters.GroupID == 0 {
-			q = q.Where(apikey.GroupIDIsNil())
+			q = q.Where(apikey.GroupIDIsNil(), apikey.Not(apikey.HasGroups()))
 		} else {
-			q = q.Where(apikey.GroupIDEQ(*filters.GroupID))
+			q = q.Where(apiKeyBoundToGroupPredicate(*filters.GroupID))
 		}
 	}
 
@@ -415,6 +488,7 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 
 	keysQuery := q.
 		WithGroup().
+		WithGroups().
 		Offset(params.Offset()).
 		Limit(params.Limit())
 	for _, order := range apiKeyListOrder(params) {
@@ -459,7 +533,7 @@ func (r *apiKeyRepository) ExistsByKey(ctx context.Context, key string) (bool, e
 }
 
 func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
-	q := r.activeQuery().Where(apikey.GroupIDEQ(groupID))
+	q := r.activeQuery().Where(apiKeyBoundToGroupPredicate(groupID))
 
 	total, err := q.Count(ctx)
 	if err != nil {
@@ -468,6 +542,8 @@ func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, par
 
 	keysQuery := q.
 		WithUser().
+		WithGroup().
+		WithGroups().
 		Offset(params.Offset()).
 		Limit(params.Limit())
 	for _, order := range apiKeyListOrder(params) {
@@ -542,7 +618,19 @@ func (r *apiKeyRepository) ClearGroupIDByGroupID(ctx context.Context, groupID in
 		Where(apikey.GroupIDEQ(groupID), apikey.DeletedAtIsNil()).
 		ClearGroupID().
 		Save(ctx)
-	return int64(n), err
+	if err != nil {
+		return 0, err
+	}
+	deleted, err := r.client.APIKeyGroup.Delete().
+		Where(apikeygroup.GroupIDEQ(groupID)).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if int64(deleted) > int64(n) {
+		return int64(deleted), nil
+	}
+	return int64(n), nil
 }
 
 // UpdateGroupIDByUserAndGroup 将用户下绑定 oldGroupID 的所有 Key 迁移到 newGroupID
@@ -552,12 +640,42 @@ func (r *apiKeyRepository) UpdateGroupIDByUserAndGroup(ctx context.Context, user
 		Where(apikey.UserIDEQ(userID), apikey.GroupIDEQ(oldGroupID), apikey.DeletedAtIsNil()).
 		SetGroupID(newGroupID).
 		Save(ctx)
-	return int64(n), err
+	if err != nil {
+		return 0, err
+	}
+	if _, err = client.ExecContext(ctx, `
+		INSERT INTO api_key_groups (api_key_id, group_id)
+		SELECT id, $1
+		FROM api_keys
+		WHERE user_id = $2 AND group_id = $1 AND deleted_at IS NULL
+		ON CONFLICT (api_key_id, group_id) DO NOTHING`, newGroupID, userID); err != nil {
+		return 0, err
+	}
+	if _, err = client.ExecContext(ctx, `
+		INSERT INTO api_key_groups (api_key_id, group_id)
+		SELECT akg.api_key_id, $1
+		FROM api_key_groups akg
+		JOIN api_keys ak ON ak.id = akg.api_key_id
+		WHERE ak.user_id = $2
+		  AND ak.deleted_at IS NULL
+		  AND akg.group_id = $3
+		ON CONFLICT (api_key_id, group_id) DO NOTHING`, newGroupID, userID, oldGroupID); err != nil {
+		return 0, err
+	}
+	if _, err = client.ExecContext(ctx, `
+		DELETE FROM api_key_groups akg
+		USING api_keys ak
+		WHERE ak.id = akg.api_key_id
+		  AND ak.user_id = $1
+		  AND akg.group_id = $2`, userID, oldGroupID); err != nil {
+		return 0, err
+	}
+	return int64(n), nil
 }
 
 // CountByGroupID 获取分组的 API Key 数量
 func (r *apiKeyRepository) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	count, err := r.activeQuery().Where(apikey.GroupIDEQ(groupID)).Count(ctx)
+	count, err := r.activeQuery().Where(apiKeyBoundToGroupPredicate(groupID)).Count(ctx)
 	return int64(count), err
 }
 
@@ -574,7 +692,7 @@ func (r *apiKeyRepository) ListKeysByUserID(ctx context.Context, userID int64) (
 
 func (r *apiKeyRepository) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
 	keys, err := r.activeQuery().
-		Where(apikey.GroupIDEQ(groupID)).
+		Where(apiKeyBoundToGroupPredicate(groupID)).
 		Select(apikey.FieldKey).
 		Strings(ctx)
 	if err != nil {
@@ -740,7 +858,63 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	if m.Edges.Group != nil {
 		out.Group = groupEntityToService(m.Edges.Group)
 	}
+	if groups := m.Edges.Groups; len(groups) > 0 {
+		out.GroupIDs = make([]int64, 0, len(groups))
+		out.Groups = make([]service.Group, 0, len(groups))
+		for _, g := range groups {
+			if g == nil {
+				continue
+			}
+			out.GroupIDs = append(out.GroupIDs, g.ID)
+			if sg := groupEntityToService(g); sg != nil {
+				out.Groups = append(out.Groups, *sg)
+			}
+		}
+	} else if out.GroupID != nil {
+		out.GroupIDs = []int64{*out.GroupID}
+		if out.Group != nil {
+			out.Groups = []service.Group{*out.Group}
+		}
+	}
 	return out
+}
+
+func apiKeyBoundToGroupPredicate(groupID int64) predicate.APIKey {
+	return apikey.Or(
+		apikey.GroupIDEQ(groupID),
+		apikey.HasGroupsWith(group.IDEQ(groupID)),
+	)
+}
+
+func (r *apiKeyRepository) replaceGroupBindings(ctx context.Context, apiKeyID int64, groupIDs []int64) error {
+	client := clientFromContext(ctx, r.client)
+	if _, err := client.APIKeyGroup.Delete().
+		Where(apikeygroup.APIKeyIDEQ(apiKeyID)).
+		Exec(ctx); err != nil {
+		return err
+	}
+	groupIDs = uniquePositiveInt64s(groupIDs)
+	if len(groupIDs) == 0 {
+		return nil
+	}
+	creates := make([]*dbent.APIKeyGroupCreate, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		creates = append(creates, client.APIKeyGroup.Create().SetAPIKeyID(apiKeyID).SetGroupID(groupID))
+	}
+	return client.APIKeyGroup.CreateBulk(creates...).OnConflict().DoNothing().Exec(ctx)
+}
+
+func (r *apiKeyRepository) ensureGroupBinding(ctx context.Context, apiKeyID, groupID int64) error {
+	if groupID <= 0 {
+		return nil
+	}
+	client := clientFromContext(ctx, r.client)
+	return client.APIKeyGroup.Create().
+		SetAPIKeyID(apiKeyID).
+		SetGroupID(groupID).
+		OnConflict().
+		DoNothing().
+		Exec(ctx)
 }
 
 func userEntityToService(u *dbent.User) *service.User {

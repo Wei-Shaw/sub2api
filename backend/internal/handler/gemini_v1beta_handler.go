@@ -31,6 +31,46 @@ import (
 // 匹配格式: /Users/xxx/.gemini/tmp/[64位十六进制哈希]
 var geminiCLITmpDirRegex = regexp.MustCompile(`/\.gemini/tmp/([A-Fa-f0-9]{64})`)
 
+func geminiAPIKeyCandidateGroups(apiKey *service.APIKey) []service.Group {
+	return service.APIKeyCandidateGroups(apiKey, service.PlatformGemini)
+}
+
+func (h *GatewayHandler) selectGeminiAIStudioAccountForAPIKey(ctx context.Context, apiKey *service.APIKey) (*service.Account, *service.Group, error) {
+	groups := geminiAPIKeyCandidateGroups(apiKey)
+	if len(groups) == 0 {
+		account, err := h.geminiCompatService.SelectAccountForAIStudioEndpoints(ctx, apiKey.GroupID)
+		return account, apiKey.Group, err
+	}
+
+	var lastErr error
+	for i := range groups {
+		group := &groups[i]
+		groupID := group.ID
+		account, err := h.geminiCompatService.SelectAccountForAIStudioEndpoints(ctx, &groupID)
+		if err == nil {
+			return account, group, nil
+		}
+		lastErr = err
+	}
+	return nil, nil, lastErr
+}
+
+func (h *GatewayHandler) hasAntigravityAccountForGeminiGroups(ctx context.Context, apiKey *service.APIKey) bool {
+	groups := geminiAPIKeyCandidateGroups(apiKey)
+	if len(groups) == 0 {
+		ok, _ := h.geminiCompatService.HasAntigravityAccounts(ctx, apiKey.GroupID)
+		return ok
+	}
+	for i := range groups {
+		groupID := groups[i].ID
+		ok, _ := h.geminiCompatService.HasAntigravityAccounts(ctx, &groupID)
+		if ok {
+			return true
+		}
+	}
+	return false
+}
+
 // GeminiV1BetaListModels proxies:
 // GET /v1beta/models
 func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
@@ -41,7 +81,7 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 	}
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
+	if !hasForcePlatform && !service.APIKeyHasCandidateGroup(apiKey, service.PlatformGemini) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -52,11 +92,10 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		return
 	}
 
-	account, err := h.geminiCompatService.SelectAccountForAIStudioEndpoints(c.Request.Context(), apiKey.GroupID)
+	account, _, err := h.selectGeminiAIStudioAccountForAPIKey(c.Request.Context(), apiKey)
 	if err != nil {
 		// 没有 gemini 账户，检查是否有 antigravity 账户可用
-		hasAntigravity, _ := h.geminiCompatService.HasAntigravityAccounts(c.Request.Context(), apiKey.GroupID)
-		if hasAntigravity {
+		if h.hasAntigravityAccountForGeminiGroups(c.Request.Context(), apiKey) {
 			// antigravity 账户使用静态模型列表
 			c.JSON(http.StatusOK, gemini.FallbackModelsList())
 			return
@@ -88,7 +127,7 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 	}
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
+	if !hasForcePlatform && !service.APIKeyHasCandidateGroup(apiKey, service.PlatformGemini) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -105,11 +144,10 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 		return
 	}
 
-	account, err := h.geminiCompatService.SelectAccountForAIStudioEndpoints(c.Request.Context(), apiKey.GroupID)
+	account, _, err := h.selectGeminiAIStudioAccountForAPIKey(c.Request.Context(), apiKey)
 	if err != nil {
 		// 没有 gemini 账户，检查是否有 antigravity 账户可用
-		hasAntigravity, _ := h.geminiCompatService.HasAntigravityAccounts(c.Request.Context(), apiKey.GroupID)
-		if hasAntigravity {
+		if h.hasAntigravityAccountForGeminiGroups(c.Request.Context(), apiKey) {
 			// antigravity 账户使用静态模型信息
 			c.JSON(http.StatusOK, gemini.FallbackModel(modelName))
 			return
@@ -155,7 +193,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组
 	if !middleware.HasForcePlatform(c) {
-		if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
+		if !service.APIKeyHasCandidateGroup(apiKey, service.PlatformGemini) {
 			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 			return
 		}
@@ -192,12 +230,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		return
 	}
 
-	// 解析渠道级模型映射
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
 	reqModel := modelName // 保存映射前的原始模型名
-	if channelMapping.Mapped {
-		modelName = channelMapping.MappedModel
-	}
 
 	// Get subscription (may be nil)
 	subscription, _ := middleware.GetSubscriptionFromContext(c)
@@ -222,18 +255,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		defer userReleaseFunc()
 	}
 
-	// 2) billing eligibility check (after wait)
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
-		reqLog.Info("gemini.billing_eligibility_check_failed", zap.Error(err))
-		status, _, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		googleError(c, status, message)
-		return
-	}
-
-	// 3) select account (sticky session based on request body)
+	// 2) select account (sticky session based on request body)
 	// 优先使用 Gemini CLI 的会话标识（privileged-user-id + tmp 目录哈希）
 	sessionHash := extractGeminiCLISessionHash(c, body)
 	if sessionHash == "" {
@@ -252,17 +274,26 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	if sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
 	}
+	selectionPlatform := service.PlatformGemini
+	if forcePlatform, ok := middleware.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcePlatform) != "" {
+		selectionPlatform = forcePlatform
+	}
 
 	// 查询粘性会话绑定的账号 ID（用于检测账号切换）
 	var sessionBoundAccountID int64
 	if sessionKey != "" {
-		sessionBoundAccountID, _ = h.gatewayService.GetCachedSessionAccountID(c.Request.Context(), apiKey.GroupID, sessionKey)
+		prefetchGroupID := int64(0)
+		var prefetchGroupIDPtr *int64
+		if group := service.APIKeyOnlyCandidateGroup(apiKey, selectionPlatform); group != nil {
+			prefetchGroupID = group.ID
+			prefetchGroupIDPtr = &prefetchGroupID
+		} else if apiKey.GroupID != nil {
+			prefetchGroupID = *apiKey.GroupID
+			prefetchGroupIDPtr = apiKey.GroupID
+		}
+		sessionBoundAccountID, _ = h.gatewayService.GetCachedSessionAccountID(c.Request.Context(), prefetchGroupIDPtr, sessionKey)
 		if sessionBoundAccountID > 0 {
-			prefetchedGroupID := int64(0)
-			if apiKey.GroupID != nil {
-				prefetchedGroupID = *apiKey.GroupID
-			}
-			ctx := service.WithPrefetchedStickySession(c.Request.Context(), sessionBoundAccountID, prefetchedGroupID, h.metadataBridgeEnabled())
+			ctx := service.WithPrefetchedStickySession(c.Request.Context(), sessionBoundAccountID, prefetchGroupID, h.metadataBridgeEnabled())
 			c.Request = c.Request.WithContext(ctx)
 		}
 	}
@@ -285,30 +316,44 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				// 生成前缀 hash
 				userAgent := c.GetHeader("User-Agent")
 				clientIP := ip.GetClientIP(c)
-				platform := ""
-				if apiKey.Group != nil {
-					platform = apiKey.Group.Platform
-				}
 				geminiPrefixHash = service.GenerateGeminiPrefixHash(
 					authSubject.UserID,
 					apiKey.ID,
 					clientIP,
 					userAgent,
-					platform,
-					modelName,
+					selectionPlatform,
+					reqModel,
 				)
 
 				// 查找会话
-				foundUUID, foundAccountID, foundMatchedChain, found := h.gatewayService.FindGeminiSession(
-					c.Request.Context(),
-					derefGroupID(apiKey.GroupID),
-					geminiPrefixHash,
-					geminiDigestChain,
-				)
+				var foundUUID string
+				var foundAccountID int64
+				var foundMatchedChain string
+				var found bool
+				foundGroupID := int64(0)
+				groups := service.APIKeyCandidateGroups(apiKey, selectionPlatform)
+				if len(groups) == 0 && apiKey.GroupID != nil {
+					groups = []service.Group{{ID: *apiKey.GroupID}}
+				}
+				for i := range groups {
+					groupID := groups[i].ID
+					foundUUID, foundAccountID, foundMatchedChain, found = h.gatewayService.FindGeminiSession(
+						c.Request.Context(),
+						groupID,
+						geminiPrefixHash,
+						geminiDigestChain,
+					)
+					if found {
+						foundGroupID = groupID
+						break
+					}
+				}
 				if found {
 					matchedDigestChain = foundMatchedChain
 					sessionBoundAccountID = foundAccountID
 					geminiSessionUUID = foundUUID
+					ctx := service.WithPrefetchedStickySession(c.Request.Context(), foundAccountID, foundGroupID, h.metadataBridgeEnabled())
+					c.Request = c.Request.WithContext(ctx)
 					reqLog.Info("gemini.digest_fallback_matched",
 						zap.String("session_uuid_prefix", safeShortPrefix(foundUUID, 8)),
 						zap.Int64("account_id", foundAccountID),
@@ -320,7 +365,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 					if sessionKey == "" {
 						sessionKey = service.GenerateGeminiDigestSessionKey(geminiPrefixHash, foundUUID)
 					}
-					_ = h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionKey, foundAccountID)
+					_ = h.gatewayService.BindStickySession(c.Request.Context(), &foundGroupID, sessionKey, foundAccountID)
 				} else {
 					// 生成新的会话 UUID
 					geminiSessionUUID = uuid.New().String()
@@ -341,16 +386,26 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
-	if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), apiKey.GroupID) {
-		ctx := service.WithSingleAccountRetry(c.Request.Context(), true, h.metadataBridgeEnabled())
-		c.Request = c.Request.WithContext(ctx)
+	if selectionPlatform == service.PlatformGemini {
+		if group := service.APIKeyOnlyCandidateGroup(apiKey, service.PlatformGemini); group != nil {
+			groupID := group.ID
+			if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), &groupID) {
+				ctx := service.WithSingleAccountRetry(c.Request.Context(), true, h.metadataBridgeEnabled())
+				c.Request = c.Request.WithContext(ctx)
+			}
+		}
 	}
 
 	for {
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
+		resolvedSelection, err := h.gatewayService.SelectAccountWithLoadAwarenessForAPIKey(c.Request.Context(), apiKey, selectionPlatform, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
+		var selection *service.AccountSelectionResult
+		currentAPIKey := resolvedAPIKeyOrOriginal(resolvedSelection, apiKey)
+		if resolvedSelection != nil {
+			selection = resolvedSelection.Selection
+		}
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, modelName, modelName, service.PlatformGemini)
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, selectionPlatform)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
@@ -373,6 +428,28 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				h.handleGeminiFailoverExhausted(c, fs.LastFailoverErr)
 				return
 			}
+		}
+		if selection == nil || selection.Account == nil {
+			markOpsRoutingCapacityLimited(c)
+			googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts")
+			return
+		}
+		if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), currentAPIKey.User, currentAPIKey, currentAPIKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), currentAPIKey)); err != nil {
+			if selection != nil && selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			reqLog.Info("gemini.billing_eligibility_check_failed", zap.Error(err), zap.Any("group_id", currentAPIKey.GroupID))
+			status, _, message, retryAfter := billingErrorDetails(err)
+			if retryAfter > 0 {
+				c.Header("Retry-After", strconv.Itoa(retryAfter))
+			}
+			googleError(c, status, message)
+			return
+		}
+		channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), currentAPIKey.GroupID, reqModel)
+		forwardModel := reqModel
+		if channelMapping.Mapped {
+			forwardModel = channelMapping.MappedModel
 		}
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
@@ -447,7 +524,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				geminiConcurrency.DecrementAccountWaitCount(c.Request.Context(), account.ID)
 				accountWaitCounted = false
 			}
-			if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionKey, account.ID); err != nil {
+			if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
 				reqLog.Warn("gemini.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			}
 		}
@@ -460,13 +537,13 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		if fs.SwitchCount > 0 {
 			requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
 		}
-		sessionGroupID := derefGroupID(apiKey.GroupID)
+		sessionGroupID := derefGroupID(currentAPIKey.GroupID)
 		if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 			result, err = h.antigravityGatewayService.ForwardGemini(
 				requestCtx,
 				c,
 				account,
-				modelName,
+				forwardModel,
 				action,
 				stream,
 				body,
@@ -474,7 +551,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				service.WithForwardGeminiSession(sessionGroupID, sessionKey),
 			)
 		} else {
-			result, err = h.geminiCompatService.ForwardNative(requestCtx, c, account, modelName, action, stream, body)
+			result, err = h.geminiCompatService.ForwardNative(requestCtx, c, account, forwardModel, action, stream, body)
 		}
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
@@ -506,7 +583,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		if useDigestFallback && geminiDigestChain != "" && geminiPrefixHash != "" {
 			if err := h.gatewayService.SaveGeminiSession(
 				c.Request.Context(),
-				derefGroupID(apiKey.GroupID),
+				derefGroupID(currentAPIKey.GroupID),
 				geminiPrefixHash,
 				geminiDigestChain,
 				geminiSessionUUID,
@@ -523,13 +600,13 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 		// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
 		forceCacheBilling := fs.ForceCacheBilling
-		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsageWithLongContext(ctx, &service.RecordUsageLongContextInput{
 				Result:                result,
 				QuotaPlatform:         quotaPlatform,
-				APIKey:                apiKey,
-				User:                  apiKey.User,
+				APIKey:                currentAPIKey,
+				User:                  currentAPIKey.User,
 				Account:               account,
 				Subscription:          subscription,
 				InboundEndpoint:       inboundEndpoint,
@@ -546,9 +623,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				logger.L().With(
 					zap.String("component", "handler.gemini_v1beta.models"),
 					zap.Int64("user_id", authSubject.UserID),
-					zap.Int64("api_key_id", apiKey.ID),
-					zap.Any("group_id", apiKey.GroupID),
-					zap.String("model", modelName),
+					zap.Int64("api_key_id", currentAPIKey.ID),
+					zap.Any("group_id", currentAPIKey.GroupID),
+					zap.String("model", reqModel),
 					zap.Int64("account_id", account.ID),
 				).Error("gemini.record_usage_failed", zap.Error(err))
 			}

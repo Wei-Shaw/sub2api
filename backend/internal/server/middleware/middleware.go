@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
@@ -24,6 +25,9 @@ const (
 	ContextKeySubscription ContextKey = "subscription"
 	// ContextKeyForcePlatform 强制平台（用于 /antigravity 路由）
 	ContextKeyForcePlatform ContextKey = "force_platform"
+	// ContextKeyRoutePlatformIntent 当前入口根据 endpoint/model 推导出的目标平台。
+	// 与 ForcePlatform 不同，它只用于 handler 选择 preferredPlatform，不改变 service 层强制平台语义。
+	ContextKeyRoutePlatformIntent ContextKey = "route_platform_intent"
 	// ContextKeyOpsFallbackAPIKey 运维错误日志专用回退键。
 	// 鉴权早退（分组停用/删除、Key 停用/过期/额度、用户停用、IP 限制等）时，
 	// apiKey 已加载但尚未写入 ContextKeyAPIKey；该键让 Ops 错误日志仍能取到
@@ -58,6 +62,32 @@ func GetForcePlatformFromContext(c *gin.Context) (string, bool) {
 	}
 	platform, ok := value.(string)
 	return platform, ok
+}
+
+// SetRoutePlatformIntent records the platform inferred from the inbound route.
+func SetRoutePlatformIntent(c *gin.Context, platform string) {
+	if c == nil {
+		return
+	}
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		return
+	}
+	c.Set(string(ContextKeyRoutePlatformIntent), platform)
+}
+
+// GetRoutePlatformIntentFromContext returns the platform inferred by routing.
+func GetRoutePlatformIntentFromContext(c *gin.Context) (string, bool) {
+	value, exists := c.Get(string(ContextKeyRoutePlatformIntent))
+	if !exists {
+		return "", false
+	}
+	platform, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+	platform = strings.TrimSpace(platform)
+	return platform, platform != ""
 }
 
 // ErrorResponse 标准错误响应结构

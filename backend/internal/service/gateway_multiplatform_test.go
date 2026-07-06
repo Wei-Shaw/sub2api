@@ -22,6 +22,7 @@ func testConfig() *config.Config {
 // mockAccountRepoForPlatform 单平台测试用的 mock
 type mockAccountRepoForPlatform struct {
 	accounts         []Account
+	accountsByGroup  map[int64][]Account
 	accountsByID     map[int64]*Account
 	listPlatformFunc func(ctx context.Context, platform string) ([]Account, error)
 	getByIDCalls     int
@@ -67,6 +68,9 @@ func (m *mockAccountRepoForPlatform) ListSchedulableByPlatform(ctx context.Conte
 }
 
 func (m *mockAccountRepoForPlatform) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
+	if m.accountsByGroup != nil {
+		return filterSchedulableAccountsByPlatform(m.accountsByGroup[groupID], platform), nil
+	}
 	return m.ListSchedulableByPlatform(ctx, platform)
 }
 
@@ -129,6 +133,9 @@ func (m *mockAccountRepoForPlatform) ListSchedulable(ctx context.Context) ([]Acc
 	return nil, nil
 }
 func (m *mockAccountRepoForPlatform) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error) {
+	if m.accountsByGroup != nil {
+		return filterSchedulableAccounts(m.accountsByGroup[groupID]), nil
+	}
 	return nil, nil
 }
 func (m *mockAccountRepoForPlatform) ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
@@ -145,6 +152,19 @@ func (m *mockAccountRepoForPlatform) ListSchedulableByPlatforms(ctx context.Cont
 	return result, nil
 }
 func (m *mockAccountRepoForPlatform) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error) {
+	if m.accountsByGroup != nil {
+		platformSet := make(map[string]bool)
+		for _, p := range platforms {
+			platformSet[p] = true
+		}
+		var result []Account
+		for _, acc := range m.accountsByGroup[groupID] {
+			if platformSet[acc.Platform] && acc.IsSchedulable() {
+				result = append(result, acc)
+			}
+		}
+		return result, nil
+	}
 	return m.ListSchedulableByPlatforms(ctx, platforms)
 }
 func (m *mockAccountRepoForPlatform) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
@@ -208,6 +228,26 @@ func (m *mockAccountRepoForPlatform) ListShadowsByParent(ctx context.Context, pa
 
 // Verify interface implementation
 var _ AccountRepository = (*mockAccountRepoForPlatform)(nil)
+
+func filterSchedulableAccounts(accounts []Account) []Account {
+	result := make([]Account, 0, len(accounts))
+	for _, acc := range accounts {
+		if acc.IsSchedulable() {
+			result = append(result, acc)
+		}
+	}
+	return result
+}
+
+func filterSchedulableAccountsByPlatform(accounts []Account, platform string) []Account {
+	result := make([]Account, 0, len(accounts))
+	for _, acc := range accounts {
+		if acc.Platform == platform && acc.IsSchedulable() {
+			result = append(result, acc)
+		}
+	}
+	return result
+}
 
 // mockGatewayCacheForPlatform 单平台测试用的 cache mock
 type mockGatewayCacheForPlatform struct {
@@ -310,6 +350,59 @@ func (m *mockGroupRepoForGateway) UpdateSortOrders(ctx context.Context, updates 
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+func TestGatewayService_SelectAccountWithLoadAwarenessForAPIKey_FallsBackToNextGroup(t *testing.T) {
+	ctx := context.Background()
+	firstGroupID := int64(7001)
+	secondGroupID := int64(7002)
+	account := Account{
+		ID:          7102,
+		Platform:    PlatformAnthropic,
+		Priority:    1,
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+	repo := &mockAccountRepoForPlatform{
+		accountsByGroup: map[int64][]Account{
+			firstGroupID:  {},
+			secondGroupID: {account},
+		},
+		accountsByID: map[int64]*Account{
+			account.ID: &account,
+		},
+	}
+	svc := &GatewayService{
+		accountRepo: repo,
+		groupRepo: &mockGroupRepoForGateway{groups: map[int64]*Group{
+			firstGroupID:  {ID: firstGroupID, Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true},
+			secondGroupID: {ID: secondGroupID, Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true},
+		}},
+		cache: &mockGatewayCacheForPlatform{},
+		cfg:   testConfig(),
+	}
+	apiKey := &APIKey{
+		ID:       7201,
+		GroupID:  &firstGroupID,
+		GroupIDs: []int64{firstGroupID, secondGroupID},
+		Groups: []Group{
+			{ID: firstGroupID, Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true},
+			{ID: secondGroupID, Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true},
+		},
+		User: &User{ID: 7301},
+	}
+
+	result, err := svc.SelectAccountWithLoadAwarenessForAPIKey(ctx, apiKey, PlatformAnthropic, "", "claude-sonnet-4-5", nil, "", 0)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Selection)
+	require.Equal(t, account.ID, result.Selection.Account.ID)
+	require.NotNil(t, result.APIKey)
+	require.NotNil(t, result.APIKey.GroupID)
+	require.Equal(t, secondGroupID, *result.APIKey.GroupID)
+	require.Equal(t, secondGroupID, result.APIKey.Group.ID)
+	require.Equal(t, secondGroupID, result.Selection.Group.ID)
 }
 
 // TestGatewayService_SelectAccountForModelWithPlatform_Anthropic 测试 anthropic 单平台选择

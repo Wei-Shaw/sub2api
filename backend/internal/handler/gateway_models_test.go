@@ -131,6 +131,66 @@ func TestGatewayModels_GeminiGroupFiltersMappedModelsByPlatform(t *testing.T) {
 	require.Equal(t, []string{"gemini-2.5-flash"}, modelIDsForTest(got.Data))
 }
 
+func TestGatewayModels_MultiGroupAggregatesModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	anthropicGroupID := int64(28)
+	geminiGroupID := int64(29)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				anthropicGroupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformAnthropic,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"claude-sonnet-4-6": "claude-sonnet-4-6",
+							},
+						},
+					},
+				},
+				geminiGroupID: {
+					{
+						ID:       2,
+						Platform: service.PlatformGemini,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"gemini-2.5-flash": "gemini-2.5-flash",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		GroupID: &anthropicGroupID,
+		Group:   &service.Group{ID: anthropicGroupID, Platform: service.PlatformAnthropic},
+		GroupIDs: []int64{
+			anthropicGroupID,
+			geminiGroupID,
+		},
+		Groups: []service.Group{
+			{ID: anthropicGroupID, Platform: service.PlatformAnthropic},
+			{ID: geminiGroupID, Platform: service.PlatformGemini},
+		},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, "list", got.Object)
+	require.Equal(t, []string{"claude-sonnet-4-6", "gemini-2.5-flash"}, modelIDsForTest(got.Data))
+}
+
 func TestGatewayModels_CustomModelsListDisabledKeepsOriginalModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

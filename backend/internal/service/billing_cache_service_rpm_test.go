@@ -99,6 +99,37 @@ func TestBillingCacheService_CheckRPM_OverrideTakesPrecedenceOverGroup(t *testin
 	require.EqualValues(t, 3, atomic.LoadInt32(&repo.calls))
 }
 
+func TestBillingCacheService_CheckRPM_ResolvedAPIKeyUsesResolvedGroupOverride(t *testing.T) {
+	firstGroupID := int64(10)
+	secondGroupID := int64(20)
+	firstOverride := 1
+	secondOverride := 3
+	apiKey := &APIKey{
+		ID:      101,
+		GroupID: &firstGroupID,
+		Group:   &Group{ID: firstGroupID, RPMLimit: 100},
+		User: &User{
+			ID:       1,
+			RPMLimit: 100,
+			UserGroupRPMOverrides: map[int64]*int{
+				firstGroupID:  &firstOverride,
+				secondGroupID: &secondOverride,
+			},
+		},
+	}
+	resolved := APIKeyWithResolvedGroup(apiKey, &Group{ID: secondGroupID, RPMLimit: 100})
+	require.NotNil(t, resolved.User.UserGroupRPMOverride)
+	require.Equal(t, secondOverride, *resolved.User.UserGroupRPMOverride)
+
+	cache := &userRPMCacheStub{userGroupCounts: []int{1, 2, 3, 4}}
+	svc := newBillingServiceForRPM(t, cache, nil)
+
+	require.NoError(t, svc.checkRPM(context.Background(), resolved.User, resolved.Group))
+	require.NoError(t, svc.checkRPM(context.Background(), resolved.User, resolved.Group))
+	require.NoError(t, svc.checkRPM(context.Background(), resolved.User, resolved.Group))
+	require.ErrorIs(t, svc.checkRPM(context.Background(), resolved.User, resolved.Group), ErrGroupRPMExceeded)
+}
+
 func TestBillingCacheService_CheckRPM_UserLimitIsGlobalHardCap(t *testing.T) {
 	override := 100 // override 很高
 	// user-group 计数: 默认返回 1（远小于 override）；user 计数: 1, 2, 3

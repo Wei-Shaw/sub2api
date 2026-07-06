@@ -309,18 +309,31 @@ func abortIfAPIKeyGroupNotAllowed(c *gin.Context, apiKey *service.APIKey) bool {
 }
 
 func validateAPIKeyGroupAllowed(apiKey *service.APIKey) bool {
-	if apiKey == nil || apiKey.GroupID == nil || apiKey.User == nil || apiKey.Group == nil {
+	if apiKey == nil || apiKey.User == nil {
 		return true
 	}
-	group := apiKey.Group
-	if group.IsSubscriptionType() {
-		return true
+	groups := service.APIKeyCandidateGroups(apiKey, "")
+	if len(groups) == 0 {
+		if apiKey.GroupID == nil || apiKey.Group == nil {
+			return true
+		}
+		groups = []service.Group{*apiKey.Group}
 	}
-	return apiKey.User.CanBindGroup(group.ID, group.IsExclusive)
+	for i := range groups {
+		group := &groups[i]
+		if group.IsSubscriptionType() || apiKey.User.CanBindGroup(group.ID, group.IsExclusive) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateAPIKeyGroupAvailable(apiKey *service.APIKey) (string, string, bool) {
 	if apiKey == nil || apiKey.GroupID == nil {
+		return "", "", true
+	}
+	groups := service.APIKeyCandidateGroups(apiKey, "")
+	if len(groups) > 0 {
 		return "", "", true
 	}
 	group := apiKey.Group

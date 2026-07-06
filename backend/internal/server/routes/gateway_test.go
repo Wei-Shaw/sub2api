@@ -33,7 +33,7 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 			groupID := int64(1)
 			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
 				GroupID: &groupID,
-				Group:   &service.Group{Platform: groupPlatform},
+				Group:   &service.Group{ID: groupID, Platform: groupPlatform, Status: service.StatusActive, Hydrated: true},
 			})
 			c.Next()
 		}),
@@ -45,6 +45,83 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 	)
 
 	return router
+}
+
+func newGatewayRoutesPlatformContext(path string, body string, primary service.Group, groups ...service.Group) *gin.Context {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	if len(groups) == 0 {
+		groups = []service.Group{primary}
+	}
+	groupIDs := make([]int64, 0, len(groups))
+	for i := range groups {
+		groupIDs = append(groupIDs, groups[i].ID)
+	}
+	primaryID := primary.ID
+	c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+		GroupID:  &primaryID,
+		GroupIDs: groupIDs,
+		Group:    &primary,
+		Groups:   groups,
+	})
+	return c
+}
+
+func TestGatewayRoutesPlatformIntentUsesModelAndEndpointForMultiGroupKeys(t *testing.T) {
+	anthropicGroup := service.Group{ID: 10, Platform: service.PlatformAnthropic, Status: service.StatusActive, Hydrated: true}
+	openAIGroup := service.Group{ID: 20, Platform: service.PlatformOpenAI, Status: service.StatusActive, Hydrated: true}
+
+	t.Run("messages claude model ignores openai primary group", func(t *testing.T) {
+		c := newGatewayRoutesPlatformContext(
+			"/v1/messages",
+			`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`,
+			openAIGroup,
+			openAIGroup,
+			anthropicGroup,
+		)
+
+		require.Equal(t, service.PlatformAnthropic, routePlatformForMessagesEndpoint(c))
+	})
+
+	t.Run("chat completions gpt model ignores anthropic primary group", func(t *testing.T) {
+		c := newGatewayRoutesPlatformContext(
+			"/v1/chat/completions",
+			`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}]}`,
+			anthropicGroup,
+			anthropicGroup,
+			openAIGroup,
+		)
+
+		require.Equal(t, service.PlatformOpenAI, routePlatformForOpenAICompatibleEndpoint(c))
+	})
+
+	t.Run("responses claude model can still use anthropic compatible path", func(t *testing.T) {
+		c := newGatewayRoutesPlatformContext(
+			"/v1/responses",
+			`{"model":"claude-sonnet-4-5","input":"hi"}`,
+			openAIGroup,
+			openAIGroup,
+			anthropicGroup,
+		)
+
+		require.Equal(t, service.PlatformAnthropic, routePlatformForOpenAICompatibleEndpoint(c))
+	})
+
+	t.Run("count tokens claude model does not get stolen by openai group", func(t *testing.T) {
+		c := newGatewayRoutesPlatformContext(
+			"/v1/messages/count_tokens",
+			`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`,
+			openAIGroup,
+			openAIGroup,
+			anthropicGroup,
+		)
+
+		require.Equal(t, service.PlatformAnthropic, routePlatformForCountTokensEndpoint(c))
+	})
 }
 
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {

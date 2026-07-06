@@ -123,6 +123,17 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// user_allowed_groups: created_at should be timestamptz
 	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
+
+	// api_key_groups: multi-group API key bindings.
+	var akgRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.api_key_groups')").Scan(&akgRegclass))
+	require.True(t, akgRegclass.Valid, "expected api_key_groups table to exist")
+	requireColumn(t, tx, "api_key_groups", "api_key_id", "bigint", 0, false)
+	requireColumn(t, tx, "api_key_groups", "group_id", "bigint", 0, false)
+	requireColumn(t, tx, "api_key_groups", "priority", "integer", 0, false)
+	requireColumn(t, tx, "api_key_groups", "created_at", "timestamp with time zone", 0, false)
+	requireIndex(t, tx, "api_key_groups", "api_key_groups_pkey")
+	requireIndex(t, tx, "api_key_groups", "idx_api_key_groups_group_priority_key")
 }
 
 func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {

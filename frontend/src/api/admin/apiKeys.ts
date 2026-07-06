@@ -11,6 +11,8 @@ export interface UpdateApiKeyGroupResult {
   auto_granted_group_access: boolean
   granted_group_id?: number
   granted_group_name?: string
+  granted_group_ids?: number[]
+  granted_group_names?: string[]
 }
 
 /**
@@ -26,8 +28,16 @@ export async function updateApiKeyGroup(id: number, groupId: number | null): Pro
   return data
 }
 
+export async function updateApiKeyGroups(id: number, groupIds: number[]): Promise<UpdateApiKeyGroupResult> {
+  const { data } = await apiClient.put<UpdateApiKeyGroupResult>(`/admin/api-keys/${id}`, {
+    group_ids: groupIds
+  })
+  return data
+}
+
 export const apiKeysAPI = {
-  updateApiKeyGroup
+  updateApiKeyGroup,
+  updateApiKeyGroups
 }
 
 export default apiKeysAPI

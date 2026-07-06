@@ -269,6 +269,60 @@ func (s *APIKeyRepoSuite) TestListByGroupID() {
 	s.Require().NotNil(keys[0].User)
 }
 
+func (s *APIKeyRepoSuite) TestMultiGroupBindings_CreateLoadFilterAndClear() {
+	user := s.mustCreateUser("multigroup@test.com")
+	groupA := s.mustCreateGroup("g-multi-a")
+	groupB := s.mustCreateGroup("g-multi-b")
+	groupC := s.mustCreateGroup("g-multi-c")
+
+	key := &service.APIKey{
+		UserID:   user.ID,
+		Key:      "sk-multi-bind",
+		Name:     "Multi",
+		GroupID:  &groupA.ID,
+		GroupIDs: []int64{groupA.ID, groupB.ID, groupB.ID},
+		Status:   service.StatusActive,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, key))
+
+	got, err := s.repo.GetByID(s.ctx, key.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(&groupA.ID, got.GroupID)
+	s.Require().Equal([]int64{groupA.ID, groupB.ID}, got.GroupIDs)
+	s.Require().Len(got.Groups, 2)
+
+	keysByB, pageByB, err := s.repo.ListByGroupID(s.ctx, groupB.ID, pagination.PaginationParams{Page: 1, PageSize: 10})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), pageByB.Total)
+	s.Require().Len(keysByB, 1)
+	s.Require().Equal(key.ID, keysByB[0].ID)
+
+	countC, err := s.repo.CountByGroupID(s.ctx, groupC.ID)
+	s.Require().NoError(err)
+	s.Require().Zero(countC)
+
+	affected, err := s.repo.ClearGroupIDByGroupID(s.ctx, groupB.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), affected)
+
+	got, err = s.repo.GetByID(s.ctx, key.ID)
+	s.Require().NoError(err)
+	s.Require().Equal([]int64{groupA.ID}, got.GroupIDs)
+	s.Require().Equal(&groupA.ID, got.GroupID)
+}
+
+func (s *APIKeyRepoSuite) TestLegacyGroupIDBackfillsMultiGroupBinding() {
+	user := s.mustCreateUser("legacygroup@test.com")
+	group := s.mustCreateGroup("g-legacy")
+
+	key := s.mustCreateApiKey(user.ID, "sk-legacy-group", "Legacy", &group.ID)
+	got, err := s.repo.GetByKeyForAuth(s.ctx, key.Key)
+	s.Require().NoError(err)
+	s.Require().Equal([]int64{group.ID}, got.GroupIDs)
+	s.Require().Len(got.Groups, 1)
+	s.Require().Equal(group.ID, got.Groups[0].ID)
+}
+
 func (s *APIKeyRepoSuite) TestCountByGroupID() {
 	user := s.mustCreateUser("countgroup@test.com")
 	group := s.mustCreateGroup("g-count")
@@ -344,6 +398,8 @@ func (s *APIKeyRepoSuite) TestClearGroupIDByGroupID() {
 	got2, _ := s.repo.GetByID(s.ctx, k2.ID)
 	s.Require().Nil(got1.GroupID)
 	s.Require().Nil(got2.GroupID)
+	s.Require().Empty(got1.GroupIDs)
+	s.Require().Empty(got2.GroupIDs)
 
 	count, _ := s.repo.CountByGroupID(s.ctx, group.ID)
 	s.Require().Zero(count)

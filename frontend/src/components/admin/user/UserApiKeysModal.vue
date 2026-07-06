@@ -26,17 +26,26 @@
                 class="-mx-1 -my-0.5 flex cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
                 :disabled="updatingKeyIds.has(key.id)"
               >
-                <GroupBadge
-                  v-if="key.group_id && key.group"
-                  :name="key.group.name"
-                  :platform="key.group.platform"
-                  :subscription-type="key.group.subscription_type"
-                  :rate-multiplier="key.group.rate_multiplier"
-                  :peak-rate-enabled="key.group.peak_rate_enabled"
-                  :peak-start="key.group.peak_start"
-                  :peak-end="key.group.peak_end"
-                  :peak-rate-multiplier="key.group.peak_rate_multiplier"
-                />
+                <div v-if="getKeyGroups(key).length > 0" class="flex flex-wrap items-center gap-1">
+                  <GroupBadge
+                    v-for="group in visibleKeyGroups(key)"
+                    :key="group.id"
+                    :name="group.name"
+                    :platform="group.platform"
+                    :subscription-type="group.subscription_type"
+                    :rate-multiplier="group.rate_multiplier"
+                    :peak-rate-enabled="group.peak_rate_enabled"
+                    :peak-start="group.peak_start"
+                    :peak-end="group.peak_end"
+                    :peak-rate-multiplier="group.peak_rate_multiplier"
+                  />
+                  <span
+                    v-if="extraKeyGroupCount(key) > 0"
+                    class="rounded-full bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500 dark:bg-dark-700 dark:text-gray-400"
+                  >
+                    +{{ extraKeyGroupCount(key) }}
+                  </span>
+                </div>
                 <span v-else class="text-gray-400 italic">{{ t('admin.users.none') }}</span>
                 <svg v-if="updatingKeyIds.has(key.id)" class="h-3 w-3 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                 <svg v-else class="h-3 w-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" /></svg>
@@ -60,17 +69,18 @@
       <div class="max-h-64 overflow-y-auto p-1.5">
         <!-- Unbind option -->
         <button
-          @click="changeGroup(selectedKeyForGroup!, null)"
+          @click="changeGroups(selectedKeyForGroup!, [])"
+          :disabled="selectedKeyForGroup ? updatingKeyIds.has(selectedKeyForGroup.id) : false"
           :class="[
             'flex w-full items-center rounded-lg px-3 py-2 text-sm transition-colors',
-            !selectedKeyForGroup?.group_id
+            selectedKeyForGroup && getKeyGroupIds(selectedKeyForGroup).length === 0
               ? 'bg-primary-50 dark:bg-primary-900/20'
               : 'hover:bg-gray-100 dark:hover:bg-dark-700'
           ]"
         >
           <span class="text-gray-500 italic">{{ t('admin.users.none') }}</span>
           <svg
-            v-if="!selectedKeyForGroup?.group_id"
+            v-if="selectedKeyForGroup && getKeyGroupIds(selectedKeyForGroup).length === 0"
             class="ml-auto h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400"
             fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"
           ><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
@@ -79,10 +89,11 @@
         <button
           v-for="group in allGroups"
           :key="group.id"
-          @click="changeGroup(selectedKeyForGroup!, group.id)"
+          @click="toggleGroupForKey(selectedKeyForGroup!, group.id)"
+          :disabled="selectedKeyForGroup ? updatingKeyIds.has(selectedKeyForGroup.id) : false"
           :class="[
             'flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors',
-            selectedKeyForGroup?.group_id === group.id
+            selectedKeyForGroup && isGroupSelectedForKey(selectedKeyForGroup, group.id)
               ? 'bg-primary-50 dark:bg-primary-900/20'
               : 'hover:bg-gray-100 dark:hover:bg-dark-700'
           ]"
@@ -97,7 +108,7 @@
             :peak-end="group.peak_end"
             :peak-rate-multiplier="group.peak_rate_multiplier"
             :description="group.description"
-            :selected="selectedKeyForGroup?.group_id === group.id"
+            :selected="selectedKeyForGroup ? isGroupSelectedForKey(selectedKeyForGroup, group.id) : false"
           />
         </button>
       </div>
@@ -111,7 +122,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
-import type { AdminUser, AdminGroup, ApiKey } from '@/types'
+import type { AdminUser, AdminGroup, ApiKey, Group } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
@@ -135,6 +146,39 @@ const selectedKeyForGroup = computed(() => {
   if (groupSelectorKeyId.value === null) return null
   return apiKeys.value.find((k) => k.id === groupSelectorKeyId.value) || null
 })
+
+const normalizeGroupIds = (ids: Array<number | null | undefined>) =>
+  Array.from(
+    new Set(
+      ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id) && id > 0)
+    )
+  )
+
+const getKeyGroupIds = (key: ApiKey | null | undefined) => {
+  if (!key) return []
+  return normalizeGroupIds([
+    ...(key.group_ids || []),
+    ...(key.groups || []).map((group) => group.id),
+    key.group_id
+  ])
+}
+
+const getKeyGroups = (key: ApiKey | null | undefined) => {
+  if (!key) return []
+
+  const byID = new Map<number, Group>()
+  for (const group of allGroups.value) byID.set(group.id, group)
+  for (const group of key.groups || []) byID.set(group.id, group)
+  if (key.group) byID.set(key.group.id, key.group)
+
+  return getKeyGroupIds(key)
+    .map((id) => byID.get(id))
+    .filter((group): group is Group => Boolean(group))
+}
+
+const visibleKeyGroups = (key: ApiKey) => getKeyGroups(key).slice(0, 3)
+const extraKeyGroupCount = (key: ApiKey) => Math.max(getKeyGroups(key).length - 3, 0)
+const isGroupSelectedForKey = (key: ApiKey, groupId: number) => getKeyGroupIds(key).includes(groupId)
 
 const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance | null) => {
   if (el instanceof HTMLElement) {
@@ -202,20 +246,30 @@ const closeGroupSelector = () => {
   dropdownPosition.value = null
 }
 
-const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
-  closeGroupSelector()
-  if (key.group_id === newGroupId || (!key.group_id && newGroupId === null)) return
+const changeGroups = async (key: ApiKey, groupIds: number[]) => {
+  const nextGroupIds = normalizeGroupIds(groupIds)
+  const currentGroupIds = getKeyGroupIds(key)
+  if (
+    currentGroupIds.length === nextGroupIds.length &&
+    currentGroupIds.every((id, index) => id === nextGroupIds[index])
+  ) {
+    return
+  }
 
   updatingKeyIds.value.add(key.id)
   try {
-    const result = await adminAPI.apiKeys.updateApiKeyGroup(key.id, newGroupId)
-    // Update local data
+    const result = await adminAPI.apiKeys.updateApiKeyGroups(key.id, nextGroupIds)
     const idx = apiKeys.value.findIndex((k) => k.id === key.id)
     if (idx !== -1) {
       apiKeys.value[idx] = result.api_key
     }
-    if (result.auto_granted_group_access && result.granted_group_name) {
-      appStore.showSuccess(t('admin.users.groupChangedWithGrant', { group: result.granted_group_name }))
+    const grantedGroupNames = result.granted_group_names?.length
+      ? result.granted_group_names
+      : result.granted_group_name
+        ? [result.granted_group_name]
+        : []
+    if (result.auto_granted_group_access && grantedGroupNames.length > 0) {
+      appStore.showSuccess(t('admin.users.groupChangedWithGrant', { group: grantedGroupNames.join(', ') }))
     } else {
       appStore.showSuccess(t('admin.users.groupChangedSuccess'))
     }
@@ -224,6 +278,14 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
   } finally {
     updatingKeyIds.value.delete(key.id)
   }
+}
+
+const toggleGroupForKey = async (key: ApiKey, groupId: number) => {
+  const currentGroupIds = getKeyGroupIds(key)
+  const nextGroupIds = currentGroupIds.includes(groupId)
+    ? currentGroupIds.filter((id) => id !== groupId)
+    : [...currentGroupIds, groupId]
+  await changeGroups(key, nextGroupIds)
 }
 
 const handleKeyDown = (event: KeyboardEvent) => {

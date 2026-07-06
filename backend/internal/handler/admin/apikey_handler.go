@@ -24,8 +24,9 @@ func NewAdminAPIKeyHandler(adminService service.AdminService) *AdminAPIKeyHandle
 
 // AdminUpdateAPIKeyGroupRequest represents the request to update an API key.
 type AdminUpdateAPIKeyGroupRequest struct {
-	GroupID             *int64 `json:"group_id"`               // nil=不修改, 0=解绑, >0=绑定到目标分组
-	ResetRateLimitUsage *bool  `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
+	GroupID             *int64  `json:"group_id"`               // nil=不修改, 0=解绑, >0=绑定到目标分组
+	GroupIDs            []int64 `json:"group_ids"`              // nil=不修改, []=解绑, 非空=替换；存在时优先于 group_id
+	ResetRateLimitUsage *bool   `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
 }
 
 // UpdateGroup handles updating an API key's admin-managed fields.
@@ -52,12 +53,17 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 		}
 	}
 
-	result, err := h.adminService.AdminUpdateAPIKeyGroupID(c.Request.Context(), keyID, req.GroupID)
+	var result *service.AdminUpdateAPIKeyGroupIDResult
+	if req.GroupIDs != nil {
+		result, err = h.adminService.AdminUpdateAPIKeyGroupIDs(c.Request.Context(), keyID, &req.GroupIDs)
+	} else {
+		result, err = h.adminService.AdminUpdateAPIKeyGroupID(c.Request.Context(), keyID, req.GroupID)
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if resetKey != nil && req.GroupID == nil {
+	if resetKey != nil && req.GroupID == nil && req.GroupIDs == nil {
 		result.APIKey = resetKey
 	}
 
@@ -66,11 +72,15 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 		AutoGrantedGroupAccess bool        `json:"auto_granted_group_access"`
 		GrantedGroupID         *int64      `json:"granted_group_id,omitempty"`
 		GrantedGroupName       string      `json:"granted_group_name,omitempty"`
+		GrantedGroupIDs        []int64     `json:"granted_group_ids,omitempty"`
+		GrantedGroupNames      []string    `json:"granted_group_names,omitempty"`
 	}{
 		APIKey:                 dto.APIKeyFromService(result.APIKey),
 		AutoGrantedGroupAccess: result.AutoGrantedGroupAccess,
 		GrantedGroupID:         result.GrantedGroupID,
 		GrantedGroupName:       result.GrantedGroupName,
+		GrantedGroupIDs:        result.GrantedGroupIDs,
+		GrantedGroupNames:      result.GrantedGroupNames,
 	}
 	response.Success(c, resp)
 }

@@ -576,15 +576,31 @@ func (s *stubAdminService) UpdateGroupSortOrders(ctx context.Context, updates []
 }
 
 func (s *stubAdminService) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*service.AdminUpdateAPIKeyGroupIDResult, error) {
+	if groupID == nil {
+		return s.AdminUpdateAPIKeyGroupIDs(ctx, keyID, nil)
+	}
+	groupIDs := []int64{}
+	if *groupID > 0 {
+		groupIDs = []int64{*groupID}
+	}
+	return s.AdminUpdateAPIKeyGroupIDs(ctx, keyID, &groupIDs)
+}
+
+func (s *stubAdminService) AdminUpdateAPIKeyGroupIDs(ctx context.Context, keyID int64, groupIDs *[]int64) (*service.AdminUpdateAPIKeyGroupIDResult, error) {
 	for i := range s.apiKeys {
 		if s.apiKeys[i].ID == keyID {
 			k := s.apiKeys[i]
-			if groupID != nil {
-				if *groupID == 0 {
+			if groupIDs != nil {
+				k.GroupIDs = append([]int64(nil), (*groupIDs)...)
+				k.Groups = nil
+				if len(*groupIDs) == 0 {
 					k.GroupID = nil
 				} else {
-					gid := *groupID
+					gid := (*groupIDs)[0]
 					k.GroupID = &gid
+					for _, groupID := range *groupIDs {
+						k.Groups = append(k.Groups, service.Group{ID: groupID, Status: service.StatusActive})
+					}
 				}
 			}
 			return &service.AdminUpdateAPIKeyGroupIDResult{APIKey: &k}, nil

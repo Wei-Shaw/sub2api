@@ -23,12 +23,16 @@ type userRepoStubForGroupUpdate struct {
 	addGroupCalled bool
 	addedUserID    int64
 	addedGroupID   int64
+	addedUserIDs   []int64
+	addedGroupIDs  []int64
 }
 
 func (s *userRepoStubForGroupUpdate) AddGroupToAllowedGroups(_ context.Context, userID int64, groupID int64) error {
 	s.addGroupCalled = true
 	s.addedUserID = userID
 	s.addedGroupID = groupID
+	s.addedUserIDs = append(s.addedUserIDs, userID)
+	s.addedGroupIDs = append(s.addedGroupIDs, groupID)
 	return s.addGroupErr
 }
 
@@ -201,6 +205,7 @@ func (s *apiKeyRepoStubForGroupUpdate) UpdateGroupIDByUserAndGroup(context.Conte
 // groupRepoStubForGroupUpdate implements GroupRepository for AdminUpdateAPIKeyGroupID tests.
 type groupRepoStubForGroupUpdate struct {
 	group          *Group
+	groups         map[int64]*Group
 	getErr         error
 	lastGetByIDArg int64
 }
@@ -209,6 +214,13 @@ func (s *groupRepoStubForGroupUpdate) GetByID(_ context.Context, id int64) (*Gro
 	s.lastGetByIDArg = id
 	if s.getErr != nil {
 		return nil, s.getErr
+	}
+	if s.groups != nil {
+		if group, ok := s.groups[id]; ok && group != nil {
+			clone := *group
+			return &clone, nil
+		}
+		return nil, ErrGroupNotFound
 	}
 	clone := *s.group
 	return &clone, nil
@@ -449,6 +461,33 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_ExclusiveGroup_AddsAllowedGroup(t
 	require.NotNil(t, got.GrantedGroupID)
 	require.Equal(t, int64(10), *got.GrantedGroupID)
 	require.Equal(t, "Exclusive", got.GrantedGroupName)
+}
+
+func TestAdminService_AdminUpdateAPIKeyGroupIDs_BindsMultipleGroups(t *testing.T) {
+	existing := &APIKey{ID: 1, UserID: 42, Key: "sk-test", GroupID: nil}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	groupRepo := &groupRepoStubForGroupUpdate{groups: map[int64]*Group{
+		10: {ID: 10, Name: "Primary", Status: StatusActive, IsExclusive: true, SubscriptionType: SubscriptionTypeStandard},
+		20: {ID: 20, Name: "Secondary", Status: StatusActive, IsExclusive: true, SubscriptionType: SubscriptionTypeStandard},
+	}}
+	userRepo := &userRepoStubForGroupUpdate{}
+	cache := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, userRepo: userRepo, authCacheInvalidator: cache}
+
+	groupIDs := []int64{10, 20, 10}
+	got, err := svc.AdminUpdateAPIKeyGroupIDs(context.Background(), 1, &groupIDs)
+
+	require.NoError(t, err)
+	require.NotNil(t, got.APIKey.GroupID)
+	require.Equal(t, int64(10), *got.APIKey.GroupID)
+	require.Equal(t, []int64{10, 20}, got.APIKey.GroupIDs)
+	require.Len(t, got.APIKey.Groups, 2)
+	require.Equal(t, []int64{10, 20}, apiKeyRepo.updated.GroupIDs)
+	require.Equal(t, []int64{10, 20}, userRepo.addedGroupIDs)
+	require.True(t, got.AutoGrantedGroupAccess)
+	require.Equal(t, []int64{10, 20}, got.GrantedGroupIDs)
+	require.Equal(t, []string{"Primary", "Secondary"}, got.GrantedGroupNames)
+	require.Equal(t, []string{"sk-test"}, cache.keys)
 }
 
 func TestAdminService_AdminUpdateAPIKeyGroupID_NonExclusiveGroup_NoAllowedGroupUpdate(t *testing.T) {

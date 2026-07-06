@@ -93,6 +93,45 @@ var (
 			},
 		},
 	}
+	// APIKeyGroupsColumns holds the columns for the "api_key_groups" table.
+	APIKeyGroupsColumns = []*schema.Column{
+		{Name: "priority", Type: field.TypeInt, Default: 50},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64},
+	}
+	// APIKeyGroupsTable holds the schema information for the "api_key_groups" table.
+	APIKeyGroupsTable = &schema.Table{
+		Name:       "api_key_groups",
+		Columns:    APIKeyGroupsColumns,
+		PrimaryKey: []*schema.Column{APIKeyGroupsColumns[2], APIKeyGroupsColumns[3]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "api_key_groups_api_keys_api_key",
+				Columns:    []*schema.Column{APIKeyGroupsColumns[2]},
+				RefColumns: []*schema.Column{APIKeysColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "api_key_groups_groups_group",
+				Columns:    []*schema.Column{APIKeyGroupsColumns[3]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "apikeygroup_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{APIKeyGroupsColumns[3]},
+			},
+			{
+				Name:    "apikeygroup_priority",
+				Unique:  false,
+				Columns: []*schema.Column{APIKeyGroupsColumns[0]},
+			},
+		},
+	}
 	// AccountsColumns holds the columns for the "accounts" table.
 	AccountsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1793,6 +1832,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		APIKeysTable,
+		APIKeyGroupsTable,
 		AccountsTable,
 		AccountGroupsTable,
 		AnnouncementsTable,
@@ -1835,6 +1875,11 @@ func init() {
 	APIKeysTable.ForeignKeys[1].RefTable = UsersTable
 	APIKeysTable.Annotation = &entsql.Annotation{
 		Table: "api_keys",
+	}
+	APIKeyGroupsTable.ForeignKeys[0].RefTable = APIKeysTable
+	APIKeyGroupsTable.ForeignKeys[1].RefTable = GroupsTable
+	APIKeyGroupsTable.Annotation = &entsql.Annotation{
+		Table: "api_key_groups",
 	}
 	AccountsTable.ForeignKeys[0].RefTable = ProxiesTable
 	AccountsTable.ForeignKeys[1].RefTable = AccountsTable

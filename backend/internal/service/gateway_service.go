@@ -536,6 +536,8 @@ type AccountWaitPlan struct {
 
 type AccountSelectionResult struct {
 	Account     *Account
+	GroupID     *int64
+	Group       *Group
 	Acquired    bool
 	ReleaseFunc func()
 	WaitPlan    *AccountWaitPlan // nil means no wait allowed
@@ -2942,8 +2944,16 @@ func (s *GatewayService) newSelectionResult(ctx context.Context, account *Accoun
 	if err != nil {
 		return nil, err
 	}
+	group := resolvedGroupFromContext(ctx)
+	var groupID *int64
+	if group != nil {
+		gid := group.ID
+		groupID = &gid
+	}
 	return &AccountSelectionResult{
 		Account:     hydrated,
+		GroupID:     groupID,
+		Group:       group,
 		Acquired:    acquired,
 		ReleaseFunc: release,
 		WaitPlan:    waitPlan,

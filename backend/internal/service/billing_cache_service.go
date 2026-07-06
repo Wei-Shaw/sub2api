@@ -741,6 +741,17 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		return ErrBillingServiceUnavailable
 	}
 
+	if user == nil && apiKey != nil {
+		user = apiKey.User
+	}
+	if group != nil && group.IsSubscriptionType() && subscription == nil && s.subRepo != nil && user != nil {
+		if sub, err := s.subRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID); err == nil {
+			subscription = sub
+		} else {
+			return ErrSubscriptionInvalid.WithCause(err)
+		}
+	}
+
 	// 判断计费模式
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
 
@@ -794,9 +805,12 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 	if group != nil {
 		// 解析 override：优先从 auth cache snapshot，nil 时回退 DB。
 		var override *int
-		if user.UserGroupRPMOverride != nil {
+		if user.UserGroupRPMOverrides != nil {
+			override = user.UserGroupRPMOverrides[group.ID]
+		} else if user.UserGroupRPMOverride != nil {
 			override = user.UserGroupRPMOverride
-		} else if s.userGroupRateRepo != nil {
+		}
+		if override == nil && s.userGroupRateRepo != nil {
 			dbOverride, err := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, user.ID, group.ID)
 			if err != nil {
 				logger.LegacyPrintf(

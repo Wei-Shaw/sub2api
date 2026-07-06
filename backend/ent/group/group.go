@@ -96,6 +96,8 @@ const (
 	FieldRpmLimit = "rpm_limit"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
+	// EdgeAPIKeysMulti holds the string denoting the api_keys_multi edge name in mutations.
+	EdgeAPIKeysMulti = "api_keys_multi"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
 	EdgeRedeemCodes = "redeem_codes"
 	// EdgeSubscriptions holds the string denoting the subscriptions edge name in mutations.
@@ -106,6 +108,8 @@ const (
 	EdgeAccounts = "accounts"
 	// EdgeAllowedUsers holds the string denoting the allowed_users edge name in mutations.
 	EdgeAllowedUsers = "allowed_users"
+	// EdgeAPIKeyGroups holds the string denoting the api_key_groups edge name in mutations.
+	EdgeAPIKeyGroups = "api_key_groups"
 	// EdgeAccountGroups holds the string denoting the account_groups edge name in mutations.
 	EdgeAccountGroups = "account_groups"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
@@ -119,6 +123,11 @@ const (
 	APIKeysInverseTable = "api_keys"
 	// APIKeysColumn is the table column denoting the api_keys relation/edge.
 	APIKeysColumn = "group_id"
+	// APIKeysMultiTable is the table that holds the api_keys_multi relation/edge. The primary key declared below.
+	APIKeysMultiTable = "api_key_groups"
+	// APIKeysMultiInverseTable is the table name for the APIKey entity.
+	// It exists in this package in order to avoid circular dependency with the "apikey" package.
+	APIKeysMultiInverseTable = "api_keys"
 	// RedeemCodesTable is the table that holds the redeem_codes relation/edge.
 	RedeemCodesTable = "redeem_codes"
 	// RedeemCodesInverseTable is the table name for the RedeemCode entity.
@@ -150,6 +159,13 @@ const (
 	// AllowedUsersInverseTable is the table name for the User entity.
 	// It exists in this package in order to avoid circular dependency with the "user" package.
 	AllowedUsersInverseTable = "users"
+	// APIKeyGroupsTable is the table that holds the api_key_groups relation/edge.
+	APIKeyGroupsTable = "api_key_groups"
+	// APIKeyGroupsInverseTable is the table name for the APIKeyGroup entity.
+	// It exists in this package in order to avoid circular dependency with the "apikeygroup" package.
+	APIKeyGroupsInverseTable = "api_key_groups"
+	// APIKeyGroupsColumn is the table column denoting the api_key_groups relation/edge.
+	APIKeyGroupsColumn = "group_id"
 	// AccountGroupsTable is the table that holds the account_groups relation/edge.
 	AccountGroupsTable = "account_groups"
 	// AccountGroupsInverseTable is the table name for the AccountGroup entity.
@@ -211,6 +227,9 @@ var Columns = []string{
 }
 
 var (
+	// APIKeysMultiPrimaryKey and APIKeysMultiColumn2 are the table columns denoting the
+	// primary key for the api_keys_multi relation (M2M).
+	APIKeysMultiPrimaryKey = []string{"api_key_id", "group_id"}
 	// AccountsPrimaryKey and AccountsColumn2 are the table columns denoting the
 	// primary key for the accounts relation (M2M).
 	AccountsPrimaryKey = []string{"account_id", "group_id"}
@@ -506,6 +525,20 @@ func ByAPIKeys(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByAPIKeysMultiCount orders the results by api_keys_multi count.
+func ByAPIKeysMultiCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAPIKeysMultiStep(), opts...)
+	}
+}
+
+// ByAPIKeysMulti orders the results by api_keys_multi terms.
+func ByAPIKeysMulti(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAPIKeysMultiStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByRedeemCodesCount orders the results by redeem_codes count.
 func ByRedeemCodesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -576,6 +609,20 @@ func ByAllowedUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByAPIKeyGroupsCount orders the results by api_key_groups count.
+func ByAPIKeyGroupsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAPIKeyGroupsStep(), opts...)
+	}
+}
+
+// ByAPIKeyGroups orders the results by api_key_groups terms.
+func ByAPIKeyGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAPIKeyGroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByAccountGroupsCount orders the results by account_groups count.
 func ByAccountGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -608,6 +655,13 @@ func newAPIKeysStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(APIKeysInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, APIKeysTable, APIKeysColumn),
+	)
+}
+func newAPIKeysMultiStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(APIKeysMultiInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, true, APIKeysMultiTable, APIKeysMultiPrimaryKey...),
 	)
 }
 func newRedeemCodesStep() *sqlgraph.Step {
@@ -643,6 +697,13 @@ func newAllowedUsersStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AllowedUsersInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, true, AllowedUsersTable, AllowedUsersPrimaryKey...),
+	)
+}
+func newAPIKeyGroupsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(APIKeyGroupsInverseTable, APIKeyGroupsColumn),
+		sqlgraph.Edge(sqlgraph.O2M, true, APIKeyGroupsTable, APIKeyGroupsColumn),
 	)
 }
 func newAccountGroupsStep() *sqlgraph.Step {

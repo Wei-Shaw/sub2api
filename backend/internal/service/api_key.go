@@ -33,6 +33,7 @@ type APIKey struct {
 	Key         string
 	Name        string
 	GroupID     *int64
+	GroupIDs    []int64
 	Status      string
 	IPWhitelist []string
 	IPBlacklist []string
@@ -44,6 +45,7 @@ type APIKey struct {
 	UpdatedAt           time.Time
 	User                *User
 	Group               *Group
+	Groups              []Group
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)

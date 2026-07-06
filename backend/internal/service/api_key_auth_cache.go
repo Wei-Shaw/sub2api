@@ -4,16 +4,18 @@ import "time"
 
 // APIKeyAuthSnapshot API Key 认证缓存快照（仅包含认证所需字段）
 type APIKeyAuthSnapshot struct {
-	Version     int                      `json:"version"`
-	APIKeyID    int64                    `json:"api_key_id"`
-	UserID      int64                    `json:"user_id"`
-	GroupID     *int64                   `json:"group_id,omitempty"`
-	Name        string                   `json:"name"`
-	Status      string                   `json:"status"`
-	IPWhitelist []string                 `json:"ip_whitelist,omitempty"`
-	IPBlacklist []string                 `json:"ip_blacklist,omitempty"`
-	User        APIKeyAuthUserSnapshot   `json:"user"`
-	Group       *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
+	Version     int                       `json:"version"`
+	APIKeyID    int64                     `json:"api_key_id"`
+	UserID      int64                     `json:"user_id"`
+	GroupID     *int64                    `json:"group_id,omitempty"`
+	GroupIDs    []int64                   `json:"group_ids,omitempty"`
+	Name        string                    `json:"name"`
+	Status      string                    `json:"status"`
+	IPWhitelist []string                  `json:"ip_whitelist,omitempty"`
+	IPBlacklist []string                  `json:"ip_blacklist,omitempty"`
+	User        APIKeyAuthUserSnapshot    `json:"user"`
+	Group       *APIKeyAuthGroupSnapshot  `json:"group,omitempty"`
+	Groups      []APIKeyAuthGroupSnapshot `json:"groups,omitempty"`
 
 	// Quota fields for API Key independent quota feature
 	Quota     float64 `json:"quota"`      // Quota limit in USD (0 = unlimited)
@@ -52,6 +54,10 @@ type APIKeyAuthUserSnapshot struct {
 	// UserGroupRPMOverride 该 API Key 对应的 (user, group) 专属 RPM 覆盖值。
 	// nil = 无 override（回退到 group/user 级）；0 = 不限流；>0 = 专属上限。
 	UserGroupRPMOverride *int `json:"user_group_rpm_override,omitempty"`
+
+	// UserGroupRPMOverrides 保存该 API Key 可访问分组的 (user, group) 专属 RPM 覆盖。
+	// key 为十进制 group_id；value 语义同 UserGroupRPMOverride。
+	UserGroupRPMOverrides map[string]*int `json:"user_group_rpm_overrides,omitempty"`
 }
 
 // APIKeyAuthGroupSnapshot 分组快照

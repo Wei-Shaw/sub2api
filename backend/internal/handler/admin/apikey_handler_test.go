@@ -93,6 +93,33 @@ func TestAdminAPIKeyHandler_UpdateGroup_BindGroup(t *testing.T) {
 	require.Equal(t, int64(2), *data.APIKey.GroupID)
 }
 
+func TestAdminAPIKeyHandler_UpdateGroup_BindMultipleGroups(t *testing.T) {
+	router := setupAPIKeyHandler(newStubAdminService())
+	body := `{"group_id": 99, "group_ids": [2, 3]}`
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/10", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data struct {
+			APIKey struct {
+				ID       int64   `json:"id"`
+				GroupID  *int64  `json:"group_id"`
+				GroupIDs []int64 `json:"group_ids"`
+			} `json:"api_key"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, int64(10), resp.Data.APIKey.ID)
+	require.NotNil(t, resp.Data.APIKey.GroupID)
+	require.Equal(t, int64(2), *resp.Data.APIKey.GroupID)
+	require.Equal(t, []int64{2, 3}, resp.Data.APIKey.GroupIDs)
+}
+
 func TestAdminAPIKeyHandler_UpdateGroup_Unbind(t *testing.T) {
 	svc := newStubAdminService()
 	gid := int64(2)

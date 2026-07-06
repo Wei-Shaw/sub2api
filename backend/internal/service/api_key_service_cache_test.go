@@ -277,6 +277,52 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
 }
 
+func TestAPIKeyService_SnapshotRoundTrip_PreservesMultiGroups(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
+	groupID := int64(9)
+	override := 5
+	apiKey := &APIKey{
+		ID:       1,
+		UserID:   2,
+		GroupID:  &groupID,
+		GroupIDs: []int64{9, 10},
+		Key:      "k-multi",
+		Name:     "Multi Group",
+		Status:   StatusActive,
+		User: &User{
+			ID:          2,
+			Status:      StatusActive,
+			Role:        RoleUser,
+			Balance:     10,
+			Concurrency: 3,
+			UserGroupRPMOverrides: map[int64]*int{
+				10: &override,
+			},
+		},
+		Group: &Group{
+			ID:               9,
+			Name:             "default",
+			Platform:         PlatformOpenAI,
+			Status:           StatusActive,
+			SubscriptionType: SubscriptionTypeStandard,
+			RateMultiplier:   1,
+		},
+		Groups: []Group{
+			{ID: 9, Name: "default", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 1},
+			{ID: 10, Name: "fallback", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 2},
+		},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	roundTrip := svc.snapshotToAPIKey(apiKey.Key, snapshot)
+
+	require.NotNil(t, roundTrip)
+	require.Equal(t, []int64{9, 10}, roundTrip.GroupIDs)
+	require.Len(t, roundTrip.Groups, 2)
+	require.Equal(t, int64(9), roundTrip.Group.ID)
+	require.Equal(t, int64(10), roundTrip.Groups[1].ID)
+}
+
 func TestAPIKeyService_GetByKey_IgnoresLegacyAuthCacheSnapshotWithoutMessagesDispatchConfig(t *testing.T) {
 	cache := &authCacheStub{}
 	var repoCalls int32
