@@ -83,7 +83,8 @@ func TestParseImportedTokenInfersIDCAuthMetadataFromDeviceRegistration(t *testin
 		"accessToken": "access-token",
 		"refreshToken": "refresh-token",
 		"provider": "Enterprise",
-		"clientIdHash": "client-id-hash"
+		"clientIdHash": "client-id-hash",
+		"tokenEndpoint": "https://login.example.com/oauth2/v2.0/token"
 	}`, `{
 		"clientId": "client-id",
 		"clientSecret": "client-secret"
@@ -100,6 +101,44 @@ func TestParseImportedTokenInfersIDCAuthMetadataFromDeviceRegistration(t *testin
 	}
 	if token.AuthMethod != "idc" {
 		t.Fatalf("AuthMethod = %q, want idc", token.AuthMethod)
+	}
+}
+
+func TestParseImportedTokenPreservesEnterpriseOIDCMetadata(t *testing.T) {
+	token, err := ParseImportedToken(`{
+		"accessToken": "access-token",
+		"refreshToken": "refresh-token",
+		"provider": "Enterprise",
+		"clientId": "client-id",
+		"clientSecret": "client-secret",
+		"tokenEndpoint": "https://login.microsoftonline.com/tenant/oauth2/v2.0/token",
+		"issuerUrl": "https://login.microsoftonline.com/tenant/v2.0",
+		"scopes": "api://app/codewhisperer:conversations offline_access"
+	}`, "")
+	if err != nil {
+		t.Fatalf("ParseImportedToken() error = %v", err)
+	}
+
+	if token.TokenEndpoint != "https://login.microsoftonline.com/tenant/oauth2/v2.0/token" {
+		t.Fatalf("TokenEndpoint = %q", token.TokenEndpoint)
+	}
+	if token.IssuerURL != "https://login.microsoftonline.com/tenant/v2.0" {
+		t.Fatalf("IssuerURL = %q", token.IssuerURL)
+	}
+	if token.Scopes != "api://app/codewhisperer:conversations offline_access" {
+		t.Fatalf("Scopes = %q", token.Scopes)
+	}
+}
+
+func TestParseImportedTokenRequiresTokenEndpointForEnterprise(t *testing.T) {
+	if _, err := ParseImportedToken(`{
+		"accessToken": "access-token",
+		"refreshToken": "refresh-token",
+		"provider": "Enterprise",
+		"clientId": "client-id",
+		"clientSecret": "client-secret"
+	}`, ""); err == nil {
+		t.Fatalf("ParseImportedToken() expected error for Enterprise without tokenEndpoint, got nil")
 	}
 }
 

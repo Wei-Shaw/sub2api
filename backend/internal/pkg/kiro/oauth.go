@@ -41,6 +41,14 @@ const (
 	SocialProviderGitHub SocialProvider = "Github"
 )
 
+type AuthMethod string
+
+const (
+	AuthMethodSocial      AuthMethod = "social"
+	AuthMethodIDC         AuthMethod = "idc"
+	AuthMethodExternalIDP AuthMethod = "external_idp"
+)
+
 // Kiro 账号 provider 白名单。社交登录为 Google/Github;
 // IDC 登录按 startURL 区分为 BuilderId(个人 Builder ID)/ Enterprise(企业自建 IAM Identity Center)。
 const (
@@ -174,18 +182,21 @@ func sessionExpired(session *AuthSession, now time.Time) bool {
 }
 
 type TokenData struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	ProfileArn   string `json:"profileArn,omitempty"`
-	ExpiresAt    string `json:"expiresAt,omitempty"`
-	AuthMethod   string `json:"authMethod,omitempty"`
-	Provider     string `json:"provider,omitempty"`
-	ClientID     string `json:"clientId,omitempty"`
-	ClientSecret string `json:"clientSecret,omitempty"`
-	ClientIDHash string `json:"clientIdHash,omitempty"`
-	Email        string `json:"email,omitempty"`
-	StartURL     string `json:"startUrl,omitempty"`
-	Region       string `json:"region,omitempty"`
+	AccessToken   string     `json:"accessToken"`
+	RefreshToken  string     `json:"refreshToken"`
+	ProfileArn    string     `json:"profileArn,omitempty"`
+	ExpiresAt     string     `json:"expiresAt,omitempty"`
+	AuthMethod    AuthMethod `json:"authMethod,omitempty"`
+	Provider      string     `json:"provider,omitempty"`
+	ClientID      string     `json:"clientId,omitempty"`
+	ClientSecret  string     `json:"clientSecret,omitempty"`
+	ClientIDHash  string     `json:"clientIdHash,omitempty"`
+	TokenEndpoint string     `json:"tokenEndpoint,omitempty"`
+	IssuerURL     string     `json:"issuerUrl,omitempty"`
+	Scopes        string     `json:"scopes,omitempty"`
+	Email         string     `json:"email,omitempty"`
+	StartURL      string     `json:"startUrl,omitempty"`
+	Region        string     `json:"region,omitempty"`
 }
 
 type socialTokenResponse struct {
@@ -205,6 +216,13 @@ type createTokenResponse struct {
 	RefreshToken string `json:"refreshToken"`
 	ProfileArn   string `json:"profileArn"`
 	ExpiresIn    int    `json:"expiresIn"`
+}
+
+type externalIDPTokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	Scope        string `json:"scope"`
+	ExpiresIn    int    `json:"expires_in"`
 }
 
 type userInfoResponse struct {
@@ -304,7 +322,7 @@ func CreateSocialToken(ctx context.Context, proxyURL, code, codeVerifier, redire
 		RefreshToken: resp.RefreshToken,
 		ProfileArn:   resp.ProfileArn,
 		ExpiresAt:    time.Now().Add(time.Duration(expiresIn) * time.Second).Format(time.RFC3339),
-		AuthMethod:   "social",
+		AuthMethod:   AuthMethodSocial,
 		Region:       defaultIDCRegion,
 	}, nil
 }
@@ -327,7 +345,7 @@ func RefreshSocialToken(ctx context.Context, proxyURL, refreshToken, provider st
 		RefreshToken: resp.RefreshToken,
 		ProfileArn:   resp.ProfileArn,
 		ExpiresAt:    time.Now().Add(time.Duration(expiresIn) * time.Second).Format(time.RFC3339),
-		AuthMethod:   "social",
+		AuthMethod:   AuthMethodSocial,
 		Provider:     provider,
 		Region:       defaultIDCRegion,
 	}, nil
@@ -401,7 +419,7 @@ func ExchangeIDCAuthCode(ctx context.Context, proxyURL, clientID, clientSecret, 
 		RefreshToken: resp.RefreshToken,
 		ProfileArn:   resp.ProfileArn,
 		ExpiresAt:    time.Now().Add(time.Duration(expiresIn) * time.Second).Format(time.RFC3339),
-		AuthMethod:   "idc",
+		AuthMethod:   AuthMethodIDC,
 		Provider:     resolveIDCProvider(startURL),
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
@@ -437,7 +455,7 @@ func RefreshIDCToken(ctx context.Context, proxyURL, clientID, clientSecret, refr
 		RefreshToken: resp.RefreshToken,
 		ProfileArn:   resp.ProfileArn,
 		ExpiresAt:    time.Now().Add(time.Duration(expiresIn) * time.Second).Format(time.RFC3339),
-		AuthMethod:   "idc",
+		AuthMethod:   AuthMethodIDC,
 		// 刷新路径优先保留存量 provider(导入的 Enterprise 账号无 startURL,
 		// 不得用 startURL 重新推导,否则会退化为 BuilderId)。仅当存量为空时才按 startURL 兜底。
 		Provider:     strings.TrimSpace(provider),
@@ -451,6 +469,63 @@ func RefreshIDCToken(ctx context.Context, proxyURL, clientID, clientSecret, refr
 	}
 	token.Email = FetchOIDCUserEmail(ctx, proxyURL, token.AccessToken, region)
 	return token, nil
+}
+
+func RefreshExternalIDPToken(ctx context.Context, proxyURL, tokenEndpoint, clientID, refreshToken, scopes string) (*TokenData, error) {
+	tokenEndpoint = strings.TrimSpace(tokenEndpoint)
+	clientID = strings.TrimSpace(clientID)
+	refreshToken = strings.TrimSpace(refreshToken)
+	scopes = strings.TrimSpace(scopes)
+	if tokenEndpoint == "" {
+		return nil, fmt.Errorf("external_idp refresh requires tokenEndpoint")
+	}
+	if clientID == "" {
+		return nil, fmt.Errorf("external_idp refresh requires clientId")
+	}
+	if refreshToken == "" {
+		return nil, fmt.Errorf("external_idp refresh requires refreshToken")
+	}
+	if scopes == "" {
+		return nil, fmt.Errorf("external_idp refresh requires scopes")
+	}
+
+	form := url.Values{}
+	form.Set("scope", scopes)
+	form.Set("refresh_token", refreshToken)
+	form.Set("grant_type", "refresh_token")
+	form.Set("client_id", clientID)
+
+	var resp externalIDPTokenResponse
+	if err := doForm(ctx, proxyURL, http.MethodPost, tokenEndpoint, form, &resp, map[string]string{
+		"Accept":          "application/json",
+		"User-Agent":      "openid-client/v6.8.1",
+		"Accept-Language": "*",
+		"Sec-Fetch-Mode":  "cors",
+	}); err != nil {
+		return nil, err
+	}
+	expiresIn := resp.ExpiresIn
+	if expiresIn <= 0 {
+		expiresIn = 3600
+	}
+	nextRefreshToken := strings.TrimSpace(resp.RefreshToken)
+	if nextRefreshToken == "" {
+		nextRefreshToken = refreshToken
+	}
+	nextScopes := strings.TrimSpace(resp.Scope)
+	if nextScopes == "" {
+		nextScopes = scopes
+	}
+	return &TokenData{
+		AccessToken:   resp.AccessToken,
+		RefreshToken:  nextRefreshToken,
+		ExpiresAt:     time.Now().Add(time.Duration(expiresIn) * time.Second).Format(time.RFC3339),
+		AuthMethod:    AuthMethodExternalIDP,
+		Provider:      ProviderEnterprise,
+		ClientID:      clientID,
+		TokenEndpoint: tokenEndpoint,
+		Scopes:        nextScopes,
+	}, nil
 }
 
 func FetchOIDCUserEmail(ctx context.Context, proxyURL, accessToken, region string) string {
@@ -472,7 +547,7 @@ func ParseImportedToken(tokenJSON string, deviceRegistrationJSON string) (*Token
 	if err := json.Unmarshal([]byte(tokenJSON), &token); err != nil {
 		return nil, fmt.Errorf("failed to parse kiro token: %w", err)
 	}
-	token.AuthMethod = strings.ToLower(strings.TrimSpace(token.AuthMethod))
+	token.AuthMethod = AuthMethod(strings.ToLower(strings.TrimSpace(string(token.AuthMethod))))
 	if strings.TrimSpace(token.AccessToken) == "" {
 		return nil, fmt.Errorf("access token is empty")
 	}
@@ -489,7 +564,7 @@ func ParseImportedToken(tokenJSON string, deviceRegistrationJSON string) (*Token
 		}
 	}
 	if token.AuthMethod == "" && strings.TrimSpace(token.ClientID) != "" && strings.TrimSpace(token.ClientSecret) != "" {
-		token.AuthMethod = "idc"
+		token.AuthMethod = AuthMethodIDC
 	}
 	// provider 严格校验:必须显式提供且属于白名单(Google/Github/BuilderId/Enterprise),
 	// 空值或非法值一律拒绝,不再兜底为 AWS。
@@ -497,7 +572,13 @@ func ParseImportedToken(tokenJSON string, deviceRegistrationJSON string) (*Token
 	if !IsValidKiroProvider(token.Provider) {
 		return nil, fmt.Errorf("unsupported or missing kiro provider: %q (must be one of Google/Github/BuilderId/Enterprise)", token.Provider)
 	}
-	if token.AuthMethod == "idc" {
+	token.TokenEndpoint = strings.TrimSpace(token.TokenEndpoint)
+	token.IssuerURL = strings.TrimSpace(token.IssuerURL)
+	token.Scopes = strings.TrimSpace(token.Scopes)
+	if token.Provider == ProviderEnterprise && token.TokenEndpoint == "" {
+		return nil, fmt.Errorf("tokenEndpoint is required for Enterprise kiro token import")
+	}
+	if token.AuthMethod == AuthMethodIDC {
 		if strings.TrimSpace(token.Region) == "" {
 			token.Region = defaultIDCRegion
 		}
@@ -557,6 +638,44 @@ func doJSON(ctx context.Context, proxyURL, method, rawURL string, payload any, o
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	for key, value := range extraHeaders {
+		req.Header.Set(key, value)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		bodyText := strings.TrimSpace(string(respBody))
+		if resp.StatusCode == http.StatusBadRequest && strings.Contains(strings.ToLower(bodyText), "invalid_grant") {
+			return &RefreshTokenInvalidError{StatusCode: resp.StatusCode, Body: bodyText}
+		}
+		return fmt.Errorf("upstream request failed (status %d): %s", resp.StatusCode, bodyText)
+	}
+	if out == nil || len(respBody) == 0 {
+		return nil
+	}
+	return json.Unmarshal(respBody, out)
+}
+
+func doForm(ctx context.Context, proxyURL, method, rawURL string, form url.Values, out any, extraHeaders map[string]string) error {
+	client, err := newHTTPClient(proxyURL)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8")
 	for key, value := range extraHeaders {
 		req.Header.Set(key, value)
 	}

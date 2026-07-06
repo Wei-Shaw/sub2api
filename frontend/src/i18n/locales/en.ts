@@ -4241,11 +4241,12 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
           tokenJsonLabel: 'Kiro Token JSON',
           tokenJsonHint: 'Sign in through Kiro IDE first, then paste the contents of `~/.aws/sso/cache/kiro-auth-token.json` here.',
           deviceRegistrationLabel: 'Device Registration JSON',
-          deviceRegistrationHint: 'Optional. Only needed when the token file does not include full client details and only has `clientIdHash`.',
+          deviceRegistrationHint: 'Only needed for BuilderId / Enterprise when the Token JSON has no `clientId`; leave `clientSecret` empty if it is not present.',
           importProviderLabel: 'Account source',
           tokenJsonRequired: 'Please provide the Kiro Token JSON.',
-          deviceRegistrationRequired: 'Device Registration JSON is required for BuilderId / Enterprise accounts.',
+          deviceRegistrationRequired: 'Token JSON has no clientId. Please provide the Device Registration JSON.',
           tokenJsonInvalid: 'Kiro Token JSON is invalid and cannot be parsed.',
+          tokenEndpointRequired: 'Enterprise Kiro Token JSON must include tokenEndpoint.',
           providerMismatch: 'Selected source ({selected}) does not match the provider ({actual}) in the Token JSON. Please verify.',
           importAndUpdate: 'Import and Update'
         }

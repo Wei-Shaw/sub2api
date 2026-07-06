@@ -1,6 +1,7 @@
 package admin
 
 import (
+	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -91,15 +92,18 @@ func (h *KiroOAuthHandler) ExchangeCode(c *gin.Context) {
 }
 
 type KiroRefreshTokenRequest struct {
-	RefreshToken string `json:"refresh_token" binding:"required"`
-	AuthMethod   string `json:"auth_method"`
-	Provider     string `json:"provider"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	StartURL     string `json:"start_url"`
-	Region       string `json:"region"`
-	ProfileArn   string `json:"profile_arn"`
-	ProxyID      *int64 `json:"proxy_id"`
+	RefreshToken  string `json:"refresh_token" binding:"required"`
+	AuthMethod    string `json:"auth_method"`
+	Provider      string `json:"provider"`
+	ClientID      string `json:"client_id"`
+	ClientSecret  string `json:"client_secret"`
+	StartURL      string `json:"start_url"`
+	Region        string `json:"region"`
+	ProfileArn    string `json:"profile_arn"`
+	TokenEndpoint string `json:"token_endpoint"`
+	IssuerURL     string `json:"issuer_url"`
+	Scopes        string `json:"scopes"`
+	ProxyID       *int64 `json:"proxy_id"`
 }
 
 func (h *KiroOAuthHandler) RefreshToken(c *gin.Context) {
@@ -109,15 +113,18 @@ func (h *KiroOAuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 	tokenInfo, err := h.kiroOAuthService.RefreshToken(c.Request.Context(), &service.KiroRefreshTokenInput{
-		RefreshToken: req.RefreshToken,
-		AuthMethod:   req.AuthMethod,
-		Provider:     req.Provider,
-		ClientID:     req.ClientID,
-		ClientSecret: req.ClientSecret,
-		StartURL:     req.StartURL,
-		Region:       req.Region,
-		ProfileArn:   req.ProfileArn,
-		ProxyID:      req.ProxyID,
+		RefreshToken:  req.RefreshToken,
+		AuthMethod:    kiropkg.AuthMethod(req.AuthMethod),
+		Provider:      req.Provider,
+		ClientID:      req.ClientID,
+		ClientSecret:  req.ClientSecret,
+		StartURL:      req.StartURL,
+		Region:        req.Region,
+		ProfileArn:    req.ProfileArn,
+		TokenEndpoint: req.TokenEndpoint,
+		IssuerURL:     req.IssuerURL,
+		Scopes:        req.Scopes,
+		ProxyID:       req.ProxyID,
 	})
 	if err != nil {
 		response.BadRequest(c, "刷新 Kiro Token 失败: "+err.Error())

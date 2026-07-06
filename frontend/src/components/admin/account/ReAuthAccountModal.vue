@@ -276,7 +276,7 @@
         <div v-if="isKiroImportMode" class="mt-3 space-y-3">
           <div>
             <label class="input-label">{{ t('admin.accounts.oauth.kiro.importProviderLabel') }}</label>
-            <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
               <label
                 v-for="opt in kiroImportProviderOptions"
                 :key="opt"
@@ -448,16 +448,57 @@ const kiroIDCStartUrl = ref('https://view.awsapps.com/start')
 const kiroIDCRegion = ref('us-east-1')
 const kiroTokenJson = ref('')
 const kiroDeviceRegistrationJson = ref('')
+type KiroImportProvider = 'Google' | 'Github' | 'BuilderId' | 'Enterprise' | 'ExternalIdp'
+
 // 「从 Kiro IDE 导入」账号来源:决定字段显隐/必填/示例,并与 token JSON 内 provider 做一致性校验。
-const kiroImportProvider = ref<'Google' | 'Github' | 'BuilderId' | 'Enterprise'>('Google')
-const kiroImportProviderOptions = ['Google', 'Github', 'BuilderId', 'Enterprise'] as const
-// BuilderId/Enterprise(IDC)需 Device Registration JSON;Google/Github(社交)不需要。
+const kiroImportProvider = ref<KiroImportProvider>('Google')
+const kiroImportProviderOptions = ['Google', 'Github', 'BuilderId', 'Enterprise', 'ExternalIdp'] as const
+const kiroImportProviderBackendValue = (provider: KiroImportProvider): 'Google' | 'Github' | 'BuilderId' | 'Enterprise' =>
+  provider === 'ExternalIdp' ? 'Enterprise' : provider
+const normalizeKiroImportProviderForSelection = (provider: string, selected: KiroImportProvider): string => {
+  const value = provider.trim().toLowerCase()
+  if (value === 'externalidp' || value === 'external_idp' || value === 'external-idp') {
+    return selected === 'Enterprise' ? 'Enterprise' : 'ExternalIdp'
+  }
+  if (value === 'enterprise') return 'Enterprise'
+  if (value === 'builderid') return 'BuilderId'
+  if (value === 'github') return 'Github'
+  if (value === 'google') return 'Google'
+  return provider.trim()
+}
+const kiroImportProviderIsEnterpriseLike = (provider: KiroImportProvider) =>
+  provider === 'Enterprise' || provider === 'ExternalIdp'
+const buildKiroImportTokenJsonForBackend = (
+  parsedToken: Record<string, unknown>,
+  provider: KiroImportProvider
+): string => JSON.stringify({
+  ...parsedToken,
+  provider: kiroImportProviderBackendValue(provider)
+})
+// BuilderId/Enterprise/ExternalIdp 只有在 Token JSON 未内置 clientId 时才需要 Device Registration JSON。
+const kiroParsedTokenJson = computed<Record<string, unknown> | null>(() => {
+  const raw = kiroTokenJson.value.trim()
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null
+  } catch {
+    return null
+  }
+})
+const kiroImportProviderNeedsDeviceRegistration = computed(
+  () => kiroImportProvider.value === 'BuilderId' || kiroImportProviderIsEnterpriseLike(kiroImportProvider.value)
+)
+const kiroImportTokenHasClientId = computed(() => {
+  const clientId = kiroParsedTokenJson.value?.clientId
+  return typeof clientId === 'string' && clientId.trim() !== ''
+})
 const kiroImportNeedsDeviceRegistration = computed(
-  () => kiroImportProvider.value === 'BuilderId' || kiroImportProvider.value === 'Enterprise'
+  () => kiroImportProviderNeedsDeviceRegistration.value && !kiroImportTokenHasClientId.value
 )
 const kiroImportTokenPlaceholder = computed(() =>
-  kiroImportNeedsDeviceRegistration.value
-    ? '{"accessToken":"...","refreshToken":"...","clientIdHash":"...","authMethod":"IdC","provider":"' + kiroImportProvider.value + '"}'
+  kiroImportProviderNeedsDeviceRegistration.value
+    ? '{"accessToken":"...","refreshToken":"...","clientId":"...","clientSecret":"","clientIdHash":"...","tokenEndpoint":"https://.../oauth2/v2.0/token","issuerUrl":"https://.../v2.0","scopes":"...","authMethod":"' + (kiroImportProvider.value === 'ExternalIdp' ? 'external_idp' : 'IdC') + '","provider":"' + kiroImportProvider.value + '"}'
     : '{"accessToken":"...","refreshToken":"...","authMethod":"social","provider":"' + kiroImportProvider.value + '"}'
 )
 
@@ -559,17 +600,21 @@ watch(
       kiroIDCRegion.value = typeof creds.region === 'string' && creds.region ? creds.region : 'us-east-1'
       kiroAccountType.value = authMethod === 'idc' ? 'idc' : 'oauth'
       kiroOAuthProvider.value = provider === 'github' ? 'github' : 'google'
-      // 「从 Kiro IDE 导入」账号来源:按现有凭证的 provider 自动定位到四值之一。
-      kiroImportProvider.value = resolveKiroImportProvider(provider)
+      // 「从 Kiro IDE 导入」账号来源:按现有凭证的 provider/auth_method 自动定位。
+      kiroImportProvider.value = resolveKiroImportProvider(provider, authMethod)
     }
   }
 )
 
-// resolveKiroImportProvider 按现有账号凭证的 provider 归一化到四值之一(不分大小写)。
-// provider 恒为 Google/Github/BuilderId/Enterprise 之一;异常兜底为 Google。
+// resolveKiroImportProvider 按现有账号凭证的 provider/auth_method 归一化到前端选项。
+// 后端 provider 仍为 Google/Github/BuilderId/Enterprise；ExternalIdp 由 auth_method 区分。
 const resolveKiroImportProvider = (
-  provider: string
-): 'Google' | 'Github' | 'BuilderId' | 'Enterprise' => {
+  provider: string,
+  authMethod = ''
+): KiroImportProvider => {
+  if (authMethod.trim().toLowerCase() === 'external_idp') {
+    return 'ExternalIdp'
+  }
   switch (provider.toLowerCase()) {
     case 'github':
       return 'Github'
@@ -885,28 +930,34 @@ const handleExchangeCode = async () => {
 const handleKiroImport = async () => {
   if (!props.account || !isKiroImportMode.value) return
 
-  // 必填校验:token JSON 必填;BuilderId/Enterprise 还需 Device Registration JSON。
+  // 必填校验:token JSON 必填;BuilderId/Enterprise/ExternalIdp 若 Token JSON 未内置 clientId 才需 Device Registration JSON。
   if (!kiroTokenJson.value.trim()) {
     kiroOAuth.error.value = t('admin.accounts.oauth.kiro.tokenJsonRequired')
     appStore.showError(kiroOAuth.error.value)
     return
   }
-  if (kiroImportNeedsDeviceRegistration.value && !kiroDeviceRegistrationJson.value.trim()) {
-    kiroOAuth.error.value = t('admin.accounts.oauth.kiro.deviceRegistrationRequired')
-    appStore.showError(kiroOAuth.error.value)
-    return
-  }
 
   // 一致性校验:token JSON 内 provider 必须与所选账号来源一致(后端白名单兜底)。
+  let parsedToken: Record<string, unknown>
   let parsedProvider = ''
   try {
-    parsedProvider = String(JSON.parse(kiroTokenJson.value)?.provider ?? '').trim()
+    parsedToken = JSON.parse(kiroTokenJson.value)
+    parsedProvider = String(parsedToken?.provider ?? '').trim()
   } catch {
     kiroOAuth.error.value = t('admin.accounts.oauth.kiro.tokenJsonInvalid')
     appStore.showError(kiroOAuth.error.value)
     return
   }
-  if (parsedProvider !== kiroImportProvider.value) {
+  const parsedClientId = parsedToken && typeof parsedToken.clientId === 'string' ? parsedToken.clientId.trim() : ''
+  const needsDeviceRegistration =
+    (kiroImportProvider.value === 'BuilderId' || kiroImportProviderIsEnterpriseLike(kiroImportProvider.value)) && !parsedClientId
+  if (needsDeviceRegistration && !kiroDeviceRegistrationJson.value.trim()) {
+    kiroOAuth.error.value = t('admin.accounts.oauth.kiro.deviceRegistrationRequired')
+    appStore.showError(kiroOAuth.error.value)
+    return
+  }
+  const parsedSelectedProvider = normalizeKiroImportProviderForSelection(parsedProvider, kiroImportProvider.value)
+  if (parsedSelectedProvider !== kiroImportProvider.value) {
     kiroOAuth.error.value = t('admin.accounts.oauth.kiro.providerMismatch', {
       selected: kiroImportProvider.value,
       actual: parsedProvider || '-'
@@ -914,9 +965,16 @@ const handleKiroImport = async () => {
     appStore.showError(kiroOAuth.error.value)
     return
   }
+  const parsedTokenEndpoint = parsedToken && typeof parsedToken.tokenEndpoint === 'string' ? parsedToken.tokenEndpoint.trim() : ''
+  if (kiroImportProviderIsEnterpriseLike(kiroImportProvider.value) && !parsedTokenEndpoint) {
+    kiroOAuth.error.value = t('admin.accounts.oauth.kiro.tokenEndpointRequired')
+    appStore.showError(kiroOAuth.error.value)
+    return
+  }
 
+  const tokenJsonForBackend = buildKiroImportTokenJsonForBackend(parsedToken, kiroImportProvider.value)
   const tokenInfo = await kiroOAuth.importToken(
-    kiroTokenJson.value,
+    tokenJsonForBackend,
     kiroDeviceRegistrationJson.value || undefined
   )
   if (!tokenInfo) return

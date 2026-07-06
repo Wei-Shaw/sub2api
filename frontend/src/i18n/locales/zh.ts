@@ -4408,11 +4408,12 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
           tokenJsonLabel: 'Kiro Token JSON',
           tokenJsonHint: '先在 Kiro IDE 完成登录，再粘贴 `~/.aws/sso/cache/kiro-auth-token.json` 的内容。',
           deviceRegistrationLabel: 'Device Registration JSON',
-          deviceRegistrationHint: '可选。只有 token 文件里缺少完整客户端信息、只剩 `clientIdHash` 时才需要补充。',
+          deviceRegistrationHint: '仅当 BuilderId / Enterprise 的 Token JSON 里没有 `clientId` 时才需要补充；`clientSecret` 缺失时可留空。',
           importProviderLabel: '账号来源',
           tokenJsonRequired: '请填写 Kiro Token JSON。',
-          deviceRegistrationRequired: 'BuilderId / Enterprise 账号必须填写 Device Registration JSON。',
+          deviceRegistrationRequired: 'Token JSON 中没有 clientId，请填写 Device Registration JSON。',
           tokenJsonInvalid: 'Kiro Token JSON 格式无效，无法解析。',
+          tokenEndpointRequired: 'Enterprise 账号的 Kiro Token JSON 必须包含 tokenEndpoint。',
           providerMismatch: '所选来源（{selected}）与 Token JSON 中的 provider（{actual}）不一致，请核对。',
           importAndUpdate: '导入并更新'
         }
