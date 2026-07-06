@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/shopspring/decimal"
 )
 
 // --- Order Creation ---
@@ -67,8 +68,7 @@ REDACTED
 			return nil, err
 	REDACTED
 REDACTED
-	// 订阅套餐 price 是直付价，余额充值倍率只影响余额充值到账，不参与订阅 pay_amount 计算。
-	payAmountStr, payAmount, err := calculateCreateOrderPayAmount(limitAmount, feeRate, methodCurrency)
+	payAmountStr, payAmount, err := calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, methodCurrency, req.OrderType, cfg.BalanceRechargeMultiplier)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -84,7 +84,7 @@ REDACTED
 		selectedCurrency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 REDACTED
 	if selectedCurrency != methodCurrency {
-		payAmountStr, payAmount, err = calculateCreateOrderPayAmount(limitAmount, feeRate, selectedCurrency)
+		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, selectedCurrency, req.OrderType, cfg.BalanceRechargeMultiplier)
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -628,6 +628,24 @@ REDACTED
 			WithMetadata(map[string]string{"currency": currencyREDACTED)
 REDACTED
 	return payAmountStr, payAmount, nil
+REDACTED
+
+func calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate float64, currency, orderType string, multiplier float64) (string, float64, error) {
+	paymentAmount := limitAmount
+	if orderType == payment.OrderTypeSubscription {
+		paymentAmount = calculateSubscriptionGatewayBaseAmount(limitAmount, multiplier, currency)
+REDACTED
+	return calculateCreateOrderPayAmount(paymentAmount, feeRate, currency)
+REDACTED
+
+func calculateSubscriptionGatewayBaseAmount(amount, multiplier float64, currency string) float64 {
+	if currency != payment.DefaultPaymentCurrency {
+		return amount
+REDACTED
+	return decimal.NewFromFloat(amount).
+		Div(decimal.NewFromFloat(normalizeBalanceRechargeMultiplier(multiplier))).
+		Round(int32(payment.CurrencyMaxFractionDigits(currency))).
+		InexactFloat64()
 REDACTED
 
 func validateCreateOrderAmountCurrency(amount float64, currency string) error {
