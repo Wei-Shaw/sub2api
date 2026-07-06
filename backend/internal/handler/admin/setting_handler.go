@@ -375,6 +375,29 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
 	}
 
+	payload.OpenAIAdvancedSchedulerStickyWeightedEnabled = settings.OpenAIAdvancedSchedulerStickyWeightedEnabled
+	payload.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled = settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled
+	payload.OpenAIAdvancedSchedulerLBTopK = settings.OpenAIAdvancedSchedulerLBTopK
+	payload.OpenAIAdvancedSchedulerWeightPriority = settings.OpenAIAdvancedSchedulerWeightPriority
+	payload.OpenAIAdvancedSchedulerWeightLoad = settings.OpenAIAdvancedSchedulerWeightLoad
+	payload.OpenAIAdvancedSchedulerWeightQueue = settings.OpenAIAdvancedSchedulerWeightQueue
+	payload.OpenAIAdvancedSchedulerWeightErrorRate = settings.OpenAIAdvancedSchedulerWeightErrorRate
+	payload.OpenAIAdvancedSchedulerWeightTTFT = settings.OpenAIAdvancedSchedulerWeightTTFT
+	payload.OpenAIAdvancedSchedulerWeightReset = settings.OpenAIAdvancedSchedulerWeightReset
+	payload.OpenAIAdvancedSchedulerWeightQuotaHeadroom = settings.OpenAIAdvancedSchedulerWeightQuotaHeadroom
+	payload.OpenAIAdvancedSchedulerWeightPreviousResponse = settings.OpenAIAdvancedSchedulerWeightPreviousResponse
+	payload.OpenAIAdvancedSchedulerWeightSessionSticky = settings.OpenAIAdvancedSchedulerWeightSessionSticky
+	payload.OpenAIAdvancedSchedulerEffectiveLBTopK = settings.OpenAIAdvancedSchedulerEffectiveLBTopK
+	payload.OpenAIAdvancedSchedulerEffectiveWeightPriority = settings.OpenAIAdvancedSchedulerEffectiveWeightPriority
+	payload.OpenAIAdvancedSchedulerEffectiveWeightLoad = settings.OpenAIAdvancedSchedulerEffectiveWeightLoad
+	payload.OpenAIAdvancedSchedulerEffectiveWeightQueue = settings.OpenAIAdvancedSchedulerEffectiveWeightQueue
+	payload.OpenAIAdvancedSchedulerEffectiveWeightErrorRate = settings.OpenAIAdvancedSchedulerEffectiveWeightErrorRate
+	payload.OpenAIAdvancedSchedulerEffectiveWeightTTFT = settings.OpenAIAdvancedSchedulerEffectiveWeightTTFT
+	payload.OpenAIAdvancedSchedulerEffectiveWeightReset = settings.OpenAIAdvancedSchedulerEffectiveWeightReset
+	payload.OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom = settings.OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom
+	payload.OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse = settings.OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse
+	payload.OpenAIAdvancedSchedulerEffectiveWeightSessionSticky = settings.OpenAIAdvancedSchedulerEffectiveWeightSessionSticky
+
 	// OpenAI fast policy (stored under a dedicated setting key)
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
