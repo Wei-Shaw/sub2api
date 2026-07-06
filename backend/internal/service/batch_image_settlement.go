@@ -16,6 +16,7 @@ import (
 const (
 	batchImageSettlementRequestPrefix = "batch_image_settlement:"
 	batchImageSettlementRetryDelay    = time.Minute
+	batchImageSettlementMaxRetries    = 5
 	batchImageCostEpsilon             = 0.00000001
 )
 
@@ -109,6 +110,9 @@ REDACTED
 	if job.AccountID == nil || *job.AccountID <= 0 {
 		return nil, ErrBatchImageSettlementMissingAccountID
 REDACTED
+	if isBatchImageSettlementRetryExhausted(job) {
+		return nil, s.failExhaustedSettlement(ctx, job, manifestHash, "settlement billing retry limit reached")
+REDACTED
 
 	unitPrice, err := s.settlementUnitPrice(ctx, job)
 	if err != nil {
@@ -125,13 +129,17 @@ REDACTED
 REDACTED
 	if actualCost-holdAmount > batchImageCostEpsilon {
 		msg := fmt.Sprintf("actual cost %.10f exceeds held amount %.10f", actualCost, holdAmount)
-		_ = s.Repo.SetBatchImageJobSettlementFailed(ctx, job.BatchID, "SETTLEMENT_COST_EXCEEDS_HOLD", msg)
+		_, _ = s.Repo.SetBatchImageJobSettlementFailed(ctx, job.BatchID, "SETTLEMENT_COST_EXCEEDS_HOLD", msg)
 		return nil, ErrBatchImageSettlementCostExceedsHold
 REDACTED
 
 	if err := captureBatchImageBalanceHold(ctx, s.BillingRepo, job, actualCost, manifestHash); err != nil {
 		msg := truncateBatchImageMessage(err.Error(), batchImageMaxErrorMessageLength)
-		_ = s.Repo.SetBatchImageJobSettlementFailed(ctx, job.BatchID, "SETTLEMENT_BILLING_FAILED", msg)
+		retryCount, recordErr := s.Repo.SetBatchImageJobSettlementFailed(ctx, job.BatchID, "SETTLEMENT_BILLING_FAILED", msg)
+		if recordErr == nil && retryCount >= batchImageSettlementMaxRetries {
+			job.RetryCount = retryCount
+			return nil, s.failExhaustedSettlement(ctx, job, manifestHash, msg)
+	REDACTED
 		return nil, err
 REDACTED
 	s.invalidateAuthCache(ctx, job.UserID)
@@ -158,6 +166,41 @@ REDACTED
 	s.recordUsageLog(ctx, job, actualCost, result.RequestID, now)
 
 	return result, nil
+REDACTED
+
+func isBatchImageSettlementRetryExhausted(job *BatchImageJob) bool {
+	return job != nil &&
+		job.Status == BatchImageJobStatusSettling &&
+		job.RetryCount >= batchImageSettlementMaxRetries &&
+		batchImageDerefString(job.LastErrorCode) == "SETTLEMENT_BILLING_FAILED"
+REDACTED
+
+func (s *BatchImageSettlementService) failExhaustedSettlement(ctx context.Context, job *BatchImageJob, manifestHash, message string) error {
+	if s == nil || s.Repo == nil {
+		return ErrBatchImageSettlementBillingFailed
+REDACTED
+	if err := releaseBatchImageBalanceHold(ctx, s.BillingRepo, job, manifestHash); err != nil {
+		msg := truncateBatchImageMessage(err.Error(), batchImageMaxErrorMessageLength)
+		_, _ = s.Repo.SetBatchImageJobSettlementFailed(ctx, job.BatchID, "SETTLEMENT_RELEASE_FAILED", msg)
+		return ErrBatchImageSettlementBillingFailed.WithCause(err)
+REDACTED
+	s.invalidateAuthCache(ctx, job.UserID)
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		msg = "settlement billing retry limit reached"
+REDACTED
+	if err := s.Repo.TransitionBatchImageJobStatus(ctx, job.BatchID, BatchImageJobStatusFailed, BatchImageTransitionOptions{
+		ErrorCode:    batchImageStringPtr("SETTLEMENT_BILLING_RETRY_EXHAUSTED"),
+		ErrorMessage: batchImageStringPtr(msg),
+		EventType:    "settlement_retry_exhausted",
+		EventPayload: map[string]any{
+			"batch_id":    job.BatchID,
+			"retry_count": job.RetryCount,
+	REDACTED,
+REDACTED); err != nil {
+		return err
+REDACTED
+	return ErrBatchImageSettlementBillingFailed
 REDACTED
 
 func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *BatchImageJob, actualCost float64, requestID string, createdAt time.Time) {
@@ -263,6 +306,10 @@ REDACTED
 		_, err := p.SettlementService.Settle(ctx, batchID)
 		if err != nil {
 			if errors.Is(err, ErrBatchImageSettlementBillingFailed) {
+				updated, getErr := p.ProviderProcessor.Repo.GetBatchImageJobByBatchID(ctx, batchID)
+				if getErr == nil && IsTerminalBatchImageJobStatus(updated.Status) {
+					return BatchImageProcessResult{Terminal: trueREDACTED, nil
+			REDACTED
 				delay := p.RetryDelay
 				if delay <= 0 {
 					delay = batchImageSettlementRetryDelay

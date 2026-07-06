@@ -306,7 +306,7 @@ type BatchImageRepository interface {
 	UpdateBatchImageJobProviderSubmit(ctx context.Context, params UpdateBatchImageJobProviderSubmitParams) error
 	RecordBatchImageJobSubmitFailure(ctx context.Context, batchID, code, message string, markFailed bool) error
 	MarkBatchImageJobSettled(ctx context.Context, params MarkBatchImageJobSettledParams) error
-	SetBatchImageJobSettlementFailed(ctx context.Context, batchID, code, message string) error
+	SetBatchImageJobSettlementFailed(ctx context.Context, batchID, code, message string) (int, error)
 	CreateBatchImageItem(ctx context.Context, params CreateBatchImageItemParams) (*BatchImageItem, error)
 	BulkCreateBatchImageItems(ctx context.Context, params []CreateBatchImageItemParams) error
 	ReplaceBatchImageItemsForJob(ctx context.Context, batchID string, items []CreateBatchImageItemParams, counts BatchImageCounts) error

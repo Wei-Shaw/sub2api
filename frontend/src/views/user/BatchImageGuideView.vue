@@ -638,7 +638,7 @@
         </div>
 
 	        <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
-	          取消任务会请求上游取消；如果上游已经生成成功图片，成功图片仍可能结算扣费，剩余冻结金额会释放。
+	          取消任务会请求上游取消；已被系统索引为成功的图片仍会按成功项结算扣费，其余冻结金额会释放。
 	        </div>
 	        <div v-if="submitting" class="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm leading-6 text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-100">
 	          正在创建上游批量任务，通常需要几秒，请不要重复提交。
@@ -1018,7 +1018,7 @@ REDACTED
 - 任务完成后报告任务名、任务 id、成功数、失败数、实际扣费和保存路径。
 - 只下载成功图片。部分失败时，先展示失败 custom_id、错误码、错误来源和简要原因。
 - 重试只能重试失败项，不能重复提交已成功项。若历史任务没有保存失败项 prompt，必须告诉用户无法自动重试，并询问用户是否提供原 prompt。
-- 取消任务前必须提醒：已经生成成功的图片可能仍会结算扣费。
+- 取消任务前必须提醒：已被系统索引为成功的图片仍会按成功项结算扣费，其余冻结金额会释放。
 - 图片预览按需加载；不要为了查看列表自动批量加载图片内容。`)
 
 function joinEndpointPath(base: string, path: string): string {
@@ -2274,7 +2274,7 @@ function batchImageText(key: BatchImageTextKey) {
     submitted: '批量任务已提交',
     submitFailed: '提交失败',
     refreshFailed: '刷新失败',
-    cancelConfirm: '取消会请求上游取消；已生成成功的图片可能仍会结算扣费。确定取消吗？',
+    cancelConfirm: '取消会请求上游取消；已被系统索引为成功的图片仍会按成功项结算扣费，其余冻结金额会释放。确定取消吗？',
     cancelled: '已请求取消任务',
     cancelFailed: '取消失败',
     batchDownloadStarted: '已开始下载选中的任务',
@@ -2329,7 +2329,7 @@ function batchImageText(key: BatchImageTextKey) {
     submitted: 'Batch job submitted.',
     submitFailed: 'Failed to submit the batch job.',
     refreshFailed: 'Failed to refresh the job.',
-    cancelConfirm: 'Cancellation will be sent upstream. Images that already succeeded may still be billed. Continue?',
+    cancelConfirm: 'Cancellation will be sent upstream. Images already indexed as successful will still be billed, and the remaining hold will be released. Continue?',
     cancelled: 'Cancellation requested.',
     cancelFailed: 'Failed to cancel the job.',
     batchDownloadStarted: 'Downloads for the selected jobs have started.',

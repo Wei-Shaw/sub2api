@@ -334,12 +334,13 @@ func (p *fakeProcessorProvider) Cleanup(context.Context, *BatchImageJob, *Accoun
 REDACTED
 
 type fakeBatchImageRepository struct {
-	jobs         map[string]*BatchImageJob
-	items        map[string][]CreateBatchImageItemParams
-	counts       map[string]BatchImageCounts
-	transitions  map[string][]string
-	events       map[string][]string
-	replaceCalls int
+	jobs          map[string]*BatchImageJob
+	items         map[string][]CreateBatchImageItemParams
+	counts        map[string]BatchImageCounts
+	transitions   map[string][]string
+	events        map[string][]string
+	transitionErr error
+	replaceCalls  int
 REDACTED
 
 func newFakeBatchImageRepository() *fakeBatchImageRepository {
@@ -473,6 +474,9 @@ REDACTED
 	if !CanTransitionBatchImageJob(job.Status, toStatus) {
 		return ErrBatchImageInvalidTransition
 REDACTED
+	if r.transitionErr != nil {
+		return r.transitionErr
+REDACTED
 	job.Status = toStatus
 	job.LastErrorCode = opts.ErrorCode
 	job.LastErrorMessage = opts.ErrorMessage
@@ -558,15 +562,16 @@ REDACTED
 	return nil
 REDACTED
 
-func (r *fakeBatchImageRepository) SetBatchImageJobSettlementFailed(_ context.Context, batchID, code, message string) error {
+func (r *fakeBatchImageRepository) SetBatchImageJobSettlementFailed(_ context.Context, batchID, code, message string) (int, error) {
 	job, ok := r.jobs[batchID]
 	if !ok {
-		return ErrBatchImageJobNotFound
+		return 0, ErrBatchImageJobNotFound
 REDACTED
 	job.LastErrorCode = batchImageStringPtr(code)
 	job.LastErrorMessage = batchImageOptionalStringPtr(message)
+	job.RetryCount++
 	r.events[batchID] = append(r.events[batchID], "settlement_failed")
-	return nil
+	return job.RetryCount, nil
 REDACTED
 
 func (r *fakeBatchImageRepository) CreateBatchImageItem(_ context.Context, params CreateBatchImageItemParams) (*BatchImageItem, error) {

@@ -231,6 +231,53 @@ REDACTED
 	require.Equal(t, BatchImageJobStatusSettling, repo.jobs[job.BatchID].Status)
 REDACTED
 
+func TestBatchImagePipelineProcessor_FailsAndReleasesAfterSettlementRetryLimit(t *testing.T) {
+	repo := newFakeBatchImageRepository()
+	job := testSettlingBatchImageJob("imgbatch_pipeline_retry_exhausted")
+	job.RetryCount = batchImageSettlementMaxRetries - 1
+	repo.jobs[job.BatchID] = job
+	billing := &fakeBatchImageBillingRepo{captureErr: errors.New("temporary billing timeout")REDACTED
+	settlement := &BatchImageSettlementService{Repo: repo, BillingRepo: billing, Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.25REDACTEDREDACTED
+	processor := &BatchImagePipelineProcessor{
+		ProviderProcessor: &BatchImageProviderProcessor{Repo: repo, ProviderRegistry: NewBatchImageProviderRegistry(&fakeProcessorProvider{REDACTED), AccountResolver: &fakeBatchImageAccountResolver{account: &Account{REDACTEDREDACTEDREDACTED,
+		SettlementService: settlement,
+REDACTED
+
+	result, err := processor.Process(context.Background(), job.BatchID)
+REDACTED
+	require.True(t, result.Terminal)
+	require.Equal(t, BatchImageJobStatusFailed, repo.jobs[job.BatchID].Status)
+	require.Equal(t, "SETTLEMENT_BILLING_RETRY_EXHAUSTED", batchImageDerefString(repo.jobs[job.BatchID].LastErrorCode))
+	require.Len(t, billing.captures, 1)
+	require.Len(t, billing.releases, 1)
+	require.Equal(t, BatchImageReleaseRequestID(job.BatchID), billing.releases[0].RequestID)
+REDACTED
+
+func TestBatchImageSettlementRetryExhaustedReleaseIsIdempotentAfterTransitionFailure(t *testing.T) {
+	repo := newFakeBatchImageRepository()
+	job := testSettlingBatchImageJob("imgbatch_retry_exhausted_transition_fail")
+	job.RetryCount = batchImageSettlementMaxRetries
+	job.LastErrorCode = batchImageStringPtr("SETTLEMENT_BILLING_FAILED")
+	repo.jobs[job.BatchID] = job
+	repo.transitionErr = errors.New("temporary transition failure")
+	billing := &fakeBatchImageBillingRepo{REDACTED
+	svc := &BatchImageSettlementService{Repo: repo, BillingRepo: billing, Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.25REDACTEDREDACTED
+
+	_, err := svc.Settle(context.Background(), job.BatchID)
+	require.ErrorContains(t, err, "temporary transition failure")
+	require.Equal(t, BatchImageJobStatusSettling, repo.jobs[job.BatchID].Status)
+	require.Len(t, billing.releases, 1)
+	require.Len(t, billing.seen, 1)
+
+	repo.transitionErr = nil
+	_, err = svc.Settle(context.Background(), job.BatchID)
+	require.ErrorIs(t, err, ErrBatchImageSettlementBillingFailed)
+	require.Equal(t, BatchImageJobStatusFailed, repo.jobs[job.BatchID].Status)
+	require.Len(t, billing.releases, 2)
+	require.Equal(t, billing.releases[0].RequestID, billing.releases[1].RequestID)
+	require.Len(t, billing.seen, 1)
+REDACTED
+
 func TestBatchImageSettlementManifestHash(t *testing.T) {
 	job := testSettlingBatchImageJob("imgbatch_hash")
 	first := BuildBatchImageSettlementManifestHash(job)

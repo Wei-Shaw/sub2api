@@ -301,18 +301,20 @@ REDACTED
 	return appendBatchImageEventWithSQL(ctx, sqlq, params.BatchID, "settlement_completed", params.EventPayload)
 REDACTED
 
-func (r *batchImageRepository) SetBatchImageJobSettlementFailed(ctx context.Context, batchID, code, message string) error {
-	_, err := r.sql.ExecContext(ctx, `
+func (r *batchImageRepository) SetBatchImageJobSettlementFailed(ctx context.Context, batchID, code, message string) (int, error) {
+	var retryCount int
+	err := r.sql.QueryRowContext(ctx, `
 UPDATE batch_image_jobs
 SET last_error_code = $2,
     last_error_message = $3,
     retry_count = retry_count + 1,
     updated_at = $4
-WHERE batch_id = $1`, batchID, code, message, time.Now())
+WHERE batch_id = $1
+RETURNING retry_count`, batchID, code, message, time.Now()).Scan(&retryCount)
 	if err != nil {
-		return err
+		return 0, translatePersistenceError(err, service.ErrBatchImageJobNotFound, nil)
 REDACTED
-	return appendBatchImageEventWithSQL(ctx, r.sql, batchID, "settlement_failed", map[string]any{
+	return retryCount, appendBatchImageEventWithSQL(ctx, r.sql, batchID, "settlement_failed", map[string]any{
 		"error_code": code,
 REDACTED)
 REDACTED
