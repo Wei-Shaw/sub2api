@@ -1921,7 +1921,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	if err := normalizeOpenAIAdvancedSchedulerOverrides(settings); err != nil {
+	if err := s.normalizeOpenAIAdvancedSchedulerOverrides(settings); err != nil {
 		return nil, err
 REDACTED
 	settings.PaymentVisibleMethodAlipaySource = alipaySource
@@ -3940,7 +3940,7 @@ func formatOpenAIAdvancedSchedulerFloat(value float64) string {
 	return strconv.FormatFloat(value, 'f', -1, 64)
 REDACTED
 
-func normalizeOpenAIAdvancedSchedulerOverrides(settings *SystemSettings) error {
+func (s *SettingService) normalizeOpenAIAdvancedSchedulerOverrides(settings *SystemSettings) error {
 	lbTopK, err := normalizeOptionalPositiveIntString(settings.OpenAIAdvancedSchedulerLBTopK)
 	if err != nil {
 		return infraerrors.BadRequest("INVALID_OPENAI_ADVANCED_SCHEDULER_LB_TOP_K", "openai advanced scheduler TopK must be a positive integer or empty")
@@ -3965,7 +3965,33 @@ REDACTED
 	REDACTED
 		*target = normalized
 REDACTED
+
+	// 与 config.Validate 的 "scheduler_score_weights must not all be zero" 保持一致：
+	// 覆盖值（空则回退到生效的配置值）叠加后的基础权重和不允许为 0，
+	// 否则调度会静默退化为 TopK 内均匀随机。
+	effective := s.openAIAdvancedSchedulerEffectiveWeights()
+	baseSum := resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightPriority, effective.Priority) +
+		resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightLoad, effective.Load) +
+		resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightQueue, effective.Queue) +
+		resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightErrorRate, effective.ErrorRate) +
+		resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightTTFT, effective.TTFT) +
+		resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightQuotaHeadroom, effective.QuotaHeadroom)
+	if baseSum <= 0 {
+		return infraerrors.BadRequest("INVALID_OPENAI_ADVANCED_SCHEDULER_WEIGHT", "openai advanced scheduler base weights must not all be zero")
+REDACTED
 	return nil
+REDACTED
+
+// resolveOpenAIAdvancedSchedulerWeight 返回覆盖值（已归一化的非空字符串），空则回退默认值。
+func resolveOpenAIAdvancedSchedulerWeight(normalized string, fallback float64) float64 {
+	if normalized == "" {
+		return fallback
+REDACTED
+	value, err := strconv.ParseFloat(normalized, 64)
+	if err != nil {
+		return fallback
+REDACTED
+	return value
 REDACTED
 
 func normalizeOptionalPositiveIntString(raw string) (string, error) {

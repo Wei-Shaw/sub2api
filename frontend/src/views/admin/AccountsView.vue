@@ -679,14 +679,21 @@ const formatStickySchedulerScore = (score: AccountSchedulerGroupScore): string =
 REDACTED
 
 const getSchedulerScoreRows = (account: Account): AccountSchedulerGroupScore[] => {
-  if (!Array.isArray(account.scheduler_scores)) return []
-  return account.scheduler_scores.filter(score => score.group_id != null)
+  const groupRows = Array.isArray(account.scheduler_scores)
+    ? account.scheduler_scores.filter(score => score.group_id != null)
+    : []
+  if (groupRows.length) return groupRows
+  // 未分组账号没有分组维度分数，回退展示后端返回的基础分
+  if (account.scheduler_score) {
+    return [{ group_id: null, ...account.scheduler_score REDACTED]
+  REDACTED
+  return []
 REDACTED
 
 const formatSchedulerScoreGroup = (score: AccountSchedulerGroupScore): string => {
   if ('group_name' in score && score.group_name) return score.group_name
   if ('group_id' in score && score.group_id != null) return `#${score.group_idREDACTED`
-  return '-'
+  return t('admin.accounts.schedulerScore.ungrouped')
 REDACTED
 
 const loadSavedColumns = () => {

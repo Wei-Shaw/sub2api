@@ -145,6 +145,7 @@ REDACTED
 			service.OpenAIUpstreamTransportAny,
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false,
+			false,
 			requestPlatform,
 		)
 		if err != nil {
