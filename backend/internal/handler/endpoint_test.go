@@ -26,23 +26,52 @@ REDACTED{
 		{"/v1/chat/completions", EndpointChatCompletionsREDACTED,
 		{"/v1/embeddings", EndpointEmbeddingsREDACTED,
 		{"/v1/responses", EndpointResponsesREDACTED,
+		{"/v1/responses/compact", EndpointResponsesCompactREDACTED,
+		{"/v1/responses/compact/detail", EndpointResponsesCompactREDACTED,
 		{"/v1/images/generations", EndpointImagesGenerationsREDACTED,
 		{"/v1/images/edits", EndpointImagesEditsREDACTED,
 		{"/v1/videos/generations", EndpointVideosGenerationsREDACTED,
 		{"/v1/videos/req_123", EndpointVideosREDACTED,
 		{"/v1beta/models", EndpointGeminiModelsREDACTED,
 
-		// Prefixed paths (antigravity, openai).
+		// Prefixed paths (antigravity, openai) — root Responses.
 		{"/antigravity/v1/messages", EndpointMessagesREDACTED,
 		{"/openai/v1/responses", EndpointResponsesREDACTED,
-		{"/openai/v1/responses/compact", EndpointResponsesREDACTED,
 		{"/openai/v1/images/generations", EndpointImagesGenerationsREDACTED,
 		{"/openai/v1/images/edits", EndpointImagesEditsREDACTED,
 		{"/antigravity/v1beta/models/gemini:generateContent", EndpointGeminiModelsREDACTED,
 
-		// Gin route patterns with wildcards.
+		// Prefixed paths — "/responses/compact" is its OWN distinct
+		// inbound endpoint, not folded into the root Responses endpoint.
+		{"/openai/v1/responses/compact", EndpointResponsesCompactREDACTED,
+		{"/openai/v1/responses/compact/detail", EndpointResponsesCompactREDACTED,
+
+		// Bare top-level alias route "/responses" — root vs. compact.
+		{"/responses", EndpointResponsesREDACTED,
+		{"/responses/compact", EndpointResponsesCompactREDACTED,
+		{"/responses/compact/detail", EndpointResponsesCompactREDACTED,
+
+		// Bare Codex direct alias route — root vs. compact.
+		{"/backend-api/codex/responses", EndpointResponsesREDACTED,
+		{"/backend-api/codex/responses/compact", EndpointResponsesCompactREDACTED,
+		{"/backend-api/codex/responses/compact/detail", EndpointResponsesCompactREDACTED,
+
+		// Must NOT generalize to arbitrary paths merely ending in
+		// "/responses" (or "/responses/compact") that are unrelated to
+		// the two known bare alias roots, unless they already carry a
+		// supported "/v1/responses..." prefix form.
+		{"/foo/responses", "/foo/responses"REDACTED,
+		{"/foo/responses/compact", "/foo/responses/compact"REDACTED,
+
+		// Gin route patterns with wildcards. The literal wildcard token
+		// ("*subpath") is not the "compact" segment itself, so these
+		// generic FullPath patterns normalize to the root Responses
+		// endpoint; only a concrete "compact" path segment (tested above)
+		// resolves to EndpointResponsesCompact.
 		{"/v1beta/models/*modelAction", EndpointGeminiModelsREDACTED,
 		{"/v1/responses/*subpath", EndpointResponsesREDACTED,
+		{"/responses/*subpath", EndpointResponsesREDACTED,
+		{"/backend-api/codex/responses/*subpath", EndpointResponsesREDACTED,
 
 		// Unknown path is returned as-is.
 		{"/v1/embeddings", "/v1/embeddings"REDACTED,
@@ -74,10 +103,29 @@ REDACTED{
 		// Gemini.
 		{"gemini models", EndpointGeminiModels, "/v1beta/models/gemini:gen", service.PlatformGemini, EndpointGeminiModelsREDACTED,
 
-		// OpenAI — always /v1/responses.
+		// OpenAI — root Responses.
 		{"openai responses root", EndpointResponses, "/v1/responses", service.PlatformOpenAI, EndpointResponsesREDACTED,
-		{"openai responses compact", EndpointResponses, "/openai/v1/responses/compact", service.PlatformOpenAI, "/v1/responses/compact"REDACTED,
-		{"openai responses nested", EndpointResponses, "/openai/v1/responses/compact/detail", service.PlatformOpenAI, "/v1/responses/compact/detail"REDACTED,
+
+		// OpenAI — compact, raw path carries the derivable "/compact"
+		// (or nested) suffix, which must be preserved on the upstream
+		// endpoint.
+		{"openai responses compact", EndpointResponsesCompact, "/openai/v1/responses/compact", service.PlatformOpenAI, "/v1/responses/compact"REDACTED,
+		{"openai responses nested", EndpointResponsesCompact, "/openai/v1/responses/compact/detail", service.PlatformOpenAI, "/v1/responses/compact/detail"REDACTED,
+		{"openai bare responses compact", EndpointResponsesCompact, "/responses/compact", service.PlatformOpenAI, "/v1/responses/compact"REDACTED,
+		{"openai bare responses compact detail", EndpointResponsesCompact, "/responses/compact/detail", service.PlatformOpenAI, "/v1/responses/compact/detail"REDACTED,
+		{"openai codex direct responses compact", EndpointResponsesCompact, "/backend-api/codex/responses/compact", service.PlatformOpenAI, "/v1/responses/compact"REDACTED,
+		{"openai codex direct responses compact detail", EndpointResponsesCompact, "/backend-api/codex/responses/compact/detail", service.PlatformOpenAI, "/v1/responses/compact/detail"REDACTED,
+
+		// OpenAI — bare root alias routes normalize to root Responses.
+		{"openai bare responses", EndpointResponses, "/responses", service.PlatformOpenAI, EndpointResponsesREDACTED,
+		{"openai codex direct responses", EndpointResponses, "/backend-api/codex/responses", service.PlatformOpenAI, EndpointResponsesREDACTED,
+
+		// OpenAI — inbound is already the canonical compact endpoint but
+		// the raw path carries no derivable "/responses..." suffix (e.g.
+		// it was already normalized upstream). Must not silently fall
+		// back to the root Responses endpoint.
+		{"openai responses compact inbound only, unrelated raw path", EndpointResponsesCompact, "/v1/messages", service.PlatformOpenAI, EndpointResponsesCompactREDACTED,
+
 		{"openai from messages", EndpointMessages, "/v1/messages", service.PlatformOpenAI, EndpointResponsesREDACTED,
 		{"openai from completions", EndpointChatCompletions, "/v1/chat/completions", service.PlatformOpenAI, EndpointResponsesREDACTED,
 		{"openai embeddings", EndpointEmbeddings, "/v1/embeddings", service.PlatformOpenAI, EndpointEmbeddingsREDACTED,
@@ -113,6 +161,12 @@ REDACTED{
 		{"/v1/responses/", ""REDACTED,
 		{"/v1/responses/compact", "/compact"REDACTED,
 		{"/openai/v1/responses/compact/detail", "/compact/detail"REDACTED,
+		{"/responses", ""REDACTED,
+		{"/responses/compact", "/compact"REDACTED,
+		{"/responses/compact/detail", "/compact/detail"REDACTED,
+		{"/backend-api/codex/responses", ""REDACTED,
+		{"/backend-api/codex/responses/compact", "/compact"REDACTED,
+		{"/backend-api/codex/responses/compact/detail", "/compact/detail"REDACTED,
 		{"/v1/messages", ""REDACTED,
 		{"", ""REDACTED,
 REDACTED
