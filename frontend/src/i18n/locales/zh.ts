@@ -744,6 +744,7 @@ export default {
     deleteConfirmMessage: "确定要删除 '{nameREDACTED' 吗？此操作无法撤销。",
     apiKey: 'API 密钥',
     group: '分组',
+    currentConcurrency: '当前并发',
     noGroup: '无分组',
     searchGroup: '搜索分组...',
     noGroupFound: '未找到匹配的分组',
