@@ -3678,8 +3678,15 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	token string,
 ) (*http.Request, error) {
 	targetURL := openaiPlatformAPIURL
+	suffix := openAIResponsesRequestPathSuffix(c)
 	switch account.Type {
 	case AccountTypeOAuth:
+		// ChatGPT Codex internal API only supports /responses and /responses/compact,
+		// reject unsupported subpaths (e.g. /input_tokens) to avoid 403 from Cloudflare
+		// which would trigger account circuit-breaking.
+		if suffix != "" && !isOpenAIResponsesCompactPath(c) {
+			return nil, fmt.Errorf("OAuth account does not support responses subpath %q", suffix)
+		}
 		targetURL = chatgptCodexURL
 	case AccountTypeAPIKey:
 		baseURL := account.GetOpenAIBaseURL()
@@ -3691,7 +3698,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 			targetURL = buildOpenAIResponsesURL(validatedURL)
 		}
 	}
-	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
+	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, suffix)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
@@ -4465,8 +4472,15 @@ func writeOpenAIPassthroughResponseHeaders(dst http.Header, src http.Header, fil
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
 	// Determine target URL based on account type
 	var targetURL string
+	suffix := openAIResponsesRequestPathSuffix(c)
 	switch account.Type {
 	case AccountTypeOAuth:
+		// ChatGPT Codex internal API only supports /responses and /responses/compact,
+		// reject unsupported subpaths (e.g. /input_tokens) to avoid 403 from Cloudflare
+		// which would trigger account circuit-breaking.
+		if suffix != "" && !isOpenAIResponsesCompactPath(c) {
+			return nil, fmt.Errorf("OAuth account does not support responses subpath %q", suffix)
+		}
 		// OAuth accounts use ChatGPT internal API
 		targetURL = chatgptCodexURL
 	case AccountTypeAPIKey:
@@ -4484,7 +4498,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	default:
 		targetURL = openaiPlatformAPIURL
 	}
-	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
+	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, suffix)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
