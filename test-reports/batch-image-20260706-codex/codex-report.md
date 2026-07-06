@@ -55,6 +55,28 @@ Covered by automated tests and smoke:
 - Stale pre-provider jobs can be failed and released.
 - Completed job download only returns successful outputs.
 
+## Access Control And Visibility
+
+The batch image feature has two independent gates:
+
+- Global runtime gate: `BATCH_IMAGE_ENABLED` controls whether `/v1/images/batches*` is available at all. If disabled, the backend returns `404 BATCH_IMAGE_DISABLED` regardless of group settings. This value is loaded at application startup, so changing the server environment requires restarting/redeploying the app container.
+- Group/API-key gate: `groups.allow_batch_image_generation` controls whether a user's API key may use the feature. If the global gate is enabled but the API key's group is not allowed, the backend returns `403 BATCH_IMAGE_GROUP_DISABLED`.
+
+Frontend visibility follows the same group/API-key gate for user-facing entry points:
+
+- Sidebar `/batch-image` entry is shown only when the current user has at least one active Gemini API key whose group has `allow_batch_image_generation=true`.
+- User dashboard quick action is hidden under the same condition.
+- Admin dashboard's shortcut to the user-facing batch image page is also hidden under the same current-user API-key condition; admin group configuration remains available under group management.
+- The frontend check pages through active keys in batches of 100 and stops as soon as it finds an allowed key. The result is cached in a shared composable for sidebar/dashboard reuse, and API errors fail closed by hiding the entry.
+
+This frontend hiding is only a UX affordance. Backend authorization remains the source of truth, so direct API calls without an allowed group still fail.
+
+Quick action origin:
+
+- `UserDashboardQuickActions.vue` is an upstream dashboard component. The batch image button was added by the custom batch image work to fit into the existing quick action surface.
+- The admin dashboard quick action block and the batch image shortcut inside it were added by the custom batch image work.
+- The sidebar batch image module entry was added by the custom batch image work.
+
 ## Residual Risks
 
 - Real provider failure combinations should still be tested with controlled fake/fixture provider outputs: malformed output JSONL, missing image bytes, provider cancelled after partial success, and delayed output indexing.
@@ -64,4 +86,3 @@ Covered by automated tests and smoke:
 ## Recommendation
 
 Proceed to broader review with Claude and/or manual exploratory testing. Before production enablement, add one integration test for cancel/settle concurrency and one for persistent settlement billing failure recovery.
-

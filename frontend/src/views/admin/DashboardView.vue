@@ -225,6 +225,7 @@
           </div>
           <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             <button
+              v-if="canUseBatchImage"
               type="button"
               class="group flex items-center gap-3 rounded-lg bg-gray-50 p-3 text-left transition-colors hover:bg-sky-50 dark:bg-dark-800/50 dark:hover:bg-sky-900/20"
               @click="router.push('/batch-image')"
@@ -361,6 +362,7 @@ import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
+import { useBatchImageAccess REDACTED from '@/composables/useBatchImageAccess'
 
 import {
   Chart as ChartJS,
@@ -387,6 +389,7 @@ ChartJS.register(
 
 const appStore = useAppStore()
 const router = useRouter()
+const { canUseBatchImage, refreshBatchImageAccess REDACTED = useBatchImageAccess()
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
@@ -746,6 +749,7 @@ const loadChartData = async () => {
 REDACTED
 
 onMounted(() => {
+  void refreshBatchImageAccess()
   loadDashboardStats()
 REDACTED)
 </script>
