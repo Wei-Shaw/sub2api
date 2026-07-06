@@ -27,13 +27,21 @@ func isOpenAIOAuthAccount(account *Account) bool {
 	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth
 }
 
+func isGrokOAuthAccount(account *Account) bool {
+	return account != nil && account.Platform == PlatformGrok && account.Type == AccountTypeOAuth
+}
+
 func isOpenAIAccount(account *Account) bool {
-	return account != nil && account.Platform == PlatformOpenAI
+	return account != nil && (account.Platform == PlatformOpenAI || account.Platform == PlatformGrok)
 }
 
 func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) bool {
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
+
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIContextWindowError("", responseBody) {
+		return false
+	}
 
 	if isOpenAIImageRateLimitError(statusCode, responseBody) {
 		if s != nil && s.rateLimitService != nil {
@@ -60,6 +68,11 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 
 func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
 	if s == nil || !isOpenAIOAuthAccount(account) {
+		return
+	}
+	// Spark 影子：不按 /responses 429 的 global x-codex-* 信号做内存运行时熔断(同 handle429,外审第8轮 P1)。
+	// 同时避免把 spark 的 429 计入全局 429 storm 计数(recordOpenAIOAuth429),否则会误伤母账号 failover 决策。
+	if account.IsShadow() {
 		return
 	}
 	s.recordOpenAIOAuth429()
@@ -171,6 +184,9 @@ func (s *OpenAIGatewayService) isOpenAIOAuth429Storm() bool {
 func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account, statusCode int, failedSwitches int) bool {
 	if statusCode != http.StatusTooManyRequests || failedSwitches < openAIOAuth429StormMaxAccountSwitches {
 		return false
+	}
+	if isGrokOAuthAccount(account) {
+		return true
 	}
 	if !isOpenAIOAuthAccount(account) {
 		return false

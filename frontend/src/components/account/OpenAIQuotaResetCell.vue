@@ -43,7 +43,7 @@
         class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-400 dark:hover:bg-orange-900/30"
         :disabled="resetting || loading || !canReset"
         :title="resetButtonTitle"
-        @click="handleReset"
+        @click="openResetConfirm"
       >
         <svg
           class="h-2.5 w-2.5"
@@ -63,6 +63,46 @@
       </button>
     </div>
 
+    <div v-if="primaryResetCreditExpiry" class="space-y-1">
+      <div class="flex flex-wrap items-center gap-1">
+        <span
+          class="inline-flex max-w-full items-center rounded bg-gray-100 px-1.5 py-0.5 text-[10px] leading-4 text-gray-600 tabular-nums dark:bg-gray-800 dark:text-gray-300"
+          :title="t('admin.accounts.openaiQuotaReset.expiresAtFull', { time: formatResetCreditExpiry(primaryResetCreditExpiry, 'full') })"
+        >
+          {{ t('admin.accounts.openaiQuotaReset.expiresAt', { time: formatResetCreditExpiry(primaryResetCreditExpiry, 'short') }) }}
+        </span>
+        <button
+          v-if="hiddenResetCreditCount > 0"
+          type="button"
+          data-testid="reset-credit-expiry-toggle"
+          class="inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          :aria-expanded="showResetCreditDetails"
+          :aria-label="resetCreditDetailsToggleLabel"
+          :title="resetCreditDetailsTitle"
+          @click="toggleResetCreditDetails"
+        >
+          +{{ hiddenResetCreditCount }}
+        </button>
+      </div>
+
+      <div
+        v-if="showResetCreditDetails && resetCreditExpirations.length > 1"
+        data-testid="reset-credit-expiry-details"
+        class="inline-grid max-w-full gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-1 text-[10px] leading-4 text-gray-600 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+      >
+        <span class="sr-only">{{ t('admin.accounts.openaiQuotaReset.expirationDetails') }}</span>
+        <span
+          v-for="(expiresAt, index) in resetCreditExpirations"
+          :key="`${expiresAt}-${index}`"
+          class="flex min-w-0 items-center gap-1 tabular-nums"
+          :title="t('admin.accounts.openaiQuotaReset.expiresAtFull', { time: formatResetCreditExpiry(expiresAt, 'full') })"
+        >
+          <span class="h-1 w-1 shrink-0 rounded-full bg-gray-400 dark:bg-gray-500" />
+          <span class="truncate">{{ formatResetCreditExpiry(expiresAt, 'short') }}</span>
+        </span>
+      </div>
+    </div>
+
     <!-- Error / success feedback -->
     <div
       v-if="error"
@@ -77,6 +117,17 @@
     >
       {{ resetMessage }}
     </div>
+
+    <ConfirmDialog
+      :show="showResetConfirm"
+      :title="t('admin.accounts.openaiQuotaReset.confirmTitle')"
+      :message="t('admin.accounts.openaiQuotaReset.confirmMessage', { count: availableResetCount })"
+      :confirm-text="t('admin.accounts.openaiQuotaReset.reset')"
+      :cancel-text="t('common.cancel')"
+      danger
+      @confirm="confirmReset"
+      @cancel="showResetConfirm = false"
+    />
   </div>
 </template>
 
@@ -90,6 +141,7 @@ import {
   type OpenAIQuotaUsage,
   type OpenAIQuotaResetResult
 } from '@/api/admin/accounts'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 
 const props = defineProps<{
   account: Account
@@ -105,11 +157,39 @@ const resetting = ref(false)
 const error = ref<string | null>(null)
 const data = ref<OpenAIQuotaUsage | null>(null)
 const resetMessage = ref<string | null>(null)
+const showResetConfirm = ref(false)
+const showResetCreditDetails = ref(false)
+
+// 影子账号的额度查询会 resolve 到母账号,但影子本身不支持重置(后端返回 409);
+// 重置必须在母账号上进行。前端据此禁用影子的重置入口(外审 F6)。
+const isShadow = computed(() => props.account.parent_account_id != null)
 
 const availableResetCount = computed(() => data.value?.rate_limit_reset_credits?.available_count ?? 0)
-const canReset = computed(() => availableResetCount.value > 0)
+const resetCreditExpirations = computed(() =>
+  (data.value?.rate_limit_reset_credits?.credits ?? [])
+    .map((credit) => credit.expires_at?.trim() ?? '')
+    .filter((expiresAt) => expiresAt.length > 0)
+    .sort(compareResetCreditExpiry)
+)
+const primaryResetCreditExpiry = computed(() => resetCreditExpirations.value[0] ?? '')
+const hiddenResetCreditCount = computed(() => Math.max(resetCreditExpirations.value.length - 1, 0))
+const canReset = computed(() => availableResetCount.value > 0 && !isShadow.value)
+
+const resetCreditDetailsTitle = computed(() =>
+  resetCreditExpirations.value
+    .map((expiresAt) => formatResetCreditExpiry(expiresAt, 'full'))
+    .join('\n')
+)
+
+const resetCreditDetailsToggleLabel = computed(() => {
+  if (showResetCreditDetails.value) {
+    return t('admin.accounts.openaiQuotaReset.collapseExpirations')
+  }
+  return t('admin.accounts.openaiQuotaReset.expandExpirations', { count: hiddenResetCreditCount.value })
+})
 
 const resetButtonTitle = computed(() => {
+  if (isShadow.value) return t('admin.accounts.openaiQuotaReset.resetTooltipShadow')
   if (!data.value) return t('admin.accounts.openaiQuotaReset.resetTooltipNeedQuery')
   if (!canReset.value) return t('admin.accounts.openaiQuotaReset.resetTooltipNoCredits')
   return t('admin.accounts.openaiQuotaReset.resetTooltipReady')
@@ -126,6 +206,34 @@ const truncatedError = computed(() => {
   if (!error.value) return ''
   return error.value.length > 80 ? `${error.value.slice(0, 80)}…` : error.value
 })
+
+const getResetCreditExpiryTime = (value: string): number => {
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time
+}
+
+const compareResetCreditExpiry = (a: string, b: string): number => {
+  const diff = getResetCreditExpiryTime(a) - getResetCreditExpiryTime(b)
+  if (diff !== 0) return diff
+  return a.localeCompare(b)
+}
+
+const formatResetCreditExpiry = (value: string, style: 'short' | 'full'): string => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  const options: Intl.DateTimeFormatOptions = {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }
+  if (style === 'full') {
+    options.year = 'numeric'
+  }
+
+  return new Intl.DateTimeFormat(undefined, options).format(date)
+}
 
 const extractErrorMessage = (e: unknown): string => {
   // The project's axios response interceptor (api/client.ts) flattens server
@@ -147,11 +255,17 @@ const extractErrorMessage = (e: unknown): string => {
   )
 }
 
+const toggleResetCreditDetails = () => {
+  if (hiddenResetCreditCount.value <= 0) return
+  showResetCreditDetails.value = !showResetCreditDetails.value
+}
+
 const handleQuery = async () => {
   if (loading.value) return
   loading.value = true
   error.value = null
   resetMessage.value = null
+  showResetCreditDetails.value = false
   try {
     data.value = await queryOpenAIQuota(props.account.id)
   } catch (e) {
@@ -161,7 +275,17 @@ const handleQuery = async () => {
   }
 }
 
-const handleReset = async () => {
+const openResetConfirm = () => {
+  if (resetting.value || loading.value) return
+  if (!canReset.value) {
+    error.value = t('admin.accounts.openaiQuotaReset.noCreditsAvailable')
+    return
+  }
+  showResetConfirm.value = true
+}
+
+const confirmReset = async () => {
+  showResetConfirm.value = false
   if (resetting.value) return
   if (!canReset.value) {
     error.value = t('admin.accounts.openaiQuotaReset.noCreditsAvailable')
@@ -195,6 +319,17 @@ watch(
     resetMessage.value = null
     loading.value = false
     resetting.value = false
+    showResetConfirm.value = false
+    showResetCreditDetails.value = false
+  }
+)
+
+watch(
+  resetCreditExpirations,
+  () => {
+    if (hiddenResetCreditCount.value <= 0) {
+      showResetCreditDetails.value = false
+    }
   }
 )
 </script>

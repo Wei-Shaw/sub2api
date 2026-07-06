@@ -3,6 +3,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -32,6 +33,18 @@ func TestConcurrencyCacheSuite(t *testing.T) {
 func (s *ConcurrencyCacheSuite) SetupTest() {
 	s.IntegrationRedisSuite.SetupTest()
 	s.cache = NewConcurrencyCache(s.rdb, testSlotTTLMinutes, int(testSlotTTL.Seconds()))
+}
+
+type apiKeyConcurrencyCacheForTest interface {
+	TrackAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
+	ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
+	GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error)
+}
+
+func (s *ConcurrencyCacheSuite) apiKeyConcurrencyCache() apiKeyConcurrencyCacheForTest {
+	cache, ok := s.cache.(apiKeyConcurrencyCacheForTest)
+	require.True(s.T(), ok)
+	return cache
 }
 
 func (s *ConcurrencyCacheSuite) TestAccountSlot_AcquireAndRelease() {
@@ -160,6 +173,34 @@ func (s *ConcurrencyCacheSuite) TestUserSlot_TTL() {
 	s.AssertTTLWithin(ttl, 1*time.Second, testSlotTTL)
 }
 
+func (s *ConcurrencyCacheSuite) TestAPIKeySlot_TrackReleaseAndBatchCount() {
+	cache := s.apiKeyConcurrencyCache()
+	apiKeyID := int64(300)
+	emptyAPIKeyID := int64(301)
+	slotKey := fmt.Sprintf("%s%d", apiKeySlotKeyPrefix, apiKeyID)
+
+	require.NoError(s.T(), cache.TrackAPIKeySlot(s.ctx, apiKeyID, "req1"))
+	require.NoError(s.T(), cache.TrackAPIKeySlot(s.ctx, apiKeyID, "req2"))
+
+	counts, err := cache.GetAPIKeyConcurrencyBatch(s.ctx, []int64{apiKeyID, emptyAPIKeyID})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), map[int64]int{apiKeyID: 2, emptyAPIKeyID: 0}, counts)
+
+	ttl, err := s.rdb.TTL(s.ctx, slotKey).Result()
+	require.NoError(s.T(), err, "TTL")
+	s.AssertTTLWithin(ttl, 1*time.Second, testSlotTTL)
+
+	require.NoError(s.T(), cache.ReleaseAPIKeySlot(s.ctx, apiKeyID, "req1"))
+	counts, err = cache.GetAPIKeyConcurrencyBatch(s.ctx, []int64{apiKeyID})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 1, counts[apiKeyID])
+
+	require.NoError(s.T(), cache.ReleaseAPIKeySlot(s.ctx, apiKeyID, "req2"))
+	counts, err = cache.GetAPIKeyConcurrencyBatch(s.ctx, []int64{apiKeyID})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 0, counts[apiKeyID])
+}
+
 func (s *ConcurrencyCacheSuite) TestWaitQueue_IncrementAndDecrement() {
 	userID := int64(20)
 	waitKey := fmt.Sprintf("%s%d", waitQueueKeyPrefix, userID)
@@ -254,8 +295,10 @@ func (s *ConcurrencyCacheSuite) TestAccountWaitQueue_IncrementAndDecrement() {
 func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots() {
 	accountID := int64(901)
 	userID := int64(902)
+	apiKeyID := int64(903)
 	accountKey := fmt.Sprintf("%s%d", accountSlotKeyPrefix, accountID)
 	userKey := fmt.Sprintf("%s%d", userSlotKeyPrefix, userID)
+	apiKeyKey := fmt.Sprintf("%s%d", apiKeySlotKeyPrefix, apiKeyID)
 	userWaitKey := fmt.Sprintf("%s%d", waitQueueKeyPrefix, userID)
 	accountWaitKey := fmt.Sprintf("%s%d", accountWaitKeyPrefix, accountID)
 
@@ -267,6 +310,10 @@ func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots() {
 	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, userKey,
 		redis.Z{Score: float64(now), Member: "oldproc-2"},
 		redis.Z{Score: float64(now), Member: "keep-2"},
+	).Err())
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, apiKeyKey,
+		redis.Z{Score: float64(now), Member: "oldproc-3"},
+		redis.Z{Score: float64(now), Member: "keep-3"},
 	).Err())
 	require.NoError(s.T(), s.rdb.Set(s.ctx, userWaitKey, 3, time.Minute).Err())
 	require.NoError(s.T(), s.rdb.Set(s.ctx, accountWaitKey, 2, time.Minute).Err())
@@ -280,6 +327,10 @@ func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots() {
 	userMembers, err := s.rdb.ZRange(s.ctx, userKey, 0, -1).Result()
 	require.NoError(s.T(), err)
 	require.Equal(s.T(), []string{"keep-2"}, userMembers)
+
+	apiKeyMembers, err := s.rdb.ZRange(s.ctx, apiKeyKey, 0, -1).Result()
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), []string{"keep-3"}, apiKeyMembers)
 
 	_, err = s.rdb.Get(s.ctx, userWaitKey).Result()
 	require.True(s.T(), errors.Is(err, redis.Nil))
@@ -433,6 +484,39 @@ func (s *ConcurrencyCacheSuite) TestCleanupExpiredAccountSlots_NoExpired() {
 	cur, err := s.cache.GetAccountConcurrency(s.ctx, accountID)
 	require.NoError(s.T(), err)
 	require.Equal(s.T(), 2, cur)
+}
+
+func (s *ConcurrencyCacheSuite) TestCleanupExpiredAccountSlotKeys() {
+	now := time.Now().Unix()
+	expiredTime := now - int64(testSlotTTL.Seconds()) - 10
+	accountKeyWithFresh := fmt.Sprintf("%s%d", accountSlotKeyPrefix, 301)
+	accountKeyExpiredOnly := fmt.Sprintf("%s%d", accountSlotKeyPrefix, 302)
+	userKey := fmt.Sprintf("%s%d", userSlotKeyPrefix, 303)
+
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, accountKeyWithFresh,
+		redis.Z{Score: float64(expiredTime), Member: "expired"},
+		redis.Z{Score: float64(now), Member: "fresh"},
+	).Err())
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, accountKeyExpiredOnly,
+		redis.Z{Score: float64(expiredTime), Member: "expired-only"},
+	).Err())
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, userKey,
+		redis.Z{Score: float64(expiredTime), Member: "user-expired"},
+	).Err())
+
+	require.NoError(s.T(), s.cache.CleanupExpiredAccountSlotKeys(s.ctx))
+
+	accountMembers, err := s.rdb.ZRange(s.ctx, accountKeyWithFresh, 0, -1).Result()
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), []string{"fresh"}, accountMembers)
+
+	exists, err := s.rdb.Exists(s.ctx, accountKeyExpiredOnly).Result()
+	require.NoError(s.T(), err)
+	require.EqualValues(s.T(), 0, exists)
+
+	userMembers, err := s.rdb.ZRange(s.ctx, userKey, 0, -1).Result()
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), []string{"user-expired"}, userMembers)
 }
 
 func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots_RemovesOldPrefixesAndWaitCounters() {

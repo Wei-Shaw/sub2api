@@ -7,15 +7,23 @@
     ]"
   >
     <!-- Logo/Brand -->
-      <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
-        <!-- Custom Logo or Default Logo -->
-        <div class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-primary-200 bg-white shadow-glow">
-          <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
-        </div>
-        <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
-          <span class="sidebar-brand-title text-lg font-semibold tracking-wide text-gray-900">
-            {{ siteName }}
-          </span>
+    <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
+      <!-- Custom Logo or Default Logo -->
+      <router-link
+        :to="homePath"
+        class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-primary-200 bg-white shadow-glow transition-opacity hover:opacity-80"
+        @click="handleMenuItemClick(homePath)"
+      >
+        <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+      </router-link>
+      <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+        <router-link
+          :to="homePath"
+          class="sidebar-brand-title text-lg font-semibold tracking-wide text-gray-900 transition-colors hover:text-primary-600"
+          @click="handleMenuItemClick(homePath)"
+        >
+          {{ siteName }}
+        </router-link>
         <!-- Version Badge -->
         <VersionBadge :version="siteVersion" />
       </div>
@@ -222,6 +230,8 @@ const adminSettingsStore = useAdminSettingsStore()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
 const isAdmin = computed(() => authStore.isAdmin)
+
+const homePath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
 
 // Track which parent nav groups are expanded
 const expandedGroups = ref<Set<string>>(new Set())

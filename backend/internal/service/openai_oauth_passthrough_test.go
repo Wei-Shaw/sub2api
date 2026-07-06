@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,18 +25,35 @@ import (
 func f64p(v float64) *float64 { return &v }
 
 type httpUpstreamRecorder struct {
-	lastReq  *http.Request
-	lastBody []byte
-	requests []*http.Request
-	bodies   [][]byte
+	lastReq      *http.Request
+	lastBody     []byte
+	lastProxyURL string
+	requests     []*http.Request
+	bodies       [][]byte
 
 	resp      *http.Response
 	responses []*http.Response
 	err       error
 }
 
+type passthroughErrReadCloser struct {
+	err error
+}
+
+func (r passthroughErrReadCloser) Read(_ []byte) (int, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+	return 0, io.ErrUnexpectedEOF
+}
+
+func (r passthroughErrReadCloser) Close() error {
+	return nil
+}
+
 func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
 	u.lastReq = req
+	u.lastProxyURL = proxyURL
 	if req != nil && req.Body != nil {
 		b, _ := io.ReadAll(req.Body)
 		u.lastBody = b
@@ -797,7 +815,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_UpstreamErrorIncludesPassthroughF
 	require.Equal(t, "http_error", arr[len(arr)-1].Kind)
 }
 
-func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *testing.T) {
+func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalBody := []byte(`{"model":"gpt-5.2","stream":false,"instructions":"local-test-instructions","input":[{"type":"text","text":"hi"}]}`)
 
@@ -823,11 +841,12 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 	}
 
 	testCases := []struct {
-		name        string
-		accountType string
-		statusCode  int
-		body        string
-		assertRepo  func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time)
+		name           string
+		accountType    string
+		statusCode     int
+		body           string
+		expectFailover bool
+		assertRepo     func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time)
 	}{
 		{
 			name:        "oauth_429_rate_limit",
@@ -837,6 +856,7 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 				resetAt := time.Now().Add(7 * 24 * time.Hour).Unix()
 				return fmt.Sprintf(`{"error":{"message":"The usage limit has been reached","type":"usage_limit_reached","resets_at":%d}}`, resetAt)
 			}(),
+			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Len(t, repo.rateLimitCalls, 1)
 				require.Empty(t, repo.overloadCalls)
@@ -844,14 +864,48 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 			},
 		},
 		{
-			name:        "oauth_529_overload",
-			accountType: AccountTypeOAuth,
-			statusCode:  529,
-			body:        `{"error":{"message":"server overloaded","type":"server_error"}}`,
+			name:           "oauth_529_overload",
+			accountType:    AccountTypeOAuth,
+			statusCode:     529,
+			body:           `{"error":{"message":"server overloaded","type":"server_error"}}`,
+			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
 				require.Len(t, repo.overloadCalls, 1)
 				require.WithinDuration(t, start.Add(10*time.Minute), repo.overloadCalls[0], 5*time.Second)
+			},
+		},
+		{
+			name:           "oauth_502_bad_gateway",
+			accountType:    AccountTypeOAuth,
+			statusCode:     http.StatusBadGateway,
+			body:           `{"error":{"message":"bad gateway","type":"server_error"}}`,
+			expectFailover: false,
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
+				require.Empty(t, repo.rateLimitCalls)
+				require.Empty(t, repo.overloadCalls)
+			},
+		},
+		{
+			name:           "oauth_503_unavailable",
+			accountType:    AccountTypeOAuth,
+			statusCode:     http.StatusServiceUnavailable,
+			body:           `{"error":{"message":"service unavailable","type":"server_error"}}`,
+			expectFailover: false,
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
+				require.Empty(t, repo.rateLimitCalls)
+				require.Empty(t, repo.overloadCalls)
+			},
+		},
+		{
+			name:           "oauth_504_gateway_timeout",
+			accountType:    AccountTypeOAuth,
+			statusCode:     http.StatusGatewayTimeout,
+			body:           `{"error":{"message":"gateway timeout","type":"server_error"}}`,
+			expectFailover: false,
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
+				require.Empty(t, repo.rateLimitCalls)
+				require.Empty(t, repo.overloadCalls)
 			},
 		},
 		{
@@ -862,6 +916,7 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 				resetAt := time.Now().Add(7 * 24 * time.Hour).Unix()
 				return fmt.Sprintf(`{"error":{"message":"The usage limit has been reached","type":"usage_limit_reached","resets_at":%d}}`, resetAt)
 			}(),
+			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Len(t, repo.rateLimitCalls, 1)
 				require.Empty(t, repo.overloadCalls)
@@ -869,10 +924,11 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 			},
 		},
 		{
-			name:        "apikey_529_overload",
-			accountType: AccountTypeAPIKey,
-			statusCode:  529,
-			body:        `{"error":{"message":"server overloaded","type":"server_error"}}`,
+			name:           "apikey_529_overload",
+			accountType:    AccountTypeAPIKey,
+			statusCode:     529,
+			body:           `{"error":{"message":"server overloaded","type":"server_error"}}`,
+			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
 				require.Len(t, repo.overloadCalls, 1)
@@ -917,9 +973,15 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 			require.Error(t, err)
 
 			var failoverErr *UpstreamFailoverError
-			require.ErrorAs(t, err, &failoverErr)
-			require.Equal(t, tc.statusCode, failoverErr.StatusCode)
-			require.False(t, c.Writer.Written(), "429/529 passthrough 应返回 failover 错误给上层换号，而不是直接向客户端写响应")
+			if tc.expectFailover {
+				require.ErrorAs(t, err, &failoverErr)
+				require.Equal(t, tc.statusCode, failoverErr.StatusCode)
+				require.False(t, c.Writer.Written(), "retryable passthrough 错误应返回 failover 错误给上层换号，而不是直接向客户端写响应")
+			} else {
+				require.False(t, errors.As(err, &failoverErr))
+				require.True(t, c.Writer.Written(), "非 failover 的 passthrough http 错误应直接写回客户端")
+				require.Equal(t, tc.statusCode, rec.Code)
+			}
 
 			v, ok := c.Get(OpsUpstreamErrorsKey)
 			require.True(t, ok)
@@ -927,10 +989,81 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 			require.True(t, ok)
 			require.NotEmpty(t, arr)
 			require.True(t, arr[len(arr)-1].Passthrough)
-			require.Equal(t, "failover", arr[len(arr)-1].Kind)
+			if tc.expectFailover {
+				require.Equal(t, "failover", arr[len(arr)-1].Kind)
+			} else {
+				require.Equal(t, "http_error", arr[len(arr)-1].Kind)
+			}
 			require.Equal(t, tc.statusCode, arr[len(arr)-1].UpstreamStatusCode)
 
 			tc.assertRepo(t, repo, start)
+		})
+	}
+}
+
+func TestOpenAIGatewayService_OpenAIPassthrough_CompactNetworkErrorsTriggerFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		resp           *http.Response
+		err            error
+		expectFailover bool
+	}{
+		{
+			name:           "request_error",
+			err:            errors.New("stream disconnected before completion"),
+			expectFailover: true,
+		},
+		{
+			name: "read_error",
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-compact"}},
+				Body:       passthroughErrReadCloser{err: io.ErrUnexpectedEOF},
+			},
+			expectFailover: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+			c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+
+			upstream := &httpUpstreamRecorder{resp: tt.resp, err: tt.err}
+			svc := &OpenAIGatewayService{
+				cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+				httpUpstream: upstream,
+			}
+			account := &Account{
+				ID:             123,
+				Name:           "acc",
+				Platform:       PlatformOpenAI,
+				Type:           AccountTypeOAuth,
+				Concurrency:    1,
+				Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+				Extra:          map[string]any{"openai_passthrough": true},
+				Status:         StatusActive,
+				Schedulable:    true,
+				RateMultiplier: f64p(1),
+			}
+			body := []byte(`{"model":"gpt-5.5","instructions":"local-test-instructions","input":[{"type":"text","text":"compact me"}]}`)
+
+			_, err := svc.Forward(context.Background(), c, account, body)
+			require.Error(t, err)
+			var failoverErr *UpstreamFailoverError
+			if tt.expectFailover {
+				require.ErrorAs(t, err, &failoverErr)
+				require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+				require.False(t, c.Writer.Written(), "compact 网络错误应交给外层 failover，而不是直接写回客户端")
+			} else {
+				require.False(t, errors.As(err, &failoverErr))
+				require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+				require.False(t, c.Writer.Written())
+			}
 		})
 	}
 }
@@ -1022,7 +1155,8 @@ func TestOpenAIGatewayService_CodexCLIOnly_AllowOfficialClientFamilies(t *testin
 		{name: "codex_cli_rs", ua: "codex_cli_rs/0.99.0", originator: ""},
 		{name: "codex_vscode", ua: "codex_vscode/1.0.0", originator: ""},
 		{name: "codex_app", ua: "codex_app/2.1.0", originator: ""},
-		{name: "originator_codex_chatgpt_desktop", ua: "curl/8.0", originator: "codex_chatgpt_desktop"},
+		// req②：codex_cli_only 下 UA 须能解析出引擎版本；originator 命中路径用可解析的非官方前缀 UA。
+		{name: "originator_codex_chatgpt_desktop", ua: "myterm/0.141.0", originator: "codex_chatgpt_desktop"},
 	}
 
 	for _, tt := range tests {
@@ -1034,6 +1168,10 @@ func TestOpenAIGatewayService_CodexCLIOnly_AllowOfficialClientFamilies(t *testin
 			if tt.originator != "" {
 				c.Request.Header.Set("originator", tt.originator)
 			}
+			// 引擎指纹头：真实官方客户端必带。本测试用 nil settingService 构造 gateway，
+			// detectCodexClientRestriction 会兜底默认种子指纹信号（只勾 x-codex-），与生产默认策略一致，
+			// 故官方家族也须携带 x-codex-* 才能过门（对齐 TestDetect_EngineFingerprintSignals）。
+			c.Request.Header.Set("x-codex-window-id", "1")
 
 			inputBody := []byte(`{"model":"gpt-5.2","stream":false,"store":true,"input":[{"type":"text","text":"hi"}]}`)
 

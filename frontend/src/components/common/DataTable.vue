@@ -36,6 +36,8 @@
         v-for="(row, index) in sortedData"
         :key="resolveRowKey(row, index)"
         class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
+        :class="{ 'cursor-pointer': clickableRows }"
+        @click="clickableRows && emit('rowClick', row)"
       >
         <div class="space-y-3">
           <div
@@ -76,6 +78,7 @@
             v-for="(column, index) in columns"
             :key="column.key"
             scope="col"
+            :aria-sort="column.sortable ? getColumnAriaSort(column.key) : undefined"
             :class="[
               'sticky-header-cell py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
               getAdaptivePaddingClass(),
@@ -93,24 +96,26 @@
             >
               <div class="flex items-center space-x-1">
                 <span>{{ column.label }}</span>
-                <span v-if="column.sortable" class="text-gray-400 dark:text-dark-500">
+                <span
+                  v-if="column.sortable"
+                  class="inline-flex h-5 w-4 flex-col items-center justify-center"
+                  aria-hidden="true"
+                >
                   <svg
-                    v-if="sortKey === column.key"
-                    class="h-4 w-4"
-                    :class="{ 'rotate-180 transform': sortOrder === 'desc' }"
+                    class="h-2.5 w-2.5"
+                    :class="getSortIndicatorClass(column.key, 'asc')"
                     fill="currentColor"
-                    viewBox="0 0 20 20"
+                    viewBox="0 0 10 10"
                   >
-                    <path
-                      fill-rule="evenodd"
-                      d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
-                      clip-rule="evenodd"
-                    />
+                    <path d="M5 2L1.5 6.5h7L5 2z" />
                   </svg>
-                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path
-                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                    />
+                  <svg
+                    class="-mt-0.5 h-2.5 w-2.5"
+                    :class="getSortIndicatorClass(column.key, 'desc')"
+                    fill="currentColor"
+                    viewBox="0 0 10 10"
+                  >
+                    <path d="M5 8L1.5 3.5h7L5 8z" />
                   </svg>
                 </span>
               </div>
@@ -163,6 +168,8 @@
             :data-index="virtualRow.index"
             :ref="measureElement"
             class="hover:bg-gray-50 dark:hover:bg-dark-800"
+            :class="{ 'cursor-pointer': clickableRows }"
+            @click="clickableRows && emit('rowClick', sortedData[virtualRow.index])"
           >
             <td
               v-for="(column, colIndex) in columns"
@@ -211,6 +218,7 @@ const isDesktopViewport = ref(
 
 const emit = defineEmits<{
   sort: [key: string, order: 'asc' | 'desc']
+  rowClick: [row: any]
 }>()
 
 // 表格容器引用
@@ -378,6 +386,8 @@ interface Props {
    * will emit 'sort' events instead of performing client-side sorting.
    */
   serverSideSort?: boolean
+  /** Emit 'rowClick' on row/card click and show pointer cursor (interactive cells should @click.stop) */
+  clickableRows?: boolean
   /** Estimated row height in px for the virtualizer (default 56) */
   estimateRowHeight?: number
   /** Number of rows to render beyond the visible area (default 5) */
@@ -462,6 +472,17 @@ const applySortState = (state: PersistedSortState | null) => {
   if (!state) return
   sortKey.value = state.key
   sortOrder.value = state.order
+}
+
+const getSortIndicatorClass = (key: string, order: 'asc' | 'desc') => {
+  return sortKey.value === key && sortOrder.value === order
+    ? 'text-primary-600 dark:text-primary-400'
+    : 'text-gray-300 transition-colors dark:text-dark-500'
+}
+
+const getColumnAriaSort = (key: string) => {
+  if (sortKey.value !== key) return 'none'
+  return sortOrder.value === 'asc' ? 'ascending' : 'descending'
 }
 
 const isNullishOrEmpty = (value: any) => value === null || value === undefined || value === ''
