@@ -147,6 +147,18 @@ REDACTED{
 			wantErr:        "duplicate customMethods type",
 	REDACTED,
 		{
+			name:           "custom type must already be lowercase",
+			config:         map[string]string{"customMethods": `[{"type":"LDC","upstreamType":"epay"REDACTED]`REDACTED,
+			supportedTypes: "alipay,wxpay,ldc",
+			wantErr:        "customMethods type may only contain lowercase letters",
+	REDACTED,
+		{
+			name:           "upstream type must already be lowercase",
+			config:         map[string]string{"customMethods": `[{"type":"ldc","upstreamType":"ALIPAY"REDACTED]`REDACTED,
+			supportedTypes: "alipay,wxpay,ldc",
+			wantErr:        "customMethods upstreamType may only contain lowercase letters",
+	REDACTED,
+		{
 			name:           "custom type uses alipay prefix",
 			config:         map[string]string{"customMethods": `[{"type":"alipay_hk","upstreamType":"hkpay"REDACTED]`REDACTED,
 			supportedTypes: "alipay,wxpay,alipay_hk",
@@ -163,6 +175,12 @@ REDACTED{
 			config:         map[string]string{"customMethods": `[{"type":"ldc","upstreamType":"epay"REDACTED]`REDACTED,
 			supportedTypes: "alipay,wxpay,ldc,usdt_trc20",
 			wantErr:        "supported EasyPay custom type usdt_trc20 has no customMethods mapping",
+	REDACTED,
+		{
+			name:           "supported custom type must already be lowercase",
+			config:         map[string]string{"customMethods": `[{"type":"ldc","upstreamType":"epay"REDACTED]`REDACTED,
+			supportedTypes: "alipay,wxpay,LDC",
+			wantErr:        "supported EasyPay custom type LDC may only contain lowercase letters",
 	REDACTED,
 REDACTED
 
