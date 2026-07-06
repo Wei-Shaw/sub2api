@@ -1244,6 +1244,34 @@ REDACTED
 	return cloneStringSlice(models)
 REDACTED
 
+// GetSchedulablePlatforms returns the concrete platforms that currently have
+// schedulable accounts in the target group.
+func (s *GatewayService) GetSchedulablePlatforms(ctx context.Context, groupID *int64) map[string]struct{REDACTED {
+	platforms := make(map[string]struct{REDACTED)
+	if s == nil || s.accountRepo == nil {
+		return platforms
+REDACTED
+
+	var accounts []Account
+	var err error
+	if groupID != nil {
+		accounts, err = s.accountRepo.ListSchedulableByGroupID(ctx, *groupID)
+REDACTED else {
+		accounts, err = s.accountRepo.ListSchedulable(ctx)
+REDACTED
+	if err != nil {
+		return platforms
+REDACTED
+
+	for _, acc := range accounts {
+		platform := strings.TrimSpace(acc.Platform)
+		if platform != "" {
+			platforms[platform] = struct{REDACTED{REDACTED
+	REDACTED
+REDACTED
+	return platforms
+REDACTED
+
 func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform string) {
 	if s == nil || s.modelsListCache == nil {
 		return
