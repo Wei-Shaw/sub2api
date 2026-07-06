@@ -6338,6 +6338,10 @@ export default {
         balanceRechargeMultiplier: '余额充值倍率',
         balanceRechargeMultiplierHint: '用户每支付 1 CNY 可获得多少 USD 余额',
         balanceRechargePreview: '预览：1 CNY = {usdREDACTED USD',
+        subscriptionUsdToCnyRate: '订阅 CNY 换算汇率',
+        subscriptionUsdToCnyRateHint:
+          'CNY 支付通道下，套餐每 1 USD 价格收取多少 CNY（如 7.15）。0 或留空 = 不换算，订阅按 price 数值直接收款。启用后所有套餐 price 必须按 USD 定价',
+        subscriptionUsdToCnyRateDisabled: '未启用（按 price 直付）',
         rechargeFeeRate: '充值手续费率',
         rechargeFeeRateHint: '用户充值时额外收取的手续费百分比，0 表示不收取手续费',
         rechargeFeePreview: '预览：充值 100 元，手续费 {feeREDACTED 元',
