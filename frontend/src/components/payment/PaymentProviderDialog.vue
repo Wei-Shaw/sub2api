@@ -70,6 +70,49 @@
         </div>
       </div>
 
+      <div v-if="form.provider_key === 'easypay'" class="space-y-3 rounded-lg border border-gray-100 p-3 dark:border-dark-700">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h5 class="text-sm font-medium text-gray-900 dark:text-white">
+              {{ t('admin.settings.payment.easypayCustomMethods') REDACTEDREDACTED
+            </h5>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.payment.easypayCustomMethodsHint') REDACTEDREDACTED
+            </p>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" @click="addEasyPayCustomMethod">
+            {{ t('admin.settings.payment.addCustomMethod') REDACTEDREDACTED
+          </button>
+        </div>
+        <div v-if="easyPayCustomMethods.length" class="space-y-2">
+          <div
+            v-for="(method, index) in easyPayCustomMethods"
+            :key="index"
+            class="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2"
+          >
+            <div>
+              <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customMethodType') REDACTEDREDACTED</label>
+              <input v-model="method.type" type="text" class="input mt-0.5" placeholder="credit_card" />
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customMethodUpstreamType') REDACTEDREDACTED</label>
+              <input v-model="method.upstreamType" type="text" class="input mt-0.5" placeholder="credit_card" />
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customMethodDisplayName') REDACTEDREDACTED</label>
+              <input v-model="method.displayName" type="text" class="input mt-0.5" placeholder="信用卡" />
+            </div>
+            <button
+              type="button"
+              class="rounded-lg border border-red-200 px-2.5 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-800/60 dark:text-red-300 dark:hover:bg-red-900/20"
+              @click="removeEasyPayCustomMethod(index)"
+            >
+              {{ t('common.delete') REDACTEDREDACTED
+            </button>
+          </div>
+        </div>
+      </div>
+
 
       <!-- Config fields -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
@@ -165,49 +208,6 @@
             <p v-if="field.hintKey" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
               {{ t(field.hintKey) REDACTEDREDACTED
             </p>
-          </div>
-        </div>
-
-        <div v-if="form.provider_key === 'easypay'" class="mt-4 space-y-3 rounded-lg border border-gray-100 p-3 dark:border-dark-700">
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <h5 class="text-sm font-medium text-gray-900 dark:text-white">
-                {{ t('admin.settings.payment.easypayCustomMethods') REDACTEDREDACTED
-              </h5>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.settings.payment.easypayCustomMethodsHint') REDACTEDREDACTED
-              </p>
-            </div>
-            <button type="button" class="btn btn-secondary btn-sm" @click="addEasyPayCustomMethod">
-              {{ t('admin.settings.payment.addCustomMethod') REDACTEDREDACTED
-            </button>
-          </div>
-          <div v-if="easyPayCustomMethods.length" class="space-y-2">
-            <div
-              v-for="(method, index) in easyPayCustomMethods"
-              :key="index"
-              class="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2"
-            >
-              <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customMethodType') REDACTEDREDACTED</label>
-                <input v-model="method.type" type="text" class="input mt-0.5" placeholder="ldc" />
-              </div>
-              <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customMethodUpstreamType') REDACTEDREDACTED</label>
-                <input v-model="method.upstreamType" type="text" class="input mt-0.5" placeholder="epay" />
-              </div>
-              <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customMethodDisplayName') REDACTEDREDACTED</label>
-                <input v-model="method.displayName" type="text" class="input mt-0.5" placeholder="LDC" />
-              </div>
-              <button
-                type="button"
-                class="rounded-lg border border-red-200 px-2.5 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-800/60 dark:text-red-300 dark:hover:bg-red-900/20"
-                @click="removeEasyPayCustomMethod(index)"
-              >
-                {{ t('common.delete') REDACTEDREDACTED
-              </button>
-            </div>
           </div>
         </div>
 

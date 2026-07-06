@@ -44,6 +44,7 @@ import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
 import stripeIcon from '@/assets/icons/stripe.svg'
 import airwallexIcon from '@/assets/icons/airwallex.svg'
+import paymentIcon from '@/assets/icons/payment.svg'
 
 export interface PaymentMethodOption {
   type: string
@@ -68,6 +69,7 @@ const METHOD_ICONS: Record<string, string> = {
   wxpay: wxpayIcon,
   stripe: stripeIcon,
   airwallex: airwallexIcon,
+  credit_card: paymentIcon,
 REDACTED
 
 const sortedMethods = computed(() => {
@@ -83,7 +85,7 @@ function methodIcon(type: string): string {
   if (type.includes('alipay')) return METHOD_ICONS.alipay
   if (type.includes('wxpay')) return METHOD_ICONS.wxpay
   if (type === 'airwallex') return METHOD_ICONS.airwallex
-  return METHOD_ICONS[type] || stripeIcon
+  return METHOD_ICONS[type] || paymentIcon
 REDACTED
 
 function methodLabel(method: PaymentMethodOption): string {

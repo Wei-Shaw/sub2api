@@ -187,9 +187,10 @@ describe('PaymentProviderDialog payment guide', () => {
     await nextTick()
 
     const inputs = wrapper.findAll('input[type="text"]')
-    const ldcTypeInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === 'ldc')
-    const upstreamTypeInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === 'epay')
-    const displayNameInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === 'LDC')
+    const customTypeInputs = inputs.filter(input => (input.element as HTMLInputElement).placeholder === 'credit_card')
+    const ldcTypeInput = customTypeInputs[0]
+    const upstreamTypeInput = customTypeInputs[1]
+    const displayNameInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === '信用卡')
     if (!ldcTypeInput || !upstreamTypeInput || !displayNameInput) {
       throw new Error('custom method inputs not found')
     REDACTED
@@ -229,9 +230,10 @@ describe('PaymentProviderDialog payment guide', () => {
     await nextTick()
 
     const inputs = wrapper.findAll('input[type="text"]')
-    const typeInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === 'ldc')
-    const upstreamTypeInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === 'epay')
-    const displayNameInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === 'LDC')
+    const customTypeInputs = inputs.filter(input => (input.element as HTMLInputElement).placeholder === 'credit_card')
+    const typeInput = customTypeInputs[0]
+    const upstreamTypeInput = customTypeInputs[1]
+    const displayNameInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === '信用卡')
     if (!typeInput || !upstreamTypeInput || !displayNameInput) {
       throw new Error('custom method inputs not found')
     REDACTED
