@@ -208,6 +208,8 @@ REDACTED
 REDACTED else {
 		setAnthropicAPIKeyAuthHeader(req.Header, account, apiKeyAuthToken)
 REDACTED
+	// 账号级请求头覆写：模型列表探测与真实转发保持一致的最终头
+	account.ApplyHeaderOverrides(req.Header)
 	return req, nil
 REDACTED
 
@@ -277,6 +279,8 @@ REDACTED
 REDACTED
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	// 账号级请求头覆写：模型列表探测与真实转发保持一致的最终头
+	account.ApplyHeaderOverrides(req.Header)
 	return req, nil
 REDACTED
 
