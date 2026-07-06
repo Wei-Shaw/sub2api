@@ -209,7 +209,7 @@
 	          </template>
 
           <template #empty>
-            <div class="flex flex-col items-center">
+            <div class="flex min-h-[260px] flex-col items-center justify-center py-6 md:min-h-[300px]">
               <Icon name="sparkles" size="xl" class="mb-4 h-12 w-12 text-gray-400 dark:text-dark-500" />
               <p class="text-lg font-medium text-gray-900 dark:text-gray-100">暂无批量任务</p>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
