@@ -2,7 +2,6 @@ package service
 
 import (
 	"net/http"
-	"sort"
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -25,13 +24,15 @@ const (
 // headerOverrideBlockedNames 禁止覆写的请求头（小写）。
 //   - 连接控制/逐跳头：由 HTTP 栈管理，覆写会破坏请求传输；
 //   - host/content-length：由 Go 的 Request.Host / ContentLength 字段管理，header 覆写不生效或产生冲突；
-//   - authorization/x-api-key：上游认证头由账号凭据统一注入，禁止通过覆写篡改；
+//   - content-type：承载报文框架信息（multipart boundary 为每请求随机值），静态覆写必然与 body 不匹配；
+//   - authorization/x-api-key/cookie 等：上游认证头由账号凭据统一注入，禁止通过覆写篡改或重新引入；
 //   - accept-encoding：强制压缩会破坏网关对上游流式响应（SSE/usage）的解析；
 //   - sec-websocket-*：WebSocket 握手头由拨号器管理（OpenAI WS 模式）；
-//   - session_id/conversation_id 等：逐请求会话隔离头，固定值会造成会话串扰。
+//   - session_id/x-claude-code-session-id 等：逐请求会话隔离头，固定值会造成会话串扰。
 var headerOverrideBlockedNames = map[string]struct{REDACTED{
 	"host":                     {REDACTED,
 	"content-length":           {REDACTED,
+	"content-type":             {REDACTED,
 	"transfer-encoding":        {REDACTED,
 	"connection":               {REDACTED,
 	"keep-alive":               {REDACTED,
@@ -43,6 +44,8 @@ var headerOverrideBlockedNames = map[string]struct{REDACTED{
 	"upgrade":                  {REDACTED,
 	"authorization":            {REDACTED,
 	"x-api-key":                {REDACTED,
+	"x-goog-api-key":           {REDACTED,
+	"cookie":                   {REDACTED,
 	"accept-encoding":          {REDACTED,
 	"sec-websocket-key":        {REDACTED,
 	"sec-websocket-version":    {REDACTED,
@@ -54,6 +57,8 @@ var headerOverrideBlockedNames = map[string]struct{REDACTED{
 	"x-codex-turn-state":       {REDACTED,
 	"x-codex-turn-metadata":    {REDACTED,
 	"chatgpt-account-id":       {REDACTED,
+	"x-claude-code-session-id": {REDACTED,
+	"x-client-request-id":      {REDACTED,
 REDACTED
 
 func isHeaderOverrideBlockedName(lowerName string) bool {
@@ -82,29 +87,59 @@ REDACTED
 // GetHeaderOverrides 返回生效的请求头覆写表（key 统一小写）。
 // 未启用、不符合平台/类型条件或配置为空时返回 nil。
 // 空 value 的条目（模板占位）与非法/禁止的 header 名会被跳过。
+// 结果带热路径缓存（同 GetModelMapping 先例）：同一 credentials 映射在
+// 一次请求 / 一条 WS 会话内的多次调用只做一次解析与校验。
 func (a *Account) GetHeaderOverrides() map[string]string {
 	if !a.IsHeaderOverrideEnabled() {
 		return nil
 REDACTED
-	raw := stringMappingFromRaw(a.Credentials[credKeyHeaderOverrides])
+	rawMapping, rawIsAnyMap := a.Credentials[credKeyHeaderOverrides].(map[string]any)
+	if !rawIsAnyMap {
+		// 非 JSON 反序列化产物（如直接注入的 map[string]string）：直接解析，不缓存
+		return resolveHeaderOverrides(stringMappingFromRaw(a.Credentials[credKeyHeaderOverrides]))
+REDACTED
+
+	credentialsPtr := mapPtr(a.Credentials)
+	rawPtr := mapPtr(rawMapping)
+	rawLen := len(rawMapping)
+	rawSig := uint64(0)
+	rawSigReady := false
+
+	if a.headerOverrideCacheReady &&
+		a.headerOverrideCacheCredentialsPtr == credentialsPtr &&
+		a.headerOverrideCacheRawPtr == rawPtr &&
+		a.headerOverrideCacheRawLen == rawLen {
+		rawSig = modelMappingSignature(rawMapping)
+		rawSigReady = true
+		if a.headerOverrideCacheRawSig == rawSig {
+			return a.headerOverrideCache
+	REDACTED
+REDACTED
+
+	overrides := resolveHeaderOverrides(stringMappingFromRaw(rawMapping))
+	if !rawSigReady {
+		rawSig = modelMappingSignature(rawMapping)
+REDACTED
+
+	a.headerOverrideCache = overrides
+	a.headerOverrideCacheReady = true
+	a.headerOverrideCacheCredentialsPtr = credentialsPtr
+	a.headerOverrideCacheRawPtr = rawPtr
+	a.headerOverrideCacheRawLen = rawLen
+	a.headerOverrideCacheRawSig = rawSig
+	return overrides
+REDACTED
+
+// resolveHeaderOverrides 解析并防御性过滤原始覆写表：保存路径已做校验，
+// 这里兜底未经 Normalize 落库的数据（含名单扩充前保存的旧配置），非法条目直接跳过。
+func resolveHeaderOverrides(raw map[string]string) map[string]string {
 	if len(raw) == 0 {
 		return nil
 REDACTED
 	result := make(map[string]string, len(raw))
 	for name, value := range raw {
-		lowerName := strings.ToLower(strings.TrimSpace(name))
-		value = strings.TrimSpace(value)
-		if lowerName == "" || value == "" {
-			continue
-	REDACTED
-		// 防御性过滤：保存路径已做校验，这里兜底未经 Normalize 落库的数据
-		if len(lowerName) > maxHeaderOverrideNameLength || len(value) > maxHeaderOverrideValueLength {
-			continue
-	REDACTED
-		if isHeaderOverrideBlockedName(lowerName) {
-			continue
-	REDACTED
-		if !httpguts.ValidHeaderFieldName(lowerName) || !httpguts.ValidHeaderFieldValue(value) {
+		lowerName, value, err := normalizeHeaderOverrideEntry(name, value)
+		if err != nil || lowerName == "" || value == "" {
 			continue
 	REDACTED
 		result[lowerName] = value
@@ -113,6 +148,13 @@ REDACTED
 		return nil
 REDACTED
 	return result
+REDACTED
+
+// HeaderOverrideValue 返回指定 header（小写名）的生效覆写值。
+// 供转发链路在 header 写入前感知覆写结果（如 anthropic-beta 需要参与 body 净化）。
+func (a *Account) HeaderOverrideValue(lowerName string) (string, bool) {
+	value, ok := a.GetHeaderOverrides()[lowerName]
+	return value, ok
 REDACTED
 
 // ApplyHeaderOverrides 将账号配置的请求头覆写应用到出站请求头。
@@ -127,18 +169,16 @@ REDACTED
 	if len(overrides) == 0 {
 		return
 REDACTED
-	names := make([]string, 0, len(overrides))
-	for name := range overrides {
-		names = append(names, name)
-REDACTED
-	sort.Strings(names)
-	for _, name := range names {
+	// 覆写名两两不同（大小写不敏感）且各自只操作同名键，应用顺序不影响结果。
+	// 全量 EqualFold 扫描兜底删除任意 casing 的既有键：透传链路可能保留客户端
+	// 原始 casing，非 canonical/wire casing 的键 deleteHeaderAllForms 覆盖不到。
+	for name, value := range overrides {
 		for existing := range h {
 			if strings.EqualFold(existing, name) {
 				delete(h, existing)
 		REDACTED
 	REDACTED
-		h[resolveWireCasing(name)] = []string{overrides[name]REDACTED
+		h[resolveWireCasing(name)] = []string{valueREDACTED
 REDACTED
 REDACTED
 
@@ -186,34 +226,12 @@ REDACTED
 			return infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
 				"header %q value must be a string", name)
 	REDACTED
-		lowerName := strings.ToLower(strings.TrimSpace(name))
-		value = strings.TrimSpace(value)
+		lowerName, value, err := normalizeHeaderOverrideEntry(name, value)
+		if err != nil {
+			return err
+	REDACTED
 		if lowerName == "" {
-			if value == "" {
-				continue // 丢弃完全为空的占位行
-		REDACTED
-			return infraerrors.New(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
-				"header name must not be empty")
-	REDACTED
-		if len(lowerName) > maxHeaderOverrideNameLength {
-			return infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
-				"header name %q exceeds %d characters", lowerName, maxHeaderOverrideNameLength)
-	REDACTED
-		if !httpguts.ValidHeaderFieldName(lowerName) {
-			return infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
-				"invalid header name %q", lowerName)
-	REDACTED
-		if isHeaderOverrideBlockedName(lowerName) {
-			return infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
-				"header %q is not allowed to be overridden", lowerName)
-	REDACTED
-		if len(value) > maxHeaderOverrideValueLength {
-			return infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
-				"header %q value exceeds %d characters", lowerName, maxHeaderOverrideValueLength)
-	REDACTED
-		if !httpguts.ValidHeaderFieldValue(value) {
-			return infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
-				"header %q has an invalid value", lowerName)
+			continue // 丢弃完全为空的占位行
 	REDACTED
 		if _, dup := normalized[lowerName]; dup {
 			return infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
@@ -223,4 +241,40 @@ REDACTED
 REDACTED
 	credentials[credKeyHeaderOverrides] = normalized
 	return nil
+REDACTED
+
+// normalizeHeaderOverrideEntry 校验并规范化单个覆写条目，保存路径（Normalize，err → 400）
+// 与应用路径（resolveHeaderOverrides，err → 跳过）共用同一套规则，避免两处校验漂移。
+// 名和值均为空表示空占位行，返回 ("", "", nil)；空 value 的具名条目合法（模板占位）。
+func normalizeHeaderOverrideEntry(name, value string) (string, string, error) {
+	lowerName := strings.ToLower(strings.TrimSpace(name))
+	value = strings.TrimSpace(value)
+	if lowerName == "" {
+		if value == "" {
+			return "", "", nil
+	REDACTED
+		return "", "", infraerrors.New(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
+			"header name must not be empty")
+REDACTED
+	if len(lowerName) > maxHeaderOverrideNameLength {
+		return "", "", infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
+			"header name %q exceeds %d characters", lowerName, maxHeaderOverrideNameLength)
+REDACTED
+	if !httpguts.ValidHeaderFieldName(lowerName) {
+		return "", "", infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
+			"invalid header name %q", lowerName)
+REDACTED
+	if isHeaderOverrideBlockedName(lowerName) {
+		return "", "", infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
+			"header %q is not allowed to be overridden", lowerName)
+REDACTED
+	if len(value) > maxHeaderOverrideValueLength {
+		return "", "", infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
+			"header %q value exceeds %d characters", lowerName, maxHeaderOverrideValueLength)
+REDACTED
+	if !httpguts.ValidHeaderFieldValue(value) {
+		return "", "", infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
+			"header %q has an invalid value", lowerName)
+REDACTED
+	return lowerName, value, nil
 REDACTED

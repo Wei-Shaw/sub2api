@@ -3852,6 +3852,8 @@ export default {
         fillTemplate: '填入模板',
         emptyValueHint: '值留空的行不会参与覆盖，仅作为待填写的占位。',
         bulkDisableHint: '保存后将关闭所选账号的请求头覆写并清空已有配置。',
+        bulkReplaceHint: '保存后将用下方配置整体替换所选账号已有的请求头覆写配置。',
+        bulkEmptyRows: '请至少添加一行请求头再保存；如需清空已有配置，请关闭上方开关。',
         invalidName: '请求头名称格式不正确（仅允许字母、数字和 !#$%&\'*+-.^_`|~ 字符）',
         blockedName: '该请求头不允许覆写（认证头与连接控制头由系统管理）',
         duplicateName: '存在重复的请求头名称（匹配不区分大小写）',

@@ -44,6 +44,7 @@ REDACTED
 const HEADER_OVERRIDE_BLOCKED_NAMES = new Set([
   'host',
   'content-length',
+  'content-type',
   'transfer-encoding',
   'connection',
   'keep-alive',
@@ -55,6 +56,8 @@ const HEADER_OVERRIDE_BLOCKED_NAMES = new Set([
   'upgrade',
   'authorization',
   'x-api-key',
+  'x-goog-api-key',
+  'cookie',
   'accept-encoding',
   'sec-websocket-key',
   'sec-websocket-version',
@@ -65,18 +68,16 @@ const HEADER_OVERRIDE_BLOCKED_NAMES = new Set([
   'conversation_id',
   'x-codex-turn-state',
   'x-codex-turn-metadata',
-  'chatgpt-account-id'
+  'chatgpt-account-id',
+  'x-claude-code-session-id',
+  'x-client-request-id'
 ])
 
 /** RFC 7230 token：合法的 HTTP header 名称字符集 */
 const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
 
-export function isValidHeaderOverrideName(name: string): boolean {
+function isValidHeaderOverrideName(name: string): boolean {
   return HEADER_NAME_PATTERN.test(name)
-REDACTED
-
-export function isBlockedHeaderOverrideName(name: string): boolean {
-  return HEADER_OVERRIDE_BLOCKED_NAMES.has(name.trim().toLowerCase())
 REDACTED
 
 /** 模板：Claude Code CLI 标准客户端请求头（值留空由管理员填写） */
@@ -121,6 +122,12 @@ const HEADER_OVERRIDE_MAX_VALUE_LENGTH = 8192
 // eslint-disable-next-line no-control-regex
 const HEADER_VALUE_INVALID_PATTERN = /[\x00-\x08\x0a-\x1f\x7f]/
 
+/** 长度限制按 UTF-8 字节计（与后端 Go len() 对齐，避免多字节值前端放行后端 400） */
+const HEADER_TEXT_ENCODER = new TextEncoder()
+function utf8ByteLength(value: string): number {
+  return HEADER_TEXT_ENCODER.encode(value).length
+REDACTED
+
 /**
  * 校验请求头覆写行，返回首个错误的 i18n key（无错误返回 null）。
  * 名称为空但值非空 → invalidName；名称非法 → invalidName；
@@ -144,7 +151,10 @@ export function validateHeaderOverrideRows(
     const lower = name.toLowerCase()
     if (HEADER_OVERRIDE_BLOCKED_NAMES.has(lower)) return 'blockedName'
     if (seen.has(lower)) return 'duplicateName'
-    if (HEADER_VALUE_INVALID_PATTERN.test(value) || value.length > HEADER_OVERRIDE_MAX_VALUE_LENGTH) {
+    if (
+      HEADER_VALUE_INVALID_PATTERN.test(value) ||
+      utf8ByteLength(value) > HEADER_OVERRIDE_MAX_VALUE_LENGTH
+    ) {
       return 'invalidValue'
     REDACTED
     seen.add(lower)

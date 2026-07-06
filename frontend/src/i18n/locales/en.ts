@@ -3684,6 +3684,8 @@ export default {
         fillTemplate: 'Fill Template',
         emptyValueHint: 'Rows with an empty value are placeholders and do not override anything.',
         bulkDisableHint: 'Saving will disable header override and clear existing configuration on the selected accounts.',
+        bulkReplaceHint: 'Saving will replace the existing header override configuration on all selected accounts with the rows below.',
+        bulkEmptyRows: 'Add at least one header row before saving, or turn the toggle off to clear existing configuration.',
         invalidName: 'Invalid header name (only letters, digits and !#$%&\'*+-.^_`|~ are allowed)',
         blockedName: 'This header cannot be overridden (auth and connection-control headers are managed by the system)',
         duplicateName: 'Duplicate header name (matching is case-insensitive)',

@@ -534,6 +534,10 @@
               </p>
             </div>
 
+            <p class="text-xs text-amber-600 dark:text-amber-400">
+              {{ t('admin.accounts.headerOverride.bulkReplaceHint') REDACTEDREDACTED
+            </p>
+
             <div v-if="headerOverrideRows.length > 0" class="space-y-2">
               <div
                 v-for="(row, index) in headerOverrideRows"
@@ -585,7 +589,7 @@
               {{ t('admin.accounts.headerOverride.addRow') REDACTEDREDACTED
             </button>
 
-            <div class="flex flex-wrap gap-2">
+            <div v-if="headerOverrideTemplatePlatform" class="flex flex-wrap gap-2">
               <button
                 type="button"
                 class="rounded-lg bg-primary-50 px-3 py-1 text-xs text-primary-700 transition-colors hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-400 dark:hover:bg-primary-900/50"
@@ -1433,13 +1437,16 @@ const removeHeaderOverrideRow = (index: number) => {
   headerOverrideRows.value.splice(index, 1)
 REDACTED
 
-// 模板按钮：填入标准客户端请求头名称（值留空），跳过已存在的同名行。
-// 目标全为 openai 时用 Codex 模板，否则用 Claude Code 模板。
+// 模板仅在所选账号平台唯一时可用：混合 anthropic+openai 选择无法确定用哪套模板，
+// 误填会把另一平台的专有头写进所有所选账号
+const headerOverrideTemplatePlatform = computed(() => {
+  return targetSelectedPlatforms.value.length === 1 ? targetSelectedPlatforms.value[0] : null
+REDACTED)
+
+// 模板按钮：填入所选平台的标准客户端请求头名称（值留空），跳过已存在的同名行
 const fillHeaderOverrideTemplate = () => {
-  const platform =
-    targetSelectedPlatforms.value.length === 1 && targetSelectedPlatforms.value[0] === 'openai'
-      ? 'openai'
-      : 'anthropic'
+  const platform = headerOverrideTemplatePlatform.value
+  if (!platform) return
   const existing = new Set(
     headerOverrideRows.value.map((row) => row.name.trim().toLowerCase()).filter(Boolean)
   )
@@ -1853,6 +1860,12 @@ const handleSubmit = async () => {
   REDACTED
 
   if (enableHeaderOverride.value && headerOverrideEnabled.value) {
+    // 批量保存对 header_overrides 是整键替换：开启但没有任何有效行会把所选账号的
+    // 既有覆写配置静默清空，必须显式拦截（清空请走关闭开关的路径，有专门提示）
+    if (!headerOverrideRows.value.some((row) => row.name.trim())) {
+      appStore.showError(t('admin.accounts.headerOverride.bulkEmptyRows'))
+      return
+    REDACTED
     const headerError = validateHeaderOverrideRows(headerOverrideRows.value)
     if (headerError) {
       appStore.showError(t(`admin.accounts.headerOverride.${headerErrorREDACTED`))
