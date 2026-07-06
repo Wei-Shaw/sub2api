@@ -1,6 +1,9 @@
 <template>
   <AppLayout>
-    <TablePageLayout>
+    <TablePageLayout
+      :show-before-table="activeTab === 'usage'"
+      :natural-scroll="activeTab === 'usage'"
+    >
       <template #actions>
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Total Requests -->
@@ -160,6 +163,116 @@
             </div>
           </div>
         </div>
+        </div>
+      </template>
+
+      <template #beforeTable>
+        <div class="card overflow-hidden">
+          <div class="border-b border-gray-200 bg-white px-4 py-4 dark:border-dark-700 dark:bg-dark-800">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div class="flex items-center gap-3">
+                <div class="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+                  <Icon name="chartBar" size="md" class="text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ t('usage.leaderboard.title') }}
+                  </h3>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('usage.leaderboard.subtitle') }}
+                  </p>
+                </div>
+              </div>
+              <div class="grid grid-cols-3 gap-3 text-right text-xs text-gray-500 dark:text-gray-400">
+                <div>
+                  <div class="font-mono text-sm font-semibold text-green-600 dark:text-green-400">
+                    ${{ leaderboardTotals.total_actual_cost.toFixed(4) }}
+                  </div>
+                  <div>{{ t('usage.leaderboard.totalCost') }}</div>
+                </div>
+                <div>
+                  <div class="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ leaderboardTotals.total_requests.toLocaleString() }}
+                  </div>
+                  <div>{{ t('usage.leaderboard.requests') }}</div>
+                </div>
+                <div>
+                  <div class="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ formatTokens(leaderboardTotals.total_tokens) }}
+                  </div>
+                  <div>{{ t('usage.leaderboard.tokens') }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="leaderboardLoading" class="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+              <div
+                v-for="i in 10"
+                :key="i"
+                class="h-16 animate-pulse rounded-lg bg-gray-100 dark:bg-dark-700"
+              ></div>
+            </div>
+            <div
+              v-else-if="leaderboardError"
+              class="mt-3 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+            >
+              <span>{{ t('usage.leaderboard.failedToLoad') }}</span>
+              <button class="btn btn-secondary btn-sm" @click="loadTodayLeaderboard">
+                {{ t('common.refresh') }}
+              </button>
+            </div>
+            <div
+              v-else-if="todayLeaderboard.length === 0"
+              class="mt-3 rounded-lg border border-dashed border-gray-200 px-3 py-4 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400"
+            >
+              {{ t('usage.leaderboard.empty') }}
+            </div>
+            <div v-else class="mt-3 overflow-x-auto lg:max-h-[300px] lg:overflow-y-auto lg:pr-1">
+              <div class="grid min-w-[820px] grid-cols-[56px_minmax(220px,1.5fr)_1fr_1fr_1fr] gap-3 border-b border-gray-100 px-3 pb-1.5 text-xs font-medium uppercase text-gray-500 dark:border-dark-700 dark:text-dark-400">
+                <span>{{ t('usage.leaderboard.rank') }}</span>
+                <span>{{ t('usage.leaderboard.user') }}</span>
+                <span class="text-right">{{ t('usage.leaderboard.cost') }}</span>
+                <span class="text-right">{{ t('usage.leaderboard.tokens') }}</span>
+                <span class="text-right">{{ t('usage.leaderboard.requests') }}</span>
+              </div>
+              <div class="divide-y divide-gray-100 dark:divide-dark-700">
+                <div
+                  v-for="item in todayLeaderboard"
+                  :key="item.rank"
+                  class="grid min-w-[820px] grid-cols-[56px_minmax(220px,1.5fr)_1fr_1fr_1fr] items-center gap-3 px-3 py-1.5"
+                >
+                  <div>
+                    <span
+                      class="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold"
+                      :class="rankBadgeClass(item.rank)"
+                    >
+                      {{ item.rank }}
+                    </span>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="truncate font-medium text-gray-900 dark:text-white">
+                      {{ item.masked_email }}
+                    </div>
+                    <div class="mt-1 h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+                      <div
+                        class="h-full rounded-full bg-indigo-500 dark:bg-indigo-400"
+                        :style="{ width: leaderboardBarWidth(item) }"
+                      ></div>
+                    </div>
+                  </div>
+                  <div class="text-right font-mono font-semibold text-green-600 dark:text-green-400">
+                    ${{ item.actual_cost.toFixed(4) }}
+                  </div>
+                  <div class="text-right font-mono text-gray-700 dark:text-gray-300">
+                    {{ formatTokens(item.tokens) }}
+                  </div>
+                  <div class="text-right font-mono text-gray-700 dark:text-gray-300">
+                    {{ item.requests.toLocaleString() }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </template>
 
@@ -513,7 +626,7 @@
               <span class="font-medium text-pink-300">${{ tooltipData.image_output_cost.toFixed(6) }}</span>
             </div>
             <!-- Token billing: show unit prices per 1M tokens -->
-            <template v-if="!tooltipData?.billing_mode || tooltipData.billing_mode === BILLING_MODE_TOKEN">
+            <template v-if="!getDisplayBillingMode(tooltipData) || getDisplayBillingMode(tooltipData) === BILLING_MODE_TOKEN">
               <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
                 <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) }} {{ t('usage.perMillionTokens') }}</span>
@@ -611,6 +724,7 @@ import { ref, computed, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { usageAPI, keysAPI } from '@/api'
+import type { TodayUsageLeaderboardItem } from '@/api/usage'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -697,6 +811,19 @@ const usageLogs = ref<UsageLog[]>([])
 const apiKeys = ref<ApiKey[]>([])
 const loading = ref(false)
 const exporting = ref(false)
+const todayLeaderboard = ref<TodayUsageLeaderboardItem[]>([])
+const leaderboardLoading = ref(false)
+const leaderboardError = ref(false)
+
+const leaderboardTotals = reactive({
+  total_actual_cost: 0,
+  total_requests: 0,
+  total_tokens: 0
+})
+
+const leaderboardTopCost = computed(() => {
+  return todayLeaderboard.value.reduce((max, item) => Math.max(max, item.actual_cost || 0), 0)
+})
 
 const apiKeyOptions = computed(() => {
   return [
@@ -812,6 +939,18 @@ const formatTokens = (value: number): string => {
   return value.toLocaleString()
 }
 
+const rankBadgeClass = (rank: number): string => {
+  if (rank === 1) return 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+  if (rank === 2) return 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300'
+  if (rank === 3) return 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'
+  return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-dark-300'
+}
+
+const leaderboardBarWidth = (item: TodayUsageLeaderboardItem): string => {
+  if (leaderboardTopCost.value <= 0) return '0%'
+  return `${Math.max(6, Math.round((item.actual_cost / leaderboardTopCost.value) * 100))}%`
+}
+
 type UsageTableQueryParams = UsageQueryParams & {
   sort_by?: string
   sort_order?: 'asc' | 'desc'
@@ -883,10 +1022,32 @@ const loadUsageStats = async () => {
   }
 }
 
+const loadTodayLeaderboard = async () => {
+  leaderboardLoading.value = true
+  leaderboardError.value = false
+  try {
+    const response = await usageAPI.getTodayLeaderboard()
+    todayLeaderboard.value = response.items || []
+    leaderboardTotals.total_actual_cost = response.total_actual_cost || 0
+    leaderboardTotals.total_requests = response.total_requests || 0
+    leaderboardTotals.total_tokens = response.total_tokens || 0
+  } catch (error) {
+    console.error('Failed to load today leaderboard:', error)
+    leaderboardError.value = true
+    todayLeaderboard.value = []
+    leaderboardTotals.total_actual_cost = 0
+    leaderboardTotals.total_requests = 0
+    leaderboardTotals.total_tokens = 0
+  } finally {
+    leaderboardLoading.value = false
+  }
+}
+
 const applyFilters = () => {
   pagination.page = 1
   loadUsageLogs()
   loadUsageStats()
+  loadTodayLeaderboard()
 }
 
 const resetFilters = () => {
@@ -906,6 +1067,7 @@ const resetFilters = () => {
   pagination.page = 1
   loadUsageLogs()
   loadUsageStats()
+  loadTodayLeaderboard()
 }
 
 const handlePageChange = (page: number) => {
@@ -1116,5 +1278,6 @@ onMounted(() => {
   loadApiKeys()
   loadUsageLogs()
   loadUsageStats()
+  loadTodayLeaderboard()
 })
 </script>

@@ -2,6 +2,11 @@
 
 This directory contains files for deploying Sub2API on Linux servers.
 
+## Multi-node / Distributed Deployment
+
+For a two-server deployment with one existing primary server and one additional
+Sub2API application node, see [DISTRIBUTED_CN.md](DISTRIBUTED_CN.md).
+
 ## Deployment Methods
 
 | Method | Best For | Setup Wizard |
@@ -15,8 +20,12 @@ This directory contains files for deploying Sub2API on Linux servers.
 |------|-------------|
 | `docker-compose.yml` | Docker Compose configuration (named volumes) |
 | `docker-compose.local.yml` | Docker Compose configuration (local directories, easy migration) |
+| `docker-compose.standalone.yml` | Sub2API application-only compose for external PostgreSQL/Redis |
+| `docker-compose.primary-distributed.override.yml` | Primary-node override for exposing PostgreSQL/Redis on a private/VPN IP |
 | `docker-deploy.sh` | **One-click Docker deployment script (recommended)** |
 | `.env.example` | Docker environment variables template |
+| `.env.standalone.example` | Environment template for an additional application node |
+| `DISTRIBUTED_CN.md` | Two-server distributed deployment guide |
 | `DOCKER.md` | Docker Hub documentation |
 | `install.sh` | One-click binary installation script |
 | `install-datamanagementd.sh` | datamanagementd 一键安装脚本 |

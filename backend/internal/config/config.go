@@ -66,6 +66,7 @@ type Config struct {
 	Billing                 BillingConfig                 `mapstructure:"billing"`
 	Turnstile               TurnstileConfig               `mapstructure:"turnstile"`
 	Database                DatabaseConfig                `mapstructure:"database"`
+	UsageReadOnlyDatabase   UsageReadOnlyDatabaseConfig   `mapstructure:"usage_readonly_database"`
 	Redis                   RedisConfig                   `mapstructure:"redis"`
 	Ops                     OpsConfig                     `mapstructure:"ops"`
 	JWT                     JWTConfig                     `mapstructure:"jwt"`
@@ -1261,6 +1262,11 @@ type RateLimitConfig struct {
 	OAuth401CooldownMinutes int `mapstructure:"oauth_401_cooldown_minutes"` // OAuth 401临时不可调度冷却(分钟)
 }
 
+type UsageReadOnlyDatabaseConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	DatabaseConfig `mapstructure:",squash"`
+}
+
 // APIKeyAuthCacheConfig API Key 认证缓存配置
 type APIKeyAuthCacheConfig struct {
 	L1Size             int  `mapstructure:"l1_size"`
@@ -1698,6 +1704,18 @@ func setDefaults() {
 	viper.SetDefault("database.user_platform_quota_flusher_enabled", false)
 	viper.SetDefault("database.user_platform_quota_flush_interval_ms", 2000)
 	viper.SetDefault("database.user_platform_quota_flush_batch_size", 1000)
+
+	viper.SetDefault("usage_readonly_database.enabled", false)
+	viper.SetDefault("usage_readonly_database.host", "")
+	viper.SetDefault("usage_readonly_database.port", 5432)
+	viper.SetDefault("usage_readonly_database.user", "")
+	viper.SetDefault("usage_readonly_database.password", "")
+	viper.SetDefault("usage_readonly_database.dbname", "")
+	viper.SetDefault("usage_readonly_database.sslmode", "disable")
+	viper.SetDefault("usage_readonly_database.max_open_conns", 10)
+	viper.SetDefault("usage_readonly_database.max_idle_conns", 5)
+	viper.SetDefault("usage_readonly_database.conn_max_lifetime_minutes", 30)
+	viper.SetDefault("usage_readonly_database.conn_max_idle_time_minutes", 5)
 
 	// Redis
 	viper.SetDefault("redis.host", "localhost")
@@ -2281,6 +2299,38 @@ func (c *Config) Validate() error {
 	}
 	if c.Database.ConnMaxIdleTimeMinutes < 0 {
 		return fmt.Errorf("database.conn_max_idle_time_minutes must be non-negative")
+	}
+	if c.UsageReadOnlyDatabase.Enabled {
+		if strings.TrimSpace(c.UsageReadOnlyDatabase.Host) == "" {
+			return fmt.Errorf("usage_readonly_database.host is required when usage_readonly_database.enabled=true")
+		}
+		if c.UsageReadOnlyDatabase.Port <= 0 {
+			return fmt.Errorf("usage_readonly_database.port must be positive")
+		}
+		if strings.TrimSpace(c.UsageReadOnlyDatabase.User) == "" {
+			return fmt.Errorf("usage_readonly_database.user is required when usage_readonly_database.enabled=true")
+		}
+		if strings.TrimSpace(c.UsageReadOnlyDatabase.DBName) == "" {
+			return fmt.Errorf("usage_readonly_database.dbname is required when usage_readonly_database.enabled=true")
+		}
+		if strings.TrimSpace(c.UsageReadOnlyDatabase.SSLMode) == "" {
+			return fmt.Errorf("usage_readonly_database.sslmode is required when usage_readonly_database.enabled=true")
+		}
+		if c.UsageReadOnlyDatabase.MaxOpenConns <= 0 {
+			return fmt.Errorf("usage_readonly_database.max_open_conns must be positive")
+		}
+		if c.UsageReadOnlyDatabase.MaxIdleConns < 0 {
+			return fmt.Errorf("usage_readonly_database.max_idle_conns must be non-negative")
+		}
+		if c.UsageReadOnlyDatabase.MaxIdleConns > c.UsageReadOnlyDatabase.MaxOpenConns {
+			return fmt.Errorf("usage_readonly_database.max_idle_conns cannot exceed usage_readonly_database.max_open_conns")
+		}
+		if c.UsageReadOnlyDatabase.ConnMaxLifetimeMinutes < 0 {
+			return fmt.Errorf("usage_readonly_database.conn_max_lifetime_minutes must be non-negative")
+		}
+		if c.UsageReadOnlyDatabase.ConnMaxIdleTimeMinutes < 0 {
+			return fmt.Errorf("usage_readonly_database.conn_max_idle_time_minutes must be non-negative")
+		}
 	}
 	if c.Redis.DialTimeoutSeconds <= 0 {
 		return fmt.Errorf("redis.dial_timeout_seconds must be positive")

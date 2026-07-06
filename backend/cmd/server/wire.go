@@ -48,6 +48,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 		// BuildInfo provider
 		provideServiceBuildInfo,
+		provideUsageReadService,
 
 		// Cleanup function provider
 		provideCleanup,
@@ -69,8 +70,31 @@ func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
 	}
 }
 
+func provideUsageReadService(
+	localUsageService *service.UsageService,
+	localUserRepo service.UserRepository,
+	localAPIKeyRepo service.APIKeyRepository,
+	readOnlyRepo *repository.UsageReadOnlyLogRepository,
+	readOnlyUserRepo *repository.UsageReadOnlyUserRepository,
+	readOnlyAPIKeyRepo *repository.UsageReadOnlyAPIKeyRepository,
+) *service.UsageReadService {
+	if readOnlyRepo == nil || readOnlyRepo.Repo == nil ||
+		readOnlyUserRepo == nil || readOnlyUserRepo.Repo == nil ||
+		readOnlyAPIKeyRepo == nil || readOnlyAPIKeyRepo.Repo == nil {
+		return service.NewUsageReadService(localUsageService)
+	}
+	return service.NewRemoteUsageReadService(
+		service.NewUsageService(readOnlyRepo.Repo, nil, nil, nil),
+		localUserRepo,
+		readOnlyUserRepo.Repo,
+		localAPIKeyRepo,
+		readOnlyAPIKeyRepo.Repo,
+	)
+}
+
 func provideCleanup(
 	entClient *ent.Client,
+	usageReadOnlyEntClient *repository.UsageReadOnlyEntClient,
 	rdb *redis.Client,
 	opsMetricsCollector *service.OpsMetricsCollector,
 	opsAggregation *service.OpsAggregationService,
@@ -266,6 +290,12 @@ func provideCleanup(
 					return nil
 				}
 				return rdb.Close()
+			}},
+			{"UsageReadOnlyEnt", func() error {
+				if usageReadOnlyEntClient == nil || usageReadOnlyEntClient.Client == nil {
+					return nil
+				}
+				return usageReadOnlyEntClient.Client.Close()
 			}},
 			{"Ent", func() error {
 				if entClient == nil {

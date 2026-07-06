@@ -933,6 +933,18 @@ export default {
     rate: 'Rate',
     original: 'Original',
     billed: 'Billed',
+    leaderboard: {
+      title: 'Today Usage Leaderboard',
+      subtitle: 'Ranked by today\'s actual usage cost, showing the top 10 users only',
+      totalCost: 'Today total',
+      rank: 'Rank',
+      user: 'User',
+      cost: 'Cost',
+      tokens: 'Tokens',
+      requests: 'Requests',
+      empty: 'No usage leaderboard data for today',
+      failedToLoad: 'Failed to load today leaderboard'
+    },
     noRecords: 'No usage records found. Try adjusting your filters.',
     failedToLoad: 'Failed to load usage logs',
     noDataToExport: 'No data to export',

@@ -1,0 +1,34 @@
+# =============================================================================
+# Sub2API Primary Node Override for Two-Server Deployments
+# =============================================================================
+# Use this on the existing/primary server when another Sub2API app node needs
+# to connect to the primary server's PostgreSQL and Redis.
+#
+# Example:
+#   POSTGRES_BIND_HOST=10.0.0.10 REDIS_BIND_HOST=10.0.0.10 \
+#   docker compose -f docker-compose.local.yml \
+#     -f docker-compose.primary-distributed.override.yml up -d
+#
+# Notes:
+#   - Bind to a private/VPN IP, not 0.0.0.0, whenever possible.
+#   - Restrict firewall access to the secondary server IP only.
+#   - REDIS_PASSWORD is required here because Redis becomes reachable from
+#     another host.
+# =============================================================================
+
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_BIND_HOST:?Set POSTGRES_BIND_HOST to the primary server private/VPN IP}:${DATABASE_PORT:-5432}:5432"
+
+  redis:
+    ports:
+      - "${REDIS_BIND_HOST:?Set REDIS_BIND_HOST to the primary server private/VPN IP}:${REDIS_PORT:-6379}:6379"
+    command: >
+      sh -c '
+        : "${REDIS_PASSWORD:?REDIS_PASSWORD is required for distributed Redis access}";
+        redis-server
+        --save 60 1
+        --appendonly yes
+        --appendfsync everysec
+        --requirepass "$REDIS_PASSWORD"'

@@ -73,8 +73,19 @@ services:
       # =======================================================================
       # JWT Configuration
       # =======================================================================
+      # IMPORTANT for multi-node deployments:
+      # All Sub2API application nodes must use the same JWT_SECRET, otherwise
+      # users may be logged out when requests hit different nodes.
       - JWT_SECRET=${JWT_SECRET:-}
       - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+
+      # =======================================================================
+      # TOTP (2FA) Configuration
+      # =======================================================================
+      # IMPORTANT for multi-node deployments:
+      # All Sub2API application nodes must use the same TOTP_ENCRYPTION_KEY,
+      # otherwise existing 2FA secrets may be unreadable on the new node.
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
 
       # =======================================================================
       # Timezone Configuration

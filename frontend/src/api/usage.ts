@@ -91,6 +91,23 @@ export interface ApiKeyDailyUsageResponse {
   end_date: string
 }
 
+export interface TodayUsageLeaderboardItem {
+  rank: number
+  masked_email: string
+  requests: number
+  tokens: number
+  actual_cost: number
+}
+
+export interface TodayUsageLeaderboardResponse {
+  items: TodayUsageLeaderboardItem[]
+  total_actual_cost: number
+  total_requests: number
+  total_tokens: number
+  start_date: string
+  end_date: string
+}
+
 /**
  * List usage logs with optional filters
  * @param page - Page number (default: 1)
@@ -257,6 +274,17 @@ export async function getDashboardModels(params?: {
 }
 
 /**
+ * Get today's top users by usage cost. User identities are masked by the backend.
+ * @returns Top 10 usage leaderboard for today
+ */
+export async function getTodayLeaderboard(): Promise<TodayUsageLeaderboardResponse> {
+  const { data } = await apiClient.get<TodayUsageLeaderboardResponse>(
+    '/usage/leaderboard/today'
+  )
+  return data
+}
+
+/**
  * Get daily usage details for one API key owned by the current user.
  * @param apiKeyId - API key ID
  * @param days - Number of days to include (1-90)
@@ -334,6 +362,7 @@ export const usageAPI = {
   getDashboardStats,
   getDashboardTrend,
   getDashboardModels,
+  getTodayLeaderboard,
   getMyApiKeyDailyUsage,
   getDashboardApiKeysUsage,
   // Error requests

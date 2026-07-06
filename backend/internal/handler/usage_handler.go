@@ -20,6 +20,7 @@ import (
 // UsageHandler handles usage-related requests
 type UsageHandler struct {
 	usageService   *service.UsageService
+	usageReadService *service.UsageReadService
 	apiKeyService  *service.APIKeyService
 	opsService     *service.OpsService
 	settingService *service.SettingService
@@ -28,16 +29,37 @@ type UsageHandler struct {
 // NewUsageHandler creates a new UsageHandler
 func NewUsageHandler(
 	usageService *service.UsageService,
+	usageReadService *service.UsageReadService,
 	apiKeyService *service.APIKeyService,
 	opsService *service.OpsService,
 	settingService *service.SettingService,
 ) *UsageHandler {
+	if usageReadService == nil {
+		usageReadService = service.NewUsageReadService(usageService)
+	}
 	return &UsageHandler{
 		usageService:   usageService,
+		usageReadService: usageReadService,
 		apiKeyService:  apiKeyService,
 		opsService:     opsService,
 		settingService: settingService,
 	}
+}
+
+func (h *UsageHandler) resolveReadUserID(c *gin.Context, localUserID int64) (int64, bool, error) {
+	readUserID, ok, err := h.usageReadService.ResolveReadUserID(c.Request.Context(), localUserID)
+	if err != nil {
+		return 0, false, err
+	}
+	return readUserID, ok, nil
+}
+
+func (h *UsageHandler) resolveReadAPIKeyID(c *gin.Context, localAPIKey *service.APIKey, readUserID int64) (int64, bool, error) {
+	readAPIKeyID, ok, err := h.usageReadService.ResolveReadAPIKeyID(c.Request.Context(), localAPIKey, readUserID)
+	if err != nil {
+		return 0, false, err
+	}
+	return readAPIKeyID, ok, nil
 }
 
 // List handles listing usage records with pagination
@@ -52,6 +74,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 
 	var apiKeyID int64
+	var localAPIKey *service.APIKey
 	if apiKeyIDStr := c.Query("api_key_id"); apiKeyIDStr != "" {
 		id, err := strconv.ParseInt(apiKeyIDStr, 10, 64)
 		if err != nil {
@@ -70,6 +93,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 			return
 		}
 
+		localAPIKey = apiKey
 		apiKeyID = id
 	}
 
@@ -135,8 +159,31 @@ func (h *UsageHandler) List(c *gin.Context) {
 		SortBy:    c.DefaultQuery("sort_by", "created_at"),
 		SortOrder: c.DefaultQuery("sort_order", "desc"),
 	}
+
+	readUserID, ok, err := h.resolveReadUserID(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !ok {
+		response.Paginated(c, []dto.UsageLog{}, 0, page, pageSize)
+		return
+	}
+	if localAPIKey != nil {
+		readAPIKeyID, found, err := h.resolveReadAPIKeyID(c, localAPIKey, readUserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if !found {
+			response.Paginated(c, []dto.UsageLog{}, 0, page, pageSize)
+			return
+		}
+		apiKeyID = readAPIKeyID
+	}
+
 	filters := usagestats.UsageLogFilters{
-		UserID:      subject.UserID, // Always filter by current user for security
+		UserID:      readUserID, // Always filter by current user for security
 		APIKeyID:    apiKeyID,
 		Model:       model,
 		RequestType: requestType,
@@ -146,7 +193,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		EndTime:     endTime,
 	}
 
-	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
+	records, result, err := h.usageReadService.ListWithFilters(c.Request.Context(), params, filters)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -285,14 +332,19 @@ func (h *UsageHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	record, err := h.usageService.GetByID(c.Request.Context(), usageID)
+	record, err := h.usageReadService.GetByID(c.Request.Context(), usageID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
 	// 验证所有权
-	if record.UserID != subject.UserID {
+	readUserID, ok, err := h.resolveReadUserID(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !ok || record.UserID != readUserID {
 		response.Forbidden(c, "Not authorized to access this record")
 		return
 	}
@@ -310,6 +362,7 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	}
 
 	var apiKeyID int64
+	var localAPIKey *service.APIKey
 	if apiKeyIDStr := c.Query("api_key_id"); apiKeyIDStr != "" {
 		id, err := strconv.ParseInt(apiKeyIDStr, 10, 64)
 		if err != nil {
@@ -328,6 +381,7 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 			return
 		}
 
+		localAPIKey = apiKey
 		apiKeyID = id
 	}
 
@@ -373,10 +427,31 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 
 	var stats *service.UsageStats
 	var err error
+	readUserID, ok, err := h.resolveReadUserID(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !ok {
+		response.Success(c, &service.UsageStats{})
+		return
+	}
+	if localAPIKey != nil {
+		readAPIKeyID, found, err := h.resolveReadAPIKeyID(c, localAPIKey, readUserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if !found {
+			response.Success(c, &service.UsageStats{})
+			return
+		}
+		apiKeyID = readAPIKeyID
+	}
 	if apiKeyID > 0 {
-		stats, err = h.usageService.GetStatsByAPIKey(c.Request.Context(), apiKeyID, startTime, endTime)
+		stats, err = h.usageReadService.GetStatsByAPIKey(c.Request.Context(), apiKeyID, startTime, endTime)
 	} else {
-		stats, err = h.usageService.GetStatsByUser(c.Request.Context(), subject.UserID, startTime, endTime)
+		stats, err = h.usageReadService.GetStatsByUser(c.Request.Context(), readUserID, startTime, endTime)
 	}
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -451,7 +526,17 @@ func (h *UsageHandler) DashboardStats(c *gin.Context) {
 		return
 	}
 
-	stats, err := h.usageService.GetUserDashboardStats(c.Request.Context(), subject.UserID)
+	readUserID, ok, err := h.resolveReadUserID(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !ok {
+		response.Success(c, &usagestats.UserDashboardStats{})
+		return
+	}
+
+	stats, err := h.usageReadService.GetUserDashboardStats(c.Request.Context(), readUserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -472,7 +557,22 @@ func (h *UsageHandler) DashboardTrend(c *gin.Context) {
 	startTime, endTime := parseUserTimeRange(c)
 	granularity := c.DefaultQuery("granularity", "day")
 
-	trend, err := h.usageService.GetUserUsageTrendByUserID(c.Request.Context(), subject.UserID, startTime, endTime, granularity)
+	readUserID, ok, err := h.resolveReadUserID(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !ok {
+		response.Success(c, gin.H{
+			"trend":       []usagestats.TrendDataPoint{},
+			"start_date":  startTime.Format("2006-01-02"),
+			"end_date":    endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+			"granularity": granularity,
+		})
+		return
+	}
+
+	trend, err := h.usageReadService.GetUserUsageTrendByUserID(c.Request.Context(), readUserID, startTime, endTime, granularity)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -497,7 +597,21 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 
 	startTime, endTime := parseUserTimeRange(c)
 
-	stats, err := h.usageService.GetUserModelStats(c.Request.Context(), subject.UserID, startTime, endTime)
+	readUserID, ok, err := h.resolveReadUserID(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !ok {
+		response.Success(c, gin.H{
+			"models":     []usagestats.ModelStat{},
+			"start_date": startTime.Format("2006-01-02"),
+			"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		})
+		return
+	}
+
+	stats, err := h.usageReadService.GetUserModelStats(c.Request.Context(), readUserID, startTime, endTime)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -513,6 +627,98 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 // BatchAPIKeysUsageRequest represents the request for batch API keys usage
 type BatchAPIKeysUsageRequest struct {
 	APIKeyIDs []int64 `json:"api_key_ids" binding:"required"`
+}
+
+type todayUsageLeaderboardItem struct {
+	Rank        int     `json:"rank"`
+	MaskedEmail string  `json:"masked_email"`
+	Requests    int64   `json:"requests"`
+	Tokens      int64   `json:"tokens"`
+	ActualCost  float64 `json:"actual_cost"`
+}
+
+type todayUsageLeaderboardResponse struct {
+	Items           []todayUsageLeaderboardItem `json:"items"`
+	TotalActualCost float64                     `json:"total_actual_cost"`
+	TotalRequests   int64                       `json:"total_requests"`
+	TotalTokens     int64                       `json:"total_tokens"`
+	StartDate       string                      `json:"start_date"`
+	EndDate         string                      `json:"end_date"`
+}
+
+// TodayLeaderboard handles getting today's public user usage leaderboard.
+// GET /api/v1/usage/leaderboard/today
+func (h *UsageHandler) TodayLeaderboard(c *gin.Context) {
+	if _, ok := middleware2.GetAuthSubjectFromContext(c); !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	userTZ := c.Query("timezone")
+	now := timezone.NowInUserLocation(userTZ)
+	startTime := timezone.StartOfDayInUserLocation(now, userTZ)
+	endTime := startTime.AddDate(0, 0, 1)
+
+	ranking, err := h.usageReadService.GetUserSpendingRanking(c.Request.Context(), startTime, endTime, 10)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	rows := ranking.Ranking
+	if len(rows) > 10 {
+		rows = rows[:10]
+	}
+	items := make([]todayUsageLeaderboardItem, 0, len(rows))
+	for i, row := range rows {
+		items = append(items, todayUsageLeaderboardItem{
+			Rank:        i + 1,
+			MaskedEmail: maskUsageLeaderboardEmail(row.Email),
+			Requests:    row.Requests,
+			Tokens:      row.Tokens,
+			ActualCost:  row.ActualCost,
+		})
+	}
+
+	response.Success(c, todayUsageLeaderboardResponse{
+		Items:           items,
+		TotalActualCost: ranking.TotalActualCost,
+		TotalRequests:   ranking.TotalRequests,
+		TotalTokens:     ranking.TotalTokens,
+		StartDate:       startTime.Format("2006-01-02"),
+		EndDate:         startTime.Format("2006-01-02"),
+	})
+}
+
+func maskUsageLeaderboardEmail(email string) string {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return "hidden"
+	}
+
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return maskUsageLeaderboardIdentifier(email)
+	}
+
+	return maskUsageLeaderboardIdentifier(parts[0]) + "@" + parts[1]
+}
+
+func maskUsageLeaderboardIdentifier(value string) string {
+	const mask = "*****"
+
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	switch n := len(runes); {
+	case n == 0:
+		return mask
+	case n == 1:
+		return string(runes[:1]) + mask
+	case n <= 6:
+		return string(runes[:1]) + mask + string(runes[n-1:])
+	default:
+		return string(runes[:3]) + mask + string(runes[n-3:])
+	}
 }
 
 // DashboardAPIKeysUsage handles getting usage stats for user's own API keys
@@ -552,10 +758,59 @@ func (h *UsageHandler) DashboardAPIKeysUsage(c *gin.Context) {
 		return
 	}
 
-	stats, err := h.usageService.GetBatchAPIKeyUsageStats(c.Request.Context(), validAPIKeyIDs, time.Time{}, time.Time{})
+	readAPIKeyIDs := validAPIKeyIDs
+	readToLocalAPIKeyID := make(map[int64]int64, len(validAPIKeyIDs))
+	if h.usageReadService.IsRemoteUsageSource() {
+		readUserID, ok, err := h.resolveReadUserID(c, subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if !ok {
+			response.Success(c, gin.H{"stats": map[string]any{}})
+			return
+		}
+		readAPIKeyIDs = make([]int64, 0, len(validAPIKeyIDs))
+		for _, localID := range validAPIKeyIDs {
+			localAPIKey, err := h.apiKeyService.GetByID(c.Request.Context(), localID)
+			if err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+			readID, ok, err := h.resolveReadAPIKeyID(c, localAPIKey, readUserID)
+			if err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+			if !ok {
+				continue
+			}
+			readAPIKeyIDs = append(readAPIKeyIDs, readID)
+			readToLocalAPIKeyID[readID] = localID
+		}
+		if len(readAPIKeyIDs) == 0 {
+			response.Success(c, gin.H{"stats": map[string]any{}})
+			return
+		}
+	}
+
+	stats, err := h.usageReadService.GetBatchAPIKeyUsageStats(c.Request.Context(), readAPIKeyIDs, time.Time{}, time.Time{})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	if len(readToLocalAPIKeyID) > 0 {
+		remapped := make(map[int64]*usagestats.BatchAPIKeyUsageStats, len(stats))
+		for readID, stat := range stats {
+			localID, ok := readToLocalAPIKeyID[readID]
+			if !ok || stat == nil {
+				continue
+			}
+			copyStat := *stat
+			copyStat.APIKeyID = localID
+			remapped[localID] = &copyStat
+		}
+		stats = remapped
 	}
 
 	response.Success(c, gin.H{"stats": stats})
@@ -599,7 +854,36 @@ func (h *UsageHandler) GetMyAPIKeyDailyUsage(c *gin.Context) {
 
 	userTZ := c.Query("timezone")
 	startTime, endTime := apiKeyDailyUsageRange(days, userTZ)
-	items, err := h.usageService.GetAPIKeyDailyUsage(c.Request.Context(), subject.UserID, apiKeyID, startTime, endTime)
+	readUserID, ok, err := h.resolveReadUserID(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !ok {
+		response.Success(c, gin.H{
+			"items":      []usagestats.APIKeyDailyUsagePoint{},
+			"days":       days,
+			"start_date": startTime.Format("2006-01-02"),
+			"end_date":   endTime.AddDate(0, 0, -1).Format("2006-01-02"),
+		})
+		return
+	}
+	readAPIKeyID, ok, err := h.resolveReadAPIKeyID(c, apiKey, readUserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !ok {
+		response.Success(c, gin.H{
+			"items":      []usagestats.APIKeyDailyUsagePoint{},
+			"days":       days,
+			"start_date": startTime.Format("2006-01-02"),
+			"end_date":   endTime.AddDate(0, 0, -1).Format("2006-01-02"),
+		})
+		return
+	}
+
+	items, err := h.usageReadService.GetAPIKeyDailyUsage(c.Request.Context(), readUserID, readAPIKeyID, startTime, endTime)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

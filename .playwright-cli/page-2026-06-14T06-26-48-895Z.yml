@@ -1,0 +1,36 @@
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - img "Logo" [ref=e8]
+    - heading "Codemax" [level=1] [ref=e9]
+    - paragraph [ref=e10]: Subscription to API Conversion Platform
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - heading "欢迎回来" [level=2] [ref=e14]
+      - paragraph [ref=e15]: 登录您的账户以继续
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]: 邮箱
+        - generic [ref=e19]:
+          - generic:
+            - img
+          - textbox "邮箱" [ref=e20]:
+            - /placeholder: 请输入邮箱
+      - generic [ref=e21]:
+        - generic [ref=e22]: 密码
+        - generic [ref=e23]:
+          - generic:
+            - img
+          - textbox "密码" [ref=e24]:
+            - /placeholder: 请输入密码
+          - button [ref=e25] [cursor=pointer]:
+            - img [ref=e26]
+        - link "忘记密码？" [ref=e29] [cursor=pointer]:
+          - /url: /forgot-password
+      - button "登录" [ref=e30] [cursor=pointer]:
+        - img [ref=e31]
+        - text: 登录
+  - paragraph [ref=e42]:
+    - text: 还没有账户？
+    - link "注册" [ref=e43] [cursor=pointer]:
+      - /url: /register
+  - generic [ref=e44]: © 2026 Codemax. All rights reserved.

@@ -29,11 +29,15 @@ type dbPoolSettings struct {
 }
 
 func clampDBPoolSettings(cfg *config.Config) dbPoolSettings {
+	return clampDatabaseConfigPoolSettings(&cfg.Database, "database")
+}
+
+func clampDatabaseConfigPoolSettings(database *config.DatabaseConfig, prefix string) dbPoolSettings {
 	return dbPoolSettings{
-		MaxOpenConns:    cfg.Database.MaxOpenConns,
-		MaxIdleConns:    cfg.Database.MaxIdleConns,
-		ConnMaxLifetime: clampDBPoolDuration("database.conn_max_lifetime_minutes", cfg.Database.ConnMaxLifetimeMinutes, defaultConnMaxLifetime),
-		ConnMaxIdleTime: clampDBPoolDuration("database.conn_max_idle_time_minutes", cfg.Database.ConnMaxIdleTimeMinutes, defaultConnMaxIdleTime),
+		MaxOpenConns:    database.MaxOpenConns,
+		MaxIdleConns:    database.MaxIdleConns,
+		ConnMaxLifetime: clampDBPoolDuration(prefix+".conn_max_lifetime_minutes", database.ConnMaxLifetimeMinutes, defaultConnMaxLifetime),
+		ConnMaxIdleTime: clampDBPoolDuration(prefix+".conn_max_idle_time_minutes", database.ConnMaxIdleTimeMinutes, defaultConnMaxIdleTime),
 	}
 }
 
@@ -52,12 +56,21 @@ func clampDBPoolDuration(key string, minutes int, fallback time.Duration) time.D
 
 func applyDBPoolSettings(db *sql.DB, cfg *config.Config) {
 	settings := clampDBPoolSettings(cfg)
+	applyDBPoolSettingsValue(db, settings, "database")
+}
+
+func applyReadOnlyDBPoolSettings(db *sql.DB, database *config.DatabaseConfig) {
+	settings := clampDatabaseConfigPoolSettings(database, "usage_readonly_database")
+	applyDBPoolSettingsValue(db, settings, "usage read-only database")
+}
+
+func applyDBPoolSettingsValue(db *sql.DB, settings dbPoolSettings, label string) {
 	db.SetMaxOpenConns(settings.MaxOpenConns)
 	db.SetMaxIdleConns(settings.MaxIdleConns)
 	db.SetConnMaxLifetime(settings.ConnMaxLifetime)
 	db.SetConnMaxIdleTime(settings.ConnMaxIdleTime)
 
-	slog.Info("database connection pool configured",
+	slog.Info(label+" connection pool configured",
 		slog.Group("effective",
 			slog.Int("max_open", settings.MaxOpenConns),
 			slog.Int("max_idle", settings.MaxIdleConns),

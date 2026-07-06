@@ -937,6 +937,18 @@ export default {
     rate: '倍率',
     original: '原始',
     billed: '计费',
+    leaderboard: {
+      title: '今日用量排行',
+      subtitle: '按今日实际用量消费排序，仅展示前十名用户',
+      totalCost: '今日合计',
+      rank: '排名',
+      user: '用户',
+      cost: '消费',
+      tokens: 'Token',
+      requests: '请求',
+      empty: '今日暂无用量排行数据',
+      failedToLoad: '加载今日排行失败'
+    },
     noRecords: '未找到使用记录，请尝试调整筛选条件。',
     failedToLoad: '加载使用记录失败',
     noDataToExport: '没有可导出的数据',

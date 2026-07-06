@@ -24,6 +24,8 @@ Thumbs.db
 
 # Build artifacts
 dist/
+!backend/internal/web/dist/
+!backend/internal/web/dist/**
 build/
 
 # Node modules (will be installed in container)

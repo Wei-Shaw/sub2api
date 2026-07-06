@@ -90,7 +90,19 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userHandler := handler.NewUserHandler(userService, authService, emailService, emailCache, affiliateService, serviceUserPlatformQuotaRepository)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageLogRepository := repository.NewUsageLogRepository(client, db)
+	usageReadOnlyEntClient, err := repository.ProvideUsageReadOnlyEnt(configConfig)
+	if err != nil {
+		return nil, err
+	}
+	usageReadOnlySQLDB, err := repository.ProvideUsageReadOnlySQLDB(usageReadOnlyEntClient)
+	if err != nil {
+		return nil, err
+	}
+	usageReadOnlyLogRepository := repository.NewUsageReadOnlyLogRepository(usageReadOnlyEntClient, usageReadOnlySQLDB)
+	usageReadOnlyUserRepository := repository.NewUsageReadOnlyUserRepository(usageReadOnlyEntClient, usageReadOnlySQLDB)
+	usageReadOnlyAPIKeyRepository := repository.NewUsageReadOnlyAPIKeyRepository(usageReadOnlyEntClient, usageReadOnlySQLDB)
 	usageService := service.NewUsageService(usageLogRepository, userRepository, client, apiKeyAuthCacheInvalidator)
+	usageReadService := provideUsageReadService(usageService, userRepository, apiKeyRepository, usageReadOnlyLogRepository, usageReadOnlyUserRepository, usageReadOnlyAPIKeyRepository)
 	opsRepository := repository.NewOpsRepository(db)
 	schedulerCache := repository.ProvideSchedulerCache(redisClient, configConfig)
 	accountRepository := repository.NewAccountRepository(client, db, schedulerCache)
@@ -154,7 +166,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	geminiMessagesCompatService := service.NewGeminiMessagesCompatService(accountRepository, groupRepository, gatewayCache, schedulerSnapshotService, geminiTokenProvider, rateLimitService, httpUpstream, antigravityGatewayService, configConfig)
 	opsSystemLogSink := service.ProvideOpsSystemLogSink(opsRepository)
 	opsService := service.ProvideOpsService(opsRepository, settingRepository, configConfig, accountRepository, userRepository, concurrencyService, gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, opsSystemLogSink, settingService)
-	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, opsService, settingService)
+	usageHandler := handler.NewUsageHandler(usageService, usageReadService, apiKeyService, opsService, settingService)
 	redeemHandler := handler.NewRedeemHandler(redeemService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	announcementRepository := repository.NewAnnouncementRepository(client)
@@ -272,7 +284,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService, leaderLockCache, db)
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher)
+	v := provideCleanup(client, usageReadOnlyEntClient, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -298,8 +310,31 @@ func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
 	}
 }
 
+func provideUsageReadService(
+	localUsageService *service.UsageService,
+	localUserRepo service.UserRepository,
+	localAPIKeyRepo service.APIKeyRepository,
+	readOnlyRepo *repository.UsageReadOnlyLogRepository,
+	readOnlyUserRepo *repository.UsageReadOnlyUserRepository,
+	readOnlyAPIKeyRepo *repository.UsageReadOnlyAPIKeyRepository,
+) *service.UsageReadService {
+	if readOnlyRepo == nil || readOnlyRepo.Repo == nil ||
+		readOnlyUserRepo == nil || readOnlyUserRepo.Repo == nil ||
+		readOnlyAPIKeyRepo == nil || readOnlyAPIKeyRepo.Repo == nil {
+		return service.NewUsageReadService(localUsageService)
+	}
+	return service.NewRemoteUsageReadService(
+		service.NewUsageService(readOnlyRepo.Repo, nil, nil, nil),
+		localUserRepo,
+		readOnlyUserRepo.Repo,
+		localAPIKeyRepo,
+		readOnlyAPIKeyRepo.Repo,
+	)
+}
+
 func provideCleanup(
 	entClient *ent.Client,
+	usageReadOnlyEntClient *repository.UsageReadOnlyEntClient,
 	rdb *redis.Client,
 	opsMetricsCollector *service.OpsMetricsCollector,
 	opsAggregation *service.OpsAggregationService,
@@ -494,6 +529,12 @@ func provideCleanup(
 					return nil
 				}
 				return rdb.Close()
+			}},
+			{"UsageReadOnlyEnt", func() error {
+				if usageReadOnlyEntClient == nil || usageReadOnlyEntClient.Client == nil {
+					return nil
+				}
+				return usageReadOnlyEntClient.Client.Close()
 			}},
 			{"Ent", func() error {
 				if entClient == nil {

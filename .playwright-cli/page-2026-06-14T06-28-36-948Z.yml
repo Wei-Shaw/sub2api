@@ -1,0 +1,270 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e120]:
+    - complementary [ref=e121]:
+      - generic [ref=e122]:
+        - img "Logo" [ref=e124]
+        - generic [ref=e126]: Codemax
+      - navigation [ref=e127]:
+        - generic [ref=e128]:
+          - link "仪表盘" [ref=e129] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=e130]
+            - generic [ref=e132]: 仪表盘
+          - link "API 密钥" [ref=e133] [cursor=pointer]:
+            - /url: /keys
+            - img [ref=e134]
+            - generic [ref=e136]: API 密钥
+          - link "使用记录" [ref=e137] [cursor=pointer]:
+            - /url: /usage
+            - img [ref=e138]
+            - generic [ref=e140]: 使用记录
+          - link "渠道状态" [ref=e141] [cursor=pointer]:
+            - /url: /monitor
+            - img [ref=e142]
+            - generic [ref=e144]: 渠道状态
+          - link "我的订阅" [ref=e145] [cursor=pointer]:
+            - /url: /subscriptions
+            - img [ref=e146]
+            - generic [ref=e148]: 我的订阅
+          - link "充值/订阅" [ref=e149] [cursor=pointer]:
+            - /url: /purchase
+            - img [ref=e150]
+            - generic [ref=e156]: 充值/订阅
+          - link "我的订单" [ref=e157] [cursor=pointer]:
+            - /url: /orders
+            - img [ref=e158]
+            - generic [ref=e160]: 我的订单
+          - link "兑换" [ref=e161] [cursor=pointer]:
+            - /url: /redeem
+            - img [ref=e162]
+            - generic [ref=e164]: 兑换
+          - link "邀请返利" [ref=e165] [cursor=pointer]:
+            - /url: /affiliate
+            - img [ref=e166]
+            - generic [ref=e168]: 邀请返利
+          - link "个人资料" [ref=e169] [cursor=pointer]:
+            - /url: /profile
+            - img [ref=e170]
+            - generic [ref=e172]: 个人资料
+          - link "A cyan outline chat icon with connected model nodes. Chat聊天" [ref=e173] [cursor=pointer]:
+            - /url: /custom/d10ecd053ca96585
+            - img "A cyan outline chat icon with connected model nodes." [ref=e175]
+            - generic [ref=e184]: Chat聊天
+      - generic [ref=e185]:
+        - button "深色模式" [ref=e186] [cursor=pointer]:
+          - img [ref=e187]
+          - generic [ref=e189]: 深色模式
+        - button "收起" [ref=e190] [cursor=pointer]:
+          - img [ref=e191]
+          - generic [ref=e193]: 收起
+    - generic [ref=e194]:
+      - banner [ref=e195]:
+        - generic [ref=e196]:
+          - generic [ref=e198]:
+            - heading "使用记录" [level=1] [ref=e199]
+            - paragraph [ref=e200]: 查看和分析您的 API 使用历史
+          - generic [ref=e201]:
+            - button "公告" [ref=e203] [cursor=pointer]:
+              - img [ref=e204]
+            - link "文档" [ref=e209] [cursor=pointer]:
+              - /url: " https://ccng1p7d872b.feishu.cn/wiki/HItfwyCioicuDkkWddgcJqFpnRh?from=from_copylink "
+              - img [ref=e210]
+              - generic [ref=e212]: 文档
+            - button "🇨🇳 ZH" [ref=e214] [cursor=pointer]:
+              - generic [ref=e215]: 🇨🇳
+              - generic [ref=e216]: ZH
+              - img [ref=e217]
+            - generic [ref=e219]:
+              - img [ref=e220]
+              - generic [ref=e222]: $0.00
+            - button "User Menu" [ref=e224] [cursor=pointer]:
+              - generic [ref=e226]: "15"
+              - generic [ref=e227]:
+                - generic [ref=e228]: "158443849"
+                - generic [ref=e229]: user
+              - img [ref=e230]
+      - main [ref=e232]:
+        - generic [ref=e233]:
+          - generic [ref=e235]:
+            - generic [ref=e237]:
+              - img [ref=e239]
+              - generic [ref=e241]:
+                - paragraph [ref=e242]: 总请求数
+                - paragraph [ref=e243]: "0"
+                - paragraph [ref=e244]: 所选范围内
+            - generic [ref=e246]:
+              - img [ref=e248]
+              - generic [ref=e250]:
+                - paragraph [ref=e251]: 总 Token
+                - paragraph [ref=e252]: "0"
+                - paragraph [ref=e253]: 输入 0 · 输出 0 · 缓存命中 0 · 缓存创建 0
+                - paragraph [ref=e254]: "缓存命中率: -"
+            - generic [ref=e256]:
+              - img [ref=e258]
+              - generic [ref=e260]:
+                - paragraph [ref=e261]: 总消费
+                - paragraph [ref=e262]: $0.0000
+                - paragraph [ref=e263]: 实际 / $0.0000 标准
+            - generic [ref=e265]:
+              - img [ref=e267]
+              - generic [ref=e269]:
+                - paragraph [ref=e270]: 平均耗时
+                - paragraph [ref=e271]: 0ms
+                - paragraph [ref=e272]: 每次请求
+          - generic [ref=e276]:
+            - generic [ref=e277]:
+              - generic [ref=e278]: API 密钥
+              - button "Select option" [ref=e280] [cursor=pointer]:
+                - generic [ref=e281]: 全部密钥
+                - img [ref=e283]
+            - generic [ref=e285]:
+              - generic [ref=e286]: 时间范围
+              - button "近 7 天" [ref=e288] [cursor=pointer]:
+                - img [ref=e290]
+                - generic [ref=e292]: 近 7 天
+                - img [ref=e294]
+            - generic [ref=e296]:
+              - button "刷新" [ref=e297] [cursor=pointer]
+              - button "重置" [ref=e298] [cursor=pointer]
+              - button "导出 CSV" [ref=e299] [cursor=pointer]
+          - generic [ref=e300]:
+            - generic [ref=e303]:
+              - generic [ref=e304]:
+                - generic [ref=e305]:
+                  - img [ref=e307]
+                  - generic [ref=e309]:
+                    - heading "今日用量排行" [level=3] [ref=e310]
+                    - paragraph [ref=e311]: 按今日实际用量消费排序，仅展示前十名用户
+                - generic [ref=e312]:
+                  - generic [ref=e313]:
+                    - generic [ref=e314]: $833.6050
+                    - generic [ref=e315]: 今日合计
+                  - generic [ref=e316]:
+                    - generic [ref=e317]: 5,995
+                    - generic [ref=e318]: 请求
+                  - generic [ref=e319]:
+                    - generic [ref=e320]: 374.88M
+                    - generic [ref=e321]: Token
+              - generic [ref=e322]:
+                - generic [ref=e323]:
+                  - generic [ref=e324]: 排名
+                  - generic [ref=e325]: 用户
+                  - generic [ref=e326]: 消费
+                  - generic [ref=e327]: Token
+                  - generic [ref=e328]: 请求
+                - generic [ref=e329]:
+                  - generic [ref=e330]:
+                    - generic [ref=e332]: "1"
+                    - generic [ref=e334]: 383*****160@qq.com
+                    - generic [ref=e337]: $163.4515
+                    - generic [ref=e338]: 10.01M
+                    - generic [ref=e339]: "122"
+                  - generic [ref=e340]:
+                    - generic [ref=e342]: "2"
+                    - generic [ref=e344]: 127*****757@qq.com
+                    - generic [ref=e347]: $99.7032
+                    - generic [ref=e348]: 61.93M
+                    - generic [ref=e349]: "506"
+                  - generic [ref=e350]:
+                    - generic [ref=e352]: "3"
+                    - generic [ref=e354]: a*****n@qq.com
+                    - generic [ref=e357]: $85.5305
+                    - generic [ref=e358]: 56.25M
+                    - generic [ref=e359]: 2,947
+                  - generic [ref=e360]:
+                    - generic [ref=e362]: "4"
+                    - generic [ref=e364]: 745*****155@qq.com
+                    - generic [ref=e367]: $78.7281
+                    - generic [ref=e368]: 57.86M
+                    - generic [ref=e369]: "458"
+                  - generic [ref=e370]:
+                    - generic [ref=e372]: "5"
+                    - generic [ref=e374]: 273*****301@qq.com
+                    - generic [ref=e377]: $78.2228
+                    - generic [ref=e378]: 48.68M
+                    - generic [ref=e379]: "424"
+                  - generic [ref=e380]:
+                    - generic [ref=e382]: "6"
+                    - generic [ref=e384]: 151*****205@163.com
+                    - generic [ref=e387]: $63.3564
+                    - generic [ref=e388]: 34.80M
+                    - generic [ref=e389]: "273"
+                  - generic [ref=e390]:
+                    - generic [ref=e392]: "7"
+                    - generic [ref=e394]: 181*****040@163.com
+                    - generic [ref=e397]: $33.1120
+                    - generic [ref=e398]: 15.85M
+                    - generic [ref=e399]: "152"
+                  - generic [ref=e400]:
+                    - generic [ref=e402]: "8"
+                    - generic [ref=e404]: lic*****762@gmail.com
+                    - generic [ref=e407]: $33.0253
+                    - generic [ref=e408]: 18.72M
+                    - generic [ref=e409]: "125"
+                  - generic [ref=e410]:
+                    - generic [ref=e412]: "9"
+                    - generic [ref=e414]: 162*****153@qq.com
+                    - generic [ref=e417]: $27.7871
+                    - generic [ref=e418]: 4.87M
+                    - generic [ref=e419]: "143"
+                  - generic [ref=e420]:
+                    - generic [ref=e422]: "10"
+                    - generic [ref=e424]: 591*****638@qq.com
+                    - generic [ref=e427]: $22.7050
+                    - generic [ref=e428]: 14.36M
+                    - generic [ref=e429]: "101"
+            - table [ref=e433]:
+              - rowgroup [ref=e434]:
+                - row "API 密钥 模型 推理强度 端点 类型 计费模式 Token 费用 首 Token 耗时 时间 User-Agent" [ref=e435]:
+                  - columnheader "API 密钥" [ref=e436]:
+                    - generic [ref=e438]: API 密钥
+                  - columnheader "模型" [ref=e439] [cursor=pointer]:
+                    - generic [ref=e440]:
+                      - generic [ref=e441]: 模型
+                      - img [ref=e443]
+                  - columnheader "推理强度" [ref=e445]:
+                    - generic [ref=e447]: 推理强度
+                  - columnheader "端点" [ref=e448]:
+                    - generic [ref=e450]: 端点
+                  - columnheader "类型" [ref=e451]:
+                    - generic [ref=e453]: 类型
+                  - columnheader "计费模式" [ref=e454]:
+                    - generic [ref=e456]: 计费模式
+                  - columnheader "Token" [ref=e457]:
+                    - generic [ref=e459]: Token
+                  - columnheader "费用" [ref=e460]:
+                    - generic [ref=e462]: 费用
+                  - columnheader "首 Token" [ref=e463]:
+                    - generic [ref=e465]: 首 Token
+                  - columnheader "耗时" [ref=e466]:
+                    - generic [ref=e468]: 耗时
+                  - columnheader "时间" [ref=e469] [cursor=pointer]:
+                    - generic [ref=e470]:
+                      - generic [ref=e471]: 时间
+                      - img [ref=e473]
+                  - columnheader "User-Agent" [ref=e475]:
+                    - generic [ref=e477]: User-Agent
+              - rowgroup [ref=e478]:
+                - row "暂无数据" [ref=e479]:
+                  - cell "暂无数据" [ref=e480]:
+                    - generic [ref=e481]:
+                      - img [ref=e483]
+                      - heading "暂无数据" [level=3] [ref=e485]
+                      - paragraph
+  - generic [ref=e519]:
+    - generic [ref=e524]:
+      - generic [ref=e525]:
+        - img [ref=e527]
+        - generic [ref=e529]: 未读
+      - heading "疯狂星期四" [level=2] [ref=e533]
+      - generic [ref=e534]:
+        - img [ref=e535]
+        - time [ref=e537]: 23天前 · 2026/05/21 15:19:00
+    - paragraph [ref=e543]:
+      - text: 疯狂星期四
+      - text: 16:00准时抽奖
+      - text: 🎉
+    - button "标记已读" [ref=e546] [cursor=pointer]:
+      - generic [ref=e547]:
+        - img [ref=e548]
+        - text: 标记已读

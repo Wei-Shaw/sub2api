@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -62,6 +63,25 @@ type UsageService struct {
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 }
 
+type UsageReadUserResolver interface {
+	GetByID(ctx context.Context, id int64) (*User, error)
+	GetByEmail(ctx context.Context, email string) (*User, error)
+}
+
+type UsageReadAPIKeyResolver interface {
+	GetByID(ctx context.Context, id int64) (*APIKey, error)
+	GetByKey(ctx context.Context, key string) (*APIKey, error)
+}
+
+type UsageReadService struct {
+	usageService        *UsageService
+	localUserResolver   UsageReadUserResolver
+	readUserResolver    UsageReadUserResolver
+	localAPIKeyResolver UsageReadAPIKeyResolver
+	readAPIKeyResolver  UsageReadAPIKeyResolver
+	remoteUsageSource   bool
+}
+
 // NewUsageService 创建使用统计服务实例
 func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entClient *dbent.Client, authCacheInvalidator APIKeyAuthCacheInvalidator) *UsageService {
 	return &UsageService{
@@ -70,6 +90,143 @@ func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entC
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
 	}
+}
+
+func NewUsageReadService(usageService *UsageService) *UsageReadService {
+	return &UsageReadService{usageService: usageService}
+}
+
+func NewRemoteUsageReadService(
+	usageService *UsageService,
+	localUserResolver UsageReadUserResolver,
+	readUserResolver UsageReadUserResolver,
+	localAPIKeyResolver UsageReadAPIKeyResolver,
+	readAPIKeyResolver UsageReadAPIKeyResolver,
+) *UsageReadService {
+	if localUserResolver == nil && usageService != nil {
+		localUserResolver = usageService.userRepo
+	}
+	return &UsageReadService{
+		usageService:        usageService,
+		localUserResolver:   localUserResolver,
+		readUserResolver:    readUserResolver,
+		localAPIKeyResolver: localAPIKeyResolver,
+		readAPIKeyResolver:  readAPIKeyResolver,
+		remoteUsageSource:   true,
+	}
+}
+
+func (s *UsageReadService) IsRemoteUsageSource() bool {
+	return s != nil && s.remoteUsageSource
+}
+
+func (s *UsageReadService) ResolveReadUserID(ctx context.Context, localUserID int64) (int64, bool, error) {
+	if s == nil || !s.remoteUsageSource {
+		return localUserID, true, nil
+	}
+	if localUserID <= 0 || s.localUserResolver == nil || s.readUserResolver == nil {
+		return 0, false, nil
+	}
+
+	localUser, err := s.localUserResolver.GetByID(ctx, localUserID)
+	if err != nil {
+		return 0, false, fmt.Errorf("resolve local usage user: %w", err)
+	}
+	email := strings.TrimSpace(localUser.Email)
+	if email == "" {
+		return 0, false, nil
+	}
+
+	readUser, err := s.readUserResolver.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return 0, false, nil
+		}
+		return 0, false, fmt.Errorf("resolve read usage user: %w", err)
+	}
+	if readUser == nil || readUser.ID <= 0 {
+		return 0, false, nil
+	}
+	return readUser.ID, true, nil
+}
+
+func (s *UsageReadService) ResolveReadAPIKeyID(ctx context.Context, localAPIKey *APIKey, readUserID int64) (int64, bool, error) {
+	if localAPIKey == nil {
+		return 0, true, nil
+	}
+	if s == nil || !s.remoteUsageSource {
+		return localAPIKey.ID, true, nil
+	}
+	if s.readAPIKeyResolver == nil {
+		return 0, false, nil
+	}
+
+	key := strings.TrimSpace(localAPIKey.Key)
+	if key == "" && s.localAPIKeyResolver != nil && localAPIKey.ID > 0 {
+		loaded, err := s.localAPIKeyResolver.GetByID(ctx, localAPIKey.ID)
+		if err != nil {
+			return 0, false, fmt.Errorf("resolve local usage api key: %w", err)
+		}
+		key = strings.TrimSpace(loaded.Key)
+	}
+	if key == "" {
+		return 0, false, nil
+	}
+
+	readAPIKey, err := s.readAPIKeyResolver.GetByKey(ctx, key)
+	if err != nil {
+		if errors.Is(err, ErrAPIKeyNotFound) {
+			return 0, false, nil
+		}
+		return 0, false, fmt.Errorf("resolve read usage api key: %w", err)
+	}
+	if readAPIKey == nil || readAPIKey.ID <= 0 {
+		return 0, false, nil
+	}
+	if readUserID > 0 && readAPIKey.UserID != readUserID {
+		return 0, false, nil
+	}
+	return readAPIKey.ID, true, nil
+}
+
+func (s *UsageReadService) GetByID(ctx context.Context, id int64) (*UsageLog, error) {
+	return s.usageService.GetByID(ctx, id)
+}
+
+func (s *UsageReadService) GetStatsByUser(ctx context.Context, userID int64, startTime, endTime time.Time) (*UsageStats, error) {
+	return s.usageService.GetStatsByUser(ctx, userID, startTime, endTime)
+}
+
+func (s *UsageReadService) GetStatsByAPIKey(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*UsageStats, error) {
+	return s.usageService.GetStatsByAPIKey(ctx, apiKeyID, startTime, endTime)
+}
+
+func (s *UsageReadService) GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int) (*usagestats.UserSpendingRankingResponse, error) {
+	return s.usageService.GetUserSpendingRanking(ctx, startTime, endTime, limit)
+}
+
+func (s *UsageReadService) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]UsageLog, *pagination.PaginationResult, error) {
+	return s.usageService.ListWithFilters(ctx, params, filters)
+}
+
+func (s *UsageReadService) GetUserDashboardStats(ctx context.Context, userID int64) (*usagestats.UserDashboardStats, error) {
+	return s.usageService.GetUserDashboardStats(ctx, userID)
+}
+
+func (s *UsageReadService) GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) ([]usagestats.TrendDataPoint, error) {
+	return s.usageService.GetUserUsageTrendByUserID(ctx, userID, startTime, endTime, granularity)
+}
+
+func (s *UsageReadService) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {
+	return s.usageService.GetUserModelStats(ctx, userID, startTime, endTime)
+}
+
+func (s *UsageReadService) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64, startTime, endTime time.Time) (map[int64]*usagestats.BatchAPIKeyUsageStats, error) {
+	return s.usageService.GetBatchAPIKeyUsageStats(ctx, apiKeyIDs, startTime, endTime)
+}
+
+func (s *UsageReadService) GetAPIKeyDailyUsage(ctx context.Context, userID, apiKeyID int64, startTime, endTime time.Time) ([]usagestats.APIKeyDailyUsagePoint, error) {
+	return s.usageService.GetAPIKeyDailyUsage(ctx, userID, apiKeyID, startTime, endTime)
 }
 
 // Create 创建使用日志
@@ -356,6 +513,15 @@ func (s *UsageService) GetAPIKeyDailyUsage(ctx context.Context, userID, apiKeyID
 		})
 	}
 	return points, nil
+}
+
+// GetUserSpendingRanking returns top users by actual cost for the given time range.
+func (s *UsageService) GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int) (*usagestats.UserSpendingRankingResponse, error) {
+	ranking, err := s.usageRepo.GetUserSpendingRanking(ctx, startTime, endTime, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get user spending ranking: %w", err)
+	}
+	return ranking, nil
 }
 
 // GetBatchAPIKeyUsageStats returns today/total actual_cost for given api keys.

@@ -4,9 +4,19 @@ import { nextTick } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
-const { query, getStatsByDateRange, list, showError, showWarning, showSuccess, showInfo } = vi.hoisted(() => ({
+const {
+  query,
+  getStatsByDateRange,
+  getTodayLeaderboard,
+  list,
+  showError,
+  showWarning,
+  showSuccess,
+  showInfo,
+} = vi.hoisted(() => ({
   query: vi.fn(),
   getStatsByDateRange: vi.fn(),
+  getTodayLeaderboard: vi.fn(),
   list: vi.fn(),
   showError: vi.fn(),
   showWarning: vi.fn(),
@@ -61,12 +71,23 @@ const messages: Record<string, string> = {
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
+  'usage.leaderboard.title': 'Today Usage Leaderboard',
+  'usage.leaderboard.subtitle': 'Top users by today cost',
+  'usage.leaderboard.totalCost': 'Total cost',
+  'usage.leaderboard.requests': 'Requests',
+  'usage.leaderboard.tokens': 'Tokens',
+  'usage.leaderboard.rank': 'Rank',
+  'usage.leaderboard.user': 'User',
+  'usage.leaderboard.cost': 'Cost',
+  'usage.leaderboard.empty': 'No usage today',
+  'usage.leaderboard.failedToLoad': 'Failed to load leaderboard',
 }
 
 vi.mock('@/api', () => ({
   usageAPI: {
     query,
     getStatsByDateRange,
+    getTodayLeaderboard,
   },
   keysAPI: {
     list,
@@ -89,13 +110,16 @@ vi.mock('vue-i18n', async () => {
 
 const AppLayoutStub = { template: '<div><slot /></div>' }
 const TablePageLayoutStub = {
-  template: '<div><slot name="actions" /><slot name="filters" /><slot name="table" /><slot /></div>',
+  props: ['showBeforeTable'],
+  template: '<div><slot name="actions" /><slot name="filters" /><slot v-if="showBeforeTable !== false" name="beforeTable" /><slot name="table" /><slot /></div>',
 }
 const DataTableStub = {
   props: ['data'],
   template: `
     <div>
       <div v-for="row in data" :key="row.request_id">
+        <span>{{ row.request_id }}</span>
+        <span>{{ row.model }}</span>
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
@@ -108,11 +132,20 @@ describe('user UsageView tooltip', () => {
   beforeEach(() => {
     query.mockReset()
     getStatsByDateRange.mockReset()
+    getTodayLeaderboard.mockReset()
     list.mockReset()
     showError.mockReset()
     showWarning.mockReset()
     showSuccess.mockReset()
     showInfo.mockReset()
+    getTodayLeaderboard.mockResolvedValue({
+      items: [],
+      total_actual_cost: 0,
+      total_requests: 0,
+      total_tokens: 0,
+      start_date: '2026-06-10',
+      end_date: '2026-06-10',
+    })
 
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
@@ -130,6 +163,88 @@ describe('user UsageView tooltip', () => {
       observe() {}
       disconnect() {}
     }
+  })
+
+  it('shows today leaderboard while keeping usage records visible', async () => {
+    query.mockResolvedValue({
+      items: [
+        {
+          request_id: 'req-usage-record',
+          model: 'gpt-5.4',
+          actual_cost: 0.092883,
+          total_cost: 0.092883,
+          rate_multiplier: 1,
+          service_tier: 'priority',
+          input_cost: 0.020285,
+          output_cost: 0.00303,
+          cache_creation_cost: 0,
+          cache_read_cost: 0.069568,
+          input_tokens: 4057,
+          output_tokens: 101,
+          cache_creation_tokens: 0,
+          cache_read_tokens: 278272,
+          cache_creation_5m_tokens: 0,
+          cache_creation_1h_tokens: 0,
+          image_count: 0,
+          image_size: null,
+          first_token_ms: null,
+          duration_ms: 1,
+          created_at: '2026-03-08T00:00:00Z',
+        },
+      ],
+      total: 1,
+      pages: 1,
+    })
+    getTodayLeaderboard.mockResolvedValue({
+      items: [
+        {
+          rank: 1,
+          masked_email: '168*****456@qq.com',
+          requests: 12,
+          tokens: 34567,
+          actual_cost: 1.2345,
+        },
+      ],
+      total_actual_cost: 1.2345,
+      total_requests: 12,
+      total_tokens: 34567,
+      start_date: '2026-06-13',
+      end_date: '2026-06-13',
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 1,
+      total_tokens: 100,
+      total_cost: 0.1,
+      avg_duration_ms: 1,
+    })
+    list.mockResolvedValue({ items: [] })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('Today Usage Leaderboard')
+    expect(text).toContain('168*****456@qq.com')
+    expect(text).toContain('req-usage-record')
+    expect(text).toContain('gpt-5.4')
+    expect(query).toHaveBeenCalled()
+    expect(getTodayLeaderboard).toHaveBeenCalled()
   })
 
   it('shows fast service tier and unit prices in user tooltip', async () => {

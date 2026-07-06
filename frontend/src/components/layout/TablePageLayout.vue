@@ -1,5 +1,11 @@
 <template>
-  <div class="table-page-layout" :class="{ 'mobile-mode': isMobile }">
+  <div
+    class="table-page-layout"
+    :class="{
+      'mobile-mode': isMobile,
+      'natural-scroll-mode': naturalScroll
+    }"
+  >
     <!-- 固定区域：操作按钮 -->
     <div v-if="$slots.actions" class="layout-section-fixed">
       <slot name="actions" />
@@ -12,6 +18,10 @@
 
     <!-- 滚动区域：表格 -->
     <div class="layout-section-scrollable">
+      <div v-if="$slots.beforeTable && showBeforeTable" class="layout-section-before-table">
+        <slot name="beforeTable" />
+      </div>
+
       <div class="card table-scroll-container">
         <slot name="table" />
       </div>
@@ -26,6 +36,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+
+withDefaults(defineProps<{
+  showBeforeTable?: boolean
+  naturalScroll?: boolean
+}>(), {
+  showBeforeTable: true,
+  naturalScroll: false
+})
 
 const isMobile = ref(false)
 
@@ -50,6 +68,11 @@ onUnmounted(() => {
   height: calc(100vh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
 }
 
+.table-page-layout.natural-scroll-mode {
+  height: auto;
+  min-height: calc(100vh - 64px - 4rem);
+}
+
 .layout-section-fixed {
   @apply flex-shrink-0;
 }
@@ -58,15 +81,34 @@ onUnmounted(() => {
   @apply flex-1 min-h-0 flex flex-col;
 }
 
+.layout-section-before-table {
+  @apply mb-6 flex-shrink-0;
+}
+
 /* 表格滚动容器 - 增强版表体滚动方案 */
 .table-scroll-container {
-  @apply flex flex-col overflow-hidden h-full bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-dark-700 shadow-sm;
+  @apply flex flex-1 min-h-0 flex-col overflow-hidden bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-dark-700 shadow-sm;
 }
 
 .table-scroll-container :deep(.table-wrapper) {
   @apply flex-1 overflow-x-auto overflow-y-auto;
   /* 确保横向滚动条显示在最底部 */
   scrollbar-gutter: stable;
+}
+
+.table-page-layout.natural-scroll-mode .layout-section-scrollable {
+  @apply flex-none min-h-0;
+}
+
+.table-page-layout.natural-scroll-mode .table-scroll-container {
+  @apply flex-none;
+  min-height: 520px;
+}
+
+.table-page-layout.natural-scroll-mode .table-scroll-container :deep(.table-wrapper) {
+  @apply flex-none;
+  min-height: 420px;
+  max-height: min(70vh, 720px);
 }
 
 .table-scroll-container :deep(table) {

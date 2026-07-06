@@ -1,9 +1,13 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"strings"
+	"time"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -147,6 +151,11 @@ var ProviderSet = wire.NewSet(
 
 	ProvideEnt,
 	ProvideSQLDB,
+	ProvideUsageReadOnlyEnt,
+	ProvideUsageReadOnlySQLDB,
+	NewUsageReadOnlyLogRepository,
+	NewUsageReadOnlyUserRepository,
+	NewUsageReadOnlyAPIKeyRepository,
 	ProvideRedis,
 )
 
@@ -184,6 +193,94 @@ func ProvideSQLDB(client *ent.Client) (*sql.DB, error) {
 	}
 	// 返回驱动持有的 sql.DB 实例
 	return drv.DB(), nil
+}
+
+type UsageReadOnlyEntClient struct {
+	Client *ent.Client
+}
+
+type UsageReadOnlySQLDB struct {
+	DB *sql.DB
+}
+
+type UsageReadOnlyLogRepository struct {
+	Repo service.UsageLogRepository
+}
+
+type UsageReadOnlyUserRepository struct {
+	Repo service.UserRepository
+}
+
+type UsageReadOnlyAPIKeyRepository struct {
+	Repo service.APIKeyRepository
+}
+
+func ProvideUsageReadOnlyEnt(cfg *config.Config) (*UsageReadOnlyEntClient, error) {
+	if cfg == nil || !cfg.UsageReadOnlyDatabase.Enabled {
+		return nil, nil
+	}
+
+	dsn := cfg.UsageReadOnlyDatabase.DatabaseConfig.DSNWithTimezone(cfg.Timezone)
+	if !strings.Contains(dsn, " default_transaction_read_only=") {
+		dsn += " default_transaction_read_only=on"
+	}
+	drv, err := entsql.Open(dialect.Postgres, dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	db := drv.DB()
+	applyReadOnlyDBPoolSettings(db, &cfg.UsageReadOnlyDatabase.DatabaseConfig)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := db.ExecContext(ctx, "SET default_transaction_read_only = on"); err != nil {
+		_ = drv.Close()
+		return nil, err
+	}
+	if err := db.PingContext(ctx); err != nil {
+		_ = drv.Close()
+		return nil, err
+	}
+
+	return &UsageReadOnlyEntClient{Client: ent.NewClient(ent.Driver(drv))}, nil
+}
+
+func ProvideUsageReadOnlySQLDB(client *UsageReadOnlyEntClient) (*UsageReadOnlySQLDB, error) {
+	if client == nil || client.Client == nil {
+		return nil, nil
+	}
+	db, err := ProvideSQLDB(client.Client)
+	if err != nil {
+		return nil, err
+	}
+	return &UsageReadOnlySQLDB{DB: db}, nil
+}
+
+func NewUsageReadOnlyLogRepository(client *UsageReadOnlyEntClient, db *UsageReadOnlySQLDB) *UsageReadOnlyLogRepository {
+	if client == nil || client.Client == nil || db == nil || db.DB == nil {
+		return nil
+	}
+	return &UsageReadOnlyLogRepository{
+		Repo: newUsageLogRepositoryWithSQL(client.Client, db.DB),
+	}
+}
+
+func NewUsageReadOnlyUserRepository(client *UsageReadOnlyEntClient, db *UsageReadOnlySQLDB) *UsageReadOnlyUserRepository {
+	if client == nil || client.Client == nil || db == nil || db.DB == nil {
+		return nil
+	}
+	return &UsageReadOnlyUserRepository{
+		Repo: newUserRepositoryWithSQL(client.Client, db.DB),
+	}
+}
+
+func NewUsageReadOnlyAPIKeyRepository(client *UsageReadOnlyEntClient, db *UsageReadOnlySQLDB) *UsageReadOnlyAPIKeyRepository {
+	if client == nil || client.Client == nil || db == nil || db.DB == nil {
+		return nil
+	}
+	return &UsageReadOnlyAPIKeyRepository{
+		Repo: newAPIKeyRepositoryWithSQL(client.Client, db.DB),
+	}
 }
 
 // ProvideRedis 为依赖注入提供 Redis 客户端。
