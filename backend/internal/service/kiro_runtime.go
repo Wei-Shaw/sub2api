@@ -34,7 +34,7 @@ const kiroInvalidModelTempUnschedDuration = time.Minute
 const (
 	kiroRetryBaseDelay         = 200 * time.Millisecond
 	kiroRetryMaxDelay          = 2 * time.Second
-	kiroRequestLogBodyMaxBytes = 4096
+	kiroRequestLogBodyMaxBytes = 512
 )
 
 var kiroRetrySleep = sleepWithContext

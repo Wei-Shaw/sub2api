@@ -8384,7 +8384,7 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 
 func truncateForLog(b []byte, maxBytes int) string {
 	if maxBytes <= 0 {
-		maxBytes = 2048
+		maxBytes = 1024
 	}
 	if len(b) > maxBytes {
 		b = b[:maxBytes]
