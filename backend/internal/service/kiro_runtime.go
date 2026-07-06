@@ -32,8 +32,9 @@ type kiroEndpointConfig struct {
 const kiroInvalidModelTempUnschedDuration = time.Minute
 
 const (
-	kiroRetryBaseDelay = 200 * time.Millisecond
-	kiroRetryMaxDelay  = 2 * time.Second
+	kiroRetryBaseDelay         = 200 * time.Millisecond
+	kiroRetryMaxDelay          = 2 * time.Second
+	kiroRequestLogBodyMaxBytes = 512
 )
 
 var kiroRetrySleep = sleepWithContext
@@ -391,6 +392,7 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 				return nil, requestCtx, err
 			}
 
+			logKiroRequest(account, req)
 			resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 			if err != nil {
 				if attempt < maxRetries {
@@ -691,6 +693,64 @@ func logKiroStatelessReplay(account *Account, payload []byte) {
 		zap.String("current_content_hash", hashKiroLogString(currentContent)),
 		zap.Int("tool_count", len(gjson.GetBytes(payload, "conversationState.currentMessage.userInputMessage.userInputMessageContext.tools").Array())),
 	)
+}
+
+func logKiroRequest(account *Account, req *http.Request) {
+	if req == nil {
+		return
+	}
+	checked := logger.L().Check(zap.DebugLevel, "kiro.raw_request")
+	if checked == nil {
+		return
+	}
+
+	var accountID int64
+	if account != nil {
+		accountID = account.ID
+	}
+
+	var body []byte
+	if req.Body != nil {
+		var err error
+		body, err = io.ReadAll(req.Body)
+		_ = req.Body.Close()
+		req.Body = io.NopCloser(bytes.NewReader(body))
+		req.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(body)), nil
+		}
+		req.ContentLength = int64(len(body))
+		if err != nil {
+			logger.L().Warn("kiro.request_log_read_failed",
+				zap.Int64("account_id", accountID),
+				zap.String("url", req.URL.String()),
+				zap.String("method", req.Method),
+				zap.Error(err),
+			)
+			return
+		}
+	}
+
+	checked.Write(
+		zap.Int64("account_id", accountID),
+		zap.String("url", req.URL.String()),
+		zap.String("method", req.Method),
+		zap.Any("headers", safeKiroRequestHeadersForLog(req.Header)),
+		zap.Int("body_bytes", len(body)),
+		zap.Bool("body_truncated", len(body) > kiroRequestLogBodyMaxBytes),
+		zap.String("body", truncateForLog(body, kiroRequestLogBodyMaxBytes)),
+	)
+}
+
+func safeKiroRequestHeadersForLog(headers http.Header) map[string][]string {
+	out := make(map[string][]string, len(headers))
+	for key, values := range headers {
+		copied := make([]string, 0, len(values))
+		for _, value := range values {
+			copied = append(copied, safeHeaderValueForLog(key, value))
+		}
+		out[key] = copied
+	}
+	return out
 }
 
 func hashKiroPayloadWithoutConversationID(payload []byte) string {

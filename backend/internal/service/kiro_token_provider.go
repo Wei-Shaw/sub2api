@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -69,10 +68,8 @@ func (p *KiroTokenProvider) GetAccessToken(ctx context.Context, account *Account
 
 	expiresAt := account.GetCredentialAsTime("expires_at")
 	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= kiroTokenRefreshSkew
-	fmt.Printf("needsRefresh: %v\n", needsRefresh)
 
 	if needsRefresh && p.refreshAPI != nil && p.executor != nil {
-		fmt.Printf("refreshing\n")
 		result, err := p.refreshAPI.RefreshIfNeeded(ctx, account, p.executor, kiroTokenRefreshSkew)
 		if err != nil {
 			if p.refreshPolicy.OnRefreshError == ProviderRefreshErrorReturn {

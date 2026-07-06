@@ -54,7 +54,7 @@ func TestKiroOAuthService_RefreshTokenRejectsMissingRefreshToken(t *testing.T) {
 	svc := NewKiroOAuthService(nil)
 
 	_, err := svc.RefreshToken(context.Background(), &KiroRefreshTokenInput{
-		AuthMethod: "social",
+		AuthMethod: kiropkg.AuthMethodSocial,
 	})
 
 	require.EqualError(t, err, "kiro refresh token is required")
@@ -64,7 +64,7 @@ func TestKiroOAuthService_RefreshTokenRejectsIDCMissingClientCredentials(t *test
 	svc := NewKiroOAuthService(nil)
 
 	_, err := svc.RefreshToken(context.Background(), &KiroRefreshTokenInput{
-		AuthMethod:   "idc",
+		AuthMethod:   kiropkg.AuthMethodIDC,
 		RefreshToken: "refresh-token",
 		ClientID:     "client-id",
 	})
@@ -72,10 +72,25 @@ func TestKiroOAuthService_RefreshTokenRejectsIDCMissingClientCredentials(t *test
 	require.EqualError(t, err, "kiro idc refresh requires client_id and client_secret")
 }
 
+func TestKiroOAuthService_BuildAccountCredentialsIncludesOIDCMetadata(t *testing.T) {
+	svc := NewKiroOAuthService(nil)
+
+	credentials := svc.BuildAccountCredentials(&KiroTokenInfo{
+		TokenEndpoint: "https://login.example.com/oauth2/v2.0/token",
+		IssuerURL:     "https://login.example.com/v2.0",
+		Scopes:        "scope-a scope-b offline_access",
+	})
+
+	require.Equal(t, "https://login.example.com/oauth2/v2.0/token", credentials["token_endpoint"])
+	require.Equal(t, "https://login.example.com/v2.0", credentials["issuer_url"])
+	require.Equal(t, "scope-a scope-b offline_access", credentials["scopes"])
+}
+
 func TestResolveKiroRefreshAuthMethodInfersIDCFromClientCredentials(t *testing.T) {
-	require.Equal(t, "idc", resolveKiroRefreshAuthMethod("", "client-id", "client-secret"))
-	require.Equal(t, "social", resolveKiroRefreshAuthMethod("", "client-id", ""))
-	require.Equal(t, "social", resolveKiroRefreshAuthMethod("", "", "client-secret"))
-	require.Equal(t, "social", resolveKiroRefreshAuthMethod("", "", ""))
-	require.Equal(t, "idc", resolveKiroRefreshAuthMethod("IDC", "", ""))
+	require.Equal(t, kiropkg.AuthMethodIDC, resolveKiroRefreshAuthMethod("", "client-id", "client-secret"))
+	require.Equal(t, kiropkg.AuthMethodSocial, resolveKiroRefreshAuthMethod("", "client-id", ""))
+	require.Equal(t, kiropkg.AuthMethodSocial, resolveKiroRefreshAuthMethod("", "", "client-secret"))
+	require.Equal(t, kiropkg.AuthMethodSocial, resolveKiroRefreshAuthMethod("", "", ""))
+	require.Equal(t, kiropkg.AuthMethodIDC, resolveKiroRefreshAuthMethod("IDC", "", ""))
+	require.Equal(t, kiropkg.AuthMethodExternalIDP, resolveKiroRefreshAuthMethod("external_idp", "", ""))
 }

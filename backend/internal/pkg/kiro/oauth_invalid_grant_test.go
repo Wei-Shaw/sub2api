@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -44,6 +45,68 @@ func TestRefreshIDCTokenInvalidGrantReturnsTypedError(t *testing.T) {
 	t.Cleanup(func() { oidcEndpointOverride = previous })
 
 	_, err := RefreshIDCToken(context.Background(), "", "client-id", "client-secret", "revoked-refresh-token", "us-east-1", BuilderIDStartURL, ProviderBuilderId)
+	require.Error(t, err)
+
+	var invalid *RefreshTokenInvalidError
+	require.True(t, errors.As(err, &invalid))
+	require.Equal(t, http.StatusBadRequest, invalid.StatusCode)
+	require.Contains(t, invalid.Body, "invalid_grant")
+}
+
+func TestRefreshExternalIDPTokenPostsMicrosoftRefreshForm(t *testing.T) {
+	const responseScope = "scope-a scope-b"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/oauth2/v2.0/token", r.URL.Path)
+		require.True(t, strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded"))
+		require.Equal(t, "application/json", r.Header.Get("Accept"))
+		require.Equal(t, "openid-client/v6.8.1", r.Header.Get("User-Agent"))
+		require.Equal(t, "*", r.Header.Get("Accept-Language"))
+		require.Equal(t, "cors", r.Header.Get("Sec-Fetch-Mode"))
+		require.NoError(t, r.ParseForm())
+		require.Equal(t, "scope-one scope-two offline_access", r.Form.Get("scope"))
+		require.Equal(t, "old-refresh-token", r.Form.Get("refresh_token"))
+		require.Equal(t, "refresh_token", r.Form.Get("grant_type"))
+		require.Equal(t, "client-id", r.Form.Get("client_id"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"token_type": "Bearer",
+			"scope": "` + responseScope + `",
+			"expires_in": 3947,
+			"access_token": "new-access-token",
+			"refresh_token": "new-refresh-token"
+		}`))
+	}))
+	defer server.Close()
+
+	token, err := RefreshExternalIDPToken(
+		context.Background(),
+		"",
+		server.URL+"/oauth2/v2.0/token",
+		"client-id",
+		"old-refresh-token",
+		"scope-one scope-two offline_access",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "new-access-token", token.AccessToken)
+	require.Equal(t, "new-refresh-token", token.RefreshToken)
+	require.Equal(t, responseScope, token.Scopes)
+	require.Equal(t, AuthMethodExternalIDP, token.AuthMethod)
+	require.Equal(t, ProviderEnterprise, token.Provider)
+	require.Equal(t, "client-id", token.ClientID)
+	require.Equal(t, server.URL+"/oauth2/v2.0/token", token.TokenEndpoint)
+	require.NotEmpty(t, token.ExpiresAt)
+}
+
+func TestRefreshExternalIDPTokenInvalidGrantReturnsTypedError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"expired"}`))
+	}))
+	defer server.Close()
+
+	_, err := RefreshExternalIDPToken(context.Background(), "", server.URL, "client-id", "revoked-refresh-token", "scope")
 	require.Error(t, err)
 
 	var invalid *RefreshTokenInvalidError

@@ -169,6 +169,9 @@ export function useKiroOAuth() {
     client_id: tokenInfo.client_id,
     client_secret: tokenInfo.client_secret,
     client_id_hash: tokenInfo.client_id_hash,
+    token_endpoint: tokenInfo.token_endpoint,
+    issuer_url: tokenInfo.issuer_url,
+    scopes: tokenInfo.scopes,
     email: tokenInfo.email,
     start_url: tokenInfo.start_url,
     region: tokenInfo.region

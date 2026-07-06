@@ -34,6 +34,7 @@ export interface PaymentConfig {
   order_timeout_minutes: number
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  subscription_usd_to_cny_rate: number
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
@@ -42,6 +43,7 @@ export interface PaymentConfig {
 
 export interface MethodLimit {
   currency?: string
+  display_name?: string
   daily_limit: number
   daily_used: number
   daily_remaining: number
@@ -66,6 +68,8 @@ export interface CheckoutInfoResponse {
   plans: SubscriptionPlan[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  /** Subscription CNY conversion rate (1 USD = X CNY); 0 = disabled, plan price is charged as-is */
+  subscription_usd_to_cny_rate: number
   recharge_fee_rate: number
   help_text: string
   help_image_url: string

@@ -8,39 +8,23 @@
   >
     <!-- Logo/Brand -->
     <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
-      <!--
-        Brand "go home" link is split into two router-links pointing to "/":
-        - Logo link wraps the logo image (always visible, also in collapsed state).
-        - Title link wraps the site name (visible only in expanded state).
-        VersionBadge stays OUTSIDE both links so its button/dropdown clicks
-        do not bubble into a router navigation, and its visual position is
-        preserved exactly as before. Title link is aria-hidden + tabindex=-1
-        so assistive tech announces a single "go home" link via the logo.
-      -->
+      <!-- Custom Logo or Default Logo -->
       <router-link
         to="/"
-        class="sidebar-brand-link sidebar-brand-link-logo"
-        :aria-label="t('nav.goHome')"
-        :title="t('nav.goHome')"
-        @click="handleBrandClick"
+        class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-glow transition-opacity hover:opacity-80"
+        @click="handleMenuItemClick(homePath)"
       >
-        <div class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-glow">
-          <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
-        </div>
+        <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
       </router-link>
       <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
         <router-link
           to="/"
-          class="sidebar-brand-link sidebar-brand-link-text"
-          tabindex="-1"
-          aria-hidden="true"
-          @click="handleBrandClick"
+          class="sidebar-brand-title text-lg font-bold text-gray-900 transition-colors hover:text-primary-600 dark:text-white dark:hover:text-primary-400"
+          @click="handleMenuItemClick(homePath)"
         >
-          <span class="sidebar-brand-title text-lg font-bold text-gray-900 dark:text-white">
-            {{ siteName }}
-          </span>
+          {{ siteName }}
         </router-link>
-        <!-- Version Badge: sibling of the title link, NOT inside any router-link -->
+        <!-- Version Badge -->
         <VersionBadge :version="siteVersion" />
       </div>
     </div>
@@ -361,6 +345,8 @@ const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
 const isAdmin = computed(() => authStore.isAdmin)
 const isDark = ref(document.documentElement.classList.contains('dark'))
+
+const homePath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
 
 // Track which parent nav groups are expanded
 const expandedGroups = ref<Set<string>>(new Set())
@@ -985,15 +971,6 @@ function toggleTheme() {
 
 function closeMobile() {
   appStore.setMobileOpen(false)
-}
-
-function handleBrandClick() {
-  // Mirror handleMenuItemClick: close the mobile drawer after navigation.
-  if (mobileOpen.value) {
-    setTimeout(() => {
-      appStore.setMobileOpen(false)
-    }, 150)
-  }
 }
 
 function handleMenuItemClick(itemPath: string) {
