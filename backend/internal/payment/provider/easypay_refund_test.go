@@ -179,6 +179,102 @@ func TestEasyPayRefundResponseErrors(t *testing.T) {
 	}
 }
 
+func TestEasyPayCustomMethodsUseConfiguredUpstreamType(t *testing.T) {
+	t.Parallel()
+
+	provider, err := NewEasyPay("test-instance", map[string]string{
+		"pid":           "pid-1",
+		"pkey":          "pkey-1",
+		"apiBase":       "https://pay.example.com",
+		"notifyUrl":     "https://example.com/notify",
+		"returnUrl":     "https://example.com/return",
+		"paymentMode":   paymentModePopup,
+		"customMethods": `[{"type":"ldc","upstreamType":"epay","displayName":"LDC"},{"type":"usdt_trc20","upstreamType":"usdt","displayName":"USDT-TRC20"}]`,
+	})
+	if err != nil {
+		t.Fatalf("NewEasyPay: %v", err)
+	}
+
+	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:     "sub2-custom-1",
+		Amount:      "1.00",
+		PaymentType: "usdt_trc20",
+		Subject:     "Custom EasyPay",
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment: %v", err)
+	}
+	payURL, err := url.Parse(resp.PayURL)
+	if err != nil {
+		t.Fatalf("parse pay url: %v", err)
+	}
+	if got := payURL.Query().Get("type"); got != "usdt" {
+		t.Fatalf("pay url type = %q, want usdt (%s)", got, resp.PayURL)
+	}
+}
+
+func TestEasyPayCustomMethodsResolveCIDFromConfiguredUpstreamType(t *testing.T) {
+	t.Parallel()
+
+	provider, err := NewEasyPay("test-instance", map[string]string{
+		"pid":           "pid-1",
+		"pkey":          "pkey-1",
+		"apiBase":       "https://pay.example.com",
+		"notifyUrl":     "https://example.com/notify",
+		"returnUrl":     "https://example.com/return",
+		"paymentMode":   paymentModePopup,
+		"cidAlipay":     "cid-alipay",
+		"cidWxpay":      "cid-wxpay",
+		"customMethods": `[{"type":"ldc","upstreamType":"alipay","displayName":"LDC"}]`,
+	})
+	if err != nil {
+		t.Fatalf("NewEasyPay: %v", err)
+	}
+
+	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:     "sub2-custom-cid",
+		Amount:      "1.00",
+		PaymentType: "ldc",
+		Subject:     "Custom EasyPay CID",
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment: %v", err)
+	}
+	payURL, err := url.Parse(resp.PayURL)
+	if err != nil {
+		t.Fatalf("parse pay url: %v", err)
+	}
+	if got := payURL.Query().Get("type"); got != "alipay" {
+		t.Fatalf("pay url type = %q, want alipay (%s)", got, resp.PayURL)
+	}
+	if got := payURL.Query().Get("cid"); got != "cid-alipay" {
+		t.Fatalf("pay url cid = %q, want cid-alipay (%s)", got, resp.PayURL)
+	}
+}
+
+func TestEasyPaySupportedTypesIncludeCustomMethods(t *testing.T) {
+	t.Parallel()
+
+	provider, err := NewEasyPay("test-instance", map[string]string{
+		"pid":           "pid-1",
+		"pkey":          "pkey-1",
+		"apiBase":       "https://pay.example.com",
+		"notifyUrl":     "https://example.com/notify",
+		"returnUrl":     "https://example.com/return",
+		"customMethods": `[{"type":"ldc","upstreamType":"epay","displayName":"LDC"},{"type":"usdt_trc20","upstreamType":"usdt","displayName":"USDT-TRC20"}]`,
+	})
+	if err != nil {
+		t.Fatalf("NewEasyPay: %v", err)
+	}
+
+	got := strings.Join(provider.SupportedTypes(), ",")
+	for _, want := range []string{"alipay", "wxpay", "ldc", "usdt_trc20"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("SupportedTypes() = %q, want it to include %q", got, want)
+		}
+	}
+}
+
 func newTestEasyPay(t *testing.T, apiBase string) *EasyPay {
 	t.Helper()
 

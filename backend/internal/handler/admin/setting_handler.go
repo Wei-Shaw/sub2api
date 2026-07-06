@@ -350,6 +350,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentEnabledTypes:                    paymentCfg.EnabledTypes,
 		PaymentBalanceDisabled:                 paymentCfg.BalanceDisabled,
 		PaymentBalanceRechargeMultiplier:       paymentCfg.BalanceRechargeMultiplier,
+		PaymentSubscriptionUSDToCNYRate:        paymentCfg.SubscriptionUSDToCNYRate,
 		PaymentRechargeFeeRate:                 paymentCfg.RechargeFeeRate,
 		PaymentLoadBalanceStrat:                paymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:               paymentCfg.ProductNamePrefix,
@@ -684,7 +685,19 @@ type UpdateSettingsRequest struct {
 	PaymentVisibleMethodWxpayEnabled  *bool   `json:"payment_visible_method_wxpay_enabled"`
 
 	// OpenAI account scheduling
-	OpenAIAdvancedSchedulerEnabled *bool `json:"openai_advanced_scheduler_enabled"`
+	OpenAIAdvancedSchedulerEnabled                     *bool   `json:"openai_advanced_scheduler_enabled"`
+	OpenAIAdvancedSchedulerStickyWeightedEnabled       *bool   `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
+	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled *bool   `json:"openai_advanced_scheduler_subscription_priority_enabled"`
+	OpenAIAdvancedSchedulerLBTopK                      *string `json:"openai_advanced_scheduler_lb_top_k"`
+	OpenAIAdvancedSchedulerWeightPriority              *string `json:"openai_advanced_scheduler_weight_priority"`
+	OpenAIAdvancedSchedulerWeightLoad                  *string `json:"openai_advanced_scheduler_weight_load"`
+	OpenAIAdvancedSchedulerWeightQueue                 *string `json:"openai_advanced_scheduler_weight_queue"`
+	OpenAIAdvancedSchedulerWeightErrorRate             *string `json:"openai_advanced_scheduler_weight_error_rate"`
+	OpenAIAdvancedSchedulerWeightTTFT                  *string `json:"openai_advanced_scheduler_weight_ttft"`
+	OpenAIAdvancedSchedulerWeightReset                 *string `json:"openai_advanced_scheduler_weight_reset"`
+	OpenAIAdvancedSchedulerWeightQuotaHeadroom         *string `json:"openai_advanced_scheduler_weight_quota_headroom"`
+	OpenAIAdvancedSchedulerWeightPreviousResponse      *string `json:"openai_advanced_scheduler_weight_previous_response"`
+	OpenAIAdvancedSchedulerWeightSessionSticky         *string `json:"openai_advanced_scheduler_weight_session_sticky"`
 
 	// 余额不足提醒
 	BalanceLowNotifyEnabled         *bool                   `json:"balance_low_notify_enabled"`
@@ -704,6 +717,7 @@ type UpdateSettingsRequest struct {
 	PaymentEnabledTypes              []string `json:"payment_enabled_types"`
 	PaymentBalanceDisabled           *bool    `json:"payment_balance_disabled"`
 	PaymentBalanceRechargeMultiplier *float64 `json:"payment_balance_recharge_multiplier"`
+	PaymentSubscriptionUSDToCNYRate  *float64 `json:"payment_subscription_usd_to_cny_rate"`
 	PaymentRechargeFeeRate           *float64 `json:"payment_recharge_fee_rate"`
 	PaymentLoadBalanceStrat          *string  `json:"payment_load_balance_strategy"`
 	PaymentProductNamePrefix         *string  `json:"payment_product_name_prefix"`
@@ -2013,6 +2027,28 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIAdvancedSchedulerEnabled
 		}(),
+		OpenAIAdvancedSchedulerStickyWeightedEnabled: func() bool {
+			if req.OpenAIAdvancedSchedulerStickyWeightedEnabled != nil {
+				return *req.OpenAIAdvancedSchedulerStickyWeightedEnabled
+			}
+			return previousSettings.OpenAIAdvancedSchedulerStickyWeightedEnabled
+		}(),
+		OpenAIAdvancedSchedulerSubscriptionPriorityEnabled: func() bool {
+			if req.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled != nil {
+				return *req.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled
+			}
+			return previousSettings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled
+		}(),
+		OpenAIAdvancedSchedulerLBTopK:                 stringSetting(req.OpenAIAdvancedSchedulerLBTopK, previousSettings.OpenAIAdvancedSchedulerLBTopK),
+		OpenAIAdvancedSchedulerWeightPriority:         stringSetting(req.OpenAIAdvancedSchedulerWeightPriority, previousSettings.OpenAIAdvancedSchedulerWeightPriority),
+		OpenAIAdvancedSchedulerWeightLoad:             stringSetting(req.OpenAIAdvancedSchedulerWeightLoad, previousSettings.OpenAIAdvancedSchedulerWeightLoad),
+		OpenAIAdvancedSchedulerWeightQueue:            stringSetting(req.OpenAIAdvancedSchedulerWeightQueue, previousSettings.OpenAIAdvancedSchedulerWeightQueue),
+		OpenAIAdvancedSchedulerWeightErrorRate:        stringSetting(req.OpenAIAdvancedSchedulerWeightErrorRate, previousSettings.OpenAIAdvancedSchedulerWeightErrorRate),
+		OpenAIAdvancedSchedulerWeightTTFT:             stringSetting(req.OpenAIAdvancedSchedulerWeightTTFT, previousSettings.OpenAIAdvancedSchedulerWeightTTFT),
+		OpenAIAdvancedSchedulerWeightReset:            stringSetting(req.OpenAIAdvancedSchedulerWeightReset, previousSettings.OpenAIAdvancedSchedulerWeightReset),
+		OpenAIAdvancedSchedulerWeightQuotaHeadroom:    stringSetting(req.OpenAIAdvancedSchedulerWeightQuotaHeadroom, previousSettings.OpenAIAdvancedSchedulerWeightQuotaHeadroom),
+		OpenAIAdvancedSchedulerWeightPreviousResponse: stringSetting(req.OpenAIAdvancedSchedulerWeightPreviousResponse, previousSettings.OpenAIAdvancedSchedulerWeightPreviousResponse),
+		OpenAIAdvancedSchedulerWeightSessionSticky:    stringSetting(req.OpenAIAdvancedSchedulerWeightSessionSticky, previousSettings.OpenAIAdvancedSchedulerWeightSessionSticky),
 		BalanceLowNotifyEnabled: func() bool {
 			if req.BalanceLowNotifyEnabled != nil {
 				return *req.BalanceLowNotifyEnabled
@@ -2180,6 +2216,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			EnabledTypes:              req.PaymentEnabledTypes,
 			BalanceDisabled:           req.PaymentBalanceDisabled,
 			BalanceRechargeMultiplier: req.PaymentBalanceRechargeMultiplier,
+			SubscriptionUSDToCNYRate:  req.PaymentSubscriptionUSDToCNYRate,
 			RechargeFeeRate:           req.PaymentRechargeFeeRate,
 			LoadBalanceStrategy:       req.PaymentLoadBalanceStrat,
 			ProductNamePrefix:         req.PaymentProductNamePrefix,
@@ -2411,6 +2448,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentEnabledTypes:                    updatedPaymentCfg.EnabledTypes,
 		PaymentBalanceDisabled:                 updatedPaymentCfg.BalanceDisabled,
 		PaymentBalanceRechargeMultiplier:       updatedPaymentCfg.BalanceRechargeMultiplier,
+		PaymentSubscriptionUSDToCNYRate:        updatedPaymentCfg.SubscriptionUSDToCNYRate,
 		PaymentRechargeFeeRate:                 updatedPaymentCfg.RechargeFeeRate,
 		PaymentLoadBalanceStrat:                updatedPaymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:               updatedPaymentCfg.ProductNamePrefix,
@@ -2470,7 +2508,8 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentMaxAmount != nil || req.PaymentDailyLimit != nil ||
 		req.PaymentOrderTimeoutMin != nil || req.PaymentMaxPendingOrders != nil ||
 		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
-		req.PaymentBalanceRechargeMultiplier != nil || req.PaymentRechargeFeeRate != nil ||
+		req.PaymentBalanceRechargeMultiplier != nil || req.PaymentSubscriptionUSDToCNYRate != nil ||
+		req.PaymentRechargeFeeRate != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
 		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
@@ -2920,6 +2959,42 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAIAdvancedSchedulerEnabled != after.OpenAIAdvancedSchedulerEnabled {
 		changed = append(changed, "openai_advanced_scheduler_enabled")
+	}
+	if before.OpenAIAdvancedSchedulerStickyWeightedEnabled != after.OpenAIAdvancedSchedulerStickyWeightedEnabled {
+		changed = append(changed, "openai_advanced_scheduler_sticky_weighted_enabled")
+	}
+	if before.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled != after.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled {
+		changed = append(changed, "openai_advanced_scheduler_subscription_priority_enabled")
+	}
+	if before.OpenAIAdvancedSchedulerLBTopK != after.OpenAIAdvancedSchedulerLBTopK {
+		changed = append(changed, "openai_advanced_scheduler_lb_top_k")
+	}
+	if before.OpenAIAdvancedSchedulerWeightPriority != after.OpenAIAdvancedSchedulerWeightPriority {
+		changed = append(changed, "openai_advanced_scheduler_weight_priority")
+	}
+	if before.OpenAIAdvancedSchedulerWeightLoad != after.OpenAIAdvancedSchedulerWeightLoad {
+		changed = append(changed, "openai_advanced_scheduler_weight_load")
+	}
+	if before.OpenAIAdvancedSchedulerWeightQueue != after.OpenAIAdvancedSchedulerWeightQueue {
+		changed = append(changed, "openai_advanced_scheduler_weight_queue")
+	}
+	if before.OpenAIAdvancedSchedulerWeightErrorRate != after.OpenAIAdvancedSchedulerWeightErrorRate {
+		changed = append(changed, "openai_advanced_scheduler_weight_error_rate")
+	}
+	if before.OpenAIAdvancedSchedulerWeightTTFT != after.OpenAIAdvancedSchedulerWeightTTFT {
+		changed = append(changed, "openai_advanced_scheduler_weight_ttft")
+	}
+	if before.OpenAIAdvancedSchedulerWeightReset != after.OpenAIAdvancedSchedulerWeightReset {
+		changed = append(changed, "openai_advanced_scheduler_weight_reset")
+	}
+	if before.OpenAIAdvancedSchedulerWeightQuotaHeadroom != after.OpenAIAdvancedSchedulerWeightQuotaHeadroom {
+		changed = append(changed, "openai_advanced_scheduler_weight_quota_headroom")
+	}
+	if before.OpenAIAdvancedSchedulerWeightPreviousResponse != after.OpenAIAdvancedSchedulerWeightPreviousResponse {
+		changed = append(changed, "openai_advanced_scheduler_weight_previous_response")
+	}
+	if before.OpenAIAdvancedSchedulerWeightSessionSticky != after.OpenAIAdvancedSchedulerWeightSessionSticky {
+		changed = append(changed, "openai_advanced_scheduler_weight_session_sticky")
 	}
 	// 余额、订阅到期与账号限额通知
 	if before.BalanceLowNotifyEnabled != after.BalanceLowNotifyEnabled {
@@ -4114,4 +4189,11 @@ func equalPlatformQuotaSettings(before, after map[string]*service.DefaultPlatfor
 		}
 	}
 	return true
+}
+
+func stringSetting(value *string, fallback string) string {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }
