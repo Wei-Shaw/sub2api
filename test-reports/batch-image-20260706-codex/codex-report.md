@@ -80,9 +80,10 @@ Quick action origin:
 ## Residual Risks
 
 - Real provider failure combinations should still be tested with controlled fake/fixture provider outputs: malformed output JSONL, missing image bytes, provider cancelled after partial success, and delayed output indexing.
-- Concurrent cancel vs settlement needs a dedicated integration test with simultaneous requests to prove row-lock behavior under load, not only unit/static coverage.
-- Settlement billing failure retry currently needs a clearer bounded retry or operator handoff story; Claude independently flagged this too.
+- Concurrent cancel vs settlement still benefits from a dedicated integration test with simultaneous requests to prove row-lock behavior under load, not only unit/static coverage.
+- Google/Gemini API-key upstream success was not run because the available test key had no prepayment. The provider was verified as selectable/callable, and failed submit released hold.
+- Online high-concurrency stress was intentionally skipped to avoid unnecessary provider cost; Redis per-job locks, database row locks, and billing request idempotency cover the core correctness path in code.
 
 ## Recommendation
 
-Proceed to broader review with Claude and/or manual exploratory testing. Before production enablement, add one integration test for cancel/settle concurrency and one for persistent settlement billing failure recovery.
+Proceed to upstream review behind `BATCH_IMAGE_ENABLED` and `allow_batch_image_generation`. Before broad GA, add or run a dedicated cancel/settle concurrency integration test and a paid one-image API-key upstream success test with a properly prepaid Google key.

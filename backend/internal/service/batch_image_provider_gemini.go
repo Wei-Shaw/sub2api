@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -248,7 +249,19 @@ type geminiContent struct {
 REDACTED
 
 type geminiPart struct {
-	Text string `json:"text,omitempty"`
+	Text       string            `json:"text,omitempty"`
+	InlineData *geminiInlineData `json:"inlineData,omitempty"`
+	FileData   *geminiFileData   `json:"fileData,omitempty"`
+REDACTED
+
+type geminiInlineData struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"`
+REDACTED
+
+type geminiFileData struct {
+	MimeType string `json:"mimeType"`
+	FileURI  string `json:"fileUri"`
 REDACTED
 
 type geminiGenerationConfig struct {
@@ -280,8 +293,9 @@ REDACTED
 		if prompt == "" {
 			return nil, batchImageProviderInputError("prompt is required for custom_id %q", customID)
 	REDACTED
-		if len(item.ReferenceImages) > 0 {
-			return nil, batchImageProviderInputError("reference images are not supported in PR3")
+		parts, err := batchImageGeminiParts(prompt, item.ReferenceImages)
+		if err != nil {
+			return nil, err
 	REDACTED
 
 		// TODO(batch-image): add response_mime_type/aspect_ratio/image_size once the
@@ -290,7 +304,7 @@ REDACTED
 			Key: customID,
 			Request: geminiGenerateRequest{
 				Contents: []geminiContent{{
-					Parts: []geminiPart{{Text: promptREDACTEDREDACTED,
+					Parts: parts,
 		REDACTED
 				GenerationConfig: geminiGenerationConfig{
 					ResponseModalities: []string{"TEXT", "IMAGE"REDACTED,
@@ -302,6 +316,32 @@ REDACTED
 	REDACTED
 REDACTED
 	return buf.Bytes(), nil
+REDACTED
+
+func batchImageGeminiParts(prompt string, refs []BatchImageReference) ([]geminiPart, error) {
+	parts := []geminiPart{{Text: promptREDACTEDREDACTED
+	for _, ref := range refs {
+		mimeType := normalizeBatchImageReferenceMimeType(ref.MimeType)
+		if mimeType == "" {
+			return nil, batchImageProviderInputError("reference image mime_type is required")
+	REDACTED
+		fileURI := strings.TrimSpace(ref.FileURI)
+		switch {
+		case len(ref.Data) > 0 && fileURI == "":
+			parts = append(parts, geminiPart{InlineData: &geminiInlineData{
+				MimeType: mimeType,
+				Data:     base64.StdEncoding.EncodeToString(ref.Data),
+		REDACTEDREDACTED)
+		case len(ref.Data) == 0 && fileURI != "":
+			parts = append(parts, geminiPart{FileData: &geminiFileData{
+				MimeType: mimeType,
+				FileURI:  fileURI,
+		REDACTEDREDACTED)
+		default:
+			return nil, batchImageProviderInputError("reference image must contain exactly one of data or file_uri")
+	REDACTED
+REDACTED
+	return parts, nil
 REDACTED
 
 func mapGeminiBatchState(batch *GeminiBatchJob) *BatchProviderStatus {

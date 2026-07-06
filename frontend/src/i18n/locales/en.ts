@@ -2312,7 +2312,7 @@ export default {
         imageMultiplier: 'Image multiplier',
         batchDiscountMultiplier: 'Batch image discount',
         batchHoldMultiplier: 'Batch hold price ratio',
-        batchSectionHint: 'Batch image settings only apply to batch jobs: settlement applies the batch discount, and the upfront hold is normal image price × batch hold price ratio.',
+        batchSectionHint: 'Batch image settings only apply to batch jobs: settlement applies the batch discount, and the upfront hold is normal image price × batch hold price ratio. Reference images also create upstream input-token usage, so a batch image discount above 0.5 is recommended.',
         batchDisabledHint: 'Enable image generation for this group before enabling batch image generation.',
         modeHint: 'By default, image billing uses image price × current effective group multiplier. Independent mode uses image price × image multiplier.',
         finalPricePreview: 'Final per-image price preview',

@@ -14,6 +14,7 @@ Validate the Sub2API batch image feature before broader external review:
 - Billing hold, release, capture, settlement, and recovery unit coverage
 - Frontend batch image page type/build/test health
 - Agent-copy instruction text for slower polling and resume records
+- PR docs/readiness materials for upstream review
 
 ## Test Data
 
@@ -38,4 +39,9 @@ Validate the Sub2API batch image feature before broader external review:
 | BI-FE-001 | Frontend typecheck/build | Pass |
 | BI-FE-002 | Full frontend test suite | Pass |
 | BI-FE-003 | Batch image guide copy text | Includes slower polling and local resume-record requirements |
-
+| BI-ONLINE-001 | One-image success settlement balance closure | Hold `0.0804`, actual `0.0737`, release `0.0067`; `frozen_balance` returns `0` |
+| BI-ONLINE-002 | Immediate cancel after submit | Hold released, charged `0` |
+| BI-ONLINE-003 | Google/Gemini API-key provider path | Account selectable/callable, models list returns `provider=gemini_api`; test key has no prepayment so no successful generation attempted; submit failure released hold, charged `0` |
+| BI-ONLINE-004 | Two-item partial failure | One item succeeded, one item failed; charged one image only, `errors.json` contains failed item, `frozen_balance` returns `0` |
+| BI-DOC-001 | Batch image MVP feature doc | Includes API surface, lifecycle, billing, provider notes, config, official Google enablement, and PR hygiene |
+| BI-DOC-002 | PR description draft | Summarizes feature scope, tests, feature flags, and remaining non-blocking gaps for upstream review |

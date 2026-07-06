@@ -58,5 +58,34 @@ Claude model selection:
 
 ## Codex Follow-Up Note
 
-Codex spot-checked the first P2 after Claude's report. `enqueueBillingRetry` exists in `batch_image_public.go`, but no obvious max retry or terminal handoff was found in the quick search. Keep this as an open risk for the next implementation/test pass rather than treating it as resolved.
+Codex spot-checked the first P2 after Claude's report. The current implementation has a bounded settlement billing retry path:
 
+- `batch_image_settlement.go` defines `batchImageSettlementMaxRetries = 5`.
+- Repeated `SETTLEMENT_BILLING_FAILED` increments job retry state.
+- Once the retry limit is reached, settlement fails the job and releases the remaining hold through the idempotent release path.
+- `batch_image_settlement_test.go` covers transient settlement requeue, retry exhaustion release, and idempotent release after transition failure.
+
+So Claude's original "unbounded settlement retry" risk should be treated as resolved in the current PR state, not as an open blocker.
+
+## 2026-07-07 Follow-Up Addendum
+
+Claude Code was later used in a bounded pass to update the QA test-case matrix with the online verification scenarios. Codex performed the online API/database checks and fed the verified facts back into the report; this addendum does not claim Claude personally executed the paid online image runs.
+
+Additional scenarios now recorded in `test-case.md`:
+
+- `BI-ONLINE-001`: one-image success settlement balance closure.
+- `BI-ONLINE-002`: immediate cancel after submit releases hold and charges zero.
+- `BI-ONLINE-003`: Gemini API-key provider path is selectable/callable; the test key had no prepayment, so successful generation was not continued; failed submit released hold and charged zero.
+- `BI-ONLINE-004`: two-item partial failure charged only the one successful image and included the failed item in `errors.json`.
+
+Current PR readiness view after follow-up:
+
+- `GO behind flag`: acceptable for upstream review and merge discussion while `BATCH_IMAGE_ENABLED` and `allow_batch_image_generation` remain opt-in.
+- `Not GA by default`: do not enable for all groups until operators have monitored real traffic and provider/account configuration.
+- Amount-sensitive paths now have online evidence for success, cancel, partial failure, failed submit release, and `frozen_balance` returning to zero.
+
+Remaining non-blocking gaps:
+
+- No high-concurrency online stress test was run because it would create unnecessary provider cost and operational pressure.
+- API-key upstream path was not proven with a successful paid image because the available test key had no prepayment.
+- A future integration test can still exercise simultaneous cancel vs settlement under load, even though Redis per-job locks, database row locks, and billing request idempotency are already present.

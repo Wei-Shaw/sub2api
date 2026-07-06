@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,11 +22,14 @@ import (
 )
 
 const (
-	defaultBatchImageZipMaxItems          = 1000
+	defaultBatchImageZipMaxItems          = 200
+	defaultBatchImageZipMaxBytes          = 512 * 1024 * 1024
 	defaultBatchImageDownloadDuration     = 10 * time.Minute
-	defaultBatchImageDownloadConcurrency  = 2
+	defaultBatchImageDownloadConcurrency  = 1
 	batchImageDownloadScannerMaxLineBytes = 16 * 1024 * 1024
 )
+
+var errBatchImageDownloadSizeExceeded = errors.New("batch image download size limit exceeded")
 
 type BatchImageDownloadLimiter interface {
 	Acquire(ctx context.Context, userID string, kind string) (BatchImageDownloadPermit, error)
@@ -72,6 +76,24 @@ type BatchImageDownloadService struct {
 	AccountResolver  BatchImageAccountResolver
 	Limiter          BatchImageDownloadLimiter
 	Config           *config.Config
+REDACTED
+
+type batchImageDownloadLimitWriter struct {
+	w       io.Writer
+	limit   int64
+	written int64
+REDACTED
+
+func (w *batchImageDownloadLimitWriter) Write(p []byte) (int, error) {
+	if w == nil || w.w == nil {
+		return 0, io.ErrClosedPipe
+REDACTED
+	if w.limit > 0 && w.written+int64(len(p)) > w.limit {
+		return 0, errBatchImageDownloadSizeExceeded
+REDACTED
+	n, err := w.w.Write(p)
+	w.written += int64(n)
+	return n, err
 REDACTED
 
 func NewBatchImageDownloadService(repo BatchImageRepository, accountRepo AccountRepository, limiter BatchImageDownloadLimiter, cfg *config.Config) *BatchImageDownloadService {
@@ -205,10 +227,14 @@ REDACTED
 REDACTED
 	defer cancel()
 
-	zipWriter := zip.NewWriter(w)
+	limitedWriter := &batchImageDownloadLimitWriter{w: w, limit: s.maxDownloadBytes()REDACTED
+	zipWriter := zip.NewWriter(limitedWriter)
 	result, manifestFiles, zipErrors, err := s.writeZipImages(streamCtx, zipWriter, r, successItems)
 	if err != nil {
 		_ = zipWriter.Close()
+		if errors.Is(err, errBatchImageDownloadSizeExceeded) {
+			return result, ErrBatchImageDownloadTooLarge.WithCause(err)
+	REDACTED
 		return result, ErrBatchImageDownloadFailed.WithCause(err)
 REDACTED
 	zipErrors = append(zipErrors, batchImageZipErrorsFromItems(failedItems)...)
@@ -221,14 +247,23 @@ REDACTED
 		Files:        manifestFiles,
 REDACTED); err != nil {
 		_ = zipWriter.Close()
+		if errors.Is(err, errBatchImageDownloadSizeExceeded) {
+			return result, ErrBatchImageDownloadTooLarge.WithCause(err)
+	REDACTED
 		return result, ErrBatchImageDownloadFailed.WithCause(err)
 REDACTED
 	if err := writeBatchImageZipJSON(zipWriter, "errors.json", zipErrors); err != nil {
 		_ = zipWriter.Close()
+		if errors.Is(err, errBatchImageDownloadSizeExceeded) {
+			return result, ErrBatchImageDownloadTooLarge.WithCause(err)
+	REDACTED
 		return result, ErrBatchImageDownloadFailed.WithCause(err)
 REDACTED
 	result.ErrorCount = len(zipErrors)
 	if err := zipWriter.Close(); err != nil {
+		if errors.Is(err, errBatchImageDownloadSizeExceeded) {
+			return result, ErrBatchImageDownloadTooLarge.WithCause(err)
+	REDACTED
 		return result, ErrBatchImageDownloadFailed.WithCause(err)
 REDACTED
 	return result, nil
@@ -367,6 +402,13 @@ func (s *BatchImageDownloadService) maxZipItems() int {
 		return s.Config.BatchImage.MaxDownloadItemsZip
 REDACTED
 	return defaultBatchImageZipMaxItems
+REDACTED
+
+func (s *BatchImageDownloadService) maxDownloadBytes() int64 {
+	if s != nil && s.Config != nil && s.Config.BatchImage.MaxDownloadBytesPerRequest > 0 {
+		return s.Config.BatchImage.MaxDownloadBytesPerRequest
+REDACTED
+	return defaultBatchImageZipMaxBytes
 REDACTED
 
 func (s *BatchImageDownloadService) maxDownloadDuration() time.Duration {

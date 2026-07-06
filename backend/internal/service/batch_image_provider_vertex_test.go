@@ -72,6 +72,33 @@ func TestBuildVertexBatchJSONL_RejectsEmptyPrompt(t *testing.T) {
 	require.ErrorIs(t, err, ErrBatchImageProviderInvalidInput)
 REDACTED
 
+func TestBuildVertexBatchJSONL_WritesReferenceImages(t *testing.T) {
+	input := validVertexBatchInput()
+	input.Items[0].ReferenceImages = []BatchImageReference{
+		{MimeType: "image/png", Data: []byte("png-bytes")REDACTED,
+		{MimeType: "image/jpeg", FileURI: "gs://bucket/refs/style.jpg"REDACTED,
+REDACTED
+
+	jsonl, err := BuildVertexBatchJSONL(input)
+REDACTED
+	lines := strings.Split(strings.TrimSpace(string(jsonl)), "\n")
+	require.Len(t, lines, 1)
+
+REDACTED
+	require.NoError(t, json.Unmarshal([]byte(lines[0]), &got))
+REDACTED
+REDACTED
+REDACTED
+	require.Len(t, parts, 3)
+	require.Equal(t, "A clean product hero image", parts[0].(map[string]any)["text"])
+	inlineData := parts[1].(map[string]any)["inlineData"].(map[string]any)
+	require.Equal(t, "image/png", inlineData["mimeType"])
+	require.Equal(t, "cG5nLWJ5dGVz", inlineData["data"])
+	fileData := parts[2].(map[string]any)["fileData"].(map[string]any)
+	require.Equal(t, "image/jpeg", fileData["mimeType"])
+	require.Equal(t, "gs://bucket/refs/style.jpg", fileData["fileUri"])
+REDACTED
+
 func TestNormalizeVertexBatchModelPath(t *testing.T) {
 	require.Equal(t, "publishers/google/models/gemini-3.1-flash-image", NormalizeVertexBatchModelPath("gemini-3.1-flash-image"))
 	require.Equal(t, "publishers/google/models/gemini-2.5-flash-image", NormalizeVertexBatchModelPath("publishers/google/models/gemini-2.5-flash-image"))

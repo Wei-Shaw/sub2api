@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -492,15 +493,16 @@ REDACTED
 		if prompt == "" {
 			return nil, batchImageProviderInputError("prompt is required for custom_id %q", customID)
 	REDACTED
-		if len(item.ReferenceImages) > 0 {
-			return nil, batchImageProviderInputError("reference images are not supported in PR4")
+		parts, err := vertexBatchImageParts(prompt, item.ReferenceImages)
+		if err != nil {
+			return nil, err
 	REDACTED
 		line := map[string]any{
 			"key": customID,
 			"request": map[string]any{
 				"contents": []any{map[string]any{
 					"role":  "user",
-					"parts": []any{map[string]any{"text": promptREDACTEDREDACTED,
+					"parts": parts,
 		REDACTED
 				"generationConfig": map[string]any{
 					"responseModalities": []string{"TEXT", "IMAGE"REDACTED,
@@ -512,6 +514,36 @@ REDACTED
 	REDACTED
 REDACTED
 	return buf.Bytes(), nil
+REDACTED
+
+func vertexBatchImageParts(prompt string, refs []BatchImageReference) ([]any, error) {
+	parts := []any{map[string]any{"text": promptREDACTEDREDACTED
+	for _, ref := range refs {
+		mimeType := normalizeBatchImageReferenceMimeType(ref.MimeType)
+		if mimeType == "" {
+			return nil, batchImageProviderInputError("reference image mime_type is required")
+	REDACTED
+		fileURI := strings.TrimSpace(ref.FileURI)
+		switch {
+		case len(ref.Data) > 0 && fileURI == "":
+			parts = append(parts, map[string]any{
+				"inlineData": map[string]any{
+					"mimeType": mimeType,
+					"data":     base64.StdEncoding.EncodeToString(ref.Data),
+			REDACTED,
+		REDACTED)
+		case len(ref.Data) == 0 && fileURI != "":
+			parts = append(parts, map[string]any{
+				"fileData": map[string]any{
+					"mimeType": mimeType,
+					"fileUri":  fileURI,
+			REDACTED,
+		REDACTED)
+		default:
+			return nil, batchImageProviderInputError("reference image must contain exactly one of data or file_uri")
+	REDACTED
+REDACTED
+	return parts, nil
 REDACTED
 
 func NormalizeVertexBatchModelPath(model string) string {

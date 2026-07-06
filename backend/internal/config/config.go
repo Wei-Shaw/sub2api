@@ -180,7 +180,11 @@ type BatchImageConfig struct {
 	Enabled                           bool   `mapstructure:"enabled"`
 	MaxItemsPerJobDefault             int    `mapstructure:"max_items_per_job_default"`
 	MaxItemsPerJobTrial               int    `mapstructure:"max_items_per_job_trial"`
+	MaxOutputImagesPerJob             int    `mapstructure:"max_output_images_per_job"`
+	MaxOutputImagesPerItem            int    `mapstructure:"max_output_images_per_item"`
 	MaxPromptCharsPerItem             int    `mapstructure:"max_prompt_chars_per_item"`
+	MaxReferenceImagesPerJob          int    `mapstructure:"max_reference_images_per_job"`
+	MaxReferenceInlineBytesPerJob     int    `mapstructure:"max_reference_inline_bytes_per_job"`
 	DefaultResponseMimeType           string `mapstructure:"default_response_mime_type"`
 	DefaultImageSize                  string `mapstructure:"default_image_size"`
 	MaxDownloadItemsZip               int    `mapstructure:"max_download_items_zip"`
@@ -1781,15 +1785,19 @@ REDACTED)
 
 	// Batch Image queue
 	viper.SetDefault("batch_image.enabled", false)
-	viper.SetDefault("batch_image.max_items_per_job_default", 500)
+	viper.SetDefault("batch_image.max_items_per_job_default", 200)
 	viper.SetDefault("batch_image.max_items_per_job_trial", 50)
+	viper.SetDefault("batch_image.max_output_images_per_job", 200)
+	viper.SetDefault("batch_image.max_output_images_per_item", 4)
 	viper.SetDefault("batch_image.max_prompt_chars_per_item", 8000)
+	viper.SetDefault("batch_image.max_reference_images_per_job", 1000)
+	viper.SetDefault("batch_image.max_reference_inline_bytes_per_job", 134217728)
 	viper.SetDefault("batch_image.default_response_mime_type", "image/png")
 	viper.SetDefault("batch_image.default_image_size", "1K")
-	viper.SetDefault("batch_image.max_download_items_zip", 1000)
-	viper.SetDefault("batch_image.max_download_bytes_per_request", 2147483648)
+	viper.SetDefault("batch_image.max_download_items_zip", 200)
+	viper.SetDefault("batch_image.max_download_bytes_per_request", 536870912)
 	viper.SetDefault("batch_image.max_download_duration_seconds", 600)
-	viper.SetDefault("batch_image.max_download_concurrency_per_user", 2)
+	viper.SetDefault("batch_image.max_download_concurrency_per_user", 1)
 	viper.SetDefault("batch_image.input_retention_after_terminal_hours", 24)
 	viper.SetDefault("batch_image.output_retention_after_terminal_hours", 72)
 	viper.SetDefault("batch_image.output_retention_max_days", 7)

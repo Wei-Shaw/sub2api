@@ -587,9 +587,9 @@
           </div>
 
           <div>
-            <label class="input-label">Prompt 数量</label>
+            <label class="input-label">预计生成</label>
             <div class="input flex items-center bg-gray-50 text-gray-600 dark:bg-dark-900 dark:text-gray-300">
-              {{ parsedItems.length REDACTEDREDACTED 条
+              {{ estimatedOutputCount REDACTEDREDACTED 张 / {{ promptRows.length REDACTEDREDACTED 条
             </div>
           </div>
         </div>
@@ -600,24 +600,65 @@
             <span class="text-xs text-gray-500 dark:text-gray-400">已添加 {{ promptRows.length REDACTEDREDACTED 条</span>
           </div>
           <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
-            <div class="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_96px] md:items-start">
+            <textarea
+              v-model="promptDraft"
+              rows="3"
+              class="h-[76px] w-full resize-y rounded-md border border-gray-300 px-3 py-2 text-sm leading-5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-100 dark:focus:border-primary-500 dark:focus:ring-primary-900/40"
+              placeholder="粘贴 prompt，添加后进入下方列表"
+            />
+            <div class="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_112px_132px_112px] md:items-center">
               <input
                 v-model="customIdDraft"
                 type="text"
                 maxlength="255"
-                class="input"
+                class="input h-9 text-sm"
                 placeholder="Custom ID 可选"
               />
-              <textarea
-                v-model="promptDraft"
-                class="min-h-[120px] w-full resize-y rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-100 dark:focus:border-primary-500 dark:focus:ring-primary-900/40"
-                placeholder="输入一整段 prompt，点击添加后会进入下方列表"
-              />
-              <button type="button" class="btn btn-secondary h-10 justify-center" :disabled="!promptDraft.trim()" @click="addPromptRow">
+              <select
+                v-model.number="outputCountDraft"
+                class="batch-output-count-select input h-9 text-sm"
+                title="每条生成张数"
+                aria-label="每条生成张数"
+              >
+                <option v-for="count in outputCountOptions" :key="count" :value="count">
+                  {{ count REDACTEDREDACTED 张
+                </option>
+              </select>
+              <label
+                class="btn btn-secondary h-9 cursor-pointer justify-center text-sm"
+                :class="referenceImageDrafts.length >= selectedModelReferenceLimit ? 'pointer-events-none opacity-60' : ''"
+              >
+                <Icon name="upload" size="sm" class="mr-1.5" />
+                参考图
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                  class="hidden"
+                  :disabled="referenceImageDrafts.length >= selectedModelReferenceLimit"
+                  @change="handleReferenceImageFiles"
+                />
+              </label>
+              <button type="button" class="btn btn-secondary h-9 justify-center whitespace-nowrap px-4 text-sm" :disabled="!promptDraft.trim()" @click="addPromptRow">
                 <Icon name="plus" size="sm" class="mr-1.5" />
                 添加
               </button>
             </div>
+            <div v-if="referenceImageDrafts.length" class="mt-3 flex flex-wrap gap-2">
+              <span
+                v-for="(ref, refIndex) in referenceImageDrafts"
+                :key="`${ref.nameREDACTED-${refIndexREDACTED`"
+                class="inline-flex max-w-full items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200"
+              >
+                <span class="max-w-[180px] truncate">{{ ref.name REDACTEDREDACTED</span>
+                <button type="button" class="text-gray-400 hover:text-red-600" title="移除参考图" @click="removeReferenceImageDraft(refIndex)">
+                  <Icon name="x" size="xs" />
+                </button>
+              </span>
+            </div>
+            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              每条最多 {{ BATCH_IMAGE_MAX_OUTPUTS_PER_ITEM REDACTEDREDACTED 张，整组最多 {{ BATCH_IMAGE_MAX_OUTPUTS_PER_JOB REDACTEDREDACTED 张；当前模型每条最多 {{ selectedModelReferenceLimit REDACTEDREDACTED 张参考图，参考图按生成张数重复消耗输入 token。
+            </p>
           </div>
           <div v-if="promptRows.length" class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700">
             <div
@@ -627,6 +668,12 @@
             >
               <span class="w-20 flex-shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{{ row.custom_id REDACTEDREDACTED</span>
               <p class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-100">{{ row.prompt REDACTEDREDACTED</p>
+              <span v-if="row.output_count > 1" class="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
+                x{{ row.output_count REDACTEDREDACTED
+              </span>
+              <span v-if="row.reference_images.length" class="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
+                {{ row.reference_images.length REDACTEDREDACTED 参考图
+              </span>
               <button type="button" class="btn-ghost btn-icon flex-shrink-0 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20" title="删除" @click="removePromptRow(index)">
                 <Icon name="trash" size="sm" />
               </button>
@@ -662,9 +709,9 @@
 	          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">当前界面如何使用</h3>
 	          <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm leading-6 text-gray-700 dark:border-dark-700 dark:bg-dark-900/50 dark:text-gray-200">
 	            <p>1. 选择已开启批量生图的 Gemini API Key，模型列表会按该 Key 所属分组可用模型展示。</p>
-	            <p>2. 任务名称可以留空，提交时会自动使用当前时间；Prompt 需要一条条添加到列表里。</p>
+	            <p>2. 任务名称可以留空，提交时会自动使用当前时间；Prompt 需要一条条添加到列表里，每条 Prompt 可附参考图，也可以设置重复生成张数。</p>
 	            <p>3. 提交后任务会先排队，明细会展示已提交的 Prompt；图片预览默认不加载，点击明细里的预览按钮才会加载单张图。</p>
-	            <p>4. 完成后可以下载 ZIP；部分失败时，更多菜单里可以只重试失败项。</p>
+	            <p>4. 完成后可以下载 ZIP；部分失败时，更多菜单里可以只重试失败项。当前结算仍按成功输出图张数计算，不单独对参考图加价。</p>
 	          </div>
 	        </section>
 	        <section class="space-y-3">
@@ -720,6 +767,7 @@ import {
   type BatchImageItem,
   type BatchImageJob,
   type BatchImageJobsListOptions,
+  type BatchImageReferenceImage,
   type BatchImageStatus,
   type BatchImageSubmitItem,
 REDACTED from '@/api/batchImage'
@@ -742,6 +790,13 @@ type PromptRow = {
   localId: string
   custom_id: string
   prompt: string
+  output_count: number
+  reference_images: BatchImageReferenceImage[]
+REDACTED
+
+type ReferenceImageDraft = BatchImageReferenceImage & {
+  name: string
+  size: number
 REDACTED
 
 type PreviewCacheRecord = {
@@ -762,6 +817,9 @@ const PREVIEW_THUMBNAIL_QUALITY = 0.72
 const PREVIEW_CACHE_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000
 const PREVIEW_CACHE_MAX_ENTRIES = 120
 const PREVIEW_CACHE_MAX_BYTES = 48 * 1024 * 1024
+const BATCH_IMAGE_MAX_OUTPUTS_PER_ITEM = 4
+const BATCH_IMAGE_MAX_OUTPUTS_PER_JOB = 200
+const outputCountOptions = Array.from({ length: BATCH_IMAGE_MAX_OUTPUTS_PER_ITEM REDACTED, (_, index) => index + 1)
 const batchPageSizeOptions: SelectOption[] = [20, 50, 100].map(size => ({ value: size, label: String(size) REDACTED))
 
 const appStore = useAppStore()
@@ -844,6 +902,8 @@ const expandedParentIds = ref(new Set<string>())
 const promptRows = ref<PromptRow[]>([])
 const promptDraft = ref('')
 const customIdDraft = ref('')
+const outputCountDraft = ref(1)
+const referenceImageDrafts = ref<ReferenceImageDraft[]>([])
 const itemPreviewUrls = reactive<Record<string, string>>({REDACTED)
 const previewLoadingIds = ref(new Set<string>())
 const previewErrorIds = ref(new Set<string>())
@@ -962,15 +1022,36 @@ const endpointBase = computed(() => {
   return '<你的 Sub2API API 端点>'
 REDACTED)
 
+const selectedModelReferenceLimit = computed(() => referenceImageLimitForModel(form.model))
+
+const estimatedOutputCount = computed(() =>
+  promptRows.value.reduce((sum, row) => sum + normalizeOutputCount(row.output_count), 0),
+)
+
 const parsedItems = computed<BatchImageSubmitItem[]>(() => {
   const used = new Set<string>()
   return promptRows.value
     .map((row, index) => {
       const customID = uniqueCustomID(row.custom_id || `img_${String(index + 1).padStart(3, '0')REDACTED`, used, index)
-      return { custom_id: customID, prompt: row.prompt.trim() REDACTED
+      const item: BatchImageSubmitItem = { custom_id: customID, prompt: row.prompt.trim() REDACTED
+      const outputCount = normalizeOutputCount(row.output_count)
+      if (outputCount > 1) {
+        item.output_count = outputCount
+      REDACTED
+      if (row.reference_images.length) {
+        item.reference_images = row.reference_images
+      REDACTED
+      return item
     REDACTED)
     .filter(item => item.prompt)
 REDACTED)
+
+function referenceImageLimitForModel(model: string) {
+  const normalized = String(model || '').toLowerCase()
+  if (normalized.includes('pro-image')) return 14
+  if (normalized.includes('flash-image')) return 3
+  return 0
+REDACTED
 
 const agentInstruction = computed(() => `---
 name: sub2api-batch-image
@@ -986,8 +1067,11 @@ ${endpointBase.valueREDACTED
 1. 从用户聊天或附件中提取 prompt。每条 prompt 保留完整文本，按顺序生成稳定 custom_id，例如 img_001、img_002。
 2. 从用户要求或上下文推断任务名称；没有明确名称时用当前时间生成任务名。
 3. 从用户要求或上下文推断输出目录；如果用户没有说保存到哪里，才询问用户。
-4. 选择 API Key 和模型：先获取当前可用的批量生图 Key/模型；如果用户指定模型且该 Key 支持，则使用用户指定模型；否则使用该 Key 可用模型中的默认/第一个。不要展示或询问内部 provider 名称。
-5. 调用批量生图 API 提交、轮询、下载，不要求用户去页面里手填。
+4. 提交前必须先计算 expected_output_count = 所有 item 的 output_count 之和。单个批量任务硬性最多 200 张输出图；超过 200 张必须拆成多组任务，不能提交一个超大任务，也不能把参考图附件上限当成生成张数上限。
+5. 如果用户提供参考图，把参考图按用途绑定到具体 item。参考图只是输入附件，不是输出图数量。模型单条限制必须按模型执行：Gemini 2.5 Flash Image 每条最多 3 张参考图；Gemini 3 Pro Image 每条最多 14 张参考图。不要把后端附件风控理解成 Pro 单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
+6. 参考图会按 output_count 重复消耗输入 token；大量任务、重复复用同一张参考图或参考图总体积较大时，优先使用 gs:// file_uri 或拆分成多组任务。
+7. 选择 API Key 和模型：先获取当前可用的批量生图 Key/模型；如果用户指定模型且该 Key 支持，则使用用户指定模型；否则使用该 Key 可用模型中的默认/第一个。不要展示或询问内部 provider 名称。
+8. 调用批量生图 API 提交、轮询、下载，不要求用户去页面里手填。
 
 API 调用规范：
 - 模型：GET ${joinEndpointPath(endpointBase.value, '/v1/images/batches/models')REDACTED
@@ -1004,14 +1088,29 @@ API 调用规范：
   "image_size": "1K",
   "response_mime_type": "image/png",
   "items": [
-    { "custom_id": "img_001", "prompt": "<第一条完整 prompt>" REDACTED
+    {
+      "custom_id": "img_001",
+      "prompt": "<第一条完整 prompt>",
+      "output_count": 1,
+      "reference_images": [
+        {
+          "id": "face",
+          "type": "subject",
+          "mime_type": "image/png",
+          "data": "<base64，不含 data:image/png;base64, 前缀>"
+        REDACTED
+      ]
+    REDACTED
   ]
 REDACTED
 
 必须遵守：
 - 不要把 API Key 写入仓库、日志、提交记录或最终回复。
+- 不要把参考图 base64 写入最终回复、日志或公开文件。恢复记录中只保存参考图文件名、用途、数量和请求 JSON 文件路径；若请求 JSON 文件包含 base64，应保存在用户指定输出目录且不要提交到仓库。
+- output_count 表示同一 prompt 和参考图重复生成几张，默认 1，每条最多 4；这不是依赖 Gemini 单次请求返回多图，而是系统展开成多个真实任务项。提交前必须确认预计输出图总数不超过 200，超过就拆分成多组任务。绝不能因为参考图附件有更高的内部保护阈值，就提交会生成超过 200 张图的任务。
+- 当前对用户的批量生图计费仍按成功输出图片数量结算，不单独对参考图加价。可以向用户说明：参考图会产生少量上游输入 token 和临时存储成本，且会随 output_count 重复计算；页面显示的冻结/结算金额按输出图片数量计算。
 - 提交成功后，必须立刻在输出目录写入本地恢复记录，例如 batch-image-resume.json。不要在恢复记录里保存 API Key。
-- 恢复记录至少包含：endpoint、task_name、batch_id、model、output_dir、request_file、submitted_at、last_status、status_url、items_url、download_url、prompt_count，以及可用于失败重试的 custom_id 到 prompt 映射或请求 JSON 文件路径。
+- 恢复记录至少包含：endpoint、task_name、batch_id、model、output_dir、request_file、submitted_at、last_status、status_url、items_url、download_url、prompt_count、expected_output_count，以及可用于失败重试的 custom_id 到 prompt 映射或请求 JSON 文件路径。
 - 每次查询状态后更新恢复记录，写入 last_checked_at、last_status、成功数、失败数、实际扣费和失败摘要。会话中断或暂停后，下次必须能凭该文件继续查询、下载或重试。
 - 不要高频轮询。首次查询等待约 20 到 30 秒；queued 状态每 60 到 120 秒查询一次；如果连续 3 次仍是 queued，就先停止主动查询，告诉用户任务仍在排队，并保留恢复记录，之后可继续其他任务或等待用户稍后让你恢复。
 - running 状态每约 60 秒查询一次，服务器压力大或大批量任务时可以更久；processing_results 等接近完成的状态可每 20 到 45 秒查询一次。
@@ -1037,9 +1136,16 @@ function uniqueCustomID(raw: string, used: Set<string>, index: number): string {
   return candidate
 REDACTED
 
+function normalizeOutputCount(value: unknown): number {
+  const parsed = Math.floor(Number(value || 1))
+  if (!Number.isFinite(parsed)) return 1
+  return Math.min(BATCH_IMAGE_MAX_OUTPUTS_PER_ITEM, Math.max(1, parsed))
+REDACTED
+
 function addPromptRow() {
   const prompt = promptDraft.value.trim()
   if (!prompt) return
+  const outputCount = normalizeOutputCount(outputCountDraft.value)
   const used = new Set(promptRows.value.map(row => row.custom_id))
   const customID = uniqueCustomID(customIdDraft.value || `img_${String(promptRows.value.length + 1).padStart(3, '0')REDACTED`, used, promptRows.value.length)
   promptRows.value = [
@@ -1048,14 +1154,76 @@ function addPromptRow() {
       localId: `${Date.now()REDACTED-${Math.random().toString(36).slice(2, 8)REDACTED`,
       custom_id: customID,
       prompt,
+      output_count: outputCount,
+      reference_images: referenceImageDrafts.value.map(({ name: _name, size: _size, ...ref REDACTED) => ref),
     REDACTED,
   ]
   promptDraft.value = ''
   customIdDraft.value = ''
+  outputCountDraft.value = 1
+  referenceImageDrafts.value = []
 REDACTED
 
 function removePromptRow(index: number) {
   promptRows.value = promptRows.value.filter((_, currentIndex) => currentIndex !== index)
+REDACTED
+
+function removeReferenceImageDraft(index: number) {
+  referenceImageDrafts.value = referenceImageDrafts.value.filter((_, currentIndex) => currentIndex !== index)
+REDACTED
+
+async function handleReferenceImageFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  input.value = ''
+  if (files.length === 0) return
+  const limit = selectedModelReferenceLimit.value
+  if (limit <= 0) {
+    appStore.showError('当前模型不支持参考图。')
+    return
+  REDACTED
+  const slots = Math.max(0, limit - referenceImageDrafts.value.length)
+  if (slots <= 0) {
+    appStore.showError(`当前模型每条最多 ${limitREDACTED 张参考图。`)
+    return
+  REDACTED
+  const accepted = files.slice(0, slots)
+  if (accepted.length < files.length) {
+    appStore.showError(`当前模型每条最多 ${limitREDACTED 张参考图，已忽略超出的文件。`)
+  REDACTED
+  const next: ReferenceImageDraft[] = []
+  for (const file of accepted) {
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      appStore.showError('参考图仅支持 PNG、JPEG 或 WebP。')
+      continue
+    REDACTED
+    if (file.size > 10 * 1024 * 1024) {
+      appStore.showError(`${file.nameREDACTED 超过 10MB，已忽略。`)
+      continue
+    REDACTED
+    const data = await readFileAsBase64(file)
+    next.push({
+      id: file.name,
+      type: 'reference',
+      mime_type: file.type,
+      data,
+      name: file.name,
+      size: file.size,
+    REDACTED)
+  REDACTED
+  referenceImageDrafts.value = [...referenceImageDrafts.value, ...next]
+REDACTED
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error || new Error('Failed to read file'))
+    reader.onload = () => {
+      const result = String(reader.result || '')
+      resolve(result.includes(',') ? result.slice(result.indexOf(',') + 1) : result)
+    REDACTED
+    reader.readAsDataURL(file)
+  REDACTED)
 REDACTED
 
 async function loadApiKeys() {
@@ -1382,14 +1550,19 @@ function openCreateModal() {
 REDACTED
 
 function closeCreateModal() {
+  if (submitting.value) return
   showCreateModal.value = false
+  resetCreateDraft()
 REDACTED
 
 function resetCreateDraft() {
   form.taskName = ''
+  form.responseMimeType = 'image/png'
   promptRows.value = []
   promptDraft.value = ''
   customIdDraft.value = ''
+  outputCountDraft.value = 1
+  referenceImageDrafts.value = []
 REDACTED
 
 function closeDetail() {
@@ -1425,6 +1598,15 @@ function validateForm(): boolean {
   REDACTED
   if (parsedItems.value.length === 0) {
     appStore.showError(batchImageText('promptRequired'))
+    return false
+  REDACTED
+  if (estimatedOutputCount.value > BATCH_IMAGE_MAX_OUTPUTS_PER_JOB) {
+    appStore.showError(batchImageText('tooManyOutputImages'))
+    return false
+  REDACTED
+  const refLimit = selectedModelReferenceLimit.value
+  if (promptRows.value.some(row => row.reference_images.length > refLimit)) {
+    appStore.showError(batchImageText('tooManyReferenceImages'))
     return false
   REDACTED
   return true
@@ -2245,6 +2427,10 @@ type BatchImageTextKey =
   | 'invalidItems'
   | 'duplicateCustomId'
   | 'promptTooLong'
+  | 'invalidReferenceImage'
+  | 'tooManyReferenceImages'
+  | 'referenceImagesTooLarge'
+  | 'tooManyOutputImages'
   | 'idempotencyConflict'
   | 'notReady'
   | 'outputDeleted'
@@ -2252,6 +2438,7 @@ type BatchImageTextKey =
   | 'itemFailed'
   | 'itemImageIndexOutOfRange'
   | 'downloadLimited'
+  | 'downloadTooLarge'
   | 'deleteNotReady'
   | 'disabled'
   | 'authRequired'
@@ -2305,6 +2492,10 @@ function batchImageText(key: BatchImageTextKey) {
     invalidItems: 'Prompt 列表格式不正确，请检查是否为空、是否超过数量限制，或图片尺寸是否仍为 1K。',
     duplicateCustomId: 'Prompt 列表里的 custom_id 不能重复。',
     promptTooLong: '单条 prompt 过长，请缩短后重试。',
+    invalidReferenceImage: '参考图格式不正确，请使用 10MB 以内的 PNG、JPEG 或 WebP。',
+    tooManyReferenceImages: '参考图数量超过限制：Flash Image 每条最多 3 张，Pro Image 每条最多 14 张，整组最多 1000 张。',
+    referenceImagesTooLarge: '参考图总量过大。inline 参考图整组最多 128MB；大量参考图请改用 gs:// file_uri 或拆分任务。',
+    tooManyOutputImages: '预计生成张数超过限制：每条最多 4 张，整组最多 200 张。',
     idempotencyConflict: '这次提交和之前的请求标识冲突，请刷新页面后重新提交。',
     notReady: '任务还没有完成，完成后才能下载。',
     outputDeleted: '这个任务的结果文件已经被清理，无法下载。',
@@ -2312,6 +2503,7 @@ function batchImageText(key: BatchImageTextKey) {
     itemFailed: '这条明细没有成功图片，无法预览。',
     itemImageIndexOutOfRange: '这条明细没有可预览的图片。',
     downloadLimited: '当前下载请求太多，请稍后再试。',
+    downloadTooLarge: '这个 ZIP 太大，已超过单次下载限制。请减少单次下载数量，或联系管理员调整批量下载上限。',
     deleteNotReady: '任务结束后才能删除记录。正在生成或结算中的任务请先等待完成。',
     disabled: '批量生图功能当前未开启。',
     authRequired: '当前 API Key 不可用或已失效，请重新选择密钥。',
@@ -2360,6 +2552,10 @@ function batchImageText(key: BatchImageTextKey) {
     invalidItems: 'The prompt list is invalid. Check that it is not empty, within the item limit, and still using 1K image size.',
     duplicateCustomId: 'Custom IDs in the prompt list must be unique.',
     promptTooLong: 'One prompt is too long. Shorten it and try again.',
+    invalidReferenceImage: 'A reference image is invalid. Use PNG, JPEG, or WebP under 10 MB.',
+    tooManyReferenceImages: 'Too many reference images. Flash Image allows up to 3 per item, Pro Image allows up to 14, and each job allows up to 1000 total.',
+    referenceImagesTooLarge: 'Reference images are too large. Inline reference images are limited to 128 MB per job; use gs:// file_uri or split the job for large batches.',
+    tooManyOutputImages: 'Too many expected output images. Each prompt can request up to 4 images, and each job can generate up to 200 images.',
     idempotencyConflict: 'This submission conflicts with a previous request ID. Refresh the page and submit again.',
     notReady: 'The job is not complete yet. Download will be available after completion.',
     outputDeleted: 'The result files for this job have already been cleaned up.',
@@ -2367,6 +2563,7 @@ function batchImageText(key: BatchImageTextKey) {
     itemFailed: 'This item has no successful image to preview.',
     itemImageIndexOutOfRange: 'This item has no previewable image.',
     downloadLimited: 'Too many download requests are active. Please try again later.',
+    downloadTooLarge: 'This ZIP is too large for a single download. Download fewer items at once or ask an administrator to raise the batch download limit.',
     deleteNotReady: 'Job records can only be deleted after the job finishes.',
     disabled: 'Batch image generation is currently disabled.',
     authRequired: 'The current API key is unavailable or expired. Select the key again.',
@@ -2446,6 +2643,18 @@ function batchImageErrorMessage(error: any, fallback: string) {
   if (code === 'BATCH_IMAGE_PROMPT_TOO_LONG') {
     return batchImageText('promptTooLong')
   REDACTED
+  if (code === 'BATCH_IMAGE_INVALID_REFERENCE_IMAGE') {
+    return batchImageText('invalidReferenceImage')
+  REDACTED
+  if (code === 'BATCH_IMAGE_TOO_MANY_REFERENCE_IMAGES') {
+    return batchImageText('tooManyReferenceImages')
+  REDACTED
+  if (code === 'BATCH_IMAGE_REFERENCE_IMAGES_TOO_LARGE') {
+    return batchImageText('referenceImagesTooLarge')
+  REDACTED
+  if (code === 'BATCH_IMAGE_TOO_MANY_OUTPUT_IMAGES') {
+    return batchImageText('tooManyOutputImages')
+  REDACTED
   if (code === 'BATCH_IMAGE_IDEMPOTENCY_CONFLICT') {
     return batchImagePlainError(batchImageText('idempotencyConflict'))
   REDACTED
@@ -2466,6 +2675,9 @@ function batchImageErrorMessage(error: any, fallback: string) {
   REDACTED
   if (code === 'BATCH_IMAGE_DOWNLOAD_LIMITED') {
     return batchImageText('downloadLimited')
+  REDACTED
+  if (code === 'BATCH_IMAGE_DOWNLOAD_TOO_LARGE') {
+    return batchImageText('downloadTooLarge')
   REDACTED
   if (code === 'BATCH_IMAGE_RECORD_DELETE_NOT_READY') {
     return batchImagePlainError(batchImageText('deleteNotReady'))
@@ -2514,6 +2726,20 @@ watch(
   REDACTED,
 )
 
+watch(
+  () => form.model,
+  () => {
+    const limit = selectedModelReferenceLimit.value
+    if (limit <= 0) {
+      referenceImageDrafts.value = []
+      return
+    REDACTED
+    if (referenceImageDrafts.value.length > limit) {
+      referenceImageDrafts.value = referenceImageDrafts.value.slice(0, limit)
+    REDACTED
+  REDACTED,
+)
+
 onBeforeUnmount(() => {
   stopPolling()
   if (previewCacheCleanupTimer) {
@@ -2559,5 +2785,15 @@ REDACTED
 
 .batch-prompt-popover p {
   scrollbar-width: thin;
+REDACTED
+
+.batch-output-count-select {
+  height: 36px;
+  min-height: 36px;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 14px;
+  padding-right: 34px;
+  line-height: 36px;
 REDACTED
 </style>

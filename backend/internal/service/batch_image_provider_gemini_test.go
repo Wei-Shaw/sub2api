@@ -74,6 +74,33 @@ func TestBuildGeminiBatchJSONL_RejectsEmptyPrompt(t *testing.T) {
 	require.ErrorIs(t, err, ErrBatchImageProviderInvalidInput)
 REDACTED
 
+func TestBuildGeminiBatchJSONL_WritesReferenceImages(t *testing.T) {
+	input := validGeminiBatchInput()
+	input.Items[0].ReferenceImages = []BatchImageReference{
+		{MimeType: "image/webp", Data: []byte("webp-bytes")REDACTED,
+		{MimeType: "image/jpeg", FileURI: "gs://bucket/refs/style.jpg"REDACTED,
+REDACTED
+
+	jsonl, err := BuildGeminiBatchJSONL(input)
+REDACTED
+	lines := strings.Split(strings.TrimSpace(string(jsonl)), "\n")
+	require.Len(t, lines, 1)
+
+REDACTED
+	require.NoError(t, json.Unmarshal([]byte(lines[0]), &got))
+REDACTED
+REDACTED
+REDACTED
+	require.Len(t, parts, 3)
+	require.Equal(t, "A clean product hero image", parts[0].(map[string]any)["text"])
+	inlineData := parts[1].(map[string]any)["inlineData"].(map[string]any)
+	require.Equal(t, "image/webp", inlineData["mimeType"])
+	require.Equal(t, "d2VicC1ieXRlcw==", inlineData["data"])
+	fileData := parts[2].(map[string]any)["fileData"].(map[string]any)
+	require.Equal(t, "image/jpeg", fileData["mimeType"])
+	require.Equal(t, "gs://bucket/refs/style.jpg", fileData["fileUri"])
+REDACTED
+
 func TestGeminiProvider_SubmitUploadsJSONLThenCreatesBatch(t *testing.T) {
 	client := &fakeGeminiBatchClient{
 		uploaded: &GeminiUploadedFile{Name: "files/input-jsonl"REDACTED,

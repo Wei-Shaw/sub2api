@@ -30,13 +30,41 @@ Submit request:
   "items": [
     {
       "custom_id": "cover_001",
-      "prompt": "A clean product hero image..."
+      "prompt": "A clean product hero image...",
+      "output_count": 1,
+      "reference_images": [
+        {
+          "id": "product-front",
+          "type": "subject",
+          "mime_type": "image/png",
+          "data": "<base64 image bytes without a data URL prefix>"
+        REDACTED,
+        {
+          "id": "style",
+          "type": "style",
+          "mime_type": "image/jpeg",
+          "file_uri": "gs://internal-managed-bucket/batch-image/refs/style.jpg"
+        REDACTED
+      ]
     REDACTED
   ],
   "image_size": "1K",
   "response_mime_type": "image/png"
 REDACTED
 ```
+
+`reference_images` is optional per item. Inline `data` is a base64 string decoded by the backend; `file_uri` is reserved for internal Google Cloud Storage references and must be a `gs://` URI. Each reference image must use one of `image/png`, `image/jpeg`, or `image/webp`. Current model limits are:
+
+- `gemini-2.5-flash-image` and other Flash Image aliases: up to 3 reference images per item.
+- `gemini-3-pro-image` and other Pro Image aliases: up to 14 reference images per item.
+- Per batch job: up to 1000 reference image attachments total after `output_count` expansion across all items. This is an internal Sub2API guardrail for request size and cost control, not the generated-image cap and not a Pro Image per-item capability. The generated-output cap is 200 images per job.
+- Per batch job: up to 128 MB decoded inline reference image data total. For large batches or repeated reference images, prefer `gs://` `file_uri` references or split the request into multiple jobs.
+
+`output_count` is optional per item and defaults to `1`. It means "repeat this prompt and reference image set N times" rather than relying on Gemini to return multiple images from one upstream request. The backend expands each repeat into a separate provider JSONL line with suffixed custom ids such as `cover_001_01`, `cover_001_02`. Current limits are:
+
+- Per prompt item: up to 4 output images.
+- Per batch job: up to 200 expected output images after expansion. This is the hard generated-output cap for a single job; clients and Codex skills must split larger workloads before submission.
+- The output-image limit intentionally matches the default ZIP item limit so newly submitted jobs are always downloadable as one ZIP by item count. ZIP byte size is still capped separately by `max_download_bytes_per_request`.
 
 Public batch response:
 
@@ -136,8 +164,10 @@ MVP billing rules:
 - Settlement runs after result indexing.
 - Only successful images are charged.
 - Failed items are not charged.
+- Reference images are sent to Gemini as input and can create small upstream input-token and temporary storage cost. They are counted once per expanded output request when `output_count > 1`, but the public MVP billing model does not add a separate reference-image surcharge. User-facing estimated, held, and settled amounts are still based on the output image count and configured batch image unit price.
 - Settlement request id is `batch_image_settlement:{batch_idREDACTED`.
 - Settlement is idempotent; re-running settlement must not double charge.
+- Settlement billing failures are retried with a bounded retry limit. After the retry limit is reached, the job is failed and the remaining hold is released through the idempotent release path.
 
 Exact production pricing is resolved through model pricing configuration and is not defined here.
 
@@ -170,6 +200,7 @@ For the managed Vertex/GCS batch bucket, disable Cloud Storage soft delete or co
 - Uses Gemini Batch API with JSONL file mode.
 - Result file refs are internal.
 - API keys are never returned.
+- The provider can be selected and submitted through Sub2API when an administrator configures a Gemini API-key upstream account. In the 2026-07-07 PR validation, this path was verified as selectable/callable, but successful image generation was not continued because the test API key had no prepayment.
 
 `vertex`:
 
@@ -179,6 +210,34 @@ For the managed Vertex/GCS batch bucket, disable Cloud Storage soft delete or co
 - Batch image output should be treated as `1K`/default only in MVP.
 - Do not promise `2K` or `4K`.
 
+## Official Google Enablement
+
+Operators must enable Gemini/Vertex capability in Google's official console before turning on Sub2API batch image for any group. Sub2API feature flags and group switches do not create Google-side access by themselves.
+
+Recommended production path:
+
+- Use a Google Cloud project with billing enabled.
+- Enable the relevant Gemini API / Vertex AI APIs for the project.
+- Use a service account or Application Default Credentials for the Sub2API runtime.
+- Create one fixed Cloud Storage bucket for batch image input and output, then grant the runtime and Vertex service agent the minimum required bucket permissions.
+- Configure Sub2API with the project id, location, managed bucket, provider account, model whitelist, and pricing.
+- Enable `BATCH_IMAGE_ENABLED` globally and `allow_batch_image_generation` only on the intended Gemini group.
+
+API-key path:
+
+- Google API keys are suitable for Gemini API development and supported Gemini methods.
+- The Sub2API `x-goog-api-key` compatibility header still expects a Sub2API key, not a plain Google key.
+- Plain Google API keys should not be documented as the default production credential for Vertex service-account batch jobs.
+- If an administrator configures a Gemini API-key upstream account, validate it with one low-cost batch image after the Google account has the required billing/prepayment state. If it has no prepayment, record only that the provider is selectable/callable and that failed submit releases hold.
+
+Official references:
+
+- Gemini API key guide: https://ai.google.dev/gemini-api/docs/api-key
+- Gemini API Batch API: https://ai.google.dev/gemini-api/docs/batch-api
+- Gemini API image generation and batch image notes: https://ai.google.dev/gemini-api/docs/image-generation
+- Vertex/Gemini batch inference: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/batch-inference
+- Vertex batch predictions API: https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/models/batch-prediction-api
+
 ## Config
 
 These keys exist in `backend/internal/config/config.go`:
@@ -186,16 +245,20 @@ These keys exist in `backend/internal/config/config.go`:
 ```yaml
 batch_image:
   enabled: false
-  max_items_per_job_default: 500
+  max_items_per_job_default: 200
   max_items_per_job_trial: 50
+  max_output_images_per_job: 200
+  max_output_images_per_item: 4
   max_prompt_chars_per_item: 8000
+  max_reference_images_per_job: 1000
+  max_reference_inline_bytes_per_job: 134217728
   default_response_mime_type: "image/png"
   default_image_size: "1K"
 
-  max_download_items_zip: 1000
-  max_download_bytes_per_request: 2147483648
+  max_download_items_zip: 200
+  max_download_bytes_per_request: 536870912
   max_download_duration_seconds: 600
-  max_download_concurrency_per_user: 2
+  max_download_concurrency_per_user: 1
 
   input_retention_after_terminal_hours: 24
   output_retention_after_terminal_hours: 72

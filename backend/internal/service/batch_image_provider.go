@@ -88,8 +88,11 @@ type BatchImageInputItem struct {
 REDACTED
 
 type BatchImageReference struct {
+	ID       string
+	Type     string
 	MimeType string
 	Data     []byte
+	FileURI  string
 REDACTED
 
 type BatchProviderJob struct {
