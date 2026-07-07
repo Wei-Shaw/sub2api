@@ -2959,7 +2959,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
-	if rawTier := requestView.ServiceTier; rawTier != "" {
+	rawTier := requestView.ServiceTier
+	if rawTier == "" && !gjson.GetBytes(body, "service_tier").Exists() {
+		if tier := s.openAICodexDefaultServiceTier(ctx, c); tier != "" {
+			rawTier = tier
+			markPatchSet("service_tier", tier)
+		}
+	}
+	if rawTier != "" {
 		if normTier := normalizedOpenAIServiceTierValue(rawTier); normTier != "" {
 			action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
 			switch action {
@@ -3456,6 +3463,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 	if sanitized {
 		body = sanitizedBody
+	}
+
+	body, err = s.applyOpenAICodexDefaultServiceTierToBody(ctx, c, body)
+	if err != nil {
+		return nil, err
 	}
 
 	// Apply OpenAI fast policy to the passthrough body (filter/block by service_tier).
@@ -7232,6 +7244,38 @@ func normalizeOpenAIServiceTier(raw string) *string {
 	default:
 		return nil
 	}
+}
+
+func (s *OpenAIGatewayService) openAICodexDefaultServiceTier(ctx context.Context, c *gin.Context) string {
+	if s == nil || s.settingService == nil || !s.isOpenAICodexDefaultServiceTierEligible(c) {
+		return ""
+	}
+	return s.settingService.GetOpenAICodexDefaultServiceTier(ctx)
+}
+
+func (s *OpenAIGatewayService) applyOpenAICodexDefaultServiceTierToBody(ctx context.Context, c *gin.Context, body []byte) ([]byte, error) {
+	if len(body) == 0 || gjson.GetBytes(body, "service_tier").Exists() {
+		return body, nil
+	}
+	tier := s.openAICodexDefaultServiceTier(ctx, c)
+	if tier == "" {
+		return body, nil
+	}
+	updated, err := sjson.SetBytes(body, "service_tier", tier)
+	if err != nil {
+		return body, fmt.Errorf("inject openai codex default service_tier: %w", err)
+	}
+	return updated, nil
+}
+
+func (s *OpenAIGatewayService) isOpenAICodexDefaultServiceTierEligible(c *gin.Context) bool {
+	if s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+		return true
+	}
+	if c == nil {
+		return false
+	}
+	return openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
 }
 
 // OpenAIFastBlockedError indicates a request was rejected by the OpenAI fast

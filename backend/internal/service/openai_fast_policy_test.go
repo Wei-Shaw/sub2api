@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -51,6 +54,10 @@ func (s *openAIFastPolicyRepoStub) Delete(ctx context.Context, key string) error
 }
 
 func newOpenAIGatewayServiceWithSettings(t *testing.T, settings *OpenAIFastPolicySettings) *OpenAIGatewayService {
+	return newOpenAIGatewayServiceWithFastSettings(t, settings, "")
+}
+
+func newOpenAIGatewayServiceWithFastSettings(t *testing.T, settings *OpenAIFastPolicySettings, codexDefaultServiceTier string) *OpenAIGatewayService {
 	t.Helper()
 	repo := &openAIFastPolicyRepoStub{values: map[string]string{}}
 	if settings != nil {
@@ -58,9 +65,27 @@ func newOpenAIGatewayServiceWithSettings(t *testing.T, settings *OpenAIFastPolic
 		require.NoError(t, err)
 		repo.values[SettingKeyOpenAIFastPolicySettings] = string(raw)
 	}
+	if codexDefaultServiceTier != "" {
+		repo.values[SettingKeyOpenAICodexDefaultServiceTier] = codexDefaultServiceTier
+	}
 	return &OpenAIGatewayService{
+		cfg:            &config.Config{},
 		settingService: NewSettingService(repo, &config.Config{}),
 	}
+}
+
+func newOpenAIFastPolicyGinContext(method, path, userAgent, originator string) *gin.Context {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(method, path, nil)
+	if userAgent != "" {
+		c.Request.Header.Set("User-Agent", userAgent)
+	}
+	if originator != "" {
+		c.Request.Header.Set("originator", originator)
+	}
+	return c
 }
 
 func openAIFastFilterPriorityPolicy() *OpenAIFastPolicySettings {
@@ -162,6 +187,47 @@ func TestApplyOpenAIFastPolicyToBody_DefaultPassesPriorityAndFast(t *testing.T) 
 	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
 	require.NoError(t, err)
 	require.Equal(t, string(body), string(updated))
+}
+
+func TestApplyOpenAICodexDefaultServiceTierToBody_InjectsForOfficialCodexClient(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithFastSettings(t, DefaultOpenAIFastPolicySettings(), "fast")
+	c := newOpenAIFastPolicyGinContext(http.MethodPost, "/v1/responses", "codex-tui/0.142.4 (Mac OS 26.2.0; arm64)", "")
+
+	body := []byte(`{"model":"gpt-5.5","input":"hello"}`)
+	updated, err := svc.applyOpenAICodexDefaultServiceTierToBody(context.Background(), c, body)
+	require.NoError(t, err)
+	require.Equal(t, "priority", gjson.GetBytes(updated, "service_tier").String())
+}
+
+func TestApplyOpenAICodexDefaultServiceTierToBody_DoesNotOverwriteExplicitTier(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithFastSettings(t, DefaultOpenAIFastPolicySettings(), "priority")
+	c := newOpenAIFastPolicyGinContext(http.MethodPost, "/v1/responses", "codex-tui/0.142.4 (Mac OS 26.2.0; arm64)", "")
+
+	body := []byte(`{"model":"gpt-5.5","service_tier":"flex"}`)
+	updated, err := svc.applyOpenAICodexDefaultServiceTierToBody(context.Background(), c, body)
+	require.NoError(t, err)
+	require.Equal(t, "flex", gjson.GetBytes(updated, "service_tier").String())
+}
+
+func TestApplyOpenAICodexDefaultServiceTierToBody_SkipsNonCodexClient(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithFastSettings(t, DefaultOpenAIFastPolicySettings(), "priority")
+	c := newOpenAIFastPolicyGinContext(http.MethodPost, "/v1/responses", "curl/8.0.1", "")
+
+	body := []byte(`{"model":"gpt-5.5"}`)
+	updated, err := svc.applyOpenAICodexDefaultServiceTierToBody(context.Background(), c, body)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(updated, "service_tier").Exists())
+}
+
+func TestGetOpenAICodexDefaultServiceTier_NormalizesAndRejectsInvalidValues(t *testing.T) {
+	repo := &openAIFastPolicyRepoStub{values: map[string]string{
+		SettingKeyOpenAICodexDefaultServiceTier: " fast ",
+	}}
+	svc := NewSettingService(repo, &config.Config{})
+	require.Equal(t, "priority", svc.GetOpenAICodexDefaultServiceTier(context.Background()))
+
+	repo.values[SettingKeyOpenAICodexDefaultServiceTier] = "turbo"
+	require.Empty(t, svc.GetOpenAICodexDefaultServiceTier(context.Background()))
 }
 
 func TestApplyOpenAIFastPolicyToBody_ExplicitFilterRemovesField(t *testing.T) {

@@ -403,6 +403,10 @@ const (
 	// targets OpenAI's body-level service_tier field instead of Claude's
 	// anthropic-beta header.
 	SettingKeyOpenAIFastPolicySettings = "openai_fast_policy_settings"
+	// SettingKeyOpenAICodexDefaultServiceTier stores an optional default
+	// OpenAI service_tier injected only for official Codex clients that omit
+	// service_tier. Empty means disabled.
+	SettingKeyOpenAICodexDefaultServiceTier = "openai_codex_default_service_tier"
 
 	// =========================
 	// Claude Code Version Check

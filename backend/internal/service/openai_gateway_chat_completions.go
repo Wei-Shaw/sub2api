@@ -225,6 +225,11 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		}
 	}
 
+	responsesBody, err = s.applyOpenAICodexDefaultServiceTierToBody(ctx, c, responsesBody)
+	if err != nil {
+		return nil, err
+	}
+
 	// 4b. Apply OpenAI fast policy (may filter service_tier or block the request).
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, responsesBody)
 	if policyErr != nil {

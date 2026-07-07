@@ -94,6 +94,12 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		upstreamBody = normalizedBody
 	}
 
+	upstreamBody, err := s.applyOpenAICodexDefaultServiceTierToBody(ctx, c, upstreamBody)
+	if err != nil {
+		return nil, err
+	}
+	serviceTier = extractOpenAIServiceTierFromBody(upstreamBody)
+
 	// 4. Apply OpenAI fast policy on the CC body
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, upstreamBody)
 	if policyErr != nil {

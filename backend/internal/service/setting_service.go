@@ -5328,6 +5328,34 @@ func (s *SettingService) GetOpenAIFastPolicySettings(ctx context.Context) (*Open
 	return &settings, nil
 }
 
+// GetOpenAICodexDefaultServiceTier returns the optional service_tier that
+// should be injected for official Codex clients when they omit service_tier.
+// Invalid values fail closed to disabled so a bad setting cannot break traffic.
+func (s *SettingService) GetOpenAICodexDefaultServiceTier(ctx context.Context) string {
+	if s == nil || s.settingRepo == nil {
+		return ""
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAICodexDefaultServiceTier)
+	if err != nil {
+		if !errors.Is(err, ErrSettingNotFound) {
+			slog.Warn("failed to get openai codex default service_tier setting",
+				"error", err,
+				"key", SettingKeyOpenAICodexDefaultServiceTier)
+		}
+		return ""
+	}
+	normalized := normalizeOpenAIServiceTier(value)
+	if normalized == nil {
+		if strings.TrimSpace(value) != "" {
+			slog.Warn("invalid openai codex default service_tier setting, disabling injection",
+				"key", SettingKeyOpenAICodexDefaultServiceTier,
+				"value", value)
+		}
+		return ""
+	}
+	return *normalized
+}
+
 // SetOpenAIFastPolicySettings 设置 OpenAI fast 策略配置
 func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settings *OpenAIFastPolicySettings) error {
 	if settings == nil {
