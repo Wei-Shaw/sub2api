@@ -11,18 +11,20 @@ import (
 func TestAPIKeyFromService_MapsLastUsedAt(t *testing.T) {
 	lastUsed := time.Now().UTC().Truncate(time.Second)
 	src := &service.APIKey{
-		ID:         1,
-		UserID:     2,
-		Key:        "sk-map-last-used",
-		Name:       "Mapper",
-		Status:     service.StatusActive,
-		LastUsedAt: &lastUsed,
+		ID:                 1,
+		UserID:             2,
+		Key:                "sk-map-last-used",
+		Name:               "Mapper",
+		Status:             service.StatusActive,
+		LastUsedAt:         &lastUsed,
+		CurrentConcurrency: 3,
 	}
 
 	out := APIKeyFromService(src)
 	require.NotNil(t, out)
 	require.NotNil(t, out.LastUsedAt)
 	require.WithinDuration(t, lastUsed, *out.LastUsedAt, time.Second)
+	require.Equal(t, 3, out.CurrentConcurrency)
 }
 
 func TestAPIKeyFromService_MapsNilLastUsedAt(t *testing.T) {
