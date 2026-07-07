@@ -53,6 +53,9 @@ REDACTED
 	clientStream := responsesReq.Stream
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(body, originalModel)
 	serviceTier := extractOpenAIServiceTierFromBody(body)
+	// custom 工具（如 codex 的 exec）降级为 function 工具转发，回程需按名字还原为
+	// custom_tool_call 项，先记下名字集合。
+	customTools := apicompat.CustomToolNames(responsesReq.Tools)
 
 	chatReq, err := apicompat.ResponsesToChatCompletionsRequest(&responsesReq)
 	if err != nil {
@@ -191,15 +194,16 @@ REDACTED
 REDACTED
 
 	if clientStream {
-		return s.streamChatCompletionsAsResponses(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 REDACTED
-	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 REDACTED
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	c *gin.Context,
 	resp *http.Response,
 	originalModel string,
+	customTools map[string]bool,
 	billingModel string,
 	upstreamModel string,
 	reasoningEffort *string,
@@ -230,7 +234,7 @@ REDACTED
 	REDACTED)
 		return nil, fmt.Errorf("parse chat completions response: %w", err)
 REDACTED
-	responsesResp := apicompat.ChatCompletionsResponseToResponses(&ccResp, originalModel)
+	responsesResp := apicompat.ChatCompletionsResponseToResponses(&ccResp, originalModel, customTools)
 
 	usage := OpenAIUsage{REDACTED
 	if parsed, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {
@@ -259,6 +263,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	c *gin.Context,
 	resp *http.Response,
 	originalModel string,
+	customTools map[string]bool,
 	billingModel string,
 	upstreamModel string,
 	reasoningEffort *string,
@@ -283,6 +288,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 REDACTED
 
 	state := apicompat.NewChatCompletionsToResponsesStreamState(originalModel)
+	state.CustomTools = customTools
 	var usage OpenAIUsage
 	var firstTokenMs *int
 	clientDisconnected := false

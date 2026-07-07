@@ -1,6 +1,8 @@
 package apicompat
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -35,11 +37,28 @@ REDACTED
 	if len(req.Tools) > 0 {
 		out.Tools = responsesToolsToChatTools(req.Tools)
 REDACTED
-	if len(req.ToolChoice) > 0 {
+	// tools 全部被丢弃（如仅含 web_search/image_generation 等服务端工具）时不再转发
+	// tool_choice：上游会拒绝 "'tool_choice' is only allowed when 'tools' are specified"。
+	if len(out.Tools) > 0 && len(req.ToolChoice) > 0 {
 		out.ToolChoice = responsesToolChoiceToChatToolChoice(req.ToolChoice)
 REDACTED
 
 	return out, nil
+REDACTED
+
+// CustomToolNames 收集 Responses 请求中 custom/freeform 工具的名字。chat 桥回程时
+// 需要据此把模型对这些工具的调用还原为 custom_tool_call 项（codex 只按该类型路由）。
+func CustomToolNames(tools []ResponsesTool) map[string]bool {
+	var out map[string]bool
+	for _, tool := range tools {
+		if tool.Type == "custom" && tool.Name != "" {
+			if out == nil {
+				out = make(map[string]bool)
+		REDACTED
+			out[tool.Name] = true
+	REDACTED
+REDACTED
+	return out
 REDACTED
 
 // responsesInputToChatMessages converts a Responses request's instructions +
@@ -129,33 +148,68 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			if strings.TrimSpace(arguments) == "" {
 				arguments = "{REDACTED"
 		REDACTED
+			name := rawString(item["name"])
+			// namespace 子工具的历史调用带 namespace 字段，需与请求方向的摊平
+			// 命名（namespaceChildrenToChatTools）保持一致。
+			if ns := rawString(item["namespace"]); ns != "" {
+				name = flattenNamespaceToolName(ns, name)
+		REDACTED
+			toolCall := ChatToolCall{
+				ID:   rawString(item["call_id"]),
+				Type: "function",
+				Function: ChatFunctionCall{
+					Name:      name,
+					Arguments: arguments,
+			REDACTED,
+		REDACTED
+			messages = appendAssistantToolCall(messages, toolCall, pendingReasoning)
+			pendingReasoning = ""
+			continue
+		case "tool_search_call":
+			// tool_search 调用的 arguments 是 JSON 对象（如 {"query": ...REDACTED），
+			// 原文即为降级 function 调用的 arguments 字符串。
+			arguments := strings.TrimSpace(string(bytesTrimSpace(item["arguments"])))
+			if s := rawString(item["arguments"]); s != "" {
+				arguments = s
+		REDACTED
+			if arguments == "" || arguments == "null" {
+				arguments = "{REDACTED"
+		REDACTED
+			toolCall := ChatToolCall{
+				ID:   rawString(item["call_id"]),
+				Type: "function",
+				Function: ChatFunctionCall{
+					Name:      toolSearchProxyName,
+					Arguments: arguments,
+			REDACTED,
+		REDACTED
+			messages = appendAssistantToolCall(messages, toolCall, pendingReasoning)
+			pendingReasoning = ""
+			continue
+		case "custom_tool_call":
+			// custom/freeform 工具的历史调用：input 自由文本包进降级 function 工具
+			// 的 {"input": ...REDACTED 参数，与请求方向的工具降级（customToolInputSchema）
+			// 保持一致，模型才能把历史与当前工具定义对上。
+			arguments, _ := json.Marshal(map[string]string{"input": rawString(item["input"])REDACTED)
 			toolCall := ChatToolCall{
 				ID:   rawString(item["call_id"]),
 				Type: "function",
 				Function: ChatFunctionCall{
 					Name:      rawString(item["name"]),
-					Arguments: arguments,
+					Arguments: string(arguments),
 			REDACTED,
 		REDACTED
-			// Parallel tool calls arrive as consecutive function_call items and
-			// must share one assistant message; the matching tool replies then
-			// follow it. Merge into the immediately preceding assistant message.
-			if n := len(messages); n > 0 && messages[n-1].Role == "assistant" {
-				messages[n-1].ToolCalls = append(messages[n-1].ToolCalls, toolCall)
-				if messages[n-1].ReasoningContent == "" {
-					messages[n-1].ReasoningContent = pendingReasoning
-			REDACTED
-		REDACTED else {
-				messages = append(messages, ChatMessage{
-					Role:             "assistant",
-					ToolCalls:        []ChatToolCall{toolCallREDACTED,
-					ReasoningContent: pendingReasoning,
-			REDACTED)
-		REDACTED
+			messages = appendAssistantToolCall(messages, toolCall, pendingReasoning)
 			pendingReasoning = ""
 			continue
-		case "function_call_output":
-			content, _ := json.Marshal(rawString(item["output"]))
+		case "function_call_output", "custom_tool_call_output", "tool_search_output":
+			outputRaw := bytesTrimSpace(item["output"])
+			outputText := rawString(outputRaw)
+			if outputText == "" && len(outputRaw) > 0 && string(outputRaw) != "null" && string(outputRaw) != `""` {
+				// 对象/数组形式的输出（如 tool_search 的结果列表）整体字符串化。
+				outputText = string(outputRaw)
+		REDACTED
+			content, _ := json.Marshal(outputText)
 			messages = append(messages, ChatMessage{
 				Role:       "tool",
 				ToolCallID: rawString(item["call_id"]),
@@ -180,9 +234,9 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 
 		// Only genuine message items become chat messages. Codex emits other
 		// Responses item types with no Chat equivalent (web_search_call,
-		// local_shell_call, custom tool calls, file_search_call, ...). Converting
-		// them via the generic path would insert a spurious message between an
-		// assistant tool_calls message and its tool reply, which DeepSeek rejects
+		// local_shell_call, file_search_call, ...). Converting them via the
+		// generic path would insert a spurious message between an assistant
+		// tool_calls message and its tool reply, which DeepSeek rejects
 		// ("insufficient tool messages following tool_calls message"). Skip them.
 		if itemType != "" && itemType != "message" {
 			pendingReasoning = ""
@@ -207,6 +261,25 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 REDACTED
 
 	return messages, nil
+REDACTED
+
+// appendAssistantToolCall merges a tool call into the chat message list.
+// Parallel tool calls arrive as consecutive *_call items and must share one
+// assistant message; the matching tool replies then follow it. Merge into the
+// immediately preceding assistant message.
+func appendAssistantToolCall(messages []ChatMessage, toolCall ChatToolCall, pendingReasoning string) []ChatMessage {
+	if n := len(messages); n > 0 && messages[n-1].Role == "assistant" {
+		messages[n-1].ToolCalls = append(messages[n-1].ToolCalls, toolCall)
+		if messages[n-1].ReasoningContent == "" {
+			messages[n-1].ReasoningContent = pendingReasoning
+	REDACTED
+		return messages
+REDACTED
+	return append(messages, ChatMessage{
+		Role:             "assistant",
+		ToolCalls:        []ChatToolCall{toolCallREDACTED,
+		ReasoningContent: pendingReasoning,
+REDACTED)
 REDACTED
 
 // normalizeChatMessages is the single place that enforces the tool-call
@@ -423,23 +496,114 @@ func chatContentFromSingleResponsesPart(partType string, part map[string]json.Ra
 REDACTED
 REDACTED
 
+// customToolInputSchema 是 custom/freeform 工具降级为 function 工具时的参数 schema。
+// chat 协议无法表达 custom 工具的自由文本输入（及其 grammar 约束），退化为单一
+// input 字符串参数；回程时再从 arguments 的 input 字段还原（见
+// extractCustomToolCallInput）。
+const customToolInputSchema = `{"type":"object","properties":{"input":{"type":"string","description":"The raw input for this tool, passed through verbatim."REDACTEDREDACTED,"required":["input"]REDACTED`
+
 func responsesToolsToChatTools(tools []ResponsesTool) []ChatTool {
 	out := make([]ChatTool, 0, len(tools))
 	for _, tool := range tools {
-		if tool.Type != "function" {
+		switch tool.Type {
+		case "function":
+			out = append(out, ChatTool{
+				Type: "function",
+				Function: &ChatFunction{
+					Name:        tool.Name,
+					Description: tool.Description,
+					Parameters:  tool.Parameters,
+					Strict:      tool.Strict,
+			REDACTED,
+		REDACTED)
+		case "custom":
+			// codex 0.14x 的核心执行工具 exec 即为 custom 类型；丢弃它会让模型
+			// 无法执行任何命令，必须降级为 function 工具透传。
+			out = append(out, ChatTool{
+				Type: "function",
+				Function: &ChatFunction{
+					Name:        tool.Name,
+					Description: tool.Description,
+					Parameters:  json.RawMessage(customToolInputSchema),
+			REDACTED,
+		REDACTED)
+		case "tool_search":
+			out = append(out, toolSearchProxyChatTool())
+		case "namespace":
+			out = append(out, namespaceChildrenToChatTools(tool)...)
+	REDACTED
+		// 其余类型（web_search、image_generation 等服务端工具）在 chat 上游没有
+		// 对应能力，维持丢弃。
+REDACTED
+	return out
+REDACTED
+
+// toolSearchProxyName 是 tool_search 服务端工具降级后的 function 工具名。模型对
+// 它的调用以同名 function_call 原样回传，由 codex 端路由。
+const toolSearchProxyName = "tool_search"
+
+const toolSearchProxySchema = `{"type":"object","properties":{"query":{"type":"string","description":"Search query for tools or connectors to load."REDACTED,"limit":{"type":"integer","description":"Maximum number of tool groups to return."REDACTEDREDACTED,"required":["query"]REDACTED`
+
+func toolSearchProxyChatTool() ChatTool {
+	return ChatTool{
+		Type: "function",
+		Function: &ChatFunction{
+			Name:        toolSearchProxyName,
+			Description: "Search and load Codex tools, plugins, connectors, and MCP namespaces for the current task.",
+			Parameters:  json.RawMessage(toolSearchProxySchema),
+	REDACTED,
+REDACTED
+REDACTED
+
+// namespaceChildrenToChatTools 将 namespace 工具的子 function 工具摊平为顶层
+// function 工具，名字加 "<namespace>__" 前缀。
+func namespaceChildrenToChatTools(tool ResponsesTool) []ChatTool {
+	if tool.Name == "" {
+		return nil
+REDACTED
+	children := tool.Tools
+	if len(children) == 0 {
+		children = tool.Children
+REDACTED
+	var out []ChatTool
+	for _, child := range children {
+		if child.Type != "function" || child.Name == "" {
 			continue
 	REDACTED
 		out = append(out, ChatTool{
 			Type: "function",
 			Function: &ChatFunction{
-				Name:        tool.Name,
-				Description: tool.Description,
-				Parameters:  tool.Parameters,
-				Strict:      tool.Strict,
+				Name:        flattenNamespaceToolName(tool.Name, child.Name),
+				Description: child.Description,
+				Parameters:  child.Parameters,
+				Strict:      child.Strict,
 		REDACTED,
 	REDACTED)
 REDACTED
 	return out
+REDACTED
+
+// chatToolNameMaxLen 是 Chat Completions function 工具名的通用长度上限。
+const chatToolNameMaxLen = 64
+
+// flattenNamespaceToolName 生成 namespace 子工具的摊平名；超长时截断并追加
+// sha256 短哈希保证唯一性。
+func flattenNamespaceToolName(namespace, name string) string {
+	full := namespace + "__" + name
+	if len(full) <= chatToolNameMaxLen {
+		return full
+REDACTED
+	sum := sha256.Sum256([]byte(full))
+	suffix := "__" + hex.EncodeToString(sum[:4])
+	prefixLen := chatToolNameMaxLen - len(suffix)
+	var prefix strings.Builder
+	for _, ch := range full {
+		if prefix.Len()+len(string(ch)) > prefixLen {
+			break
+	REDACTED
+		_, _ = prefix.WriteRune(ch)
+REDACTED
+	return prefix.String() + suffix
 REDACTED
 
 func responsesToolChoiceToChatToolChoice(raw json.RawMessage) json.RawMessage {
@@ -447,7 +611,8 @@ func responsesToolChoiceToChatToolChoice(raw json.RawMessage) json.RawMessage {
 	if err := json.Unmarshal(raw, &choice); err != nil {
 		return raw
 REDACTED
-	if rawString(choice["type"]) != "function" {
+	// custom 工具已降级为 function 工具，指向它的 tool_choice 同样按 function 转换。
+	if t := rawString(choice["type"]); t != "function" && t != "custom" {
 		return raw
 REDACTED
 	name := rawString(choice["name"])
@@ -469,9 +634,35 @@ REDACTED
 	return out
 REDACTED
 
+// extractCustomToolCallInput 从降级 function 调用的 arguments 中还原 custom 工具的
+// 自由文本输入：优先取 {"input": "..."REDACTED 的 input 字段；模型未按 schema 输出时原样
+// 回传，交由客户端校验、模型重试。
+func extractCustomToolCallInput(arguments string) string {
+	trimmed := strings.TrimSpace(arguments)
+	if trimmed == "" {
+		return ""
+REDACTED
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
+		return trimmed
+REDACTED
+	if raw, ok := obj["input"]; ok {
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil {
+			return s
+	REDACTED
+		return trimmed
+REDACTED
+	if len(obj) == 0 {
+		return ""
+REDACTED
+	return trimmed
+REDACTED
+
 // ChatCompletionsResponseToResponses converts a non-streaming Chat Completions
-// response into a Responses API response.
-func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model string) *ResponsesResponse {
+// response into a Responses API response. customTools 是客户端请求中 custom 工具
+// 的名字集合（见 CustomToolNames），命中的调用会还原为 custom_tool_call 项。
+func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model string, customTools map[string]bool) *ResponsesResponse {
 	id := ""
 	if resp != nil {
 		id = resp.ID
@@ -496,7 +687,7 @@ REDACTED
 
 	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]
-		out.Output = chatMessageToResponsesOutput(choice.Message)
+		out.Output = chatMessageToResponsesOutput(choice.Message, customTools)
 		if choice.FinishReason == "length" {
 			out.Status = "incomplete"
 			out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"REDACTED
@@ -511,7 +702,7 @@ REDACTED
 	return out
 REDACTED
 
-func chatMessageToResponsesOutput(message ChatMessage) []ResponsesOutput {
+func chatMessageToResponsesOutput(message ChatMessage, customTools map[string]bool) []ResponsesOutput {
 	var outputs []ResponsesOutput
 	if message.ReasoningContent != "" {
 		outputs = append(outputs, ResponsesOutput{
@@ -545,6 +736,17 @@ REDACTED
 		arguments := toolCall.Function.Arguments
 		if strings.TrimSpace(arguments) == "" {
 			arguments = "{REDACTED"
+	REDACTED
+		if customTools[toolCall.Function.Name] {
+			outputs = append(outputs, ResponsesOutput{
+				Type:   "custom_tool_call",
+				ID:     generateItemID(),
+				CallID: toolCall.ID,
+				Name:   toolCall.Function.Name,
+				Input:  extractCustomToolCallInput(arguments),
+				Status: "completed",
+		REDACTED)
+			continue
 	REDACTED
 		outputs = append(outputs, ResponsesOutput{
 			Type:      "function_call",
@@ -650,6 +852,19 @@ type ChatCompletionsToResponsesStreamState struct {
 	ToolItemIDs     map[int]string
 	ToolOutputIndex map[int]int
 
+	// CustomTools 是客户端请求中 custom/freeform 工具的名字集合（见
+	// CustomToolNames）。命中的调用按 custom_tool_call 生命周期下发，codex 才能
+	// 路由回它注册的 custom 工具。
+	CustomTools map[string]bool
+
+	// toolIsCustom 记录每个工具调用宣告时的类型判定，保证 added/done 事件的
+	// 项类型一致。
+	toolIsCustom map[int]bool
+
+	// toolAnnounced 记录 output_item.added 是否已发出。存在 custom 工具且名字
+	// 尚未到达时延迟宣告，待名字可判定类型后再补发（见 announceChatToolItem）。
+	toolAnnounced map[int]bool
+
 	FinishReason string
 	Usage        *ResponsesUsage
 REDACTED
@@ -663,6 +878,8 @@ func NewChatCompletionsToResponsesStreamState(model string) *ChatCompletionsToRe
 		ToolCalls:       make(map[int]*ChatToolCall),
 		ToolItemIDs:     make(map[int]string),
 		ToolOutputIndex: make(map[int]int),
+		toolIsCustom:    make(map[int]bool),
+		toolAnnounced:   make(map[int]bool),
 REDACTED
 REDACTED
 
@@ -746,19 +963,8 @@ REDACTED
 				copyCall.Function.Arguments = ""
 				state.ToolCalls[idx] = &copyCall
 				stored = &copyCall
-				itemID := generateItemID()
-				state.ToolItemIDs[idx] = itemID
+				state.ToolItemIDs[idx] = generateItemID()
 				state.ToolOutputIndex[idx] = state.allocOutputIndex()
-				events = append(events, chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
-					OutputIndex: state.ToolOutputIndex[idx],
-					Item: &ResponsesOutput{
-						Type:   "function_call",
-						ID:     itemID,
-						CallID: stored.ID,
-						Name:   stored.Function.Name,
-						Status: "in_progress",
-				REDACTED,
-			REDACTED))
 		REDACTED else {
 				if toolCall.ID != "" {
 					stored.ID = toolCall.ID
@@ -767,15 +973,21 @@ REDACTED
 					stored.Function.Name = toolCall.Function.Name
 			REDACTED
 		REDACTED
+			events = append(events, announceChatToolItem(state, idx, stored, false)...)
 			if toolCall.Function.Arguments != "" {
 				stored.Function.Arguments += toolCall.Function.Arguments
-				events = append(events, chatToResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
-					OutputIndex: state.ToolOutputIndex[idx],
-					ItemID:      state.ToolItemIDs[idx],
-					Delta:       toolCall.Function.Arguments,
-					CallID:      stored.ID,
-					Name:        stored.Function.Name,
-			REDACTED))
+				// 未宣告（名字未到）时仅累积，宣告时统一补发；custom 调用的
+				// arguments 是包裹 input 的 JSON 片段，无法增量还原为自由文本
+				// 输入，缓冲整份 arguments 收尾时一次性下发（见 closeChatToolItems）。
+				if state.toolAnnounced[idx] && !state.toolIsCustom[idx] {
+					events = append(events, chatToResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
+						OutputIndex: state.ToolOutputIndex[idx],
+						ItemID:      state.ToolItemIDs[idx],
+						Delta:       toolCall.Function.Arguments,
+						CallID:      stored.ID,
+						Name:        stored.Function.Name,
+				REDACTED))
+			REDACTED
 		REDACTED
 	REDACTED
 		if choice.FinishReason != nil && *choice.FinishReason != "" {
@@ -986,6 +1198,51 @@ REDACTED
 REDACTED)REDACTED
 REDACTED
 
+// announceChatToolItem 在类型可判定时发出工具调用的 output_item.added。custom
+// 工具的判定依赖名字：名字未到且请求里存在 custom 工具时延迟宣告，避免 added/done
+// 的项类型不一致；force 用于流收尾，名字始终未到时按 function_call 兜底。
+func announceChatToolItem(
+	state *ChatCompletionsToResponsesStreamState,
+	idx int,
+	stored *ChatToolCall,
+	force bool,
+) []ResponsesStreamEvent {
+	if state.toolAnnounced[idx] {
+		return nil
+REDACTED
+	if !force && stored.Function.Name == "" && len(state.CustomTools) > 0 {
+		return nil
+REDACTED
+	state.toolAnnounced[idx] = true
+	isCustom := state.CustomTools[stored.Function.Name]
+	state.toolIsCustom[idx] = isCustom
+	itemType := "function_call"
+	if isCustom {
+		itemType = "custom_tool_call"
+REDACTED
+	events := []ResponsesStreamEvent{chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
+		OutputIndex: state.ToolOutputIndex[idx],
+		Item: &ResponsesOutput{
+			Type:   itemType,
+			ID:     state.ToolItemIDs[idx],
+			CallID: stored.ID,
+			Name:   stored.Function.Name,
+			Status: "in_progress",
+	REDACTED,
+REDACTED)REDACTED
+	// 迟到宣告时补发已累积的参数增量（custom 工具的输入收尾统一下发，不补发）。
+	if !isCustom && stored.Function.Arguments != "" {
+		events = append(events, chatToResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
+			OutputIndex: state.ToolOutputIndex[idx],
+			ItemID:      state.ToolItemIDs[idx],
+			Delta:       stored.Function.Arguments,
+			CallID:      stored.ID,
+			Name:        stored.Function.Name,
+	REDACTED))
+REDACTED
+	return events
+REDACTED
+
 // closeChatToolItems emits function_call_arguments.done + output_item.done for
 // every tool call opened during the stream, carrying the full call_id/name/
 // arguments so codex can deserialize and execute the call. Mirrors cc-switch's
@@ -1004,11 +1261,46 @@ REDACTED
 		if !opened {
 			continue
 	REDACTED
+		// 名字始终未到导致尚未宣告的调用，收尾前按最终名字兜底宣告。
+		events = append(events, announceChatToolItem(state, i, toolCall, true)...)
 		arguments := toolCall.Function.Arguments
 		if strings.TrimSpace(arguments) == "" {
 			arguments = "{REDACTED"
 	REDACTED
 		outputIndex := state.ToolOutputIndex[i]
+		if state.toolIsCustom[i] {
+			// custom 调用按 custom_tool_call 生命周期收尾：input 在此处一次性下发
+			// （流中不产出增量，见 ChatCompletionsChunkToResponsesEvents）。
+			input := extractCustomToolCallInput(arguments)
+			if input != "" {
+				events = append(events, chatToResponsesEvent(state, "response.custom_tool_call_input.delta", &ResponsesStreamEvent{
+					OutputIndex: outputIndex,
+					ItemID:      itemID,
+					Delta:       input,
+			REDACTED))
+		REDACTED
+			events = append(events,
+				chatToResponsesEvent(state, "response.custom_tool_call_input.done", &ResponsesStreamEvent{
+					OutputIndex: outputIndex,
+					ItemID:      itemID,
+					CallID:      toolCall.ID,
+					Name:        toolCall.Function.Name,
+					Input:       input,
+			REDACTED),
+				chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+					OutputIndex: outputIndex,
+					Item: &ResponsesOutput{
+						Type:   "custom_tool_call",
+						ID:     itemID,
+						CallID: toolCall.ID,
+						Name:   toolCall.Function.Name,
+						Input:  input,
+						Status: "completed",
+				REDACTED,
+			REDACTED),
+			)
+			continue
+	REDACTED
 		events = append(events,
 			chatToResponsesEvent(state, "response.function_call_arguments.done", &ResponsesStreamEvent{
 				OutputIndex: outputIndex,
@@ -1065,6 +1357,17 @@ REDACTED
 		arguments := toolCall.Function.Arguments
 		if strings.TrimSpace(arguments) == "" {
 			arguments = "{REDACTED"
+	REDACTED
+		if state.toolIsCustom[i] {
+			outputs = append(outputs, ResponsesOutput{
+				Type:   "custom_tool_call",
+				ID:     generateItemID(),
+				CallID: toolCall.ID,
+				Name:   toolCall.Function.Name,
+				Input:  extractCustomToolCallInput(arguments),
+				Status: "completed",
+		REDACTED)
+			continue
 	REDACTED
 		outputs = append(outputs, ResponsesOutput{
 			Type:      "function_call",

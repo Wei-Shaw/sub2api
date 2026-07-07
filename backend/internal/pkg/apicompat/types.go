@@ -248,11 +248,31 @@ REDACTED
 
 // ResponsesTool describes a tool in the Responses API.
 type ResponsesTool struct {
-	Type        string          `json:"type"` // "function" | "web_search" | "local_shell" etc.
+	Type        string          `json:"type"` // "function" | "custom" | "web_search" | "local_shell" etc.
 	Name        string          `json:"name,omitempty"`
 	Description string          `json:"description,omitempty"`
 	Parameters  json.RawMessage `json:"parameters,omitempty"`
 	Strict      *bool           `json:"strict,omitempty"`
+
+	// type=namespace 的子工具列表（tools 与 children 二选一，语义相同）。
+	Tools    []ResponsesTool `json:"tools,omitempty"`
+	Children []ResponsesTool `json:"children,omitempty"`
+REDACTED
+
+// UnmarshalJSON 容忍字符串形式的工具声明：codex 会以 "name" 简写声明 custom 工具，
+func (t *ResponsesTool) UnmarshalJSON(data []byte) error {
+	var name string
+	if err := json.Unmarshal(data, &name); err == nil {
+		*t = ResponsesTool{Type: "custom", Name: nameREDACTED
+		return nil
+REDACTED
+	type alias ResponsesTool
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+REDACTED
+	*t = ResponsesTool(a)
+	return nil
 REDACTED
 
 // ResponsesResponse is the non-streaming response from POST /v1/responses.
@@ -300,6 +320,9 @@ type ResponsesOutput struct {
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+
+	// type=custom_tool_call（custom/freeform 工具，input 为自由文本）
+	Input string `json:"input,omitempty"`
 
 	// type=web_search_call
 	Action *WebSearchAction `json:"action,omitempty"`
@@ -401,6 +424,9 @@ type ResponsesStreamEvent struct {
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+
+	// response.custom_tool_call_input.done
+	Input string `json:"input,omitempty"`
 
 	// response.reasoning_summary_text.delta / done
 	// Reuses Text/Delta fields above, SummaryIndex identifies which summary part

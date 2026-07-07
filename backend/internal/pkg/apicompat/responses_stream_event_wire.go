@@ -167,6 +167,12 @@ REDACTED
 		m["call_id"] = item.CallID
 		m["name"] = item.Name
 		m["arguments"] = item.Arguments
+	case "custom_tool_call":
+		// custom/freeform 工具调用（如 codex 的 exec）：input 为自由文本。缺少
+		// call_id/name 时 codex 无法路由该调用（表现为 unsupported call）。
+		m["call_id"] = item.CallID
+		m["name"] = item.Name
+		m["input"] = item.Input
 REDACTED
 	return m
 REDACTED
