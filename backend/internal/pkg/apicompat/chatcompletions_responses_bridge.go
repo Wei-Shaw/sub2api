@@ -61,6 +61,19 @@ REDACTED
 	return out
 REDACTED
 
+// HasToolSearchTool 判断 Responses 请求是否声明了 tool_search 服务端工具。chat 桥
+// 回程时需据此把模型对代理工具的调用还原为 tool_search_call 项：codex 只在该项类型
+// 且 execution=client 时执行 tool search，同名 function_call 会因 payload 不匹配
+// 触发 fatal 中止整个 turn。
+func HasToolSearchTool(tools []ResponsesTool) bool {
+	for _, tool := range tools {
+		if tool.Type == "tool_search" {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
 // responsesInputToChatMessages converts a Responses request's instructions +
 // input[] into Chat Completions messages. It is a three-stage pipeline:
 //
@@ -661,8 +674,10 @@ REDACTED
 
 // ChatCompletionsResponseToResponses converts a non-streaming Chat Completions
 // response into a Responses API response. customTools 是客户端请求中 custom 工具
-// 的名字集合（见 CustomToolNames），命中的调用会还原为 custom_tool_call 项。
-func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model string, customTools map[string]bool) *ResponsesResponse {
+// 的名字集合（见 CustomToolNames），命中的调用会还原为 custom_tool_call 项；
+// toolSearch 表示客户端声明了 tool_search 工具（见 HasToolSearchTool），代理工具
+// 的调用会还原为 tool_search_call 项。
+func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model string, customTools map[string]bool, toolSearch bool) *ResponsesResponse {
 	id := ""
 	if resp != nil {
 		id = resp.ID
@@ -687,7 +702,7 @@ REDACTED
 
 	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]
-		out.Output = chatMessageToResponsesOutput(choice.Message, customTools)
+		out.Output = chatMessageToResponsesOutput(choice.Message, customTools, toolSearch)
 		if choice.FinishReason == "length" {
 			out.Status = "incomplete"
 			out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"REDACTED
@@ -702,7 +717,7 @@ REDACTED
 	return out
 REDACTED
 
-func chatMessageToResponsesOutput(message ChatMessage, customTools map[string]bool) []ResponsesOutput {
+func chatMessageToResponsesOutput(message ChatMessage, customTools map[string]bool, toolSearch bool) []ResponsesOutput {
 	var outputs []ResponsesOutput
 	if message.ReasoningContent != "" {
 		outputs = append(outputs, ResponsesOutput{
@@ -748,6 +763,16 @@ REDACTED
 		REDACTED)
 			continue
 	REDACTED
+		if toolSearch && toolCall.Function.Name == toolSearchProxyName {
+			outputs = append(outputs, ResponsesOutput{
+				Type:      "tool_search_call",
+				ID:        generateItemID(),
+				CallID:    toolCall.ID,
+				Arguments: arguments,
+				Status:    "completed",
+		REDACTED)
+			continue
+	REDACTED
 		outputs = append(outputs, ResponsesOutput{
 			Type:      "function_call",
 			ID:        generateItemID(),
@@ -759,6 +784,21 @@ REDACTED
 REDACTED
 
 	return outputs
+REDACTED
+
+// toolSearchCallArgumentsJSON 把降级 function 调用累积的 arguments 字符串还原为
+// tool_search_call 线上要求的 JSON 对象；模型未按 schema 输出（非法 JSON）时按
+// 字符串值兜底，交由 codex 解析报错后让模型重试。
+func toolSearchCallArgumentsJSON(arguments string) json.RawMessage {
+	trimmed := strings.TrimSpace(arguments)
+	if trimmed == "" {
+		return json.RawMessage(`{REDACTED`)
+REDACTED
+	if json.Valid([]byte(trimmed)) {
+		return json.RawMessage(trimmed)
+REDACTED
+	fallback, _ := json.Marshal(arguments)
+	return fallback
 REDACTED
 
 func emptyResponsesMessageOutput() ResponsesOutput {
@@ -857,9 +897,17 @@ type ChatCompletionsToResponsesStreamState struct {
 	// 路由回它注册的 custom 工具。
 	CustomTools map[string]bool
 
+	// ToolSearchDeclared 表示客户端请求声明了 tool_search 工具（见
+	// HasToolSearchTool）。命中的代理调用按 tool_search_call 项还原，codex 只按
+	// 该项类型（且 execution=client）执行 tool search。
+	ToolSearchDeclared bool
+
 	// toolIsCustom 记录每个工具调用宣告时的类型判定，保证 added/done 事件的
 	// 项类型一致。
 	toolIsCustom map[int]bool
+
+	// toolIsToolSearch 记录工具调用是否判定为 tool_search 代理调用。
+	toolIsToolSearch map[int]bool
 
 	// toolAnnounced 记录 output_item.added 是否已发出。存在 custom 工具且名字
 	// 尚未到达时延迟宣告，待名字可判定类型后再补发（见 announceChatToolItem）。
@@ -872,14 +920,15 @@ REDACTED
 // NewChatCompletionsToResponsesStreamState returns an initialized stream state.
 func NewChatCompletionsToResponsesStreamState(model string) *ChatCompletionsToResponsesStreamState {
 	return &ChatCompletionsToResponsesStreamState{
-		ResponseID:      generateResponsesID(),
-		Model:           model,
-		Created:         time.Now().Unix(),
-		ToolCalls:       make(map[int]*ChatToolCall),
-		ToolItemIDs:     make(map[int]string),
-		ToolOutputIndex: make(map[int]int),
-		toolIsCustom:    make(map[int]bool),
-		toolAnnounced:   make(map[int]bool),
+		ResponseID:       generateResponsesID(),
+		Model:            model,
+		Created:          time.Now().Unix(),
+		ToolCalls:        make(map[int]*ChatToolCall),
+		ToolItemIDs:      make(map[int]string),
+		ToolOutputIndex:  make(map[int]int),
+		toolIsCustom:     make(map[int]bool),
+		toolIsToolSearch: make(map[int]bool),
+		toolAnnounced:    make(map[int]bool),
 REDACTED
 REDACTED
 
@@ -978,8 +1027,9 @@ REDACTED
 				stored.Function.Arguments += toolCall.Function.Arguments
 				// 未宣告（名字未到）时仅累积，宣告时统一补发；custom 调用的
 				// arguments 是包裹 input 的 JSON 片段，无法增量还原为自由文本
-				// 输入，缓冲整份 arguments 收尾时一次性下发（见 closeChatToolItems）。
-				if state.toolAnnounced[idx] && !state.toolIsCustom[idx] {
+				// 输入，缓冲整份 arguments 收尾时一次性下发（见 closeChatToolItems）；
+				// tool_search 调用同样收尾时随 output_item.done 全量下发。
+				if state.toolAnnounced[idx] && !state.toolIsCustom[idx] && !state.toolIsToolSearch[idx] {
 					events = append(events, chatToResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
 						OutputIndex: state.ToolOutputIndex[idx],
 						ItemID:      state.ToolItemIDs[idx],
@@ -1210,15 +1260,20 @@ func announceChatToolItem(
 	if state.toolAnnounced[idx] {
 		return nil
 REDACTED
-	if !force && stored.Function.Name == "" && len(state.CustomTools) > 0 {
+	if !force && stored.Function.Name == "" && (len(state.CustomTools) > 0 || state.ToolSearchDeclared) {
 		return nil
 REDACTED
 	state.toolAnnounced[idx] = true
 	isCustom := state.CustomTools[stored.Function.Name]
+	isToolSearch := !isCustom && state.ToolSearchDeclared && stored.Function.Name == toolSearchProxyName
 	state.toolIsCustom[idx] = isCustom
+	state.toolIsToolSearch[idx] = isToolSearch
 	itemType := "function_call"
 	if isCustom {
 		itemType = "custom_tool_call"
+REDACTED
+	if isToolSearch {
+		itemType = "tool_search_call"
 REDACTED
 	events := []ResponsesStreamEvent{chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
 		OutputIndex: state.ToolOutputIndex[idx],
@@ -1230,8 +1285,8 @@ REDACTED
 			Status: "in_progress",
 	REDACTED,
 REDACTED)REDACTED
-	// 迟到宣告时补发已累积的参数增量（custom 工具的输入收尾统一下发，不补发）。
-	if !isCustom && stored.Function.Arguments != "" {
+	// 迟到宣告时补发已累积的参数增量（custom/tool_search 的输入收尾统一下发，不补发）。
+	if !isCustom && !isToolSearch && stored.Function.Arguments != "" {
 		events = append(events, chatToResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
 			OutputIndex: state.ToolOutputIndex[idx],
 			ItemID:      state.ToolItemIDs[idx],
@@ -1301,6 +1356,21 @@ REDACTED
 			)
 			continue
 	REDACTED
+		if state.toolIsToolSearch[i] {
+			// tool_search 调用按 tool_search_call 项收尾：codex 从 output_item.done
+			// 物化该调用（无参数增量事件），arguments 全量随项下发。
+			events = append(events, chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+				OutputIndex: outputIndex,
+				Item: &ResponsesOutput{
+					Type:      "tool_search_call",
+					ID:        itemID,
+					CallID:    toolCall.ID,
+					Arguments: arguments,
+					Status:    "completed",
+			REDACTED,
+		REDACTED))
+			continue
+	REDACTED
 		events = append(events,
 			chatToResponsesEvent(state, "response.function_call_arguments.done", &ResponsesStreamEvent{
 				OutputIndex: outputIndex,
@@ -1366,6 +1436,16 @@ REDACTED
 				Name:   toolCall.Function.Name,
 				Input:  extractCustomToolCallInput(arguments),
 				Status: "completed",
+		REDACTED)
+			continue
+	REDACTED
+		if state.toolIsToolSearch[i] {
+			outputs = append(outputs, ResponsesOutput{
+				Type:      "tool_search_call",
+				ID:        generateItemID(),
+				CallID:    toolCall.ID,
+				Arguments: arguments,
+				Status:    "completed",
 		REDACTED)
 			continue
 	REDACTED

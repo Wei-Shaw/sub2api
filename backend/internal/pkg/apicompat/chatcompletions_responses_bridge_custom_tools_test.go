@@ -103,7 +103,7 @@ func TestChatCompletionsResponseToResponses_CustomToolCallOutputItem(t *testing.
 REDACTED
 REDACTED
 
-	out := ChatCompletionsResponseToResponses(resp, "glm-5.2", map[string]bool{"exec": trueREDACTED)
+	out := ChatCompletionsResponseToResponses(resp, "glm-5.2", map[string]bool{"exec": trueREDACTED, false)
 	require.Len(t, out.Output, 2)
 
 	assert.Equal(t, "custom_tool_call", out.Output[0].Type)
@@ -208,6 +208,131 @@ REDACTED
 	assert.Equal(t, "function", out.Tools[0].Type)
 	assert.Equal(t, "tool_search", out.Tools[0].Function.Name)
 	assert.Contains(t, string(out.Tools[0].Function.Parameters), `"query"`)
+REDACTED
+
+// codex 只在 ResponseItem 为 tool_search_call 变体且 execution=client 时执行
+// tool search；同名 function_call 会命中 ToolSearchHandler 后因 payload 不匹配
+// 触发 FunctionCallError::Fatal，直接中止整个 turn，因此回程必须还原项类型。
+func TestChatCompletionsResponseToResponses_ToolSearchCallOutputItem(t *testing.T) {
+	resp := &ChatCompletionsResponse{
+		ID: "cc-1",
+		Choices: []ChatChoice{{
+			Message: ChatMessage{
+				Role: "assistant",
+				ToolCalls: []ChatToolCall{
+					{ID: "call_s", Function: ChatFunctionCall{Name: "tool_search", Arguments: `{"query":"gmail","limit":2REDACTED`REDACTEDREDACTED,
+			REDACTED,
+		REDACTED,
+REDACTED
+REDACTED
+
+	out := ChatCompletionsResponseToResponses(resp, "glm-5.2", nil, true)
+	require.Len(t, out.Output, 1)
+
+	item := out.Output[0]
+	assert.Equal(t, "tool_search_call", item.Type)
+	assert.Equal(t, "call_s", item.CallID)
+
+	// 线上形态：execution 必须为 "client"（codex 的必填字段，非 client 被忽略），
+	// arguments 必须是 JSON 对象而非字符串（codex 按对象解析 query/limit）。
+	b, err := json.Marshal(item)
+REDACTED
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(b, &m))
+	assert.Equal(t, "client", m["execution"])
+	args, ok := m["arguments"].(map[string]any)
+	require.True(t, ok, "arguments 必须序列化为 JSON 对象")
+	assert.Equal(t, "gmail", args["query"])
+REDACTED
+
+func TestChatCompletionsResponseToResponses_ToolSearchNotDeclaredKeepsFunctionCall(t *testing.T) {
+	resp := &ChatCompletionsResponse{
+		Choices: []ChatChoice{{
+			Message: ChatMessage{
+				Role: "assistant",
+				ToolCalls: []ChatToolCall{
+					{ID: "call_s", Function: ChatFunctionCall{Name: "tool_search", Arguments: `{"query":"gmail"REDACTED`REDACTEDREDACTED,
+			REDACTED,
+		REDACTED,
+REDACTED
+REDACTED
+
+	// 客户端未声明 type=tool_search 时，同名普通 function 工具不受影响。
+	out := ChatCompletionsResponseToResponses(resp, "glm-5.2", nil, false)
+	require.Len(t, out.Output, 1)
+	assert.Equal(t, "function_call", out.Output[0].Type)
+REDACTED
+
+func TestChatCompletionsChunkToResponsesEvents_ToolSearchCallStream(t *testing.T) {
+	state := NewChatCompletionsToResponsesStreamState("glm-5.2")
+	state.ToolSearchDeclared = true
+
+	idx := 0
+	chunk := &ChatCompletionsChunk{
+		ID: "cc-1",
+		Choices: []ChatChunkChoice{{
+			Delta: ChatDelta{
+				ToolCalls: []ChatToolCall{{
+					Index:    &idx,
+					ID:       "call_s",
+					Function: ChatFunctionCall{Name: "tool_search", Arguments: `{"query":"gmail"REDACTED`REDACTED,
+		REDACTED
+		REDACTED,
+REDACTED
+REDACTED
+
+	events := ChatCompletionsChunkToResponsesEvents(chunk, state)
+	events = append(events, FinalizeChatCompletionsResponsesStream(state)...)
+
+	var added, itemDone *ResponsesStreamEvent
+	for i := range events {
+		evt := &events[i]
+		switch evt.Type {
+		case "response.output_item.added":
+			if evt.Item != nil && evt.Item.Type != "message" && evt.Item.Type != "reasoning" {
+				added = evt
+		REDACTED
+		case "response.output_item.done":
+			if evt.Item != nil && evt.Item.Type == "tool_search_call" {
+				itemDone = evt
+		REDACTED
+		case "response.function_call_arguments.delta", "response.function_call_arguments.done",
+			"response.custom_tool_call_input.delta", "response.custom_tool_call_input.done":
+			t.Fatalf("tool_search 调用不应产出 %s", evt.Type)
+	REDACTED
+REDACTED
+
+	require.NotNil(t, added, "缺少 tool_search_call 的 output_item.added")
+	assert.Equal(t, "tool_search_call", added.Item.Type)
+
+	require.NotNil(t, itemDone, "缺少 tool_search_call 的 output_item.done")
+	assert.Equal(t, "call_s", itemDone.Item.CallID)
+
+	// SSE 线上形态经 responsesItemWire 白名单重组，必须单独断言。
+	sse, err := ResponsesEventToSSE(*itemDone)
+REDACTED
+	assert.Contains(t, sse, `"execution":"client"`)
+	assert.Contains(t, sse, `"arguments":{"query":"gmail"REDACTED`)
+	assert.Contains(t, sse, `"call_id":"call_s"`)
+
+	// response.completed 的 output 数组同样携带 tool_search_call 项。
+	final := events[len(events)-1]
+	require.Equal(t, "response.completed", final.Type)
+	require.NotNil(t, final.Response)
+	found := false
+	for _, item := range final.Response.Output {
+		if item.Type == "tool_search_call" {
+			found = true
+			assert.Equal(t, "call_s", item.CallID)
+	REDACTED
+REDACTED
+	assert.True(t, found, "response.completed 缺少 tool_search_call 输出项")
+REDACTED
+
+func TestHasToolSearchTool(t *testing.T) {
+	assert.True(t, HasToolSearchTool([]ResponsesTool{{Type: "tool_search"REDACTEDREDACTED))
+	assert.False(t, HasToolSearchTool([]ResponsesTool{{Type: "function", Name: "tool_search"REDACTEDREDACTED))
+	assert.False(t, HasToolSearchTool(nil))
 REDACTED
 
 func TestResponsesToChatCompletionsRequest_NamespaceToolFlattensChildren(t *testing.T) {
